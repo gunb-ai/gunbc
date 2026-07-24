@@ -588,14 +588,7 @@ fn belt_dispatch_node(node_id: String) -> BeltDispatchResult {
 }
 
 fn belt_dispatch_result_ok(r: BeltDispatchResult) -> Bool {
-  match r {
-    DispatchSpawned { node_id: _, session_name: _ } => true
-    DispatchAlreadyLive { node_id: _, session_name: _ } => true
-    DispatchNodeNotFound { node_id: _ } => false
-    DispatchNodeAlreadyDone { node_id: _ } => false
-    DispatchObserveRefused { node_id: _, reason: _ } => false
-    DispatchSpawnFailed { node_id: _, step: _, detail: _ } => false
-  }
+  dispatch_band_is_ok(b: belt_dispatch_result_band(r: r))
 }
 
 data belt_dispatch_status_label_note: String = "The ONE wire vocabulary for a dispatch result (DESIGN §3, found live 2026-07-23): the served JSON body's `status` member and the roadmap page's client-side ok-check are two consumers of ONE label set — the dispatch button read a retired belt-A `\{ok, node\}` shape while belt B answered `\{status, ...\}`, so EVERY successful click rendered 'failed' (a silently-wrong UI answer, §5). belt_dispatch_status_label is the per-variant label authority consumed by belt_dispatch_result_json_value; belt_dispatch_ok_status_labels is the ok-subset the page derives its JS predicate from, glued to belt_dispatch_result_ok by witness (a label moved across the ok/refusal line without updating both surfaces goes RED)."
@@ -611,7 +604,64 @@ fn belt_dispatch_status_label(r: BeltDispatchResult) -> String {
   }
 }
 
-data belt_dispatch_ok_status_labels: List<String> = ["spawned", "already_live"]
+data dispatch_band_note: String = "The operator-facing state vocabulary (operator ruling 2026-07-24, roadmap-workspace-remodel-plan W1a): the wire taxonomy is the belt's DIAGNOSTIC vocabulary and must not moonlight as button text. The operator reads BANDS, each a remedy class — ok: the click achieved or already holds the desired state; fail: this click cannot achieve it and the ROW is the remedy (wrong node, already signed off); loud: the BELT itself is unwell (observe refused, spawn failed — step/detail surface in the detail channel, never the caption). BandInProgress is inhabited only by the client's requested phase: no wire RESULT maps to it (the fold below has no arm producing it), so presentation cannot fabricate progress out of an answer. This fold is now the SINGLE ok-authority — belt_dispatch_result_ok and belt_dispatch_ok_status_labels are projections of it; the former hand copies (a Bool match, a hand list, a label predicate — three spellings of one fact) were the half-born-band defect this dissolves."
+
+type DispatchBand
+  = BandOk
+  | BandInProgress
+  | BandFail
+  | BandLoud
+
+fn belt_dispatch_result_band(r: BeltDispatchResult) -> DispatchBand {
+  match r {
+    DispatchSpawned { node_id: _, session_name: _ } => BandOk
+    DispatchAlreadyLive { node_id: _, session_name: _ } => BandOk
+    DispatchNodeNotFound { node_id: _ } => BandFail
+    DispatchNodeAlreadyDone { node_id: _ } => BandFail
+    DispatchObserveRefused { node_id: _, reason: _ } => BandLoud
+    DispatchSpawnFailed { node_id: _, step: _, detail: _ } => BandLoud
+  }
+}
+
+fn dispatch_band_key(b: DispatchBand) -> String {
+  match b {
+    BandOk => "ok"
+    BandInProgress => "in-progress"
+    BandFail => "fail"
+    BandLoud => "loud"
+  }
+}
+
+fn dispatch_band_is_ok(b: DispatchBand) -> Bool {
+  match b {
+    BandOk => true
+    BandInProgress => false
+    BandFail => false
+    BandLoud => false
+  }
+}
+
+fn belt_dispatch_ok_status_labels() -> List<String> {
+  belt_dispatch_result_exemplars()
+    |> filter(r => dispatch_band_is_ok(b: belt_dispatch_result_band(r: r)))
+    |> map(r => belt_dispatch_status_label(r: r))
+}
+
+type DispatchLabelBandRow {
+  wire_label: String
+  band_key: String
+}
+
+fn belt_dispatch_label_band_rows() -> List<DispatchLabelBandRow> {
+  map(belt_dispatch_result_exemplars(), r => DispatchLabelBandRow {
+    wire_label: belt_dispatch_status_label(r: r),
+    band_key: dispatch_band_key(b: belt_dispatch_result_band(r: r)),
+  })
+}
+
+fn label_band_rows_cover(rows: List<DispatchLabelBandRow>, labels: List<String>) -> Bool {
+  all(labels, l => count(filter(rows, row => row.wire_label == l)) == 1)
+}
 
 data belt_dispatch_all_status_labels_note: String = "The full wire-label set, GROUNDED in belt_dispatch_status_label rather than hand-listed (§3): one exemplar per BeltDispatchResult variant, mapped through the label authority. The exemplar roster is the single manual enumeration the closed variant set forces — the same enumeration witness_dispatch_status_labels_pin_wire_contract already pins — and it is fail-closed twice: a 7th variant makes belt_dispatch_status_label's match non-exhaustive (compiler-caught), and gunbc.roadmap_component derives the DispatchButton's terminal states from THIS list and cross-checks totality both directions (a label with no state row, a state with no label — each red), so the button's state set cannot silently drift from the served contract. This is the projection the dispatch-button incident (2026-07-23) needed: one authority for the wire vocabulary, consumed by the JSON body, the page ok-predicate, and now the component state totality."
 
@@ -637,7 +687,7 @@ fn belt_dispatch_result_for_label(wire_label: String) -> BeltDispatchResult? {
 }
 
 fn belt_dispatch_label_is_ok(wire_label: String) -> Bool {
-  any(belt_dispatch_ok_status_labels, l => l == wire_label)
+  any(belt_dispatch_ok_status_labels(), l => l == wire_label)
 }
 
 data belt_dispatch_path_prefix_note: String = "The dispatch route prefix, part of the wire contract (the click POSTs to prefix+NODE_ID; belt B answers it at the /dispatch/ NODE_ID route). Homed here with the rest of the wire vocabulary (§3) so the client script builder (gunbc.roadmap_component) and the emitted server (node_http_server_emit) read one authority — it moved off roadmap_page to break the page-to-component import cycle the TsProgram builder would otherwise create."

@@ -1,0 +1,54 @@
+# Roadmap workspace remodel — bands, instrument physics, ticket schema, storage-blind serving
+
+Status: operator-signed direction 2026-07-24 (local review session on #7177's branch). Extends `roadmap-workspace-ux-plan.md` (the PR-A/PR-B contract); PR-B checkpoints 3–6/7b stay parked and untouched.
+
+## Root-cause map (session receipts, condensed)
+
+The operator's review list reduced to four roots; several complaints are one defect observed twice.
+
+- **R1 — the belt's wire taxonomy moonlights as the operator UI.** Client renders raw `j.status` as button text; `belt_dispatch_ok_status_labels` is a half-born band model (Ok band only — the class channel has bands, the text channel bypasses them); button `min-width: 25ch` is a projection of the longest *wire label*, so the diagnostic vocabulary shapes the control; sandbox live buttons fuse caption (arm name) with state channel (material), reading as white specimens beside red gallery twins.
+- **R2 — text and geometry sit outside the register's physics.** PR-A gave transform/color/sound law; `textContent` swaps are instant and lawless (the ~1-frame flash on fast wires); no control-geometry axis exists (`space-1` vertical padding + 25ch → thin strip); the `<details>` disclosure never entered the component register (UA triangle = debug chrome by omission); state materials paint only a 1px border and rest border ≡ `dispatch-ok` border (`--figure` both) — ok is materially invisible.
+- **R3 — the roadmap node is one anemic String.** `authored(content: "…")` fuses headline/brief/history/refs; updates concatenate into `content` because no time axis exists (`ts-dispatch-elevate` carries its own GO-LIVE/NEW-GAP history inline — the live specimen); served-page doc links are dead by construction (repo-relative hrefs, no `/docs` route — correct only in GitHub's renderer); `fill_dispatch_brief` stubs its slots because `DispatchBriefFields` is `{node_id, title, repo}` — all the row carries. The template's slot names are the field list for `ts-wf-node-schema`.
+- **R4 — sound wiring exists; audibility was never proven.** `sandbox.js` is a twin of the production program (same `gunbcTick` on `pointerdown`). Candidates ranked: first-press swallow (AudioContext created lazily in-handler, no `resume()` — tick scheduled on a suspended clock), sub-audible modeled parameters (5 ms / 2200 Hz / 0.12 peak — envelope REDs prove *not loud*; nothing proves *heard*), persisted mute, Safari policy.
+- **Asset paths are minted, not derived.** `roadmap_dispatch_asset_path = "/assets/roadmap-dispatch.js"` is a single authority row (route + `<script src>` + census + healthz digest all consume it — no fork) but the value is convention, a nickname for the program node it serves.
+
+## Operator rulings (2026-07-24)
+
+- **Bands:** ok / in-progress / fail / loud. `spawned`/`already_live` → ok · in-flight → in-progress · `node_not_found`/`already_done_signed_off` → fail (quiet) · `observe_refused`/`spawn_failed` → loud. Button text renders the band verb; the wire label demotes to the detail channel (title/status row), never the caption.
+- **Palette:** island-pastel for now. **Base sets stay provenance-pure; a set completes missing roles at the consuming layer** as a *derived swatch* (the loam-from-camel precedent). Island has no danger hue by design; the workspace layer completes it with **venom** — ACNH scorpion tail, dark red-brown (operator-directed 2026-07-24; sampled, inspiration not citation).
+- **The auditioner:** operator is deliberately undecided on swatches → a swatch-set switch panel (sandbox first). Rides the universal theme reframe (role-routed colors cross-fade on one token clock): a palette switch is a theme switch with a different role→material assignment table. Zero new mechanism.
+- **Instrument area (signed register amendment):** the glare envelope is a per-area L×C region; a tactile **instrument area** carries its own envelope — louder than prose chrome *by law*, not by exception. A big satisfying control is supposed to be louder than body text.
+- **Geometry archetype: the GitHub merge button.** Filled, ~40px-class tactile target, medium radius, short verb caption; the band is carried by the FILL (not-ready = gray fill, exactly as GitHub renders it pending checks); diagnostic detail lives beside the control, never in its caption.
+- **Layer-alignment law (the centerpiece): transitions are sugar over the data layer.** The operation NEVER waits on presentation — if the wire answers in 1 ms and the transition is 160 ms, the data layer applies immediately and the presentation *appears* to take 160 ms (the Discord-mute shape: instant op, 100–200 ms fade). Presentation is a derived choreography: each presented phase holds ≥ its transition duration; phases play in order; presentation never fabricates a state that did not occur. Dispatch request-phase dwell: `reveal_deliberate` (160 ms). The choreography is modeled as data (phases, edges, duration-token references) and the client state machine is EMITTED from it — never a hand-coded promise dance.
+- **Overshoot call stays deferred** until the new geometry lands — the same spring reads differently on a real instrument than on a thin strip.
+
+## Workstreams
+
+### W0 — census of half-born migrations (typed, counted)
+
+Rows seeded from the session; classify finish-now / rides-a-phase / defer-with-trigger:
+1. band fold (Ok band only) → W1 · 2. state material (ok ≡ rest; fill unused) → W1 · 3. text channel lawless (no dwell) → W1 · 4. geometry axis absent → W1 · 5. component register has one component (sound-toggle, disclosure unregistered) → W1 · 6. caption/state fusion in sandbox live row → W1 · 7. link projection missing (dead `docs/plans/…` anchors on served surface) → W2 · 8. asset path minted not derived → W3 · 9. already-counted frontiers stay counted (RawSelector 18, RawProperty 1, P3 flex-container deferral).
+
+### W1 — the instrument (this branch)
+
+Model first, then emit:
+- **`DispatchBand`** — a total match over the belt status coproduct (totality by construction; the label→band table the client needs is *derived* by mapping the exemplar roster, with a reconciliation witness + RED). Text renders band; wire label → detail channel. Kills the 25ch reservation's reason to exist.
+- **Band materials from island(+venom)**: ok = mint fill + loam ink · in-progress = butter + loam · fail/loud = venom fill + ivory ink (loud additionally surfaces its step/detail in the adjacent detail row). Approval is the computed WCAG grade, per the palette machinery.
+- **`ControlGeometry` axis + confidence articulation**: tactile target height token, radius, padding, aspect (oblong); the instrument area's own envelope row; the dispatch button re-realized as a filled confident control with a short verb caption.
+- **Presented-state choreography**: the modeled phase/edge/dwell data + the emitted client state machine (data layer immediate; presentation queue with per-phase minimum dwell 160 ms; terminal coalescing honest). Includes AudioContext `resume()`/warm-up on first gesture (kills the first-press swallow); audibility re-judged by ear after, parameters revisited only then.
+- **Disclosure as the second registered component**: register marker, motion on toggle, materials — the UA triangle dies. (Sound-toggle enrolls as the third.)
+- **The swatch auditioner** on /sandbox: switch the active swatch-set assignment live (persisted like the mute bit).
+
+### W2 — the ticket (schema + exemplars this branch; bulk migration follow-on)
+
+`RoadmapTicket` fields = `ts-wf-node-schema`'s list (title / outcome / acceptance / receipts / deps / authored-at + last-verified) ∪ `dispatch_brief_template` slots (displaced cost, out-of-scope, current-state proof, first slice, RED perturbation, hand-back conditions, paths) + **`updates: List<dated entry>`** (the time axis — receipts stop concatenating into the brief) + **typed refs with per-surface link projection** (GitHub blob URLs on the served page now; served routes later). Brief bounded ≤ ~100 words by the lead-budget lens pattern.
+
+Carrier: a `ticket(…)` row variant beside `authored()` — counted frontier `TicketRow | LegacyProse`, never big-bang. Page + generated ROADMAP.md render ticket rows structured (ROADMAP.md is already emitted from the authority — drift-gated — so the migration is authority-side only). `fill_dispatch_brief` consumes real fields on ticket rows; the stub survives only on LegacyProse, counted. Exemplars: `ts-dispatch-elevate` (blob-with-history specimen), `ts-wf-node-schema` (recursive), `2-dispatch-actuator` + 2 sized ready rows. Bulk (~200 rows) is mechanical decompose→map→reduce, LLM-assisted, drift gate keeping it honest — after the shape is signed against rendered exemplars.
+
+### W3 — storage-blind serving (follow-on PR)
+
+Served asset URL becomes a projection of node identity (qualified name or content hash — healthz already content-hashes this exact asset; content-addressing unifies with readiness and buys immutable caching). Counted frontier `DerivedPath | MintedPath`; dissolution names the module-identity/storage-binding lane rather than duplicating it.
+
+## Sequencing
+
+W0 + W1 + W2-exemplars ride this branch. W2-bulk and W3 are follow-on PRs. PR-B (sessions panel) pairs naturally with the ticket fields once they exist.

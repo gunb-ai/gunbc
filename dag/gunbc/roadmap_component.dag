@@ -358,7 +358,7 @@ fn dispatch_or_chain(exprs: List<TsExpr>) -> TsExpr {
 }
 
 fn dispatch_ok_predicate_expr() -> TsExpr {
-  dispatch_or_chain(exprs: map(belt_dispatch_ok_status_labels, l => dispatch_ok_status_comparison(wire_label: l)))
+  dispatch_or_chain(exprs: map(belt_dispatch_ok_status_labels(), l => dispatch_ok_status_comparison(wire_label: l)))
 }
 
 fn dispatch_fetch_url_expr() -> TsExpr {
