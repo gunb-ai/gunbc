@@ -726,6 +726,19 @@ pub fn rust_seed_host_numeric_alias(name: String, corpus_repr: RustCorpusRepr) -
     }
 }
 
+pub fn rust_scalar_checkpoint_render_base(
+    dag_name: String,
+    corpus_repr: RustCorpusRepr,
+) -> Option<String> {
+    match lookup_checkpoint(RenderTarget::Rust, dag_name.clone()) {
+        Some(cp) => Some(cp.target_type.clone()),
+        None => match rust_seed_host_numeric_alias(dag_name.clone(), corpus_repr.clone()) {
+            Some(host) => Some(host.clone()),
+            None => None,
+        },
+    }
+}
+
 pub fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) -> Option<String> {
     if ((name.clone() == "List".to_string()) || (name.clone() == "FreeMonoid".to_string())) {
         Some("Vec".to_string())
@@ -1164,45 +1177,49 @@ pub fn render_rust_applied_type(
                 None => rust_named_type_base(base_name.clone(), corpus_repr.clone()),
             }
         } else {
-            {
-                let base =
-                    match rust_seed_host_container_base(base_name.clone(), corpus_repr.clone()) {
-                        Some(host) => host.clone(),
-                        None => rust_applied_type_base(base_name.clone(), corpus_repr.clone()),
-                    };
-                let peel = is_parametric_opaque_type_by_name(env.clone(), base_name.clone());
-                let args = Rc::new({
-                    let mut __result = Vec::new();
-                    for arg in n.children.clone().iter().cloned() {
-                        __result.push(if peel.clone() {
-                            render_rust_phantom_opaque_applied_decl_arg(
-                                arg.clone(),
-                                generic_param_names.clone(),
-                                shared_types.clone(),
-                                corpus_repr.clone(),
-                                source_indices.clone(),
-                                variant_to_enum.clone(),
-                                env.clone(),
-                            )
-                        } else {
-                            render_rust_applied_type_arg(
-                                arg.clone(),
-                                generic_param_names.clone(),
-                                shared_types.clone(),
-                                corpus_repr.clone(),
-                                source_indices.clone(),
-                                variant_to_enum.clone(),
-                                env.clone(),
-                            )
-                        });
-                    }
-                    __result
-                })
-                .join(&", ".to_string());
-                v1_rt::concat(
-                    v1_rt::concat(v1_rt::concat(base.clone(), "<".to_string()), args.clone()),
-                    ">".to_string(),
-                )
+            match rust_scalar_checkpoint_render_base(base_name.clone(), corpus_repr.clone()) {
+                Some(scalar) => scalar.clone(),
+                None => {
+                    let base =
+                        match rust_seed_host_container_base(base_name.clone(), corpus_repr.clone())
+                        {
+                            Some(host) => host.clone(),
+                            None => rust_applied_type_base(base_name.clone(), corpus_repr.clone()),
+                        };
+                    let peel = is_parametric_opaque_type_by_name(env.clone(), base_name.clone());
+                    let args = Rc::new({
+                        let mut __result = Vec::new();
+                        for arg in n.children.clone().iter().cloned() {
+                            __result.push(if peel.clone() {
+                                render_rust_phantom_opaque_applied_decl_arg(
+                                    arg.clone(),
+                                    generic_param_names.clone(),
+                                    shared_types.clone(),
+                                    corpus_repr.clone(),
+                                    source_indices.clone(),
+                                    variant_to_enum.clone(),
+                                    env.clone(),
+                                )
+                            } else {
+                                render_rust_applied_type_arg(
+                                    arg.clone(),
+                                    generic_param_names.clone(),
+                                    shared_types.clone(),
+                                    corpus_repr.clone(),
+                                    source_indices.clone(),
+                                    variant_to_enum.clone(),
+                                    env.clone(),
+                                )
+                            });
+                        }
+                        __result
+                    })
+                    .join(&", ".to_string());
+                    v1_rt::concat(
+                        v1_rt::concat(v1_rt::concat(base.clone(), "<".to_string()), args.clone()),
+                        ">".to_string(),
+                    )
+                }
             }
         }
     }

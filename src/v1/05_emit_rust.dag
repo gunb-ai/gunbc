@@ -418,6 +418,18 @@ fn rust_scalar_checkpoint_render_base(dag_name: String, corpus_repr: RustCorpusR
   }
 }
 
+fn rust_strip_illegal_primitive_type_args(rendered: String) -> String {
+  if substring(s: rendered, start: 0, end: 4) == "i64<" { "i64" }
+  else if substring(s: rendered, start: 0, end: 4) == "f64<" { "f64" }
+  else if substring(s: rendered, start: 0, end: 5) == "bool<" { "bool" }
+  else if substring(s: rendered, start: 0, end: 3) == "u8<" { "u8" }
+  else if substring(s: rendered, start: 0, end: 4) == "u16<" { "u16" }
+  else if substring(s: rendered, start: 0, end: 4) == "u32<" { "u32" }
+  else if substring(s: rendered, start: 0, end: 4) == "u64<" { "u64" }
+  else if substring(s: rendered, start: 0, end: 4) == "i32<" { "i32" }
+  else { rendered }
+}
+
 fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) -> String? {
   if name == "List" || name == "FreeMonoid" {
     Present { value: "Vec" }
@@ -573,7 +585,7 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
     match n.inferred {
       Present { value: TypeVariable { id: tv } } =>
         if type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { to_pascal(name: tv) } else { "_" }
-      _ => render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+      _ => rust_strip_illegal_primitive_type_args(rendered: render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env))
     }
   }
 }
@@ -674,7 +686,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
           } else if rust_type_arg_renders_as_unit(n: arg, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
             "()"
           } else {
-            render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+            rust_strip_illegal_primitive_type_args(rendered: render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env))
           }
         )
         let applied_ty = if name == tuple_type_name {
@@ -840,7 +852,10 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     }
   } else if n.connective == NoConnective && n.children |> count > 0 {
     let leaf = qualified_last_segment(name: name)
-    let numeric_host_alias = rust_seed_host_numeric_alias(name: leaf, corpus_repr: corpus_repr)
+    let numeric_host_alias = match rust_scalar_checkpoint_render_base(dag_name: leaf, corpus_repr: corpus_repr) {
+      Present { value: scalar } => Present { value: scalar }
+      Absent => rust_seed_host_numeric_alias(name: leaf, corpus_repr: corpus_repr)
+    }
     if numeric_host_alias != none {
       return match numeric_host_alias { Present { value: host } => host  Absent => "" }
     }
