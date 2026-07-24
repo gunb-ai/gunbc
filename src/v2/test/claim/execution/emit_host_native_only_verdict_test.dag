@@ -15,7 +15,7 @@ import v2.test.execution.emit_on_demand_classical_not_ingested_family_witness {
   classical_not_family_native_key_for,
 }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, None }
-import v2.std.host_run { HostLogicalRun }
+import v2.std.host_run { HostLogicalRun, HostRunStdout }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.integer { Int }
@@ -26,6 +26,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data emit_host_native_only_verdict_note: String = "Kernel-D Stage 2: verdict decided solely by the emitted native run's stdout vs a fixed expected octet; eval() never runs classical_not's body here. Entangled shape (classical_not_family_cached_run_with_source) surfaced standalone (DESIGN.md S2). Shares the classical_not_family ONE-BUILD-grain cache key (classical_not_family_cache_root_for + classical_not_family_native_key_for, same as emit_on_demand_classical_not_native_one_build_holds) rather than an uncached run_emit_host call: an uncached leg here duplicated a full cargo build the family witness already performs, landing two extra cold builds at the CI floor batch's peak-memory point and causing swap-pressure-induced false-negative runs (CI-only, non-reproducing locally) — DESIGN.md S2 duplicate-work, not a new cache mechanism."
 
 data emit_host_native_only_verdict_vs_native_routing_frontier_note: String = "Not a native_routing_frontier row: that module routes EXISTING equals_eval agreement pairs between two legs; this witness has no eval leg to route between (always native, unconditionally), so it is out of that authority's domain rather than a fork of it."
+
+data emit_host_native_only_verdict_ci_placement_note: String = "KERNEL-D TESTING RE-STEER (operator direction, 2026-07-24): the real-compile-and-run witness below (emit_host_native_only_verdict_all_holds) runs OFFLINE/NIGHTLY only — enrolled in falsifier_self_host_wet_template_entries (wet_receipt_enrollment.dag), the same lane self_host_logic_behavioral_transport uses; it is not a per-PR CommitCheckEnrollment row (removed from commit_workflow.dag). The per-PR proof of this cutover is the layer-boundary mock pair below (emit_host_native_only_verdict_stdout_match_mock_holds / _mismatch_mock_holds), which exercises native_only_stdout_matches — the SAME comparator the real witness calls — against a literal, mocked HostRunStdout with no compile/run step, templated on v2.test.std_grounding.terminal_gate's mocked-HostLogicalRun shape. This mirrors ingested_classical_not_emit_source_arm_shape_holds's existing per-PR mock-emit proof (no separate mock is needed for the emit-to-text half; that shape already exists and is enrolled)."
+
+fn native_only_stdout_matches(stdout: HostRunStdout, expected_octet: Int) -> Bool {
+  stdout.bytes == emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
+}
 
 fn native_only_matches_expected(source: String, expected_octet: Int) -> Bool {
   match ingested_inferred_tree_from_source(source: source) {
@@ -45,7 +51,7 @@ fn native_only_matches_expected(source: String, expected_octet: Int) -> Bool {
             Accepted { value: receipt, diagnostics: _ } =>
               match receipt.logical_run {
                 Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
-                  stdout.bytes == emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
+                  native_only_stdout_matches(stdout: stdout, expected_octet: expected_octet)
                 _ => false
               }
             Rejected { diagnostics: _ } => false
@@ -67,4 +73,23 @@ test fn emit_host_native_only_classical_not_swapped_mismatch_detected_holds() ->
 test fn emit_host_native_only_verdict_all_holds() -> Bool {
   emit_host_native_only_classical_not_holds()
     && emit_host_native_only_classical_not_swapped_mismatch_detected_holds()
+}
+
+test fn emit_host_native_only_verdict_stdout_match_mock_holds() -> Bool {
+  native_only_stdout_matches(
+    stdout: HostRunStdout { bytes: emit_host_octets_byte_string(octets: [0, 0, 0, 0, 0]) },
+    expected_octet: 0
+  )
+}
+
+test fn emit_host_native_only_verdict_stdout_mismatch_mock_holds() -> Bool {
+  native_only_stdout_matches(
+    stdout: HostRunStdout { bytes: emit_host_octets_byte_string(octets: [0, 1, 0, 0, 0]) },
+    expected_octet: 0
+  ) == false
+}
+
+test fn emit_host_native_only_verdict_mock_all_holds() -> Bool {
+  emit_host_native_only_verdict_stdout_match_mock_holds()
+    && emit_host_native_only_verdict_stdout_mismatch_mock_holds()
 }
