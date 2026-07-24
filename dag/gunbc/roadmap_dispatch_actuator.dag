@@ -46,6 +46,7 @@ import extdeps.llm.cli { shape_claude_invoke_argv }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.host_layout { srv1_dispatch_worktree_root }
+import gunbc.repo_identity { gunbc_merge_target_ref }
 
 data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
@@ -61,7 +62,7 @@ data dispatch_repo: String = "gunbc"
 data dispatch_worktree_root_note: String = "PROJECTION of gunbc.host_layout.srv1_dispatch_worktree_root — the single path authority shared with the live_deploy membership that provisions the directory (DESIGN §3; its former private copy deleted, belt-B lane 2026-07-20)."
 
 data dispatch_worktree_root: String = srv1_dispatch_worktree_root as String
-data dispatch_git_remote_ref: String = "origin/main"
+data dispatch_git_remote_ref: String = gunbc_merge_target_ref as String
 data dispatch_tmux_session_prefix: String = "gunbc-dispatch-"
 data dispatch_claude_process_fingerprint: NonEmptyStr = "claude" as NonEmptyStr
 data claude_skip_permission_settings_json: String = "{\"skipDangerousModePermissionPrompt\":true}"
