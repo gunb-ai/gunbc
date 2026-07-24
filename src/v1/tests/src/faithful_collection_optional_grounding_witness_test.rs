@@ -2,7 +2,7 @@
 //! Optional/Option construction grounding — the same native-form == modeled-form move as
 //! the text-carrier root (#7131) and the numeric tower (#5428).
 
-use crate::helpers::compile_dag_target;
+use crate::helpers::{compile_dag_named, compile_dag_target};
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_emit_rust::{
     is_host_freemonoid_vec_alias, is_host_optional_carrier_alias, rust_seed_host_container_base,
@@ -108,5 +108,86 @@ fn optional_applied_type_renders_option_in_signature() {
     assert!(
         !sig_slice.contains("Optional<"),
         "modeled Optional must not appear in grounded signature, got:\n{sig_slice}"
+    );
+}
+
+fn faithful_emit(source: &str) -> String {
+    compile_dag_named("test.dag", source, RenderTarget::Rust)
+        .files
+        .iter()
+        .map(|f| f.content.clone())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn fn_body(emitted: &str, name: &str) -> String {
+    let needle = format!("fn {name}");
+    let start = emitted
+        .find(&needle)
+        .unwrap_or_else(|| panic!("fn `{name}` not emitted:\n{emitted}"));
+    let rest = &emitted[start..];
+    let end = rest[needle.len()..]
+        .find("\npub fn ")
+        .map(|i| i + needle.len())
+        .unwrap_or(rest.len());
+    rest[..end].to_string()
+}
+
+#[test]
+fn faithful_freemonoid_empty_value_grounds_to_vec_literal() {
+    let source = concat!(
+        "module fmcval.fixture\n",
+        "type IntList = Empty | Cons { head: Int, tail: IntList }\n\n",
+        "fn empty_list() -> IntList {\n  Empty\n}\n"
+    );
+    let body = fn_body(&faithful_emit(source), "empty_list");
+    assert!(
+        body.contains("vec![]"),
+        "Empty must lower to vec![] once FreeMonoid grounds to Vec, got:\n{body}"
+    );
+    assert!(
+        !body.contains("FreeMonoid::Empty") && !body.contains("IntList::Empty"),
+        "grounded Empty must not emit enum constructor, got:\n{body}"
+    );
+}
+
+#[test]
+fn faithful_freemonoid_cons_value_grounds_to_vec_push() {
+    let source = concat!(
+        "module fmcval.fixture\n",
+        "type IntList = Empty | Cons { head: Int, tail: IntList }\n\n",
+        "fn one() -> IntList {\n  Cons { head: 1, tail: Empty }\n}\n"
+    );
+    let body = fn_body(&faithful_emit(source), "one");
+    assert!(
+        body.contains("__cons_v") && body.contains("insert(0,"),
+        "Cons must lower to native Vec push-front, got:\n{body}"
+    );
+    assert!(
+        !body.contains("Cons {"),
+        "grounded Cons must not emit coproduct constructor, got:\n{body}"
+    );
+}
+
+#[test]
+fn faithful_freemonoid_match_lowers_to_vec_is_empty() {
+    let source = concat!(
+        "module fmcval.fixture\n",
+        "type IntList = Empty | Cons { head: Int, tail: IntList }\n\n",
+        "fn len(xs: IntList) -> Int {\n",
+        "  match xs {\n",
+        "    Empty => 0\n",
+        "    Cons { head: _, tail: _ } => 1\n",
+        "  }\n",
+        "}\n"
+    );
+    let body = fn_body(&faithful_emit(source), "len");
+    assert!(
+        body.contains("__fm.is_empty()"),
+        "FreeMonoid match must use native Vec is_empty lowering, got:\n{body}"
+    );
+    assert!(
+        !body.contains("IntList::Empty") && !body.contains("FreeMonoid::Empty"),
+        "grounded match must not emit enum patterns, got:\n{body}"
     );
 }

@@ -5509,7 +5509,7 @@ fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolve
 }
 
 fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<String>, corpus_repr: RustCorpusRepr) -> Bool {
-  (name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: corpus_repr)) || set_contains(shared_types, enum_name)
+  (name == "Empty" && enum_name == "FreeMonoid") || set_contains(shared_types, enum_name)
 }
 
 data value_ref_ident_dotted_fallback_note: String = "Construction wall for the dotted-render class in VALUE-EXPRESSION position (sibling of variant_pattern_dotted_qualification_note/PATTERN, bare_qualified_name in emit_typed_record_lit/CONSTRUCTION, coerce_primitive_type_dotted_fallback_note/TYPE, and rust_fn_sig_leaf_name_dotted_note/FN-SIG TYPE). A namespace-qualified dotted name (e.g. v2.std.node.Edge) whose leaf misses the registry previously fell through to emit_ident(name: name, ...) with the FULL dotted string still attached — emit_ident has no dot-awareness (pure case-conversion/sanitization), so the dots rode straight into the emitted Rust as a bare field-access chain starting at the first segment (rustc: 'cannot find value v2 in this scope', E0425). Fixed by passing the already-computed leaf, the same qualified_last_segment (v1.std.core) reduction the Present arm already keys its registry lookup on — not a new fallback, the existing one corrected to use the value already in scope. The CALL-callee sibling (emit_typed_call's func_ident, e.g. a bare dotted function reference like v2.std.staging.resolve_probe(..) rendered verbatim) reuses this same fn directly rather than re-deriving the leaf a third time (DESIGN section 2/3: one shared helper, not a forked per-seam patch); its registry lookup (the `callee` binding) is likewise re-keyed on qualified_last_segment(func) so a dotted cross-module call resolves the same ItemInfo a bare call would. Every already-bare name renders exactly as before (qualified_last_segment is the identity on an unqualified name)."
@@ -5538,7 +5538,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
     let sharing = language_spec(target: Rust).sharing
     let ref_str = match variant_parent {
       Present { value: enum_name } =>
-        let body = if name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
+        let body = if name == "Empty" && enum_name == "FreeMonoid" {
           "vec![]"
         } else if is_optional_variant_name(name: name) && enum_name == "Optional" {
           if name == "Present" { "Some" } else { "None" }
@@ -5595,7 +5595,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
       else {
         match variant_parent {
           Present { value: enum_name } =>
-            if n == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
+            if n == "Empty" && enum_name == "FreeMonoid" {
               "Rc::new(vec![])"
             } else {
             let qualified = if is_optional_variant_name(name: n) && enum_name == "Optional" {
@@ -7101,7 +7101,7 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
       } else { authored_name_at(source_indices: scope.type_env.source_indices, node: rt) }
     _ => ""
   }
-  let native_fm = if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && arms_are_freemonoid_coproduct(arms: arms, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) {
+  let native_fm = if arms_are_freemonoid_coproduct(arms: arms, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) {
     emit_native_freemonoid_match(scrut_str: scrut_str, arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   } else { "" }
   if native_fm != "" { return native_fm }
@@ -7557,7 +7557,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             bare_parent_enum
           }
       }
-      let host_freemonoid_cons = tn == "Cons" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr)
+      let host_freemonoid_cons = tn == "Cons"
         && (match effective_parent { Present { value: p } => p == "FreeMonoid"  Absent => false })
       if host_freemonoid_cons {
         let head_val = match fields |> filter(f => field_init_node_name_at(n: f, source_indices: si) == "head") |> first {
@@ -7910,7 +7910,7 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
           } else { authored_name_at(source_indices: frame.scope.type_env.source_indices, node: rt) }
         _ => ""
       }
-      let native_tco_fm = if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && arms_are_freemonoid_coproduct(arms: arm_list, scrut_type: tco_scrut_type, type_summaries: emit_info.type_summaries) {
+      let native_tco_fm = if arms_are_freemonoid_coproduct(arms: arm_list, scrut_type: tco_scrut_type, type_summaries: emit_info.type_summaries) {
         emit_native_freemonoid_tco_match(scrut_str: scrut_str, arms: arm_list, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
       } else { "" }
       if native_tco_fm != "" { native_tco_fm } else {

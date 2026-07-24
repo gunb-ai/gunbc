@@ -15031,8 +15031,7 @@ pub fn variant_ref_self_wraps(
     shared_types: Rc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
 ) -> bool {
-    ((((name.clone() == "Empty".to_string()) && (enum_name.clone() == "FreeMonoid".to_string()))
-        && corpus_repr_is_host(corpus_repr.clone()))
+    (((name.clone() == "Empty".to_string()) && (enum_name.clone() == "FreeMonoid".to_string()))
         || v1_rt::set_contains(&shared_types, enum_name.clone()))
 }
 
@@ -15099,9 +15098,8 @@ pub fn emit_var_ref(
                     let sharing = language_spec(RenderTarget::Rust).sharing.clone();
                     let ref_str = match variant_parent.clone() {
                         Some(enum_name) => {
-                            let body = if (((name.clone() == "Empty".to_string())
+                            let body = if ((name.clone() == "Empty".to_string())
                                 && (enum_name.clone() == "FreeMonoid".to_string()))
-                                && corpus_repr_is_host(emit_info.corpus_repr.clone()))
                             {
                                 "vec![]".to_string()
                             } else {
@@ -15224,9 +15222,8 @@ pub fn emit_typed_expr_base(
                     } else {
                         match variant_parent.clone() {
                             Some(enum_name) => {
-                                if (((n.clone() == "Empty".to_string())
+                                if ((n.clone() == "Empty".to_string())
                                     && (enum_name.clone() == "FreeMonoid".to_string()))
-                                    && corpus_repr_is_host(emit_info.corpus_repr.clone()))
                                 {
                                     "Rc::new(vec![])".to_string()
                                 } else {
@@ -20149,12 +20146,11 @@ pub fn emit_typed_match(
             }
             _ => "".to_string(),
         };
-        let native_fm = if (corpus_repr_is_host(emit_info.corpus_repr.clone())
-            && arms_are_freemonoid_coproduct(
-                arms.clone(),
-                scrut_type.clone(),
-                emit_info.type_summaries.clone(),
-            )) {
+        let native_fm = if arms_are_freemonoid_coproduct(
+            arms.clone(),
+            scrut_type.clone(),
+            emit_info.type_summaries.clone(),
+        ) {
             emit_native_freemonoid_match(
                 scrut_str.clone(),
                 arms.clone(),
@@ -21500,8 +21496,7 @@ pub fn emit_typed_record_lit(
                         }
                     }
                 };
-                let host_freemonoid_cons = (((tn.clone() == "Cons".to_string())
-                    && corpus_repr_is_host(emit_info.corpus_repr.clone()))
+                let host_freemonoid_cons = ((tn.clone() == "Cons".to_string())
                     && match effective_parent.clone() {
                         Some(p) => (p.clone() == "FreeMonoid".to_string()),
                         None => false,
@@ -22824,12 +22819,11 @@ pub fn emit_rust_tco_match(
                 }
                 _ => "".to_string(),
             };
-            let native_tco_fm = if (corpus_repr_is_host(emit_info.corpus_repr.clone())
-                && arms_are_freemonoid_coproduct(
-                    arm_list.clone(),
-                    tco_scrut_type.clone(),
-                    emit_info.type_summaries.clone(),
-                )) {
+            let native_tco_fm = if arms_are_freemonoid_coproduct(
+                arm_list.clone(),
+                tco_scrut_type.clone(),
+                emit_info.type_summaries.clone(),
+            ) {
                 emit_native_freemonoid_tco_match(
                     scrut_str.clone(),
                     arm_list.clone(),
