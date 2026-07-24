@@ -51,6 +51,7 @@ pub fn python_container_templates() -> Rc<HashMap<String, String>> {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "list[{0}]".to_string());
             __m.insert("set".to_string(), "set[{0}]".to_string());
+            __m.insert("pointwise_power".to_string(), "set[{0}]".to_string());
             __m.insert("optional".to_string(), "Optional[{0}]".to_string());
             __m.insert("map".to_string(), "dict[{0}, {1}]".to_string());
             __m.insert("free_monoid".to_string(), "list[{0}]".to_string());

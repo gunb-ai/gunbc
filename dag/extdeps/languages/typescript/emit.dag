@@ -20,6 +20,7 @@ data ts_keywords: Map<String, String> = {
 data ts_container_templates: Map<String, String> = {
   "list": "Array<\{0\}>",
   "set": "Set<\{0\}>",
+  "pointwise_power": "Set<\{0\}>",
   "optional": "\{0\} | undefined",
   "map": "Map<\{0\}, \{1\}>",
   "free_monoid": "Array<\{0\}>",
