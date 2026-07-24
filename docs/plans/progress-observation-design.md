@@ -201,6 +201,12 @@ the CI renderer's contract (§3a) and the sequencing:
   shell echoes are Ambient (invisible at arm's length, expandable up close); per-witness PASS
   lines collapse to counts. `[floor-memory]`'s current shape — 60+ identical
   context-free byte dumps per hour — is the named negative example the census wall reds.
+  **Tone (operator, 2026-07-24):** arm's-length lines are plain sentences a human can read
+  without decoding — "still in witness discovery: entry 214 of 602, pace 2.1s per entry
+  (expected ~1s)" — never dense `key=value` chains; the dense form lives only in receipt
+  boxes and files. Glyphs are **real emojis** from the one glyph authority (✅ ❌ 🚫 ⏳ ⏭️ 🚨,
+  reward-animal rows for Final — the gunb.ai emoji pattern, kept); the periodic status line
+  uses 🕐, not ♥.
 
 ## 6c. Relation to the frontend / visualization / UX lanes
 
