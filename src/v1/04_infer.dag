@@ -1,6 +1,7 @@
 module v1.compiler.infer
 
-import std.types { SourceSpan, ContentHash, NonEmptyStr, container_param_name }
+import std.types { SourceSpan, ContentHash, NonEmptyStr, container_param_name, kernel_type_set, is_kernel_type }
+import std.syntax { Add, BinOp, LitStr, LiteralValue }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.std.core {
   Node, InternTable,
@@ -25,11 +26,10 @@ import v1.std.core {
   ErrorNode, make_error_node, is_error_diagnostic,
   InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound, MissingField, AmbiguousReference,
   resource_use_name_at, resource_use_resource,
-  kernel_type_set, is_kernel_type,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
   expr_has_self_call, expr_has_non_tail_self_call,
   DeclaredFuncSig, DeclaredFuncEnv,
-  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
+  LitInt, LitFloat, LitBool, LitNull,
   FieldAccessStyle, StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
   FieldValueShape, PlainValue, OptionalValue, FieldSummary,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding,
@@ -38,7 +38,7 @@ import v1.std.core {
   ServiceMethodSemantics,
   ExprErrorKind, ParseRecoveryError, SemanticExprError, InternalExprError,
   CensusHeadsBodyStripped,
-  BinOp, Add, Sub, Mul, Div, Mod,
+  Sub, Mul, Div, Mod,
   Eq, Ne, Lt, Gt, Le, Ge,
   And, Or, NullCoalesce,
   UnaryOpKind, Not, Neg, unaryop_operand,
@@ -1695,6 +1695,10 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                         name_span: span
                       ))
                     Absent =>
+                      let var_ambiguity_cands = global_bare_strict_ambiguity_candidates(env: scope.type_env, name: name)
+                      if (var_ambiguity_cands |> count) > 0 {
+                        ambiguous_reference_refusal(name: name, candidates: var_ambiguity_cands, span: span, scope: scope)
+                      } else {
                       let err_texpr = make_named_expr_node(
                         name: name,
                         expr_data: ExprVar { binding_kind: none },
@@ -1710,6 +1714,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                           span: span,
                           module_name: scope.module_name
                         )]
+                      }
                       }
                   }
               }
@@ -2195,11 +2200,17 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                 Present { value: _ } => []
                 Absent => match global_bare_callable {
                   Present { value: _ } => []
-                  Absent => [inference_error(
-                    message: concat("function '", func_name, "' not found in scope"),
-                    span: span,
-                    module_name: scope.module_name
-                  )]
+                  Absent =>
+                    let call_ambiguity_cands = global_bare_strict_ambiguity_candidates(env: scope.type_env, name: func_name)
+                    if (call_ambiguity_cands |> count) > 0 {
+                      [make_error_node(diagnostic: AmbiguousReference { name: func_name, candidates: call_ambiguity_cands, span: span }, module_name: scope.module_name)]
+                    } else {
+                      [inference_error(
+                        message: concat("function '", func_name, "' not found in scope"),
+                        span: span,
+                        module_name: scope.module_name
+                      )]
+                    }
                 }
               }
               InferResult {

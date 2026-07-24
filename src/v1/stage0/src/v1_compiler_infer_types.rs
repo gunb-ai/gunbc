@@ -15,11 +15,14 @@ pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profi
 pub use crate::std_algebra::{
     AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
 };
+use crate::std_syntax::AlgebraFieldKind::AlgAdd;
 use crate::std_syntax::AlgebraFieldKind::{
-    AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
+    AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };
+use crate::std_syntax::BinOp::*;
 use crate::std_syntax::BinOp::{And, Eq, Ge, Gt, Le, Lt, Ne, NullCoalesce, Or};
-use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
+use crate::std_syntax::LiteralValue::LitStr;
+use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitSymbol};
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{
