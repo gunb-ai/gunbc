@@ -559,6 +559,9 @@ fn main() {
                     result.diagnostics.len()
                 );
                 render_diagnostics(&result);
+                if cli_run::compile_clean_vec_has_hard_errors(&result.diagnostics) {
+                    std::process::exit(1);
+                }
             } else {
                 let resolved = v1_compiler_compile::compile_to_resolved_with_options(
                     Rc::new(sources.into()),
@@ -588,6 +591,9 @@ fn main() {
                     render_diagnostics(&result);
                     total_files += result.files.len();
                     total_diagnostics += result.diagnostics.len();
+                    if cli_run::compile_clean_vec_has_hard_errors(&result.diagnostics) {
+                        std::process::exit(1);
+                    }
                 }
                 eprintln!(
                     "compiled: {} files emitted, {} diagnostics",
@@ -658,15 +664,29 @@ fn render_diagnostics(result: &PipelineResult) {
         render_one_diagnostic(d, &index_map, "");
     }
 
-    eprintln!("\n{} error(s)", result.diagnostics.len());
+    let hard = cli_run::compile_clean_vec_hard_error_count(&result.diagnostics);
+    let advisory = cli_run::compile_clean_vec_advisory_count(&result.diagnostics);
+    if advisory > 0 {
+        eprintln!(
+            "\n{hard} blocking error(s), {advisory} advisory diagnostic(s) (policy: gunbc.compile_clean_diagnostic_policy)"
+        );
+    } else {
+        eprintln!("\n{hard} error(s)");
+    }
 }
 
 fn render_one_diagnostic(
-    d: &v1_compiler::v1_std_core::ErrorNode,
+    d: &Rc<v1_compiler::v1_std_core::ErrorNode>,
     index_map: &HashMap<String, Rc<NewlineIndex>>,
     indent: &str,
 ) {
-    let severity = "error";
+    let severity = if cli_run::compile_clean_diagnostic_is_advisory(d) {
+        "advisory"
+    } else if cli_run::compile_clean_diagnostic_is_hard(d) {
+        "error"
+    } else {
+        "error"
+    };
     let message = diagnostic_to_message(d.diagnostic.clone());
     let span = diagnostic_to_span(d.diagnostic.clone());
 

@@ -1,0 +1,27 @@
+module test.claim.dag_compile_clean_cli_floor_agreement_witness
+
+import tools.dag_compile_clean_cli_floor_agreement {
+  witness_cli_floor_policy_agreement_holds,
+  witness_policy_row_is_floor_not_yet,
+  witness_enforced_flip_red_control,
+  cli_floor_agreement_note
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn dag_compile_clean_cli_floor_policy_agreement_holds() -> Bool {
+  witness_cli_floor_policy_agreement_holds()
+}
+
+test fn dag_compile_clean_cli_floor_floor_not_yet_row_holds() -> Bool {
+  witness_policy_row_is_floor_not_yet()
+}
+
+test fn dag_compile_clean_cli_floor_enforced_flip_red_control_holds() -> Bool {
+  witness_enforced_flip_red_control()
+}
+
+test fn dag_compile_clean_cli_floor_agreement_note_named() -> Bool {
+  string_contains(s: cli_floor_agreement_note, pattern: "issue 11")
+}

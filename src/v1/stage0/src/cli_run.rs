@@ -2087,6 +2087,32 @@ pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorN
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
 }
 
+/// `PipelineResult` adapter for the compile CLI transport.
+pub fn compile_clean_vec_has_hard_errors(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> bool {
+    diagnostics.iter().any(compile_clean_diagnostic_is_hard)
+}
+
+/// `ResolvedPipelineResult` / `im::Vector` adapter for compile-clean checks.
+pub fn compile_clean_im_vector_has_hard_errors(
+    diagnostics: &im::Vector<Rc<ErrorNode>>,
+) -> bool {
+    diagnostics.iter().any(compile_clean_diagnostic_is_hard)
+}
+
+pub fn compile_clean_vec_hard_error_count(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> usize {
+    diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .count()
+}
+
+pub fn compile_clean_vec_advisory_count(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> usize {
+    diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_advisory(d))
+        .count()
+}
+
 fn eprint_compile_clean_hard_diagnostics(diagnostics: &im::Vector<Rc<ErrorNode>>) {
     const SHOWN_LIMIT: usize = 20;
     let mut shown = 0usize;
@@ -3059,6 +3085,177 @@ pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im::Vector<Rc<Error
         .filter(|d| compile_clean_diagnostic_is_hard(d))
         .cloned()
         .collect())
+}
+
+/// Binding-source attribution for the UnlistedImportUse census (issue 11).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum UnlistedImportBindingSource {
+    ListedImport,
+    PoolCoincidence,
+    DefinerResolvable,
+}
+
+impl UnlistedImportBindingSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ListedImport => "listed-import",
+            Self::PoolCoincidence => "pool-coincidence",
+            Self::DefinerResolvable => "definer-resolvable",
+        }
+    }
+}
+
+/// One attributed row of the UnlistedImportUse census.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnlistedImportCensusRow {
+    pub file: String,
+    pub referenced_name: String,
+    pub referencing_module: String,
+    pub definer_module: Option<String>,
+    pub binding_source: UnlistedImportBindingSource,
+}
+
+fn compile_clean_whole_tree_resolved() -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
+    let plan = CompileCleanScopePlan::WholeTree;
+    let sources = match witness_layer_roots_compile_clean_sources_for_plan(&plan)? {
+        None => return Err("compile-clean whole-tree: no sources (unexpected skip)".to_string()),
+        Some(s) => s,
+    };
+    Ok(v1_compiler_compile::compile_to_resolved(Rc::new(sources.into())))
+}
+
+fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String> {
+    use crate::v1_std_core::module_imports;
+    module_imports(tm.module.clone())
+        .iter()
+        .map(|imp: &Rc<Node>| imp.name.clone())
+        .collect()
+}
+
+fn definer_module_for_name(
+    graph: &ResolvedGraph,
+    name: &str,
+) -> Option<String> {
+    if let Some(info) = graph.item_registry.get(name) {
+        return Some(info.module_name.clone());
+    }
+    if name.contains('.') {
+        let base = name.rsplit('.').next().unwrap_or(name);
+        if let Some(info) = graph.item_registry.get(base) {
+            return Some(info.module_name.clone());
+        }
+    }
+    None
+}
+
+/// Classify how a single `UnlistedImportUse` site obtained its binding.
+pub fn classify_unlisted_import_binding_source(
+    graph: &ResolvedGraph,
+    referencing_module: &str,
+    referenced_name: &str,
+) -> (UnlistedImportBindingSource, Option<String>) {
+    let definer = definer_module_for_name(graph, referenced_name);
+    let tm = graph
+        .modules
+        .iter()
+        .find(|m| m.type_env.module_path == referencing_module);
+    let imports: HashSet<String> = tm
+        .map(import_module_paths_for_typed_module)
+        .unwrap_or_default();
+    if let Some(ref def_mod) = definer {
+        if imports.contains(def_mod) {
+            return (UnlistedImportBindingSource::ListedImport, definer);
+        }
+    }
+    if referenced_name.contains('.') {
+        return (UnlistedImportBindingSource::DefinerResolvable, definer);
+    }
+    (UnlistedImportBindingSource::PoolCoincidence, definer)
+}
+
+fn diagnostic_decl_file_for_census(d: &Rc<ErrorNode>) -> String {
+    let raw = diagnostic_to_span(d.diagnostic.clone()).file.clone();
+    normalize_repo_relative_path_for_census(&raw)
+}
+
+fn normalize_repo_relative_path_for_census(path: &str) -> String {
+    let p = path.replace('\\', "/");
+    if let Ok(root) = workspace_root().canonicalize() {
+        if let Ok(abs) = std::path::Path::new(&p).canonicalize() {
+            if let Ok(rel) = abs.strip_prefix(&root) {
+                return rel.to_string_lossy().replace('\\', "/");
+            }
+        }
+    }
+    p
+}
+
+/// Whole-tree UnlistedImportUse census with binding-source attribution (issue 11).
+pub fn compile_clean_unlisted_import_census() -> Result<Vec<UnlistedImportCensusRow>, String> {
+    use crate::v1_std_core::CompilerDiagnostic;
+    let result = compile_clean_whole_tree_resolved()?;
+    let graph = result
+        .graph
+        .clone()
+        .ok_or_else(|| "compile-clean census: compilation produced no graph".to_string())?;
+    let mut rows = Vec::new();
+    for d in result.diagnostics.iter() {
+        let CompilerDiagnostic::UnlistedImportUse { name, .. } = d.diagnostic.as_ref() else {
+            continue;
+        };
+        let (binding_source, definer_module) =
+            classify_unlisted_import_binding_source(&graph, &d.module_name, name);
+        rows.push(UnlistedImportCensusRow {
+            file: diagnostic_decl_file_for_census(d),
+            referenced_name: name.clone(),
+            referencing_module: d.module_name.clone(),
+            definer_module,
+            binding_source,
+        });
+    }
+    rows.sort_by(|a, b| {
+        a.file
+            .cmp(&b.file)
+            .then_with(|| a.referenced_name.cmp(&b.referenced_name))
+            .then_with(|| a.referencing_module.cmp(&b.referencing_module))
+    });
+    Ok(rows)
+}
+
+/// Floor compile-clean verdict over the whole-tree closure (shared-index receipt semantics).
+pub fn compile_clean_floor_verdict_whole_tree() -> Result<bool, String> {
+    let sources = match witness_layer_roots_compile_clean_sources_for_plan(&CompileCleanScopePlan::WholeTree)? {
+        None => return Ok(true),
+        Some(s) => s,
+    };
+    Ok(floor_compile_clean_emit_ok(sources))
+}
+
+/// CLI compile-clean verdict: same source closure and diagnostic policy as the floor,
+/// without the shared-index receipt shortcut (the standalone `gunbc compile` transport).
+pub fn compile_clean_cli_verdict_whole_tree() -> Result<bool, String> {
+    let result = compile_clean_whole_tree_resolved()?;
+    let graph_ok = result.graph.is_some();
+    let hard = compile_clean_im_vector_has_hard_errors(result.diagnostics.as_ref());
+    Ok(graph_ok && !hard)
+}
+
+/// Both realizations must agree modulo the single policy row.
+pub fn compile_clean_cli_floor_verdicts_agree() -> Result<bool, String> {
+    let floor = compile_clean_floor_verdict_whole_tree()?;
+    let cli = compile_clean_cli_verdict_whole_tree()?;
+    Ok(floor == cli)
+}
+
+/// Host-callable witness entry (errors → false, located stderr).
+pub fn witness_compile_clean_cli_floor_verdicts_agree() -> bool {
+    match compile_clean_cli_floor_verdicts_agree() {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("witness_compile_clean_cli_floor_verdicts_agree: {e}");
+            false
+        }
+    }
 }
 
 /// `(class, name)` key for histogram aggregation over hard diagnostics.

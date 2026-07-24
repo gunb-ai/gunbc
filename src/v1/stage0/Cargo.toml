@@ -242,8 +242,8 @@ path = "src/bin/parse_witness.rs"
 # lens subsumes this host transport; receipt:
 # `rg cli_run_compile_clean_diagnostic_histogram src/v1/stage0` == 1 until deletion.
 [[bin]]
-name = "compile_clean_diagnostic_histogram"
-path = "src/bin/compile_clean_diagnostic_histogram.rs"
+name = "compile_clean_unlisted_import_census"
+path = "src/bin/compile_clean_unlisted_import_census.rs"
 
 # SCAFFOLD (#6967 human-triage tool) — ad hoc benign/genuine split report over the
 # gate's single-authority join (resolution_divergence_silent_pick_genuine_rows), on

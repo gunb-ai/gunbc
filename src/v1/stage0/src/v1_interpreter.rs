@@ -8815,6 +8815,10 @@ fn eval_builtin_inner(
             crate::cli_run::consume_floor_compile_clean_gate_verdict(),
         ))),
 
+        "witness_compile_clean_cli_floor_verdicts_agree" => Ok(Some(Value::Bool(
+            crate::cli_run::witness_compile_clean_cli_floor_verdicts_agree(),
+        ))),
+
         "test_migration_debt_module_count" => Ok(Some(Value::Int(
             crate::cli_run::test_migration_debt_module_count(),
         ))),
