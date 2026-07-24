@@ -15,17 +15,18 @@ each row carries a suggested grounding and its own dissolve-on.
 
 | class | total | extdeps | std | what it is |
 | --- | --- | --- | --- | --- |
-| **s3-fork** | 16 | 10 | 6 | duplicate-models a concept that has another home |
-| **std-to-extdeps-table** | 8 | 8 | 0 | cited data rows sitting in std that belong in extdeps |
-| **citation-gap** | 20 | 15 | 5 | models a real upstream spec with no cited source/version |
-| **numeric-anemia** | 56 | 6 | 50 | bare Int for a dimensional magnitude (time/size/rate) — should ground on `std.measure` |
-| **string-anemia** | 86 | 13 | 73 | bare String hiding named structure (the `LGA4926` class) |
-| **other** | 17 | 4 | 13 | misc grounding/decomposition notes |
+| **s3-fork** | 16 | 6 | 10 | duplicate-models a concept that has another home |
+| **std-to-extdeps-table** | 8 | 0 | 8 | cited data rows sitting in std that belong in extdeps |
+| **citation-gap** | 20 | 5 | 15 | models a real upstream spec with no cited source/version |
+| **numeric-anemia** | 56 | 50 | 6 | bare Int for a dimensional magnitude (time/size/rate) — should ground on `std.measure` |
+| **string-anemia** | 86 | 73 | 13 | bare String hiding named structure (the `LGA4926` class) |
+| **other** | 17 | 13 | 4 | misc grounding/decomposition notes |
 | **total** | 203 | 147 | 56 | |
 
 The spread is the point: grounding defects are **everywhere**, in both trees — location did not
-predict them. The two most actionable classes (verified below) are the §3-forks and the
-std→extdeps tables; the anemia classes are the wide long tail.
+predict them (extdeps carries the bulk simply because it is the larger tree, 349 files to std's 102).
+The two most actionable classes (verified below) are the §3-forks and the std→extdeps tables; the
+anemia classes are the wide long tail.
 
 ## 1. §3-forks — duplicate-modeled concepts (16 flagged · 14 CONFIRMED · 2 refuted)
 
