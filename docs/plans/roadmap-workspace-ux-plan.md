@@ -214,11 +214,23 @@ quiet-at-arm's-length governs text exactly as it governs motion. The expanded br
 (details) gains the session's stage history as plain lines
 (`spawned 14:02 · working 14:02 · done 14:31`) — projections of belt facts only.
 
-**Explicitly parked until the exemplar ships:** P3c (other surfaces), sound, section
-collapse (P1b), any second control's rows. Two PRs total: PR-A = checkpoints 1–2
-(register vocabulary + button theater, no belt dependency); PR-B = checkpoints 3–6
-(sessions read + poll + re-dispatch fix). If PR-B stalls, PR-A alone must still be a
-strict visible improvement — that is the anti-shelf-ware test.
+**SOUND IS IN the exemplar (operator override 2026-07-24: "I want to see/hear it
+working").** Checkpoint 7: pressing the button produces the mechanism's click — a short
+synthesized tick on pointer-down (a user gesture, so browser autoplay policy permits it),
+a lower settle tone on spawn-accept, a dull thud on refusal. Analog law applied: these are
+operation sounds of the mechanism being worked, never notification chimes; steady states
+are silent exactly as idle machines are. Rows in the register (event-class → sound
+parameters: frequency/duration/envelope — synthesized via WebAudio in the modeled client
+program, no audio assets), same total-assignment discipline. A small mute toggle
+(persisted, default on) is the minimal mute model — a real instrument can be muted, not
+argued with.
+
+**Explicitly parked until the exemplar ships:** P3c (other surfaces), section collapse
+(P1b), any second control's rows. Two PRs total: PR-A = checkpoints 1–2 + 7's press-click
+(register vocabulary + button theater + sound rows, no belt dependency); PR-B =
+checkpoints 3–6 + 7's lifecycle tones (sessions read + poll + re-dispatch fix). If PR-B
+stalls, PR-A alone must still be a strict visible-and-audible improvement — that is the
+anti-shelf-ware test.
 
 ## Sequencing — SUPERSEDED by the END-TO-END CONTRACT (kept as the record)
 
