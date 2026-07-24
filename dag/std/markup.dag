@@ -80,10 +80,15 @@ type MarkupMedium {
   text_escape: EscapeMode
   void_tags: List<String>
   void_rendering: VoidTagRendering
+  raw_text_tags: List<String>
+}
+
+fn tag_in_set(tag: String, tags: List<String>) -> Bool {
+  fold(tags, init: false, f: (acc, t) => acc || t == tag)
 }
 
 fn is_void_tag(tag: String, void_tags: List<String>) -> Bool {
-  fold(void_tags, init: false, f: (acc, t) => acc || t == tag)
+  tag_in_set(tag: tag, tags: void_tags)
 }
 
 fn escape_text_for(mode: EscapeMode, s: String) -> String {
@@ -128,7 +133,12 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
             join([medium.bracket.tag_open, t, attrs_str, " /", medium.bracket.tag_close], "")
         }
       } else {
-        let inner = fold(kids, init: "", f: (acc, k) => concat(acc, serialize_fragment_with(frag: k, medium: medium)))
+        let child_medium = if tag_in_set(tag: t, tags: medium.raw_text_tags) {
+          MarkupMedium { tag_overrides: medium.tag_overrides, bracket: medium.bracket, text_escape: EscapeRaw, void_tags: medium.void_tags, void_rendering: medium.void_rendering, raw_text_tags: medium.raw_text_tags }
+        } else {
+          medium
+        }
+        let inner = fold(kids, init: "", f: (acc, k) => concat(acc, serialize_fragment_with(frag: k, medium: child_medium)))
         match lookup_tag_delimiter(overrides: medium.tag_overrides, tag: t) {
           FoundTag { delim: d } =>
             join([d.open, inner, d.close], "")
