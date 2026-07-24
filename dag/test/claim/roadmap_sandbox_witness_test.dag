@@ -24,6 +24,35 @@ fn sandbox_html() -> String {
   }
 }
 
+fn witness_auditioner_blocks_emitted_with_derived_inks() -> Bool {
+  let css = sandbox_css()
+  all(audition_sets, a => audition_set_resolved(a: a))
+    && string_contains(s: css, pattern: ":root[data-swatch-set=\"okabe-ito\"]")
+    && string_contains(s: css, pattern: ":root[data-swatch-set=\"solarized\"]")
+    && all(audition_sets, a => all(audition_paints(a: a), p =>
+      srgb8_contrast_ratio_x100(a: p.ink.color, b: p.fill.color) >= wcag_aa_large_text_and_graphics_hundredths))
+    && map(audition_sets, a => a.set_name) == swatch_audition_values
+    && swatch_default_set_value == island_pastel.name
+}
+
+fn witness_auditioner_missing_swatch_is_loud() -> Bool {
+  let bogus = AuditionSet {
+    set_name: "bogus",
+    set: okabe_ito,
+    fills: [ AuditionFillRow { key: "invite", swatch_name: "no-such-swatch" } ],
+  }
+  !audition_set_resolved(a: bogus)
+    && audition_block_css(a: bogus) == ""
+}
+
+fn witness_sandbox_carries_auditioner_control() -> Bool {
+  let h = sandbox_html()
+  let js = sandbox_client_js_source()
+  string_contains(s: h, pattern: "class=\"swatch-toggle\"")
+    && string_contains(s: js, pattern: "data-swatch-set")
+    && string_contains(s: js, pattern: "'island-pastel'")
+}
+
 fn witness_gallery_covers_every_wire_label() -> Bool {
   let gallery = sandbox_gallery_terminal_labels()
   let wire = belt_dispatch_all_status_labels()
@@ -73,7 +102,10 @@ fn witness_sandbox_gallery_and_live_render() -> Bool {
 }
 
 test fn roadmap_sandbox_keystone_holds() -> Bool {
-  witness_gallery_covers_every_wire_label()
+  witness_auditioner_blocks_emitted_with_derived_inks()
+    && witness_auditioner_missing_swatch_is_loud()
+    && witness_sandbox_carries_auditioner_control()
+    && witness_gallery_covers_every_wire_label()
     && witness_gallery_drop_is_located_red()
     && witness_echo_answers_every_wire_arm()
     && witness_echo_unknown_label_refuses()

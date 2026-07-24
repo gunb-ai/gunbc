@@ -639,6 +639,25 @@ fn dispatch_bind_statements(selector: String, url_expr: TsExpr) -> List<TsStmt> 
   ]
 }
 
+data swatch_toggle_note: String = "The auditioner control (remodel W1f): cycles the active swatch set island-pastel -> okabe-ito -> solarized -> island-pastel, persisted like the mute because a palette audition is a property of these eyes. island is the ABSENT attribute (the emitted default); a named set pins data-swatch-set, which the audition blocks in roadmap_style answer. Rendered only on /sandbox (the design surface owns auditioning) but applied by the shared client program on load, so a choice made in the sandbox follows the operator to the live roadmap — auditioning against real content, not specimens."
+
+data swatch_storage_key: String = "gunbc.swatch-set"
+data swatch_toggle_class: String = "swatch-toggle"
+data swatch_default_set_value: String = "island-pastel"
+data swatch_audition_a: String = "okabe-ito"
+data swatch_audition_b: String = "solarized"
+data swatch_audition_values: List<String> = [swatch_audition_a, swatch_audition_b]
+data swatch_toggle_label_prefix: String = "swatches · "
+
+fn swatch_toggle_labels() -> List<String> {
+  map(concat([swatch_default_set_value], swatch_audition_values),
+    v => join([swatch_toggle_label_prefix, v], ""))
+}
+
+fn swatch_toggle_reserved_width() -> String {
+  css_length_wire(l: css_ch(n: dispatch_reserved_ch_for(labels: swatch_toggle_labels())))
+}
+
 data js_theme_choice_fn: String = "gunbcThemeChoice"
 data js_theme_apply_fn: String = "gunbcApplyTheme"
 
@@ -766,6 +785,92 @@ fn disclosure_bind_statements() -> List<TsStmt> {
   ]
 }
 
+fn swatch_toggle_bind_statements() -> List<TsStmt> {
+  [
+    ts_const(name: "gunbcSwatchChoice", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_binop(
+      left: js_local_storage_get(key: swatch_storage_key),
+      op: "||",
+      right: ts_lit_str(value: swatch_default_set_value))))),
+    ts_const(name: "gunbcApplySwatch", value: ts_arrow(params: [], body: ts_block(stmts: [
+      ts_const(name: "t", value: ts_call(callee: ts_ident(name: "gunbcSwatchChoice"), args: [])),
+      ts_if(
+        cond: ts_binop(left: ts_ident(name: "t"), op: "===", right: ts_lit_str(value: swatch_default_set_value)),
+        then: ts_block(stmts: [
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_member(object: js_document_element(), property: "removeAttribute"),
+            args: [ts_lit_str(value: "data-swatch-set")],
+          )),
+          ts_return(expr: none),
+        ]),
+        else_stmt: none,
+      ),
+      ts_expr_stmt(expr: ts_call(
+        callee: ts_member(object: js_document_element(), property: "setAttribute"),
+        args: [ts_lit_str(value: "data-swatch-set"), ts_ident(name: "t")],
+      )),
+    ]))),
+    ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcApplySwatch"), args: [])),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+          args: [ts_lit_str(value: join([".", swatch_toggle_class], ""))],
+        ),
+        property: "forEach",
+      ),
+      args: [ts_arrow(params: ["t"], body: ts_block(stmts: [
+        ts_const(name: "paint", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "t"), property: "textContent"),
+          op: "=",
+          right: ts_binop(
+            left: ts_lit_str(value: swatch_toggle_label_prefix),
+            op: "+",
+            right: ts_call(callee: ts_ident(name: "gunbcSwatchChoice"), args: []),
+          ),
+        )))),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "t"), property: "addEventListener"),
+          args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: ts_block(stmts: [
+            ts_const(name: "cur", value: ts_call(callee: ts_ident(name: "gunbcSwatchChoice"), args: [])),
+            ts_const(name: "next", value: ts_cond(
+              test: ts_binop(left: ts_ident(name: "cur"), op: "===", right: ts_lit_str(value: swatch_default_set_value)),
+              consequent: ts_lit_str(value: swatch_audition_a),
+              alternate: ts_cond(
+                test: ts_binop(left: ts_ident(name: "cur"), op: "===", right: ts_lit_str(value: swatch_audition_a)),
+                consequent: ts_lit_str(value: swatch_audition_b),
+                alternate: ts_lit_str(value: swatch_default_set_value),
+              ),
+            )),
+            ts_if(
+              cond: ts_binop(left: ts_ident(name: "next"), op: "===", right: ts_lit_str(value: swatch_default_set_value)),
+              then: ts_block(stmts: [
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_member(object: ts_ident(name: "localStorage"), property: "removeItem"),
+                  args: [ts_lit_str(value: swatch_storage_key)],
+                )),
+              ]),
+              else_stmt: none,
+            ),
+            ts_if(
+              cond: ts_binop(left: ts_ident(name: "next"), op: "!==", right: ts_lit_str(value: swatch_default_set_value)),
+              then: ts_block(stmts: [
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_member(object: ts_ident(name: "localStorage"), property: "setItem"),
+                  args: [ts_lit_str(value: swatch_storage_key), ts_ident(name: "next")],
+                )),
+              ]),
+              else_stmt: none,
+            ),
+            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcApplySwatch"), args: [])),
+            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
+          ]))],
+        )),
+      ]))],
+    )),
+  ]
+}
+
 fn dispatch_client_program_for(selector: String, url_expr: TsExpr, header: List<String>) -> TsProgram {
   TsProgram {
     ts_nocheck: false,
@@ -780,7 +885,9 @@ fn dispatch_client_program_for(selector: String, url_expr: TsExpr, header: List<
             sound_toggle_bind_statements(),
             concat(
               theme_toggle_bind_statements(),
-              disclosure_bind_statements()))))),
+              concat(
+                disclosure_bind_statements(),
+                swatch_toggle_bind_statements())))))),
   }
 }
 

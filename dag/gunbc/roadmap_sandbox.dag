@@ -22,7 +22,7 @@ import gunbc.roadmap_component {
   dispatch_idle_state, dispatch_requested_state,
   dispatch_state_class, dispatch_state_display_text,
   dispatch_caption_idle,
-  sandbox_live_class, sandbox_asset_path,
+  sandbox_live_class, sandbox_asset_path, swatch_toggle_class,
 }
 import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
 
@@ -209,6 +209,16 @@ fn sandbox_page() -> MarkupNode {
       ]),
       el("body", [
         roadmap_header(title: "gunbc — sandbox"),
+        el_class("div", "auditioner-bar", [
+          ElementNode {
+            tag: "button",
+            attrs: [
+              MarkupAttr { name: "class", value: swatch_toggle_class },
+              MarkupAttr { name: "type", value: "button" },
+            ],
+            children: [],
+          },
+        ]),
         el_class("main", "sandbox", [
           roles_section(),
           scales_section(),
