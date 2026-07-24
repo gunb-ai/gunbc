@@ -8,8 +8,8 @@ import v2.compiler.eval {
   run_test_claim_assert,
   run_test_claim
 }
+import v2.lens.common.algebraic_composition { DataDependent }
 import v2.lens.parallelism {
-  DataDependent,
   ParallelismFact,
   parallelism_fact_eq,
   parallelism_witness
