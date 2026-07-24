@@ -4,7 +4,7 @@ import std.types { Int, String, Bool, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-data ipv4_header_authority: ExternalAuthority = ExternalAuthority {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
     locator: "www.rfc-editor.org/rfc/rfc791",
