@@ -10459,87 +10459,90 @@ pub fn emit_type_def_from_connective(
                         )
                     }
                 } else {
-                {
-                    let all_unit_variants = {
-                        let mut __all = true;
-                        for child in item.children.clone().iter().cloned() {
-                            if !((child.children.clone().len() as i64) == 0) {
-                                __all = false;
-                                break;
-                            }
-                        }
-                        __all
-                    };
-                    let serde_policy = match resolve_local_coproduct_wire_policy(
-                        item_text.clone(),
-                        all_unit_variants.clone(),
-                        module_items.clone(),
-                        imports.clone(),
-                        env.source_indices.clone(),
-                    ) {
-                        Some(local_policy) => local_policy.clone(),
-                        None => {
-                            if all_unit_variants.clone() {
-                                match wire_contract_item.clone() {
-                                    Some(_) => resolve_wire_serde_policy_for_coproduct(
-                                        wire_contract_item.clone(),
-                                        env.source_indices.clone(),
-                                        data_items.clone(),
-                                    ),
-                                    None => rust_tagged_object_policy(),
+                    {
+                        let all_unit_variants = {
+                            let mut __all = true;
+                            for child in item.children.clone().iter().cloned() {
+                                if !((child.children.clone().len() as i64) == 0) {
+                                    __all = false;
+                                    break;
                                 }
-                            } else {
-                                rust_tagged_object_policy()
                             }
-                        }
-                    };
-                    let rename_validations = variant_rename_validations_for_policy(
-                        item.children.clone(),
-                        env.clone(),
-                        serde_policy.clone(),
-                    );
-                    let policy_validation = match serde_policy.error_message.clone() {
-                        Some(message) => emit_rust_compile_error_item(message.clone()),
-                        None => "".to_string(),
-                    };
-                    let validations = if (policy_validation.clone() == "".to_string()) {
-                        rename_validations.clone()
-                    } else {
-                        if (rename_validations.clone() == "".to_string()) {
-                            policy_validation.clone()
+                            __all
+                        };
+                        let serde_policy = match resolve_local_coproduct_wire_policy(
+                            item_text.clone(),
+                            all_unit_variants.clone(),
+                            module_items.clone(),
+                            imports.clone(),
+                            env.source_indices.clone(),
+                        ) {
+                            Some(local_policy) => local_policy.clone(),
+                            None => {
+                                if all_unit_variants.clone() {
+                                    match wire_contract_item.clone() {
+                                        Some(_) => resolve_wire_serde_policy_for_coproduct(
+                                            wire_contract_item.clone(),
+                                            env.source_indices.clone(),
+                                            data_items.clone(),
+                                        ),
+                                        None => rust_tagged_object_policy(),
+                                    }
+                                } else {
+                                    rust_tagged_object_policy()
+                                }
+                            }
+                        };
+                        let rename_validations = variant_rename_validations_for_policy(
+                            item.children.clone(),
+                            env.clone(),
+                            serde_policy.clone(),
+                        );
+                        let policy_validation = match serde_policy.error_message.clone() {
+                            Some(message) => emit_rust_compile_error_item(message.clone()),
+                            None => "".to_string(),
+                        };
+                        let validations = if (policy_validation.clone() == "".to_string()) {
+                            rename_validations.clone()
+                        } else {
+                            if (rename_validations.clone() == "".to_string()) {
+                                policy_validation.clone()
+                            } else {
+                                v1_rt::concat(
+                                    v1_rt::concat(policy_validation.clone(), "\n".to_string()),
+                                    rename_validations.clone(),
+                                )
+                            }
+                        };
+                        let generic_param_names = Rc::new({
+                            let mut __result = Vec::new();
+                            for p in item.params.clone().iter().cloned() {
+                                __result.push(generic_param_name_at(
+                                    p.clone(),
+                                    env.source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        });
+                        let enum_text = emit_enum_from_children(
+                            item_text.clone(),
+                            type_params.clone(),
+                            generic_param_names.clone(),
+                            item.children.clone(),
+                            recursive_types.clone(),
+                            shared_types.clone(),
+                            env.clone(),
+                            serde_policy.clone(),
+                            emit_info.clone(),
+                        );
+                        if (validations.clone() == "".to_string()) {
+                            enum_text
                         } else {
                             v1_rt::concat(
-                                v1_rt::concat(policy_validation.clone(), "\n".to_string()),
-                                rename_validations.clone(),
+                                v1_rt::concat(validations.clone(), "\n".to_string()),
+                                enum_text,
                             )
                         }
-                    };
-                    let generic_param_names = Rc::new({
-                        let mut __result = Vec::new();
-                        for p in item.params.clone().iter().cloned() {
-                            __result
-                                .push(generic_param_name_at(p.clone(), env.source_indices.clone()));
-                        }
-                        __result
-                    });
-                    let enum_text = emit_enum_from_children(
-                        item_text.clone(),
-                        type_params.clone(),
-                        generic_param_names.clone(),
-                        item.children.clone(),
-                        recursive_types.clone(),
-                        shared_types.clone(),
-                        env.clone(),
-                        serde_policy.clone(),
-                        emit_info.clone(),
-                    );
-                    if (validations.clone() == "".to_string()) {
-                        enum_text
-                    } else {
-                        v1_rt::concat(
-                            v1_rt::concat(validations.clone(), "\n".to_string()),
-                            enum_text,
-                        )
                     }
                 }
             }
