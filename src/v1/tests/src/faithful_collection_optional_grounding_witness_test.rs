@@ -137,8 +137,8 @@ fn fn_body(emitted: &str, name: &str) -> String {
 fn faithful_freemonoid_empty_value_grounds_to_vec_literal() {
     let source = concat!(
         "module fmcval.fixture\n",
-        "type IntList = Empty | Cons { head: Int, tail: IntList }\n\n",
-        "fn empty_list() -> IntList {\n  Empty\n}\n"
+        "type FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n\n",
+        "fn empty_list() -> FreeMonoid<Int> {\n  Empty\n}\n"
     );
     let body = fn_body(&faithful_emit(source), "empty_list");
     assert!(
@@ -146,7 +146,7 @@ fn faithful_freemonoid_empty_value_grounds_to_vec_literal() {
         "Empty must lower to vec![] once FreeMonoid grounds to Vec, got:\n{body}"
     );
     assert!(
-        !body.contains("FreeMonoid::Empty") && !body.contains("IntList::Empty"),
+        !body.contains("FreeMonoid::Empty"),
         "grounded Empty must not emit enum constructor, got:\n{body}"
     );
 }
@@ -155,8 +155,8 @@ fn faithful_freemonoid_empty_value_grounds_to_vec_literal() {
 fn faithful_freemonoid_cons_value_grounds_to_vec_push() {
     let source = concat!(
         "module fmcval.fixture\n",
-        "type IntList = Empty | Cons { head: Int, tail: IntList }\n\n",
-        "fn one() -> IntList {\n  Cons { head: 1, tail: Empty }\n}\n"
+        "type FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n\n",
+        "fn one() -> FreeMonoid<Int> {\n  Cons { head: 1, tail: Empty }\n}\n"
     );
     let body = fn_body(&faithful_emit(source), "one");
     assert!(
@@ -173,8 +173,8 @@ fn faithful_freemonoid_cons_value_grounds_to_vec_push() {
 fn faithful_freemonoid_match_lowers_to_vec_is_empty() {
     let source = concat!(
         "module fmcval.fixture\n",
-        "type IntList = Empty | Cons { head: Int, tail: IntList }\n\n",
-        "fn len(xs: IntList) -> Int {\n",
+        "type FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n\n",
+        "fn len(xs: FreeMonoid<Int>) -> Int {\n",
         "  match xs {\n",
         "    Empty => 0\n",
         "    Cons { head: _, tail: _ } => 1\n",
@@ -187,7 +187,7 @@ fn faithful_freemonoid_match_lowers_to_vec_is_empty() {
         "FreeMonoid match must use native Vec is_empty lowering, got:\n{body}"
     );
     assert!(
-        !body.contains("IntList::Empty") && !body.contains("FreeMonoid::Empty"),
+        !body.contains("FreeMonoid::Empty"),
         "grounded match must not emit enum patterns, got:\n{body}"
     );
 }
