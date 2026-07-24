@@ -15003,9 +15003,11 @@ pub fn analyze_rc_pattern(
                                 );
                                 Rc::new(RcPatternAnalysis {
                                     matches_rc_variant: false,
-                                    matches_option_rc_variant: ((bare_n.clone()
-                                        == "Present".to_string())
-                                        && inner.matches_rc_variant.clone()),
+                                    matches_option_rc_variant: (is_some_like_variant_name(
+                                        bare_n.clone(),
+                                    ) && inner
+                                        .matches_rc_variant
+                                        .clone()),
                                     needs_rc_pattern: inner.needs_rc_pattern.clone(),
                                     ref_bound_fields: Rc::new(vec![]),
                                 })

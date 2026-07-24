@@ -5549,7 +5549,7 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: S
               let inner = analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
               RcPatternAnalysis {
                 matches_rc_variant: false,
-                matches_option_rc_variant: bare_n == "Present" && inner.matches_rc_variant,
+                matches_option_rc_variant: is_some_like_variant_name(name: bare_n) && inner.matches_rc_variant,
                 needs_rc_pattern: inner.needs_rc_pattern,
                 ref_bound_fields: []
               }
