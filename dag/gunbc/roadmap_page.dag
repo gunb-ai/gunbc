@@ -207,6 +207,36 @@ fn title_nodes(line: RoadmapItem) -> List<MarkupNode> {
   markdown_inlines_to_markup_nodes(inlines: parse_inline_markdown_minimal(text: line_title(line: line)))
 }
 
+fn line_lead(line: RoadmapItem) -> String {
+  let full = line_title(line: line)
+  let dash_parts = split(s: full, delimiter: " — ")
+  if count(dash_parts) > 1 {
+    first(dash_parts).value
+  } else {
+    let dot_parts = split(s: full, delimiter: ". ")
+    if count(dot_parts) > 1 { first(dot_parts).value } else { full }
+  }
+}
+
+fn lead_nodes(line: RoadmapItem) -> List<MarkupNode> {
+  markdown_inlines_to_markup_nodes(inlines: parse_inline_markdown_minimal(text: line_lead(line: line)))
+}
+
+fn item_detail_block(rn: RoadmapNode) -> List<MarkupNode> {
+  if line_lead(line: rn.line) == line_title(line: rn.line) {
+    []
+  } else {
+    [ ElementNode {
+        tag: "details",
+        attrs: [ MarkupAttr { name: "class", value: "item-detail" } ],
+        children: [
+          ElementNode { tag: "summary", attrs: [], children: [ txt("brief") ] },
+          el_class("div", "item-body", title_nodes(line: rn.line)),
+        ],
+      } ]
+  }
+}
+
 fn pointer_link(p: Pointer) -> MarkupNode {
   ElementNode {
     tag: "a",
@@ -327,13 +357,16 @@ fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, 
   let status = node_status_symbol(rn: rn, merged: merged)
   let head = concat(
     concat(
-      [
-        el_class("span", concat("status status-", status), [ txt(status) ]),
-        el_class("span", "title", title_nodes(line: rn.line)),
-      ],
-      concat(superseded_badge(rn: rn), owner_badge(rn: rn)),
+      concat(
+        [
+          el_class("span", concat("status status-", status), [ txt(status) ]),
+          el_class("span", "title", lead_nodes(line: rn.line)),
+        ],
+        concat(superseded_badge(rn: rn), owner_badge(rn: rn)),
+      ),
+      concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)),
     ),
-    concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)),
+    item_detail_block(rn: rn),
   )
   let kids = children_of(nodes: nodes, edges: edges, parent: rn.node)
   let child_block = if count(kids) == 0 {
@@ -392,13 +425,16 @@ fn frontier_flat_node_li(rn: RoadmapNode, merged: List<Int>) -> MarkupNode {
   let status = node_status_symbol(rn: rn, merged: merged)
   let head = concat(
     concat(
-      [
-        el_class("span", concat("status status-", status), [ txt(status) ]),
-        el_class("span", "title", title_nodes(line: rn.line)),
-      ],
-      concat(superseded_badge(rn: rn), owner_badge(rn: rn)),
+      concat(
+        [
+          el_class("span", concat("status status-", status), [ txt(status) ]),
+          el_class("span", "title", lead_nodes(line: rn.line)),
+        ],
+        concat(superseded_badge(rn: rn), owner_badge(rn: rn)),
+      ),
+      concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)),
     ),
-    concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)),
+    item_detail_block(rn: rn),
   )
   ElementNode {
     tag: "li",

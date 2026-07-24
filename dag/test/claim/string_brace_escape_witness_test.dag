@@ -1,0 +1,24 @@
+module test.claim.string_brace_escape_witness_test
+
+data string_brace_escape_note: String = "Locks the literal-brace escape semantics (operator-directed fix 2026-07-24, the ${...}-in-strings gotcha): a '\{' escape inside a string literal produces ONE literal brace character and never starts interpolation, so shell-form strings are written \"$\\\{VAR:-default}\" — the principled form, no bare-dollar workaround. The length witnesses are the discriminators: if the escape ever leaked the backslash into the value, or interpolation ever consumed the brace, the counted lengths change and this file reds (it also fails to PARSE at all if the escape is removed from the tokenizer, which is the loudest red of the three)."
+
+data shell_default_form: String = "fetch $\{GITHUB_BASE_REF:-origin/main} head"
+data lone_escaped_brace: String = "\{"
+data backslash_then_brace: String = "\\\{"
+data escaped_pair: String = "\{x}"
+
+fn brace_escape_shell_form_length_test() -> Bool {
+  string_length(s: shell_default_form) == 42
+}
+
+fn brace_escape_produces_single_char_test() -> Bool {
+  string_length(s: lone_escaped_brace) == 1
+}
+
+fn brace_escape_after_backslash_is_two_chars_test() -> Bool {
+  string_length(s: backslash_then_brace) == 2
+}
+
+fn brace_escape_pair_stays_literal_test() -> Bool {
+  string_length(s: escaped_pair) == 3
+}
