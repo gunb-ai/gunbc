@@ -104,15 +104,15 @@ fn constant_cost(value: v2.std.nat.Nat) -> SymbolicCost {
 }
 
 fn zero_cost() -> SymbolicCost {
-  constant_cost(value: v2.std.nat.Zero)
+  constant_cost(value: Zero)
 }
 
 fn unit_cost() -> SymbolicCost {
-  constant_cost(value: v2.std.nat.Succ { prev: v2.std.nat.Zero })
+  constant_cost(value: Succ { prev: Zero })
 }
 
 fn nonzero_one() -> NonZeroNat {
-  NonZeroNat { prev: v2.std.nat.Zero }
+  NonZeroNat { prev: Zero }
 }
 
 fn polynomial_degree_two() -> PolynomialDegree {
@@ -222,11 +222,11 @@ fn cost_fold_init(n: Node) -> SymbolicCostFoldState {
 
 fn symbolic_sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
-    ConstantCost { value: v2.std.nat.Zero } => b
+    ConstantCost { value: Zero } => b
     UnknownCost { diagnostic: _ } => a
     _ =>
       match b {
-        ConstantCost { value: v2.std.nat.Zero } => a
+        ConstantCost { value: Zero } => a
         UnknownCost { diagnostic: _ } => b
         _ => SumCost { lhs: a, rhs: b }
       }
@@ -235,13 +235,13 @@ fn symbolic_sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
 
 fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
-    ConstantCost { value: v2.std.nat.Zero } => zero_cost()
-    ConstantCost { value: v2.std.nat.Succ { prev: v2.std.nat.Zero } } => b
+    ConstantCost { value: Zero } => zero_cost()
+    ConstantCost { value: Succ { prev: Zero } } => b
     UnknownCost { diagnostic: _ } => a
     _ =>
       match b {
-        ConstantCost { value: v2.std.nat.Zero } => zero_cost()
-        ConstantCost { value: v2.std.nat.Succ { prev: v2.std.nat.Zero } } => a
+        ConstantCost { value: Zero } => zero_cost()
+        ConstantCost { value: Succ { prev: Zero } } => a
         UnknownCost { diagnostic: _ } => b
         _ => ProductCost { lhs: a, rhs: b }
       }
@@ -250,10 +250,10 @@ fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
 
 fn symbolic_max(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
-    ConstantCost { value: v2.std.nat.Zero } => b
+    ConstantCost { value: Zero } => b
     _ =>
       match b {
-        ConstantCost { value: v2.std.nat.Zero } => a
+        ConstantCost { value: Zero } => a
         _ =>
           if a == b {
             a
@@ -295,8 +295,8 @@ fn nat_dominates(a: v2.std.nat.Nat, b: v2.std.nat.Nat) -> Bool {
 fn add_polynomial_degree(a: PolynomialDegree, b: PolynomialDegree) -> PolynomialDegree {
   PolynomialDegree {
     predecessor_after_linear: NonZeroNat {
-      prev: v2.std.nat.Succ {
-        prev: v2.std.nat.Succ {
+      prev: Succ {
+        prev: Succ {
           prev: nat_add(a: a.predecessor_after_linear.prev, b: b.predecessor_after_linear.prev)
         }
       }
@@ -306,21 +306,21 @@ fn add_polynomial_degree(a: PolynomialDegree, b: PolynomialDegree) -> Polynomial
 
 fn increment_polynomial_degree(d: PolynomialDegree) -> PolynomialDegree {
   PolynomialDegree {
-    predecessor_after_linear: NonZeroNat { prev: v2.std.nat.Succ { prev: d.predecessor_after_linear.prev } }
+    predecessor_after_linear: NonZeroNat { prev: Succ { prev: d.predecessor_after_linear.prev } }
   }
 }
 
 fn increment_polylog_exponent(e: PolyLogExponent) -> PolyLogExponent {
   PolyLogExponent {
-    predecessor_after_log: NonZeroNat { prev: v2.std.nat.Succ { prev: e.predecessor_after_log.prev } }
+    predecessor_after_log: NonZeroNat { prev: Succ { prev: e.predecessor_after_log.prev } }
   }
 }
 
 fn add_polylog_exponent(a: PolyLogExponent, b: PolyLogExponent) -> PolyLogExponent {
   PolyLogExponent {
     predecessor_after_log: NonZeroNat {
-      prev: v2.std.nat.Succ {
-        prev: v2.std.nat.Succ {
+      prev: Succ {
+        prev: Succ {
           prev: nat_add(a: a.predecessor_after_log.prev, b: b.predecessor_after_log.prev)
         }
       }
@@ -491,7 +491,7 @@ fn symbolic_cost_dominates(a: SymbolicCost, b: SymbolicCost) -> Bool {
       }
     _ =>
       match b {
-        ConstantCost { value: v2.std.nat.Zero } => true
+        ConstantCost { value: Zero } => true
         _ =>
           asymptotic_class_dominates(
             a: asymptotic_class_of_cost(cost: a),
@@ -615,14 +615,14 @@ fn cost_lattice_join(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
 
 data symbolic_cost_sequential_monoid: Monoid<SymbolicCost> = Monoid {
   op: symbolic_sequential,
-  identity: ConstantCost { value: v2.std.nat.Zero }
+  identity: ConstantCost { value: Zero }
 }
 
 data symbolic_cost_lattice: BoundedLattice<SymbolicCost> = BoundedLattice {
   meet: cost_lattice_meet,
   join: cost_lattice_join,
   top: UnknownCost { diagnostic: cost_lattice_top_diagnostic },
-  bottom: ConstantCost { value: v2.std.nat.Zero }
+  bottom: ConstantCost { value: Zero }
 }
 
 data asymptotic_class_lattice: BoundedLattice<AsymptoticClass> = BoundedLattice {

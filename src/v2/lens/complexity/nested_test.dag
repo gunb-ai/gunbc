@@ -88,7 +88,7 @@ data nested_claim: LensComplexityClaim = LensComplexityClaim {
       lhs: single_complexity_variable(size_var: SizeVariable { source: nested_input }),
       rhs: single_complexity_variable(size_var: SizeVariable { source: nested_inner })
     ),
-    degree: PolynomialDegree { predecessor_after_linear: NonZeroNat { prev: v2.std.nat.Zero } }
+    degree: PolynomialDegree { predecessor_after_linear: NonZeroNat { prev: Zero } }
   ),
   falsification: Diagnostic {
     reason: ^nested_claim_reason,

@@ -72,19 +72,19 @@ type VerdictTally {
   deferred: v2.std.nat.Nat
 }
 
-data verdict_tally_empty: VerdictTally = VerdictTally { pass: v2.std.nat.Zero, fail: v2.std.nat.Zero, deferred: v2.std.nat.Zero }
+data verdict_tally_empty: VerdictTally = VerdictTally { pass: Zero, fail: Zero, deferred: Zero }
 
 fn verdict_tally_add<Subj, T>(t: VerdictTally, v: Verdict<Subj, T>) -> VerdictTally {
   match v {
-    Pass => VerdictTally { pass: v2.std.nat.Succ { prev: t.pass }, fail: t.fail, deferred: t.deferred }
+    Pass => VerdictTally { pass: Succ { prev: t.pass }, fail: t.fail, deferred: t.deferred }
     SemanticMismatch { actual: _, falsification: _ } =>
-      VerdictTally { pass: t.pass, fail: v2.std.nat.Succ { prev: t.fail }, deferred: t.deferred }
+      VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
     BuildFailed { actual: _, diagnostic: _ } =>
-      VerdictTally { pass: t.pass, fail: v2.std.nat.Succ { prev: t.fail }, deferred: t.deferred }
+      VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
     RunFailed { actual: _, diagnostic: _ } =>
-      VerdictTally { pass: t.pass, fail: v2.std.nat.Succ { prev: t.fail }, deferred: t.deferred }
+      VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
     Deferred { actual: _, diagnostic: _ } =>
-      VerdictTally { pass: t.pass, fail: t.fail, deferred: v2.std.nat.Succ { prev: t.deferred } }
+      VerdictTally { pass: t.pass, fail: t.fail, deferred: Succ { prev: t.deferred } }
   }
 }
 

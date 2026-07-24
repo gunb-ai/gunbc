@@ -36,7 +36,7 @@ fn llvm_probe_atom(s: Symbol) -> Node {
 }
 }
 
-data llvm_probe_type: LlvmType = IntegerType { bits: NonZeroNat { prev: v2.std.nat.Zero } }
+data llvm_probe_type: LlvmType = IntegerType { bits: NonZeroNat { prev: Zero } }
 
 data llvm_probe_left_incoming: PhiIncoming = PhiIncoming {
   value: ConstantOperand { constant: IntConstant { ty: llvm_probe_type, value: 0 } },

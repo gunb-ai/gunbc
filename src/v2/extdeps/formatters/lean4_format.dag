@@ -24,7 +24,7 @@ fn lean4_format_authoritative_locus() -> Locus {
 }
 
 fn lean4_nat_succ(n: v2.std.nat.Nat) -> v2.std.nat.Nat {
-  v2.std.nat.Succ { prev: n }
+  Succ { prev: n }
 }
 
 fn lean4_nat_add_ten(n: v2.std.nat.Nat) -> v2.std.nat.Nat {
@@ -64,7 +64,7 @@ fn lean4_nat_catalog_format_width() -> v2.std.nat.Nat {
                 n: lean4_nat_add_ten(
                   n: lean4_nat_add_ten(
                     n: lean4_nat_add_ten(
-                      n: lean4_nat_add_ten(n: lean4_nat_add_ten(n: v2.std.nat.Zero))
+                      n: lean4_nat_add_ten(n: lean4_nat_add_ten(n: Zero))
                     )
                   )
                 )
@@ -78,14 +78,14 @@ fn lean4_nat_catalog_format_width() -> v2.std.nat.Nat {
 }
 
 fn lean4_nat_catalog_format_indent() -> v2.std.nat.Nat {
-  lean4_nat_succ(n: lean4_nat_succ(n: v2.std.nat.Zero))
+  lean4_nat_succ(n: lean4_nat_succ(n: Zero))
 }
 
 fn lean4_nat_peano_from_non_negative_int(value: Int) -> v2.std.nat.Nat {
   if value == 0 {
-    v2.std.nat.Zero
+    Zero
   } else {
-    v2.std.nat.Succ { prev: lean4_nat_peano_from_non_negative_int(value: value - 1) }
+    Succ { prev: lean4_nat_peano_from_non_negative_int(value: value - 1) }
   }
 }
 

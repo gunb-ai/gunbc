@@ -27,7 +27,7 @@ fn nat_semiring_rung8_gate(report: CorpusEvalReport) -> Bool {
 }
 
 fn nat_semiring_rung8_zero_deferred(report: CorpusEvalReport) -> Bool {
-  corpus_report_tally(r: report).deferred == v2.std.nat.Zero
+  corpus_report_tally(r: report).deferred == Zero
 }
 
 data witness_nat_semiring_rung8_zero_deferred_closed: Bool = nat_semiring_rung8_zero_deferred(report: run_nat_semiring_rung8_eval())

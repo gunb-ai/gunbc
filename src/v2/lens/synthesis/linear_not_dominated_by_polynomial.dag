@@ -28,7 +28,7 @@ data synthesis_lin_poly_x: Node = Node {
 }
 
 data synthesis_polynomial_degree_two: PolynomialDegree = PolynomialDegree {
-  predecessor_after_linear: NonZeroNat { prev: v2.std.nat.Zero }
+  predecessor_after_linear: NonZeroNat { prev: Zero }
 }
 
 fn linear_not_dominated_by_polynomial_claim_holds() -> Bool {

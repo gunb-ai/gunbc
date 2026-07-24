@@ -33,8 +33,8 @@ fn algebra_law_generated_atom(s: Symbol) -> Node {
 
 fn algebra_law_generated_nat_value(value: v2.std.nat.Nat) -> Node {
   match value {
-    v2.std.nat.Zero => algebra_law_generated_atom(s: ^algebra_law_generated_nat_zero_constructor)
-    v2.std.nat.Succ { prev: p } =>
+    Zero => algebra_law_generated_atom(s: ^algebra_law_generated_nat_zero_constructor)
+    Succ { prev: p } =>
       Node {
         kind: TypeNode { connective: Conj },
         children: [
@@ -60,19 +60,19 @@ fn algebra_law_generated_binary(operation: Symbol, left: Node, right: Node, resu
 }
 
 fn t19_generated_nat_zero_value() -> v2.std.nat.Nat {
-  v2.std.nat.Zero
+  Zero
 }
 
 fn t19_generated_nat_one_value() -> v2.std.nat.Nat {
-  v2.std.nat.Succ { prev: t19_generated_nat_zero_value() }
+  Succ { prev: t19_generated_nat_zero_value() }
 }
 
 fn t19_generated_nat_two_value() -> v2.std.nat.Nat {
-  v2.std.nat.Succ { prev: t19_generated_nat_one_value() }
+  Succ { prev: t19_generated_nat_one_value() }
 }
 
 fn t19_generated_nat_three_value() -> v2.std.nat.Nat {
-  v2.std.nat.Succ { prev: t19_generated_nat_two_value() }
+  Succ { prev: t19_generated_nat_two_value() }
 }
 
 fn t19_generated_nat_zero() -> Node {

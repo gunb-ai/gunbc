@@ -47,7 +47,7 @@ data fact_bundle_input: Node = Node {
 
 fn fact_bundle_named_claim_holds() -> Bool {
   carrier_spec_fact(carrier: fact_bundle_input) ==
-    NamedFieldFacts { density: NonZeroNat { prev: v2.std.nat.Succ { prev: v2.std.nat.Zero } } }
+    NamedFieldFacts { density: NonZeroNat { prev: Succ { prev: Zero } } }
 }
 
 fn fact_bundle_named_claim_rhs() -> Node {

@@ -67,7 +67,7 @@ fn run_lens_idempotency_family_eval() -> LensFamilyEvalReport {
 
 fn lens_idempotency_family_all_pass(report: LensFamilyEvalReport) -> Bool {
   let tally = lens_family_eval_report_tally(r: report)
-  (tally.fail == v2.std.nat.Zero) && (tally.deferred == v2.std.nat.Zero)
+  (tally.fail == Zero) && (tally.deferred == Zero)
 }
 
 fn lens_idempotency_family_gate(report: LensFamilyEvalReport) -> Bool {

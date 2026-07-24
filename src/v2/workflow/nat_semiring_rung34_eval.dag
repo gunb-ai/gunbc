@@ -40,7 +40,7 @@ fn nat_semiring_rung34_report_has_evidence(report: CorpusEvalReport) -> Bool {
 fn nat_semiring_rung3_gate(report: CorpusEvalReport) -> Bool {
   if nat_semiring_rung34_report_has_evidence(report: report) {
     let tally = corpus_report_tally(r: report)
-    tally.fail == v2.std.nat.Zero && tally.deferred == v2.std.nat.Zero
+    tally.fail == Zero && tally.deferred == Zero
   } else {
     false
   }
@@ -49,7 +49,7 @@ fn nat_semiring_rung3_gate(report: CorpusEvalReport) -> Bool {
 fn nat_semiring_rung4_gate(report: CorpusEvalReport) -> Bool {
   if nat_semiring_rung34_report_has_evidence(report: report) {
     let tally = corpus_report_tally(r: report)
-    tally.fail == v2.std.nat.Zero && tally.deferred == v2.std.nat.Zero
+    tally.fail == Zero && tally.deferred == Zero
   } else {
     false
   }
