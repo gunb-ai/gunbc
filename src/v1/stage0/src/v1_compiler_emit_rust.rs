@@ -2126,13 +2126,39 @@ pub fn rust_fold_rendered_type_has_any_spurious_generic(
     type_str: String,
     generic_param_names: Rc<Vec<String>>,
 ) -> bool {
-    ["T", "C", "A", "B", "E", "K", "V", "R"].iter().any(|atom| {
-        rust_fold_rendered_type_has_spurious_generic_atom(
-            type_str.clone(),
-            atom.to_string(),
-            generic_param_names.clone(),
-        )
-    })
+    (((((((rust_fold_rendered_type_has_spurious_generic_atom(
+        type_str.clone(),
+        "T".to_string(),
+        generic_param_names.clone(),
+    ) || rust_fold_rendered_type_has_spurious_generic_atom(
+        type_str.clone(),
+        "C".to_string(),
+        generic_param_names.clone(),
+    )) || rust_fold_rendered_type_has_spurious_generic_atom(
+        type_str.clone(),
+        "A".to_string(),
+        generic_param_names.clone(),
+    )) || rust_fold_rendered_type_has_spurious_generic_atom(
+        type_str.clone(),
+        "B".to_string(),
+        generic_param_names.clone(),
+    )) || rust_fold_rendered_type_has_spurious_generic_atom(
+        type_str.clone(),
+        "E".to_string(),
+        generic_param_names.clone(),
+    )) || rust_fold_rendered_type_has_spurious_generic_atom(
+        type_str.clone(),
+        "K".to_string(),
+        generic_param_names.clone(),
+    )) || rust_fold_rendered_type_has_spurious_generic_atom(
+        type_str.clone(),
+        "V".to_string(),
+        generic_param_names.clone(),
+    )) || rust_fold_rendered_type_has_spurious_generic_atom(
+        type_str.clone(),
+        "R".to_string(),
+        generic_param_names.clone(),
+    ))
 }
 
 pub fn type_leaf_is_unbound_in_closure_scope(
@@ -15923,12 +15949,12 @@ pub fn effective_variant_parent(
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    let leaf_name = if v1_rt::string_contains(&name, ".".to_string()) {
-        qualified_last_segment(name.clone())
-    } else {
-        name.clone()
-    };
     {
+        let leaf_name = if v1_rt::string_contains(&name, ".".to_string()) {
+            qualified_last_segment(name.clone())
+        } else {
+            name.clone()
+        };
         let cached = match v1_rt::map_get(&emit_info.variant_to_enum.clone(), leaf_name.clone()) {
             Some(p) => {
                 if (p.clone() != "".to_string()) {
@@ -16001,14 +16027,15 @@ pub fn emit_value_ref_ident(
                     emit_import_name(leaf.clone(), registry.clone()),
                 ),
                 None => {
-                    let freemonoid_empty = match v1_rt::map_get(
-                        &emit_info.variant_to_enum.clone(),
-                        "Empty".to_string(),
-                    ) {
-                        Some(p) => p.clone() == "FreeMonoid".to_string(),
-                        None => false,
-                    };
-                    if leaf.clone() == "Empty".to_string() && freemonoid_empty {
+                    if ((leaf.clone() == "Empty".to_string())
+                        && match v1_rt::map_get(
+                            &emit_info.variant_to_enum.clone(),
+                            "Empty".to_string(),
+                        ) {
+                            Some(p) => (p.clone() == "FreeMonoid".to_string()),
+                            None => false,
+                        })
+                    {
                         "Rc::new(vec![])".to_string()
                     } else {
                         emit_ident(leaf.clone(), RenderTarget::Rust)
@@ -16030,12 +16057,12 @@ pub fn emit_var_ref(
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    let leaf_name = if v1_rt::string_contains(&name, ".".to_string()) {
-        qualified_last_segment(name.clone())
-    } else {
-        name.clone()
-    };
     {
+        let leaf_name = if v1_rt::string_contains(&name, ".".to_string()) {
+            qualified_last_segment(name.clone())
+        } else {
+            name.clone()
+        };
         let variant_parent = effective_variant_parent(
             name.clone(),
             binding_kind.clone(),
