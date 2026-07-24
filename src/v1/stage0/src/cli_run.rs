@@ -7582,13 +7582,13 @@ fn resolved_graph_from_sources_with_index(
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         match cross_process_lookup(&cache_root, &subject) {
             CacheLookupResult::Hit(_) => {
-                // v1 disk artifacts carry only the typed graph — not the resolve→normalize→
-                // typed→ownership union the compile-clean gate reads. Serving a subset on hit
-                // would silently drop resolve-stage UnlistedImportUse (§5 cache impurity).
-                // Refuse the hit and fall through to cold assembly, which installs the full
-                // union into the in-process memo.
+                // SCAFFOLD (§7 — CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER;
+                // dissolve trigger: extdeps.realization.resolved_graph
+                // resolved_graph_cache_compile_clean_diagnostic_union_dissolve_trigger):
+                // v1 disk artifacts carry only the typed graph — refuse hit, cold resolve.
                 eprintln!(
-                    "[resolved-graph-cache] refusing hit subject={subject}: compile-clean diagnostic union absent from disk artifact; cold resolve"
+                    "[resolved-graph-cache] refusing hit subject={subject}: compile-clean diagnostic union absent from disk artifact; cold resolve ({})",
+                    CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER
                 );
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
