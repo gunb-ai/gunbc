@@ -48,12 +48,12 @@ type DeploymentDependencyStep {
 }
 
 type DeploymentStep
-  = Artifact { step: DeploymentArtifactStep }
+  = ArtifactStep { step: DeploymentArtifactStep }
   | Dependency { step: DeploymentDependencyStep }
 
 fn deployment_step_ownership(step: DeploymentStep) -> Ownership {
   match step {
-    Artifact { step: _ } => Owned
+    ArtifactStep { step: _ } => Owned
     Dependency { step: _ } => Ensured
   }
 }
@@ -109,7 +109,7 @@ fn deployment_ensured_steps() -> List<DeploymentDependencyStep> {
 fn deployment_steps_apply_order() -> List<DeploymentStep> {
   concat(
     map(deployment_ensured_steps(), s => Dependency { step: s }),
-    map(deployment_owned_steps(), s => Artifact { step: s })
+    map(deployment_owned_steps(), s => ArtifactStep { step: s })
   )
 }
 
