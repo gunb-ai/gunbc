@@ -4584,7 +4584,7 @@ pub fn collect_items_field_import_surface_names(
     variant_to_enum: Rc<HashMap<String, String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
-    Rc::new({
+    unique_strings(Rc::new({
         let mut __result = Vec::new();
         for item in items.clone().iter().cloned() {
             __result.extend(
@@ -4636,8 +4636,7 @@ pub fn collect_items_field_import_surface_names(
             );
         }
         __result
-    })
-    .unique_strings()
+    }))
 }
 
 pub fn collect_value_ref_names(
