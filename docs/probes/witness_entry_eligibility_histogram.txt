@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-# witness_entry_eligibility_histogram stamp=2026-07-23T20:57Z total_entries=881
-=======
-# witness_entry_eligibility_histogram stamp=2026-07-24T00:55Z total_entries=881
->>>>>>> origin/main
+# witness_entry_eligibility_histogram stamp=2026-07-24T02:05Z total_entries=882
 disposition	reason	count
 InterpretedRetained	BulkFlipPendingCensusIncomplete	701
 EmitIneligible	OfflineLocalRecipe	82
