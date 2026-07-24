@@ -6261,15 +6261,18 @@ impl ScheduleRetention {
     }
 }
 
-/// Arm schedule-derived retention for a discovery run over `rows`. Only the private
-/// index path (`cross_worker_store == None`) arms — that is exactly the serial
-/// (`forced_serial=1`) floor-drain regime the throughline names, and the regime whose
-/// long-lived process-shared index accumulates the corpus-resident typed mass. The
-/// Adaptive/shared-store path keeps its current behavior (its typed results live in
-/// the byte store whose scheduled eviction is the PR-β `SpacePacked` follow-on) — a
-/// declared, typed frontier, never a silent widen. A per-entry closure that cannot be
-/// computed is skipped (its modules become counted `RetentionUnknown` at reconcile),
-/// so arming never fails the run.
+/// Arm schedule-derived retention over a discovery run's WHOLE schedule (`rows` = every
+/// scheduled entry's rows). Called ONCE by the drain caller (Serial: the single run; Adaptive
+/// width=1: before the entry-group loop) so refcounts span the whole batch and a shared module
+/// survives until its last consumer — NOT per `run_discovery_rows` call, which would hand the
+/// Adaptive inline drain a one-entry schedule per group (refcount 1 on the whole closure → the
+/// entries=1 cold-recompute churn). Only the private index path (`cross_worker_store == None`)
+/// arms — the serial + adaptive-width-1 inline drains that share the long-lived process index
+/// whose typed mass this bounds. The Adaptive plural/shared-store worker path keeps its current
+/// behavior (typed results live in the byte store whose scheduled eviction is the PR-β
+/// `SpacePacked` follow-on) — a declared, typed frontier, never a silent widen. A per-entry
+/// closure that cannot be computed is skipped (its modules become counted `RetentionUnknown` at
+/// reconcile), so arming never fails the run.
 fn index_arm_schedule_retention(index: &MultiEntryIndex, rows: &[DiscoveryRow]) {
     if index.cross_worker_store.is_some() {
         return;
@@ -14876,6 +14879,9 @@ fn run_discovery_corpus_with_options_inner(
     let floor_stream = floor_stream_enabled();
     return match width_policy {
         DiscoveryWidthPolicy::Serial => {
+            // Arm retention over the WHOLE serial schedule (all rows) before the single drain
+            // call — a shared module stays resident until its last scheduled entry consumes it.
+            index_arm_schedule_retention(&index, &rows);
             let summary = run_discovery_rows(
                 &rows,
                 &index,
@@ -14978,6 +14984,14 @@ fn run_discovery_corpus_with_options_inner(
                 let total_groups = groups.len();
                 let mut drain_prev = index_retention_snapshot(&index);
                 let mut drain_peaks = drain_prev;
+                // Arm retention over the WHOLE batch schedule (every group's rows) ONCE, before
+                // the inline drain — NOT per group. The drain reuses the one process-shared index
+                // across all entry-groups, so a shared compiler-core module reached by many
+                // entries keeps a refcount > 1 and stays resident until its LAST consumer's entry
+                // completes; only an entry's genuinely-unique tail evicts when that entry finishes.
+                // Per-group arming instead gave each entry a one-entry schedule (refcount 1 on the
+                // whole closure), evicting and cold-recomputing the shared core once per entry.
+                index_arm_schedule_retention(&index, &rows);
                 for (group_idx, group_indices) in groups.into_iter().enumerate() {
                     let group_rows: Vec<DiscoveryRow> =
                         group_indices.iter().map(|&i| rows[i].clone()).collect();
@@ -15505,10 +15519,17 @@ fn run_discovery_rows(
     }
     // Existence set for the entry_file_touched refuse-vs-answer decision, built once per shard.
     let module_graph_declared_paths = index.module_graph_facts.declared_repo_paths();
-    // Arm schedule-derived retention over this shard's schedule (private index only —
-    // the serial floor-drain regime). Rows are sorted by entry, so an entry's rows are
-    // contiguous and, once passed, the entry can never be read again.
-    index_arm_schedule_retention(index, rows);
+    // Schedule-derived retention is armed by the CALLER over the WHOLE batch schedule
+    // (Serial: the single call; Adaptive width=1: once before the entry-group loop), so a
+    // shared module's refcount spans every entry that reaches it and it stays resident until
+    // its genuinely-last consumer. Arming here (per `run_discovery_rows` call) would hand the
+    // Adaptive inline drain a ONE-ENTRY schedule per group — refcount 1 on every module,
+    // evicted the instant its entry finished — collapsing "keep shared state until last use"
+    // into "cold-recompute the shared closure once per entry" (the entries=1 churn that held
+    // batch-3 wall over budget while RSS was already bounded). Rows are sorted by entry, so an
+    // entry's rows are contiguous and, once passed, the entry can never be read again; the
+    // per-entry completion below decrements against the caller-armed refcount (a no-op when
+    // unarmed — the plural/shared-store worker path).
     // The entry whose per-module state becomes unreachable once `row.entry` moves on.
     let mut schedule_prev_entry: Option<String> = None;
     let mut current_entry: Option<String> = None;
