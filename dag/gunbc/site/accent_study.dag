@@ -1,6 +1,7 @@
 module gunbc.site.accent_study
 
 import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
+import gunbc.site.markup { txt, el, el_class }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import gunbc.design.theme {
   Theme, night_theme, day_theme, theme_var_decls,

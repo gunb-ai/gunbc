@@ -1,6 +1,7 @@
 module gunbc.site.moodboard
 
 import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
+import gunbc.site.markup { txt, el, el_class }
 import std.types { NonEmptyStr }
 import std.content_hash { content_hash_atom }
 import extdeps.languages.css.properties { Cursor }

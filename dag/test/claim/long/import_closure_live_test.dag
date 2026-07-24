@@ -2,7 +2,6 @@ module test.claim.long.import_closure_live
 
 import v2.lens.module_graph { no_paths }
 
-
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data expected_conformance_closure: FreeMonoid<String> = [
