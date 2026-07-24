@@ -809,3 +809,10 @@ mechanics amendment for patterns-via-scrutinee's demotion.
 their aliases exist — the ~20k `agree` sites are the empirical weight, §12.4); the flip is
 per-subtree behind the §8 policy. This section is the authority the alias-grammar model PR and the
 §3/§6 walk amendment consume.
+
+**Residue burn-down.** The flip-ON hard-red residue and its dependency graph (Root-A → the four
+two-std forks `Set`/`Map`/`Byte`/`Char` → 0) are tracked in
+[namespace flip — the last 28 reds (Root-A / two-std de-fork)](namespace-flip-last-28-root-a-two-std-defork.md):
+62 of the 90 clear in the doable-now lane (homonym renames + local consolidations, no Root-A
+dependency); the remaining 28 are the two-std forks, of which only `Char` rides the Root-A emit
+seam.
