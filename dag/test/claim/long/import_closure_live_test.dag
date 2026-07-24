@@ -1,7 +1,5 @@
 module test.claim.long.import_closure_live
 
-import v2.lens.module_graph { no_paths }
-
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -22,6 +20,8 @@ data expected_conformance_closure: FreeMonoid<String> = [
 data conformance_entry: String = "dag/test/claim/module_graph/conformance_imports_only.dag"
 
 data bogus_never_imported: String = "src/v2/std/__bogus_never_imported__.dag"
+
+data no_paths: FreeMonoid<String> = []
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b
