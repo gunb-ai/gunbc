@@ -2,17 +2,13 @@
 
 **Status:** measurement doc only (no resolver refactor). Timestamped profiling receipt for ROADMAP §1 *profile the 518s resolve*. DESIGN.md remains authority.
 
-**Owner:** vivid-carp-798. Shell entrypoint: `scripts/profile-cold-resolve.sh` (SCAFFOLD — dissolve-on: substrate-emitted resolve timings / gunbc bash-emit #5828).
+**Owner:** vivid-carp-798. This is a **historical measurement receipt** — the numbers below are the finding; they are not re-derived on any cadence. The `scripts/profile-cold-resolve.sh` harness that produced them was deleted 2026-07-23 with the rest of `scripts/`, so the receipt no longer ships a runnable entrypoint. Re-measuring is a fresh measurement against today's resolver, not a replay of this one; the durable fix remains substrate-emitted resolve timings (gunbc bash-emit #5828).
 
 ---
 
-## 1. Reproducible commands
+## 1. How these numbers were taken
 
-```
-unset GUNBC_RESOLVED_GRAPH_CACHE_DIR
-./scripts/profile-cold-resolve.sh          # corpus + top-15
-./scripts/profile-cold-resolve.sh --pair   # budget_roster vs fold_list twin
-```
+Cold resolve with `GUNBC_RESOLVED_GRAPH_CACHE_DIR` unset, per-entry resolve wall clock over the corpus, reported as top-N offenders plus an A/B on the `budget_roster_completeness_test` vs `fold_list_generic_instantiation` pair. Recorded here so the method survives the harness.
 
 ---
 
