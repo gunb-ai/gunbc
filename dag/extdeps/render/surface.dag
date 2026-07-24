@@ -1,6 +1,6 @@
 module extdeps.render.surface
 
-import std.render { Document, Block, Frame, RenderCapability }
+import std.render { Document, Block, RenderFrame, RenderCapability }
 import extdeps.render.terminal { serialize_frame }
 import extdeps.github.log_annotations { annotation_group_prefix, annotation_endgroup }
 
