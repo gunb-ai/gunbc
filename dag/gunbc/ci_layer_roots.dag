@@ -489,6 +489,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: BinWitnessWet,
     reason: "nightly falsifier batch 4 bin-execution witness: closure-scoped resolution-divergence census with SILENT-PICK-GATE fail-closed arms (falsifier_silent_pick_gate_note)",
     dissolve_on: "unique-on-chain resolution ships as the resolver behavior; telemetry, witness, and this row delete together (falsifier_silent_pick_gate_note)"
+  },
+  WitnessExclusionRow {
+    pattern: "execution/emit_host_native_only_verdict_test.dag",
+    classification: FalsifierRehomedBinWet,
+    reason: excl_rehomed_bin_wet_reason,
+    dissolve_on: excl_rehomed_bin_wet_dissolve
   }
 ]
 
@@ -759,6 +765,12 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
     function: "cross_shard_seam_preservation_holds_on_live_tree",
     reason: "183s measured on run 30009199696 (3x the per-row budget): the live-tree seam-preservation leg compiles real cross-shard closures per seam; its cheap algebra sibling (cross_shard_seam_algebra_holds) stays per-PR as the smoke row for the concern",
     dissolve_on: "seam preservation gains a scoped or receipt-consuming realization measured under the per-row budget; then re-enroll per-PR and delete this row"
+  },
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/execution/emit_host_native_only_verdict_test.dag",
+    function: "emit_host_native_only_verdict_all_holds",
+    reason: "batch-3 FLOOR-BATCH-OVER-BUDGET on run 30061519319 (wall_ms=1354146 vs budget_ms=1320000, 34146ms over): this row's two native cargo-build legs (canonical + swapped-source, genuinely different compiled programs, not a shareable duplicate — see emit_host_native_only_verdict_note) land at CI floor batch 3's peak-memory point; per-witness cost measured locally is well under the 60s per-row budget (12.3-12.8s cold and warm), so the overage is a CI-only batch-level swap-pressure effect of the same documented character as this witness's own note (\"CI-only, non-reproducing locally\"), not attributable to a single oversized row — the batch-wall evidence is cited in place of a per-row measurement",
+    dissolve_on: "the classical_not_family cache gains a per-PR-lane warm-path (e.g. a shared prebuild step ahead of batch 3) so the two legs no longer add first-touch cargo-build cost at the batch's peak-memory point, or batch 3's measured wall with this row included stays under gunbc_ci_floor_batch_wall_budget_seconds on a fresh run — then re-enroll per-PR via commit_workflow.dag and delete this row"
   }
 ]
 
