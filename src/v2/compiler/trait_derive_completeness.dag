@@ -19,7 +19,6 @@ import std.trait_derive_shape {
   ReprDeriveElemUnknown,
   repr_grounding_derive_shape_has_trait,
   repr_grounding_derive_completeness_predicate,
-  record_derive_traits,
   nullary_coproduct_derive_traits,
   payload_coproduct_derive_traits,
   trait_derive_attr_from_traits

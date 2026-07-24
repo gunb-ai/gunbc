@@ -138,15 +138,15 @@ fn tdc_binding_is(binding: Symbol, expected: Symbol) -> Bool {
 }
 
 test fn tdc_string_kernel_satisfies_clone_ord_serde_not_add() -> Bool {
-  repr_grounding_derive_trait_satisfied(trait: ReprDeriveClone, elem: symbol_kernel_type_node())
-    && repr_grounding_derive_trait_satisfied(trait: ReprDeriveOrd, elem: symbol_kernel_type_node())
-    && repr_grounding_derive_trait_satisfied(trait: ReprDeriveSerialize, elem: symbol_kernel_type_node())
-    && repr_grounding_derive_trait_satisfied(trait: ReprDeriveAdd, elem: symbol_kernel_type_node()) == false
+  repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveClone, elem: symbol_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveOrd, elem: symbol_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveSerialize, elem: symbol_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveAdd, elem: symbol_kernel_type_node()) == false
 }
 
 test fn tdc_int_kernel_satisfies_arith_and_ord() -> Bool {
-  repr_grounding_derive_trait_satisfied(trait: ReprDeriveAdd, elem: trait_derive_int_kernel_type_node())
-    && repr_grounding_derive_trait_satisfied(trait: ReprDeriveOrd, elem: trait_derive_int_kernel_type_node())
+  repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveAdd, elem: trait_derive_int_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveOrd, elem: trait_derive_int_kernel_type_node())
     && repr_grounding_derive_completeness_predicate_for_elem(
       required: Cons {
         head: ReprDeriveAdd,
@@ -157,7 +157,7 @@ test fn tdc_int_kernel_satisfies_arith_and_ord() -> Bool {
 }
 
 test fn tdc_unknown_atom_refuses_ord_completeness() -> Bool {
-  repr_grounding_derive_trait_satisfied(trait: ReprDeriveOrd, elem: tdc_unknown_atom_node()) == false
+  repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveOrd, elem: tdc_unknown_atom_node()) == false
     && tdc_elem_shape_is_unknown(elem: tdc_unknown_atom_node())
     && tdc_collection_witness_gate_is_incomplete(
       witness: TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t },
