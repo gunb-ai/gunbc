@@ -1,11 +1,16 @@
 module std.bit
 
+import std.types { Bool, List }
 
-type Bit = Classical
+type Bit = Bool
 
 type Nibble { bits: List<Bit> }
 
 type Byte { bits: List<Bit> }
+
+type Word8 {
+  bytes: List<Byte>
+}
 
 type Word16 { bytes: List<Byte> }
 type Word32 { bytes: List<Byte> }

@@ -1,9 +1,7 @@
 module v2.test.std_text.carrier_claims
 
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { Equal, Ordering }
 import v2.std.logic { Bool }
-import v2.std.nat { Nat, Succ, Zero, nat_compare }
 import v2.std.text {
   Char,
   CharAbsent,
@@ -25,18 +23,15 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data text_witness_char_a: Char = Succ { prev: Zero }
-data text_witness_char_b: Char = Succ { prev: Succ { prev: Zero } }
+data text_witness_char_a: Char = 1
+data text_witness_char_b: Char = 2
 
 fn text_not(b: Bool) -> Bool {
   b == false
 }
 
 fn text_char_eq(a: Char, b: Char) -> Bool {
-  match nat_compare(a: a, b: b) {
-    Equal => true
-    _ => false
-  }
+  a == b
 }
 
 fn text_single(c: Char) -> String {

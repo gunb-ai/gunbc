@@ -40,6 +40,13 @@ data ts_algebra_inhabitants: List<InhabitantDecl> = [
     import_path: none,
     is_copy: false },
 
+  { algebra: "PointwisePower",
+    template: "Set<\{0\}>",
+    arity: 1,
+    identity_expr: "new Set()",
+    import_path: none,
+    is_copy: false },
+
   { algebra: "PartialFunction",
     template: "Map<\{0\}, \{1\}>",
     arity: 2,

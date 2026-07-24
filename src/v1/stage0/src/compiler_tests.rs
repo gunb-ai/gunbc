@@ -869,6 +869,10 @@ mod compiler_tests {
             coerce_container_template(RenderTarget::Rust, "Set".into()),
             Some("BTreeSet<{0}>".to_string())
         );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "PointwisePower".into()),
+            Some("BTreeSet<{0}>".to_string())
+        );
     }
 
     #[test]
@@ -898,6 +902,10 @@ mod compiler_tests {
             coerce_container_template(RenderTarget::Python, "Set".into()),
             Some("set[{0}]".to_string())
         );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Python, "PointwisePower".into()),
+            Some("set[{0}]".to_string())
+        );
     }
 
     #[test]
@@ -925,6 +933,10 @@ mod compiler_tests {
         );
         assert_eq!(
             coerce_container_template(RenderTarget::Go, "Set".into()),
+            Some("map[{0}]struct{}".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Go, "PointwisePower".into()),
             Some("map[{0}]struct{}".to_string())
         );
     }

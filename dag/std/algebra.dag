@@ -108,6 +108,10 @@ type BooleanAlgebra<T> {
   bottom: T
 }
 
+type PointwisePower<T> {
+  member: fn(T) -> Bool
+}
+
 type FreeMonoid<T>
   = Empty
   | Cons { head: T, tail: FreeMonoid<T> }
@@ -132,6 +136,7 @@ type AlgebraProfile
   | ApproximateFieldProfile
   | BooleanAlgebraProfile
   | BooleanAlgebraCollectionProfile
+  | PointwisePowerCollectionProfile
   | FreeMonoidScalarProfile
   | FreeMonoidCollectionProfile
   | PartialFunctionProfile
@@ -186,7 +191,7 @@ fn kernel_algebra_profile_value() -> Map<String, AlgebraProfile> {
             "Bool", BooleanAlgebraProfile),
           "String", FreeMonoidScalarProfile),
         "List", FreeMonoidCollectionProfile),
-      "Set", BooleanAlgebraCollectionProfile),
+      "Set", PointwisePowerCollectionProfile),
     "Map", PartialFunctionProfile)
 }
 
@@ -241,6 +246,12 @@ fn boolean_algebra_collection_templates() -> List<AlgebraFieldTemplate> {
     { name: "all", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } },
     { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
     { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none }
+  ]
+}
+
+fn pointwise_power_collection_templates() -> List<AlgebraFieldTemplate> {
+  [
+    { name: "member", param_types: [CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }, size_effect: none, cost_shape: none, callback_element_position: none }
   ]
 }
 
@@ -317,7 +328,7 @@ fn partial_function_templates() -> List<AlgebraFieldTemplate> {
 fn algebra_method_template_name(name: String) -> Bool {
   [
     OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile,
-    BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile,
+    BooleanAlgebraCollectionProfile, PointwisePowerCollectionProfile, FreeMonoidScalarProfile,
     FreeMonoidCollectionProfile, PartialFunctionProfile
   ] |> any(p => algebra_templates_for_profile(profile: p) |> any(t => t.name == name))
 }
@@ -328,6 +339,7 @@ fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTe
     ApproximateFieldProfile => approximate_field_templates()
     BooleanAlgebraProfile => boolean_algebra_templates()
     BooleanAlgebraCollectionProfile => boolean_algebra_collection_templates()
+    PointwisePowerCollectionProfile => pointwise_power_collection_templates()
     FreeMonoidScalarProfile => free_monoid_scalar_templates()
     FreeMonoidCollectionProfile => free_monoid_collection_templates()
     PartialFunctionProfile => partial_function_templates()
@@ -340,6 +352,7 @@ fn algebra_type_param_names(profile: AlgebraProfile) -> List<String> {
     ApproximateFieldProfile => []
     BooleanAlgebraProfile => []
     BooleanAlgebraCollectionProfile => ["T"]
+    PointwisePowerCollectionProfile => ["T"]
     FreeMonoidScalarProfile => []
     FreeMonoidCollectionProfile => ["T"]
     PartialFunctionProfile => ["K", "V"]
