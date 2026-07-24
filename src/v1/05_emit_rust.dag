@@ -7567,11 +7567,7 @@ fn rust_struct_field_lookup_candidates(struct_name: String, scope: InferScope) -
 
 fn rust_struct_field_type_node(scope: InferScope, struct_name: String, field_name: String) -> Node? {
   match lookup_type_by_name(env: scope.type_env, name: struct_name) {
-    Present { value: struct_node } =>
-      match find_child_named(n: struct_node, name: field_name, source_indices: scope.type_env.source_indices) {
-        Present { value: field_node } => Present { value: resolved_type(n: field_node) }
-        Absent => none
-      }
+    Present { value: struct_node } => rust_struct_field_type_node_from_container(container: struct_node, field_name: field_name, source_indices: scope.type_env.source_indices)
     Absent => none
   }
 }
@@ -8042,7 +8038,8 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             if all_defaultable {
               missing |> flat_map(fname =>
                 if is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: fname) {
-                  [concat("    ", emit_ident(name: fname, target: Rust), ": None,")]
+                  let wrapped_none = wrap_rust_record_field_value(raw: "None", scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: ctor_name, field_name: fname)
+                  [concat("    ", emit_ident(name: fname, target: Rust), ": ", wrapped_none, ",")]
                 } else {
                   match map_get(ftm, fname) {
                     Present { value: ft } =>

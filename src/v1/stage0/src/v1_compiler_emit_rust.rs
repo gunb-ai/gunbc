@@ -21574,14 +21574,11 @@ pub fn rust_struct_field_type_node(
     field_name: String,
 ) -> Option<Rc<Node>> {
     match lookup_type_by_name(scope.type_env.clone(), struct_name.clone()) {
-        Some(struct_node) => match find_child_named(
+        Some(struct_node) => rust_struct_field_type_node_from_container(
             struct_node.clone(),
             field_name.clone(),
             scope.type_env.clone().source_indices.clone(),
-        ) {
-            Some(field_node) => Some(resolved_type(field_node.clone())),
-            None => None,
-        },
+        ),
         None => None,
     }
 }
@@ -21636,6 +21633,56 @@ pub fn rust_receiver_has_callable_method_field(
     }
 }
 
+pub fn rust_struct_field_type_node_variant_aware(
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
+    struct_name: String,
+    field_name: String,
+) -> Option<Rc<Node>> {
+    match rust_struct_field_type_node(scope.clone(), struct_name.clone(), field_name.clone()) {
+        Some(n) => Some(n.clone()),
+        None => match v1_rt::map_get(&emit_info.variant_to_enum.clone(), struct_name.clone()) {
+            Some(enum_name) => {
+                if (enum_name.clone() == "".to_string()) {
+                    None
+                } else {
+                    match lookup_type_by_name(scope.type_env.clone(), enum_name.clone()) {
+                        Some(enum_node) => match find_child_named(
+                            enum_node.clone(),
+                            struct_name.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ) {
+                            Some(variant_node) => rust_struct_field_type_node_from_container(
+                                variant_node.clone(),
+                                field_name.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
+                            None => None,
+                        },
+                        None => None,
+                    }
+                }
+            }
+            None => None,
+        },
+    }
+}
+
+pub fn rust_struct_field_type_node_from_container(
+    container: Rc<Node>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match find_child_named(
+        container.clone(),
+        field_name.clone(),
+        source_indices.clone(),
+    ) {
+        Some(field_node) => Some(resolved_type(field_node.clone())),
+        None => None,
+    }
+}
+
 pub fn rust_record_field_needs_box(
     scope: Rc<InferScope>,
     emit_info: Rc<EmitGraphInfo>,
@@ -21643,7 +21690,12 @@ pub fn rust_record_field_needs_box(
     struct_name: String,
     field_name: String,
 ) -> bool {
-    match rust_struct_field_type_node(scope.clone(), struct_name.clone(), field_name.clone()) {
+    match rust_struct_field_type_node_variant_aware(
+        scope.clone(),
+        emit_info.clone(),
+        struct_name.clone(),
+        field_name.clone(),
+    ) {
         Some(field_type) => needs_box_wrapping(
             field_type.clone(),
             emit_info.recursive_type_set.clone(),
@@ -22818,7 +22870,10 @@ pub fn emit_typed_record_lit(
                                                     let mut __result = Vec::new();
                                                     for fname in missing.clone().iter().cloned() {
                                                         __result.extend((*if is_optional_struct_field(emit_info.clone(), variant_summary_name.clone(), fname.clone()) {
-                                            Rc::new(vec![v1_rt::concat(v1_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": None,".to_string())])
+                                            {
+                                                let wrapped_none = wrap_rust_record_field_value("None".to_string(), scope.clone(), emit_info.clone(), shared_types.clone(), ctor_name.clone(), fname.clone());
+Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": ".to_string()), wrapped_none.clone()), ",".to_string())])
+}
                                         } else {
                                             match v1_rt::map_get(&ftm, fname.clone()) {
     Some(ft) => match rust_zero_value(ft.clone(), emit_info.corpus_repr.clone()) {
