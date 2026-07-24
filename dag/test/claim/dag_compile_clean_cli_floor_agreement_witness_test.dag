@@ -22,6 +22,10 @@ test fn dag_compile_clean_cli_floor_enforced_flip_red_control_holds() -> Bool {
   witness_enforced_flip_red_control()
 }
 
+test fn dag_compile_clean_cli_floor_policy_row_drives_predicate_holds() -> Bool {
+  witness_policy_row_drives_predicate()
+}
+
 test fn dag_compile_clean_cli_floor_agreement_note_named() -> Bool {
   string_contains(s: cli_floor_agreement_note, pattern: "issue 11")
 }

@@ -15,10 +15,17 @@ fn witness_policy_row_is_floor_not_yet() -> Bool {
     && compile_clean_unlisted_import_use_blocks() == false
 }
 
+fn witness_policy_row_drives_predicate() -> Bool {
+  compile_clean_unlisted_import_use_blocks() == unlisted_import_use_blocks_compile_clean(enforcement: compile_clean_unlisted_import_use_enforcement)
+}
+
 fn witness_enforced_flip_red_control() -> Bool {
   unlisted_import_use_blocks_compile_clean(enforcement: Enforced) == true
+    && unlisted_import_use_blocks_compile_clean(enforcement: FloorNotYet) == false
 }
 
 fn witness_cli_floor_policy_agreement_holds() -> Bool {
-  witness_policy_row_is_floor_not_yet() && witness_enforced_flip_red_control()
+  witness_policy_row_is_floor_not_yet()
+    && witness_policy_row_drives_predicate()
+    && witness_enforced_flip_red_control()
 }
