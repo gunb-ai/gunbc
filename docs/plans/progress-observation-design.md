@@ -221,6 +221,25 @@ the CI renderer's contract (§3a) and the sequencing:
   display shrinks the sets with zero format change — the UI leads, selection catches up. This
   is the containment-tree authority surfacing in the UX: a qualified name is a position, and
   the user reads their diff as positions touching witnesses.
+  **Change-kind coloring (operator, 2026-07-24): git-diff convention** — added = green,
+  modified = yellow, removed = red — as rows in the one glyph/material authority (register
+  color roles realized as terminal ANSI; GitHub Actions logs render ANSI). Color is never the
+  only channel: the textual kind tag (`edited` / `new` / `removed`) always prints beside it,
+  so pipes and colorless contexts degrade losslessly.
+  **No-ops are a closed sum, never a bare "nothing" (operator, 2026-07-24).** "Nothing"
+  meaning several different things is the house's own state-space-conflation pattern
+  (an Option/None carrying >2 meanings) applied to UX — each kind gets its own named line
+  because their remedies differ:
+  - `docs-policy` — documentation never selects executable work (fine, quiet);
+  - `uncovered` — a touched declaration that NO witness references: rendered as a visible
+    nudge (⚠️, "no witness covers this change"), because it is a coverage gap surfaced at PR
+    time, not a comfort;
+  - `no-decls-touched` — only comments/whitespace intersected (fine, says so);
+  - `generated-artifact` — the file is a projection; its check is the drift gate against its
+    authority, not witnesses (named, so "nothing" never appears next to ci.yml);
+  - `deletion` — NOT a no-op: departed non-docs paths widen to baseline today, and the line
+    says so with the cause ("a deleted module can't be scoped").
+  A bare unlabeled "→ nothing" is a census violation.
   **Tone (operator, 2026-07-24):** arm's-length lines are plain sentences a human can read
   without decoding — "still in witness discovery: entry 214 of 602, pace 2.1s per entry
   (expected ~1s)" — never dense `key=value` chains; the dense form lives only in receipt
