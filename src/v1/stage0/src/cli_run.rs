@@ -7520,21 +7520,6 @@ fn compile_clean_diags_from_resolved_stages(
     Rc::new(acc)
 }
 
-fn compile_clean_diags_from_typed_graph_only(
-    graph: &Rc<v1_compiler_compile::ResolvedGraph>,
-) -> Rc<im::Vector<Rc<ErrorNode>>> {
-    Rc::new(
-        graph
-            .diagnostics
-            .iter()
-            .cloned()
-            .fold(im::Vector::new(), |mut acc, d| {
-                acc.push_back(d);
-                acc
-            }),
-    )
-}
-
 /// The sources-taking core of `resolve_entry_with_parse_cache`: parse → resolve →
 /// normalize → `reconcile_with_typed_cache` → ownership, every stage through the
 /// index's per-module memo tiers (parse/normalize/typed/ownership caches + the
@@ -7581,20 +7566,15 @@ fn resolved_graph_from_sources_with_index(
     // the share above on hit so later same-subject demands never re-decode.
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         match cross_process_lookup(&cache_root, &subject) {
-            CacheLookupResult::Hit(hit) => {
+            CacheLookupResult::Hit(_) => {
+                // v1 disk artifacts carry only the typed graph — not the resolve→normalize→
+                // typed→ownership union the compile-clean gate reads. Serving a subset on hit
+                // would silently drop resolve-stage UnlistedImportUse (§5 cache impurity).
+                // Refuse the hit and fall through to cold assembly, which installs the full
+                // union into the in-process memo.
                 eprintln!(
-                    "[resolved-graph-cache] decode subject={subject} (installed into process share)"
+                    "[resolved-graph-cache] refusing hit subject={subject}: compile-clean diagnostic union absent from disk artifact; cold resolve"
                 );
-                let compile_clean_diags = compile_clean_diags_from_typed_graph_only(&hit.graph);
-                index.resolved_graph_memo.borrow_mut().insert(
-                    subject,
-                    (
-                        hit.graph.clone(),
-                        hit.source_indices.clone(),
-                        compile_clean_diags.clone(),
-                    ),
-                );
-                return Ok((hit.graph, hit.source_indices, compile_clean_diags));
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
         }
