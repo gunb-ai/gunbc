@@ -5,6 +5,7 @@ use self::NodeLookupStatus::*;
 use self::PatternSubject::*;
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitBool;
+use crate::std_syntax::LiteralValue::*;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{lookup_type, lookup_type_by_name, symbol_index_lookup};
