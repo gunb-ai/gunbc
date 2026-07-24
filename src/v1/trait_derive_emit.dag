@@ -1,287 +1,18 @@
 module v1.compiler.trait_derive_emit
 
+import v1.compiler.infer_types { child_type_node }
 import v1.std.core {
   Node, NewlineIndex, authored_name_at, generic_param_name_at, param_node_type_expr,
-  Disj, NoConnective
+  NoConnective
 }
-import v1.compiler.infer_types { is_coproduct_type, child_type_node }
 import v1.compiler.emit { to_pascal }
-import std.types { is_kernel_type, is_container_type }
-import std.algebra { Cons, Empty, fold_list }
-
-data v1_trait_derive_emit_note: String = "V1 seed-emitter realization of v2.compiler.trait_derive_completeness — structure-driven derive/bound selection for 05_emit_rust.dag. Fail-closed: unknown elem shapes refuse (compile_error), never blanket-derive-all. Dissolve-on: v2 predicate self-emits and this module deletes."
-
-type V1ReprDeriveTrait
-  = V1ReprDeriveClone
-  | V1ReprDeriveCopy
-  | V1ReprDerivePartialEq
-  | V1ReprDeriveEq
-  | V1ReprDerivePartialOrd
-  | V1ReprDeriveOrd
-  | V1ReprDeriveSerialize
-  | V1ReprDeriveDeserialize
-  | V1ReprDeriveAdd
-  | V1ReprDeriveSub
-  | V1ReprDeriveMul
-  | V1ReprDeriveDiv
-  | V1ReprDeriveRem
-  | V1ReprDeriveNeg
-
-type V1ReprDeriveElemShape
-  = V1ReprDeriveElemKernelString
-  | V1ReprDeriveElemKernelInt
-  | V1ReprDeriveElemKernelBool
-  | V1ReprDeriveElemKernelUnit
-  | V1ReprDeriveElemNullaryEnumCopy
-  | V1ReprDeriveElemUnknown
-
-fn v1_coproduct_all_variants_nullary(children: List<Node>) -> Bool {
-  children |> all(v => v.children |> count == 0)
+import extdeps.languages.rust.emit {
+  rust_struct_derives, rust_struct_derives_copy, rust_enum_derives
 }
+import std.types { is_container_type }
 
-fn v1_repr_derive_elem_shape_from_name(type_name: String) -> V1ReprDeriveElemShape {
-  if type_name == "Int" || type_name == "Nat" || type_name == "Char" {
-    V1ReprDeriveElemKernelInt
-  } else if type_name == "String" || type_name == "Symbol" || type_name == "Secret" {
-    V1ReprDeriveElemKernelString
-  } else if type_name == "Bool" {
-    V1ReprDeriveElemKernelBool
-  } else if type_name == "Unit" {
-    V1ReprDeriveElemKernelUnit
-  } else {
-    V1ReprDeriveElemUnknown
-  }
-}
-
-fn v1_repr_derive_elem_shape(elem: Node, source_indices: Map<String, NewlineIndex>) -> V1ReprDeriveElemShape {
-  if is_coproduct_type(n: elem) {
-    if v1_coproduct_all_variants_nullary(children: elem.children) {
-      V1ReprDeriveElemNullaryEnumCopy
-    } else {
-      V1ReprDeriveElemUnknown
-    }
-  } else {
-    let name = authored_name_at(source_indices: source_indices, node: elem)
-    if name != "" {
-      v1_repr_derive_elem_shape_from_name(type_name: name)
-    } else if elem.connective == Disj {
-      if v1_coproduct_all_variants_nullary(children: elem.children) {
-        V1ReprDeriveElemNullaryEnumCopy
-      } else {
-        V1ReprDeriveElemUnknown
-      }
-    } else {
-      V1ReprDeriveElemUnknown
-    }
-  }
-}
-
-fn v1_repr_derive_shape_has_trait(
-  shape: V1ReprDeriveElemShape,
-  trait: V1ReprDeriveTrait
-) -> Bool {
-  match shape {
-    V1ReprDeriveElemKernelString =>
-      match trait {
-        V1ReprDeriveClone => true
-        V1ReprDerivePartialEq => true
-        V1ReprDeriveEq => true
-        V1ReprDerivePartialOrd => true
-        V1ReprDeriveOrd => true
-        V1ReprDeriveSerialize => true
-        V1ReprDeriveDeserialize => true
-        _ => false
-      }
-    V1ReprDeriveElemKernelInt =>
-      match trait {
-        V1ReprDeriveClone => true
-        V1ReprDeriveCopy => true
-        V1ReprDerivePartialEq => true
-        V1ReprDeriveEq => true
-        V1ReprDerivePartialOrd => true
-        V1ReprDeriveOrd => true
-        V1ReprDeriveSerialize => true
-        V1ReprDeriveDeserialize => true
-        V1ReprDeriveAdd => true
-        V1ReprDeriveSub => true
-        V1ReprDeriveMul => true
-        V1ReprDeriveDiv => true
-        V1ReprDeriveRem => true
-        V1ReprDeriveNeg => true
-      }
-    V1ReprDeriveElemKernelBool =>
-      match trait {
-        V1ReprDeriveClone => true
-        V1ReprDeriveCopy => true
-        V1ReprDerivePartialEq => true
-        V1ReprDeriveEq => true
-        V1ReprDerivePartialOrd => true
-        V1ReprDeriveOrd => true
-        V1ReprDeriveSerialize => true
-        V1ReprDeriveDeserialize => true
-        _ => false
-      }
-    V1ReprDeriveElemKernelUnit =>
-      match trait {
-        V1ReprDeriveClone => true
-        V1ReprDeriveCopy => true
-        V1ReprDerivePartialEq => true
-        V1ReprDeriveEq => true
-        V1ReprDerivePartialOrd => true
-        V1ReprDeriveOrd => true
-        V1ReprDeriveSerialize => true
-        V1ReprDeriveDeserialize => true
-        _ => false
-      }
-    V1ReprDeriveElemNullaryEnumCopy =>
-      match trait {
-        V1ReprDeriveClone => true
-        V1ReprDeriveCopy => true
-        V1ReprDerivePartialEq => true
-        V1ReprDeriveEq => true
-        V1ReprDerivePartialOrd => true
-        V1ReprDeriveOrd => true
-        V1ReprDeriveSerialize => true
-        V1ReprDeriveDeserialize => true
-        _ => false
-      }
-    V1ReprDeriveElemUnknown => false
-  }
-}
-
-fn v1_trait_derive_completeness_predicate(
-  required: List<V1ReprDeriveTrait>,
-  elem: Node,
-  source_indices: Map<String, NewlineIndex>
-) -> Bool {
-  fold_list(
-    xs: required,
-    empty: true,
-    cons: fn(acc, trait) {
-      acc && v1_repr_derive_shape_has_trait(
-        shape: v1_repr_derive_elem_shape(elem: elem, source_indices: source_indices),
-        trait: trait
-      )
-    }
-  )
-}
-
-fn v1_trait_rust_derive_spelling(trait: V1ReprDeriveTrait) -> String {
-  match trait {
-    V1ReprDeriveClone => "Clone"
-    V1ReprDeriveCopy => "Copy"
-    V1ReprDerivePartialEq => "PartialEq"
-    V1ReprDeriveEq => "Eq"
-    V1ReprDerivePartialOrd => "PartialOrd"
-    V1ReprDeriveOrd => "Ord"
-    V1ReprDeriveSerialize => "serde::Serialize"
-    V1ReprDeriveDeserialize => "serde::Deserialize"
-    V1ReprDeriveAdd => "std::ops::Add"
-    V1ReprDeriveSub => "std::ops::Sub"
-    V1ReprDeriveMul => "std::ops::Mul"
-    V1ReprDeriveDiv => "std::ops::Div"
-    V1ReprDeriveRem => "std::ops::Rem"
-    V1ReprDeriveNeg => "std::ops::Neg"
-  }
-}
-
-fn v1_trait_list_contains(traits: List<V1ReprDeriveTrait>, trait: V1ReprDeriveTrait) -> Bool {
-  traits |> any(t => t == trait)
-}
-
-fn v1_trait_list_push_unique(traits: List<V1ReprDeriveTrait>, trait: V1ReprDeriveTrait) -> List<V1ReprDeriveTrait> {
-  if v1_trait_list_contains(traits: traits, trait: trait) {
-    traits
-  } else {
-    Cons { head: trait, tail: traits }
-  }
-}
-
-fn v1_record_base_derive_traits(heap_allocated: Bool) -> List<V1ReprDeriveTrait> {
-  let t0 = Cons {
-    head: V1ReprDeriveClone,
-    tail: Cons {
-      head: V1ReprDerivePartialEq,
-      tail: Cons {
-        head: V1ReprDeriveSerialize,
-        tail: Cons { head: V1ReprDeriveDeserialize, tail: Empty }
-      }
-    }
-  }
-  if heap_allocated {
-    t0
-  } else {
-    v1_trait_list_push_unique(traits: t0, trait: V1ReprDeriveCopy)
-  }
-}
-
-fn v1_nullary_coproduct_derive_traits() -> List<V1ReprDeriveTrait> {
-  Cons {
-    head: V1ReprDeriveClone,
-    tail: Cons {
-      head: V1ReprDeriveCopy,
-      tail: Cons {
-        head: V1ReprDerivePartialEq,
-        tail: Cons {
-          head: V1ReprDeriveEq,
-          tail: Cons {
-            head: V1ReprDerivePartialOrd,
-            tail: Cons {
-              head: V1ReprDeriveOrd,
-              tail: Cons {
-                head: V1ReprDeriveSerialize,
-                tail: Cons { head: V1ReprDeriveDeserialize, tail: Empty }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-fn v1_payload_coproduct_derive_traits() -> List<V1ReprDeriveTrait> {
-  Cons {
-    head: V1ReprDeriveClone,
-    tail: Cons {
-      head: V1ReprDerivePartialEq,
-      tail: Cons {
-        head: V1ReprDeriveSerialize,
-        tail: Cons { head: V1ReprDeriveDeserialize, tail: Empty }
-      }
-    }
-  }
-}
-
-fn v1_ord_extension_traits() -> List<V1ReprDeriveTrait> {
-  Cons {
-    head: V1ReprDeriveEq,
-    tail: Cons {
-      head: V1ReprDerivePartialOrd,
-      tail: Cons { head: V1ReprDeriveOrd, tail: Empty }
-    }
-  }
-}
-
-fn v1_traits_merge_ordered(base: List<V1ReprDeriveTrait>, extra: List<V1ReprDeriveTrait>) -> List<V1ReprDeriveTrait> {
-  fold_list(
-    xs: extra,
-    empty: base,
-    cons: fn(acc, trait) { v1_trait_list_push_unique(traits: acc, trait: trait) }
-  )
-}
-
-fn v1_trait_derive_attr_from_traits(traits: List<V1ReprDeriveTrait>) -> String {
-  let ordered = [
-    V1ReprDeriveClone, V1ReprDeriveCopy,
-    V1ReprDerivePartialEq, V1ReprDeriveEq, V1ReprDerivePartialOrd, V1ReprDeriveOrd,
-    V1ReprDeriveAdd, V1ReprDeriveSub, V1ReprDeriveMul, V1ReprDeriveDiv, V1ReprDeriveRem, V1ReprDeriveNeg,
-    V1ReprDeriveSerialize, V1ReprDeriveDeserialize
-  ]
-  let names = ordered
-    |> filter(t => v1_trait_list_contains(traits: traits, trait: t))
-    |> map(t => v1_trait_rust_derive_spelling(trait: t))
-  concat("#[derive(Debug, ", names |> join(separator: ", "), ")]")
+fn v1_ord_derives_text() -> String {
+  "#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]"
 }
 
 fn v1_symbol_wrapped_ord_carrier_shape_eligible(children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -299,6 +30,14 @@ fn v1_symbol_wrapped_ord_carrier_shape_eligible(children: List<Node>, source_ind
   }
 }
 
+fn v1_ord_derives_copy_text() -> String {
+  "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]"
+}
+
+fn v1_coproduct_all_variants_nullary(children: List<Node>) -> Bool {
+  children |> all(v => v.children |> count == 0)
+}
+
 fn v1_emit_struct_derives(
   name: String,
   children: List<Node>,
@@ -309,27 +48,19 @@ fn v1_emit_struct_derives(
   if has_fn_fields {
     "#[derive(Clone)]"
   } else if v1_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
-    v1_trait_derive_attr_from_traits(traits: v1_traits_merge_ordered(
-      base: v1_nullary_coproduct_derive_traits(),
-      extra: Empty
-    ))
+    v1_ord_derives_text()
+  } else if set_contains(shared_types, name) {
+    rust_struct_derives
   } else {
-    let heap_allocated = set_contains(shared_types, name)
-    v1_trait_derive_attr_from_traits(traits: v1_record_base_derive_traits(heap_allocated: heap_allocated))
+    rust_struct_derives_copy
   }
 }
 
 fn v1_emit_enum_derives(children: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
-  let nullary = v1_coproduct_all_variants_nullary(children: children)
-  let traits = if nullary {
-    v1_nullary_coproduct_derive_traits()
+  if v1_coproduct_all_variants_nullary(children: children) {
+    v1_ord_derives_copy_text()
   } else {
-    v1_payload_coproduct_derive_traits()
-  }
-  if nullary {
-    v1_trait_derive_attr_from_traits(traits: traits)
-  } else {
-    v1_trait_derive_attr_from_traits(traits: traits)
+    rust_enum_derives
   }
 }
 

@@ -121,6 +121,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v1_compiler_stage0_crates.rs",
     "v1_compiler_tokenize.rs",
     "v1_compiler_trace.rs",
+    "v1_compiler_trait_derive_emit.rs",
     "v1_compiler_workspace_members.rs",
     "v1_probe_emit_interp.rs",
     "v1_rt.rs",
