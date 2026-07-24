@@ -19,7 +19,7 @@ import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLin
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes }
-import gunbc.roadmap_component { roadmap_dispatch_asset_path, sound_toggle_class }
+import gunbc.roadmap_component { roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class }
 import gunbc.v1_deletion_plan {
   v1_deletion_gates, v1_deletion_milestones, PlanGateSpec, PlanMilestone,
   PlanGate, GateEmitterFixedPoint, GateHonestFrontier, GateLedgerGreen, GateDeletion,
@@ -163,8 +163,19 @@ fn sound_toggle_control() -> MarkupNode {
   }
 }
 
+fn theme_toggle_control() -> MarkupNode {
+  ElementNode {
+    tag: "button",
+    attrs: [
+      MarkupAttr { name: "class", value: theme_toggle_class },
+      MarkupAttr { name: "type", value: "button" },
+    ],
+    children: [],
+  }
+}
+
 fn roadmap_header(title: String) -> MarkupNode {
-  el("header", [ render_mark(depth: 1), el("h1", [ txt(title) ]), sound_toggle_control() ])
+  el("header", [ render_mark(depth: 1), el("h1", [ txt(title) ]), sound_toggle_control(), theme_toggle_control() ])
 }
 
 fn node_status_symbol(rn: RoadmapNode, merged: List<Int>) -> String {

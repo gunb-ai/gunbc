@@ -17,7 +17,7 @@ fn witness_authority_serializes_with_structure() -> Bool {
   string_contains(s: h, pattern: "<header><svg viewBox=\"0 0 120 72\" class=\"mark mark-d1\"")
     && string_contains(
       s: h,
-      pattern: "</svg><h1>gunbc — roadmap</h1><button class=\"sound-toggle\" type=\"button\"></button></header>")
+      pattern: "</svg><h1>gunbc — roadmap</h1><button class=\"sound-toggle\" type=\"button\"></button><button class=\"theme-toggle\" type=\"button\"></button></header>")
     && string_contains(s: h, pattern: "<main class=\"roadmap\">")
     && string_contains(s: h, pattern: "class=\"roadmap-section\"")
     && string_contains(s: h, pattern: "class=\"status status-")
@@ -38,7 +38,7 @@ fn witness_empty_doc_is_minimal_shell() -> Bool {
     && string_contains(s: h, pattern: "<body><header><svg viewBox=\"0 0 120 72\" class=\"mark mark-d1\"")
     && string_contains(
       s: h,
-      pattern: "</svg><h1>gunbc — roadmap</h1><button class=\"sound-toggle\" type=\"button\"></button></header><main class=\"roadmap\"></main></body></html>")
+      pattern: "</svg><h1>gunbc — roadmap</h1><button class=\"sound-toggle\" type=\"button\"></button><button class=\"theme-toggle\" type=\"button\"></button></header><main class=\"roadmap\"></main></body></html>")
 }
 
 fn witness_authority_differs_from_empty() -> Bool {
@@ -133,8 +133,8 @@ fn witness_open_node_doc_emits_button_and_external_script() -> Bool {
 fn witness_dispatch_asset_reads_belt_b_status_contract() -> Bool {
   let js = dispatch_client_js_source()
   string_contains(s: js, pattern: "fetch('/dispatch/")
-    && string_contains(s: js, pattern: "j.status === 'spawned'")
-    && string_contains(s: js, pattern: "j.status === 'already_live'")
+    && string_contains(s: js, pattern: "s === 'spawned' ? 'ok'")
+    && string_contains(s: js, pattern: "s === 'already_live' ? 'ok'")
     && !string_contains(s: js, pattern: "j.ok")
     && !string_contains(s: js, pattern: "j.node)")
 }
@@ -240,7 +240,7 @@ fn witness_status_chip_min_width() -> Bool {
 fn witness_dispatch_button_carries_accent() -> Bool {
   let h = authority_page_html()
   string_contains(s: h, pattern: ".dispatch-btn")
-    && string_contains(s: h, pattern: "border-color: var(--figure)")
+    && string_contains(s: h, pattern: "border-color: var(--band-invite)")
 }
 
 fn witness_page_containers_centered() -> Bool {

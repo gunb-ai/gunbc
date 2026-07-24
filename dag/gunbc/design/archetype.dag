@@ -44,9 +44,11 @@ data dashboard_archetype: SurfaceArchetype = SurfaceArchetype {
   verbs: [Approach, Dispatch, Await, Accept],
   role_demand: [
     CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
-    FigureRole, FigureEdgeRole, FocusRole, BoundaryRole,
+    FigureRole, FigureEdgeRole, FocusRole,
   ],
 }
+
+data dashboard_boundary_demand_dissolved_note: String = "BoundaryRole left the dashboard's demand 2026-07-24 (remodel W1c/W1d): the refusal chip was its only paint consumer on this surface, and refusal color now routes through the instrument band vars (gunbc.roadmap_style band_paint_note — venom, a workspace palette completion, deliberately outside the ThemeRole axis under the instrument-area amendment). The both-ways demand witness is what forced this row to move with the stylesheet instead of lying."
 
 fn archetype_demands_role(a: SurfaceArchetype, r: ThemeRole) -> Bool {
   fold(a.role_demand, init: false, f: (acc, d) => acc || role_key(r: d) == role_key(r: r))

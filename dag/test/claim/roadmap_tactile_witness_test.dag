@@ -248,7 +248,7 @@ fn witness_mute_is_persisted_and_defaults_to_sounding() -> Bool {
 }
 
 fn witness_button_morphs_into_the_session_chip() -> Bool {
-  string_contains(s: js(), pattern: join(["ok ? '", dispatch_session_chip_prefix, "' + j.status"], ""))
+  string_contains(s: js(), pattern: join(["ok ? '", dispatch_session_chip_prefix, "' + s"], ""))
 }
 
 fn header_has_sound_toggle(h: MarkupNode) -> Bool {

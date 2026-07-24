@@ -663,6 +663,13 @@ fn label_band_rows_cover(rows: List<DispatchLabelBandRow>, labels: List<String>)
   all(labels, l => count(filter(rows, row => row.wire_label == l)) == 1)
 }
 
+fn belt_dispatch_label_band_key(wire_label: String) -> String {
+  match belt_dispatch_result_for_label(wire_label: wire_label) {
+    Present { value: r } => dispatch_band_key(b: belt_dispatch_result_band(r: r))
+    Absent => dispatch_band_key(b: BandLoud)
+  }
+}
+
 data belt_dispatch_all_status_labels_note: String = "The full wire-label set, GROUNDED in belt_dispatch_status_label rather than hand-listed (§3): one exemplar per BeltDispatchResult variant, mapped through the label authority. The exemplar roster is the single manual enumeration the closed variant set forces — the same enumeration witness_dispatch_status_labels_pin_wire_contract already pins — and it is fail-closed twice: a 7th variant makes belt_dispatch_status_label's match non-exhaustive (compiler-caught), and gunbc.roadmap_component derives the DispatchButton's terminal states from THIS list and cross-checks totality both directions (a label with no state row, a state with no label — each red), so the button's state set cannot silently drift from the served contract. This is the projection the dispatch-button incident (2026-07-23) needed: one authority for the wire vocabulary, consumed by the JSON body, the page ok-predicate, and now the component state totality."
 
 fn belt_dispatch_result_exemplars() -> List<BeltDispatchResult> {
