@@ -160,7 +160,7 @@ use std::rc::Rc;
 
 pub fn render_rust_applied_via_emit_info(
     n: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -178,7 +178,7 @@ pub fn render_rust_applied_via_emit_info(
 
 pub fn render_rust_type(
     n: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -247,7 +247,7 @@ pub fn render_rust_type(
 
 pub fn render_rust_type_without_applied_binding(
     n: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -473,7 +473,7 @@ pub fn is_host_optional_carrier_type(
 pub fn render_rust_optional_carrier_inner(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -496,7 +496,7 @@ pub fn render_rust_optional_carrier_inner(
 pub fn render_rust_optional_carrier_applied(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -519,7 +519,7 @@ pub fn render_rust_optional_carrier_applied(
     )
 }
 
-pub fn render_rust_text_carrier(shared_types: Rc<BTreeSet<String>>) -> String {
+pub fn render_rust_text_carrier(shared_types: Rc<set<String>>) -> String {
     render_rust_shared_type_if_needed(
         "String".to_string(),
         "String".to_string(),
@@ -985,7 +985,7 @@ pub fn type_node_has_value_variant_arg(
 pub fn render_rust_phantom_opaque_applied_type_arg(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     scope: Rc<InferScope>,
@@ -1026,7 +1026,7 @@ pub fn render_rust_phantom_opaque_applied_type_arg(
 pub fn render_rust_phantom_opaque_applied_decl_arg(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -1055,7 +1055,7 @@ pub fn render_rust_phantom_opaque_applied_decl_arg(
 pub fn render_rust_applied_type_arg(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -1101,7 +1101,7 @@ pub fn render_rust_applied_type_arg(
 pub fn render_rust_applied_type(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -1176,7 +1176,7 @@ pub fn render_rust_applied_type(
 pub fn render_rust_shared_type_if_needed(
     type_name: String,
     rendered: String,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
 ) -> String {
     if (v1_rt::set_contains(&shared_types, type_name.clone())
         && !rust_type_is_rc_wrapped(rendered.clone()))
@@ -1191,7 +1191,7 @@ pub fn render_rust_shared_type_with_optional(
     n: Rc<Node>,
     type_name: String,
     rendered: String,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
 ) -> String {
     rust_carrier_optional_wrap(
         n.clone(),
@@ -1206,7 +1206,7 @@ pub fn render_rust_shared_type_with_optional(
 pub fn render_rust_applied_type_shared(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -1235,7 +1235,7 @@ pub fn render_rust_applied_type_shared(
 pub fn render_rust_decl_type(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -1583,7 +1583,7 @@ pub fn rust_carrier_optional_wrap(n: Rc<Node>, rendered: String) -> String {
 pub fn render_rust_fn_sig_type(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -1681,7 +1681,7 @@ pub fn render_rust_fn_sig_type(
 
 pub fn render_rust_fn_sig_type_applied_binding(
     n: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
@@ -1783,7 +1783,7 @@ pub fn alias_rhs_qualified_name_routing_note() -> String {
 pub fn render_rust_alias_rhs_type(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     scope: Rc<InferScope>,
@@ -3584,7 +3584,7 @@ pub fn emit_rust_block_stmts(
     mut scope: Rc<InferScope>,
     mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut depth: i64,
-    mut shared_types: Rc<BTreeSet<String>>,
+    mut shared_types: Rc<set<String>>,
     mut emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<BlockEmitState> {
     loop {
@@ -3632,7 +3632,7 @@ pub fn emit_rust_init_block_stmts(
     mut scope: Rc<InferScope>,
     mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut depth: i64,
-    mut shared_types: Rc<BTreeSet<String>>,
+    mut shared_types: Rc<set<String>>,
     mut emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<BlockEmitState> {
     loop {
@@ -3908,10 +3908,7 @@ pub fn is_dag_value_type_name(name: String) -> bool {
     }
 }
 
-pub fn is_type_constant(
-    summary: Rc<TypeSummary>,
-    recursive_type_set: Rc<BTreeSet<String>>,
-) -> bool {
+pub fn is_type_constant(summary: Rc<TypeSummary>, recursive_type_set: Rc<set<String>>) -> bool {
     {
         let is_recursive = v1_rt::set_contains(&recursive_type_set, summary.name.clone());
         let has_generics = ((summary.generic_param_names.clone().len() as i64) > 0);
@@ -3962,11 +3959,11 @@ pub fn is_type_constant(
 }
 
 pub fn maybe_mark_shared_type(
-    acc: Rc<BTreeSet<String>>,
+    acc: Rc<set<String>>,
     summary: Rc<TypeSummary>,
-    recursive_type_set: Rc<BTreeSet<String>>,
+    recursive_type_set: Rc<set<String>>,
     target_needs_sharing: bool,
-) -> Rc<BTreeSet<String>> {
+) -> Rc<set<String>> {
     {
         let needs_sharing = (target_needs_sharing.clone()
             && match (*summary.repr.clone()).clone() {
@@ -3987,9 +3984,9 @@ pub fn maybe_mark_shared_type(
 
 pub fn build_shared_types(
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    recursive_type_set: Rc<BTreeSet<String>>,
+    recursive_type_set: Rc<set<String>>,
     target: RenderTarget,
-) -> Rc<BTreeSet<String>> {
+) -> Rc<set<String>> {
     {
         let sharing = sharing_for_target(target.clone());
         let user_shared = Rc::new(v1_rt::map_values(&type_summaries))
@@ -3997,7 +3994,7 @@ pub fn build_shared_types(
             .cloned()
             .fold(
                 v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<BTreeSet<String>>, summary: Rc<TypeSummary>| {
+                |acc: Rc<set<String>>, summary: Rc<TypeSummary>| {
                     maybe_mark_shared_type(
                         acc,
                         summary.clone(),
@@ -4022,7 +4019,7 @@ pub fn build_shared_types(
         });
         collection_keys.clone().iter().cloned().fold(
             user_shared.clone(),
-            |acc: Rc<BTreeSet<String>>, key: String| {
+            |acc: Rc<set<String>>, key: String| {
                 let pascal = to_pascal(key.clone());
                 v1_rt::rc_set_insert(acc, pascal.clone())
             },
@@ -4034,13 +4031,13 @@ pub fn build_shared_types(
 pub struct OwnershipProofEntry {
     pub name: String,
     pub proof: Rc<OwnershipProof>,
-    pub param_names: Rc<BTreeSet<String>>,
+    pub param_names: Rc<set<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OwnershipBuildResult {
-    pub ownership_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    pub read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    pub ownership_index: Rc<HashMap<String, Rc<set<String>>>>,
+    pub read_only_params_index: Rc<HashMap<String, Rc<set<String>>>>,
 }
 
 pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<OwnershipBuildResult> {
@@ -4131,8 +4128,8 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
         });
         proofs.clone().iter().cloned().fold(
             Rc::new(OwnershipBuildResult {
-                ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
-                read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+                ownership_index: v1_rt::rc_empty_map::<String, Rc<set<String>>>(),
+                read_only_params_index: v1_rt::rc_empty_map::<String, Rc<set<String>>>(),
             }),
             |acc: Rc<OwnershipBuildResult>, entry: Rc<OwnershipProofEntry>| {
                 let acc = v1_rt::take_owned(acc);
@@ -6121,7 +6118,7 @@ pub fn emit_module_full(
     typed_module: Rc<TypedModule>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     svc_module_map: Rc<HashMap<String, String>>,
     data_items: Rc<HashMap<String, Rc<Node>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
@@ -10326,7 +10323,7 @@ pub fn emit_faithful_text_carrier_import_lines(
     items: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     corpus_repr: RustCorpusRepr,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
 ) -> Rc<Vec<String>> {
     {
@@ -10641,7 +10638,7 @@ pub fn emit_typed_item(
     module_name: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
     wire_contract_item: Option<Rc<Node>>,
     data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
@@ -11046,8 +11043,8 @@ pub fn emit_typed_item(
 
 pub fn needs_box_wrapping(
     mut n: Rc<Node>,
-    mut recursive_types: Rc<BTreeSet<String>>,
-    mut shared_types: Rc<BTreeSet<String>>,
+    mut recursive_types: Rc<set<String>>,
+    mut shared_types: Rc<set<String>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
@@ -11194,8 +11191,8 @@ pub fn function_type_params_have_collision(type_params: Rc<Vec<Rc<Node>>>) -> bo
 
 pub fn emit_type_def_from_connective(
     item: Rc<Node>,
-    recursive_types: Rc<BTreeSet<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    recursive_types: Rc<set<String>>,
+    shared_types: Rc<set<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
     wire_contract_item: Option<Rc<Node>>,
@@ -11498,8 +11495,8 @@ pub fn emit_struct_from_children(
     type_params: String,
     generic_param_names: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
-    recursive_types: Rc<BTreeSet<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    recursive_types: Rc<set<String>>,
+    shared_types: Rc<set<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -11622,7 +11619,7 @@ pub fn emit_struct_from_children(
 
 pub fn render_rust_type_with_applied_binding(
     n: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -11753,7 +11750,7 @@ pub fn render_rust_type_with_applied_binding(
 pub fn render_rust_field_type_with_applied_binding(
     field: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -11826,8 +11823,8 @@ pub fn emit_struct_field_from_child(
     struct_name: String,
     child: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    recursive_types: Rc<BTreeSet<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    recursive_types: Rc<set<String>>,
+    shared_types: Rc<set<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -12109,8 +12106,8 @@ pub fn emit_enum_from_children(
     type_params: String,
     generic_param_names: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
-    recursive_types: Rc<BTreeSet<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    recursive_types: Rc<set<String>>,
+    shared_types: Rc<set<String>>,
     env: Rc<TypeEnv>,
     serde_policy: Rc<RustEnumWireSerde>,
     emit_info: Rc<EmitGraphInfo>,
@@ -12252,8 +12249,8 @@ pub fn emit_enum_shared_accessors(
     type_params: String,
     generic_param_names: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
-    recursive_types: Rc<BTreeSet<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    recursive_types: Rc<set<String>>,
+    shared_types: Rc<set<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -12798,7 +12795,7 @@ pub fn enum_variant_field_type_node(
 
 pub fn render_variant_payload_type(
     n: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -12861,8 +12858,8 @@ pub fn emit_variant_from_child(
     child: Rc<Node>,
     enum_name: String,
     generic_param_names: Rc<Vec<String>>,
-    recursive_types: Rc<BTreeSet<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    recursive_types: Rc<set<String>>,
+    shared_types: Rc<set<String>>,
     env: Rc<TypeEnv>,
     serde_policy: Rc<RustEnumWireSerde>,
     emit_info: Rc<EmitGraphInfo>,
@@ -13099,7 +13096,7 @@ pub fn emit_fn_def(
     body: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -13328,7 +13325,7 @@ pub fn emit_fn_def_non_tco(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
     needs_stacker: bool,
 ) -> String {
@@ -13460,7 +13457,7 @@ pub fn emit_func_def(
     body: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -13556,7 +13553,7 @@ pub fn emit_func_body(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -13699,7 +13696,7 @@ pub fn emit_func_body(
 pub fn emit_tco_params(
     params: Rc<Vec<Rc<Node>>>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -13728,7 +13725,7 @@ pub fn emit_tco_params(
 pub fn emit_tco_param(
     param: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -13777,10 +13774,10 @@ pub fn emit_func_params(
     params: Rc<Vec<Rc<Node>>>,
     uses: Rc<Vec<Rc<Node>>>,
     service_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    read_only_params: Rc<BTreeSet<String>>,
+    read_only_params: Rc<set<String>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
 ) -> String {
@@ -13843,7 +13840,7 @@ pub fn emit_func_params(
 
 pub fn emit_func_inferred(
     inferred: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -13865,10 +13862,10 @@ pub fn emit_func_inferred(
 pub fn emit_params(
     params: Rc<Vec<Rc<Node>>>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    read_only_params: Rc<BTreeSet<String>>,
+    read_only_params: Rc<set<String>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
 ) -> String {
@@ -13896,7 +13893,7 @@ pub fn emit_params(
 pub fn render_rust_param_sig_type(
     param: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -13919,7 +13916,7 @@ pub fn render_rust_param_sig_type(
 pub fn emit_rust_param_type(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -13982,10 +13979,10 @@ pub fn emit_rust_param_type(
 pub fn emit_param(
     param: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    read_only_params: Rc<BTreeSet<String>>,
+    read_only_params: Rc<set<String>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
 ) -> String {
@@ -14026,7 +14023,7 @@ pub fn emit_param(
 pub fn emit_inferred(
     inferred: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -14330,7 +14327,7 @@ pub fn has_string_lit_with_bind(arms: Rc<Vec<Rc<Node>>>) -> bool {
 pub fn emit_pattern(
     pattern: Rc<MatchPattern>,
     path_prefix: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     scrut_type: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -14508,7 +14505,7 @@ pub fn emit_variant_pattern(
     parent_enum: Option<String>,
     field_bindings: Rc<Vec<Rc<Node>>>,
     path_prefix: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     scrut_type: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -14908,7 +14905,7 @@ pub fn field_needs_rc_ref(field_name: String, rc_analysis: Rc<RcPatternAnalysis>
 pub fn analyze_rc_pattern(
     pattern: Rc<MatchPattern>,
     scrut_type: String,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<RcPatternAnalysis> {
@@ -15021,7 +15018,7 @@ pub fn analyze_rc_match(
     scrutinee: Rc<Node>,
     arms: Rc<Vec<Rc<Node>>>,
     scrut_type: String,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> RcMatchAnalysis {
@@ -15111,7 +15108,7 @@ pub fn emit_pattern_rc_aware(
     pattern: Rc<MatchPattern>,
     path_prefix: Rc<Vec<String>>,
     rc_analysis: Rc<RcPatternAnalysis>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     scrut_type: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -15145,7 +15142,7 @@ pub fn emit_variant_pattern_rc_aware(
     field_bindings: Rc<Vec<Rc<Node>>>,
     path_prefix: Rc<Vec<String>>,
     rc_analysis: Rc<RcPatternAnalysis>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     scrut_type: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -15572,7 +15569,7 @@ pub fn emit_variant_pattern_rc_aware(
 pub fn rc_pattern_preludes(
     pattern: Rc<MatchPattern>,
     rc_analysis: Rc<RcPatternAnalysis>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -15718,7 +15715,7 @@ pub fn rc_pattern_preludes(
 pub fn explicit_record_struct_name(
     type_name: Option<String>,
     inferred_node: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     {
@@ -15865,7 +15862,7 @@ pub fn effective_variant_parent(
 pub fn variant_ref_self_wraps(
     name: String,
     enum_name: String,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
 ) -> bool {
     (((name.clone() == "Empty".to_string()) && (enum_name.clone() == "FreeMonoid".to_string()))
@@ -15908,7 +15905,7 @@ pub fn emit_var_ref(
     name: String,
     binding_kind: Option<Rc<VarBindingKind>>,
     resolved_type: Option<Rc<InferredNode>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -16031,7 +16028,7 @@ pub fn emit_typed_expr_base(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -16125,7 +16122,7 @@ pub fn field_access_field_is_boxed(
     base: Rc<Node>,
     field: String,
     scope: Rc<InferScope>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> bool {
     {
@@ -16179,7 +16176,7 @@ pub fn emit_typed_field_access(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -16444,7 +16441,7 @@ pub fn rust_runtime_bridge_name(function_name: String) -> String {
 
 pub fn rust_empty_map_value_type_str(
     map_type: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -16469,7 +16466,7 @@ pub fn rust_empty_map_value_type_str(
 
 pub fn rust_empty_map_kv_type_str(
     map_type: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -16536,7 +16533,7 @@ pub fn rust_btree_set_element_ord_eligible(
 
 pub fn rust_empty_set_element_type_str(
     set_type: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -16578,7 +16575,7 @@ pub fn rust_empty_set_element_type_str(
 
 pub fn emit_rust_empty_set_expr(
     set_type: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -16672,7 +16669,7 @@ pub fn rust_wrap_runtime_collection_result(
 pub fn emit_rust_expr_var(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -16704,7 +16701,7 @@ pub fn emit_rust_expr_field_access(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -16761,7 +16758,7 @@ pub fn emit_rust_expr_call(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -16790,7 +16787,7 @@ pub fn emit_rust_expr_method_call(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -16828,7 +16825,7 @@ pub fn emit_rust_expr_match(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -16857,7 +16854,7 @@ pub fn emit_rust_expr_if(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -16888,7 +16885,7 @@ pub fn emit_rust_expr_let(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -16920,7 +16917,7 @@ pub fn emit_rust_expr_record_lit(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -17019,7 +17016,7 @@ pub fn emit_rust_expr_string_interp(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -17064,7 +17061,7 @@ pub fn emit_rust_expr_block(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -17088,7 +17085,7 @@ pub fn emit_rust_expr_cast(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -17121,7 +17118,7 @@ pub fn emit_rust_expr_for_each(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -17153,7 +17150,7 @@ pub fn emit_rust_expr_index(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -17182,7 +17179,7 @@ pub fn emit_rust_expr_slice(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -17213,7 +17210,7 @@ pub fn emit_rust_expr_bin_op(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -17244,7 +17241,7 @@ pub fn emit_typed_expr(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
     fuel: i64,
 ) -> String {
@@ -17423,7 +17420,7 @@ pub fn emit_cloned_arg(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     emit_typed_expr(
@@ -17510,7 +17507,7 @@ pub fn emit_discriminant_call_lowering(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -17642,7 +17639,7 @@ pub fn emit_typed_call_expr(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -17741,7 +17738,7 @@ pub fn emit_typed_call(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -18165,7 +18162,7 @@ pub fn fill_default_args(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<Vec<Rc<Node>>> {
     match callee.clone() {
@@ -18240,7 +18237,7 @@ pub fn fill_op_default_args(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<Vec<Rc<Node>>> {
     {
@@ -18299,7 +18296,7 @@ pub fn fill_op_default_args(
 pub fn emit_nested_rt_concat(
     mut remaining: Rc<Vec<String>>,
     mut acc: String,
-    mut shared_types: Rc<BTreeSet<String>>,
+    mut shared_types: Rc<set<String>>,
 ) -> String {
     loop {
         match remaining.clone().first().cloned() {
@@ -18346,7 +18343,7 @@ pub fn emit_typed_for_each(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -18393,7 +18390,7 @@ pub fn emit_typed_index(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -18455,7 +18452,7 @@ pub fn emit_typed_slice(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -18523,7 +18520,7 @@ pub fn emit_typed_slice(
 
 pub fn collection_element_type(
     receiver_type: Option<Rc<InferredNode>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -18617,7 +18614,7 @@ pub fn lambda_param_type_strs(
     params: Rc<Vec<String>>,
     param_nodes: Rc<Vec<Rc<Node>>>,
     fallback_types: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -18716,7 +18713,7 @@ pub fn emit_typed_collection_lambda(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*lambda_expr.expr_data.clone()).clone() {
@@ -18784,7 +18781,7 @@ pub fn emit_typed_fold_lambda(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*lambda_expr.expr_data.clone()).clone() {
@@ -18917,7 +18914,7 @@ pub fn emit_rust_fold_method_call(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -19374,7 +19371,7 @@ pub fn emit_rust_sort_by_method_call(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -19443,7 +19440,7 @@ pub fn emit_rust_map_method_call(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -19620,7 +19617,7 @@ pub fn emit_rust_higher_order_method(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -19756,7 +19753,7 @@ pub fn emit_rust_get_method_call(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -19824,7 +19821,7 @@ pub fn emit_rust_with_method_call(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -19931,7 +19928,7 @@ pub fn emit_rust_first_method_call(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*receiver.expr_data.clone()).clone() {
@@ -20010,7 +20007,7 @@ pub fn emit_rust_generic_method_call(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -20137,7 +20134,7 @@ pub fn emit_typed_method_call(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     if (method_semantics.clone() != None) {
@@ -20616,7 +20613,7 @@ pub fn emit_typed_first_arg(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match args.clone().first().cloned() {
@@ -20780,7 +20777,7 @@ pub fn freemonoid_empty_branch_body(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match empty_arm.clone() {
@@ -20829,7 +20826,7 @@ pub fn freemonoid_nonempty_branch_body(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match cons_arm.clone() {
@@ -20900,7 +20897,7 @@ pub fn emit_native_freemonoid_match(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -20956,7 +20953,7 @@ pub fn emit_typed_match(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -21154,7 +21151,7 @@ pub fn emit_typed_match_arm(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
     scrut_type: String,
     match_result_type: Rc<Node>,
@@ -21344,7 +21341,7 @@ pub fn emit_typed_if(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -21387,7 +21384,7 @@ pub fn emit_typed_let(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -21557,7 +21554,7 @@ pub fn rust_receiver_has_callable_method_field(
 pub fn rust_record_field_needs_box(
     scope: Rc<InferScope>,
     emit_info: Rc<EmitGraphInfo>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     struct_name: String,
     field_name: String,
 ) -> bool {
@@ -21576,7 +21573,7 @@ pub fn wrap_rust_record_field_value(
     raw: String,
     scope: Rc<InferScope>,
     emit_info: Rc<EmitGraphInfo>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     struct_name: String,
     field_name: String,
 ) -> String {
@@ -21817,7 +21814,7 @@ pub fn emit_field_value_with_context(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*field_value.expr_data.clone()).clone() {
@@ -22064,7 +22061,7 @@ pub fn emit_typed_record_lit(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -22849,7 +22846,7 @@ pub fn emit_typed_bin_op(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -23065,7 +23062,7 @@ pub fn emit_typed_string_interp(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -23157,7 +23154,7 @@ pub fn typed_interp_format_part(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
     has_interpolations: bool,
 ) -> Rc<InterpPart> {
@@ -23193,7 +23190,7 @@ pub fn emit_typed_block(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -23222,7 +23219,7 @@ pub fn emit_tco_init_block_stmts(
     mut scope: Rc<InferScope>,
     mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut depth: i64,
-    mut shared_types: Rc<BTreeSet<String>>,
+    mut shared_types: Rc<set<String>>,
     mut emit_info: Rc<EmitGraphInfo>,
     mut params: Rc<Vec<Rc<Node>>>,
 ) -> Rc<BlockEmitState> {
@@ -23283,7 +23280,7 @@ pub fn emit_tco_init_stmt(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*stmt.expr_data.clone()).clone() {
@@ -23345,7 +23342,7 @@ pub fn emit_typed_tco_body(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -23372,7 +23369,7 @@ pub fn emit_typed_tco_body(
 pub fn emit_rust_tco_non_self_call(
     frame: Rc<TcoFrame>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -23407,7 +23404,7 @@ pub fn emit_rust_tco_if(
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -23499,7 +23496,7 @@ pub fn freemonoid_tco_empty_branch_body(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match empty_arm.clone() {
@@ -23552,7 +23549,7 @@ pub fn freemonoid_tco_nonempty_branch_body(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match cons_arm.clone() {
@@ -23627,7 +23624,7 @@ pub fn emit_native_freemonoid_tco_match(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -23686,7 +23683,7 @@ pub fn emit_rust_tco_match(
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -23871,7 +23868,7 @@ pub fn emit_rust_tco_let(
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -23963,7 +23960,7 @@ pub fn emit_rust_tco_block(
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -24020,7 +24017,7 @@ pub fn emit_rust_tco_block(
 pub fn emit_rust_tco_default_return(
     frame: Rc<TcoFrame>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -24047,7 +24044,7 @@ pub fn emit_typed_tco_expr(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     emit_shared_tco_expr(
@@ -24134,7 +24131,7 @@ pub fn emit_typed_tco_match_arm(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
     scrut_type: String,
 ) -> String {
@@ -24292,7 +24289,7 @@ pub fn emit_typed_tco_reassign(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -24385,7 +24382,7 @@ pub fn emit_typed_tco_reassign(
         });
         let tco_movable = filtered_params.clone().iter().cloned().fold(
             emit_info.movable.clone(),
-            |m: Rc<BTreeSet<String>>, p: Rc<Node>| {
+            |m: Rc<set<String>>, p: Rc<Node>| {
                 let pname = param_node_name_at(p.clone(), si.clone());
                 let ref_count =
                     filtered_arg_values
@@ -24458,7 +24455,7 @@ pub fn emit_typed_tco_reassign(
 pub fn emit_service_def(
     item: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     env: Rc<TypeEnv>,
 ) -> String {
@@ -24569,7 +24566,7 @@ pub fn emit_service_impl(
     transport: Rc<Node>,
     op_children: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     env: Rc<TypeEnv>,
     service_item: Rc<Node>,
@@ -24795,7 +24792,7 @@ pub fn emit_operation_method(
     op_node: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     env: Rc<TypeEnv>,
     service_item: Rc<Node>,
@@ -24956,7 +24953,7 @@ pub fn emit_dry_run_branch_from_props(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     op_node: Rc<Node>,
     env: Rc<TypeEnv>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
 ) -> String {
     {
@@ -25060,7 +25057,7 @@ pub fn emit_transport_call(
     service_item: Rc<Node>,
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     env: Rc<TypeEnv>,
 ) -> String {
@@ -25107,7 +25104,7 @@ pub fn emit_rest_call(
     service_item: Rc<Node>,
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     env: Rc<TypeEnv>,
 ) -> String {
@@ -26115,7 +26112,7 @@ pub fn emit_json_value_extract(
 pub fn emit_from_key_extraction(
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     env: Rc<TypeEnv>,
 ) -> String {
@@ -26262,7 +26259,7 @@ pub fn emit_response_code_handling(
     op_node: Rc<Node>,
     transport: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     env: Rc<TypeEnv>,
 ) -> String {
@@ -26332,7 +26329,7 @@ pub fn emit_response_arm(
     use_from_key: bool,
     transport: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     env: Rc<TypeEnv>,
 ) -> String {
@@ -27004,7 +27001,7 @@ pub fn emit_local_call(op_name: String) -> String {
 
 pub fn emit_resource_def(
     item: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     env: Rc<TypeEnv>,
 ) -> String {
@@ -27058,7 +27055,7 @@ pub fn emit_resource_def(
 
 pub fn emit_capability_method(
     cap_node: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     corpus_repr: RustCorpusRepr,
     env: Rc<TypeEnv>,
 ) -> String {
@@ -27186,7 +27183,7 @@ pub fn emit_data_def(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -27390,7 +27387,7 @@ pub fn emit_data_def_body(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<set<String>>,
     emit_info: Rc<EmitGraphInfo>,
     needs_rc: bool,
 ) -> String {
@@ -28085,7 +28082,7 @@ pub struct WorkflowFunc {
     pub uses: Rc<Vec<Rc<Node>>>,
     pub service_names: Rc<Vec<String>>,
     pub resolved_defaults: Rc<HashMap<String, String>>,
-    pub read_only_params: Rc<BTreeSet<String>>,
+    pub read_only_params: Rc<set<String>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
@@ -28164,7 +28161,7 @@ pub fn to_workflow_func(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     data_body_index: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    read_only_params_index: Rc<HashMap<String, Rc<set<String>>>>,
 ) -> Rc<WorkflowFunc> {
     {
         let item_name = authored_name_at(source_indices.clone(), item.clone());
@@ -28238,7 +28235,7 @@ pub fn is_workflow_item(
 pub fn collect_workflow_funcs(
     modules: Rc<Vec<Rc<TypedModule>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    read_only_params_index: Rc<HashMap<String, Rc<set<String>>>>,
 ) -> Rc<Vec<Rc<WorkflowFunc>>> {
     {
         let data_body_index = build_data_body_index(modules.clone());

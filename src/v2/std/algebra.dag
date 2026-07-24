@@ -776,6 +776,7 @@ fn is_prefix_of<T>(
   }
 }
 
+type Homomorphism<C, Source, Target> {
   source: C<Source>
   target: C<Target>
   map: fn(Source) -> Target

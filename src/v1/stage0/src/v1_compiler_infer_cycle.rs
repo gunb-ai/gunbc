@@ -14,7 +14,7 @@ use std::rc::Rc;
 pub fn compute_in_graph_deps(
     all_names: Rc<Vec<String>>,
     deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
-    name_set: Rc<BTreeSet<String>>,
+    name_set: Rc<set<String>>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
         let result = all_names.clone().iter().cloned().fold(

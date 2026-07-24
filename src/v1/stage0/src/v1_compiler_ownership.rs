@@ -730,8 +730,8 @@ pub fn whole_value_borrow_count(usage: Rc<BindingUsage>) -> i64 {
 
 pub fn build_movable_set(
     proof: Rc<OwnershipProof>,
-    param_names: Rc<BTreeSet<String>>,
-) -> Rc<BTreeSet<String>> {
+    param_names: Rc<set<String>>,
+) -> Rc<set<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for usage in Rc::new(v1_rt::map_values(&proof.bindings.clone()))
@@ -754,7 +754,7 @@ pub fn build_movable_set(
     .cloned()
     .fold(
         v1_rt::rc_empty_set::<String>(),
-        |acc: Rc<BTreeSet<String>>, usage: Rc<BindingUsage>| {
+        |acc: Rc<set<String>>, usage: Rc<BindingUsage>| {
             v1_rt::rc_set_insert(acc, usage.name.clone())
         },
     )
@@ -762,8 +762,8 @@ pub fn build_movable_set(
 
 pub fn build_read_only_params(
     proof: Rc<OwnershipProof>,
-    param_names: Rc<BTreeSet<String>>,
-) -> Rc<BTreeSet<String>> {
+    param_names: Rc<set<String>>,
+) -> Rc<set<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for usage in Rc::new(v1_rt::map_values(&proof.bindings.clone()))
@@ -798,7 +798,7 @@ pub fn build_read_only_params(
     .cloned()
     .fold(
         v1_rt::rc_empty_set::<String>(),
-        |acc: Rc<BTreeSet<String>>, usage: Rc<BindingUsage>| {
+        |acc: Rc<set<String>>, usage: Rc<BindingUsage>| {
             v1_rt::rc_set_insert(acc, usage.name.clone())
         },
     )
@@ -807,7 +807,7 @@ pub fn build_read_only_params(
 pub fn collect_callable_refs(
     texpr: Rc<Node>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<BTreeSet<String>> {
+) -> Rc<set<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprVar {
@@ -825,7 +825,7 @@ pub fn collect_callable_refs(
             }
             ExprData::ExprCall { .. } => texpr.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<BTreeSet<String>>, a: Rc<Node>| {
+                |acc: Rc<set<String>>, a: Rc<Node>| {
                     v1_rt::rc_set_union(
                         acc,
                         collect_callable_refs(arg_value(a.clone()), si.clone()),
@@ -839,7 +839,7 @@ pub fn collect_callable_refs(
                 let recv = collect_callable_refs(method_receiver(texpr.clone()), si.clone());
                 method_arg_nodes(texpr.clone()).iter().cloned().fold(
                     recv.clone(),
-                    |acc: Rc<BTreeSet<String>>, a: Rc<Node>| {
+                    |acc: Rc<set<String>>, a: Rc<Node>| {
                         v1_rt::rc_set_union(
                             acc,
                             collect_callable_refs(arg_value(a.clone()), si.clone()),
@@ -863,7 +863,7 @@ pub fn collect_callable_refs(
                 let scrut = collect_callable_refs(match_scrutinee(texpr.clone()), si.clone());
                 match_arm_nodes(texpr.clone()).iter().cloned().fold(
                     scrut.clone(),
-                    |acc: Rc<BTreeSet<String>>, arm: Rc<Node>| {
+                    |acc: Rc<set<String>>, arm: Rc<Node>| {
                         v1_rt::rc_set_union(
                             acc,
                             collect_callable_refs(arm_body(arm.clone()), si.clone()),
@@ -883,7 +883,7 @@ pub fn collect_callable_refs(
             }
             ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<BTreeSet<String>>, child: Rc<Node>| {
+                |acc: Rc<set<String>>, child: Rc<Node>| {
                     v1_rt::rc_set_union(acc, collect_callable_refs(child.clone(), si.clone()))
                 },
             ),
@@ -901,7 +901,7 @@ pub fn collect_callable_refs(
             }
             ExprData::ExprRecordLit { .. } => texpr.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<BTreeSet<String>>, field: Rc<Node>| {
+                |acc: Rc<set<String>>, field: Rc<Node>| {
                     v1_rt::rc_set_union(
                         acc,
                         collect_callable_refs(arg_value(field.clone()), si.clone()),
