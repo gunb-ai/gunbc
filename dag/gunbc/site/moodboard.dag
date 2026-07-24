@@ -33,7 +33,6 @@ import gunbc.design.interaction {
 import gunbc.site.mark { render_mark, mark_nodes, mark_edges, all_forks_rejoin }
 import gunbc.site.constellation { constellation_figure, layer_stars, LayerStar }
 import gunbc.site.theme_transition { reframe_css, reframe_watcher_js, unthemed_color_decls }
-import gunbc.site.markup_dsl { txt, el, el_class }
 
 data moodboard_note: String = "Layer 6: the page. Everything visible projects from the layers below — principles (laws) -> tokens (themes/materials/timing) -> interaction (behavior rows) -> mark / constellation (figures) -> this composition. Every color routes through a theme role var: :root carries the night theme, one prefers-color-scheme media block carries the day theme, both derived from the same Theme rows (one rule set, N themes — a hardcoded hsl in a page rule is the fork this construction removes). The stylesheet is DERIVED from the behavior rows via realize_behavior, so a declared behavior with no realization is countable."
 
