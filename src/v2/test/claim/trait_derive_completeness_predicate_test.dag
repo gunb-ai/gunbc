@@ -11,8 +11,7 @@ import v2.compiler.trait_derive_completeness {
   repr_grounding_derive_completeness_predicate,
   repr_grounding_derive_elem_shape,
   repr_grounding_derive_trait_satisfied,
-  repr_grounding_derive_traits_for_collection_witness,
-  trait_derive_completeness_gate_is_satisfied,
+  trait_derive_completeness_collection_witness_is_satisfied,
   trait_derive_int_kernel_type_node
 }
 import v2.extdeps.languages.rust {
@@ -145,10 +144,8 @@ test fn tdc_int_kernel_satisfies_arith_and_ord() -> Bool {
 test fn tdc_unknown_atom_refuses_ord_completeness() -> Bool {
   repr_grounding_derive_trait_satisfied(trait: ReprDeriveOrd, elem: tdc_unknown_atom_node()) == false
     && tdc_elem_shape_is_unknown(elem: tdc_unknown_atom_node())
-    && trait_derive_completeness_gate_is_satisfied(
-      required: repr_grounding_derive_traits_for_collection_witness(
-        witness: TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t }
-      ),
+    && trait_derive_completeness_collection_witness_is_satisfied(
+      witness: TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t },
       elem: tdc_unknown_atom_node()
     ) == false
 }

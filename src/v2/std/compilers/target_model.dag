@@ -3074,14 +3074,6 @@ fn char_kernel_type_node() -> Node {
 }
 }
 
-fn bool_kernel_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: ^bool_node_symbol } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
 fn source_atom_symbol(identity: Symbol) -> SourceAtomValue {
   SourceAtomSymbol { identity: identity }
 }

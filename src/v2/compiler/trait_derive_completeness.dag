@@ -270,6 +270,16 @@ fn trait_derive_completeness_gate_for_collection_witness(
   )
 }
 
+fn trait_derive_completeness_collection_witness_is_satisfied(
+  witness: RequiredTraitWitness,
+  elem: Node
+) -> Bool {
+  match trait_derive_completeness_gate_for_collection_witness(witness: witness, elem: elem) {
+    TraitDeriveCompletenessSatisfied => true
+    TraitDeriveCompletenessIncomplete => false
+  }
+}
+
 fn trait_derive_completeness_gate_is_satisfied(
   required: List<ReprGroundingDeriveTrait>,
   elem: Node
