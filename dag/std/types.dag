@@ -68,7 +68,9 @@ data container_template_algebra_rows: Map<String, String> = {
   "BooleanAlgebra": "BooleanAlgebra",
   "boolean_algebra": "BooleanAlgebra",
   "PartialFunction": "PartialFunction",
-  "partial_function": "PartialFunction"
+  "partial_function": "PartialFunction",
+  "PointwisePower": "PointwisePower",
+  "pointwise_power": "PointwisePower"
 }
 
 data container_template_alias_rows: Map<String, String> = {
