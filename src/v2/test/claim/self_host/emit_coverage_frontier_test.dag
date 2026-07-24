@@ -1,0 +1,104 @@
+module v2.test.claim.self_host.emit_coverage_frontier_test
+
+import v2.compiler.self_host.emit_coverage_frontier {
+  emit_coverage_frontier_roster,
+  emit_coverage_frontier_family_count_expected,
+  self_emitted_native_rows,
+  interpreter_retained_rows,
+  coverage_frontier_row_for_subject,
+  coverage_frontier_total_holds,
+  coverage_row_is_native,
+  coverage_subject,
+  coverage_row_backing_is_enrolled,
+  coverage_frontier_all_native_claims_backed,
+  EmitCoverageFrontierRow,
+  SelfEmittedNative
+}
+import v2.std.algebra { length }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+fn witness_roster_total_holds() -> Bool {
+  coverage_frontier_total_holds()
+}
+
+fn witness_each_subject_has_exactly_one_row() -> Bool {
+  fold(
+    emit_coverage_frontier_roster,
+    init: true,
+    f: fn(acc, row) {
+      acc && (length(xs: coverage_frontier_row_for_subject(subject: row.subject)) == 1)
+    }
+  )
+}
+
+fn witness_unlisted_subject_has_no_row() -> Bool {
+  length(
+    xs: coverage_frontier_row_for_subject(
+      subject: coverage_subject(
+        module_path: "v2.test.synthetic.unlisted_module",
+        decl_name: "unlisted_synthetic_subject"
+      )
+    )
+  ) == 0
+}
+
+fn witness_split_matches_expected() -> Bool {
+  (length(xs: self_emitted_native_rows()) == 1)
+    && (length(xs: interpreter_retained_rows()) == 14)
+}
+
+fn witness_only_classical_not_ingested_is_native() -> Bool {
+  let natives = self_emitted_native_rows()
+  (length(xs: natives) == 1)
+    && fold(
+      natives,
+      init: true,
+      f: fn(acc, row) { acc && (row.subject.decl_name == "ingested_classical_not_source") }
+    )
+}
+
+fn witness_real_native_row_is_backed() -> Bool {
+  fold(
+    self_emitted_native_rows(),
+    init: true,
+    f: fn(acc, row) { acc && coverage_row_backing_is_enrolled(row: row) }
+  )
+}
+
+fn witness_all_claims_backed_holds() -> Bool {
+  coverage_frontier_all_native_claims_backed()
+}
+
+data emit_coverage_red_probe_note: String = "Discriminating RED control (parent-preferred idiom, quarantined-known-red): a synthetic row falsely claims SelfEmittedNative with a backing citation that is NOT enrolled in falsifier_self_host_wet_template_entries. If coverage_row_backing_is_enrolled ever returned true for this row, the backing check would be a rubber stamp (a validation that can be satisfied by editing the claim, not the realization — DESIGN section 5's named tell). witness_synthetic_unbacked_claim_reds asserts the check catches it; this row is never added to emit_coverage_frontier_roster itself, so it never inflates the real count."
+
+fn synthetic_unbacked_native_row() -> EmitCoverageFrontierRow {
+  EmitCoverageFrontierRow {
+    subject: coverage_subject(
+      module_path: "v2.test.synthetic.unbacked_native_claim",
+      decl_name: "no_such_native_witness"
+    ),
+    witness_entry: "src/v2/test/claim/execution/does_not_exist_test.dag",
+    witness_function: "fabricated_all_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/does_not_exist_test.dag",
+      backing_function: "fabricated_all_holds"
+    }
+  }
+}
+
+fn witness_synthetic_unbacked_claim_reds() -> Bool {
+  let probe = synthetic_unbacked_native_row()
+  coverage_row_is_native(row: probe) && !coverage_row_backing_is_enrolled(row: probe)
+}
+
+test fn emit_coverage_frontier_witnesses() -> Bool {
+  witness_roster_total_holds()
+    && witness_each_subject_has_exactly_one_row()
+    && witness_unlisted_subject_has_no_row()
+    && witness_split_matches_expected()
+    && witness_only_classical_not_ingested_is_native()
+    && witness_real_native_row_is_backed()
+    && witness_all_claims_backed_holds()
+    && witness_synthetic_unbacked_claim_reds()
+}
