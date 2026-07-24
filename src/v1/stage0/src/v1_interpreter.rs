@@ -5093,15 +5093,16 @@ fn realize_clock_unix_secs_transport() -> Result<u64, crate::recorded_fixture::F
         .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)
 }
 
+/// Native read of THIS process's own environment. Was a `printenv` subprocess: a modeled
+/// operation realized by spawning a shell tool to ask for a value the process already holds
+/// (§3(b) — the interface shape is name → value?; the shell argv is ONE handler, and the
+/// wrong one when the target is the reading process itself). Semantics preserved exactly:
+/// unset → None (printenv exited 1), empty → None (printenv exited 0 with empty stdout),
+/// value trimmed. The `shell.Env.Get` service declaration remains valid as the REMOTE
+/// handler; routing the corpus's local env reads onto a native transport is the named
+/// follow-on (a new `transport env` kind — parser + core predicate + dispatch arm).
 fn wet_env_var(name: &str) -> Option<String> {
-    let output = std::process::Command::new("printenv")
-        .arg(name)
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let s = std::env::var(name).ok()?.trim().to_string();
     if s.is_empty() {
         None
     } else {
