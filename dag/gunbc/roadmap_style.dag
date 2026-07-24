@@ -407,6 +407,42 @@ fn roadmap_instance_rules() -> List<BuildRule> {
       role_decl(prop: Color, r: TextRole),
       decl(prop: Margin, value: scale_triple(a: space_2, b: space_0, c: space_2)),
     ] },
+    StaticRule { selector: ClassSelector { name: "ticket-brief" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: Margin, value: scale_triple(a: space_2, b: space_0, c: space_3)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "ticket-field" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: Gap, value: scale_var(t: space_6)),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_1)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "ticket-field-label" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "ticket-updates" }, decls: [
+      decl(prop: Margin, value: scale_triple(a: space_3, b: space_0, c: space_1)),
+      decl(prop: PaddingLeft, value: scale_var(t: space_8)),
+      decl(prop: BorderLeft, value: scale_border(w: border_1, color_var: "var(--border)")),
+    ] },
+    StaticRule { selector: ClassSelector { name: "ticket-updates-head" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "ticket-update" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_1)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "ticket-update-date" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: MarginRight, value: scale_var(t: space_6)),
+    ] },
     StaticRule { selector: RawSelector { text: join([".dispatch-btn.", dispatch_class_requested], "") }, decls: [
       decl(prop: Color, value: "var(--band-in-progress-ink)"),
       decl(prop: Background, value: "var(--band-in-progress)"),

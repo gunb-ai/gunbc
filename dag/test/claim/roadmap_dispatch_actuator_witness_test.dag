@@ -31,6 +31,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_tmux_process_fingerprint_observation_dissolution_trigger,
   fill_dispatch_brief,
   dispatch_brief_fields,
+  filled_dispatch_brief_for_node,
   claude_effort_for_intricacy,
   claude_spawn_argv,
   git_worktree_add_argv,
@@ -324,6 +325,39 @@ fn witness_session_lease_shape_reused() -> Bool {
   session_lease_reuses_process_port_classifier_shape()
 }
 
+fn ticket_fixture_node() -> RoadmapNode {
+  gunbc.roadmap_authority.ticket_wi(id: "ticket-fixture", done: false, t: TicketFields {
+    headline: "Fixture Headline",
+    brief: "A short brief.",
+    displaced_cost: "the real displaced cost",
+    current_state: "the real current state",
+    first_slice: "the real first slice",
+    red_control: "the real red control",
+    out_of_scope: "the real scope wall",
+    handback: "the real handback",
+    updates: [],
+    authored_on: "2026-07-24",
+    last_verified_on: "2026-07-24",
+  }, intricacy: IntricacyMedium, volume: VolumeSmall, repo: "gunbc")
+}
+
+fn witness_ticket_brief_fills_real_slots() -> Bool {
+  let brief = filled_dispatch_brief_for_node(node: ticket_fixture_node())
+  string_contains(s: brief, pattern: "the real displaced cost")
+    && string_contains(s: brief, pattern: "the real current state")
+    && string_contains(s: brief, pattern: "the real first slice")
+    && string_contains(s: brief, pattern: "the real red control")
+    && string_contains(s: brief, pattern: "the real scope wall")
+    && string_contains(s: brief, pattern: "the real handback")
+}
+
+fn witness_legacy_brief_still_stubs_with_title() -> Bool {
+  let node = sized_derivable(id: "brief-node", prs: [1], title: "Brief Title")
+  let brief = filled_dispatch_brief_for_node(node: node)
+  string_contains(s: brief, pattern: "Brief Title")
+    && !string_contains(s: brief, pattern: "the real displaced cost")
+}
+
 test fn roadmap_dispatch_actuator_witnesses() -> Bool {
   witness_tmux_session_name_prefix()
     && witness_brief_fill_includes_node_metadata()
@@ -346,4 +380,6 @@ test fn roadmap_dispatch_actuator_witnesses() -> Bool {
     && witness_tmux_new_session_service_op_splices_inner_argv()
     && witness_host_exec_argv_shapes_bound_to_extdeps()
     && witness_session_lease_shape_reused()
+    && witness_ticket_brief_fills_real_slots()
+    && witness_legacy_brief_still_stubs_with_title()
 }

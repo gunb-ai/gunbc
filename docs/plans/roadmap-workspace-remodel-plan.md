@@ -28,6 +28,12 @@ Second review round (2026-07-24, after W1d/W1g landed):
 - **Approach emphasis is band-neutral:** the brass focus material inverted perceptually against the fills (brown-ish on mint, yellow-green on venom). The instrument's approach ring is the theme ink (`var(--text)`) + the existing lift; brass stays the focus material elsewhere.
 - Operator: island colors themselves not loved (auditioner W1f is the answer, not priority); layout clunk acknowledged → W1c geometry is the next slice.
 
+Third review round (2026-07-24, after W1c/W1e landed):
+- **Dwell 300 ms** (operator-tuned from 500).
+- **Motion-modeling session filed (W1h, follow-up PR):** multi-phase choreography — the Discord-mute shape: the state lands fast while the motion continues to hold attention (moving parts behind each button), i.e. phases with their own clocks + a sustained active-phase animation, not one dwell scalar. Requires the operator to sign an "active operation may breathe" amendment to still-until-touched. Also in that session: button size retune (40px reads a bit big), the overshoot call, and a principled derivation of the timing scale.
+
+W0 census disposition (close-out): rows 1–6 LANDED this branch (band fold W1a · state material W1d · text-channel law W1d · geometry axis W1c · disclosure + sound-toggle as register elements W1e, Component-type gallery enrollment rides W1f · caption/state fusion W1d via sublabels). Row 7 (link projection) rides W2. Row 8 (asset path) stays W3. Row 9 stays counted where it is. New residue found during the work: loam displaced from button inks (still base-set text capability, unaffected); brass displaced from dispatch approach (still the review mark's material).
+
 ## Workstreams
 
 ### W0 — census of half-born migrations (typed, counted)
