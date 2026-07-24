@@ -625,10 +625,6 @@ fn runtime_read_carrier_module_names(classification: LiveReadClassification) -> 
   }
 }
 
-fn string_is_empty(s: String) -> Bool {
-  s == ""
-}
-
 fn runtime_read_touched_by_path_g1(
   classification: LiveReadClassification,
   touched_path: String

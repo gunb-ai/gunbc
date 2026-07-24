@@ -14,10 +14,10 @@ import v2.extdeps.formats.sql {
   SqlTypeCharacterLargeObject,
   sql_serialize_schema_operation
 }
+import v2.extdeps.languages.dag { dag_named_edge }
 import v2.extdeps.formats.sql_target {
   sql_atom,
   sql_lex_rule,
-  sql_named_edge,
   sql_target_model_bundle,
   sql_token_class_emit_transforms
 }
@@ -549,13 +549,13 @@ fn sql_fold_translation_rules_node_for_emitted(
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            sql_named_edge(
+            dag_named_edge(
               name: ^grammar_relation_rules_formal_productions,
               target: formal_productions_catalog_to_node(
                 productions: sql_fold_formal_productions()
               )
             ),
-            sql_named_edge(
+            dag_named_edge(
               name: rule_name,
               target: row
             )
@@ -610,15 +610,15 @@ fn sql_fold_serialize_source_witness(
             value: Node {
               kind: TypeNode { connective: Conj },
               children: [
-                sql_named_edge(
+                dag_named_edge(
                   name: ^serialize_source_field_source_text,
                   target: sql_atom(id: source_literal)
                 ),
-                sql_named_edge(
+                dag_named_edge(
                   name: ^serialize_source_field_source_grammar,
                   target: sql_atom(id: production_binding)
                 ),
-                sql_named_edge(
+                dag_named_edge(
                   name: ^grammar_relation_field_tokens,
                   target: tokens_root
                 )

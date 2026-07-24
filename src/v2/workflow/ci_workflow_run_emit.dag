@@ -3,8 +3,7 @@ module v2.workflow.ci_workflow_run_emit
 import v2.compiler.emit_orchestration { orch_emit_pipeline }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import gunbc.ci_materialization { ci_sccache_provider_shell_injection }
-import gunbc.ci_spec { ci_repo_root_shell }
-import gunbc.merge_admission_produce { ci_documentation_only_gate_skip_prefix }
+import gunbc.merge_admission_produce { ci_documentation_only_gate_skip_prefix, ci_repo_root_shell }
 import v2.std.orchestration {
   Do,
   FailFast,
@@ -120,7 +119,7 @@ fn ci_pin_rustup_default_script() -> String {
 }
 
 fn ci_selection_control_root_command() -> String {
-  concat("ROOT=", gunbc.ci_spec.ci_repo_root_shell())
+  concat("ROOT=", ci_repo_root_shell())
 }
 
 fn ci_selection_control_skip_prefix_command() -> String {
