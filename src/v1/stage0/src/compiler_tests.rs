@@ -1089,6 +1089,79 @@ mod compiler_tests {
         );
     }
 
+    #[test]
+    fn diagnostics_carrier_grounds_to_native_option() {
+        assert!(
+            crate::v1_compiler_emit_rust::is_host_diagnostics_carrier_alias(
+                "Diagnostics".to_string()
+            )
+        );
+        assert!(
+            !crate::v1_compiler_emit_rust::is_host_diagnostics_carrier_alias(
+                "Optional".to_string()
+            )
+        );
+        assert!(
+            crate::v1_compiler_emit_rust::is_grounded_coproduct_native_alias(
+                "Diagnostics".to_string()
+            )
+        );
+        let empty_shared = std::rc::Rc::new(im::OrdSet::new());
+        assert_eq!(
+            crate::v1_compiler_emit_rust::render_rust_diagnostics_carrier_applied(
+                empty_shared.clone()
+            ),
+            "Option<NonEmptyDiagnostics>"
+        );
+        let mut shared_ned_inner = im::OrdSet::new();
+        shared_ned_inner.insert("NonEmptyDiagnostics".to_string());
+        let shared_ned = std::rc::Rc::new(shared_ned_inner);
+        assert_eq!(
+            crate::v1_compiler_emit_rust::render_rust_diagnostics_carrier_applied(shared_ned),
+            "Option<Rc<NonEmptyDiagnostics>>"
+        );
+        assert!(crate::v1_compiler_emit_rust::is_some_like_variant_name(
+            "Some".to_string()
+        ));
+        assert!(crate::v1_compiler_emit_rust::is_some_like_variant_name(
+            "Present".to_string()
+        ));
+        assert!(!crate::v1_compiler_emit_rust::is_some_like_variant_name(
+            "None".to_string()
+        ));
+        assert!(!crate::v1_compiler_emit_rust::is_some_like_variant_name(
+            "Absent".to_string()
+        ));
+        assert!(crate::v1_compiler_emit_rust::is_optional_like_parent_name(
+            "Diagnostics".to_string()
+        ));
+        assert!(crate::v1_compiler_emit_rust::is_optional_like_parent_name(
+            "Optional".to_string()
+        ));
+        assert!(!crate::v1_compiler_emit_rust::is_optional_like_parent_name(
+            "Witness".to_string()
+        ));
+        let diagnostics_node = named_type_node("Diagnostics");
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        assert!(
+            crate::v1_compiler_emit_rust::is_host_diagnostics_carrier_type(
+                diagnostics_node.clone(),
+                source_indices.clone()
+            )
+        );
+        let empty_emit = crate::v1_compiler_infer_emit_info::empty_emit_graph_info();
+        assert_eq!(
+            crate::v1_compiler_emit_rust::render_rust_type(
+                diagnostics_node,
+                empty_shared,
+                crate::v1_compiler_infer_emit_info::RustCorpusRepr::HostNative,
+                source_indices,
+                empty_emit
+            ),
+            "Option<NonEmptyDiagnostics>"
+        );
+    }
+
     /// Return current process RSS in bytes (macOS via mach_task_basic_info).
     fn get_rss_bytes() -> u64 {
         #[cfg(target_os = "macos")]

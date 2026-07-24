@@ -546,7 +546,51 @@ fn ct_coercion_tests() -> String {
     "    // Coercion registry tests (auto-generated from data declarations)\n",
     "    // =========================================================================\n\n",
     test_fns |> join(separator: "\n"),
-    ct_rust_btree_set_ord_eligibility_test())
+    ct_rust_btree_set_ord_eligibility_test(),
+    ct_diagnostics_carrier_grounding_test())
+}
+
+fn ct_diagnostics_carrier_grounding_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn diagnostics_carrier_grounds_to_native_option() {\n",
+    "        assert!(crate::v1_compiler_emit_rust::is_host_diagnostics_carrier_alias(\"Diagnostics\".to_string()));\n",
+    "        assert!(!crate::v1_compiler_emit_rust::is_host_diagnostics_carrier_alias(\"Optional\".to_string()));\n",
+    "        assert!(crate::v1_compiler_emit_rust::is_grounded_coproduct_native_alias(\"Diagnostics\".to_string()));\n",
+    "        let empty_shared = std::rc::Rc::new(im::OrdSet::new());\n",
+    "        assert_eq!(\n",
+    "            crate::v1_compiler_emit_rust::render_rust_diagnostics_carrier_applied(empty_shared.clone()),\n",
+    "            \"Option<NonEmptyDiagnostics>\"\n",
+    "        );\n",
+    "        let mut shared_ned_inner = im::OrdSet::new();\n",
+    "        shared_ned_inner.insert(\"NonEmptyDiagnostics\".to_string());\n",
+    "        let shared_ned = std::rc::Rc::new(shared_ned_inner);\n",
+    "        assert_eq!(\n",
+    "            crate::v1_compiler_emit_rust::render_rust_diagnostics_carrier_applied(shared_ned),\n",
+    "            \"Option<Rc<NonEmptyDiagnostics>>\"\n",
+    "        );\n",
+    "        assert!(crate::v1_compiler_emit_rust::is_some_like_variant_name(\"Some\".to_string()));\n",
+    "        assert!(crate::v1_compiler_emit_rust::is_some_like_variant_name(\"Present\".to_string()));\n",
+    "        assert!(!crate::v1_compiler_emit_rust::is_some_like_variant_name(\"None\".to_string()));\n",
+    "        assert!(!crate::v1_compiler_emit_rust::is_some_like_variant_name(\"Absent\".to_string()));\n",
+    "        assert!(crate::v1_compiler_emit_rust::is_optional_like_parent_name(\"Diagnostics\".to_string()));\n",
+    "        assert!(crate::v1_compiler_emit_rust::is_optional_like_parent_name(\"Optional\".to_string()));\n",
+    "        assert!(!crate::v1_compiler_emit_rust::is_optional_like_parent_name(\"Witness\".to_string()));\n",
+    "        let diagnostics_node = named_type_node(\"Diagnostics\");\n",
+    "        let source_indices = std::rc::Rc::new(HashMap::new());\n",
+    "        assert!(crate::v1_compiler_emit_rust::is_host_diagnostics_carrier_type(diagnostics_node.clone(), source_indices.clone()));\n",
+    "        let empty_emit = crate::v1_compiler_infer_emit_info::empty_emit_graph_info();\n",
+    "        assert_eq!(\n",
+    "            crate::v1_compiler_emit_rust::render_rust_type(\n",
+    "                diagnostics_node,\n",
+    "                empty_shared,\n",
+    "                crate::v1_compiler_infer_emit_info::RustCorpusRepr::HostNative,\n",
+    "                source_indices,\n",
+    "                empty_emit\n",
+    "            ),\n",
+    "            \"Option<NonEmptyDiagnostics>\"\n",
+    "        );\n",
+    "    }\n\n")
 }
 
 fn ct_rust_btree_set_ord_eligibility_test() -> String {
