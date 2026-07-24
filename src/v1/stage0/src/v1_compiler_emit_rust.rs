@@ -2126,15 +2126,13 @@ pub fn rust_fold_rendered_type_has_any_spurious_generic(
     type_str: String,
     generic_param_names: Rc<Vec<String>>,
 ) -> bool {
-    ["T", "C", "A", "B", "E", "K", "V", "R"]
-        .iter()
-        .any(|atom| {
-            rust_fold_rendered_type_has_spurious_generic_atom(
-                type_str.clone(),
-                atom.to_string(),
-                generic_param_names.clone(),
-            )
-        })
+    ["T", "C", "A", "B", "E", "K", "V", "R"].iter().any(|atom| {
+        rust_fold_rendered_type_has_spurious_generic_atom(
+            type_str.clone(),
+            atom.to_string(),
+            generic_param_names.clone(),
+        )
+    })
 }
 
 pub fn type_leaf_is_unbound_in_closure_scope(
@@ -16034,12 +16032,15 @@ pub fn emit_var_ref(
             emit_info.clone(),
             source_indices.clone(),
         );
-        if (((leaf_name.clone() == "none".to_string()) || (leaf_name.clone() == "None".to_string()))
+        if (((leaf_name.clone() == "none".to_string())
+            || (leaf_name.clone() == "None".to_string()))
             && (variant_parent.clone() == None))
         {
             emit_keyword("null".to_string(), RenderTarget::Rust)
         } else {
-            if ((leaf_name.clone() == "true".to_string()) || (leaf_name.clone() == "false".to_string())) {
+            if ((leaf_name.clone() == "true".to_string())
+                || (leaf_name.clone() == "false".to_string()))
+            {
                 emit_keyword(leaf_name.clone(), RenderTarget::Rust)
             } else {
                 {
