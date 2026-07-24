@@ -29,8 +29,8 @@ import v2.std.collection {
   map_insert
 }
 import v2.std.cardinality {
-  v2.std.cardinality.RankingDimension,
-  v2.std.cardinality.TerminationProof,
+  RankingDimension,
+  TerminationProof,
   structural_node_size_termination_proof
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }

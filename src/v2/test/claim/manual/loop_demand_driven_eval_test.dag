@@ -19,8 +19,8 @@ import v2.extdeps.languages.dag {
   dag_node_is_int_literal_atom
 }
 import v2.std.cardinality {
-  v2.std.cardinality.RankingDimension,
-  v2.std.cardinality.TerminationProof,
+  RankingDimension,
+  TerminationProof,
   structural_node_size_termination_proof
 }
 import v2.std.collection { List, Map }

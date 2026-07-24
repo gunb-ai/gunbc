@@ -34,8 +34,8 @@ import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optiona
 import v2.std.compilers.lexing { Token, TokenStream }
 import v2.std.grammar { ParseTree }
 import v2.std.cardinality {
-  v2.std.cardinality.RankingDimension,
-  v2.std.cardinality.TerminationProof,
+  RankingDimension,
+  TerminationProof,
   termination_proof_witness_for_node
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }

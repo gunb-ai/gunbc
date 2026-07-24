@@ -8,9 +8,9 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.nat {
-  v2.std.nat.Nat,
-  v2.std.nat.Succ,
-  v2.std.nat.Zero,
+  Nat,
+  Succ,
+  Zero,
   nat_add,
   nat_mul
 }

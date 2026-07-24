@@ -19,7 +19,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.std.cardinality {
-  v2.std.cardinality.TerminationProof,
+  TerminationProof,
   termination_proof_witness_for_node
 }
 import v2.std.collection { Map }
