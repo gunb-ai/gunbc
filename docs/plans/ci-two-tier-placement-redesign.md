@@ -57,7 +57,9 @@ the machinery.
    counted. Cost displaced: ~4–5 min on every PR and main run.
 3. **Rust seed PR signal stays execution-shaped.** The cargo suite is local-only per the
    2026-07-11 ruling (`gunbc.commit_workflow.commit_gate_rust_suite_removed_disposition` —
-   the exact decl name; DESIGN.md carried a miscite, fixed alongside. Its 2026-07-15 amendment
+   the exact decl name; DESIGN.md and `ci_spec.dag` carry a miscite whose fix is DEFERRED to
+   ride PR-1: both carrying authorities are hub files, and a token-only PR pays a full-corpus
+   floor for them — priced live by run 30063529282, see §9.8. Its 2026-07-15 amendment
    re-enrolled the fmt half: fmt rides CI, only the test suite is local-only); in CI the seed is
    tested by execution — release build + fmt gate + regen fixed-point + the selected floor
    running the binaries over the witness corpus (DESIGN §7: "its tests are data").
@@ -271,6 +273,20 @@ widen a budget to absorb it** (§5; the absorbing-fallback rule applied to our o
    residual children and does not remove their per-entry resolves — §5.)
 7. **D4 delivery shape** — resolved per review finding 5: fast-follow micro-PR after the
    first green falsifier cadence post-PR-0; PR-1 does not wait on it (§8).
+8. **Batch-3 budget × hub-file selection — PR-1 will hit this wall; decide the raise now.**
+   Live receipt (run 30063529282, 2026-07-24, srv4-05): a one-token edit to `ci_spec.dag` +
+   `design_document.dag` selected the full corpus — 2,315 witnesses, **all PASS**, RSS 8.9 GB
+   healthy, no thrash — and batch 3 refused at wall 1,498,748 ms vs the 1,320,000 ms budget
+   (`gunbc_ci_floor_batch_wall_budget_seconds[2]`). Attribution is clean: the same branch
+   without the hub files ran green (0d54cdc340) hours earlier. So the honest full-corpus
+   discovery wall on a capped slot is ~25 min today, above the 22-min budget — and PR-1
+   necessarily touches `CiSpec` (the placement axis lives there). Options: (a) receipt-noted
+   budget raise per `gunbc_ci_floor_batch_wall_budget_note`, sized by the D2 probe's measured
+   full-corpus wall — the run above is the first receipt; (b) PR-1 lands the discovery
+   improvements first so the full-corpus wall fits. Recommendation: (a), decided at sign-off —
+   the wall fired exactly as designed (a refusal, never a widen); this is calibration debt,
+   not a defect, and silently splitting every future hub-file PR to dodge it would be the
+   absorbing pattern in reverse.
 
 Sign-offs recorded here with name + date once reviewed.
 
@@ -297,6 +313,7 @@ drops).
 | 12 | `.rs`-diff whole-tree widening | deliberate policy (§3.3, §9.5) | **UNCHANGED BY DESIGN** |
 | 13 | Serial chain ~10m (build 2.4 + regen 5.3 + deploy 2.2) | regen scoping exists; further work unpriced | **OUT-OF-SCOPE**, named residual |
 | 14 | 5s rule needs a crisp definition | already modeled: the fast-lane law (thread-CPU, typed over-budget refusal) | **EXISTS** — §9.1 reuses the threshold + refusal shape; the per-GATE quantity is the probe's to define (§9.1 caveat) |
+| 15 | Batch-3 budget under the honest full-corpus wall (hub-file PRs refuse) | §9.8 — receipt-noted raise sized by the D2 probe, or land discovery improvements first | **OPEN, priced live** — run 30063529282: 2,315 witnesses all PASS, wall 24m59s vs 22m budget; PR-1 touches CiSpec so it WILL face this; decided at sign-off |
 
 ## 11. D5 — the DiffBaseline brief (in-tree copy)
 
