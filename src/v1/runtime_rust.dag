@@ -144,8 +144,18 @@ fn rt_string_ops() -> String {
 
 fn rt_collection_ops() -> String {
   concat(
-    "pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Option<V> {\n",
-    "    table.get(&key).cloned()\n",
+    "#[derive(Clone, Debug, PartialEq)]\n",
+    "pub enum Witness<V> {\n",
+    "    Holds { value: V },\n",
+    "    Violates { diagnostic: String },\n",
+    "}\n\n",
+    "pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Witness<V> {\n",
+    "    match table.get(&key).cloned() {\n",
+    "        Some(value) => Witness::Holds { value },\n",
+    "        None => Witness::Violates {\n",
+    "            diagnostic: format!(\"lookup miss for key {}\", key),\n",
+    "        },\n",
+    "    }\n",
     "}\n\n",
     "pub fn index_by<V: Clone, F: Fn(&V) -> String>(list: Vec<V>, key_fn: F) -> HashMap<String, V> {\n",
     "    let mut map = HashMap::new();\n",
