@@ -18,12 +18,20 @@ import std.trait_derive_shape {
   nullary_coproduct_derive_traits,
   symbol_wrapped_ord_carrier_derive_traits,
   payload_coproduct_derive_traits,
-  fn_field_derive_traits
+  fn_field_derive_traits,
+  kernel_int_arithmetic_traits,
+  ReprDeriveElemKernelInt,
+  repr_grounding_supplemental_commutative_semiring_target,
+  repr_grounding_supplemental_bool_host_bridge_target
 }
-import extdeps.languages.rust.emit { rust_trait_derive_attr_from_traits }
+import extdeps.languages.rust.emit {
+  rust_trait_derive_attr_from_traits,
+  rust_supplemental_impls_commutative_semiring_magnitude,
+  rust_supplemental_impls_bool_coproduct
+}
 import std.types { is_container_type }
 
-data trait_derive_emit_scope_note: String = "#7174 narrowed scope (operator 2026-07-25): (a) clone bounds on all qualifying generic params (return-bare-generic and collection-element — widened from legacy single-param pick); (c) serde/Debug/Ord derive attrs on named structs/enums. Arm (b) coproduct-native arithmetic impls deferred to GroupCompletion grounding lane."
+data trait_derive_emit_scope_note: String = "Root-4 arm (b): v1 seed emit wires supplemental impl blocks for coproduct-native arithmetic + PartialOrd/PartialEq (CommutativeSemiring<Magnitude> Nat carrier, Bool↔bool bridge) when repr_grounding_derive_completeness_predicate authorizes kernel-int traits. Also: (a) clone bounds on generic params; (c) serde/Debug/Ord #[derive] on named structs/enums."
 
 data trait_derive_emit_v1_coproduct_shape_dissolve_on: String = "v1_coproduct_all_variants_nullary duplicates v2.std.compilers.coproduct_variant_shape.coproduct_all_variants_nullary (nullary = zero Conj children on v1 Node); dissolves when v1 trait_derive_emit imports the v2 shape authority instead of minting a parallel walk."
 
@@ -183,5 +191,29 @@ fn v1_emit_type_params_with_clone_bounds(
       }
     )
     concat("<", names |> join(separator: ", "), ">")
+  }
+}
+
+fn v1_emit_struct_supplemental_impls(module_path: String, name: String) -> String {
+  if repr_grounding_supplemental_commutative_semiring_target(module_path: module_path, name: name)
+    && repr_grounding_derive_completeness_predicate(
+      kernel_int_arithmetic_traits(),
+      ReprDeriveElemKernelInt
+    ) {
+    rust_supplemental_impls_commutative_semiring_magnitude()
+  } else {
+    ""
+  }
+}
+
+fn v1_emit_enum_supplemental_impls(module_path: String, name: String) -> String {
+  if repr_grounding_supplemental_bool_host_bridge_target(module_path: module_path, name: name)
+    && repr_grounding_derive_completeness_predicate(
+      nullary_coproduct_derive_traits(),
+      ReprDeriveElemNullaryEnumCopy
+    ) {
+    rust_supplemental_impls_bool_coproduct()
+  } else {
+    ""
   }
 }
