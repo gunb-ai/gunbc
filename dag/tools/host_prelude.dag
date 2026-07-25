@@ -83,9 +83,11 @@ fn witness_bin_readiness_is_ready(readiness: WitnessBinReadiness) -> Bool {
   }
 }
 
+data witness_bin_ensure_built_probe_note: String = "The presence probe below is OutcomeIsData for the same reason as witness_bin_artifact_readiness: a non-zero `test -x` means NOT BUILT YET, which is the question this fn asks, and the production arm answers it by building while the red control answers it by asserting refusal. The cargo.Build.BuildInheritEnv call further down is DELIBERATELY NOT annotated, and the distinction is worth stating because both effects sit in the same typed fn. The §5 guard's LETTER admits both — this fn returns WitnessBinReadiness and the build's exit is folded into WitnessBinRefused. Its SPIRIT does not: a failing `cargo build` in the production path is a genuine fault an engineer wants shouted, not an observation about the subject's state. Silencing it would trade a fake anomaly (which the guard exists to remove) for a hidden real one (which is what the whole arc is about). So it stays loud pending an operator call; the residual ❌ from the unbuildable red control is that decision showing, not an oversight."
+
 fn witness_bin_ensure_built_typed(root: String, bin: WitnessBin) -> WitnessBinReadiness {
   let path = witness_bin_release_path(root: root, bin_name: bin.bin_name)
-  let present = shell.Test.IsExecutable(path: path)
+  let present = shell.Test.IsExecutable(path: path, expect: OutcomeIsData)
   if present.executable {
     witness_bin_artifact_readiness(bin_name: bin.bin_name, path: path)
   } else {
