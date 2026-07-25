@@ -1,43 +1,19 @@
-module std.unicode
+module extdeps.unicode.blocks
 
+import std.types { Int, List }
+import std.unicode.types { DisplayWidth, UnicodeBlock, ZeroWidth, Wide }
 
-type CharClass = Whitespace | Digit | IdentStart | IdentContinue
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-fn char_in_class(c: Char, class: CharClass) -> Bool =
-  match class {
-
-    Whitespace =>
-      code_point(c) == 9 || code_point(c) == 10 || code_point(c) == 12
-      || code_point(c) == 13 || code_point(c) == 32
-    Digit => code_point(c) >= 48 && code_point(c) <= 57
-    IdentStart =>
-      code_point(c) >= 65 && code_point(c) <= 90
-      || code_point(c) >= 97 && code_point(c) <= 122
-      || code_point(c) == 95
-
-    IdentContinue =>
-      code_point(c) >= 48 && code_point(c) <= 57
-      || code_point(c) >= 65 && code_point(c) <= 90
-      || code_point(c) >= 97 && code_point(c) <= 122
-      || code_point(c) == 95
-  }
-
-type DisplayWidth = ZeroWidth | Narrow | Wide
-
-fn display_width_columns(w: DisplayWidth) -> Int {
-  match w {
-    ZeroWidth => 0
-    Narrow    => 1
-    Wide      => 2
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.unicode.org/reports/tr11/"
   }
 }
 
-type UnicodeBlock {
-  name: String
-  start: Int
-  end_inclusive: Int
-  default_width: DisplayWidth
-}
+data unicode_version_note: String = "East Asian Width block ranges transcribed from Unicode Standard UAX #11 (Unicode 15.1 UCD block data)."
 
 data zero_width_blocks: List<UnicodeBlock> = [
   { name: "Combining Diacritical Marks",             start: 768,   end_inclusive: 879,   default_width: ZeroWidth },
@@ -73,27 +49,3 @@ data wide_blocks: List<UnicodeBlock> = [
   { name: "Symbols / Pictographs / Emoticons",   start: 127744, end_inclusive: 129535, default_width: Wide },
   { name: "Symbols Extended",                   start: 129536, end_inclusive: 131071, default_width: Wide }
 ]
-
-fn code_point(c: Char) -> Int = c + 0
-
-fn in_block(cp: Int, block: UnicodeBlock) -> Bool {
-  cp >= block.start && cp <= block.end_inclusive
-}
-
-fn char_display_width(c: Char) -> DisplayWidth {
-  let cp = c
-  let is_zero_width = contains(zero_width_codepoints, item: cp) || any(zero_width_blocks, predicate: b => in_block(cp: cp, block: b))
-  if is_zero_width { return ZeroWidth }
-  if any(wide_blocks, predicate: b => in_block(cp: cp, block: b)) { return Wide }
-  return Narrow
-}
-
-fn char_width(c: Char) -> Int {
-  display_width_columns(w: char_display_width(c: c))
-}
-
-fn string_display_width(s: String) -> Int {
-  let char_list = chars(s)
-  let widths = char_list |> map(c => char_width(c: c))
-  widths |> fold(init: 0, f: fn(acc, w) { acc + w })
-}
