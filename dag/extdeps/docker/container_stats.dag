@@ -6,7 +6,13 @@ import std.measure { ByteSize, byte_size, byte_size_count, Nanosecond, nanosecon
 import extdeps.docker.endpoint { docker_default_endpoint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.roster_frontier { FrontierRow, frontier_row }
+import std.roster_frontier {
+  FrontierRow,
+  TriggerProse,
+  decl_ref,
+  decl_field_ref,
+  frontier_row_decl,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -112,24 +118,32 @@ service docker.ContainerStats {
   }
 }
 
-data dissolve_on_cpu_percent_ratio_carrier: List<FrontierRow> = [
-  frontier_row(
-    unit: "ground_cpu_percent_ratio_type",
-    reason: "cpu_percent: Float? is a percentage/ratio without a Measure<Quantity, Scale, M> carrier; bare Float cannot encode unit semantics (is it 0–1 normalized or 0–100 scale?); §5 violation on unit-modeling",
-    dissolve_on: "Ratio or PercentagePoint typed alias lands in std/measure",
+data cpu_percent_ratio_carrier_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_field_ref(
+      module_path: "extdeps.docker.container_stats",
+      decl_name: "ContainerStats",
+      field_name: "cpu_percent",
+    ),
+    reason: "cpu_percent: Float? is a percentage/ratio without a Measure<Quantity, Scale, M> carrier; bare Float cannot encode unit semantics (is it 0–1 normalized or 0–100 scale?); fail-closed violation on unit-modeling",
+    trigger: TriggerProse {
+      text: "Ratio or PercentagePoint typed alias lands in std/measure",
+    },
   )
 ]
 
-data dissolve_on_error_responses_opaque_strings: List<FrontierRow> = [
-  frontier_row(
-    unit: "typed_error_responses",
-    reason: "Error responses (404 => String, 500 => String) collapse distinct error shapes (not-found vs server error) to opaque string, violating §5 fail-closed (errors must be typed and located with structured diagnostics). Docker API returns JSON error objects with reason/message; should be modeled as ErrorDetail coproduct or structured record (NotFound | ServerError variants with message and optional retry info)",
-    dissolve_on: "typed error response variants land in extdeps/docker or extdeps/github.errors pattern applied here",
+data container_stats_error_responses_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.docker.container_stats", decl_name: "Stats"),
+    reason: "Error responses (404 => String, 500 => String) collapse distinct error shapes (not-found vs server error) to opaque string, violating fail-closed (errors must be typed and located with structured diagnostics). Docker API returns JSON error objects with reason/message; should be modeled as ErrorDetail coproduct or structured record (NotFound | ServerError variants with message and optional retry info)",
+    trigger: TriggerProse {
+      text: "typed error response variants land in extdeps/docker or extdeps/github.errors pattern applied here",
+    },
   )
 ]
 
 fn container_stats_error_closure_frontier_rows() -> List<FrontierRow> {
-  dissolve_on_error_responses_opaque_strings
+  container_stats_error_responses_frontier_rows
 }
 
 fn container_stats_memory_usage(stats: ContainerStats) -> ByteSize {
@@ -144,18 +158,26 @@ fn container_stats_online_cpus(stats: ContainerStats) -> Nat {
   stats.cpu_stats.online_cpus
 }
 
-data structural_coverage_gap_memory_stats_working_set: List<FrontierRow> = [
-  frontier_row(
-    unit: "memory_stats_true_working_set",
+data memory_stats_working_set_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_field_ref(
+      module_path: "extdeps.docker.container_stats",
+      decl_name: "MemoryStats",
+      field_name: "usage",
+    ),
     reason: "MemoryStats.usage includes page cache (inactive_file); true working-set = usage - stats.inactive_file from Docker stats sub-map",
-    dissolve_on: "B2 models stats sub-map with inactive_file and policy uses working_set not raw usage",
+    trigger: TriggerProse {
+      text: "B2 models stats sub-map with inactive_file and policy uses working_set not raw usage",
+    },
   )
 ]
 
-data dissolve_on_blkio_value_unit_ambiguity: List<FrontierRow> = [
-  frontier_row(
-    unit: "type_blkio_value_units",
-    reason: "BlkioValue.value: Nat carries parent-dependent units (bytes under io_service_bytes_recursive, time under io_service_time_recursive, count under io_serviced_recursive); flat Nat smuggles unit invisible to type system (§5 fail-closed unit-modeling); Docker wire format is the constraint; remedy = typed per-list accessors returning ByteSize|Nanosecond|Nat or parent-tagged union",
-    dissolve_on: "typed or tagged union models for BlkioValue land in extdeps/docker",
+data blkio_value_unit_ambiguity_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.docker.container_stats", decl_name: "BlkioValue"),
+    reason: "BlkioValue.value: Nat carries parent-dependent units (bytes under io_service_bytes_recursive, time under io_service_time_recursive, count under io_serviced_recursive); flat Nat smuggles unit invisible to type system (fail-closed unit-modeling); Docker wire format is the constraint; remedy = typed per-list accessors returning ByteSize|Nanosecond|Nat or parent-tagged union",
+    trigger: TriggerProse {
+      text: "typed or tagged union models for BlkioValue land in extdeps/docker",
+    },
   )
 ]

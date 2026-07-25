@@ -20,7 +20,13 @@ import extdeps.hardware { Hardware }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.roster_frontier { FrontierRow, frontier_row }
+import std.roster_frontier {
+  FrontierRow,
+  TriggerProse,
+  decl_ref,
+  decl_field_ref,
+  frontier_row_decl,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -78,34 +84,54 @@ type Cr1000aBroadbandIpv6Snapshot {
   prefix: NonEmptyStr?
 }
 
-data dissolve_on_cr1000a_dhcp_lease_transport: List<FrontierRow> = [
-  frontier_row(
-    unit: "cr1000a_dhcp_lease_observation_transport",
+data cr1000a_dhcp_lease_transport_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.router.verizon_cr1000a", decl_name: "Cr1000aDhcpLeaseTable"),
     reason: "Cr1000aDhcpLeaseTable has cited semantic shape only; read transport for /cgi/cgi_dhcp*.js addCfg projection is not yet bound as a handler",
-    dissolve_on: "extdeps/router/verizon_cr1000a_rest.dag or shell handler lands with a live read witness",
+    trigger: TriggerProse {
+      text: "extdeps/router/verizon_cr1000a_rest.dag or shell handler lands with a live read witness",
+    },
   )
 ]
 
-data dissolve_on_cr1000a_host_name_raw_parse: List<FrontierRow> = [
-  frontier_row(
-    unit: "cr1000a_host_name_raw_to_host_name",
+data cr1000a_host_name_raw_parse_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_field_ref(
+      module_path: "extdeps.router.verizon_cr1000a",
+      decl_name: "Cr1000aIpv4AddressDistributionRow",
+      field_name: "host_name_raw",
+    ),
     reason: "Cr1000aIpv4AddressDistributionRow.host_name_raw is cited router UI text; parse via parse_host_name at observation boundary when transport lands",
-    dissolve_on: "cr1000a lease-table read transport binds host_name_raw through parse_host_name",
+    trigger: TriggerProse {
+      text: "cr1000a lease-table read transport binds host_name_raw through parse_host_name",
+    },
   )
 ]
 
-data dissolve_on_cr1000a_delegated_prefix_length_scalar: List<FrontierRow> = [
-  frontier_row(
-    unit: "ground_delegated_prefix_length",
+data cr1000a_delegated_prefix_length_scalar_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_field_ref(
+      module_path: "extdeps.router.verizon_cr1000a",
+      decl_name: "Cr1000aBroadbandIpv6Snapshot",
+      field_name: "delegated_prefix_length",
+    ),
     reason: "delegated_prefix_length is a cited IPv6 PD prefix bit-count on bare Int/Int?; should ground on std.measure BitWidth once the CR1000A observation transport lands",
-    dissolve_on: "Cr1000aBroadbandIpv6Snapshot read transport parses prefix length through bit_width",
+    trigger: TriggerProse {
+      text: "Cr1000aBroadbandIpv6Snapshot read transport parses prefix length through bit_width",
+    },
   )
 ]
 
-data dissolve_on_cr1000a_expires_in_ui_text: List<FrontierRow> = [
-  frontier_row(
-    unit: "ground_expires_in_duration",
+data cr1000a_expires_in_ui_text_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_field_ref(
+      module_path: "extdeps.router.verizon_cr1000a",
+      decl_name: "Cr1000aIpv4AddressDistributionRow",
+      field_name: "expires_in",
+    ),
     reason: "expires_in is cited router UI duration text on bare NonEmptyStr?; parse to Second (or Minute carrier) at observation boundary when transport lands",
-    dissolve_on: "cr1000a lease-table read transport binds expires_in through a typed duration parser",
+    trigger: TriggerProse {
+      text: "cr1000a lease-table read transport binds expires_in through a typed duration parser",
+    },
   )
 ]

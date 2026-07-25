@@ -1,13 +1,17 @@
 module v2.lens.inert_carrier
 
-import std.roster_frontier { FrontierRow, frontier_row, frontier_units }
+import std.roster_frontier { FrontierRow, frontier_row_path, frontier_path_subjects, TriggerProse }
 
 data inert_carrier_local_alias_roster_note: String = "Floor hygiene: roster LocalAlias for inert G1 fixture type in qualified_module_projection_stripped_fixture.dag (latent main gap; exposed by W1.2 broad affected set; not W3.1 reachability migration)."
 
 data inert_carrier_row_dissolve: String = "a live consumer reads the carrier; the stale-roster check then forces this row's deletion"
 
-fn inert_row(unit: String, reason: String) -> FrontierRow {
-  frontier_row(unit: unit, reason: reason, dissolve_on: inert_carrier_row_dissolve)
+fn inert_row(path: String, reason: String) -> FrontierRow {
+  frontier_row_path(
+    path: path,
+    reason: reason,
+    trigger: TriggerProse { text: inert_carrier_row_dissolve },
+  )
 }
 
 data inert_carrier_roster: List<FrontierRow> = [
@@ -27,7 +31,7 @@ data inert_carrier_roster: List<FrontierRow> = [
 ]
 
 fn inert_carrier_rostered_names() -> List<String> {
-  frontier_units(rows: inert_carrier_roster)
+  frontier_path_subjects(rows: inert_carrier_roster)
 }
 
 data empty_inert_carrier_names: List<String> = []

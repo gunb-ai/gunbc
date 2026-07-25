@@ -1,108 +1,35 @@
 module test.claim.annotation_carrier
 
+import std.decl_ref { DeclarationRef }
 import std.roster_frontier {
   FrontierRow,
+  TriggerProse,
+  decl_ref,
   fold_frontier_expiry,
   frontier_expiry_clean,
+  frontier_row_decl,
   frontier_rows_well_formed,
 }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.cloud.hetzner { dissolve_on_anemic_money_rate_carrier }
-import extdeps.dhcp.v4 { dissolve_on_mac_address_anemic_brand }
-import extdeps.docker.container_inspect {
-  dissolve_on_container_state_detail_redundant_bools,
-  dissolve_on_memory_swap_unlimited_convention,
-  dissolve_on_hostconfig_containerconfig_anemic_leaves,
-  dissolve_on_network_settings_bare_strings,
-  container_inspect_error_closure_frontier_rows,
-}
-import extdeps.docker.container_stats {
-  dissolve_on_cpu_percent_ratio_carrier,
-  container_stats_error_closure_frontier_rows,
-  structural_coverage_gap_memory_stats_working_set,
-  dissolve_on_blkio_value_unit_ambiguity,
-}
-import extdeps.docker.endpoint { dissolve_on_endpoint_string_type }
-import extdeps.github.merge_state { structural_coverage_gap_merge_state_graphql_transport }
-import extdeps.github.workflow_runs { dissolve_on_conclusion_authority_consolidation }
-import extdeps.network.ipv6 { dissolve_on_ipv6_text_codec_staged }
-import extdeps.pricing.hetzner_dedicated { dissolve_on_cpu_description_string_leaf }
-import extdeps.router.verizon_cr1000a {
-  dissolve_on_cr1000a_dhcp_lease_transport,
-  dissolve_on_cr1000a_host_name_raw_parse,
-  dissolve_on_cr1000a_delegated_prefix_length_scalar,
-  dissolve_on_cr1000a_expires_in_ui_text,
-}
-import extdeps.tools.sha256sum { structural_coverage_gap_sha256_verify_native_transport }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn census_closure_frontier_rows() -> List<FrontierRow> {
-  concat(
-    dissolve_on_anemic_money_rate_carrier,
-    concat(
-      dissolve_on_mac_address_anemic_brand,
-      concat(
-        dissolve_on_container_state_detail_redundant_bools,
-        concat(
-          dissolve_on_memory_swap_unlimited_convention,
-          concat(
-            dissolve_on_hostconfig_containerconfig_anemic_leaves,
-            concat(
-              dissolve_on_network_settings_bare_strings,
-              concat(
-                container_inspect_error_closure_frontier_rows(),
-                concat(
-                  dissolve_on_cpu_percent_ratio_carrier,
-                  concat(
-                    container_stats_error_closure_frontier_rows(),
-                    concat(
-                      structural_coverage_gap_memory_stats_working_set,
-                      concat(
-                        dissolve_on_blkio_value_unit_ambiguity,
-                        concat(
-                          dissolve_on_endpoint_string_type,
-                          concat(
-                            structural_coverage_gap_merge_state_graphql_transport,
-                            concat(
-                              dissolve_on_conclusion_authority_consolidation,
-                              concat(
-                                dissolve_on_ipv6_text_codec_staged,
-                                concat(
-                                  dissolve_on_cpu_description_string_leaf,
-                                  concat(
-                                    dissolve_on_cr1000a_dhcp_lease_transport,
-                                    concat(
-                                      dissolve_on_cr1000a_host_name_raw_parse,
-                                      concat(
-                                        dissolve_on_cr1000a_delegated_prefix_length_scalar,
-                                        concat(
-                                          dissolve_on_cr1000a_expires_in_ui_text,
-                                          structural_coverage_gap_sha256_verify_native_transport,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+data census_closure_count_witness_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(
+      module_path: "test.claim.annotation_carrier",
+      decl_name: "census_closure_frontier_rows_count_is_twenty_two",
     ),
+    reason: "Hand count beside structure is a conversion receipt (#7207 class-5); retires when roster assembly is registry-derived",
+    trigger: TriggerProse {
+      text: "census_closure_frontier_rows is registry-derived without a hand-count witness",
+    },
   )
-}
+]
 
-test fn census_closure_frontier_rows_count_is_twenty_one() -> Bool {
-  length(xs: census_closure_frontier_rows()) == 21
+test fn census_closure_frontier_rows_count_is_twenty_two() -> Bool {
+  length(xs: census_closure_frontier_rows()) == 22
 }
 
 test fn census_closure_frontier_rows_well_formed() -> Bool {
@@ -110,22 +37,33 @@ test fn census_closure_frontier_rows_well_formed() -> Bool {
 }
 
 test fn frontier_expiry_fold_reports_all_unfired_when_no_fired_registry() -> Bool {
-  let report = fold_frontier_expiry(rows: census_closure_frontier_rows(), fired_units: [])
-  report.unfired_count == 21 && report.fired_still_present_count == 0 && frontier_expiry_clean(report: report)
+  let report = fold_frontier_expiry(
+    rows: census_closure_frontier_rows(),
+    prose_fired: [],
+    present_decls: [],
+    lenses_green: [],
+  )
+  report.unfired_count == 22 && report.fired_still_present_count == 0 && frontier_expiry_clean(report: report)
 }
 
 test fn frontier_expiry_fired_row_still_present_reds() -> Bool {
+  let mac_trigger = decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address")
   let report = fold_frontier_expiry(
     rows: census_closure_frontier_rows(),
-    fired_units: ["decompose_mac_address_octets"],
+    prose_fired: [],
+    present_decls: [mac_trigger],
+    lenses_green: [],
   )
-  report.fired_still_present_count == 1 && report.unfired_count == 20 && !frontier_expiry_clean(report: report)
+  report.fired_still_present_count == 1 && report.unfired_count == 21 && !frontier_expiry_clean(report: report)
 }
 
-test fn frontier_expiry_fired_unit_absent_from_rows_is_clean() -> Bool {
+test fn frontier_expiry_fired_trigger_absent_from_rows_is_clean() -> Bool {
+  let absent_trigger = decl_ref(module_path: "extdeps.network.mac", decl_name: "already_deleted_frontier_unit")
   let report = fold_frontier_expiry(
     rows: census_closure_frontier_rows(),
-    fired_units: ["already_deleted_frontier_unit"],
+    prose_fired: [],
+    present_decls: [absent_trigger],
+    lenses_green: [],
   )
-  report.fired_still_present_count == 0 && report.unfired_count == 21 && frontier_expiry_clean(report: report)
+  report.fired_still_present_count == 0 && report.unfired_count == 22 && frontier_expiry_clean(report: report)
 }

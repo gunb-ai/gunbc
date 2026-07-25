@@ -11,6 +11,7 @@ import std.roster_frontier {
   FrontierRow,
   TriggerProse,
   decl_ref,
+  decl_field_ref,
   frontier_row_decl,
 }
 
@@ -44,11 +45,13 @@ type ContainerStateDetail {
   finished_at: Timestamp?
 }
 
-data dissolve_on_container_state_detail_redundant_bools: List<FrontierRow> = [
-  frontier_row(
-    unit: "ground_container_state_via_coproduct_not_bools",
-    reason: "ContainerStateDetail carries status: ContainerState coproduct AND parallel running/paused/restarting/dead bools, allowing illegal states (status=Running, running=false). Faithful to Docker wire shape at extdeps boundary, but redundancy should be resolved inward — callers should derive bool predicates from status coproduct, not trust duplicated bools (§2 horizontal DRY)",
-    dissolve_on: "wire-deserialization layer is added that reconstructs ContainerState authority from the wire status string, dropping the parallel bool fields from the internal model",
+data container_state_detail_redundant_bools_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.docker.container_inspect", decl_name: "ContainerStateDetail"),
+    reason: "ContainerStateDetail carries status: ContainerState coproduct AND parallel running/paused/restarting/dead bools, allowing illegal states (status=Running, running=false). Faithful to Docker wire shape at extdeps boundary, but redundancy should be resolved inward — callers should derive bool predicates from status coproduct, not trust duplicated bools",
+    trigger: TriggerProse {
+      text: "wire-deserialization layer is added that reconstructs ContainerState authority from the wire status string, dropping the parallel bool fields from the internal model",
+    },
   )
 ]
 
@@ -76,11 +79,17 @@ type HostConfig {
   device_requests: List<String>?
 }
 
-data dissolve_on_memory_swap_unlimited_convention: List<FrontierRow> = [
-  frontier_row(
-    unit: "ground_unlimited_memory_via_special_variant",
+data memory_swap_unlimited_convention_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_field_ref(
+      module_path: "extdeps.docker.container_inspect",
+      decl_name: "HostConfig",
+      field_name: "memory_swap",
+    ),
     reason: "HostConfig.memory_swap: ByteSize? loses Docker wire convention where -1 encodes 'unlimited'; ByteSize is Measure<Memory, One, Nat> (Nat-backed, non-negative only), so wire value -1 cannot round-trip (fidelity gap at extdeps boundary). Callers cannot distinguish 'swap disabled' (-1) from 'swap zero bytes' (0) without special handling",
-    dissolve_on: "Unlimited variant or tagged union for ByteSize-like fields lands in std/measure or extdeps/docker",
+    trigger: TriggerProse {
+      text: "Unlimited variant or tagged union for ByteSize-like fields lands in std/measure or extdeps/docker",
+    },
   )
 ]
 
@@ -106,11 +115,13 @@ type ContainerConfig {
   network_disabled: Bool?
 }
 
-data dissolve_on_hostconfig_containerconfig_anemic_leaves: List<FrontierRow> = [
-  frontier_row(
-    unit: "decompose_hostconfig_containerconfig_string_lists",
-    reason: "HostConfig carries structured concepts as List<String>?: cap_add/cap_drop (privilege names), exposed_ports/port_bindings (host:container port specs), volumes/volumes_from (mount source:target:mode), device_requests (structured device specs); ContainerConfig similar: env (KEY=VALUE pairs), cmd/entrypoint (command args), labels (KEY=VALUE metadata), volumes (mount specs), exposed_ports (port specs). All anemic-leaf §2 violations (structured wire shapes flattened to bare strings)",
-    dissolve_on: "typed port/env/volume carrier types land in extdeps/docker",
+data hostconfig_containerconfig_anemic_leaves_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.docker.container_inspect", decl_name: "HostConfig"),
+    reason: "HostConfig carries structured concepts as List<String>?: cap_add/cap_drop (privilege names), exposed_ports/port_bindings (host:container port specs), volumes/volumes_from (mount source:target:mode), device_requests (structured device specs); ContainerConfig similar: env (KEY=VALUE pairs), cmd/entrypoint (command args), labels (KEY=VALUE metadata), volumes (mount specs), exposed_ports (port specs). All anemic-leaf violations (structured wire shapes flattened to bare strings)",
+    trigger: TriggerProse {
+      text: "typed port/env/volume carrier types land in extdeps/docker",
+    },
   )
 ]
 
@@ -141,11 +152,13 @@ type NetworkSettings {
   networks: List<String>?
 }
 
-data dissolve_on_network_settings_bare_strings: List<FrontierRow> = [
-  frontier_row(
-    unit: "ground_network_address_types",
-    reason: "NetworkSettings.gateway/ip_address/mac_address are bare String?, should be typed with IP/MAC carriers (e.g. IpAddress, MacAddress, IpCidr); lower stakes since std/network primitives don't exist yet, but structured type system would catch malformed/invalid addresses (§5 fail-closed)",
-    dissolve_on: "network address carriers (IpAddress, MacAddress) land in std/ or extdeps/network",
+data network_settings_bare_strings_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.docker.container_inspect", decl_name: "NetworkSettings"),
+    reason: "NetworkSettings.gateway/ip_address/mac_address are bare String?, should be typed with IP/MAC carriers (e.g. IpAddress, MacAddress, IpCidr); lower stakes since std/network primitives don't exist yet, but structured type system would catch malformed/invalid addresses (fail-closed)",
+    trigger: TriggerProse {
+      text: "network address carriers (IpAddress, MacAddress) land in std/ or extdeps/network",
+    },
   )
 ]
 
@@ -179,16 +192,18 @@ service docker.Container {
   }
 }
 
-data dissolve_on_error_responses_opaque_strings: List<FrontierRow> = [
-  frontier_row(
-    unit: "typed_error_responses",
-    reason: "Error responses (404 => String, 500 => String) collapse two distinct error shapes (not-found vs server error) to opaque string, violating §5 fail-closed (errors must be typed and located with structured diagnostics). Docker API returns JSON error objects with reason/message; should be modeled as ErrorDetail coproduct or structured record (NotFound | ServerError variants with message and optional retry info)",
-    dissolve_on: "typed error response variants land in extdeps/docker or extdeps/github.errors pattern applied here",
+data container_inspect_error_responses_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.docker.container_inspect", decl_name: "Inspect"),
+    reason: "Error responses (404 => String, 500 => String) collapse two distinct error shapes (not-found vs server error) to opaque string, violating fail-closed (errors must be typed and located with structured diagnostics). Docker API returns JSON error objects with reason/message; should be modeled as ErrorDetail coproduct or structured record (NotFound | ServerError variants with message and optional retry info)",
+    trigger: TriggerProse {
+      text: "typed error response variants land in extdeps/docker or extdeps/github.errors pattern applied here",
+    },
   )
 ]
 
 fn container_inspect_error_closure_frontier_rows() -> List<FrontierRow> {
-  dissolve_on_error_responses_opaque_strings
+  container_inspect_error_responses_frontier_rows
 }
 
 fn container_inspect_memory_limit(inspect: ContainerInspect) -> ByteSize? {
