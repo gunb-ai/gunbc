@@ -1,0 +1,65 @@
+module gunbc.retained_shell_script
+
+import std.types { String, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.shell.exec { TransportScript }
+
+data retained_shell_script_wall_note: String = "§5.E wall (operator ruling 2026-07-24): RetainedShellScript is the counted frontier for shell SCRIPT bodies not yet dissolved into typed argv/effects. It is a RECORD, not a brand — a bare String cannot fill a RetainedShellScript position, so the accidental 'build argv properly, then join it back into a string' relocation class (bit twice: #7064, vivid-wolf) fails to compile on the ShellOnHost realization edge. Every row carries a reason + a dissolve-on DeclarationRef; new rows are a counted review event. The genuine compile-wall is the List<String> distinction (typed argv edge); this record walls the residual script path. The surviving `as TransportScript` cast-mint in retained_shell_script_to_transport is deliberate and conspicuous — its full closure is filed on the node/subtree visibility-grants lane (the Reference verb governs who may cast base->brand)."
+
+type RetainedShellScript {
+  body: String
+  reason: NonEmptyStr
+  dissolves_to: DeclarationRef
+}
+
+data retained_shell_script_to_transport_note: String = "The SINGLE sanctioned String -> TransportScript mint. Takes the record (not a raw String), so the only route from a script body to a TransportScript is to author a counted RetainedShellScript row. Replaces the deleted free minter extdeps.shell.exec.transport_script_from_body(body: String)."
+
+fn retained_shell_script_to_transport(rss: RetainedShellScript) -> TransportScript {
+  rss.body as TransportScript
+}
+
+data retained_transport_note: String = "The roster-gated counted bridge for direct shell.Exec.Run foreign-executor sites: String -> TransportScript, but every call must author a reason + a dissolve-on ref, so a new call is a conspicuous, counted review event."
+
+fn retained_transport(
+  body: String,
+  reason: NonEmptyStr,
+  dissolves_to: DeclarationRef,
+) -> TransportScript {
+  retained_shell_script_to_transport(
+    rss: RetainedShellScript { body: body, reason: reason, dissolves_to: dissolves_to }
+  )
+}
+
+data retained_srvn_takeover_ref: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.plans.fleet_subsumption_manual_gaps",
+  decl_name: "fleet_subsumption_manual_gaps_plan",
+  field: WholeDeclaration,
+}
+
+data retained_srvn_note: String = "Default dissolve-on for host-effect script bodies (srv3/live_deploy/host converge/hostname-set): the srvN-takeover lane's typed effects (gunbc.plans.fleet_subsumption_manual_gaps — this wall is item 1 of its needs-list; these scripts are its work-list). retained_srvn is the 2-arg convenience over RetainedShellScript for that shared dissolve target."
+
+fn retained_srvn(body: String, reason: NonEmptyStr) -> RetainedShellScript {
+  RetainedShellScript {
+    body: body,
+    reason: reason,
+    dissolves_to: retained_srvn_takeover_ref,
+  }
+}
+
+data retained_foreign_emit_ref: DeclarationRef = DeclarationRef {
+  module_path: "v2.workflow.bash_emit",
+  decl_name: "bash_emit_program",
+  field: WholeDeclaration,
+}
+
+data retained_foreign_note: String = "Default dissolve-on for foreign-executor / bootstrap shell.Exec.Run sites (GHA run:, cron, git hooks, CI gates, pre-runtime bootstrap): the v2 bash emit backend (emit(intent, Bash) via v2.workflow.bash_emit), a bounded roster not a growth surface (shell->dag census section 5.C). retained_foreign is the 2-arg counted bridge for that shared dissolve target; it returns TransportScript for direct shell.Exec.Run positions."
+
+fn retained_foreign(body: String, reason: NonEmptyStr) -> TransportScript {
+  retained_transport(body: body, reason: reason, dissolves_to: retained_foreign_emit_ref)
+}
+
+data retained_runtime_note: String = "Counted bridge for runtime-present direct shell.Exec.Run sites (host converge, host identity, srv3 install/diagnostic) whose dissolve-on is the same srvN-takeover typed effects as the ShellOnHost edge. Returns TransportScript for the direct shell.Exec.Run position; the ShellOnHost cell path uses retained_srvn (RetainedShellScript) instead."
+
+fn retained_runtime(body: String, reason: NonEmptyStr) -> TransportScript {
+  retained_transport(body: body, reason: reason, dissolves_to: retained_srvn_takeover_ref)
+}

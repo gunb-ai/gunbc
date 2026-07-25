@@ -2,7 +2,7 @@ module test.claim.host_build_cache_provision_real_execution
 
 import std.logic { Bool }
 import extdeps.shell
-import extdeps.shell.exec { transport_script_from_body }
+import gunbc.retained_shell_script { retained_runtime }
 import extdeps.filesystem.filesystem_io
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.host_build_cache_provision_script {
@@ -20,6 +20,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data real_execution_home_doc: String = "Wet execution witnesses for ProvisionBuildCache fail-closed behaviour: each runs a real bash body against a real fake-sccache on disk. (1) read-back — the modeled binary answers non-zero, so the reconcile must be NotConverged, never Converged/ExitSuccess; the fake lives OFF PATH so bare `sccache` still resolves to the modeled path and this witness exercises the read-back arm rather than the path-authority arm. (2) path authority — a DIFFERENT, perfectly HEALTHY sccache earlier on PATH must REFUSE, because the binary CI actually invokes as RUSTC_WRAPPER=sccache is then not the one provisioning verified; no read-back of the absolute path can see this. (3) the discriminating control for (2): with no shadowing sccache on PATH the same body must NOT report SHADOWED, so the check is proven to fire on mismatch rather than being a blanket refusal. Excluded from hermetic discovery and enrolled in bin_witness_wet_entries — shell.Mktemp.Dir / Filesystem.Write / shell.Exec.Run have no mock_response."
 
+<<<<<<< HEAD
 fn write_fake_sccache(dir_path: String, exit_code: String) -> Bool {
   let path = concat(dir_path, "/sccache")
   let wrote = Filesystem.Write(
@@ -38,6 +39,23 @@ fn run_body(prelude: String, body: String) -> ShellExecObserved {
     script: transport_script_from_body(body: shell_exec_via_bash(body: full)),
   )
   ShellExecObserved {
+=======
+test fn provision_read_back_failure_not_converged_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let fake_sccache_path = concat(dir.path as String, "/sccache")
+  let wrote = Filesystem.Write(path: fake_sccache_path, content: "#!/bin/sh\nexit 1\n")
+  let chmod = shell.Exec.Run(script: retained_runtime(body: concat("chmod +x ", fake_sccache_path), reason: "build-cache provision witness chmod +x fake sccache stub"))
+  let body = concat(
+    "set -euo pipefail\n",
+    concat(
+      concat("export PATH=\"", dir.path as String),
+      concat(":$PATH\"\n", build_cache_read_back_body()),
+    ),
+  )
+  let script = shell_exec_via_bash(body: body)
+  let result = shell.Exec.Run(script: retained_runtime(body: script, reason: "build-cache provision witness read-back body under fake failing sccache"))
+  let observed = ShellExecObserved {
+>>>>>>> origin/main
     exit_code: result.exit_code,
     success: result.success,
     stdout: result.stdout,

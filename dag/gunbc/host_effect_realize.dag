@@ -40,7 +40,12 @@ import std.realization_reconcile {
 }
 import v2.std.algebra { fold_list }
 import extdeps.shell
-import extdeps.shell.exec { transport_script_from_body }
+import extdeps.shell.exec
+import gunbc.retained_shell_script {
+  RetainedShellScript,
+  retained_shell_script_to_transport,
+  retained_srvn,
+}
 import extdeps.diagnostic.ssh { ssh_session_exec, ssh_session_exec_script }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
@@ -154,7 +159,7 @@ import std.types { String, NonEmptyStr, List, Bool }
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
 type ResolvedHostEffectCell =
-    ShellOnHost { node: ComputeHost, script: String }
+    ShellOnHost { node: ComputeHost, script: RetainedShellScript }
   | RedfishOnBmc { node: ComputeHost, action: RedfishSystemAction }
   | ConvergeOnHost { node: ComputeHost, host_converge: HostConverge }
   | TypedReconcileOnHost { node: ComputeHost, kind: TypedReconcileKind }
@@ -228,7 +233,11 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                 Present { value: script } => ShellOnHost { node: n, script: script }
                 Absent =>
               match effect {
-                ShellCommand { script: s } => ShellOnHost { node: n, script: s }
+                ShellCommand { script: s } =>
+                  ShellOnHost {
+                    node: n,
+                    script: retained_srvn(body: s, reason: "host_effect ShellCommand raw-script leaf (anemic String terminal, DESIGN section 5)"),
+                  }
                 RedfishAction { action: _ } =>
                   IncompatibleCell { reason: "host_effect: RedfishAction is out-of-band (Redfish) and cannot target HostOs (in-band shell/systemd); target BmcController instead. Typed mismatch via total fold, DESIGN section 5." }
                 ConvergePlan { policy: p } =>
@@ -773,7 +782,10 @@ fn realize_srv3_install_diagnostic_observe(
     intent_content_hash: intent_content_hash,
     sol_log: srv3_sol_console_log_path as String,
   )
-  let observed = run_shell_transport(script: shell_exec_via_bash(body: script), transport: transport)
+  let observed = run_shell_transport(
+    script: retained_srvn(body: shell_exec_via_bash(body: script), reason: "srv3 install diagnostic observe"),
+    transport: transport,
+  )
   srv3_shell_reconcile(observed: observed, intent: effect_intent)
 }
 
@@ -1106,6 +1118,7 @@ fn realize_provision_build_cache_body(
   transport: HostEffectTransport,
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+<<<<<<< HEAD
   match provision_build_cache_host_arch(effect_intent: effect_intent) {
     Absent =>
       NotConverged {
@@ -1152,6 +1165,13 @@ fn realize_provision_build_cache_body(
           }
       }
   }
+=======
+  let observed = run_shell_transport(
+    script: retained_srvn(body: build_cache_provision_shell_script(), reason: "srvN build-cache provisioning (sccache daemon ensure)"),
+    transport: transport,
+  )
+  srv3_toolchain_ensure_reconcile(observed: observed, intent: effect_intent)
+>>>>>>> origin/main
 }
 
 fn realize_provision_build_cache(
@@ -1231,10 +1251,10 @@ fn provision_build_cache_reconcile_shell_observed(
   )
 }
 
-fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellExecObserved {
+fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTransport) -> ShellExecObserved {
   match transport {
     LocalShell => {
-      let result = shell.Exec.Run(script: transport_script_from_body(body: script))
+      let result = shell.Exec.Run(script: retained_shell_script_to_transport(rss: script))
       ShellExecObserved {
         exit_code: result.exit_code,
         success: result.success,
@@ -1243,7 +1263,7 @@ fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellE
       }
     }
     SshShell { ssh_host: h } => {
-      if script == "" {
+      if script.body == "" {
         ShellExecObserved {
           exit_code: 1,
           success: false,
@@ -1251,7 +1271,7 @@ fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellE
           stderr: "",
         }
       } else {
-        let result = ssh_session_exec_script(host: h, script: script)
+        let result = ssh_session_exec_script(host: h, script: script.body)
         ShellExecObserved {
           exit_code: result.exit_code,
           success: result.success,
@@ -1278,7 +1298,7 @@ fn realize_converge_in_process(host_converge: HostConverge, intent: HostEffectIn
       if n == 0 {
         NotConverged { reason: converge_host_no_knobs_reason, applied: intent }
       } else {
-        let observed = run_shell_transport(script: out, transport: LocalShell)
+        let observed = run_shell_transport(script: retained_srvn(body: out, reason: "host converge in-process apply (interpreted knob script)"), transport: LocalShell)
         if observed.success {
           reconcile_grounded(
             apply_effect: intent,
@@ -1495,7 +1515,7 @@ fn realize_sudo_nopasswd_probe_on_host(
   }
 }
 
-fn realize_shell_on_host(script: String, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn realize_shell_on_host(script: RetainedShellScript, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let result = run_shell_transport(script: script, transport: transport)
   reconcile_shell_exec_observed(observed: result, intent: intent)
 }
@@ -1508,7 +1528,10 @@ fn realize_set_hostname_cas_on_host(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   realize_shell_on_host(
-    script: host_effect_set_hostname_cas_script(hostnamectl_path: hostnamectl_path, base: base, desired: desired),
+    script: retained_srvn(
+      body: host_effect_set_hostname_cas_script(hostnamectl_path: hostnamectl_path, base: base, desired: desired),
+      reason: "SetHostnameCas hostnamectl write (CAS-guarded hostname mutation)",
+    ),
     transport: transport,
     intent: intent,
   )
