@@ -1,5 +1,7 @@
 module v2.test.emit.logic_ground_truth
 
+import v2.std.logic { Bool, True, False, bool_boolean_algebra }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

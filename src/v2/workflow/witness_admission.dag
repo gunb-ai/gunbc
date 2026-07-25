@@ -21,7 +21,12 @@ import gunbc.ci_layer_roots {
   falsifier_rehomed_bin_wet_entries,
   falsifier_substrate_long_lane_entries
 }
-import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries, falsifier_native_cache_cold_roster }
+import v2.compiler.self_host.wet_receipt_enrollment {
+  falsifier_self_host_wet_entries,
+  falsifier_native_cache_cold_roster,
+  falsifier_self_host_wet_cadence_is_active,
+  falsifier_self_host_wet_known_red_entries
+}
 import std.realization_schedule {
   ScheduleWitnessEntry,
   schedule_witness_entry_eq,
@@ -80,7 +85,11 @@ fn consumer_for_explicit_rosters(entry: String, function: String) -> WitnessCons
     entry: entry,
     function: function
   ) {
-    FalsifierSelfHostWet
+    if falsifier_self_host_wet_cadence_is_active() {
+      FalsifierSelfHostWet
+    } else {
+      OfflineLocalRecipe
+    }
   } else if schedule_contains_entry(
     xs: falsifier_native_cache_cold_roster(),
     entry: entry,
@@ -95,6 +104,12 @@ fn consumer_for_explicit_rosters(entry: String, function: String) -> WitnessCons
     BinWitnessWet
   } else if schedule_contains_entry(
     xs: known_red_probe_entries,
+    entry: entry,
+    function: function
+  ) {
+    QuarantineProbeExpectRed
+  } else if schedule_contains_entry(
+    xs: falsifier_self_host_wet_known_red_entries,
     entry: entry,
     function: function
   ) {
@@ -183,7 +198,7 @@ fn witness_admission_explicit_consumer_manifest() -> List<String> {
     xs:       concat(
         concat(
           concat(falsifier_self_host_wet_entries(), bin_witness_wet_entries),
-          known_red_probe_entries
+          concat(known_red_probe_entries, falsifier_self_host_wet_known_red_entries)
         ),
         concat(
           falsifier_rehomed_bin_wet_entries(),
@@ -273,23 +288,27 @@ fn witness_exclusion_explicit_roster_rows_consistent_holds() -> Bool {
   witness_exclusion_explicit_roster_rows_consistent(
     rows: witness_exclusion_frontier,
     bin_entries: witness_exclusion_bin_witness_wet_universe(),
-    probe_entries: known_red_probe_entries,
+    probe_entries: concat(known_red_probe_entries, falsifier_self_host_wet_known_red_entries),
     rehomed_entries: falsifier_rehomed_bin_wet_entries(),
     substrate_long_entries: falsifier_substrate_long_lane_entries()
   )
 }
 
 fn witness_exclusion_falsifier_rows_consistent_holds() -> Bool {
-  !any(
-    xs: witness_exclusion_frontier,
-    predicate: fn(row) {
-      witness_exclusion_row_is_falsifier_wet(row: row)
-        && !schedule_entries_cover_pattern(
-          xs: falsifier_self_host_wet_entries(),
-          pattern: row.pattern
-        )
-    }
-  )
+  if !falsifier_self_host_wet_cadence_is_active() {
+    true
+  } else {
+    !any(
+      xs: witness_exclusion_frontier,
+      predicate: fn(row) {
+        witness_exclusion_row_is_falsifier_wet(row: row)
+          && !schedule_entries_cover_pattern(
+            xs: falsifier_self_host_wet_entries(),
+            pattern: row.pattern
+          )
+      }
+    )
+  }
 }
 
 fn witness_whole_tree_resolve_exclusion_concat_authority_holds() -> Bool {

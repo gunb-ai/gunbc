@@ -414,7 +414,7 @@ data corpus_ci_gate_row_react_jsx_emit_keystone: ClaimWitnessCorpusClaimRunRow =
 }
 
 data corpus_ci_gate_row_js_site_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
-  label: "js site 3-page MarkupNode dual emit keystone",
+  label: "js site 3-page Fragment dual emit keystone",
   entry: "dag/test/claim/js_site_emit_test.dag",
   function: "js_site_emit_keystone_holds",
   expected: ExpectPass
