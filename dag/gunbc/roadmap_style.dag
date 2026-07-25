@@ -30,7 +30,7 @@ import gunbc.roadmap_component {
   dispatch_reserved_width, theme_toggle_class, theme_toggle_reserved_width,
   sound_toggle_class, sound_toggle_reserved_width,
   disclosure_mark_class, swatch_toggle_class, swatch_toggle_reserved_width,
-  roadmap_row_grid_template, roadmap_row_height, roadmap_row_gutter, node_mid_class,
+  roadmap_row_grid_template, roadmap_row_height, roadmap_row_gutter, roadmap_row_column_gutter, node_mid_class,
 }
 import extdeps.color.srgb { Srgb8 }
 import extdeps.accessibility.wcag_contrast { srgb8_contrast_ratio_x100 }
@@ -247,7 +247,7 @@ fn dispatch_btn_base_decls() -> List<CssDecl> {
 
 data instance_rules_splice_note: String = "roadmap_instance_rules composes head + the state-paint fold + tail at the exact position the four hand per-state rules occupied (composition slice 1): the per-state blocks now emit from state_paint_rules over dispatch_state_family x dispatch_stateful_channels — roster order, channel order — so the mapping lives once and a new family member paints itself. The split into head/tail is placement, not meaning: byte order is pinned by the digest oracle."
 
-data row_actuator_scale_note: String = "The in-row actuator at chip scale (composition slice 2, SIGNED ruling 2026-07-24: chip-scale in rows; instrument feel carried by press physics; full-size specimen in the sandbox gallery). DERIVED-NOT-SET: the row override's extent is the ROW's density token (min-height var(--h-row)) and its width ceiling is the same caption-derived reservation the base declares (min-width and max-width one authority, so the chip is fixed-width in rows and a caption morph can never reflow the row) — no fresh literal enters here, witnessed. The base .dispatch-btn keeps the h-control full-size grain, which is exactly what the sandbox gallery renders (row scope is .node-head descendant, gallery buttons sit outside it). Press physics untouched: the detent and receipt folds target .dispatch-btn and apply at both scales, per-family-honest. PROVISIONAL rows (iteration protocol, flips are one-liners): h-row = 24px; the overflow guard clips without an ellipsis glyph — real text-overflow needs a caption span inside the button, which moves the client program's textContent target, named for the pass rather than smuggled in; the gutter stays the landed space-4."
+data row_actuator_scale_note: String = "The in-row actuator at chip scale (composition slice 2, SIGNED ruling 2026-07-24: chip-scale in rows; instrument feel carried by press physics; full-size specimen in the sandbox gallery). DERIVED-NOT-SET: the row override's extent is the ROW's density token (min-height var(--h-row)) and its width ceiling is the same caption-derived reservation the base declares (min-width and max-width one authority, so the chip is fixed-width in rows and a caption morph can never reflow the row) — no fresh literal enters here, witnessed. The base .dispatch-btn keeps the h-control full-size grain, which is exactly what the sandbox gallery renders (row scope is .node-head descendant, gallery buttons sit outside it). Press physics untouched: the detent and receipt folds target .dispatch-btn and apply at both scales, per-family-honest. The three PROVISIONAL rows discharged at the operator's pass (2026-07-25): h-row 24px SIGNED KEPT (height_row_note); the gutter SPLIT — columns space-8, badge flow space-4 (roadmap_row_gutter_split_note); the ellipsis glyph DEFERRED with its trigger — the clip guard stands until the first caption able to exceed the reservation lands (likely W2's ticket vocabulary), at which point the caption span moves the client textContent target and text-overflow becomes honest."
 
 fn roadmap_instance_rules() -> List<BuildRule> {
   concat(roadmap_instance_rules_head(),
@@ -540,7 +540,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "node-head" }, decls: [
       decl(prop: Display, value: "grid"),
       decl(prop: GridTemplateColumns, value: roadmap_row_grid_template()),
-      decl(prop: Gap, value: scale_var(t: roadmap_row_gutter)),
+      decl(prop: Gap, value: scale_var(t: roadmap_row_column_gutter)),
       decl(prop: AlignItems, value: "center"),
       decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
     ] },
