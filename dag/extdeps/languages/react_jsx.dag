@@ -3,8 +3,8 @@ module extdeps.languages.react_jsx
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.markup {
-  MarkupNode, MarkupMedium, EscapeHtml, SelfClose,
-  serialize_markup_node_with,
+  Fragment, MarkupMedium, EscapeHtml, SelfClose,
+  serialize_fragment_with,
 }
 import extdeps.languages.html {
   html_markup_medium,
@@ -37,11 +37,11 @@ fn jsx_markup_medium() -> MarkupMedium {
   }
 }
 
-fn serialize_jsx_fragment(node: MarkupNode) -> String {
-  serialize_markup_node_with(node: node, medium: jsx_markup_medium())
+fn serialize_jsx_fragment(node: Fragment) -> String {
+  serialize_fragment_with(frag: node, medium: jsx_markup_medium())
 }
 
-fn serialize_jsx_component(fn_name: String, node: MarkupNode) -> String {
+fn serialize_jsx_component(fn_name: String, node: Fragment) -> String {
   join([jsx_component_prefix(fn_name: fn_name), serialize_jsx_fragment(node: node), "; }"], "")
 }
 
@@ -49,7 +49,7 @@ type JsxEmitResult
   = JsxOk { tsx: String }
   | JsxRejected { reason: String }
 
-fn try_serialize_jsx_component(fn_name: String, node: MarkupNode) -> JsxEmitResult {
+fn try_serialize_jsx_component(fn_name: String, node: Fragment) -> JsxEmitResult {
   match find_first_rejected_url(node: node) {
     Present { value: r } => JsxRejected { reason: r.url }
     Absent => JsxOk { tsx: serialize_jsx_component(fn_name: fn_name, node: node) }

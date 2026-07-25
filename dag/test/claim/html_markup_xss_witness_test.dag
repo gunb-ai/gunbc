@@ -1,5 +1,16 @@
 module test.claim.html_markup_xss_witness
 
+import std.markup { Fragment, Element, FragmentText, attr, escape_url }
+import extdeps.uri_validation {
+  validate_href,
+  SafeHref,
+  RejectedHref,
+  DangerousScheme,
+  JavascriptScheme,
+  DataScheme,
+  SchemeNotAllowlisted,
+}
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -66,11 +77,11 @@ fn witness_mailto_href_accepted() -> Bool {
   }
 }
 
-fn javascript_link_node() -> MarkupNode {
-  ElementNode {
+fn javascript_link_node() -> Fragment {
+  Element {
     tag: "a",
-    attrs: [ MarkupAttr { name: "href", value: "javascript:alert(1)" } ],
-    children: [ TextNode { text: "x" } ],
+    attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
+    children: [ FragmentText { content: "x" } ],
   }
 }
 

@@ -1,5 +1,6 @@
 module test.claim.long.gauntlet_lane_enrollment_witness
 
+import gunbc.ci_layer_roots { SubstrateLongLaneRow, falsifier_substrate_long_lane_rows }
 import gunbc.commit_workflow {
   CommitCheckEnrollment, CommitCheckKind, CommitWitnessClaim, CommitCargoFmtCheck,
   CommitWorkflowSurface, GithubActionsCiJob, GithubActionsCiRegenJob,
@@ -58,9 +59,15 @@ fn falsifier_entries_contain(entries: List<ScheduleWitnessEntry>, f: String) -> 
   any(entries, e => e.function == f)
 }
 
+data substrate_long_lane_is_a_sibling_cadence_note: String = "wave1_gate1_d_census_subsumption_witness_holds moved off FalsifierCadenceJob onto falsifier_substrate_long_lane_rows (nightly falsifier batch 6) when main landed the Class C split. That is a re-home between two cadence lanes, NOT a de-enrollment, so the invariant this file guards still holds — but the pin has to read the lane the row actually sits on. Dropping the pin instead would have been the narrowing this witness exists to prevent: the row would then be free to vanish from BOTH lanes with nothing red. The check below therefore asserts substrate-long-lane membership by function name, which is the same claim ('this re-homed row still executes on a cadence') read against the correct authority."
+
+fn substrate_long_lane_contains(f: String) -> Bool {
+  any(falsifier_substrate_long_lane_rows, row => row.function == f)
+}
+
 fn witness_rehomed_rows_are_cadence_enrolled() -> Bool {
   let entries = live_roster_falsifier_witness_entries()
-  falsifier_entries_contain(entries: entries, f: "wave1_gate1_d_census_subsumption_witness_holds")
+  substrate_long_lane_contains(f: "wave1_gate1_d_census_subsumption_witness_holds")
     && falsifier_entries_contain(entries: entries, f: "wave1_gate1_d_ingested_bind_executes_witness_holds")
     && falsifier_entries_contain(entries: entries, f: "wave1_gate1_d_ingested_loop_executes_witness_holds")
     && falsifier_entries_contain(entries: entries, f: "lens_affected_set_provenance_producer_rejects_malformed_ingest_holds")
