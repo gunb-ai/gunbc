@@ -1,16 +1,50 @@
 module v2.test.long.meta_exec_confinement_clean_tree
 
 import v2.lens.meta_exec_confinement {
+  meta_exec_confinement_exception_paths,
+  meta_exec_consumer_scan_roots,
   meta_exec_leak_count_live,
-  meta_exec_consumer_scan_roots
+  meta_exec_live_leak_candidate_paths,
+  meta_exec_roster_sound,
+  meta_exec_roster_stale_count_live
 }
+import v2.std.layer { layer_import_facts_live }
+import v2.std.algebra { is_empty, list_append }
+import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.logic { Bool }
+import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data meta_exec_clean_tree_long_note: String = "Full-corpus meta_exec_confinement clean-tree receipt exceeds the per-PR 5s fast-lane eval budget once layer_import_facts_live unions reference_resolution_facts over witness_layer_roots. Fast-lane per-PR coverage: scanner/planted_leak_test.dag (fixture scan only). Excluded from discovery by test/claim/long/ dir grain."
+data meta_exec_clean_tree_long_note: String = "Full-corpus meta_exec_confinement clean-tree receipt exceeds the per-PR 5s fast-lane eval budget once layer_import_facts_live unions reference_resolution_facts over witness_layer_roots. Fast-lane per-PR coverage: scanner/planted_leak_test.dag (fixture scan only) and roster_soundness_test.dag (the empty-roster construction wall). Excluded from discovery by test/claim/long/ dir grain."
+
+data meta_exec_roster_soundness_live_note: String = "The LIVE half of the roster-soundness fix, homed here on measurement, not preference: meta_exec_roster_sound_live costs 13470ms over meta_exec_consumer_scan_roots and 11485ms over dag/gunbc alone (measured 2026-07-25), against a 5s fast-lane budget. Its per-PR counterpart is the empty-roster construction wall in v2.test.meta_exec_confinement.roster_soundness, which needs no scan because stale_count is bounded above by roster length. This lane is still the DARK one — NOT roster-enrolled on GithubActionsCiJob — so it is a backstop, not the enforcement; the enforcement is the wall. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/meta_exec_confinement_clean_tree_test.dag --function meta_exec_roster_soundness_live_holds. Dissolve-on: a falsifier batch admits live-tree lens receipts, and this row plus the clean-tree row above enroll there together."
+
+data meta_exec_live_scan_non_degeneracy_note: String = "A live-scan receipt over a CLEAN tree is true for two different reasons — no roster row is stale, or the walk read nothing at all and every predicate over an empty fact set is vacuously true (DESIGN section 5: ⊤-as-answer conflated with ⊤-as-ignorance). meta_exec_live_leak_candidate_paths cannot serve as the liveness signal here because a clean tree legitimately has zero leak candidates, so the control asserts on the underlying fact set instead: layer_import_facts_live over the same roots must be non-empty, which holds only if the walk actually reached the corpus."
+
+data planted_stale_roster_entry: String = "dag/gunbc/_perturb_stale_meta_exec_roster.dag"
 
 test fn scanner_clean_tree_meta_exec_holds_on_rostered_corpus() -> Bool {
   meta_exec_leak_count_live(scan_roots: meta_exec_consumer_scan_roots) == 0
+}
+
+test fn meta_exec_live_scan_non_degenerate_holds() -> Bool {
+  is_empty(
+    xs: layer_import_facts_live(std_roots: meta_exec_consumer_scan_roots, extdeps_roots: [])
+  ) == false
+}
+
+test fn meta_exec_roster_soundness_live_holds() -> Bool {
+  meta_exec_roster_stale_count_live(scan_roots: meta_exec_consumer_scan_roots) == 0
+}
+
+test fn meta_exec_roster_soundness_live_planted_stale_red_holds() -> Bool {
+  meta_exec_roster_sound(
+    roster: list_append(
+      left: meta_exec_confinement_exception_paths(),
+      right: [planted_stale_roster_entry]
+    ),
+    live_leak_paths: meta_exec_live_leak_candidate_paths(scan_roots: meta_exec_consumer_scan_roots)
+  ) == false
 }

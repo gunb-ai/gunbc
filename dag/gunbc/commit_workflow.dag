@@ -470,9 +470,9 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/meta_exec_confinement/roster_soundness_test.dag",
       check_fns: [
-        "meta_exec_roster_live_scan_non_degenerate_holds",
-        "meta_exec_roster_sound_live_holds",
-        "meta_exec_roster_live_planted_stale_red_holds"
+        "meta_exec_roster_shrunk_to_empty_holds",
+        "meta_exec_roster_emptiness_wall_planted_row_red_holds",
+        "meta_exec_roster_soundness_planted_stale_red_holds"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
