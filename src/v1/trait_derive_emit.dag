@@ -25,6 +25,10 @@ import std.types { is_container_type }
 
 data trait_derive_emit_scope_note: String = "#7174 narrowed scope (operator 2026-07-25): (a) clone bounds on all qualifying generic params (return-bare-generic and collection-element — widened from legacy single-param pick); (c) serde/Debug/Ord derive attrs on named structs/enums. Arm (b) coproduct-native arithmetic impls deferred to GroupCompletion grounding lane."
 
+data trait_derive_emit_v1_coproduct_shape_dissolve_on: String = "v1_coproduct_all_variants_nullary duplicates v2.std.compilers.coproduct_variant_shape.coproduct_all_variants_nullary (nullary = zero Conj children on v1 Node); dissolves when v1 trait_derive_emit imports the v2 shape authority instead of minting a parallel walk."
+
+data trait_derive_emit_symbol_ord_carrier_dissolve_on: String = "authored_name_at == \"Symbol\" is interim v1 Node identity for ReprDeriveElemSymbolWrappedOrdCarrier; dissolves when Symbol kernel grounds on target_model.symbol_kernel_type_node (or equivalent typed atom) instead of string match."
+
 fn v1_trait_derive_refuse(message: String) -> String {
   concat("compile_error!(\"", message, "\");")
 }
@@ -78,7 +82,7 @@ fn v1_emit_struct_derives(
   source_indices: Map<String, NewlineIndex>
 ) -> String {
   if has_fn_fields {
-    "#[derive(Clone)]"
+    rust_trait_derive_attr_from_traits(fn_field_derive_traits())
   } else if v1_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
     let shape = v1_repr_grounding_derive_elem_shape_for_ord_carrier(children: children, source_indices: source_indices)
     if repr_grounding_derive_completeness_predicate(symbol_wrapped_ord_carrier_derive_traits(), shape) {

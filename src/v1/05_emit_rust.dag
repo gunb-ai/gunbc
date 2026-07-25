@@ -37,7 +37,6 @@ import v1.std.core {
 import v1.compiler.artifact { RenderTarget, Rust }
 import extdeps.languages.rust.emit {
   rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_method_templates,
-  rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy,
   rust_serde_rename_all_snake_case, rust_serde_rename_all_screaming_snake_case,
   HigherOrderMethodSpec, rust_higher_order_methods
 }
@@ -1069,22 +1068,6 @@ fn rust_visibility_prefix() -> String {
 
 fn rust_items() -> ItemKeywords {
   language_spec(target: Rust).items
-}
-
-fn rust_struct_derives_text() -> String {
-  rust_struct_derives
-}
-
-fn rust_struct_derives_copy_text() -> String {
-  rust_struct_derives_copy
-}
-
-fn rust_enum_derives_text() -> String {
-  rust_enum_derives
-}
-
-fn rust_enum_derives_copy_text() -> String {
-  rust_enum_derives_copy
 }
 
 fn rust_ord_derives_text() -> String {

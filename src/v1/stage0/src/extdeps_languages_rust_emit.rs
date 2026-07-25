@@ -11,6 +11,10 @@ use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::{
     ReprDeriveDiv, ReprDeriveEq, ReprDeriveMul, ReprDeriveNeg, ReprDeriveOrd, ReprDerivePartialEq,
     ReprDerivePartialOrd, ReprDeriveRem, ReprDeriveSerialize, ReprDeriveSub,
 };
+use crate::std_trait_derive_shape::{
+    nullary_coproduct_derive_traits, payload_coproduct_derive_traits, record_derive_traits_copy,
+    record_derive_traits_heap,
+};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -136,39 +140,19 @@ pub fn rust_string_types() -> Rc<Vec<String>> {
 }
 
 pub fn rust_struct_derives() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
+    rust_trait_derive_attr_from_traits(record_derive_traits_heap())
 }
 
 pub fn rust_struct_derives_copy() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
+    rust_trait_derive_attr_from_traits(record_derive_traits_copy())
 }
 
 pub fn rust_enum_derives() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
+    rust_trait_derive_attr_from_traits(payload_coproduct_derive_traits())
 }
 
 pub fn rust_enum_derives_copy() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
+    rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
 }
 
 pub fn rust_trait_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> String {

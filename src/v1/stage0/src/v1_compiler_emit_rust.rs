@@ -5,9 +5,9 @@ pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
 pub use crate::extdeps_languages_rust_emit::HigherOrderMethodSpec;
 pub use crate::extdeps_languages_rust_emit::{
     rt_bridge_function_names, rt_functions, rt_ref_map_functions, rt_wraps_result,
-    rust_container_templates, rust_enum_derives, rust_enum_derives_copy, rust_higher_order_methods,
+    rust_container_templates, rust_higher_order_methods,
     rust_method_templates, rust_method_wraps_result, rust_serde_rename_all_screaming_snake_case,
-    rust_serde_rename_all_snake_case, rust_struct_derives, rust_struct_derives_copy,
+    rust_serde_rename_all_snake_case,
 };
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
@@ -2547,22 +2547,6 @@ pub fn rust_visibility_prefix() -> String {
 
 pub fn rust_items() -> Rc<ItemKeywords> {
     language_spec(RenderTarget::Rust).items.clone()
-}
-
-pub fn rust_struct_derives_text() -> String {
-    rust_struct_derives()
-}
-
-pub fn rust_struct_derives_copy_text() -> String {
-    rust_struct_derives_copy()
-}
-
-pub fn rust_enum_derives_text() -> String {
-    rust_enum_derives()
-}
-
-pub fn rust_enum_derives_copy_text() -> String {
-    rust_enum_derives_copy()
 }
 
 pub fn rust_ord_derives_text() -> String {

@@ -8,9 +8,9 @@ use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
     ReprDeriveElemSymbolWrappedOrdCarrier, ReprDeriveElemUnknown,
 };
 pub use crate::std_trait_derive_shape::{
-    nullary_coproduct_derive_traits, payload_coproduct_derive_traits, record_derive_traits_copy,
-    record_derive_traits_heap, repr_grounding_derive_completeness_predicate,
-    symbol_wrapped_ord_carrier_derive_traits,
+    fn_field_derive_traits, nullary_coproduct_derive_traits, payload_coproduct_derive_traits,
+    record_derive_traits_copy, record_derive_traits_heap,
+    repr_grounding_derive_completeness_predicate, symbol_wrapped_ord_carrier_derive_traits,
 };
 pub use crate::std_types::is_container_type;
 pub use crate::v1_compiler_emit::to_pascal;
@@ -31,6 +31,24 @@ pub fn trait_derive_emit_scope_note() -> String {
     thread_local! {
         static CACHED: String = {
             "#7174 narrowed scope (operator 2026-07-25): (a) clone bounds on all qualifying generic params (return-bare-generic and collection-element — widened from legacy single-param pick); (c) serde/Debug/Ord derive attrs on named structs/enums. Arm (b) coproduct-native arithmetic impls deferred to GroupCompletion grounding lane.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn trait_derive_emit_v1_coproduct_shape_dissolve_on() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "v1_coproduct_all_variants_nullary duplicates v2.std.compilers.coproduct_variant_shape.coproduct_all_variants_nullary (nullary = zero Conj children on v1 Node); dissolves when v1 trait_derive_emit imports the v2 shape authority instead of minting a parallel walk.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn trait_derive_emit_symbol_ord_carrier_dissolve_on() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "authored_name_at == \"Symbol\" is interim v1 Node identity for ReprDeriveElemSymbolWrappedOrdCarrier; dissolves when Symbol kernel grounds on target_model.symbol_kernel_type_node (or equivalent typed atom) instead of string match.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -107,7 +125,7 @@ pub fn v1_emit_struct_derives(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if has_fn_fields.clone() {
-        "#[derive(Clone)]".to_string()
+        rust_trait_derive_attr_from_traits(fn_field_derive_traits())
     } else {
         if v1_symbol_wrapped_ord_carrier_shape_eligible(children.clone(), source_indices.clone()) {
             {

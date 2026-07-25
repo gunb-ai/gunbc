@@ -346,6 +346,14 @@ pub fn symbol_wrapped_ord_carrier_derive_traits() -> Rc<Vec<ReprGroundingDeriveT
     })
 }
 
+pub fn fn_field_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
+    Rc::new({
+        let mut __cons_v = (*Rc::new(vec![])).clone();
+        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
+        __cons_v
+    })
+}
+
 pub fn payload_coproduct_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
     Rc::new({
         let mut __cons_v = (*Rc::new({
