@@ -61,8 +61,12 @@ pub struct AbelianGroup<T> {
     pub _phantom: std::marker::PhantomData<T>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct GroupCompletion<M>(pub std::marker::PhantomData<M>);
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GroupCompletion<M> {
+    pub pos: M,
+    pub neg: M,
+    pub _phantom: std::marker::PhantomData<M>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FieldOfFractions<R>(pub std::marker::PhantomData<R>);

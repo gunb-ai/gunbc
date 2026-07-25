@@ -10941,7 +10941,7 @@ pub fn emit_typed_item(
                                     env.source_indices.clone(),
                                 )
                             } else {
-                                match rust_seed_host_numeric_alias(
+                                match rust_scalar_checkpoint_render_base(
                                     item_text.clone(),
                                     emit_info.corpus_repr.clone(),
                                 ) {
