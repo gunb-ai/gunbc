@@ -1,0 +1,16 @@
+module repro.probe_green
+
+import std.types { ContentHash }
+import std.content_hash { content_hash_atom }
+
+fn local_hash(x: ContentHash) -> ContentHash {
+  x
+}
+
+fn probe_imported_return(flag: Bool, x: ContentHash) -> ContentHash {
+  if flag {
+    content_hash_atom(value: "a")
+  } else {
+    local_hash(x: x)
+  }
+}

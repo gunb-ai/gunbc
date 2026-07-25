@@ -1,0 +1,25 @@
+module repro.probe_red
+
+fn local_hash(x: std.types.ContentHash) -> std.types.ContentHash {
+  x
+}
+
+fn local_int(x: Int) -> Int {
+  x
+}
+
+fn probe_qualified_return(flag: Bool, x: std.types.ContentHash) -> std.types.ContentHash {
+  if flag {
+    std.content_hash.content_hash_atom(value: "a")
+  } else {
+    local_hash(x: x)
+  }
+}
+
+fn probe_kernel_return(flag: Bool, x: Int) -> Int {
+  if flag {
+    1
+  } else {
+    local_int(x: x)
+  }
+}
