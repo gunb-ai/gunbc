@@ -1,6 +1,7 @@
 module gunbc.design.material
 
 import std.types { Milliseconds }
+import std.decimal { fixed_point_wire }
 import extdeps.color.srgb { Srgb8, srgb8_to_hsl_projection, hsl_projection_s_pct, hsl_projection_l_pct }
 import extdeps.languages.css.properties { CssPropertyName, Transition, css_property_wire }
 import extdeps.languages.css.selectors { SelectorSubject, selector_subject_wire }
@@ -97,18 +98,71 @@ data restore_gentle: TimingToken = TimingToken { name: "restore", duration_ms: 2
 
 data reframe_page: TimingToken = TimingToken { name: "reframe", duration_ms: 320, easing: "ease" }
 
-data timing_scale: List<TimingToken> = [respond_fast, reveal_deliberate, restore_gentle, reframe_page]
+data settle_spring_note: String = "A mint on the EASING axis ONLY, and the duration is derived rather than written to make that literally true (operator, 2026-07-24: reuse the existing scale first; settle_spring is justified on the easing axis). It borrows restore_gentle's 240 ms by reference, so there is no tenth duration literal anywhere in the scale and no near-miss pair for a later reader to reconcile — the brief's '~250 ms' is satisfied by a duration that already existed, and if the restore step is ever retuned the settle follows it by construction.
+
+What IS new is the curve, and it is the only non-monotone easing in the scale. Every other token eases to its target and stops, which is right for a colour or an opacity and wrong for anything with MASS: a physical control released from its actuated position does not glide to rest, it springs past and comes back, and that return is what makes a mechanism read as an object rather than a diagram. cubic-bezier(0.34, 1.56, 0.64, 1) is a back-out — the 1.56 control ordinate is what carries the value past its target before it returns.
+
+Two consequences are easy to get wrong. FIRST, the overshoot is proportional to the TRAVEL and this curve's peak excursion is roughly a tenth of the delta, so a state pair separated by a token amount produces a sub-pixel spring and no perceived beat at all: 0.985 to 1.0 on a chip-sized control overshoots by well under a tenth of a pixel. That arithmetic is why the detent table spaces its positions as widely as taste allows rather than nominally — a settle beat that must be believed rather than seen is not a settle beat. SECOND, this is a TRANSITION curve, not an animation: the bounce lives entirely in the interpolation between two stable configurations, so the keyframes wall is untouched and no ambient loop becomes writable."
+
+data settle_spring: TimingToken = TimingToken {
+  name: "settle",
+  duration_ms: restore_gentle.duration_ms,
+  easing: "cubic-bezier(0.34, 1.56, 0.64, 1)",
+}
+
+data timing_scale: List<TimingToken> = [respond_fast, reveal_deliberate, restore_gentle, reframe_page, settle_spring]
+
+data compression_scale_note: String = "A control's compression is a dimensionless RATIO, so it has no business on the length axis (gunbc.design.scale is lengths and font stacks — a scale factor with a unit would be a category error), but it is register vocabulary all the same: the amount a control gives under a finger is a house fact, not a per-site decision. Carried per-mille as integers for the reason the numeral authority records — a fractional literal in a row would be a second representation of the same magnitude — and projected to CSS through std.decimal, the one place that division happens.
+
+The three values are one mechanism described at three positions rather than three independent choices. Rest is unity. Press is the pointer-down travel: 0.97, deep enough to read as give on a chip-sized control without the label reflowing. Hold is DEEPER than press, at 0.96, and that ordering is the load-bearing part — the requested state is the control still actuated with the request in flight, so it must sit at least as low as the finger left it, and it must sit far enough below unity that the spring return has visible travel to cover (an overshoot is proportional to its delta, so a token compression produces a sub-pixel bounce and no perceived settle at all)."
+
+fn compression_wire(per_mille: Int) -> String {
+  fixed_point_wire(value: per_mille, decimals: 3)
+}
+
+data rest_scale_per_mille: Int = 1000
+data press_scale_per_mille: Int = 970
+data hold_scale_per_mille: Int = 960
+
+fn scale_transform_wire(per_mille: Int) -> String {
+  join(["scale(", compression_wire(per_mille: per_mille), ")"], "")
+}
+
+fn travel_scale_transform_wire(travel_var: String, per_mille: Int) -> String {
+  join(["translateY(", travel_var, ") ", scale_transform_wire(per_mille: per_mille)], "")
+}
+
+fn travel_transform_wire(travel_var: String) -> String {
+  join(["translateY(", travel_var, ")"], "")
+}
+
+data still_until_touched_amendment_note: String = "REGISTER LAW AMENDMENT (operator, 2026-07-24), landing with the dispatch button as its first consumer. Still-until-touched previously meant motion is USER-CAUSED. That was too narrow for an analog register, and narrow in a way that produced dishonesty rather than austerity: a real mechanism moves when its STATE changes, whoever changed it, and a control that answers a finger but not the machine is not a quiet instrument — it is one that lies about half of what happens to it. So the law now reads: motion only on user touch OR observed state change. What it still forbids is exactly what it forbade before — ambient motion, motion with no cause, which stays unwritable because there is no constructor for it.
+
+Mechanically the amendment is one trigger variant, and the reason it needed to be a variant rather than a second rule shape is a selector-algebra fact: OnHover, OnFocusVisible and OnActive are PSEUDO-classes the browser owns, while an observed state arrives as a CLASS the client program flips. Both compose onto a subject the same way — suffix the selector — so one variant with a different suffix reaches the whole state space, and every existing consumer (coverage law, merge, reduced-motion, both censuses) keeps working with no new arms.
+
+One genuine asymmetry has to be respected, and it is where the analog reading pays off. A pseudo-class response is SYMMETRIC — hover in, hover out, and you want both to animate — so its transition belongs on the BASE selector where it governs the edge in both directions. A state-class response is an edge into a DETENT, and each detent is entered with its own weight (a sharp 90 ms travel into pressed, a spring return into accepted), so its transition belongs on the STATE selector. Placing both on the base would make the last-written timing govern every edge of the element, silently, because CSS transition is a shorthand and not a list. Hence transition_carrier_selector: the placement is derived from the trigger's kind rather than chosen per site."
 
 type MotionTrigger
   = OnHover
   | OnFocusVisible
   | OnActive
+  | OnStateClass { class_name: String }
 
-fn trigger_pseudo(t: MotionTrigger) -> String {
+fn trigger_selector_suffix(t: MotionTrigger) -> String {
   match t {
     OnHover => ":hover"
     OnFocusVisible => ":focus-visible"
     OnActive => ":active"
+    OnStateClass { class_name } => join([".", class_name], "")
+  }
+}
+
+fn trigger_is_state_class(t: MotionTrigger) -> Bool {
+  match t {
+    OnHover => false
+    OnFocusVisible => false
+    OnActive => false
+    OnStateClass { class_name: _ } => true
   }
 }
 
@@ -154,12 +208,20 @@ fn response_base_selector(subject: SelectorSubject, shape: TriggerShape) -> Stri
 }
 
 fn response_hot_selector(subject: SelectorSubject, shape: TriggerShape, trigger: MotionTrigger) -> String {
-  let pseudo = trigger_pseudo(t: trigger)
+  let pseudo = trigger_selector_suffix(t: trigger)
   match shape {
     SelfResponse => concat(selector_subject_wire(s: subject), pseudo)
     WithinSubject { target } => join([selector_subject_wire(s: subject), pseudo, " ", target], "")
     ContainerHas { container, target } =>
       join([container, ":has(", selector_subject_wire(s: subject), pseudo, ") ", target], "")
+  }
+}
+
+fn transition_carrier_selector(subject: SelectorSubject, shape: TriggerShape, trigger: MotionTrigger) -> String {
+  if trigger_is_state_class(t: trigger) {
+    response_hot_selector(subject: subject, shape: shape, trigger: trigger)
+  } else {
+    response_base_selector(subject: subject, shape: shape)
   }
 }
 
@@ -171,23 +233,139 @@ fn css_block(selector: String, decls: List<CssDecl>) -> String {
   join([selector, " { ", serialize_decls(decls: decls), " }"], "")
 }
 
+data serialize_rule_carries_no_transition_note: String = "A rule serializes its DECLARATIONS only; its transition is emitted by the carrier pass. That split is what makes the shorthand collision unwritable rather than merely avoided: there is exactly one place a `transition` can come from, so no number of rules on one selector can produce two of them. The base block is omitted entirely when a rule declares no base declarations, which is the common case for a response — an empty block is noise in a generated stylesheet."
+
 fn serialize_rule(rule: BuildRule) -> String {
   match rule {
     StaticRule { selector, decls } => css_block(selector: selector_subject_wire(s: selector), decls: decls)
-    ResponseRule { subject, shape, trigger, transition_props, timing, base_decls, response_decls } =>
-      join([
-        css_block(
-          selector: response_base_selector(subject: subject, shape: shape),
-          decls: concat(base_decls, [transition_decl(props: transition_props, t: timing)])),
-        css_block(
-          selector: response_hot_selector(subject: subject, shape: shape, trigger: trigger),
-          decls: response_decls),
-      ], "\n")
+    ResponseRule { subject, shape, trigger, transition_props: _, timing: _, base_decls, response_decls } => {
+      let hot = css_block(
+        selector: response_hot_selector(subject: subject, shape: shape, trigger: trigger),
+        decls: response_decls)
+      if base_decls.length() == 0 {
+        hot
+      } else {
+        join([
+          css_block(selector: response_base_selector(subject: subject, shape: shape), decls: base_decls),
+          hot,
+        ], "\n")
+      }
+    }
   }
 }
 
+data transition_carrier_note: String = "CSS `transition` is a SHORTHAND, and this is the third time that fact has bitten this file, so it is now handled structurally rather than per rule. Two declarations of it on one selector do not compose — the later simply wins — and the shorthand's per-item form is `prop duration easing`, so a naive union of property NAMES onto one timing produces `transition: border-color, transform 160ms ease-out`, in which `border-color` silently gets the initial 0s and stops animating entirely. Both failure modes are invisible: nothing reds, the page just feels half-built in a way a reader blames on the timing tokens.
+
+Two facts about the medium make the correct shape unavoidable. FIRST, one selector may need one property at SEVERAL weights — the dispatch button transitions `transform` at 160 ms entering hover, 90 ms entering pressed, and 240 ms on the settle curve entering accepted — which no single declaration can express. SECOND, a transition governs the edge in BOTH directions from wherever it is declared, so leaving a state needs a declaration on the base selector or the return snaps.
+
+Hence: transitions are accumulated per CARRIER SELECTOR as typed (property, timing) items and serialized once per carrier, never inside a rule. The base carrier holds each property once, first mention winning, which is what animates every RETURN to rest. A hot selector gets its own item only when its weight DIFFERS from the base's for that property — so the per-edge weights that need saying get said, and the ones that would be duplicates are not emitted. First-mention-wins is a real ordering dependence and it is the register's own row order, which is authored and stable; the alternative was averaging weights, which would silently invent a duration no token declares."
+
+type TransitionItem {
+  prop: String
+  timing: TimingToken
+}
+
+type TransitionCarrier {
+  selector: String
+  items: List<TransitionItem>
+}
+
+fn timing_same(a: TimingToken, b: TimingToken) -> Bool {
+  a.duration_ms == b.duration_ms && a.easing == b.easing
+}
+
+fn transition_item_wire(i: TransitionItem) -> String {
+  join([i.prop, " ", to_string(i.timing.duration_ms), "ms ", i.timing.easing], "")
+}
+
+fn transition_items_decl(items: List<TransitionItem>) -> CssDecl {
+  CssDecl {
+    prop: Transition,
+    value: join(map(items, i => transition_item_wire(i: i)), ", "),
+  }
+}
+
+fn carrier_named(carriers: List<TransitionCarrier>, selector: String) -> TransitionCarrier? {
+  carriers |> filter(c => c.selector == selector) |> first
+}
+
+fn items_timing_for_prop(items: List<TransitionItem>, prop: String) -> TimingToken? {
+  match items |> filter(i => i.prop == prop) |> first {
+    Present { value: i } => Present { value: i.timing }
+    Absent => Absent
+  }
+}
+
+fn carrier_add_item(carriers: List<TransitionCarrier>, selector: String, item: TransitionItem) -> List<TransitionCarrier> {
+  match carrier_named(carriers: carriers, selector: selector) {
+    Absent => concat(carriers, [TransitionCarrier { selector: selector, items: [item] }])
+    Present { value: existing } =>
+      match items_timing_for_prop(items: existing.items, prop: item.prop) {
+        Present { value: _ } => carriers
+        Absent =>
+          map(carriers, c =>
+            if c.selector == selector {
+              TransitionCarrier { selector: c.selector, items: concat(c.items, [item]) }
+            } else {
+              c
+            })
+      }
+  }
+}
+
+fn base_transition_carriers(rules: List<BuildRule>) -> List<TransitionCarrier> {
+  fold(rules, init: [], f: (acc, r) => match r {
+    StaticRule { selector: _, decls: _ } => acc
+    ResponseRule { subject, shape, trigger: _, transition_props, timing, base_decls: _, response_decls: _ } =>
+      carrier_add_item(
+        carriers: acc,
+        selector: response_base_selector(subject: subject, shape: shape),
+        item: TransitionItem { prop: transition_props, timing: timing })
+  })
+}
+
+fn hot_transition_carriers(rules: List<BuildRule>) -> List<TransitionCarrier> {
+  let base = base_transition_carriers(rules: rules)
+  fold(rules, init: [], f: (acc, r) => match r {
+    StaticRule { selector: _, decls: _ } => acc
+    ResponseRule { subject, shape, trigger, transition_props, timing, base_decls: _, response_decls: _ } => {
+      let base_selector = response_base_selector(subject: subject, shape: shape)
+      let redundant = match carrier_named(carriers: base, selector: base_selector) {
+        Absent => false
+        Present { value: c } =>
+          match items_timing_for_prop(items: c.items, prop: transition_props) {
+            Absent => false
+            Present { value: base_timing } => timing_same(a: base_timing, b: timing)
+          }
+      }
+      if redundant {
+        acc
+      } else {
+        carrier_add_item(
+          carriers: acc,
+          selector: response_hot_selector(subject: subject, shape: shape, trigger: trigger),
+          item: TransitionItem { prop: transition_props, timing: timing })
+      }
+    }
+  })
+}
+
+fn all_transition_carriers(rules: List<BuildRule>) -> List<TransitionCarrier> {
+  concat(base_transition_carriers(rules: rules), hot_transition_carriers(rules: rules))
+}
+
+fn serialize_transition_carriers(carriers: List<TransitionCarrier>) -> String {
+  join(map(carriers, c => css_block(selector: c.selector, decls: [transition_items_decl(items: c.items)])), "\n")
+}
+
 fn serialize_rules(rules: List<BuildRule>) -> String {
-  join(map(rules, r => serialize_rule(rule: r)), "\n")
+  let blocks = join(map(rules, r => serialize_rule(rule: r)), "\n")
+  let carriers = all_transition_carriers(rules: rules)
+  if carriers.length() == 0 {
+    blocks
+  } else {
+    join([blocks, serialize_transition_carriers(carriers: carriers)], "\n")
+  }
 }
 
 fn add_selector_once(selectors: List<String>, s: String) -> List<String> {
@@ -196,11 +374,8 @@ fn add_selector_once(selectors: List<String>, s: String) -> List<String> {
 }
 
 fn reduced_motion_block(rules: List<BuildRule>) -> String {
-  let selectors = fold(rules, init: [], f: (acc, r) => match r {
-    StaticRule { selector: _, decls: _ } => acc
-    ResponseRule { subject, shape, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } =>
-      add_selector_once(selectors: acc, s: response_base_selector(subject: subject, shape: shape))
-  })
+  let selectors = fold(all_transition_carriers(rules: rules), init: [], f: (acc, c) =>
+    add_selector_once(selectors: acc, s: c.selector))
   if selectors.length() == 0 {
     ""
   } else {

@@ -4,7 +4,7 @@ module test.claim.os_free_witness
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn free_output_witnesses() -> Bool {
-  let memory_stats = extdeps.os.free.MemoryStats {
+  let memory_stats = extdeps.tools.free.MemoryStats {
     total: byte_size(count: 8192000000),
     used: byte_size(count: 1024000000),
     free: byte_size(count: 2048000000),

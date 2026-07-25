@@ -760,7 +760,7 @@ impl fmt::Display for InterpError {
                 argv0,
             } => write!(
                 f,
-                "argv exceeds host arg limit: '{}' invocation carries a {}-byte argument > {}-byte host MAX_ARG_STRLEN — route large payloads through stdin, not argv (Linux execve(2) E2BIG; extdeps.os.exec_arg_limit.host_exec_arg_max_strlen; DESIGN §5 typed refusal in place of an opaque os error 7)",
+                "argv exceeds host arg limit: '{}' invocation carries a {}-byte argument > {}-byte host MAX_ARG_STRLEN — route large payloads through stdin, not argv (Linux execve(2) E2BIG; extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen; DESIGN §5 typed refusal in place of an opaque os error 7)",
                 argv0, actual_bytes, limit_bytes
             ),
         }
@@ -6013,7 +6013,7 @@ fn shell_stdin_payload(val: &Value) -> InterpResult<Vec<u8>> {
 }
 
 /// Host per-argument byte ceiling. Mirrors the single authority
-/// `extdeps.os.exec_arg_limit.host_exec_arg_max_strlen` (Linux execve(2)
+/// `extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen` (Linux execve(2)
 /// MAX_ARG_STRLEN = 32 * PAGE_SIZE = 131072). A single argv (or env) string
 /// longer than this makes `execve` fail with E2BIG ("Argument list too long").
 /// `argv_arg_limit_test::mirror_matches_extdeps_authority` pins this to the

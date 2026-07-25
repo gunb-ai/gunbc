@@ -5,6 +5,7 @@ import gunbc.ci_layer_roots {
   WitnessExclusionRow,
   BinWitnessWet,
   FalsifierRehomedBinWet,
+  FalsifierSubstrateLongLane,
   NoConsumer,
   OfflineLocalRecipe
 }
@@ -71,7 +72,8 @@ test fn witness_exclusion_red_control_unbacked_bin_wet_row_reds() -> Bool {
     ],
     bin_entries: [],
     probe_entries: [],
-    rehomed_entries: []
+    rehomed_entries: [],
+    substrate_long_entries: []
   ) == false
 }
 
@@ -87,6 +89,24 @@ test fn witness_exclusion_red_control_unbacked_rehomed_row_reds() -> Bool {
     ],
     bin_entries: [],
     probe_entries: [],
-    rehomed_entries: []
+    rehomed_entries: [],
+    substrate_long_entries: []
+  ) == false
+}
+
+test fn witness_exclusion_red_control_unbacked_substrate_long_lane_row_reds() -> Bool {
+  witness_exclusion_explicit_roster_rows_consistent(
+    rows: [
+      WitnessExclusionRow {
+        pattern: "no_such_substrate_long_entry.dag",
+        classification: FalsifierSubstrateLongLane,
+        reason: "synthetic",
+        dissolve_on: "synthetic"
+      }
+    ],
+    bin_entries: [],
+    probe_entries: [],
+    rehomed_entries: [],
+    substrate_long_entries: []
   ) == false
 }

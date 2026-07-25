@@ -14,7 +14,7 @@ import v2.test.lens_affected_set.provenance_producer {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data affected_set_provenance_producer_long_note: String = "Source-root provenance producer ingest witnesses exceed the per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note)."
+data affected_set_provenance_producer_long_note: String = "Class C live-grain half (test-decomposition-wcf-cut, 2026-07-25): source-root provenance producer ingest/parse pipeline witnesses exceed the per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note). Enrolled on falsifier_substrate_long_lane_entries (nightly falsifier batch 6). Per-PR fixture-wall coverage: affected_set_provenance_producer_test.dag + sg_claims_test.dag selectivity receipts."
 
 test fn lens_affected_set_provenance_producer_single_read_emits_row_holds() -> Bool {
   provenance_producer_single_read_emits_row_holds()

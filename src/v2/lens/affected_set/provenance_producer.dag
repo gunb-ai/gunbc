@@ -246,6 +246,28 @@ fn provenance_producer_unknown_diff_fail_closed_holds() -> Bool {
   }
 }
 
+fn provenance_producer_unknown_diff_fail_closed_on_fixture_holds() -> Bool {
+  match affected_set_reading_from_git_diff_provenance(
+    graph: affected_set_claim_tree(),
+    git_diff: provenance_producer_unknown_git_diff,
+    provenance: provenance_producer_node_precision_provenance
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+fn provenance_producer_known_uncovered_diff_fail_closed_on_fixture_holds() -> Bool {
+  match affected_set_reading_from_git_diff_provenance(
+    graph: affected_set_claim_tree(),
+    git_diff: provenance_producer_fixture_git_diff,
+    provenance: provenance_producer_node_precision_provenance
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
 fn provenance_producer_reading_from_provenance(
   git_diff: GitDiffNameOnly,
   provenance: List<NodeArtifactProvenance>

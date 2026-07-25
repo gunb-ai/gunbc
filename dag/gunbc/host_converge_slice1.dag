@@ -3,7 +3,7 @@ module gunbc.host_converge_slice1
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.disposition { Disposition, Terminal }
 import product.placement_supply { HostIdentity }
-import extdeps.os.systemd {
+import extdeps.systemd {
   systemd_memory_max_property,
   MemoryMax,
   MemoryCurrent,
