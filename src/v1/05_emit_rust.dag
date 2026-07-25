@@ -87,7 +87,7 @@ import v1.compiler.infer {
 import v1.compiler.infer_emit_info {
   EmitGraphInfo, RustCorpusRepr, HostNative, FaithfulFreeMonoid, TypeSummary, StructRepr, EnumRepr,
   lookup_emit_type_summary, lookup_emit_type_decl, empty_emit_graph_info,
-  emit_info_with_fn_type_context,
+  emit_info_with_fn_type_context, emit_info_with_fn_return,
   is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum, variant_summary_key,
   collect_type_node_import_surface_names
@@ -491,6 +491,85 @@ fn rust_applied_type_base(name: String, corpus_repr: RustCorpusRepr) -> String {
 
 fn rust_normalize_witness_type_text(rendered: String) -> String {
   replace(rendered, "witness<", "v1_rt::Witness<")
+}
+
+fn rust_witness_parent_leaf(parent: String) -> Bool {
+  qualified_last_segment(name: parent) == "Witness"
+}
+
+fn rust_peel_one_rc_type_node(type_node: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  let head = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_node))
+  if head != "Rc" { return type_node }
+  match type_node.children |> first {
+    Present { value: inner } => inner
+    Absent =>
+      match find_property(props: type_node.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+        Present { value: applied } =>
+          match applied.children |> first {
+            Present { value: inner } => inner
+            Absent => type_node
+          }
+        Absent => type_node
+      }
+  }
+}
+
+fn rust_witness_type_arg_render(type_node: Node, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+  let head = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_node))
+  if head != "Witness" { return none }
+  let arg_node = match type_node.children |> first {
+    Present { value: child } => child
+    Absent =>
+      match find_property(props: type_node.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+        Present { value: applied } =>
+          match applied.children |> first {
+            Present { value: child } => child
+            Absent => return none
+          }
+        Absent => return none
+      }
+  }
+  let rendered = render_rust_type(n: arg_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices, emit_info: emit_info)
+  if rendered == "_" || rendered == "" { none } else { Present { value: rendered } }
+}
+
+fn rust_witness_type_arg_from_holds_value_field(fields: List<Node>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+  match fields |> filter(f => field_init_node_name_at(n: f, source_indices: source_indices) == "value") |> first {
+    Present { value: f } =>
+      let val_rt = resolved_type(n: field_init_node_value(n: f))
+      rust_witness_type_arg_render(type_node: val_rt, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+    Absent => none
+  }
+}
+
+fn rust_witness_type_arg_from_fn_return(emit_info: EmitGraphInfo, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String? {
+  if !emit_info.fn_return_type_present { return none }
+  let peeled = rust_peel_one_rc_type_node(type_node: emit_info.fn_return_type, source_indices: source_indices)
+  rust_witness_type_arg_render(type_node: peeled, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+}
+
+fn rust_witness_variant_ctor_path(variant_name: String, ctor_name: String, effective_parent: String?, resolved_type: Node, fields: List<Node>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+  match effective_parent {
+    Present { value: parent } =>
+      if !rust_witness_parent_leaf(parent: parent) {
+        concat(qualified_last_segment(name: parent), "::", variant_name)
+      } else {
+        let type_arg = match rust_witness_type_arg_render(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
+          Present { value: arg } => Present { value: arg }
+          Absent =>
+            if variant_name == "Holds" {
+              rust_witness_type_arg_from_holds_value_field(fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+            } else {
+              rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
+            }
+        }
+        match type_arg {
+          Present { value: arg } => concat("Witness::<", arg, ">::", variant_name)
+          Absent => concat("Witness::", variant_name)
+        }
+      }
+    Absent => ctor_name
+  }
 }
 
 fn rust_normalize_partial_function_field_type_text(rendered: String) -> String {
@@ -5485,8 +5564,7 @@ fn variant_pattern_qualified_path(rust_name: String, resolved_parent: String?) -
   match resolved_parent {
     Present { value: parent } =>
       let parent_leaf = qualified_last_segment(name: parent)
-      if parent_leaf == "Witness" { concat("v1_rt::Witness::", rust_name) }
-      else { concat(parent_leaf, "::", rust_name) }
+      concat(parent_leaf, "::", rust_name)
     Absent => rust_name
   }
 }
@@ -8080,10 +8158,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
       } else { tn }
       let display_tn = if optional_variant { rust_tn }
         else {
-          match effective_parent {
-            Present { value: resolved_parent_enum } => concat(resolved_parent_enum, "::", rust_tn)
-            Absent => ctor_name
-          }
+          rust_witness_variant_ctor_path(variant_name: rust_tn, ctor_name: ctor_name, effective_parent: effective_parent, resolved_type: resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: si)
         }
       if optional_variant && is_some_like_variant_name(name: tn) && fields |> count == 1 {
         match fields |> first {

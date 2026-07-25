@@ -10,7 +10,8 @@ import v1.std.core {
   with_required_cardinality,
   Connective, Conj, NoConnective, Arrow,
   CardOptional,
-  param_node_name_at
+  param_node_name_at,
+  error_type
 }
 import v1.compiler.infer_env { TypeEnv, empty_symbol_index, empty_type_env }
 import v1.compiler.infer_types {
@@ -92,6 +93,8 @@ type EmitGraphInfo {
 
   fn_generic_param_names: List<String>
   fn_type_env: TypeEnv
+  fn_return_type: Node
+  fn_return_type_present: Bool
 }
 
 type EmitInfoBuildState {
@@ -118,7 +121,9 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
 
     corpus_repr: FaithfulFreeMonoid,
     fn_generic_param_names: [],
-    fn_type_env: empty_type_env()
+    fn_type_env: empty_type_env(),
+    fn_return_type: error_type,
+    fn_return_type_present: false
   }
 }
 
@@ -138,7 +143,31 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     read_only_params: emit_info.read_only_params,
     corpus_repr: emit_info.corpus_repr,
     fn_generic_param_names: generic_param_names,
-    fn_type_env: env
+    fn_type_env: env,
+    fn_return_type: emit_info.fn_return_type,
+    fn_return_type_present: emit_info.fn_return_type_present
+  }
+}
+
+fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node) -> EmitGraphInfo {
+  EmitGraphInfo {
+    type_summaries: emit_info.type_summaries,
+    type_decl_items: emit_info.type_decl_items,
+    recursive_type_set: emit_info.recursive_type_set,
+    fielded_variants: emit_info.fielded_variants,
+    positional_payload_variants: emit_info.positional_payload_variants,
+    shared_types: emit_info.shared_types,
+    ownership_index: emit_info.ownership_index,
+    movable: emit_info.movable,
+    variant_to_enum: emit_info.variant_to_enum,
+    owned_bindings: emit_info.owned_bindings,
+    read_only_params_index: emit_info.read_only_params_index,
+    read_only_params: emit_info.read_only_params,
+    corpus_repr: emit_info.corpus_repr,
+    fn_generic_param_names: emit_info.fn_generic_param_names,
+    fn_type_env: emit_info.fn_type_env,
+    fn_return_type: fn_return_type,
+    fn_return_type_present: true
   }
 }
 
