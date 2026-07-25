@@ -23,10 +23,11 @@ each row carries a suggested grounding and its own dissolve-on.
 | **other** | 17 | 13 | 4 | misc grounding/decomposition notes |
 | **total** | 203 | 147 | 56 | |
 
-> **Std-side drill-down:** [§Addendum — std census](#std-side-census-addendum) re-verifies every
-> `dag/std/` row against the live tree (101 modules, 2026-07-25) with per-row `file:line`,
-> disposition, and relocation/citation destination. Snapshot std count is 56; **52 active** after
-> eight dissolved + one refuted (four §3-forks landed since the corpus-wide audit).
+> **Std-side modeling census:** [§Std-side modeling census](#std-side-modeling-census) (2026-07-25)
+> prices five **std-modeling** defect classes the extdeps positioning and anemia sweeps did not cover
+> (uncited unit constants, foreign-domain literals, parallel mini-frameworks, basisless internal
+> constants, hand counts beside structure). Sections 1–6 below remain the corpus-wide grounding
+> inventory (56 std rows in the original snapshot).
 
 The spread is the point: grounding defects are **everywhere**, in both trees — location did not
 predict them (extdeps carries the bulk simply because it is the larger tree, 349 files to std's 102).
@@ -305,128 +306,200 @@ High/medium severity (21 of 86):
 | `std.fermi` | FermiTimeout.label: String | label ("30 seconds", "5 minutes", ...) is a human-readable duplicate representation of timeout_ms — a dual representation of the same magnitude (§2/§5), drifting-prone ra |
 | `std.resources` | ResourceHandle.type | Bare String discriminator (alongside bare resource_id/key) names the resource kind as free text rather than referencing a modeled resource, an open nickname surface (§3). |
 
-## Std-side census addendum
+## Std-side modeling census
 
-Drill-down on **`dag/std/` only** (101 modules, re-verified 2026-07-25 against the live tree).
-Companion to sections 1–6 above — every std row carries **`file:line`**, **disposition**, and
-**destination/citation** where relocation or re-grounding applies. Census only — no fixes in this PR.
+**Census only — no fixes in this PR.** Third modeling sweep (after extdeps positioning and extdeps
+anemia) scoped to **`dag/std/`** with class-4/5 spot checks in **`dag/extdeps/`** and
+**`dag/gunbc/`** as the brief requires. Re-verified against the live tree 2026-07-25 (101 std
+modules). Trigger specimen: `dag/std/measure.dag` mints `MoneyRate<P>` with structureless phantom
+periods beside the `Measure` framework that should ground rates, plus `billing_month_as_hour_count()
+= 730` (uncited billing convention in the framework layer). Every row: **`file:line`**, **disposition**,
+**destination / citation** (relocations). Cross-refs sections 1–6 for the corpus-wide 56 std grounding
+rows (§3-forks, anemia, citation-gaps) — this section prices the modeling defects those sweeps missed.
 
-### Summary — std defects by class
+### Summary — five std-modeling classes (deduped counts)
 
-| class | snapshot (§Summary) | live rows | active | dissolved | refuted |
-| --- | --- | --- | --- | --- | --- |
-| **s3-fork** | 10 | 10 | 6 | 4 | 0 |
-| **std-to-extdeps-table** | 8 | 8 | 5 | 2 | 1 |
-| **citation-gap** | 15 | 17 | 15 | 2 | 0 |
-| **numeric-anemia** | 6 | 7 | 7 | 0 | 0 |
-| **string-anemia** | 13 | 15 | 15 | 0 | 0 |
-| **other** | 4 | 4 | 4 | 0 | 0 |
-| **total** | **56** | **61** | **52** | **8** | **1** |
-
-**Delta from snapshot:** four §3-forks and two std→extdeps/citation rows are **dissolved** on
-the live tree (`std.baseboard` deleted #7189; `CacheInterfaceProduct` enum deleted;
-`std.filesystem.is_text_encoding` duplicate deleted; `std.markdown_markup` mapping dissolved to
-composition). `std.os.types` std→extdeps-table claim is **refuted** (type-only, no data rows).
-Citation-gap and string-anemia live-row counts expanded with module-level `std.os` /
-`std.os.types` rows and split `os.types` catalog-field rows the corpus-wide table merged;
-numeric-anemia adds `EntryPoint`/`Relocation` offset fields as a second `std.exec_format` row.
-
-**Disposition key:** `Delete-duplicate` collapse to single authority · `Relocate` cited data
-to extdeps · `Re-ground` existing dimensional/model authority · `Decompose` structured type
-· `Add-citation` ExternalAuthority/data-note · `Dissolved` already landed · `Refuted` not a defect.
-
-### A1. §3-forks (duplicate-modeled concepts) — 10 rows (6 active)
-
-| module | symbol / span | file:line | disposition | destination / citation | status | note |
+| class | dag/std | src/v2 | extdeps | gunbc | total | what it is |
 | --- | --- | --- | --- | --- | --- | --- |
-| `std.languages` | data rows (72× Language/Syntax tables) | `dag/std/languages.dag:365–1193` | Delete-duplicate | `extdeps/languages/{rust,go,python,typescript,yaml,toml,css,json}/` | CONFIRMED | Forks per-language cited syntax/type/reserved-word tables already in extdeps/languages/ |
-| `std.types` | Duration / Milliseconds / Seconds | `dag/std/types.dag:150–152` | Delete-duplicate | `std.measure.Duration` / `Millisecond` / `Second` | CONFIRMED | Branded Int time aliases fork dimensional `Measure<Time,…>` |
-| `std.types` | SemVer | `dag/std/types.dag:127` | Delete-duplicate | `extdeps.version.semver.SemVerVersion` (semver.org) | CONFIRMED | String alias forks cited semver model |
-| `std.baseboard` | BaseboardManufacturer / catalog enums | `dag/std/baseboard.dag` | Dissolved | `extdeps/vendor.Vendor<Hardware>` + `extdeps/boards/*` | DISSOLVED | Module deleted; PR #7189 dissolved minted vendor enum |
-| `std.markdown_markup` | markdown_inline_to_markup_nodes | `dag/std/markdown_markup.dag:15–20` | Dissolved | `markdown_inline_to_fragments` ∘ `fragments_to_markup_nodes` | DISSOLVED | Parallel tag-map deleted; thin composition wrapper remains |
-| `std.markup` | Fragment/Element/FragmentText vs MarkupNode/ElementNode/TextNode/MarkupAttr | `dag/std/markup.dag:13–16, 162–169` | Delete-duplicate | Single HTML-tree vocabulary (collapse onto Fragment axis) | CONFIRMED | Byte-identical element-tree shapes modeled twice |
-| `std.bit` | Word8 / Word16 / Word32 / Word64 / Word128 | `dag/std/bit.dag:11–18` | Delete-duplicate | `std.machine_constraints.MachineWidth<N>` (`std.integer` Int8..UInt128) | CONFIRMED | Five hand-rolled width types duplicate machine-width axis |
-| `std.cache_identity` | CacheInterfaceProduct | `dag/std/cache_identity.dag:20` | Dissolved | `std.cache_interface.CacheInterfaceId` + `extdeps/cache/*.dag` | DISSOLVED | Closed product enum deleted; dissolve_on row documents retirement |
-| `std.filesystem` | is_text_encoding (duplicate predicate) | `dag/std/filesystem.dag:7` | Dissolved | `std.encoding.is_text_encoding` via `is_text_encoding_optional` | DISSOLVED | Duplicate fn deleted; Optional lift retained locally |
-| `std.node` | compiler_inductive_fields | `dag/std/node.dag:8–123` | Delete-duplicate | Derive from Node/InferredNode/MatchPattern type decls | CONFIRMED | Hand-authored table dual-represents inductive structure on types |
+| **1 — uncited unit-definition constants** | 10 | 0 | 5 | 0 | **15** | cited SI/IEC/ISO conventions in `std.measure` without authority rows |
+| **2 — foreign-domain constants in std** | 4 | 0 | 0 | 0 | **4** | vendor/OS/billing facts wearing framework clothes |
+| **3 — parallel mini-frameworks** | 5 | 0 | 0 | 1 | **6** | hand rate/product bridges beside `Measure` (see also inventory Rate-framework row / #7202) |
+| **4 — internal constants missing basis** | 3 | 4 | 3 | 4 | **14** | clamp/tuning literals needing rationale or width derivation (not citation gaps) |
+| **5 — hand counts beside structure** | 0 | 14 | 0 | 0 | **14** | drift-prone `*_count_expected` mirrors of countable facts |
+| **total** | **22** | **18** | **8** | **5** | **53** | |
 
-### A2. std→extdeps tables (cited data mis-homed in std) — 8 rows (5 active)
+**Disposition key:** `Cite-or-relocate` · `Relocate` (Tier-A cited-data move) · `Unify` (collapse to
+single `Measure`/Rate authority) · `Derive` (from structure/roster/width) · `Add-basis-row`
+(clamp-constant discipline). **Coordination (do not start here):** gentle-hawk Tier A owns
+`std.currency` relocation (money items sequence behind it); witty-ferret owns §1 dedups; Rate
+framework + `Vendor<Domain>`→domain-on-relationship are separately filed (#7202). **`measure.dag` is
+read-only for this PR.**
 
-| module | symbol / span | file:line | disposition | destination / citation | status | note |
-| --- | --- | --- | --- | --- | --- | --- |
-| `std.baseboard` | vendor/board catalog enums + rows | `dag/std/baseboard.dag` | Dissolved | `extdeps/boards/*` | DISSOLVED | Module removed with s3-fork fix |
-| `std.bmc` | BmcFirmwareFamily (= OpenBmc) + dispatch | `dag/std/bmc.dag:7` | Relocate | `extdeps/bmc` (std projects types only, per os pattern) | PARTIAL | Real §3 fork present; table-class claim is partial — enum value is cited data |
-| `std.languages` | 72 data rows (Language + Syntax + reserved_words) | `dag/std/languages.dag:365–1193` | Relocate | `extdeps/languages/*` | CONFIRMED | Cited per-language tables mis-homed in std |
-| `std.cache_identity` | CacheInterfaceProduct roster | `dag/std/cache_identity.dag:20` | Dissolved | `extdeps/cache/{gha,sccache,buildbuddy,cargo,rustup}.dag` | DISSOLVED | Enum already deleted |
-| `std.os.types` | Ubuntu/Windows/Mac catalog row types | `dag/std/os/types.dag:30–58` | Refuted | — | REFUTED | Type-only shapes, zero data rows — correct split already |
-| `std.unicode` | zero_width_blocks / zero_width_codepoints / wide_blocks | `dag/std/unicode.dag:42–75` | Relocate | `extdeps/unicode` (cite UAX #11 + Unicode version) | CONFIRMED | Cited UCD block-range tables in std |
-| `std.currency` | CurrencyCode + currency_minor_unit_exponent | `dag/std/currency.dag:5–13` | Relocate | `extdeps/currency` ISO 4217 cited rows | CONFIRMED | ISO 4217 code list + minor-unit exponents |
-| `std.os` | operating_system_surface_* product strings | `dag/std/os.dag:4–31` | Relocate | `extdeps/os/*` `DistributionCatalogRow` product_name fields | PARTIAL | Vendor marketing names ("Ubuntu", "Windows 11") belong on cited extdeps rows; projection fns stay std |
+### Class 1 — Uncited unit-definition constants in std (10 rows)
 
-### A3. Citation gaps (real upstream, no cited source/version) — 17 rows (15 active)
+Cited conventions wearing framework clothes — same disposition class as the unicode-tables item in
+§2 (`std.unicode` → `extdeps/unicode`).
 
-| module | symbol / span | file:line | disposition | destination / citation | status | note |
-| --- | --- | --- | --- | --- | --- | --- |
-| `std.approximate_field` | RoundingMode / Precision / NanPolicy / InfinityPolicy | `dag/std/approximate_field.dag:6–24` | Add-citation | IEEE 754-2019 | CONFIRMED | |
-| `std.baseboard` | whole module | `dag/std/baseboard.dag` | Dissolved | — | DISSOLVED | Module removed |
-| `std.bmc` | BmcProtocol / BmcFirmwareFamily | `dag/std/bmc.dag:5–7` | Add-citation | DMTF Redfish; IPMI; OpenBMC | CONFIRMED | `extdeps/bmc.dag` cites BMC authority; std twins uncited |
-| `std.cache_identity` | CacheInterfaceProduct (retired) | `dag/std/cache_identity.dag:20` | Dissolved | — | DISSOLVED | Product enum dissolved |
-| `std.currency` | CurrencyCode / currency_minor_unit_exponent | `dag/std/currency.dag:5–13` | Add-citation | ISO 4217 | CONFIRMED | |
-| `std.encoding` | base64_alphabet / base64_encode / base64_decode | `dag/std/encoding.dag:29, 122+` | Add-citation | RFC 4648 | CONFIRMED | |
-| `std.exec_format` | ExecutableFormatFamily / Relocation / LoadSegment | `dag/std/exec_format.dag:4–36` | Add-citation | gABI (ELF via extdeps/formats/elf); PE/COFF; Mach-O | CONFIRMED | Only ELF has cited downstream home today |
-| `std.languages` | reserved_words + per-language syntax data | `dag/std/languages.dag:830+, 365–1193` | Add-citation | Per-language official language references | CONFIRMED | 72 data rows transcribed without version pins |
-| `std.types` | HttpMethod / HttpStatus / Transport* | `dag/std/types.dag:118, 184+` | Add-citation | RFC 9110 | CONFIRMED | Citation lives in extdeps/http only |
-| `std.unicode` | zero_width_blocks / wide_blocks / inline ASCII ranges | `dag/std/unicode.dag:9–22, 42–75` | Add-citation | Unicode Standard UAX #11 + UCD | CONFIRMED | `char_in_class` ASCII ranges also uncited |
-| `std.http_path` | PathTemplate / UrlPathToken | `dag/std/http_path.dag:7+` | Add-citation | RFC 6570 URI Template | CONFIRMED | Token decomposition is sound; citation missing |
-| `std.markdown` | HeadingLevel / GFM extensions | `dag/std/markdown.dag:12+` | Add-citation | CommonMark 0.31 + GFM | CONFIRMED | |
-| `std.markup` | escape_text / escape_attribute / escape_url | `dag/std/markup.dag:18–39` | Add-citation | HTML5 character references; WHATWG URL encoding | CONFIRMED | |
-| `std.numerical_contract` | FmaContractionPolicy / FloatApproximation | `dag/std/numerical_contract.dag:4+` | Add-citation | IEEE 754; C FMA contraction | CONFIRMED | |
-| `std.process` | exit_code_success / exit_code_general_error / exit_code_misuse | `dag/std/process.dag:9–11` | Add-citation | POSIX exit statuses; bash reserved codes | CONFIRMED | |
-| `std.os` | operating_system_surface_* (module) | `dag/std/os.dag:1–32` | Add-citation | Vendor OS marketing names (`extdeps/os` cited rows) | CONFIRMED | Module flagged cited=false; pairs with std→extdeps-table PARTIAL row |
-| `std.os.types` | distribution closed enums (module) | `dag/std/os/types.dag:17–24` | Add-citation | `extdeps/os` distribution catalog | CONFIRMED | Module flagged cited=false; type shapes only |
+| symbol | file:line | value | disposition | destination / citation |
+| --- | --- | --- | --- | --- |
+| `kibi_factor` | `dag/std/measure.dag:84–85` | 1024 | Cite-or-relocate | IEC 80000-13 (binary prefixes) |
+| `gibibyte_scale_factor_bytes` | `dag/std/measure.dag:80–81` | 1073741824 | Cite-or-relocate | IEC 80000-13 (GiB in bytes) |
+| `bits_per_byte` | `dag/std/measure.dag:208` | 8 | Cite-or-relocate | Derive from `Byte` width / IEC byte definition (see cardinality-refinement P5) |
+| `seconds_per_minute` | `dag/std/measure.dag:88–89` | 60 | Cite-or-relocate | ISO 8601 time units |
+| `minutes_per_hour` | `dag/std/measure.dag:92–93` | 60 | Cite-or-relocate | ISO 8601 time units |
+| `basis_point_unity_count` | `dag/std/measure.dag:477–478` | 10000 | Cite-or-relocate | Financial basis-point convention (1 bp = 1/10000) |
+| `permyriad_denominator` | `dag/std/measure.dag:451` | 10000 | Cite-or-relocate | Permyriad (parts per 10000); unify with `basis_point_unity_count` |
+| `percent_scale_hundred` | `dag/std/measure.dag:463` | 100 | Cite-or-relocate | Percent = parts per 100 |
+| `uint8_channel_bit_width` | `dag/std/measure.dag:453` | 8 | Cite-or-relocate | IEC 80000-13 / `Byte` bit width |
+| `uint8_channel_inclusive_max` | `dag/std/measure.dag:455` | 255 | Cite-or-relocate | `2^8 − 1` from `uint8_channel_bit_width` |
 
-### A4. Numeric anemia (bare Int/Float for dimensional magnitudes) — 7 rows (7 active)
+**Extdeps specimens (same class, 5 rows):** `sextant_arc_degrees` (`dag/extdeps/color/srgb.dag:77`,
+60°), `hue_milli_per_sextant` (`:83`, 60000), `hue_milli_per_two_sextants` (`:87`), `hue_milli_per_four_sextants`
+(`:91`), `full_turn_millidegrees` (`:95`, 360000) — HSL kernel geometry from CSS Color 4 cite already
+on module; numeric rows still lack per-constant authority pins.
 
-| module | symbol / span | file:line | disposition | destination / citation | status | note |
-| --- | --- | --- | --- | --- | --- | --- |
-| `std.types` | Duration / Milliseconds / Seconds | `dag/std/types.dag:150–152` | Re-ground | `std.measure.Millisecond` / `Second` / `Duration` | CONFIRMED | HIGH — root fork dissolves cluster |
-| `std.cache_interface` | EvictionPolicy.Ttl.days | `dag/std/cache_interface.dag:31` | Re-ground | `std.measure.Duration` (days carrier) | CONFIRMED | Sibling SizeBounded already uses ByteSize |
-| `std.exec_format` | LoadSegment.{file_offset,virtual_address,file_size,memory_size,alignment} | `dag/std/exec_format.dag:20–25` | Re-ground | `std.measure.ByteSize` + byte-offset magnitudes | CONFIRMED | HIGH |
-| `std.exec_format` | EntryPoint.virtual_address / Relocation.offset | `dag/std/exec_format.dag:29, 33` | Re-ground | Byte-offset / virtual-address magnitudes | CONFIRMED | Same module as LoadSegment |
-| `std.filesystem` | FileEntry.size | `dag/std/filesystem.dag:14` | Re-ground | `std.measure.ByteSize` | CONFIRMED | HIGH |
-| `std.approximate_field` | Precision.BinaryPrecision.{significand_bits,exponent_bits} | `dag/std/approximate_field.dag:15` | Re-ground | `std.measure.BitWidth` | CONFIRMED | LOW |
-| `std.fermi` | FermiTimeout.timeout_ms | `dag/std/fermi.dag:55` | Re-ground | `std.measure.Millisecond` (not `std.types.Milliseconds`) | CONFIRMED | LOW — consumes weaker branded-Int alias |
+### Class 2 — Foreign-domain constants in std (4 rows)
 
-### A5. String anemia (bare String hiding named structure) — 15 rows (15 active)
+Disposition: **Relocate** per Tier-A pattern (cited data leaves `std/`, framework stays).
 
-| module | symbol / span | file:line | disposition | destination / citation | status | note |
-| --- | --- | --- | --- | --- | --- | --- |
-| `std.decl_ref` | DeclarationRef.module_path | `dag/std/decl_ref.dag:10` | Decompose | `v2.std.qualified_name.QualifiedName` | CONFIRMED | HIGH — blocked on namespace SymbolIndex lane |
-| `std.materialization_ladder` | EvictionClass.SpacePacked.budget | `dag/std/materialization_ladder.dag:57` | Decompose | `std.measure.ByteSize` | CONFIRMED | HIGH — "10G" hides {value, unit} |
-| `std.os.types` | UbuntuDistributionCatalogRow.release_label / kernel_version | `dag/std/os/types.dag:32–33` | Decompose | Structured {version, channel, codename} + Version | CONFIRMED | HIGH |
-| `std.os.types` | WindowsDistributionCatalogRow.release_label / os_build | `dag/std/os/types.dag:42–43` | Decompose | Structured version + build number | CONFIRMED | HIGH |
-| `std.primitives` | PrimitiveContract.work / output_size | `dag/std/primitives.dag:11–12` | Decompose | CostExpr AST (Var\|Add\|Mul\|Min\|Max\|Log) | CONFIRMED | HIGH — all primitive rows inherit |
-| `std.types` | Timestamp | `dag/std/types.dag:148` | Decompose | RFC 3339 date-time model / `std.measure` instant | CONFIRMED | HIGH |
-| `std.coercion` | CallableRepr.template (+ CastSyntax / InhabitantDecl / TypeCheckpoint) | `dag/std/coercion.dag:20+` | Decompose | Structured emit-template AST | CONFIRMED | LOW — intentional opaque residue at emit boundary |
-| `std.hermetic_replay` | PublishedMockCase.operation_key | `dag/std/hermetic_replay.dag:5` | Delete-duplicate | Derive from service + "." + operation | CONFIRMED | LOW |
-| `std.interface_summary` | InterfaceSummary.module_path | `dag/std/interface_summary.dag:34` | Decompose | QualifiedName | CONFIRMED | LOW |
-| `std.os.types` | UbuntuDistributionCatalogRow.security_maintenance_until | `dag/std/os/types.dag:37` | Decompose | Structured Date {year, month, day} | CONFIRMED | LOW |
-| `std.os.types` | WindowsDistributionCatalogRow.end_of_servicing | `dag/std/os/types.dag:47` | Decompose | Structured Date | CONFIRMED | LOW |
-| `std.primitives` | PrimitiveContract.name | `dag/std/primitives.dag:10` | Re-ground | DeclarationRef / primitive registry | CONFIRMED | LOW — re-coined String nickname |
-| `std.realization_measurement` | RealizationMeasureEffect.work_shape | `dag/std/realization_measurement.dag:28` | Decompose | CostExpr AST (same authority as PrimitiveContract.work) | CONFIRMED | LOW |
-| `std.realize_pack` | RealizeAdvisory.verdict | `dag/std/realize_pack.dag:63` | Delete-duplicate | RealizeVerdict enum (not String) | CONFIRMED | LOW — dual representation of closed enum |
-| `std.types` | Email / MimeType | `dag/std/types.dag:120, 182` | Decompose | RFC 5322 addr-spec; RFC 6838 media-type | CONFIRMED | LOW |
+| symbol | file:line | value | disposition | destination / citation |
+| --- | --- | --- | --- | --- |
+| `billing_month_as_hour_count` | `dag/std/measure.dag:322–323` | 730 | Relocate | Per-vendor billing rows or calendar derivation (`365×24/12`); note at `:326–328` admits convention |
+| `exit_code_success` | `dag/std/process.dag:9` | 0 | Relocate | POSIX exit status / sysexits.h |
+| `exit_code_general_error` | `dag/std/process.dag:10` | 1 | Relocate | POSIX / bash reserved codes |
+| `exit_code_misuse` | `dag/std/process.dag:11` | 2 | Relocate | POSIX / bash reserved codes |
 
-### A6. Other grounding/decomposition notes — 4 rows (4 active)
+Also filed in §3 citation-gap (`std.process`) and §6 other — this class is the **relocation** disposition.
 
-| module | symbol / span | file:line | disposition | destination / citation | status | note |
-| --- | --- | --- | --- | --- | --- | --- |
-| `std.behavioral` | FailureMode.http_status | `dag/std/behavioral.dag:15` | Re-ground | `std.types.HttpStatus` | CONFIRMED | Bare Int for enumerated RFC 9110 code |
-| `std.exec_format` | Relocation.relocation_type | `dag/std/exec_format.dag:35` | Decompose | Cited ELF/PE relocation-type enum (`extdeps/formats/elf`) | CONFIRMED | Raw Int hides named spec codes |
-| `std.fermi` | FermiTimeout.label | `dag/std/fermi.dag:56` | Delete-duplicate | Derive display from timeout_ms (single representation) | CONFIRMED | Dual representation of same magnitude |
-| `std.resources` | ResourceHandle.type / resource_id / key | `dag/std/resources.dag:9–11` | Re-ground | Modeled resource-kind registry (not free-text) | CONFIRMED | Open nickname surface §3 |
+### Class 3 — Parallel mini-frameworks beside `Measure` (6 rows)
 
-<details><summary>`std.languages` data-row manifest (72 rows, lines 365–1193)</summary>
+`measure.dag` holds **three answers** to “a rate”: `RevolutionsPerMinute` as `Measure`, `MoneyRate<P>`
+phantoms + hand bridges, and `energy_from_power_and_time` as a hand product. Inventory already files
+the Rate/derived-unit framework item (#7202 receipt) — census references, does not start it.
+
+| symbol | file:line | the parallel | disposition | destination / citation |
+| --- | --- | --- | --- | --- |
+| `RevolutionsPerMinute` | `dag/std/measure.dag:224` | `Measure<RotationalSpeed, One, Nat>` — the grounded answer | Keep | Single `Measure` rate authority (exemplar) |
+| `MoneyRate<P>` / `PerMinute`…`Once` | `dag/std/measure.dag:272–291` | Phantom-period money carrier beside `Measure` | Unify | `Measure<Frequency,…>` / cited money-rate rows (after `std.currency` Tier A) |
+| `per_hour_equivalent_from_per_minute` | `dag/std/measure.dag:315–319` | Hand bridge `*_from_*` over money periods | Unify | Derived `Measure` rate conversion, not hand multiply |
+| `per_hour_equivalent_from_per_month` | `dag/std/measure.dag:330–334` | Hand bridge using `billing_month_as_hour_count` | Unify | Same + evict class-2 divisor |
+| `energy_from_power_and_time` | `dag/std/measure.dag:427–428` | Hand `Watt × Second → Joule` product | Unify | `Measure` quantity algebra (power × time = energy) |
+| `bin_witness_wet_per_row_wall_budget_seconds` | `dag/gunbc/ci_layer_roots.dag:739` | Bare `Int` seconds policy beside `Second` carrier | Unify | `std.measure.Second` (floor per-witness wall budget; third-domain receipt) |
+
+**Note:** `gunbc_ci_fast_lane_witness_eval_budget` (`src/v2/workflow/ci_floor_plan.dag:430`) already
+grounds the 5-second eval rule on `second(count: 5)` — correct shape, not counted here.
+
+### Class 4 — Internal constants missing basis (14 rows)
+
+Not citation gaps: each needs a **basis/rationale row** (clamp-constant discipline) or derivation from
+the width it encodes. Brief requires this class run over extdeps and gunbc too.
+
+**`dag/std/` (3 rows)**
+
+| symbol | file:line | value | disposition | destination / basis |
+| --- | --- | --- | --- | --- |
+| `interpreter_surviving_roles_ceiling` | `dag/std/emit_on_demand.dag:109` | 8 | Derive | `count(interpreter_surviving_roles)` — note at `:108` is narrative only |
+| `peano_literal_materialization_cap` | `dag/std/termination.dag:107` | 256 | Add-basis-row | Peano literal materialization bound (termination lane) |
+| `forever_iteration_bound` | `dag/std/computation.dag:130` | i64::MAX | Add-basis-row | Non-termination sentinel; cite boundedness policy |
+
+**`src/v2/std/` (4 rows)**
+
+| symbol | file:line | value | disposition | destination / basis |
+| --- | --- | --- | --- | --- |
+| `byte_offset_residual_quotient_magnitude_shift_limbs` | `src/v2/std/node.dag:762` | 4 | Derive | Limb-shift schedule for byte-offset digest (encode from width) |
+| `byte_offset_residual_quotient_magnitude_max_shift` | `src/v2/std/node.dag:764` | 28 | Derive | `shift_limbs × limb_base_log` authority |
+| `byte_offset_cache_digest_max_limbs` | `src/v2/std/node.dag:765` | 9 | Derive | Digest limb budget from `max_shift` + overflow policy |
+| `byte_offset_cache_digest_overflow_limbs` | `src/v2/std/node.dag:767` | 4 | Derive | Overflow peel depth paired with `:765` |
+
+**`dag/extdeps/` specimens (3 rows)**
+
+| symbol | file:line | value | disposition | destination / basis |
+| --- | --- | --- | --- | --- |
+| `linux_execve_max_arg_strlen_page_factor` | `dag/extdeps/os/exec_arg_limit.dag:17` | 32 | Add-basis-row | POSIX `ARG_MAX` / page-size derivation |
+| `cik_digit_width` | `dag/extdeps/sec/types.dag:17` | 10 | Derive | SEC CIK format (zero-padded width) |
+| `elemwise_mul_wire_op_code` (+ add/relu siblings) | `dag/extdeps/languages/simd/kernel.dag:56–58` | 1/2/3 | Add-basis-row | Wire opcode table for SIMD kernel transport |
+
+**`dag/gunbc/` specimens (4 rows)**
+
+| symbol | file:line | value | disposition | destination / basis |
+| --- | --- | --- | --- | --- |
+| `cheap_gate_pool_max_claims_per_child` | `dag/tools/cheap_gate_pool.dag:13` | 16 | Add-basis-row | Slot memory envelope (`:11` note); sized-to-slot policy |
+| `roadmap_max_depth` | `dag/gunbc/roadmap_emit.dag:16` | 8 | Add-basis-row | Roadmap tree depth cap (matches `roadmap_page.dag:30`) |
+| `gunbc_ci_job_timeout_policy_minutes` | `dag/gunbc/ci_workflow.dag:422` | 90 | Add-basis-row | Composed from step budgets (`:430` note history) |
+| `gunbc_falsifier_step_timeout_minutes` | `dag/gunbc/falsifier_workflow.dag:27` | 170 | Add-basis-row | Falsifier cadence wall; sum of enrolled lane budgets |
+
+### Class 5 — Hand counts beside structure (14 rows)
+
+Disposition: **Derive, never state** — a drift-prone mirror of a countable structural fact.
+
+**`dag/std/` + `src/v2/std/` (1 row — brief seed)**
+
+| symbol | file:line | stated | disposition | derive from |
+| --- | --- | --- | --- | --- |
+| `node_superset_field_count` | `src/v2/std/node_minimal.dag:37` | 18 | Derive | `count(all_node_superset_fields)` — witness at `:61` compares but does not eliminate hand count |
+
+**`src/v2/` frontier/census baselines (9 rows)**
+
+| symbol | file:line | stated | disposition | derive from |
+| --- | --- | --- | --- | --- |
+| `compiler_frontier_module_count_expected` | `src/v2/compiler/self_host/frontier.dag:102` | 27 | Derive | `count(compiler_frontier_roster)` |
+| `compiler_frontier_self_emitted_baseline` | `src/v2/compiler/self_host/frontier.dag:104` | 6 | Derive | Filter roster `SelfEmitted` rows |
+| `witness_bulk_entry_count_expected` | `src/v2/compiler/self_host/witness_bulk_routing.dag:34` | 16 | Derive | `count(witness_bulk_routing_sample_roster)` |
+| `native_routing_frontier_family_count_expected` | `src/v2/compiler/self_host/native_routing_frontier.dag:166` | 11 | Derive | `count(native_routing_frontier_roster)` |
+| `emit_coverage_frontier_family_count_expected` | `src/v2/compiler/self_host/emit_coverage_frontier.dag:177` | 15 | Derive | `count(emit_coverage_frontier_roster)` |
+| `compiler_frontier_band_a_emit_readiness_count_expected` | `src/v2/compiler/self_host/frontier_band_a_emit_readiness.dag:21` | 6 | Derive | `count(compiler_frontier_band_a_emit_readiness_roster)` |
+| `languages_consumer_census_data_decl_baseline` | `src/v2/lens/languages_consumer_census.dag:4` | 73 | Derive | Live `data` decl count in `std.languages` |
+| `languages_consumer_census_per_language_row_baseline` | `src/v2/lens/languages_consumer_census.dag:5` | 66 | Derive | Per-language row census |
+| `languages_consumer_census_format_row_baseline` | `src/v2/lens/languages_consumer_census.dag:6` | 7 | Derive | Format-row census |
+
+**`dag/gunbc/` + lens baselines (4 rows)**
+
+| symbol | file:line | stated | disposition | derive from |
+| --- | --- | --- | --- | --- |
+| `compiler_closure_scoped_module_count` | `src/v2/test/fixture/compiler_closure_scope_receipt.dag:4` | 65 | Derive | Scoped module closure enumeration |
+| `closure_deep_chain_vertex_count` | `src/v2/lens/affected_set/closure_deep_chain.dag:62` | 8 | Derive | Deep-chain fixture vertex list |
+| `whole_tree_extract_smoke_min_decl_count` | `src/v2/lens/grounding.dag:346` | 1000 | Derive | Smoke extract decl enumeration |
+| `test_migration_debt_*_baseline` (3 constants) | `src/v2/lens/test_migration_debt.dag:9–11` | 82 / 28247 / 891 | Derive | Live test-tree census |
+
+### Standing query shapes (repeatable lane searches)
+
+Record these exact patterns so the next specimen cannot hide (grep/lens seeds):
+
+| id | pattern | exact shape | N×M tell |
+| --- | --- | --- | --- |
+| **Q1** | zero-arg numeric literal fn | `fn <name>() -> Nat\|Int { <literal> }` | Unit/convention smuggled as framework fn |
+| **Q2** | bare numeric data | `data <name>: Nat\|Int = <literal>` with no adjacent basis note | Foreign or tuning constant without authority |
+| **Q3** | bridge-fn pair | `*_from_*` / `*_equivalent_*` over one concept family | Parallel conversion paths (class 3) |
+| **Q4** | bodyless phantom type param | `type PerMinute` (never constructed; only `MoneyRate<PerMinute>`) | Disjoint from hollow-alias wall — construction-position test never fires on phantoms |
+
+### Lens candidates (file only — enforcement-intent queue)
+
+Decidable; enter [enforcement-intent](enforcement-intent-design.md) `StandingIntent` queue — **do not
+build in this PR.**
+
+| candidate | reds when | scope |
+| --- | --- | --- |
+| **L1 — uncited literal constant in std** | `dag/std/**` has Q1/Q2 row with no `ExternalAuthority` / basis note on module or symbol | `dag/std/` |
+| **L2 — hand count beside structure** | `data *_count_expected` / `*_baseline` compared to `count(<roster>)` but roster length not the authority | std + v2 self-host + lens census modules |
+
+### Completeness note — what this sweep did NOT cover
+
+- **`src/v1/**` Rust seed** — not walked; bootstrap constants may duplicate `dag/std` rows already
+  counted here.
+- **`src/v2/**` beyond spot checks** — class 4/5 samples only; full v2 tree not exhaustively grepped.
+- **Test fixtures** (`dag/test/**`, `*_test.dag` hand constants for witnesses) — excluded unless they
+  encode production policy (e.g. `bin_witness_wet_per_row_wall_budget_seconds` in `ci_layer_roots`).
+- **Corpus-wide classes §1–6** — §3-forks, anemia, citation-gaps for std are priced in sections 1–6
+  above (56 snapshot rows); not re-tabulated here. Four §3-forks dissolved on live tree: `std.baseboard`
+  (#7189), `CacheInterfaceProduct`, `std.filesystem.is_text_encoding` duplicate, `std.markdown_markup`
+  parallel mapping.
+- **Formal-concept re-grounding** — `std.termination`, `std.induction`, `std.graph`, etc. — tracked in
+  [formal-concepts extdeps grounding](formal-concepts-extdeps-grounding.md), out of scope for this
+  five-class census.
+- **Automated closure** — snapshot classification (grep + read), not a live lens; Q1–Q4 are recorded
+  for the next mechanical pass.
+
+<details><summary>`std.languages` data-row manifest (72 rows — class 2/§2 relocate target)</summary>
 
 | line | data name |
 | --- | --- |
@@ -434,74 +507,9 @@ to extdeps · `Re-ground` existing dimensional/model authority · `Decompose` st
 | 394 | `go_language` |
 | 423 | `python_language` |
 | 452 | `typescript_language` |
-| 481 | `rust_statements` |
-| 491 | `rust_expressions` |
-| 502 | `rust_control_flow` |
-| 514 | `rust_literals` |
-| 525 | `rust_modules` |
-| 535 | `rust_functions` |
-| 546 | `rust_errors` |
-| 553 | `rust_type_defs` |
-| 566 | `rust_patterns` |
-| 578 | `rust_async` |
-| 585 | `go_statements` |
-| 595 | `go_expressions` |
-| 606 | `go_control_flow` |
-| 618 | `go_literals` |
-| 629 | `go_modules` |
-| 639 | `go_functions` |
-| 650 | `go_errors` |
-| 657 | `go_type_defs` |
-| 670 | `go_patterns` |
-| 682 | `go_async` |
-| 689 | `python_statements` |
-| 699 | `python_expressions` |
-| 710 | `python_control_flow` |
-| 722 | `python_literals` |
-| 733 | `python_modules` |
-| 743 | `python_functions` |
-| 754 | `python_errors` |
-| 761 | `python_type_defs` |
-| 774 | `python_patterns` |
-| 786 | `python_async` |
-| 793 | `rust_collection_ops` |
-| 809 | `rust_string_ops` |
-| 819 | `rust_map_ops` |
-| 826 | `rust_null_coalesce` |
-| 830 | `rust_reserved_words` |
-| 844 | `rust_value_semantics` |
-| 854 | `rust_serialization` |
-| 865 | `rust_scaffold` |
-| 873 | `rust_service_calls` |
-| 877 | `go_collection_ops` |
-| 893 | `go_string_ops` |
-| 903 | `go_map_ops` |
-| 910 | `go_null_coalesce` |
-| 914 | `go_reserved_words` |
-| 932 | `go_value_semantics` |
-| 936 | `go_serialization` |
-| 947 | `go_scaffold` |
-| 955 | `go_service_calls` |
-| 959 | `python_collection_ops` |
-| 975 | `python_string_ops` |
-| 985 | `python_map_ops` |
-| 992 | `python_null_coalesce` |
-| 996 | `python_reserved_words` |
-| 1008 | `python_value_semantics` |
-| 1010 | `python_serialization` |
-| 1021 | `python_scaffold` |
-| 1029 | `python_service_calls` |
-| 1033 | `rust_spec` |
-| 1056 | `go_spec` |
-| 1079 | `python_spec` |
-| 1102 | `markdown_format` |
-| 1115 | `html_format` |
-| 1128 | `yaml_format` |
-| 1141 | `toml_format` |
-| 1154 | `makefile_format` |
-| 1167 | `gitignore_format` |
-| 1180 | `css_format` |
-| 1193 | `json_record_knobs` |
+| 481–1193 | (68 syntax/spec/format/reserved-word rows — see `dag/std/languages.dag`) |
+
+Full line-by-line manifest: lines 365–1193 in `dag/std/languages.dag` (72 `data` declarations).
 
 </details>
 
@@ -525,6 +533,6 @@ dissolves into the carriers (§6 — the mark on the carrier is the authority).
 ---
 *Generated from an exhaustive 451-module classification (workflow `extdeps-std-grounding-inventory`,
 71 agents, 203 defects, 18/3 CONFIRMED/REFUTED on the verified high-stakes claims). Counts are exact
-for the corpus-wide snapshot; the [std-side addendum](#std-side-census-addendum) re-verifies `dag/std/`
-(101 modules) against the live tree 2026-07-25 (52 active / 8 dissolved / 1 refuted). Severity is
-the auditor's call.*
+for the corpus-wide snapshot; the [std-side modeling census](#std-side-modeling-census) (2026-07-25)
+prices 53 rows across five std-modeling classes (22 `dag/std` + 18 `src/v2` + 8 `extdeps` + 5
+`gunbc`/`dag/tools` spot checks). Severity is the auditor's call.*
