@@ -5,8 +5,6 @@ use self::EdgeKind::*;
 use self::OwnershipDecision::*;
 pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::ExprData::{

@@ -102,8 +102,6 @@ pub use crate::v1_compiler_ownership::{
 pub use crate::v1_compiler_resolve::get_exported_names;
 pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
 use crate::v1_rt;
-use crate::v2_std_witness::Witness;
-use crate::v2_std_witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};

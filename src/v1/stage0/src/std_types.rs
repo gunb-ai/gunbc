@@ -10,8 +10,6 @@ use self::TopologyNodeKind::*;
 pub use crate::std_algebra::{algebra_type_param_names, kernel_algebra_profile};
 pub use crate::std_algebra::{FreeMonoid, PartialFunction, PointwisePower};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

@@ -11,8 +11,6 @@ use crate::std_error_primitives::DivError::*;
 use crate::std_error_primitives::Result::*;
 pub use crate::std_error_primitives::{DivError, Result};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -162,7 +160,7 @@ pub type FreeMonoid<T> = Vec<T>;
 
 #[derive(Clone)]
 pub struct PartialFunction<K, V> {
-    pub lookup: Rc<dyn Fn(K) -> Witness<V>>,
+    pub lookup: Rc<dyn Fn(K) -> Option<V>>,
     pub empty: Rc<PartialFunction<K, V>>,
     pub get: Rc<dyn Fn(K) -> Option<V>>,
     pub insert: Rc<dyn Fn(K, V) -> Rc<PartialFunction<K, V>>>,

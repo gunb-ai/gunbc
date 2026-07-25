@@ -4,8 +4,6 @@
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_types::{make_container_type, make_map_type};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::NoConnective;

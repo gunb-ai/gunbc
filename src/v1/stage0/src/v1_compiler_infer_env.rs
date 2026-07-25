@@ -10,8 +10,6 @@ pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation}
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::{AmbiguousReference, UnresolvedType};
