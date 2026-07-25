@@ -8,7 +8,7 @@ import gunbc.ci_gate {
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
 import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact, GithooksPrePushArtifact, artifact_path
+  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GithooksPrePushArtifact, artifact_path
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -28,6 +28,7 @@ type CommitWorkflowSurface
   = GithubActionsCiJob
   | GithubActionsCiRegenJob
   | GitPrePushHook
+  | FalsifierCadenceJob
 
 type CommitCheckKind
   = CommitSpecGate { gate: Gate }
@@ -245,7 +246,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
-    surfaces: [GitPrePushHook]
+    surfaces: [GitPrePushHook, FalsifierCadenceJob]
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
@@ -498,7 +499,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
-    surfaces: [GithubActionsCiJob]
+    surfaces: [FalsifierCadenceJob]
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
@@ -510,14 +511,34 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
+    surfaces: [FalsifierCadenceJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/parse_binding_fidelity_witness_test.dag",
+      check_fns: ["witness_resolve_distinct_param_bindings_holds"],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
     surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/long/parse_binding_fidelity_witness_test.dag",
+      check_fns: ["witness_parse_binding_fidelity_distinct_identifiers_holds"],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [FalsifierCadenceJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
       check_fns: [
-        "witness_parse_binding_fidelity_distinct_identifiers_holds",
-        "witness_resolve_distinct_param_bindings_holds"
+        "lens_affected_set_provenance_producer_single_read_emits_row_holds",
+        "lens_affected_set_provenance_producer_parse_coverage_known_diff_fail_closed_holds",
+        "lens_affected_set_provenance_producer_git_diff_wire_holds",
+        "lens_affected_set_provenance_producer_unknown_diff_fail_closed_holds"
       ],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
@@ -528,13 +549,22 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
       check_fns: [
-        "lens_affected_set_provenance_producer_single_read_emits_row_holds",
         "lens_affected_set_provenance_producer_rejects_malformed_ingest_holds",
         "lens_affected_set_provenance_producer_rejects_beyond_surface_ingest_holds",
-        "lens_affected_set_provenance_producer_parse_coverage_known_diff_fail_closed_holds",
-        "lens_affected_set_provenance_producer_coverage_receipt_holds",
-        "lens_affected_set_provenance_producer_git_diff_wire_holds",
-        "lens_affected_set_provenance_producer_unknown_diff_fail_closed_holds"
+        "lens_affected_set_provenance_producer_coverage_receipt_holds"
+      ],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [FalsifierCadenceJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/gauntlet_lane_enrollment_witness_test.dag",
+      check_fns: [
+        "gauntlet_lane_rehomed_rows_are_cadence_enrolled_holds",
+        "gauntlet_lane_rehome_is_never_bare_deenrollment_holds",
+        "gauntlet_lane_rehome_bare_deenrollment_RED_control_holds"
       ],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
@@ -568,6 +598,8 @@ fn commit_workflow_surface_eq(a: CommitWorkflowSurface, b: CommitWorkflowSurface
       match b { GithubActionsCiRegenJob => true  _ => false }
     GitPrePushHook =>
       match b { GitPrePushHook => true  _ => false }
+    FalsifierCadenceJob =>
+      match b { FalsifierCadenceJob => true  _ => false }
   }
 }
 
@@ -638,6 +670,49 @@ fn project_ci_floor_witness_entries(roster: List<CommitCheckEnrollment>) -> List
   witness_entries_from_enrollments(
     rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsCiJob))
   )
+}
+
+data falsifier_cadence_surface_note: String = "FalsifierCadenceJob is the SCHEDULED home for declared witness rows whose measured wall prices them out of the per-PR floor (batch-4 clamp FLOOR-BATCH-OVER-BUDGET, run 30148859947: wall_ms=613864 vs clamp_ms=420000 at units=74; authority gunbc.ci_spec gunbc_ci_floor_batch_clamp_params[3]). It extends the axis that ALREADY answers 'where does this check run' — the enrollment surface — rather than minting a second re-home authority beside gunbc.ci_layer_roots falsifier_rehomed_bin_wet_rows, which is specifically the bin_witness_wet_entries per-row-budget overflow (its constructor is bin_wet, its budget datum is bin_witness_wet_per_row_wall_budget_seconds) and does not model CommitWitnessClaim rows. Re-homing here is NEVER a bare de-enrollment: a row moved off GithubActionsCiJob must land on this surface, so it stays enrolled somewhere and its execution is receipted on the 4-hour cadence. The failure mode this guards is measured, not hypothetical — 63 *_test.dag files live under the two test/claim/long/ dirs, 9 are enrolled here, and the rest are enrolled NOWHERE (long/ is excluded from discovery at dir grain and the falsifier does not walk it), so 'deferred' has historically meant 'unscheduled'; this surface is the lane those rows enroll into. GRAIN: enrollment splits at the check_fn, not the file — an entry whose expensive fns re-home keeps its cheap fns on GithubActionsCiJob as the per-PR smoke grain (the mocks-layer-never-replace rule), so a re-home costs the corpus its wet grain per-PR, never the concern's per-PR coverage entirely. 🟡 dissolve-on: v2.workflow.ci_placement Placement (PrTier | Gauntlet) supersedes this surface tag as the witness-scheduling authority. It cannot today: PrTier is unwritable without a WarmCostReceipt { measured_ms, run_ref } AND measured_ms <= gunbc_ci_fast_lane_eval_budget_ms (5s), so wiring placement onto the 36 CommitWitnessClaim rows requires a per-row measured receipt for each — the D2 warm-cost probe on fleet srv hardware is the named filler (ci_placement_law_note), and it has not run. Fabricating those receipts would be the fail-open the placement law exists to forbid; defaulting the unmeasured rows to Gauntlet would de-enroll all 36 at once. Encouraging convergence receipt: the 5s law selects EXACTLY the twelve rows the run-30148859947 slow-witness tables measured over 5s (group A 141s/57s/15s/7s, group B 141s/29s/27s/14s/13s/13s/13s/13s) and admits every other batch-4 row at <=1s, so placement and this surface agree on today's roster — the wiring is blocked on receipts, not on a disputed boundary."
+
+data provenance_wall_cadence_rehome_risk: String = "ACCEPTED RISK, recorded where it was decided (operator ruling 2026-07-25). Three affected-set provenance walls — lens_affected_set_provenance_producer_rejects_malformed_ingest_holds, _rejects_beyond_surface_ingest_holds, _coverage_receipt_holds (14s + 13s + 13s measured, run 30148859947 group-B slow-witness table) — move from per-PR to the 4-hour falsifier cadence. THE COST: a selection-provenance regression now has up to a 24-hour detection window instead of one PR. THE CONTEXT THAT MAKES THIS UNCOMFORTABLE, stated rather than elided: this is accepted in the same week that exact class let #7196's stale slice control ride main green — the infer_semantics witness's transport (dag/tools/infer_semantics_witness_transport.dag) declares no dependency on v1_compiler_infer_access.rs, so the affected set could not see the edge and main's run at bb4347d skipped 1761 of 2373 witnesses, that one among them (fixed as a control by #7222; the SELECTION escape is untouched). WHAT KEEPS THIS FROM BEING A BARE NARROW: the four cheap fns of the same file stay per-PR (single_read_emits_row, parse_coverage_known_diff_fail_closed, git_diff_wire, unknown_diff_fail_closed — all <=161ms), so the producer keeps per-PR coverage at the fixture grain and loses only the wet grain; and gauntlet_lane_enrollment_witness_test proves by execution that these rows are cadence-enrolled rather than merely dropped. 🟡 dissolve-on — THE COMPENSATING CONTROL, which converts this from cadence-detection to construction: v2.lens.affected_set.declared_source_ref_selection today answers NoDeclaredSourceRefs => false in declared_source_refs_blocks_skip, i.e. a witness that declares NO source refs does not block its own skip — the precise fail-open #7196 rode. When the SourceRef child lands declared source-ref edges on witness transports AND that arm flips to refuse (NoDeclaredSourceRefs => true, an undeclared-provenance witness is never skippable), the wall is CONSTRUCTION rather than a witness watching for the breach, and these three rows can stay cadence-only permanently. Until that flip, this row is the standing record that per-PR detection was traded away deliberately, priced at 40s of a 194s clamp breach."
+
+fn project_falsifier_witness_entries(roster: List<CommitCheckEnrollment>) -> List<ScheduleWitnessEntry> {
+  witness_entries_from_enrollments(
+    rows: filter(roster, e => enrollment_has_surface(e: e, surface: FalsifierCadenceJob))
+  )
+}
+
+fn enrollment_is_witness_claim(e: CommitCheckEnrollment) -> Bool {
+  match e.check {
+    CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => true
+    CommitSpecGate { gate: _ } => false
+    CommitCargoFmtCheck => false
+  }
+}
+
+fn witness_enrollment_is_scheduled(e: CommitCheckEnrollment) -> Bool {
+  enrollment_has_surface(e: e, surface: GithubActionsCiJob)
+    || enrollment_has_surface(e: e, surface: FalsifierCadenceJob)
+}
+
+data doc_reachability_cadence_enrollment_note: String = "FOUND BY THE WALL, on its first execution (2026-07-25). gauntlet_lane_rehome_is_never_bare_deenrollment_holds redded against the LIVE roster, not a synthetic fixture: the doc-reachability witness (doc_graph_has_no_orphan_docs, doc_graph_has_no_dangling_links) rode surfaces: [GitPrePushHook] alone — enforced only by a mechanism this repo has already ruled is NOT an enforcement authority (commit_gate_rust_suite_removed_disposition: opt-in per clone via core.hooksPath, bypassable with --no-verify, absent in container worktrees, and PROVEN ineffective — #6658 landed an unformatted .rs on main 2026-07-15 and nothing caught it). So orphaned docs and dangling doc links have had no wall on any CI path; they were one --no-verify from landing. FIXED by adding FalsifierCadenceJob rather than by widening witness_enrollment_is_scheduled to accept GitPrePushHook — widening the predicate until the failure disappears is the absorbing fallback §5 forbids, and it would have re-buried the finding in the same motion that surfaced it. The hook enrollment STAYS for fast local feedback; the cadence row is the authority. Kind is CorpusWitnessKind, not ExecutionWitnessKind: it reads the live doc graph, so per-PR admission would need a warm-cost receipt this change does not have — the same D2-probe gap falsifier_cadence_surface_note records. Promoting it to per-PR when that receipt exists is a strict improvement, not a requirement of this change."
+
+data bare_deenrollment_wall_note: String = "The construction wall behind falsifier_cadence_surface_note's 'a re-home is NEVER a bare de-enrollment'. A CommitWitnessClaim row must ride at least one EXECUTING witness surface — GithubActionsCiJob (per-PR floor) or FalsifierCadenceJob (4-hour cadence). GithubActionsCiRegenJob and GitPrePushHook do not count: the regen job projects GATES only (project_ci_regen_job_gates), and the pre-push hook is an escape hatch by the standing ruling (opt-in per clone, bypassable with --no-verify, absent in container worktrees — commit_gate_rust_suite_removed_disposition), so neither is an enforcement authority for a witness. A row satisfying neither is enrolled NOWHERE while still LOOKING enrolled, which is precisely the ~54-dark-file state test/claim/long/ is in and the shape a lazy re-home would add to. This is detection, not construction (the surface list is still writable as []) — the honest classification per DESIGN §5: it reds in the per-PR floor via gauntlet_lane_enrollment_witness_test with a synthetic RED control, and the construction form waits on the same D2-probe-gated placement wiring as falsifier_cadence_surface_note's dissolve-on, where Gauntlet-vs-PrTier is total over the coproduct and 'neither' becomes unwritable rather than merely counted."
+
+fn bare_deenrolled_witness_rows(roster: List<CommitCheckEnrollment>) -> List<CommitCheckEnrollment> {
+  filter(roster, e => enrollment_is_witness_claim(e: e) && !witness_enrollment_is_scheduled(e: e))
+}
+
+fn roster_has_no_bare_deenrolled_witness(roster: List<CommitCheckEnrollment>) -> Bool {
+  bare_deenrolled_witness_rows(roster: roster).count() == 0
+}
+
+fn live_roster_has_no_bare_deenrolled_witness() -> Bool {
+  roster_has_no_bare_deenrolled_witness(roster: commit_gate_roster)
+}
+
+fn live_roster_falsifier_witness_entries() -> List<ScheduleWitnessEntry> {
+  project_falsifier_witness_entries(roster: commit_gate_roster)
 }
 
 fn witness_seam_eq(a: WitnessSeam, b: WitnessSeam) -> Bool {
@@ -758,6 +833,7 @@ fn realization_artifact_path(surface: CommitWorkflowSurface) -> String {
     GithubActionsCiJob => artifact_path(a: CiYamlArtifact)
     GithubActionsCiRegenJob => artifact_path(a: CiYamlArtifact)
     GitPrePushHook => artifact_path(a: GithooksPrePushArtifact)
+    FalsifierCadenceJob => artifact_path(a: FalsifierYamlArtifact)
   }
 }
 
@@ -766,6 +842,7 @@ fn realization_handler_for_surface(surface: CommitWorkflowSurface) -> CommitWork
     GithubActionsCiJob => CiYamlHandler
     GithubActionsCiRegenJob => CiYamlHandler
     GitPrePushHook => GitPrePushScriptHandler
+    FalsifierCadenceJob => CiYamlHandler
   }
 }
 
@@ -774,6 +851,7 @@ fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> Generated
     GithubActionsCiJob => CiYamlArtifact
     GithubActionsCiRegenJob => CiYamlArtifact
     GitPrePushHook => GithooksPrePushArtifact
+    FalsifierCadenceJob => FalsifierYamlArtifact
   }
 }
 

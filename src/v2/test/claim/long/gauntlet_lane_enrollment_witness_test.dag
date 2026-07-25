@@ -1,0 +1,94 @@
+module test.claim.long.gauntlet_lane_enrollment_witness
+
+import gunbc.commit_workflow {
+  CommitCheckEnrollment, CommitCheckKind, CommitWitnessClaim, CommitCargoFmtCheck,
+  CommitWorkflowSurface, GithubActionsCiJob, GithubActionsCiRegenJob,
+  GitPrePushHook, FalsifierCadenceJob,
+  roster_has_no_bare_deenrolled_witness,
+  live_roster_has_no_bare_deenrolled_witness,
+  live_roster_falsifier_witness_entries
+}
+import std.realization_schedule {
+  ScheduleWitnessEntry, ExecutionWitnessKind, SpanUndeclared
+}
+import v2.std.algebra { any, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data gauntlet_lane_enrollment_note: String = "Executing consumer for the FalsifierCadenceJob lane (gunbc.commit_workflow falsifier_cadence_surface_note / bare_deenrollment_wall_note). It exists because the lane's whole value is the difference between 're-homed' and 'dropped', and that difference is invisible in a diff: both look like a surface list edit. Three claims, the third a RED control so the first two cannot pass vacuously. This file lives under test/claim/long/ for HOMING consistency with the rows it guards, but is enrolled per-PR on GithubActionsCiJob deliberately — it is a pure roster fold with no live-tree read and no host effect, measured well inside the fast-lane budget, and its whole point is to red on the PR that de-enrolls something rather than up to 4 hours later."
+
+fn synthetic_rehomed_row() -> CommitCheckEnrollment {
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/synthetic_rehomed_witness_test.dag",
+      check_fns: ["synthetic_rehomed_holds"],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [FalsifierCadenceJob]
+  }
+}
+
+fn synthetic_pr_row() -> CommitCheckEnrollment {
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/synthetic_pr_witness_test.dag",
+      check_fns: ["synthetic_pr_holds"],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  }
+}
+
+fn synthetic_bare_deenrolled_row() -> CommitCheckEnrollment {
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/synthetic_dropped_witness_test.dag",
+      check_fns: ["synthetic_dropped_holds"],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GitPrePushHook, GithubActionsCiRegenJob]
+  }
+}
+
+fn falsifier_entries_contain(entries: List<ScheduleWitnessEntry>, f: String) -> Bool {
+  any(entries, e => e.function == f)
+}
+
+fn witness_rehomed_rows_are_cadence_enrolled() -> Bool {
+  let entries = live_roster_falsifier_witness_entries()
+  falsifier_entries_contain(entries: entries, f: "wave1_gate1_d_census_subsumption_witness_holds")
+    && falsifier_entries_contain(entries: entries, f: "wave1_gate1_d_ingested_bind_executes_witness_holds")
+    && falsifier_entries_contain(entries: entries, f: "wave1_gate1_d_ingested_loop_executes_witness_holds")
+    && falsifier_entries_contain(entries: entries, f: "lens_affected_set_provenance_producer_rejects_malformed_ingest_holds")
+    && falsifier_entries_contain(entries: entries, f: "lens_affected_set_provenance_producer_rejects_beyond_surface_ingest_holds")
+    && falsifier_entries_contain(entries: entries, f: "lens_affected_set_provenance_producer_coverage_receipt_holds")
+    && falsifier_entries_contain(entries: entries, f: "witness_parse_binding_fidelity_distinct_identifiers_holds")
+}
+
+fn witness_split_entries_keep_cheap_half_per_pr() -> Bool {
+  let cadence = live_roster_falsifier_witness_entries()
+  !falsifier_entries_contain(entries: cadence, f: "lens_affected_set_provenance_producer_git_diff_wire_holds")
+    && !falsifier_entries_contain(entries: cadence, f: "witness_resolve_distinct_param_bindings_holds")
+}
+
+test fn gauntlet_lane_rehomed_rows_are_cadence_enrolled_holds() -> Bool {
+  witness_rehomed_rows_are_cadence_enrolled()
+    && witness_split_entries_keep_cheap_half_per_pr()
+}
+
+test fn gauntlet_lane_rehome_is_never_bare_deenrollment_holds() -> Bool {
+  live_roster_has_no_bare_deenrolled_witness()
+    && roster_has_no_bare_deenrolled_witness(
+         roster: [synthetic_pr_row(), synthetic_rehomed_row()]
+       )
+}
+
+test fn gauntlet_lane_rehome_bare_deenrollment_RED_control_holds() -> Bool {
+  !roster_has_no_bare_deenrolled_witness(
+    roster: [synthetic_pr_row(), synthetic_rehomed_row(), synthetic_bare_deenrolled_row()]
+  )
+}
