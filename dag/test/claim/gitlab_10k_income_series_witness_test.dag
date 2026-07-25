@@ -1,0 +1,622 @@
+module test.claim.gitlab_10k_income_series_witness
+
+import extdeps.sec.facts {
+  FiledMonetaryFact,
+  FiledSignedMonetaryFact,
+  SignedUsdWholeDollars,
+  filed_amount,
+  filed_gross_profit_matches_revenue_minus_cost,
+  filed_operating_expenses_match_components,
+  filed_operating_income_matches_components,
+  filed_signed_value,
+  signed_usd_negative,
+  usd_whole_dollars,
+  usd_whole_dollars_count,
+}
+import extdeps.sec.issuer.gitlab_facts {
+  gitlab_fy2020_cost_of_revenue,
+  gitlab_fy2020_dbnrr,
+  gitlab_fy2020_general_and_administrative,
+  gitlab_fy2020_gross_profit,
+  gitlab_fy2020_net_income_loss,
+  gitlab_fy2020_operating_expenses,
+  gitlab_fy2020_operating_income_loss,
+  gitlab_fy2020_research_and_development,
+  gitlab_fy2020_revenue,
+  gitlab_fy2020_selling_and_marketing,
+  gitlab_fy2021_cost_of_revenue,
+  gitlab_fy2021_customers_100k_arr,
+  gitlab_fy2021_dbnrr,
+  gitlab_fy2021_general_and_administrative,
+  gitlab_fy2021_gross_profit,
+  gitlab_fy2021_net_income_loss,
+  gitlab_fy2021_operating_expenses,
+  gitlab_fy2021_operating_income_loss,
+  gitlab_fy2021_research_and_development,
+  gitlab_fy2021_revenue,
+  gitlab_fy2021_selling_and_marketing,
+  gitlab_fy2022_cost_of_revenue,
+  gitlab_fy2022_customers_100k_arr,
+  gitlab_fy2022_dbnrr,
+  gitlab_fy2022_general_and_administrative,
+  gitlab_fy2022_gross_profit,
+  gitlab_fy2022_net_income_loss,
+  gitlab_fy2022_operating_expenses,
+  gitlab_fy2022_operating_income_loss,
+  gitlab_fy2022_research_and_development,
+  gitlab_fy2022_revenue,
+  gitlab_fy2022_selling_and_marketing,
+  gitlab_fy2023_cost_of_revenue,
+  gitlab_fy2023_customers_100k_arr,
+  gitlab_fy2023_dbnrr,
+  gitlab_fy2023_general_and_administrative,
+  gitlab_fy2023_gross_profit,
+  gitlab_fy2023_net_income_loss,
+  gitlab_fy2023_operating_expenses,
+  gitlab_fy2023_operating_income_loss,
+  gitlab_fy2023_purchase_obligation,
+  gitlab_fy2023_purchase_obligation_due_next_year,
+  gitlab_fy2023_research_and_development,
+  gitlab_fy2023_revenue,
+  gitlab_fy2023_selling_and_marketing,
+  gitlab_fy2024_cost_of_revenue,
+  gitlab_fy2024_customers_100k_arr,
+  gitlab_fy2024_dbnrr,
+  gitlab_fy2024_general_and_administrative,
+  gitlab_fy2024_gross_profit,
+  gitlab_fy2024_net_income_loss,
+  gitlab_fy2024_operating_expenses,
+  gitlab_fy2024_operating_income_loss,
+  gitlab_fy2024_purchase_obligation,
+  gitlab_fy2024_purchase_obligation_due_next_year,
+  gitlab_fy2024_research_and_development,
+  gitlab_fy2024_revenue,
+  gitlab_fy2024_selling_and_marketing,
+  gitlab_fy2025_cost_of_revenue,
+  gitlab_fy2025_customers_100k_arr,
+  gitlab_fy2025_dbnrr,
+  gitlab_fy2025_general_and_administrative,
+  gitlab_fy2025_gross_profit,
+  gitlab_fy2025_net_income_loss,
+  gitlab_fy2025_operating_expenses,
+  gitlab_fy2025_operating_income_loss,
+  gitlab_fy2025_purchase_obligation,
+  gitlab_fy2025_purchase_obligation_due_next_year,
+  gitlab_fy2025_research_and_development,
+  gitlab_fy2025_revenue,
+  gitlab_fy2025_selling_and_marketing,
+  gitlab_fy2026_cost_of_revenue,
+  gitlab_fy2026_customers_100k_arr,
+  gitlab_fy2026_dbnrr,
+  gitlab_fy2026_general_and_administrative,
+  gitlab_fy2026_gross_profit,
+  gitlab_fy2026_net_income_loss,
+  gitlab_fy2026_operating_expenses,
+  gitlab_fy2026_operating_income_loss,
+  gitlab_fy2026_purchase_obligation,
+  gitlab_fy2026_purchase_obligation_due_next_year,
+  gitlab_fy2026_research_and_development,
+  gitlab_fy2026_revenue,
+  gitlab_fy2026_selling_and_marketing,
+  gitlab_sept_2020_hosting_commitment,
+}
+import extdeps.sec.operating_metrics {
+  disclosed_rate_at_least,
+  disclosed_rate_exact_percent,
+}
+import extdeps.pricing.gitlab_subscription {
+  gitlab_free_price,
+  gitlab_premium_2023_price_increase,
+  gitlab_premium_price,
+  gitlab_ultimate_price,
+}
+import gunbc.econ.margin_envelope {
+  GrossMargin,
+  MarginEnvelopeDerived,
+  derive_margin_envelope_from_filed_facts,
+  margin_envelope_in_band,
+}
+import std.measure { BasisPoint, basis_point, money_per_month_micros }
+import std.nat { Nat }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data gitlab_gross_margin_series_band_low_bp: BasisPoint = basis_point(8700)
+
+data gitlab_gross_margin_series_band_high_bp: BasisPoint = basis_point(8999)
+
+fn w_year_cross_foots(
+  revenue: FiledMonetaryFact,
+  cost_of_revenue: FiledMonetaryFact,
+  gross_profit: FiledMonetaryFact,
+  selling_and_marketing: FiledMonetaryFact,
+  research_and_development: FiledMonetaryFact,
+  general_and_administrative: FiledMonetaryFact,
+  operating_expenses_total: FiledMonetaryFact,
+  operating_income: FiledSignedMonetaryFact
+) -> Bool {
+  match filed_amount(fact: revenue) {
+    Present { value: rev } =>
+      match filed_amount(fact: cost_of_revenue) {
+        Present { value: cor } =>
+          match filed_amount(fact: gross_profit) {
+            Present { value: gp } =>
+              match filed_amount(fact: selling_and_marketing) {
+                Present { value: sm } =>
+                  match filed_amount(fact: research_and_development) {
+                    Present { value: rd } =>
+                      match filed_amount(fact: general_and_administrative) {
+                        Present { value: ga } =>
+                          match filed_amount(fact: operating_expenses_total) {
+                            Present { value: opex } =>
+                              match filed_signed_value(fact: operating_income) {
+                                Present { value: opinc } =>
+                                  filed_gross_profit_matches_revenue_minus_cost(
+                                    revenue: rev,
+                                    cost_of_revenue: cor,
+                                    gross_profit: gp
+                                  )
+                                    && filed_operating_expenses_match_components(
+                                      selling_and_marketing: sm,
+                                      research_and_development: rd,
+                                      general_and_administrative: ga,
+                                      operating_expenses_total: opex
+                                    )
+                                    && filed_operating_income_matches_components(
+                                      gross_profit: gp,
+                                      operating_expenses_total: opex,
+                                      operating_income: opinc
+                                    )
+                                _ => false
+                              }
+                            _ => false
+                          }
+                        _ => false
+                      }
+                    _ => false
+                  }
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_filed_count_increases(prev: FiledMonetaryFact, next: FiledMonetaryFact) -> Bool {
+  match filed_amount(fact: prev) {
+    Present { value: p } =>
+      match filed_amount(fact: next) {
+        Present { value: n } => usd_whole_dollars_count(m: p) < usd_whole_dollars_count(m: n)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_share_of_revenue_declines(
+  numer_prev: FiledMonetaryFact,
+  revenue_prev: FiledMonetaryFact,
+  numer_next: FiledMonetaryFact,
+  revenue_next: FiledMonetaryFact
+) -> Bool {
+  match filed_amount(fact: numer_prev) {
+    Present { value: np } =>
+      match filed_amount(fact: revenue_prev) {
+        Present { value: rp } =>
+          match filed_amount(fact: numer_next) {
+            Present { value: nn } =>
+              match filed_amount(fact: revenue_next) {
+                Present { value: rn } =>
+                  (usd_whole_dollars_count(m: nn) * usd_whole_dollars_count(m: rp)) < (usd_whole_dollars_count(m: np) * usd_whole_dollars_count(m: rn))
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_gross_margin_in_series_band(revenue: FiledMonetaryFact, gross_profit: FiledMonetaryFact) -> Bool {
+  match derive_margin_envelope_from_filed_facts(
+    revenue: revenue,
+    profit: gross_profit,
+    margin_kind: GrossMargin,
+  ) {
+    MarginEnvelopeDerived { envelope: env, margin_kind: GrossMargin } =>
+      margin_envelope_in_band(
+        envelope: env,
+        low_bp: gitlab_gross_margin_series_band_low_bp,
+        high_bp: gitlab_gross_margin_series_band_high_bp,
+      )
+    _ => false
+  }
+}
+
+fn filed_negative_magnitude(fact: FiledSignedMonetaryFact) -> Nat? {
+  match filed_signed_value(fact: fact) {
+    Present { value: v } =>
+      match v {
+        NegativeUsd { magnitude: m } => Present { value: usd_whole_dollars_count(m: m) }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn w_filed_negative(fact: FiledSignedMonetaryFact) -> Bool {
+  match filed_negative_magnitude(fact: fact) {
+    Present { value: _ } => true
+    _ => false
+  }
+}
+
+fn w_negative_magnitude_shrinks(prev: FiledSignedMonetaryFact, next: FiledSignedMonetaryFact) -> Bool {
+  match filed_negative_magnitude(fact: prev) {
+    Present { value: p } =>
+      match filed_negative_magnitude(fact: next) {
+        Present { value: n } => n < p
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_filed_count_equals(fact: FiledMonetaryFact, expected: Nat) -> Bool {
+  match filed_amount(fact: fact) {
+    Present { value: a } => usd_whole_dollars_count(m: a) == expected
+    _ => false
+  }
+}
+
+fn w_due_within_year_le_total(due: FiledMonetaryFact, total: FiledMonetaryFact) -> Bool {
+  match filed_amount(fact: due) {
+    Present { value: d } =>
+      match filed_amount(fact: total) {
+        Present { value: t } => usd_whole_dollars_count(m: d) <= usd_whole_dollars_count(m: t)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_all_seven_years_cross_foot() -> Bool {
+  w_year_cross_foots(
+    revenue: gitlab_fy2020_revenue,
+    cost_of_revenue: gitlab_fy2020_cost_of_revenue,
+    gross_profit: gitlab_fy2020_gross_profit,
+    selling_and_marketing: gitlab_fy2020_selling_and_marketing,
+    research_and_development: gitlab_fy2020_research_and_development,
+    general_and_administrative: gitlab_fy2020_general_and_administrative,
+    operating_expenses_total: gitlab_fy2020_operating_expenses,
+    operating_income: gitlab_fy2020_operating_income_loss
+  )
+    && w_year_cross_foots(
+      revenue: gitlab_fy2021_revenue,
+      cost_of_revenue: gitlab_fy2021_cost_of_revenue,
+      gross_profit: gitlab_fy2021_gross_profit,
+      selling_and_marketing: gitlab_fy2021_selling_and_marketing,
+      research_and_development: gitlab_fy2021_research_and_development,
+      general_and_administrative: gitlab_fy2021_general_and_administrative,
+      operating_expenses_total: gitlab_fy2021_operating_expenses,
+      operating_income: gitlab_fy2021_operating_income_loss
+    )
+    && w_year_cross_foots(
+      revenue: gitlab_fy2022_revenue,
+      cost_of_revenue: gitlab_fy2022_cost_of_revenue,
+      gross_profit: gitlab_fy2022_gross_profit,
+      selling_and_marketing: gitlab_fy2022_selling_and_marketing,
+      research_and_development: gitlab_fy2022_research_and_development,
+      general_and_administrative: gitlab_fy2022_general_and_administrative,
+      operating_expenses_total: gitlab_fy2022_operating_expenses,
+      operating_income: gitlab_fy2022_operating_income_loss
+    )
+    && w_year_cross_foots(
+      revenue: gitlab_fy2023_revenue,
+      cost_of_revenue: gitlab_fy2023_cost_of_revenue,
+      gross_profit: gitlab_fy2023_gross_profit,
+      selling_and_marketing: gitlab_fy2023_selling_and_marketing,
+      research_and_development: gitlab_fy2023_research_and_development,
+      general_and_administrative: gitlab_fy2023_general_and_administrative,
+      operating_expenses_total: gitlab_fy2023_operating_expenses,
+      operating_income: gitlab_fy2023_operating_income_loss
+    )
+    && w_year_cross_foots(
+      revenue: gitlab_fy2024_revenue,
+      cost_of_revenue: gitlab_fy2024_cost_of_revenue,
+      gross_profit: gitlab_fy2024_gross_profit,
+      selling_and_marketing: gitlab_fy2024_selling_and_marketing,
+      research_and_development: gitlab_fy2024_research_and_development,
+      general_and_administrative: gitlab_fy2024_general_and_administrative,
+      operating_expenses_total: gitlab_fy2024_operating_expenses,
+      operating_income: gitlab_fy2024_operating_income_loss
+    )
+    && w_year_cross_foots(
+      revenue: gitlab_fy2025_revenue,
+      cost_of_revenue: gitlab_fy2025_cost_of_revenue,
+      gross_profit: gitlab_fy2025_gross_profit,
+      selling_and_marketing: gitlab_fy2025_selling_and_marketing,
+      research_and_development: gitlab_fy2025_research_and_development,
+      general_and_administrative: gitlab_fy2025_general_and_administrative,
+      operating_expenses_total: gitlab_fy2025_operating_expenses,
+      operating_income: gitlab_fy2025_operating_income_loss
+    )
+    && w_year_cross_foots(
+      revenue: gitlab_fy2026_revenue,
+      cost_of_revenue: gitlab_fy2026_cost_of_revenue,
+      gross_profit: gitlab_fy2026_gross_profit,
+      selling_and_marketing: gitlab_fy2026_selling_and_marketing,
+      research_and_development: gitlab_fy2026_research_and_development,
+      general_and_administrative: gitlab_fy2026_general_and_administrative,
+      operating_expenses_total: gitlab_fy2026_operating_expenses,
+      operating_income: gitlab_fy2026_operating_income_loss
+    )
+}
+
+fn w_revenue_strictly_increases_every_year() -> Bool {
+  w_filed_count_increases(prev: gitlab_fy2020_revenue, next: gitlab_fy2021_revenue)
+    && w_filed_count_increases(prev: gitlab_fy2021_revenue, next: gitlab_fy2022_revenue)
+    && w_filed_count_increases(prev: gitlab_fy2022_revenue, next: gitlab_fy2023_revenue)
+    && w_filed_count_increases(prev: gitlab_fy2023_revenue, next: gitlab_fy2024_revenue)
+    && w_filed_count_increases(prev: gitlab_fy2024_revenue, next: gitlab_fy2025_revenue)
+    && w_filed_count_increases(prev: gitlab_fy2025_revenue, next: gitlab_fy2026_revenue)
+}
+
+fn w_sales_and_marketing_share_declines_every_year() -> Bool {
+  w_share_of_revenue_declines(
+    numer_prev: gitlab_fy2020_selling_and_marketing,
+    revenue_prev: gitlab_fy2020_revenue,
+    numer_next: gitlab_fy2021_selling_and_marketing,
+    revenue_next: gitlab_fy2021_revenue
+  )
+    && w_share_of_revenue_declines(
+      numer_prev: gitlab_fy2021_selling_and_marketing,
+      revenue_prev: gitlab_fy2021_revenue,
+      numer_next: gitlab_fy2022_selling_and_marketing,
+      revenue_next: gitlab_fy2022_revenue
+    )
+    && w_share_of_revenue_declines(
+      numer_prev: gitlab_fy2022_selling_and_marketing,
+      revenue_prev: gitlab_fy2022_revenue,
+      numer_next: gitlab_fy2023_selling_and_marketing,
+      revenue_next: gitlab_fy2023_revenue
+    )
+    && w_share_of_revenue_declines(
+      numer_prev: gitlab_fy2023_selling_and_marketing,
+      revenue_prev: gitlab_fy2023_revenue,
+      numer_next: gitlab_fy2024_selling_and_marketing,
+      revenue_next: gitlab_fy2024_revenue
+    )
+    && w_share_of_revenue_declines(
+      numer_prev: gitlab_fy2024_selling_and_marketing,
+      revenue_prev: gitlab_fy2024_revenue,
+      numer_next: gitlab_fy2025_selling_and_marketing,
+      revenue_next: gitlab_fy2025_revenue
+    )
+    && w_share_of_revenue_declines(
+      numer_prev: gitlab_fy2025_selling_and_marketing,
+      revenue_prev: gitlab_fy2025_revenue,
+      numer_next: gitlab_fy2026_selling_and_marketing,
+      revenue_next: gitlab_fy2026_revenue
+    )
+}
+
+fn w_gross_margin_high_80s_every_year() -> Bool {
+  w_gross_margin_in_series_band(revenue: gitlab_fy2020_revenue, gross_profit: gitlab_fy2020_gross_profit)
+    && w_gross_margin_in_series_band(revenue: gitlab_fy2021_revenue, gross_profit: gitlab_fy2021_gross_profit)
+    && w_gross_margin_in_series_band(revenue: gitlab_fy2022_revenue, gross_profit: gitlab_fy2022_gross_profit)
+    && w_gross_margin_in_series_band(revenue: gitlab_fy2023_revenue, gross_profit: gitlab_fy2023_gross_profit)
+    && w_gross_margin_in_series_band(revenue: gitlab_fy2024_revenue, gross_profit: gitlab_fy2024_gross_profit)
+    && w_gross_margin_in_series_band(revenue: gitlab_fy2025_revenue, gross_profit: gitlab_fy2025_gross_profit)
+    && w_gross_margin_in_series_band(revenue: gitlab_fy2026_revenue, gross_profit: gitlab_fy2026_gross_profit)
+}
+
+fn w_operating_income_negative_all_seven_years() -> Bool {
+  w_filed_negative(fact: gitlab_fy2020_operating_income_loss)
+    && w_filed_negative(fact: gitlab_fy2021_operating_income_loss)
+    && w_filed_negative(fact: gitlab_fy2022_operating_income_loss)
+    && w_filed_negative(fact: gitlab_fy2023_operating_income_loss)
+    && w_filed_negative(fact: gitlab_fy2024_operating_income_loss)
+    && w_filed_negative(fact: gitlab_fy2025_operating_income_loss)
+    && w_filed_negative(fact: gitlab_fy2026_operating_income_loss)
+}
+
+fn w_net_income_negative_all_seven_years() -> Bool {
+  w_filed_negative(fact: gitlab_fy2020_net_income_loss)
+    && w_filed_negative(fact: gitlab_fy2021_net_income_loss)
+    && w_filed_negative(fact: gitlab_fy2022_net_income_loss)
+    && w_filed_negative(fact: gitlab_fy2023_net_income_loss)
+    && w_filed_negative(fact: gitlab_fy2024_net_income_loss)
+    && w_filed_negative(fact: gitlab_fy2025_net_income_loss)
+    && w_filed_negative(fact: gitlab_fy2026_net_income_loss)
+}
+
+fn w_operating_loss_narrows_fy2023_to_fy2026() -> Bool {
+  w_negative_magnitude_shrinks(prev: gitlab_fy2023_operating_income_loss, next: gitlab_fy2024_operating_income_loss)
+    && w_negative_magnitude_shrinks(prev: gitlab_fy2024_operating_income_loss, next: gitlab_fy2025_operating_income_loss)
+    && w_negative_magnitude_shrinks(prev: gitlab_fy2025_operating_income_loss, next: gitlab_fy2026_operating_income_loss)
+}
+
+fn w_fy2024_net_loss_exceeds_operating_loss() -> Bool {
+  match filed_negative_magnitude(fact: gitlab_fy2024_net_income_loss) {
+    Present { value: net } =>
+      match filed_negative_magnitude(fact: gitlab_fy2024_operating_income_loss) {
+        Present { value: op } => op < net
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_fy2025_net_loss_below_ten_million() -> Bool {
+  match filed_negative_magnitude(fact: gitlab_fy2025_net_income_loss) {
+    Present { value: net } => net < 10000000
+    _ => false
+  }
+}
+
+fn w_purchase_obligations_coherent() -> Bool {
+  w_due_within_year_le_total(due: gitlab_fy2023_purchase_obligation_due_next_year, total: gitlab_fy2023_purchase_obligation)
+    && w_due_within_year_le_total(due: gitlab_fy2024_purchase_obligation_due_next_year, total: gitlab_fy2024_purchase_obligation)
+    && w_due_within_year_le_total(due: gitlab_fy2025_purchase_obligation_due_next_year, total: gitlab_fy2025_purchase_obligation)
+    && w_due_within_year_le_total(due: gitlab_fy2026_purchase_obligation_due_next_year, total: gitlab_fy2026_purchase_obligation)
+    && w_filed_count_equals(fact: gitlab_fy2026_purchase_obligation, expected: 228056000)
+    && w_filed_count_equals(fact: gitlab_fy2026_purchase_obligation_due_next_year, expected: 98885000)
+    && w_filed_count_equals(fact: gitlab_sept_2020_hosting_commitment, expected: 97000000)
+}
+
+fn w_dbnrr_at_least_100_every_disclosed_year() -> Bool {
+  disclosed_rate_at_least(rate: gitlab_fy2020_dbnrr.rate, threshold_percent: 100)
+    && disclosed_rate_at_least(rate: gitlab_fy2021_dbnrr.rate, threshold_percent: 100)
+    && disclosed_rate_at_least(rate: gitlab_fy2022_dbnrr.rate, threshold_percent: 100)
+    && disclosed_rate_at_least(rate: gitlab_fy2023_dbnrr.rate, threshold_percent: 100)
+    && disclosed_rate_at_least(rate: gitlab_fy2024_dbnrr.rate, threshold_percent: 100)
+    && disclosed_rate_at_least(rate: gitlab_fy2025_dbnrr.rate, threshold_percent: 100)
+    && disclosed_rate_at_least(rate: gitlab_fy2026_dbnrr.rate, threshold_percent: 100)
+}
+
+fn w_dbnrr_exact_era_strictly_declines() -> Bool {
+  match disclosed_rate_exact_percent(rate: gitlab_fy2024_dbnrr.rate) {
+    Present { value: p24 } =>
+      match disclosed_rate_exact_percent(rate: gitlab_fy2025_dbnrr.rate) {
+        Present { value: p25 } =>
+          match disclosed_rate_exact_percent(rate: gitlab_fy2026_dbnrr.rate) {
+            Present { value: p26 } => (p24 == 130) && (p25 < p24) && (p26 < p25)
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_dbnrr_fy2022_disclosed_as_floor_152() -> Bool {
+  match gitlab_fy2022_dbnrr.rate {
+    RateLowerBoundPercent { floor_percent: f } => f == 152
+    _ => false
+  }
+}
+
+fn w_customers_100k_strictly_increase() -> Bool {
+  (gitlab_fy2021_customers_100k_arr.customer_count < gitlab_fy2022_customers_100k_arr.customer_count)
+    && (gitlab_fy2022_customers_100k_arr.customer_count < gitlab_fy2023_customers_100k_arr.customer_count)
+    && (gitlab_fy2023_customers_100k_arr.customer_count < gitlab_fy2024_customers_100k_arr.customer_count)
+    && (gitlab_fy2024_customers_100k_arr.customer_count < gitlab_fy2025_customers_100k_arr.customer_count)
+    && (gitlab_fy2025_customers_100k_arr.customer_count < gitlab_fy2026_customers_100k_arr.customer_count)
+    && (gitlab_fy2026_customers_100k_arr.customer_count == 1456)
+}
+
+fn w_premium_listed_29_usd_billed_annually() -> Bool {
+  match gitlab_premium_price.seat_pricing {
+    ListedPerSeatMonth { per_seat_month: p, billed_annually: annual } =>
+      annual && (money_per_month_micros(q: p) == 29000000)
+    _ => false
+  }
+}
+
+fn w_ultimate_pricing_is_custom_negotiated() -> Bool {
+  match gitlab_ultimate_price.seat_pricing {
+    CustomNegotiatedPricing => true
+    _ => false
+  }
+}
+
+fn w_free_tier_is_free_of_charge() -> Bool {
+  match gitlab_free_price.seat_pricing {
+    FreeOfCharge => true
+    _ => false
+  }
+}
+
+fn w_duo_credit_bundles_order_with_tier() -> Bool {
+  money_per_month_micros(q: gitlab_premium_price.included_duo_credits_per_seat_month) < money_per_month_micros(q: gitlab_ultimate_price.included_duo_credits_per_seat_month)
+}
+
+fn w_premium_price_history_coheres_with_live_list_price() -> Bool {
+  match gitlab_premium_price.seat_pricing {
+    ListedPerSeatMonth { per_seat_month: live, billed_annually: _ } =>
+      (money_per_month_micros(q: gitlab_premium_2023_price_increase.prior_per_seat_month) == 19000000)
+        && (money_per_month_micros(q: gitlab_premium_2023_price_increase.new_per_seat_month) == money_per_month_micros(q: live))
+    _ => false
+  }
+}
+
+fn w_red_perturbed_operating_income_breaks_cross_foot() -> Bool {
+  !w_year_cross_foots(
+    revenue: gitlab_fy2026_revenue,
+    cost_of_revenue: gitlab_fy2026_cost_of_revenue,
+    gross_profit: gitlab_fy2026_gross_profit,
+    selling_and_marketing: gitlab_fy2026_selling_and_marketing,
+    research_and_development: gitlab_fy2026_research_and_development,
+    general_and_administrative: gitlab_fy2026_general_and_administrative,
+    operating_expenses_total: gitlab_fy2026_operating_expenses,
+    operating_income: FiledSignedMonetaryFact {
+      element: gitlab_fy2026_operating_income_loss.element,
+      amount: FiledSigned { value: signed_usd_negative(magnitude_count: 70481001) },
+      citation: gitlab_fy2026_operating_income_loss.citation,
+    }
+  )
+}
+
+fn w_red_reversed_revenue_pair_not_increasing() -> Bool {
+  !w_filed_count_increases(prev: gitlab_fy2026_revenue, next: gitlab_fy2025_revenue)
+}
+
+fn w_red_reversed_share_pair_not_declining() -> Bool {
+  !w_share_of_revenue_declines(
+    numer_prev: gitlab_fy2026_selling_and_marketing,
+    revenue_prev: gitlab_fy2026_revenue,
+    numer_next: gitlab_fy2025_selling_and_marketing,
+    revenue_next: gitlab_fy2025_revenue
+  )
+}
+
+fn w_red_perturbed_gross_profit_leaves_margin_band() -> Bool {
+  !w_gross_margin_in_series_band(
+    revenue: gitlab_fy2024_revenue,
+    gross_profit: FiledMonetaryFact {
+      element: gitlab_fy2024_gross_profit.element,
+      amount: Filed { amount: usd_whole_dollars(count: 530198000) },
+      citation: gitlab_fy2024_gross_profit.citation,
+    }
+  )
+}
+
+fn w_red_floor_disclosure_has_no_exact_value() -> Bool {
+  match disclosed_rate_exact_percent(rate: gitlab_fy2023_dbnrr.rate) {
+    Present { value: _ } => false
+    _ => true
+  }
+}
+
+test fn gitlab_10k_income_series_witness() -> Bool {
+  w_all_seven_years_cross_foot()
+    && w_revenue_strictly_increases_every_year()
+    && w_sales_and_marketing_share_declines_every_year()
+    && w_gross_margin_high_80s_every_year()
+    && w_operating_income_negative_all_seven_years()
+    && w_net_income_negative_all_seven_years()
+    && w_operating_loss_narrows_fy2023_to_fy2026()
+    && w_fy2024_net_loss_exceeds_operating_loss()
+    && w_fy2025_net_loss_below_ten_million()
+    && w_purchase_obligations_coherent()
+    && w_dbnrr_at_least_100_every_disclosed_year()
+    && w_dbnrr_exact_era_strictly_declines()
+    && w_dbnrr_fy2022_disclosed_as_floor_152()
+    && w_customers_100k_strictly_increase()
+    && w_premium_listed_29_usd_billed_annually()
+    && w_ultimate_pricing_is_custom_negotiated()
+    && w_free_tier_is_free_of_charge()
+    && w_duo_credit_bundles_order_with_tier()
+    && w_premium_price_history_coheres_with_live_list_price()
+    && w_red_perturbed_operating_income_breaks_cross_foot()
+    && w_red_reversed_revenue_pair_not_increasing()
+    && w_red_reversed_share_pair_not_declining()
+    && w_red_perturbed_gross_profit_leaves_margin_band()
+    && w_red_floor_disclosure_has_no_exact_value()
+}

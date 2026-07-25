@@ -1,16 +1,30 @@
 module extdeps.sec.issuer.gitlab_facts
 
 import extdeps.sec.facts {
-  FiledAmount,
   FiledFactCitation,
   FiledMonetaryFact,
+  FiledSignedMonetaryFact,
+  signed_usd_negative,
   usd_whole_dollars,
+}
+import extdeps.sec.operating_metrics {
+  ArrThresholdCustomerCountRow,
+  DollarBasedNetRetentionRow,
 }
 import extdeps.sec.types { AnnualReport }
 import extdeps.sec.us_gaap {
   us_gaap_cost_of_revenue,
+  us_gaap_general_and_administrative_expense,
   us_gaap_gross_profit,
+  us_gaap_long_term_purchase_commitment_amount,
+  us_gaap_net_income_loss,
+  us_gaap_operating_expenses,
+  us_gaap_operating_income_loss,
+  us_gaap_purchase_obligation,
+  us_gaap_purchase_obligation_due_in_next_twelve_months,
+  us_gaap_research_and_development_expense,
   us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  us_gaap_selling_and_marketing_expense,
 }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -23,16 +37,473 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data gitlab_facts_provenance_note: String = "Every amount is a live pull from data.sec.gov companyconcept (2026-07-21, session smart-hawk-796). CIK 0001653482 verified on EDGAR submissions API. Fiscal year ended 2026-01-31, form 10-K, accession 0001628280-26-018731, filed 2026-03-17."
+data gitlab_facts_provenance_note: String = "Every amount is a live pull from data.sec.gov companyconcept (2026-07-25, session gitlab-10k-scm-costs-baz90x). CIK 0001653482 verified on the EDGAR submissions API (ticker GTLB, Nasdaq, SIC 7372 Services-Prepackaged Software). All five GitLab 10-Ks are modeled -- FY2022 (first post-IPO annual report, accession 0001628280-22-008836, filed 2022-04-08) through FY2026 (accession 0001628280-26-018731, filed 2026-03-17); GitLab fiscal years end January 31. Each fact row cites the fiscal year's OWN 10-K (the earliest filing reporting that period). The face income statement cross-foots exactly in every modeled period: GrossProfit = Revenue - CostOfRevenue; SellingAndMarketing + ResearchAndDevelopment + GeneralAndAdministrative = OperatingExpenses (exactly three operating-expense lines in all seven periods); GrossProfit - OperatingExpenses = OperatingIncomeLoss."
+
+data gitlab_comparative_period_note: String = "FY2020 and FY2021 rows are the comparative periods presented in the FY2022 10-K -- GitLab IPO'd 2021-10-14, so no earlier 10-K exists and that filing is the earliest annual-report authority for those periods. EDGAR labels every row of a filing with the FILING's fiscal-year focus, so those citations carry fiscal_year 2022 while the FiledDuration period bounds the fact's own earlier fiscal year."
+
+data gitlab_revenue_disaggregation_gap_note: String = "GitLab's statements disaggregate revenue (subscription self-managed and SaaS vs license self-managed and other), but the split is tagged on dimensional axes only -- companyfacts returns us-gaap/dei/ecd taxonomies with no gtlb custom elements, and dimensional facts are stripped from the companyfacts/companyconcept APIs (same API-boundary case as chemed_segment_gap_note). No estimated split is stored. Dissolve-on: ingesting the SEC Financial Statement Data Sets or the filing R-file tables, which carry the dimension members."
+
+data gitlab_hosting_commitment_note: String = "What serving costs, forward-committed: the FY2022 10-K commitments note discloses that in September 2020 GitLab entered non-cancelable capacity commitments with a hosting infrastructure vendor for a total minimum service commitment of 97.0 million USD (LongTermPurchaseCommitmentAmount row below, instant 2020-09-30). The FY2026 10-K commitments note discloses 228.056 million USD of total non-cancelable purchase commitments as of 2026-01-31 (98.885 million USD due within a year) and states the table 'includes 131 million USD of remaining non-cancelable contractual commitments as of January 31, 2026 related to two of the Company's hosting infrastructure vendors' -- versus 120.7 million USD FY2026 cost of revenue."
+
+data gitlab_fy2020_comparative_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001628280-22-008836",
+  fiscal_year: 2022,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledDuration { start: "2019-02-01", end: "2020-01-31" },
+  filed_date: "2022-04-08",
+}
+
+data gitlab_fy2021_comparative_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001628280-22-008836",
+  fiscal_year: 2022,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledDuration { start: "2020-02-01", end: "2021-01-31" },
+  filed_date: "2022-04-08",
+}
+
+data gitlab_fy2022_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001628280-22-008836",
+  fiscal_year: 2022,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledDuration { start: "2021-02-01", end: "2022-01-31" },
+  filed_date: "2022-04-08",
+}
+
+data gitlab_fy2023_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001628280-23-009925",
+  fiscal_year: 2023,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledDuration { start: "2022-02-01", end: "2023-01-31" },
+  filed_date: "2023-03-30",
+}
+
+data gitlab_fy2024_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001628280-24-012963",
+  fiscal_year: 2024,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledDuration { start: "2023-02-01", end: "2024-01-31" },
+  filed_date: "2024-03-26",
+}
+
+data gitlab_fy2025_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001628280-25-014344",
+  fiscal_year: 2025,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledDuration { start: "2024-02-01", end: "2025-01-31" },
+  filed_date: "2025-03-21",
+}
 
 data gitlab_fy2026_citation: FiledFactCitation = FiledFactCitation {
   accession: "0001628280-26-018731",
   fiscal_year: 2026,
   fiscal_period: "FY",
   form: AnnualReport,
-  period_start: "2025-02-01",
-  period_end: "2026-01-31",
+  period: FiledDuration { start: "2025-02-01", end: "2026-01-31" },
   filed_date: "2026-03-17",
+}
+
+data gitlab_fy2020_year_end_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001628280-22-008836",
+  fiscal_year: 2022,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledInstant { as_of: "2020-01-31" },
+  filed_date: "2022-04-08",
+}
+
+data gitlab_fy2021_year_end_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001628280-22-008836",
+  fiscal_year: 2022,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledInstant { as_of: "2021-01-31" },
+  filed_date: "2022-04-08",
+}
+
+data gitlab_fy2022_year_end_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001628280-22-008836",
+  fiscal_year: 2022,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledInstant { as_of: "2022-01-31" },
+  filed_date: "2022-04-08",
+}
+
+data gitlab_fy2023_year_end_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001628280-23-009925",
+  fiscal_year: 2023,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledInstant { as_of: "2023-01-31" },
+  filed_date: "2023-03-30",
+}
+
+data gitlab_fy2024_year_end_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001628280-24-012963",
+  fiscal_year: 2024,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledInstant { as_of: "2024-01-31" },
+  filed_date: "2024-03-26",
+}
+
+data gitlab_fy2025_year_end_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001628280-25-014344",
+  fiscal_year: 2025,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledInstant { as_of: "2025-01-31" },
+  filed_date: "2025-03-21",
+}
+
+data gitlab_fy2026_year_end_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001628280-26-018731",
+  fiscal_year: 2026,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledInstant { as_of: "2026-01-31" },
+  filed_date: "2026-03-17",
+}
+
+data gitlab_sept_2020_commitment_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001628280-22-008836",
+  fiscal_year: 2022,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledInstant { as_of: "2020-09-30" },
+  filed_date: "2022-04-08",
+}
+
+data gitlab_fy2020_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  amount: Filed { amount: usd_whole_dollars(count: 81227000) },
+  citation: Present { value: gitlab_fy2020_comparative_citation },
+}
+
+data gitlab_fy2020_cost_of_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_cost_of_revenue,
+  amount: Filed { amount: usd_whole_dollars(count: 9376000) },
+  citation: Present { value: gitlab_fy2020_comparative_citation },
+}
+
+data gitlab_fy2020_gross_profit: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_gross_profit,
+  amount: Filed { amount: usd_whole_dollars(count: 71851000) },
+  citation: Present { value: gitlab_fy2020_comparative_citation },
+}
+
+data gitlab_fy2020_selling_and_marketing: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_selling_and_marketing_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 99225000) },
+  citation: Present { value: gitlab_fy2020_comparative_citation },
+}
+
+data gitlab_fy2020_research_and_development: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_research_and_development_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 59364000) },
+  citation: Present { value: gitlab_fy2020_comparative_citation },
+}
+
+data gitlab_fy2020_general_and_administrative: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_general_and_administrative_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 41629000) },
+  citation: Present { value: gitlab_fy2020_comparative_citation },
+}
+
+data gitlab_fy2020_operating_expenses: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_operating_expenses,
+  amount: Filed { amount: usd_whole_dollars(count: 200218000) },
+  citation: Present { value: gitlab_fy2020_comparative_citation },
+}
+
+data gitlab_fy2020_operating_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_operating_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 128367000) },
+  citation: Present { value: gitlab_fy2020_comparative_citation },
+}
+
+data gitlab_fy2020_net_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_net_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 130741000) },
+  citation: Present { value: gitlab_fy2020_comparative_citation },
+}
+
+data gitlab_fy2021_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  amount: Filed { amount: usd_whole_dollars(count: 152176000) },
+  citation: Present { value: gitlab_fy2021_comparative_citation },
+}
+
+data gitlab_fy2021_cost_of_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_cost_of_revenue,
+  amount: Filed { amount: usd_whole_dollars(count: 18463000) },
+  citation: Present { value: gitlab_fy2021_comparative_citation },
+}
+
+data gitlab_fy2021_gross_profit: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_gross_profit,
+  amount: Filed { amount: usd_whole_dollars(count: 133713000) },
+  citation: Present { value: gitlab_fy2021_comparative_citation },
+}
+
+data gitlab_fy2021_selling_and_marketing: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_selling_and_marketing_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 154086000) },
+  citation: Present { value: gitlab_fy2021_comparative_citation },
+}
+
+data gitlab_fy2021_research_and_development: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_research_and_development_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 106643000) },
+  citation: Present { value: gitlab_fy2021_comparative_citation },
+}
+
+data gitlab_fy2021_general_and_administrative: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_general_and_administrative_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 86868000) },
+  citation: Present { value: gitlab_fy2021_comparative_citation },
+}
+
+data gitlab_fy2021_operating_expenses: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_operating_expenses,
+  amount: Filed { amount: usd_whole_dollars(count: 347597000) },
+  citation: Present { value: gitlab_fy2021_comparative_citation },
+}
+
+data gitlab_fy2021_operating_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_operating_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 213884000) },
+  citation: Present { value: gitlab_fy2021_comparative_citation },
+}
+
+data gitlab_fy2021_net_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_net_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 192194000) },
+  citation: Present { value: gitlab_fy2021_comparative_citation },
+}
+
+data gitlab_fy2022_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  amount: Filed { amount: usd_whole_dollars(count: 252653000) },
+  citation: Present { value: gitlab_fy2022_citation },
+}
+
+data gitlab_fy2022_cost_of_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_cost_of_revenue,
+  amount: Filed { amount: usd_whole_dollars(count: 29985000) },
+  citation: Present { value: gitlab_fy2022_citation },
+}
+
+data gitlab_fy2022_gross_profit: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_gross_profit,
+  amount: Filed { amount: usd_whole_dollars(count: 222668000) },
+  citation: Present { value: gitlab_fy2022_citation },
+}
+
+data gitlab_fy2022_selling_and_marketing: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_selling_and_marketing_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 190754000) },
+  citation: Present { value: gitlab_fy2022_citation },
+}
+
+data gitlab_fy2022_research_and_development: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_research_and_development_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 97217000) },
+  citation: Present { value: gitlab_fy2022_citation },
+}
+
+data gitlab_fy2022_general_and_administrative: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_general_and_administrative_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 63654000) },
+  citation: Present { value: gitlab_fy2022_citation },
+}
+
+data gitlab_fy2022_operating_expenses: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_operating_expenses,
+  amount: Filed { amount: usd_whole_dollars(count: 351625000) },
+  citation: Present { value: gitlab_fy2022_citation },
+}
+
+data gitlab_fy2022_operating_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_operating_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 128957000) },
+  citation: Present { value: gitlab_fy2022_citation },
+}
+
+data gitlab_fy2022_net_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_net_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 155138000) },
+  citation: Present { value: gitlab_fy2022_citation },
+}
+
+data gitlab_fy2023_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  amount: Filed { amount: usd_whole_dollars(count: 424336000) },
+  citation: Present { value: gitlab_fy2023_citation },
+}
+
+data gitlab_fy2023_cost_of_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_cost_of_revenue,
+  amount: Filed { amount: usd_whole_dollars(count: 51680000) },
+  citation: Present { value: gitlab_fy2023_citation },
+}
+
+data gitlab_fy2023_gross_profit: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_gross_profit,
+  amount: Filed { amount: usd_whole_dollars(count: 372656000) },
+  citation: Present { value: gitlab_fy2023_citation },
+}
+
+data gitlab_fy2023_selling_and_marketing: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_selling_and_marketing_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 309992000) },
+  citation: Present { value: gitlab_fy2023_citation },
+}
+
+data gitlab_fy2023_research_and_development: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_research_and_development_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 156143000) },
+  citation: Present { value: gitlab_fy2023_citation },
+}
+
+data gitlab_fy2023_general_and_administrative: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_general_and_administrative_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 117932000) },
+  citation: Present { value: gitlab_fy2023_citation },
+}
+
+data gitlab_fy2023_operating_expenses: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_operating_expenses,
+  amount: Filed { amount: usd_whole_dollars(count: 584067000) },
+  citation: Present { value: gitlab_fy2023_citation },
+}
+
+data gitlab_fy2023_operating_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_operating_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 211411000) },
+  citation: Present { value: gitlab_fy2023_citation },
+}
+
+data gitlab_fy2023_net_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_net_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 172311000) },
+  citation: Present { value: gitlab_fy2023_citation },
+}
+
+data gitlab_fy2024_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  amount: Filed { amount: usd_whole_dollars(count: 579906000) },
+  citation: Present { value: gitlab_fy2024_citation },
+}
+
+data gitlab_fy2024_cost_of_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_cost_of_revenue,
+  amount: Filed { amount: usd_whole_dollars(count: 59708000) },
+  citation: Present { value: gitlab_fy2024_citation },
+}
+
+data gitlab_fy2024_gross_profit: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_gross_profit,
+  amount: Filed { amount: usd_whole_dollars(count: 520198000) },
+  citation: Present { value: gitlab_fy2024_citation },
+}
+
+data gitlab_fy2024_selling_and_marketing: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_selling_and_marketing_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 356393000) },
+  citation: Present { value: gitlab_fy2024_citation },
+}
+
+data gitlab_fy2024_research_and_development: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_research_and_development_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 200840000) },
+  citation: Present { value: gitlab_fy2024_citation },
+}
+
+data gitlab_fy2024_general_and_administrative: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_general_and_administrative_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 150405000) },
+  citation: Present { value: gitlab_fy2024_citation },
+}
+
+data gitlab_fy2024_operating_expenses: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_operating_expenses,
+  amount: Filed { amount: usd_whole_dollars(count: 707638000) },
+  citation: Present { value: gitlab_fy2024_citation },
+}
+
+data gitlab_fy2024_operating_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_operating_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 187440000) },
+  citation: Present { value: gitlab_fy2024_citation },
+}
+
+data gitlab_fy2024_net_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_net_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 424174000) },
+  citation: Present { value: gitlab_fy2024_citation },
+}
+
+data gitlab_fy2024_net_vs_operating_divergence_note: String = "FY2024 is the outlier year: net loss 424.174 million USD against an operating loss of 187.440 million USD. The gap is non-operating (income-tax and JiHu joint-venture related charges below the operating line), not a change in the cost of running the platform -- the trend witness therefore tracks OPERATING loss, and the net-income rows stay faithful to the filed totals."
+
+data gitlab_fy2025_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  amount: Filed { amount: usd_whole_dollars(count: 759249000) },
+  citation: Present { value: gitlab_fy2025_citation },
+}
+
+data gitlab_fy2025_cost_of_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_cost_of_revenue,
+  amount: Filed { amount: usd_whole_dollars(count: 85140000) },
+  citation: Present { value: gitlab_fy2025_citation },
+}
+
+data gitlab_fy2025_gross_profit: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_gross_profit,
+  amount: Filed { amount: usd_whole_dollars(count: 674109000) },
+  citation: Present { value: gitlab_fy2025_citation },
+}
+
+data gitlab_fy2025_selling_and_marketing: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_selling_and_marketing_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 384295000) },
+  citation: Present { value: gitlab_fy2025_citation },
+}
+
+data gitlab_fy2025_research_and_development: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_research_and_development_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 239652000) },
+  citation: Present { value: gitlab_fy2025_citation },
+}
+
+data gitlab_fy2025_general_and_administrative: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_general_and_administrative_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 192877000) },
+  citation: Present { value: gitlab_fy2025_citation },
+}
+
+data gitlab_fy2025_operating_expenses: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_operating_expenses,
+  amount: Filed { amount: usd_whole_dollars(count: 816824000) },
+  citation: Present { value: gitlab_fy2025_citation },
+}
+
+data gitlab_fy2025_operating_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_operating_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 142715000) },
+  citation: Present { value: gitlab_fy2025_citation },
+}
+
+data gitlab_fy2025_net_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_net_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 6326000) },
+  citation: Present { value: gitlab_fy2025_citation },
 }
 
 data gitlab_fy2026_revenue: FiledMonetaryFact = FiledMonetaryFact {
@@ -53,8 +524,175 @@ data gitlab_fy2026_gross_profit: FiledMonetaryFact = FiledMonetaryFact {
   citation: Present { value: gitlab_fy2026_citation },
 }
 
+data gitlab_fy2026_selling_and_marketing: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_selling_and_marketing_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 434725000) },
+  citation: Present { value: gitlab_fy2026_citation },
+}
+
+data gitlab_fy2026_research_and_development: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_research_and_development_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 274574000) },
+  citation: Present { value: gitlab_fy2026_citation },
+}
+
+data gitlab_fy2026_general_and_administrative: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_general_and_administrative_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 195663000) },
+  citation: Present { value: gitlab_fy2026_citation },
+}
+
+data gitlab_fy2026_operating_expenses: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_operating_expenses,
+  amount: Filed { amount: usd_whole_dollars(count: 904962000) },
+  citation: Present { value: gitlab_fy2026_citation },
+}
+
+data gitlab_fy2026_operating_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_operating_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 70481000) },
+  citation: Present { value: gitlab_fy2026_citation },
+}
+
+data gitlab_fy2026_net_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_net_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 55956000) },
+  citation: Present { value: gitlab_fy2026_citation },
+}
+
 data gitlab_fy2026_filed_facts: List<FiledMonetaryFact> = [
   gitlab_fy2026_revenue,
   gitlab_fy2026_cost_of_revenue,
   gitlab_fy2026_gross_profit,
+  gitlab_fy2026_selling_and_marketing,
+  gitlab_fy2026_research_and_development,
+  gitlab_fy2026_general_and_administrative,
+  gitlab_fy2026_operating_expenses,
 ]
+
+data gitlab_sept_2020_hosting_commitment: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_long_term_purchase_commitment_amount,
+  amount: Filed { amount: usd_whole_dollars(count: 97000000) },
+  citation: Present { value: gitlab_sept_2020_commitment_citation },
+}
+
+data gitlab_fy2023_purchase_obligation: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_purchase_obligation,
+  amount: Filed { amount: usd_whole_dollars(count: 216948000) },
+  citation: Present { value: gitlab_fy2023_year_end_citation },
+}
+
+data gitlab_fy2023_purchase_obligation_due_next_year: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_purchase_obligation_due_in_next_twelve_months,
+  amount: Filed { amount: usd_whole_dollars(count: 112911000) },
+  citation: Present { value: gitlab_fy2023_year_end_citation },
+}
+
+data gitlab_fy2024_purchase_obligation: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_purchase_obligation,
+  amount: Filed { amount: usd_whole_dollars(count: 152849000) },
+  citation: Present { value: gitlab_fy2024_year_end_citation },
+}
+
+data gitlab_fy2024_purchase_obligation_due_next_year: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_purchase_obligation_due_in_next_twelve_months,
+  amount: Filed { amount: usd_whole_dollars(count: 76032000) },
+  citation: Present { value: gitlab_fy2024_year_end_citation },
+}
+
+data gitlab_fy2025_purchase_obligation: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_purchase_obligation,
+  amount: Filed { amount: usd_whole_dollars(count: 132709000) },
+  citation: Present { value: gitlab_fy2025_year_end_citation },
+}
+
+data gitlab_fy2025_purchase_obligation_due_next_year: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_purchase_obligation_due_in_next_twelve_months,
+  amount: Filed { amount: usd_whole_dollars(count: 93490000) },
+  citation: Present { value: gitlab_fy2025_year_end_citation },
+}
+
+data gitlab_fy2026_purchase_obligation: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_purchase_obligation,
+  amount: Filed { amount: usd_whole_dollars(count: 228056000) },
+  citation: Present { value: gitlab_fy2026_year_end_citation },
+}
+
+data gitlab_fy2026_purchase_obligation_due_next_year: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_purchase_obligation_due_in_next_twelve_months,
+  amount: Filed { amount: usd_whole_dollars(count: 98885000) },
+  citation: Present { value: gitlab_fy2026_year_end_citation },
+}
+
+data gitlab_operating_metrics_note: String = "Dollar-Based Net Retention Rate and ARR-threshold customer counts are Item 7 MD&A operating metrics (extdeps.sec.operating_metrics shapes), quoted from each fiscal year's own 10-K. GitLab disclosed DBNRR only as a floor ('above N%') through the FY2023 10-K and as an exact point from the FY2024 10-K on; the typed lower-bound arm keeps that distinction. The FY2020 floor (above 175 percent) and the FY2021/FY2022 year-end customer counts are disclosed in the FY2022 10-K."
+
+data gitlab_fy2020_dbnrr: DollarBasedNetRetentionRow = DollarBasedNetRetentionRow {
+  rate: RateLowerBoundPercent { floor_percent: 175 },
+  citation: Present { value: gitlab_fy2020_year_end_citation },
+}
+
+data gitlab_fy2021_dbnrr: DollarBasedNetRetentionRow = DollarBasedNetRetentionRow {
+  rate: RateLowerBoundPercent { floor_percent: 145 },
+  citation: Present { value: gitlab_fy2021_year_end_citation },
+}
+
+data gitlab_fy2022_dbnrr: DollarBasedNetRetentionRow = DollarBasedNetRetentionRow {
+  rate: RateLowerBoundPercent { floor_percent: 152 },
+  citation: Present { value: gitlab_fy2022_year_end_citation },
+}
+
+data gitlab_fy2023_dbnrr: DollarBasedNetRetentionRow = DollarBasedNetRetentionRow {
+  rate: RateLowerBoundPercent { floor_percent: 130 },
+  citation: Present { value: gitlab_fy2023_year_end_citation },
+}
+
+data gitlab_fy2024_dbnrr: DollarBasedNetRetentionRow = DollarBasedNetRetentionRow {
+  rate: RateExactPercent { percent: 130 },
+  citation: Present { value: gitlab_fy2024_year_end_citation },
+}
+
+data gitlab_fy2025_dbnrr: DollarBasedNetRetentionRow = DollarBasedNetRetentionRow {
+  rate: RateExactPercent { percent: 123 },
+  citation: Present { value: gitlab_fy2025_year_end_citation },
+}
+
+data gitlab_fy2026_dbnrr: DollarBasedNetRetentionRow = DollarBasedNetRetentionRow {
+  rate: RateExactPercent { percent: 118 },
+  citation: Present { value: gitlab_fy2026_year_end_citation },
+}
+
+data gitlab_fy2021_customers_100k_arr: ArrThresholdCustomerCountRow = ArrThresholdCustomerCountRow {
+  arr_threshold: usd_whole_dollars(count: 100000),
+  customer_count: 283,
+  citation: Present { value: gitlab_fy2021_year_end_citation },
+}
+
+data gitlab_fy2022_customers_100k_arr: ArrThresholdCustomerCountRow = ArrThresholdCustomerCountRow {
+  arr_threshold: usd_whole_dollars(count: 100000),
+  customer_count: 492,
+  citation: Present { value: gitlab_fy2022_year_end_citation },
+}
+
+data gitlab_fy2023_customers_100k_arr: ArrThresholdCustomerCountRow = ArrThresholdCustomerCountRow {
+  arr_threshold: usd_whole_dollars(count: 100000),
+  customer_count: 697,
+  citation: Present { value: gitlab_fy2023_year_end_citation },
+}
+
+data gitlab_fy2024_customers_100k_arr: ArrThresholdCustomerCountRow = ArrThresholdCustomerCountRow {
+  arr_threshold: usd_whole_dollars(count: 100000),
+  customer_count: 955,
+  citation: Present { value: gitlab_fy2024_year_end_citation },
+}
+
+data gitlab_fy2025_customers_100k_arr: ArrThresholdCustomerCountRow = ArrThresholdCustomerCountRow {
+  arr_threshold: usd_whole_dollars(count: 100000),
+  customer_count: 1229,
+  citation: Present { value: gitlab_fy2025_year_end_citation },
+}
+
+data gitlab_fy2026_customers_100k_arr: ArrThresholdCustomerCountRow = ArrThresholdCustomerCountRow {
+  arr_threshold: usd_whole_dollars(count: 100000),
+  customer_count: 1456,
+  citation: Present { value: gitlab_fy2026_year_end_citation },
+}

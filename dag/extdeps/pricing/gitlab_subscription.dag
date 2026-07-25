@@ -1,0 +1,117 @@
+module extdeps.pricing.gitlab_subscription
+
+import std.currency { Usd }
+import std.measure {
+  MoneyPerMinute,
+  MoneyPerMonth,
+  money_amount_micro,
+}
+import std.types { NonEmptyStr, List }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "about.gitlab.com/pricing"
+  }
+}
+
+data gitlab_subscription_pricing_provenance_note: String = "Tier list prices and usage meters live-fetched 2026-07-25 from the pricing page (anchor above; session gitlab-10k-scm-costs-baz90x). SaaS (gitlab.com) list pricing; self-managed uses the same tiers and Dedicated/enterprise terms are sales-negotiated. The 10-Ks describe the three-tier open-core model qualitatively but publish no dollar prices (FY2023 10-K: 'we recently announced a price increase in our Premium tier product offering'; FY2024 10-K: 'during fiscal year 2024 we implemented a price increase in our Premium tier'), so the pricing page and GitLab's own announcements are the price authorities, and extdeps.sec.issuer.gitlab_facts carries the filed financial consequences."
+
+data gitlab_seat_pricing_shape_note: String = "Per-seat-month price on a tier row follows the extdeps.pricing precedent of the implicit billing unit living on the row (github_actions per_minute is per runner-minute; here per_seat_month is per user-month). Ultimate has NO public list price on the live page ('Get custom pricing -- Contact us for custom pricing'): CustomNegotiatedPricing keeps that a typed fact instead of fabricating a number (the pre-2026 99 USD list price is not on the page and is deliberately absent here). FreeOfCharge keeps the Free tier's 0 USD out of the listed arm so a billing term is never asserted for an unbilled tier."
+
+type GitlabSubscriptionTier
+  = GitlabFree
+  | GitlabPremium
+  | GitlabUltimate
+
+type GitlabSeatPricing
+  = FreeOfCharge
+  | ListedPerSeatMonth { per_seat_month: MoneyPerMonth, billed_annually: Bool }
+  | CustomNegotiatedPricing
+
+type GitlabTierPriceRow {
+  tier: GitlabSubscriptionTier
+  tier_wire_label: NonEmptyStr
+  seat_pricing: GitlabSeatPricing
+  included_duo_credits_per_seat_month: MoneyPerMonth
+  pricing_citation: NonEmptyStr
+}
+
+data gitlab_duo_credits_note: String = "GitLab Duo Agent Platform usage is metered in GitLab Credits at 1 USD per credit (volume discounts with annual commitment). Paid tiers bundle a monthly per-seat credit allowance denominated in dollars-worth of credits on the live page ('Includes 12 in GitLab Credits per user per month' on Premium, 24 on Ultimate), modeled as MoneyPerMonth per seat. Additional meters on the page: compute minutes sold in 1,000-minute packs at 10 USD one-time (the MoneyPerMinute row below is that pack price normalized per minute), and storage at 5 USD per month per 10 GiB."
+
+data gitlab_free_price: GitlabTierPriceRow = GitlabTierPriceRow {
+  tier: GitlabFree,
+  tier_wire_label: "free",
+  seat_pricing: FreeOfCharge,
+  included_duo_credits_per_seat_month: MoneyPerMonth {
+    amount: money_amount_micro(count: 0),
+    currency: Usd,
+  },
+  pricing_citation: "pricing#free",
+}
+
+data gitlab_premium_price: GitlabTierPriceRow = GitlabTierPriceRow {
+  tier: GitlabPremium,
+  tier_wire_label: "premium",
+  seat_pricing: ListedPerSeatMonth {
+    per_seat_month: MoneyPerMonth {
+      amount: money_amount_micro(count: 29000000),
+      currency: Usd,
+    },
+    billed_annually: true,
+  },
+  included_duo_credits_per_seat_month: MoneyPerMonth {
+    amount: money_amount_micro(count: 12000000),
+    currency: Usd,
+  },
+  pricing_citation: "pricing#premium",
+}
+
+data gitlab_ultimate_price: GitlabTierPriceRow = GitlabTierPriceRow {
+  tier: GitlabUltimate,
+  tier_wire_label: "ultimate",
+  seat_pricing: CustomNegotiatedPricing,
+  included_duo_credits_per_seat_month: MoneyPerMonth {
+    amount: money_amount_micro(count: 24000000),
+    currency: Usd,
+  },
+  pricing_citation: "pricing#ultimate",
+}
+
+fn gitlab_tier_price_catalog() -> List<GitlabTierPriceRow> {
+  [
+    gitlab_free_price,
+    gitlab_premium_price,
+    gitlab_ultimate_price,
+  ]
+}
+
+data gitlab_compute_minute_overage_price: MoneyPerMinute = MoneyPerMinute {
+  amount: money_amount_micro(count: 10000),
+  currency: Usd,
+}
+
+type GitlabPremiumListPriceChange {
+  effective_date: NonEmptyStr
+  prior_per_seat_month: MoneyPerMonth
+  new_per_seat_month: MoneyPerMonth
+  announcement_citation: NonEmptyStr
+}
+
+data gitlab_premium_price_change_note: String = "The one Premium list-price change since IPO, from GitLab's own announcement (citation below): 'Effective April 3, 2023, GitLab is increasing the list price of GitLab Premium from 19 to 29 USD per user per month.' The FY2023 and FY2024 10-K sentences quoted in the provenance note are the SEC-filed references to this same event. effective_date is an ISO 8601 calendar date."
+
+data gitlab_premium_2023_price_increase: GitlabPremiumListPriceChange = GitlabPremiumListPriceChange {
+  effective_date: "2023-04-03",
+  prior_per_seat_month: MoneyPerMonth {
+    amount: money_amount_micro(count: 19000000),
+    currency: Usd,
+  },
+  new_per_seat_month: MoneyPerMonth {
+    amount: money_amount_micro(count: 29000000),
+    currency: Usd,
+  },
+  announcement_citation: "about.gitlab.com/blog/2023/03/01/gitlab-premium-update",
+}

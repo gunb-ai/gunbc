@@ -30,8 +30,7 @@ data rollins_fy2025_citation: FiledFactCitation = FiledFactCitation {
   fiscal_year: 2025,
   fiscal_period: "FY",
   form: AnnualReport,
-  period_start: "2025-01-01",
-  period_end: "2025-12-31",
+  period: FiledDuration { start: "2025-01-01", end: "2025-12-31" },
   filed_date: "2026-02-12",
 }
 
