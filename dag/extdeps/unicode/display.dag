@@ -28,3 +28,16 @@ fn string_display_width(s: String) -> Int {
   let widths = char_list |> map(c => char_width(c: c))
   widths |> fold(init: 0, f: fn(acc, w) { acc + w })
 }
+
+fn truncate_text(text: String, max_width: Int) -> String {
+  let char_list = chars(text)
+  let state = fold(char_list,
+    init: { result: "", used: 0 },
+    f: (acc, c) => if acc.used + char_width(c: c) > max_width {
+      acc
+    } else {
+      { result: concat(acc.result, from_code_point(c)), used: acc.used + char_width(c: c) }
+    }
+  )
+  state.result
+}

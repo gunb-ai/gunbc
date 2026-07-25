@@ -1,6 +1,6 @@
 module gunbc.ci_render
 
-import extdeps.unicode.display { string_display_width }
+import extdeps.unicode.display { string_display_width, truncate_text }
 
 fn glyph_for(id: SymbolId, tier: Tier) -> String {
   match resolve_symbol(id: id, tier: tier) {
