@@ -48,6 +48,10 @@ fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty
   ]
 }
 
+fn systemctl_status_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "status", "--no-pager", "--full", unit as String]
+}
+
 type UnitFileState
   = UnitEnabled
   | UnitEnabledRuntime
