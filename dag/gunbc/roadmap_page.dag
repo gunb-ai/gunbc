@@ -25,7 +25,7 @@ import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes }
 import gunbc.roadmap_component {
   roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class,
-  disclosure_mark_class, disclosure_mark_glyph,
+  disclosure_mark_class, disclosure_mark_glyph, node_mid_class,
 }
 import gunbc.v1_deletion_plan {
   v1_deletion_gates, v1_deletion_milestones, PlanGateSpec, PlanMilestone,
@@ -514,21 +514,20 @@ fn page_script_census(page: MarkupNode) -> List<PageScriptViolation> {
   collect_script_violations(node: page, known_src: roadmap_dispatch_asset_path)
 }
 
-data node_head_row_note: String = "The row composition (remodel round 5, operator: 'the positioning of everything is still very clunky' — the pill sat alone on its own line, the disclosure floated, badges ragged). One flex HEAD LINE per node — status chip, title, badges, carrier links, and the dispatch control pushed to the row's right edge (the GitHub PR-row shape: identity left, action right) — with the disclosure indented beneath it. This is the deferred P3 flex-container refactor landing with the operator as the browser: the earlier deferral reason ('unverifiable without a browser') dissolved when the review loop gained live eyes."
+data node_head_row_note: String = "The row composition, on the declared archetype (composition slice 2; refines round 5's flex head line). The head line realizes the RoadmapRow archetype's head tracks: status chip in its auto track, the node-mid cell (title + the flowing meta regions — badges, carrier links) in the flex track, the actuator in its auto track at the right edge (the GitHub PR-row shape: identity left, action right). The grid template is DERIVED from the archetype's placements (roadmap_row_grid_template), the disclosure stays indented beneath on its landed token, and the wrapper exists because meta is declared InTitleFlow — badge count varies per node, so meta flows in the title's cell rather than owning a ragged column."
 
 fn node_head_row(rn: RoadmapNode, merged: List<Int>) -> MarkupNode {
   let status = node_status_symbol(rn: rn, merged: merged)
   el_class("div", "node-head", concat(
-    concat(
-      concat(
-        [
-          el_class("span", concat("status status-", status), [ txt(status) ]),
-          el_class("span", "title", lead_nodes(line: rn.line)),
-        ],
-        concat(superseded_badge(rn: rn), owner_badge(rn: rn)),
-      ),
-      concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)),
-    ),
+    [
+      el_class("span", concat("status status-", status), [ txt(status) ]),
+      el_class("span", node_mid_class, concat(
+        concat(
+          [ el_class("span", "title", lead_nodes(line: rn.line)) ],
+          concat(superseded_badge(rn: rn), owner_badge(rn: rn)),
+        ),
+        concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)))),
+    ],
     dispatch_button_nodes(rn: rn, merged: merged)))
 }
 

@@ -38,6 +38,7 @@ type CssPropertyName
   | FontVariantNumeric
   | FontWeight
   | Gap
+  | GridTemplateColumns
   | Height
   | JustifyContent
   | LetterSpacing
@@ -58,10 +59,12 @@ type CssPropertyName
   | Stroke
   | TextAlign
   | TextDecoration
+  | TextOverflow
   | TextTransform
   | Transform
   | Transition
   | VerticalAlign
+  | WhiteSpace
   | Width
   | CustomProperty { name: String }
   | RawProperty { name: String }
@@ -92,6 +95,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     FontVariantNumeric => "font-variant-numeric"
     FontWeight => "font-weight"
     Gap => "gap"
+    GridTemplateColumns => "grid-template-columns"
     Height => "height"
     JustifyContent => "justify-content"
     LetterSpacing => "letter-spacing"
@@ -112,10 +116,12 @@ fn css_property_wire(p: CssPropertyName) -> String {
     Stroke => "stroke"
     TextAlign => "text-align"
     TextDecoration => "text-decoration"
+    TextOverflow => "text-overflow"
     TextTransform => "text-transform"
     Transform => "transform"
     Transition => "transition"
     VerticalAlign => "vertical-align"
+    WhiteSpace => "white-space"
     Width => "width"
     CustomProperty { name: n } => join(["--", n], "")
     RawProperty { name: n } => n

@@ -2,6 +2,7 @@ module gunbc.roadmap_component
 
 import std.types { Int, String, Bool }
 import extdeps.languages.css.values { CssLength, css_ch, css_length_wire }
+import gunbc.design.scale { ScaleToken, space_4, height_row }
 import gunbc.design.component {
   Component, ComponentState, ComponentStateKind,
   IdleState, RequestedState, TerminalState,
@@ -133,6 +134,71 @@ data dispatch_class_requested: String = "dispatch-requested"
 data dispatch_class_ok: String = "dispatch-ok"
 data dispatch_class_refused: String = "dispatch-refused"
 data dispatch_class_loud: String = "dispatch-loud"
+
+data roadmap_row_archetype_note: String = "The RoadmapRow archetype (composition slice 2; refines the round-5 flex head line, does not rebuild it): the row's five regions DECLARED as data — status chip, title, meta, disclosure, actuator — each with its placement, and the head line's grid template DERIVED from the placements rather than authored as a magic string. Placements: the chip and the actuator own auto head tracks (identity left, action right — the GitHub PR-row shape the operator named); the title owns the flex track; meta FLOWS inside the title's track (badge count varies per node, so meta is a flow, not a column); the disclosure sits under the head on its own line, indented by its landed token. Density rides two tokens on the scale grammar — roadmap_row_height (h-row; the actuator in rows derives its extent from THIS token, derived-not-set, per the signed chip-scale ruling) and roadmap_row_gutter — no bare pixels anywhere in the realization. The full-size instrument specimen (h-control grain) lives in the sandbox gallery by selector scope: the row override applies only under .node-head, so gallery buttons keep the design-surface geometry with the SAME press physics rules (the detent and receipt folds target .dispatch-btn in both contexts, per-family-honest everywhere)."
+
+type RowTrack
+  = AutoTrack
+  | FlexTrack
+
+fn row_track_wire(t: RowTrack) -> String {
+  match t {
+    AutoTrack => "auto"
+    FlexTrack => "1fr"
+  }
+}
+
+type RowPlacement
+  = HeadTrack { track: RowTrack }
+  | InTitleFlow
+  | UnderHead
+
+type RowRegion
+  = StatusChipRegion
+  | TitleRegion
+  | MetaRegion
+  | DisclosureRegion
+  | ActuatorRegion
+
+fn row_region_key(r: RowRegion) -> String {
+  match r {
+    StatusChipRegion => "status-chip"
+    TitleRegion => "title"
+    MetaRegion => "meta"
+    DisclosureRegion => "disclosure"
+    ActuatorRegion => "actuator"
+  }
+}
+
+type RoadmapRowRegion {
+  region: RowRegion
+  placement: RowPlacement
+}
+
+data roadmap_row_archetype: List<RoadmapRowRegion> = [
+  RoadmapRowRegion { region: StatusChipRegion, placement: HeadTrack { track: AutoTrack } },
+  RoadmapRowRegion { region: TitleRegion, placement: HeadTrack { track: FlexTrack } },
+  RoadmapRowRegion { region: MetaRegion, placement: InTitleFlow },
+  RoadmapRowRegion { region: DisclosureRegion, placement: UnderHead },
+  RoadmapRowRegion { region: ActuatorRegion, placement: HeadTrack { track: AutoTrack } },
+]
+
+data roadmap_row_height: ScaleToken = height_row
+data roadmap_row_gutter: ScaleToken = space_4
+
+fn roadmap_row_grid_template() -> String {
+  join(
+    fold(roadmap_row_archetype, init: [], f: (acc, r) => match r.placement {
+      HeadTrack { track } => concat(acc, [row_track_wire(t: track)])
+      InTitleFlow => acc
+      UnderHead => acc
+    }),
+    " ")
+}
+
+data node_mid_class_note: String = "The title track's cell: the wrapper that carries the title plus the flowing meta regions (badges, carrier links). It exists because the archetype's grid has exactly the head tracks as columns and a node's badge count varies — meta declared InTitleFlow realizes as flex flow inside this cell, never as a column that would ragged the grid."
+
+data node_mid_class: String = "node-mid"
 
 data dispatch_caption_note: String = "The operator-facing captions (remodel W1d, operator ruling 2026-07-24): the wire taxonomy never renders as button text. The caption is the BAND's verb — ok keeps the session-chip morph (prefix + the belt's own status word, an honest projection, checkpoint 2); fail and loud collapse to one operator phrase each, with the wire label and its located fields demoted to the title/detail channel. BandInProgress renders the requested caption. These rows are the caption authority for the client program, the gallery, and the reserved width — one vocabulary, three consumers."
 
