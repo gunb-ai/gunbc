@@ -20,14 +20,7 @@ import v2.compiler.eval {
   test_claim_typed_input_node
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.std.collection { Optional,
-  Absent,
-  List,
-  Map,
-  Present,
-  list_at_optional,
-  map_insert
-}
+import v2.std.collection { Optional, Absent, List, Map, Present, list_at_optional, map_insert, optional_present, optional_absent }
 import v2.std.cardinality {
   RankingDimension,
   TerminationProof,
@@ -311,21 +304,17 @@ fn loop_bounded_descent() -> Witness<v2.std.cardinality.TerminationProof> {
 
 fn loop_facts_lookup(key: Node) -> Optional<InferredFacts> {
   if loop_node_is_loop(node: key) {
-    Present {
-      value: claim_inferred_facts_from_nodes(
+    optional_present(value: claim_inferred_facts_from_nodes(
         resolved: key,
         algebra: loop_i64_node(),
         descent: Holds { value: loop_loop_termination_proof() }
-      )
-    }
+      ))
   } else {
-    Present {
-      value: claim_inferred_facts_from_nodes(
+    optional_present(value: claim_inferred_facts_from_nodes(
         resolved: key,
         algebra: loop_i64_node(),
         descent: loop_bounded_descent()
-      )
-    }
+      ))
   }
 }
 

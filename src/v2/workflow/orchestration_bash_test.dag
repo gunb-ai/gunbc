@@ -27,7 +27,7 @@ import v2.extdeps.languages.bash_orch_if {
 import v2.extdeps.languages.bash_orch_tier2 {
   orch_cmdsubst_assign_target_model
 }
-import v2.std.collection { Optional, Present, Absent, Map }
+import v2.std.collection { Optional, Present, Absent, Map, optional_present, optional_absent }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
   Accepted,
@@ -46,7 +46,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn orch_bash_facts_lookup(key: Node) -> Optional<InferredFacts> {
-  Absent
+  optional_absent()
 }
 
 fn orch_emit_bash(root: Node, target: TargetModel) -> Outcome<Medium<String>> {

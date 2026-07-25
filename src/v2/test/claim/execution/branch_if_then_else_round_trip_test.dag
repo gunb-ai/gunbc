@@ -18,7 +18,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection { Optional, Present, Absent, Map }
+import v2.std.collection { Optional, Present, Absent, Map, optional_present, optional_absent }
 import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness
@@ -128,17 +128,15 @@ fn branch_if_then_else_canonical_grounding_for(node: Node) -> Witness<CanonicalG
 
 fn branch_if_then_else_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
   match branch_if_then_else_canonical_grounding_for(node: node) {
-    Violates { diagnostic: d } => Absent
+    Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
       match termination_proof_witness_for_node(n: node) {
-        Violates { diagnostic: d } => Absent
+        Violates { diagnostic: d } => optional_absent()
         Holds { value: proof } =>
-          Present {
-            value: claim_inferred_facts_witness(
+          optional_present(value: claim_inferred_facts_witness(
               grounding: grounding,
               descent: Holds { value: proof }
-            )
-          }
+            ))
       }
   }
 }

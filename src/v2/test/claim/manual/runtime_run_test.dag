@@ -8,7 +8,7 @@ import v2.compiler.eval {
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.std.algebra { length }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Optional, Present, Absent, List, Map }
+import v2.std.collection { Optional, Present, Absent, List, Map, optional_present, optional_absent }
 import v2.std.dependency { DependencyView }
 import v2.std.diagnostic {
   Accepted,
@@ -93,11 +93,11 @@ fn runtime_run_facts_for(node: Node) -> InferredFacts {
 
 fn runtime_run_fact_lookup(node: Node) -> Optional<InferredFacts> {
   if node == runtime_run_node_a {
-    Present { value: runtime_run_facts_for(node: runtime_run_node_a) }
+    optional_present(value: runtime_run_facts_for(node: runtime_run_node_a))
   } else if node == runtime_run_node_b {
-    Present { value: runtime_run_facts_for(node: runtime_run_node_b) }
+    optional_present(value: runtime_run_facts_for(node: runtime_run_node_b))
   } else {
-    Absent
+    optional_absent()
   }
 }
 

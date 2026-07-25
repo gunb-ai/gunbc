@@ -12,7 +12,7 @@ import v2.extdeps.languages.rust_test {
   rust_loop_target_model_staging
 }
 import extdeps.communication.medium { Medium }
-import v2.std.collection { Optional, Present, Absent, Map }
+import v2.std.collection { Optional, Present, Absent, Map, optional_present, optional_absent }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
   Accepted,
@@ -33,7 +33,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn rust_loop_emit_facts_miss(key: Node) -> Optional<InferredFacts> {
-  Absent
+  optional_absent()
 }
 
 fn rust_loop_emit_inferred_tree_for(root: Node) -> InferredTree {

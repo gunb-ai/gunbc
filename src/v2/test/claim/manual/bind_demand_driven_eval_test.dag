@@ -23,14 +23,7 @@ import v2.extdeps.runtimes.v2_evaluator {
   v2_evaluator_interpretation_structure_witness
 }
 import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection { Optional,
-  Absent,
-  List,
-  Map,
-  Present,
-  map_get,
-  map_insert
-}
+import v2.std.collection { Optional, Absent, List, Map, Present, map_get, map_insert, optional_present, optional_absent }
 import v2.std.witness { Holds, Witness }
 import v2.std.diagnostic {
   Accepted,
@@ -342,13 +335,11 @@ fn bind_eval_tree_root(call: Node, expected: Node) -> Node {
 }
 
 fn bind_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
-  Present {
-    value: claim_inferred_facts_from_nodes(
+  optional_present(value: claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: bind_eval_i64(),
       descent: termination_proof_witness_for_node(n: key)
-    )
-  }
+    ))
 }
 
 fn bind_eval_admitted_tree(root: Node) -> InferredTree {

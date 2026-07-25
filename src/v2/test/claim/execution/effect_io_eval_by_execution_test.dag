@@ -24,7 +24,7 @@ import v2.test.lens_common.infer_fixture {
   claim_inferred_tree
 }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Optional, Present, Absent, List, Map }
+import v2.std.collection { Optional, Present, Absent, List, Map, optional_present, optional_absent }
 import v2.std.diagnostic {
   Accepted,
   None,
@@ -221,13 +221,13 @@ fn effect_io_eval_facts_for(node: Node) -> InferredFacts {
 
 fn effect_io_eval_fact_lookup(node: Node) -> Optional<InferredFacts> {
   if node == effect_io_eval_roundtrip_node {
-    Present { value: effect_io_eval_facts_for(node: effect_io_eval_roundtrip_node) }
+    optional_present(value: effect_io_eval_facts_for(node: effect_io_eval_roundtrip_node))
   } else if node == effect_io_eval_locator_literal {
-    Present { value: effect_io_eval_facts_for(node: effect_io_eval_locator_literal) }
+    optional_present(value: effect_io_eval_facts_for(node: effect_io_eval_locator_literal))
   } else if node == effect_io_eval_payload_literal {
-    Present { value: effect_io_eval_facts_for(node: effect_io_eval_payload_literal) }
+    optional_present(value: effect_io_eval_facts_for(node: effect_io_eval_payload_literal))
   } else {
-    Absent
+    optional_absent()
   }
 }
 

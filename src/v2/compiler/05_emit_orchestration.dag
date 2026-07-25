@@ -85,7 +85,7 @@ import v2.std.orchestration {
 }
 import std.algebra { FreeMonoid }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, is_empty }
-import v2.std.collection { List, Map, Optional, Present, Absent }
+import v2.std.collection { List, Map, Optional, Present, Absent, optional_present, optional_absent }
 import v2.std.integer { integer_nat_to_decimal_string }
 import v2.std.nat { Nat }
 import v2.compiler.target_carriers { lossless_source }
@@ -106,7 +106,7 @@ import v2.std.node { Node, TypeNode, Conj, Atom, SyntheticOccurrence, Symbol }
 import v2.std.text { String }
 
 fn orch_emit_facts_lookup(key: Node) -> Optional<InferredFacts> {
-  Absent
+  optional_absent()
 }
 
 data orch_emit_unsupported_step_anchor: Node = Node {

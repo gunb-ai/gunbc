@@ -21,7 +21,7 @@ import v2.extdeps.languages.rust_test {
   rust_bind_literal_target_model
 }
 import extdeps.communication.medium { Medium }
-import v2.std.collection { Optional, Present, Absent, Map }
+import v2.std.collection { Optional, Present, Absent, Map, optional_present, optional_absent }
 import v2.std.compilers.target_model {
   TargetModel,
   target_value_expression_string_literal,
@@ -49,7 +49,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn rust_literal_bind_facts_miss(key: Node) -> Optional<InferredFacts> {
-  Absent
+  optional_absent()
 }
 
 fn rust_literal_bind_inferred_tree_for(root: Node) -> InferredTree {

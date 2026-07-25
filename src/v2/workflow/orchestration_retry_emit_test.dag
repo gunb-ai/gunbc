@@ -32,7 +32,7 @@ import v2.std.orchestration {
 }
 import std.algebra { FreeMonoid }
 import v2.std.algebra { list_head, HeadFound, HeadAbsent }
-import v2.std.collection { Optional, Present, Absent, Map }
+import v2.std.collection { Optional, Present, Absent, Map, optional_present, optional_absent }
 import v2.std.node { Node }
 import v2.std.witness { Violates, Witness }
 import v2.std.diagnostic {
@@ -77,7 +77,7 @@ fn ci_cargo_eagain_retry_core_golden(command: String) -> String {
 }
 
 fn orch_retry_probe_facts(key: Node) -> Optional<InferredFacts> {
-  Absent
+  optional_absent()
 }
 
 test fn orch_retry_row_direct_emit_accepted_holds() -> Bool {

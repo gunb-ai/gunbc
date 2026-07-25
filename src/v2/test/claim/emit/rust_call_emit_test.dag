@@ -217,7 +217,7 @@ fn rust_call_target_model(authority_source_text: String) -> TargetModel {
 }
 
 fn rust_call_facts_miss(key: Node) -> Optional<InferredFacts> {
-  Absent
+  optional_absent()
 }
 
 fn rust_call_inferred_tree_for(root: Node) -> InferredTree {

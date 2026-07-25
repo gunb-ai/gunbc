@@ -30,7 +30,7 @@ import v2.extdeps.languages.dag {
   dag_int_literal_node_from_lexeme,
   dag_language_model
 }
-import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional, map_insert }
+import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional, map_insert, optional_present, optional_absent }
 import v2.std.compilers.lexing { Token, TokenStream }
 import v2.std.grammar { ParseTree }
 import v2.std.cardinality {
@@ -394,13 +394,11 @@ fn add_arrow_eval_tree_root(call: Node, expected: Node) -> Node {
 }
 
 fn add_arrow_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
-  Present {
-    value: claim_inferred_facts_from_nodes(
+  optional_present(value: claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: add_arrow_eval_i64_node(),
       descent: termination_proof_witness_for_node(n: key)
-    )
-  }
+    ))
 }
 
 fn add_arrow_eval_admitted_tree(root: Node) -> InferredTree {

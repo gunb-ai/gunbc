@@ -25,7 +25,7 @@ import v2.extdeps.languages.rust {
   rust_type_expression_projection
 }
 import v2.std.algebra { is_empty }
-import v2.std.collection { Optional, Absent, Map, Present }
+import v2.std.collection { Optional, Absent, Map, Present, optional_present, optional_absent }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -104,7 +104,7 @@ fn sg2_mode2_target() -> TargetModel {
 }
 
 fn sg2_mode2_facts_lookup(_key: Node) -> Optional<InferredFacts> {
-  Absent
+  optional_absent()
 }
 
 data sg2_mode2_inferred_tree: InferredTree = InferredTree {

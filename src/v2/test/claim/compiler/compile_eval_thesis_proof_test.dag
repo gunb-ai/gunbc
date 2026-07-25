@@ -1,5 +1,5 @@
 module v2.test.claim.compiler.compile_eval_thesis_proof
-import v2.std.optional { Optional, Absent, Present }
+import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -13,23 +13,19 @@ fn compile_eval_thesis_termination_proof() -> v2.std.cardinality.TerminationProo
 
 fn compile_eval_thesis_facts_lookup(key: Node) -> Optional<InferredFacts> {
   if key == v2_eval_bool_literal_pin {
-    Present {
-      value: claim_inferred_facts_from_nodes(
+    optional_present(value: claim_inferred_facts_from_nodes(
         resolved: v2_eval_bool_literal_pin,
         algebra: v2_eval_bool_literal_pin,
         descent: Holds { value: compile_eval_thesis_termination_proof() }
-      )
-    }
+      ))
   } else if key == v2_eval_unit_literal_pin {
-    Present {
-      value: claim_inferred_facts_from_nodes(
+    optional_present(value: claim_inferred_facts_from_nodes(
         resolved: v2_eval_unit_literal_pin,
         algebra: v2_eval_unit_literal_pin,
         descent: Holds { value: compile_eval_thesis_termination_proof() }
-      )
-    }
+      ))
   } else {
-    Absent
+    optional_absent()
   }
 }
 

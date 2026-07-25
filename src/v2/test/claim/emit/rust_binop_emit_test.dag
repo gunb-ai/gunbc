@@ -18,7 +18,7 @@ import v2.extdeps.languages.rust {
   rust_fn_add_lex
 }
 import v2.extdeps.languages.rust_test { rust_target_model_with_operators_and_lex }
-import v2.std.collection { Optional, Present, Absent, Map }
+import v2.std.collection { Optional, Present, Absent, Map, optional_present, optional_absent }
 import v2.std.compilers.target_model {
   CanonicalOperation,
   TargetModel,
@@ -68,7 +68,7 @@ data rust_binop_mul_fn_source_text: String = "fn add(x: i32, y: i32) -> i32 { x 
 data rust_binop_eq_fn_source_text: String = "fn add(x: i32, y: i32) -> i32 { x == y }"
 
 fn rust_binop_facts_miss(key: Node) -> Optional<InferredFacts> {
-  Absent
+  optional_absent()
 }
 
 fn rust_binop_inferred_tree_for(root: Node) -> InferredTree {

@@ -17,7 +17,7 @@ import v2.compiler.infer {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Optional, Present, Absent, List, Map, empty_map, list_nth }
+import v2.std.collection { Optional, Present, Absent, List, Map, empty_map, list_nth, optional_present, optional_absent }
 
 import v2.std.diagnostic {
   Accepted,
@@ -288,11 +288,11 @@ fn eval_facts_for_node(node: Node) -> InferredFacts {
 
 fn eval_fact_lookup(node: Node) -> Optional<InferredFacts> {
   if node == eval_two_literal {
-    Present { value: eval_facts_for_node(node: eval_two_literal) }
+    optional_present(value: eval_facts_for_node(node: eval_two_literal))
   } else if node == eval_add_subgraph_node {
-    Present { value: eval_facts_for_node(node: eval_add_subgraph_node) }
+    optional_present(value: eval_facts_for_node(node: eval_add_subgraph_node))
   } else {
-    Absent
+    optional_absent()
   }
 }
 

@@ -14,7 +14,7 @@ import v2.extdeps.languages.rust_test {
   rust_field_access_target_model_staging
 }
 import extdeps.communication.medium { Medium }
-import v2.std.collection { Optional, Present, Absent, Map }
+import v2.std.collection { Optional, Present, Absent, Map, optional_present, optional_absent }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
   Accepted,
@@ -73,7 +73,7 @@ fn rust_field_access_emit_wrong_field_root() -> Node {
 }
 
 fn rust_field_access_emit_facts_miss(key: Node) -> Optional<InferredFacts> {
-  Absent
+  optional_absent()
 }
 
 fn rust_field_access_emit_inferred_tree_for(root: Node) -> InferredTree {

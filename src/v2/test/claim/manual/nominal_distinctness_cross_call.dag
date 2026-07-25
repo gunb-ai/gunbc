@@ -23,7 +23,7 @@ import v2.extdeps.languages.rust {
   rust_fn_add_lex
 }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Optional, Present, Absent, List, Map }
+import v2.std.collection { Optional, Present, Absent, List, Map, optional_present, optional_absent }
 
 import v2.std.diagnostic {
   Accepted,
@@ -305,7 +305,7 @@ fn nominal_distinct_facts(node: Node) -> InferredFacts {
 }
 
 fn nominal_distinct_fact_lookup(node: Node) -> Optional<InferredFacts> {
-  Present { value: nominal_distinct_facts(node: node) }
+  optional_present(value: nominal_distinct_facts(node: node))
 }
 
 fn nominal_distinct_inferred_tree(root: Node) -> InferredTree {

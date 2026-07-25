@@ -50,7 +50,7 @@ fn sr_unbound_resolved_facts() -> InferredFacts {
 }
 
 fn sr_unbound_usage_site_witness() -> Optional<InferredFacts> {
-  Absent
+  optional_absent()
 }
 
 fn sr_unbound_claim_fact_map() -> Map<Node, InferredFacts> {

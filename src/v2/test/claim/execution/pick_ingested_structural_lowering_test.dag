@@ -20,7 +20,7 @@ import v2.extdeps.languages.dag {
   dag_language_model,
   dag_node_is_int_literal_atom
 }
-import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional, optional_present }
+import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional, optional_present, optional_absent }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.diagnostic {
@@ -317,13 +317,11 @@ fn pick_eval_tree_root(call: Node, expected: Node) -> Node {
 }
 
 fn pick_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
-  Present {
-    value: claim_inferred_facts_from_nodes(
+  optional_present(value: claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: pick_eval_int_type_node(),
       descent: termination_proof_witness_for_node(n: key)
-    )
-  }
+    ))
 }
 
 fn pick_eval_admitted_tree(root: Node) -> InferredTree {

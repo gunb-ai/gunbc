@@ -21,7 +21,7 @@ import v2.test.emit.fold_call_closure_fixture {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Optional, Present, Absent, List, Map, list_at_optional, list_nth }
+import v2.std.collection { Optional, Present, Absent, List, Map, list_at_optional, list_nth, optional_present, optional_absent }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -99,7 +99,7 @@ fn emit_fold_eval_generic_facts(node: Node) -> InferredFacts {
 }
 
 fn emit_fold_eval_composed_facts(key: Node) -> Optional<InferredFacts> {
-  Present { value: emit_fold_eval_generic_facts(node: key) }
+  optional_present(value: emit_fold_eval_generic_facts(node: key))
 }
 
 fn emit_fold_eval_tree_for(root: Node) -> InferredTree {

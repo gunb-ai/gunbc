@@ -23,7 +23,7 @@ import v2.std.cardinality {
   TerminationProof,
   structural_node_size_termination_proof
 }
-import v2.std.collection { Optional, Present, Absent, List, Map }
+import v2.std.collection { Optional, Present, Absent, List, Map, optional_present, optional_absent }
 import v2.std.witness { Holds, Witness }
 import v2.std.diagnostic {
   Accepted,
@@ -242,21 +242,17 @@ fn loop_eval_bounded_descent() -> Witness<v2.std.cardinality.TerminationProof> {
 
 fn loop_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
   if loop_eval_node_is_loop(node: key) {
-    Present {
-      value: claim_inferred_facts_from_nodes(
+    optional_present(value: claim_inferred_facts_from_nodes(
         resolved: key,
         algebra: loop_eval_i64(),
         descent: Holds { value: loop_eval_loop_termination_proof() }
-      )
-    }
+      ))
   } else {
-    Present {
-      value: claim_inferred_facts_from_nodes(
+    optional_present(value: claim_inferred_facts_from_nodes(
         resolved: key,
         algebra: loop_eval_i64(),
         descent: loop_eval_bounded_descent()
-      )
-    }
+      ))
   }
 }
 

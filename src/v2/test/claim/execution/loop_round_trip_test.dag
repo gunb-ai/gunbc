@@ -22,7 +22,7 @@ import v2.std.cardinality {
   TerminationProof,
   termination_proof_witness_for_node
 }
-import v2.std.collection { Optional, Present, Absent, Map }
+import v2.std.collection { Optional, Present, Absent, Map, optional_present, optional_absent }
 import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness
@@ -146,17 +146,15 @@ fn loop_descent_witness_for(node: Node) -> Witness<v2.std.cardinality.Terminatio
 
 fn loop_round_trip_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
   match loop_canonical_grounding_for(node: node) {
-    Violates { diagnostic: d } => Absent
+    Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
       match loop_descent_witness_for(node: node) {
-        Violates { diagnostic: d } => Absent
+        Violates { diagnostic: d } => optional_absent()
         Holds { value: proof } =>
-          Present {
-            value: claim_inferred_facts_witness(
+          optional_present(value: claim_inferred_facts_witness(
               grounding: grounding,
               descent: Holds { value: proof }
-            )
-          }
+            ))
       }
   }
 }
