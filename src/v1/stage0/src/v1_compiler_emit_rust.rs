@@ -14603,32 +14603,26 @@ pub fn emit_param(
     {
         let pname = param_node_name_at(param.clone(), source_indices.clone());
         let authored = param_node_type_expr(param.clone());
-        let ty = if (v1_rt::set_contains(&read_only_params, pname.clone())
-            && is_rust_string_like(resolved_type(param.clone()), source_indices.clone()))
-        {
-            "&str".to_string()
+        let ty = if ((authored.params.clone().len() as i64) > 0) {
+            emit_rust_param_type(
+                authored.clone(),
+                generic_param_names.clone(),
+                shared_types.clone(),
+                corpus_repr.clone(),
+                source_indices.clone(),
+                variant_to_enum.clone(),
+                env.clone(),
+            )
         } else {
-            if ((authored.params.clone().len() as i64) > 0) {
-                emit_rust_param_type(
-                    authored.clone(),
-                    generic_param_names.clone(),
-                    shared_types.clone(),
-                    corpus_repr.clone(),
-                    source_indices.clone(),
-                    variant_to_enum.clone(),
-                    env.clone(),
-                )
-            } else {
-                render_rust_param_sig_type(
-                    param.clone(),
-                    generic_param_names.clone(),
-                    shared_types.clone(),
-                    corpus_repr.clone(),
-                    source_indices.clone(),
-                    variant_to_enum.clone(),
-                    env.clone(),
-                )
-            }
+            render_rust_param_sig_type(
+                param.clone(),
+                generic_param_names.clone(),
+                shared_types.clone(),
+                corpus_repr.clone(),
+                source_indices.clone(),
+                variant_to_enum.clone(),
+                env.clone(),
+            )
         };
         v1_rt::concat(
             v1_rt::concat(
