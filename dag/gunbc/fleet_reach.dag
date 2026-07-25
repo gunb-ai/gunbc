@@ -1,21 +1,14 @@
 module gunbc.fleet_reach
 
-import std.types { String, Bool, List }
+import std.types { String, Bool }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.network.endpoint { NetworkHost, host_by_ipv4 }
 import extdeps.network.reach {
   Reach,
-  ProxyJump,
-  FabricTunnel,
-  DirectLan,
   proxy_jump,
   fabric_tunnel,
-  reach_realizability,
   reach_is_realizable,
   reach_target,
-  ReachRealizability,
-  ReachRealizable,
-  ReachRefused,
 }
 
 data fleet_reach_grounded_address_note: String = "The grounded fleet host addresses — the SINGLE authority the gunbc.fleet_intent_network endpoint literals (still bare `\"192.168.1.x\"` strings, tracked by network_endpoint_address_grounding_residual_note) will consume when NetworkEndpoint.address re-grounds onto extdeps.network.address.IpAddress. Declaring them here as extdeps.network.ipv4.Ipv4Address (four bounded Octets) rather than re-parsing the bare strings is what keeps this a CONVERGENCE target and not a §3 fork: there is one grounded row per address, and the reach rows below consume it. srv2 = 192.168.1.188 (the reachable jump host), srv3 = 192.168.1.221 (the fabric-only target, static-leased 2026-07-24)."

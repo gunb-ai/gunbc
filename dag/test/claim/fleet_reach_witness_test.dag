@@ -1,0 +1,46 @@
+module test.claim.fleet_reach
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fleet_reach_witness_note: String = "Green-by-execution proof for the CONCRETE gunbc srv3 reach row (gunbc.fleet_reach.srv3_reach), distinct from the extdeps model mechanics that test.claim.network_reach already proves. These pin the FLEET fact: srv3_reach is the ProxyJump-through-srv2 interim (exactly one hop), its network reach is realizable (grounded live 2026-07-25 — a Permission-denied handshake from srv2 proves packets reach srv3), and its target renders to srv3's grounded address 192.168.1.221 (consuming extdeps.network.ipv4, one of the sites the fleet_intent_network bare-string residual dissolves onto). The load-bearing §5 control is srv3_fabric_intended_refuses: the dissolution TARGET (srv3_reach_fabric_intended, the FabricTunnel srv3_reach retires to when the fabric works) is a real value that HONESTLY refuses realization today, so the dissolution trigger is not just prose — a model that let the intended fabric reach fall through as realizable would red this."
+
+test fn srv3_reach_is_single_hop_proxy_jump() -> Bool {
+  match srv3_reach {
+    ProxyJump { jumps: js, target: _ } => list_length(items: js) == 1
+    DirectLan { host: _ } => false
+    FabricTunnel { target: _ } => false
+  }
+}
+
+test fn srv3_reach_network_is_realizable() -> Bool {
+  srv3_reach_is_realizable()
+}
+
+test fn srv3_reach_target_is_srv3_address() -> Bool {
+  let got = render_network_host(host: srv3_reach_target())
+  let want = render_network_host(host: srv3_lan_reach_host)
+  got == want
+}
+
+test fn srv3_reach_jump_is_srv2() -> Bool {
+  match srv3_reach {
+    ProxyJump { jumps: js, target: _ } =>
+      fold(
+        js,
+        init: true,
+        f: (acc, h) =>
+          acc && (render_network_host(host: h) == render_network_host(host: srv2_lan_reach_host)),
+      )
+    DirectLan { host: _ } => false
+    FabricTunnel { target: _ } => false
+  }
+}
+
+test fn srv3_fabric_intended_refuses_realization() -> Bool {
+  match reach_realizability(reach: srv3_reach_fabric_intended) {
+    ReachRealizable => false
+    ReachRefused { cause: FabricTunnelNotOperational } => true
+    ReachRefused { cause: ProxyJumpChainEmpty } => false
+  }
+}
