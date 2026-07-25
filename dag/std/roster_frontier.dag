@@ -11,7 +11,6 @@ type FrontierSubject
 
 type DissolveTrigger
   = TriggerDeclExists { ref: DeclarationRef }
-  | TriggerLensGreen { lens: String }
   | TriggerProse { text: String }
 
 type FrontierRow {
@@ -81,19 +80,13 @@ fn prose_in_list(text: String, prose_fired: List<String>) -> Bool {
   fold(prose_fired, init: false, f: fn(acc, t) { acc || t == text })
 }
 
-fn lens_in_list(lens: String, lenses_green: List<String>) -> Bool {
-  fold(lenses_green, init: false, f: fn(acc, l) { acc || l == lens })
-}
-
 fn dissolve_trigger_fired(
   trigger: DissolveTrigger,
   prose_fired: List<String>,
   present_decls: List<DeclarationRef>,
-  lenses_green: List<String>,
 ) -> Bool {
   match trigger {
     TriggerDeclExists { ref: r } => declaration_ref_in_list(target: r, refs: present_decls)
-    TriggerLensGreen { lens: l } => lens_in_list(lens: l, lenses_green: lenses_green)
     TriggerProse { text: t } => prose_in_list(text: t, prose_fired: prose_fired)
   }
 }
@@ -103,7 +96,6 @@ fn frontier_row_well_formed(row: FrontierRow) -> Bool {
     && match row.trigger {
       TriggerDeclExists { ref: r } =>
         !(r.module_path == "") && !(r.decl_name == "")
-      TriggerLensGreen { lens: l } => !(l == "")
       TriggerProse { text: t } => !(t == "")
     }
     && match row.subject {
@@ -138,43 +130,32 @@ type FrontierExpiryReport {
   fired_still_present_count: Int
 }
 
-type FrontierExpiryAcc {
-  unfired_count: Int
-  fired_still_present_count: Int
-}
-
 fn fold_frontier_expiry(
   rows: List<FrontierRow>,
   prose_fired: List<String>,
   present_decls: List<DeclarationRef>,
-  lenses_green: List<String>,
 ) -> FrontierExpiryReport {
-  let acc = fold(
+  fold(
     rows,
-    init: FrontierExpiryAcc { unfired_count: 0, fired_still_present_count: 0 },
+    init: FrontierExpiryReport { unfired_count: 0, fired_still_present_count: 0 },
     f: fn(acc, row) {
       if dissolve_trigger_fired(
         trigger: row.trigger,
         prose_fired: prose_fired,
         present_decls: present_decls,
-        lenses_green: lenses_green,
       ) {
-        FrontierExpiryAcc {
+        FrontierExpiryReport {
           unfired_count: acc.unfired_count,
           fired_still_present_count: acc.fired_still_present_count + 1,
         }
       } else {
-        FrontierExpiryAcc {
+        FrontierExpiryReport {
           unfired_count: acc.unfired_count + 1,
           fired_still_present_count: acc.fired_still_present_count,
         }
       }
     },
   )
-  FrontierExpiryReport {
-    unfired_count: acc.unfired_count,
-    fired_still_present_count: acc.fired_still_present_count,
-  }
 }
 
 fn frontier_expiry_clean(report: FrontierExpiryReport) -> Bool {

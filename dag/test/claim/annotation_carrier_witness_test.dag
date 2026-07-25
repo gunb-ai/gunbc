@@ -41,7 +41,6 @@ test fn frontier_expiry_fold_reports_all_unfired_when_no_fired_registry() -> Boo
     rows: census_closure_frontier_rows(),
     prose_fired: [],
     present_decls: [],
-    lenses_green: [],
   )
   report.unfired_count == 21 && report.fired_still_present_count == 0 && frontier_expiry_clean(report: report)
 }
@@ -52,7 +51,6 @@ test fn frontier_expiry_fired_row_still_present_reds() -> Bool {
     rows: census_closure_frontier_rows(),
     prose_fired: [],
     present_decls: [mac_trigger],
-    lenses_green: [],
   )
   report.fired_still_present_count == 1 && report.unfired_count == 20 && !frontier_expiry_clean(report: report)
 }
@@ -63,7 +61,6 @@ test fn frontier_expiry_fired_trigger_absent_from_rows_is_clean() -> Bool {
     rows: census_closure_frontier_rows(),
     prose_fired: [],
     present_decls: [absent_trigger],
-    lenses_green: [],
   )
   report.fired_still_present_count == 0 && report.unfired_count == 21 && frontier_expiry_clean(report: report)
 }
