@@ -5,6 +5,16 @@ import std.bmc { BmcFirmwareFamily, BmcEndpoint }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Motherboard"
+  }
+}
+
 type BaseboardModel = | AsrockRackAltrad8ud1l2t
 
 type BaseboardCatalogRow {
