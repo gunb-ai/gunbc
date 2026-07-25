@@ -113,6 +113,38 @@ fn witness_persistence_bar_discriminates() -> Bool {
     && !diagnosis_is_reboot_stable(config: Present { value: srv4_netplan_config }, observed: srv4_lan_interface)
 }
 
+data witness_axis_cell_note: String = "The axis conjunct: the fold is reachable as a per-host status cell, and the cell REFUSES rather than guessing while no producer exists. Every enrolled host answers UnknownRefused and the fleet tally equals the full fleet — a deficit that is counted, and therefore rankable, instead of one whose frequency is zero by construction. The tally is asserted against the enrolled host list rather than against a literal, so enrolling a host moves it without editing this witness. The last two conjuncts are the non-vacuity: the verdict projection is not constant — a healthy observation reaches Converged and a dead link reaches Drifted through the same projection the cell uses — so the all-UnknownRefused tally above is the producer's absence and not a fold that answers UnknownRefused to everything."
+
+fn witness_network_axis_cell_refuses_and_counts() -> Bool {
+  let unobserved = host_network_fleet_unobserved_count()
+  let enrolled = fleet_subsumption_hosts.length()
+  unobserved == enrolled
+    && enrolled > 0
+    && observation_verdict_eq(
+      a: network_diagnosis_verdict(
+        d: diagnose_host_network(
+          config: Present { value: srv4_netplan_config },
+          observed: InterfaceObservation {
+            name: "enP3p3s0f1",
+            mac: "48:21:0b:87:2d:64",
+            admin: AdminUpConfigured,
+            carrier: CarrierPresent,
+          },
+        ),
+      ),
+      b: std.upsert_decision.Converged,
+    )
+    && observation_verdict_eq(
+      a: network_diagnosis_verdict(
+        d: diagnose_host_network(
+          config: Present { value: srv4_netplan_config },
+          observed: srv4_lan_interface,
+        ),
+      ),
+      b: std.upsert_decision.Drifted,
+    )
+}
+
 test fn host_network_diagnosis_witnesses() -> Bool {
   witness_srv4_diagnoses_physical_not_config()
     && witness_red_control_generator_state_inference_rejected()

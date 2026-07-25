@@ -16,6 +16,9 @@ import extdeps.os.cloud_init {
   cloud_init_disabled_marker_path,
   cloud_init_generated_netplan_path,
 }
+import gunbc.host_phase_status { observation_verdict_eq, fleet_subsumption_hosts }
+import gunbc.readback_independence { readback_evidence_verdict, ip_link_carrier_read_probe }
+import product.placement_supply { HostIdentity }
 import extdeps.os.netplan {
   NetplanConfigFile,
   NetplanConfigWriter,
@@ -143,6 +146,53 @@ fn diagnosis_gate_accepts(d: HostNetworkDiagnosis, observed: InterfaceObservatio
   } else {
     true
   }
+}
+
+data network_axis_cell_note: String = "What makes this fold a MECHANISM rather than a description of a past incident: the network becomes a per-host axis on the same status matrix the swap-backing and toolchain-completeness axes sit on, with the same three parts — a per-host verdict, routed through the read-back independence criterion, and a COUNTED fleet tally of the hosts it cannot see. The count is the load-bearing part. There is no live producer for interface observations today, so every host answers UnknownRefused and the tally is the full fleet; that is a typed, located, countable deficit which RANKS for fixing, and it is the opposite of the absorbing fallback this lane keeps refusing (DESIGN §5 — a masked cost displaces nothing, so a deficit whose frequency is zero by construction never gets fixed). When a producer lands, the tally falls on its own and the fall is the receipt."
+
+data diagnosis_verdict_collapse_note: String = "Both decisive failures map to Drifted, and the layer they name is deliberately NOT carried on the verdict. The status cell answers one question — is this host's network converged — and the answer for a missing config and for a dead cable is the same 'no'; what differs is the remedy, and the remedy lives on HostNetworkDiagnosis, which the fold returns and which every consumer that needs to act reads instead of the cell. Collapsing them on the CELL is a projection; collapsing them in the FOLD would be the state-space conflation, and that is why diagnose_host_network keeps them apart. LinkStateUnobserved maps to UnknownRefused rather than to either decisive verdict, because 'I could not see the link' and 'the link is down' are the ⊤-as-ignorance / ⊤-as-answer pair §5 names."
+
+fn network_diagnosis_verdict(d: HostNetworkDiagnosis) -> ObservationVerdict {
+  match d {
+    ConfiguredLinkPresent { interface: _ } => Converged
+    ConfiguredLinkAbsent { interface: _, mac: _ } => Drifted
+    NetworkConfigAbsent { detail: _ } => Drifted
+    LinkStateUnobserved { interface: _ } => UnknownRefused
+  }
+}
+
+data host_network_producer_absent_note: String = "No live producer exists yet, and these two return none rather than reaching for the srv4 incident fixtures a few declarations above. Answering a HOST query with an INCIDENT fixture would be the fabricated plausible output §5 forbids — it would report srv4 as observed-and-broken on a reading taken once, by hand, over a serial console, and it would report the other three hosts as whatever the fixture happened to say. The fixtures stay where they belong: inputs to the witness, which replays the incident deliberately and says so."
+
+fn host_network_config(host: HostIdentity) -> NetplanConfigFile? {
+  none
+}
+
+fn host_network_observation(host: HostIdentity) -> InterfaceObservation? {
+  none
+}
+
+fn host_network_verdict(host: HostIdentity) -> ObservationVerdict {
+  match host_network_observation(host: host) {
+    Absent => UnknownRefused
+    Present { value: o } =>
+      readback_evidence_verdict(
+        p: ip_link_carrier_read_probe,
+        observed: network_diagnosis_verdict(
+          d: diagnose_host_network(config: host_network_config(host: host), observed: o),
+        ),
+      )
+  }
+}
+
+fn host_network_unobserved_count(hosts: List<HostIdentity>) -> Int {
+  filter(
+    hosts,
+    h => observation_verdict_eq(a: host_network_verdict(host: h), b: UnknownRefused),
+  ).length()
+}
+
+fn host_network_fleet_unobserved_count() -> Int {
+  host_network_unobserved_count(hosts: fleet_subsumption_hosts)
 }
 
 data subsumption_persistence_bar_note: String = "The acceptance bar this feeds, stated so the modelling has a consumer rather than being a description of a past incident. A host is not subsumed because its network works NOW; it is subsumed when its network configuration is present, applied, and PROVEN to survive a power cycle — the configuration is a file the applier reads at boot, so the only honest proof is a boot. That is a dry-provable property here (config present and applied implies the same diagnosis after a restart, since no input to the fold is runtime state) and a wet one on a live host. Note what this bar would NOT have caught: srv4's fault was physical, so a persistence proof would have passed on it right up until the link died. The two mechanisms are complementary and neither substitutes for the other — persistence catches applied-but-not-persisted, a liveness cell catches works-then-stops."
