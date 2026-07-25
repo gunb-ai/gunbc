@@ -3421,6 +3421,17 @@ pub fn infer_expr(
                             false
                         };
                         if resolved_base_is_error.clone() {
+                            if std::env::var("GUNBC_DEBUG_CASCADE").is_ok() {
+                                if let Some(inf) = resolved_base.inferred.clone() {
+                                    if let InferredNode::CompilerError { message: m, span: s } = (*inf).clone() {
+                                        eprintln!(
+                                            "[CASCADE] field_name={:?} outer_span={}:{}-{} base_error_msg={:?} base_error_span={}:{}-{}",
+                                            field_name, span.file, span.start, span.end,
+                                            m, s.file, s.start, s.end
+                                        );
+                                    }
+                                }
+                            }
                             Rc::new(InferResult {
                                 typed: make_expr_error_node(
                                     ExprErrorKind::SemanticExprError,
