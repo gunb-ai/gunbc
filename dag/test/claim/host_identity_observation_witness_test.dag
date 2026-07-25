@@ -45,8 +45,16 @@ fn witness_hostname_set_resolves_typed_cell_not_shell_script() -> Bool {
   }
 }
 
+fn witness_hostname_set_privileged_argv_matches_fleet_grant() -> Bool {
+  hostname_set_privileged_operation_argv_matches_fleet_grant(
+    hostnamectl_path: host_identity_hostnamectl_path,
+    desired: "srv9" as DnsLabel,
+  )
+}
+
 fn witness_hostname_set_cas_refuses_base_mismatch() -> Bool {
   match hostname_set_cas(
+    hostnamectl_path: host_identity_hostnamectl_path,
     transport: LocalShell,
     base: "altrad8ud-1l2t-1" as DnsLabel,
     desired: operator_host_srv1 as DnsLabel,
@@ -358,6 +366,7 @@ test fn host_identity_observation_holds() -> Bool {
   witness_hostname_read_argv_is_typed_not_concat()
     && witness_hostname_read_resolves_typed_cell_not_shell_script()
     && witness_hostname_set_argv_is_typed_not_concat()
+    && witness_hostname_set_privileged_argv_matches_fleet_grant()
     && witness_hostname_set_resolves_typed_cell_not_shell_script()
     && witness_hostname_set_cas_refuses_base_mismatch()
     && witness_fixture_observation_types_srv1_observed_hostname()

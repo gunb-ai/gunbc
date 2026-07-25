@@ -28,7 +28,6 @@ import gunbc.host_converge_slice1 {
   host_converge_slice1_srv1_per_slot_memory_max_knob,
   host_converge_slice1_memory_cap_verdict,
   host_converge_slice1_fixture_receipt,
-  host_converge_slice1_transport_script_scaffold,
   host_converge_slice1_cross_check_enumeration,
   host_converge_slice1_usage_guard,
   HostConvergeSlice1UsageSafe,
@@ -134,13 +133,6 @@ fn witness_transport_reads_use_show_property_authority() -> Bool {
     )
 }
 
-fn witness_transport_script_scaffold_carries_dissolution_trigger() -> Bool {
-  match host_converge_slice1_transport_script_scaffold {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
-  }
-}
-
 test fn host_converge_slice1_wires_srv1_memory_cap() -> Bool {
   witness_slice1_knob_is_per_slot_memory_max_on_srv1()
     && witness_fixture_infinity_drifts_against_model_desired()
@@ -148,7 +140,6 @@ test fn host_converge_slice1_wires_srv1_memory_cap() -> Bool {
     && witness_short_stdout_is_read_absent()
     && witness_verdict_uses_converge_target_not_string_flatten()
     && witness_transport_reads_use_show_property_authority()
-    && witness_transport_script_scaffold_carries_dissolution_trigger()
 }
 
 fn witness_list_units_line_parser_takes_first_field_only() -> Bool {

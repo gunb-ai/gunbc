@@ -22,10 +22,30 @@ fn hostname_set_operation_argv(desired: DnsLabel) -> List<String> {
   hostname_set_argv(desired: desired)
 }
 
+fn hostname_set_privileged_operation_argv(
+  hostnamectl_path: NonEmptyStr,
+  desired: DnsLabel,
+) -> List<String> {
+  ["sudo", "-n", hostnamectl_path as String, "set-hostname", desired as String]
+}
+
 fn hostname_set_operation_argv_matches_authority(desired: DnsLabel) -> Bool {
   let materialized = hostname_set_operation_argv(desired: desired)
   let authority = hostname_set_argv(desired: desired)
   join(materialized, " ") == join(authority, " ")
+}
+
+fn hostname_set_privileged_operation_argv_matches_fleet_grant(
+  hostnamectl_path: NonEmptyStr,
+  desired: DnsLabel,
+) -> Bool {
+  join(
+    hostname_set_privileged_operation_argv(hostnamectl_path: hostnamectl_path, desired: desired),
+    " ",
+  ) == concat(
+    concat("sudo -n ", hostnamectl_path as String),
+    concat(" set-hostname ", desired as String),
+  )
 }
 
 fn hostname_set_local(desired: DnsLabel) -> HostnameSetCasOutcome {
@@ -37,8 +57,12 @@ fn hostname_set_local(desired: DnsLabel) -> HostnameSetCasOutcome {
   }
 }
 
-fn hostname_set_ssh(host: NonEmptyStr, desired: DnsLabel) -> HostnameSetCasOutcome {
-  let argv = hostname_set_operation_argv(desired: desired)
+fn hostname_set_ssh(
+  hostnamectl_path: NonEmptyStr,
+  host: NonEmptyStr,
+  desired: DnsLabel,
+) -> HostnameSetCasOutcome {
+  let argv = hostname_set_privileged_operation_argv(hostnamectl_path: hostnamectl_path, desired: desired)
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: _ } => HostnameSetCasApplyFailed { stderr: "typed argv shell-safe refusal" }
     Absent =>
@@ -54,16 +78,21 @@ fn hostname_set_ssh(host: NonEmptyStr, desired: DnsLabel) -> HostnameSetCasOutco
   }
 }
 
-fn hostname_set_apply(transport: HostEffectTransport, desired: DnsLabel) -> HostnameSetCasOutcome {
+fn hostname_set_apply(
+  hostnamectl_path: NonEmptyStr,
+  transport: HostEffectTransport,
+  desired: DnsLabel,
+) -> HostnameSetCasOutcome {
   match transport {
     LocalShell => hostname_set_local(desired: desired)
-    SshShell { ssh_host: h } => hostname_set_ssh(host: h, desired: desired)
+    SshShell { ssh_host: h } => hostname_set_ssh(hostnamectl_path: hostnamectl_path, host: h, desired: desired)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HostnameSetCasApplyFailed { stderr: "EmitArtifactThenThinRun unsupported for hostname set" }
   }
 }
 
 fn hostname_set_cas(
+  hostnamectl_path: NonEmptyStr,
   transport: HostEffectTransport,
   base: DnsLabel,
   desired: DnsLabel,
@@ -71,7 +100,7 @@ fn hostname_set_cas(
   match hostname_short_read(transport: transport) {
     Present { value: observed } =>
       if observed == (base as String) {
-        hostname_set_apply(transport: transport, desired: desired)
+        hostname_set_apply(hostnamectl_path: hostnamectl_path, transport: transport, desired: desired)
       } else {
         HostnameSetCasBaseMismatch { observed: observed, base: base }
       }

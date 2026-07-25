@@ -1419,7 +1419,12 @@ fn realize_set_hostname_cas_on_host(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match hostname_set_cas(transport: transport, base: base, desired: desired) {
+  match hostname_set_cas(
+    hostnamectl_path: hostnamectl_path,
+    transport: transport,
+    base: base,
+    desired: desired,
+  ) {
     HostnameSetCasApplied =>
       reconcile_shell_exec_observed(
         observed: ShellExecObserved {
