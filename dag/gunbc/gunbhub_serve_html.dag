@@ -1,5 +1,7 @@
 module gunbc.gunbhub_serve_html
 
+import std.markup { Fragment, Element, FragmentText }
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 
 fn sample_html_page() -> Fragment {
   Element {
