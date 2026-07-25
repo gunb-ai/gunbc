@@ -1,5 +1,38 @@
 module test.claim.markup_medium_convergence
 
+import std.markup {
+  Fragment,
+  Element,
+  FragmentText,
+  attr,
+  MarkupMedium,
+  MarkupBracket,
+  TagDelimiter,
+  EscapeHtml,
+  EscapeRaw,
+  OmitClose,
+  serialize_fragment_with,
+}
+import extdeps.languages.html {
+  html_markup_medium,
+  canonical_html_spellings,
+  try_serialize_html_source,
+  EmitOk,
+  EmitRejected,
+}
+import extdeps.languages.markdown {
+  markdown_markup_medium,
+  commonmark_gfm_spellings,
+  serialize_markdown_source_with,
+}
+import std.markdown {
+  MarkdownDocument,
+  ParagraphBlock,
+  StrongInline,
+  EmphasisInline,
+  TextInline,
+  LinkInline,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

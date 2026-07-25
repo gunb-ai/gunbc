@@ -1,5 +1,8 @@
 module examples.html_markup_smoke
 
+import std.markup { Fragment, Element, FragmentText, attr, escape_text }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import std.process { exit_code_general_error }
 
 data tiny: Fragment = Element {
   tag: "p",

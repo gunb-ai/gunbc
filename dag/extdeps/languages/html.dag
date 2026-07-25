@@ -4,7 +4,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
 import std.markup {
-  Fragment, Element, FragmentText, Attribute, attr,
+  Fragment, Element, FragmentText, RawNode, Attribute, attr,
   MarkupBracket, MarkupMedium, EscapeHtml,
   VoidTagRendering, OmitClose,
   serialize_fragment_with, tag_in_set,
@@ -297,6 +297,7 @@ type HtmlEmitResult
 fn raw_text_children_text(children: List<Fragment>) -> String {
   fold(children, init: "", f: (acc, c) => match c {
     FragmentText { content: t } => concat(acc, t)
+    RawNode { content: t } => concat(acc, t)
     Element { tag: _, attributes: _, children: _ } => acc
   })
 }
@@ -304,6 +305,7 @@ fn raw_text_children_text(children: List<Fragment>) -> String {
 fn raw_text_hazard(node: Fragment) -> String {
   match node {
     FragmentText { content: _ } => ""
+    RawNode { content: _ } => ""
     Element { tag: t, attributes: _, children: kids } =>
       if tag_in_set(tag: t, tags: html5_raw_text_tags) {
         if string_contains(s: raw_text_children_text(children: kids), pattern: concat("</", t)) {

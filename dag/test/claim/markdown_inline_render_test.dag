@@ -1,5 +1,12 @@
 module test.claim.markdown_inline_render
 
+import std.markup { Fragment, Element, FragmentText, attr }
+import std.markdown {
+  markdown_inlines_to_fragments,
+  markdown_inline_to_fragments,
+  ImageInline,
+}
+import extdeps.languages.markdown { parse_inline_markdown_minimal }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,5 +1,22 @@
 module test.claim.roadmap_page_witness
 
+import std.markup { Fragment, Element, FragmentText, attr }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import gunbc.roadmap_page {
+  roadmap_page_for_authority,
+  roadmap_page,
+  nodes_ul,
+  section_group,
+  page_script_census,
+  dispatch_client_script,
+  dispatch_client_js_source,
+}
+import gunbc.roadmap_model {
+  RoadmapDocument,
+  RoadmapSection,
+  RoadmapNode,
+  RoadmapEdge,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
