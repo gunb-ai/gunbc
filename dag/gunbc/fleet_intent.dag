@@ -24,7 +24,7 @@ import product.network_topology { NetworkLocality, NetworkInterface, NetworkAddr
 import product.placement_supply { HostIdentity }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.baseboard { ServerBaseboard }
+import extdeps.boards.types { ServerBaseboard }
 import std.bmc { BmcEndpoint, Redfish }
 import std.credentials { CredentialFlow, Stored }
 import std.measure { hertz, ByteSize, byte_size, byte_size_count, Bandwidth, HardwareThreadCount, hardware_thread_count_value, Nano, measure_count }
