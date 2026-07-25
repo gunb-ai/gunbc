@@ -1,0 +1,36 @@
+module gunbc.fleet_reach
+
+import std.types { String, Bool }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
+import extdeps.network.endpoint { NetworkHost, host_by_ipv4 }
+import extdeps.network.reach {
+  Reach,
+  proxy_jump,
+  fabric_tunnel,
+  reach_is_realizable,
+  reach_target,
+}
+
+data fleet_reach_grounded_address_note: String = "The grounded fleet host addresses — the SINGLE authority the gunbc.fleet_intent_network endpoint literals (still bare `\"192.168.1.x\"` strings, tracked by network_endpoint_address_grounding_residual_note) will consume when NetworkEndpoint.address re-grounds onto extdeps.network.address.IpAddress. Declaring them here as extdeps.network.ipv4.Ipv4Address (four bounded Octets) rather than re-parsing the bare strings is what keeps this a CONVERGENCE target and not a §3 fork: there is one grounded row per address, and the reach rows below consume it. srv2 = 192.168.1.188 (the reachable jump host), srv3 = 192.168.1.221 (the fabric-only target, static-leased 2026-07-24)."
+
+data srv2_lan_ipv4: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 188)
+data srv3_lan_ipv4: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 221)
+
+data srv2_lan_reach_host: NetworkHost = host_by_ipv4(addr: srv2_lan_ipv4)
+data srv3_lan_reach_host: NetworkHost = host_by_ipv4(addr: srv3_lan_ipv4)
+
+data srv3_reach_note: String = "How packets reach srv3's host OS — a network-reach fact, DELIBERATELY INDEPENDENT of the shell/auth transport that runs on srv3 once reached (operator rule 2026-07-24: 'the network transport should be independent of the shell transport'). srv3 is a fabric-only target: the intended long-term reach is FabricTunnel, which does not work yet ('none of that actually works'), so the operator-sanctioned interim is a ProxyJump through srv2 — something actually reachable that stands in for the fabric ('proxy to something actually reachable to the target (i.e. srv2) and pretend you are reaching it from a fabric — that is okay for now'). GROUNDED LIVE 2026-07-25: from srv2, `ssh -i ~/.node-orch/id_ed25519 ubuntu@192.168.1.221` runs a real command on srv3 (hostname=srv3, aarch64, 128 cores) — so the network reach via srv2 is realizable AND a shell path works, using srv2's local node-orch key which ubuntu@srv3's authorized_keys trusts. REALIZATION DETAIL: the reach realizes as NESTED EXEC (ssh srv2 'ssh srv3'), NOT a -J TCP tunnel — srv2 sets AllowTcpForwarding no, so a -J / -W attempt returns 'administratively prohibited'; the ProxyJump reach therefore realizes through the ProxyCommand-family nested-exec handler (also cited in reach.dag), which the reach abstraction is agnostic to (one reach, the realization srv2's policy permits). The reach-vs-shell split this model makes explicit still holds and is still worth keeping separate: reach_is_realizable(srv3_reach) is a NETWORK fact (packets flow via srv2), independent of WHICH identity authenticates once reached. The bootstrap identity (node-orch@srv2) works, and the FLEET identity (fleet-automation) was ADDED to ubuntu@srv3 on 2026-07-25 — the host_authorized_keys_reconcile srv3 upsert executed live over this hop (fleet-automation appended, the 3 pre-existing keys untouched per R5, backup taken), so srv3 now trusts the fleet identity too. srv3 was autoinstalled Jul 13 with empty ssh.authorized-keys and hand-keyed post-install; that A1/B2 drift is what the reconcile closed. NOT an unreachable host. DISSOLUTION TRIGGER: srv3_reach becomes FabricTunnel { target: srv3_lan_reach_host } when tunneling over the network fabric is operational; the ProxyJump-through-srv2 arm is a named interim, not a hidden hack, and it retires then."
+
+data srv3_reach: Reach = proxy_jump(jumps: [srv2_lan_reach_host], target: srv3_lan_reach_host)
+
+data srv3_reach_fabric_intended_note: String = "The intended long-term reach srv3_reach dissolves TO when the fabric works — modeled so the dissolution target is a real value, not just prose. It REFUSES realization today (reach_realizability -> ReachRefused { FabricTunnelNotOperational }), which is why srv3_reach uses the ProxyJump interim instead. This row is the dissolution trigger made concrete, not a second live reach."
+
+data srv3_reach_fabric_intended: Reach = fabric_tunnel(target: srv3_lan_reach_host)
+
+fn srv3_reach_is_realizable() -> Bool {
+  reach_is_realizable(reach: srv3_reach)
+}
+
+fn srv3_reach_target() -> NetworkHost {
+  reach_target(reach: srv3_reach)
+}

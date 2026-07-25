@@ -1330,7 +1330,7 @@ pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
 
 pub fn param_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
-        n.children.clone().get(1 as usize).cloned()
+        n.children.clone().iter().cloned().skip(1 as usize).next()
     } else {
         None
     }
@@ -1429,7 +1429,7 @@ pub fn field_node_cardinality(n: Rc<Node>) -> Cardinality {
 
 pub fn field_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
-        n.children.clone().get(1 as usize).cloned()
+        n.children.clone().iter().cloned().skip(1 as usize).next()
     } else {
         None
     }
@@ -1693,7 +1693,14 @@ pub fn is_property_contraction(func_name: String) -> bool {
 }
 
 pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
-    match texpr.children.clone().get(index.clone() as usize).cloned() {
+    match texpr
+        .children
+        .clone()
+        .iter()
+        .cloned()
+        .skip(index.clone() as usize)
+        .next()
+    {
         Some(v) => v.clone(),
         None => make_expr_error_node(
             ExprErrorKind::InternalExprError,
@@ -1781,7 +1788,13 @@ pub fn if_then_branch(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn if_else_branch(texpr: Rc<Node>) -> Option<Rc<Node>> {
-    texpr.children.clone().get(2 as usize).cloned()
+    texpr
+        .children
+        .clone()
+        .iter()
+        .cloned()
+        .skip(2 as usize)
+        .next()
 }
 
 pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
@@ -1958,7 +1971,13 @@ pub fn let_value(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn let_body(texpr: Rc<Node>) -> Option<Rc<Node>> {
-    texpr.children.clone().get(1 as usize).cloned()
+    texpr
+        .children
+        .clone()
+        .iter()
+        .cloned()
+        .skip(1 as usize)
+        .next()
 }
 
 pub fn let_binding_name_at(
@@ -3621,8 +3640,10 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
             match index
                 .offsets
                 .clone()
-                .get((line.clone() - 2) as usize)
+                .iter()
                 .cloned()
+                .skip((line.clone() - 2) as usize)
+                .next()
             {
                 Some(o) => (o.clone() + 1),
                 None => 0,
@@ -3645,8 +3666,10 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
             match index
                 .offsets
                 .clone()
-                .get((line.clone() - 2) as usize)
+                .iter()
                 .cloned()
+                .skip((line.clone() - 2) as usize)
+                .next()
             {
                 Some(o) => (o.clone() + 1),
                 None => src_len.clone(),
@@ -3655,8 +3678,10 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
         let line_end = match index
             .offsets
             .clone()
-            .get((line.clone() - 1) as usize)
+            .iter()
             .cloned()
+            .skip((line.clone() - 1) as usize)
+            .next()
         {
             Some(o) => o.clone(),
             None => src_len.clone(),

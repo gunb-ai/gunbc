@@ -111,12 +111,7 @@ data common_trait_bounds: List<String> = [
 data where_clause_template: String = "where\n    \{constraints\}"
 data trait_bound_template: String = "\{type\}: \{bound\}"
 
-data integer_types: List<String> = [
-  "i8", "i16", "i32", "i64", "i128", "isize",
-  "u8", "u16", "u32", "u64", "u128", "usize"
-]
-
-data float_types: List<String> = ["f32", "f64"]
+data rust_types_name_catalog_dissolve_on: String = "dissolve-on: rust.types.integer_types/float_types — deleted bare String name lists with zero consumers; sole type-name catalog authority is extdeps.languages.rust.primitives rust_grounding_primitives.target_name rows."
 
 data rust_cast_syntax: CastSyntax = {
   template: "\{expr\} as \{type\}",

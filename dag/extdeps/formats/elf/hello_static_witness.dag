@@ -156,42 +156,42 @@ fn witness_phnum_is_9() -> Bool {
 
 fn witness_first_segment_is_pt_load() -> Bool {
   match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
-    PhdrDecoded { value: phdr } => phdr.segment_type == PtLoad
-    PhdrRejected { reason: _ } => false
+    ElfDecoded { value: phdr } => phdr.segment_type == PtLoad
+    ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_first_segment_is_read_only() -> Bool {
   match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
-    PhdrDecoded { value: phdr } => {
+    ElfDecoded { value: phdr } => {
       let seg = elf64_phdr_to_load_segment(phdr)
       phdr.flags == pf_r
         && seg.permissions.readable == true
         && seg.permissions.writable == false
         && seg.permissions.executable == false
     }
-    PhdrRejected { reason: _ } => false
+    ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_first_load_segment_vaddr() -> Bool {
   match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
-    PhdrDecoded { value: phdr } => elf64_phdr_to_load_segment(phdr).virtual_address == 4194304
-    PhdrRejected { reason: _ } => false
+    ElfDecoded { value: phdr } => elf64_phdr_to_load_segment(phdr).virtual_address == 4194304
+    ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_first_load_segment_filesz() -> Bool {
   match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
-    PhdrDecoded { value: phdr } => elf64_phdr_to_load_segment(phdr).file_size == 652
-    PhdrRejected { reason: _ } => false
+    ElfDecoded { value: phdr } => elf64_phdr_to_load_segment(phdr).file_size == 652
+    ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_first_load_segment_align() -> Bool {
   match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
-    PhdrDecoded { value: phdr } => elf64_phdr_to_load_segment(phdr).alignment == 4096
-    PhdrRejected { reason: _ } => false
+    ElfDecoded { value: phdr } => elf64_phdr_to_load_segment(phdr).alignment == 4096
+    ElfRejected { reason: _ } => false
   }
 }
 
@@ -201,11 +201,11 @@ fn witness_ehdr_encode_decode_roundtrip() -> Bool {
 
 fn witness_phdr_encode_decode_roundtrip() -> Bool {
   match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
-    PhdrDecoded { value: phdr } =>
+    ElfDecoded { value: phdr } =>
       let out = encode_elf64_phdr(phdr)
       count(out) == elf64_phdr_size
         && int_lists_equal(static_hello_first_phdr_bytes, out)
-    PhdrRejected { reason: _ } => false
+    ElfRejected { reason: _ } => false
   }
 }
 
