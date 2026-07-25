@@ -99,8 +99,10 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
 fn check_slice_access_node(base_type: Node, start_type: Node, end_type: Node, span: SourceSpan, module_name: String, source_indices: Map<String, NewlineIndex>) -> AccessCheckResultNode {
   let normed_base = normalize_access_type_node(n: base_type)
   let base_is_string = node_type_equals(left: normed_base, right: string_type, source_indices: source_indices)
-  let base_diags = if base_is_string { [] }
-  else { [access_error(message: "slice is only supported for String values", span: span, module_name: module_name)] }
+  let base_is_list = is_ordered_element_collection(name: authored_name_at(source_indices: source_indices, node: normed_base))
+    && node_is_element_collection(n: normed_base, source_indices: source_indices)
+  let base_diags = if base_is_string || base_is_list { [] }
+  else { [access_error(message: "slice is only supported for String and list values", span: span, module_name: module_name)] }
   let normed_start = normalize_access_type_node(n: start_type)
   let start_diags = if node_type_equals(left: normed_start, right: int_type, source_indices: source_indices) { [] }
   else { [access_error(message: "slice start requires an Int index", span: span, module_name: module_name)] }
@@ -108,8 +110,11 @@ fn check_slice_access_node(base_type: Node, start_type: Node, end_type: Node, sp
   let end_diags = if node_type_equals(left: normed_end, right: int_type, source_indices: source_indices) { [] }
   else { [access_error(message: "slice end requires an Int index", span: span, module_name: module_name)] }
   let all_diags = concat(base_diags, start_diags, end_diags)
+  let slice_result_type = if base_is_string { string_type }
+  else if base_is_list { normed_base }
+  else { string_type }
   access_result(
-    inferred: string_type,
+    inferred: slice_result_type,
     diagnostics: all_diags,
     span: span,
     fallback_message: "invalid slice access"
