@@ -5599,7 +5599,10 @@ fn operation_input_binding_env(
     let mut env: HashMap<String, Value> = HashMap::new();
     for item in items.iter() {
         let (name, value) = operation_input_binding_entry(item, ctx)?;
-        if !declared.iter().any(|(declared_name, _)| *declared_name == name) {
+        if !declared
+            .iter()
+            .any(|(declared_name, _)| *declared_name == name)
+        {
             return Err(ArgvRefusalCause::UndeclaredInputBound(name));
         }
         if env.contains_key(&name) {
@@ -8877,8 +8880,7 @@ fn eval_builtin_inner(
                 .copied()
                 .cloned()
                 .unwrap_or_else(|| list_value(Vec::<Value>::new()));
-            let result =
-                materialize_operation_argv(&path, &service, &operation, &bindings, ctx);
+            let result = materialize_operation_argv(&path, &service, &operation, &bindings, ctx);
             Ok(Some(argv_materialization_value(
                 result, &path, &service, &operation, ctx,
             )))
