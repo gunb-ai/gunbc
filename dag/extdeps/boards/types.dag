@@ -1,22 +1,17 @@
-module std.baseboard
+module extdeps.boards.types
 
 import std.types { NonEmptyStr }
 import std.bmc { BmcFirmwareFamily, BmcEndpoint }
-
-type BaseboardManufacturer = | AsrockRack
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
 
 type BaseboardModel = | AsrockRackAltrad8ud1l2t
 
 type BaseboardCatalogRow {
   model: BaseboardModel
   model_label: NonEmptyStr
+  vendor: Vendor<Hardware>
   bmc_firmware: BmcFirmwareFamily
-}
-
-fn baseboard_manufacturer(model: BaseboardModel) -> BaseboardManufacturer {
-  match model {
-    AsrockRackAltrad8ud1l2t => AsrockRack
-  }
 }
 
 type ServerBaseboard {

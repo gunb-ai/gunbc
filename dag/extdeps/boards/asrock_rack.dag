@@ -1,5 +1,7 @@
 module extdeps.boards.asrock_rack
 
+import extdeps.boards.types { BaseboardCatalogRow }
+import extdeps.vendor.asrock_rack { asrock_rack }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -32,6 +34,7 @@ data asrock_altrad8ud_srv3_nbd_proxy_ws_dry_run_authority: ExternalAuthority = E
 data asrock_altrad8ud_1l2t_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
   model: AsrockRackAltrad8ud1l2t,
   model_label: "ASRock Rack ALTRAD8UD-1L2T",
+  vendor: asrock_rack,
   bmc_firmware: OpenBmc,
 }
 
