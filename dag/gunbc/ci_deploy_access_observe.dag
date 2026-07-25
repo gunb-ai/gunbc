@@ -76,7 +76,6 @@ fn deploy_access_effect_is_typed_probe(effect: HostEffect) -> Bool {
     OsInstallActuatorToolchainEnsure {} => false
     ProvisionBuildCache { catalog_id: _ } => false
     SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => false
-    DurableApprovalGrantRead => false
     Srv3InstallMediaFetch => false
     Srv3SeededInstallMediaRemaster => false
     Srv3SeededInstallMediaToolchainEnsure => false
