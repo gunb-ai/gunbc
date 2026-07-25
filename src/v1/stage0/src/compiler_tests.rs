@@ -1162,6 +1162,43 @@ mod compiler_tests {
         );
     }
 
+    #[test]
+    fn groupcompletion_int_checkpoint_fires_under_faithful_corpus() {
+        // Discriminating witness for the (b) checkpoint-order fix (sharp-bee-290 sign-off,
+        // msg_6fc2ba88-549b-491e-9b6f-ab949539d682): emit_typed_item's zero-param alias-decl
+        // branch calls rust_scalar_checkpoint_render_base (the single-authority checkpoint
+        // lookup), not the HostNative-only rust_seed_host_numeric_alias, so the Int -> i64
+        // checkpoint row (dag/extdeps/languages/rust/types.dag) fires BEFORE the RHS
+        // (GroupCompletion<Nat>) is unfolded — under BOTH corpus representations. A
+        // regression that narrows this back to the HostNative-only alias makes the
+        // FaithfulFreeMonoid arm return None, which is what this witness guards.
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
+                "Int".to_string(),
+                crate::v1_compiler_infer_emit_info::RustCorpusRepr::FaithfulFreeMonoid
+            ),
+            Some("i64".to_string())
+        );
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
+                "Int".to_string(),
+                crate::v1_compiler_infer_emit_info::RustCorpusRepr::HostNative
+            ),
+            Some("i64".to_string())
+        );
+        // GroupCompletion itself has no checkpoint row and is not the seed host numeric
+        // alias, so the checkpoint correctly declines to render it directly (the RHS
+        // unfolding path handles it as a real 2-field struct) — the checkpoint fires ONLY
+        // for the Int/Nat leaf name, never widening to the container type.
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
+                "GroupCompletion".to_string(),
+                crate::v1_compiler_infer_emit_info::RustCorpusRepr::FaithfulFreeMonoid
+            ),
+            None
+        );
+    }
+
     /// Return current process RSS in bytes (macOS via mach_task_basic_info).
     fn get_rss_bytes() -> u64 {
         #[cfg(target_os = "macos")]
