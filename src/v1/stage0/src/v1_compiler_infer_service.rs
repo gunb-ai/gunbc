@@ -19,6 +19,8 @@ pub use crate::v1_std_core::{
     field_access_field_at, method_receiver, no_span, param_node_type_expr, unit_type,
 };
 pub use crate::v1_std_core::{Cardinality, Connective, ExprData, InferredNode, NewlineIndex, Node};
+use crate::v2_std_witness::Witness;
+use crate::v2_std_witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

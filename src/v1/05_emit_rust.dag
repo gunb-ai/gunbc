@@ -4364,26 +4364,8 @@ fn emit_prelude(imported_names: List<String>, local_type_names: List<String>) ->
     "use crate::v1_rt::\{VecCompat, VecJoin\};\n",
     "use std::rc::Rc;\n",
     "use crate::v1_rt;")
-  let witness_locally_defined = rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "Witness")
-  let has_witness = imported_names |> any(n => n == "Witness")
-  let has_holds = imported_names |> any(n => n == "Holds")
-  let has_violates = imported_names |> any(n => n == "Violates")
-  let witness_line = if witness_locally_defined || has_witness || has_holds || has_violates {
-    ""
-  } else {
-    "\nuse crate::v2_std_witness::Witness;"
-  }
-  let variant_line = if witness_locally_defined || (has_holds && has_violates) {
-    ""
-  } else if has_holds {
-    "\nuse crate::v2_std_witness::Violates;"
-  } else if has_violates {
-    "\nuse crate::v2_std_witness::Holds;"
-  } else {
-    "\nuse crate::v2_std_witness::\{Holds, Violates\};"
-  }
   let wrapper_use = "\nuse crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;"
-  concat(base, witness_line, variant_line, wrapper_use)
+  concat(base, wrapper_use)
 }
 
 fn emit_non_empty_wrappers() -> String {

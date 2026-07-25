@@ -13,6 +13,8 @@ pub use crate::v1_std_core::{authored_name_at, expr_call_func_at, make_error_nod
 pub use crate::v1_std_core::{
     CompilerDiagnostic, DeclaredFuncSig, ErrorNode, ExprData, NewlineIndex, Node,
 };
+use crate::v2_std_witness::Witness;
+use crate::v2_std_witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

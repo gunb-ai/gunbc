@@ -152,6 +152,8 @@ pub use crate::v1_std_core::{
     FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics,
     NewlineIndex, Node, StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
+use crate::v2_std_witness::Witness;
+use crate::v2_std_witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -15420,13 +15422,10 @@ pub fn variant_pattern_qualified_path(
     resolved_parent: Option<String>,
 ) -> String {
     match resolved_parent.clone() {
-        Some(parent) => {
-            let parent_leaf = qualified_last_segment(parent.clone());
-            v1_rt::concat(
-                v1_rt::concat(parent_leaf.clone(), "::".to_string()),
-                rust_name.clone(),
-            )
-        }
+        Some(parent) => v1_rt::concat(
+            v1_rt::concat(qualified_last_segment(parent.clone()), "::".to_string()),
+            rust_name.clone(),
+        ),
         None => rust_name.clone(),
     }
 }

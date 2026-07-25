@@ -309,7 +309,7 @@ fn partial_function_templates() -> List<AlgebraFieldTemplate> {
   [
     { name: "get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
-    { name: "lookup", param_types: [ReceiverSelf, ReceiverKey], return_type: WitnessOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "lookup", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_insert", param_types: [ReceiverSelf, ReceiverKey, ReceiverValue], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_merge", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "has", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
