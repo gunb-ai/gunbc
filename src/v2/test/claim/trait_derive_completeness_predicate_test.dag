@@ -151,14 +151,14 @@ fn tdc_binding_is(binding: Symbol, expected: Symbol) -> Bool {
 fn tdc_coproduct_binding_accepted(coproduct: Node) -> Symbol {
   match rust_trait_derive_surface_binding_for_coproduct(coproduct: coproduct) {
     Accepted { value: binding, diagnostics: _ } => binding
-    Rejected { .. } => ^tdc_impossible_coproduct_binding
+    Rejected { diagnostics: _ } => ^tdc_impossible_coproduct_binding
   }
 }
 
 fn tdc_coproduct_binding_rejected(coproduct: Node) -> Bool {
   match rust_trait_derive_surface_binding_for_coproduct(coproduct: coproduct) {
-    Rejected { .. } => true
-    Accepted { .. } => false
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 
