@@ -1,5 +1,6 @@
 module gunbc.srv3_host_effect_script
 
+import gunbc.retained_shell_script { RetainedShellScript, retained_srvn }
 import gunbc.host_effect {
   HostEffect,
   Srv3InstallDiagnosticObserve,
@@ -104,17 +105,23 @@ fn srv3_receipt_emit_script(lines: List<String>) -> String {
   )
 }
 
-fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
+fn srv3_host_effect_script_for(effect: HostEffect) -> RetainedShellScript? {
   match effect {
     Srv3InstallReconcileObserve { include_git_meta: meta } =>
       Present {
-        value: shell_exec_via_bash(
-          body: srv3_install_reconcile_observe_script(include_git_meta: meta),
+        value: retained_srvn(
+          body: shell_exec_via_bash(
+            body: srv3_install_reconcile_observe_script(include_git_meta: meta),
+          ),
+          reason: "srv3 install reconcile observe (git-meta probe)",
         ),
       }
     DurableApprovalGrantRecord =>
       Present {
-        value: shell_exec_via_bash(body: srv3_install_record_boot_once_approval_script()),
+        value: retained_srvn(
+          body: shell_exec_via_bash(body: srv3_install_record_boot_once_approval_script()),
+          reason: "srv3 boot-once approval grant record",
+        ),
       }
     DurableApprovalGrantRead => Absent
     Srv3InstallMediaFetch => Absent
@@ -122,8 +129,11 @@ fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
     Srv3SeededInstallMediaToolchainEnsure => Absent
     Srv3SolConsoleCapture =>
       Present {
-        value: shell_exec_via_bash(
-          body: sol_console_capture_script(intent: srv3_sol_console_capture_intent),
+        value: retained_srvn(
+          body: shell_exec_via_bash(
+            body: sol_console_capture_script(intent: srv3_sol_console_capture_intent),
+          ),
+          reason: "srv3 SOL console capture",
         ),
       }
     Srv3BmcwebSessionLogin => Absent

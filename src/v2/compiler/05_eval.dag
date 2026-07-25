@@ -738,11 +738,11 @@ fn structural_property_witness_digest(w: StructuralPropertyWitness) -> Hash {
   )
 }
 
-fn ranking_dimension_digest(d: RankingDimension) -> Hash {
+fn ranking_dimension_digest(d: v2.std.cardinality.RankingDimension) -> Hash {
   test_claim_symbol_digest(sym: d.measured)
 }
 
-fn termination_proof_digest(proof: TerminationProof) -> Hash {
+fn termination_proof_digest(proof: v2.std.cardinality.TerminationProof) -> Hash {
   combine_hash(
     a: ranking_dimension_digest(d: proof.strict),
     b: fold_list(
@@ -769,7 +769,7 @@ fn witness_cache_violates_digest(diag: Diagnostic) -> Hash {
   )
 }
 
-fn descent_witness_digest(d: Witness<TerminationProof>) -> Hash {
+fn descent_witness_digest(d: Witness<v2.std.cardinality.TerminationProof>) -> Hash {
   match d {
     Holds { value: proof } =>
       witness_cache_holds_digest(payload: termination_proof_digest(proof: proof))
