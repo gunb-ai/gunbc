@@ -335,15 +335,25 @@ pub fn clamp(val: i64, min_val: i64, max_val: i64) -> i64 {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Witness<V> {
-    Holds { value: V },
-    Violates { diagnostic: String },
+    Holds {
+        value: V,
+    },
+    Violates {
+        diagnostic: Rc<crate::v2_std_diagnostic::Diagnostic>,
+    },
 }
 
 pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Witness<V> {
     match table.get(&key).cloned() {
         Some(value) => Witness::Holds { value },
         None => Witness::Violates {
-            diagnostic: format!("lookup miss for key {}", key),
+            diagnostic: Rc::new(crate::v2_std_diagnostic::Diagnostic {
+                reason: format!("lookup miss for key {}", key),
+                at: crate::v2_std_diagnostic::port_locus("lookup_port".to_string()),
+                correction: Rc::new(crate::v2_std_diagnostic::Correction::Unavailable {
+                    reason: crate::v2_std_diagnostic::NoCorrectionReason::ExternalContractUnknown,
+                }),
+            }),
         },
     }
 }
