@@ -152,8 +152,6 @@ pub use crate::v1_std_core::{
     FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics,
     NewlineIndex, Node, StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
-use crate::v2_std_witness::Witness;
-use crate::v2_std_witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -11125,71 +11123,8 @@ pub fn emit_prelude(imported_names: Rc<Vec<String>>, local_type_names: Rc<Vec<St
             ),
             "use crate::v1_rt;".to_string(),
         );
-        let witness_locally_defined = rust_import_name_already_resolved(
-            imported_names.clone(),
-            local_type_names.clone(),
-            "Witness".to_string(),
-        );
-        let has_witness = {
-            let mut __found = false;
-            for n in imported_names.clone().iter().cloned() {
-                if (n.clone() == "Witness".to_string()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
-        let has_holds = {
-            let mut __found = false;
-            for n in imported_names.clone().iter().cloned() {
-                if (n.clone() == "Holds".to_string()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
-        let has_violates = {
-            let mut __found = false;
-            for n in imported_names.clone().iter().cloned() {
-                if (n.clone() == "Violates".to_string()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
-        let witness_line = if (((witness_locally_defined.clone() || has_witness.clone())
-            || has_holds.clone())
-            || has_violates.clone())
-        {
-            "".to_string()
-        } else {
-            "\nuse crate::v2_std_witness::Witness;".to_string()
-        };
-        let variant_line =
-            if (witness_locally_defined.clone() || (has_holds.clone() && has_violates.clone())) {
-                "".to_string()
-            } else {
-                if has_holds.clone() {
-                    "\nuse crate::v2_std_witness::Violates;".to_string()
-                } else {
-                    if has_violates.clone() {
-                        "\nuse crate::v2_std_witness::Holds;".to_string()
-                    } else {
-                        "\nuse crate::v2_std_witness::{Holds, Violates};".to_string()
-                    }
-                }
-            };
         let wrapper_use = "\nuse crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;".to_string();
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(base.clone(), witness_line.clone()),
-                variant_line.clone(),
-            ),
-            wrapper_use.clone(),
-        )
+        v1_rt::concat(base.clone(), wrapper_use.clone())
     }
 }
 

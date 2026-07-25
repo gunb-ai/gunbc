@@ -13,8 +13,6 @@ pub use crate::v1_std_core::{
     bool_type, hash_type, int_type, make_span, string_type, unit_type, with_optional_cardinality,
 };
 pub use crate::v1_std_core::{Cardinality, Connective, ErrorNode, ExprData, InferredNode, Node};
-use crate::v2_std_witness::Witness;
-use crate::v2_std_witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

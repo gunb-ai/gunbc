@@ -14,8 +14,6 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::NoConnective;
 pub use crate::v1_std_core::{authored_name_at, field_init_node_name_at};
 pub use crate::v1_std_core::{Connective, ErrorNode, NewlineIndex, Node, TextFile};
-use crate::v2_std_witness::Witness;
-use crate::v2_std_witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

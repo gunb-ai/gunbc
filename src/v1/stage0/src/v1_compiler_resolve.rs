@@ -13,8 +13,6 @@ pub use crate::v1_std_core::{
     module_imports, module_items, module_node, no_span,
 };
 pub use crate::v1_std_core::{CompilerDiagnostic, Connective, ErrorNode, NewlineIndex, Node};
-use crate::v2_std_witness::Witness;
-use crate::v2_std_witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

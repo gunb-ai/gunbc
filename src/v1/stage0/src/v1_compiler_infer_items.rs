@@ -23,8 +23,6 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     Cardinality, Connective, ErrorNode, InferredNode, NewlineIndex, Node,
 };
-use crate::v2_std_witness::Witness;
-use crate::v2_std_witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

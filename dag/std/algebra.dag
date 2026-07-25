@@ -117,7 +117,7 @@ type FreeMonoid<T>
   | Cons { head: T, tail: FreeMonoid<T> }
 
 type PartialFunction<K, V> {
-  lookup: fn(K) -> Witness<V>
+  lookup: fn(K) -> V?
   empty: PartialFunction<K, V>
   get: fn(K) -> V?
   insert: fn(K, V) -> PartialFunction<K, V>
