@@ -479,6 +479,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: "the S2 behavioral-closure lane greens it locally; the probe entry and this row delete"
   },
   WitnessExclusionRow {
+    pattern: "no_fake_anomalies_witness_test.dag",
+    classification: BinWitnessWet,
+    reason: excl_no_fake_anomalies_reason,
+    dissolve_on: excl_no_fake_anomalies_dissolve
+  },
+  WitnessExclusionRow {
     pattern: "srv3_install_media_fetch_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
@@ -731,6 +737,10 @@ fn bin_wet(entry: String, f: String) -> ScheduleWitnessEntry {
   ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
 }
 
+data excl_no_fake_anomalies_reason: String = "The expectation-backfill WALL spawns claim_batch as a child process to read a passing corpus's own stderr, so it is Wet BY CONSTRUCTION — its whole subject is what the observation layer prints, which only exists when the effects really run. The Hermetic discovery corpus refuses it exactly as install_media_real_execution_wet_note describes ('no mock_response for operation Run — refusing to fabricate Unit'), and that refusal is correct: a mocked child emits no real observation stream, so a hermetic version of this witness could only ever pass vacuously. Landed into hermetic discovery by filename convention on first authoring (run 30178544618 @ b2411f0, batch 3) and re-homed here."
+
+data excl_no_fake_anomalies_dissolve: String = "no dissolution is expected: reading a real run's rendered stream is the irreducible content of this check, so it stays Wet as long as the anomaly-glyph wall exists. If the wall is ever superseded by a structural lens over the effect graph (task #15's call-node admissibility), this row deletes with the witness."
+
 data install_media_real_execution_wet_note: String = "The four srv3_install_media_fetch_real_execution_witness_test.dag / srv3_seeded_install_media_real_execution_witness_test.dag entries at the tail of bin_witness_wet_entries below share this lane with the bin-execution witnesses (same RunnableDiscoveryBatch Wet mechanism, not a forked one - DESIGN §3) though they are not bin-execution: they drive real shell.Mktemp.Dir/Filesystem.Write/shell.Remove.RecursiveForce effects that dag/extdeps/shell/shell.dag has no mock_response for (only shell.Exec.Run/Check do), so the Hermetic discovery corpus refuses them by construction (typed 'no mock_response for operation Dir' error). Split out of their parent files (shell-to-dag B1, 2026-07-14) so the parent files' pure classification witnesses keep hermetic per-PR discovery undiminished. Dissolve-on: shell.dag's file-effect operations gain mock_response coverage AND these fns' assertions are re-checked for correctness under a fixed mock (some assert behavior-dependent outcomes, e.g. matched == false on a wrong hash, which a naive fixed mock would falsify) - then they re-enroll as ordinary hermetic discovery rows and these rows delete."
 
 data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
@@ -786,7 +796,9 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_roundtrip_by_real_execution"),
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_missing_target_red_control_by_real_execution"),
   bin_wet(entry: "dag/test/claim/host_build_cache_provision_real_execution_witness_test.dag", f: "provision_read_back_failure_not_converged_by_real_execution"),
-  bin_wet(entry: "dag/test/claim/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_witness_holds_by_real_execution")
+  bin_wet(entry: "dag/test/claim/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_witness_holds_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/no_fake_anomalies_witness_test.dag", f: "passing_run_shows_no_fake_anomaly_holds"),
+  bin_wet(entry: "dag/test/claim/no_fake_anomalies_witness_test.dag", f: "red_control_entry_with_real_anomaly_still_shows_glyph_holds")
 ]
 
 data bin_witness_wet_per_row_wall_budget_seconds: Int = 60
