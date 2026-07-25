@@ -1,10 +1,9 @@
 module v2.test.fixture.compiler_closure_scope_receipt
 
-
-data compiler_closure_scoped_module_count: Int = 65
-
 data compiler_closure_excluded_module_path: String = "src/v2/lens/affected_set/closure_deep_chain.dag"
 
-fn scoped_closure_scope_scalar_receipt_holds() -> Bool {
-  compiler_closure_scoped_module_count == 65
+data compiler_closure_scoped_module_count_drift_note: String = "FINDING (class-5 slice, wise-lynx-761): the former hand count 65 drifted from live v1 closure discovery — pipeline.rs scoped_closure_fixture_scalar_receipt_matches_live_discovery is #[ignore] with the same diagnosis. No structural module-path roster exists in this fixture to derive from; deleting the tautological scalar receipt rather than silently renumbering. Follow-up: add an enumerated scoped-module roster or wire host discovery count against a structural authority."
+
+fn scoped_closure_excluded_module_path_holds() -> Bool {
+  compiler_closure_excluded_module_path == "src/v2/lens/affected_set/closure_deep_chain.dag"
 }

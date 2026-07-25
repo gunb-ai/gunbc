@@ -2,7 +2,7 @@ module v2.std.node_minimal
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import v2.std.algebra { any }
+import v2.std.algebra { any, count }
 import v2.std.collection { List }
 import v2.std.integer { UInt32 }
 import v2.std.node {
@@ -34,7 +34,9 @@ type NodeSupersetField
   | NsfMatchPattern
   | NsfExprData
 
-data node_superset_field_count: Int = 18
+fn node_superset_field_count() -> Int {
+  count(all_node_superset_fields)
+}
 
 data all_node_superset_fields: List<NodeSupersetField> = [
   NsfName,
@@ -56,10 +58,6 @@ data all_node_superset_fields: List<NodeSupersetField> = [
   NsfMatchPattern,
   NsfExprData
 ]
-
-fn witness_all_node_superset_fields_roster_length() -> Bool {
-  count(all_node_superset_fields) == node_superset_field_count
-}
 
 type SpanRef {
   file_id: UInt32
@@ -388,7 +386,7 @@ fn witness_partition_covers_superset() -> Bool {
     placed: minimal_kind_placed_fields_union(),
     owed: minimal_kind_owed_placement,
     migrated: minimal_kind_migrated_to_facts
-  ) && count(minimal_kind_partition_field_union()) == node_superset_field_count && witness_all_node_superset_fields_roster_length() && witness_all_node_superset_fields_covered_by_partition()
+  ) && count(minimal_kind_partition_field_union()) == node_superset_field_count() && witness_all_node_superset_fields_covered_by_partition()
 }
 
 fn minimal_node_superset_field_unused_by_kind(
