@@ -1118,7 +1118,6 @@ fn realize_provision_build_cache_body(
   transport: HostEffectTransport,
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-<<<<<<< HEAD
   match provision_build_cache_host_arch(effect_intent: effect_intent) {
     Absent =>
       NotConverged {
@@ -1157,7 +1156,10 @@ fn realize_provision_build_cache_body(
               }
             Present { value: digest } => {
               let observed = run_shell_transport(
-                script: build_cache_provision_shell_script(arch_token: token, digest: digest),
+                script: retained_srvn(
+                  body: build_cache_provision_shell_script(arch_token: token, digest: digest),
+                  reason: "srvN build-cache provisioning (sccache daemon ensure)",
+                ),
                 transport: transport,
               )
               provision_build_cache_reconcile(observed: observed, intent: effect_intent)
@@ -1165,13 +1167,6 @@ fn realize_provision_build_cache_body(
           }
       }
   }
-=======
-  let observed = run_shell_transport(
-    script: retained_srvn(body: build_cache_provision_shell_script(), reason: "srvN build-cache provisioning (sccache daemon ensure)"),
-    transport: transport,
-  )
-  srv3_toolchain_ensure_reconcile(observed: observed, intent: effect_intent)
->>>>>>> origin/main
 }
 
 fn realize_provision_build_cache(
