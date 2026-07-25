@@ -168,6 +168,10 @@ fn design_witness_unit_execstart_matches_install_path() -> Bool {
   build_cache_unit_execstart_matches_install_path()
 }
 
+fn design_witness_unit_is_foreground_supervised() -> Bool {
+  build_cache_unit_is_foreground_supervised()
+}
+
 fn design_witness_classifier_covers_every_cited_fragment() -> Bool {
   build_cache_classifier_covers_every_cited_fragment()
 }
@@ -241,6 +245,7 @@ test fn host_build_cache_provision_design_witnesses() -> Bool {
     && design_witness_path_authority_observation_not_emitted_as_shell()
     && design_witness_install_is_cited_not_package_manager()
     && design_witness_unit_execstart_matches_install_path()
+    && design_witness_unit_is_foreground_supervised()
     && design_witness_classifier_covers_every_cited_fragment()
     && design_witness_classifier_is_a_fold_not_an_unrolled_chain()
     && design_witness_fragment_words_are_shell_safe()
