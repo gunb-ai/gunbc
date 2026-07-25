@@ -20,8 +20,8 @@ import gunbc.design.palette {
 }
 import gunbc.roadmap_style {
   island_venom, island_pastel_for_workspace,
-  island_mint_ink, island_butter_ink, island_aqua_ink, island_mint_pressed,
-  workspace_band_paints, okabe_ito_for_workspace, okabe_bluish_green_pressed,
+  island_mint_ink, island_butter_ink, island_aqua_ink,
+  workspace_band_paints, pressed_stop,
 }
 import std.integer { uint8_channel_inclusive_max_value, uint8_channel_inclusive_max_value_derived }
 import std.measure { uint8_channel_inclusive_max }
@@ -210,7 +210,7 @@ fn witness_uint8_channel_inclusive_max_value_present() -> Bool {
 
 fn witness_workspace_for_use_completion_admissible() -> Bool {
   swatch_set_for_use_admissible(u: island_pastel_for_workspace)
-    && swatches_for_use(u: island_pastel_for_workspace).length() == 11
+    && swatches_for_use(u: island_pastel_for_workspace).length() == 10
     && swatches_of(s: island_pastel).length() == 6
     && swatch_paint(sw: island_venom) == "#8a2f23"
 }
@@ -219,7 +219,6 @@ fn witness_in_family_inks_carry_their_fills() -> Bool {
   grade_rank(g: grade_pairing(figure: island_mint_ink, ground: island_mint).grade) >= 2
     && grade_rank(g: grade_pairing(figure: island_butter_ink, ground: island_butter).grade) >= 2
     && grade_rank(g: grade_pairing(figure: island_aqua_ink, ground: island_aqua).grade) >= 2
-    && grade_rank(g: grade_pairing(figure: island_mint_ink, ground: island_mint_pressed).grade) >= 2
 }
 
 fn witness_venom_carries_ivory_text_and_refuses_loam() -> Bool {
@@ -233,8 +232,12 @@ fn witness_graduated_default_clears_text_aa() -> Bool {
   count(workspace_band_paints()) == 5
     && all(workspace_band_paints(), p =>
       srgb8_contrast_at_least(a: p.ink.color, b: p.fill.color, threshold_hundredths: wcag_aa_normal_text_hundredths))
-    && swatch_set_for_use_admissible(u: okabe_ito_for_workspace)
-    && swatch_paint(sw: okabe_bluish_green_pressed) == "#008561"
+}
+
+fn witness_pressed_stop_derivation_and_legibility() -> Bool {
+  swatch_paint(sw: Swatch { name: "probe", color: pressed_stop(c: Srgb8 { r: 0, g: 158, b: 115 }) }) == "#008560"
+    && all(workspace_band_paints(), p =>
+      srgb8_contrast_at_least(a: p.ink.color, b: pressed_stop(c: p.fill.color), threshold_hundredths: wcag_aa_large_text_and_graphics_hundredths))
 }
 
 fn witness_for_use_refuses_empty_and_duplicate() -> Bool {
@@ -267,5 +270,6 @@ test fn design_palette_catalog_keystone_holds() -> Bool {
     && witness_venom_carries_ivory_text_and_refuses_loam()
     && witness_in_family_inks_carry_their_fills()
     && witness_graduated_default_clears_text_aa()
+    && witness_pressed_stop_derivation_and_legibility()
     && witness_for_use_refuses_empty_and_duplicate()
 }

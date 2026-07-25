@@ -135,6 +135,20 @@ fn dispatch_btn_brighten_rules(timing: TimingToken) -> List<BuildRule> {
     })
 }
 
+data dispatch_receipt_family_note: String = "The press receipt realizes PER STATE FAMILY (round-5 fix): the first cut was one constant on the base selector — the invite press fill for every state the button can wear — so pressing an orange fault pill flashed deep green. A press deepens the material it presses: each state class's :active targets ITS band's derived pressed var, and the family-preservation witness in the tactile suite holds a RED against any cross-family press returning."
+
+fn dispatch_state_receipt_rule(state_class: String, band_key: String, timing: TimingToken) -> BuildRule {
+  ResponseRule {
+    subject: RawSelector { text: join([".dispatch-btn.", state_class], "") },
+    shape: SelfResponse,
+    trigger: OnActive,
+    transition_props: "background-color",
+    timing: timing,
+    base_decls: [],
+    response_decls: [ decl(prop: Background, value: join(["var(--band-", band_key, "-pressed)"], "")) ],
+  }
+}
+
 fn dispatch_btn_receipt_rules(timing: TimingToken) -> List<BuildRule> {
   [
     ResponseRule {
@@ -146,6 +160,10 @@ fn dispatch_btn_receipt_rules(timing: TimingToken) -> List<BuildRule> {
       base_decls: [],
       response_decls: [ decl(prop: Background, value: "var(--band-invite-pressed)") ],
     },
+    dispatch_state_receipt_rule(state_class: dispatch_class_requested, band_key: "in-progress", timing: timing),
+    dispatch_state_receipt_rule(state_class: dispatch_class_ok, band_key: "ok", timing: timing),
+    dispatch_state_receipt_rule(state_class: dispatch_class_refused, band_key: "fail", timing: timing),
+    dispatch_state_receipt_rule(state_class: dispatch_class_loud, band_key: "loud", timing: timing),
   ]
 }
 

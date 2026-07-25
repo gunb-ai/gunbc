@@ -34,6 +34,16 @@ Third review round (2026-07-24, after W1c/W1e landed):
 
 W0 census disposition (close-out): rows 1–6 LANDED this branch (band fold W1a · state material W1d · text-channel law W1d · geometry axis W1c · disclosure + sound-toggle as register elements W1e, Component-type gallery enrollment rides W1f · caption/state fusion W1d via sublabels). Row 7 (link projection) rides W2. Row 8 (asset path) stays W3. Row 9 stays counted where it is. New residue found during the work: loam displaced from button inks (still base-set text capability, unaffected); brass displaced from dispatch approach (still the review mark's material).
 
+## Composition physics (round 5 — the next grain; management-lane synthesis, confirmed and adopted)
+
+The remodel applied the operator's laws at the ATOM grain (one button, one caption set, one palette) and it worked. Every later screenshot arrives from the grains above, where nothing has physics yet. Scope for the composition session:
+
+- **New register law (LANDED this branch, round-5 fix): a press deepens the material it presses** — per state family, derived (`pressed_stop` over every BandPaint row, so audition sets are covered by the same construction), witnessed with a RED on cross-family presses. The ~10 ms green flash over fault pills was the violating specimen: one pressed var, realized at component grain, presenting as total — partial derivation presenting as total · a dissolution obligation discharged at the wrong grain · a fabricated state on screen (§5's pixel-layer twin).
+- **Grain 2 — the row is the component.** First cut landed (flex head line, actuator at the right edge, disclosure indented). Remaining: a declared RoadmapRow archetype grid with density tokens on the scale grammar, and the actuator re-derived from ROW scale — where the operator's two directives ("big and satisfying" vs "a bit too big / sixty pills shouting at arm's length") get resolved deliberately; the likely shape is a chip-scale actuator in rows with the satisfying-instrument quality carried by press physics rather than size. OPERATOR DECISION.
+- **Grain 3 — page altitude from the attention law.** Sections render as bands with counts; anomaly rows (fail/loud) auto-expand; routine folds. Derived from state, never hand-curated — the workspace becomes the third renderer of the observation model's "routine collapses, anomaly expands," not a fourth ad-hoc surface.
+- **Grain 4 — anomaly evidence is a surface, not a tooltip.** The loud band's located reason (step/detail) renders as the first line of the row's disclosure — inspectable, persistent; the title attribute stays a convenience, never the only carrier.
+- **Sequencing:** W2-bulk rides AFTER the row archetype lands (pouring ~200 migrated rows into the old layering churns twice). W1h stays parked behind composition, as ruled.
+
 ## Workstreams
 
 ### W0 — census of half-born migrations (typed, counted)

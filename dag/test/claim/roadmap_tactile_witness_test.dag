@@ -75,6 +75,16 @@ fn witness_every_behavior_timing_comes_from_the_scale() -> Bool {
   all(roadmap_behaviors, r => timing_in_scale(t: r.timing))
 }
 
+fn witness_press_preserves_family() -> Bool {
+  let c = css()
+  string_contains(s: c, pattern: join([".dispatch-btn.", dispatch_class_requested, ":active { background: var(--band-in-progress-pressed) }"], ""))
+    && string_contains(s: c, pattern: join([".dispatch-btn.", dispatch_class_ok, ":active { background: var(--band-ok-pressed) }"], ""))
+    && string_contains(s: c, pattern: ".dispatch-btn.dispatch-refused:active { background: var(--band-fail-pressed) }")
+    && string_contains(s: c, pattern: ".dispatch-btn.dispatch-loud:active { background: var(--band-loud-pressed) }")
+    && !string_contains(s: c, pattern: join([".dispatch-btn.", dispatch_class_ok, ":active { background: var(--band-invite-pressed)"], ""))
+    && !string_contains(s: c, pattern: ".dispatch-btn.dispatch-refused:active { background: var(--band-invite-pressed)")
+}
+
 fn witness_hover_runs_on_reveal_not_the_press_clock() -> Bool {
   let approach_rows = roadmap_behaviors |> filter(r => r.timing.duration_ms == reveal_deliberate.duration_ms)
   approach_rows.length() > 0
@@ -93,6 +103,7 @@ fn witness_register_vocabulary_is_consumed() -> Bool {
 
 fn witness_press_depresses_on_pointer_down() -> Bool {
   string_contains(s: css(), pattern: ".dispatch-btn:active { background: var(--band-invite-pressed) }")
+    && witness_press_preserves_family()
     && string_contains(
       s: css(),
       pattern: join([

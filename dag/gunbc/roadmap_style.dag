@@ -44,7 +44,6 @@ data in_family_ink_note: String = "The ink rule, generalized from loam (operator
 data island_mint_ink: Swatch = Swatch { name: "mint-ink", color: Srgb8 { r: 26, g: 74, b: 43 } }
 data island_butter_ink: Swatch = Swatch { name: "butter-ink", color: Srgb8 { r: 74, g: 60, b: 10 } }
 data island_aqua_ink: Swatch = Swatch { name: "aqua-ink", color: Srgb8 { r: 14, g: 62, b: 66 } }
-data island_mint_pressed: Swatch = Swatch { name: "mint-pressed", color: Srgb8 { r: 124, g: 226, b: 148 } }
 
 data island_pastel_for_workspace: SwatchSetForUse = SwatchSetForUse {
   name: "island-pastel-for-workspace",
@@ -54,7 +53,6 @@ data island_pastel_for_workspace: SwatchSetForUse = SwatchSetForUse {
     swatch_derived(sw: island_mint_ink, anchor_name: "mint", note: "mint hue at ink depth (in_family_ink_note)"),
     swatch_derived(sw: island_butter_ink, anchor_name: "butter", note: "butter hue at ink depth (in_family_ink_note)"),
     swatch_derived(sw: island_aqua_ink, anchor_name: "aqua", note: "aqua hue at ink depth (in_family_ink_note)"),
-    swatch_derived(sw: island_mint_pressed, anchor_name: "mint", note: "mint deepened one press stop — the press-receipt fill (in-family: the old receipt flipped to the theme border gray, which fought the band fill; a press is the same instrument momentarily deeper, never a different material)"),
   ],
   use_note: "roadmap workspace bands need a danger hue (fail/loud fills) and in-family inks for the light fills; the completions live at this layer",
 }
@@ -73,17 +71,20 @@ fn workspace_band_paints() -> List<BandPaint> {
   audition_paints(a: audition_okabe_ito)
 }
 
-data okabe_bluish_green_pressed_note: String = "The press stop joins the chosen set's mapping (the graduation obligation the auditioner note named): bluish_green deepened one press stop, a Derived completion anchored on the cited fill — same rule as mint-pressed was for island."
+data pressed_stop_note: String = "The press stop, DERIVED and TOTAL (round-5 fix, root-caused by the management lane 2026-07-24: the receipt targeted the ONE pressed var that existed — invite's — on the base selector, so pressing a fail/loud pill flashed the green family for the press window: a fabricated 'ready' painted over a fault, the pixel-layer twin of the fabricated plausible output §5 forbids. Partial derivation presenting as total; the graduation obligation discharged at the wrong grain; no witness asked the totality question). One authority ratio applied to every band fill — a press deepens THE MATERIAL IT PRESSES, per family, by construction: band_var_decls emits --band-<key>-pressed for every BandPaint row, so the pressed family is total over the bands AND over every audition set for free, and the two hand-deepened swatches this replaces (mint-pressed, bluish-green-pressed) dissolve into the derivation. The receipt realizes per state family and the family-preservation witness holds with a RED on a cross-family press."
 
-data okabe_bluish_green_pressed: Swatch = Swatch { name: "bluish-green-pressed", color: Srgb8 { r: 0, g: 133, b: 97 } }
+data press_stop_per_mille: Int = 842
 
-data okabe_ito_for_workspace: SwatchSetForUse = SwatchSetForUse {
-  name: "okabe-ito-for-workspace",
-  base: okabe_ito,
-  completions: [
-    swatch_derived(sw: okabe_bluish_green_pressed, anchor_name: "bluish_green", note: "bluish_green deepened one press stop — the press-receipt fill (okabe_bluish_green_pressed_note)"),
-  ],
-  use_note: "the chosen band set needs its press stop; the completion lives at this layer",
+fn pressed_stop(c: Srgb8) -> Srgb8 {
+  Srgb8 {
+    r: (c.r * press_stop_per_mille) / 1000,
+    g: (c.g * press_stop_per_mille) / 1000,
+    b: (c.b * press_stop_per_mille) / 1000,
+  }
+}
+
+fn band_pressed_paint(r: BandPaint) -> String {
+  swatch_paint(sw: Swatch { name: join([r.key, "-pressed"], ""), color: pressed_stop(c: r.fill.color) })
 }
 
 fn band_paints_for_theme(t: Theme) -> List<BandPaint> {
@@ -91,15 +92,14 @@ fn band_paints_for_theme(t: Theme) -> List<BandPaint> {
 }
 
 fn band_var_decls(rows: List<BandPaint>) -> List<CssDecl> {
-  concat(
-    fold(rows, init: [], f: (acc, r) => concat(acc, [
-      decl(prop: CustomProperty { name: join(["band-", r.key], "") }, value: swatch_paint(sw: r.fill)),
-      decl(prop: CustomProperty { name: join(["band-", r.key, "-ink"], "") }, value: swatch_paint(sw: r.ink)),
-    ])),
-    [decl(prop: CustomProperty { name: "band-invite-pressed" }, value: swatch_paint(sw: okabe_bluish_green_pressed))])
+  fold(rows, init: [], f: (acc, r) => concat(acc, [
+    decl(prop: CustomProperty { name: join(["band-", r.key], "") }, value: swatch_paint(sw: r.fill)),
+    decl(prop: CustomProperty { name: join(["band-", r.key, "-ink"], "") }, value: swatch_paint(sw: r.ink)),
+    decl(prop: CustomProperty { name: join(["band-", r.key, "-pressed"], "") }, value: band_pressed_paint(r: r)),
+  ]))
 }
 
-data auditioner_note: String = "The swatch auditioner (remodel W1f, operator 2026-07-24: deliberately undecided on swatches — so switching must cost a click, not a restructure). Each audition set emits its band vars under :root[data-swatch-set=NAME] — the data-theme selector grammar reused verbatim, emitted AFTER the band blocks so an audition choice overrides both themes uniformly. The FILL mapping per set is five hand rows (which hue plays danger is a design call); the INK per fill is DERIVED — the set's own swatch with the highest computed WCAG contrast against that fill, by the same cited kernel that grades the palette — so an audition set never ships an illegible pairing by construction. A set whose fill mapping fails to resolve emits NO block and the sandbox witness counts it red — absence is loud, never a fabricated color. The island default is the absent attribute. Residue, named: the press fill (--band-invite-pressed) stays island-derived under audition — the press stop joins the mapping when a set graduates from audition to chosen."
+data auditioner_note: String = "The swatch auditioner (remodel W1f, operator 2026-07-24: deliberately undecided on swatches — so switching must cost a click, not a restructure). Each audition set emits its band vars under :root[data-swatch-set=NAME] — the data-theme selector grammar reused verbatim, emitted AFTER the band blocks so an audition choice overrides both themes uniformly. The FILL mapping per set is five hand rows (which hue plays danger is a design call); the INK per fill is DERIVED — the set's own swatch with the highest computed WCAG contrast against that fill, by the same cited kernel that grades the palette — so an audition set never ships an illegible pairing by construction. A set whose fill mapping fails to resolve emits NO block and the sandbox witness counts it red — absence is loud, never a fabricated color. The island default is the absent attribute. The former press-fill residue is DISSOLVED (round-5): band_var_decls emits a derived --band-<key>-pressed for every row, so audition sets carry their own in-family press stops by the same construction as the chosen set."
 
 type AuditionFillRow {
   key: String
