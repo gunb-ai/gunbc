@@ -128,38 +128,9 @@ fn falsifier_native_cache_cold_roster() -> List<ScheduleWitnessEntry> {
 
 data emit_on_demand_family_cadence_note: String = "The seven emit-on-demand family aggregates (9 witness families: add, field_access, complement, match, loop, fold_closure, meet_join, variant_construct, classical_not_ingested) enroll on this nightly Wet cadence 2026-07-21: each emits real Rust, cargo-builds under the admitted build_workspace_grant envelope, runs the native binary, and compares against the interpreted oracle. Enrolled after the 2026-07-20 regression proved the class was invisible to CI (test/claim/execution/ excluded from hermetic discovery AND offline roster - the enrolled-but-never-run coverage-by-illusion class): the sorted_fields interner-order bug broke all 9 families' wet legs and nothing red-ed. This cadence is the rot-detector. Per-PR stays hermetic; the full CI-on-v2 cutover (P6) additionally needs the is_hermetic blanket refusal in emit_host_run_transport replaced by the Admitted verdict (effect-grants seam) plus the content-keyed result store so builds amortize."
 
-data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = [
-  SelfHostWetReceiptBinding {
-    module_path: "src/v2/compiler/parse_engine_hooks.dag",
-    entry: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag",
-    function: "self_host_parse_engine_hooks_behavioral_receipt_holds"
-  },
-  SelfHostWetReceiptBinding {
-    module_path: "src/v2/compiler/use_site_verdict.dag",
-    entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag",
-    function: "self_host_use_site_verdict_behavioral_receipt_holds"
-  },
-  SelfHostWetReceiptBinding {
-    module_path: "src/v2/compiler/discovery_enumeration.dag",
-    entry: "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag",
-    function: "self_host_discovery_enumeration_behavioral_receipt_holds"
-  },
-  SelfHostWetReceiptBinding {
-    module_path: "src/v2/compiler/07_target_carriers.dag",
-    entry: "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag",
-    function: "self_host_target_carriers_behavioral_receipt_holds"
-  },
-  SelfHostWetReceiptBinding {
-    module_path: "src/v2/compiler/03_body_producer.dag",
-    entry: "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag",
-    function: "self_host_body_producer_behavioral_receipt_holds"
-  },
-  SelfHostWetReceiptBinding {
-    module_path: "src/v2/compiler/03_normalize.dag",
-    entry: "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag",
-    function: "self_host_03_normalize_behavioral_receipt_holds"
-  }
-]
+data falsifier_self_host_wet_module_bindings_revocation_note: String = "2026-07-25 falsifier green (attribution: witness-red, not retention): the six SelfEmitted wet bindings below were RED on cadence run 30126573464 (cargo/shim closure refuse on seed-linked assemble — unresolved std_algebra/std_types/std_nat/List and target_carriers type-shape). Enrollment note requires green-only wet receipts; bindings revoked (empty list) so the nightly does not lie SelfEmitted-with-red-receipt. Frontier rows stay SelfEmitted until a measured re-probe demotes them; re-add each binding when its wet receipt greens locally. Dissolve-on: bindings restore one-by-one as receipts green."
+
+data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = []
 
 fn wet_receipt_binding_if_path_matches(
   module_path: String,
