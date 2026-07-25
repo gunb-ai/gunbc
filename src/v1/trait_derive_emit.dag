@@ -1,6 +1,6 @@
 module v1.compiler.trait_derive_emit
 
-import v1.compiler.infer_types { is_coproduct_type, is_unit_like, child_type_node }
+import v1.compiler.infer_types { child_type_node }
 import v1.std.core {
   Node, NewlineIndex, authored_name_at, generic_param_name_at, param_node_type_expr,
   NoConnective
@@ -8,10 +8,6 @@ import v1.std.core {
 import v1.compiler.emit { to_pascal }
 import std.trait_derive_shape {
   ReprGroundingDeriveElemShape,
-  ReprDeriveElemKernelString,
-  ReprDeriveElemKernelInt,
-  ReprDeriveElemKernelBool,
-  ReprDeriveElemKernelUnit,
   ReprDeriveElemNullaryEnumCopy,
   ReprDeriveElemUnknown,
   repr_grounding_derive_completeness_predicate,
@@ -31,32 +27,6 @@ fn v1_coproduct_all_variants_nullary(children: List<Node>) -> Bool {
   children |> all(v => v.children |> count == 0)
 }
 
-fn v1_repr_grounding_derive_elem_shape_from_type_node(
-  n: Node,
-  source_indices: Map<String, NewlineIndex>
-) -> ReprGroundingDeriveElemShape {
-  if is_coproduct_type(n: n) {
-    if v1_coproduct_all_variants_nullary(children: n.children) {
-      ReprDeriveElemNullaryEnumCopy
-    } else {
-      ReprDeriveElemUnknown
-    }
-  } else {
-    let name = authored_name_at(source_indices: source_indices, node: n)
-    if name == "String" || name == "Symbol" {
-      ReprDeriveElemKernelString
-    } else if name == "Int" || name == "Nat" {
-      ReprDeriveElemKernelInt
-    } else if name == "Bool" {
-      ReprDeriveElemKernelBool
-    } else if name == "Unit" || is_unit_like(n: n) {
-      ReprDeriveElemKernelUnit
-    } else {
-      ReprDeriveElemUnknown
-    }
-  }
-}
-
 fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
   children: List<Node>,
   source_indices: Map<String, NewlineIndex>
@@ -73,14 +43,7 @@ fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
   source_indices: Map<String, NewlineIndex>
 ) -> ReprGroundingDeriveElemShape {
   if v1_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
-    match children |> first {
-      Present { value: child } =>
-        v1_repr_grounding_derive_elem_shape_from_type_node(
-          n: child_type_node(ch: child),
-          source_indices: source_indices
-        )
-      Absent => ReprDeriveElemUnknown
-    }
+    ReprDeriveElemNullaryEnumCopy
   } else {
     ReprDeriveElemUnknown
   }

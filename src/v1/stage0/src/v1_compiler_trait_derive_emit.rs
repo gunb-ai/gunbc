@@ -2,19 +2,18 @@
 // Source module: v1.compiler.trait_derive_emit
 
 pub use crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits;
+pub use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape;
 use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
-    ReprDeriveElemKernelInt, ReprDeriveElemNullaryEnumCopy,
+    ReprDeriveElemKernelBool, ReprDeriveElemKernelInt, ReprDeriveElemKernelString,
+    ReprDeriveElemKernelUnit, ReprDeriveElemNullaryEnumCopy, ReprDeriveElemUnknown,
 };
-use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::ReprDeriveClone;
 pub use crate::std_trait_derive_shape::{
     nullary_coproduct_derive_traits, payload_coproduct_derive_traits, record_derive_traits_copy,
     record_derive_traits_heap, repr_grounding_derive_completeness_predicate,
-    repr_grounding_derive_shape_has_trait,
 };
-pub use crate::std_trait_derive_shape::{ReprGroundingDeriveElemShape, ReprGroundingDeriveTrait};
 pub use crate::std_types::is_container_type;
 pub use crate::v1_compiler_emit::to_pascal;
-pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type};
+pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type, is_unit_like};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -44,6 +43,62 @@ pub fn v1_coproduct_all_variants_nullary(children: Rc<Vec<Rc<Node>>>) -> bool {
             }
         }
         __all
+    }
+}
+
+pub fn v1_repr_grounding_derive_elem_shape_from_type_node(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> ReprGroundingDeriveElemShape {
+    if is_coproduct_type(n.clone()) {
+        if v1_coproduct_all_variants_nullary(n.children.clone()) {
+            ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy
+        } else {
+            ReprGroundingDeriveElemShape::ReprDeriveElemUnknown
+        }
+    } else {
+        {
+            let name = authored_name_at(source_indices.clone(), n.clone());
+            if ((name.clone() == "String".to_string()) || (name.clone() == "Symbol".to_string())) {
+                ReprGroundingDeriveElemShape::ReprDeriveElemKernelString
+            } else {
+                if ((name.clone() == "Int".to_string()) || (name.clone() == "Nat".to_string())) {
+                    ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt
+                } else {
+                    if (name.clone() == "Bool".to_string()) {
+                        ReprGroundingDeriveElemShape::ReprDeriveElemKernelBool
+                    } else {
+                        if ((name.clone() == "Unit".to_string()) || is_unit_like(n.clone())) {
+                            ReprGroundingDeriveElemShape::ReprDeriveElemKernelUnit
+                        } else {
+                            ReprGroundingDeriveElemShape::ReprDeriveElemUnknown
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
+    children: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> ReprGroundingDeriveElemShape {
+    if v1_coproduct_all_variants_nullary(children.clone()) {
+        ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy
+    } else {
+        ReprGroundingDeriveElemShape::ReprDeriveElemUnknown
+    }
+}
+
+pub fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
+    children: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> ReprGroundingDeriveElemShape {
+    if v1_symbol_wrapped_ord_carrier_shape_eligible(children.clone(), source_indices.clone()) {
+        ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy
+    } else {
+        ReprGroundingDeriveElemShape::ReprDeriveElemUnknown
     }
 }
 
@@ -79,15 +134,21 @@ pub fn v1_emit_struct_derives(
         "#[derive(Clone)]".to_string()
     } else {
         if v1_symbol_wrapped_ord_carrier_shape_eligible(children.clone(), source_indices.clone()) {
-            if repr_grounding_derive_completeness_predicate(
-                nullary_coproduct_derive_traits(),
-                ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy,
-            ) {
-                rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
-            } else {
-                v1_trait_derive_refuse(
-                    "trait_derive_emit: symbol-wrapped ord carrier refused".to_string(),
-                )
+            {
+                let shape = v1_repr_grounding_derive_elem_shape_for_ord_carrier(
+                    children.clone(),
+                    source_indices.clone(),
+                );
+                if repr_grounding_derive_completeness_predicate(
+                    nullary_coproduct_derive_traits(),
+                    shape.clone(),
+                ) {
+                    rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
+                } else {
+                    v1_trait_derive_refuse(
+                        "trait_derive_emit: symbol-wrapped ord carrier refused".to_string(),
+                    )
+                }
             }
         } else {
             if v1_rt::set_contains(&shared_types, name.clone()) {
@@ -103,19 +164,33 @@ pub fn v1_emit_enum_derives(
     children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if v1_coproduct_all_variants_nullary(children.clone()) {
-        if repr_grounding_derive_completeness_predicate(
-            nullary_coproduct_derive_traits(),
-            ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy,
-        ) {
-            rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
-        } else {
-            v1_trait_derive_refuse(
-                "trait_derive_emit: nullary coproduct derive completeness refused".to_string(),
-            )
+    {
+        let shape = v1_repr_grounding_derive_elem_shape_from_coproduct_children(
+            children.clone(),
+            source_indices.clone(),
+        );
+        match shape.clone() {
+            ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy => {
+                if repr_grounding_derive_completeness_predicate(
+                    nullary_coproduct_derive_traits(),
+                    shape.clone(),
+                ) {
+                    rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
+                } else {
+                    v1_trait_derive_refuse(
+                        "trait_derive_emit: nullary coproduct derive completeness refused"
+                            .to_string(),
+                    )
+                }
+            }
+            ReprGroundingDeriveElemShape::ReprDeriveElemUnknown => {
+                rust_trait_derive_attr_from_traits(payload_coproduct_derive_traits())
+            }
+            _ => v1_trait_derive_refuse(
+                "trait_derive_emit: coproduct elem shape unsupported for derive selection"
+                    .to_string(),
+            ),
         }
-    } else {
-        rust_trait_derive_attr_from_traits(payload_coproduct_derive_traits())
     }
 }
 
@@ -166,11 +241,7 @@ pub fn v1_type_param_needs_clone_bound(
                 value_params.clone(),
                 source_indices.clone(),
             ));
-        (structural.clone()
-            && repr_grounding_derive_shape_has_trait(
-                ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt,
-                ReprGroundingDeriveTrait::ReprDeriveClone,
-            ))
+        structural
     }
 }
 
