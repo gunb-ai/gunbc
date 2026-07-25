@@ -5583,7 +5583,7 @@ fn variant_pattern_qualified_path(rust_name: String, resolved_parent: String?, s
   match resolved_parent {
     Present { value: parent } =>
       let parent_leaf = qualified_last_segment(name: parent)
-      if parent_leaf == "Witness" && string_contains(s: scrut_rendered, pattern: "v1_rt::Witness") {
+      if parent_leaf == "Witness" {
         concat("v1_rt::Witness::", rust_name)
       } else {
         concat(parent_leaf, "::", rust_name)
@@ -8617,9 +8617,9 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
   let si = scope.type_env.source_indices
   let rc_analysis = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: si)
   let pat_str = if rc_analysis.needs_rc_pattern {
-    emit_pattern_rc_aware(pattern: arm_pat, path_prefix: [], rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
+    emit_pattern_rc_aware(pattern: arm_pat, path_prefix: [], rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, scrut_rendered: scrut_rendered, source_indices: si, emit_info: emit_info)
   } else {
-    emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
+    emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, scrut_rendered: scrut_rendered, source_indices: si, emit_info: emit_info)
   }
   let field_guards = collect_pattern_string_guards(pattern: arm_pat, path_prefix: [], source_indices: si)
   let arm_guard_str = match arm_g {

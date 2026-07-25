@@ -14811,6 +14811,7 @@ pub fn emit_pattern(
     path_prefix: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
     scrut_type: String,
+    scrut_rendered: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -14829,6 +14830,7 @@ pub fn emit_pattern(
             path_prefix.clone(),
             shared_types.clone(),
             scrut_type.clone(),
+            scrut_rendered.clone(),
             source_indices.clone(),
             emit_info.clone(),
         ),
@@ -14965,15 +14967,22 @@ pub fn variant_pattern_dotted_qualification_note() -> String {
 pub fn variant_pattern_qualified_path(
     rust_name: String,
     resolved_parent: Option<String>,
-    scrut_type: String,
+    scrut_rendered: String,
 ) -> String {
     match resolved_parent.clone() {
         Some(parent) => {
             let parent_leaf = qualified_last_segment(parent.clone());
-            if ((parent_leaf.clone() == "Witness".to_string())
-                && v1_rt::string_contains(&scrut_type, "v1_rt::Witness".to_string()))
-            {
-                v1_rt::concat("v1_rt::Witness::".to_string(), rust_name.clone())
+            if (parent_leaf.clone() == "Witness".to_string()) {
+                if ((scrut_rendered.clone() != "".to_string())
+                    && !v1_rt::string_contains(&scrut_rendered, "v1_rt::Witness".to_string()))
+                {
+                    v1_rt::concat(
+                        v1_rt::concat(parent_leaf.clone(), "::".to_string()),
+                        rust_name.clone(),
+                    )
+                } else {
+                    v1_rt::concat("v1_rt::Witness::".to_string(), rust_name.clone())
+                }
             } else {
                 v1_rt::concat(
                     v1_rt::concat(parent_leaf.clone(), "::".to_string()),
@@ -15002,6 +15011,7 @@ pub fn emit_variant_pattern(
     path_prefix: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
     scrut_type: String,
+    scrut_rendered: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -15030,7 +15040,7 @@ pub fn emit_variant_pattern(
             variant_pattern_qualified_path(
                 rust_name.clone(),
                 resolved_parent.clone(),
-                scrut_type.clone(),
+                scrut_rendered.clone(),
             )
         };
         if ((optional_variant.clone() && is_some_like_variant_name(bare_name.clone()))
@@ -15048,6 +15058,7 @@ pub fn emit_variant_pattern(
                                 v1_rt::rc_list_push(path_prefix.clone(), rust_name.clone()),
                                 shared_types.clone(),
                                 scrut_type.clone(),
+                                scrut_rendered.clone(),
                                 source_indices.clone(),
                                 emit_info.clone(),
                             );
@@ -15096,6 +15107,7 @@ pub fn emit_variant_pattern(
                                             pos_path.clone(),
                                             shared_types.clone(),
                                             payload_scrut.clone(),
+                                            scrut_rendered.clone(),
                                             source_indices.clone(),
                                             emit_info.clone(),
                                         );
@@ -15148,6 +15160,7 @@ pub fn emit_variant_pattern(
                                             ),
                                             shared_types.clone(),
                                             "".to_string(),
+                                            scrut_rendered.clone(),
                                             source_indices.clone(),
                                             emit_info.clone(),
                                         );
@@ -15326,6 +15339,7 @@ pub fn emit_variant_pattern(
                                                                 field_path.clone(),
                                                                 shared_types.clone(),
                                                                 "".to_string(),
+                                                                scrut_rendered.clone(),
                                                                 source_indices.clone(),
                                                                 emit_info.clone(),
                                                             );
@@ -15613,6 +15627,7 @@ pub fn emit_pattern_rc_aware(
     rc_analysis: Rc<RcPatternAnalysis>,
     shared_types: Rc<BTreeSet<String>>,
     scrut_type: String,
+    scrut_rendered: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -15632,6 +15647,7 @@ pub fn emit_pattern_rc_aware(
             rc_analysis.clone(),
             shared_types.clone(),
             scrut_type.clone(),
+            scrut_rendered.clone(),
             source_indices.clone(),
             emit_info.clone(),
         ),
@@ -15647,6 +15663,7 @@ pub fn emit_variant_pattern_rc_aware(
     rc_analysis: Rc<RcPatternAnalysis>,
     shared_types: Rc<BTreeSet<String>>,
     scrut_type: String,
+    scrut_rendered: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -15675,7 +15692,7 @@ pub fn emit_variant_pattern_rc_aware(
             variant_pattern_qualified_path(
                 rust_name.clone(),
                 resolved_parent.clone(),
-                scrut_type.clone(),
+                scrut_rendered.clone(),
             )
         };
         if ((optional_variant.clone() && is_some_like_variant_name(bare_name.clone()))
@@ -15701,6 +15718,7 @@ pub fn emit_variant_pattern_rc_aware(
                                 inner_analysis.clone(),
                                 shared_types.clone(),
                                 scrut_type.clone(),
+                                scrut_rendered.clone(),
                                 source_indices.clone(),
                                 emit_info.clone(),
                             );
@@ -15757,6 +15775,7 @@ pub fn emit_variant_pattern_rc_aware(
                                             inner_analysis.clone(),
                                             shared_types.clone(),
                                             payload_scrut.clone(),
+                                            scrut_rendered.clone(),
                                             source_indices.clone(),
                                             emit_info.clone(),
                                         );
@@ -15829,6 +15848,7 @@ pub fn emit_variant_pattern_rc_aware(
                                                 inner_analysis.clone(),
                                                 shared_types.clone(),
                                                 "".to_string(),
+                                                scrut_rendered.clone(),
                                                 source_indices.clone(),
                                                 emit_info.clone(),
                                             );
@@ -16034,6 +16054,7 @@ pub fn emit_variant_pattern_rc_aware(
                                                                     inner_analysis.clone(),
                                                                     shared_types.clone(),
                                                                     "".to_string(),
+                                                                    scrut_rendered.clone(),
                                                                     source_indices.clone(),
                                                                     emit_info.clone(),
                                                                 );
@@ -16184,6 +16205,7 @@ pub fn rc_pattern_preludes(
                                                                         fb_name.clone(),
                                                                     ),
                                                                     shared_types.clone(),
+                                                                    "".to_string(),
                                                                     "".to_string(),
                                                                     source_indices.clone(),
                                                                     emit_info.clone(),
@@ -21549,6 +21571,16 @@ pub fn emit_typed_match(
             }
             _ => "".to_string(),
         };
+        let scrut_rendered = match scrutinee.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => render_rust_type(
+                rt.clone(),
+                shared_types.clone(),
+                emit_info.corpus_repr.clone(),
+                scope.type_env.clone().source_indices.clone(),
+                emit_info.clone(),
+            ),
+            _ => "".to_string(),
+        };
         let native_fm = if arms_are_freemonoid_coproduct(
             arms.clone(),
             scrut_type.clone(),
@@ -21592,6 +21624,7 @@ pub fn emit_typed_match(
                     shared_types.clone(),
                     emit_info.clone(),
                     scrut_type.clone(),
+                    scrut_rendered.clone(),
                     match_result_type.clone(),
                     false,
                 ));
@@ -21678,6 +21711,7 @@ pub fn emit_typed_match(
                                             shared_types.clone(),
                                             emit_info.clone(),
                                             scrut_type.clone(),
+                                            scrut_rendered.clone(),
                                             match_result_type.clone(),
                                             true,
                                         ));
@@ -21723,6 +21757,7 @@ pub fn emit_typed_match_arm(
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     scrut_type: String,
+    scrut_rendered: String,
     match_result_type: Rc<Node>,
     string_from_mode: bool,
 ) -> String {
@@ -21755,6 +21790,7 @@ pub fn emit_typed_match_arm(
                     Rc::new(vec![]),
                     shared_types.clone(),
                     scrut_type.clone(),
+                    scrut_rendered.clone(),
                     si.clone(),
                     emit_info.clone(),
                 ),
@@ -21767,6 +21803,7 @@ pub fn emit_typed_match_arm(
                     rc_analysis.clone(),
                     shared_types.clone(),
                     scrut_type.clone(),
+                    scrut_rendered.clone(),
                     si.clone(),
                     emit_info.clone(),
                 )
@@ -21776,6 +21813,7 @@ pub fn emit_typed_match_arm(
                     Rc::new(vec![]),
                     shared_types.clone(),
                     scrut_type.clone(),
+                    scrut_rendered.clone(),
                     si.clone(),
                     emit_info.clone(),
                 )
@@ -24347,6 +24385,16 @@ pub fn emit_rust_tco_match(
                 }
                 _ => "".to_string(),
             };
+            let tco_scrut_rendered = match s.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: rt, .. }) => render_rust_type(
+                    rt.clone(),
+                    shared_types.clone(),
+                    emit_info.corpus_repr.clone(),
+                    frame.scope.clone().type_env.clone().source_indices.clone(),
+                    emit_info.clone(),
+                ),
+                _ => "".to_string(),
+            };
             let native_tco_fm = if arms_are_freemonoid_coproduct(
                 arm_list.clone(),
                 tco_scrut_type.clone(),
@@ -24391,6 +24439,7 @@ pub fn emit_rust_tco_match(
                                 shared_types.clone(),
                                 emit_info.clone(),
                                 tco_scrut_type.clone(),
+                                tco_scrut_rendered.clone(),
                             ));
                         }
                         __result
@@ -24765,6 +24814,7 @@ pub fn emit_typed_tco_match_arm(
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     scrut_type: String,
+    scrut_rendered: String,
 ) -> String {
     {
         let arm_pat = arm_pattern(arm.clone());
@@ -24785,6 +24835,7 @@ pub fn emit_typed_tco_match_arm(
                 rc_analysis.clone(),
                 shared_types.clone(),
                 scrut_type.clone(),
+                scrut_rendered.clone(),
                 si.clone(),
                 emit_info.clone(),
             )
@@ -24794,6 +24845,7 @@ pub fn emit_typed_tco_match_arm(
                 Rc::new(vec![]),
                 shared_types.clone(),
                 scrut_type.clone(),
+                scrut_rendered.clone(),
                 si.clone(),
                 emit_info.clone(),
             )
