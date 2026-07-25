@@ -289,10 +289,10 @@ fn nominal_distinct_interpretation_structure_witness() -> InterpretationStructur
   }
 }
 
-fn nominal_distinct_termination_proof() -> TerminationProof {
-  TerminationProof {
+fn nominal_distinct_termination_proof() -> v2.std.cardinality.TerminationProof {
+  v2.std.cardinality.TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: ^nominal_distinct_descent_dimension }
+    strict: v2.std.cardinality.RankingDimension { measured: ^nominal_distinct_descent_dimension }
   }
 }
 

@@ -86,9 +86,9 @@ fn emit_field_eval_facts_with_descent(node: Node, descent_symbol: Symbol) -> Inf
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
     descent: Holds {
-      value: TerminationProof {
+      value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
-        strict: RankingDimension { measured: descent_symbol }
+        strict: v2.std.cardinality.RankingDimension { measured: descent_symbol }
       }
     }
   )
