@@ -30,23 +30,9 @@ data meta_exec_realization_edge_path_prefixes: List<String> = [
   "dag/test/claim/"
 ]
 
-data meta_exec_confinement_exception_roster: List<FrontierRow> = [
-  frontier_row(
-    unit: "dag/gunbc/ci_deploy_target_host.dag",
-    reason: "deploy-target host probe still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
-    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
-  ),
-  frontier_row(
-    unit: "dag/gunbc/host_runner_memory_cap_verify.dag",
-    reason: "runner memory-cap verification still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
-    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
-  ),
-  frontier_row(
-    unit: "dag/gunbc/tools/review.dag",
-    reason: "review tooling still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
-    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
-  )
-]
+data meta_exec_confinement_roster_empty_note: String = "Roster 3 -> 0 (shell->dag bucket A). dag/gunbc/tools/review.dag and dag/gunbc/ci_deploy_target_host.dag were STALE — neither has invoked extdeps.shell.exec for several merges (review.dag imports only extdeps.git; ci_deploy_target_host.dag imports extdeps.shell for shell.Env.Get, which is not the confined module — see non_exec_import_is_not_leak_holds). dag/gunbc/host_runner_memory_cap_verify.dag was the genuine remainder and dissolved in the same PR: its probed_at read moved from a retained_runtime shell.Exec.Run onto the typed extdeps.clock Clock.Now op via gunbc.clock_read, joining the memory-property reads already on typed systemd.Systemctl.ShowProperty. An EMPTY roster is the shrink-only end state: with no rows, every intent-layer import of the confined module is a leak with no exception to grant, so meta_exec_confinement_holds_canonical alone gates the tree. Adding a row back is a conspicuous, reviewable event BY EXECUTION, not by diligence: meta_exec_roster_shrunk_to_empty_holds (v2.test.meta_exec_confinement.roster_soundness, enrolled per-PR) reds in the same PR that adds one. That wall is what runs on the fast lane, NOT meta_exec_roster_sound_live — the live receipt costs 13.5s cold against a 5s budget (measured 2026-07-25) and lives in v2.test.long.meta_exec_confinement_clean_tree as a backstop on a lane that is still dark. The wall is affordable because it needs no scan at all: stale_count is bounded above by roster length, so length 0 proves soundness outright. A future justified row must therefore land WITH a live soundness receipt on a real cadence — the wall relaxes to that receipt, never the reverse."
+
+data meta_exec_confinement_exception_roster: List<FrontierRow> = []
 
 fn meta_exec_confinement_exception_paths() -> List<String> {
   frontier_units(rows: meta_exec_confinement_exception_roster)

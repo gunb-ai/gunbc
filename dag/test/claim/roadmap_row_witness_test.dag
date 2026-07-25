@@ -1,0 +1,96 @@
+module test.claim.roadmap_row_witness
+
+import gunbc.roadmap_style { roadmap_css }
+import gunbc.roadmap_page { roadmap_page_for_authority }
+import gunbc.roadmap_component {
+  roadmap_row_archetype, roadmap_row_grid_template,
+  RoadmapRowRegion, RowPlacement, HeadTrack, InTitleFlow, UnderHead,
+  node_mid_class, dispatch_reserved_width,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data roadmap_row_witness_note: String = "Composition slice 2's receipts: the RoadmapRow archetype's grid asserted over the SERVED surfaces (the emitted stylesheet and the rendered page), the actuator's scale proven derived-not-set, and the density consumption pinned — the expected blocks are assembled from the archetype's own derivation fns and asserted verbatim against the emission, the same full-block pattern the page witness set. Declared bound: contains-grain cannot count occurrences, so a ROGUE duplicate block for the same selector is outside this file's reach — the register and tactile suites scan the wider sheet."
+
+fn expected_node_head_block() -> String {
+  join([
+    ".node-head { display: grid; grid-template-columns: ",
+    roadmap_row_grid_template(),
+    "; gap: var(--space-8); align-items: center; min-height: var(--h-row) }",
+  ], "")
+}
+
+fn expected_node_mid_block() -> String {
+  join([
+    ".", node_mid_class,
+    " { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; min-width: var(--space-0) }",
+  ], "")
+}
+
+fn expected_row_actuator_block() -> String {
+  join([
+    ".node-head .dispatch-btn { font-size: var(--text-11); min-height: var(--h-row); padding: var(--space-0) var(--space-8); margin-left: var(--space-0); max-width: ",
+    dispatch_reserved_width(),
+    "; overflow: hidden; white-space: nowrap }",
+  ], "")
+}
+
+data grid_structure_note: String = "The template the stylesheet carries must be the one DERIVED from the archetype's placements — the expected block embeds roadmap_row_grid_template(), so an archetype edit the stylesheet misses, or a hand template the archetype never declared, reds. The head-track count (3: chip auto, title 1fr, actuator auto) derives from the placement fold, never a literal claim about the string."
+
+fn head_track_count() -> Int {
+  count(roadmap_row_archetype |> filter(r => match r.placement {
+    HeadTrack { track: _ } => true
+    InTitleFlow => false
+    UnderHead => false
+  }))
+}
+
+test fn roadmap_row_grid_structure_holds() -> Bool {
+  return string_contains(s: roadmap_css(), pattern: expected_node_head_block())
+    && string_contains(s: roadmap_css(), pattern: expected_node_mid_block())
+    && head_track_count() == 3
+    && roadmap_row_grid_template() == "auto 1fr auto"
+}
+
+fn authority_page_html() -> String {
+  match try_serialize_html_source(node: roadmap_page_for_authority()) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+test fn roadmap_row_page_carries_the_cells() -> Bool {
+  let h = authority_page_html()
+  return h.length() > 0
+    && string_contains(s: h, pattern: join(["class=\"", node_mid_class, "\""], ""))
+    && string_contains(s: h, pattern: "class=\"node-head\"")
+}
+
+data actuator_derived_note: String = "Derived-not-set, both directions on ONE predicate: the block that ships must be the derived one (verbatim presence), and the derived block itself must draw extent from the row token and width from the caption reservation while carrying no fresh literal (no px, no h-control). The planted RED feeds the same predicate the exact block a well-meaning hand retune would write — the discrimination lives in the predicate, not the fixture."
+
+fn actuator_block_derived(block: String) -> Bool {
+  block.length() > 0
+    && string_contains(s: block, pattern: "min-height: var(--h-row)")
+    && string_contains(s: block, pattern: "max-width: ")
+    && !string_contains(s: block, pattern: "h-control")
+    && !string_contains(s: block, pattern: "px")
+}
+
+test fn roadmap_row_actuator_scale_derived_not_set() -> Bool {
+  return string_contains(s: roadmap_css(), pattern: expected_row_actuator_block())
+    && actuator_block_derived(block: expected_row_actuator_block())
+}
+
+test fn roadmap_row_actuator_red_on_hand_scale() -> Bool {
+  let hand_scaled = ".node-head .dispatch-btn { font-size: var(--text-11); min-height: var(--h-control); padding: 3px 8px }"
+  return !actuator_block_derived(block: hand_scaled)
+}
+
+data density_census_note: String = "The density cells of this slice's own emission, pinned tokened: the three expected blocks carry only var() lengths (the reservation's ch value is a typed derivation, not a bare pixel). The module-wide untokened-length census walls the class; this locates the row's own blocks."
+
+test fn roadmap_row_density_all_tokened() -> Bool {
+  return !string_contains(s: expected_node_head_block(), pattern: "px")
+    && !string_contains(s: expected_node_mid_block(), pattern: "px")
+    && !string_contains(s: expected_row_actuator_block(), pattern: "px")
+}
