@@ -32,6 +32,7 @@ type ReprGroundingDeriveElemShape
   | ReprDeriveElemKernelUnit
   | ReprDeriveElemNullaryEnumCopy
   | ReprDeriveElemSymbolWrappedOrdCarrier
+  | ReprDeriveElemPayloadCoproduct
   | ReprDeriveElemUnknown
 
 fn repr_grounding_derive_shape_has_trait(
@@ -116,6 +117,15 @@ fn repr_grounding_derive_shape_has_trait(
         ReprDeriveEq => true
         ReprDerivePartialOrd => true
         ReprDeriveOrd => true
+        ReprDeriveSerialize => true
+        ReprDeriveDeserialize => true
+        _ => false
+      }
+    ReprDeriveElemPayloadCoproduct =>
+      match derive_trait {
+        ReprDeriveDebug => true
+        ReprDeriveClone => true
+        ReprDerivePartialEq => true
         ReprDeriveSerialize => true
         ReprDeriveDeserialize => true
         _ => false

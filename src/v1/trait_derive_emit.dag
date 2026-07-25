@@ -9,6 +9,7 @@ import v1.compiler.emit { to_pascal }
 import std.trait_derive_shape {
   ReprGroundingDeriveElemShape,
   ReprDeriveElemNullaryEnumCopy,
+  ReprDeriveElemPayloadCoproduct,
   ReprDeriveElemSymbolWrappedOrdCarrier,
   ReprDeriveElemUnknown,
   repr_grounding_derive_completeness_predicate,
@@ -38,7 +39,7 @@ fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
   if v1_coproduct_all_variants_nullary(children: children) {
     ReprDeriveElemNullaryEnumCopy
   } else {
-    ReprDeriveElemUnknown
+    ReprDeriveElemPayloadCoproduct
   }
 }
 
@@ -102,8 +103,14 @@ fn v1_emit_enum_derives(children: List<Node>, source_indices: Map<String, Newlin
       } else {
         v1_trait_derive_refuse("trait_derive_emit: nullary coproduct derive completeness refused")
       }
+    ReprDeriveElemPayloadCoproduct =>
+      if repr_grounding_derive_completeness_predicate(payload_coproduct_derive_traits(), shape) {
+        rust_trait_derive_attr_from_traits(payload_coproduct_derive_traits())
+      } else {
+        v1_trait_derive_refuse("trait_derive_emit: payload coproduct derive completeness refused")
+      }
     ReprDeriveElemUnknown =>
-      rust_trait_derive_attr_from_traits(payload_coproduct_derive_traits())
+      v1_trait_derive_refuse("trait_derive_emit: unclassified elem shape refused")
     _ =>
       v1_trait_derive_refuse("trait_derive_emit: coproduct elem shape unsupported for derive selection")
   }

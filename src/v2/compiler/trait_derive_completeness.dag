@@ -16,6 +16,7 @@ import std.trait_derive_shape {
   ReprDeriveElemKernelBool,
   ReprDeriveElemKernelUnit,
   ReprDeriveElemNullaryEnumCopy,
+  ReprDeriveElemPayloadCoproduct,
   ReprDeriveElemUnknown,
   repr_grounding_derive_shape_has_trait,
   repr_grounding_derive_completeness_predicate,
@@ -70,7 +71,7 @@ fn repr_grounding_derive_elem_shape(elem: Node) -> ReprGroundingDeriveElemShape 
       if coproduct_all_variants_nullary(edges: elem.children) {
         ReprDeriveElemNullaryEnumCopy
       } else {
-        ReprDeriveElemUnknown
+        ReprDeriveElemPayloadCoproduct
       }
     TypeNode { connective: Atom { identity: id } } =>
       if id == ^target_collection_kernel_string || id == ^symbol_kernel_type_atom {

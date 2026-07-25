@@ -2171,15 +2171,29 @@ fn rust_decl_shared_derive_productions() -> List<FormalProduction> {
   ]
 }
 
-fn rust_trait_derive_surface_binding_for_coproduct(coproduct: Node) -> Symbol {
+fn rust_trait_derive_coproduct_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn rust_trait_derive_surface_binding_for_coproduct(coproduct: Node) -> Outcome<Symbol> {
   match coproduct.kind {
     TypeNode { connective: Disj } =>
       if coproduct_all_variants_nullary(edges: coproduct.children) {
-        ^rust_decl_derive_enum_copy_binding
+        outcome_accepted(value: ^rust_decl_derive_enum_copy_binding)
       } else {
-        ^rust_decl_derive_enum_binding
+        outcome_accepted(value: ^rust_decl_derive_enum_binding)
       }
-    _ => ^rust_decl_derive_enum_binding
+    _ =>
+      outcome_rejected(
+        d: rust_trait_derive_coproduct_diagnostic(
+          reason: ^rust_trait_derive_coproduct_connective_unsupported,
+          node: coproduct
+        )
+      )
   }
 }
 
@@ -2195,7 +2209,7 @@ fn rust_decl_struct_derive_binding() -> Symbol {
   ^rust_decl_derive_struct_binding
 }
 
-fn rust_decl_enum_derive_binding_for_coproduct(coproduct: Node) -> Symbol {
+fn rust_decl_enum_derive_binding_for_coproduct(coproduct: Node) -> Outcome<Symbol> {
   rust_trait_derive_surface_binding_for_coproduct(coproduct: coproduct)
 }
 

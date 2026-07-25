@@ -2,8 +2,10 @@ module v2.test.emit.trait_derive_seed_emit_binding_test
 
 import std.trait_derive_shape {
   ReprDeriveElemNullaryEnumCopy,
+  ReprDeriveElemPayloadCoproduct,
   ReprDeriveElemSymbolWrappedOrdCarrier,
   nullary_coproduct_derive_traits,
+  payload_coproduct_derive_traits,
   symbol_wrapped_ord_carrier_derive_traits,
   record_derive_traits_heap,
   record_derive_traits_copy,
@@ -40,8 +42,16 @@ test fn ord_carrier_attr_differs_from_nullary() -> Bool {
   ord_attr != "" && ord_attr != nullary_attr
 }
 
+test fn payload_coproduct_predicate_satisfied() -> Bool {
+  repr_grounding_derive_completeness_predicate(
+    payload_coproduct_derive_traits(),
+    ReprDeriveElemPayloadCoproduct
+  )
+}
+
 test fn trait_derive_seed_emit_binding_witness_holds() -> Bool {
   nullary_coproduct_predicate_satisfied()
+    && payload_coproduct_predicate_satisfied()
     && record_heap_attr_contains_serde()
     && ord_carrier_shape_rejects_nullary_copy_traits()
     && ord_carrier_attr_differs_from_nullary()

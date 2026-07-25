@@ -16,12 +16,16 @@ import v2.compiler.trait_derive_completeness {
 import std.trait_derive_shape {
   ReprDeriveElemKernelString,
   ReprDeriveElemNullaryEnumCopy,
-  ReprDeriveElemUnknown
+  ReprDeriveElemPayloadCoproduct,
+  ReprDeriveElemUnknown,
+  payload_coproduct_derive_traits,
+  repr_grounding_derive_completeness_predicate
 }
 import v2.extdeps.languages.rust {
   rust_trait_derive_surface_binding_for_coproduct,
   rust_trait_derive_surface_binding_for_record
 }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.compilers.target_model {
   RequiredTraitWitness,
   TargetCollectionWitnessOrd,
@@ -102,6 +106,13 @@ fn tdc_unknown_atom_node() -> Node {
   }
 }
 
+fn tdc_elem_shape_is_payload_coproduct(elem: Node) -> Bool {
+  match repr_grounding_derive_elem_shape(elem: elem) {
+    ReprDeriveElemPayloadCoproduct => true
+    _ => false
+  }
+}
+
 fn tdc_elem_shape_is_unknown(elem: Node) -> Bool {
   match repr_grounding_derive_elem_shape(elem: elem) {
     ReprDeriveElemUnknown => true
@@ -137,6 +148,20 @@ fn tdc_binding_is(binding: Symbol, expected: Symbol) -> Bool {
   binding == expected
 }
 
+fn tdc_coproduct_binding_accepted(coproduct: Node) -> Symbol {
+  match rust_trait_derive_surface_binding_for_coproduct(coproduct: coproduct) {
+    Accepted { value: binding, diagnostics: _ } => binding
+    Rejected { .. } => ^tdc_impossible_coproduct_binding
+  }
+}
+
+fn tdc_coproduct_binding_rejected(coproduct: Node) -> Bool {
+  match rust_trait_derive_surface_binding_for_coproduct(coproduct: coproduct) {
+    Rejected { .. } => true
+    Accepted { .. } => false
+  }
+}
+
 test fn tdc_string_kernel_satisfies_clone_ord_serde_not_add() -> Bool {
   repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveClone, elem: symbol_kernel_type_node())
     && repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveOrd, elem: symbol_kernel_type_node())
@@ -165,15 +190,24 @@ test fn tdc_unknown_atom_refuses_ord_completeness() -> Bool {
     )
 }
 
+test fn tdc_payload_coproduct_shape_and_predicate() -> Bool {
+  tdc_elem_shape_is_payload_coproduct(elem: tdc_payload_enum_node())
+    && repr_grounding_derive_completeness_predicate(
+      payload_coproduct_derive_traits(),
+      ReprDeriveElemPayloadCoproduct
+    )
+    && tdc_binding_is(
+      binding: tdc_coproduct_binding_accepted(coproduct: tdc_payload_enum_node()),
+      expected: ^rust_decl_derive_enum_binding
+    )
+    && tdc_coproduct_binding_rejected(coproduct: tdc_unknown_atom_node())
+}
+
 test fn tdc_nullary_enum_copy_shape_and_binding() -> Bool {
   tdc_elem_shape_is_nullary_enum_copy(elem: tdc_nullary_enum_node())
     && tdc_binding_is(
-      binding: rust_trait_derive_surface_binding_for_coproduct(coproduct: tdc_nullary_enum_node()),
+      binding: tdc_coproduct_binding_accepted(coproduct: tdc_nullary_enum_node()),
       expected: ^rust_decl_derive_enum_copy_binding
-    )
-    && tdc_binding_is(
-      binding: rust_trait_derive_surface_binding_for_coproduct(coproduct: tdc_payload_enum_node()),
-      expected: ^rust_decl_derive_enum_binding
     )
 }
 
@@ -196,6 +230,7 @@ test fn tdc_trait_derive_completeness_predicate_witness_holds() -> Bool {
   tdc_string_kernel_satisfies_clone_ord_serde_not_add()
     && tdc_int_kernel_satisfies_arith_and_ord()
     && tdc_unknown_atom_refuses_ord_completeness()
+    && tdc_payload_coproduct_shape_and_predicate()
     && tdc_nullary_enum_copy_shape_and_binding()
     && tdc_symbol_kernel_string_shape()
     && tdc_record_surface_binding_heap_vs_copy()
