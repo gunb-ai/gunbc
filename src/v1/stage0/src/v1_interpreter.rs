@@ -425,8 +425,22 @@ fn optional_absent(ctx: &InterpContext) -> Value {
     }
 }
 
+fn is_optional_value(val: &Value, ctx: &InterpContext) -> bool {
+    matches!(
+        val,
+        Value::Variant {
+            type_name,
+            variant_name,
+            ..
+        } if *type_name == ctx.sym("Optional")
+            && (*variant_name == ctx.sym("Present") || *variant_name == ctx.sym("Absent"))
+    )
+}
+
 fn map_lookup_as_optional(raw: Value, ctx: &InterpContext) -> Value {
-    if matches!(raw, Value::Null) {
+    if is_optional_value(&raw, ctx) {
+        raw
+    } else if matches!(raw, Value::Null) {
         optional_absent(ctx)
     } else {
         optional_present(raw, ctx)
@@ -4146,7 +4160,8 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
         let key = args.first().ok_or_else(|| InterpError::TypeError {
             msg: "lookup requires a key argument".to_string(),
         })?;
-        return raw_map_lookup_witness(&receiver_val, key, env, ctx);
+        let raw = raw_map_lookup(&receiver_val, key, env, ctx)?;
+        return Ok(map_lookup_as_optional(raw, ctx));
     }
 
     if let Value::Record { fields, .. } | Value::Variant { fields, .. } = &receiver_val {
@@ -8213,7 +8228,10 @@ fn eval_builtin_inner(
         },
 
         "lookup" => match positional.as_slice() {
-            [map, key] => Ok(Some(raw_map_lookup(map, key, &Env::empty(), ctx)?)),
+            [map, key] => {
+                let raw = raw_map_lookup(map, key, &Env::empty(), ctx)?;
+                Ok(Some(map_lookup_as_optional(raw, ctx)))
+            }
             _ => Ok(None),
         },
 
@@ -9751,30 +9769,6 @@ fn is_map_lookup_receiver(val: &Value) -> bool {
             .map(|ctx| fields_get(fields, ctx.sym("lookup")).is_some())
             .unwrap_or(false),
         _ => false,
-    }
-}
-
-fn raw_map_lookup_witness(
-    map: &Value,
-    key: &Value,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
-    match map {
-        Value::Map(m) => match CanonKey::new(key.clone()) {
-            Some(ck) => match m.get(&ck) {
-                Some(v) => Ok(witness_holds(v.clone(), ctx)),
-                None => Ok(witness_violates(
-                    native_map_absent_diagnostic_value(ctx),
-                    ctx,
-                )),
-            },
-            None => Ok(witness_violates(
-                native_map_absent_diagnostic_value(ctx),
-                ctx,
-            )),
-        },
-        _ => raw_map_lookup(map, key, env, ctx),
     }
 }
 
