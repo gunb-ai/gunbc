@@ -12,6 +12,7 @@ import std.observation {
   MeasuredValue,
   MeasuredUnavailable,
   ObservationEvent,
+  Begin,
   Concluded,
   Done,
   AttentionBasis,
@@ -32,6 +33,21 @@ fn seed_phase_basis(overhead_ms: Nat) -> AttentionBasis {
 
 fn seed_phase_subject(phase: NonEmptyStr) -> ObservationSubject {
   ObservationSubject { segments: [ PhaseSegment { name: phase } ] }
+}
+
+data seed_phase_begin_note: String = "A phase Begin is the matched half of observation law 1 for phase-grain subjects. The floor prelude historically only printed Concluded (the mark fires when the phase ends); compile-path gantt marks already pair .begin/.done, so the seed boundary exposes both arms. Wall at Begin is unmeasured by construction — elapsed does not exist yet — and RSS stays on heartbeat/measurement (ci_event_line does not project event.rss). The compile-path seed renders through a Rust MIRROR of these fns rather than the interpreter: trace_mark runs inside compile itself, and calling back into the interpreter to render would recurse. The mirror is proven byte-equal to this oracle by the seed RED (same pattern as seed_heartbeat_line / render_heartbeat_line_mirror)."
+
+fn phase_begin_line(phase: NonEmptyStr, overhead_ms: Nat, emoji: Bool) -> String {
+  let event = ObservationEvent {
+    subject: seed_phase_subject(phase: phase),
+    transition: Begin,
+    wall: MeasuredUnavailable { cause: "begin has no elapsed yet" as NonEmptyStr },
+    rss: MeasuredUnavailable { cause: "not sampled at a phase boundary" as NonEmptyStr }
+  }
+  ci_render_line(
+    line: ci_event_line(event: event, basis: seed_phase_basis(overhead_ms: overhead_ms)),
+    tier: seed_tier(emoji: emoji)
+  )
 }
 
 fn phase_concluded_line(phase: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat, emoji: Bool) -> String {

@@ -1915,7 +1915,9 @@ fn write_materialization_receipt() -> bool {
     true
 }
 
-/// Emit a fractal Gantt tree to stderr when GUNBC_FLOOR_GANTT=1.
+/// Emit a fractal post-walk tree to stderr when GUNBC_FLOOR_GANTT=1.
+/// Wired (gantt flip): each row is a PhaseSegment Concluded projection via the
+/// observation mirror — the raw `[gantt] … wall: {}ms` key=value tree is gone.
 fn emit_gantt(batch_records: &[BatchRecord], total_wall_nanos: u128) {
     let gantt_enabled = std::env::var("GUNBC_FLOOR_GANTT")
         .map(|v| v == "1")
@@ -1923,64 +1925,72 @@ fn emit_gantt(batch_records: &[BatchRecord], total_wall_nanos: u128) {
     if !gantt_enabled {
         return;
     }
-    let total_ms = total_wall_nanos / 1_000_000;
-    eprintln!("[gantt] claim_executor wall: {}ms", total_ms);
+    let emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
+    let total_ms = (total_wall_nanos / 1_000_000) as u64;
+    eprintln!(
+        "{}",
+        v1_compiler::v1_rt::render_phase_concluded_line_mirror("claim_executor", total_ms, emoji)
+    );
     for rec in batch_records {
-        let batch_ms = rec.wall_nanos / 1_000_000;
-        let pct = if total_ms == 0 {
-            0.0
-        } else {
-            100.0 * batch_ms as f64 / total_ms as f64
-        };
+        let batch_ms = (rec.wall_nanos / 1_000_000) as u64;
+        let batch_label = format!("batch {}", rec.batch_index + 1);
         eprintln!(
-            "[gantt]   batch {} wall: {}ms ({:.1}%)",
-            rec.batch_index + 1,
-            batch_ms,
-            pct,
+            "{}",
+            v1_compiler::v1_rt::render_phase_concluded_line_mirror(&batch_label, batch_ms, emoji)
         );
         for result in &rec.results {
-            let batch_pct = |ns: u128| -> f64 {
-                if rec.wall_nanos == 0 {
-                    0.0
-                } else {
-                    100.0 * ns as f64 / rec.wall_nanos as f64
-                }
-            };
             if result.corpus_witnesses > 0 {
-                // Discovery batch: show serial-sum breakdown.
-                let corpus_resolve_ms = result.corpus_resolve_nanos / 1_000_000;
-                let corpus_eval_ms = result.corpus_eval_nanos / 1_000_000;
-                eprintln!(
-                    "[gantt]     {} ({} witnesses)",
+                let corpus_resolve_ms = (result.corpus_resolve_nanos / 1_000_000) as u64;
+                let corpus_eval_ms = (result.corpus_eval_nanos / 1_000_000) as u64;
+                let name = format!(
+                    "{} ({} witnesses)",
                     result.function, result.corpus_witnesses
                 );
                 eprintln!(
-                    "[gantt]       resolve (serial sum): {}ms  ({:.1}% of batch wall)",
-                    corpus_resolve_ms,
-                    batch_pct(result.corpus_resolve_nanos),
+                    "{}",
+                    v1_compiler::v1_rt::render_phase_concluded_line_mirror(
+                        &name,
+                        corpus_resolve_ms + corpus_eval_ms,
+                        emoji
+                    )
                 );
                 eprintln!(
-                    "[gantt]       eval    (serial sum): {}ms  ({:.1}% of batch wall)",
-                    corpus_eval_ms,
-                    batch_pct(result.corpus_eval_nanos),
+                    "{}",
+                    v1_compiler::v1_rt::render_phase_concluded_line_mirror(
+                        &format!("{}.resolve", result.function),
+                        corpus_resolve_ms,
+                        emoji
+                    )
+                );
+                eprintln!(
+                    "{}",
+                    v1_compiler::v1_rt::render_phase_concluded_line_mirror(
+                        &format!("{}.eval", result.function),
+                        corpus_eval_ms,
+                        emoji
+                    )
                 );
             } else {
-                // Single claim: show resolve (if charged) + eval.
                 if result.resolve_nanos > 0 {
-                    let resolve_ms = result.resolve_nanos / 1_000_000;
+                    let resolve_ms = (result.resolve_nanos / 1_000_000) as u64;
                     eprintln!(
-                        "[gantt]     resolve (entry): {}ms  ({:.1}% of batch wall)",
-                        resolve_ms,
-                        batch_pct(result.resolve_nanos),
+                        "{}",
+                        v1_compiler::v1_rt::render_phase_concluded_line_mirror(
+                            "resolve (entry)",
+                            resolve_ms,
+                            emoji
+                        )
                     );
                 }
-                let wall_ms = result.wall_nanos / 1_000_000;
-                let ok = if result.ok { "PASS" } else { "FAIL" };
+                let wall_ms = (result.wall_nanos / 1_000_000) as u64;
+                let label = if result.ok {
+                    result.function.clone()
+                } else {
+                    format!("{} [FAIL]", result.function)
+                };
                 eprintln!(
-                    "[gantt]     {}: {}ms  [{ok}]  ({:.1}% of batch wall)",
-                    result.function,
-                    wall_ms,
-                    batch_pct(result.wall_nanos),
+                    "{}",
+                    v1_compiler::v1_rt::render_phase_concluded_line_mirror(&label, wall_ms, emoji)
                 );
             }
         }
@@ -3134,6 +3144,81 @@ mod tests {
         assert!(
             !line.contains("[t+"),
             "the projection must not carry the deleted raw phase marker: {line:?}"
+        );
+    }
+
+    fn run_seed_phase_begin_line(
+        source_roots: &[String],
+        phase: &str,
+        overhead_ms: u64,
+        emoji: bool,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_seed_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let out = run_in_context_with_args(
+            &ctx,
+            "phase_begin_line",
+            &[
+                (Some("phase".to_string()), Value::Str(phase.to_string())),
+                (
+                    Some("overhead_ms".to_string()),
+                    Value::Int(overhead_ms as i64),
+                ),
+                (Some("emoji".to_string()), Value::Bool(emoji)),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    // Gantt flip byte-oracle: compile-path mirrors of phase_begin_line /
+    // phase_concluded_line must stay byte-equal to the .dag seed (justified
+    // divergence — interpreter render from inside compile would recurse).
+    #[test]
+    fn gantt_phase_mirrors_match_seed_oracle() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let begin_oracle = run_seed_phase_begin_line(&roots, "compile.frontend", 300_000, true)
+            .expect("phase_begin_line must resolve and render");
+        let begin_mirror =
+            v1_compiler::v1_rt::render_phase_begin_line_mirror("compile.frontend", true);
+        assert_eq!(
+            begin_oracle, begin_mirror,
+            "begin mirror must be byte-equal to seed oracle"
+        );
+        assert!(
+            begin_oracle.starts_with('🔄') && begin_oracle.contains("started compile.frontend"),
+            "begin line shape: {begin_oracle:?}"
+        );
+
+        let done_oracle =
+            render_phase_concluded_line(&roots, "compile.frontend", 12_000, 300_000, true)
+                .expect("phase_concluded_line must resolve and render");
+        let done_mirror = v1_compiler::v1_rt::render_phase_concluded_line_mirror(
+            "compile.frontend",
+            12_000,
+            true,
+        );
+        assert_eq!(
+            done_oracle, done_mirror,
+            "concluded mirror must be byte-equal to seed oracle"
+        );
+        assert!(
+            done_oracle.contains("compile.frontend done in 12 seconds"),
+            "concluded line shape: {done_oracle:?}"
         );
     }
 

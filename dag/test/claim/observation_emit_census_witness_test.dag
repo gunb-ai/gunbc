@@ -14,11 +14,12 @@ import gunbc.observation_emit_census {
   emit_site_is_frontier,
   emit_site_dissolve_on,
   floor_memory_site,
+  gantt_site,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data witness_note: String = "P3 census hygiene, executable against the live seed (docs/plans/progress-observation-design.md section 5). A census that is not checked against the code it censuses is coverage-by-illusion — an inert lens is itself a lie. So every rostered marker is held against the seed file it names: a marker that has vanished reds (the roster went stale, the site was renamed or deleted without re-census), and a frontier row must carry a real, non-empty dissolve-on so the debt stays prioritizable rather than open-ended. The [floor-memory] named negative example has migrated: the raw byte dump is gone, the site is MigratedToObservation via ci_heartbeat_line, and the regime-disclosure line keeps the marker so the roster cannot go stale — the dump shape itself is asserted absent."
+data witness_note: String = "P3 census hygiene, executable against the live seed (docs/plans/progress-observation-design.md section 5). A census that is not checked against the code it censuses is coverage-by-illusion — an inert lens is itself a lie. So every rostered marker is held against the seed file it names: a marker that has vanished reds (the roster went stale, the site was renamed or deleted without re-census), and a frontier row must carry a real, non-empty dissolve-on so the debt stays prioritizable rather than open-ended. Migrated sites ([floor-memory], [gantt]) keep their marker strings so the roster cannot go stale, and each has a RED that the raw byte shape is gone from the seed."
 
 fn census_source(path: String) -> String {
   let r = filesystem_read(path: path)
@@ -62,8 +63,16 @@ fn w_the_named_negative_example_has_migrated() -> Bool {
   string_contains(s: emit_site_dissolve_on(site: floor_memory_site), pattern: "ci_heartbeat_line")
 }
 
+fn w_gantt_has_migrated() -> Bool {
+  census_marker_present(site: gantt_site) &&
+  !emit_site_is_frontier(site: gantt_site) &&
+  string_contains(s: gantt_site.marker, pattern: "gantt") &&
+  string_contains(s: emit_site_dissolve_on(site: gantt_site), pattern: "ci_event_line") &&
+  string_contains(s: emit_site_dissolve_on(site: gantt_site), pattern: "phase_begin_line")
+}
+
 fn w_the_census_states_a_nonzero_frontier_count_never_a_hidden_zero() -> Bool {
-  observation_emit_frontier_count() == 4 &&
+  observation_emit_frontier_count() == 3 &&
   count(observation_emit_roster) == 5
 }
 
@@ -74,11 +83,24 @@ fn w_the_raw_byte_dump_shape_is_gone_from_the_seed() -> Bool {
   string_contains(s: executor, pattern: "render_heartbeat_line_mirror")
 }
 
+fn w_the_raw_gantt_shape_is_gone_from_the_seed() -> Bool {
+  let rt = census_source(path: "src/v1/stage0/src/v1_rt.rs")
+  let executor = census_source(path: "src/v1/stage0/src/bin/claim_executor.rs")
+  !string_contains(s: rt, pattern: "t_ms=") &&
+  !string_contains(s: rt, pattern: "rss_mib=") &&
+  string_contains(s: rt, pattern: "render_phase_begin_line_mirror") &&
+  string_contains(s: rt, pattern: "render_phase_concluded_line_mirror") &&
+  !string_contains(s: executor, pattern: "[gantt] claim_executor wall:") &&
+  string_contains(s: executor, pattern: "render_phase_concluded_line_mirror")
+}
+
 test fn observation_emit_census_witnesses() -> Bool {
   w_every_rostered_marker_still_exists_in_the_seed() &&
   w_roster_staleness_check_discriminates() &&
   w_every_frontier_row_carries_a_real_dissolve_on() &&
   w_the_named_negative_example_has_migrated() &&
+  w_gantt_has_migrated() &&
   w_the_census_states_a_nonzero_frontier_count_never_a_hidden_zero() &&
-  w_the_raw_byte_dump_shape_is_gone_from_the_seed()
+  w_the_raw_byte_dump_shape_is_gone_from_the_seed() &&
+  w_the_raw_gantt_shape_is_gone_from_the_seed()
 }
