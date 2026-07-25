@@ -7986,16 +7986,15 @@ type ExportIndexModuleAccum {
   seen_names: Set<String>
 }
 
+data export_index_canonical_is_the_fold_element_note: String = "§6 bare-minimum cost, same receipt as module_exported_type_names_cost_note. export_index_merge_module's canonical binding was `filter(bindings |> map_values, b => b.name == name) |> first` — a rescan of the WHOLE binding map (with a fresh Vec allocation) once per distinct name, i.e. O(|bindings|^2) per module per closure assembly. It is dead work by construction: the enclosing fold walks THAT SAME map_values sequence in order, and seen_names skips every repeat, so the first element whose name matches is always the fold's own current element. `canonical = binding` is therefore the identical value, not an approximation of it — the order both expressions read is one traversal of one map value, so the equality does not depend on map_values being stable ACROSS runs (§5941 determinism), only on the two reads of the same value agreeing, which the rewrite removes the need for entirely."
+
 fn export_index_merge_module(acc: Map<String, TypeNameExportFacts>, m: TypedModule) -> Map<String, TypeNameExportFacts> {
   fold(m.type_env.bindings |> map_values, init: ExportIndexModuleAccum { index: acc, seen_names: empty_set() }, f: (state, binding) =>
     let name = binding.name
     if set_contains(state.seen_names, name) {
       state
     } else {
-      let canonical = match filter(m.type_env.bindings |> map_values, b => b.name == name) |> first {
-        Present { value: b } => b
-        Absent => binding
-      }
+      let canonical = binding
       let seen_names = set_insert(state.seen_names, name)
       let index = match map_get(state.index, name) {
         Absent =>
