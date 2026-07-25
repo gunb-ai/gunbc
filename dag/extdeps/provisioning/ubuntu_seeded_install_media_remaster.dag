@@ -1,5 +1,6 @@
 module extdeps.provisioning.ubuntu_seeded_install_media_remaster
 
+import gunbc.output_policy { OutcomeIsData }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.shell
@@ -140,8 +141,10 @@ fn observe_install_media_remaster(artifact: UbuntuSeededInstallMediaArtifactRow)
   }
 }
 
+data ensure_grub_cmdline_probe_note: String = "grep exits non-zero when the pattern is ABSENT, and absence is precisely the question this fn asks — it is the idempotence probe that decides whether to substitute or leave the file alone. Both answers are ordinary: on a fresh image the cmdline is missing and gets inserted, on a re-run it is present and nothing happens. The §5 guard holds on the belt_program_available shape: the Bool is consumed as the branch discriminator, never discarded. A grep that could not RUN is a different event and does not travel this arm."
+
 fn install_media_remaster_ensure_grub_cmdline(grub_cfg: NonEmptyStr, cmdline: NonEmptyStr) -> Bool {
-  let already_present = grep.Grep.MatchesFixedString(pattern: cmdline, path: grub_cfg).matches
+  let already_present = grep.Grep.MatchesFixedString(pattern: cmdline, path: grub_cfg, expect: OutcomeIsData).matches
   let substituted = if already_present {
     true
   } else {
