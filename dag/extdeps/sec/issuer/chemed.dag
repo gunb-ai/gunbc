@@ -26,7 +26,7 @@ data chemed_ticker: StockTicker = StockTicker { symbol: "CHE" }
 
 data chemed_issuer_catalog: IssuerCatalogRow = IssuerCatalogRow {
   cik: chemed_cik,
-  legal_name: "Chemed Corporation",
+  registrant_name: "CHEMED CORP",
   primary_ticker: chemed_ticker,
   exchange: Nyse,
   vendor: chemed,

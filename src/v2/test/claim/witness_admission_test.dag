@@ -8,6 +8,7 @@ import v2.workflow.witness_admission {
 }
 import std.witness_admission {
   FalsifierRehomedBinWet,
+  FalsifierSubstrateLongLane,
   WitnessConsumerCadence,
   FalsifierSelfHostWet,
   BinWitnessWet,
@@ -132,6 +133,24 @@ fn witness_rehomed_bin_wet_manifest_covers_holds() -> Bool {
   )
 }
 
+fn witness_substrate_long_lane_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
+    function: "lens_affected_set_provenance_producer_single_read_emits_row_holds",
+    excluded_from_discovery: true
+  ) {
+    FalsifierSubstrateLongLane => true
+    _ => false
+  }
+}
+
+fn witness_substrate_long_lane_manifest_covers_holds() -> Bool {
+  witness_admission_manifest_covers_row(
+    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
+    function: "lens_affected_set_provenance_producer_single_read_emits_row_holds"
+  )
+}
+
 fn witness_explicit_manifest_nonempty_holds() -> Bool {
   length(xs: witness_admission_explicit_consumer_manifest()) > 0
 }
@@ -148,5 +167,7 @@ test fn witness_admission_invariant_holds() -> Bool {
     && witness_discovery_row_consumer_holds()
     && witness_rehomed_bin_wet_consumer_holds()
     && witness_rehomed_bin_wet_manifest_covers_holds()
+    && witness_substrate_long_lane_consumer_holds()
+    && witness_substrate_long_lane_manifest_covers_holds()
     && witness_explicit_manifest_nonempty_holds()
 }

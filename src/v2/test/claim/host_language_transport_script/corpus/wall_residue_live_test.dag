@@ -37,12 +37,6 @@ test fn residue_host_runner_memory_cap_verify_clean() -> Bool {
   ) == 0
 }
 
-test fn residue_srv3_install_diagnostic_checklist_clean() -> Bool {
-  transport_script_live_literal_violation_count_for_path(
-    path: "dag/gunbc/srv3_install_diagnostic_checklist.dag"
-  ) == 0
-}
-
 test fn residue_command_runner_clean() -> Bool {
   transport_script_live_literal_violation_count_for_path(
     path: "dag/gunbc/command_runner.dag"

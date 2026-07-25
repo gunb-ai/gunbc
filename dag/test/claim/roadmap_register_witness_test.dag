@@ -20,7 +20,7 @@ import gunbc.design.scale { scale_root_css }
 import gunbc.site.mark { render_mark }
 import gunbc.design.interaction {
   Approach, Reveal, Dispatch, BehaviorRow, InteractiveElement,
-  DispatchBtnElement, element_id_eq, element_id_key,
+  ElementId, DispatchBtnElement, element_id_eq, element_id_key,
   verb_key, coverage_gaps, coverage_complete,
 }
 import gunbc.roadmap_style { roadmap_rules, roadmap_css, roadmap_instance_rules }
@@ -90,13 +90,21 @@ fn witness_roadmap_coverage_complete() -> Bool {
     && roadmap_unrealized_behaviors(rows: roadmap_behaviors).length() == 0
 }
 
-fn approach_only_rows() -> List<BehaviorRow> {
+data dropped_row_witness_scope_note: String = "The drop is scoped to ONE element's ONE verb so the assertion stays a LOCATED-gap check as the roster grows. The earlier form dropped every dispatch row tree-wide and asserted exactly one gap, which was only true while one element declared that verb — adding the sound toggle made it two and the witness reddened for a reason that had nothing to do with the property under test. A count that tracks the roster is a count that has to be re-tuned on every unrelated addition, and a witness re-tuned that often stops being read. Dropping the dispatch button's dispatch rows specifically keeps the claim exactly what it was meant to be: a missing row names its own element and verb."
+
+fn rows_without(element: ElementId, verb_label: String) -> List<BehaviorRow> {
   fold(roadmap_behaviors, init: [], f: (acc, r) =>
-    if verb_key(v: r.verb) == "dispatch" { acc } else { concat(acc, [r]) })
+    if element_id_eq(a: r.element, b: element) && verb_key(v: r.verb) == verb_label {
+      acc
+    } else {
+      concat(acc, [r])
+    })
 }
 
 fn witness_dropped_row_gap_is_located() -> Bool {
-  let gaps = coverage_gaps(elements: roadmap_elements, rows: approach_only_rows())
+  let gaps = coverage_gaps(
+    elements: roadmap_elements,
+    rows: rows_without(element: DispatchBtnElement, verb_label: "dispatch"))
   gaps.length() == 1
     && all(gaps, g => element_id_eq(a: g.element, b: DispatchBtnElement) && verb_key(v: g.verb) == "dispatch")
 }

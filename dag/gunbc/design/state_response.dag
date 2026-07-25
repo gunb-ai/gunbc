@@ -1,0 +1,242 @@
+module gunbc.design.state_response
+
+import std.decl_ref { DeclarationRef }
+import extdeps.languages.css.properties { CssPropertyName, css_property_wire }
+import gunbc.design.material {
+  BuildRule, StaticRule, ResponseRule, SelfResponse,
+  MotionTrigger, TimingToken, CssDecl, decl,
+}
+
+data state_response_note: String = "The interaction-totality law's construction half (composition slice 1; operator question round 5: how do we prevent the flash class?). The defect's mechanism: a response row's decls are CONSTANTS, so a state-dependent channel is either hand-multiplied across state selectors or accidentally constant-ized — the press fill was authored in the one channel that bypassed the detent-table pattern. This module is the detent table generalized past transforms: a component declares its STATE FAMILY once (members = binding x family key, the single authority for the state-class-to-band mapping that was previously spelled at three sites), declares each stateful CHANNEL once as a function of state (a var role, never a literal), and the realize fold multiplies the channel across every member — a missing family member is unwritable by totality of the fold, exactly as a detent edge cannot skip the table.
+
+The scope axis is CONSTRUCTION, not lint: a channel enters a component's table only as PerStateFamily (fold-realized) or ConstantByLaw carrying a typed DeclarationRef to the recorded ruling row (management-lane strengthening, adopted: 'who signed this constant' is a click, not archaeology). The undeclared middle — where the flash bug lived — stops being representable, because the table's element type has no third arm."
+
+data state_response_census_note: String = "The census half, executed over the EMITTED CSS (never only over the rows — the original defect was precisely an emission path that bypassed the table): every (family member x per-family channel) cell must resolve in-family — the member's selector carries the channel's value drawn from the member's OWN var family, and the var family is defined in the emitted root blocks — or the channel sits under a declared ConstantByLaw. Cells are counted; faults are typed and located (member key + channel property), mirroring the detent-edge lesson: an undefined var, a missing value, and a cross-family value are three faults, never one, because the first census cut that conflates fault kinds is the one that fails open. Declared limitation: cross-family detection probes at block grain, which exists only for class-bound members — a cross-wired REST member surfaces as ChannelValueMissing (still red, less located), recorded here rather than papered over.
+
+StandingIntent shaping (ask once, compile forever — enrollment deferred until the registry exists, deliberately not built here): the intent is 'every stateful channel of a stateful component resolves in-family or under a signed constant'; scope = the component families passed to the census (today: the dispatch instrument over roadmap_css); consumer = dag/test/claim/state_response_totality_witness_test.dag on the PR cadence; red controls = the cross-family and dropped-member planted fixtures in that file."
+
+type StateVarRole
+  = FillVar
+  | InkVar
+  | PressedVar
+
+fn state_var_suffix(role: StateVarRole) -> String {
+  match role {
+    FillVar => ""
+    InkVar => "-ink"
+    PressedVar => "-pressed"
+  }
+}
+
+fn state_var_name(prefix: String, key: String, role: StateVarRole) -> String {
+  join([prefix, key, state_var_suffix(role: role)], "")
+}
+
+fn state_var_ref(prefix: String, key: String, role: StateVarRole) -> String {
+  join(["var(--", state_var_name(prefix: prefix, key: key, role: role), ")"], "")
+}
+
+type StateBinding
+  = RestBinding
+  | StateClassBinding { class_name: String }
+
+type StateFamilyMember {
+  binding: StateBinding
+  key: String
+}
+
+type StateFamily {
+  component_class: String
+  var_prefix: String
+  members: List<StateFamilyMember>
+}
+
+data member_subject_note: String = "RestBinding realizes on the component's own class selector — the rest state IS the unqualified component, which is why the base rule owns the rest paint. A class-bound member composes component class + state class, the same compound the client program flips."
+
+fn member_selector_text(f: StateFamily, m: StateFamilyMember) -> String {
+  match m.binding {
+    RestBinding => join([".", f.component_class], "")
+    StateClassBinding { class_name } => join([".", f.component_class, ".", class_name], "")
+  }
+}
+
+fn member_subject(f: StateFamily, m: StateFamilyMember) -> SelectorSubject {
+  match m.binding {
+    RestBinding => ClassSelector { name: f.component_class }
+    StateClassBinding { class_name: _ } => RawSelector { text: member_selector_text(f: f, m: m) }
+  }
+}
+
+type StateChannel
+  = RestChannel { prop: CssPropertyName, role: StateVarRole }
+  | ResponseChannel { trigger: MotionTrigger, prop: CssPropertyName, role: StateVarRole, transition_props: String }
+
+type ChannelScope
+  = PerStateFamily { channel: StateChannel }
+  | ConstantByLaw { channel_name: String, ruling: DeclarationRef }
+
+fn rest_member(f: StateFamily) -> StateFamilyMember? {
+  f.members |> filter(m => match m.binding { RestBinding => true StateClassBinding { class_name: _ } => false }) |> first
+}
+
+fn member_channel_decl(f: StateFamily, m: StateFamilyMember, prop: CssPropertyName, role: StateVarRole) -> CssDecl {
+  decl(prop: prop, value: state_var_ref(prefix: f.var_prefix, key: m.key, role: role))
+}
+
+data state_rest_decl_note: String = "The rest member's channel decls, for splicing into the component's base rule at the positions its authoring order demands. Returns a LIST so an absent rest member yields an absent decl rather than a fabricated one — the absence then surfaces through the byte oracle and the census, loudly, instead of a placeholder value surviving review."
+
+fn state_rest_decl(f: StateFamily, prop: CssPropertyName, role: StateVarRole) -> List<CssDecl> {
+  match rest_member(f: f) {
+    Absent => []
+    Present { value: m } => [member_channel_decl(f: f, m: m, prop: prop, role: role)]
+  }
+}
+
+fn scope_rest_decls(f: StateFamily, m: StateFamilyMember, channels: List<ChannelScope>) -> List<CssDecl> {
+  fold(channels, init: [], f: (acc, c) => match c {
+    PerStateFamily { channel } => match channel {
+      RestChannel { prop, role } => concat(acc, [member_channel_decl(f: f, m: m, prop: prop, role: role)])
+      ResponseChannel { trigger: _, prop: _, role: _, transition_props: _ } => acc
+    }
+    ConstantByLaw { channel_name: _, ruling: _ } => acc
+  })
+}
+
+data state_paint_rules_note: String = "The rest-channel realize fold: one StaticRule per class-bound member, carrying every RestChannel of the table in table order, in roster order. This is what replaces the hand-multiplied per-state paint rules — a member added to the roster gets its paint block emitted by this fold with no further authoring, and a member skipped is not writable because there is no per-member call site left to forget."
+
+fn state_paint_rules(f: StateFamily, channels: List<ChannelScope>) -> List<BuildRule> {
+  fold(f.members, init: [], f: (acc, m) => match m.binding {
+    RestBinding => acc
+    StateClassBinding { class_name: _ } =>
+      concat(acc, [StaticRule { selector: member_subject(f: f, m: m), decls: scope_rest_decls(f: f, m: m, channels: channels) }])
+  })
+}
+
+data family_response_rules_note: String = "The response-channel realize fold — the press-fill law authored once as a function of state and multiplied across the family: every member (rest included — the base selector's own response) gets a ResponseRule whose response decl draws the channel's var role from the member's OWN key. Totality is the construction: the fold visits the roster, so the fault class 'one pressed var presenting as total' has no author-side spelling anymore. Timing flows in from the BehaviorRow that causes the response, exactly as detent realization takes its clock from the row rather than the table."
+
+fn channel_response_rules(f: StateFamily, trigger: MotionTrigger, prop: CssPropertyName, role: StateVarRole, transition_props: String, timing: TimingToken) -> List<BuildRule> {
+  map(f.members, m =>
+    ResponseRule {
+      subject: member_subject(f: f, m: m),
+      shape: SelfResponse,
+      trigger: trigger,
+      transition_props: transition_props,
+      timing: timing,
+      base_decls: [],
+      response_decls: [member_channel_decl(f: f, m: m, prop: prop, role: role)],
+    })
+}
+
+fn family_response_rules(f: StateFamily, channels: List<ChannelScope>, timing: TimingToken) -> List<BuildRule> {
+  fold(channels, init: [], f: (acc, c) => match c {
+    PerStateFamily { channel } => match channel {
+      RestChannel { prop: _, role: _ } => acc
+      ResponseChannel { trigger, prop, role, transition_props } =>
+        concat(acc, channel_response_rules(f: f, trigger: trigger, prop: prop, role: role, transition_props: transition_props, timing: timing))
+    }
+    ConstantByLaw { channel_name: _, ruling: _ } => acc
+  })
+}
+
+type FamilyCensusFault
+  = FamilyVarUndefined { var_name: String }
+  | ChannelValueMissing
+  | CrossFamilyValue { foreign_key: String }
+
+type FamilyCensusDefect {
+  member_key: String
+  channel_prop: String
+  fault: FamilyCensusFault
+}
+
+fn channel_prop_wire(c: StateChannel) -> String {
+  match c {
+    RestChannel { prop, role: _ } => css_property_wire(p: prop)
+    ResponseChannel { trigger: _, prop, role: _, transition_props: _ } => css_property_wire(p: prop)
+  }
+}
+
+fn channel_role(c: StateChannel) -> StateVarRole {
+  match c {
+    RestChannel { prop: _, role } => role
+    ResponseChannel { trigger: _, prop: _, role, transition_props: _ } => role
+  }
+}
+
+fn expected_cell_decl(f: StateFamily, m: StateFamilyMember, c: StateChannel) -> String {
+  join([channel_prop_wire(c: c), ": ", state_var_ref(prefix: f.var_prefix, key: m.key, role: channel_role(c: c))], "")
+}
+
+fn foreign_cell_decl(f: StateFamily, foreign_key: String, c: StateChannel) -> String {
+  join([channel_prop_wire(c: c), ": ", state_var_ref(prefix: f.var_prefix, key: foreign_key, role: channel_role(c: c))], "")
+}
+
+data census_block_probe_note: String = "A class-bound member's cell is probed as selector-adjacent text: the member's selector followed by a block containing the expected decl would be exact, but blocks interleave channels, so the probe pairs (selector present) with (expected decl present) and, on a miss, substitutes every other member's key into the same decl to name the foreign family it found instead. The rest member's decls live inside the component's base rule among geometry decls, so its probe is the decl alone and cross-family detection is declared out of its reach (state_response_census_note)."
+
+fn member_block_contains(css: String, f: StateFamily, m: StateFamilyMember, expected: String) -> Bool {
+  string_contains(s: css, pattern: member_selector_text(f: f, m: m)) && string_contains(s: css, pattern: expected)
+}
+
+fn foreign_key_found(css: String, f: StateFamily, m: StateFamilyMember, c: StateChannel) -> String {
+  fold(f.members, init: "", f: (acc, other) =>
+    if acc == "" && other.key != m.key && string_contains(s: css, pattern: join([member_selector_text(f: f, m: m), " { ", foreign_cell_decl(f: f, foreign_key: other.key, c: c)], "")) {
+      other.key
+    } else {
+      acc
+    })
+}
+
+fn cell_fault(css: String, f: StateFamily, m: StateFamilyMember, c: StateChannel) -> List<FamilyCensusFault> {
+  let var_name = state_var_name(prefix: f.var_prefix, key: m.key, role: channel_role(c: c))
+  if !string_contains(s: css, pattern: join(["--", var_name, ":"], "")) {
+    [ FamilyVarUndefined { var_name: var_name } ]
+  } else if member_block_contains(css: css, f: f, m: m, expected: expected_cell_decl(f: f, m: m, c: c)) {
+    []
+  } else {
+    match m.binding {
+      RestBinding => [ ChannelValueMissing ]
+      StateClassBinding { class_name: _ } => {
+        let foreign = foreign_key_found(css: css, f: f, m: m, c: c)
+        if foreign == "" {
+          [ ChannelValueMissing ]
+        } else {
+          [ CrossFamilyValue { foreign_key: foreign } ]
+        }
+      }
+    }
+  }
+}
+
+fn per_family_channels(channels: List<ChannelScope>) -> List<StateChannel> {
+  fold(channels, init: [], f: (acc, c) => match c {
+    PerStateFamily { channel } => concat(acc, [channel])
+    ConstantByLaw { channel_name: _, ruling: _ } => acc
+  })
+}
+
+fn constant_by_law_rulings(channels: List<ChannelScope>) -> List<DeclarationRef> {
+  fold(channels, init: [], f: (acc, c) => match c {
+    PerStateFamily { channel: _ } => acc
+    ConstantByLaw { channel_name: _, ruling } => concat(acc, [ruling])
+  })
+}
+
+fn family_census_defects(css: String, f: StateFamily, channels: List<ChannelScope>) -> List<FamilyCensusDefect> {
+  fold(f.members, init: [], f: (acc, m) =>
+    concat(acc, fold(per_family_channels(channels: channels), init: [], f: (inner, c) =>
+      concat(inner, map(cell_fault(css: css, f: f, m: m, c: c), fault =>
+        FamilyCensusDefect { member_key: m.key, channel_prop: channel_prop_wire(c: c), fault: fault })))))
+}
+
+fn family_census_cell_count(f: StateFamily, channels: List<ChannelScope>) -> Int {
+  count(f.members) * count(per_family_channels(channels: channels))
+}
+
+fn family_census_clean(css: String, f: StateFamily, channels: List<ChannelScope>) -> Bool {
+  count(family_census_defects(css: css, f: f, channels: channels)) == 0
+}
+
+fn constant_rulings_all_located(channels: List<ChannelScope>) -> Bool {
+  all(constant_by_law_rulings(channels: channels), r =>
+    r.module_path.length() > 0 && r.decl_name.length() > 0)
+}

@@ -157,9 +157,21 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "roadmap-workspace-remodel-plan",
+    work: DeclarationRef { module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_dispatch_result_band", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the composition-session slices land on their carriers — the StateResponse rule kind and ResponseScope in gunbc.design.*, the RoadmapRow archetype grid, page altitude from the attention law, anomaly evidence in the row disclosure — and the plan registers as a gunbc.plan.Plan row (extends roadmap-workspace-ux-plan, whose row dissolves on its own trigger)" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "ci-two-tier-placement-redesign",
     work: DeclarationRef { module_path: "gunbc.ci_spec", decl_name: "gunbc_ci_spec", field: WholeDeclaration },
     dissolution: HasTrigger { text: "D3 lands the placement axis (PrTier | Gauntlet) on CiSpec rows with the measured 5s-rule roster — the spec rows become the authority; the D4 audit-step deletion and D0/D1 preconditions are tracked on their carriers" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "test-decomposition-wcf-cut",
+    work: DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "gunbc_ci_fast_lane_rule_note", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "every Class C row on the measured head lands fixture/cadence split (or reclassifies F with a named cost-shape owner); dark long/ files classify only at Gauntlet enrollment — then authority collapses into CiSpec placement rows + enrolled cadence rosters and this doc deletes" },
   },
   HandAuthoredDocBind {
     home: PlanDoc,

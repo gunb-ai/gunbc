@@ -15,11 +15,19 @@ import gunbc.roadmap_model {
   Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
   Volume, VolumeSmall, VolumeMedium, VolumeLarge,
 }
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_superseded_by, item_is_done, signoff_accepts, signoff_by }
+import gunbc.roadmap_status {
+  RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
+  TicketFields, TicketUpdate, line_ticket,
+  item_superseded_by, item_is_done, signoff_accepts, signoff_by,
+}
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
-import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier }
-import gunbc.roadmap_component { roadmap_dispatch_asset_path }
+import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes }
+import gunbc.roadmap_component {
+  roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class,
+  disclosure_mark_class, disclosure_mark_glyph, node_mid_class,
+}
 import gunbc.v1_deletion_plan {
   v1_deletion_gates, v1_deletion_milestones, PlanGateSpec, PlanMilestone,
   PlanGate, GateEmitterFixedPoint, GateHonestFrontier, GateLedgerGreen, GateDeletion,
@@ -150,8 +158,32 @@ fn three_gate_progress_markup() -> MarkupNode {
           spec => tg_gate_progress_row(spec: spec))))
 }
 
+data sound_toggle_placement_note: String = "The mute lives in the HEADER, pushed to the far edge by margin-left auto, because it is a property of the whole surface rather than of any row — a per-row mute would be a second control on every line, which is exactly what the exemplar's scope forbids. It renders with an empty label: the text is painted by the client program from the persisted preference on load, so the markup never ships a claim about the sound state that a different browser's storage would contradict. With no JS the control is a blank button that does nothing, which is honest — there is no sound to mute either."
+
+fn sound_toggle_control() -> MarkupNode {
+  ElementNode {
+    tag: "button",
+    attrs: [
+      MarkupAttr { name: "class", value: sound_toggle_class },
+      MarkupAttr { name: "type", value: "button" },
+    ],
+    children: [],
+  }
+}
+
+fn theme_toggle_control() -> MarkupNode {
+  ElementNode {
+    tag: "button",
+    attrs: [
+      MarkupAttr { name: "class", value: theme_toggle_class },
+      MarkupAttr { name: "type", value: "button" },
+    ],
+    children: [],
+  }
+}
+
 fn roadmap_header(title: String) -> MarkupNode {
-  el("header", [ render_mark(depth: 1), el("h1", [ txt(title) ]) ])
+  el("header", [ render_mark(depth: 1), el("h1", [ txt(title) ]), sound_toggle_control(), theme_toggle_control() ])
 }
 
 fn node_status_symbol(rn: RoadmapNode, merged: List<Int>) -> String {
@@ -200,6 +232,7 @@ fn line_title(line: RoadmapItem) -> String {
     AuthoredLine { done, content } => content
     PlainLine { content } => content
     SupersededLine { by: _, content } => content
+    TicketLine { done: _, ticket } => join(["**", ticket.headline, "** — ", ticket.brief], "")
   }
 }
 
@@ -222,25 +255,154 @@ fn lead_nodes(line: RoadmapItem) -> List<MarkupNode> {
   markdown_inlines_to_markup_nodes(inlines: parse_inline_markdown_minimal(text: line_lead(line: line)))
 }
 
+data roadmap_lead_budget_note: String = "The lead is the row's at-a-glance face: everything before the first ' — ' (falling back to the first '. ', then the whole title). A row whose LEAD is itself paragraph-length defeats the disclosure — the brief stays collapsed but the summary line does not, so the reader pays the full text anyway. The bound is authoring residue, not a structural class: no construction forbids a long sentence, so this is the §5-sanctioned lens over the genuinely unstructurable part, and it is typed/located/counted (node id + measured length) rather than a bare Bool, so a red says WHICH row and by how much. 300 chars is the operator's declared bound (roadmap-workspace-ux-plan.md P1b); the corpus cleared it when the three offenders were re-cut (ts-review-sweep, ts-group-census, shelf-sketches), each by moving the ' — ' up to just after its bold headline rather than by deleting content — the body survives verbatim behind the disclosure. Measured distribution at that point: 180 rows under 100 chars, 16 in 100-199, 3 in 200-249, 2 in 250-299, 0 at or over 300."
+
+fn roadmap_lead_budget_chars() -> Int { 300 }
+
+type LeadBudgetViolation {
+  node: String
+  lead_chars: Int
+}
+
+fn lead_budget_violations(nodes: List<RoadmapNode>) -> List<LeadBudgetViolation> {
+  fold(nodes, init: [], f: (acc, rn) => {
+    let n = line_lead(line: rn.line).length()
+    if n > roadmap_lead_budget_chars() {
+      concat(acc, [LeadBudgetViolation { node: rn.node as String, lead_chars: n }])
+    } else {
+      acc
+    }
+  })
+}
+
+fn roadmap_authority_lead_budget_violations() -> List<LeadBudgetViolation> {
+  lead_budget_violations(nodes: doc_all_nodes(doc: roadmap_authority()))
+}
+
+data ticket_brief_budget_note: String = "The brief bound (operator's ticket model: a brief is ~100 words or less, read daily). Same shape as the lead budget: authoring residue no construction can forbid, so a typed located counted census — a red carries the node id and the measured count, never a bare Bool. Words, not characters, because the operator priced it in reading, and a word is the unit reading is priced in."
+
+data ticket_brief_word_budget: Int = 100
+
+type BriefBudgetViolation {
+  node: RoadmapNodeId
+  words: Int
+}
+
+fn ticket_brief_word_count(brief: String) -> Int {
+  count(split(s: brief, delimiter: " "))
+}
+
+fn ticket_brief_violations(nodes: List<RoadmapNode>) -> List<BriefBudgetViolation> {
+  fold(nodes, init: [], f: (acc, rn) => match line_ticket(item: rn.line) {
+    Absent => acc
+    Present { value: t } => {
+      let words = ticket_brief_word_count(brief: t.brief)
+      if words > ticket_brief_word_budget {
+        concat(acc, [BriefBudgetViolation { node: rn.node, words: words }])
+      } else {
+        acc
+      }
+    }
+  })
+}
+
+fn roadmap_ticket_brief_violations() -> List<BriefBudgetViolation> {
+  ticket_brief_violations(nodes: doc_all_nodes(doc: roadmap_authority()))
+}
+
+fn inline_md_nodes(text: String) -> List<MarkupNode> {
+  markdown_inlines_to_markup_nodes(inlines: parse_inline_markdown_minimal(text: text))
+}
+
+fn ticket_field_row(label: String, value: String) -> List<MarkupNode> {
+  if value == "" {
+    []
+  } else {
+    [ el_class("div", "ticket-field", concat(
+        [ el_class("span", "ticket-field-label", [ txt(label) ]) ],
+        [ el_class("span", "ticket-field-value", inline_md_nodes(text: value)) ])) ]
+  }
+}
+
+fn ticket_update_row(u: TicketUpdate) -> MarkupNode {
+  el_class("div", "ticket-update", concat(
+    [ el_class("span", "ticket-update-date", [ txt(u.on) ]) ],
+    [ el_class("span", "ticket-update-note", inline_md_nodes(text: u.note)) ]))
+}
+
+fn ticket_updates_block(updates: List<TicketUpdate>) -> List<MarkupNode> {
+  if count(updates) == 0 {
+    []
+  } else {
+    [ el_class("div", "ticket-updates", concat(
+        [ el_class("div", "ticket-updates-head", [ txt("updates") ]) ],
+        map(updates, u => ticket_update_row(u: u)))) ]
+  }
+}
+
+fn ticket_body_nodes(t: TicketFields, carriers: List<Pointer>) -> List<MarkupNode> {
+  concat(
+    [ el_class("p", "ticket-brief", inline_md_nodes(text: t.brief)) ],
+    concat(
+      concat(ticket_field_row(label: "displaced cost", value: t.displaced_cost),
+        concat(ticket_field_row(label: "current state", value: t.current_state),
+          concat(ticket_field_row(label: "first slice", value: t.first_slice),
+            concat(ticket_field_row(label: "red control", value: t.red_control),
+              concat(ticket_field_row(label: "out of scope", value: t.out_of_scope),
+                ticket_field_row(label: "hand-back", value: t.handback)))))),
+      concat(
+        ticket_field_row(label: "verified", value: join([t.authored_on, " · last verified ", t.last_verified_on], "")),
+        ticket_updates_block(updates: t.updates))))
+}
+
+fn item_body_nodes(rn: RoadmapNode) -> List<MarkupNode> {
+  match line_ticket(item: rn.line) {
+    Present { value: t } => ticket_body_nodes(t: t, carriers: rn.carriers)
+    Absent => title_nodes(line: rn.line)
+  }
+}
+
+fn item_is_ticket(rn: RoadmapNode) -> Bool {
+  match line_ticket(item: rn.line) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn item_detail_block(rn: RoadmapNode) -> List<MarkupNode> {
   if line_lead(line: rn.line) == line_title(line: rn.line) {
     []
   } else {
+    let is_ticket = item_is_ticket(rn: rn)
     [ ElementNode {
         tag: "details",
-        attrs: [ MarkupAttr { name: "class", value: "item-detail" } ],
+        attrs: [ MarkupAttr {
+          name: "class",
+          value: if is_ticket { "item-detail ticket-row" } else { "item-detail" },
+        } ],
         children: [
-          ElementNode { tag: "summary", attrs: [], children: [ txt("brief") ] },
-          el_class("div", "item-body", title_nodes(line: rn.line)),
+          ElementNode { tag: "summary", attrs: [], children: [
+            ElementNode {
+              tag: "span",
+              attrs: [ MarkupAttr { name: "class", value: disclosure_mark_class } ],
+              children: [ txt(disclosure_mark_glyph) ],
+            },
+            txt(if is_ticket { "ticket" } else { "brief" }),
+          ] },
+          el_class("div", "item-body", item_body_nodes(rn: rn)),
         ],
       } ]
   }
 }
 
+data github_blob_base_note: String = "The per-surface link projection (remodel W2, census row 7): a Pointer's path is a REPO path — correct in GitHub's renderer, dead on the served page by construction (no /docs route). The served surface projects repo paths through the GitHub blob base so every carrier link answers; when repo paths gain a served route (the storage-blind lane, W3 neighborhood), this base swaps for that route in ONE place. The prose-inline [label](docs/...) links inside legacy AuthoredLine blobs remain relative — a named residue that dies with the blobs themselves (W2-bulk)."
+
+data github_blob_base: String = "https://github.com/gunb-ai/gunbc/blob/main/"
+
 fn pointer_link(p: Pointer) -> MarkupNode {
   ElementNode {
     tag: "a",
-    attrs: [ MarkupAttr { name: "href", value: p.path } ],
+    attrs: [ MarkupAttr { name: "href", value: join([github_blob_base, p.path], "") } ],
     children: [ txt(p.label) ],
   }
 }
@@ -353,19 +515,27 @@ fn page_script_census(page: MarkupNode) -> List<PageScriptViolation> {
   collect_script_violations(node: page, known_src: roadmap_dispatch_asset_path)
 }
 
+data node_head_row_note: String = "The row composition, on the declared archetype (composition slice 2; refines round 5's flex head line). The head line realizes the RoadmapRow archetype's head tracks: status chip in its auto track, the node-mid cell (title + the flowing meta regions — badges, carrier links) in the flex track, the actuator in its auto track at the right edge (the GitHub PR-row shape: identity left, action right). The grid template is DERIVED from the archetype's placements (roadmap_row_grid_template), the disclosure stays indented beneath on its landed token, and the wrapper exists because meta is declared InTitleFlow — badge count varies per node, so meta flows in the title's cell rather than owning a ragged column."
+
+fn node_head_row(rn: RoadmapNode, merged: List<Int>) -> MarkupNode {
+  let status = node_status_symbol(rn: rn, merged: merged)
+  el_class("div", "node-head", concat(
+    [
+      el_class("span", concat("status status-", status), [ txt(status) ]),
+      el_class("span", node_mid_class, concat(
+        concat(
+          [ el_class("span", "title", lead_nodes(line: rn.line)) ],
+          concat(superseded_badge(rn: rn), owner_badge(rn: rn)),
+        ),
+        concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)))),
+    ],
+    dispatch_button_nodes(rn: rn, merged: merged)))
+}
+
 fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> MarkupNode {
   let status = node_status_symbol(rn: rn, merged: merged)
   let head = concat(
-    concat(
-      concat(
-        [
-          el_class("span", concat("status status-", status), [ txt(status) ]),
-          el_class("span", "title", lead_nodes(line: rn.line)),
-        ],
-        concat(superseded_badge(rn: rn), owner_badge(rn: rn)),
-      ),
-      concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)),
-    ),
+    [ node_head_row(rn: rn, merged: merged) ],
     item_detail_block(rn: rn),
   )
   let kids = children_of(nodes: nodes, edges: edges, parent: rn.node)
@@ -391,7 +561,7 @@ fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, 
   ElementNode {
     tag: "li",
     attrs: [ MarkupAttr { name: "class", value: concat("node node-", status) } ],
-    children: concat(concat(head, dispatch_button_nodes(rn: rn, merged: merged)), child_block),
+    children: concat(head, child_block),
   }
 }
 
@@ -416,30 +586,53 @@ fn element_markup(e: SectionElement, merged: List<Int>) -> List<MarkupNode> {
   }
 }
 
+data altitude_section_note: String = "Page altitude from the attention law (composition slice 3; gunbc.roadmap_altitude carries the law, this page is its renderer — the workspace as the third renderer of 'routine collapses, anomaly expands'). A node-bearing section renders as a BAND: a details.section-fold whose summary carries the section's title and its derived counts, open exactly when the section holds non-routine work — statuses_all_routine folds the finished lanes, one working or anomalous member holds the band open, and the open attribute is DERIVED, never authored per section. A section without nodes has no altitude axis and renders flat, so prose leads never fold themselves away."
+
+fn altitude_section(cls: String, title_nodes: List<MarkupNode>, statuses: List<String>, body: List<MarkupNode>) -> MarkupNode {
+  if count(statuses) == 0 {
+    el_class("section", cls, concat(title_nodes, body))
+  } else {
+    let counts = el_class("span", "section-counts", [ txt(section_counts_wire(c: section_counts(statuses: statuses))) ])
+    let band = el_class("summary", "section-band", concat(title_nodes, [ counts ]))
+    let fold_attrs = if statuses_all_routine(statuses: statuses) {
+      [ MarkupAttr { name: "class", value: "section-fold" } ]
+    } else {
+      [ MarkupAttr { name: "class", value: "section-fold" }, MarkupAttr { name: "open", value: "" } ]
+    }
+    el_class("section", cls, [
+      ElementNode { tag: "details", attrs: fold_attrs, children: concat([ band ], body) },
+    ])
+  }
+}
+
+fn group_statuses(g: SectionGroup, merged: List<Int>) -> List<String> {
+  map(g.nodes, rn => node_status_symbol(rn: rn, merged: merged))
+}
+
+fn section_statuses(s: RoadmapSection, merged: List<Int>) -> List<String> {
+  fold(s.elements, init: [], f: (acc, e) => match e {
+    Prose { prose: _ } => acc
+    Group { group } => concat(acc, group_statuses(g: group, merged: merged))
+  })
+}
+
 fn section_markup(s: RoadmapSection, merged: List<Int>) -> MarkupNode {
   let body = fold(s.elements, init: [], f: (acc, e) => concat(acc, element_markup(e: e, merged: merged)))
-  el_class("section", "roadmap-section", concat([ el("h2", [ txt(s.title) ]) ], body))
+  altitude_section(
+    cls: "roadmap-section",
+    title_nodes: [ el("h2", [ txt(s.title) ]) ],
+    statuses: section_statuses(s: s, merged: merged),
+    body: body)
 }
 
 fn frontier_flat_node_li(rn: RoadmapNode, merged: List<Int>) -> MarkupNode {
   let status = node_status_symbol(rn: rn, merged: merged)
-  let head = concat(
-    concat(
-      concat(
-        [
-          el_class("span", concat("status status-", status), [ txt(status) ]),
-          el_class("span", "title", lead_nodes(line: rn.line)),
-        ],
-        concat(superseded_badge(rn: rn), owner_badge(rn: rn)),
-      ),
-      concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)),
-    ),
-    item_detail_block(rn: rn),
-  )
   ElementNode {
     tag: "li",
     attrs: [ MarkupAttr { name: "class", value: concat("node node-", status) } ],
-    children: concat(head, dispatch_button_nodes(rn: rn, merged: merged)),
+    children: concat(
+      [ node_head_row(rn: rn, merged: merged) ],
+      item_detail_block(rn: rn)),
   }
 }
 
@@ -448,10 +641,11 @@ fn frontier_bucket_ul(items: List<RoadmapNode>, merged: List<Int>) -> MarkupNode
 }
 
 fn frontier_bucket_markup(label: String, cls: String, items: List<RoadmapNode>, merged: List<Int>) -> MarkupNode {
-  el_class("section", concat("frontier-bucket frontier-", cls), [
-    el("h2", [ txt(label) ]),
-    frontier_bucket_ul(items: items, merged: merged),
-  ])
+  altitude_section(
+    cls: concat("frontier-bucket frontier-", cls),
+    title_nodes: [ el("h2", [ txt(label) ]) ],
+    statuses: map(items, rn => node_status_symbol(rn: rn, merged: merged)),
+    body: [ frontier_bucket_ul(items: items, merged: merged) ])
 }
 
 fn roadmap_frontier_markup(frontier: SpawnFrontier, merged: List<Int>) -> MarkupNode {

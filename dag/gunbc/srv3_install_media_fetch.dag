@@ -1,6 +1,6 @@
 module gunbc.srv3_install_media_fetch
 
-import extdeps.os.ubuntu_install_media {
+import extdeps.provisioning.ubuntu_install_media {
   UbuntuInstallMediaArtifactRow,
   UbuntuInstallMediaMirrorHost,
   UbuntuInstallMediaMirrorRow,
@@ -8,7 +8,7 @@ import extdeps.os.ubuntu_install_media {
   ubuntu_install_media_mirror_rows,
   ubuntu_install_media_mirror_url,
 }
-import extdeps.os.ubuntu_install_media_fetch {
+import extdeps.provisioning.ubuntu_install_media_fetch {
   install_media_fetch_bash_emit_dissolution_trigger,
 }
 import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }

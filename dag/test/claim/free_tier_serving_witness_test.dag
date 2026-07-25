@@ -1,0 +1,231 @@
+module test.claim.free_tier_serving_witness
+
+import extdeps.pricing.hetzner_dedicated {
+  HetznerDedicatedServerPriceRow,
+  hetzner_ax41_1_ltd_price,
+}
+import extdeps.sec.issuer.gitlab_facts {
+  gitlab_fy2023_cost_of_revenue,
+  gitlab_fy2023_registered_users,
+  gitlab_fy2026_cost_of_revenue,
+  gitlab_fy2026_registered_users,
+}
+import extdeps.sec.operating_metrics { RegisteredUserCountRow }
+import gunbc.econ.free_tier_serving {
+  BoxStorageZero,
+  EgressAllowanceZero,
+  FreeTierAssumptionsDeclared,
+  FreeTierAssumptionsUnknown,
+  FreeTierFloorComputed,
+  FreeTierFloorRefused,
+  FreeTierServingAssumptions,
+  FreeTierUserEnvelope,
+  ReplicaCountZero,
+  ServingAssumptionsUnknown,
+  StoragePerUserZero,
+  UserCountZero,
+  average_serving_cost_per_registered_user_year_micros_upper_bound,
+  derive_free_tier_serving_floor,
+}
+import std.measure { byte_size, money_per_month_micros }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data solo_scm_user_envelope: FreeTierUserEnvelope = FreeTierUserEnvelope {
+  storage_bytes_per_user: byte_size(count: 100000000),
+  monthly_egress_bytes_per_user: byte_size(count: 500000000),
+}
+
+data solo_scm_10k_assumptions: FreeTierServingAssumptions = FreeTierServingAssumptions {
+  user_count: 10000,
+  replica_count: 2,
+  per_box_monthly_egress_allowance: byte_size(count: 20000000000000),
+}
+
+data solo_scm_100k_assumptions: FreeTierServingAssumptions = FreeTierServingAssumptions {
+  user_count: 100000,
+  replica_count: 2,
+  per_box_monthly_egress_allowance: byte_size(count: 20000000000000),
+}
+
+data ax41_zero_storage_fixture: HetznerDedicatedServerPriceRow = HetznerDedicatedServerPriceRow {
+  server_type: hetzner_ax41_1_ltd_price.server_type,
+  server_type_wire_label: hetzner_ax41_1_ltd_price.server_type_wire_label,
+  cpu: hetzner_ax41_1_ltd_price.cpu,
+  cpu_description: hetzner_ax41_1_ltd_price.cpu_description,
+  memory_bytes: hetzner_ax41_1_ltd_price.memory_bytes,
+  storage_bytes: byte_size(count: 0),
+  monthly: hetzner_ax41_1_ltd_price.monthly,
+  setup_fee: hetzner_ax41_1_ltd_price.setup_fee,
+  pricing_citation: "witness-fixture#box-storage-zero",
+}
+
+data zero_floor_registered_users_fixture: RegisteredUserCountRow = RegisteredUserCountRow {
+  registered_user_count_floor: 0,
+  citation: gitlab_fy2026_registered_users.citation,
+}
+
+fn w_10k_users_floor_is_two_ax41_boxes() -> Bool {
+  match derive_free_tier_serving_floor(
+    box_row: hetzner_ax41_1_ltd_price,
+    assumptions_input: FreeTierAssumptionsDeclared {
+      envelope: solo_scm_user_envelope,
+      assumptions: solo_scm_10k_assumptions,
+    },
+  ) {
+    FreeTierFloorComputed { floor: f } =>
+      (f.box_count == 2) && (money_per_month_micros(q: f.monthly_floor) == 114600000)
+    _ => false
+  }
+}
+
+fn w_100k_users_floor_scales_to_nineteen_boxes() -> Bool {
+  match derive_free_tier_serving_floor(
+    box_row: hetzner_ax41_1_ltd_price,
+    assumptions_input: FreeTierAssumptionsDeclared {
+      envelope: solo_scm_user_envelope,
+      assumptions: solo_scm_100k_assumptions,
+    },
+  ) {
+    FreeTierFloorComputed { floor: f } =>
+      (f.box_count == 19) && (money_per_month_micros(q: f.monthly_floor) == 1088700000)
+    _ => false
+  }
+}
+
+fn w_gitlab_fy2026_average_serving_cost_upper_bound() -> Bool {
+  match average_serving_cost_per_registered_user_year_micros_upper_bound(
+    annual_cost_of_revenue: gitlab_fy2026_cost_of_revenue,
+    registered_users: gitlab_fy2026_registered_users,
+  ) {
+    Present { value: micros_per_user_year } =>
+      (micros_per_user_year == 2414860) && (micros_per_user_year < 2500000)
+    _ => false
+  }
+}
+
+fn w_gitlab_fy2023_average_serving_cost_upper_bound() -> Bool {
+  match average_serving_cost_per_registered_user_year_micros_upper_bound(
+    annual_cost_of_revenue: gitlab_fy2023_cost_of_revenue,
+    registered_users: gitlab_fy2023_registered_users,
+  ) {
+    Present { value: micros_per_user_year } =>
+      (micros_per_user_year == 1722667) && (micros_per_user_year < 1800000)
+    _ => false
+  }
+}
+
+fn w_red_unknown_assumptions_refused() -> Bool {
+  match derive_free_tier_serving_floor(
+    box_row: hetzner_ax41_1_ltd_price,
+    assumptions_input: FreeTierAssumptionsUnknown,
+  ) {
+    FreeTierFloorRefused { cause: ServingAssumptionsUnknown } => true
+    _ => false
+  }
+}
+
+fn w_red_zero_user_count_refused() -> Bool {
+  match derive_free_tier_serving_floor(
+    box_row: hetzner_ax41_1_ltd_price,
+    assumptions_input: FreeTierAssumptionsDeclared {
+      envelope: solo_scm_user_envelope,
+      assumptions: FreeTierServingAssumptions {
+        user_count: 0,
+        replica_count: 2,
+        per_box_monthly_egress_allowance: byte_size(count: 20000000000000),
+      },
+    },
+  ) {
+    FreeTierFloorRefused { cause: UserCountZero } => true
+    _ => false
+  }
+}
+
+fn w_red_zero_storage_per_user_refused() -> Bool {
+  match derive_free_tier_serving_floor(
+    box_row: hetzner_ax41_1_ltd_price,
+    assumptions_input: FreeTierAssumptionsDeclared {
+      envelope: FreeTierUserEnvelope {
+        storage_bytes_per_user: byte_size(count: 0),
+        monthly_egress_bytes_per_user: byte_size(count: 500000000),
+      },
+      assumptions: solo_scm_10k_assumptions,
+    },
+  ) {
+    FreeTierFloorRefused { cause: StoragePerUserZero } => true
+    _ => false
+  }
+}
+
+fn w_red_zero_replica_count_refused() -> Bool {
+  match derive_free_tier_serving_floor(
+    box_row: hetzner_ax41_1_ltd_price,
+    assumptions_input: FreeTierAssumptionsDeclared {
+      envelope: solo_scm_user_envelope,
+      assumptions: FreeTierServingAssumptions {
+        user_count: 10000,
+        replica_count: 0,
+        per_box_monthly_egress_allowance: byte_size(count: 20000000000000),
+      },
+    },
+  ) {
+    FreeTierFloorRefused { cause: ReplicaCountZero } => true
+    _ => false
+  }
+}
+
+fn w_red_zero_egress_allowance_refused() -> Bool {
+  match derive_free_tier_serving_floor(
+    box_row: hetzner_ax41_1_ltd_price,
+    assumptions_input: FreeTierAssumptionsDeclared {
+      envelope: solo_scm_user_envelope,
+      assumptions: FreeTierServingAssumptions {
+        user_count: 10000,
+        replica_count: 2,
+        per_box_monthly_egress_allowance: byte_size(count: 0),
+      },
+    },
+  ) {
+    FreeTierFloorRefused { cause: EgressAllowanceZero } => true
+    _ => false
+  }
+}
+
+fn w_red_zero_box_storage_refused() -> Bool {
+  match derive_free_tier_serving_floor(
+    box_row: ax41_zero_storage_fixture,
+    assumptions_input: FreeTierAssumptionsDeclared {
+      envelope: solo_scm_user_envelope,
+      assumptions: solo_scm_10k_assumptions,
+    },
+  ) {
+    FreeTierFloorRefused { cause: BoxStorageZero } => true
+    _ => false
+  }
+}
+
+fn w_red_zero_registered_user_floor_yields_no_bound() -> Bool {
+  match average_serving_cost_per_registered_user_year_micros_upper_bound(
+    annual_cost_of_revenue: gitlab_fy2026_cost_of_revenue,
+    registered_users: zero_floor_registered_users_fixture,
+  ) {
+    Present { value: _ } => false
+    _ => true
+  }
+}
+
+test fn free_tier_serving_witness() -> Bool {
+  w_10k_users_floor_is_two_ax41_boxes()
+    && w_100k_users_floor_scales_to_nineteen_boxes()
+    && w_gitlab_fy2026_average_serving_cost_upper_bound()
+    && w_gitlab_fy2023_average_serving_cost_upper_bound()
+    && w_red_unknown_assumptions_refused()
+    && w_red_zero_user_count_refused()
+    && w_red_zero_storage_per_user_refused()
+    && w_red_zero_replica_count_refused()
+    && w_red_zero_egress_allowance_refused()
+    && w_red_zero_box_storage_refused()
+    && w_red_zero_registered_user_floor_yields_no_bound()
+}
