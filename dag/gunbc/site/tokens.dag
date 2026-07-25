@@ -6,7 +6,7 @@ import gunbc.design.material {
   area_max_sat, area_key, area_exempt_from_quiet_envelope,
   paint, paint_alpha,
   TimingToken, respond_fast, reveal_deliberate, restore_gentle, reframe_page, timing_scale,
-  MotionTrigger, OnHover, OnFocusVisible, OnActive, trigger_pseudo,
+  MotionTrigger, OnHover, OnFocusVisible, OnActive, trigger_selector_suffix,
   CssDecl, decl, transition_decl,
   TriggerShape, SelfResponse, WithinSubject, ContainerHas,
   BuildRule, StaticRule, ResponseRule,

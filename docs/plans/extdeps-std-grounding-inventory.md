@@ -540,3 +540,33 @@ dissolves into the carriers (§6 — the mark on the carrier is the authority).
 for the corpus-wide snapshot; the [std-side modeling census](#std-side-modeling-census) (2026-07-25)
 prices 53 rows across five std-modeling classes (22 `dag/std` + 18 `src/v2` + 8 `extdeps` + 5
 `gunbc`/`dag/tools` spot checks). Severity is the auditor's call.*
+---
+
+## Appended finding (2026-07-25, PR #7202 review) — `Vendor<Domain>` puts the parameter on the wrong node
+
+**Severity: structural (entity identity), not anemia.** Filed here rather than fixed in the
+SCM-economics PR, which is that finding's discriminating receipt.
+
+`extdeps.vendor.Vendor<Domain>` parameterizes the ENTITY by domain, so one real company must be
+re-declared once per domain it participates in. GitLab is the tree's first **two-domain entity** and
+exposes it by execution: `extdeps.vendor.gitlab.gitlab` is a `Vendor<Securities>` (an SEC issuer),
+and it is now also the subject of `extdeps.pricing.gitlab_subscription` (a SaaS vendor's list
+prices). One GitLab Inc. cannot be `Vendor<Securities>` *and* `Vendor<Saas>` without forking the
+entity row — which is exactly the §3 nickname class this parameter was meant to prevent. The
+subject edge landed in that PR points the pricing module at the `Vendor<Securities>` row, correct on
+identity and wrong on domain; that mismatch is this finding, not a defect of the edge.
+
+**Suggested grounding:** the domain belongs on the RELATIONSHIP rows, not the entity. `Vendor`
+becomes un-parameterized (one cited company entity, one row, one legal name); each fact family
+declares the domain it relates that entity through (`IssuerCatalogRow` already carries the
+securities relationship; a pricing/catalog row carries its own). The generic then reads as a
+property of the edge — "this company, in this domain, per this authority" — and a second domain for
+an existing company adds an edge, never a second entity.
+
+**Scope:** ~14 files touching all `Vendor<...>` consumers (29 files reference the type today:
+23 `Vendor<Hardware>`, 7 `Vendor<Securities>`, 5 generic `Vendor<Domain>` sites). Mechanical but
+wide; must not be absorbed into an unrelated PR.
+
+**Dissolve-on:** the un-parameterized `Vendor` entity + per-relationship domain lands and the
+GitLab entity is reachable from both `extdeps.sec.issuer.gitlab_facts` and
+`extdeps.pricing.gitlab_subscription` through one un-forked row, witnessed by execution.

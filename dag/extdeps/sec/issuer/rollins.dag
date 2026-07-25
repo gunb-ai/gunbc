@@ -26,7 +26,7 @@ data rollins_ticker: StockTicker = StockTicker { symbol: "ROL" }
 
 data rollins_issuer_catalog: IssuerCatalogRow = IssuerCatalogRow {
   cik: rollins_cik,
-  legal_name: "Rollins, Inc.",
+  registrant_name: "ROLLINS INC",
   primary_ticker: rollins_ticker,
   exchange: Nyse,
   vendor: rollins,

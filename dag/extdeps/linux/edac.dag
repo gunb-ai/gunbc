@@ -1,0 +1,22 @@
+module extdeps.linux.edac
+
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.kernel.org/doc/html/latest/admin-guide/ras.html"
+  }
+}
+
+service diagnostic.edac.RasMcCtl {
+  operation CorrectableCounts {
+    input {}
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["ras-mc-ctl", "--summary"] }
+    exit {
+      0 => Unit
+      nonzero => String "ras-mc-ctl failed"
+    }
+  }
+}

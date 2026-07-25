@@ -51,7 +51,7 @@ fn converge_knob_unimplemented_reason(knob: ConvergeKnob) -> String {
       ),
       concat(concat("/", knob.name), "]")
     ),
-    " — typed extdeps.os.systemd/oomd read+write not yet wired for this knob arm"
+    " — typed extdeps.systemd/oomd read+write not yet wired for this knob arm"
   )
 }
 
