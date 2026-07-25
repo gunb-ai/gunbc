@@ -7680,11 +7680,7 @@ fn rust_struct_field_lookup_candidates(struct_name: String, scope: InferScope) -
 
 fn rust_struct_field_type_node(scope: InferScope, struct_name: String, field_name: String) -> Node? {
   match lookup_type_by_name(env: scope.type_env, name: struct_name) {
-    Present { value: struct_node } =>
-      match find_child_named(n: struct_node, name: field_name, source_indices: scope.type_env.source_indices) {
-        Present { value: field_node } => Present { value: resolved_type(n: field_node) }
-        Absent => none
-      }
+    Present { value: struct_node } => rust_struct_field_type_node_from_container(container: struct_node, field_name: field_name, source_indices: scope.type_env.source_indices)
     Absent => none
   }
 }
@@ -7708,8 +7704,36 @@ fn rust_receiver_has_callable_method_field(receiver: Node, method_name: String, 
   }
 }
 
-fn rust_record_field_needs_box(scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> Bool {
+fn rust_struct_field_type_node_variant_aware(scope: InferScope, emit_info: EmitGraphInfo, struct_name: String, field_name: String) -> Node? {
   match rust_struct_field_type_node(scope: scope, struct_name: struct_name, field_name: field_name) {
+    Present { value: n } => Present { value: n }
+    Absent =>
+      match map_get(emit_info.variant_to_enum, struct_name) {
+        Present { value: enum_name } =>
+          if enum_name == "" { none } else {
+            match lookup_type_by_name(env: scope.type_env, name: enum_name) {
+              Present { value: enum_node } =>
+                match find_child_named(n: enum_node, name: struct_name, source_indices: scope.type_env.source_indices) {
+                  Present { value: variant_node } => rust_struct_field_type_node_from_container(container: variant_node, field_name: field_name, source_indices: scope.type_env.source_indices)
+                  Absent => none
+                }
+              Absent => none
+            }
+          }
+        Absent => none
+      }
+  }
+}
+
+fn rust_struct_field_type_node_from_container(container: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match find_child_named(n: container, name: field_name, source_indices: source_indices) {
+    Present { value: field_node } => Present { value: resolved_type(n: field_node) }
+    Absent => none
+  }
+}
+
+fn rust_record_field_needs_box(scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> Bool {
+  match rust_struct_field_type_node_variant_aware(scope: scope, emit_info: emit_info, struct_name: struct_name, field_name: field_name) {
     Present { value: field_type } =>
       needs_box_wrapping(n: field_type, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices)
     Absent => false
@@ -8127,7 +8151,8 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             if all_defaultable {
               missing |> flat_map(fname =>
                 if is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: fname) {
-                  [concat("    ", emit_ident(name: fname, target: Rust), ": None,")]
+                  let wrapped_none = wrap_rust_record_field_value(raw: "None", scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: ctor_name, field_name: fname)
+                  [concat("    ", emit_ident(name: fname, target: Rust), ": ", wrapped_none, ",")]
                 } else {
                   match map_get(ftm, fname) {
                     Present { value: ft } =>
