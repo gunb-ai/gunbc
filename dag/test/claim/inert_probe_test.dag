@@ -1,0 +1,10 @@
+module test.claim.inert_probe
+
+import v2.lens.inert_carrier { inert_carrier_live_unrostered_count, inert_carrier_live_stale_roster_count }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn main() -> Int {
+  inert_carrier_live_unrostered_count() * 1000 + inert_carrier_live_stale_roster_count()
+}
