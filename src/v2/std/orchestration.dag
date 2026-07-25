@@ -69,7 +69,7 @@ type PipelineStep
   | For { binder: Symbol, over: ValueSource, body: Pipeline }
   | While { cond: Predicate, body: Pipeline }
   | BoundedPoll {
-      max_attempts: Nat,
+      max_attempts: v2.std.nat.Nat,
       body: Pipeline,
       success: Predicate
     }

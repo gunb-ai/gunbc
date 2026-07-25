@@ -1,7 +1,7 @@
-//! §8-step-1 discriminating witness (namespace-resolution-design.md §13, operator-ratified
+//! §8-step-4 discriminating witness (namespace-resolution-design.md §13, operator-ratified
 //! 2026-07-21): the executing v1 seed resolver carries a NameResolutionPolicy gate —
-//! default OFF = ImportScoped (today's nearest-wins / first-hit, byte-for-byte), ON =
-//! NamespaceOnlyY strict unique-on-chain with typed `AmbiguousReference` refusals.
+//! default ON = NamespaceOnlyY strict unique-on-chain with typed `AmbiguousReference`
+//! refusals, OFF (host-bracketed) = ImportScoped (nearest-wins / first-hit, byte-for-byte).
 //!
 //! The homonym fixtures below are the discriminating inputs: the SAME sources compile
 //! clean under ImportScoped and refuse (typed, located, full candidate list) under
@@ -15,23 +15,26 @@
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
-use v1_compiler::v1_rt::name_resolution_policy_set_namespace_only;
+use v1_compiler::v1_rt::{
+    name_resolution_policy_is_namespace_only, name_resolution_policy_set_namespace_only,
+};
 use v1_compiler::v1_std_core::{diagnostic_to_message, is_error_diagnostic};
 
-/// Panic-safe policy bracket: the gate is thread-local and each test compiles on its
-/// own thread, so enable/reset needs no cross-test lock — only drop-safety.
-struct NamespaceOnlyGuard;
+/// Panic-safe policy bracket: save/restore the thread-local gate so ImportScoped cases
+/// bracket `false` explicitly and drop always restores the pre-test default.
+struct ResolutionPolicyGuard(bool);
 
-impl NamespaceOnlyGuard {
-    fn enable() -> Self {
-        name_resolution_policy_set_namespace_only(true);
-        NamespaceOnlyGuard
+impl ResolutionPolicyGuard {
+    fn set(namespace_only: bool) -> Self {
+        let saved = name_resolution_policy_is_namespace_only();
+        name_resolution_policy_set_namespace_only(namespace_only);
+        ResolutionPolicyGuard(saved)
     }
 }
 
-impl Drop for NamespaceOnlyGuard {
+impl Drop for ResolutionPolicyGuard {
     fn drop(&mut self) {
-        name_resolution_policy_set_namespace_only(false);
+        name_resolution_policy_set_namespace_only(self.0);
     }
 }
 
@@ -126,17 +129,18 @@ fn unbound_fixture() -> Vec<Rc<SourceFile>> {
 
 #[test]
 fn import_scoped_default_resolves_homonym_fixture_clean() {
+    let _guard = ResolutionPolicyGuard::set(false);
     let diags = error_diag_messages(homonym_fixture());
     assert!(
         diags.is_empty(),
-        "default ImportScoped policy must preserve today's behavior verbatim \
+        "ImportScoped policy (host bracket false) must preserve today's behavior verbatim \
          (nearest-wins type resolution + first-hit fn resolution); got {diags:?}"
     );
 }
 
 #[test]
 fn namespace_only_refuses_chain_homonym_on_type_path() {
-    let _guard = NamespaceOnlyGuard::enable();
+    let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(homonym_fixture());
     let homonym_refusals: Vec<&String> = diags
         .iter()
@@ -156,7 +160,7 @@ fn namespace_only_refuses_chain_homonym_on_type_path() {
 
 #[test]
 fn namespace_only_refuses_fn_parent_homonym_at_call_site() {
-    let _guard = NamespaceOnlyGuard::enable();
+    let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(homonym_fixture());
     let pick_refusals: Vec<&String> = diags
         .iter()
@@ -176,7 +180,7 @@ fn namespace_only_refuses_fn_parent_homonym_at_call_site() {
 
 #[test]
 fn namespace_only_unique_on_chain_still_resolves() {
-    let _guard = NamespaceOnlyGuard::enable();
+    let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(unique_on_chain_fixture());
     assert!(
         diags.is_empty(),
@@ -187,7 +191,10 @@ fn namespace_only_unique_on_chain_still_resolves() {
 
 #[test]
 fn zero_on_chain_homonym_discriminates_the_diagnostic_label() {
-    let import_scoped = error_diag_messages(zero_on_chain_fixture());
+    let import_scoped = {
+        let _guard = ResolutionPolicyGuard::set(false);
+        error_diag_messages(zero_on_chain_fixture())
+    };
     assert!(
         import_scoped
             .iter()
@@ -196,11 +203,13 @@ fn zero_on_chain_homonym_discriminates_the_diagnostic_label() {
     );
     assert!(
         !import_scoped.iter().any(|m| m.contains("ambiguous")),
-        "default policy must not mint AmbiguousReference; got {import_scoped:?}"
+        "ImportScoped bracket must not mint AmbiguousReference; got {import_scoped:?}"
     );
 
-    let _guard = NamespaceOnlyGuard::enable();
-    let strict = error_diag_messages(zero_on_chain_fixture());
+    let strict = {
+        let _guard = ResolutionPolicyGuard::set(true);
+        error_diag_messages(zero_on_chain_fixture())
+    };
     let stray: Vec<&String> = strict
         .iter()
         .filter(|m| m.contains("ambiguous reference 'Stray'"))
@@ -219,7 +228,7 @@ fn zero_on_chain_homonym_discriminates_the_diagnostic_label() {
 
 #[test]
 fn namespace_only_keeps_genuinely_unbound_as_unresolved_not_ambiguous() {
-    let _guard = NamespaceOnlyGuard::enable();
+    let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(unbound_fixture());
     assert!(
         diags
