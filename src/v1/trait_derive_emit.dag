@@ -114,6 +114,8 @@ fn v1_emit_enum_derives(children: List<Node>, source_indices: Map<String, Newlin
       } else {
         v1_trait_derive_refuse("trait_derive_emit: payload coproduct derive completeness refused")
       }
+    _ =>
+      v1_trait_derive_refuse("trait_derive_emit: coproduct elem shape unsupported for derive selection")
   }
 }
 
