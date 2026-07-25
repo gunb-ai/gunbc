@@ -78,7 +78,6 @@ import v2.std.model_core {
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSurfaceSpelling,
   ModelCoreFactAxisWidth,
-  primitive_fact_axis_unbound_diagnostic
 }
 import v2.std.diagnostic {
   Accepted,

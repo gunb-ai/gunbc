@@ -51,7 +51,6 @@ import v2.std.model_core {
   ModelCoreFactAxisOverflowDisposition,
   ModelCoreFactAxisSignedness,
   ModelCoreFactAxisSurfaceSpelling,
-  primitive_fact_axis_unbound_diagnostic,
   ModelCoreFactAxisWidth
 }
 import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
