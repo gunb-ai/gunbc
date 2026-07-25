@@ -1,5 +1,5 @@
 //! Mechanical E0308 trio in the v1 seed emitter: Range-vs-usize (`skip().first()`),
-//! String-vs-str (read-only callee borrow + `&str` signatures), and Unit-vs-Option
+//! String-vs-str (read-only callee borrow at call sites), and Unit-vs-Option
 //! (optional tail on `-> Unit` must discard, not return `Some`/`None`).
 
 use crate::helpers::compile_dag_target;
@@ -76,8 +76,12 @@ fn skip_first_emits_iter_skip_not_get_index() {
     let source = "module skipfirst.fixture\n\nfn second(xs: List<Int>) -> Int? {\n  xs.skip(n: 1).first()\n}\n";
     let body = fn_body(&emit(source), "second");
     assert!(
-        body.contains(".iter().cloned().skip(") && body.contains("as usize).next().cloned()"),
+        body.contains(".iter().cloned().skip(") && body.contains("as usize).next()"),
         "skip().first() must emit iter/skip/next, not get(index), got:\n{body}"
+    );
+    assert!(
+        !body.contains(".next().cloned()"),
+        "skip().first() must not append Option::cloned after .next() (owned T from iter().cloned()), got:\n{body}"
     );
     assert!(
         !body.contains(".get(1 as usize)"),

@@ -5124,19 +5124,33 @@ fn emit_rust_fn_body_expr(texpr: Node, return_is_unit: Bool, registry: Map<Strin
   }
 }
 
-fn emit_rust_unit_discarding_optional_record(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let si = scope.type_env.source_indices
-  let tn = match record_lit_type_name_at(texpr: texpr, source_indices: si) { Present { value: n } => n  Absent => "" }
-  if is_some_like_variant_name(name: tn) {
-    match texpr.children |> first {
-      Present { value: f } =>
-        emit_rust_unit_discarding_stmt(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-      Absent => "()"
-    }
-  } else if is_optional_variant_name(name: tn) {
-    "()"
-  } else {
-    concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";")
+fn inferred_expr_is_optional(texpr: Node) -> Bool {
+  match texpr.inferred {
+    Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+    _ => false
+  }
+}
+
+fn emit_rust_unit_discarding_optional_typed(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  match texpr.expr_data {
+    ExprLiteral { value: v } =>
+      match v {
+        LitNull => "()"
+        _ => emit_error_expr(message: "unit-discard: optional literal with unexpected value shape", target: Rust)
+      }
+    ExprRecordLit { parent_enum: _ } =>
+      match texpr.children |> count {
+        0 => "()"
+        1 =>
+          match texpr.children |> first {
+            Present { value: f } =>
+              emit_rust_unit_discarding_stmt(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+            Absent => emit_error_expr(message: "unit-discard: optional record literal missing payload field", target: Rust)
+          }
+        _ => emit_error_expr(message: "unit-discard: optional record literal with unexpected field count", target: Rust)
+      }
+    _ =>
+      emit_error_expr(message: "unit-discard: unsupported optional expression form for Unit return", target: Rust)
   }
 }
 
@@ -5172,15 +5186,19 @@ fn emit_rust_unit_discarding_stmt(texpr: Node, registry: Map<String, ItemInfo>, 
           concat("if ", cond_str, " {\n", make_indent(level: depth + 1), then_str, "\n}")
       }
     ExprRecordLit { parent_enum: _ } =>
-      emit_rust_unit_discarding_optional_record(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      if inferred_expr_is_optional(texpr: texpr) {
+        emit_rust_unit_discarding_optional_typed(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      } else {
+        concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";")
+      }
     ExprLiteral { value: v } =>
-      match v { LitNull => "()"  _ => concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";") }
-    ExprVar { binding_kind: binding_kind } =>
-      let n = expr_var_name_at(texpr: texpr, source_indices: si)
-      let leaf = value_ref_qualified_leaf(name: n)
-      if leaf == "none" || leaf == "None" || leaf == "Absent" { "()" }
-      else if is_optional_variant_name(name: leaf) && is_some_like_variant_name(name: leaf) == false { "()" }
-      else { concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";") }
+      if inferred_expr_is_optional(texpr: texpr) {
+        emit_rust_unit_discarding_optional_typed(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      } else {
+        match v { LitNull => "()"  _ => concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";") }
+      }
+    ExprVar { binding_kind: _ } =>
+      concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";")
     _ =>
       concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";")
   }
@@ -7390,7 +7408,7 @@ fn emit_rust_first_method_call(receiver: Node, registry: Map<String, ItemInfo>, 
         let skip_args = method_arg_nodes(texpr: receiver)
         let recv_str = emit_typed_expr(texpr: skip_recv, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
         let n_str = emit_typed_first_arg(args: skip_args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-        concat(recv_str, ".iter().cloned().skip(", n_str, " as usize).next().cloned()")
+        concat(recv_str, ".iter().cloned().skip(", n_str, " as usize).next()")
       } else {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
         concat(recv_str, ".first().cloned()")
