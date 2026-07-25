@@ -207,7 +207,11 @@ fn v1_emit_struct_supplemental_impls(module_path: String, name: String) -> Strin
 }
 
 fn v1_emit_enum_supplemental_impls(module_path: String, name: String) -> String {
-  if repr_grounding_supplemental_bool_host_bridge_target(module_path: module_path, name: name) {
+  if repr_grounding_supplemental_bool_host_bridge_target(module_path: module_path, name: name)
+    && repr_grounding_derive_completeness_predicate(
+      nullary_coproduct_derive_traits(),
+      ReprDeriveElemNullaryEnumCopy
+    ) {
     rust_supplemental_impls_bool_coproduct()
   } else {
     ""

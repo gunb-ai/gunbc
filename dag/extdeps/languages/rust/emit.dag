@@ -291,7 +291,7 @@ fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
   concat(rust_qualified_module_mod_basename(qualified_module: qualified_module), ".rs")
 }
 
-data rust_repr_grounding_arm_b_dissolve_on: String = "Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion/Nat body lands (#7197); replace fail-closed unimplemented! stubs with grounded i64 newtype operations."
+data rust_repr_grounding_arm_b_dissolve_on: String = "Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion/Nat body lands (#7197); replace fail-closed unimplemented! stubs with grounded i64 newtype operations. Do not retain PartialEq<i64> cross-representation bridge — numeric-tower grounding replaces the straddle."
 
 fn rust_supplemental_impls_commutative_semiring_magnitude() -> String {
   concat(

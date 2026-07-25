@@ -89,6 +89,10 @@ test fn bool_supplemental_impl_present() -> Bool {
     module_path: "std.types",
     name: "Bool"
   )
+  let predicate_ok = repr_grounding_derive_completeness_predicate(
+    nullary_coproduct_derive_traits(),
+    ReprDeriveElemNullaryEnumCopy
+  )
   let wrong_module = repr_grounding_supplemental_bool_host_bridge_target(
     module_path: "std.logic",
     name: "Bool"
@@ -97,7 +101,7 @@ test fn bool_supplemental_impl_present() -> Bool {
     module_path: "std.types",
     name: "Quantity"
   )
-  target_ok && supplemental != "" && wrong_module == false && wrong_name == false
+  target_ok && predicate_ok && supplemental != "" && wrong_module == false && wrong_name == false
 }
 
 test fn trait_derive_seed_emit_binding_witness_holds() -> Bool {
