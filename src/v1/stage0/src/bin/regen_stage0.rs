@@ -33,6 +33,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "compiler_tests.rs",
     "extdeps_cargo.rs",
     "extdeps_cargo_version.rs",
+    "extdeps_currency_currency.rs",
     "extdeps_external_authority.rs",
     "extdeps_languages_dag_emit.rs",
     "extdeps_languages_dag_syntax.rs",
