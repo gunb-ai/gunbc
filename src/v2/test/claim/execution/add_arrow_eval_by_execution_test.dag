@@ -393,8 +393,8 @@ fn add_arrow_eval_tree_root(call: Node, expected: Node) -> Node {
   }
 }
 
-fn add_arrow_eval_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  Holds {
+fn add_arrow_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  Present {
     value: claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: add_arrow_eval_i64_node(),
@@ -855,7 +855,7 @@ fn add_arrow_eval_loop_admitted_tree(root: Node) -> InferredTree {
       lookup: fn(key) {
         match key.kind {
           ComputationNode { behavior: Loop } =>
-            Holds {
+            Present {
               value: claim_inferred_facts_from_nodes(
                 resolved: key,
                 algebra: add_arrow_eval_i64_node(),

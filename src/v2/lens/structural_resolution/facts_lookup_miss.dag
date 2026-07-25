@@ -47,9 +47,9 @@ fn sr_lookup_claim_fact_map() -> Map<Node, InferredFacts> {
   Map {
     lookup: fn(key) {
       if key == sr_lookup_use {
-        sr_lookup_usage_site_witness()
+        Absent
       } else {
-        Holds { value: resolved }
+        Present { value: resolved }
       }
     }
   }

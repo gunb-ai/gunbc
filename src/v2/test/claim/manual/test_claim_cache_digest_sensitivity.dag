@@ -117,7 +117,7 @@ fn tcc_cache_tree_facts_violates(reason: Symbol) -> InferredTree {
     root: tcc_cache_root(),
     facts: Map {
       lookup: fn(_) {
-        Violates { diagnostic: tcc_cache_facts_diagnostic(reason: reason) }
+        Absent
       }
     }
   }
