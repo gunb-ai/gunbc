@@ -212,3 +212,23 @@ The gate consumes `CoverageReceipt`, never the `LensContract`'s self-declared cl
 ### StandingIntent admission (restated as a check)
 
 A candidate row must satisfy all five: recurs across PRs · named displaced cost (§6) · has a scope · names a mechanism class · can produce a receipt. Fail any → it is a preference, not a `StandingIntent`. This is itself the anti-purity-trap guard (§6) turned on the governance carrier.
+
+## 11. Candidate intake — the open queue (2026-07-25, management lane; operator-acknowledged capacity gap)
+
+**The honest state, recorded so the roadmap stops implying otherwise:** the operator's own words — "I am missing a ton of lens enforcement, and I'm honestly not sure when I can add any of it." Decidable wall candidates are accumulating faster than enforcement capacity exists to land them, and until a candidate becomes a `StandingIntent` row with a live gate, **its ruling binds only the sessions that were briefed on it**. The discriminating receipt, same day as the ruling it violates: the `MoneyRate<P>` phantom family was ruled the specimen defect in the morning census, and by evening two independent sessions had re-minted onto it (#7202 added three new phantom markers in `std/measure.dag`; a second lane consumed the pattern fresh). A ruling without a wall has a half-life of hours.
+
+Each row below passes the §StandingIntent admission test (recurs · displaced cost · scope · mechanism class · receipt). **None has scheduled capacity unless named.** The un-shelve rule is §6's: a candidate is pulled when its class recurs with a priced cost — recurrence receipts should be appended here, dated, so the queue self-prioritizes.
+
+| Candidate | Class | Receipt | Capacity |
+|---|---|---|---|
+| Bodyless type reached in a construction position | wall (compile refusal + declared-abstract frontier) | `GroupCompletion`/`FieldOfFractions` found by 4,000-error probe instead of a compile error | **owned** — Gate-1 adjacent lane, design-note-first |
+| Phantom-without-structure (bodyless type used only as a type argument) | lens → wall | `MoneyRate<P>` family; re-minted twice within hours of its ruling (2026-07-25) | queued |
+| Uncited literal constant in std | lens (greppable) → StandingIntent | std sweep 2026-07-25: `billing_month_as_hour_count()=730`, POSIX exit codes in `std.process`, 8 unit-definition constants | queued |
+| Hand count beside the structure it counts | wall (derive, never state) | `node_superset_field_count: Int = 18` | queued |
+| Emit-tag census must be bidirectional (new un-rostered `[tag]` family reds) | lens, arms with the P3 re-census | `[floor-drain]`/`[gate-warm-cost]` born past the census snapshot, invisible to the one-directional witness | queued (rides #7162's P3 end state) |
+| `*_failure_receipt` invocation parity (every companion invocable; a broken hook reds) | wall in claim_executor | two instances, one day: `witness_admission_…`/`design_register_lift_parity_…` both "no main function found" | queued (small; filed on #7162/#7199) |
+| Interaction-totality family census (every component state × stateful channel in-family or `ConstantByLaw{DeclarationRef}`) | census → StandingIntent | the press-fill green flash (frontend round 5) | **owned** — composition session slice 1 |
+| Fact-family → entity edge (a cited fact family must reference its subject entity row) | lens over extdeps | GitLab pricing/SEC facts correlated only by filename prefix (2026-07-25) | queued |
+| Output policy installed by construction at every gunbc entrypoint (uninstalled → refuse, never fallback-Full) | wall | merge-admission stamp ran with no policy installed → ShellTrace fell back to Full → the raw-argv emoji dump (2026-07-25) | queued (interim per-entrypoint install in flight on #7162) |
+
+**Pricing note (§6):** the queue's aggregate displaced cost is no longer speculative — today alone it charged: one regen red + relocation round-trip (phantom re-mint), one operator log-review round (policy fallback), and two broken failure receipts discovered only because humans read logs. The first three rows are greppable-in-an-afternoon lens shapes; their cost is not the lens but the `StandingIntent` plumbing (§8 tasks 1–3), which is why §8's ordering — carrier + contract + gate before object rules — remains the real bottleneck and the thing to fund first when capacity exists.
