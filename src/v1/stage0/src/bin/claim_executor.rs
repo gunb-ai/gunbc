@@ -3331,6 +3331,87 @@ mod tests {
         );
     }
 
+    fn run_seed_typecheck_concluded_line(
+        source_roots: &[String],
+        module_path: &str,
+        elapsed_ms: u64,
+        overhead_ms: u64,
+        emoji: bool,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_seed_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let out = run_in_context_with_args(
+            &ctx,
+            "typecheck_concluded_line",
+            &[
+                (
+                    Some("module_path".to_string()),
+                    Value::Str(module_path.to_string()),
+                ),
+                (
+                    Some("elapsed_ms".to_string()),
+                    Value::Int(elapsed_ms as i64),
+                ),
+                (
+                    Some("overhead_ms".to_string()),
+                    Value::Int(overhead_ms as i64),
+                ),
+                (Some("emoji".to_string()), Value::Bool(emoji)),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn typecheck_attribution_mirrors_match_seed_oracle() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let oracle = run_seed_typecheck_concluded_line(
+            &roots,
+            "v2.compiler.normalized_tree",
+            606_984,
+            300_000,
+            true,
+        )
+        .expect("typecheck_concluded_line must resolve and render");
+        let mirror = v1_compiler::cli_run::render_typecheck_concluded_line_mirror(
+            "v2.compiler.normalized_tree",
+            606_984,
+            true,
+        );
+        assert_eq!(
+            oracle, mirror,
+            "typecheck concluded mirror must be byte-equal to seed oracle"
+        );
+        assert!(
+            oracle.starts_with('✅')
+                && oracle.contains("typecheck v2.compiler.normalized_tree done in 10 minutes"),
+            "typecheck concluded shape: {oracle:?}"
+        );
+        let begin_mirror = v1_compiler::cli_run::render_typecheck_begin_line_mirror(
+            "v2.compiler.normalized_tree",
+            true,
+        );
+        assert_eq!(
+            begin_mirror,
+            "🔄 started typecheck v2.compiler.normalized_tree"
+        );
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn run_seed_heartbeat_line(
         source_roots: &[String],

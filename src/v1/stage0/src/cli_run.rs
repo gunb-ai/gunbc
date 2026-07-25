@@ -6708,6 +6708,47 @@ fn index_record_schedule_module(
     }
 }
 
+/// Kept so `gunbc.observation_emit_census` roster hygiene cannot go stale after the
+/// raw `[typecheck-attribution]` key=value shape dissolves into the observation projection.
+#[allow(dead_code)]
+pub const TYPECHECK_ATTRIBUTION_CENSUS_MARKER: &str = "[typecheck-attribution]";
+
+const TYPECHECK_MINUTE_SWITCH_SECONDS: u64 = 90;
+
+fn typecheck_emoji() -> bool {
+    std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+}
+
+fn typecheck_human_duration(ms: u64) -> String {
+    if ms < 1_000 {
+        format!("{ms}ms")
+    } else if ms < TYPECHECK_MINUTE_SWITCH_SECONDS * 1_000 {
+        format!("{} seconds", ms / 1_000)
+    } else {
+        format!("{} minutes", ms / 60_000)
+    }
+}
+
+/// Mirror of `gunbc.observation_seed_render.typecheck_begin_line` —
+/// leaf text is `typecheck <module>` (ModuleSegment + PhaseSegment).
+pub fn render_typecheck_begin_line_mirror(module_path: &str, emoji: bool) -> String {
+    let glyph = if emoji { "🔄" } else { "◐" };
+    format!("{glyph} started typecheck {module_path}")
+}
+
+/// Mirror of `gunbc.observation_seed_render.typecheck_concluded_line`.
+pub fn render_typecheck_concluded_line_mirror(
+    module_path: &str,
+    elapsed_ms: u64,
+    emoji: bool,
+) -> String {
+    let glyph = if emoji { "✅" } else { "✓" };
+    format!(
+        "{glyph} typecheck {module_path} done in {}",
+        typecheck_human_duration(elapsed_ms)
+    )
+}
+
 /// Snapshot of the floor's active-batch progress, sampled by the detached
 /// floor-memory heartbeat thread. Armed only when `entry_total` is known and
 /// non-zero — never a fabricated 0-of-0 (observation law 2 / §5).
@@ -8947,7 +8988,11 @@ fn reconcile_with_typed_cache(
                         // Once-per-node receipt (§6.2): count only genuine computes (cache misses).
                         bump_typecheck_compute_count();
                         if phase_profile::phase_profile_enabled() {
-                            eprintln!("[typecheck-attribution] module={mod_name} start");
+                            let _ = TYPECHECK_ATTRIBUTION_CENSUS_MARKER;
+                            eprintln!(
+                                "{}",
+                                render_typecheck_begin_line_mirror(&mod_name, typecheck_emoji())
+                            );
                         }
                         let module_tc_started = std::time::Instant::now();
                         // Same-tree bare underlay for the module being typechecked
@@ -8987,8 +9032,14 @@ fn reconcile_with_typed_cache(
                         });
                         let module_tc_ms = module_tc_elapsed.as_millis();
                         if module_tc_ms >= 2_000 {
+                            let _ = TYPECHECK_ATTRIBUTION_CENSUS_MARKER;
                             eprintln!(
-                                "[typecheck-attribution] module={mod_name} ms={module_tc_ms}"
+                                "{}",
+                                render_typecheck_concluded_line_mirror(
+                                    &mod_name,
+                                    module_tc_ms as u64,
+                                    typecheck_emoji(),
+                                )
                             );
                         }
                         let computed = index_insert_typed(index, typed_key.clone(), computed)?;

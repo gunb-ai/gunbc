@@ -9,6 +9,7 @@ import std.observation {
   ObservationSubject,
   BatchSegment,
   PhaseSegment,
+  ModuleSegment,
   MeasuredValue,
   MeasuredUnavailable,
   ObservationEvent,
@@ -133,6 +134,43 @@ fn seed_high_water_hold_line(current_bytes: Nat, high_water_bytes: Nat, emoji: B
       high_water: byte_size(high_water_bytes)
     },
     emoji: emoji
+  )
+}
+
+data seed_typecheck_attribution_note: String = "Per-module typecheck attribution (wiring flip): a Concluded event on ModuleSegment+PhaseSegment\{typecheck\} carrying the measured wall, rendered by ci_event_line — written as the module concludes rather than batched to walk end. The 2s threshold that kept the floor log quiet is preserved at the emit site (pathology lane only). Hot-path mirror in cli_run (interpreter render per module under resolve would dominate the wall); oracle RED keeps the mirror byte-equal to this seed."
+
+fn seed_typecheck_subject(module_path: NonEmptyStr) -> ObservationSubject {
+  ObservationSubject {
+    segments: [
+      ModuleSegment { module_path: module_path },
+      PhaseSegment { name: "typecheck" as NonEmptyStr }
+    ]
+  }
+}
+
+fn typecheck_begin_line(module_path: NonEmptyStr, overhead_ms: Nat, emoji: Bool) -> String {
+  let event = ObservationEvent {
+    subject: seed_typecheck_subject(module_path: module_path),
+    transition: Begin,
+    wall: MeasuredUnavailable { cause: "begin has no elapsed yet" as NonEmptyStr },
+    rss: MeasuredUnavailable { cause: "not sampled at a typecheck boundary" as NonEmptyStr }
+  }
+  ci_render_line(
+    line: ci_event_line(event: event, basis: seed_phase_basis(overhead_ms: overhead_ms)),
+    tier: seed_tier(emoji: emoji)
+  )
+}
+
+fn typecheck_concluded_line(module_path: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat, emoji: Bool) -> String {
+  let event = ObservationEvent {
+    subject: seed_typecheck_subject(module_path: module_path),
+    transition: Concluded { outcome: Done },
+    wall: MeasuredValue { value: millisecond(count: elapsed_ms) },
+    rss: MeasuredUnavailable { cause: "not sampled at a typecheck boundary" as NonEmptyStr }
+  }
+  ci_render_line(
+    line: ci_event_line(event: event, basis: seed_phase_basis(overhead_ms: overhead_ms)),
+    tier: seed_tier(emoji: emoji)
   )
 }
 
