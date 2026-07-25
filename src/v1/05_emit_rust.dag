@@ -9773,12 +9773,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
       }
       let wrap_start = if needs_rc && !is_already_wrapped { "Rc::new(" } else { "" }
       let wrap_end = if needs_rc && !is_already_wrapped { ")" } else { "" }
-      let debug_iaw = if is_already_wrapped { "true" } else { "false" }
-      let debug_rt_str = match value.inferred {
-        Present { value: Resolved { node: rt } } => render_rust_type(n: rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, emit_info: emit_info)
-        _ => "NOINFER"
-      }
-      concat("            /* DEBUG is_already_wrapped=", debug_iaw, " rt=", debug_rt_str, " */\n            ", wrap_start, val_str, wrap_end)
+      concat("            ", wrap_start, val_str, wrap_end)
     }
   }
 }
