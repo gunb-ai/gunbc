@@ -13592,13 +13592,15 @@ pub fn return_type_is_unit(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    let authored = authored_name_at(n.clone(), source_indices.clone());
-    let name = if (authored.clone() != "".to_string()) {
-        authored.clone()
-    } else {
-        n.name.clone()
-    };
-    (is_unit_like(n.clone()) && (name == "Unit".to_string()))
+    {
+        let authored = authored_name_at(source_indices.clone(), n.clone());
+        let name = if (authored.clone() != "".to_string()) {
+            authored.clone()
+        } else {
+            n.name.clone()
+        };
+        (is_unit_like(n.clone()) && (name.clone() == "Unit".to_string()))
+    }
 }
 
 pub fn emit_rust_fn_body_expr(
