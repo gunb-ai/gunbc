@@ -551,22 +551,29 @@ fn rust_witness_type_arg_from_fn_return(emit_info: EmitGraphInfo, shared_types: 
   rust_witness_type_arg_render(type_node: peeled, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
 }
 
+fn rust_witness_type_arg_for_variant(variant_name: String, resolved_type: Node, fields: List<Node>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+  if variant_name == "Holds" {
+    match rust_witness_type_arg_from_holds_value_field(fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
+      Present { value: arg } => Present { value: arg }
+      Absent => rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
+    }
+  } else if variant_name == "Violates" {
+    match rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices) {
+      Present { value: arg } => Present { value: arg }
+      Absent => rust_witness_type_arg_render(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+    }
+  } else {
+    rust_witness_type_arg_render(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+  }
+}
+
 fn rust_witness_variant_ctor_path(variant_name: String, ctor_name: String, effective_parent: String?, resolved_type: Node, fields: List<Node>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   match effective_parent {
     Present { value: parent } =>
       if !rust_witness_parent_leaf(parent: parent) {
         concat(qualified_last_segment(name: parent), "::", variant_name)
       } else {
-        let type_arg = match rust_witness_type_arg_render(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
-          Present { value: arg } => Present { value: arg }
-          Absent =>
-            if variant_name == "Holds" {
-              rust_witness_type_arg_from_holds_value_field(fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-            } else {
-              rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
-            }
-        }
-        match type_arg {
+        match rust_witness_type_arg_for_variant(variant_name: variant_name, resolved_type: resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
           Present { value: arg } => concat("Witness::<", arg, ">::", variant_name)
           Absent => concat("Witness::", variant_name)
         }
@@ -5572,11 +5579,15 @@ data optional_pattern_unknown_parent_note: String = "Present/Absent patterns wit
 
 data variant_pattern_dotted_qualification_note: String = "Construction wall for the dotted-render class in PATTERN position (sibling of alias_rhs_qualified_name_routing_note, which covers TYPE position). A namespace-QUALIFIED variant/parent name in a match pattern (post source_authority, e.g. v2.extdeps.languages.dag.ParseSubtreeFound, or a dotted parent_enum from annotate_pattern_parent_enums's authored_name_at) is not a valid Rust path component: rustc reports 'expected one of ..., found {' or 'found .', a PARSE error that then masks every later error in the module. Rust pattern position never needs a crate::-qualified path (only import-line synthesis, a separate seam, brings the bare enum into scope) so the fix is simpler than alias_rhs: route both the variant name and the resolved parent through qualified_last_segment (v1.std.core, the same single authority) via variant_pattern_qualified_path, shared by emit_variant_pattern and emit_variant_pattern_rc_aware so the dotted-render fix is not forked a third time. Every already-bare pattern renders exactly as before (qualified_last_segment is the identity on an unqualified name)."
 
-fn variant_pattern_qualified_path(rust_name: String, resolved_parent: String?) -> String {
+fn variant_pattern_qualified_path(rust_name: String, resolved_parent: String?, scrut_type: String) -> String {
   match resolved_parent {
     Present { value: parent } =>
       let parent_leaf = qualified_last_segment(name: parent)
-      concat(parent_leaf, "::", rust_name)
+      if parent_leaf == "Witness" && string_contains(s: scrut_type, pattern: "v1_rt::Witness") {
+        concat("v1_rt::Witness::", rust_name)
+      } else {
+        concat(parent_leaf, "::", rust_name)
+      }
     Absent => rust_name
   }
 }
@@ -5599,7 +5610,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
   let qualified = if optional_variant {
     rust_name
   } else {
-    variant_pattern_qualified_path(rust_name: rust_name, resolved_parent: resolved_parent)
+    variant_pattern_qualified_path(rust_name: rust_name, resolved_parent: resolved_parent, scrut_type: scrut_type)
   }
   if optional_variant && is_some_like_variant_name(name: bare_name) && field_bindings |> count == 1 {
     match field_bindings |> first {
@@ -5815,7 +5826,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
   let qualified = if optional_variant {
     rust_name
   } else {
-    variant_pattern_qualified_path(rust_name: rust_name, resolved_parent: resolved_parent)
+    variant_pattern_qualified_path(rust_name: rust_name, resolved_parent: resolved_parent, scrut_type: scrut_type)
   }
   if optional_variant && is_some_like_variant_name(name: bare_name) && field_bindings |> count == 1 {
     match field_bindings |> first {

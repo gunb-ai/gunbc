@@ -978,6 +978,54 @@ pub fn rust_witness_type_arg_from_fn_return(
     }
 }
 
+pub fn rust_witness_type_arg_for_variant(
+    variant_name: String,
+    resolved_type: Rc<Node>,
+    fields: Rc<Vec<Rc<Node>>>,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    if (variant_name.clone() == "Holds".to_string()) {
+        match rust_witness_type_arg_from_holds_value_field(
+            fields.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+            source_indices.clone(),
+        ) {
+            Some(arg) => Some(arg.clone()),
+            None => rust_witness_type_arg_from_fn_return(
+                emit_info.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+            ),
+        }
+    } else {
+        if (variant_name.clone() == "Violates".to_string()) {
+            match rust_witness_type_arg_from_fn_return(
+                emit_info.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+            ) {
+                Some(arg) => Some(arg.clone()),
+                None => rust_witness_type_arg_render(
+                    resolved_type.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                    source_indices.clone(),
+                ),
+            }
+        } else {
+            rust_witness_type_arg_render(
+                resolved_type.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+                source_indices.clone(),
+            )
+        }
+    }
+}
+
 pub fn rust_witness_variant_ctor_path(
     variant_name: String,
     ctor_name: String,
@@ -996,41 +1044,22 @@ pub fn rust_witness_variant_ctor_path(
                     variant_name.clone(),
                 )
             } else {
-                {
-                    let type_arg = match rust_witness_type_arg_render(
-                        resolved_type.clone(),
-                        shared_types.clone(),
-                        emit_info.clone(),
-                        source_indices.clone(),
-                    ) {
-                        Some(arg) => Some(arg.clone()),
-                        None => {
-                            if (variant_name.clone() == "Holds".to_string()) {
-                                rust_witness_type_arg_from_holds_value_field(
-                                    fields.clone(),
-                                    shared_types.clone(),
-                                    emit_info.clone(),
-                                    source_indices.clone(),
-                                )
-                            } else {
-                                rust_witness_type_arg_from_fn_return(
-                                    emit_info.clone(),
-                                    shared_types.clone(),
-                                    source_indices.clone(),
-                                )
-                            }
-                        }
-                    };
-                    match type_arg.clone() {
-                        Some(arg) => v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat("Witness::<".to_string(), arg.clone()),
-                                ">::".to_string(),
-                            ),
-                            variant_name.clone(),
+                match rust_witness_type_arg_for_variant(
+                    variant_name.clone(),
+                    resolved_type.clone(),
+                    fields.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                    source_indices.clone(),
+                ) {
+                    Some(arg) => v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("Witness::<".to_string(), arg.clone()),
+                            ">::".to_string(),
                         ),
-                        None => v1_rt::concat("Witness::".to_string(), variant_name.clone()),
-                    }
+                        variant_name.clone(),
+                    ),
+                    None => v1_rt::concat("Witness::".to_string(), variant_name.clone()),
                 }
             }
         }
@@ -14936,14 +14965,21 @@ pub fn variant_pattern_dotted_qualification_note() -> String {
 pub fn variant_pattern_qualified_path(
     rust_name: String,
     resolved_parent: Option<String>,
+    scrut_type: String,
 ) -> String {
     match resolved_parent.clone() {
         Some(parent) => {
             let parent_leaf = qualified_last_segment(parent.clone());
-            v1_rt::concat(
-                v1_rt::concat(parent_leaf.clone(), "::".to_string()),
-                rust_name.clone(),
-            )
+            if ((parent_leaf.clone() == "Witness".to_string())
+                && v1_rt::string_contains(&scrut_type, "v1_rt::Witness".to_string()))
+            {
+                v1_rt::concat("v1_rt::Witness::".to_string(), rust_name.clone())
+            } else {
+                v1_rt::concat(
+                    v1_rt::concat(parent_leaf.clone(), "::".to_string()),
+                    rust_name.clone(),
+                )
+            }
         }
         None => rust_name.clone(),
     }
@@ -14991,7 +15027,11 @@ pub fn emit_variant_pattern(
         let qualified = if optional_variant.clone() {
             rust_name.clone()
         } else {
-            variant_pattern_qualified_path(rust_name.clone(), resolved_parent.clone())
+            variant_pattern_qualified_path(
+                rust_name.clone(),
+                resolved_parent.clone(),
+                scrut_type.clone(),
+            )
         };
         if ((optional_variant.clone() && is_some_like_variant_name(bare_name.clone()))
             && ((field_bindings.clone().len() as i64) == 1))
@@ -15632,7 +15672,11 @@ pub fn emit_variant_pattern_rc_aware(
         let qualified = if optional_variant.clone() {
             rust_name.clone()
         } else {
-            variant_pattern_qualified_path(rust_name.clone(), resolved_parent.clone())
+            variant_pattern_qualified_path(
+                rust_name.clone(),
+                resolved_parent.clone(),
+                scrut_type.clone(),
+            )
         };
         if ((optional_variant.clone() && is_some_like_variant_name(bare_name.clone()))
             && ((field_bindings.clone().len() as i64) == 1))
