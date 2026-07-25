@@ -20,16 +20,16 @@ fn authorized_key_identity(k: SshPublicKey) -> NonEmptyStr {
 }
 
 fn authorized_key_identity_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
-  a as String == b as String
+  a == b
 }
 
 fn ssh_algorithm_eq(a: SshKeyAlgorithm, b: SshKeyAlgorithm) -> Bool {
-  ssh_key_algorithm_token(a: a) as String == ssh_key_algorithm_token(a: b) as String
+  ssh_key_algorithm_token(a: a) == ssh_key_algorithm_token(a: b)
 }
 
 fn authorized_key_value_eq(a: SshPublicKey, b: SshPublicKey) -> Bool {
   ssh_algorithm_eq(a: a.algorithm, b: b.algorithm)
-    && (a.material as String == b.material as String)
+    && (a.material == b.material)
     && (a.comment == b.comment)
 }
 
@@ -40,7 +40,7 @@ fn fleet_owned_key_materials() -> List<NonEmptyStr> {
 }
 
 fn authorized_key_ownership(k: SshPublicKey) -> Ownership? {
-  if any(fleet_owned_key_materials(), m => m as String == k.material as String) {
+  if any(fleet_owned_key_materials(), m => m == k.material) {
     Present { value: Owned }
   } else {
     none
