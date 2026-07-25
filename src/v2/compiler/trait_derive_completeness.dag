@@ -2,13 +2,10 @@ module v2.compiler.trait_derive_completeness
 
 import std.trait_derive_shape {
   ReprDeriveClone,
-  ReprDeriveCopy,
   ReprDerivePartialEq,
   ReprDeriveEq,
   ReprDerivePartialOrd,
   ReprDeriveOrd,
-  ReprDeriveSerialize,
-  ReprDeriveAdd,
   ReprGroundingDeriveTrait,
   ReprGroundingDeriveElemShape,
   ReprDeriveElemKernelInt,
@@ -19,11 +16,9 @@ import std.trait_derive_shape {
   ReprDeriveElemPayloadCoproduct,
   ReprDeriveElemUnknown,
   repr_grounding_derive_shape_has_trait,
-  repr_grounding_derive_completeness_predicate,
-  nullary_coproduct_derive_traits,
-  payload_coproduct_derive_traits
+  repr_grounding_derive_completeness_predicate
 }
-import v2.std.algebra { Cons, Empty, fold_list }
+import v2.std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node {
