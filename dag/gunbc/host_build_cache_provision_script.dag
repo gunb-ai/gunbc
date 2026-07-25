@@ -37,7 +37,9 @@ fn build_cache_systemd_user_unit_body() -> String {
     "",
     "[Service]",
     "Type=simple",
-    join(["ExecStart=", sccache_installed_binary_path, " --start-server"], ""),
+    "Environment=SCCACHE_START_SERVER=1",
+    "Environment=SCCACHE_NO_DAEMON=1",
+    join(["ExecStart=", sccache_installed_binary_path], ""),
     "Restart=on-failure",
     "",
     "[Install]",
@@ -175,6 +177,16 @@ fn build_cache_unit_execstart_matches_install_path() -> Bool {
     s: build_cache_systemd_user_unit_body(),
     pattern: join(["ExecStart=", sccache_installed_binary_path], ""),
   )
+}
+
+data build_cache_unit_foreground_supervision_note: String = "The unit is Type=simple, so systemd tracks the ExecStart process AS the service — it MUST stay in the foreground. `sccache --start-server` DAEMONIZES and returns 0, so under Type=simple systemd sees the ExecStart exit cleanly and marks the unit `inactive (dead)` the instant it starts; the backgrounded server then idle-times-out unsupervised and Restart=on-failure never fires (the exit was success). Proven live on srv3 2026-07-25: the earlier `--start-server` form left the unit inactive with no sccache process, the daemon surviving only via sccache's own per-invocation auto-start — i.e. the unit was a no-op. This is the §5 specification-without-execution trap: the string witness that ExecStart equals the install path was green while the unit did nothing. The foreground form matches the production ctrl-sccache.service invocation (bare ExecStart + SCCACHE_START_SERVER=1 SCCACHE_NO_DAEMON=1 env, verified running month+ on srv1/srv2), reducing the §3 fork between the modeled unit and production rather than inventing a third shape. build_cache_unit_is_foreground_supervised makes the defective combo (Type=simple paired with a backgrounding --start-server) UNWRITABLE; the runtime is-active proof is the live srv3 re-provision (systemd --user is not runnable in the hermetic CI container, so the construction wall carries the CI grain and live execution carries the runtime grain)."
+
+fn build_cache_unit_is_foreground_supervised() -> Bool {
+  let body = build_cache_systemd_user_unit_body()
+  string_contains(s: body, pattern: "Type=simple")
+    && string_contains(s: body, pattern: "SCCACHE_START_SERVER=1")
+    && string_contains(s: body, pattern: "SCCACHE_NO_DAEMON=1")
+    && !string_contains(s: body, pattern: "--start-server")
 }
 
 fn build_cache_classifier_covers_every_cited_fragment() -> Bool {
