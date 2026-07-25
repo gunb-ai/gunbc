@@ -111,6 +111,8 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "contiguous_loop_elementwise_kernel", list_of_type_variable(id: "collection_element"))
   let m = map_insert(m, "contiguous_loop_elementwise_float_kernel", list_of_type_variable(id: "collection_element"))
   let m = map_insert(m, "shell_materialize_argv_for_operation", list_of_element(element: string_type))
+  let m = map_insert(m, "shell_materialize_operation_argv", type_variable_node(id: "argv_materialization_result"))
+  let m = map_insert(m, "shell_transport_operation_rows", list_of_type_variable(id: "shell_transport_operation_row_elem"))
   let m = map_insert(m, "extdeps_shape_transport_policy_facts_for_qualified_name", type_variable_node(id: "extdeps_module_facts_record"))
   let m = map_insert(m, "extdeps_qualified_name_resolves_in_derived_module_set", bool_type)
   let m = map_insert(m, "extdeps_external_authority_facts_for_qualified_name", type_variable_node(id: "extdeps_external_authority_module_facts_record"))

@@ -268,6 +268,16 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "shell_materialize_operation_argv".to_string(),
+            type_variable_node("argv_materialization_result".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "shell_transport_operation_rows".to_string(),
+            list_of_type_variable("shell_transport_operation_row_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "extdeps_shape_transport_policy_facts_for_qualified_name".to_string(),
             type_variable_node("extdeps_module_facts_record".to_string()),
         );
