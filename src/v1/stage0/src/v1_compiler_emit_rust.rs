@@ -15312,19 +15312,25 @@ pub fn box_bound_fields_for_pattern(
                                     fb.clone(),
                                     scope.type_env.clone().source_indices.clone(),
                                 );
+                                let fb_pat = field_binding_pattern(fb.clone());
                                 if (fb_name.clone() == "0".to_string()) {
                                     Rc::new(vec![])
                                 } else {
-                                    if rust_record_field_needs_box(
-                                        scope.clone(),
-                                        emit_info.clone(),
-                                        shared_types.clone(),
-                                        bare_n.clone(),
-                                        fb_name.clone(),
-                                    ) {
-                                        Rc::new(vec![fb_name.clone()])
-                                    } else {
-                                        Rc::new(vec![])
+                                    match (*fb_pat.clone()).clone() {
+                                        MatchPattern::Wildcard => Rc::new(vec![]),
+                                        _ => {
+                                            if rust_record_field_needs_box(
+                                                scope.clone(),
+                                                emit_info.clone(),
+                                                shared_types.clone(),
+                                                bare_n.clone(),
+                                                fb_name.clone(),
+                                            ) {
+                                                Rc::new(vec![fb_name.clone()])
+                                            } else {
+                                                Rc::new(vec![])
+                                            }
+                                        }
                                     }
                                 }
                             })
