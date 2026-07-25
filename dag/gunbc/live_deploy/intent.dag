@@ -1,6 +1,8 @@
 module gunbc.live_deploy.intent
 
 import std.types { String, NonEmptyStr, Int }
+import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { Second }
 import gunbc.live_deploy.service_ready {
   ServiceNotReady,
@@ -55,7 +57,20 @@ fn live_deploy_readback_for_spec(spec: DeploymentSpec) -> LiveDeployReadback {
   }
 }
 
+data live_deploy_unit_diagnosis_capture_exit_note: String = "DECLARED SCAFFOLD — live_deploy_unit_status_tail_command was an unmarked workaround (justification without a dissolution trigger). Poll-bound readiness capture now routes through gunbc.systemctl_status_read (typed Systemctl.Status, exit code as data, never masked). RESIDUE: tree_sync_restart_step_with_diagnosis in emit.dag still shells this concat into foreign-executor bash until typed host_effect_apply lands there. dissolves-on: unit-diagnosis modeled as a typed systemd.Systemctl.Status observation that reports exit code as data in UnitStatusCapture, never masked by '| tail' or trailing 'exit 0'; delete live_deploy_unit_status_tail_command concat."
+
+data live_deploy_unit_diagnosis_dissolution_trigger: String = "dissolves-on: unit-diagnosis modeled as a typed systemd.Systemctl.Status observation (exit code recorded as data in UnitStatusCapture, never masked by '| tail' or trailing 'exit 0'); delete live_deploy_unit_status_tail_command concat."
+
 data live_deploy_unit_status_emit_scaffold_note: String = "Emit-only residue: tree_sync_restart_step_with_diagnosis (gunbc.live_deploy.emit) still shells live_deploy_unit_status_tail_command into foreign-executor bash. Readiness unit_diagnosis now routes through systemd.Systemctl.Status (gunbc.systemctl_status_read); dissolve this concat when tree-sync restart migrates to typed host_effect_apply."
+
+data live_deploy_unit_status_tail_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.intent",
+    decl_name: "live_deploy_unit_diagnosis_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
 
 fn live_deploy_unit_status_tail_command(unit: NonEmptyStr) -> String {
   concat(

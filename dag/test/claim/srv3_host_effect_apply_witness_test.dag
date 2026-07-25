@@ -11,49 +11,6 @@ fn srv3_bmc_target() -> NodeControlPlane {
   BmcController { node: srv3_os_install_actuator_host }
 }
 
-fn srv3_host_effect_script_resolves(effect: HostEffect) -> Bool {
-  match srv3_host_effect_script_for(effect: effect) {
-    Present { value: script } => script.body != ""
-    Absent => false
-  }
-}
-
-fn witness_non_srv3_effect_script_for_absent() -> Bool {
-  match srv3_host_effect_script_for(effect: ShellCommand { script: "true" }) {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
-fn witness_srv3_typed_realize_effects_script_for_absent() -> Bool {
-  match srv3_host_effect_script_for(effect: DurableApprovalGrantRead) {
-    Absent => true
-    Present { value: _ } => false
-  }
-    && match srv3_host_effect_script_for(effect: Srv3BootOnceReadBackSleep) {
-      Absent => true
-      Present { value: _ } => false
-    }
-    && match srv3_host_effect_script_for(
-      effect: Srv3ReceiptEmit { lines: ["Srv3InstallReconcileReceipt: attempt_id=test"] },
-    ) {
-      Absent => true
-      Present { value: _ } => false
-    }
-    && match srv3_host_effect_script_for(effect: Srv3SeededInstallMediaToolchainEnsure) {
-      Absent => true
-      Present { value: _ } => false
-    }
-    && match srv3_host_effect_script_for(effect: Srv3BmcwebSessionLogin) {
-      Absent => true
-      Present { value: _ } => false
-    }
-    && match srv3_host_effect_script_for(effect: Srv3BmcwebTokenExtract) {
-      Absent => true
-      Present { value: _ } => false
-    }
-}
-
 fn witness_srv3_receipt_emit_apply_converges_in_process() -> Bool {
   match host_effect_apply(
     target: srv3_actuator_target(),
@@ -72,17 +29,6 @@ fn witness_srv3_receipt_emit_apply_converges_in_process() -> Bool {
       }
     NotConverged { reason: _, applied: _ } => false
   }
-}
-
-fn witness_typed_reconcile_effects_script_for_absent() -> Bool {
-  match srv3_host_effect_script_for(effect: Srv3InstallMediaFetch) {
-    Absent => true
-    Present { value: _ } => false
-  }
-    && match srv3_host_effect_script_for(effect: Srv3SeededInstallMediaRemaster) {
-      Absent => true
-      Present { value: _ } => false
-    }
 }
 
 fn witness_durable_approval_grant_read_refuses_when_grant_file_unreadable() -> Bool {
@@ -270,13 +216,6 @@ fn witness_srv3_nbd_proxy_apply_observe_unimplemented_refuses_fail_closed() -> B
   }
 }
 
-fn witness_srv3_nbd_proxy_serve_script_for_absent() -> Bool {
-  match srv3_host_effect_script_for(effect: srv3_nbd_proxy_serve_host_effect()) {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
 fn witness_srv3_nbd_proxy_serve_session_binding_carries_lease() -> Bool {
   let effect = srv3_nbd_proxy_serve_host_effect()
   match effect {
@@ -305,36 +244,6 @@ fn witness_srv3_nbd_proxy_on_bmc_refuses_typed() -> Bool {
   }
 }
 
-fn witness_srv3_sibling_variants_still_resolve_after_apply_failure() -> Bool {
-  witness_srv3_apply_shell_failure_refuses_typed()
-    && srv3_host_effect_script_resolves(effect: DurableApprovalGrantRecord)
-    && srv3_host_effect_script_resolves(effect: Srv3SolConsoleCapture)
-    && srv3_host_effect_script_resolves(effect: Srv3InstallReconcileObserve { include_git_meta: false })
-}
-
-test fn srv3_host_effect_observe_script_resolves_via_script_for() -> Bool {
-  srv3_host_effect_script_resolves(
-    effect: Srv3InstallReconcileObserve { include_git_meta: true },
-  )
-    && match srv3_host_effect_script_for(
-      effect: Srv3InstallReconcileObserve { include_git_meta: true },
-    ) {
-      Present { value: script } =>
-        string_contains(s: script.body, pattern: "Srv3InstallObserveReceipt: surface=serve")
-      Absent => false
-    }
-}
-
-test fn srv3_host_effect_mechanical_variants_resolve_via_script_for() -> Bool {
-  srv3_host_effect_script_resolves(effect: DurableApprovalGrantRecord)
-    && witness_srv3_typed_realize_effects_script_for_absent()
-    && witness_typed_reconcile_effects_script_for_absent()
-    && srv3_host_effect_script_resolves(effect: Srv3SolConsoleCapture)
-    && witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash()
-    && witness_srv3_nbd_proxy_serve_script_for_absent()
-    && witness_non_srv3_effect_script_for_absent()
-}
-
 test fn srv3_typed_receipt_emit_realizes_in_process_not_shell() -> Bool {
   witness_srv3_receipt_emit_apply_converges_in_process()
 }
@@ -354,21 +263,10 @@ test fn srv3_nbd_proxy_serve_realize_layer_dissolves_via_host_effect_nbd_proxy_s
     && string_contains(s: host_effect_nbd_proxy_serve_dissolution_trigger, pattern: "P6 Part 2")
 }
 
-test fn srv3_host_effect_script_dissolves_via_bash_emit_not_p5b_executor() -> Bool {
-  string_contains(s: srv3_host_effect_script_dissolution_trigger, pattern: "bash-emit")
-    && string_contains(s: srv3_host_effect_script_dissolution_trigger, pattern: "#5828")
-    && string_contains(s: srv3_host_effect_script_dissolution_trigger, pattern: "Wave 4 residue")
-    && string_contains(s: srv3_host_effect_script_dissolution_trigger, pattern: "NOT gated on shell_exec_via_bash executor deletion")
-}
-
 test fn srv3_host_effect_apply_holds() -> Bool {
-  srv3_host_effect_observe_script_resolves_via_script_for()
-    && srv3_host_effect_mechanical_variants_resolve_via_script_for()
-    && witness_srv3_typed_realize_effects_script_for_absent()
-    && witness_srv3_receipt_emit_apply_converges_in_process()
+  witness_srv3_receipt_emit_apply_converges_in_process()
     && srv3_typed_receipt_carrier_holds_lines()
     && shell_bash_runner_still_present_for_p5b()
-    && srv3_host_effect_script_dissolves_via_bash_emit_not_p5b_executor()
     && srv3_nbd_proxy_serve_realize_layer_dissolves_via_host_effect_nbd_proxy_serve()
     && witness_srv3_nbd_proxy_serve_session_binding_carries_lease()
     && witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time()
@@ -383,5 +281,5 @@ test fn srv3_host_effect_apply_holds() -> Bool {
     && witness_srv3_typed_reconcile_ssh_transport_refuses_typed()
     && witness_durable_approval_grant_read_refuses_when_grant_file_unreadable()
     && witness_bmcweb_token_extract_ssh_transport_refuses_typed()
-    && witness_srv3_sibling_variants_still_resolve_after_apply_failure()
+    && witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash()
 }

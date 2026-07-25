@@ -1,7 +1,7 @@
 module gunbc.fleet_ssh_access
 
 import std.types { List, NonEmptyStr }
-import extdeps.access.ssh { SshPublicKey, Ed25519 }
+import extdeps.ssh { SshPublicKey, Ed25519 }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }

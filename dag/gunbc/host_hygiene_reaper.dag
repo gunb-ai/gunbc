@@ -15,7 +15,7 @@ import std.realization_reconcile {
   NotConverged,
   reconcile_grounded,
 }
-import extdeps.os.systemd {
+import extdeps.systemd {
   SystemdUnitActiveState,
   Active,
   Inactive,

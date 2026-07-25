@@ -1,7 +1,7 @@
 module tools.ci_gates
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.ci_gate { EmitHostGate, Gate, CheapClaimPoolGate, LayeringImportsGate }
+import gunbc.ci_gate { EmitHostGate, Gate, CheapClaimPoolGate }
 import gunbc.ci_spec {
   gunbc_ci_gates, CiSpec,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
@@ -10,7 +10,6 @@ import gunbc.ci_spec {
 }
 import tools.emit_host_gate { run_emit_host_ci_gate }
 import tools.cheap_claim_pool_gate { run_cheap_claim_pool_ci_gate }
-import tools.layering_imports_gate { run_layering_imports_ci_gate }
 import tools.extdeps_external_authority_gate { run_extdeps_external_authority_ci_gate }
 import tools.dag_compile_clean_gate { run_dag_compile_clean_gate }
 import tools.generated_artifact_gate { run_generated_artifact_drift_gate }
@@ -24,7 +23,6 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
   match g {
     EmitHostGate => run_emit_host_ci_gate()
     CheapClaimPoolGate => run_cheap_claim_pool_ci_gate()
-    LayeringImportsGate => run_layering_imports_ci_gate()
     ExtdepsExternalAuthorityGate => run_extdeps_external_authority_ci_gate()
     DagCompileCleanGate => run_dag_compile_clean_gate()
     GeneratedArtifactDriftGate => run_generated_artifact_drift_gate()

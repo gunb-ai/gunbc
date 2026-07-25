@@ -5,6 +5,16 @@ pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_emit_model::SimpleMethodSpec;
+pub use crate::std_trait_derive_shape::ReprGroundingDeriveTrait;
+use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::{
+    ReprDeriveAdd, ReprDeriveClone, ReprDeriveCopy, ReprDeriveDebug, ReprDeriveDeserialize,
+    ReprDeriveDiv, ReprDeriveEq, ReprDeriveMul, ReprDeriveNeg, ReprDeriveOrd, ReprDerivePartialEq,
+    ReprDerivePartialOrd, ReprDeriveRem, ReprDeriveSerialize, ReprDeriveSub,
+};
+pub use crate::std_trait_derive_shape::{
+    nullary_coproduct_derive_traits, payload_coproduct_derive_traits, record_derive_traits_copy,
+    record_derive_traits_heap,
+};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -132,7 +142,7 @@ pub fn rust_string_types() -> Rc<Vec<String>> {
 pub fn rust_struct_derives() -> String {
     thread_local! {
         static CACHED: String = {
-            "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
+            rust_trait_derive_attr_from_traits(record_derive_traits_heap())
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -141,7 +151,7 @@ pub fn rust_struct_derives() -> String {
 pub fn rust_struct_derives_copy() -> String {
     thread_local! {
         static CACHED: String = {
-            "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
+            rust_trait_derive_attr_from_traits(record_derive_traits_copy())
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -150,7 +160,7 @@ pub fn rust_struct_derives_copy() -> String {
 pub fn rust_enum_derives() -> String {
     thread_local! {
         static CACHED: String = {
-            "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
+            rust_trait_derive_attr_from_traits(payload_coproduct_derive_traits())
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -159,10 +169,47 @@ pub fn rust_enum_derives() -> String {
 pub fn rust_enum_derives_copy() -> String {
     thread_local! {
         static CACHED: String = {
-            "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
+            rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_trait_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> String {
+    match derive_trait.clone() {
+        ReprGroundingDeriveTrait::ReprDeriveDebug => "Debug".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveClone => "Clone".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveCopy => "Copy".to_string(),
+        ReprGroundingDeriveTrait::ReprDerivePartialEq => "PartialEq".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveEq => "Eq".to_string(),
+        ReprGroundingDeriveTrait::ReprDerivePartialOrd => "PartialOrd".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveOrd => "Ord".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveSerialize => "serde::Serialize".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveDeserialize => "serde::Deserialize".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveAdd => "std::ops::Add".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveSub => "std::ops::Sub".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveMul => "std::ops::Mul".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveDiv => "std::ops::Div".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveRem => "std::ops::Rem".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveNeg => "std::ops::Neg".to_string(),
+    }
+}
+
+pub fn rust_trait_derive_attr_from_traits(traits: Rc<Vec<ReprGroundingDeriveTrait>>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            "#[derive(".to_string(),
+            Rc::new({
+                let mut __result = Vec::new();
+                for t in traits.clone().iter().cloned() {
+                    __result.push(rust_trait_derive_spelling(t.clone()));
+                }
+                __result
+            })
+            .join(&", ".to_string()),
+        ),
+        ")]".to_string(),
+    )
 }
 
 pub fn rust_serde_tag() -> String {
@@ -580,4 +627,21 @@ pub fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
         rust_qualified_module_mod_basename(qualified_module.clone()),
         ".rs".to_string(),
     )
+}
+
+pub fn rust_repr_grounding_arm_b_dissolve_on() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion/Nat body lands (#7197); replace fail-closed unimplemented! stubs with grounded i64 newtype operations. Do not retain PartialEq<i64> cross-representation bridge — numeric-tower grounding replaces the straddle.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_supplemental_impls_commutative_semiring_magnitude() -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): Nat carrier arithmetic (v1 seed emit; ".to_string(), rust_repr_grounding_arm_b_dissolve_on()), ")\n".to_string()), "impl std::ops::Add for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n".to_string()), "    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;\n".to_string()), "    fn add(self, _rhs: Self) -> Self::Output { unimplemented!(\"interim CommutativeSemiring<Magnitude> stub — see #7197\") }\n".to_string()), "}\n".to_string()), "impl std::ops::Mul for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n".to_string()), "    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;\n".to_string()), "    fn mul(self, _rhs: Self) -> Self::Output { unimplemented!(\"interim CommutativeSemiring<Magnitude> stub — see #7197\") }\n".to_string()), "}\n".to_string()), "impl std::ops::Div for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n".to_string()), "    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;\n".to_string()), "    fn div(self, _rhs: Self) -> Self::Output { unimplemented!(\"interim CommutativeSemiring<Magnitude> stub — see #7197\") }\n".to_string()), "}\n".to_string()), "impl std::cmp::PartialEq<i64> for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n".to_string()), "    fn eq(&self, _other: &i64) -> bool { unimplemented!(\"interim CommutativeSemiring<Magnitude> stub — see #7197\") }\n".to_string()), "}\n".to_string())
+}
+
+pub fn rust_supplemental_impls_bool_coproduct() -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): Bool coproduct ↔ host bool bridge (v1 seed emit)\n".to_string(), "impl From<Bool> for bool {\n".to_string()), "    fn from(b: Bool) -> bool { match b { Bool::True => true, Bool::False => false } }\n".to_string()), "}\n".to_string())
 }

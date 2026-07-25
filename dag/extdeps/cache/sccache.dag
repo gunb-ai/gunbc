@@ -150,6 +150,30 @@ data sccache_misconfigured_log_fragments: List<String> = [
   sccache_failed_to_execute_compile_log_fragment,
 ]
 
+data sccache_server_lifetime_note: String = "sccache's server EXITS ON ITS OWN. Three environment knobs, all documented by the module's cited authority extdeps_external_authority_anchor (github.com/mozilla/sccache/blob/main/docs/Configuration.md), decide the process lifetime a supervisor sees, and they are modeled here because they are facts about SCCACHE — not about systemd, and not about gunbc. Before 2026-07-25 the P1b unit emitter spelled SCCACHE_START_SERVER=1 / SCCACHE_NO_DAEMON=1 as bare literals of its own, which made gunbc.host_build_cache_provision_script a SECOND authority for sccache's environment vocabulary (§3) — and the knob that was missing from that second authority is exactly the one that broke: SCCACHE_IDLE_TIMEOUT. Cited text: 'how long the local daemon process waits for more client requests before exiting, in seconds. Set to 0 to run sccache permanently.' The default is 600 seconds, confirmed by execution rather than read off the doc: on srv3 2026-07-25 the foreground-supervised unit started at 06:28:47 UTC, served no compile request, and EXITED 0 after `Duration: 10min 8.215s`, leaving `inactive (dead)` — Restart=on-failure could not fire because the exit was a success. Consequence for any supervisor: a Type=simple unit whose ExecStart is sccache is only durable when the idle timeout is disabled; otherwise it dies on the first quiet ten minutes and the host reverts to sccache's own unsupervised per-invocation auto-start (the very no-op state the foreground form was introduced to remove). Whether the srv1/srv2 production ctrl-sccache.service sets this knob is UNVERIFIED — neither host is reachable from a session container today, and the only in-tree description of that unit (#7206's note) lists SCCACHE_START_SERVER and SCCACHE_NO_DAEMON and no idle-timeout line, which is an absence in a summary, not evidence of absence in the file. What its month-plus uptime does NOT establish is that the unit is durable: those hosts run CI continuously, so traffic keeps the daemon below the idle threshold whether or not the timer is disabled — the uptime is consistent with both. This row therefore stands on the cited doc plus the srv3 receipt as a DEDUCTION; it is explicitly NOT claimed as a swap toward a production form nobody has read."
+
+data sccache_start_server_env_var: String = "SCCACHE_START_SERVER"
+
+data sccache_no_daemon_env_var: String = "SCCACHE_NO_DAEMON"
+
+data sccache_idle_timeout_env_var: String = "SCCACHE_IDLE_TIMEOUT"
+
+data sccache_idle_timeout_never_value_note: String = "The value whose MEANING is 'never exit', which is why it is a named row rather than a literal inside the assignment: '0' is not an ordinary duration on this axis (a zero-second idle timeout would mean the opposite), it is the cited doc's sentinel for running permanently. A future consumer that wants a bounded lifetime supplies its own seconds value; a consumer that wants a supervised daemon reads THIS row."
+
+data sccache_idle_timeout_never_value: String = "0"
+
+fn sccache_start_server_env_assignment() -> String {
+  join([sccache_start_server_env_var, "=1"], "")
+}
+
+fn sccache_no_daemon_env_assignment() -> String {
+  join([sccache_no_daemon_env_var, "=1"], "")
+}
+
+fn sccache_idle_timeout_never_env_assignment() -> String {
+  join([sccache_idle_timeout_env_var, "=", sccache_idle_timeout_never_value], "")
+}
+
 data sccache_local_facts: CacheInterfaceCatalogFacts = {
   identity: sccache_local_id
   backing_surface: "sccache-local-disk"
