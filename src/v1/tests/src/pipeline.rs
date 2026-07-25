@@ -2151,12 +2151,7 @@ fn list_slice_emits_for_int_lists() {
     let source = "module test\nfn tail(xs: List<Int>) -> List<Int> {\n  xs[0..1]\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    let emitted = result
-        .files
-        .iter()
-        .find(|f| f.path.ends_with(".rs"))
-        .map(|f| f.content.as_str())
-        .unwrap_or("");
+    let emitted = find_file(&result, "src/test.rs");
     assert!(
         emitted.contains("[0 as usize..1 as usize]"),
         "list slice must emit usize range bounds, got:\n{emitted}"

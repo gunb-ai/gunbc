@@ -5124,6 +5124,22 @@ fn emit_rust_fn_body_expr(texpr: Node, return_is_unit: Bool, registry: Map<Strin
   }
 }
 
+fn emit_rust_unit_discarding_optional_record(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let si = scope.type_env.source_indices
+  let tn = match record_lit_type_name_at(texpr: texpr, source_indices: si) { Present { value: n } => n  Absent => "" }
+  if is_some_like_variant_name(name: tn) {
+    match texpr.children |> first {
+      Present { value: f } =>
+        emit_rust_unit_discarding_stmt(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      Absent => "()"
+    }
+  } else if is_optional_variant_name(name: tn) {
+    "()"
+  } else {
+    concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";")
+  }
+}
+
 fn emit_rust_unit_discarding_stmt(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   match texpr.expr_data {
@@ -5142,6 +5158,29 @@ fn emit_rust_unit_discarding_stmt(texpr: Node, registry: Map<String, ItemInfo>, 
       texpr.children
         |> map(child => emit_rust_unit_discarding_stmt(texpr: child, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
         |> join(separator: "\n")
+    ExprIf =>
+      let c = if_condition(texpr: texpr)
+      let t = if_then_branch(texpr: texpr)
+      let e = if_else_branch(texpr: texpr)
+      let cond_str = emit_typed_expr(texpr: c, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+      let then_str = emit_rust_unit_discarding_stmt(texpr: t, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
+      match e {
+        Present { value: eb } =>
+          let else_str = emit_rust_unit_discarding_stmt(texpr: eb, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
+          concat("if ", cond_str, " {\n", make_indent(level: depth + 1), then_str, "\n} else {\n", make_indent(level: depth + 1), else_str, "\n}")
+        Absent =>
+          concat("if ", cond_str, " {\n", make_indent(level: depth + 1), then_str, "\n}")
+      }
+    ExprRecordLit { parent_enum: _ } =>
+      emit_rust_unit_discarding_optional_record(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    ExprLiteral { value: v } =>
+      match v { LitNull => "()"  _ => concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";") }
+    ExprVar { binding_kind: binding_kind } =>
+      let n = expr_var_name_at(texpr: texpr, source_indices: si)
+      let leaf = value_ref_qualified_leaf(name: n)
+      if leaf == "none" || leaf == "None" || leaf == "Absent" { "()" }
+      else if is_optional_variant_name(name: leaf) && is_some_like_variant_name(name: leaf) == false { "()" }
+      else { concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";") }
     _ =>
       concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";")
   }

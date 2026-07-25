@@ -13610,6 +13610,53 @@ pub fn emit_rust_fn_body_expr(
     }
 }
 
+pub fn emit_rust_unit_discarding_optional_record(
+    texpr: Rc<Node>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let si = scope.type_env.clone().source_indices.clone();
+        let tn = match record_lit_type_name_at(texpr.clone(), si.clone()) {
+            Some(n) => n.clone(),
+            None => "".to_string(),
+        };
+        if is_some_like_variant_name(tn.clone()) {
+            match texpr.children.clone().first().cloned() {
+                Some(f) => emit_rust_unit_discarding_stmt(
+                    field_init_node_value(f.clone()),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                ),
+                None => "()".to_string(),
+            }
+        } else {
+            if is_optional_variant_name(tn.clone()) {
+                "()".to_string()
+            } else {
+                v1_rt::concat(
+                    emit_typed_expr(
+                        texpr.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        1024,
+                    ),
+                    ";".to_string(),
+                )
+            }
+        }
+    }
+}
+
 pub fn emit_rust_unit_discarding_stmt(
     texpr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -13665,6 +13712,134 @@ pub fn emit_rust_unit_discarding_stmt(
                 __result
             })
             .join(&"\n".to_string()),
+            ExprData::ExprIf => {
+                let c = if_condition(texpr.clone());
+                let t = if_then_branch(texpr.clone());
+                let e = if_else_branch(texpr.clone());
+                let cond_str = emit_typed_expr(
+                    c.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                    1024,
+                );
+                let then_str = emit_rust_unit_discarding_stmt(
+                    t.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    (depth.clone() + 1),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                );
+                match e.clone() {
+                    Some(eb) => {
+                        let else_str = emit_rust_unit_discarding_stmt(
+                            eb.clone(),
+                            registry.clone(),
+                            scope.clone(),
+                            (depth.clone() + 1),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                        );
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        "if ".to_string(),
+                                                        cond_str.clone(),
+                                                    ),
+                                                    " {\n".to_string(),
+                                                ),
+                                                make_indent((depth.clone() + 1)),
+                                            ),
+                                            then_str.clone(),
+                                        ),
+                                        "\n} else {\n".to_string(),
+                                    ),
+                                    make_indent((depth.clone() + 1)),
+                                ),
+                                else_str.clone(),
+                            ),
+                            "\n}".to_string(),
+                        )
+                    }
+                    None => v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat("if ".to_string(), cond_str.clone()),
+                                    " {\n".to_string(),
+                                ),
+                                make_indent((depth.clone() + 1)),
+                            ),
+                            then_str.clone(),
+                        ),
+                        "\n}".to_string(),
+                    ),
+                }
+            }
+            ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                emit_rust_unit_discarding_optional_record(
+                    texpr.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            }
+            ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
+                LiteralValue::LitNull => "()".to_string(),
+                _ => v1_rt::concat(
+                    emit_typed_expr(
+                        texpr.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        1024,
+                    ),
+                    ";".to_string(),
+                ),
+            },
+            ExprData::ExprVar {
+                binding_kind: binding_kind,
+                ..
+            } => {
+                let n = expr_var_name_at(texpr.clone(), si.clone());
+                let leaf = value_ref_qualified_leaf(n.clone());
+                if (((leaf.clone() == "none".to_string()) || (leaf.clone() == "None".to_string()))
+                    || (leaf.clone() == "Absent".to_string()))
+                {
+                    "()".to_string()
+                } else {
+                    if (is_optional_variant_name(leaf.clone())
+                        && (is_some_like_variant_name(leaf.clone()) == false))
+                    {
+                        "()".to_string()
+                    } else {
+                        v1_rt::concat(
+                            emit_typed_expr(
+                                texpr.clone(),
+                                registry.clone(),
+                                scope.clone(),
+                                depth.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                                1024,
+                            ),
+                            ";".to_string(),
+                        )
+                    }
+                }
+            }
             _ => v1_rt::concat(
                 emit_typed_expr(
                     texpr.clone(),
