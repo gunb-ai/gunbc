@@ -5,7 +5,8 @@ import extdeps.sec.facts {
   FiledMonetaryFact,
   usd_whole_dollars,
 }
-import extdeps.sec.types { AnnualReport }
+import extdeps.sec.issuer.chemed { chemed_issuer_catalog }
+import extdeps.sec.types { AnnualReport, IssuerCatalogRow }
 import extdeps.sec.us_gaap {
   us_gaap_cost_of_goods_and_services_sold,
   us_gaap_operating_income_loss,
@@ -23,6 +24,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data chemed_facts_subject: IssuerCatalogRow = chemed_issuer_catalog
+
 data chemed_facts_provenance_note: String = "Every amount is a live pull from data.sec.gov companyfacts (2026-07-21, session snappy-carp-882). CIK 0000019584 verified against the SEC company_tickers.json ticker-to-CIK map and the EDGAR submissions API (tickers: [\"CHE\"], exchanges: [\"NYSE\"]). Fiscal year ended 2025-12-31, form 10-K, accession 0001562762-26-000020, filed 2026-02-27. Chemed's FY2025 10-K does not tag GrossProfit or CostOfRevenue on the us-gaap axis (same element-substitution case as Rollins) — it tags CostOfGoodsAndServicesSold instead, so the profitability witness below derives operating margin rather than gross margin."
 
 data chemed_segment_gap_note: String = "Chemed's companyfacts response reports CONSOLIDATED us-gaap facts only (dimensional/segment axes are stripped from the companyfacts and companyconcept APIs). The 10-K's segment-reporting footnote (accession 0001562762-26-000020) discloses VITAS (hospice) and Roto-Rooter (plumbing/drain, NumberOfReportableSegments: 2) separately, but that segment-level revenue/profit split is not reachable as filed top-level XBRL facts through data.sec.gov — it exists only in the filing's narrative/tabular segment-reporting note. No estimated split is stored here; only the consolidated filed facts below are grounded."
@@ -32,33 +35,32 @@ data chemed_fy2025_citation: FiledFactCitation = FiledFactCitation {
   fiscal_year: 2025,
   fiscal_period: "FY",
   form: AnnualReport,
-  period_start: "2025-01-01",
-  period_end: "2025-12-31",
+  period: FiledDuration { start: "2025-01-01", end: "2025-12-31" },
   filed_date: "2026-02-27",
 }
 
 data chemed_fy2025_revenue: FiledMonetaryFact = FiledMonetaryFact {
   element: us_gaap_revenues,
   amount: Filed { amount: usd_whole_dollars(count: 2529978000) },
-  citation: Present { value: chemed_fy2025_citation },
+  citation: chemed_fy2025_citation,
 }
 
 data chemed_fy2025_cost_of_goods_and_services: FiledMonetaryFact = FiledMonetaryFact {
   element: us_gaap_cost_of_goods_and_services_sold,
   amount: Filed { amount: usd_whole_dollars(count: 1706794000) },
-  citation: Present { value: chemed_fy2025_citation },
+  citation: chemed_fy2025_citation,
 }
 
 data chemed_fy2025_sga: FiledMonetaryFact = FiledMonetaryFact {
   element: us_gaap_selling_general_and_administrative_expense,
   amount: Filed { amount: usd_whole_dollars(count: 417188000) },
-  citation: Present { value: chemed_fy2025_citation },
+  citation: chemed_fy2025_citation,
 }
 
 data chemed_fy2025_operating_income: FiledMonetaryFact = FiledMonetaryFact {
   element: us_gaap_operating_income_loss,
   amount: Filed { amount: usd_whole_dollars(count: 338246000) },
-  citation: Present { value: chemed_fy2025_citation },
+  citation: chemed_fy2025_citation,
 }
 
 data chemed_fy2025_filed_facts: List<FiledMonetaryFact> = [

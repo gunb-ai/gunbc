@@ -28,7 +28,6 @@ import extdeps.router.verizon_cr1000a {
   cr1000a_expires_in_ui_text_frontier_rows,
 }
 import extdeps.tools.sha256sum { sha256_verify_native_transport_frontier_rows }
-import gunbc.v1_emit_rust_closure_frontier { strip_repeated_use_symbols_frontier_rows }
 
 fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
   [
@@ -53,7 +52,6 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     cr1000a_delegated_prefix_length_scalar_frontier_rows,
     cr1000a_expires_in_ui_text_frontier_rows,
     sha256_verify_native_transport_frontier_rows,
-    strip_repeated_use_symbols_frontier_rows,
   ]
 }
 

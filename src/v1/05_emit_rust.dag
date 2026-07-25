@@ -4007,16 +4007,6 @@ fn rust_use_bound_symbol(entry: String) -> String {
 
 data strip_repeated_use_symbols_note: String = "Cross-line symbol-ownership pass (the emitter-side construction fix for the last cssl sanitize rule, cssl_emit_artifact_sanitize_scaffold_debt): within one module header, a symbol binds through exactly ONE crate-use line — the first line to bind it keeps it, a later line re-importing the same bound name through a different transitive path (Optional via v2_std_grammar AND v2_std_collection, the measured 2026-07-22 emit_produced firing) drops the repeat, and a line reduced to zero symbols disappears. Glob lines (::*) and non-crate imports pass through unbound (glob shadowing is legal rust and the prelude is out of scope). The subset/equal coverage filters above drop whole redundant lines; this pass makes the residual PARTIAL overlap across two provider paths unwritable, so rustc E0252/E0255 duplicate-binding classes cannot be authored by the import merge. Coarser than rustc's per-namespace rule (one seen-set, not type/value split) — mirrors the sanitize rule it replaces; .dag naming (CamelCase types, snake_case values) keeps cross-namespace same-name pairs out of real emissions, and the seed (green, so free of duplicate bindings) is byte-inert under it by construction. This pass is post-hoc over rendered lines, not construction (DESIGN section 5) — a bounded scaffold. dissolve-on: the import surface derives from ONE symbol-to-provider ownership map built BEFORE any use-line renders (emit_imports + carrier + reference-derived streams selecting from the same map, so a duplicate binding is unwritable), OR the resolver step-2 typed refusal replaces reference-derived synthesis entirely (the nic_scaffold_dissolution_trigger event) — at either point this strip reduces to a dead assertion and is deleted; the raw_dup_pub_use sweep column is the census that proves it fired zero times first. Cost shape: one symbol-to-owning-line map built in a single pass, then a per-line projection against it — linear in total bound symbols (an owner line always retains its owned symbols, so first-binder-wins and the owner map agree); the earlier per-iteration recomputation of the seen set from all prior kept lines was a quadratic fold (bare-minimum-cost rule, 2026-07-10)."
 
-data strip_repeated_use_symbols_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "strip_repeated_use_symbols"),
-    reason: "Post-hoc cross-line symbol-ownership pass over rendered use lines; construction fix is a single symbol-to-provider ownership map built before any use-line renders",
-    trigger: TriggerProse {
-      text: "import surface derives from ONE symbol-to-provider ownership map built BEFORE any use-line renders, OR resolver step-2 typed refusal replaces reference-derived synthesis entirely",
-    },
-  )
-]
-
 fn rust_use_line_bound_symbols(line: String) -> List<String> {
   if rust_use_crate_marker(line: line) == "" || contains(line, "::*") {
     []

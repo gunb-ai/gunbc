@@ -1,0 +1,727 @@
+module extdeps.pricing.object_storage
+
+import std.currency { CurrencyCode, Usd }
+import std.measure { money_amount_micro, money_rate_micros }
+import extdeps.pricing.billing_units {
+  MoneyPerMillionRequests,
+  MoneyPerStoredUnitMonth,
+  MoneyPerTransferredUnit,
+}
+import std.nat { Nat }
+import std.types { NonEmptyStr, List }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/us-east-1/index.csv"
+  }
+}
+
+data object_storage_pricing_provenance_note: String = "Live-fetched 2026-07-25 (session gitlab-10k-scm-costs-baz90x). Machine-readable sources are cited exactly: AWS S3 storage tiers and the durability attribute come from the AWS Price List API regional CSV (anchor above -- the SAME authority extdeps.pricing.aws_ec2 already cites), and internet egress tiers from the AWSDataTransfer price list (us-east-1 to External). Google Cloud Storage rates come from the published pricing page tables; Cloudflare R2 from its pricing docs tables. Backblaze B2 and Hetzner Object Storage quote their headline rates through client-rendered markup that this fetch cannot read, so those rates are RateUnavailable rows with a stated cause -- not remembered numbers (DESIGN section 5: a plausible price fabricated from training data is exactly the wrong answer, and a vendor rate is precisely the kind of fact that goes stale)."
+
+data byte_basis_note: String = "The unit word is not the unit. AWS S3 bills 'GB-Mo', Google Cloud Storage bills '1 gibibyte hour', Cloudflare R2 bills 'GB-month' -- and none of these pricing surfaces states whether its G is 10^9 or 2^30 bytes. The difference is 7.4 percent, which is larger than the spread between several of these vendors, so a model that silently picked one basis would produce comparisons that are wrong in a way no test would catch. Each row therefore carries the vendor's quoted unit label VERBATIM plus a typed ByteBasis, and every row here is ByteBasisUnstated because none of the cited surfaces states it. Cross-vendor comparison is only possible under a DECLARED basis assumption (gunbc.econ.scm_serving_model), never silently. Dissolve-on: citing each vendor's own definition page where one exists."
+
+type ByteBasis
+  = BinaryGibibyte
+  | DecimalGigabyte
+  | ByteBasisUnstated
+
+type StorageVendor
+  = AwsS3
+  | GoogleCloudStorage
+  | CloudflareR2
+  | BackblazeB2
+  | HetznerObjectStorage
+  | AzureBlobStorage
+  | Wasabi
+  | Storj
+
+fn storage_vendor_label(v: StorageVendor) -> NonEmptyStr {
+  match v {
+    AwsS3 => "AWS S3"
+    GoogleCloudStorage => "Google Cloud Storage"
+    CloudflareR2 => "Cloudflare R2"
+    BackblazeB2 => "Backblaze B2"
+    HetznerObjectStorage => "Hetzner Object Storage"
+    AzureBlobStorage => "Azure Blob Storage"
+    Wasabi => "Wasabi Hot Cloud Storage"
+    Storj => "Storj"
+  }
+}
+
+data durability_standard_note: String = "The industry 'normal standard' for replicated object storage is ELEVEN NINES of annual durability, and for AWS this is not folklore -- it is a machine-readable attribute on the price-list row itself (Durability=99.999999999% on S3 Standard AND Standard-Infrequent-Access; the same file carries 99.99% rows for reduced-redundancy classes). Durability at that level is achieved by erasure-coding each object across multiple facilities, which is WHY the price already includes redundancy: an S3 Standard GB-month is not one copy, so multiplying a cited object-storage rate by a replica count double-counts the redundancy the vendor already sells. That is the modeling trap this row exists to name -- replica multiplication belongs on SELF-MANAGED block storage (the Hetzner dedicated rows in extdeps.pricing.hetzner_dedicated), never on a durability-priced object-storage rate."
+
+data redundancy_scope_note: String = "Redundancy SCOPE is a separate fact from durability nines, and this enum admits only what a vendor's own pricing surface NAMES -- never what the modeler remembers. Azure names it in the SKU itself (LRS locally redundant / ZRS zone redundant / GRS geo redundant / GZRS geo-zone redundant / RA- read-access), which is why Azure is the one vendor whose redundancy ladder is priced row by row below. Storj's pricing page states global distribution across storage locations. Every other vendor here states durability or nothing on the fetched surface, so their scope is RedundancyUnstated -- and a reliability requirement over scope therefore returns Unknown for them rather than a pass (DESIGN section 5: absence of evidence is not a satisfied requirement)."
+
+type RedundancyScope
+  = SingleFacility
+  | MultiFacilityOneRegion
+  | MultiRegion
+  | ReadAccessMultiRegion
+  | GloballyDistributed
+  | RedundancyUnstated
+
+type DurabilityClaim
+  = DurabilityNines { nines: Nat }
+  | DurabilityUnstated
+
+type StorageRateAvailability
+  = RateCited {
+      rate: MoneyPerStoredUnitMonth,
+      quoted_unit_label: NonEmptyStr,
+      byte_basis: ByteBasis,
+    }
+  | RateUnavailable { cause: NonEmptyStr }
+
+type TransferRateAvailability
+  = TransferCited {
+      rate: MoneyPerTransferredUnit,
+      quoted_unit_label: NonEmptyStr,
+      byte_basis: ByteBasis,
+    }
+  | TransferIncludedAtNoCharge { terms: NonEmptyStr }
+  | TransferUnavailable { cause: NonEmptyStr }
+
+type ObjectStorageClassRow {
+  vendor: StorageVendor
+  storage_class_label: NonEmptyStr
+  storage_rate: StorageRateAvailability
+  durability: DurabilityClaim
+  redundancy: RedundancyScope
+  tier_lower_bound_gb: Nat
+  pricing_citation: NonEmptyStr
+}
+
+type ObjectStorageEgressRow {
+  vendor: StorageVendor
+  egress_rate: TransferRateAvailability
+  tier_lower_bound_gb: Nat
+  pricing_citation: NonEmptyStr
+}
+
+type ObjectStorageRequestRow {
+  vendor: StorageVendor
+  operation_class_label: NonEmptyStr
+  per_million: MoneyPerMillionRequests
+  pricing_citation: NonEmptyStr
+}
+
+data s3_standard_first_50tb: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: AwsS3,
+  storage_class_label: "Standard",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 23000), currency: Usd },
+    quoted_unit_label: "GB-Mo",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityNines { nines: 11 },
+  redundancy: RedundancyUnstated,
+  tier_lower_bound_gb: 0,
+  pricing_citation: "AmazonS3/us-east-1#TimedStorage-ByteHrs[0-51200]",
+}
+
+data s3_standard_next_450tb: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: AwsS3,
+  storage_class_label: "Standard",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 22000), currency: Usd },
+    quoted_unit_label: "GB-Mo",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityNines { nines: 11 },
+  redundancy: RedundancyUnstated,
+  tier_lower_bound_gb: 51200,
+  pricing_citation: "AmazonS3/us-east-1#TimedStorage-ByteHrs[51200-512000]",
+}
+
+data s3_standard_over_500tb: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: AwsS3,
+  storage_class_label: "Standard",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 21000), currency: Usd },
+    quoted_unit_label: "GB-Mo",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityNines { nines: 11 },
+  redundancy: RedundancyUnstated,
+  tier_lower_bound_gb: 512000,
+  pricing_citation: "AmazonS3/us-east-1#TimedStorage-ByteHrs[512000-Inf]",
+}
+
+data s3_standard_infrequent_access: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: AwsS3,
+  storage_class_label: "Standard - Infrequent Access",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 12500), currency: Usd },
+    quoted_unit_label: "GB-Mo",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityNines { nines: 11 },
+  redundancy: RedundancyUnstated,
+  tier_lower_bound_gb: 0,
+  pricing_citation: "AmazonS3/us-east-1#TimedStorage-SIA-ByteHrs",
+}
+
+data gcs_standard_regional_note: String = "Google Cloud Storage quotes Standard storage as 0.000027397 USD per gibibyte HOUR, which is a different billing period as well as a different byte word from AWS's GB-Mo. The row below carries the monthly equivalent at the conventional 730-hour billing month (std.measure billing_month_as_hour_count): 0.000027397 * 730 = 0.0200 USD, i.e. 20000 micro-USD. That multiplication is a period conversion within ONE vendor's own quote, not a cross-vendor byte-basis conversion -- the latter still refuses without a declared assumption."
+
+data gcs_standard_regional: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: GoogleCloudStorage,
+  storage_class_label: "Standard storage",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 20000), currency: Usd },
+    quoted_unit_label: "1 gibibyte hour (x730h billing month)",
+    byte_basis: BinaryGibibyte,
+  },
+  durability: DurabilityUnstated,
+  redundancy: RedundancyUnstated,
+  tier_lower_bound_gb: 0,
+  pricing_citation: "cloud.google.com/storage/pricing#standard-storage",
+}
+
+data r2_standard: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: CloudflareR2,
+  storage_class_label: "Standard storage",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 15000), currency: Usd },
+    quoted_unit_label: "GB-month",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityUnstated,
+  redundancy: RedundancyUnstated,
+  tier_lower_bound_gb: 0,
+  pricing_citation: "developers.cloudflare.com/r2/pricing#standard-storage",
+}
+
+data r2_infrequent_access: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: CloudflareR2,
+  storage_class_label: "Infrequent Access storage",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 10000), currency: Usd },
+    quoted_unit_label: "GB-month",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityUnstated,
+  redundancy: RedundancyUnstated,
+  tier_lower_bound_gb: 0,
+  pricing_citation: "developers.cloudflare.com/r2/pricing#infrequent-access-storage",
+}
+
+data b2_storage_rate_unavailable: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: BackblazeB2,
+  storage_class_label: "B2 Cloud Storage",
+  storage_rate: RateUnavailable {
+    cause: "headline per-TB rate is client-rendered on backblaze.com/cloud-storage/pricing and absent from the fetched markup; no machine-readable price list published. Refused rather than filled from memory.",
+  },
+  durability: DurabilityUnstated,
+  redundancy: RedundancyUnstated,
+  tier_lower_bound_gb: 0,
+  pricing_citation: "backblaze.com/cloud-storage/pricing#rate-not-machine-readable",
+}
+
+data hetzner_object_storage_rate_unavailable: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: HetznerObjectStorage,
+  storage_class_label: "Object Storage",
+  storage_rate: RateUnavailable {
+    cause: "base monthly price is injected client-side (price element product-key CLOUD_84) and the public Hetzner Cloud pricing API requires an authenticated token; the fetched page states only the included quota. Refused rather than filled from memory.",
+  },
+  durability: DurabilityUnstated,
+  redundancy: RedundancyUnstated,
+  tier_lower_bound_gb: 0,
+  pricing_citation: "hetzner.com/storage/object-storage#rate-not-machine-readable",
+}
+
+data hetzner_object_storage_included_quota_note: String = "What the Hetzner Object Storage page DOES state in fetched text, and the only quota fact stored from it: 'This base price includes 1 TB of storage (up to 744 TB-hours) and 1 TB of egress traffic.' The 744 TB-hours figure is itself the 31-day month, a third billing-period convention beside AWS's GB-Mo and Google's gibibyte-hour."
+
+data s3_egress_first_10tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
+  vendor: AwsS3,
+  egress_rate: TransferCited {
+    rate: MoneyPerTransferredUnit { amount: money_amount_micro(count: 90000), currency: Usd },
+    quoted_unit_label: "GB",
+    byte_basis: ByteBasisUnstated,
+  },
+  tier_lower_bound_gb: 0,
+  pricing_citation: "AWSDataTransfer#us-east-1-to-External[0-10240]",
+}
+
+data s3_egress_next_40tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
+  vendor: AwsS3,
+  egress_rate: TransferCited {
+    rate: MoneyPerTransferredUnit { amount: money_amount_micro(count: 85000), currency: Usd },
+    quoted_unit_label: "GB",
+    byte_basis: ByteBasisUnstated,
+  },
+  tier_lower_bound_gb: 10240,
+  pricing_citation: "AWSDataTransfer#us-east-1-to-External[10240-51200]",
+}
+
+data s3_egress_next_100tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
+  vendor: AwsS3,
+  egress_rate: TransferCited {
+    rate: MoneyPerTransferredUnit { amount: money_amount_micro(count: 70000), currency: Usd },
+    quoted_unit_label: "GB",
+    byte_basis: ByteBasisUnstated,
+  },
+  tier_lower_bound_gb: 51200,
+  pricing_citation: "AWSDataTransfer#us-east-1-to-External[51200-153600]",
+}
+
+data s3_egress_over_150tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
+  vendor: AwsS3,
+  egress_rate: TransferCited {
+    rate: MoneyPerTransferredUnit { amount: money_amount_micro(count: 50000), currency: Usd },
+    quoted_unit_label: "GB",
+    byte_basis: ByteBasisUnstated,
+  },
+  tier_lower_bound_gb: 153600,
+  pricing_citation: "AWSDataTransfer#us-east-1-to-External[153600-Inf]",
+}
+
+data r2_egress_free: ObjectStorageEgressRow = ObjectStorageEgressRow {
+  vendor: CloudflareR2,
+  egress_rate: TransferIncludedAtNoCharge {
+    terms: "There are no charges for egress bandwidth for any storage class (egress via the Workers API, S3 API, and r2.dev domains).",
+  },
+  tier_lower_bound_gb: 0,
+  pricing_citation: "developers.cloudflare.com/r2/pricing#egress",
+}
+
+data b2_egress_beyond_free_allowance: ObjectStorageEgressRow = ObjectStorageEgressRow {
+  vendor: BackblazeB2,
+  egress_rate: TransferCited {
+    rate: MoneyPerTransferredUnit { amount: money_amount_micro(count: 10000), currency: Usd },
+    quoted_unit_label: "GB (beyond 3x average monthly stored, which is free)",
+    byte_basis: ByteBasisUnstated,
+  },
+  tier_lower_bound_gb: 0,
+  pricing_citation: "backblaze.com/cloud-storage/pricing#egress-beyond-3x",
+}
+
+data gcs_inter_region_replication_note: String = "Google Cloud Storage prices REPLICATION explicitly and separately: writing to a dual-region or multi-region bucket costs 0.02 USD per GiB replicated in North America and Europe (0.04 turbo; 0.08 in Asia). This is the one cited row in the set that puts a number on geographic replication as its own axis rather than folding it into the storage rate -- and it is charged per byte WRITTEN, not per byte stored, so it prices the ingest of new content, not the holding of it."
+
+data gcs_default_replication: ObjectStorageEgressRow = ObjectStorageEgressRow {
+  vendor: GoogleCloudStorage,
+  egress_rate: TransferCited {
+    rate: MoneyPerTransferredUnit { amount: money_amount_micro(count: 20000), currency: Usd },
+    quoted_unit_label: "GiB replicated (default, North America / Europe dual- and multi-region)",
+    byte_basis: BinaryGibibyte,
+  },
+  tier_lower_bound_gb: 0,
+  pricing_citation: "cloud.google.com/storage/pricing#inter-region-replication-default",
+}
+
+data s3_tier1_requests: ObjectStorageRequestRow = ObjectStorageRequestRow {
+  vendor: AwsS3,
+  operation_class_label: "Tier1 (PUT/COPY/POST or LIST requests)",
+  per_million: MoneyPerMillionRequests { amount: money_amount_micro(count: 5000000), currency: Usd },
+  pricing_citation: "AmazonS3/us-east-1#S3-API-Tier1",
+}
+
+data s3_tier2_requests: ObjectStorageRequestRow = ObjectStorageRequestRow {
+  vendor: AwsS3,
+  operation_class_label: "Tier2 (GET and all other requests)",
+  per_million: MoneyPerMillionRequests { amount: money_amount_micro(count: 400000), currency: Usd },
+  pricing_citation: "AmazonS3/us-east-1#S3-API-Tier2",
+}
+
+data r2_class_a_operations: ObjectStorageRequestRow = ObjectStorageRequestRow {
+  vendor: CloudflareR2,
+  operation_class_label: "Class A Operations (mutating: writes, lists)",
+  per_million: MoneyPerMillionRequests { amount: money_amount_micro(count: 4500000), currency: Usd },
+  pricing_citation: "developers.cloudflare.com/r2/pricing#class-a",
+}
+
+data r2_class_b_operations: ObjectStorageRequestRow = ObjectStorageRequestRow {
+  vendor: CloudflareR2,
+  operation_class_label: "Class B Operations (reads)",
+  per_million: MoneyPerMillionRequests { amount: money_amount_micro(count: 360000), currency: Usd },
+  pricing_citation: "developers.cloudflare.com/r2/pricing#class-b",
+}
+
+fn object_storage_class_catalog() -> List<ObjectStorageClassRow> {
+  [
+    s3_standard_first_50tb,
+    s3_standard_next_450tb,
+    s3_standard_over_500tb,
+    s3_standard_infrequent_access,
+    gcs_standard_regional,
+    r2_standard,
+    r2_infrequent_access,
+    b2_storage_rate_unavailable,
+    hetzner_object_storage_rate_unavailable,
+  ]
+}
+
+fn object_storage_egress_catalog() -> List<ObjectStorageEgressRow> {
+  [
+    s3_egress_first_10tb,
+    s3_egress_next_40tb,
+    s3_egress_next_100tb,
+    s3_egress_over_150tb,
+    r2_egress_free,
+    b2_egress_beyond_free_allowance,
+    gcs_default_replication,
+  ]
+}
+
+fn storage_rate_micros(row: ObjectStorageClassRow) -> Nat? {
+  match row.storage_rate {
+    RateCited { rate: r, quoted_unit_label: _, byte_basis: _ } =>
+      Present { value: money_rate_micros(q: r) }
+    RateUnavailable { cause: _ } => none
+  }
+}
+
+fn egress_rate_micros(row: ObjectStorageEgressRow) -> Nat? {
+  match row.egress_rate {
+    TransferCited { rate: r, quoted_unit_label: _, byte_basis: _ } =>
+      Present { value: money_rate_micros(q: r) }
+    TransferIncludedAtNoCharge { terms: _ } => Present { value: 0 }
+    TransferUnavailable { cause: _ } => none
+  }
+}
+
+fn storage_vendor_eq(a: StorageVendor, b: StorageVendor) -> Bool {
+  storage_vendor_label(v: a) == storage_vendor_label(v: b)
+}
+
+fn durability_nines(row: ObjectStorageClassRow) -> Nat? {
+  match row.durability {
+    DurabilityNines { nines: n } => Present { value: n }
+    DurabilityUnstated => none
+  }
+}
+
+data azure_redundancy_ladder_note: String = "Azure is the one vendor in this set that prices REDUNDANCY as an explicit product axis rather than folding it into a single rate, and it publishes the whole ladder through an unauthenticated retail price API (prices.azure.com/api/retail/prices, eastus, General Block Blob v2, Hot access tier, live-fetched 2026-07-25). Reading the ladder answers 'what does more redundancy cost' directly: locally redundant 0.0208, zone redundant 0.026 (+25 percent), geo redundant 0.0458 (+120 percent), geo-zone redundant 0.0468, read-access geo-zone redundant 0.0585 (+181 percent) USD per GB-month at the first tier. Each also steps down at 50 TB and 500 TB, so the rows below carry all three tiers for the ladder positions a serving model actually chooses between."
+
+data azure_hot_lrs_tier0: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: AzureBlobStorage,
+  storage_class_label: "Hot LRS (locally redundant)",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 20800), currency: Usd },
+    quoted_unit_label: "1 GB/Month",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityUnstated,
+  redundancy: SingleFacility,
+  tier_lower_bound_gb: 0,
+  pricing_citation: "prices.azure.com#eastus/GeneralBlockBlobv2/HotLRSDataStored[0]",
+}
+
+data azure_hot_lrs_tier_50tb: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: AzureBlobStorage,
+  storage_class_label: "Hot LRS (locally redundant)",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 19968), currency: Usd },
+    quoted_unit_label: "1 GB/Month",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityUnstated,
+  redundancy: SingleFacility,
+  tier_lower_bound_gb: 51200,
+  pricing_citation: "prices.azure.com#eastus/GeneralBlockBlobv2/HotLRSDataStored[51200]",
+}
+
+data azure_hot_lrs_tier_500tb: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: AzureBlobStorage,
+  storage_class_label: "Hot LRS (locally redundant)",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 19136), currency: Usd },
+    quoted_unit_label: "1 GB/Month",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityUnstated,
+  redundancy: SingleFacility,
+  tier_lower_bound_gb: 512000,
+  pricing_citation: "prices.azure.com#eastus/GeneralBlockBlobv2/HotLRSDataStored[512000]",
+}
+
+data azure_hot_zrs_tier0: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: AzureBlobStorage,
+  storage_class_label: "Hot ZRS (zone redundant)",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 26000), currency: Usd },
+    quoted_unit_label: "1 GB/Month",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityUnstated,
+  redundancy: MultiFacilityOneRegion,
+  tier_lower_bound_gb: 0,
+  pricing_citation: "prices.azure.com#eastus/GeneralBlockBlobv2/HotZRSDataStored[0]",
+}
+
+data azure_hot_zrs_tier_50tb: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: AzureBlobStorage,
+  storage_class_label: "Hot ZRS (zone redundant)",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 24960), currency: Usd },
+    quoted_unit_label: "1 GB/Month",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityUnstated,
+  redundancy: MultiFacilityOneRegion,
+  tier_lower_bound_gb: 51200,
+  pricing_citation: "prices.azure.com#eastus/GeneralBlockBlobv2/HotZRSDataStored[51200]",
+}
+
+data azure_hot_zrs_tier_500tb: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: AzureBlobStorage,
+  storage_class_label: "Hot ZRS (zone redundant)",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 23920), currency: Usd },
+    quoted_unit_label: "1 GB/Month",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityUnstated,
+  redundancy: MultiFacilityOneRegion,
+  tier_lower_bound_gb: 512000,
+  pricing_citation: "prices.azure.com#eastus/GeneralBlockBlobv2/HotZRSDataStored[512000]",
+}
+
+data azure_hot_gzrs_tier0: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: AzureBlobStorage,
+  storage_class_label: "Hot GZRS (geo-zone redundant)",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 46800), currency: Usd },
+    quoted_unit_label: "1 GB/Month",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityUnstated,
+  redundancy: MultiRegion,
+  tier_lower_bound_gb: 0,
+  pricing_citation: "prices.azure.com#eastus/GeneralBlockBlobv2/HotGZRSDataStored[0]",
+}
+
+data azure_hot_gzrs_tier_50tb: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: AzureBlobStorage,
+  storage_class_label: "Hot GZRS (geo-zone redundant)",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 44928), currency: Usd },
+    quoted_unit_label: "1 GB/Month",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityUnstated,
+  redundancy: MultiRegion,
+  tier_lower_bound_gb: 51200,
+  pricing_citation: "prices.azure.com#eastus/GeneralBlockBlobv2/HotGZRSDataStored[51200]",
+}
+
+data azure_hot_gzrs_tier_500tb: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: AzureBlobStorage,
+  storage_class_label: "Hot GZRS (geo-zone redundant)",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 43056), currency: Usd },
+    quoted_unit_label: "1 GB/Month",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityUnstated,
+  redundancy: MultiRegion,
+  tier_lower_bound_gb: 512000,
+  pricing_citation: "prices.azure.com#eastus/GeneralBlockBlobv2/HotGZRSDataStored[512000]",
+}
+
+data azure_hot_ra_gzrs_tier0: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: AzureBlobStorage,
+  storage_class_label: "Hot RA-GZRS (read-access geo-zone redundant)",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 58500), currency: Usd },
+    quoted_unit_label: "1 GB/Month",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityUnstated,
+  redundancy: ReadAccessMultiRegion,
+  tier_lower_bound_gb: 0,
+  pricing_citation: "prices.azure.com#eastus/GeneralBlockBlobv2/HotRA-GZRSDataStored[0]",
+}
+
+data wasabi_flat_rate_note: String = "Wasabi is the flat-rate shape: one storage price, and the pricing page states 'No fees for egress or API requests'. The quoted rate is per TB-month ('starting at 7.99 USD per TB/month'), which this row carries converted to the same per-unit-month carrier as everyone else by dividing by 1000 -- a WITHIN-vendor unit conversion, and the reason the row's byte basis stays unstated is that whether that TB is 10^12 or 2^40 is exactly what the page does not say (the page's own calculator footnote says estimates 'use base-2 system', which is evidence but not a rate definition). 'Starting at' is itself a hedge: the row carries the stated floor, and a commitment discount is not modeled."
+
+data wasabi_hot_storage: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: Wasabi,
+  storage_class_label: "Hot Cloud Storage (pay as you go)",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 7990), currency: Usd },
+    quoted_unit_label: "7.99 USD per TB/month (carried per unit-month)",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityUnstated,
+  redundancy: RedundancyUnstated,
+  tier_lower_bound_gb: 0,
+  pricing_citation: "wasabi.com/pricing#pay-as-you-go",
+}
+
+data wasabi_egress_free: ObjectStorageEgressRow = ObjectStorageEgressRow {
+  vendor: Wasabi,
+  egress_rate: TransferIncludedAtNoCharge {
+    terms: "No fees for egress or API requests (pay-as-you-go plan, as stated on the pricing page).",
+  },
+  tier_lower_bound_gb: 0,
+  pricing_citation: "wasabi.com/pricing#no-egress-or-api-fees",
+}
+
+data storj_distributed_note: String = "Storj is the erasure-coded distributed shape and the only vendor here whose pricing page states its redundancy posture in the same breath as its price ('Distributed globally across tens of thousands of storage locations'), which is why its redundancy scope is cited rather than unstated. It meters egress at the same 7 USD per TB as storage, so unlike the hyperscalers its network term never dominates by an order of magnitude, and unlike the zero-egress vendors it never vanishes."
+
+data storj_standard_storage: ObjectStorageClassRow = ObjectStorageClassRow {
+  vendor: Storj,
+  storage_class_label: "Standard (distributed)",
+  storage_rate: RateCited {
+    rate: MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 7000), currency: Usd },
+    quoted_unit_label: "7 USD per TB/month (carried per unit-month)",
+    byte_basis: ByteBasisUnstated,
+  },
+  durability: DurabilityUnstated,
+  redundancy: GloballyDistributed,
+  tier_lower_bound_gb: 0,
+  pricing_citation: "storj.io/pricing#standard-monthly-storage",
+}
+
+data storj_egress: ObjectStorageEgressRow = ObjectStorageEgressRow {
+  vendor: Storj,
+  egress_rate: TransferCited {
+    rate: MoneyPerTransferredUnit { amount: money_amount_micro(count: 7000), currency: Usd },
+    quoted_unit_label: "7 USD per TB (carried per unit)",
+    byte_basis: ByteBasisUnstated,
+  },
+  tier_lower_bound_gb: 0,
+  pricing_citation: "storj.io/pricing#standard-egress",
+}
+
+data gcs_egress_note: String = "Google Cloud Storage states its byte basis outright -- 'per 1 gibibyte' -- unlike AWS, Azure, and Cloudflare, so the GCS rows carry BinaryGibibyte and a serving model must NOT reinterpret them under a decimal assumption. Worldwide destinations excluding Asia and Australia, first tier (0 to 10 TiB)."
+
+data gcs_egress_worldwide_first_10tib: ObjectStorageEgressRow = ObjectStorageEgressRow {
+  vendor: GoogleCloudStorage,
+  egress_rate: TransferCited {
+    rate: MoneyPerTransferredUnit { amount: money_amount_micro(count: 120000), currency: Usd },
+    quoted_unit_label: "1 gibibyte",
+    byte_basis: BinaryGibibyte,
+  },
+  tier_lower_bound_gb: 0,
+  pricing_citation: "cloud.google.com/storage/pricing#worldwide-destinations-0-10TiB",
+}
+
+data azure_egress_tier_ladder_note: String = "Azure's retail API returns MORE THAN ONE Standard Data Transfer Out ladder for eastus (one anchored at tierMinimumUnits 100, matching the documented first-100-GB-free allowance, and another anchored at 10100/50100/150100 with different rates). These rows carry the 100-anchored ladder because its anchor matches the published free allowance; the existence of the second ladder is recorded here rather than silently discarded, and picking between them by execution needs a billed account, which this model does not have. Dissolve-on: a receipted Azure invoice line, or a Microsoft doc naming which ladder applies to blob egress."
+
+data azure_egress_first_10tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
+  vendor: AzureBlobStorage,
+  egress_rate: TransferCited {
+    rate: MoneyPerTransferredUnit { amount: money_amount_micro(count: 87000), currency: Usd },
+    quoted_unit_label: "1 GB",
+    byte_basis: ByteBasisUnstated,
+  },
+  tier_lower_bound_gb: 100,
+  pricing_citation: "prices.azure.com#eastus/Bandwidth/StandardDataTransferOut[100]",
+}
+
+data azure_egress_next_40tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
+  vendor: AzureBlobStorage,
+  egress_rate: TransferCited {
+    rate: MoneyPerTransferredUnit { amount: money_amount_micro(count: 83000), currency: Usd },
+    quoted_unit_label: "1 GB",
+    byte_basis: ByteBasisUnstated,
+  },
+  tier_lower_bound_gb: 10335,
+  pricing_citation: "prices.azure.com#eastus/Bandwidth/StandardDataTransferOut[10335]",
+}
+
+data azure_egress_next_100tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
+  vendor: AzureBlobStorage,
+  egress_rate: TransferCited {
+    rate: MoneyPerTransferredUnit { amount: money_amount_micro(count: 70000), currency: Usd },
+    quoted_unit_label: "1 GB",
+    byte_basis: ByteBasisUnstated,
+  },
+  tier_lower_bound_gb: 51295,
+  pricing_citation: "prices.azure.com#eastus/Bandwidth/StandardDataTransferOut[51295]",
+}
+
+data azure_egress_over_150tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
+  vendor: AzureBlobStorage,
+  egress_rate: TransferCited {
+    rate: MoneyPerTransferredUnit { amount: money_amount_micro(count: 50000), currency: Usd },
+    quoted_unit_label: "1 GB",
+    byte_basis: ByteBasisUnstated,
+  },
+  tier_lower_bound_gb: 153695,
+  pricing_citation: "prices.azure.com#eastus/Bandwidth/StandardDataTransferOut[153695]",
+}
+
+data reliability_requirement_note: String = "The operator's framing: decide the reliability posture FIRST, then price only what satisfies it. A requirement is a floor on two independent axes (durability nines, redundancy scope), and the verdict is three-valued on purpose -- Meets, Fails, or RequirementUnknown when the vendor's cited surface does not state the axis at all. Unknown is NOT a pass: a vendor that says nothing about geo-redundancy has not satisfied a geo-redundancy requirement, and collapsing that into a pass is the absorbing fallback DESIGN section 5 forbids. It is also not a fail -- the vendor may well qualify, the pricing surface simply does not say -- so the verdict names what is missing and the operator resolves it with a citation, not a guess."
+
+type ReliabilityRequirement {
+  min_durability_nines: Nat
+  min_redundancy: RedundancyScope
+}
+
+type ReliabilityVerdict
+  = MeetsRequirement
+  | FailsRequirement { axis: NonEmptyStr }
+  | RequirementUnknown { unstated_axis: NonEmptyStr }
+
+fn redundancy_rank(scope: RedundancyScope) -> Nat? {
+  match scope {
+    SingleFacility => Present { value: 1 }
+    MultiFacilityOneRegion => Present { value: 2 }
+    MultiRegion => Present { value: 3 }
+    ReadAccessMultiRegion => Present { value: 4 }
+    GloballyDistributed => Present { value: 3 }
+    RedundancyUnstated => none
+  }
+}
+
+fn evaluate_reliability(row: ObjectStorageClassRow, req: ReliabilityRequirement) -> ReliabilityVerdict {
+  match durability_nines(row: row) {
+    Present { value: nines } =>
+      if nines < req.min_durability_nines {
+        FailsRequirement { axis: "durability" }
+      } else {
+        evaluate_redundancy_only(row: row, req: req)
+      }
+    _ =>
+      if req.min_durability_nines > 0 {
+        RequirementUnknown { unstated_axis: "durability" }
+      } else {
+        evaluate_redundancy_only(row: row, req: req)
+      }
+  }
+}
+
+fn evaluate_redundancy_only(row: ObjectStorageClassRow, req: ReliabilityRequirement) -> ReliabilityVerdict {
+  match redundancy_rank(scope: req.min_redundancy) {
+    Present { value: required } =>
+      match redundancy_rank(scope: row.redundancy) {
+        Present { value: offered } =>
+          if offered >= required {
+            MeetsRequirement
+          } else {
+            FailsRequirement { axis: "redundancy" }
+          }
+        _ => RequirementUnknown { unstated_axis: "redundancy" }
+      }
+    _ => MeetsRequirement
+  }
+}
+
+data azure_operation_rate_note: String = "Azure quotes blob operations per 10,000, not per million, so these rows carry the vendor figure multiplied by 100 into the shared per-million carrier (a within-vendor unit conversion). Note the redundancy ladder reaches operations too, not just capacity: a Hot LRS write is 0.05 per 10K while the geo-zone-redundant write is 0.1175 -- writes cost more when every write must reach more places, which is the mechanism the storage ladder prices showing up on a second axis. Reads do not vary by redundancy."
+
+data azure_hot_lrs_write_operations: ObjectStorageRequestRow = ObjectStorageRequestRow {
+  vendor: AzureBlobStorage,
+  operation_class_label: "Hot LRS Write Operations",
+  per_million: MoneyPerMillionRequests { amount: money_amount_micro(count: 5000000), currency: Usd },
+  pricing_citation: "prices.azure.com#eastus/GeneralBlockBlobv2/HotLRSWriteOperations",
+}
+
+data azure_hot_gzrs_write_operations: ObjectStorageRequestRow = ObjectStorageRequestRow {
+  vendor: AzureBlobStorage,
+  operation_class_label: "Hot GZRS Write Operations",
+  per_million: MoneyPerMillionRequests { amount: money_amount_micro(count: 11750000), currency: Usd },
+  pricing_citation: "prices.azure.com#eastus/GeneralBlockBlobv2/HotGZRSWriteOperations",
+}
+
+data azure_hot_read_operations: ObjectStorageRequestRow = ObjectStorageRequestRow {
+  vendor: AzureBlobStorage,
+  operation_class_label: "Hot Read Operations",
+  per_million: MoneyPerMillionRequests { amount: money_amount_micro(count: 400000), currency: Usd },
+  pricing_citation: "prices.azure.com#eastus/GeneralBlockBlobv2/HotReadOperations",
+}

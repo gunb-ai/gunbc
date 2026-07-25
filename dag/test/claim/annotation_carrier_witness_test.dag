@@ -19,7 +19,7 @@ data census_closure_count_witness_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(
       module_path: "test.claim.annotation_carrier",
-      decl_name: "census_closure_frontier_rows_count_is_twenty_two",
+      decl_name: "census_closure_frontier_rows_count_is_twenty_one",
     ),
     reason: "Hand count beside structure is a conversion receipt (#7207 class-5); retires when roster assembly is registry-derived",
     trigger: TriggerProse {
@@ -28,8 +28,8 @@ data census_closure_count_witness_frontier_rows: List<FrontierRow> = [
   )
 ]
 
-test fn census_closure_frontier_rows_count_is_twenty_two() -> Bool {
-  length(xs: census_closure_frontier_rows()) == 22
+test fn census_closure_frontier_rows_count_is_twenty_one() -> Bool {
+  length(xs: census_closure_frontier_rows()) == 21
 }
 
 test fn census_closure_frontier_rows_well_formed() -> Bool {
@@ -43,7 +43,7 @@ test fn frontier_expiry_fold_reports_all_unfired_when_no_fired_registry() -> Boo
     present_decls: [],
     lenses_green: [],
   )
-  report.unfired_count == 22 && report.fired_still_present_count == 0 && frontier_expiry_clean(report: report)
+  report.unfired_count == 21 && report.fired_still_present_count == 0 && frontier_expiry_clean(report: report)
 }
 
 test fn frontier_expiry_fired_row_still_present_reds() -> Bool {
@@ -54,7 +54,7 @@ test fn frontier_expiry_fired_row_still_present_reds() -> Bool {
     present_decls: [mac_trigger],
     lenses_green: [],
   )
-  report.fired_still_present_count == 1 && report.unfired_count == 21 && !frontier_expiry_clean(report: report)
+  report.fired_still_present_count == 1 && report.unfired_count == 20 && !frontier_expiry_clean(report: report)
 }
 
 test fn frontier_expiry_fired_trigger_absent_from_rows_is_clean() -> Bool {
@@ -65,5 +65,5 @@ test fn frontier_expiry_fired_trigger_absent_from_rows_is_clean() -> Bool {
     present_decls: [absent_trigger],
     lenses_green: [],
   )
-  report.fired_still_present_count == 0 && report.unfired_count == 22 && frontier_expiry_clean(report: report)
+  report.fired_still_present_count == 0 && report.unfired_count == 21 && frontier_expiry_clean(report: report)
 }

@@ -23722,14 +23722,13 @@ pub fn non_fold_residue_synthetic_unrostered_red_holds() -> bool {
 const NON_FOLD_RESIDUE_AUTHORITY_REL: &str = "dag/gunbc/non_fold_residue.dag";
 const NON_FOLD_RESIDUE_FRONTIER_DATA_NAME: &str = "non_fold_residue_frontier";
 
-/// Project the site keys out of the typed `non_fold_residue_frontier` rows of the
+/// Project the `unit` site keys out of the typed `non_fold_residue_frontier` rows of the
 /// `gunbc.non_fold_residue` authority SOURCE TEXT via the real front-end — the roster's
 /// re-home off this file's former `NON_FOLD_RESIDUE_ROSTER` const (group-of-units ruling,
 /// enrolled in `gunbc.roster_registry`). Per-row reasons and dissolution triggers are
 /// `.dag`-side facts the host does not consume. Fail-closed: a parse error, a missing data
-/// def, a non-record element, a missing/non-literal site key, a duplicate key, or an empty
-/// roster is a loud panic, never a silent fallback. Site keys are read from legacy `unit`
-/// fields or from `subject: PathSubject { path: ... }` on the typed carrier.
+/// def, a non-record element, a missing/non-literal `unit` field, a duplicate unit, or an
+/// empty roster is a loud panic, never a silent fallback.
 // 🟡 dissolve-on: hand-Rust reader over the `.dag` authority — dissolves with
 // `witness_exclusion_rows_from_module_source` when the host consumes an emitted manifest of
 // the rows (module-binding supply-carrier pattern), and with the scan below into a pure
@@ -23738,58 +23737,7 @@ pub(crate) fn non_fold_residue_units_from_module_source(
     module_rel_path: &str,
     content: &str,
 ) -> Vec<String> {
-    use crate::v1_std_core::{ExprData, LiteralValue, NewlineIndex, Node};
-    use std::rc::Rc;
-
-    fn string_literal_from_field(
-        field: Rc<Node>,
-        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-        field_name: &str,
-        context: &str,
-    ) -> Option<String> {
-        let fname =
-            crate::v1_std_core::field_init_node_name_at(field.clone(), source_indices.clone());
-        if fname != field_name {
-            return None;
-        }
-        let value = crate::v1_std_core::field_init_node_value(field);
-        match value.expr_data.as_ref() {
-            ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
-                LiteralValue::LitStr { value: s } => Some(s.clone()),
-                _ => panic!("{context}: `{field_name}` is not a string literal"),
-            },
-            _ => panic!("{context}: `{field_name}` is not a literal"),
-        }
-    }
-
-    fn path_subject_from_record(
-        el: &Rc<Node>,
-        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-        context: &str,
-    ) -> Option<String> {
-        for field in el.children.iter() {
-            let fname = crate::v1_std_core::field_init_node_name_at(
-                field.clone(),
-                source_indices.clone(),
-            );
-            if fname != "subject" {
-                continue;
-            }
-            let value = crate::v1_std_core::field_init_node_value(field.clone());
-            if !matches!(value.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
-                panic!("{context}: `subject` is not a record literal");
-            }
-            for sub in value.children.iter() {
-                if let Some(path) =
-                    string_literal_from_field(sub.clone(), source_indices.clone(), "path", context)
-                {
-                    return Some(path);
-                }
-            }
-            panic!("{context}: `subject` record has no string-literal `path` field");
-        }
-        None
-    }
+    use crate::v1_std_core::{ExprData, LiteralValue};
 
     let filename = module_rel_path.to_string();
     let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), filename.clone());
@@ -23836,27 +23784,32 @@ pub(crate) fn non_fold_residue_units_from_module_source(
             }
             let mut unit: Option<String> = None;
             for field in el.children.iter() {
-                if let Some(path) = string_literal_from_field(
+                let fname = crate::v1_std_core::field_init_node_name_at(
                     field.clone(),
                     source_indices.clone(),
-                    "unit",
-                    &format!("nfr frontier reader: a `{data_name}` row of {module_rel_path}"),
-                ) {
-                    unit = Some(path);
+                );
+                if fname != "unit" {
                     continue;
                 }
-            }
-            if unit.is_none() {
-                unit = path_subject_from_record(
-                    el,
-                    source_indices.clone(),
-                    &format!("nfr frontier reader: a `{data_name}` row of {module_rel_path}"),
-                );
+                let value = crate::v1_std_core::field_init_node_value(field.clone());
+                match value.expr_data.as_ref() {
+                    ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
+                        LiteralValue::LitStr { value: s } => unit = Some(s.clone()),
+                        _ => panic!(
+                            "nfr frontier reader: `unit` in a `{data_name}` row of \
+                             {module_rel_path} is not a string literal"
+                        ),
+                    },
+                    _ => panic!(
+                        "nfr frontier reader: `unit` in a `{data_name}` row of \
+                         {module_rel_path} is not a literal"
+                    ),
+                }
             }
             let unit = unit.unwrap_or_else(|| {
                 panic!(
                     "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
-                     `unit` or PathSubject `path` field"
+                     `unit` field"
                 )
             });
             if !seen.insert(unit.clone()) {
@@ -24380,14 +24333,14 @@ mod nfr_tests {
         let synthetic = "module gunbc.non_fold_residue\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
                FrontierRow {\n\
-                 subject: PathSubject { path: \"synthetic/a.dag::f\" },\n\
+                 unit: \"synthetic/a.dag::f\",\n\
                  reason: shared_reason,\n\
-                 trigger: TriggerProse { text: \"synthetic trigger\" }\n\
+                 dissolve_on: \"synthetic trigger\"\n\
                },\n\
                FrontierRow {\n\
-                 subject: PathSubject { path: \"synthetic/b.dag::g\" },\n\
+                 unit: \"synthetic/b.dag::g\",\n\
                  reason: \"inline reason\",\n\
-                 trigger: TriggerProse { text: shared_trigger }\n\
+                 dissolve_on: shared_trigger\n\
                }\n\
              ]\n";
         assert_eq!(
@@ -24404,8 +24357,8 @@ mod nfr_tests {
     fn nfr_frontier_reader_refuses_duplicate_unit() {
         let synthetic = "module gunbc.non_fold_residue\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
-               FrontierRow { subject: PathSubject { path: \"synthetic/a.dag::f\" }, reason: \"r\", trigger: TriggerProse { text: \"d\" } },\n\
-               FrontierRow { subject: PathSubject { path: \"synthetic/a.dag::f\" }, reason: \"r2\", trigger: TriggerProse { text: \"d2\" } }\n\
+               FrontierRow { unit: \"synthetic/a.dag::f\", reason: \"r\", dissolve_on: \"d\" },\n\
+               FrontierRow { unit: \"synthetic/a.dag::f\", reason: \"r2\", dissolve_on: \"d2\" }\n\
              ]\n";
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
@@ -24421,7 +24374,7 @@ mod nfr_tests {
     fn nfr_frontier_reader_refuses_missing_unit_field() {
         let synthetic = "module gunbc.non_fold_residue\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
-               FrontierRow { reason: \"r\", trigger: TriggerProse { text: \"d\" } }\n\
+               FrontierRow { reason: \"r\", dissolve_on: \"d\" }\n\
              ]\n";
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
@@ -24429,7 +24382,7 @@ mod nfr_tests {
         .is_err();
         assert!(
             refused,
-            "a row without a site-key field must refuse loudly (fail-closed)"
+            "a row without a `unit` field must refuse loudly (fail-closed)"
         );
     }
 }

@@ -5,7 +5,8 @@ import extdeps.sec.facts {
   FiledMonetaryFact,
   usd_whole_dollars,
 }
-import extdeps.sec.types { AnnualReport }
+import extdeps.sec.issuer.rollins { rollins_issuer_catalog }
+import extdeps.sec.types { AnnualReport, IssuerCatalogRow }
 import extdeps.sec.us_gaap {
   us_gaap_cost_of_goods_and_service_excluding_depreciation_depletion_and_amortization,
   us_gaap_operating_income_loss,
@@ -23,6 +24,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data rollins_facts_subject: IssuerCatalogRow = rollins_issuer_catalog
+
 data rollins_facts_provenance_note: String = "Every amount is a live pull from data.sec.gov companyfacts (2026-07-21, session snappy-carp-882). CIK 0000084839 verified against the SEC company_tickers.json ticker-to-CIK map and the EDGAR submissions API (tickers: [\"ROL\"], exchanges: [\"NYSE\"]). Fiscal year ended 2025-12-31, form 10-K, accession 0000084839-26-000008, filed 2026-02-12. Rollins' FY2025 10-K does not tag GrossProfit or CostOfRevenue on the us-gaap axis — it tags CostOfGoodsAndServiceExcludingDepreciationDepletionAndAmortization instead (the element-substitution case: the issuer's actually-filed tag is the authority, not a normalized nickname), with depreciation/amortization reported as a separate line. Revenue + cost + SG&A + D&A reconciles exactly to the filed OperatingIncomeLoss (3,761,050,000 - 1,777,006,000 - 1,133,232,000 - 124,744,000 = 726,068,000), so the profitability witness below derives operating margin rather than gross margin."
 
 data rollins_fy2025_citation: FiledFactCitation = FiledFactCitation {
@@ -30,33 +33,32 @@ data rollins_fy2025_citation: FiledFactCitation = FiledFactCitation {
   fiscal_year: 2025,
   fiscal_period: "FY",
   form: AnnualReport,
-  period_start: "2025-01-01",
-  period_end: "2025-12-31",
+  period: FiledDuration { start: "2025-01-01", end: "2025-12-31" },
   filed_date: "2026-02-12",
 }
 
 data rollins_fy2025_revenue: FiledMonetaryFact = FiledMonetaryFact {
   element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
   amount: Filed { amount: usd_whole_dollars(count: 3761050000) },
-  citation: Present { value: rollins_fy2025_citation },
+  citation: rollins_fy2025_citation,
 }
 
 data rollins_fy2025_cost_of_goods_and_services: FiledMonetaryFact = FiledMonetaryFact {
   element: us_gaap_cost_of_goods_and_service_excluding_depreciation_depletion_and_amortization,
   amount: Filed { amount: usd_whole_dollars(count: 1777006000) },
-  citation: Present { value: rollins_fy2025_citation },
+  citation: rollins_fy2025_citation,
 }
 
 data rollins_fy2025_sga: FiledMonetaryFact = FiledMonetaryFact {
   element: us_gaap_selling_general_and_administrative_expense,
   amount: Filed { amount: usd_whole_dollars(count: 1133232000) },
-  citation: Present { value: rollins_fy2025_citation },
+  citation: rollins_fy2025_citation,
 }
 
 data rollins_fy2025_operating_income: FiledMonetaryFact = FiledMonetaryFact {
   element: us_gaap_operating_income_loss,
   amount: Filed { amount: usd_whole_dollars(count: 726068000) },
-  citation: Present { value: rollins_fy2025_citation },
+  citation: rollins_fy2025_citation,
 }
 
 data rollins_fy2025_filed_facts: List<FiledMonetaryFact> = [
