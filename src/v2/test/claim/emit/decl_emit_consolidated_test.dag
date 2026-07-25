@@ -92,16 +92,18 @@ fn dc_derive_attr(binding: Symbol) -> Node {
   dc_conj(children: [ dc_pos(target: rust_inhabitant_atom(id: binding)) ])
 }
 
-fn dc_coproduct_derive_binding(coproduct: Node) -> Symbol {
+fn dc_enum_derive_binding_row(coproduct: Node) -> Edge {
   match rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct) {
-    Accepted { value: binding, diagnostics: _ } => binding
-    Rejected { diagnostics: _ } => ^rust_decl_derive_enum_copy_binding
+    Accepted { value: binding, diagnostics: _ } =>
+      dc_pos(target: dc_derive_attr(binding: binding))
+    Rejected { diagnostics: _ } =>
+      dc_pos(target: dc_derive_attr(binding: ^dc_coproduct_derive_binding_refused))
   }
 }
 
 fn dc_enum_nongeneric(name: String, coproduct: Node, variants: List<Node>) -> Node {
   dc_conj(children: [
-    dc_pos(target: dc_derive_attr(binding: dc_coproduct_derive_binding(coproduct: coproduct))),
+    dc_enum_derive_binding_row(coproduct: coproduct),
     dc_pos(target: dc_atom(s: name)),
     dc_pos(target: dc_variant_block(variants: variants))
   ])
@@ -109,7 +111,7 @@ fn dc_enum_nongeneric(name: String, coproduct: Node, variants: List<Node>) -> No
 
 fn dc_enum_generic(name: String, coproduct: Node, params: List<String>, variants: List<Node>) -> Node {
   dc_conj(children: [
-    dc_pos(target: dc_derive_attr(binding: dc_coproduct_derive_binding(coproduct: coproduct))),
+    dc_enum_derive_binding_row(coproduct: coproduct),
     dc_pos(target: dc_atom(s: name)),
     dc_pos(target: dc_generic_params(params: params)),
     dc_pos(target: dc_variant_block(variants: variants))
@@ -364,8 +366,21 @@ fn dc_golden_discriminates_holds() -> Bool {
 fn dc_gaps_refused_holds() -> Bool {
   dc_struct_refused(emitted: dc_empty_record_emitted())
     && dc_enum_refused(emitted: dc_empty_enum_emitted())
+    && dc_coproduct_derive_binding_rejects_non_disj()
+    && dc_enum_refused(emitted: dc_enum_non_disj_coproduct_emitted())
     && (dc_refused_count() == 2)
     && (dc_covered_count() == 10)
+}
+
+fn dc_coproduct_derive_binding_rejects_non_disj() -> Bool {
+  match rust_decl_enum_derive_binding_for_coproduct(coproduct: dc_atom_type(t: "NotDisj")) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn dc_enum_non_disj_coproduct_emitted() -> Node {
+  dc_enum_nongeneric(name: "Bad", coproduct: dc_atom_type(t: "NotDisj"), variants: [])
 }
 
 fn dc_witness_module_fully_emitted_holds() -> Bool {

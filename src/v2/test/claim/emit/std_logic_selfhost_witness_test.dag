@@ -49,16 +49,18 @@ fn sl_derive_attr(binding: Symbol) -> Node {
   sl_conj(children: [ sl_pos(target: rust_inhabitant_atom(id: binding)) ])
 }
 
-fn sl_coproduct_derive_binding(coproduct: Node) -> Symbol {
+fn sl_enum_derive_binding_row(coproduct: Node) -> Edge {
   match rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct) {
-    Accepted { value: binding, diagnostics: _ } => binding
-    Rejected { diagnostics: _ } => ^rust_decl_derive_enum_copy_binding
+    Accepted { value: binding, diagnostics: _ } =>
+      sl_pos(target: sl_derive_attr(binding: binding))
+    Rejected { diagnostics: _ } =>
+      sl_pos(target: sl_derive_attr(binding: ^sl_coproduct_derive_binding_refused))
   }
 }
 
 fn sl_enum_nongeneric(name: String, coproduct: Node, variants: List<Node>) -> Node {
   sl_conj(children: [
-    sl_pos(target: sl_derive_attr(binding: sl_coproduct_derive_binding(coproduct: coproduct))),
+    sl_enum_derive_binding_row(coproduct: coproduct),
     sl_pos(target: sl_atom(s: name)),
     sl_pos(target: sl_variant_block(variants: variants))
   ])
@@ -113,4 +115,18 @@ fn std_logic_bool_emit_matches(golden: String) -> Bool {
 test fn std_logic_bool_type_decl_self_emits() -> Bool {
   std_logic_bool_emit_matches(golden: std_logic_bool_enum_golden)
     && !std_logic_bool_emit_matches(golden: std_logic_bool_wrong_golden)
+    && sl_coproduct_derive_binding_rejects_non_disj()
+}
+
+fn sl_coproduct_derive_binding_rejects_non_disj() -> Bool {
+  match rust_decl_enum_derive_binding_for_coproduct(
+    coproduct: Node {
+      kind: TypeNode { connective: Atom { identity: ^sl_non_disj_atom } },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    }
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
 }
