@@ -1,10 +1,43 @@
 module test.claim.markup_medium_convergence
 
+import std.markup {
+  Fragment,
+  Element,
+  FragmentText,
+  attr,
+  MarkupMedium,
+  MarkupBracket,
+  TagDelimiter,
+  EscapeHtml,
+  EscapeRaw,
+  OmitClose,
+  serialize_fragment_with,
+}
+import extdeps.languages.html {
+  html_markup_medium,
+  canonical_html_spellings,
+  try_serialize_html_source,
+  EmitOk,
+  EmitRejected,
+}
+import extdeps.languages.markdown {
+  markdown_markup_medium,
+  commonmark_gfm_spellings,
+  serialize_markdown_source_with,
+}
+import std.markdown {
+  MarkdownDocument,
+  ParagraphBlock,
+  StrongInline,
+  EmphasisInline,
+  TextInline,
+  LinkInline,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn em_hi() -> MarkupNode {
-  ElementNode { tag: "em", attrs: [], children: [ TextNode { text: "hi" } ] }
+fn em_hi() -> Fragment {
+  Element { tag: "em", attributes: [], children: [ FragmentText { content: "hi" } ] }
 }
 
 fn md_medium() -> MarkupMedium {
@@ -12,8 +45,8 @@ fn md_medium() -> MarkupMedium {
 }
 
 fn witness_same_fold_html_vs_md() -> Bool {
-  let html = serialize_markup_node_with(node: em_hi(), medium: html_markup_medium())
-  let md = serialize_markup_node_with(node: em_hi(), medium: md_medium())
+  let html = serialize_fragment_with(frag: em_hi(), medium: html_markup_medium())
+  let md = serialize_fragment_with(frag: em_hi(), medium: md_medium())
   (html == "<em>hi</em>") && (md == "*hi*") && (html != md)
 }
 
@@ -29,16 +62,16 @@ fn md_medium_underscore() -> MarkupMedium {
 }
 
 fn witness_perturb_row_flips_output() -> Bool {
-  let base = serialize_markup_node_with(node: em_hi(), medium: md_medium())
-  let perturbed = serialize_markup_node_with(node: em_hi(), medium: md_medium_underscore())
+  let base = serialize_fragment_with(frag: em_hi(), medium: md_medium())
+  let perturbed = serialize_fragment_with(frag: em_hi(), medium: md_medium_underscore())
   (base == "*hi*") && (perturbed == "_hi_") && (base != perturbed)
 }
 
-fn button_node() -> MarkupNode {
-  ElementNode {
+fn button_node() -> Fragment {
+  Element {
     tag: "button",
-    attrs: [ MarkupAttr { name: "class", value: "primary" } ],
-    children: [ TextNode { text: "Go" } ],
+    attributes: [ attr(name: "class", value: "primary" ) ],
+    children: [ FragmentText { content: "Go" } ],
   }
 }
 
@@ -61,8 +94,8 @@ fn single_quote_medium() -> MarkupMedium {
 }
 
 fn witness_third_medium_is_one_row() -> Bool {
-  let html = serialize_markup_node_with(node: button_node(), medium: html_markup_medium())
-  let single_quote = serialize_markup_node_with(node: button_node(), medium: single_quote_medium())
+  let html = serialize_fragment_with(frag: button_node(), medium: html_markup_medium())
+  let single_quote = serialize_fragment_with(frag: button_node(), medium: single_quote_medium())
   (html == "<button class=\"primary\">Go</button>")
     && (single_quote == "<button class='primary'>Go</button>")
     && (html != single_quote)
@@ -104,11 +137,11 @@ fn witness_md_link_named_arm_bytes() -> Bool {
   out == "[text](https://x.com)\n"
 }
 
-fn hostile_href_node() -> MarkupNode {
-  ElementNode {
+fn hostile_href_node() -> Fragment {
+  Element {
     tag: "a",
-    attrs: [ MarkupAttr { name: "href", value: "javascript:alert(1)" } ],
-    children: [ TextNode { text: "x" } ],
+    attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
+    children: [ FragmentText { content: "x" } ],
   }
 }
 

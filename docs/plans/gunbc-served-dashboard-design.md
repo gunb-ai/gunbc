@@ -18,7 +18,7 @@ The srv1 dashboard today is an **emitted JS program** (`node /opt/gunbc/server.j
 |---|---|---|
 | dispatch decision + actuation | `gunbc.roadmap_belt_actuate.belt_dispatch_node(node_id) -> BeltDispatchResult` (#6910/#6914: fail-closed, observe-before-spawn idempotent, DONE = signoff never merged-PR) | **the** handler B invokes; zero dispatch logic added |
 | dispatch receipt shape | `belt_dispatch_result_json_value` | serialized as the POST response body |
-| roadmap page | `gunbc.roadmap_page.roadmap_page_for_authority` / `roadmap_daily_workspace_page_for_authority` (pure `MarkupNode`) | rendered per-request; grows the launch button + client script |
+| roadmap page | `gunbc.roadmap_page.roadmap_page_for_authority` / `roadmap_daily_workspace_page_for_authority` (pure `Fragment`) | rendered per-request; grows the launch button + client script |
 | static route model | `extdeps.http.server.ServedStaticRoute{,Table}` (RFC 9110 anchor) | extended to a route sum with dynamic handler rows (below) |
 | static route contents | `gunbc.node_http_server_emit.roadmap_dashboard_served_static_route_table()` | the static rows are reused verbatim in the serve table |
 | dispatch JSON artifact | `gunbc.roadmap_static_site.roadmap_site_dispatch_json_artifact` (`/target/roadmap-dispatch.json`) | already a row in that static table — served unchanged |
