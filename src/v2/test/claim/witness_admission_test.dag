@@ -23,7 +23,7 @@ import v2.std.text { String }
 data normalize_entry: String = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag"
 data normalize_fn: String = "self_host_03_normalize_behavioral_receipt_holds"
 
-data normalize_wet_known_red_admission_note: String = "2026-07-25 review #7199: SelfEmitted wet bindings that red on assemble are Wet expect_red quarantine (falsifier_self_host_wet_known_red_entries), not orphaned OfflineLocalRecipe. 03_normalize's consumer is QuarantineProbeExpectRed and the explicit known-red wet manifest covers it. Dissolve-on: local wet greens → known-red entry deletes → SelfHostWetReceiptBinding restores → FalsifierSelfHostWet when cadence active."
+data normalize_wet_known_red_admission_note: String = "2026-07-25 review #7199: SelfEmitted wet bindings that red on assemble are Wet expect_red quarantine (falsifier_self_host_wet_known_red_entries). 03_normalize's behavioral receipt consumer is QuarantineProbeExpectRed via the explicit roster (takes priority); the file-grain exclusion stays OfflineLocalRecipe so sibling declared_source_refs_complete_holds is not orphaned (english_emit_add pattern). Dissolve-on: local wet greens → known-red entry deletes → SelfHostWetReceiptBinding restores."
 
 data synthetic_orphan_entry: String = "dag/test/claim/synthetic_orphan_admission_witness_test.dag"
 data synthetic_orphan_fn: String = "synthetic_orphan_no_consumer_holds"

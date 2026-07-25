@@ -324,8 +324,8 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   },
   WitnessExclusionRow {
     pattern: "self_host_03_normalize_behavioral_witness_test.dag",
-    classification: QuarantineProbeExpectRed,
-    reason: excl_behavioral_assemble_red_reason,
+    classification: OfflineLocalRecipe,
+    reason: "file-grain Offline (english_emit_add pattern): behavioral receipt is Wet expect_red via falsifier_self_host_wet_known_red_entries; sibling declared_source_refs_complete_holds stays OfflineLocalRecipe local recipe — QuarantineProbeExpectRed on the file would orphan that sibling (Phase-0)",
     dissolve_on: excl_behavioral_assemble_red_dissolve
   },
   WitnessExclusionRow {
