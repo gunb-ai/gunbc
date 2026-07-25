@@ -48,11 +48,11 @@ import v2.std.witness { Holds, Violates, Witness }
 type Never
 type Unit
 type NonZeroNat {
-  prev: Nat
+  prev: v2.std.nat.Nat
 }
 
 type NatLeWitness
-  = LeqZero { upper: Nat }
+  = LeqZero { upper: v2.std.nat.Nat }
   | LeqSucc { inner: NatLeWitness }
 type UpperBoundedNat {
   le: NatLeWitness
@@ -62,38 +62,38 @@ type PositiveNatLeWitness
 type PositiveUpperBoundedNat {
   le: PositiveNatLeWitness
 }
-fn nat_le_witness_lower(w: NatLeWitness) -> Nat {
+fn nat_le_witness_lower(w: NatLeWitness) -> v2.std.nat.Nat {
   match w {
-    LeqZero { upper: _ } => Zero
-    LeqSucc { inner } => Succ { prev: nat_le_witness_lower(w: inner) }
+    LeqZero { upper: _ } => v2.std.nat.Zero
+    LeqSucc { inner } => v2.std.nat.Succ { prev: nat_le_witness_lower(w: inner) }
   }
 }
-fn nat_le_witness_upper(w: NatLeWitness) -> Nat {
+fn nat_le_witness_upper(w: NatLeWitness) -> v2.std.nat.Nat {
   match w {
     LeqZero { upper } => upper
-    LeqSucc { inner } => Succ { prev: nat_le_witness_upper(w: inner) }
+    LeqSucc { inner } => v2.std.nat.Succ { prev: nat_le_witness_upper(w: inner) }
   }
 }
-fn positive_nat_le_witness_lower(w: PositiveNatLeWitness) -> Nat {
+fn positive_nat_le_witness_lower(w: PositiveNatLeWitness) -> v2.std.nat.Nat {
   match w {
-    PositiveLeqSucc { inner } => Succ { prev: nat_le_witness_lower(w: inner) }
+    PositiveLeqSucc { inner } => v2.std.nat.Succ { prev: nat_le_witness_lower(w: inner) }
   }
 }
-fn positive_nat_le_witness_upper(w: PositiveNatLeWitness) -> Nat {
+fn positive_nat_le_witness_upper(w: PositiveNatLeWitness) -> v2.std.nat.Nat {
   match w {
-    PositiveLeqSucc { inner } => Succ { prev: nat_le_witness_upper(w: inner) }
+    PositiveLeqSucc { inner } => v2.std.nat.Succ { prev: nat_le_witness_upper(w: inner) }
   }
 }
-fn upper_bounded_nat_value(b: UpperBoundedNat) -> Nat {
+fn upper_bounded_nat_value(b: UpperBoundedNat) -> v2.std.nat.Nat {
   nat_le_witness_lower(w: b.le)
 }
-fn upper_bounded_nat_inclusive_max(b: UpperBoundedNat) -> Nat {
+fn upper_bounded_nat_inclusive_max(b: UpperBoundedNat) -> v2.std.nat.Nat {
   nat_le_witness_upper(w: b.le)
 }
-fn positive_upper_bounded_nat_value(b: PositiveUpperBoundedNat) -> Nat {
+fn positive_upper_bounded_nat_value(b: PositiveUpperBoundedNat) -> v2.std.nat.Nat {
   positive_nat_le_witness_lower(w: b.le)
 }
-fn positive_upper_bounded_nat_inclusive_max(b: PositiveUpperBoundedNat) -> Nat {
+fn positive_upper_bounded_nat_inclusive_max(b: PositiveUpperBoundedNat) -> v2.std.nat.Nat {
   positive_nat_le_witness_upper(w: b.le)
 }
 fn nat_le_witness_well_formed(w: NatLeWitness) -> Bool {

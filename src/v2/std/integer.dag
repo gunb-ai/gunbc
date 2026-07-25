@@ -19,8 +19,8 @@ import v2.std.machine {
 }
 import v2.std.nat { Nat }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
-type Int = GroupCompletion<Nat>
-type UInt = Nat
+type Int = GroupCompletion<v2.std.nat.Nat>
+type UInt = v2.std.nat.Nat
 type Compose<carrier, dimension>
 
 type Signedness = Signed | Unsigned
@@ -1296,7 +1296,7 @@ fn integer_signed_i32_le_bytes_to_int(bytes: List<Byte>) -> Outcome<Int> {
   }
 }
 
-fn integer_nat_decimal_digit_char(digit: Nat) -> String {
+fn integer_nat_decimal_digit_char(digit: v2.std.nat.Nat) -> String {
   if digit == 0 {
     "0"
   } else if digit == 1 {
@@ -1320,7 +1320,7 @@ fn integer_nat_decimal_digit_char(digit: Nat) -> String {
   }
 }
 
-fn integer_nat_to_decimal_string(value: Nat) -> String {
+fn integer_nat_to_decimal_string(value: v2.std.nat.Nat) -> String {
   if value == 0 {
     "0"
   } else if value < 10 {
