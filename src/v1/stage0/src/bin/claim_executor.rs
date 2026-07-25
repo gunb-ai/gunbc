@@ -3292,9 +3292,7 @@ mod tests {
     // byte-equal to seed_psi_hold_line / seed_high_water_hold_line.
     #[test]
     fn governor_hold_mirrors_match_seed_oracle() {
-        use v1_compiler::memory_governor::{
-            render_governor_hold_line_mirror, HoldReason,
-        };
+        use v1_compiler::memory_governor::{render_governor_hold_line_mirror, HoldReason};
         let root = workspace_root();
         let roots = vec![
             root.join("src/v2").to_string_lossy().into_owned(),
@@ -3303,10 +3301,8 @@ mod tests {
         // 37.5% → 3750 basis points
         let psi_oracle = run_seed_psi_hold_line(&roots, 3750, true)
             .expect("seed_psi_hold_line must resolve and render");
-        let psi_mirror = render_governor_hold_line_mirror(
-            &HoldReason::PsiPressure { avg10: 37.5 },
-            true,
-        );
+        let psi_mirror =
+            render_governor_hold_line_mirror(&HoldReason::PsiPressure { avg10: 37.5 }, true);
         assert_eq!(
             psi_oracle, psi_mirror,
             "psi hold mirror must be byte-equal to seed oracle"
@@ -3316,9 +3312,8 @@ mod tests {
             "psi hold shape: {psi_oracle:?}"
         );
 
-        let hw_oracle =
-            run_seed_high_water_hold_line(&roots, 8_589_934_592, 10_737_418_240, true)
-                .expect("seed_high_water_hold_line must resolve and render");
+        let hw_oracle = run_seed_high_water_hold_line(&roots, 8_589_934_592, 10_737_418_240, true)
+            .expect("seed_high_water_hold_line must resolve and render");
         let hw_mirror = render_governor_hold_line_mirror(
             &HoldReason::CurrentHighWater {
                 current: 8_589_934_592,
