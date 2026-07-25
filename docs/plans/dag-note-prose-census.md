@@ -1,16 +1,30 @@
 # `.dag` note-prose census — what the long strings are, and what that prices
 
-**Status:** census complete, **measured at `2c33d6a610`, 2026-07-25**. No code migrated. This
-document is the *reading*; `docs/plans/dag-note-prose-census.py` is the authority — every number
-below re-derives with `python3 docs/plans/dag-note-prose-census.py` from the repo root.
+**Status:** census complete, **measured at `2c33d6a610`, 2026-07-25**. No code migrated, no notes
+deleted.
 
 Totals drift as the corpus grows (merging main mid-census moved the total by 0.4 KiB, which is
-§4's finding in miniature), so figures are pinned to that commit. Re-run rather than trust the
-table if the delta matters; shares are stable to well within §6's error bar.
+§4's finding in miniature), so figures are pinned to that commit. Shares are stable to well
+within §6's error bar.
 
-**Scaffold, with a dissolution trigger:** both files delete when the typed carriers land and
-the annotation-budget lens counts *rows*. A lexical census over prose is superseded the moment
-the rows are typed — that is the whole point of the migration it prices.
+**On the instrument — an open question for the operator.** The measurement was produced by a
+~350-line Python classifier. It is deliberately **not committed**: `.gitignore` is a generated
+artifact whose authority (`gunbc.gitignore_authority`) models Python as local-dev-only, with a
+single named allowlist variant (`PythonAuditScriptAllowlisted`) for one audit script. Committing
+this one means adding a second modeled variant — a deliberate widening of that policy, not a
+drive-by edit, so it is put here as a question rather than taken.
+
+The cost of leaving it out is real and named: §6's precision figures and §3's crisp set are
+hand-verified, but the byte-exact counts are **not independently re-derivable from this document
+alone** — the class definitions below are specified, the exact patterns are not. That is
+specification-without-execution (DESIGN §5) and it is the honest weakness of this artifact. Say
+the word and it lands via the modeled variant; the alternative long-term home is a `.dag` lens
+over the Node tree, which is what the dissolution trigger below already anticipates.
+
+**Scaffold, with a dissolution trigger:** this doc deletes when the typed carriers land and the
+annotation-budget lens counts *rows*. A lexical census over prose is superseded the moment the
+rows are typed — that is the whole point of the migration it prices. Registered in the doc graph
+as a `HandAuthoredDocBind` bound to `v2.lens.enforcement.standing_intent.StandingIntent`.
 
 ---
 
@@ -204,6 +218,18 @@ than a design.
 Detection is lexical because the input is unstructured English — that is the disease being
 priced, not a modeling choice (DESIGN §4: a heuristic is never necessary *in a closed system*;
 this measurement is over prose, which is precisely the un-closed residue).
+
+**Method, so the shape is reproducible even though the patterns are not.** Prose = a String
+value ≥ 200 B (below that a String row is a tag/path/name). Three tiers are extracted: `data
+<n>: String = "…"` declarations, indented `field: "…"` values inside record literals, and bare
+string elements of `data <n>: List<String> = [ … ]`. Text is unescaped, then split into
+sentences on terminal punctuation followed by a capital. Each sentence gets a multi-label hit
+count across six keyword/regex sets (the six classes of §2); its **primary** class is the
+highest-scoring set, ties broken toward the more specific class. A separate `LIVE` set —
+present-tense normative force (`must`/`never`/`is the authority`/`refuses`) or an **un-fired**
+trigger (`dissolves when`, `until`, `pending`, `remaining`) — marks a sentence as still binding.
+A note is *history* only if it carries event/receipt signal and **zero** live markers anywhere;
+§3 shows why that gate is load-bearing rather than cosmetic.
 
 Verified on a 35-sentence stratified sample, read by hand against its label:
 
