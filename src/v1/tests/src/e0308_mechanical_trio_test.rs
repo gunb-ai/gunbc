@@ -51,12 +51,12 @@ fn string_length_call_borrows_string_arg() {
 }
 
 #[test]
-fn read_only_string_param_renders_str_signature() {
+fn callee_borrow_passes_str_ref_to_concat() {
     let source = "module strsig.fixture\n\nfn echo_twice(a: String, b: String) -> String {\n  concat(a, b, a)\n}\n";
-    let sig = return_sig(&emit(source), "echo_twice");
+    let body = fn_body(&emit(source), "echo_twice");
     assert!(
-        sig.contains(": &str"),
-        "read-only String params must render as `&str` in the signature, got:\n{sig}"
+        body.contains("concat(&a") || body.contains("concat(& a"),
+        "read-only String args at call sites must borrow, got:\n{body}"
     );
 }
 

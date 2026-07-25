@@ -5369,9 +5369,7 @@ fn build_callee_borrow_positions(callee: ItemInfo?, func: String, filled_args: L
 fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let pname = param_node_name_at(n: param, source_indices: source_indices)
   let authored = param_node_type_expr(n: param)
-  let ty = if set_contains(read_only_params, pname) && is_rust_string_like(n: resolved_type(n: param), source_indices: source_indices) {
-    "&str"
-  } else if authored.params |> count > 0 {
+  let ty = if authored.params |> count > 0 {
     emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   } else {
     render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
