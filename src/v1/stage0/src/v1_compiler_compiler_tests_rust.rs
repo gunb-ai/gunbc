@@ -149,7 +149,7 @@ pub fn first_or_empty(items: Rc<Vec<String>>) -> String {
 }
 
 pub fn second_or_empty(items: Rc<Vec<String>>) -> String {
-    match items.clone().get(1 as usize).cloned() {
+    match items.clone().iter().cloned().skip(1 as usize).next() {
         Some(v) => v.clone(),
         None => "".to_string(),
     }

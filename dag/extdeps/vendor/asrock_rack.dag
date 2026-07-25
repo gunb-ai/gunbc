@@ -1,0 +1,16 @@
+module extdeps.vendor.asrock_rack
+
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.asrockrack.com"
+  }
+}
+
+data asrock_rack: Vendor<Hardware> = Vendor { legal_name: "ASRock Rack Incorporation" }

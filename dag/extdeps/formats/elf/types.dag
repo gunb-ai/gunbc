@@ -45,6 +45,9 @@ type ElfDecodeReason
   | UnsupportedElfData { raw: Int }
   | UnsupportedElfFileType { raw: Int }
   | UnsupportedElfMachine { raw: Int }
+  | UnsupportedElfSegmentType { raw: Int }
+
+data elf_phdr_decode_outcome_dissolve_on: String = "dissolve-on: elf.segments.PhdrDecodeOutcome — deleted parallel decode machinery; sole authority is extdeps.formats.elf.types.ElfDecodeOutcome / ElfDecodeReason."
 
 type ElfDecodeOutcome<T>
   = ElfDecoded { value: T }

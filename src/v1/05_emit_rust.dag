@@ -5109,22 +5109,125 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", tco_params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1),body_str, "\n}")
   } else {
-    emit_fn_def_non_tco(name: name, type_params_str: type_params_str, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: body_emit_info, needs_stacker: needs_stacker)
+    let return_is_unit = return_type_is_unit(n: inferred, source_indices: si)
+    emit_fn_def_non_tco(name: name, type_params_str: type_params_str, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: body_emit_info, needs_stacker: needs_stacker, return_is_unit: return_is_unit)
   }
     }
   }
 }
 
-fn emit_fn_def_non_tco(name: String, type_params_str: String, params_str: String, ret_str: String, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, needs_stacker: Bool) -> String {
+fn return_type_is_unit(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let authored = authored_name_at(source_indices: source_indices, node: n)
+  let name = if authored != "" { authored } else { n.name }
+  is_unit_like(n: n) && name == "Unit"
+}
+
+fn emit_rust_fn_body_expr(texpr: Node, return_is_unit: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  if return_is_unit {
+    emit_rust_unit_discarding_stmt(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  } else {
+    emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  }
+}
+
+fn inferred_expr_is_optional(texpr: Node) -> Bool {
+  match texpr.inferred {
+    Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+    _ => false
+  }
+}
+
+fn emit_rust_unit_discarding_optional_typed(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  match texpr.expr_data {
+    ExprLiteral { value: v } =>
+      match v {
+        LitNull => "()"
+        _ => emit_error_expr(message: "unit-discard: optional literal with unexpected value shape", target: Rust)
+      }
+    ExprRecordLit { parent_enum: _ } =>
+      match texpr.children |> count {
+        0 => "()"
+        1 =>
+          match texpr.children |> first {
+            Present { value: f } =>
+              emit_rust_unit_discarding_stmt(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+            Absent => emit_error_expr(message: "unit-discard: optional record literal missing payload field", target: Rust)
+          }
+        _ => emit_error_expr(message: "unit-discard: optional record literal with unexpected field count", target: Rust)
+      }
+    _ =>
+      emit_error_expr(message: "unit-discard: unsupported optional expression form for Unit return", target: Rust)
+  }
+}
+
+fn emit_rust_unit_discarding_stmt(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let si = scope.type_env.source_indices
+  match texpr.expr_data {
+    ExprLet =>
+      let v = let_value(texpr: texpr)
+      let inner = let_body(texpr: texpr)
+      if inferred_expr_is_optional(texpr: v) {
+        match inner {
+          Present { value: bd } =>
+            concat(emit_rust_unit_discarding_stmt(texpr: v, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info), "\n", emit_rust_unit_discarding_stmt(texpr: bd, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+          Absent => emit_rust_unit_discarding_stmt(texpr: v, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+        }
+      } else {
+        let n = let_binding_name_at(texpr: texpr, source_indices: si)
+        let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+        let let_line = emit_let_binding(name: n, value: val_str, target: Rust)
+        match inner {
+          Present { value: bd } =>
+            concat(let_line, "\n", emit_rust_unit_discarding_stmt(texpr: bd, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+          Absent => let_line
+        }
+      }
+    ExprBlock =>
+      texpr.children
+        |> map(child => emit_rust_unit_discarding_stmt(texpr: child, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+        |> join(separator: "\n")
+    ExprIf =>
+      let c = if_condition(texpr: texpr)
+      let t = if_then_branch(texpr: texpr)
+      let e = if_else_branch(texpr: texpr)
+      let cond_str = emit_typed_expr(texpr: c, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+      let then_str = emit_rust_unit_discarding_stmt(texpr: t, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
+      match e {
+        Present { value: eb } =>
+          let else_str = emit_rust_unit_discarding_stmt(texpr: eb, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
+          concat("if ", cond_str, " {\n", make_indent(level: depth + 1), then_str, "\n} else {\n", make_indent(level: depth + 1), else_str, "\n}")
+        Absent =>
+          concat("if ", cond_str, " {\n", make_indent(level: depth + 1), then_str, "\n}")
+      }
+    ExprRecordLit { parent_enum: _ } =>
+      if inferred_expr_is_optional(texpr: texpr) {
+        emit_rust_unit_discarding_optional_typed(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      } else {
+        concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";")
+      }
+    ExprLiteral { value: v } =>
+      if inferred_expr_is_optional(texpr: texpr) {
+        emit_rust_unit_discarding_optional_typed(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      } else {
+        match v { LitNull => "()"  _ => concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";") }
+      }
+    ExprVar { binding_kind: _ } =>
+      concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";")
+    _ =>
+      concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";")
+  }
+}
+
+fn emit_fn_def_non_tco(name: String, type_params_str: String, params_str: String, ret_str: String, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, needs_stacker: Bool, return_is_unit: Bool) -> String {
   if needs_stacker {
-    let body_str = emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth + 2, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+    let body_str = emit_rust_fn_body_expr(texpr: body, return_is_unit: return_is_unit, registry: registry, scope: scope, depth: depth + 2, shared_types: shared_types, emit_info: emit_info)
     let kw = rust_items().func_keyword
     concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1), "stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {\n",
       make_indent(level: depth + 2), body_str, "\n",
       make_indent(level: depth + 1), "})\n}")
   } else {
-    let body_str = emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+    let body_str = emit_rust_fn_body_expr(texpr: body, return_is_unit: return_is_unit, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
     let kw = rust_items().func_keyword
     concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1), body_str, "\n}")
@@ -5261,13 +5364,13 @@ fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types
 }
 
 fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  let pname = param_node_name_at(n: param, source_indices: source_indices)
   let authored = param_node_type_expr(n: param)
   let ty = if authored.params |> count > 0 {
     emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   } else {
     render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
-  let pname = param_node_name_at(n: param, source_indices: source_indices)
   concat(emit_ident(name: pname, target: Rust), rust_items().param_type_sep, ty)
 }
 
@@ -6752,16 +6855,12 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
   let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let is_rt = map_contains_key(rt_functions(), func)
   let is_rt_ref_map = map_contains_key(rt_ref_map_functions(), func)
-  let callee_borrow_positions = empty_string_bool_map()
   let arg_strs = filled_args |> enumerate |> map(pair =>
     let idx = pair.first
     let a = pair.second
     if is_rt_ref_map && idx == 0 {
       let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       concat("&", base)
-    } else if map_contains_key(callee_borrow_positions, to_string(value: idx)) {
-      let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-      apply_type_template1(template: sharing_for_target(target: Rust).borrow_arg_template, arg0: base)
     } else {
       let base = emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       rust_call_arg_fail_closed_unwrap(arg_str: base, arg: arg_value(n: a), callee: callee, idx: idx, func: func)
@@ -7339,8 +7438,8 @@ fn emit_rust_first_method_call(receiver: Node, registry: Map<String, ItemInfo>, 
         let skip_recv = method_receiver(texpr: receiver)
         let skip_args = method_arg_nodes(texpr: receiver)
         let recv_str = emit_typed_expr(texpr: skip_recv, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-        let arg_str = emit_typed_first_arg(args: skip_args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-        concat(recv_str, ".get(", arg_str, " as usize).cloned()")
+        let n_str = emit_typed_first_arg(args: skip_args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+        concat(recv_str, ".iter().cloned().skip(", n_str, " as usize).next()")
       } else {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
         concat(recv_str, ".first().cloned()")
