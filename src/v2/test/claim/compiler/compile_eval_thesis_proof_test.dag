@@ -3,10 +3,10 @@ module v2.test.claim.compiler.compile_eval_thesis_proof
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn compile_eval_thesis_termination_proof() -> TerminationProof {
-  TerminationProof {
+fn compile_eval_thesis_termination_proof() -> v2.std.cardinality.TerminationProof {
+  v2.std.cardinality.TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: ^compile_eval_thesis_descent_dimension }
+    strict: v2.std.cardinality.RankingDimension { measured: ^compile_eval_thesis_descent_dimension }
   }
 }
 

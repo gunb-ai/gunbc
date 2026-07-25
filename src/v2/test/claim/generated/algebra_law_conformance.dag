@@ -31,7 +31,7 @@ fn algebra_law_generated_atom(s: Symbol) -> Node {
 }
 }
 
-fn algebra_law_generated_nat_value(value: Nat) -> Node {
+fn algebra_law_generated_nat_value(value: v2.std.nat.Nat) -> Node {
   match value {
     Zero => algebra_law_generated_atom(s: ^algebra_law_generated_nat_zero_constructor)
     Succ { prev: p } =>
@@ -46,7 +46,7 @@ fn algebra_law_generated_nat_value(value: Nat) -> Node {
   }
 }
 
-fn algebra_law_generated_binary(operation: Symbol, left: Node, right: Node, result: Nat) -> Node {
+fn algebra_law_generated_binary(operation: Symbol, left: Node, right: Node, result: v2.std.nat.Nat) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -59,19 +59,19 @@ fn algebra_law_generated_binary(operation: Symbol, left: Node, right: Node, resu
 }
 }
 
-fn t19_generated_nat_zero_value() -> Nat {
+fn t19_generated_nat_zero_value() -> v2.std.nat.Nat {
   Zero
 }
 
-fn t19_generated_nat_one_value() -> Nat {
+fn t19_generated_nat_one_value() -> v2.std.nat.Nat {
   Succ { prev: t19_generated_nat_zero_value() }
 }
 
-fn t19_generated_nat_two_value() -> Nat {
+fn t19_generated_nat_two_value() -> v2.std.nat.Nat {
   Succ { prev: t19_generated_nat_one_value() }
 }
 
-fn t19_generated_nat_three_value() -> Nat {
+fn t19_generated_nat_three_value() -> v2.std.nat.Nat {
   Succ { prev: t19_generated_nat_two_value() }
 }
 
@@ -91,17 +91,17 @@ fn t19_generated_nat_three() -> Node {
   algebra_law_generated_nat_value(value: t19_generated_nat_three_value())
 }
 
-fn t19_generated_nat_add(left: Node, right: Node, result: Nat) -> Node {
+fn t19_generated_nat_add(left: Node, right: Node, result: v2.std.nat.Nat) -> Node {
   algebra_law_generated_binary(operation: ^algebra_law_generated_nat_add_application, left: left, right: right, result: result)
 }
 
-fn t19_generated_nat_mul(left: Node, right: Node, result: Nat) -> Node {
+fn t19_generated_nat_mul(left: Node, right: Node, result: v2.std.nat.Nat) -> Node {
   algebra_law_generated_binary(operation: ^algebra_law_generated_nat_mul_application, left: left, right: right, result: result)
 }
 
 data generated_nat_add_left_identity_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
   anchor: ManualNatAddLeftIdentity,
-  label: "generated/algebra_law: Nat addition left identity",
+  label: "generated/algebra_law: v2.std.nat.Nat addition left identity",
   lhs: t19_generated_nat_add(
     left: t19_generated_nat_zero(),
     right: t19_generated_nat_one(),
@@ -113,7 +113,7 @@ data generated_nat_add_left_identity_claim: Outcome<TestClaim> = testgen_emit_al
 
 data generated_nat_add_associativity_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
   anchor: ManualNatAddAssociativity,
-  label: "generated/algebra_law: Nat addition associativity",
+  label: "generated/algebra_law: v2.std.nat.Nat addition associativity",
   lhs: t19_generated_nat_add(
     left: t19_generated_nat_add(
       left: t19_generated_nat_one(),
@@ -143,7 +143,7 @@ data generated_nat_add_associativity_claim: Outcome<TestClaim> = testgen_emit_al
 
 data generated_nat_mul_annihilator_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
   anchor: ManualNatMulAnnihilator,
-  label: "generated/algebra_law: Nat multiplication annihilator",
+  label: "generated/algebra_law: v2.std.nat.Nat multiplication annihilator",
   lhs: t19_generated_nat_mul(
     left: t19_generated_nat_zero(),
     right: t19_generated_nat_three(),

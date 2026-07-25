@@ -25,6 +25,7 @@ data target_meta_exec_module: String = "extdeps.shell.exec"
 data meta_exec_realization_edge_path_prefixes: List<String> = [
   "dag/tools/",
   "dag/gunbc/host_effect_realize",
+  "dag/gunbc/retained_shell_script",
   "dag/gunbc/ci_deploy_access_observe",
   "dag/test/claim/"
 ]

@@ -235,7 +235,7 @@ fn host_identity_assimilate_exit(receipt: HostIdentityAssimilationReceipt?) -> P
   match receipt {
     Present { value: r } =>
       if host_identity_assimilation_receipt_is_valid(receipt: r) {
-        let announced = shell.Exec.Run(script: transport_script_from_body(body: concat("echo ", host_identity_assimilation_receipt_message(receipt: r))))
+        let announced = shell.Exec.Run(script: retained_runtime(body: concat("echo ", host_identity_assimilation_receipt_message(receipt: r)), reason: "host_identity_assimilation echo PASS receipt announce"))
         ExitSuccess
       } else {
         exit_failure(

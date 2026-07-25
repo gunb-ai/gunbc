@@ -21,10 +21,6 @@ data shell_exec_check_argv_embed_note: String = "shell.Exec.Check transport: arg
 
 data shell_exec_transport_ceiling_authority: ByteSize = host_exec_arg_max_strlen
 
-fn transport_script_from_body(body: String) -> TransportScript {
-  body as TransportScript
-}
-
 service shell.Exec {
   operation Run {
     input { script: TransportScript }

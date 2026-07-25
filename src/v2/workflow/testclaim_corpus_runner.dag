@@ -141,27 +141,27 @@ fn corpus_report_tally(r: CorpusEvalReport) -> VerdictTally {
   })
 }
 
-fn corpus_report_pass_count(r: CorpusEvalReport) -> Nat {
+fn corpus_report_pass_count(r: CorpusEvalReport) -> v2.std.nat.Nat {
   corpus_report_tally(r: r).pass
 }
 
-fn corpus_report_fail_count(r: CorpusEvalReport) -> Nat {
+fn corpus_report_fail_count(r: CorpusEvalReport) -> v2.std.nat.Nat {
   corpus_report_tally(r: r).fail
 }
 
-fn corpus_report_deferred_count(r: CorpusEvalReport) -> Nat {
+fn corpus_report_deferred_count(r: CorpusEvalReport) -> v2.std.nat.Nat {
   corpus_report_tally(r: r).deferred
 }
 
-fn corpus_report_total(r: CorpusEvalReport) -> Nat {
+fn corpus_report_total(r: CorpusEvalReport) -> v2.std.nat.Nat {
   verdict_tally_total(t: corpus_report_tally(r: r))
 }
 
-fn list_length_nat<T>(xs: List<T>) -> Nat {
+fn list_length_nat<T>(xs: List<T>) -> v2.std.nat.Nat {
   fold(xs, init: Zero, f: fn(acc, _) { Succ { prev: acc } })
 }
 
-fn nat_eq(a: Nat, b: Nat) -> Bool {
+fn nat_eq(a: v2.std.nat.Nat, b: v2.std.nat.Nat) -> Bool {
   match nat_compare(a: a, b: b) {
     Equal => true
     Less => false

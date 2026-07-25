@@ -1,7 +1,7 @@
 module gunbc.srv3_install_diagnostic_checklist
 
 import extdeps.shell
-import extdeps.shell.exec { transport_script_from_body }
+import gunbc.retained_shell_script { retained_runtime }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.shell_bash_runner { shell_printf_line }
 import gunbc.srv3_os_install_diagnostic {
@@ -128,7 +128,7 @@ func srv3_install_diagnostic_checklist() -> ProcessExit {
         shell_printf_line(line: receipt),
         shell_printf_line(line: concat("Srv3InstallDiagnosticAction: ", action)),
       )
-      let echo_run = shell.Exec.Run(script: transport_script_from_body(body: echo_body))
+      let echo_run = shell.Exec.Run(script: retained_runtime(body: echo_body, reason: "srv3_install_diagnostic receipt + recommended-action printf echo"))
       if echo_run.success {
         ExitSuccess
       } else {
