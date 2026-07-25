@@ -194,9 +194,9 @@ service systemd.Systemctl {
     }
     mock_response {
       0 => {
-        stdout: "demo@1.service loaded active running Demo unit 1",
+        stdout: "actions-runner@srv3-01.service loaded active running GitHub Actions Runner\nactions-runner@srv3-02.service loaded active running GitHub Actions Runner\n",
         success: true,
-      } "hermetic systemd.Systemctl.ListUnits"
+      } "hermetic systemd.Systemctl.ListUnits (multi-column rows — consumer must take first field only)"
     }
   }
 

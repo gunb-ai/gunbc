@@ -1,0 +1,9 @@
+module gunbc.systemctl_set_property
+
+import std.types { String, NonEmptyStr, Bool }
+import extdeps.os.systemctl
+
+fn systemctl_set_property_local(unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr) -> Bool {
+  let result = systemd.Systemctl.SetProperty(unit: unit, property: property, value: value)
+  result.success
+}

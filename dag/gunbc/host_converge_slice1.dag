@@ -3,8 +3,6 @@ module gunbc.host_converge_slice1
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.shell
-import gunbc.retained_shell_script { retained_runtime }
 import product.placement_supply { HostIdentity }
 import extdeps.os.systemd {
   systemd_memory_max_property,
@@ -43,6 +41,9 @@ import gunbc.runner_unit_live_read {
 import gunbc.fleet_show_effective_read {
   per_slot_memory_cap_verdict_from_unit_read,
 }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.systemctl_set_property { systemctl_set_property_local }
+import gunbc.systemctl_list_units { systemctl_list_units_active_services }
 
 data gunbc_host_converge_slice1_scope_disposition: Disposition = Terminal {
   reason: "Host-converge realized knob: per_slot_memory_max_bytes from fleet_converge_policy through live systemctl show/set-property (LocalShell on-host, runs AS the target host's own job — no SSH transport needed) into ConvergeTarget PerSlotMemoryCap verdict semantics, with independent read-back and reapply-noop proof. Realized on srv1 (single probe unit) and srv3 (multi-unit: live-enumerated via runner_instance_glob, cross-checked against declared_runner_count() — a count mismatch refuses typed rather than silently converging a subset; per-unit outcomes are independent, so one unit's refusal never blocks its siblings, per DESIGN §5's per-cause-typed-refusal/siblings-continue discipline). A pre-apply MemoryCurrent usage guard (host_converge_slice1_usage_guard) refuses per-unit, typed and retryable, rather than applying a cap below live usage — never a fleet-wide abort. srv2 and other knobs stay on the host_converge_realize frontier. Transport intent lives here; shell realization is scaffold-marked medium-as-string (host_converge_slice1_transport_script_scaffold) until host_effect orchestration emit binds grammar rows — read scripts delegate to fleet_show_effective_read; set-property is slice-local concat. Deliberately NOT integrated with the membership-diff reconcile spine (membership-diff-reconcile-spine-design.md) — that spine's R5 teardown-owned-only concerns a different axis (fleet membership, not a live cgroup knob); noted as a future consolidation candidate, not actioned here. Dissolve-on (same bind): knob.desired bytes_value is inherited ConvergeKnob String at the shell seam; emit lane should terminate on ByteSize-typed argv rows, not raw String interpolation. First-execution safety: the apply arm is unreachable except via host_converge_slice1_converge_unit's own control flow — enumeration (host_converge_slice1_enumerate_units) and cross-check must both succeed before any unit is attempted, and within a unit the live MemoryMax read and Drifted verdict must both succeed before host_converge_slice1_usage_guard's own live MemoryCurrent read is attempted and must itself return Safe before set-property fires — so the first live invocation against a real host (srv1 or srv3) necessarily exercises only read-only systemctl show/list-units transports up through several fail-closed gates before any write is reachable; there is no code path to set-property without a prior successful live read in the same pass. Operationally this means the first `gunbc converge` run against srv3 IS the read-proof — no separate wet witness step is required by construction — but the operator should still supervise that first run to confirm the read/enumerate paths return real data rather than tripping an early Refused arm for an unrelated reason (host reachability, transport auth, etc.). Known non-blocking gap (review 41089): host_converge_slice1_cross_check_enumeration takes a host param but declared_runner_count() itself is fleet-wide (gunbc_runner_pool_budget is one global ByteSize, not a per-host map) — host is threaded through only to label HostConvergeSlice1EnumerationMismatch, not to select a per-host declared count. Modeling a real per-host budget now would be speculative (every fleet host today shares one declared count; #6 forbids building for a host that doesn't yet diverge). Dissolve-on: the day a second host's declared runner count genuinely differs from srv3's, declared_runner_count must take a host/HostIdentity param backed by a per-host budget row, and this cross-check wires straight to it — no interim shim."
@@ -130,27 +131,18 @@ fn host_converge_slice1_srv1_per_slot_memory_max_knob() -> ConvergeKnob? {
 data host_converge_slice1_probed_at_refusal_reason: String = "host_converge_slice1: probed_at read failed (date -Iseconds); fail-closed"
 
 fn host_converge_slice1_probed_at() -> NonEmptyStr? {
-  let result = shell.Exec.Run(script: retained_runtime(body: "date -Iseconds", reason: "host_converge_slice1 probed_at read via date -Iseconds"))
-  if result.success {
-    let line = trim(result.stdout)
-    if line == "" {
-      none
-    } else {
-      Present { value: line as NonEmptyStr }
-    }
-  } else {
-    none
-  }
+  clock_now_probed_at()
 }
 
 fn host_converge_slice1_read_memory_max_raw(unit: NonEmptyStr) -> String? {
   systemctl_show_property_read_local(unit: unit, property: MemoryMax)
 }
 
-fn host_converge_slice1_memory_max_set_script(unit: NonEmptyStr, bytes_value: String) -> String {
-  concat(
-    concat(concat("systemctl set-property \"", unit, "\" MemoryMax="), bytes_value),
-    " 2>&1"
+fn host_converge_slice1_apply_memory_max(unit: NonEmptyStr, bytes_value: String) -> Bool {
+  systemctl_set_property_local(
+    unit: unit,
+    property: systemd_memory_max_property,
+    value: bytes_value as NonEmptyStr,
   )
 }
 
@@ -222,11 +214,6 @@ fn host_converge_slice1_fixture_receipt() -> HostConvergeSlice1MemoryCapReceipt?
   }
 }
 
-fn host_converge_slice1_apply_memory_max(unit: NonEmptyStr, bytes_value: String) -> Bool {
-  let result = shell.Exec.Run(script: retained_runtime(body: host_converge_slice1_memory_max_set_script(unit: unit, bytes_value: bytes_value), reason: "host_converge_slice1 systemctl set-property MemoryMax on runner unit"))
-  result.success
-}
-
 type HostConvergeSlice1UsageGuardOutcome
   = HostConvergeSlice1UsageSafe { unit: NonEmptyStr, current_bytes: ByteSize }
   | HostConvergeSlice1UsageUnsafe { unit: NonEmptyStr, current_bytes: ByteSize, target_cap_bytes: ByteSize }
@@ -296,38 +283,8 @@ type HostConvergeSlice1EnumerationMismatch {
   observed_units: List<NonEmptyStr>
 }
 
-fn host_converge_slice1_enumerate_units_script(instance_glob: String) -> String {
-  concat(
-    concat("systemctl list-units --type=service --state=active --no-legend --plain \"", instance_glob),
-    "\" 2>/dev/null | awk '{ print $1 }'"
-  )
-}
-
-fn host_converge_slice1_enumerate_unit_line_trimmed(line: String) -> String {
-  trim(line)
-}
-
-fn host_converge_slice1_enumerate_unit_line_nonempty(line: String) -> Bool {
-  host_converge_slice1_enumerate_unit_line_trimmed(line: line) != ""
-}
-
-fn host_converge_slice1_enumerate_unit_line_as_unit(line: String) -> NonEmptyStr {
-  host_converge_slice1_enumerate_unit_line_trimmed(line: line) as NonEmptyStr
-}
-
 fn host_converge_slice1_enumerate_units(instance_glob: String) -> List<NonEmptyStr>? {
-  let result = shell.Exec.Run(script: retained_runtime(body: host_converge_slice1_enumerate_units_script(instance_glob: instance_glob), reason: "host_converge_slice1 systemctl list-units enumerate active runner units"))
-  if result.success {
-    let trimmed = trim(result.stdout)
-    if trimmed == "" {
-      Present { value: [] }
-    } else {
-      let lines = filter(split(s: trimmed, delimiter: "\n"), host_converge_slice1_enumerate_unit_line_nonempty)
-      Present { value: map(lines, host_converge_slice1_enumerate_unit_line_as_unit) }
-    }
-  } else {
-    none
-  }
+  systemctl_list_units_active_services(instance_glob: instance_glob as NonEmptyStr)
 }
 
 fn host_converge_slice1_cross_check_enumeration(host: HostIdentity, units: List<NonEmptyStr>) -> HostConvergeSlice1EnumerationMismatch? {

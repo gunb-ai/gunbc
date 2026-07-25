@@ -1,0 +1,39 @@
+module gunbc.systemctl_list_units
+
+import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.os.systemctl
+
+fn systemctl_list_units_local(instance_glob: NonEmptyStr) -> String? {
+  let result = systemd.Systemctl.ListUnits(pattern: instance_glob)
+  if result.success {
+    Present { value: result.stdout }
+  } else {
+    none
+  }
+}
+
+fn systemctl_list_units_line_trimmed(line: String) -> String {
+  trim(line)
+}
+
+fn systemctl_list_units_line_nonempty(line: String) -> Bool {
+  systemctl_list_units_line_trimmed(line: line) != ""
+}
+
+fn systemctl_list_units_line_as_unit(line: String) -> NonEmptyStr {
+  systemctl_list_units_line_trimmed(line: line) as NonEmptyStr
+}
+
+fn systemctl_list_units_active_services(instance_glob: NonEmptyStr) -> List<NonEmptyStr>? {
+  match systemctl_list_units_local(instance_glob: instance_glob) {
+    Present { value: stdout } =>
+      let trimmed = trim(stdout)
+      if trimmed == "" {
+        Present { value: [] }
+      } else {
+        let lines = filter(split(s: trimmed, delimiter: "\n"), systemctl_list_units_line_nonempty)
+        Present { value: map(lines, systemctl_list_units_line_as_unit) }
+      }
+    Absent => none
+  }
+}
