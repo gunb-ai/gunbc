@@ -3,6 +3,11 @@ module gunbc.hostname_read
 import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.tools.hostname
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
+import v2.std.operation_argv {
+  ArgvMaterialization,
+  ArgvMaterialized,
+  ArgvMaterializationRefused,
+}
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
   typed_argv_shell_safe_refusal_argv,
@@ -14,15 +19,12 @@ data hostname_read_short_path: String = "dag/extdeps/tools/hostname.dag"
 data hostname_read_short_service: String = "os.Hostname"
 data hostname_read_short_operation: String = "ReadShort"
 
-fn hostname_short_read_operation_argv() -> List<String> {
-  shell_materialize_argv_for_operation(
+fn hostname_short_read_operation_argv() -> ArgvMaterialization {
+  shell_materialize_operation_argv(
     hostname_read_short_path,
     hostname_read_short_service,
     hostname_read_short_operation,
-    "",
-    "",
-    [],
-    ""
+    []
   )
 }
 
@@ -44,8 +46,7 @@ fn hostname_short_read_local() -> String? {
   hostname_short_value_from_stdout(success: result.success, stdout: result.value)
 }
 
-fn hostname_short_read_ssh(host: NonEmptyStr) -> String? {
-  let argv = hostname_short_read_operation_argv()
+fn hostname_short_read_ssh_argv(host: NonEmptyStr, argv: List<String>) -> String? {
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: _ } => none
     Absent =>
@@ -54,6 +55,13 @@ fn hostname_short_read_ssh(host: NonEmptyStr) -> String? {
           hostname_short_value_from_stdout(success: r.success, stdout: r.stdout)
         TypedArgvExecRefused { reason: _ } => none
       }
+  }
+}
+
+fn hostname_short_read_ssh(host: NonEmptyStr) -> String? {
+  match hostname_short_read_operation_argv() {
+    ArgvMaterialized { argv: argv } => hostname_short_read_ssh_argv(host: host, argv: argv)
+    ArgvMaterializationRefused { at: _, cause: _ } => none
   }
 }
 
@@ -66,7 +74,9 @@ fn hostname_short_read(transport: HostEffectTransport) -> String? {
 }
 
 fn hostname_short_read_operation_argv_matches_authority() -> Bool {
-  let materialized = hostname_short_read_operation_argv()
   let authority = hostname_short_read_argv()
-  join(materialized, " ") == join(authority, " ")
+  match hostname_short_read_operation_argv() {
+    ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  }
 }

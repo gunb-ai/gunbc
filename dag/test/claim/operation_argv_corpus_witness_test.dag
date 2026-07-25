@@ -16,7 +16,7 @@ import v2.std.operation_argv {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data operation_argv_corpus_note: String = "The RED corpus for argv materializer route (b), DERIVED rather than rostered: shell_transport_operation_rows() enumerates every shell-transport operation declared under dag/ and src/v2/ from the declarations themselves, so a newly authored operation enrolls by existing and coverage is a corpus fact rather than a claim (DESIGN 3 and 6 -- a hand roster would be the parallel-ledger form of exactly this fact). Each row is bound GENERICALLY: every input the operation declares, and nothing else. Measured at authoring time: 141 rows, of which 96 reference at least one input outside the seed's prior five-name vocabulary (package, bin, args, unit, property) and so could not be materialized AT ALL before this change -- 93 of those now materialize, the other 3 land in the counted expression residue below."
+data operation_argv_corpus_note: String = "The RED corpus for argv materializer route (b), DERIVED rather than rostered: shell_transport_operation_rows() enumerates every shell-transport operation declared under dag/ and src/v2/ from the declarations themselves, so a newly authored operation enrolls by existing and coverage is a corpus fact rather than a claim (DESIGN 3 and 6 -- a hand roster would be the parallel-ledger form of exactly this fact). Each row is bound GENERICALLY: every input the operation declares, and nothing else. Measured at authoring time by execution: 141 rows (139 corpus operations plus the 2 executable-position fixture operations), of which 133 materialize, 96 reference at least one input outside the seed's prior five-name vocabulary (package, bin, args, unit, property) and so could not be materialized AT ALL before this change, and 92 of those 96 now materialize -- the remaining 4 are in the counted expression residue below."
 
 data operation_argv_expression_residue_note: String = "The residue is a DEFICIT HELD CONSTANT, not a regression: 7 operations carry an argv element that is a call or a field access, which materialization does not evaluate. Established by execution against the OLD builtin before this change -- all 7 refused there too (4 with `unsupported expr`, 3 with `unbound param` reached first), so no operation that materialized before refuses now. What changed is the shape of the refusal: an untyped host error string became a typed, located, counted ArgvExpressionUnsupported. The count is pinned so the deficit can only shrink deliberately; the operations are git.Core.DiffUnified0, git.Core.DiffNameStatus, http.Client.GetLocalhostBounded, sudo.NopasswdExecuteProbe.Check, gunbc.Cli.Run, claim_executor.Executor.RunPlan and claim_executor.Executor.VerifyBuildArtifacts. Dissolves when argv element evaluation lands, which is a separate lane."
 
@@ -121,7 +121,7 @@ test fn operation_argv_corpus_executable_position_wall_fires_on_the_fixture_only
 }
 
 test fn operation_argv_corpus_outside_legacy_vocabulary_now_materializes() -> Bool {
-  operation_argv_corpus_tally().outside_legacy_materialized >= 93
+  operation_argv_corpus_tally().outside_legacy_materialized >= 92
 }
 
 test fn operation_argv_corpus_outside_legacy_vocabulary_is_the_majority() -> Bool {

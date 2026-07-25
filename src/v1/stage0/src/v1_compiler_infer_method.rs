@@ -263,11 +263,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "shell_materialize_argv_for_operation".to_string(),
-            list_of_element(string_type()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
             "shell_materialize_operation_argv".to_string(),
             type_variable_node("argv_materialization_result".to_string()),
         );

@@ -27381,38 +27381,6 @@ pub fn parse_extdeps_module_items(
     parsed
 }
 
-pub fn shell_argv_nodes_for_operation(
-    path: String,
-    service: String,
-    operation: String,
-) -> (
-    Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
-    Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-) {
-    let (items, source_indices) = parse_extdeps_module_items(&path);
-    for item in items.iter() {
-        if item.name != service {
-            continue;
-        }
-        let fallback_transport = if let Some(t) = item.transport.as_ref() {
-            t.clone()
-        } else {
-            crate::v1_std_core::local_transport_node(item.span.clone())
-        };
-        for op in item.children.iter() {
-            if op.name != operation {
-                continue;
-            }
-            let eff = crate::v1_compiler_emit::effective_operation_transport(
-                op.clone(),
-                fallback_transport.clone(),
-            );
-            return (eff.children.clone(), source_indices);
-        }
-    }
-    panic!("shell_argv_nodes_for_operation: operation {service}.{operation} not found in {path}");
-}
-
 /// One shell-transport operation's *declaration*: the argv expression nodes and the
 /// inputs the operation itself declares (name + optional default expression).
 ///

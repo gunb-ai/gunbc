@@ -1,5 +1,7 @@
 module v2.extdeps.languages.rust_test
 
+import v2.std.operation_argv { operation_argv_tokens_or_refusal_label }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
@@ -4051,7 +4053,7 @@ fn rust_filesystem_read_family_target_model_staging(fixture_content: String) -> 
   }
 }
 
-data rust_shell_exec_run_family_note: String = "shell_exec_run native family (neat-carp-312, Task 2): a SEPARATE family from filesystem_read (not folded in), because its host-effect is a process spawn (bottom transport), a genuinely different confinement class from a file read, and keeping them separate keeps the effect roster (Task 4) legible per-effect-kind rather than per-PR-lane. Unlike Task 1, this family has NO cwd/repo-path problem: the two argv literals baked into the generated Rust prelude are derived by calling shell_materialize_argv_for_operation against dag/extdeps/shell/exec.dag's shell.Exec.Run operation AT .dag CONSTRUCTION TIME, in the INTERPRETER's own process (whose relative-path resolution is the same workspace_root() convention Task 1's fixture read already uses) -- not inside the emitted native binary -- so no embedded-fixture trick is needed here. This is real single-authority derivation, not a hand-typed literal kept in sync by convention: if shell.Exec.Run's transport block ever changes argv, this family's emitted argv changes with it at .dag build time, with no Rust edit required. package/bin/extra_args are passed empty because shell.Exec.Run's transport argv is the fixed literal [\"bash\", \"-s\"] with no package/bin/args template interpolation (confirmed via dag/extdeps/shell/exec.dag and the cargo_build_run_argv_witness_test.dag precedent, and via v1_interpreter.rs's materialize_shell_argv_for_operation dispatch, which only substitutes those params when the argv expression references them)."
+data rust_shell_exec_run_family_note: String = "shell_exec_run native family (neat-carp-312, Task 2): a SEPARATE family from filesystem_read (not folded in), because its host-effect is a process spawn (bottom transport), a genuinely different confinement class from a file read, and keeping them separate keeps the effect roster (Task 4) legible per-effect-kind rather than per-PR-lane. Unlike Task 1, this family has NO cwd/repo-path problem: the two argv literals baked into the generated Rust prelude are derived by calling shell_materialize_operation_argv against dag/extdeps/shell/exec.dag's shell.Exec.Run operation AT .dag CONSTRUCTION TIME, in the INTERPRETER's own process (whose relative-path resolution is the same workspace_root() convention Task 1's fixture read already uses) -- not inside the emitted native binary -- so no embedded-fixture trick is needed here. This is real single-authority derivation, not a hand-typed literal kept in sync by convention: if shell.Exec.Run's transport block ever changes argv, this family's emitted argv changes with it at .dag build time, with no Rust edit required. No bindings are passed because shell.Exec.Run's transport argv is the fixed literal [\"bash\", \"-s\"], which references no declared input at all -- and since the materializer now binds an operation's OWN declared inputs (v2.std.operation_argv), passing any name here would be refused as UndeclaredInputBound rather than silently ignored, which is why the empty binding list is the honest spelling."
 
 data rust_shell_exec_run_family_dag_path: String = "dag/extdeps/shell/exec.dag"
 
@@ -4060,13 +4062,13 @@ data rust_shell_exec_run_family_service: String = "shell.Exec"
 data rust_shell_exec_run_family_operation: String = "Run"
 
 fn rust_shell_exec_run_family_argv() -> List<String> {
-  shell_materialize_argv_for_operation(
-    rust_shell_exec_run_family_dag_path,
-    rust_shell_exec_run_family_service,
-    rust_shell_exec_run_family_operation,
-    "",
-    "",
-    []
+  operation_argv_tokens_or_refusal_label(
+    m: shell_materialize_operation_argv(
+      rust_shell_exec_run_family_dag_path,
+      rust_shell_exec_run_family_service,
+      rust_shell_exec_run_family_operation,
+      []
+    )
   )
 }
 
