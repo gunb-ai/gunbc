@@ -17,7 +17,7 @@ fn expected_node_head_block() -> String {
   join([
     ".node-head { display: grid; grid-template-columns: ",
     roadmap_row_grid_template(),
-    "; gap: var(--space-4); align-items: center; min-height: var(--h-row) }",
+    "; gap: var(--space-8); align-items: center; min-height: var(--h-row) }",
   ], "")
 }
 
