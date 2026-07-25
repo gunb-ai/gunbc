@@ -1,0 +1,96 @@
+module v2.test.claim.fallback_arm_classify_test
+
+import v2.extdeps.languages.dag {
+  dag_match_arm_node,
+  dag_match_body_from_arms,
+  dag_type_atom_node
+}
+import v2.lens.fallback_arm_classify {
+  ClassifierUnknown,
+  Refuses,
+  classify_structural_wildcard_arm,
+  fallback_arm_corpus_class_counts_reconcile_live,
+  fallback_arm_corpus_answers_on_open_count_live,
+  fallback_arm_structural_wildcard_site_count,
+  fallback_arm_wildcard_pattern_symbol
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  ComputationNode,
+  Conj,
+  Edge,
+  Match,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode,
+  match_arm_body,
+  match_arm_pattern
+}
+import v2.std.node_query { find_named_child }
+
+data fallback_arm_classify_test_note: String = "Fixture-grain witnesses for v2.lens.fallback_arm_classify (W2 fallback-arm census, Phase A): planted wildcard pattern atom -> structural detection; malformed arm wire -> Refuses; corpus bridge reconciles against complexity_linearity_wildcard_facts. RED controls: non-wildcard pattern must not count as wildcard site; missing match_arm_body must refuse."
+
+fn planted_wildcard_match_body() -> Node {
+  dag_match_body_from_arms(
+    scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
+    true_arm: dag_match_arm_node(
+      pattern_lit: ^dag_token_kw_true,
+      body_lit: ^dag_pick_lit_one
+    ),
+    false_arm: dag_match_arm_node(
+      pattern_lit: fallback_arm_wildcard_pattern_symbol,
+      body_lit: ^dag_pick_lit_two
+    )
+  )
+}
+
+fn malformed_arm_missing_body() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: match_arm_pattern },
+        target: dag_type_atom_node(identity: fallback_arm_wildcard_pattern_symbol)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+test fn fallback_arm_structural_wildcard_detected_holds() -> Bool {
+  fallback_arm_structural_wildcard_site_count(root: planted_wildcard_match_body()) == 1
+}
+
+test fn fallback_arm_structural_non_wildcard_red_control_holds() -> Bool {
+  fallback_arm_structural_wildcard_site_count(
+    root: dag_match_body_from_arms(
+      scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
+      true_arm: dag_match_arm_node(
+        pattern_lit: ^dag_token_kw_true,
+        body_lit: ^dag_pick_lit_one
+      ),
+      false_arm: dag_match_arm_node(
+        pattern_lit: ^dag_token_kw_false,
+        body_lit: ^dag_pick_lit_two
+      )
+    )
+  ) == 0
+}
+
+test fn fallback_arm_malformed_arm_refuses_red_control_holds() -> Bool {
+  match classify_structural_wildcard_arm(arm: malformed_arm_missing_body()) {
+    Refuses { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn fallback_arm_corpus_counts_reconcile_holds() -> Bool {
+  fallback_arm_corpus_class_counts_reconcile_live()
+}
+
+test fn fallback_arm_corpus_has_open_domain_defects_holds() -> Bool {
+  fallback_arm_corpus_answers_on_open_count_live() > 0
+}

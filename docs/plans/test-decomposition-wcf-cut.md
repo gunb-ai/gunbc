@@ -80,6 +80,8 @@ Decomposing buys nothing; fix the cost-shape. Shrinks Classes C and F together.
 
 **Disposition:** route to cost-shape / #7205 residual lane. Explicit **non-work** for Class C children.
 
+**Named owner (2026-07-25):** session `bold-wren-550` — Class F / #7205 cost-shape residual (emit_host_classical + wave1 ingest bind/loop + provenance ~9.5s ingest hand-off).
+
 ---
 
 ## 7. Future enrollment rule (dark `long/`)

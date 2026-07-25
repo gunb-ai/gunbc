@@ -23,6 +23,7 @@ type LensIdV0
   | DuplicateComputation
   | EffectReach
   | EmittedBinaryEffectConfinement
+  | FallbackArmClassify
   | MandatoryTag
   | ExtdepsShapeTransportPolicy
   | FactCardinality
@@ -175,6 +176,11 @@ data lens_registry_v0_duplicate_computation: LensRegistryEntryV0 = {
 data lens_registry_v0_effect_reach: LensRegistryEntryV0 = {
   lens_id: EffectReach
   module_path: Bound { path: "v2.lens.effect_reach" }
+}
+
+data lens_registry_v0_fallback_arm_classify: LensRegistryEntryV0 = {
+  lens_id: FallbackArmClassify
+  module_path: Bound { path: "v2.lens.fallback_arm_classify" }
 }
 
 data lens_registry_v0_emitted_binary_effect_confinement: LensRegistryEntryV0 = {
@@ -369,6 +375,7 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_duplicate_computation,
   lens_registry_v0_effect_reach,
   lens_registry_v0_emitted_binary_effect_confinement,
+  lens_registry_v0_fallback_arm_classify,
   lens_registry_v0_mandatory_tag,
   lens_registry_v0_extdeps_shape_transport_policy,
   lens_registry_v0_fact_cardinality,

@@ -1,0 +1,221 @@
+module v2.lens.fallback_arm_classify
+
+import v2.lens.complexity_linearity_audit {
+  ComplexityLinearityWildcardFact,
+  complexity_linearity_wildcard_facts_live,
+  complexity_linearity_wildcard_total_live,
+  complexity_linearity_migration_debt_roster_live,
+  migration_roster_contains,
+  triage_wildcard
+}
+import v2.std.algebra { Empty, TailAbsent, TailFound, fold, fold_list, length, list_tail }
+import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Behavior,
+  ComputationNode,
+  Edge,
+  Match,
+  Node,
+  NodeFold,
+  Positional,
+  Symbol,
+  TypeNode,
+  Conj,
+  fold_node,
+  match_arm_body,
+  match_arm_pattern
+}
+import v2.std.node_query { find_named_child, node_positional_child_targets }
+import v2.std.text { String }
+import v2.std.grammar { node_atom_identity_optional }
+
+data fallback_arm_classify_note: String = "W2 fallback-arm census (enforcement-intent intake queue, operator ruling 2026-07-25): classify every match wildcard arm into exactly one of Refuses, CompletesClosedTotal, DeclaredInterim, AnswersOnOpen, or ClassifierUnknown — never silently bin a deficit. Phase A: structural wildcard detection on normalized Match substrate (match_arm_pattern atom identity). Phase B (interim): corpus rows bridge through complexity_linearity_wildcard_facts until decl_facts Node introspection lands (gunbc#5364). The classifier's own control flow is enumerated — no answering _ arm in this module (self-application witnessed in fallback_arm_classify_test)."
+
+data fallback_arm_wildcard_pattern_symbol: Symbol = ^fallback_arm_wildcard_pattern
+
+type FallbackArmClass
+  = Refuses { cause: Symbol }
+  | CompletesClosedTotal
+  | DeclaredInterim { roster_row: String }
+  | AnswersOnOpen
+  | ClassifierUnknown { cause: Symbol }
+
+type FallbackArmSite {
+  pattern_node: Node
+  class: FallbackArmClass
+}
+
+fn match_arm_wire_is_well_formed(arm: Node) -> Bool {
+  match arm.kind {
+    TypeNode { connective: Conj } =>
+      match find_named_child(root: arm, name: match_arm_pattern) {
+        Present { value: _ } =>
+          match find_named_child(root: arm, name: match_arm_body) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn match_arm_pattern_node(arm: Node) -> Optional<Node> {
+  match find_named_child(root: arm, name: match_arm_pattern) {
+    Present { value: pat } => optional_present(value: pat)
+    Absent => optional_absent()
+  }
+}
+
+fn node_is_wildcard_pattern_atom(pat: Node) -> Bool {
+  match node_atom_identity_optional(node: pat) {
+    Present { value: id } =>
+      id == fallback_arm_wildcard_pattern_symbol
+    Absent => false
+  }
+}
+
+fn classify_structural_wildcard_arm(arm: Node) -> FallbackArmClass {
+  if !match_arm_wire_is_well_formed(arm: arm) {
+    Refuses { cause: ^fallback_arm_malformed_arm_wire }
+  } else {
+    match match_arm_pattern_node(arm: arm) {
+      Present { value: pat } =>
+        if node_is_wildcard_pattern_atom(pat: pat) {
+          ClassifierUnknown { cause: ^fallback_arm_needs_scrutinee_type }
+        } else {
+          ClassifierUnknown { cause: ^fallback_arm_not_wildcard_pattern }
+        }
+      Absent =>
+        Refuses { cause: ^fallback_arm_missing_pattern_edge }
+    }
+  }
+}
+
+fn match_arm_targets(node: Node) -> List<Node> {
+  match list_tail(xs: node_positional_child_targets(node: node)) {
+    TailFound { tail: arms } => arms
+    TailAbsent => Empty
+  }
+}
+
+fn fallback_arm_collect_wildcard_sites_in_node(n: Node) -> List<FallbackArmSite> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(node0) {
+        match node0.kind {
+          ComputationNode { behavior: Match } =>
+            fold_list(
+              xs: match_arm_targets(node: node0),
+              empty: [],
+              cons: fn(acc, arm) {
+                let arm_class = classify_structural_wildcard_arm(arm: arm)
+                match arm_class {
+                  ClassifierUnknown { cause: c } =>
+                    if c == ^fallback_arm_needs_scrutinee_type {
+                      concat(
+                        acc,
+                        [
+                          FallbackArmSite {
+                            pattern_node: arm,
+                            class: arm_class
+                          }
+                        ]
+                      )
+                    } else {
+                      acc
+                    }
+                  _ => acc
+                }
+              }
+            )
+          _ => []
+        }
+      },
+      step: fn(acc, _edge, child_sites) { concat(acc, child_sites) }
+    }
+  )
+}
+
+fn map_corpus_fact_to_class(fact: ComplexityLinearityWildcardFact) -> FallbackArmClass {
+  let bucket = triage_wildcard(fact: fact)
+  if bucket == "open-domain" {
+    AnswersOnOpen
+  } else if bucket == "migration-debt" {
+    DeclaredInterim { roster_row: fact.site }
+  } else if bucket == "kernel-permanent" {
+    CompletesClosedTotal
+  } else if bucket == "closed-coproduct-debt" {
+    CompletesClosedTotal
+  } else {
+    ClassifierUnknown { cause: ^fallback_arm_unmapped_triage_bucket }
+  }
+}
+
+fn fallback_arm_corpus_class_counts_reconcile_live() -> Bool {
+  let total = complexity_linearity_wildcard_total_live()
+  let classified = fold_list(
+    xs: complexity_linearity_wildcard_facts_live(),
+    empty: 0,
+    cons: fn(acc, _fact) { acc + 1 }
+  )
+  total == classified
+}
+
+fn fallback_arm_corpus_answers_on_open_count_live() -> Int {
+  fold_list(
+    xs: complexity_linearity_wildcard_facts_live(),
+    empty: 0,
+    cons: fn(acc, fact) {
+      match map_corpus_fact_to_class(fact: fact) {
+        AnswersOnOpen => acc + 1
+        _ => acc
+      }
+    }
+  )
+}
+
+fn fallback_arm_corpus_declared_interim_count_live() -> Int {
+  fold_list(
+    xs: complexity_linearity_wildcard_facts_live(),
+    empty: 0,
+    cons: fn(acc, fact) {
+      match map_corpus_fact_to_class(fact: fact) {
+        DeclaredInterim { roster_row: _ } => acc + 1
+        _ => acc
+      }
+    }
+  )
+}
+
+fn fallback_arm_corpus_completes_closed_total_count_live() -> Int {
+  fold_list(
+    xs: complexity_linearity_wildcard_facts_live(),
+    empty: 0,
+    cons: fn(acc, fact) {
+      match map_corpus_fact_to_class(fact: fact) {
+        CompletesClosedTotal => acc + 1
+        _ => acc
+      }
+    }
+  )
+}
+
+fn fallback_arm_corpus_unknown_count_live() -> Int {
+  fold_list(
+    xs: complexity_linearity_wildcard_facts_live(),
+    empty: 0,
+    cons: fn(acc, fact) {
+      match map_corpus_fact_to_class(fact: fact) {
+        ClassifierUnknown { cause: _ } => acc + 1
+        _ => acc
+      }
+    }
+  )
+}
+
+fn fallback_arm_structural_wildcard_site_count(root: Node) -> Int {
+  length(xs: fallback_arm_collect_wildcard_sites_in_node(n: root))
+}

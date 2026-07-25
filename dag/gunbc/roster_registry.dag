@@ -131,6 +131,14 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
+    roster: roster_decl(module_path: "v2.lens.fallback_arm_classify", decl_name: "fallback_arm_classify_note"),
+    unit_kind: "lens authority note",
+    membership: DeclaredFrontier {
+      reason: "W2 fallback-arm census classifier (enforcement-intent intake queue, operator ruling 2026-07-25); Phase A structural + Phase B corpus bridge",
+      dissolve_on: "W3: lens promotes to compile-time refusal once zero-false-positive corpus-wide; register rows route to owning lanes"
+    }
+  },
+  RosterRegistration {
     roster: roster_decl(module_path: "v2.lens.complexity_linearity_audit", decl_name: "complexity_linearity_migration_debt_roster"),
     unit_kind: "path::fn site key",
     membership: DeclaredFrontier {
