@@ -634,3 +634,27 @@ row 3's shape (a located refusal), while rows 1 and 2 must stay green.
 
 Nothing lands from this section either — it is a receipt. Dispatch 2's branch
 is left in place as evidence.
+
+## 15. Production receipt — the class's first deploy-time casualty (2026-07-25)
+
+§14 predicted a corpus where "a green compile would have carried no information"; the live tree
+delivered the runtime version the same day. Merge #7233 (srv3 install/reconcile retirement)
+deleted the subgraph whose unrelated imports had been supplying pool coverage for
+`dag/gunbc/srv3_boot_once_cd.dag`'s bare references (`WorkflowApprovalState`,
+`observe_and_resolve_srv3_bmc_credential`, `materialize_bmc_login_password`, …). The
+definitions all still exist on main (3–6 files each); only the *coincidence* was deleted.
+Every CI compile context assembles big pools, so every gate stayed green; the deploy job
+(`gunbc run … live_deploy/apply.dag`, 407-source closure) is the only narrow-closure compile
+these files receive, and it redded — run 30173364541, ~6 hours after the merge, discovered by
+the operator reading a dashboard. Failure was HONEST (absent-from-closure → located unresolved
+errors, 17 of them) — the silent variant of this incident is what the §14.3 fabrication arm
+produces, which is why the refusal ranks first.
+
+Two seams this receipt prices, with their owners: (a) **no CI gate compiles workflow-invoked
+entry closures** — fix is a compile-clean entry set *derived from the workflow emission
+authorities* (the ymls are emitted; the emitter already knows every `gunbc run` entry — a
+day-one "derivable-but-underived" row for the CI hand-list registry); (b) the binding+refusal
+lane (this doc's §14.4 ordering) converts the class from deploy-time to merge-time — under the
+refusal, #7233's own gate compile reds `srv3_boot_once_cd` at the PR. Until then the
+1,549-site census is the minefield map: a deletion PR whose departed imports intersect the
+census's definer set warrants a narrow-closure compile of the production entries before merge.

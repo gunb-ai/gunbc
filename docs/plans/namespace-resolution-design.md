@@ -415,6 +415,20 @@ first) — partial strips sever re-export chains at hub files. Mechanism receipt
 experiments, and the consolidated wave rule:
 [import-strip witness-discovery cascade diagnosis](import-strip-witness-discovery-cascade-diagnosis.md)
 §12–13 (PR #7061).
+**PRODUCTION RECEIPT 2026-07-25 (the erosion vector is ANY deletion, not only strips):** the
+srv3-retirement merge (#7233) deleted the install/reconcile subgraph whose *unrelated imports*
+had been dragging `WorkflowApprovalState`/BMC-credential definers into the `live_deploy/apply`
+closure; `srv3_boot_once_cd.dag`'s bare references — bound by pool coincidence in every CI
+compile context (big pools) — failed only at deploy time, the one place that compiles the
+narrow production closure (run 30173364541; deploy red ~6h undetected; definitions extant in
+3–6 files throughout). First production casualty of this class. Interim rules until the
+type/callee binding lane closes it: (1) a deletion/move PR whose departed imports intersect the
+1,549-site unresolved-census definer set gets a narrow-closure compile of the workflow-invoked
+entries before merge (cheap: the apply closure compiles in ~30s); (2) workflow-invoked
+`gunbc run` entry closures become compile-clean entries **derived from the workflow emission
+authorities** (never a hand roster). The binding+refusal lane converts this class from
+deploy-time to merge-time: pool-present-but-unreachable refuses in the gate's own compile, so
+the breaking PR reds instead of the deploy.
 
 ## 9. Open / to-verify
 
