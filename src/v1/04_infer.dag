@@ -77,8 +77,7 @@ import v1.compiler.infer_types {
   callable_return_type
 }
 import v1.compiler.infer_method {
-  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
-  witness_of_element
+  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.infer_env {
@@ -993,11 +992,7 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
             Present { value: Resolved { node: receiver_type } } =>
               match map_value_type_in_env(type_node: receiver_type, env: scope.type_env) {
                 Present { value: value_type } =>
-                  if func_name == "lookup" {
-                    witness_of_element(element: value_type)
-                  } else {
-                    with_optional_cardinality(n: value_type)
-                  }
+                  with_optional_cardinality(n: value_type)
                 Absent => resolve_builtin_call_type(name: func_name)
               }
             _ => resolve_builtin_call_type(name: func_name)
