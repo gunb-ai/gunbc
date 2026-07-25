@@ -1,0 +1,31 @@
+module extdeps.pricing.billing_units
+
+import std.measure { MoneyRate }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.aws.amazon.com/whitepapers/latest/how-aws-pricing-works/what-is-aws-pricing.html"
+  }
+}
+
+data storage_billing_unit_note: String = "Object-storage vendors bill on three axes that are NOT reducible to a time period: capacity held over time (per stored unit-month), bytes moved (per transferred unit), and operation counts (per million requests). They instantiate std.measure MoneyRate<P>'s billing-unit axis as three more phantom markers rather than a parallel record family (the money_rate_carrier_representation_note move). The BYTE BASIS is deliberately absent from these markers: vendors quote incompatible bases for the same word (AWS S3 quotes 'GB-Mo', Google Cloud Storage quotes '1 gibibyte hour'), so the basis is a per-row declared fact in extdeps.pricing.object_storage, never baked into the unit type -- a rate carrier that silently fixed one basis would make a cross-vendor comparison off by 7.4 percent and unwritable-as-honest."
+
+data billing_unit_layer_placement_note: String = "These markers live in extdeps, not std (review ruling 2026-07-25). MoneyRate<P>'s parameter is the reusable universal carrier and stays in std.measure; the specific P markers below are VENDOR-BILLING vocabulary -- what cloud providers choose to meter -- not universal-framework vocabulary, so they belong beside their citations. Generics instantiate downstream, so declaring the markers here and writing MoneyRate<PerStoredUnitMonth> here compiles identically to declaring them in std. The placement also has a measured cost: std/measure.dag is seed-emitted, so every billing axis added there drags a std_measure.rs regeneration (this change's own first attempt did exactly that, and redded the regen fixed-point gate), while an extdeps module drags none."
+
+type PerStoredUnitMonth
+
+type PerTransferredUnit
+
+type PerMillionRequests
+
+type MoneyPerStoredUnitMonth = MoneyRate<PerStoredUnitMonth>
+
+type MoneyPerTransferredUnit = MoneyRate<PerTransferredUnit>
+
+type MoneyPerMillionRequests = MoneyRate<PerMillionRequests>
+
+data billing_unit_accessor_note: String = "No per-unit micros accessors are declared here: std.measure money_rate_micros<P> already reads any MoneyRate<P>, so a money_per_stored_unit_month_micros wrapper would be a hollow alias -- a second name for one fact (DESIGN section 3). Consumers call money_rate_micros directly."

@@ -59,16 +59,12 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
     SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => fallback
     ReadEffectivePosixPrincipal { read: _ } => fallback
     SudoNopasswdExecuteProbe { probe: _ } => fallback
-    Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } => fallback
     OsInstallActuatorToolchainEnsure {} => fallback
     ProvisionBuildCache { catalog_id: _ } => fallback
-    Srv3InstallReconcileObserve { include_git_meta: _ } => fallback
-    DurableApprovalGrantRecord => fallback
     DurableApprovalGrantRead => fallback
     Srv3InstallMediaFetch => fallback
     Srv3SeededInstallMediaRemaster => fallback
     Srv3SeededInstallMediaToolchainEnsure => fallback
-    Srv3SolConsoleCapture => fallback
     Srv3BmcwebSessionLogin => fallback
     Srv3BmcwebTokenExtract => fallback
     Srv3NbdProxyServe { intent: _, lease_key: _ } => fallback

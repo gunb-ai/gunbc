@@ -1,7 +1,7 @@
 module gunbc.host_authorized_keys_reconcile
 
 import std.types { String, List, Bool, NonEmptyStr }
-import extdeps.access.ssh { SshPublicKey, SshKeyAlgorithm, ssh_key_algorithm_token }
+import extdeps.ssh { SshPublicKey, SshKeyAlgorithm, ssh_key_algorithm_token }
 import gunbc.fleet_ssh_access {
   fleet_authorized_keys,
   operator_macbook_ssh_key,

@@ -433,7 +433,7 @@ fn pbf_ambiguous_export_rejects() -> Bool {
   }
 }
 
-data parse_binding_fidelity_fast_note: String = "Census add-module parse+resolve binding fidelity helpers remain for long-lane enrollment; per-PR discovery runs cross-file and fail-closed witnesses only (module ingest exceeds 5s budget). Long-lane receipts: long/parse_binding_fidelity_witness_test.dag (commit_workflow)."
+data parse_binding_fidelity_fast_note: String = "Fixture: three cross-file binding resolution + fail-closed witness tests. Discovered per-PR via *_test.dag walk. Long-lane corpus split: long/parse_binding_fidelity_witness_test.dag (commit_workflow-enrolled module ingest tests) — see parse_binding_fidelity_long_note."
 
 test fn witness_cross_file_import_binding_resolves_holds() -> Bool {
   pbf_cross_file_import_resolves()

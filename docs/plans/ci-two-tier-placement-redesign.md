@@ -399,6 +399,21 @@ widen a budget to absorb it** (§5; the absorbing-fallback rule applied to our o
 
 Sign-offs recorded here with name + date once reviewed.
 
+## 9a. Follow-on — test decomposition W/C/F cut (signed 2026-07-25)
+
+Placement (`PrTier | Gauntlet`) does not reshape claims. The measured CI head's
+expensive rows are almost all `SubstrateInputsOnly` computational tests; they need a
+**shape** cut orthogonal to placement:
+
+- **W** — wet/integration: large is honest; cadence + kill-at-budget.
+- **C** — corpus breadth: mechanism RED on fixtures per-PR; corpus grain on enrolled cadence.
+- **F** — already fixture-shaped, slow by defect: fix cost-shape (#7205 class); do not decompose.
+
+Authority + Class C worklist: [test-decomposition-wcf-cut.md](test-decomposition-wcf-cut.md).
+Roadmap node `2-test-decomposition-wcf` (child of `2-ci-two-tier-placement`). Class C feeds
+D3 admission; it is not a second placement axis. Attribute-before-decompose is mandatory
+(§5 absorbing-fallback wearing test-hygiene clothes).
+
 ## 10. Issue-closure checklist (operator-requested 2026-07-24; worked through by execution before review)
 
 Every issue from the 2026-07-23/24 CI discussions, keyed to its closing mechanism and the

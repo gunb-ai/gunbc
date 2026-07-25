@@ -40,7 +40,7 @@ import std.realization_reconcile {
 }
 import std.measure { measure_fit_count_floor, second_count }
 import extdeps.http.client { http_client_get_argv }
-import extdeps.os.systemctl
+import extdeps.systemd.systemctl
 import gunbc.systemctl_status_read { systemctl_status_operation_argv_matches_authority }
 import gunbc.live_deploy.service_ready { live_deploy_service_ready_unit_authority }
 import extdeps.tools.curl {

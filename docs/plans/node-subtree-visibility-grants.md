@@ -409,3 +409,17 @@ therefore how complete that check was entitled to be.
    `std.cache_interface.VisibilityScope` get deleted in favor of the shared tree, or kept as the
    cache lane's local name projected from it? Either is consistent with §3 (below-boundary
    representation is opaque); picking one avoids a second live name for one fact indefinitely.
+
+## 11. Extension pointer + sequencing decision (operator, 2026-07-25)
+
+The SCM lane extends this doc's `Publish` verb with a **publication ladder** (source ·
+artifact-only · ciphertext+interface "locked" · interface-only · commitment-hash · absence),
+per-audience key-wrapped **locked realizations** (decrypt-then-verify, `LockedNodeUnrealizable`
+refusals, counted `LockedBlocked` witness state), churn blinding (salted commitments; the
+`SecretRef` wrapper reserved for secrets-as-material), and crypto-shred erasure for PII-typed
+nodes — content homed in [dag-scm-design.md](dag-scm-design.md) §3 until it folds back here when
+the rungs land. None of it changes Stage 0/P-B, §5's absence default, or the opt-in hash-stub
+mode. **Sequencing decision**: visibility ships FIRST, implemented as this doc's grant model and
+realized over git public/private roots (P-B), the identical interface later carried by the
+node-grain SCM — roadmap §2 group "SCM — node-grain source control, visibility-first", active row
+`2-scm-visibility-stage0`.
