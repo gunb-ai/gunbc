@@ -407,6 +407,10 @@ fn host_standup_step_is_effective_gap_at_actuation_verdict(
   }
 }
 
+fn host_standup_gap_phase_count() -> Int {
+  filter(host_standup_spine, s => host_standup_step_is_gap(step: s)).length()
+}
+
 fn host_standup_gap_count_at_actuation_verdict(verdict: ObservationVerdict) -> Int {
   fold(
     host_standup_spine,

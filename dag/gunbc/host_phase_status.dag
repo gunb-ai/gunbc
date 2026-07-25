@@ -230,6 +230,25 @@ fn host_phase_observation_coverage_count(hosts: List<HostIdentity>) -> Int {
   filter(host_fleet_phase_matrix(hosts: hosts), c => host_phase_cell_has_live_producer(c: c)).length()
 }
 
+fn host_phase_cell_is_converged(c: HostPhaseCellStatus) -> Bool {
+  match c.status {
+    StatusUnmodeled { refusal: _ } => false
+    StatusObserved { verdict: v } =>
+      match v {
+        Converged => true
+        std.upsert_decision.Absent => false
+        Drifted => false
+        Conflict => false
+        Inaccessible => false
+        UnknownRefused => false
+      }
+  }
+}
+
+fn host_phase_converged_cell_count(hosts: List<HostIdentity>) -> Int {
+  filter(host_fleet_phase_matrix(hosts: hosts), c => host_phase_cell_is_converged(c: c)).length()
+}
+
 fn host_phase_unmodeled_count(hosts: List<HostIdentity>) -> Int {
   filter(
     host_fleet_phase_matrix(hosts: hosts),
