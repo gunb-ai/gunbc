@@ -1,22 +1,5 @@
 module gunbc.commit_workflow
 
-import gunbc.ci_gate {
-  Gate,
-  EmitHostGate, CheapClaimPoolGate, LayeringImportsGate,
-  ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate,
-  SelfHostReadsRealBytesGate, SelfHostStalenessGate
-}
-import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact, GithooksPrePushArtifact, artifact_path
-}
-import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.realization_schedule {
-  string_list_eq, ScheduleWitnessEntry,
-  WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq,
-  WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams
-}
 
 data doc_reachability_witness_entry: String = "dag/test/claim/doc_reachability_witness_test.dag"
 

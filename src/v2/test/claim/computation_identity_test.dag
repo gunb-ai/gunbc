@@ -1,25 +1,5 @@
 module v2.test.claim.computation_identity_test
 
-import std.computation_identity {
-  ComputationIdentity,
-  StructurallyIdentical,
-  NormalizedIdentical,
-  ExtensionallyIdentical,
-  IdentityUnknown,
-  IdentityUnknownCause,
-  MissingConcept,
-  MissingEnforcement,
-  BoundUnmodeled,
-  identity_grade_is_known,
-  identity_permits_share
-}
-import v2.std.materialize {
-  materialize_share_identity_grade,
-  materialize_share_grade_permits_share,
-  materialize_ungrounded_identity
-}
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 fn witness_known_grades_permit_share() -> Bool {
   identity_permits_share(ci: StructurallyIdentical)

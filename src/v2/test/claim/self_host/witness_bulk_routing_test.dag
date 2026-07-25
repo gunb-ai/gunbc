@@ -1,22 +1,5 @@
 module v2.test.claim.self_host.witness_bulk_routing_test
 
-import v2.compiler.self_host.witness_bulk_routing {
-  witness_bulk_routing_sample_roster,
-  witness_bulk_entry_count_expected,
-  native_routed_entry_rows,
-  interpreted_retained_entry_rows,
-  emit_ineligible_entry_rows,
-  routing_row_for_entry,
-  witness_bulk_routing_total_holds,
-  witness_bulk_routing_zero_native_at_landing_holds
-}
-import v2.std.algebra { length }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.witness_execution_routing {
-  InterpretedRetained,
-  EmitIneligible
-}
 
 fn witness_sample_roster_total_holds() -> Bool {
   witness_bulk_routing_total_holds()

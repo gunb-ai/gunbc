@@ -1,26 +1,5 @@
 module v2.compiler.self_host.frontier_probe_survey
 
-import v2.compiler.self_host.frontier_probe {
-  frontier_probe_emit_from_ingest
-}
-import v2.compiler.self_host.frontier_probe_types {
-  EmitSurfaceGap,
-  FrontierBlockerClass,
-  FrontierProbeReceipt,
-  NameResolutionGap,
-  RealizationGap,
-  SelfEmitReady,
-  UnknownProbeCause,
-  FixtureCemented,
-  frontier_blocker_class_matches
-}
-import v2.compiler.name_resolve { Admission }
-import v2.compiler.source_authority { SourceRootIngest }
-import v2.std.algebra { fold_list }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
 type FrontierGapClusterVerdict
   = CommonRoot {

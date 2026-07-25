@@ -1,20 +1,5 @@
 module extdeps.languages.html
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.communication.medium { Medium, Lossless }
-import std.markup {
-  MarkupNode, MarkupAttr, ElementNode, TextNode,
-  MarkupBracket, MarkupMedium, EscapeHtml,
-  VoidTagRendering, OmitClose,
-  serialize_markup_node_with, tag_in_set,
-  unescape_text, unescape_attribute, unescape_url,
-  attr_is_url_attr,
-}
-import extdeps.uri_validation {
-  validate_href, SafeHref, RejectedHref,
-  find_first_rejected_url,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

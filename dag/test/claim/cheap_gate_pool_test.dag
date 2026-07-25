@@ -1,17 +1,5 @@
 module test.claim.cheap_gate_pool
 
-import tools.cheap_gate_pool {
-  ClaimRun,
-  cheap_claim_pool_claims,
-  cheap_pool_chunked_claims,
-  chunk_claims,
-  claims_covered_by_cheap_pool_chunks,
-  claim_in_pool,
-  cheap_gate_pool_max_claims_per_child
-}
-import tools.layering_imports_transport { layering_imports_claims }
-import tools.extdeps_external_authority_transport { extdeps_external_authority_claims }
-import std.logic { Bool }
 
 test fn cheap_pool_chunk_totality_holds() -> Bool {
   claims_covered_by_cheap_pool_chunks(claims: layering_imports_claims())

@@ -1,8 +1,5 @@
 module gunbc.plans.resolver_type_name_collision_wall
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownBlock, CodeBlock, TableBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, cell, row, hr }
 
 fn resolver_type_name_collision_wall_body() -> List<MarkdownBlock> {
   [

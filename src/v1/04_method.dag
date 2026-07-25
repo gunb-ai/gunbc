@@ -1,18 +1,5 @@
 module v1.compiler.infer_method
 
-import std.types { SourceSpan }
-import v1.std.core {
-  Node, TypeVariable, Resolved,
-  NoConnective,
-  Required,
-  NoExprData,
-  ErrorNode,
-  make_span, with_optional_cardinality,
-  unit_type, bool_type, string_type, hash_type, int_type
-}
-import v1.compiler.infer_types {
-  make_container_type, make_map_type
-}
 
 fn type_variable_node(id: String) -> Node {
   Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }

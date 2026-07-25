@@ -1,33 +1,6 @@
 module extdeps.realization.hermetic_fixture
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
-import std.cache_identity { CacheInterfaceId }
-import std.cache_interface {
-  ContentAddressLookup,
-  ExactKeyOnly,
-  WriteOnce,
-  OverwriteAllowed,
-  MissIsDiagnostic,
-  StructuredArtifact,
-  PerHostFilesystem,
-  InProcess,
-  Ttl,
-  Never,
-  PerFile,
-  FilesystemPerms,
-  None,
-  LocalDiskUs,
-  InProcessNs,
-  ReadYourWrites,
-  Strong,
-  OperatorObserved,
-  TtlExpiry,
-  ManualPurge,
-  Repo,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

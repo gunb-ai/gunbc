@@ -1,11 +1,5 @@
 module std.materialization_ladder
 
-import std.types { Bool, Int, List, String }
-import std.realization {
-  Materialization, Recompute, Memoize, Share,
-  Placement, LocalInProcess, LocalFilesystem, RemoteNetwork
-}
-import std.disposition { Disposition, Terminal }
 
 data materialization_ladder_frame_path_predicate_contract: Disposition = Terminal {
   reason: "Structural coproduct/path readers over Frame/FrameKind (frame_eq, frame_path_*, declared_emergent_prefix, string_list_contains) — closed by the ladder's declared frame variants; discriminating corpus: dag/test/claim/materialization_ladder_witness_test.dag."

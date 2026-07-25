@@ -1,7 +1,5 @@
 module test.claim.rust_gates_ci_witness
 
-import tools.rust_gates_ci { gate_diag, rust_gate_reason }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

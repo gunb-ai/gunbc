@@ -1,46 +1,5 @@
 module gunbc.ci_runner_placement
 
-import gunbc.ci_fleet { ComputeOffer }
-import gunbc.fleet_intent { compute_host_ram_bytes_total, compute_host_primary_cpu }
-import product.placement_supply { HostIdentity }
-import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_le, HardwareThreadCount }
-import std.types { Int, List, String, Bool }
-import std.disposition { Disposition, Terminal }
-import extdeps.github.actions { RunnerSpec }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
-import gunbc.fleet_host_budget {
-  gunbc_fleet_oomd_evidence,
-  gunbc_runner_pool_budget,
-  host_allocation_conserves,
-  declared_runner_count,
-  oomd_actuation_floor,
-}
-import extdeps.cpu { cpu_facts_threads }
-import gunbc.ci_floor_measurement {
-  HostFixedOverhead,
-  HostFixedOverheadMeasured,
-  HostFixedOverheadUnmeasured,
-  SessionOperatingPoint,
-  SessionOperatingPointSet,
-  SessionOperatingPointUnset,
-  SessionAggregateMeasured,
-  SessionAggregateUnmeasured,
-  OomdEnforcementEvidence,
-  OomdEnforced,
-  OomdUnverified,
-  SessionReservationMode,
-  Regime1WorstCase,
-  Regime2AggregateOomd,
-  SessionReservationModeUnset,
-  gunbc_ci_host_fixed_overhead,
-  gunbc_ci_per_session_peak_samples,
-  gunbc_ci_session_reservation_mode,
-  gunbc_ci_runner_cgroup_memory_cap,
-}
-import gunbc.ci_fleet { fleet_intent_offers }
 
 type WorkloadClass
   = BatchLatencyTolerant

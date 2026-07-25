@@ -1,17 +1,5 @@
 module gunbc.cli_run_repo_grant
 
-import std.types { String, Bool }
-import std.effect_grant {
-  Verb, Read, Write,
-  filesystem_position,
-  NamespacePosition,
-  RealTransport,
-  LifecycleByConstruction,
-  Grant, Envelope,
-  EffectAdmission, Admitted, EffectOutsideGrant, admit_effect,
-}
-import std.filesystem_path_grant { repo_rel_path_position }
-import std.materialization_ladder { Frame, SharedStateFrame }
 
 data cli_run_repo_grant_note: String = "P-B repo-tree grant authority (docs/plans/effect-namespace-grants.md 6): dissolves the hand-rolled workspace_root containment gate in src/v1/stage0/src/cli_run.rs (repo_relative_path / repo_relative_path_normalized) into the landed std.effect_grant model. The process workspace is Read+Write under an abstract repo subtree; paths that escape (absolute outside repo, or a `..` path segment) are located EffectOutsideGrant refusals, never widened (DESIGN 5). HAND-RUST until Chunk F (docs/plans/cli-run-reconcile-defork.md, seed-shrink-census Chunk F — scheduled, not indefinite): Rust gate and this authority must not diverge; pinned by dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag + cli_run.rs cli_run_repo_grant_equivalence_tests. dissolve-on = cli_run.rs Chunk F lands (GENERATED workflow host-effect apply) OR ROADMAP 5-dissolve-patches retires HAND path handling."
 

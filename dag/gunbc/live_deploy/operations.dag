@@ -1,14 +1,5 @@
 module gunbc.live_deploy.operations
 
-import std.types { String, List, NonEmptyStr }
-import extdeps.dpkg { dpkg_status_argv }
-import extdeps.apt { apt_install_argv }
-import extdeps.os.systemctl {
-  systemctl_daemon_reload_argv,
-  systemctl_enable_argv,
-  systemctl_restart_argv,
-  systemctl_disable_now_argv,
-}
 
 data live_deploy_operations_note: String = "Package-ensure and systemd unit-upsert argv spellings are derived from extdeps operation transport rows (dpkg.Package.Status, apt.PackageManager.Install, systemd.Systemctl daemon-reload/enable/restart/disable) — not hand-concatenated shell in emit.dag. Per shell-emission-model CUT: no minted EnsurePackage/UnitUpsert verb; emit composes inline If-Not-ExitZero(dpkg -s) then apt-install intent from these authorities. Privileged ops prefix sudo -n at the orchestration leaf (deploy access grant), never a root shell."
 

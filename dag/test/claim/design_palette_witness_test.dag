@@ -1,32 +1,5 @@
 module test.claim.design_palette_witness
 
-import std.types { Int, String, Bool }
-import extdeps.color.srgb {
-  Srgb8, srgb8_hex, srgb8_admissible, srgb8_to_hsl_projection,
-  HslProjection, Chromatic, Achromatic,
-}
-import extdeps.color.solarized {
-  solarized_base_ladder, solarized_base_mode_pairs, solarized_swatches,
-}
-import extdeps.accessibility.wcag_contrast {
-  srgb8_contrast_ratio_x100, srgb8_contrast_at_least,
-  wcag_aa_normal_text_hundredths, wcag_aaa_normal_text_hundredths,
-}
-import gunbc.design.palette {
-  Swatch, SwatchSet, PairingGrade, TextAaa, TextAa, LargeTextOrGraphicsAa, DecorationOnly,
-  grade_rank, grade_of_contrast, graded_pairings, pairings_at_least,
-  set_text_capable, swatch_set_admissible, swatch_paint, swatches_of,
-}
-import std.integer { uint8_channel_inclusive_max_value, uint8_channel_inclusive_max_value_derived }
-import std.measure { uint8_channel_inclusive_max }
-import extdeps.numeric.base16 { hex_digit_char_lower, base16_digit_refusal_sentinel }
-import gunbc.site.tokens { quiet_envelope_srgb8 }
-import gunbc.design.catalog {
-  island_pastel, island_mint, island_aqua, island_ivory, island_camel, island_butter, island_loam,
-  okabe_ito, solarized,
-  palette_catalog, catalog_admissible,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

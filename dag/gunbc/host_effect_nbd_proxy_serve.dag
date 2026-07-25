@@ -1,40 +1,5 @@
 module gunbc.host_effect_nbd_proxy_serve
 
-import std.types { String, NonEmptyStr, Int, List, Bool }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.temporal_effect { TemporalEffectPolicy, HeldSessionLease }
-import std.upsert_decision {
-  UpsertClassification,
-  Noop,
-  Apply,
-  Refuse,
-  Conflict,
-  Drifted,
-}
-import extdeps.bmc.webui.nbd_proxy_serve {
-  NbdProxyServeTransportIntent,
-  nbd_proxy_serve_transport_intent,
-  nbd_proxy_serve_nbdkit_argv,
-  nbd_proxy_serve_websocat_argv,
-  nbd_proxy_serve_nbdkit_unit_name,
-  nbd_proxy_serve_websocat_unit_name,
-  nbd_proxy_serve_session_fingerprint,
-}
-import extdeps.filesystem.filesystem_io
-import extdeps.gunbc
-import gunbc.session_lease {
-  ProcessPortScope,
-  ProcessPortObservation,
-  PortAbsent,
-  PortInaccessible,
-  ProcessLeasePlan,
-  Start,
-  DrainMatchingStaleThenStart,
-  classify_process_port_upsert,
-}
-import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
-import gunbc.srv3_actuate_shell_paths { srv3_bmcweb_token_path }
 
 data host_effect_nbd_proxy_serve_dissolution_trigger: String = "🟡 dissolve-on: host_effect_nbd_proxy_serve — systemd transient-unit realize transport for Srv3NbdProxyServe (P6 Part 2; operator ruling 2026-07-14: no trap/&/$! ShellStmt vocabulary); DISSOLVES WHEN observe-side port/unit query is grounded on cited extdeps.os.systemd/systemctl read-back and typed argv dispatch retires WitnessBin systemd-run scaffolding. Token bridge: start_units materializes BMCWEB session token from srv3_bmcweb_token_path via Filesystem.Read into websocat argv (replaces deleted wrapper export). Wave 4 residue (shell→dag census §1C category C)."
 

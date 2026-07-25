@@ -1,29 +1,5 @@
 module gunbc.roadmap_sandbox
 
-import std.types { Int, String, Bool, List }
-import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
-import gunbc.site.markup { txt, el, el_class }
-import gunbc.roadmap_page { roadmap_header }
-import gunbc.roadmap_style { roadmap_css }
-import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl, serialize_rules, Material, paint }
-import gunbc.design.theme {
-  ThemeRole, theme_roles, role_key, role_var, role_decl,
-  Theme, night_theme, day_theme, assignment_material,
-  TextRole, TextDimRole,
-}
-import gunbc.design.scale {
-  ScaleToken, spacing_scale, type_scale, font_stack, dimension_scale,
-  scale_var, scale_pair, scale_border, scale_value_wire,
-  space_2, space_6, space_8, space_16, space_24, text_12, font_mono, radius_3, border_1, measure_page,
-}
-import gunbc.design.component { ComponentState, component_terminal_states }
-import gunbc.roadmap_component {
-  dispatch_button_component, dispatch_button_terminal_states,
-  dispatch_idle_state, dispatch_requested_state,
-  dispatch_state_class, dispatch_state_display_text,
-  sandbox_live_class, sandbox_asset_path,
-}
-import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
 
 data roadmap_sandbox_note: String = "The /sandbox design surface (P4): the register at every depth plus every component in every state, all DERIVED from the same authorities the live surfaces use, so the sandbox is a faithful mirror, never a hand mock. Roles are shown under BOTH themes at once (literal material paints inline — the one place a literal color is right, because it is DISPLAYING the role->material authority under two projections simultaneously, which var(--role) cannot do). The component gallery renders dispatch_button_component's states one-for-one; the terminal instances are exactly the wire vocabulary (totality is the P0 property, re-witnessed here as gallery coverage). The live section is one pressable instance per wire arm that POSTs /sandbox/echo?status=LABEL and renders through the SAME client program the real button uses — so every state is exercisable without dispatching a session, and the sandbox cannot drift from production render."
 

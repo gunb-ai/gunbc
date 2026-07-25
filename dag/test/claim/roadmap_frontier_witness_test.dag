@@ -1,23 +1,5 @@
 module test.claim.roadmap_frontier_witness
 
-import gunbc.roadmap_model {
-  RoadmapNodeId,
-  RoadmapNode, RoadmapEdge,
-  IntricacyHigh, VolumeMedium,
-  PrsMerged,
-  NodeSizing, Unsized, Sized,
-  SectionElement, Group, SectionGroup,
-}
-import gunbc.roadmap_status { DerivableLine, SupersededLine, Signoff, Unsigned }
-import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap_spawner { spawn_frontier, next_spawnable }
-import gunbc.roadmap_page {
-  roadmap_daily_workspace_page,
-  roadmap_daily_workspace_page_for_authority,
-}
-import gunbc.roadmap_authority { authored_merged_prs }
-import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

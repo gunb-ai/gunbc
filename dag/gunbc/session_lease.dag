@@ -1,20 +1,6 @@
 module gunbc.session_lease
 
 
-import std.types { String, NonEmptyStr, Int, Bool }
-import std.upsert_decision {
-  ObservationVerdict,
-  Converged,
-  Absent,
-  Drifted,
-  Conflict,
-  Inaccessible,
-  UpsertDecision,
-  UpsertClassification,
-  Noop,
-  Apply,
-  Refuse,
-}
 
 
 

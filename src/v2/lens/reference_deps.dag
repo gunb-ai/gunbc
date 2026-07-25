@@ -1,7 +1,5 @@
 module v2.lens.reference_deps
 
-import v2.extdeps.languages.dag { qualified_name_from_module_node }
-import v2.lens.module_graph { no_paths, module_graph_exclude_substrings }
 
 
 type ReferenceResolutionFact {

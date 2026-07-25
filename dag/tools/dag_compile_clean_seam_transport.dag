@@ -1,11 +1,5 @@
 module tools.dag_compile_clean_seam_transport
 
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import extdeps.git
-import extdeps.gunbc
-import std.types { String, Bool }
-import tools.dag_compile_clean_transport { dcc_gunbc_path, dcc_gunbc_ready }
 
 data cross_shard_seam_importer_entry_path: String = "dag/std/bit.dag"
 data cross_shard_seam_importee_entry_path: String = "dag/std/logic.dag"

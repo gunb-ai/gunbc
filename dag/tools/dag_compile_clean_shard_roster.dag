@@ -1,11 +1,5 @@
 module tools.dag_compile_clean_shard_roster
 
-import gunbc.ci_layer_roots { witness_layer_roots }
-import tools.dag_compile_clean_partition {
-  CompileCleanModuleShard,
-  compile_clean_partition_boundary
-}
-import std.types { String, Bool, Int, List, list_length }
 
 type CompileCleanModuleDeclFact {
   module: String

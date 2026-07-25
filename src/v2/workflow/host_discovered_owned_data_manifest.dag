@@ -1,11 +1,5 @@
 module v2.test.workflow.host_discovered_owned_data_manifest
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.compiler.discovery_enumeration {
-  OwnedDataDeclRecord,
-  OwnedDataDiscoveryReceipt
-}
 
 data host_owned_data_discovery_receipt: OwnedDataDiscoveryReceipt = OwnedDataDiscoveryReceipt {
   unified_claim_arm_count: 0,

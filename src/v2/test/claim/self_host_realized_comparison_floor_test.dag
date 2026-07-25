@@ -1,21 +1,5 @@
 module v2.test.self_host_realized_comparison_floor
 
-import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.self_host {
-  fixed_point_scaffold,
-  fold_side_bytes,
-  SourceModels
-}
-import tools.self_host_realized_comparison_transport { realized_comparison_committed_src_root }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Node,
-  TypeNode,
-  SyntheticOccurrence
-}
-import v2.std.witness { Holds, Violates }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

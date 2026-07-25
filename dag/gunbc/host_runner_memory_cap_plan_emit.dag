@@ -1,20 +1,5 @@
 module gunbc.host_runner_memory_cap_plan_emit
 
-import std.types { String, List, Bool }
-import std.layout {
-  Doc, DocConcat, DocLine,
-  LayoutProtocol,
-  doc_concat, doc_line_of, doc_text,
-  render,
-}
-import std.languages { SerializationKnobs, SerialField }
-import std.serialize { serial_field, serial_scalar, serialize_fields_doc }
-import product.placement_supply { HostIdentity }
-import gunbc.host_converge { ConvergeKnob, PerSlotMemoryCap }
-import gunbc.host_runner_memory_provision {
-  runner_memory_host_converge,
-  runner_memory_knobs_from,
-}
 
 data runner_memory_cap_plan_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 

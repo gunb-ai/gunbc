@@ -1,6 +1,5 @@
 module gunbc.cli_invoke
 
-import std.types { FilePath, String }
 
 data cli_invoke_shell_spelling_dissolve_trigger: String = "dissolve-on: cli_invoke _shell builders — interim GHA emit surface for Phase 3a; delete when gunbc run / claim_executor call sites render through bash emit (shell→intent open thread, docs/plans/shell-intent-emit-realization-design.md Phase 3 completion)."
 

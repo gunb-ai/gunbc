@@ -1,16 +1,5 @@
 module extdeps.uri_validation
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri {
-  Uri, Https,
-  UriScheme, Http, File, Ftp, Javascript, Data, Vbscript, Mailto,
-  ParsedHrefScheme, HrefScheme, RelativeHref, UnknownHref,
-  parse_href_scheme,
-}
-import std.markup {
-  MarkupNode, MarkupAttr, ElementNode, TextNode,
-  attr_is_url_attr,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

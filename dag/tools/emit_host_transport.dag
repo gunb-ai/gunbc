@@ -1,43 +1,5 @@
 module tools.emit_host_transport
 
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import extdeps.cargo_build
-import extdeps.python
-import extdeps.gunbc
-import extdeps.communication.medium { Lossless, Medium }
-import std.measure { byte_size_count }
-import std.render_repeat_string_bootstrap { repeat_string }
-import v2.compiler.emit_host {
-  emit_host_octets_byte_string,
-  run_emit_host,
-  run_host_process,
-  runtime_value_parse
-}
-import v2.compiler.eval { Inputs, inputs_root_only }
-import v2.extdeps.languages.c {
-  c_inject_fault_runtime_row,
-  c_source_text,
-  c_target_model
-}
-import v2.std.diagnostic { Accepted, Rejected, None }
-import v2.std.host_run { HostLogicalRun }
-import v2.std.host_transport {
-  HostRuntimeRowAbsent,
-  HostRuntimeRowPresent
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
-import tools.emit_host_fixtures {
-  rust_stdout_fixture_source,
-  python_stdout_fixture_source,
-  go_stdout_fixture_source,
-  ts_host_fixture_source,
-  stdout_byte_count,
-  ts_signed_i32_le_byte_count
-}
-import gunbc.node_http_server_emit { gunbhub_node_http_server_source }
-import tools.host_prelude { toolchain_provision_shell_exec }
 
 data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\""
 

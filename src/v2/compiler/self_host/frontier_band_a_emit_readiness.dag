@@ -1,10 +1,5 @@
 module v2.compiler.self_host.frontier_band_a_emit_readiness
 
-import v2.std.algebra { fold_list, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
 type BandAWave1EmitReadiness
   = FlippableNow

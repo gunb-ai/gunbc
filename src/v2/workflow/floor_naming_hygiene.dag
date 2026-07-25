@@ -1,6 +1,5 @@
 module v2.workflow.floor_naming_hygiene
 
-import std.types { String, Bool }
 
 data floor_test_sidecar_suffix: String = "_test.dag"
 data floor_wire_contract_sidecar_suffix: String = "_contracts.dag"

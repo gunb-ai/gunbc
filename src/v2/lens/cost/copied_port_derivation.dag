@@ -1,31 +1,5 @@
 module v2.lens.cost.copied_port_derivation
 
-import std.algebra { Cons, Empty }
-import v2.lens.cost {
-  LinearCost,
-  ProductCost,
-  SumCost,
-  SymbolicCost,
-  UnknownCost,
-  symbolic_cost_of_node
-}
-import v2.std.collection { Absent, List, Optional, Present }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Arrow,
-  Atom,
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode,
-  SyntheticOccurrence,
-  arrow_body_target_lookup
-}
-import v2.std.algebra { CopiedPortFact, fold_list }
 
 data copied_port_derivation_note: String = "Wave 1 Gate 1 C1: per-op copied-port facts are DERIVED by running the cost lens over each combiner's cited Arrow body (^arrow_body_edge only — edge_contributes_to_cost_fold), never hand-stamped indices. derive_copied_port_index_from_arrow finds the unique parameter port whose size the body cost is linear in; multi-linear ambiguity (two or more linear ports) returns Absent — no tiebreak heuristic. Current stdlib citations (list_append, list_snoc_item, map_merge) are each uniquely-linear (map_merge index 1 because overlay alone is linear, not because a tiebreak fires). Unpriceable shapes return Absent — classify_call keeps ^combiner_unregistered_carrier_reaches fail-closed."
 

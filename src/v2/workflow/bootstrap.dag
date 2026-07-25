@@ -1,28 +1,5 @@
 module v2.workflow.bootstrap
 
-import v2.std.node { Atom, Conj, Edge, Hash, Named, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node, SyntheticOccurrence }
-import v2.std.algebra {
-  bag_eq,
-  contains,
-  fold_list,
-  list_snoc_item,
-  unique
-}
-import v2.std.language_model {
-  LanguageModel,
-  language_model_to_node,
-  void_language_model
-}
-import v2.std.compilers.target_model {
-  TargetModel,
-}
-import v2.extdeps.languages.rust { rust_target_model }
-import v2.extdeps.runtimes.v2_evaluator {
-  V4EvaluatorRuntime,
-  v2_evaluator_runtime
-}
-import v2.std.diagnostic { Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton }
-import v2.std.witness { Holds, Violates, Witness }
 
 data v2_stage0_hash: Hash = v2_stage0_hash
 data v2_stage1_hash: Hash = v2_stage1_hash

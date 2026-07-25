@@ -1,32 +1,5 @@
 module v2.workflow.floor_discovery_producer
 
-import v2.compiler.discovery_enumeration {
-  OwnedBoolWitnessClaimInit,
-  OwnedDataDeclInitializer,
-  OwnedDataDeclRecord,
-  OwnedNodeCorpusInit,
-  OwnedOtherInit
-}
-import v2.workflow.floor_discovery {
-  FloorDiscoveryRow,
-  FloorDiscoverySidecarKind,
-  FloorDiscoverySidecarViolation
-}
-import v2.workflow.floor_naming_hygiene {
-  floor_filename_contains_double_underscore,
-  floor_test_marked_decl_allowed_in_entry,
-  floor_wire_contract_decl_allowed_in_entry,
-  floor_test_sidecar_suffix,
-  floor_wire_contract_sidecar_suffix
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
-import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
-import v2.std.algebra { any, length, fold_list }
-import v2.std.logic { Bool }
-import std.types { String, Int }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.filesystem.filesystem_io { Filesystem }
 
 type FloorDiscoveryProducerResult
   = FloorDiscoveryAccepted { rows: List<FloorDiscoveryRow> }

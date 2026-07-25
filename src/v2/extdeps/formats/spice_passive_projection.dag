@@ -1,28 +1,5 @@
 module v2.extdeps.formats.spice_passive_projection
 
-import v2.std.collection { Optional, Absent, Present }
-import v2.std.timeseries_signal {
-  CapacitorPassive,
-  GroundReference,
-  InductorPassive,
-  NodeReference,
-  PassiveComponentSpec,
-  PassiveElementTopology,
-  PassiveElementValue,
-  PotentialReference,
-  ResistorPassive,
-}
-import v2.extdeps.formats.spice {
-  Capacitor,
-  Component,
-  Ground,
-  Inductor,
-  Named,
-  NamedNode,
-  NodeRef,
-  Resistor,
-  SpiceValue,
-}
 
 fn passive_terminal_from_node_ref(node: NodeRef) -> PotentialReference {
   match node {

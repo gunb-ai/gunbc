@@ -1,6 +1,5 @@
 module test.claim.transport_script_wall_compile_red
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data transport_script_wall_compile_red_note: String = "§5.E wall REDs (operator acceptance 2026-07-24): the two documented transport-script fake patterns, reconstructed AS WRITTEN, must FAIL TO COMPILE — not merely fail review. Each fake is compiled as an inline virtual source through compile_dag_rust_emit_check, which returns false on any hard diagnostic; the tests assert refusal (!compile). The construction wall — ShellOnHost.script retyped to the RetainedShellScript RECORD, and the free minter extdeps.shell.exec.transport_script_from_body DELETED — is what makes both fakes non-compiling. The host_language_transport_script lens never caught these (a computed concat is ComputedApplication, deliberately green); only construction closes the class. If either wall is ever loosened (record widened back to String, or the free minter reintroduced), the corresponding fake starts compiling clean, compile_dag_rust_emit_check flips to true, and the RED goes red — the wall's regression alarm."
 

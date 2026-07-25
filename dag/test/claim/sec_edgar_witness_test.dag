@@ -1,20 +1,5 @@
 module test.claim.sec_edgar_witness
 
-import extdeps.sec.facts {
-  derive_gross_margin_ratio_from_facts,
-  filed_amount,
-  filed_gross_profit_matches_revenue_minus_cost,
-  gross_margin_ratio_in_band,
-  usd_whole_dollars,
-  usd_whole_dollars_count,
-}
-import extdeps.sec.issuer.gitlab_facts {
-  gitlab_fy2026_cost_of_revenue,
-  gitlab_fy2026_gross_profit,
-  gitlab_fy2026_revenue,
-}
-import extdeps.sec.issuer.gitlab { gitlab_cik }
-import extdeps.sec.edgar { cik_padded_digits }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

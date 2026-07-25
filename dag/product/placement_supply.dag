@@ -1,5 +1,4 @@
 module product.placement_supply
 
-import std.types { NonEmptyStr }
 
 type HostIdentity = NonEmptyStr where brand("HostIdentity")

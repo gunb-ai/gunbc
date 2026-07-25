@@ -1,57 +1,6 @@
 module v2.test.extdeps_react.structural_receipts
 
-import v2.extdeps.frameworks.react {
-  CustomHook,
-  Composite,
-  DependenciesArgOmitted,
-  Element,
-  Fragment,
-  Host,
-  KeyAbsent,
-  KeyPresent,
-  NoCleanup,
-  ReactCompositeElement,
-  ReactCreateElementChild,
-  ReactCrossDeclRef,
-  ReactElement,
-  ReactHookSite,
-  ReactHostElement,
-  ReactOptKey,
-  ReactOptRef,
-  ReactPropsSite,
-  RefAbsent,
-  RefPresent,
-  Text,
-  UseActionState,
-  UseCallback,
-  UseContext,
-  UseDebugValue,
-  UseDeferredValue,
-  UseEffect,
-  UseEffectEvent,
-  UseId,
-  UseImperativeHandle,
-  UseInsertionEffect,
-  UseLayoutEffect,
-  UseMemo,
-  UseOptimistic,
-  UseReducer,
-  UseRef,
-  UseState,
-  UseSyncExternalStore,
-  UseTransition,
-  ValueAbsent
-}
-import std.algebra { Cons, Empty }
-import v2.std.algebra { length }
-import v2.std.logic { Bool }
 
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data react_probe_cross_decl_ref: ReactCrossDeclRef = react_probe_cross_decl_ref

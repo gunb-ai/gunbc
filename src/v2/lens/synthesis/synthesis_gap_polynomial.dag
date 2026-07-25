@@ -1,39 +1,5 @@
 module v2.test.lens_synthesis.synthesis_gap_polynomial
 
-import v2.lens.complexity { ComplexityBound, complexity_lens }
-import v2.lens.synthesis {
-  DecisionTree,
-  SynthesisGap,
-  SynthesisNoTechnique,
-  SynthesisOptimal,
-  assess_decision_tree,
-  synthesis_lens
-}
-import v2.std.algebra { non_empty }
-import v2.std.logic { Bool }
-import v2.std.witness { Holds, Violates }
-import v2.std.node {
-  Atom,
-  Cardinality,
-  ComputationNode,
-  Edge,
-  Node,
-  Positional,
-  Symbol,
-  Transform,
-  TypeNode,
-  SyntheticOccurrence
-}
-import v2.std.report { SynthesisGapDecisionTree, SynthesisGapInformationTheoretic }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data synthesis_gap_poly_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_gap_poly_atom_symbol } },

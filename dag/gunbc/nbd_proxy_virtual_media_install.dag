@@ -1,59 +1,6 @@
 module gunbc.nbd_proxy_virtual_media_install
 
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-import std.types { List, Int, NonEmptyStr, String }
-import std.measure { ByteSize, byte_size }
-import extdeps.bmc.types {
-  RedfishBootSourceOverrideTarget,
-  RedfishBootSourceOverrideEnabled,
-  BootOverrideOnce,
-  RedfishResetType,
-  ResetForceRestart,
-  RedfishSystemAction,
-  SetBootSourceOverride,
-  ResetSystem,
-}
-import extdeps.bmc.webui.nbd_proxy {
-  NbdProxyServeInterface,
-  BmcwebNbdProxyEndpointVariant,
-  bmcweb_nbd_proxy_ws_path,
-}
-import extdeps.boards.asrock_rack {
-  asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
-  asrock_srv3_live_bmc_host,
-}
-import extdeps.bmc.webui.nbd_proxy_serve {
-  nbd_proxy_serve_transport_intent,
-  bmcweb_session_token_env_ref,
-  srv3_nbd_proxy_local_port,
-}
-import extdeps.bmc.os_install_actuator_toolchain {
-  srv3_os_install_actuator_toolchain_grant,
-}
-import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
-import gunbc.fleet_intent { srv3_host, ComputeHost }
-import gunbc.srv3_os_install_actuate_scope { srv3_actuator_virtual_media_iso_install_path }
-import gunbc.os_install_mechanism {
-  OsInstallMechanism,
-  VirtualMediaInstall,
-  NbdProxyVirtualMediaInstall,
-  PxeHttpInstall,
-  FirmwareUpdateThenVirtualMedia,
-  srv3_install_mechanism,
-  install_boot_target_for,
-}
-import gunbc.host_effect {
-  RedfishAction,
-  BmcController,
-  HostOs,
-  Srv3NbdProxyServe,
-  host_effect_identity_evidence,
-  HostEffectIntent,
-  LocalShell,
-}
-import gunbc.srv3_os_install_reconcile_types { srv3_nbd_proxy_lease_key }
 
 type OsInstallActuatorStep
   = ActuatorNbdProxyServe {

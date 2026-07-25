@@ -1,16 +1,5 @@
 module test.claim.artifact_store_scratch_grant_witness
 
-import std.types { Bool, String }
-import std.effect_grant {
-  Read, Write, verb_eq,
-  EffectAdmission, Admitted, EffectOutsideGrant,
-}
-import std.artifact_store_scratch_grant {
-  artifact_store_scratch_write_admissible,
-  artifact_store_scratch_read_admissible,
-  artifact_store_scratch_frame,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

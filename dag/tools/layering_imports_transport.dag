@@ -1,6 +1,5 @@
 module tools.layering_imports_transport
 
-import tools.host_prelude { ClaimRun }
 
 data scanner_dir: String = "src/v2/test/claim/layering_imports/scanner/"
 data clean_tree_entry: String = "src/v2/test/claim/long/layering_imports_clean_tree_test.dag"

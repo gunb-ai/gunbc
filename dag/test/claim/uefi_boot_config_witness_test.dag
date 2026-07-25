@@ -1,13 +1,5 @@
 module test.claim.uefi_boot_config
 
-import std.logic { Bool }
-import gunbc.uefi_boot_config {
-  uefi_boot_config_script,
-  srv4_uefi_install_boot,
-  uefi_boot_config_commands,
-  BootFromPxeEntry,
-}
-import extdeps.firmware.uefi_shell { uefi_shell_script }
 
 test fn srv4_install_boot_renders_bcfg_add_sequence() -> Bool {
   let s = uefi_boot_config_script(desired: srv4_uefi_install_boot)

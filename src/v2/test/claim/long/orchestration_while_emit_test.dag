@@ -1,24 +1,5 @@
 module v2.test.long.orchestration_while_emit
 
-import v2.compiler.emit_orchestration { orch_emit_step, orch_emit_pipeline }
-import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
-import v2.workflow.ci_floor_peak_emit {
-  ci_floor_peak_cgroup_locate_pipeline,
-  ci_floor_peak_assign_cgroup_dir_command,
-  ci_floor_peak_while_cond_command
-}
-import v2.std.orchestration {
-  Do,
-  ExitZero,
-  FailFast,
-  Pipeline,
-  PipelineStep,
-  Run,
-  While
-}
-import v2.std.collection { Absent }
-import v2.std.diagnostic { Accepted, None, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

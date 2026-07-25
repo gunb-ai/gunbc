@@ -1,38 +1,5 @@
 module v2.compiler.tokenize
 
-import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnknown, Locus, None, Outcome, Rejected, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton }
-import v2.std.node { Symbol }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { ListTailResult, TailAbsent, TailFound, fold_list, is_empty, is_prefix_of, length, list_append, list_snoc_item, list_tail }
-import v2.std.text { Char, CharAbsent, CharFound, SourceFold, String, fold_source, string_head, string_is_empty, string_tail }
-import v2.std.nat { Nat, nat_lte, nat_gte }
-import v2.std.logic { Bool }
-import v2.std.compilers.lexing {
-  BlockCommentTextChar,
-  DigitChar,
-  HexDigitChar,
-  IdentContinueChar,
-  IdentStartChar,
-  LexCharClass,
-  LexPattern,
-  LexPatternFold,
-  LexRule,
-  LexRuleSet,
-  LexRules,
-  LineCommentTextChar,
-  ModeledLexRules,
-  StringTextChar,
-  Token,
-  TokenRule,
-  TokenStream,
-  token_stream_empty,
-  token_stream_new,
-  TriviaRule,
-  VoidLexRules,
-  WhitespaceChar,
-  fold_lex_pattern
-}
 
 type LexMatchResult
   = LexMatchAccepted { remaining: String, lexeme: String }

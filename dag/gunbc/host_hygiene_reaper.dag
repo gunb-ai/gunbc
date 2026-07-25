@@ -1,29 +1,5 @@
 module gunbc.host_hygiene_reaper
 
-import std.types { String, NonEmptyStr, Bool, List }
-import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.realization_reconcile {
-  ShowEffectiveRead,
-  ReadObserved,
-  ReadAbsent,
-  Grounding,
-  Grounds,
-  DoesNotGround,
-  Reconciliation,
-  Converged,
-  NotConverged,
-  reconcile_grounded,
-}
-import extdeps.os.systemd {
-  SystemdUnitActiveState,
-  Active,
-  Inactive,
-  Activating,
-  Deactivating,
-  Reloading,
-  Failed,
-}
 
 data gunbc_host_hygiene_reaper_scope_disposition: Disposition = Terminal {
   reason: "Brief 4 deliverable (a): residual reaper decision core. Extends the ctrl-runner-reclaim.timer pattern (a hand-deployed host timer with no prior .dag model) to dead-slot residue: processes surviving KillMode=process in an INACTIVE unit's cgroup, plus stale system.control override dirs for disabled instances. NON-GOAL: reaping anything in an ACTIVE unit's cgroup. CRITICAL SEQUENCING (the incident this guards against): a naive reap-everything-inactive would have killed the shared sccache server, found lazily auto-spawned into dead slot srv1-10's cgroup (host diagnosis behind PR 7019, session/wise-crab-547, open at authoring time). This module refuses to touch any build-cache-server occupant unconditionally, typed and counted, never a silent skip — fixing placement is that sibling work's separate concern, not this reaper's."

@@ -1,11 +1,4 @@
 module gunbc.site.register_principles
 
-import gunbc.design.principles {
-  PrincipleId, QuietSurface, ResponsiveDepth, DerivedTruth, ChromaByArea,
-  GlareEnvelope, ThemeCoherence, UniversalReframe, StillUntilTouched,
-  RegisterPrinciple, register_thesis, register_principles, register_principles_note,
-  principle_ref, principle_id_key, principles_all_carried,
-  principle_keys, contains_key, DistinctAcc, principle_keys_distinct,
-}
 
 data site_principles_facade_note: String = "L5 instance façade — authority is gunbc.design.principles (Phase-A lift). Import gunbc.design.principles directly."

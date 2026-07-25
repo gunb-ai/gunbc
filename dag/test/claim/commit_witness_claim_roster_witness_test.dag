@@ -1,8 +1,5 @@
 module test.claim.commit_witness_claim_roster_witness
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

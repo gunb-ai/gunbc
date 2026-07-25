@@ -1,13 +1,5 @@
 module v2.workflow.ci_release_build_emit
 
-import gunbc.ci_spec {
-  CiSpec,
-  ci_floor_build_verify_script,
-  ci_release_build_line,
-  gunbc_ci_floor_only_script
-}
-import gunbc.merge_admission_produce { ci_repo_root_shell }
-import v2.workflow.ci_retry_emit { ci_cargo_eagain_retry_script }
 
 data ci_release_build_emit_authority_note: String = "Release-build shell emission (retry + verify) lives here, separate from ci_workflow_run_emit, so gunbc.ci_materialization can import ci_release_build_script without a module cycle (ci_materialization ↔ ci_workflow_run_emit via ci_sccache_provider_shell_injection)."
 

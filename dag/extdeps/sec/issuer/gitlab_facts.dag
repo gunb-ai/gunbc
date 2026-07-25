@@ -1,20 +1,6 @@
 module extdeps.sec.issuer.gitlab_facts
 
-import extdeps.sec.facts {
-  FiledAmount,
-  FiledFactCitation,
-  FiledMonetaryFact,
-  usd_whole_dollars,
-}
-import extdeps.sec.types { AnnualReport }
-import extdeps.sec.us_gaap {
-  us_gaap_cost_of_revenue,
-  us_gaap_gross_profit,
-  us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
-}
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

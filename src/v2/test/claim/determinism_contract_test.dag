@@ -1,22 +1,5 @@
 module v2.test.claim.determinism_contract_test
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.determinism {
-  Determinism,
-  Deterministic,
-  NonDeterministic,
-  determinism_compose,
-  determinism_from_perturbation
-}
-import std.perturbation { ResponseConsistent, ResponseViolation }
-import v2.std.determinism {
-  DeterminismFact,
-  determinism_fact_classification,
-  determinism_fact_signature
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

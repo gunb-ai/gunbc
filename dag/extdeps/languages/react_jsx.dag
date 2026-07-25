@@ -1,19 +1,5 @@
 module extdeps.languages.react_jsx
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import std.markup {
-  MarkupNode, MarkupMedium, EscapeHtml, SelfClose,
-  serialize_markup_node_with,
-}
-import extdeps.languages.html {
-  html_markup_medium,
-  html5_void_tags,
-  canonical_html_spellings,
-}
-import extdeps.uri_validation {
-  find_first_rejected_url,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,13 +1,5 @@
 module gunbc.ci_workflow_expressions
 
-import extdeps.github.expressions {
-  Expression, ContextAccess, FunctionCall, StringLiteral, LogicalOr,
-  ExpressionTemplate, TemplateSegment, LiteralText, Interpolation,
-  HashFiles, Github,
-  serialize_template, runner_os, runner_arch, runner_temp
-}
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 fn ci_cache_hash_files() -> Expression {
   FunctionCall {

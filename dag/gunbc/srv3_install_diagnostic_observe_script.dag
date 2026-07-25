@@ -1,8 +1,5 @@
 module gunbc.srv3_install_diagnostic_observe_script
 
-import std.types { String, NonEmptyStr }
-import std.disposition { Disposition, RealizationDispatch, Scaffold }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data srv3_install_diagnostic_observe_script_bash_emit_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,

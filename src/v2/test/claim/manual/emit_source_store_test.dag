@@ -1,21 +1,5 @@
 module v2.test.manual.emit_source_store
 
-import v2.compiler.emit { emit }
-import v2.compiler.eval { inferred_tree_digest }
-import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree, rust_add_target_model }
-import extdeps.communication.medium { Medium }
-import v2.std.diagnostic { Accepted, Rejected, None, Outcome }
-import std.types { ContentHash, String }
-import std.measure { byte_size }
-import std.materialization_ladder {
-  CacheProvider, CoversAllComputations, ArtifactTier, ContentKeyed, SpacePacked, provider_row,
-}
-import std.artifact_store { ArtifactKey, artifact_key_hash, store_over_provider, StoreReady, StoreRefusedEviction, ArtifactStore }
-import extdeps.realization.artifact_store_fs {
-  artifact_fs_put, artifact_fs_get, ArtifactFsLookup, ArtifactFsHit, ArtifactFsMiss, ArtifactFsRefused,
-  ArtifactFsPutOk, ArtifactFsPutRefused, ArtifactFsPutFailed,
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

@@ -1,45 +1,5 @@
 module v2.test.parse.grammar_validation
 
-import v2.std.compilers.lexing { Token }
-import v2.std.grammar {
-  StampClass,
-  Choice,
-  GrammarProduction,
-  GrammarRoot,
-  Nonterminal,
-  Optional,
-  ParseTree,
-  Sequence,
-  Terminal,
-  grammar_atom,
-  grammar_empty_sync_tokens
-}
-import v2.compiler.parse {
-  ParseSyncState,
-  grammar_has_choice_ambiguity,
-  grammar_has_duplicate_productions,
-  grammar_has_left_recursion,
-  grammar_has_undefined_nonterminals,
-  grammar_lookup_production,
-  grammar_validate_for_parse,
-  parse_production_tree,
-  parse_skip_to_sync,
-}
-import v2.std.witness { Holds, Violates }
-import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some, port_locus }
-import std.algebra { Cons, Empty }
-import v2.std.collection { List }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.logic { Bool }
-import v2.std.verification {
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  EqualsClaim,
-  manual_claim_anchor
-}
 
 fn validation_bool_atom(b: Bool) -> Node {
   match b {

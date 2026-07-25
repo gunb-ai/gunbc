@@ -1,22 +1,5 @@
 module v2.test.lens_coverage.discriminant_predicate_defect_key
 
-import v2.lens.coverage {
-  CoverageDefectAcceptance,
-  CoverageDefectAcceptanceKey,
-  DiscriminantPredicate,
-  coverage_defect_discriminant_predicate
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data discriminant_predicate_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^discriminant_predicate_symbol } },

@@ -1,48 +1,5 @@
 module v2.test.manual.inhabitant_neutralization
 
-import v2.compiler.emit { emit }
-import v2.compiler.ingest { cross_language_compile }
-import v2.compiler.infer { infer }
-import v2.compiler.translate { translate }
-import v2.extdeps.languages.go {
-  go_facts_float64,
-  go_facts_int,
-  go_int64_additive_numeric_inhabitant_node,
-  go_int64_falsifier_emitted_add_fn_node,
-  go_int_additive_numeric_inhabitant_node,
-  go_int_inhabitant_node,
-  go_source_text,
-  go_target_model,
-  go_target_model_int64_selection_policy
-}
-import v2.extdeps.languages.python {
-  python_int_inhabitant_node,
-  python_emitted_add_fn_node,
-  python_target_model
-}
-import v2.test.manual.ingest_bridge { ingest_cross_language_compile_holds }
-import v2.test.manual.python_grammar_claim { python_grammar_parse_fixture }
-import v2.extdeps.languages.typescript { ts_source_text, ts_target_model }
-import v2.std.inhabitant_neutralization {
-  inhabitant_std_projection_symbol,
-  neutralize_core_for_target,
-  target_inhabitant_for_std_projection
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  UnifiedTestClaim,
-  manual_claim_anchor
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

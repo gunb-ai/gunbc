@@ -1,52 +1,5 @@
 module gunbc.roadmap_dispatch_actuator
 
-import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
-import std.upsert_decision {
-  ObservationVerdict,
-  Converged,
-  Absent,
-  Drifted,
-  Conflict,
-  Inaccessible,
-  UnknownRefused,
-  UpsertDecision,
-  UpsertClassification,
-  Noop,
-  Apply,
-  Refuse,
-}
-import gunbc.roadmap_model {
-  RoadmapNode, RoadmapNodeId,
-  Intricacy,
-  IntricacyLow,
-  IntricacyMedium,
-  IntricacyHigh,
-  Volume,
-  VolumeSmall,
-  VolumeMedium,
-  VolumeLarge,
-  NodeSizing,
-  Sized,
-  Unsized,
-}
-import gunbc.roadmap_spawner { dispatch_brief_template, node_title }
-import gunbc.session_lease {
-  ProcessPortScope,
-  PortAbsent,
-  Start,
-  classify_process_port_upsert,
-}
-import extdeps.git { shape_git_worktree_add_argv }
-import extdeps.tmux {
-  shape_tmux_new_session_argv,
-  shape_tmux_ls_argv,
-  shape_tmux_kill_session_argv,
-}
-import extdeps.llm.cli { shape_claude_invoke_argv }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.host_layout { srv1_dispatch_worktree_root }
-import gunbc.repo_identity { gunbc_merge_target_ref }
 
 data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,

@@ -1,24 +1,5 @@
 module v2.std.concept_index
 
-import std.algebra { Empty }
-import v2.std.algebra { list_snoc_item }
-import v2.std.collection { List }
-import v2.std.node {
-  Conj,
-  CoproductArm,
-  Disj,
-  Node,
-  TypeNode,
-  named_edge_sort_key,
-}
-import v2.std.node_query {
-  coproduct_arm_list_from_node,
-  coproduct_arm_payload_pair_from_arm,
-  edge_field_type_name,
-  node_is_coproduct,
-  node_labeled_child_edges
-}
-import v2.std.text { String }
 
 type FieldRef {
   field: String

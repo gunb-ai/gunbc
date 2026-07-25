@@ -1,26 +1,5 @@
 module v2.test.claim.operand_flow_witness
 
-import std.measure { byte_size, byte_size_count }
-import std.types { ContentHash }
-import v2.std.algebra { length }
-import v2.std.dependency { BarrierBefore, DataDependsOn, DependencyView }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode, content_hash }
-import v2.workflow.operand_flow {
-  OperandFlow,
-  OperandFlowFootprintMissingRow,
-  OperandFlowNoOperand,
-  OperandFlowRefused,
-  OperandRoot,
-  OperandRootUnresolved,
-  operand_flow_for_edge,
-  operand_flows,
-  operand_root
-}
-import v2.workflow.realization_runner {
-  NodeKeyedGraphArtifact,
-  NodeKeyedGraphRow
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

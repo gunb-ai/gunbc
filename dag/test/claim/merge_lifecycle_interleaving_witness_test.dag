@@ -1,21 +1,5 @@
 module test.claim.merge_lifecycle_interleaving_witness
 
-import gunbc.merge_lifecycle {
-  PrIdentity,
-  LifecycleEvent, RunPrCi, MergePr, RosterBump,
-  simulate_lifecycle,
-  lifecycle_admits_unverified_tip,
-  squash_result_tree,
-  initial_lifecycle_state,
-  event_sequences_of_length_4,
-  count_unverified_admitting_sequences,
-}
-import gunbc.merge_admission {
-  AdmissionPolicy,
-  PerPrGateOnly, RequireUpToDateBase, KeyedReceipt,
-}
-import std.types { List, Bool, Int, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,13 +1,5 @@
 module extdeps.git.object_store
 
-import std.types { ContentHash, NonEmptyStr }
-import std.measure { ByteSize }
-import std.cache_interface { KeyDerivationClass, CacheWriteSemantics }
-import extdeps.object_storage { ObjectContainer }
-import extdeps.object_storage.content_addressed { CasObjectId, CasAddressingConfig }
-import extdeps.git { GitAuthor, ObjectType }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,12 +1,5 @@
 module tools.namespace_import_closure_behavioral_transport
 
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import extdeps.cargo_build
-import extdeps.git
-import extdeps.gunbc
-import std.logic { Bool }
-import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
 data nic_doc: String = "Wet cargo-compiling receipt for the Gate-1 emit import-closure derivation (emit_import_closure_root, PR 6960): a NAMESPACE module — zero import statements, the v2 corpus shape after namespace wave-1 — that references cross-module names emits VALID, cargo-COMPILING Rust. The regression it guards: before the reference_derived_use_lines pass in v1.compiler.emit_rust, the seed emitter derived Rust use-lines ONLY from authored import name-lists, so an import-free module referencing a sibling emitted bare unqualified names with no use-line and no inline qualification — unresolvable Rust (E0425/E0433). Regen does NOT guard this class (the seed corpus is import-based, so its emit is unchanged by the pass), which is why this receipt is REQUIRED coverage rather than redundant with the self-host fixed point. Live host effects (real gunbc emit, cargo build), so it runs in the nightly falsifier Wet follow-on batch (falsifier_self_host_wet_entries), never per-PR hermetic discovery."
 

@@ -1,29 +1,5 @@
 module v2.std.constraints
 
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  node_locus,
-  None,
-  Outcome,
-  Rejected,
-  Unavailable,
-  bind_outcome,
-  outcome_rejected,
-  outcome_with_diagnostics
-}
-import v2.std.find_witness {
-  CandidateSet,
-  PreservationPredicate,
-  UniqueOnly,
-  find_witness,
-}
-import v2.std.constraint_satisfaction_predicate {
-  constraint_satisfaction_preservation_holds
-}
-import v2.std.node { Node, Symbol, well_formed }
-import v2.std.witness { StructuralPropertyWitness }
 
 type ConstraintGraph {
   root: Node

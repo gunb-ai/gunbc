@@ -1,12 +1,5 @@
 module test.claim.media_type_witness
 
-import extdeps.http.server {
-  MediaType, MediaTopLevel, TopLevelText, TopLevelApplication,
-  MediaTypeParameter, charset_utf8, media_type_wire_label,
-  text_html_utf8, text_plain_utf8, application_json_utf8,
-  text_javascript_utf8, application_octet_stream,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

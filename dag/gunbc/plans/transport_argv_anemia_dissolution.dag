@@ -1,9 +1,5 @@
 module gunbc.plans.transport_argv_anemia_dissolution
 
-import std.types { String, List }
-import std.markdown { MarkdownBlock }
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
 
 fn taad_intro() -> List<MarkdownBlock> {
   [

@@ -1,26 +1,5 @@
 module test.claim.live_deploy.operations_witness
 
-import std.logic { Bool }
-import std.types { String, List }
-import extdeps.apt { package_nodejs, package_tailscale, apt_install_argv }
-import extdeps.dpkg { dpkg_status_argv }
-import extdeps.os.systemctl {
-  systemctl_daemon_reload_argv,
-  systemctl_enable_argv,
-  systemctl_restart_argv,
-  systemctl_disable_now_argv,
-}
-import gunbc.live_deploy.operations {
-  dpkg_status_command,
-  apt_install_command,
-  systemctl_daemon_reload_command,
-  systemctl_enable_command,
-  systemctl_restart_command,
-  systemctl_disable_now_command,
-  privileged_command,
-}
-import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

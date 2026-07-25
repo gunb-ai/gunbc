@@ -1,8 +1,5 @@
 module gunbc.plans.dag_v2_defork_audit
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownBlock, TableBlock, AlignNone, ThematicBreak }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
 fn dag_v2_defork_audit_body() -> List<MarkdownBlock> {
   [

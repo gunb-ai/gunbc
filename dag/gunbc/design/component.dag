@@ -1,8 +1,5 @@
 module gunbc.design.component
 
-import std.types { Int, String, Bool }
-import gunbc.design.theme { ThemeRole, role_key, role_var }
-import gunbc.design.interaction { InteractionVerb, verb_key, ElementId, element_id_key }
 
 data design_component_note: String = "The component concept — a sibling of the L4 surface archetype (archetype = whole surface; component = one widget), justified by its second-consumer arrival (the dispatch button, design-register-library.md's second-consumer discipline). A component is FOUR axes held as one row: element structure (the ElementId it renders as, the interaction register's closed enum) x role/material bindings (base_roles + a per-state chip role) x interaction STATES (idle | requested | terminal-per-wire-arm) x wire-contract binding (each TerminalState carries the wire label it renders). The wire binding is the load-bearing move the dispatch-button incident (§5, 2026-07-23) demands: the states are NOT a free enum, they are pinned to a served contract, so component_wire_total cross-checks the terminal set against the wire vocabulary authority BOTH directions — a wire label with no state row (labels_missing_state) and a state that fabricates a label the wire never sends (states_missing_label) each red. This module is generic (no roadmap deps); the instance that binds the belt vocabulary lives one layer up (gunbc.roadmap_component), the same split as Component-type-here / dashboard_archetype-instance-in-archetype."
 

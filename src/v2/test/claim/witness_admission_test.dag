@@ -1,24 +1,5 @@
 module v2.test.claim.witness_admission_test
 
-import v2.workflow.witness_admission {
-  witness_consumer_cadence_for_row,
-  witness_admission_holds_for_row,
-  witness_admission_explicit_consumer_manifest,
-  witness_admission_manifest_covers_row
-}
-import std.witness_admission {
-  FalsifierRehomedBinWet,
-  WitnessConsumerCadence,
-  FalsifierSelfHostWet,
-  BinWitnessWet,
-  QuarantineProbeExpectRed,
-  OfflineLocalRecipe,
-  DiscoverySelection,
-  NoConsumer
-}
-import v2.std.algebra { length }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data normalize_entry: String = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag"
 data normalize_fn: String = "self_host_03_normalize_behavioral_receipt_holds"

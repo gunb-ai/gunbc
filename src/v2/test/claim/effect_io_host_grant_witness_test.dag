@@ -1,24 +1,5 @@
 module v2.test.claim.effect_io_host_grant_witness
 
-import std.types { Bool }
-import std.content_hash { content_hash_atom }
-import std.execution_mode { Hermetic, Wet }
-import std.effect_grant {
-  Write, verb_eq,
-  EffectAdmission, Admitted, EffectOutsideGrant,
-}
-import v2.extdeps.runtimes.effect_io_host_grant {
-  effect_io_host_write_admissible,
-  effect_io_host_locator_position,
-  effect_io_host_envelope,
-  effect_io_host_frame,
-}
-import v2.extdeps.runtimes.v2_effect_io_pure {
-  EffectIoResourceLocator,
-  HttpResourceBackend,
-  FileResourceBackend,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

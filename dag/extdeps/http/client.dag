@@ -1,8 +1,5 @@
 module extdeps.http.client
 
-import std.types { NonEmptyStr, String, Bool }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

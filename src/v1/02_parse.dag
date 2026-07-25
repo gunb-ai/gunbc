@@ -1,64 +1,7 @@
 module v1.compiler.parse
 
-import v1.std.core {
-  module_node, import_node,
-  Node, InferredNode, Resolved, CompilerError, TypeVariable,
-  Connective, Conj, Disj, NoConnective, Arrow, is_container_type,
-  Cardinality, Required, CardOptional,
-  make_param_node, param_node_type_expr, param_node_default_value,
-  make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
-  make_variant_node, variant_node_name_at, variant_node_fields, leaf_node_with_span,
-  ExprData, NoExprData,
-  ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
-  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
-  ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
-  ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
-  make_expr_node, make_named_expr_node, make_expr_error_node,
-  expr_var_name_at, field_access_field_at, field_access_spine, FieldAccessSpine, expr_call_func_at,
-  make_arg_node, arg_name_at, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node,
-  MatchPattern, make_field_binding_node, field_binding_pattern,
-  Bind, LitPattern, VariantPattern, Wildcard,
-  LitInt, LitFloat, LitBool, LitNull, LitSymbol,
-  ExprErrorKind, ParseRecoveryError,
-  Sub, Mul, Div, Mod,
-  Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
-  UnaryOpKind, Not, Neg,
-  StringPart, Text, Interpolation,
-  local_transport_node, rest_transport_node, shell_transport_node, file_transport_node,
-  transport_url_key, transport_path_key,
-  transport_method_key, transport_path_template_key, transport_query_key, transport_body_key, transport_stdin_key, transport_response_format_key, transport_headers_key,
-  transport_auth_basic_key, transport_tls_key,
-  service_config_properties,
-  OperationModifier, Idempotent, Readonly, Hermetic,
-  Token, TokenShape,
-  ShKeyword,
-  ShLBrace, ShRBrace, ShLParen, ShRParen, ShLBracket, ShRBracket,
-  ShLt, ShGt, ShLe, ShGe, ShFatArrow, ShArrow,
-  ShColon, ShComma, ShDot, ShDotDot, ShEq, ShEqEq, ShNe,
-  ShPlus, ShMinus, ShStar, ShSlash, ShPercent, ShBang, ShAnd, ShOr,
-  ShQuestion, ShNullCoalesce, ShPipe, ShPipeArrow,
-  ShLitStr, ShLitInt, ShLitFloat, ShIdent, ShCaret,
-  ShStrBegin, ShStrMid, ShStrEnd,
-  ShNewline, ShEof, ShUnknown,
-  SourceSpan, make_span,
-  ErrorNode, make_error_node, ParseError, InternalError,
-  with_required_cardinality,
-  error_type, is_compiler_error,
-  node_name_span, no_span,
-  NewlineIndex, authored_name_at, kernel_span,
-  InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens,
-  field_access_base
-}
 
-import std.syntax {
-  Add, BinOp, LitStr, LiteralValue,
-  ItemForm, ItemFormKind, OtherForm, BodyKind,
-  ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
-  ServiceBody, ResourceBody,
-  OperatorSpec, SyntaxSpec
-}
 
-import extdeps.languages.dag.syntax { dag_syntax_spec, dag_non_name_keywords }
 
 
 type TokenStream {

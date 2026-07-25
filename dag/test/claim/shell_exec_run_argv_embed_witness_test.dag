@@ -1,12 +1,5 @@
 module test.claim.shell_exec_run_argv_embed_witness
 
-import std.types { Bool, String }
-import std.measure { byte_size_count }
-import gunbc.live_deploy.emit { live_deploy_apply_script_for }
-import gunbc.live_deploy.spec { deployment_spec_srv1 }
-import extdeps.filesystem.filesystem_io
-import extdeps.os.exec_arg_limit { host_exec_arg_max_strlen }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

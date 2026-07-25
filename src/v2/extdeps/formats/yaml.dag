@@ -1,6 +1,5 @@
 module v2.extdeps.formats.yaml
 
-import v2.std.grammar { GrammarSchema }
 
 type YamlValue
   = YamlNull

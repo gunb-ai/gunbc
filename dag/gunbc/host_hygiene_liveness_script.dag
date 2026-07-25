@@ -1,9 +1,5 @@
 module gunbc.host_hygiene_liveness_script
 
-import std.types { String, Bool }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.host_converge { gunbc_runner_all_slots_unit_glob }
 
 data host_hygiene_liveness_script_dissolution_trigger: String = "🟡 dissolve-on: host_hygiene_liveness_script — concat-built journalctl-mining bash text. DISSOLVES WHEN bash-emit (issue 5828) realizes the liveness read as typed host-effect argv routed through host_effect_apply, retiring the raw shell_exec_via_bash transport this scaffold stands in for."
 

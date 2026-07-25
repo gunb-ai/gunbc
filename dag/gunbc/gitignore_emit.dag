@@ -1,42 +1,5 @@
 module gunbc.gitignore_emit
 
-import gunbc.gitignore_model {
-  Producer, IgnoreGroup, IgnoreArtifact,
-  CargoArtifacts, CargoCacheLocal, CodegenSymlink, CoverageReport,
-  GeneratorStamp, WorkflowRuntime, TestgenOutput, RegenTempDir,
-  ClaudeCodeSession, ClaimMapOutput, OpenClawArtifact, GithubCLICache,
-  AuthSessionTranscript, PythonLocalDevScript, SupersededPlanningDir,
-  JetBrainsIDE, VSCodeIDE, VimEditor, EmacsEditor, GenericEditorBackup,
-  MacOSFinder, WindowsExplorer, Tmux, NodeJS, SecretsConvention, CPythonInterpreter,
-  Derivable, Cited,
-  CargoTargetDir, CargoTargetCodexDir, LocalCargoHome, CodegenBinSymlink,
-  TarpaulinHtmlReport, TarpaulinJsonReport, CoberturaReport, LcovReport, CoverageOutputDir,
-  JetBrainsProjectDir, VSCodeWorkspaceDir,
-  VimSwapFile, VimSwapFileAlt, EmacsBackupFile, GenericBackupFile,
-  MacOSFinderMetadata, WindowsThumbnailCache, TmuxLogFile,
-  DotEnvFile, DotEnvLocalFile, DotEnvLocalWildcard,
-  GeneratorStampFile, GunbcWorkflowDir, TestgenOutputDir, NodeModulesDir,
-  ClaudeSessionDir, RegenSourcesDir, RegenOutputDir, RegenGeneratedSourceRootDir,
-  FreshnessCheckDir, AuthTranscriptFile,
-  OpenClawControlDir, OpenClawAgentsFile, OpenClawHeartbeatFile, OpenClawIdentityFile,
-  OpenClawSoulFile, OpenClawToolsFile, OpenClawUserFile, OpenClawWorkboardFile,
-  OpenClawScriptsDir, V2InspectFile, V2InspectErrorsFile, GithubCLICacheDir,
-  PythonLocalDevScriptFile, PythonAuditScriptAllowlisted, PythonBytecodeCacheDir, PythonCompiledBytecode,
-  ClaimMapDir, ScratchProbeFile,
-  GunbcPlanningDir, ScriptsFixturesDir
-}
-import gunbc.generated_artifact {
-  GeneratedArtifact, generated_artifact_registry, artifact_is_committed, artifact_path
-}
-import gunbc.gitignore_authority { gitignore_authority }
-import std.languages { gitignore_format }
-import std.layout {
-  Doc, DocEmpty, DocConcat,
-  LayoutProtocol,
-  doc_concat, doc_line_of, doc_blank,
-  render
-}
-import std.render { config_comment_prefix }
 
 fn artifact_pattern(a: IgnoreArtifact) -> String {
   match a {

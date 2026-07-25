@@ -1,8 +1,5 @@
 module gunbc.roadmap_document
 
-import std.markdown { MarkdownDocument, MarkdownBlock }
-import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, SectionElement }
-import gunbc.roadmap_emit { project_roadmap_section }
 
 type RoadmapSection {
   title: String

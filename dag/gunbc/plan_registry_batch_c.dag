@@ -1,13 +1,5 @@
 module gunbc.plan_registry_batch_c
 
-import gunbc.plan { Plan }
-import gunbc.plans.axiom_syllogism_lens { axiom_syllogism_lens_plan }
-import gunbc.plans.invert_hand_maintained { invert_hand_maintained_plan }
-import gunbc.plans.fail_closed_lockdown { fail_closed_lockdown_plan }
-import gunbc.plans.regime2_shared_emission_fold { regime2_shared_emission_fold_plan }
-import gunbc.plans.format_model_reconciliation { format_model_reconciliation_plan }
-import gunbc.plans.shell_emission_model { shell_emission_model_plan }
-import gunbc.plans.construction_justification_rule { construction_justification_rule_plan }
 
 data batch_c_plans: List<Plan> = [
   axiom_syllogism_lens_plan,

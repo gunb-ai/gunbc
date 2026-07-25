@@ -1,6 +1,5 @@
 module v2.lens.inert_carrier
 
-import std.roster_frontier { FrontierRow, frontier_row, frontier_units }
 
 data inert_carrier_local_alias_roster_note: String = "Floor hygiene: roster LocalAlias for inert G1 fixture type in qualified_module_projection_stripped_fixture.dag (latent main gap; exposed by W1.2 broad affected set; not W3.1 reachability migration)."
 

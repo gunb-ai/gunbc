@@ -1,46 +1,5 @@
 module gunbc.srv3_install_diagnostic_checklist
 
-import extdeps.shell
-import gunbc.retained_shell_script { retained_runtime }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.shell_bash_runner { shell_printf_line }
-import gunbc.srv3_os_install_diagnostic {
-  srv3_os_install_attempt_intent,
-  OsInstallAttemptIntent,
-  srv3_install_diagnostic_observe_script_for_intent,
-  Srv3InstallDebugObservation,
-  Srv3InstallDiagnostic,
-  NbdServeObservation,
-  BmcWebsocketObservation,
-  ServeUnknown,
-  ServeObserved,
-  WebsocketUpgradeAccepted,
-  WebsocketUnavailable,
-  WebsocketUnknown,
-  diagnose_srv3_install,
-  srv3_install_diagnostic_wire,
-  srv3_install_diagnostic_recommended_action_wire,
-  parse_srv3_install_debug_observation,
-}
-import gunbc.host_effect {
-  Srv3InstallDiagnosticObserve,
-  HostOs,
-  host_effect_read_evidence,
-  LocalShell,
-  ShellEffectApplied,
-  ConvergePlanApplied,
-}
-import gunbc.host_effect_realize { host_effect_apply }
-import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
-import std.realization_reconcile {
-  Reconciliation,
-  Converged,
-  NotConverged,
-}
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { String }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type Srv3InstallDiagnosticObserveOutcome
   = Srv3InstallDiagnosticObserved { stdout: String }

@@ -1,20 +1,5 @@
 module test.claim.live_deploy.intent
 
-import gunbc.live_deploy.intent {
-  live_deploy_readback_for_spec,
-  live_deploy_health_url_for_port,
-  live_deploy_service_ready_gate_for_spec,
-}
-import gunbc.live_deploy.spec { deployment_spec_srv1 }
-import std.types { NonEmptyStr }
-import gunbc.live_deploy.emit {
-  live_deploy_intent_dependency_graph_emit_dissolution_trigger,
-}
-import gunbc.roadmap_static_site { roadmap_site_health_path }
-import std.disposition { Scaffold, RealizationDispatch, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.measure { second_count }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,6 +1,5 @@
 module extdeps.ebay.mock_corpus
 
-import std.hermetic_replay { PublishedMockCase }
 
 data ebay_oauth_mock_case_mint_application_token: PublishedMockCase = PublishedMockCase {
   operation_key: "ebay.OAuth.MintApplicationToken",

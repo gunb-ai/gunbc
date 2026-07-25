@@ -1,8 +1,5 @@
 module v2.test.manual.qualified_pattern_reconcile
 
-import v2.std.nat { Nat, Zero, Succ, nat_mul }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

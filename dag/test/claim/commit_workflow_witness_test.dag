@@ -1,30 +1,5 @@
 module test.claim.commit_workflow_witness
 
-import gunbc.commit_workflow {
-  commit_gate_roster,
-  commit_workflow_realization_bindings,
-  commit_workflow_ci_floor_gates,
-  commit_workflow_local_tidy_checks,
-  CommitWorkflowSurface, GithubActionsCiJob, GitPrePushHook,
-  CiYamlHandler, GitPrePushScriptHandler,
-  gate_lists_eq, local_tidy_lists_eq,
-  realization_artifact_path,
-  realization_handler_for_surface,
-  realization_artifact_for_surface,
-  project_ci_floor_witness_entries,
-  roster_witness_spans_wellformed,
-  witness_span_wellformed
-}
-import std.realization_schedule {
-  WitnessSeam, SpanSeams, SpanUndeclared,
-  CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq
-}
-import gunbc.ci_spec { gunbc_ci_floor_gates }
-import gunbc.local_tidy_spec { local_tidy_checks }
-import gunbc.generated_artifact {
-  CiYamlArtifact, GithooksPrePushArtifact, artifact_path
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

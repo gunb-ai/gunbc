@@ -1,9 +1,5 @@
 module extdeps.access.posix_effective_principal_read_op
 
-import std.types { String, Int, Bool, List }
-import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

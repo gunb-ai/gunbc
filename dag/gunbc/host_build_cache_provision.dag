@@ -1,20 +1,5 @@
 module gunbc.host_build_cache_provision
 
-import std.types { String, NonEmptyStr, Bool }
-import std.cache_identity { CacheInterfaceId }
-import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.process { ProcessExit, exit_failure }
-import std.resources { Network }
-import extdeps.cache.sccache { sccache_local_id, sccache_fatal_error_log_fragment }
-import gunbc.host_build_cache_catalog_gate {
-  provision_build_cache_catalog_gate_verdict,
-  ProvisionBuildCacheCatalogRealizable,
-  ProvisionBuildCacheCatalogRefused,
-}
-import gunbc.host_effect { HostEffect, ProvisionBuildCache }
-import gunbc.host_toolchain_ensure { host_toolchain_ensure, BuildCache }
-import product.placement_supply { HostIdentity }
 
 data provision_build_cache_widen_sketch_note: String = "RED-control fixture modeling the forbidden absorbing fallback (the -u RUSTC_WRAPPER cache-drop). The live instance ci_retry_escalation_level2 was REMOVED 2026-07-23 (STEP 2): the eagain retry now escalates to CARGO_BUILD_JOBS=1 (keep sccache) only, then fails loud via verify-build-artifacts — no cache-drop widen remains. This fixture stays as the RED control guarding the verdict fold against re-introduction; it must never ship as the authority."
 

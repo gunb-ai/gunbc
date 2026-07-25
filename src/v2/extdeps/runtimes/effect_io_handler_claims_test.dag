@@ -1,38 +1,5 @@
 module v2.test.runtimes.effect_io_handler_claims
 
-import v2.extdeps.runtimes.v2_effect_io_host {
-  HostHttpContext,
-  effect_io_host_runtime_hermetic
-}
-import v2.extdeps.runtimes.v2_effect_io_pure {
-  EffectIoResourceBackend,
-  FileResourceBackend,
-  HttpResourceBackend,
-  StorageResourceBackend,
-  effect_io_pure_empty_fixture_store,
-  effect_io_pure_handler_binding,
-  effect_io_pure_invoke_handler,
-  effect_io_pure_locator_identity,
-  effect_io_pure_read_request,
-  effect_io_pure_read_write_roundtrip,
-  effect_io_pure_unit_type_node
-}
-import std.algebra { Cons, Empty }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.machine { Byte }
-import v2.std.node { Hash }
-import v2.std.runtime {
-  ReadResource,
-  RuntimePrimitive,
-  RuntimePrimitiveValue,
-  RuntimeUnit,
-  RuntimeUnitValue,
-  RuntimeValue,
-  effect_handler_for_kind
-}
-import v2.std.witness { Holds, Violates }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

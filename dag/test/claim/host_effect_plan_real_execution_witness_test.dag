@@ -1,21 +1,5 @@
 module test.claim.host_effect_plan_real_execution
 
-import std.logic { Bool }
-import gunbc.host_effect {
-  ShellCommand,
-  NodeControlPlane, HostOs,
-  host_effect_identity_evidence,
-  LocalShell,
-}
-import gunbc.host_effect_plan {
-  HostEffectPlan, HostEffectPlanContext,
-  host_effect_plan_apply,
-}
-import v2.std.effect_plan { EffectPlan, Do }
-import v2.std.orchestration { FailFast }
-import std.realization_reconcile { reconciliation_converged }
-import gunbc.fleet_intent { srv1_host }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

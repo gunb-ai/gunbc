@@ -1,28 +1,5 @@
 module v2.extdeps.languages.verilog
 
-import v2.std.nat { Nat }
-import v2.std.node { Symbol }
-import v2.std.grammar {
-  StampClass,
-  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
-import v2.std.compilers.lexing {
-  CharClassPattern,
-  IdentContinueChar,
-  IdentStartChar,
-  KeywordPattern,
-  LexPattern,
-  LexRule,
-  LexRuleSet,
-  LexRules,
-  LiteralPattern,
-  ModeledLexRules,
-  OneOrMorePattern,
-  RepeatPattern,
-  SequencePattern,
-  TokenRule,
-  TriviaRule,
-  WhitespaceChar
-}
 
 type PortDirection
   = Input

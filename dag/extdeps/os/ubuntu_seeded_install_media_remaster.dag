@@ -1,23 +1,5 @@
 module extdeps.os.ubuntu_seeded_install_media_remaster
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import extdeps.tools.xorriso
-import extdeps.tools.grep
-import extdeps.tools.sed
-import extdeps.os.ubuntu_seeded_install_media {
-  UbuntuSeededInstallMediaArtifactRow,
-  ubuntu_seeded_install_media_install_path,
-  ubuntu_seeded_install_media_part_path,
-}
-import extdeps.os.ubuntu_install_media {
-  ubuntu_install_media_install_path,
-  ubuntu_install_media_artifacts_dir,
-}
-import std.types { String, NonEmptyStr, FilePath }
-import std.disposition { Disposition, Terminal }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

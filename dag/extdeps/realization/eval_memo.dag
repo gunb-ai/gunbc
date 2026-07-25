@@ -1,27 +1,6 @@
 module extdeps.realization.eval_memo
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
-import std.cache_identity { CacheInterfaceId }
-import std.cache_interface {
-  ContentAddressLookup,
-  OverwriteAllowed,
-  MissThenCreate,
-  StructuredArtifact,
-  InProcess,
-  Never,
-  PerFile,
-  None,
-  InProcessNs,
-  Strong,
-  OperatorObserved,
-  ManualPurge,
-  Repo,
-}
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data eval_memo_note: String = "The eval-frame memo: the ladder's single-site discharge provider, realized in the seed interpreter (v1_interpreter.rs eval_pure_named_call / EvalCallMemo). Serves every repeated pure named-fn demand from its first evaluation within one InterpContext. SOUNDNESS IS CONSTRUCTION, NOT PROBABILITY: buckets by the demand-ledger key (fn identity x argument content identity) but serves ONLY after the stored call's argument names AND values verify equal (Value equality, the one equality authority) — a hash collision degrades to recompute, never to a wrong value. A memo hit still records the DEMAND in the ledger: plurality is the fact the receipt counts; the provider changes its cost, never its count (so the multi-site rewire worklist survives discharge intact). Eviction is ScopeExit at the WITNESS FRAME (corrected 2026-07-10, same-day regression owned at confession grade: the first landing evicted at ctx lifetime while batch surfaces share one ctx across an entry's witnesses, so retained argument+result values were byte-unbounded by construction — measured single-witness plateau ~3.4GiB vs six-witness climb past ~20GiB to SIGKILL on a quiet host, eager-ram-612's A/B; batch surfaces now call eval_call_memo_frame_exit after each claim fn, counters cumulative). Cross-witness serving is an outer-frame promotion that must arrive as a conscious provider row with byte-bounded admission, never a default; the count cap (1M entries) is admission at the wrong unit and is slated to become a DECLARED byte cap consuming the single value-size authority (one fn beside Value; merry-owl-649's space-lens predictor binds to the same authority). Admission stops at the cap with the refusal COUNTED (memo_overflow), never silent. COUNTER INVARIANT (review-pinned 2026-07-10): a miss means the call was NOT served, so it evaluated — a cap-refused store attempt is still a miss; overflow is a subset of misses, and hits + misses equals the keyed Ok-resulting calls through the memo path, including under overflow (misses is NOT entries-stored). Default ON in every binary; GUNBC_EVAL_MEMO=0 is a diagnostic realization switch (recompute instead of serve, semantics identical) and the receipt discloses memo_hits/memo_misses so a disabled or ineffective memo is visible, never assumed working. The switch is PER-CTX (read at InterpContext construction; set_eval_call_memo_enabled), because a covering provider at an outer frame legitimately quiets an inner provider's hit counters: an inner door's by-execution receipt suite (the parse-table MemoTier amortization tests) pins this provider off on its own ctxs so pass-2 demands re-execute and the door's counters keep discriminating — provider-attribution receipts select their realization explicitly, they do not race a process latch. MEASURED (2026-07-10, artifact-regen workload): single-site duplicated keys 7285 -> 505 (93.1 percent discharged), wasted_ms 586 -> 57, misses == distinct keys (every distinct computation evaluated exactly once), regenerated artifacts byte-identical with the memo on and off — the purity oracle by execution."
 

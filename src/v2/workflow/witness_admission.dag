@@ -1,48 +1,5 @@
 module v2.workflow.witness_admission
 
-import gunbc.ci_layer_roots {
-  witness_exclusion_substrings,
-  whole_tree_strict_resolve_exclusion_substrings,
-  whole_tree_resolve_exclusion_substrings,
-  bin_witness_wet_entries,
-  known_red_probe_entries,
-  witness_admission_offline_exclusion_substrings,
-  witness_admission_fixture_exclusion_substrings,
-  witness_exclusion_frontier,
-  WitnessExclusionRow,
-  witness_exclusion_row_is_discovery_selection,
-  witness_exclusion_row_is_no_consumer,
-  witness_exclusion_row_is_bin_witness_wet,
-  witness_exclusion_row_is_known_red,
-  witness_exclusion_row_is_falsifier_wet,
-  witness_exclusion_row_is_rehomed_bin_wet,
-  falsifier_silent_pick_gate_entries,
-  falsifier_rehomed_bin_wet_entries
-}
-import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries, falsifier_native_cache_cold_roster }
-import std.realization_schedule {
-  ScheduleWitnessEntry,
-  schedule_witness_entry_eq,
-  string_list_eq
-}
-import v2.std.algebra { any, contains, fold_list, length, list_snoc_item, Empty }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import std.witness_admission {
-  WitnessConsumerCadence,
-  WitnessAdmissionRefusal,
-  DiscoverySelection,
-  FalsifierSelfHostWet,
-  FalsifierRehomedBinWet,
-  BinWitnessWet,
-  QuarantineProbeExpectRed,
-  OfflineLocalRecipe,
-  FixtureExplicitRoster,
-  NoConsumer,
-  WitnessAdmissionHolds,
-  UnexecutedDeferredWitness
-}
 
 fn schedule_row_matches(
   w: ScheduleWitnessEntry,

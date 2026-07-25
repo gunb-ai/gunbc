@@ -1,6 +1,5 @@
 module v2.test.claim.realization_schedule_witness
 
-import v2.workflow.ci_floor_plan { cheap_floor_gate_step_labels }
 
 
 fn witness_batches_are_plan_schedule() -> Bool {

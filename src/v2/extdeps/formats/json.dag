@@ -1,6 +1,5 @@
 module v2.extdeps.formats.json
 
-import v2.std.grammar { GrammarSchema }
 
 type JsonValue
   = JsonNull

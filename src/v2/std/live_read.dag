@@ -1,6 +1,5 @@
 module v2.std.live_read
 
-import v2.std.collection { List }
 
 data live_read_classification_authority_note: String = "G2 call-reachability live-read classification (docs/plans/live-read-witness-classification-design.md P1): carrier invocations are derived from fn-arrow DependencyView facts (fn_arrow_decl_facts_live) over call-reachable bodies, not module import alone. Path patterns are LiteralPath when a string literal is statable in the reachable skeleton, ParamRef when a filesystem_read path argument is a parameter, UnknownPath fail-closed otherwise. Subsumes witness_cost_locality.ambient_read_carrier_modules_v0 at steady state. Lives in v2.std.live_read (not v2.std.live_tree) so the widely-imported disposition module stays import-free."
 

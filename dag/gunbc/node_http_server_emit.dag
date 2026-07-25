@@ -1,44 +1,5 @@
 module gunbc.node_http_server_emit
 
-import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
-import std.http_path { PathTemplate, LiteralToken, ParamToken }
-import extdeps.http.server {
-  HttpServerListenConfig,
-  ServedStaticRoute,
-  ServedStaticRouteTable,
-  MediaType,
-  media_type_wire_label,
-}
-import gunbc.gunbhub_serve { gunbhub_served_static_route_table }
-import extdeps.languages.typescript.program {
-  TsProgram,
-  TsExpr,
-  TsStmt,
-  serialize_typescript_program,
-  ts_ident,
-  ts_lit_str,
-  ts_lit_backtick,
-  ts_lit_num,
-  ts_lit_regex,
-  ts_member,
-  ts_call,
-  ts_binop,
-  ts_field,
-  ts_quoted_field,
-  ts_object,
-  ts_array,
-  ts_arrow,
-  ts_block,
-  ts_const,
-  ts_expr_stmt,
-  ts_return,
-  ts_if,
-  ts_for_of,
-  ts_index,
-  ts_cond,
-  ts_prefix,
-  ts_spread,
-}
 
 data node_http_server_emit_disposition_note: String = "DISPOSITION (P5, UI-model migration): the belt-A ROADMAP dashboard emit is DELETED. Belt B (gunbc serve / gunbc.roadmap_serve) retired it from deploy membership (live_deploy_spec_belt_b_note: the service is `gunbc serve`, not an emitted server.js) and this PR proved the belt-B path end-to-end by execution (GET / , /roadmap, /sandbox render; POST /dispatch and /sandbox/echo answer in-process). Gone with it: the belt-A smuggled-exec dispatch route (BeltDispatchRouteConfig + the execFile-gunbc handler — the very env-var-channel shell-out belt B dissolves to an in-process call), the roadmap static route table, and every roadmap_dashboard_* emitter. This module SURVIVES only for the gunbhub static-server emit (gunbhub_node_http_server_source, the sole live consumer via dag/tools/emit_host_transport.dag) — a static server with no dispatch. Its own dissolution trigger is gunbhub's migration to belt B (gunbc serve), the named follow-on (OUT OF SCOPE here: gunbhub_serve). Not a silent zombie: the roadmap emit is removed, not merely marked, and the remaining consumer is named."
 

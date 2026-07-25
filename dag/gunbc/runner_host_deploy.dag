@@ -1,12 +1,5 @@
 module gunbc.runner_host_deploy
 
-import std.types { NonEmptyStr, String, Int, List }
-import extdeps.exec.command { ArgvCommand, shell_command_render }
-import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
-import extdeps.cache.sccache { SccacheBinaryRelease, sccache_release_0_15_0, sccache_install_script }
-import extdeps.crypto.hash { Digest, sha256_digest }
-import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_packages, docker_ce_repo_install_script }
 
 data runner_host_deploy_citation: String = "§3 cite-upstream, do-not-re-coin: GitHub Actions runner host provisioning is realized by the ctrl installer at ctrl:scripts/session-dashboard/host/ (deploy-runner-hosts.sh and install-actions-runner.sh) — the single battle-tested rotation point (GitHub App key distribution, jit-runner.sh ephemeral wrapper, actions-runner service template, ghrunner de-priv job user plus rootless docker for public-PR isolation, per-slot cgroup caps). RunnerHostDeploy models the typed INTERFACE (which host, label, runner user, de-priv job user, App-key secret, slot count); the installer is the bound realization HANDLER, one of N transports, NOT re-implemented in .dag. DISSOLVES WHEN host_effect_apply binds RunnerHostDeploy through a transport handler that invokes the cited installer plus per-slot provisioning without a hand-run shell step."
 

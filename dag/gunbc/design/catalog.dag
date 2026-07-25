@@ -1,18 +1,5 @@
 module gunbc.design.catalog
 
-import std.types { Int, String, Bool }
-import extdeps.color.srgb { Srgb8, CitedColorRow }
-import gunbc.design.palette {
-  Swatch, SwatchSet, SwatchMember, SwatchSetProvenance,
-  InspiredByExternal, CitedUpstream, HouseAuthored,
-  swatch_filed, swatch_derived, swatch_set_admissible, swatches_of,
-}
-import extdeps.color.okabe_ito {
-  okabe_ito_swatches, okabe_ito_version,
-}
-import extdeps.color.solarized {
-  solarized_swatches, solarized_version,
-}
 
 data design_catalog_note: String = "The palette catalogue: one home for approved color sets. Cited swatch rows live in extdeps/color/ as CitedColorRow; catalogue wraps provenance and SwatchMemberKind only. Register binding (gunbc.site.tokens quiet_envelope_srgb8) is checked at the (set × register) witness layer — island-pastel mint/ivory violate the quiet envelope by design."
 

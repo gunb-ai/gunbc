@@ -1,38 +1,5 @@
 module v2.test.manual.diagnostic_assert_eval
 
-import v2.compiler.eval {
-  TestClaimEvalSubject,
-  aggregate_verdicts,
-  eval_diagnostic,
-  run_test_claim_assert
-}
-import v2.std.verdict { Verdict, Pass, Deferred, SemanticMismatch, BuildFailed, RunFailed }
-import v2.std.node { Node }
-import v2.std.diagnostic {
-  AmbiguousIntent,
-  Diagnostic,
-  node_locus,
-  NonEmptyDiagnostics,
-  Outcome,
-  Accepted,
-  Rejected,
-  None,
-  Unavailable,
-  diagnostics_singleton,
-  outcome_node_eq
-}
-import v2.std.collection { List }
-import v2.std.node { Node, Symbol }
-import v2.std.verification {
-  DiagnosticClaim,
-  TestClaim,
-  ManualAnchorAbsent,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.test.manual.connective_anchors { stub_empty_conj }
 fn diag_assert_node() -> Node {
   stub_empty_conj
 }

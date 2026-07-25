@@ -1,12 +1,5 @@
 module v2.extdeps.formatters.black
 
-import v2.std.collection { List }
-import v2.std.diagnostic { Outcome }
-import v2.std.patch { ConfigPatchRecord, config_patch_layer }
-import v2.std.refinement {
-  PositiveInt,
-  positive_int_authoritative_literal
-}
 
 type BlackTargetVersion
   = BlackPy33

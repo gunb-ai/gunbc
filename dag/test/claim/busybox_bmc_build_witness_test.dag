@@ -1,9 +1,5 @@
 module test.claim.busybox_bmc_build
 
-import std.logic { Bool }
-import std.types { list_length }
-import extdeps.exec.command { shell_command_render }
-import gunbc.busybox_bmc_build { bmc_busybox_build_plan, busybox_build_commands }
 
 test fn busybox_build_is_modeled_and_grounded() -> Bool {
   let cmds = busybox_build_commands(plan: bmc_busybox_build_plan)

@@ -1,22 +1,5 @@
 module v2.test.claim.self_host.emit_coverage_frontier_test
 
-import v2.compiler.self_host.emit_coverage_frontier {
-  emit_coverage_frontier_roster,
-  emit_coverage_frontier_family_count_expected,
-  self_emitted_native_rows,
-  interpreter_retained_rows,
-  coverage_frontier_row_for_subject,
-  coverage_frontier_total_holds,
-  coverage_row_is_native,
-  coverage_subject,
-  coverage_row_backing_is_enrolled,
-  coverage_frontier_all_native_claims_backed,
-  EmitCoverageFrontierRow,
-  SelfEmittedNative
-}
-import v2.std.algebra { length }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 fn witness_roster_total_holds() -> Bool {
   coverage_frontier_total_holds()

@@ -1,7 +1,5 @@
 module v2.std.node
 
-import std.types { ContentHash }
-import std.content_hash { content_hash_atom, content_hash_combine }
 
 type Symbol
 type Hash = ContentHash

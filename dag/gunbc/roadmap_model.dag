@@ -1,7 +1,5 @@
 module gunbc.roadmap_model
 
-import std.types { NonEmptyStr }
-import gunbc.roadmap_status { RoadmapItem, DriftVerdict, Signoff, signoff_accepts, signoff_drift }
 
 type RoadmapNodeId = NonEmptyStr where brand("RoadmapNodeId")
 

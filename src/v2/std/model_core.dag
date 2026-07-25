@@ -1,30 +1,5 @@
 module v2.std.model_core
 
-import v2.std.collection { List, Map }
-import v2.std.diagnostic {
-  Diagnostic,
-  Textual,
-  Unavailable,
-  UserInputBoundary,
-  WholeFile
-}
-import v2.std.algebra {
-  field_reciprocal_nonzero_precondition_node,
-  field_reciprocal_operation_node,
-  fold_list
-}
-import v2.std.logic {
-  BoolPrimitiveFacts,
-  bool_boolean_algebra_node,
-  bool_boolean_algebra_type_node,
-  bool_encoding_fact_node,
-  bool_node,
-  bool_primitive_facts,
-  bool_primitive_facts_node,
-  bool_width_fact_node
-}
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.witness { Holds, Violates, Witness }
 
 type ModelCorePrimitiveFactAxis
   = ModelCoreFactAxisWidth {}

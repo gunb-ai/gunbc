@@ -1,38 +1,5 @@
 module test.claim.roadmap_belt_witness
 
-import gunbc.roadmap_model {
-  RoadmapNodeId,
-  RoadmapNode,
-  IntricacyHigh, VolumeMedium,
-  PrsMerged,
-  Sized,
-}
-import gunbc.roadmap_status { DerivableLine, Unsigned }
-import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier }
-import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
-import gunbc.roadmap_belt {
-  BeltRunState, Running, Paused,
-  BeltCapacity,
-  BeltAction, HoldPaused, AtCapacity,
-  belt_step,
-  belt_action_is_spawn,
-  belt_spawn_count,
-  belt_spawns_node,
-  belt_plan,
-  roadmap_belt_status_json,
-  BeltReconcile,
-  belt_reconcile,
-  belt_reconcile_spawn_count,
-  belt_reconcile_teardown_count,
-  belt_reconcile_refusal_count,
-  belt_member_ids,
-  belt_reconcile_status_json,
-}
-import gunbc.roadmap_dispatch_actuator { DispatchLiveSession }
-import std.upsert_decision {
-  ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused
-}
-import std.types { String, Int, List, Bool }
 
 fn nid(s: String) -> RoadmapNodeId { s }
 

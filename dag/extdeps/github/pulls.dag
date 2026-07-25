@@ -1,18 +1,5 @@
 module extdeps.github.pulls
 
-import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
-import std.types { CommitSha, FilePath, GitRef, NonEmptyStr, Timestamp, HttpMethod, AuthScheme }
-import extdeps.github.errors { GitHubErrorShape }
-import std.credentials { CredentialSource, EnvVar }
-import std.serialization { WireFormat, Text }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
-import extdeps.github.pulls_contracts {
-  pull_request_state_wire_contract,
-  review_state_wire_contract,
-  review_event_wire_contract
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

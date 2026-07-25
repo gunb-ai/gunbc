@@ -1,20 +1,5 @@
 module test.claim.cpu_l2_l3_cache_geometry_witness
 
-import extdeps.cpu.ampere {
-  altra_max_m12830_catalog,
-  altra_q6430_catalog,
-  ampere_altra_classic_l3_cache_geometry,
-  ampere_altra_classic_rev_a1_datasheet_authority,
-  ampere_altra_l2_cache_citations,
-  ampere_altra_l2_cache_geometry,
-  ampere_altra_max_l3_cache_geometry,
-  ampere_altra_rev_a1_datasheet_authority,
-}
-import std.logic { Bool }
-import std.nat { Nat }
-import std.measure { byte_size_count }
-import std.types { list_length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,31 +1,5 @@
 module test.claim.live_deploy.service_ready
 
-import gunbc.live_deploy.service_ready {
-  ServiceNotReady,
-  live_deploy_service_ready_scaffold,
-  live_deploy_service_ready_scaffold_dissolution_trigger,
-  live_deploy_host_sleep_generalization_dissolution_trigger,
-  live_deploy_service_ready_unit_authority,
-  live_deploy_service_ready_endpoint_authority,
-  service_not_ready_reason,
-  service_not_ready_refusal_at_poll_bound,
-  live_deploy_readiness_poll_bound_is_positive,
-  live_deploy_readiness_poll_bound_seconds,
-  live_deploy_service_ready_poll_bound,
-  live_deploy_service_ready_poll_cadence,
-  live_deploy_service_ready_poll_max_attempts,
-  live_deploy_roadmap_unit_expected_startup,
-  live_deploy_service_ready_poll_bound_margin_factor,
-  UnitDiagnosis,
-  UnitDiagnosisUnavailable,
-  UnitDiagnosisCaptured,
-}
-import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
-import gunbc.roadmap_static_site { roadmap_site_health_path }
-import std.disposition { Scaffold, RealizationDispatch, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.measure { second, second_count, measure_fit_count_floor }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

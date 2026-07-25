@@ -1,11 +1,5 @@
 module v2.test.claim.native_cache_fusion_test
 
-import v2.workflow.native_cache_fusion {
-  HostWarmObservation,
-  host_compile_skipped,
-  fusion_agreement_holds_for
-}
-import v2.std.logic { Bool }
 
 fn witness_warm_marker_agrees_share() -> Bool {
   fusion_agreement_holds_for(

@@ -1,12 +1,5 @@
 module extdeps.languages.yaml.ingest
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.languages.yaml.types {
-  YamlValue, YamlKeyValue,
-  YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping,
-  kv
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,11 +1,5 @@
 module test.claim.typed_witness_invocation
 
-import extdeps.shell
-import extdeps.git
-import extdeps.gunbc
-import gunbc.cli_services
-import tools.host_prelude { ClaimRun, claim_batch_claims_argv, run_witness_bin }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

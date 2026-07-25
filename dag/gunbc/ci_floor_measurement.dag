@@ -1,12 +1,5 @@
 module gunbc.ci_floor_measurement
 
-import std.measure {
-  ByteSize, byte_size, byte_size_count,
-}
-import std.types { Int, List, String, Bool }
-import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 
 data gunbc_ci_width_constants_retired_note: String = "WITHIN-run width constants retired (operator ruling 2026-07-12): the hand-edited per-shard peak samples (floor 3.2-4.6GiB, falsifier 3.9-6.4GiB), the executor base overhead (8910036989), the 17/20 usable fraction, the conservative fallback width, the execution-corpus per-witness reservation, and every memory-derived width fold over them are DELETED — they were pins freezing derivations (the per-shard source row itself said STALE-PENDING-RECALIBRATION: samples predated the enrollment flip) and their staleness was the July OOM/wedge regime's root. Run-time concurrency is now governed adaptively by v1_compiler::memory_governor (AIMD admission against the slot's own cgroup budget, graceful back-off on creep, counted receipts — see gunbc_ci_adaptive_width_note in v2.workflow.ci_floor_plan). This module keeps only the INTER-run granularity: whole-run job peaks and session reservations feeding host co-residence and the conserving budget tree, plus the live slot-limit readback receipts. Quantified per-runnable demand returns when derivable from the graph, never as authored literals."
 

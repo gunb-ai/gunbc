@@ -1,20 +1,5 @@
 module v2.test.workflow.probe_selector_ci_runner
 
-import v2.std.algebra { length }
-import v2.std.logic { Bool }
-import v2.std.probe_selector {
-  CostBudget,
-  SuspectedCausePrior,
-  host_health_hypothesis_standoff_cap_vddq,
-  host_supply_srv2,
-  probe_availability_conditioning_keystone_holds
-}
-import v2.workflow.probe_selector_affected_tests { wf_affected_tests_one_kernel_with_host_health_holds }
-import v2.workflow.probe_selector_host_health {
-  wf_host_health_enumerate_available,
-  wf_host_health_select_probes
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

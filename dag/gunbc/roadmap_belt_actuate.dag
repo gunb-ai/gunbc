@@ -1,55 +1,5 @@
 module gunbc.roadmap_belt_actuate
 
-import std.types { String, Int, Bool, List, NonEmptyStr, FilePath }
-import gunbc.roadmap_model { RoadmapNode }
-import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
-import gunbc.roadmap_status { signoff_accepts }
-import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
-import gunbc.roadmap_belt {
-  BeltRunState, Running, Paused,
-  BeltCapacity,
-  BeltReconcile,
-  belt_reconcile,
-  belt_run_state_label,
-  belt_reconcile_refusal_count,
-  roadmap_belt_default_capacity,
-  roadmap_belt_default_run_state,
-  DispatchMember, DesiredMember, ObservedMember,
-}
-import extdeps.languages.json.emit {
-  JsonValue,
-  serialize_json,
-  json_string,
-  json_int,
-  json_bool,
-  json_array,
-  json_object,
-  json_kv,
-}
-import gunbc.roadmap_dispatch_actuator {
-  HostExecArgv,
-  DispatchLiveSession,
-  DispatchSpawnCommands,
-  dispatch_spawn_commands,
-  dispatch_tmux_session_name,
-  dispatch_worktree_root,
-  tmux_ls_argv,
-  tmux_kill_session_argv,
-  dispatch_live_sessions,
-}
-import gunbc.host_layout { srv1_gunbc_repo_root }
-import extdeps.gunbc
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import extdeps.llm.cli {
-  claude_cli_program,
-  claude_trust_store_path,
-  claude_workspace_trust_seeded,
-}
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.content_hash { content_hash_atom, content_hash_combine }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data belt_actuate_exec_authority_note: String = "Slice 2b actuation: the belt DECISION (gunbc.roadmap_belt.belt_reconcile) is CLOSED against the host by three proven single-authorities — the actuator's HostExecArgv argv model (gunbc.roadmap_dispatch_actuator, the one place the git/tmux/claude argv is shaped), gunbc.WitnessBin.Run (the typed-argv exec intrinsic, no shell string — the SAME exec authority gunbc.host_effect_realize's own realizers build on via srv3_transport_witness_bin_success), and shell.Which.Check (program -> bin_path). The belt is a PEER realizer over WitnessBin.Run, not a fork: host_effect_apply's HostEffect coproduct carries only specific srv3/bmc/hostname effects, with no general typed-argv variant, so the belt routes its generic invocations through the shared lower exec authority. This is fail-closed throughout (which-miss -> ExecRefused, nonzero exit -> ExecFailed, worktree failure short-circuits the tmux spawn), never a fabricated success. Claude-only for now (operator 2026-07-18: 'just do claude to get something working; nicer later as compute fabric')."
 

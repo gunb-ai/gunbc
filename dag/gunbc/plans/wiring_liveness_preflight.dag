@@ -1,8 +1,5 @@
 module gunbc.plans.wiring_liveness_preflight
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownBlock, TableBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, p, li, ul, ol, cell, row }
 
 fn wiring_liveness_preflight_body() -> List<MarkdownBlock> {
   [

@@ -1,6 +1,5 @@
 module gunbc.output_policy
 
-import extdeps.github.log_annotations { neutralize_workflow_commands, subject_text_line_guard }
 
 type Verbosity = Quiet | Normal | Verbose
 

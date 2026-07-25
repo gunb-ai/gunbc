@@ -1,16 +1,5 @@
 module test.claim.bmc_virtual_media
 
-import std.logic { Bool }
-import std.types { list_length }
-import extdeps.linux.usb_gadget { ConfigfsOp, ConfigfsWriteAttr, ConfigfsMkdir, ConfigfsSymlink, ConfigfsRemoveLink, ConfigfsRmdir }
-import gunbc.bmc_virtual_media {
-  srv4_nbd_server_config_text,
-  srv4_nbd_client_attach_command_text,
-  srv4_vm_gadget_setup_script,
-  srv4_vm_gadget_setup_ops,
-}
-import gunbc.fleet_intent_network { srv1_host_lan_endpoint }
-import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
 
 fn configfs_write_value_for(ops: List<ConfigfsOp>, path_suffix: String) -> String {
   fold(ops, init: "", f: (acc, op) => match op {

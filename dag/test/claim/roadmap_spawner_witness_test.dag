@@ -1,17 +1,5 @@
 module test.claim.roadmap_spawner
 
-import gunbc.roadmap_model {
-  RoadmapNodeId,
-  RoadmapNode, RoadmapEdge, Pointer,
-  IntricacyHigh, VolumeMedium,
-  PrsMerged, ManualAcceptance,
-  NodeSizing, Unsized, Sized,
-  SectionElement, Group, SectionGroup,
-}
-import gunbc.roadmap_status { DerivableLine, AuthoredLine, SupersededLine, Signoff, Unsigned }
-import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap_spawner { next_spawnable, roadmap_spawn_request_json, spawn_frontier, roadmap_dispatch_json }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,44 +1,9 @@
 module v1.compiler.infer_types
 
-import v1.compiler.infer_env { TypeBinding }
 
-import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra, container_template_alias_rows }
 
-import std.algebra {
-  AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
-  BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
-  FreeMonoidScalarProfile,
-  FreeMonoidCollectionProfile, PartialFunctionProfile,
-  AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
-  NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named, OptionalOf, WitnessOf, TupleOf, AlgebraTypeVariable,
-  AlgebraFieldTemplate,
-  kernel_algebra_profile,
-  algebra_templates_for_profile
-}
 
-import std.syntax { AlgAdd, AlgebraFieldKind, BinOp, LitStr, LiteralValue }
 
-import v1.std.core {
-  Node, make_param_node, param_node_type_expr,
-  find_child_named, NewlineIndex,
-  Connective, Conj, Disj, NoConnective,
-  Cardinality, Required, CardOptional,
-  NoExprData, ExprLiteral, ExprError,
-  ExprErrorKind, SemanticExprError, InternalExprError,
-  make_expr_node, make_expr_error_node,
-  LitInt, LitFloat, LitBool, LitNull, LitSymbol,
-  is_kernel_type,
-  Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
-  AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin,
-  InferredNode, Resolved, CompilerError, TypeVariable, has_inferred, is_compiler_error,
-  leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality,
-  unit_type, bool_type, string_type, int_type, float_type, none_type,
-  error_type,
-  default_ident_span, kernel_span,
-  authored_name_at,
-  ErrorNode, make_error_node, InternalError,
-  qualified_last_segment, type_name_compatible
-}
 
 
 fn is_type_variable(inferred: InferredNode) -> Bool {

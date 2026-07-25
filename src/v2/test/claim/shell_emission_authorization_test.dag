@@ -1,32 +1,5 @@
 module v2.test.claim.shell_emission_authorization_test
 
-import v2.std.collection { List }
-import v2.std.execution_surface {
-  AutoinstallLateCommand,
-  Absent,
-  Authorized,
-  BootstrapBeforeRuntime,
-  BootstrapProvisioned,
-  ExecutorCapability,
-  ForeignExecutorMandated,
-  GitHubActionsRunStep,
-  Present,
-  Refused,
-  RosterException,
-  RuntimeAvailabilityGate,
-  RuntimePresentRequiresTypedRealization,
-  ShellEmissionAuthorization,
-  ShellEmissionRosterEntry,
-  ShellPayloadRequired,
-  SteadyState,
-  TypedArgv,
-  TypedPlanInterpretation,
-  Unknown,
-  UnknownAvailability,
-  authorize_shell_emission,
-  shell_emission_authorization_is_authorized
-}
-import v2.std.logic { Bool }
 
 fn empty_roster() -> List<ShellEmissionRosterEntry> {
   []

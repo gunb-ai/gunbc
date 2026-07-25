@@ -1,28 +1,5 @@
 module gunbc.roadmap_static_site
 
-import std.types { String, Bool, List, NonEmptyStr, ContentHash, HttpMethod, GET, Port }
-import std.content_hash { content_hash_atom }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.measure { Mebibyte, Millicore, mebibyte, millicore }
-import std.http_path { PathTemplate, LiteralToken, ParamToken }
-import extdeps.uri_path { ParsedPathTemplate, MalformedPathTemplate, parse_path_template }
-import extdeps.http.server {
-  MediaType,
-  text_plain_utf8,
-  application_json_utf8,
-  ServedStaticRoute,
-}
-import gunbc.roadmap_authority { expected_roadmap_md, authored_merged_prs, roadmap_authority }
-import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
-import gunbc.fleet_intent_network { fleet_intent_network }
-import extdeps.languages.json.emit {
-  serialize_json,
-  json_object,
-  json_kv,
-  json_string,
-}
-import extdeps.tools.curl { curl_localhost_bounded_get_argv_prefix }
 
 type SiteArtifactKind
   = RoadmapMarkdown

@@ -1,24 +1,5 @@
 module gunbc.merge_admission_produce
 
-import std.types { ContentHash, CommitSha, String, Int, List, Bool, GitRef }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.repo_identity { gunbc_merge_target_ref }
-import extdeps.git
-import extdeps.github.checks {
-  CheckConclusion,
-  check_conclusion_wire_label,
-  parse_check_conclusion,
-  Success,
-  Failure,
-  Skipped,
-}
-import gunbc.merge_admission {
-  MergeAdmissionReceipt,
-  mint_merge_admission_receipt,
-  current_gate_roster_hash,
-}
-import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags, witness_layer_source_flags_rooted }
 
 data merge_admission_merge_base_ref: String = gunbc_merge_target_ref as String
 

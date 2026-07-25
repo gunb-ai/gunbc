@@ -1,39 +1,5 @@
 module v2.test.claim.self_host.crate_layout_witness
 
-import gunbc.stage0_crate_layout_generated {
-  generated_pub_mod_basenames,
-  generated_pub_mod_block,
-  generated_stage0_dirs,
-  generated_stage0_filenames
-}
-import v2.compiler.self_host.frontier {
-  CompilerModuleFrontierRow,
-  FrontierQualifiedModuleBinding,
-  SelfEmitted,
-  SeedRetained,
-  compiler_frontier_crate_layout_holds,
-  compiler_frontier_qualified_module_dotted_for_path,
-  compiler_frontier_qualified_module_bindings,
-  compiler_frontier_row_parse_engine_hooks,
-  compiler_frontier_row_discovery_enumeration,
-  compiler_frontier_row_use_site_verdict,
-  compiler_frontier_self_emitted_baseline,
-  compiler_frontier_self_emitted_count,
-  compiler_frontier_self_emitted_stage0_mod_basenames_from_index,
-  emit_hand_maintained_pub_mod_block,
-  frontier_row_stage0_mod_basename,
-  hand_maintained_pub_mod_basenames,
-  hand_maintained_stage0_dirs,
-  hand_maintained_stage0_filenames
-}
-import v2.compiler.source_authority { ModuleStorageIndex }
-import v2.test.workflow.host_module_binding_manifest { host_module_bindings }
-import v2.std.diagnostic { Accepted, Rejected }
-import std.algebra { Empty }
-import v2.std.algebra { any, fold_list, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data witness_red_control_note: String = "Discriminating RED (both directions): (1) OMIT — drop v2_compiler_parse_engine_hooks or v2_compiler_use_site_verdict from generated_pub_mod_basenames while frontier row stays SelfEmitted → witness_generated_includes_every_self_emitted_basename_holds false; (2) INCLUDE — append phantom_module to generated_pub_mod_basenames absent from frontier hand_maintained_pub_mod_basenames → witness_generated_has_no_phantom_registration_holds false. Byte drift RED: generated_artifact_drift_gate perturb suffix on dag/gunbc/stage0_crate_layout_generated.dag."
 

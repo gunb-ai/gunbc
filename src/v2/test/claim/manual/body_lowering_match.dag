@@ -1,42 +1,5 @@
 module v2.test.manual.body_lowering_match
 
-import v2.compiler.body_lowering_fold {
-  body_lower_match_arms_optional,
-  body_lower_try_match_from_captured,
-  body_lower_unwrap_captured,
-  body_lower_wire_match_arm_capture
-}
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag {
-  dag_language_model,
-  parse_production_emitted_identity_optional,
-  parse_subtree_find_production_captured
-}
-import std.algebra { Empty }
-import v2.std.algebra { length }
-import v2.std.collection { Absent, Optional, Present }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  ComputationNode,
-  Conj,
-  Match,
-  Node,
-  TypeNode,
-  node_synthetic
-}
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data body_lowering_match_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    true => false,\n    false => true\n  }\n}\n"
 

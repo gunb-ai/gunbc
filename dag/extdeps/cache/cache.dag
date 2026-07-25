@@ -1,49 +1,6 @@
 module extdeps.cache.cache
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
-import extdeps.cache.buildbuddy { buildbuddy_cas_facts, buildbuddy_cas_id }
-import extdeps.cache.cargo { cargo_target_dir_facts, cargo_target_dir_id }
-import extdeps.cache.github_actions { gha_actions_cache_facts, gha_actions_cache_id }
-import extdeps.cache.rustup { rustup_toolchain_store_facts, rustup_toolchain_store_id }
-import extdeps.cache.sccache { sccache_local_facts, sccache_local_id }
-import extdeps.cache.types {
-  CacheInterfaceCatalogFacts,
-  CatalogBackendCacheKey,
-  CatalogProviderKey,
-  CatalogCachedArtifactReceipt,
-  catalog_inputs_considered,
-  catalog_has_vendor_only_key_inputs,
-  catalog_transport_encoding_collapsed_in_std_projection,
-  SccacheInternalHash,
-  CargoFingerprint,
-  SccacheInternalEncoding,
-  CargoFingerprintEncoding,
-  CatalogOpaqueStringEncoding,
-  CatalogCasContentEncoding,
-  CatalogOpaqueStringKey,
-  CatalogCasContentDigest,
-}
-import extdeps.realization.parse_table_memo { parse_table_memo_facts, parse_table_memo_id }
-import extdeps.realization.compile_stage_memo { compile_stage_memo_facts, compile_stage_memo_id }
-import extdeps.realization.reconcile_in_process {
-  parse_cache_facts,
-  typed_module_cache_facts,
-  parse_cache_id,
-  typed_module_cache_id,
-}
-import extdeps.realization.resolved_graph { resolved_graph_cache_facts, resolved_graph_cache_id }
-import std.cache_identity { CacheInterfaceId, CacheInterfaceProduct }
-import std.cache_interface {
-  ArtifactIdentity,
-  ProducerReceipt,
-  CacheInterfaceFacts,
-  OpaqueStringEncoding,
-  CasContentEncoding,
-  NativeInternalEncoding,
-}
-import std.types { ContentHash, List }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,37 +1,5 @@
 module gunbc.assimilate.bmc_token_federation
 
-import extdeps.cloud.gcp.gcp {
-  ServiceAccountEmail, GcpProjectId, WifPool, WifProvider,
-  wif_provider_resource, wif_principal_set_for_repo
-}
-import extdeps.cloud.gcp.iam {
-  role_secretmanager_secret_accessor,
-  role_secretmanager_secret_version_adder
-}
-import extdeps.github.actions {
-  Step, RunStep, UsesStep,
-  Workflow, Job,
-  WorkflowTrigger, WorkflowDispatch,
-  WorkflowPermissions, PermRead, PermWrite,
-  google_auth_action, checkout_action,
-  default_job_timeout_minutes
-}
-import extdeps.languages.yaml.types { YamlKeyValue, kv, yaml_string }
-import extdeps.languages.yaml.emit { serialize_yaml }
-import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
-import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
-import std.types { NonEmptyStr }
-import v2.compiler.emit_orchestration { orch_emit_pipeline }
-import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
-import v2.std.orchestration {
-  Do,
-  FailFast,
-  Pipeline,
-  PipelineStep,
-  Run
-}
-import v2.std.collection { Absent }
-import v2.std.diagnostic { Accepted, Rejected, None, Some }
 
 data bmc_token_smoke_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ bmc token-smoke run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell\n"
 

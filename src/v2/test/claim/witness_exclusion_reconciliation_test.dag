@@ -1,25 +1,5 @@
 module v2.test.claim.witness_exclusion_reconciliation_test
 
-import std.witness_admission { DiscoverySelection }
-import gunbc.ci_layer_roots {
-  WitnessExclusionRow,
-  BinWitnessWet,
-  FalsifierRehomedBinWet,
-  NoConsumer,
-  OfflineLocalRecipe
-}
-import v2.workflow.witness_admission {
-  witness_exclusion_rows_well_formed,
-  witness_exclusion_rows_well_formed_holds,
-  witness_exclusion_explicit_roster_rows_consistent,
-  witness_exclusion_explicit_roster_rows_consistent_holds,
-  witness_exclusion_falsifier_rows_consistent_holds,
-  witness_whole_tree_resolve_exclusion_concat_authority_holds
-}
-import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data witness_exclusion_reconciliation_note: String = "Executable reconciliation for the typed gunbc.ci_layer_roots.witness_exclusion_frontier (successor of the parallel-list containment witness, whose lists deleted when rows gained derived consumer classification): every row is well-formed (never DiscoverySelection; NoConsumer only for the synthetic admission RED-control path; nonempty reason and dissolve_on), explicit-roster classifications name files those rosters actually run, and the whole-tree probe policy is exactly concat(discovery, strict-resolve). RED controls: a DiscoverySelection-classified row and an unbacked BinWitnessWet row both red."
 

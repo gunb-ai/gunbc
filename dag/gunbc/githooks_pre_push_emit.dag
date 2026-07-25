@@ -1,6 +1,5 @@
 module gunbc.githooks_pre_push_emit
 
-import extdeps.git { git_toplevel_shell_subexpr }
 
 fn emit_glob_case_arms(globs: List<String>) -> String {
   fold(globs, init: "", f: fn(acc, g) {

@@ -1,22 +1,5 @@
 module v2.test.graph_invariant.lens_unit.reach_kernel_test
 
-import v2.std.collection { List }
-import v2.std.dependency { Contains, DependencyView, dependency_lens }
-import v2.lens.common.graph_invariant {
-  graph_reach_add_edge_repair,
-  graph_reaches,
-  graph_invariant_reaches,
-  GraphReachProjection
-}
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Node,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

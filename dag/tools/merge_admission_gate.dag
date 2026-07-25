@@ -1,28 +1,5 @@
 module tools.merge_admission_gate
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { GitRef }
-import extdeps.git
-import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.merge_admission {
-  current_gate_roster_hash,
-  classify_merge_admission_verdict,
-  MergeAdmissionVerdict,
-  MergeDeniedStaleBase,
-  MergeDeniedStaleRoster,
-  MergeDeniedNotSuccess,
-  MergeAdmitted,
-}
-import gunbc.merge_admission_produce {
-  merge_admission_receipt_path,
-  merge_admission_merge_base_ref,
-  parse_receipt_wire,
-  observe_merge_target_tree_hash,
-  merge_target_tree_hash_refusal_reason,
-  MergeTargetTreeHashOk,
-  MergeTargetTreeHashRefused,
-}
-import gunbc.ci_failure_class { merge_admission_blocks_merge }
 
 fn verdict_reason(v: MergeAdmissionVerdict) -> String {
   match v {

@@ -1,13 +1,6 @@
 module tools.self_host_logic_behavioral_transport
 
 
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import extdeps.cargo_build
-import extdeps.git
-import extdeps.gunbc
-import std.logic { Bool }
-import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
 
 

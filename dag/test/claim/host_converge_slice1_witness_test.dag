@@ -1,48 +1,5 @@
 module test.claim.host_converge_slice1_witness
 
-import std.types { Bool, NonEmptyStr, List }
-import extdeps.os.systemd { systemd_memory_max_property }
-import gunbc.host_converge { Drifted, PerSlotMemoryCap }
-import gunbc.fleet_intent_network { operator_host_srv1 }
-import gunbc.runner_unit_live_read {
-  gunbc_srv1_runner_unit_live_read_fixture,
-  runner_unit_live_read_typed,
-}
-import gunbc.fleet_show_effective_read {
-  runner_unit_live_read_row_from_stdout,
-  runner_unit_memory_live_read_from_stdout,
-  per_slot_memory_cap_verdict_from_unit_read,
-}
-import gunbc.systemctl_show_read {
-  systemctl_show_property_read_local,
-  systemctl_show_property_operation_argv_matches_transport,
-}
-import extdeps.os.systemd { MemoryMax }
-import gunbc.host_converge_slice1 {
-  host_converge_slice1_probe_unit,
-  host_converge_slice1_knob_name,
-  host_converge_slice1_srv1_per_slot_memory_max_knob,
-  host_converge_slice1_memory_cap_verdict,
-  host_converge_slice1_fixture_receipt,
-  host_converge_slice1_memory_max_set_script,
-  host_converge_slice1_transport_script_scaffold,
-  host_converge_slice1_enumerate_units_script,
-  host_converge_slice1_cross_check_enumeration,
-  host_converge_slice1_usage_guard,
-  HostConvergeSlice1UsageSafe,
-  HostConvergeSlice1UsageUnsafe,
-  HostConvergeSlice1UsageUnknown,
-  HostConvergeSlice1EnumerationMismatch,
-  HostConvergeSlice1UnitOutcome,
-  HostConvergeSlice1UnitUsageGuardRefused,
-  HostConvergeSlice1Refused,
-  host_converge_slice1_unit_outcome_to_legacy_result,
-}
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import gunbc.fleet_host_budget { declared_runner_count }
-import std.measure { byte_size }
-import std.disposition { Scaffold, Terminal }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

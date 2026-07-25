@@ -1,31 +1,6 @@
 module extdeps.cache.rustup
 
-import extdeps.cache.types {
-  CacheInterfaceCatalogFacts,
-  NativeInternal,
-  ToolchainSpec,
-  CatalogOpaqueStringEncoding,
-}
-import std.cache_identity { CacheInterfaceId }
-import std.cache_interface {
-  NativeInternalLookup,
-  ProviderInternal,
-  MissThenCreate,
-  FileTree,
-  PerHostFilesystem,
-  Never,
-  PerFile,
-  FilesystemPerms,
-  LocalDiskUs,
-  Strong,
-  VendorCitation,
-  ToolchainChange,
-  ManualPurge,
-  Org,
-}
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

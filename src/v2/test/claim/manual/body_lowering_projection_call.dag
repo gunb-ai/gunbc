@@ -1,38 +1,5 @@
 module v2.test.manual.body_lowering_projection_call
 
-import v2.compiler.body_lowering_fold {
-  body_lower_try_postfix_projection,
-  body_lower_unwrap_captured
-}
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag {
-  dag_language_model,
-  parse_production_emitted_identity_optional,
-  parse_subtree_find_production_captured
-}
-import std.algebra { Cons, Empty }
-import v2.std.collection { Absent, Optional, Present }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  ComputationNode,
-  Node,
-  Transform,
-  TypeNode,
-  node_synthetic
-}
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data body_lowering_projection_source: String = "module proj\n\nfn f(acc: Int, x: Int) -> Int {\n  helper.step(a: acc, b: x)\n}\n"
 

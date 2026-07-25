@@ -1,41 +1,5 @@
 module v2.test.long.validate_ingest_staging_stage_bisect
 
-import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.compile {
-  LensGateWitness,  always_required_lenses,
-  run_required_lens_gates_on_subtree
-}
-import v2.compiler.infer { infer, InferredTree }
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse {
-  grammar_lookup_production,
-  grammar_validate_for_parse,
-  parse,
-  parse_expr,
-  parse_production_tree,
-  parse_prov_initial,
-  parse_table_empty,
-  ParseExprAccepted,
-  ParseExprRejected
-}
-import v2.compiler.resolve { resolve }
-import v2.compiler.tokenize { tokenize }
-import v2.std.compilers.lexing { token_stream_all, token_stream_remaining, TokenStream }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.collection { List }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostics,
-  Outcome,
-  Rejected,
-  bind_outcome,
-  outcome_accepted,
-  port_locus
-}
-import v2.std.grammar { ModeledGrammar, ValidatedGrammarRoot, ParseTree }
-import v2.std.logic { Bool }
-import v2.std.node { Node, well_formed }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

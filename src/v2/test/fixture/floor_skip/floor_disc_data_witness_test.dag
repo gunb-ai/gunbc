@@ -1,17 +1,5 @@
 module v2.test.fixture.floor_skip.floor_disc_data_witness
 
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  ManualAnchorAbsent,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.test.fixture.floor_skip.floor_disc_data_source { floor_disc_cross_file_data }
-import v2.workflow.affected_set_floor_runner { floor_claim_touches_rerun_frontier }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

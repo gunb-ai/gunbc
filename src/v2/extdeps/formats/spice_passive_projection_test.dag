@@ -1,26 +1,5 @@
 module v2.test.extdeps.formats.spice_passive_projection
 
-import v2.std.collection { Absent, Present }
-import v2.std.logic { Bool }
-import v2.extdeps.formats.spice {
-  Capacitor,
-  Ground,
-  Inductor,
-  Named,
-  NamedNode,
-  Resistor,
-  SpiceValue
-}
-import v2.extdeps.formats.spice_passive_projection {
-  passive_spec_from_component,
-  passive_topology_from_component,
-}
-import v2.std.timeseries_signal {
-  CapacitorPassive,
-  InductorPassive,
-  ResistorPassive,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

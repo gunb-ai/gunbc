@@ -1,18 +1,5 @@
 module v2.compiler.self_host.native_routing_frontier
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.algebra { length, any, contains }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.lens.module_graph {
-  ModuleDeclarationFact,
-  module_declaration_facts_live,
-  dependency_resolution_facts_live,
-  build_dependency_adjacency,
-  import_closure_bfs_walk,
-  ImportClosureBfsState
-}
 
 data native_routing_frontier_note: String = "Per-family execution-routing frontier (P6 cutover mechanism, planned 2026-07-22): each enrolled emit-on-demand witness family is EXACTLY one of NativeRouted (its equals_eval agreement legs run native in the per-PR floor via gunbc_pr_native_batch, warm against GUNBC_NATIVE_CACHE_ROOT) or InterpretedRetained (a declared row with reason + dissolve_on — countable, prioritizable, never a silent default; the self-host-frontier pattern applied to execution routing). The flip NativeRouted is DATA gated by the parity window (v2.compiler.self_host.parity_window): N consecutive green falsifier cadence windows (agreement + warm compile_skipped=true) are required evidence; a refusal or divergence resets the window. One authority decides both sides of the floor: the per-PR native batch enrolls NativeRouted families and interpreted discovery drops exactly those — no dual representation. All 9 families start InterpretedRetained with reason parity_window_open at landing; the PR ships the machine, receipts flip it."
 

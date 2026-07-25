@@ -1,9 +1,5 @@
 module gunbc.host_hygiene_reaper_script
 
-import std.types { String, Bool }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.host_converge { gunbc_runner_all_slots_unit_glob }
 
 data host_hygiene_reaper_script_dissolution_trigger: String = "🟡 dissolve-on: host_hygiene_reaper_script — concat-built bash shell text (host_hygiene_reap_classify_and_act_body / host_hygiene_reap_stale_override_body / host_hygiene_reap_script_body). DISSOLVES WHEN bash-emit (issue 5828) realizes the reap effect as typed host-effect argv routed through host_effect_apply, retiring the raw shell_exec_via_bash transport this scaffold stands in for. Separate from host_hygiene_reap_unit_body_dissolution_trigger below (review 40975: one scaffold had bundled two independent dissolution triggers, so resolving this one alone must not silently read as resolving that one)."
 

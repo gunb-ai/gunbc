@@ -1,25 +1,5 @@
 module test.claim.gunbc_invoke_witness
 
-import gunbc.cli_invoke {
-  claim_executor_run_plan_shell,
-  claim_executor_run_plan_transport_argv,
-  claim_executor_verify_artifacts_shell,
-  source_roots_shell_flags,
-  SourceRootBare,
-  SourceRootRooted
-}
-import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
-import gunbc.ci_spec {
-  gunbc_ci_spec,
-  gunbc_ci_deploy_srv1_stage,
-  gunbc_ci_deploy_invoke,
-  scheduler_invoke,
-  ci_floor_build_verify_script,
-  ci_floor_required_artifact_names,
-  artifact_shell_path
-}
-import v2.std.collection { Absent, Present }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

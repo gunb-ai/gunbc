@@ -1,36 +1,5 @@
 module v2.compiler.self_host
 
-import extdeps.communication.medium { Lossless, Medium }
-import extdeps.filesystem.filesystem_io
-import v2.std.algebra { filter, fold_list }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  node_locus,
-  Outcome,
-  port_locus,
-  Rejected,
-  Unavailable,
-  diagnostics_singleton,
-  outcome_accepted
-}
-import v2.std.find_witness {
-  CandidateSet,
-  PreservationPredicate,
-  UniqueOnly,
-  find_witness,
-}
-import v2.std.node { combine_hash, Hash, Node, Symbol, symbol_identity_digest }
-import v2.std.text { String, string_is_empty }
-import v2.std.witness {
-  Holds,
-  StructuralPropertyWitness,
-  Violates,
-  Witness
-}
 
 type CoreNode = Node
 

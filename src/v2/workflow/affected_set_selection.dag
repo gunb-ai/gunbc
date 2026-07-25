@@ -1,26 +1,5 @@
 module v2.workflow.affected_set_selection
 
-import v2.std.logic { Bool }
-import v2.std.collection { List }
-import v2.std.change { AffectedSet }
-import v2.std.node { Node }
-import v2.std.verification {
-  TestClaim,
-  test_claim_evaluation_touches_rerun_frontier
-}
-import v2.lens.affected_set {
-  RerunNodeSet,
-  RerunNodeSetFailClosed,
-  RerunNodeSetProduced
-}
-import v2.std.probe_selector {
-  CiFailClosedPrior,
-  diagnostic_capability_ci_in_repo,
-  probe_ci_unbounded_budget,
-  probe_select_affected_test_claims,
-  probe_select_rerun_test_claims,
-  probe_select_test_claims
-}
 
 fn test_claim_in_rerun_frontier(claim: TestClaim, frontier: List<Node>) -> Bool {
   test_claim_evaluation_touches_rerun_frontier(c: claim, frontier: frontier)

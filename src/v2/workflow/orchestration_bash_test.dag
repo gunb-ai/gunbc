@@ -1,47 +1,5 @@
 module v2.workflow.orchestration_bash_test
 
-import v2.compiler.emit { emit }
-import v2.compiler.infer { InferredFacts, InferredTree }
-import extdeps.communication.medium { Medium }
-import v2.extdeps.languages.bash {
-  bash_word_pass_emitted,
-  bash_word_pass_target_model,
-  bash_stmt_env_prefixed_emitted,
-  bash_stmt_env_prefixed_target_model,
-  bash_stmt_env_unset_emitted,
-  bash_stmt_env_unset_target_model,
-  bash_stmt_if_emitted,
-  bash_stmt_if_target_model,
-  bash_stmt_andor_emitted,
-  bash_stmt_andor_target_model,
-  bash_stmt_assign_emitted
-}
-import v2.extdeps.languages.bash_orch_if {
-  bash_test_str_empty_emitted,
-  bash_test_str_empty_target_model,
-  bash_test_str_nonempty_emitted,
-  bash_test_str_nonempty_target_model,
-  bash_log_matches_grep_emitted,
-  bash_log_matches_grep_target_model
-}
-import v2.extdeps.languages.bash_orch_tier2 {
-  orch_cmdsubst_assign_target_model
-}
-import v2.std.collection { Map }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  None,
-  Outcome,
-  Rejected,
-  Unavailable,
-  node_locus
-}
-import v2.std.node { Node }
-import v2.std.witness { Violates, Witness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

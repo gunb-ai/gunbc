@@ -1,6 +1,5 @@
 module gunbc.site.constellation
 
-import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
 
 data constellation_note: String = "Layer 5: the hero figure — candidate B Asterism (design section 4e): the layer DAG (DESIGN.md section 3: std <- extdeps <- compiler <- workflow, imports point toward std) drawn as a constellation. The stars ARE the architecture facts; the brightest star is the authority layer every import arrow points toward. DerivedTruth: nothing here is free art — delete a layer row and its star is gone. HTML owns text (frontend DESIGN rule 5): star names live in the HTML legend; hovering a star answers in the LEGEND via :has() — counterpart-highlight, proof the two surfaces render one fact row."
 

@@ -1,11 +1,6 @@
 module extdeps.sec.types
 
-import std.types { Int, NonEmptyStr, String, List }
-import extdeps.vendor { Vendor }
-import extdeps.securities { Securities }
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

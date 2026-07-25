@@ -1,29 +1,5 @@
 module v2.std.runtime
 
-import v2.std.collection { List, Map, Optional, Present, optional_absent, optional_present }
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Unavailable,
-  node_locus,
-  outcome_rejected
-}
-import v2.std.algebra { fold_list, fold_list_node, algebra_empty_conj }
-import v2.std.logic { Bool }
-import v2.std.machine { Byte }
-import v2.std.model_core { ModelCore, PrimitiveOperationRef, ResourceAccess }
-import v2.std.node {
-  Atom,
-  Behavior,
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Symbol,
-  TypeNode,
-  node_synthetic
-}
 
 type RuntimeIdentity {
   identity: Symbol

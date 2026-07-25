@@ -1,12 +1,5 @@
 module test.claim.ssh_transport_witness
 
-import std.types { Bool, NonEmptyStr }
-import std.measure { byte_size_count }
-import gunbc.live_deploy.emit { live_deploy_apply_script_for }
-import gunbc.live_deploy.spec { deployment_spec_srv1 }
-import extdeps.os.exec_arg_limit { host_exec_arg_max_strlen }
-import extdeps.diagnostic.mock_corpus { diagnostic_ssh_session_mock_case_exec_script }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

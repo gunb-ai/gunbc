@@ -1,23 +1,5 @@
 module v2.test.claim_pipeline.resolve
 
-import v2.compiler.normalize { normalize }
-import v2.compiler.resolve { resolve }
-import v2.extdeps.languages.dag {
-  dag_language_model_void
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  CompilesClaim,
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data spine_resolve_module_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^spine_resolve_module } },

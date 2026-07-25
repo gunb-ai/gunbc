@@ -1,8 +1,5 @@
 module gunbc.plans.typescript_gap_census
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownBlock, ThematicBreak }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
 
 fn typescript_gap_census_body() -> List<MarkdownBlock> {
   [

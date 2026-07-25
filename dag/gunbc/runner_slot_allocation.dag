@@ -1,12 +1,5 @@
 module gunbc.runner_slot_allocation
 
-import std.types { Int, String, List, Bool }
-import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
-import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
-import gunbc.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural, floor_outcome_blocks_merge }
 
 type RunnerSlotLabels {
   github_labels: List<String>

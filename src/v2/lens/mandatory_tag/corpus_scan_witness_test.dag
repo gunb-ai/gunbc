@@ -1,15 +1,5 @@
 module v2.lens.mandatory_tag.corpus_scan_witness_test
 
-import v2.lens.mandatory_tag.corpus_scan {
-  corpus_anchor_facts,
-  corpus_live_clean_tree_holds,
-  corpus_live_roster_module_count,
-  extdeps_color_srgb_module,
-  extdeps_fixture_file_anchor_module,
-  extdeps_fixture_missing_anchor_module
-}
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

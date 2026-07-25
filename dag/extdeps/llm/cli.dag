@@ -1,14 +1,5 @@
 module extdeps.llm.cli
 
-import std.types { List, String, Int, Bool }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.languages.json.grammar {
-  JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
-  json_text_skip_ws,
-  json_text_starts_with_at,
-  json_text_parse_value,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

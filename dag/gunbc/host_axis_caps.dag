@@ -1,23 +1,5 @@
 module gunbc.host_axis_caps
 
-import std.types { String, NonEmptyStr, List, Bool, Int }
-import gunbc.ownership { Ownership, Owned, Ensured }
-import gunbc.membership_reconcile {
-  MembershipPlan,
-  membership_reconcile,
-  membership_effects,
-  EffectsOrRefusal,
-  EffectsReady,
-  ApplyRefused,
-  membership_upsert_count,
-  membership_teardown_count,
-  membership_refusal_count,
-}
-import gunbc.host_converge {
-  gunbc_runner_per_slot_dropin_path,
-  gunbc_runner_per_slot_swap_dropin_path,
-  gunbc_runner_per_slot_high_dropin_path,
-}
 
 data host_axis_caps_note: String = "PerSlotMemoryCap axis, closed vertically on the membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->Upsert, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> Owned; anything else -> a foreign occupant, Ensured), never stored, so a Removed foreign file yields MemberTeardownRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->Upsert of exactly the drifted row; foreign occupant = ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
 

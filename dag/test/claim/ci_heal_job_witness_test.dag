@@ -1,27 +1,5 @@
 module test.claim.ci_heal_job_witness
 
-import gunbc.ci_workflow {
-  ci_workflow,
-  ci_heal_generated_artifacts_job,
-  ci_build_job,
-  ci_job,
-  ci_heal_branch_ref_expr
-}
-import extdeps.languages.yaml.types {
-  YamlKeyValue, YamlValue,
-  YamlString, YamlNull, YamlBool, YamlInt, YamlFloat, YamlSequence, YamlMapping
-}
-import gunbc.ci_spec {
-  ci_heal_generated_artifact_regen_function,
-  ci_heal_generated_artifact_gate_entry,
-  gunbc_ci_heal_commit_push_script
-}
-import gunbc.generated_artifact { committed_generated_artifact_paths, CiYamlArtifact, artifact_path }
-import gunbc.ci_workflow_expressions { ci_regen_heal_if }
-import extdeps.github.actions {
-  Job, Workflow, WorkflowPermissions, PermissionLevel, PermWrite, PermRead,
-  Step, UsesStep, RunStep
-}
 
 data ci_heal_job_witness_note: String = "Green-by-execution proof that the CI auto-heal job is wired correctly, over the actual Job/Workflow model (not a grep). The load-bearing safety control is contents_write_is_scoped_to_heal_only: it reds if the contents:write grant leaks to the workflow default, or onto the build/ci jobs, or if the heal job loses it — pinning least privilege (DESIGN 5) by construction, so the whole-corpus ci floor can never run with a push-capable token. heal_job_needs_build_not_ci is the second discriminating control: the drift gate lives inside ci, so a heal re-pointed to needs:[ci] would be skipped exactly when a drift reds ci — this witness goes red on that regression. The remaining witnesses pin enrollment, the pull_request-ONLY guard (heal_job_runs_on_pr_only — the heal repairs drift on PR branches; main is NOT auto-healed, its ci drift gate reds instead, operator-directed 2026-07-23 'disable main pushes for now', so this witness reds if the excluded `push` arm returns), the scoped write, and the regen target (main_wet on the generated-artifact drift gate). heal_commit_scope_is_artifact_only (review 41703) is the third discriminating control: the unattended push stages EXACTLY registry paths and decides on the STAGED diff (git add over committed_generated_artifact_paths, then git diff --cached), never git add -A — so it reds if the shell regresses to whole-tree staging that could sweep incidental runner dirt into a push. heal_git_add_is_existence_guarded is the fourth: each git add is `[ -e ]`-guarded and echoes a counted skip for a registered-but-absent artifact (the #7121 FleetConvergeArtifact incident), so it reds if the shell regresses to an unconditional git add that would exit-128 the whole heal on one missing path. heal_push_targets_triggering_branch is the fifth: the push target is the branch-aware `HEAD:${{ github.head_ref || github.ref_name }}` and NOT the old hardcoded `HEAD:main`, so it reds if the heal regresses to pushing only to main (which would never repair a PR branch)."
 

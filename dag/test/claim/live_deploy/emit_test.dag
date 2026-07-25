@@ -1,54 +1,5 @@
 module test.claim.live_deploy.emit
 
-import std.types { Bool, String }
-import std.os.types { Apt }
-import gunbc.live_deploy.spec {
-  DeploymentSpec,
-  DeploymentDependencyStep,
-  TailscalePackage,
-  TmuxPackage,
-  deployment_spec_srv1,
-  deployment_plan_host_identity,
-  deployment_plan_listen_port,
-  deployment_owned_steps_retract_order,
-  deployment_tailnet_url,
-  gunbc_roadmap_unit_name,
-}
-import gunbc.live_deploy.emit {
-  expected_live_deploy_apply_script,
-  expected_live_deploy_retract_script,
-  live_deploy_systemd_unit_for,
-  live_deploy_tree_sync_unit_for,
-  deployment_ensure_dependency_script,
-  emit_deploy_teardown_dependency_refusal,
-  live_deploy_wholesale_refused_poison,
-  live_deploy_emit_shell_dissolution_trigger,
-  live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
-  live_deploy_intent_dependency_graph_emit_dissolution_trigger,
-}
-import gunbc.ci_deploy_access {
-  DeployAccessJobPrincipalRefusal,
-  deploy_access_job_principal_refused_emit_poison,
-}
-import gunbc.fleet_posix_accounts { DeployRunnerPrincipal }
-import v2.std.orchestration { Do, Run }
-import std.disposition { Scaffold, RealizationDispatch, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.generated_artifact {
-  LiveDeployApplyScriptArtifact,
-  LiveDeployRetractScriptArtifact,
-  artifact_path,
-}
-import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.roadmap_static_site {
-  roadmap_site_health_path,
-  roadmap_site_roadmap_url_path,
-  roadmap_site_dispatch_url_path,
-  roadmap_site_text_static_routes,
-  served_static_route_literal_path,
-}
-import extdeps.apt { package_tailscale, package_tmux }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

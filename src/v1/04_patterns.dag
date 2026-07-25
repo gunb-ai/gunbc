@@ -1,42 +1,10 @@
 module v1.compiler.infer_patterns
 
-import std.types { SourceSpan }
 
-import std.syntax { LiteralValue }
 
-import v1.std.core {
-  Node,
-  find_child_named, NewlineIndex, authored_name_at, generic_param_name_at,
-  ExprData, NoExprData,
-  InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
-  Cardinality, Required,
-  Connective, Disj, NoConnective,
-  CardOptional,
-  ErrorNode, make_error_node,
-  VariantNotFound, FieldNotFound, NonExhaustiveMatch,
-  MatchPattern, LitPattern, arm_pattern,
-  LitBool,
-  with_optional_cardinality,
-  none_type, error_type, no_span, kernel_span,
-  qualified_last_segment
-}
 
-import v1.compiler.infer_types {
-  child_type_node,
-  extract_optional_inner_node,
-  emit_map_has
-}
 
-import v1.compiler.infer_env {
-  TypeEnv,
-  lookup_type, lookup_type_by_name,
-  symbol_index_lookup
-}
 
-import v1.compiler.infer_resolve {
-  is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
-  substitute_type_slots_scoped
-}
 
 fn generic_use_slot_bindings(scrut_node: Node, env: TypeEnv) -> Map<String, Node> {
   let decl = resolve_generic_use_decl(env: env, n: scrut_node)

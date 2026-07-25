@@ -1,9 +1,5 @@
 module gunbc.auth.access_token_source
 
-import std.types { Secret }
-import std.resources { Network }
-import extdeps.shell
-import extdeps.cloud.gcp.gcp
 
 type AccessTokenSource
   = GcloudPrintToken

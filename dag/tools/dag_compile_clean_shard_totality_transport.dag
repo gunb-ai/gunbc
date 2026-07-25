@@ -1,9 +1,5 @@
 module tools.dag_compile_clean_shard_totality_transport
 
-import extdeps.shell
-import extdeps.git
-import tools.dag_compile_clean_partition { compile_clean_partition_boundary }
-import std.types { String, Bool, List }
 
 type LiveDagEntryGlobResult {
   success: Bool

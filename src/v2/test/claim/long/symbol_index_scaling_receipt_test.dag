@@ -1,9 +1,5 @@
 module v2.test.long.symbol_index_scaling_receipt
 
-import v2.lens.complexity_accumulator_copy.roster_gate { file_gate, file_suspect_count }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

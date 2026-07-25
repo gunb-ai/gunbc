@@ -1,15 +1,5 @@
 module gunbc.diff_baseline
 
-import std.types { String, GitRef }
-import std.logic { Bool }
-import extdeps.git { GitRemoteRefParts, git_remote_ref }
-import extdeps.github.actions {
-  github_event_name_pull_request,
-  github_event_name_push,
-  github_event_name_workflow_dispatch,
-  github_event_name_merge_group,
-  github_event_name_schedule
-}
 
 data diff_baseline_law: String = "DiffBaseline is the typed answer to 'what does the affected-set diff observe HEAD against?' — the de-fork of the origin/main policy-as-literal (DESIGN §3(c)). Three arms, no fourth default: MergeTarget (the PR's actual base, derived from the CI event's GITHUB_BASE_REF), PushParent (today's policy — the repo's default merge target, for push / workflow_dispatch / merge_group / schedule / the local-or-bootstrap window with no CI event; a merge_group queue run has no base ref and its tree diffs against the default branch, and the falsifier's scheduled cold-control steps that do not set GUNBC_CI_DIFF_BASE land here too — exactly the pre-de-fork behavior), OperatorOverride (the typed GUNBC_CI_DIFF_BASE arm, used by the falsifier's HEAD~20 cold control and manual runs). resolve_diff_baseline is PURE over the observed event facts (CiDiffEvent) so its arms are RED-testable without live git; the effectful env read lives in the caller (v2.workflow.floor_diff_observe.floor_observe_ci_diff_event)."
 

@@ -1,7 +1,5 @@
 module gunbc.repo_identity
 
-import std.types { String, GitRef }
-import extdeps.git { GitRemoteRefParts, git_remote_ref, default_remote }
 
 data repo_identity_authority_note: String = "The single authority for this repo's default-branch and default-remote facts (DESIGN §3). Before this carrier the merge-target ref origin/main was a String literal forked across four workflow sites (gunbc.ci_diff_defaults.ci_merge_base_ref, gunbc.roadmap_dispatch_actuator.dispatch_git_remote_ref, and — transitively — gunbc.ci_spec.diff_policy.base and gunbc.merge_admission_produce.merge_admission_merge_base_ref), the doctrine's own flagship policy-as-literal tell (§3(c): 'a literal it should receive as a parameter — origin/main...HEAD'). All four now read gunbc_merge_target_ref here; the branch name reads gunbc_default_branch_name (gunbc.ci_workflow Push/PullRequest branch filters and gunbc.merge_admission gunbc_repo_standard.default_branch). Perturbing gunbc_default_branch_name moves every consumer — the anti-fork oracle (ci_spec_witness_test.witness_repo_identity_single_authority_perturbation)."
 

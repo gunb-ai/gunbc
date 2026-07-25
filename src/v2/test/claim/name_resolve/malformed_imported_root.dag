@@ -1,32 +1,5 @@
 module v2.test.name_resolve.malformed_imported_root
 
-import v2.compiler.name_resolve {
-  AdmissionAccepted,
-  AdmissionRejected,
-  AdmissionState,
-  Import,
-  ImportVisible,
-  admit_import_entry
-}
-import v2.std.cross_tree.resolution { source_root_index_empty }
-import v2.extdeps.languages.dag {
-  dag_grammar_atom,
-  dag_named_edge
-}
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list_node }
-import v2.std.collection { empty_map }
-import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.qualified_name { QualifiedName }
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 fn malformed_pass_node() -> Node {
   Node { kind: TypeNode { connective: Atom { identity: ^malformed_pass_sym } }, children: [],

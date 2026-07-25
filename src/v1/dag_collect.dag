@@ -1,22 +1,7 @@
 module v1.compiler.dag_collect
 
-import v1.std.core {
-  Node,
-  InferredNode, Resolved,
-  ExprData,
-  Connective, NoConnective,
-  MatchPattern,
-  ErrorNode,
-  import_is_all
-}
 
-import v1.compiler.dag_collect_support {
-  DagCollectAcc, DagCollectSlot,
-  dag_collect_fp_memo_reset, dag_collect_pack_slots, dag_collect_slot_seq,
-  dag_node_surface_fingerprint, dag_node_surface_fingerprint_memo
-}
 
-import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 
 
 fn is_import_slot_node(n: Node) -> Bool {

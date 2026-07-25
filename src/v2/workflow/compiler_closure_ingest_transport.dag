@@ -1,19 +1,5 @@
 module v2.workflow.compiler_closure_ingest_transport
 
-import extdeps.shell
-import extdeps.git
-import extdeps.gunbc
-import gunbc.ci_layer_roots { witness_layer_roots }
-import std.logic { Bool }
-import tools.host_prelude {
-  ClaimRun,
-  WitnessBinReady,
-  WitnessBinRefused,
-  run_gunbc_claims,
-  witness_bin,
-  witness_bin_ensure_built_typed,
-  witness_bin_release_path
-}
 
 data closure_source_root: String = "src/v2"
 data closure_entry: String = "src/v2/compiler/00_compile.dag"

@@ -1,24 +1,5 @@
 module extdeps.languages.yaml.gha_workflow
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.languages.yaml.types {
-  YamlValue, YamlKeyValue,
-  yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence, kv,
-  empty_yaml_values
-}
-import extdeps.cron.schedule_model { render_cron_schedule }
-import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep, ActionRef,
-  WorkflowTrigger, Push, PullRequest, WorkflowDispatch, Schedule, MergeGroup,
-  PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed,
-  WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone,
-  ConcurrencySpec, ConcurrencyScalar, ConcurrencyMappingQueueMax, ConcurrencyMappingQueueNotMax,
-  CancelInProgressSpec, CancelInProgressBool, CancelInProgressExpression,
-  CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse, QueueMaxCancelInProgressExpression,
-  RunnerSpec, SelfHosted, RunsOnExpression, HostedRunner, RunnerLabel,
-  UbuntuLatest, ShellType, Bash
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

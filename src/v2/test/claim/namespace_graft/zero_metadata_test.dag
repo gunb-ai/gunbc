@@ -1,27 +1,5 @@
 module v2.test.claim.namespace_graft.zero_metadata_test
 
-import v2.extdeps.languages.dag {
-  dag_surface_module_header_metadata_edge
-}
-import v2.std.logic { Bool }
-import v2.compiler.namespace_graft {
-  module_header_containment_graft,
-  namespace_graft_is_metadata_edge,
-  namespace_graft_module_root_edge_disposition,
-  ModuleRootEdgeDissolve,
-  ModuleRootEdgeGraftBody,
-  ModuleRootEdgeRehomeProvenance
-}
-import v2.std.node { Atom, Named, Node, Symbol, SyntheticOccurrence, TypeNode }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data zero_metadata_note: String = "Witness for checklist add #1 remaining half: dag_surface_module_header_metadata_edge is the sole module-root metadata-edge predicate in tree today (no doc/pragma/provenance arms on module roots). Graft output must contain zero such edges — complement-based body collection dissolves only the two header arms; every other edge kind rides the graft by default."
 

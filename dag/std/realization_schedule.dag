@@ -1,13 +1,5 @@
 module std.realization_schedule
 
-import std.types { ContentHash, Bool, String, List, Int }
-import std.execution_mode { ExecutionMode, Hermetic, execution_mode_eq }
-import std.nat { Nat }
-import std.measure {
-  Measure, Time, ByteSize, Watt,
-  byte_size, byte_size_count, watt, time_measure, measure_count
-}
-import std.pareto { AxisGoal }
 
 type CostBasis
   = Predicted

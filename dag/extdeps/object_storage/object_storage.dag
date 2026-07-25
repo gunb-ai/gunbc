@@ -1,10 +1,5 @@
 module extdeps.object_storage
 
-import std.types { NonEmptyStr }
-import std.measure { ByteSize }
-import std.cache_interface { ConsistencyModel, PersistenceLocality, AtomicityModel, ValueShape }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

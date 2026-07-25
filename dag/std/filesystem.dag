@@ -1,8 +1,5 @@
 module std.filesystem
 
-import std.encoding { Encoding }
-import std.types { FilePath, MimeType }
-import std.filesystem.types { EntryKind, SymlinkTarget }
 
 type FileEntry {
   path: FilePath

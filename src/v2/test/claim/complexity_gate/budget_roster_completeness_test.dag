@@ -1,29 +1,5 @@
 module v2.test.complexity_gate.budget_roster_completeness
 
-import v2.lens.complexity {
-  ComplexityBound,
-  UnknownComplexity,
-  complexity_bound_dominates,
-  complexity_lens,
-  unknown_complexity
-}
-import v2.std.algebra { fold_list, is_empty, list_append }
-import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.witness { Holds }
-import v2.test.complexity_gate.table_fixture_add_subject_producer {
-  table_fixture_add_arrow_with_body
-}
-import v2.test.complexity_gate.lens_subject_body_supply {
-  lens_subject_arrow_body_for_budget_row
-}
-import v2.test.complexity_gate.subject_complexity_budget_roster {
-  LensSubjectComplexityBudgetRow,
-  complexity_declared_budget_for_row,
-  complexity_subject_budget_rows
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

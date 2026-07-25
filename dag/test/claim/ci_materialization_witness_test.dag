@@ -1,12 +1,5 @@
 module test.claim.ci_materialization_witness
 
-import std.types { Bool, String }
-import gunbc.ci_materialization { ci_catalog_projection_refusals }
-import gunbc.ci_materialization_gate {
-  ci_materialization_ladder_holds_live,
-  ci_materialization_holds_without_sccache,
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

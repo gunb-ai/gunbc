@@ -1,14 +1,5 @@
 module extdeps.sec.edgar_rest
 
-import std.types { NonEmptyStr, HttpMethod, AuthScheme }
-import extdeps.sec.edgar {
-  CompanyConceptResponse,
-  CompanyFactsResponse,
-  EdgarErrorEnvelope,
-  edgar_data_api_base,
-}
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

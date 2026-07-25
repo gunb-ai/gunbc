@@ -1,17 +1,5 @@
 module test.claim.site_accent_study_witness
 
-import gunbc.site.tokens { chroma_admissible, warm_starlight }
-import gunbc.site.starlight {
-  starlight_renders, study_candidates, m_render, g_render, signed_accent_render,
-  lit_variant, edge_variant, hue_is_green, no_green_starlight_projection,
-  candidates_admissible, renders_cover_classification, verdigris_patina, render_label,
-}
-import extdeps.astronomy.stellar_classification {
-  harvard_main_sequence_classes, no_green_stellar_class,
-  classes_hot_to_cool_by_floor, g_class, temperature_label,
-}
-import gunbc.site.accent_study { accent_study_html, accent_study_preconditions_hold }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

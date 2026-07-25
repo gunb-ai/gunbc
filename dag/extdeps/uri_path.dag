@@ -1,8 +1,5 @@
 module extdeps.uri_path
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import std.http_path { PathTemplate, UrlPathToken, LiteralToken, ParamToken, PathParamBinding }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

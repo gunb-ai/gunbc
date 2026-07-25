@@ -1,17 +1,5 @@
 module tools.rust_gates_ci
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.git
-import extdeps.cargo_build
-import extdeps.cargo_build { cargo_nextest_build_jobs_flag }
-import tools.rust_stage0_gates { should_run_gates }
-import gunbc.ci_spec {
-  gunbc_ci_spec,
-  DiffMergeBase,
-  DiffTwoDot,
-}
-import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
-import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_memory_max_live }
 
 fn rust_gate_build_jobs_args() -> List<String> {
   let jobs = ci_compile_jobs(

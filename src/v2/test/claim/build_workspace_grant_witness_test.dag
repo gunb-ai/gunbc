@@ -1,16 +1,5 @@
 module v2.test.claim.build_workspace_grant_witness
 
-import std.types { Bool, String, List }
-import std.effect_grant {
-  Read, Write, verb_eq,
-  NamespaceTree, FilesystemPathTree, UriTree,
-  NamespacePosition, position_under,
-  EffectAdmission, Admitted, EffectOutsideGrant, admit_effect,
-  Envelope,
-}
-import std.materialization_ladder { Frame, SharedStateFrame }
-import v2.compiler.build_workspace_grant { build_workspace_grant_envelope }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,52 +1,5 @@
 module gunbc.srv3_os_install_diagnostic
 
-import std.types { NonEmptyStr, Bool, Int, String, ContentHash, Milliseconds, List }
-import std.measure { ByteSize, byte_size, Millisecond }
-import std.disposition { Disposition, Terminal }
-import extdeps.bmc.types {
-  RedfishPowerState,
-  RedfishBootSourceOverrideTarget,
-  RedfishBootSourceOverrideEnabled,
-  BootTargetCd,
-  BootTargetNone,
-  BootOverrideOnce,
-  BootOverrideDisabled,
-  On,
-  Off,
-}
-import extdeps.bmc.webui.nbd_proxy {
-  VmSlotIndexEndpoint,
-  bmcweb_nbd_proxy_ws_path,
-}
-import extdeps.boards.asrock_rack {
-  asrock_srv3_live_bmc_host,
-  asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
-}
-import extdeps.dhcp.v4 {
-  DhcpLeaseObservation,
-  DynamicDhcpLease,
-  StaticDhcpReservation,
-  Active,
-}
-import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseTable }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
-import gunbc.network_identity_subsumption {
-  network_identity_subsumes_fleet_slot,
-  lease_table_has_os_up_subsumption,
-  srv3_pre_install_lease_table,
-  srv3_post_install_lease_table_fixture,
-  srv3_bmc_static_lease_row,
-}
-import gunbc.srv3_os_install_actuate_scope { srv3_actuator_virtual_media_iso_install_path }
-import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_content_hash }
-import product.placement_supply { HostIdentity }
-import gunbc.srv3_actuate_shell_paths {
-  srv3_bmcweb_token_path,
-  srv3_sol_console_log_path,
-}
-import gunbc.srv3_install_diagnostic_observe_script {
-  srv3_install_diagnostic_observe_script,
-}
 
 data srv3_nbd_proxy_local_port: Int = 10809
 

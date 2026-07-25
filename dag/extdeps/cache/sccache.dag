@@ -1,36 +1,6 @@
 module extdeps.cache.sccache
 
-import extdeps.cache.types {
-  CacheInterfaceCatalogFacts,
-  NativeInternal,
-  RustcInvocation,
-  ToolchainSpec,
-  SccacheInternalEncoding,
-}
-import std.cache_identity { CacheInterfaceId }
-import extdeps.crypto.hash { Digest, sha256_digest, digest_shell_verify_line }
-import std.cache_interface {
-  NativeInternalLookup,
-  OverwriteAllowed,
-  WriteThenRename,
-  MissThenCreate,
-  RawBytes,
-  PerHostFilesystem,
-  Lru,
-  FilesystemPerms,
-  LocalDiskUs,
-  ReadYourWrites,
-  VendorCitation,
-  RunnerObserved,
-  ManualPurge,
-  ToolchainChange,
-  Org,
-}
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import std.types { NonEmptyStr, String, List }
-import extdeps.toolchain.types { ToolchainCapability, SharedHomeAcrossJobs, CtrlBuild }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

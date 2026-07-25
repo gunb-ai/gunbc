@@ -1,17 +1,5 @@
 module gunbc.ci_deploy_target_host
 
-import std.types { String, NonEmptyStr, Bool, List }
-import std.access { AccessDecision, Permit, Deny }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.shell
-import gunbc.hostname_read { hostname_short_read_local }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1 }
-import gunbc.ci_fleet { srv1_offer, ComputeOffer }
-import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
-import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import extdeps.github.actions { RunnerSpec, SelfHosted }
 
 type DeployTargetHostProof
   = RunnerIdentityOnHost { host: HostIdentity }

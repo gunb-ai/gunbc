@@ -1,26 +1,6 @@
 module extdeps.cache.materialization
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
-import std.types { Bool, Int, List, String }
-import std.cache_identity { CacheInterfaceId }
-import std.cache_interface {
-  EvictionPolicy, Ttl, Lru, SizeBounded, Never, Manual,
-  PersistenceLocality, InProcess, PerRunnerFilesystem, PerHostFilesystem, CrossHostNetwork
-}
-import std.materialization_ladder {
-  CacheProvider, CacheCoverage, Frame,
-  ProviderTier, MemoTier, ArtifactTier, CasTier,
-  CacheKeying, ContentKeyed, ExistenceKeyed,
-  provider_row, scope_exit_eviction, space_packed_eviction
-}
-import extdeps.cache.types {
-  CacheInterfaceCatalogFacts,
-  CatalogKeyDerivationFacts,
-  CatalogKeyInputs, ContentAddressed, NativeInternal, HandAuthored
-}
-import extdeps.cache.catalog_placement { CacheInterfaceCatalogPlacement }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,52 +1,10 @@
 module v1.compiler.infer_resolve
 
-import std.types { SourceSpan, container_param_name }
 
-import std.syntax { LiteralValue }
 
-import v1.std.core {
-  Node,
-  authored_name_at, NewlineIndex,
-  make_param_node, make_resolved_param_node, param_node_name_at, param_node_type_expr, param_node_default_value,
-  generic_param_name_at,
-  make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
-  InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
-  ErrorNode, make_error_node,
-  InternalError, ArityMismatch, UnresolvedType, UnlistedImportUse,
-  Cardinality, Required,
-  StringPart, Text, Interpolation,
-  MatchPattern, Wildcard,
-  ExprData, NoExprData,
-  ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
-  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
-  ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
-  ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
-  ExprErrorKind, SemanticExprError,
-  LitInt,
-  make_expr_node, make_named_expr_node, make_expr_error_node, map_children,
-  expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at,
-  make_arg_node, arg_name_at, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_resource_use_node, resource_use_name_at, resource_use_resource, make_text_part_node, make_interp_part_node,
-  make_transport_node, local_transport_node,
-  is_local_transport, transport_request_body,
-  is_kernel_type, is_container_type,
-  with_optional_cardinality, with_required_cardinality,
-  Connective, Conj, Disj, NoConnective,
-  CardOptional, no_span,
-  unit_type, string_type,
-  default_ident_span, kernel_span, node_name_span, intern,
-  qualified_last_segment
-}
 
-import v1.compiler.infer_types {
-  resolved_type, child_type_node, is_type_expr_annotation, node_is_keyed_collection, is_declared_container_alias_spelling
-}
 
-import std.induction { SubValueUnknown }
 
-import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
-  env_with_type_variable_bindings, bare_name_miss_diagnostic
-}
 
 fn is_unit_variant_node(variant: Node) -> Bool {
   (variant.children |> count) == 0

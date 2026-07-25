@@ -1,10 +1,5 @@
 module test.claim.self_host_03_normalize_behavioral_witness
 
-import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
-import tools.self_host_03_normalize_declared_source_refs { declared_source_refs }
-import v2.std.algebra { length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

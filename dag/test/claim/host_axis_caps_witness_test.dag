@@ -1,21 +1,5 @@
 module test.claim.host_axis_caps
 
-import std.logic { Bool }
-import std.types { NonEmptyStr, String, List, list_length }
-import gunbc.host_axis_caps {
-  CapMember,
-  desired_cap_member,
-  cap_dropin_content,
-  caps_effects,
-  caps_upsert_count,
-  caps_teardown_count,
-  caps_refusal_count,
-}
-import gunbc.membership_reconcile { EffectsReady, ApplyRefused }
-import gunbc.host_converge {
-  gunbc_runner_per_slot_dropin_path,
-  gunbc_runner_per_slot_swap_dropin_path,
-}
 
 data path20: NonEmptyStr = gunbc_runner_per_slot_dropin_path as NonEmptyStr
 data path30: NonEmptyStr = gunbc_runner_per_slot_swap_dropin_path as NonEmptyStr

@@ -1,59 +1,5 @@
 module gunbc.live_deploy.readiness
 
-import std.types { String, Bool, Int, NonEmptyStr }
-import std.realization_reconcile {
-  ShowEffectiveRead,
-  ReadObserved,
-  ReadAbsent,
-  Grounding,
-  Grounds,
-  DoesNotGround,
-  Reconciliation,
-  Converged,
-  NotConverged,
-  reconcile_grounded,
-  reconciliation_converged,
-}
-import gunbc.live_deploy.service_ready {
-  ServiceNotReady,
-  service_not_ready_reason,
-  service_not_ready_with_captured_diagnosis,
-  live_deploy_service_ready_poll_bound,
-  live_deploy_service_ready_poll_cadence,
-  live_deploy_service_ready_poll_max_attempts,
-  live_deploy_service_ready_unit_authority,
-  live_deploy_service_ready_endpoint_authority,
-  UnitDiagnosis,
-  UnitDiagnosisUnavailable,
-  UnitDiagnosisCaptured,
-}
-import gunbc.live_deploy.intent {
-  live_deploy_health_probe_curl_command,
-  live_deploy_health_url_for_port,
-  live_deploy_unit_diagnosis_command,
-}
-import gunbc.roadmap_site_healthz_validate { roadmap_site_healthz_json_string_parses }
-import gunbc.live_deploy.spec {
-  DeploymentSpec,
-  deployment_spec_srv1,
-  deployment_plan_listen_port,
-}
-import gunbc.ci_deploy_access {
-  DeployAccess,
-  ci_deploy_srv1_access,
-}
-import gunbc.host_effect {
-  ShellCommand,
-  HostOs,
-  host_effect_read_evidence,
-  HostEffectTransport,
-  HostEffectIntent,
-  HostEffectEvidence,
-  ShellEffectApplied,
-  ConvergePlanApplied,
-}
-import gunbc.host_effect_realize { host_effect_apply_gated }
-import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 
 type ServiceReadyEvidence {
   body: String

@@ -1,6 +1,5 @@
 module extdeps.uri
 
-import std.types { NonEmptyStr }
 
 type UriScheme
   = Http

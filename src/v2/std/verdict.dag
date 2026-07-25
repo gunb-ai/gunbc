@@ -1,12 +1,5 @@
 module v2.std.verdict
 
-import std.algebra { Monoid }
-import v2.std.algebra { is_empty }
-import v2.std.collection { List, Optional, Absent }
-import v2.std.diagnostic { Diagnostic, Outcome }
-import v2.std.nat { Nat, Succ, Zero, nat_add }
-import v2.std.test_claim_falsification { FalsificationReceipt }
-import v2.std.logic { Bool }
 
 type Verdict<Subj, T>
   = Pass

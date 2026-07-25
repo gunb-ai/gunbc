@@ -1,17 +1,5 @@
 module v2.test.claim.realize_advisory_soundness_test
 
-import v2.workflow.realize_advisory_soundness {
-  AdvisoryObservation,
-  AdvisorySoundness,
-  BoundSound,
-  BoundUnsound,
-  BoundUnknown,
-  advisory_soundness_for,
-  advisory_observation_is_sound,
-  advisory_window_all_sound
-}
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 fn obs(known: Bool, derived: Int, observed: Int) -> AdvisoryObservation {
   AdvisoryObservation {

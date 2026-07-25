@@ -1,25 +1,5 @@
 module v2.workflow.orchestration_tier2_emit_test
 
-import v2.compiler.emit_orchestration {
-  orch_emit_step,
-  orch_emit_procedure
-}
-import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
-import v2.std.orchestration {
-  PipelineStep,
-  Let,
-  Call,
-  If,
-  Pipeline,
-  FailFast,
-  Procedure,
-  ExprLit,
-  ExprCmdSubst,
-  StrEmpty
-}
-import v2.std.collection { Absent }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

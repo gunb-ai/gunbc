@@ -1,6 +1,5 @@
 module std.content_hash
 
-import std.types { ContentHash, NonEmptyStr }
 
 fn content_hash_atom(value: NonEmptyStr) -> ContentHash {
   atom_identity_hash(value)

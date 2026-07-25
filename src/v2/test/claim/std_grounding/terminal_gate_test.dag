@@ -1,35 +1,6 @@
 module v2.test.std_grounding.terminal_gate
 
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.collection { List }
-import v2.std.machine { Byte }
-import v2.std.diagnostic { Accepted, None }
-import v2.std.witness { Holds }
-import v2.std.host_run {
-  BuildLog,
-  EmitHostRunReceipt,
-  ExitOk,
-  HostExit,
-  HostLogicalRun,
-  HostRunStdout
-}
-import v2.std.verdict { verdict_tally_empty }
-import v2.std.grounding {
-  AuthoringTimeVerdictSurface,
-  HostVerdictSurfaceExecutionStatus,
-  PerTargetTestClaimReceipt,
-  RuntimeVerdicts,
-  host_verdict_surface_runtime_authoritative
-}
-import v2.extdeps.languages.rust { rust_target_model }
 
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn terminal_gate_empty_bytes() -> List<Byte> {

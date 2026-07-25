@@ -1,19 +1,5 @@
 module test.claim.effect_grant_witness_test
 
-import std.types { Bool, String, List }
-import std.effects { ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect, PostAlways, PathParam }
-import std.materialization_ladder { Frame, SharedStateFrame }
-import std.effect_grant {
-  Verb, Read, Write, Execute, verb_of_effect_shape, verb_eq,
-  NamespaceTree, FilesystemPathTree, UriTree, ServiceOpTree,
-  NamespacePosition, position_under, filesystem_position,
-  HandlerBinding, RealTransport, Replay,
-  LifecycleGrade, LifecycleByConstruction, LifecycleByConvention,
-  Grant, Envelope,
-  EffectAdmission, Admitted, EffectOutsideGrant, admit_effect,
-  envelope_bounded_by,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,20 +1,6 @@
 module extdeps.sec.issuer.chemed_facts
 
-import extdeps.sec.facts {
-  FiledFactCitation,
-  FiledMonetaryFact,
-  usd_whole_dollars,
-}
-import extdeps.sec.types { AnnualReport }
-import extdeps.sec.us_gaap {
-  us_gaap_cost_of_goods_and_services_sold,
-  us_gaap_operating_income_loss,
-  us_gaap_revenues,
-  us_gaap_selling_general_and_administrative_expense,
-}
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

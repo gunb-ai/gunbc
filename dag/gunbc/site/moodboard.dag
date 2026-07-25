@@ -1,38 +1,5 @@
 module gunbc.site.moodboard
 
-import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
-import gunbc.site.markup { txt, el, el_class }
-import std.types { NonEmptyStr }
-import std.content_hash { content_hash_atom }
-import extdeps.languages.css.properties { Cursor }
-import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
-import gunbc.design.principles {
-  RegisterPrinciple, register_principles, register_thesis, principle_id_key,
-}
-import gunbc.design.theme {
-  Theme, ThemeRole, RoleAssignment, site_themes, theme_roles, night_theme, day_theme,
-  themes_coherent, theme_root_css, assignment_paint, role_key, role_eq, role_var,
-  CanvasRole, role_decl,
-}
-import gunbc.design.material {
-  TimingToken, timing_scale, respond_fast, reveal_deliberate,
-  BuildRule, StaticRule, MotionTrigger, OnHover, SelfResponse,
-  TriggerShape, CssDecl, decl, serialize_rules, reduced_motion_block,
-}
-import gunbc.site.tokens {
-  ResponseRule, WithinSubject, ContainerHas, OnFocusVisible,
-  SurfaceRole, BorderRole, TextRole, TextDimRole,
-  FigureRole, FigureLitRole, FigureEdgeRole, FocusRole, BoundaryRole,
-}
-import gunbc.design.interaction {
-  BehaviorRow, InteractiveElement,
-  Approach, Enter, Receipt, Reveal, Brighten,
-  StarElement, HashElement, SwatchElement, element_id_eq,
-  coverage_gaps, verb_key, response_key,
-}
-import gunbc.site.mark { render_mark, mark_nodes, mark_edges, all_forks_rejoin }
-import gunbc.site.constellation { constellation_figure, layer_stars, LayerStar }
-import gunbc.site.theme_transition { reframe_css, reframe_watcher_js, unthemed_color_decls }
 
 data moodboard_note: String = "Layer 6: the page. Everything visible projects from the layers below — principles (laws) -> tokens (themes/materials/timing) -> interaction (behavior rows) -> mark / constellation (figures) -> this composition. Every color routes through a theme role var: :root carries the night theme, one prefers-color-scheme media block carries the day theme, both derived from the same Theme rows (one rule set, N themes — a hardcoded hsl in a page rule is the fork this construction removes). The stylesheet is DERIVED from the behavior rows via realize_behavior, so a declared behavior with no realization is countable."
 

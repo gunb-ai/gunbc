@@ -1,45 +1,5 @@
 module test.claim.live_deploy.apply
 
-import gunbc.live_deploy.apply {
-  live_deploy_apply_readiness_gate_with_readiness,
-}
-import gunbc.roadmap_static_site {
-  roadmap_site_digest_readback_script,
-  roadmap_site_roadmap_url_path,
-  roadmap_site_dispatch_url_path,
-}
-import gunbc.live_deploy.spec { deployment_plan_listen_port }
-import gunbc.live_deploy.readiness {
-  service_ready_apply_effect,
-  ServiceReadyApplyEffect,
-  ServiceReadyEvidence,
-}
-import gunbc.live_deploy.service_ready {
-  service_not_ready_reason,
-  ServiceNotReady,
-  live_deploy_service_ready_poll_bound,
-  live_deploy_service_ready_unit_authority,
-  live_deploy_service_ready_endpoint_authority,
-  UnitDiagnosisUnavailable,
-}
-import gunbc.host_effect {
-  ShellCommand,
-  HostOs,
-  host_effect_identity_evidence,
-  LocalShell,
-  HostEffectIntent,
-  HostEffectEvidence,
-  ShellEffectApplied,
-}
-import gunbc.live_deploy.spec { deployment_spec_srv1 }
-import gunbc.fleet_intent { srv1_host }
-import std.realization_reconcile {
-  Reconciliation,
-  reconciliation_converged,
-  Converged,
-  NotConverged,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,17 +1,6 @@
 module v2.test.workflow.host_source_root_ingest_manifest
 
-import v2.compiler.name_resolve {
-  Admission,
-  ResolutionSubject,
-}
-import v2.compiler.source_authority {
-  SourceRootIngest,
-  SourceRootManifestAbsent,
-  SourceRootProvenanceCoverageReceipt,
-}
-import std.algebra { Cons, Empty }
 
-import v2.std.text { String }
 
 data host_source_root_ingest_content_hash: String = ""
 

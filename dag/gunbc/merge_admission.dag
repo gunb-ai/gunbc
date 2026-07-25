@@ -1,31 +1,5 @@
 module gunbc.merge_admission
 
-import std.types { ContentHash, CommitSha, String, List, Bool, Int }
-import extdeps.github.checks {
-  CheckConclusion,
-  check_conclusion_is_success,
-  Success, Failure, Cancelled, Skipped, Stale, Neutral, TimedOut, ActionRequired,
-}
-import gunbc.commit_workflow {
-  commit_gate_roster,
-  CommitCheckEnrollment, CommitCheckKind,
-  CommitSpecGate, CommitWitnessClaim, CommitCargoFmtCheck,
-}
-import std.realization_schedule {
-  WitnessKind, CorpusWitnessKind, ExecutionWitnessKind,
-  WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams,
-}
-import gunbc.ci_gate {
-  Gate,
-  EmitHostGate, CheapClaimPoolGate, LayeringImportsGate,
-  ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate,
-  SelfHostReadsRealBytesGate, SelfHostStalenessGate,
-}
-import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.repo_identity { gunbc_default_branch_name }
 
 type MergeStrategy
   = SquashMerge

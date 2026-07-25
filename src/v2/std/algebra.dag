@@ -1,30 +1,5 @@
 module v2.std.algebra
 
-import v2.std.node { Atom, Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-import std.algebra {
-  AbelianGroup,
-  BooleanAlgebra,
-  BoundedLattice,
-  CommutativeMonoid,
-  CommutativeSemiring,
-  Cons,
-  Empty,
-  Equal,
-  Field,
-  FreeMonoid,
-  Greater,
-  Group,
-  Lattice,
-  Less,
-  Magma,
-  Monoid,
-  OrderedRing,
-  Ordering,
-  PointwisePower,
-  Ring,
-  Semigroup,
-  Semiring,
-}
 
 type ApproximateField<T> {
   add: fn(T, T) -> T

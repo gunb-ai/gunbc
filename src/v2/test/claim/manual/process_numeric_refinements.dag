@@ -1,29 +1,5 @@
 module v2.test.manual.process_numeric_refinements
 
-import v2.extdeps.posix {
-  make_exit_code,
-  make_process_id,
-  make_signal_num
-}
-import v2.std.diagnostic {
-  Accepted,
-  Rejected,
-  node_locus
-}
-import v2.std.node { Node }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  ManualAnchorAbsent,
-  manual_claim_anchor
-}
-import v2.test.manual.connective_anchors {
-  stub_empty_conj,
-  stub_empty_disj
-}
 
 fn witness_exit_code_256_rejects() -> Bool {
   match make_exit_code(value: 256, at: node_locus(node: stub_empty_conj)) {

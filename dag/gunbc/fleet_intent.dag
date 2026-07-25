@@ -1,40 +1,5 @@
 module gunbc.fleet_intent
 
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
-import extdeps.storage.samsung { samsung_970_evo_plus_2tb_catalog, samsung_970_evo_500gb_catalog }
-import extdeps.storage.types {
-  StorageDevice,
-  nvme_storage_device,
-  PersistenceKind,
-  Persistent,
-  StorageMedium,
-}
-import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
-import extdeps.cpu { cpu_facts_threads, cpu_facts_sustained_per_thread_hz }
-import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
-import extdeps.memory.types { MemoryKind, Dram, HostMemoryPopulation, MemoryPopulationRow }
-import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog, hma82gr7afr8n_vk_catalog }
-import extdeps.memory { memory_population_row_bytes, host_memory_population_nominal_bytes }
-import extdeps.gpu.types { GpuFacts, AcceleratorFacts, GpuRuntime }
-import extdeps.toolchain.types { ToolchainCapability }
-import extdeps.cache.sccache { sccache_toolchain_capability }
-import product.network_topology { NetworkLocality, NetworkInterface, NetworkAddressability }
-import product.placement_supply { HostIdentity }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.baseboard { ServerBaseboard }
-import std.bmc { BmcEndpoint, Redfish }
-import std.credentials { CredentialFlow, Stored }
-import std.measure { hertz, ByteSize, byte_size, byte_size_count, Bandwidth, HardwareThreadCount, hardware_thread_count_value, Nano, measure_count }
-import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
-import std.types { List, NonEmptyStr, Bool, Int, String }
-import std.verification { NanosecondDuration, nanosecond_duration }
-import std.realization_schedule { CostAccount }
-import std.realization_measurement { cost_account_measured_from_time_and_space, space_measure_list_seq }
-import std.nat { Nat }
-import std.float { Float }
 
 type IsolationBoundary = SharedHostHome | PerJobFilesystem | ContainerHermetic | Vm
 type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun

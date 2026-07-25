@@ -1,31 +1,5 @@
 module v2.compiler.self_host.witness_entry_eligibility_census
 
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.witness_execution_routing {
-  WitnessExecutionDisposition,
-  NativeRouted,
-  InterpretedRetained,
-  EmitIneligible,
-  BulkFlipPendingCensusIncomplete,
-  HostFedCeiling,
-  EmitOnDemandFamilyGrain,
-  RetainedPendingLongLane,
-  RetainedPendingOfflineRecipe,
-  RetainedReadsLiveTreeCarrier,
-  HostEffectTransportMissing,
-  ReadsLiveTreeCarrier,
-  EvalBudgetExceeded,
-  EmitAssembleRefuse,
-  ImportClosureCargoRefuse,
-  NamespaceQualifiedRustEmit,
-  TypeRefImportMissing,
-  ClosureNameCollision,
-  LongLaneScheduled,
-  OfflineLocalRecipe,
-  CensusPending,
-  EmitIneligibleUnknown
-}
 
 data witness_entry_eligibility_census_note: String = "Entry-grain eligibility classification (ROADMAP 2a Lane B): the rules that say how a floor-discovery witness entry (`*_test.dag` with test fn/data under witness_layer_roots) is dispositioned and which execution leg its receipt names. These fns ARE the census — there is no committed carrier. Disposition/reason/execution_leg are pure functions of the entry path, so claim_executor evaluates census_execution_leg_label here at run time (cli_run witness_execution_leg_label, fail-closed); the former docs/probes TSV + histogram, their emit transport, the hand-synced entry-count pin and the regen script were a materialized cache of these same rules — four copies of one fact that drifted between regens (§2/§3) — and were deleted 2026-07-23 (operator ruling: do not maintain a file for what a program can compute). INTERIM path-grain classifier (reviews 41767/41768): census_* fns are bounded substring rules until bulk-flip derives rows from module_graph Derived Group membership (dissolve-on). EmitOnDemandFamilyGrain matches emit_on_demand* plus execution/emit_host* (witness_bulk_routing sample: emit_host_add_equals_eval_test.dag) — NOT emit_host_gate* smoke rows. Disposition/reason/execution_leg project from these fns only (cli_run must not fork rules). Dissolve-on: witness_bulk_routing roster totality + module_graph closure membership."
 

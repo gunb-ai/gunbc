@@ -1,21 +1,5 @@
 module test.claim.roadmap_model
 
-import gunbc.roadmap_status {
-  RoadmapItem, DerivableLine, AuthoredLine,
-  DriftVerdict, Drifted, Clean, Underivable,
-}
-import gunbc.roadmap_model {
-  RoadmapNodeId,
-  Pointer,
-  RoadmapNode, RoadmapEdge,
-  RoadmapParent, TopLevel, UnderParent,
-  NodeSizing, Unsized,
-  roadmap_parent, is_top_level,
-  node_carrier_clean,
-  node_status_drift,
-}
-import gunbc.roadmap_status { Signoff, Unsigned }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

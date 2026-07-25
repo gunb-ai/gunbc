@@ -1,23 +1,5 @@
 module test.claim.srv3_host_effect_realize_witness
 
-import std.logic { Bool }
-import gunbc.host_effect {
-  Srv3InstallDiagnosticObserve,
-  OsInstallActuatorToolchainEnsure,
-  HostOs,
-  BmcController,
-  host_effect_read_evidence,
-  host_effect_identity_evidence,
-  LocalShell,
-  EmitArtifactThenThinRun,
-  BootstrapFragment,
-  ThinInvocation,
-}
-import gunbc.host_effect_realize { host_effect_apply }
-import gunbc.srv3_os_install_diagnostic { srv3_os_install_attempt_intent }
-import gunbc.fleet_intent { srv1_host }
-import std.realization_reconcile { NotConverged }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,15 +1,5 @@
 module v2.workflow.locality_affinity
 
-import std.machine_shape { ExecutionDomain, LevelId, MemoryLevel }
-import std.measure { ByteSize, byte_size, measure_add, measure_le }
-import std.types { ContentHash, Int }
-import v2.std.algebra { any, length }
-import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
-import v2.std.dependency { DependencyView }
-import v2.std.logic { Bool }
-import v2.std.materialize { hashes_contain }
-import v2.std.node { content_hash }
-import v2.workflow.operand_flow { OperandFlow, OperandFlowRefused, OperandFlowRefusalCause, OperandFlowRow }
 
 fn list_add_distinct_hash(xs: List<ContentHash>, v: ContentHash) -> List<ContentHash> {
   if hashes_contain(hs: xs, h: v) { xs } else { concat(xs, [v]) }

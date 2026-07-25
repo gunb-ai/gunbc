@@ -1,9 +1,5 @@
 module extdeps.bootloader.grub
 
-import std.types { NonEmptyStr, String, Int, List, Seconds }
-import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, kernel_cmdline_arg_wire }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,15 +1,5 @@
 module gunbc.local_tidy_spec
 
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.commit_workflow {
-  LocalTidyCheck, LocalTidyWitnessCheck, LocalTidyCargoFmtCheck,
-  commit_gate_roster,
-  project_local_tidy_checks,
-  doc_reachability_witness_entry
-}
-import tools.rust_stage0_gates { rust_monolith_suffixes, path_is_rust_monolith }
 
 data local_tidy_checks: List<LocalTidyCheck> = project_local_tidy_checks(roster: commit_gate_roster)
 

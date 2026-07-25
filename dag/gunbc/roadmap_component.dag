@@ -1,26 +1,5 @@
 module gunbc.roadmap_component
 
-import std.types { Int, String, Bool }
-import extdeps.languages.css.values { CssLength, css_ch, css_length_wire }
-import gunbc.design.component {
-  Component, ComponentState, ComponentStateKind,
-  IdleState, RequestedState, TerminalState,
-  component_wire_total, labels_missing_state, states_missing_label,
-  component_terminal_states, component_drop_state,
-}
-import gunbc.design.theme {
-  ThemeRole, TextRole, TextDimRole, FigureRole, SurfaceRole, BorderRole, BoundaryRole, FocusRole,
-}
-import gunbc.design.interaction { DispatchBtnElement, Approach, Dispatch }
-import gunbc.roadmap_belt_actuate {
-  belt_dispatch_all_status_labels, belt_dispatch_label_is_ok,
-  belt_dispatch_ok_status_labels, belt_dispatch_path_prefix,
-}
-import extdeps.languages.typescript.program {
-  TsProgram, TsExpr, TsStmt, serialize_typescript_program,
-  ts_ident, ts_lit_str, ts_member, ts_call, ts_binop, ts_arrow, ts_block,
-  ts_const, ts_expr_stmt, ts_if, ts_cond, ts_prefix, ts_object, ts_field,
-}
 
 data roadmap_component_note: String = "The DispatchButton — the first instantiation of the component concept (gunbc.design.component), and the second consumer that unlocks the archetype library's component axis. It lives HERE, one layer above the register, because it binds the belt wire vocabulary: its terminal states are DERIVED from belt_dispatch_all_status_labels (the grounded label set), never a hand enum, so the state totality is a projection of the served contract — the exact thing the dispatch-button incident needed (the button's states cannot drift from what belt B answers). Role/material binding follows the ok/refusal split of the wire authority: an ok terminal (spawned/already_live) reads through the figure role (the lit/accent material, the same the progress bar uses); a refusal terminal reads through the boundary role (clay — the warning material, never brass-as-text). idle reads text, requested reads text-dim (the in-flight hush). P3 renders these rows as chips + reserved widths; P4 galleries them; here they are just the modeled rows."
 

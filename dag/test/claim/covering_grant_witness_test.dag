@@ -1,14 +1,5 @@
 module test.claim.covering_grant_witness_test
 
-import std.types { Bool, String, List }
-import std.effect_grant {
-  Grant, Envelope, NamespacePosition, filesystem_position,
-  Read, Write, RealTransport, Replay,
-  LifecycleByConvention,
-  CoveringGrant, CoveredBy, NoCoveringGrant, covering_grant,
-  EffectAdmission, Admitted, EffectOutsideGrant, admit_effect,
-}
-import std.materialization_ladder { Frame, SharedStateFrame }
 
 data covering_grant_witness_note: String = "Discriminating witnesses for covering_grant (the P-C per-grant-binding primitive) and for admit_effect being its reach projection. An envelope carries a Read grant bound RealTransport under repo and a Write grant bound Replay (carrying a fixture_store) under scratch. covering_grant returns the COVERING grant so dispatch can read its binding: the Read target resolves to the RealTransport grant, the Write target to the Replay grant carrying its own fixture_store -- the per-grant selector that supplants the process-global ExecutionMode. An uncovered target is a located NoCoveringGrant (fail-closed). admit_effect is unchanged behaviorally (Admitted via the covering root; EffectOutsideGrant when none covers) -- proving the primitive/projection refactor preserves the reach wall by execution."
 

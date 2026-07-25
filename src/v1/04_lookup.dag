@@ -1,62 +1,13 @@
 module v1.compiler.infer_lookup
 
-import std.induction { SubValueRelation }
 
-import v1.std.core {
-  Node, param_node_type_expr,
-  authored_name_at, NewlineIndex, find_child_named, has_child_named,
-  InferredNode, Resolved, TypeVariable,
-  Cardinality, Required,
-  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
-  FieldAccessStyle, OptionalUnwrap,
-  FieldValueShape, PlainValue, OptionalValue,
-  FieldSummary,
-  with_optional_cardinality, with_required_cardinality,
-  Connective, Conj, Disj, NoConnective,
-  ErrorNode,
 
-  CardOptional,
-  error_type
-}
 
-import std.algebra {
-  CollectionSizeEffect, CostShape, AlgebraFieldTemplate,
-  AlgebraTypeTemplate, ReceiverSelf, ContainerOf, ContainerSource, SameAsReceiver, Named,
-  kernel_algebra_profile, algebra_templates_for_profile, algebra_method_template_name
-}
 
-import v1.compiler.infer_types {
-  child_type_node,
-  make_container_type,
-  nominal_type_ref,
-  normalize_access_type_node, node_is_keyed_collection, node_is_set_collection,
-  method_receiver_element_node,
-  emit_map_has,
-  enrich_kernel_type, is_declared_container_alias_spelling, reground_alias_carrier_identity,
-  kernel_profile_lookup
-}
 
-import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, authored_name,
-  is_recursive_type, lookup_type, lookup_type_for,
-  GlobalBareLookupState, borrowed_generic_param_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup
-}
 
-import v1.compiler.infer_emit_info {
-  build_struct_field_summaries, build_enum_field_summaries
-}
 
-import v1.compiler.infer_sigs {
-  ResolvedFuncSig, ResolvedFuncEnv, lookup_resolved_sig,
-  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous
-}
 
-import v1.compiler.infer_service {
-  OpEntry, ServiceMethodResult,
-  check_service_method_call_node
-}
-
-import v1.compiler.infer_method { infer_builtin_call_type }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {

@@ -1,14 +1,5 @@
 module extdeps.llm.openai_rest
 
-import extdeps.llm.openai {
-  OpenAiChatMessage,
-  OpenAiChatCompletion200Body,
-  OpenAiResponses200Body,
-  OpenAiFinishReason
-}
-import extdeps.llm.openai_errors { OpenAiErrorShape }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

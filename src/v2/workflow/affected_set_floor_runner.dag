@@ -1,19 +1,5 @@
 module v2.workflow.affected_set_floor_runner
 
-import gunbc.ci_spec { gunbc_ci_spec, DiffPolicy }
-import v2.std.algebra { any, length, list_flat_map }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.std.text { String }
-import v2.std.integer { Int }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
-import v2.std.verification {
-  TestClaim,
-  test_claim_evaluation_node_touches_frontier,
-  test_claim_evaluation_nodes,
-  test_claim_evaluation_touches_rerun_frontier
-}
 
 type FloorDiffObservation
   = DiffPathsProduced { changed_paths: List<String> }

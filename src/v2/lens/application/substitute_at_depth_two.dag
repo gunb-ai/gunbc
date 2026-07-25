@@ -1,18 +1,5 @@
 module v2.test.lens_application.substitute_at_depth_two
 
-import v2.lens.application { substitute_at }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data substitute_original_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^substitute_original_leaf_symbol } },

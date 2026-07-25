@@ -1,9 +1,5 @@
 module extdeps.accessibility.wcag_contrast
 
-import std.types { Int, String, Bool }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.color.srgb { Srgb8, RgbScaled, hsl_to_rgb_scaled, srgb8_to_scaled }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

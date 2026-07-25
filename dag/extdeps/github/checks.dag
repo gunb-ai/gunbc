@@ -1,15 +1,5 @@
 module extdeps.github.checks
 
-import extdeps.github.github { default_api_base, default_per_page }
-import std.types { CommitSha, NonEmptyStr, Timestamp, Bool }
-import extdeps.github.errors { GitHubErrorShape }
-import std.credentials { EnvVar }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.github.checks_contracts {
-  check_status_wire_contract,
-  check_conclusion_wire_contract,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,7 +1,5 @@
 module v2.std.projection
 
-import v2.std.artifact { ArtifactKind }
-import v2.std.node { Node, Symbol }
 
 type ProjectionKind
   = TestClaimLens

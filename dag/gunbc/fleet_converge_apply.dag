@@ -1,36 +1,5 @@
 module gunbc.fleet_converge_apply
 
-import std.types { String, List, Bool, Int }
-import product.placement_supply { HostIdentity }
-import gunbc.host_converge {
-  ConvergePolicy,
-  ConvergePolicyDerived,
-  ConvergePolicyUnsound,
-  HostConverge,
-  fleet_converge_policy,
-  find_by_identity,
-}
-import gunbc.host_effect {
-  HostEffect,
-  ConvergePlan,
-  NodeControlPlane,
-  HostOs,
-  HostEffectTransport,
-  EmitArtifactThenThinRun,
-  BootstrapFragment,
-  ThinInvocation,
-  host_effect_converge_loop_evidence,
-  HostEffectIntent,
-  HostEffectEvidence,
-}
-import gunbc.host_effect_realize { host_effect_apply }
-import gunbc.fleet_intent { fleet_intent_known_hosts, ComputeHost }
-import std.realization_reconcile {
-  Reconciliation,
-  Converged,
-  NotConverged,
-  reconciliation_converged,
-}
 
 fn fleet_compute_host_for_identity(identity: HostIdentity) -> ComputeHost? {
   find_by_identity(fleet_intent_known_hosts, identity: identity, key: fn(host) { host.identity })

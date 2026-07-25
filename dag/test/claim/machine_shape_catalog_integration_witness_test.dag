@@ -1,22 +1,5 @@
 module test.claim.machine_shape_catalog_integration_witness
 
-import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import extdeps.cpu.machine_shape {
-  FromCpuModelCatalog,
-  shape_from_catalog,
-}
-import std.logic { Bool }
-import std.nat { Nat }
-import std.measure { byte_size_count, hardware_thread_count_value }
-import std.types { list_length }
-import std.machine_shape {
-  DomainId,
-  LevelId,
-  MachineShape,
-  MachineShapeOk,
-  machine_shape_domain_lane_count,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

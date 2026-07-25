@@ -1,23 +1,5 @@
 module v2.extdeps.formats.openapi
 
-import v2.extdeps.coordination { ExchangePattern, RequestReply }
-import v2.extdeps.formats.json { JsonDocument, JsonValue }
-import v2.extdeps.formats.json_schema { JsonSchema }
-import v2.extdeps.formats.yaml { YamlDocument }
-import v2.std.collection { Optional }
-import v2.std.nat { Nat }
-import v2.std.network {
-  DELETE,
-  GET,
-  HEAD,
-  HttpMethod,
-  OPTIONS,
-  PATCH,
-  POST,
-  PUT,
-  TRACE,
-  UriReference
-}
 
 type OpenApiSpecificationExtensionKey
   = OpenApiSpecExtensionOaiReserved { remainder: String }

@@ -1,8 +1,5 @@
 module gunbc.retained_shell_script
 
-import std.types { String, NonEmptyStr }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.shell.exec { TransportScript }
 
 data retained_shell_script_wall_note: String = "§5.E wall (operator ruling 2026-07-24): RetainedShellScript is the counted frontier for shell SCRIPT bodies not yet dissolved into typed argv/effects. It is a RECORD, not a brand — a bare String cannot fill a RetainedShellScript position, so the accidental 'build argv properly, then join it back into a string' relocation class (bit twice: #7064, vivid-wolf) fails to compile on the ShellOnHost realization edge. Every row carries a reason + a dissolve-on DeclarationRef; new rows are a counted review event. The genuine compile-wall is the List<String> distinction (typed argv edge); this record walls the residual script path. The surviving `as TransportScript` cast-mint in retained_shell_script_to_transport is deliberate and conspicuous — its full closure is filed on the node/subtree visibility-grants lane (the Reference verb governs who may cast base->brand)."
 

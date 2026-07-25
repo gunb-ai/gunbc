@@ -1,27 +1,6 @@
 module v2.test.nat_semiring.rung_0_to_2_three_targets
 
-import v2.std.collection { List }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.text { String }
-import v2.std.verification {
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Integration,
-  CompilesClaim,
-  manual_claim_anchor
-}
 
-import v2.test.algebra_laws.nat_semiring {
-  claim_nat_add_left_identity,
-  claim_nat_add_right_identity,
-  claim_nat_add_associativity,
-  claim_nat_mul_left_identity,
-  claim_nat_mul_annihilator,
-  claim_nat_mul_associativity,
-  nat_add_left_identity_input
-}
 
 data phase1_nat_semiring_rung_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^phase1_nat_semiring_rung_subject_symbol } },

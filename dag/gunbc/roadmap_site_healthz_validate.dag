@@ -1,7 +1,5 @@
 module gunbc.roadmap_site_healthz_validate
 
-import extdeps.languages.json.grammar { json_text_parseable, json_text_trim_trailing_lf }
-import gunbc.roadmap_static_site { roadmap_site_healthz_body }
 
 fn roadmap_site_healthz_json_string_parses(body: String) -> Bool {
   json_text_parseable(s: json_text_trim_trailing_lf(body: body))

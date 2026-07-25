@@ -1,37 +1,5 @@
 module v2.test.emit.rust_bind_let_emit
 
-import v2.test.complexity_gate.table_fixture_bind_subject_producer {
-  table_fixture_bind_arrow_with_body,
-  table_fixture_bind_wrong_value_arrow_with_body
-}
-import v2.compiler.emit { emit }
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.extdeps.languages.rust {
-  rust_lex_rule,
-  rust_target_model_bundle_core,
-  rust_fn_add_lex_rules
-}
-import v2.std.algebra { list_append }
-import v2.std.collection { Map, empty_map, map_insert }
-import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import extdeps.communication.medium { Medium }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  None,
-  Outcome,
-  Rejected,
-  Unavailable,
-  bind_outcome,
-  node_locus
-}
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.witness { Violates, Witness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

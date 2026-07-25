@@ -1,32 +1,5 @@
 module v2.test.claim.self_host.wet_receipt_enrollment_witness_test
 
-import v2.compiler.self_host.frontier_probe_types {
-  FrontierProbeReceipt,
-  SelfEmitReady,
-}
-import v2.compiler.self_host.frontier {
-  compiler_frontier_row_03_body_producer,
-  compiler_frontier_row_06_translate,
-  compiler_frontier_row_07_target_carriers,
-  compiler_frontier_row_parse_engine_hooks,
-  compiler_frontier_row_discovery_enumeration,
-  compiler_frontier_row_use_site_verdict,
-  compiler_frontier_self_emitted_baseline,
-  SelfEmitted,
-  ProbeStageEmit,
-  CompilerModuleFrontierRow
-}
-import v2.compiler.self_host.wet_receipt_enrollment {
-  falsifier_self_host_wet_entries,
-  falsifier_self_host_wet_template_entries,
-  falsifier_self_host_wet_frontier_enrolled_entries,
-  frontier_row_wet_entries_if_enrolled,
-  find_wet_receipt_binding
-}
-import v2.std.algebra { length }
-import v2.std.collection { Absent, Present }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 fn sample_seed_retained_row() -> CompilerModuleFrontierRow {
   compiler_frontier_row_06_translate

@@ -1,19 +1,5 @@
 module test.claim.runner_host_deploy
 
-import std.logic { Bool }
-import std.types { list_length }
-import extdeps.exec.command { shell_command_render }
-import gunbc.runner_host_deploy {
-  srv4_runner_host_deploy,
-  gunbc_ci_github_app,
-  runner_host_installer_command,
-  runner_instance_names,
-  runner_enable_command,
-  runner_host_docker_provision_script,
-  runner_host_sccache_provision_script,
-}
-import gunbc.fleet_intent { fleet_intent_execution_surface }
-import extdeps.toolchain.types { ToolchainCapability }
 
 test fn srv4_docker_prereq_cites_official_repo() -> Bool {
   let s = runner_host_docker_provision_script()

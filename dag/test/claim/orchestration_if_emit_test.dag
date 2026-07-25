@@ -1,29 +1,5 @@
 module test.claim.orchestration_if_emit
 
-import v2.compiler.emit_orchestration { orch_emit_step, orch_emit_pipeline }
-import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
-import v2.std.orchestration {
-  PipelineStep,
-  If,
-  Do,
-  Run,
-  Pipeline,
-  FailFast,
-  Predicate,
-  ExitZero,
-  StrEq,
-  StrEmpty,
-  StrNonempty,
-  Not,
-  And,
-  LogMatches,
-  RedirectSpec,
-  CaptureSpec,
-  DiscardAll,
-  IgnoreFail
-}
-import v2.std.collection { Absent, Present }
-import v2.std.diagnostic { Accepted, None, Rejected }
 
 data orch_if_golden_note: String = "Hand-authored goldens below are independent of the orch_* grammar row spellings in src/v2/extdeps/languages/bash.dag: byte tests compare the emitter against these literals so a row/segment/emitter regression cannot go green by perturbing both sides at once (#6467 pattern)."
 

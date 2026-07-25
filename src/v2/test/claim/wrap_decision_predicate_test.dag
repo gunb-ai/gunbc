@@ -1,39 +1,5 @@
 module v2.test.claim.wrap_decision_predicate
 
-import v2.compiler.wrap_decision { wrap_decision_gate }
-import v2.extdeps.languages.rust {
-  rust_named_edge,
-  rust_sg2_type_expr_target_model,
-  rust_sg_rc_use_site_ownership_catalog
-}
-import v2.std.compilers.target_model {
-  TargetModel,
-  TargetOwnershipUseSite,
-  TargetReferenceLayer,
-  OwnershipAtFunctionParameter,
-  OwnershipAtFunctionReturn,
-  OwnershipAtStructField,
-  ReferenceLayerBox,
-  ReferenceLayerRc,
-  WrapByReference,
-  WrapByValue,
-  WrapGateDecided,
-  WrapGateInapplicable,
-  target_carrier_diagnostics_node,
-  target_carrier_node_node,
-  target_carrier_probe_heap_node,
-  target_carrier_use_site_verdict_node,
-  target_use_site_ownership_catalog_node
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Conj,
-  Node,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.text { String }
 
 data wrap_decision_predicate_note: String = "Derisk witnesses for rc-ownership-wrap-decision-design.md: wrap_decision_gate is the single authority for Rc/Box/owned type wrapping at emit sites. UseSiteVerdict enrolled (owned-at-all-sites). RED: omit Diagnostics param row -> param witness rejects; add silent default wrap on WrapGateInapplicable -> bundle_absent witness fails."
 

@@ -1,7 +1,5 @@
 module gunbc.cli_run_repo_grant_scaffold
 
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data cli_run_repo_grant_hand_rust_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

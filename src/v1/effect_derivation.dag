@@ -1,36 +1,8 @@
 module v1.compiler.effect_derivation
 
-import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 
-import std.effects {
-  EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect,
-  KeySource, PathParam, InputField, CompositeKey,
-  DerivedOpEffect, DeriveOpEffectResult, DerivedEffect, MalformedPathInput,
-  ModifierAgreement, Agrees, Disagrees, DerivationUnknown,
-  ModifierCheck,
-  IdempotencyTestObligation,
-  WorkflowEffectConcern,
-  derive_effect_shape,
-  derive_op_effect,
-  check_modifier_vs_derivation,
-  generate_idempotency_obligations,
-  is_idempotent_effect,
-  compose_effects, OperationEffect, CompositionVerdict, IdempotentComposition, BrokenBy,
-  IdempotencyEvidence,
-  LatticeEffect, IdentityEffect, NonIdempotent
-}
 
-import std.http_path {
-  UrlPathToken, LiteralToken, ParamToken,
-  PathTemplate,
-  has_path_params,
-  last_path_param
-}
 
-import extdeps.uri_path {
-  PathTemplateParseResult, ParsedPathTemplate, MalformedPathTemplate,
-  parse_path_template,
-}
 
 
 

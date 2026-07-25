@@ -1,12 +1,5 @@
 module v2.extdeps.formatters.prettier
 
-import v2.std.collection { List }
-import v2.std.diagnostic { Outcome }
-import v2.std.patch { ConfigPatchRecord, FieldPatch, apply_field_patch, config_patch_layer }
-import v2.std.refinement {
-  NonNegativeInt,
-  non_negative_int_authoritative_literal,
-}
 
 type PrettierTrailingComma
   = PrettierTrailingCommaAll

@@ -1,16 +1,5 @@
 module test.claim.peak_resident_measured_witness
 
-import std.logic { Bool }
-import std.types { Int }
-import std.measure { ByteSize, byte_size, byte_size_count, time_measure, One }
-import std.realization_measurement {
-  cost_account_measured_from_time_and_space,
-  space_measure_seq,
-  space_measure_par,
-  space_measure_list_seq,
-}
-import std.realization_schedule { Measured, Predicted }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

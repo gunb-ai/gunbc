@@ -1,57 +1,5 @@
 module v2.compiler.self_host.frontier
 
-import v2.compiler.self_host.frontier_band_a_emit_readiness {
-  BandAEmitReadinessRow,
-  compiler_frontier_band_a_emit_readiness_core_holds,
-  compiler_frontier_band_a_emit_readiness_roster
-}
-import v2.compiler.self_host.frontier_probe_types {
-  EmitSurfaceGap,
-  FrontierBlockerClass,
-  FrontierProbeReceipt,
-  FrontierProbeStage,
-  NameResolutionGap,
-  ProbeStageAssemble,
-  ProbeStageEmit,
-  RealizationGap,
-  SelfEmitReady,
-  UnknownProbeCause,
-  FixtureCemented,
-  curated_cargo_probe_namespace_qualified_rust_emit_reason,
-  curated_cargo_probe_import_closure_cargo_refuse_reason,
-  curated_cargo_probe_emit_assemble_refuse_reason,
-  curated_cargo_probe_generic_type_render_reason,
-  curated_cargo_probe_type_ref_import_missing_reason,
-  gate_a_flip_probe_witness_std_dup_reason,
-  gate_a_flip_probe_unresolved_compiler_error_reason,
-  frontier_blocker_class_matches,
-  frontier_probe_blocker_rank
-}
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { RealizationDispatch }
-import v2.compiler.source_authority {
-  ModuleStorageIndex,
-  module_storage_module_for_path
-}
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  Unavailable,
-  bind_outcome,
-  outcome_accepted,
-  outcome_rejected,
-  port_locus
-}
-import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
-import v2.std.algebra { fold_list, length }
-import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.text { String }
-import extdeps.languages.rust.emit { rust_qualified_module_mod_basename }
 
 type FrontierQualifiedModuleBinding {
   module_path: String

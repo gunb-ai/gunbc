@@ -1,20 +1,6 @@
 module extdeps.sec.issuer.rollins_facts
 
-import extdeps.sec.facts {
-  FiledFactCitation,
-  FiledMonetaryFact,
-  usd_whole_dollars,
-}
-import extdeps.sec.types { AnnualReport }
-import extdeps.sec.us_gaap {
-  us_gaap_cost_of_goods_and_service_excluding_depreciation_depletion_and_amortization,
-  us_gaap_operating_income_loss,
-  us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
-  us_gaap_selling_general_and_administrative_expense,
-}
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

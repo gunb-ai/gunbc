@@ -1,28 +1,5 @@
 module v2.test.claim.self_host.verdict_failure_kind_witness_test
 
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  Unavailable,
-  diagnostics_singleton,
-  port_locus
-}
-import v2.std.verdict {
-  BuildFailed,
-  Deferred,
-  Pass,
-  RunFailed,
-  SemanticMismatch,
-  verdict_build_failed,
-  verdict_run_failed,
-  verdict_semantic_mismatch
-}
-import v2.std.collection { Absent }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
 fn sample_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {

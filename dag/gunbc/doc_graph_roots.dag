@@ -1,8 +1,5 @@
 module gunbc.doc_graph_roots
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.plan { Plan, plan_path, plan_doc_path, DissolutionTrigger, HasTrigger }
-import gunbc.plan_registry { all_plans }
 
 data doc_graph_roots_note: String = "The single authority for doc-graph roots. Registered plans derive theirs (a PlanArtifact registration IS the document binding); hand-authored docs declare typed HandAuthoredDocBind rows — symbolic identity (home + slug, the same key space as Plan.slug; the file path is a derived storage projection, never stored), the .dag work the doc binds to, and the trigger that deletes the row. No prose 'bind:' scan remains: an unbound doc is an orphan, loudly; a hand-authored slug colliding with a registered plan slug is a red (the row outlived its migration)."
 

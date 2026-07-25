@@ -1,38 +1,5 @@
 module test.claim.roadmap_register_witness
 
-import std.types { Int, String, Bool }
-import std.markup { MarkupNode, ElementNode, TextNode }
-import gunbc.design.material {
-  BuildRule, StaticRule, CssDecl, decl,
-  Material, FieldArea, PointArea, paint, reduced_motion_block, respond_fast,
-  serialize_rules,
-}
-import gunbc.design.theme {
-  ThemeRole, theme_roles, themes_coherent, day_theme, night_theme,
-  role_key, role_eq,
-  Theme, RoleAssignment,
-  CanvasRole, FigureLitRole,
-  theme_root_css,
-}
-import gunbc.site.moodboard { moodboard_rules, moodboard_css }
-import gunbc.design.theme_transition { unthemed_color_decls, untokened_length_decls }
-import gunbc.design.scale { scale_root_css }
-import gunbc.site.mark { render_mark }
-import gunbc.design.interaction {
-  Approach, Reveal, Dispatch, BehaviorRow, InteractiveElement,
-  DispatchBtnElement, element_id_eq, element_id_key,
-  verb_key, coverage_gaps, coverage_complete,
-}
-import gunbc.roadmap_style { roadmap_rules, roadmap_css, roadmap_instance_rules }
-import gunbc.roadmap_page { roadmap_header }
-import gunbc.roadmap_interaction {
-  roadmap_elements, roadmap_behaviors,
-  roadmap_unrealized_behaviors,
-}
-import gunbc.design.archetype {
-  dashboard_archetype, archetype_demands_role, archetype_admits_verb,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,22 +1,5 @@
 module gunbc.ci_layer_roots
 
-import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind, CorpusWitnessKind }
-import gunbc.cli_invoke {
-  source_roots_shell_flags,
-  SourceRootBare,
-  SourceRootRooted
-}
-import std.witness_admission {
-  WitnessConsumerCadence,
-  DiscoverySelection,
-  FalsifierSelfHostWet,
-  FalsifierRehomedBinWet,
-  BinWitnessWet,
-  QuarantineProbeExpectRed,
-  OfflineLocalRecipe,
-  FixtureExplicitRoster,
-  NoConsumer
-}
 
 data witness_layer_roots: List<String> = ["dag", "src/v2"]
 

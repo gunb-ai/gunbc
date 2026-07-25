@@ -1,55 +1,5 @@
 module v2.compiler.ingest
 
-import std.algebra { Empty }
-import v2.std.algebra { list_append }
-import v2.std.collection {
-  Absent,
-  List,
-  Map,
-  Present,
-  empty_map,
-  map_get,
-  map_insert
-}
-import v2.std.grammar {
-  ParseTree,
-  grammar_relation_emitted_rebuild_from_token_spine,
-  grammar_relation_row_forward_token_spine_selection,
-  grammar_relation_rules_formal_productions,
-  node_atom_identity_optional
-}
-import v2.std.witness { Holds, Violates }
-import v2.std.node_query { find_named_child }
-import v2.std.compilers.target_model {
-  TargetModel,
-  BoundToken,
-  ConcreteSyntaxToken,
-  FixedToken,
-  concrete_syntax_token_class,
-  concrete_syntax_token_list_from_node,
-}
-import v2.compiler.compile { CoreNode }
-import v2.compiler.infer { infer }
-import v2.compiler.emit { emit }
-import extdeps.communication.medium { Medium }
-import v2.compiler.translate {
-  coerce_grounded_node,
-  target_bundle_child
-}
-import v2.std.inhabitant_neutralization { neutralize_core_for_target }
-import v2.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Conj }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  Unavailable,
-  bind_outcome,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected
-}
 
 data ingest_module_note: String = "Gate-A flip wave lane: v2.compiler.ingest is the parse-tree-to-target bridge (neutralize → infer → emit over CoreNode). Curated seed-linked behavioral receipt compares this module-authority constant until full ingest-tree oracle greens under std_dup-resolved cargo."
 

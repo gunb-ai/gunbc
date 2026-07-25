@@ -1,17 +1,5 @@
 module test.claim.dispatch_presentation_witness
 
-import std.types { Int, String, Bool, List }
-import gunbc.design.material { CssDecl, decl, css_block }
-import gunbc.design.theme { role_var, FigureRole, BoundaryRole, TextDimRole, TextRole }
-import gunbc.design.component { ComponentState, component_state_for_label }
-import gunbc.roadmap_component {
-  dispatch_reserved_ch, dispatch_reserved_ch_for, longest_label_len,
-  dispatch_class_requested, dispatch_class_ok, dispatch_class_refused,
-  dispatch_button_component, dispatch_client_js_source,
-}
-import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
-import gunbc.roadmap_style { roadmap_css }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

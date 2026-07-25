@@ -1,15 +1,5 @@
 module gunbc.os_install_deduction
 
-import std.types { String, NonEmptyStr, Timestamp, Bool }
-import extdeps.os.ubuntu_autoinstall {
-  UbuntuAutoinstallPayload,
-  AutoinstallStoragePolicy,
-  StoragePolicyAbsent,
-  StoragePolicyDirectLayout,
-  NoCloudLocal,
-  NoCloudNet,
-}
-import product.placement_supply { HostIdentity }
 
 type TargetDiskState
   = EmptyDisk

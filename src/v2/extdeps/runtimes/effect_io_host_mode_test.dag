@@ -1,34 +1,5 @@
 module v2.test.runtimes.effect_io_host_mode
 
-import v2.extdeps.runtimes.v2_effect_io_host {
-  V4EffectIoHostRuntime,
-  effect_io_host_runtime
-}
-import v2.extdeps.runtimes.v2_effect_io_pure {
-  EffectIoFixtureStore,
-  HttpResourceBackend,
-  effect_io_pure_apply_write,
-  effect_io_pure_empty_fixture_store,
-  effect_io_pure_invoke_handler,
-  effect_io_pure_locator_from_args,
-  effect_io_pure_read_request,
-  effect_io_pure_unit_type_node,
-  effect_io_pure_write_request
-}
-import std.execution_mode { Hermetic, Wet }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.machine { Byte }
-import v2.std.runtime {
-  ReadResource,
-  RuntimePrimitive,
-  RuntimePrimitiveValue,
-  RuntimeValue,
-  WriteResource,
-  effect_handler_for_kind
-}
-import v2.std.witness { Holds, Violates }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,10 +1,5 @@
 module v2.test.claim.self_host.wave1_gate1_a1_fn_body_seam_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.test.claim.body_lowering.fn_body_seam_witness_helpers {
-  wave1_gate1_a1_fn_body_seam_red_invalid_shell_wrapper_retained_holds
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

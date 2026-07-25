@@ -1,6 +1,5 @@
 module gunbc.site.markup
 
-import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
 
 fn txt(s: String) -> MarkupNode {
   TextNode { text: s }
