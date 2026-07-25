@@ -140,7 +140,7 @@ fn rust_emitter_lowers_holds_violates_only_for_witness_parent() {
         info,
     );
     assert_eq!(
-        witness, "v1_rt::Witness::Holds",
-        "Witness Holds must lower to the runtime Witness enum"
+        witness, "Witness::Holds",
+        "Witness Holds must lower to the modeled std.witness.Witness enum, bare (no v1_rt:: alias)"
     );
 }
