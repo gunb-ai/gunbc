@@ -37,7 +37,10 @@ type AbelianGroup<T> {
 
 type GroupCompletion<M>
 
-type FieldOfFractions<R>
+type FieldOfFractions<R> {
+  num: R
+  denom: R
+}
 
 type Semiring<T> {
   add: fn(T, T) -> T
