@@ -190,13 +190,6 @@ pub fn v1_emit_enum_derives(
                     )
                 }
             }
-            ReprGroundingDeriveElemShape::ReprDeriveElemUnknown => v1_trait_derive_refuse(
-                "trait_derive_emit: unclassified elem shape refused".to_string(),
-            ),
-            _ => v1_trait_derive_refuse(
-                "trait_derive_emit: coproduct elem shape unsupported for derive selection"
-                    .to_string(),
-            ),
         }
     }
 }
