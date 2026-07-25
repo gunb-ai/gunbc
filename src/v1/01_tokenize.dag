@@ -24,8 +24,8 @@ import v1.compiler.languages { EmojiCharEscape, canonical_emoji_char_escape }
 
 fn is_keyword_text(text: String) -> Bool {
   match lookup(dag_keyword_set, key: text) {
-    Holds { value: _ } => true
-    Violates { diagnostic: _ } => false
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
@@ -200,8 +200,8 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: Int) -> ScanResult {
 
   let ch_text = source_char(source: source, pos: pos.pos)
   match lookup(single_punct, key: ch_text) {
-    Holds { value: sh } => emit(pos: pos, shape: sh, text: ch_text, len: 1, file: source.file)
-    Violates { diagnostic: _ } => emit(pos: pos, shape: ShUnknown, text: ch_text, len: 1, file: source.file)
+    Present { value: sh } => emit(pos: pos, shape: sh, text: ch_text, len: 1, file: source.file)
+    Absent => emit(pos: pos, shape: ShUnknown, text: ch_text, len: 1, file: source.file)
   }
 }
 
