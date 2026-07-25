@@ -758,6 +758,65 @@ mod process_workspace_root_tests {
 /// Pins HAND-RUST `repo_relative_path` against `gunbc.cli_run_repo_grant` on the same
 /// fixture spellings. Witness: `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag`.
 #[cfg(test)]
+mod cli_run_arg_channel_tests {
+    use super::parse_run_args;
+    use crate::v1_interpreter::Value;
+
+    fn spec(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn named_arg_parses_to_a_named_string_value() {
+        let got = parse_run_args(&spec(&["node_id=roadmap-7"])).expect("well-formed --arg");
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].0.as_deref(), Some("node_id"));
+        assert!(matches!(&got[0].1, Value::Str(s) if s == "roadmap-7"));
+    }
+
+    #[test]
+    fn value_may_contain_further_equals_signs() {
+        let got = parse_run_args(&spec(&["diff=a=b=c"])).expect("split on the first `=` only");
+        assert!(matches!(&got[0].1, Value::Str(s) if s == "a=b=c"));
+    }
+
+    #[test]
+    fn empty_value_is_admitted_and_distinct_from_absent() {
+        let got = parse_run_args(&spec(&["flag="])).expect("empty value is a value");
+        assert!(matches!(&got[0].1, Value::Str(s) if s.is_empty()));
+    }
+
+    // RED controls: the refusals are the point of the channel (§5). A bare
+    // token has no defensible position to occupy, so it must not be guessed
+    // into one.
+    #[test]
+    fn bare_token_without_equals_refuses() {
+        let err = parse_run_args(&spec(&["node_id"])).expect_err("no `=` must refuse");
+        assert!(
+            err.contains("name=value"),
+            "diagnostic names the form: {err}"
+        );
+    }
+
+    #[test]
+    fn empty_parameter_name_refuses() {
+        let err = parse_run_args(&spec(&["=orphan"])).expect_err("empty name must refuse");
+        assert!(
+            err.contains("empty parameter name"),
+            "diagnostic locates the fault: {err}"
+        );
+    }
+
+    #[test]
+    fn one_malformed_spec_refuses_the_whole_list() {
+        assert!(
+            parse_run_args(&spec(&["ok=1", "broken", "also_ok=2"])).is_err(),
+            "a partial parse would silently drop a caller's argument"
+        );
+    }
+}
+
+#[cfg(test)]
 mod cli_run_repo_grant_equivalence_tests {
     use super::{process_workspace_root, repo_relative_path};
     use std::path::Path;
@@ -10486,6 +10545,7 @@ pub fn handle_ci() {
         Some("dag/tools/gunbc_ci.dag".to_string()),
         false,
         false,
+        Vec::new(),
     );
 }
 
@@ -10570,7 +10630,14 @@ pub fn handle_run(
     entry_file: Option<String>,
     claim_run: bool,
 ) {
-    handle_run_with_options(source_roots, function, entry_file, false, claim_run);
+    handle_run_with_options(
+        source_roots,
+        function,
+        entry_file,
+        false,
+        claim_run,
+        Vec::new(),
+    );
 }
 
 /// adhoc-c328b166-bca residual-hunt instrumentation dump: printed periodically
@@ -10629,17 +10696,54 @@ fn dump_residual_hunt_instrumentation() {
     }
 }
 
+/// Parse repeated `--arg name=value` into the interpreter's named-argument
+/// channel (`run_in_context_with_args`, v1_interpreter.rs:1564 — already the
+/// channel `claim_executor` uses internally; `Commands::Run` simply never grew
+/// the flag, which is why every parameter-shaped value reached `.dag` entries
+/// through the process environment instead).
+///
+/// Named-only by construction: a `.dag` entry's parameters are named, so
+/// positional order across the CLI boundary would be an unchecked coincidence.
+/// A missing `=` refuses (§5) rather than guessing a position. Values enter as
+/// `Value::Str` — no coercion is fabricated here; a parameter wanting another
+/// type is the typed-argument follow-on, not a silent conversion.
+fn parse_run_args(raw: &[String]) -> Result<Vec<(Option<String>, v1_interpreter::Value)>, String> {
+    raw.iter()
+        .map(|spec| match spec.split_once('=') {
+            Some((name, value)) if !name.is_empty() => Ok((
+                Some(name.to_string()),
+                v1_interpreter::Value::Str(value.to_string()),
+            )),
+            Some(_) => Err(format!("--arg `{spec}`: empty parameter name before `=`")),
+            None => Err(format!(
+                "--arg `{spec}`: expected `name=value` (named arguments only)"
+            )),
+        })
+        .collect()
+}
+
 pub fn handle_run_with_options(
     source_roots: Vec<String>,
     function: String,
     entry_file: Option<String>,
     dry_run: bool,
     claim_run: bool,
+    args: Vec<String>,
 ) {
     if source_roots.is_empty() {
         eprintln!("error: provide at least one --source-root");
         std::process::exit(1);
     }
+
+    // Refuse a malformed --arg before the compile, so the diagnostic is the
+    // first thing printed rather than the last.
+    let run_args = match parse_run_args(&args) {
+        Ok(parsed) => parsed,
+        Err(message) => {
+            eprintln!("error: {message}");
+            std::process::exit(2);
+        }
+    };
 
     if claim_run && entry_file.is_none() {
         eprintln!(
@@ -10734,7 +10838,10 @@ pub fn handle_run_with_options(
     let ctx =
         v1_interpreter::InterpContext::new(graph, result.source_indices.clone(), execution_mode);
     v1_interpreter::with_active_context(&ctx, || {
-        let run_outcome = v1_interpreter::run_in_context(&ctx, &function, !claim_run);
+        // One path, not two: with an empty `--arg` list this is byte-identical
+        // to `run_in_context`, which passes the same empty slice.
+        let run_outcome =
+            v1_interpreter::run_in_context_with_args(&ctx, &function, &run_args, !claim_run);
         v1_interpreter::print_eval_recompute_trace(&ctx);
         match run_outcome {
             Ok(val) => {
