@@ -1,0 +1,100 @@
+module extdeps.network.ipv4
+
+import std.types { Int, String, Bool, NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.rfc-editor.org/rfc/rfc791",
+  }
+}
+
+data ipv4_dotted_decimal_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.rfc-editor.org/rfc/rfc790",
+  }
+}
+
+data ipv4_grounding_note: String = "Structured IPv4 address — the dissolution of extdeps.dhcp.v4.Ipv4Address's anemic 'NonEmptyStr where brand(Ipv4Address)' (its dissolve_on_ipv4_address_anemic_brand named THIS module and a parse_ipv4_address witness). An IPv4 address is four octets (RFC 791 §3.1 — a 32-bit address), written in dotted-decimal (RFC 790 conventions); the octet is the grounded unit, a 0..255 bound modeled with the same `Int where range` refinement std.types.Port already uses for network numerics (NOT a fresh nickname — reuses the established bound idiom). Two entry points, per the model/realization split: ipv4_address(...) constructs from four octets for AUTHORED literals (byte-known at author time), parse_ipv4_address(String) recovers structure from WIRE text (DHCP tables, ip output) and REFUSES malformed input with a typed, located Ipv4ParseError rather than fabricating an address (§5 fail-closed). Round-trip (parse ∘ render == id on valid; render ∘ parse == id) is the witness."
+
+type Octet = Int where range(min: 0, max: 255)
+
+type Ipv4Address {
+  octet1: Octet
+  octet2: Octet
+  octet3: Octet
+  octet4: Octet
+}
+
+type Ipv4ParseError =
+    Ipv4WrongOctetCount { observed_count: Int }
+  | Ipv4OctetNotNumeric { position: Int, raw: String }
+  | Ipv4OctetOutOfRange { position: Int, value: Int }
+
+type Ipv4ParseResult =
+    Ipv4Parsed { address: Ipv4Address }
+  | Ipv4ParseFailed { error: Ipv4ParseError }
+
+fn ipv4_address(octet1: Octet, octet2: Octet, octet3: Octet, octet4: Octet) -> Ipv4Address {
+  Ipv4Address {
+    octet1: octet1,
+    octet2: octet2,
+    octet3: octet3,
+    octet4: octet4,
+  }
+}
+
+fn render_ipv4_address(addr: Ipv4Address) -> NonEmptyStr {
+  join([
+    to_string(addr.octet1),
+    to_string(addr.octet2),
+    to_string(addr.octet3),
+    to_string(addr.octet4),
+  ], ".") as NonEmptyStr
+}
+
+type OctetResult =
+    OctetOk { value: Octet }
+  | OctetErr { error: Ipv4ParseError }
+
+fn parse_octet_at(parts: List<String>, position: Int) -> OctetResult {
+  match parts |> get(position) {
+    Absent => OctetErr { error: Ipv4WrongOctetCount { observed_count: list_length(items: parts) } }
+    Present { value: raw } =>
+      match parse_int(s: raw) {
+        Absent => OctetErr { error: Ipv4OctetNotNumeric { position: position, raw: raw } }
+        Present { value: n } =>
+          if n < 0 || n > 255 {
+            OctetErr { error: Ipv4OctetOutOfRange { position: position, value: n } }
+          } else {
+            OctetOk { value: n }
+          }
+      }
+  }
+}
+
+fn parse_ipv4_address(text: String) -> Ipv4ParseResult {
+  let parts = split(s: text, delimiter: ".")
+  if list_length(items: parts) != 4 {
+    Ipv4ParseFailed { error: Ipv4WrongOctetCount { observed_count: list_length(items: parts) } }
+  } else {
+    match parse_octet_at(parts: parts, position: 0) {
+      OctetErr { error: e0 } => Ipv4ParseFailed { error: e0 }
+      OctetOk { value: o1 } => match parse_octet_at(parts: parts, position: 1) {
+        OctetErr { error: e1 } => Ipv4ParseFailed { error: e1 }
+        OctetOk { value: o2 } => match parse_octet_at(parts: parts, position: 2) {
+          OctetErr { error: e2 } => Ipv4ParseFailed { error: e2 }
+          OctetOk { value: o3 } => match parse_octet_at(parts: parts, position: 3) {
+            OctetErr { error: e3 } => Ipv4ParseFailed { error: e3 }
+            OctetOk { value: o4 } => Ipv4Parsed {
+              address: Ipv4Address { octet1: o1, octet2: o2, octet3: o3, octet4: o4 }
+            }
+          }
+        }
+      }
+    }
+  }
+}
