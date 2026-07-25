@@ -2,7 +2,6 @@ module v2.std.cross_tree.import_model
 
 import std.algebra { FreeMonoid }
 import v2.std.algebra { contains, fold_list }
-import v2.std.layer { LayerPrefix, layer_prefix_ordinal }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -14,10 +13,8 @@ type SourceRootSet = FreeMonoid<SourceRootRef>
 
 type CrossTreeImport {
   from_tree: SourceRootRef
-  from_layer: LayerPrefix
   from_module: String
   to_tree: SourceRootRef
-  to_layer: LayerPrefix
   to_module: String
 }
 
@@ -34,7 +31,6 @@ type CrossTreeDenialReason
   | CrossTreeToTreeNotInRootSet
   | CrossTreeFundamentalityUnknownFailClosed
   | CrossTreeToTreeLessFundamental
-  | CrossTreeLayerDirectionViolated
 
 type CrossTreeAdmissionVerdict
   = CrossTreeAdmitted
@@ -49,18 +45,6 @@ fn source_root_ref_eq(a: SourceRootRef, b: SourceRootRef) -> Bool {
 
 fn source_root_set_contains(roots: SourceRootSet, r: SourceRootRef) -> Bool {
   contains(xs: roots, item: r, eq: source_root_ref_eq)
-}
-
-fn cross_tree_layer_direction_holds(edge: CrossTreeImport) -> Bool {
-  layer_prefix_ordinal(l: edge.to_layer) <= layer_prefix_ordinal(l: edge.from_layer)
-}
-
-fn cross_tree_directional_admit(edge: CrossTreeImport) -> CrossTreeAdmissionVerdict {
-  if cross_tree_layer_direction_holds(edge: edge) {
-    CrossTreeAdmitted
-  } else {
-    CrossTreeDenied { reason: CrossTreeLayerDirectionViolated }
-  }
 }
 
 fn cross_tree_import_admitted(
@@ -79,9 +63,9 @@ fn cross_tree_import_admitted(
       LessFundamental =>
         CrossTreeDenied { reason: CrossTreeToTreeLessFundamental }
       MoreFundamental =>
-        cross_tree_directional_admit(edge: edge)
+        CrossTreeAdmitted
       CoFundamental =>
-        cross_tree_directional_admit(edge: edge)
+        CrossTreeAdmitted
     }
   }
 }

@@ -83,7 +83,7 @@ The reading: the **schedule/width** arm of the realization layer is now wired; t
 | transitive reachability BFS | `inert_lens_modules` | `cli_run.rs:2558-2606` |
 | enumerate all declared concepts | `concept_index.enumerate_concepts()` | `concept_index.dag:130` |
 | use vs structural edge classification | `unused_parameters` `UseRelation` (`BindsTo` = the use authority) | `unused_parameters.dag:22` |
-| import/reference edge-walk | `layering_imports` projection | `layering_imports.dag` + `cli_run.rs:layer_import_facts` |
+| import/reference edge-walk | `v2.std.layer` `LayerImportFact` projection | `layer.dag` + `cli_run.rs:layer_import_facts` |
 | run-roots | floor gates + corpus + pipeline/emit entries | `ci_floor_plan.dag:83`, `cli_run.rs:run_discovery_corpus` |
 
 ## 7. Wiring + dissolution

@@ -2,7 +2,7 @@ module v2.lens.meta_exec_confinement
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
 
-import v2.lens.layering_imports {
+import v2.std.layer {
   LayerImportFact,
   layer_import_facts_live
 }
@@ -37,23 +37,8 @@ data meta_exec_confinement_exception_roster: List<FrontierRow> = [
     dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
   ),
   frontier_row(
-    unit: "dag/gunbc/host_converge_slice1.dag",
-    reason: "host-converge slice still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
-    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
-  ),
-  frontier_row(
     unit: "dag/gunbc/host_runner_memory_cap_verify.dag",
     reason: "runner memory-cap verification still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
-    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
-  ),
-  frontier_row(
-    unit: "dag/gunbc/host_identity_adopt.dag",
-    reason: "host-identity adoption still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
-    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
-  ),
-  frontier_row(
-    unit: "dag/gunbc/host_identity_assimilation.dag",
-    reason: "host-identity assimilation still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
     dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
   ),
   frontier_row(
