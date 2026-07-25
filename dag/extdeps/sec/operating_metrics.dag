@@ -1,0 +1,53 @@
+module extdeps.sec.operating_metrics
+
+import extdeps.sec.facts { FiledFactCitation, UsdWholeDollars }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sec.gov/rules/interp/2020/33-10751.pdf"
+  }
+}
+
+data operating_metrics_shape_note: String = "Issuer-defined key performance indicators disclosed in 10-K Item 7 (MD&A) under the SEC's KPI interpretive guidance (Release 33-10751, anchor above). These are NOT XBRL-tagged facts -- they exist only in the filing narrative, so rows cite the disclosing filing via the same FiledFactCitation authority as monetary facts (period is FiledInstant at the metric's as-of date). SaaS issuers disclose net-revenue-retention and ARR-threshold customer counts under issuer-specific definitions; the definition belongs to the citing filing, not to this shape."
+
+data disclosed_rate_honesty_note: String = "Issuers sometimes disclose a rate only as a floor (GitLab fiscal 2020 through 2023: Dollar-Based Net Retention Rate reported as 'above N%'), later as an exact point. RateLowerBoundPercent keeps the floor a floor -- collapsing it to an exact value would fabricate precision the filing never claimed (DESIGN section 5)."
+
+type DisclosedPercentRate
+  = RateExactPercent { percent: Int }
+  | RateLowerBoundPercent { floor_percent: Int }
+
+type DollarBasedNetRetentionRow {
+  rate: DisclosedPercentRate
+  citation: FiledFactCitation
+}
+
+type ArrThresholdCustomerCountRow {
+  arr_threshold: UsdWholeDollars
+  customer_count: Int
+  citation: FiledFactCitation
+}
+
+data registered_user_floor_note: String = "Issuers state platform reach in Item 1 as a floor ('more than N million registered users') -- the same lower-bound honesty as RateLowerBoundPercent: the filed claim is a floor, never an exact count, so the field name carries the floor semantics."
+
+type RegisteredUserCountRow {
+  registered_user_count_floor: Int
+  citation: FiledFactCitation
+}
+
+fn disclosed_rate_at_least(rate: DisclosedPercentRate, threshold_percent: Int) -> Bool {
+  match rate {
+    RateExactPercent { percent: p } => p >= threshold_percent
+    RateLowerBoundPercent { floor_percent: f } => f >= threshold_percent
+  }
+}
+
+fn disclosed_rate_exact_percent(rate: DisclosedPercentRate) -> Int? {
+  match rate {
+    RateExactPercent { percent: p } => Present { value: p }
+    RateLowerBoundPercent { floor_percent: _ } => none
+  }
+}

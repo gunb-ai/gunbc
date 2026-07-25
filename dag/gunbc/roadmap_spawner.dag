@@ -159,6 +159,11 @@ fn acceptance_json_value(a: Acceptance, line: RoadmapItem) -> JsonValue {
           json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
           json_kv(key: "prs", value: json_array(elements: [])),
         ])
+      TicketLine { done: _, ticket: _ } =>
+        json_object(members: [
+          json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
+          json_kv(key: "prs", value: json_array(elements: [])),
+        ])
     }
     ManualAcceptance =>
       json_object(members: [
@@ -173,6 +178,7 @@ fn node_title(item: RoadmapItem) -> String {
     AuthoredLine { done: _, content } => content
     PlainLine { content } => content
     SupersededLine { by: _, content } => content
+    TicketLine { done: _, ticket } => ticket.headline
   }
 }
 

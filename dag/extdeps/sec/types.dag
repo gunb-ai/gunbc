@@ -112,9 +112,11 @@ type XbrlFact {
   frame: EdgarCalendarDate?
 }
 
+data issuer_registrant_name_note: String = "registrant_name is EDGAR's NAME OF RECORD for the CIK, not the company's own legal name -- a genuinely distinct cited fact, which is why it sits beside the vendor edge rather than duplicating it (review nit 2026-07-25, resolved by measurement). Every issuer in the corpus differs between the two: EDGAR records 'Gitlab Inc.' where the company writes 'GitLab Inc.', and 'MICROSOFT CORP' / 'ROLLINS INC' / 'CHEMED CORP' / 'Atlassian Corp' against the vendor rows' 'Microsoft Corporation' / 'Rollins, Inc.' / 'Chemed Corporation' / 'Atlassian Corporation'. The registrant name is what an EDGAR full-text or company search matches on, so it is the lookup key for the filings; the vendor edge carries the company's own legal name. Deriving either from the other would fabricate a string neither authority publishes."
+
 type IssuerCatalogRow {
   cik: Cik
-  legal_name: NonEmptyStr
+  registrant_name: NonEmptyStr
   primary_ticker: StockTicker
   exchange: StockExchange
   vendor: Vendor<Securities>

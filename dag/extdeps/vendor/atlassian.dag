@@ -1,0 +1,16 @@
+module extdeps.vendor.atlassian
+
+import extdeps.vendor { Vendor }
+import extdeps.securities { Securities }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sec.gov/cgi-bin/browse-edgar?CIK=TEAM"
+  }
+}
+
+data atlassian: Vendor<Securities> = Vendor { legal_name: "Atlassian Corporation" }

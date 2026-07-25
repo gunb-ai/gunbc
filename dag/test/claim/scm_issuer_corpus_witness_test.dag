@@ -1,0 +1,440 @@
+module test.claim.scm_issuer_corpus_witness
+
+import extdeps.pricing.gitlab_subscription { gitlab_subscription_subject }
+import extdeps.sec.edgar { cik_padded_digits }
+import extdeps.sec.facts {
+  FiledMonetaryFact,
+  FiledSignedMonetaryFact,
+  SignedUsdWholeDollars,
+  filed_amount,
+  filed_gross_profit_matches_revenue_minus_cost,
+  filed_operating_expenses_match_components,
+  filed_operating_income_matches_components,
+  filed_signed_value,
+  usd_whole_dollars_count,
+}
+import extdeps.sec.issuer.atlassian_facts {
+  atlassian_facts_subject,
+  atlassian_fy2022_cost_of_revenue,
+  atlassian_fy2022_general_and_administrative,
+  atlassian_fy2022_gross_profit,
+  atlassian_fy2022_operating_expenses,
+  atlassian_fy2022_operating_income,
+  atlassian_fy2022_research_and_development,
+  atlassian_fy2022_revenue,
+  atlassian_fy2022_selling_and_marketing,
+  atlassian_fy2023_cost_of_revenue,
+  atlassian_fy2023_general_and_administrative,
+  atlassian_fy2023_gross_profit,
+  atlassian_fy2023_operating_expenses,
+  atlassian_fy2023_operating_income_loss,
+  atlassian_fy2023_research_and_development,
+  atlassian_fy2023_revenue,
+  atlassian_fy2023_selling_and_marketing,
+  atlassian_fy2024_cost_of_revenue,
+  atlassian_fy2024_general_and_administrative,
+  atlassian_fy2024_gross_profit,
+  atlassian_fy2024_operating_expenses,
+  atlassian_fy2024_operating_income_loss,
+  atlassian_fy2024_research_and_development,
+  atlassian_fy2024_revenue,
+  atlassian_fy2024_selling_and_marketing,
+  atlassian_fy2025_cost_of_goods_and_services,
+  atlassian_fy2025_general_and_administrative,
+  atlassian_fy2025_gross_profit,
+  atlassian_fy2025_operating_expenses,
+  atlassian_fy2025_operating_income_loss,
+  atlassian_fy2025_research_and_development,
+  atlassian_fy2025_revenue,
+  atlassian_fy2025_selling_and_marketing,
+}
+import extdeps.sec.issuer.gitlab_facts {
+  gitlab_facts_subject,
+  gitlab_fy2026_cost_of_revenue,
+  gitlab_fy2026_gross_profit,
+  gitlab_fy2026_revenue,
+}
+import extdeps.sec.issuer.microsoft_facts {
+  microsoft_facts_subject,
+  microsoft_fy2022_cost_of_goods_and_services,
+  microsoft_fy2022_general_and_administrative,
+  microsoft_fy2022_gross_profit,
+  microsoft_fy2022_operating_expenses,
+  microsoft_fy2022_operating_income,
+  microsoft_fy2022_research_and_development,
+  microsoft_fy2022_revenue,
+  microsoft_fy2022_selling_and_marketing,
+  microsoft_fy2023_cost_of_goods_and_services,
+  microsoft_fy2023_general_and_administrative,
+  microsoft_fy2023_gross_profit,
+  microsoft_fy2023_operating_expenses,
+  microsoft_fy2023_operating_income,
+  microsoft_fy2023_research_and_development,
+  microsoft_fy2023_revenue,
+  microsoft_fy2023_selling_and_marketing,
+  microsoft_fy2024_cost_of_goods_and_services,
+  microsoft_fy2024_general_and_administrative,
+  microsoft_fy2024_gross_profit,
+  microsoft_fy2024_operating_expenses,
+  microsoft_fy2024_operating_income,
+  microsoft_fy2024_research_and_development,
+  microsoft_fy2024_revenue,
+  microsoft_fy2024_selling_and_marketing,
+  microsoft_fy2025_cost_of_goods_and_services,
+  microsoft_fy2025_general_and_administrative,
+  microsoft_fy2025_gross_profit,
+  microsoft_fy2025_operating_expenses,
+  microsoft_fy2025_operating_income,
+  microsoft_fy2025_research_and_development,
+  microsoft_fy2025_revenue,
+  microsoft_fy2025_selling_and_marketing,
+}
+import extdeps.sec.us_gaap {
+  us_gaap_cost_of_goods_and_services_sold,
+  us_gaap_cost_of_revenue,
+}
+import gunbc.econ.margin_envelope {
+  GrossMargin,
+  MarginEnvelopeDerived,
+  derive_margin_envelope_from_filed_facts,
+  margin_envelope_in_band,
+}
+import std.measure { BasisPoint, basis_point, basis_point_count }
+import std.nat { Nat }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data scm_issuer_corpus_note: String = "The SCM-economics comparable set, all SIC 7372 Services-Prepackaged Software: GitLab (pure-play SCM), Atlassian (developer-collaboration suite incl. Bitbucket -- the nearest pure-play comparable), Microsoft (GitHub's owner, the scale contrast whose GitHub-level economics are NOT filed). Two arms GitLab's seven loss-making years could not exercise are exercised here: NonNegativeUsd (Microsoft profitable in all four years; Atlassian FY2022 operating income positive before three loss years) and Unfiled (Microsoft's FY2022 OperatingExpenses, untagged in its own 10-K)."
+
+fn w_cross_foots(
+  revenue: FiledMonetaryFact,
+  cost_of_revenue: FiledMonetaryFact,
+  gross_profit: FiledMonetaryFact,
+  research_and_development: FiledMonetaryFact,
+  selling_and_marketing: FiledMonetaryFact,
+  general_and_administrative: FiledMonetaryFact,
+  operating_expenses_total: FiledMonetaryFact,
+  operating_income: FiledSignedMonetaryFact
+) -> Bool {
+  match filed_amount(fact: revenue) {
+    Present { value: rev } =>
+      match filed_amount(fact: cost_of_revenue) {
+        Present { value: cor } =>
+          match filed_amount(fact: gross_profit) {
+            Present { value: gp } =>
+              match filed_amount(fact: research_and_development) {
+                Present { value: rd } =>
+                  match filed_amount(fact: selling_and_marketing) {
+                    Present { value: sm } =>
+                      match filed_amount(fact: general_and_administrative) {
+                        Present { value: ga } =>
+                          match filed_amount(fact: operating_expenses_total) {
+                            Present { value: opex } =>
+                              match filed_signed_value(fact: operating_income) {
+                                Present { value: opinc } =>
+                                  filed_gross_profit_matches_revenue_minus_cost(
+                                    revenue: rev,
+                                    cost_of_revenue: cor,
+                                    gross_profit: gp
+                                  )
+                                    && filed_operating_expenses_match_components(
+                                      selling_and_marketing: sm,
+                                      research_and_development: rd,
+                                      general_and_administrative: ga,
+                                      operating_expenses_total: opex
+                                    )
+                                    && filed_operating_income_matches_components(
+                                      gross_profit: gp,
+                                      operating_expenses_total: opex,
+                                      operating_income: opinc
+                                    )
+                                _ => false
+                              }
+                            _ => false
+                          }
+                        _ => false
+                      }
+                    _ => false
+                  }
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_signed_is_positive(fact: FiledSignedMonetaryFact) -> Bool {
+  match filed_signed_value(fact: fact) {
+    Present { value: v } =>
+      match v {
+        NonNegativeUsd { amount: a } => usd_whole_dollars_count(m: a) > 0
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_signed_is_negative(fact: FiledSignedMonetaryFact) -> Bool {
+  match filed_signed_value(fact: fact) {
+    Present { value: v } =>
+      match v {
+        NegativeUsd { magnitude: m } => usd_whole_dollars_count(m: m) > 0
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_gross_margin_in_band(
+  revenue: FiledMonetaryFact,
+  gross_profit: FiledMonetaryFact,
+  low_bp: BasisPoint,
+  high_bp: BasisPoint
+) -> Bool {
+  match derive_margin_envelope_from_filed_facts(
+    revenue: revenue,
+    profit: gross_profit,
+    margin_kind: GrossMargin,
+  ) {
+    MarginEnvelopeDerived { envelope: env, margin_kind: GrossMargin } =>
+      margin_envelope_in_band(envelope: env, low_bp: low_bp, high_bp: high_bp)
+    _ => false
+  }
+}
+
+fn w_microsoft_all_four_years_cross_foot() -> Bool {
+  w_cross_foots(
+    revenue: microsoft_fy2023_revenue,
+    cost_of_revenue: microsoft_fy2023_cost_of_goods_and_services,
+    gross_profit: microsoft_fy2023_gross_profit,
+    research_and_development: microsoft_fy2023_research_and_development,
+    selling_and_marketing: microsoft_fy2023_selling_and_marketing,
+    general_and_administrative: microsoft_fy2023_general_and_administrative,
+    operating_expenses_total: microsoft_fy2023_operating_expenses,
+    operating_income: microsoft_fy2023_operating_income
+  )
+    && w_cross_foots(
+      revenue: microsoft_fy2024_revenue,
+      cost_of_revenue: microsoft_fy2024_cost_of_goods_and_services,
+      gross_profit: microsoft_fy2024_gross_profit,
+      research_and_development: microsoft_fy2024_research_and_development,
+      selling_and_marketing: microsoft_fy2024_selling_and_marketing,
+      general_and_administrative: microsoft_fy2024_general_and_administrative,
+      operating_expenses_total: microsoft_fy2024_operating_expenses,
+      operating_income: microsoft_fy2024_operating_income
+    )
+    && w_cross_foots(
+      revenue: microsoft_fy2025_revenue,
+      cost_of_revenue: microsoft_fy2025_cost_of_goods_and_services,
+      gross_profit: microsoft_fy2025_gross_profit,
+      research_and_development: microsoft_fy2025_research_and_development,
+      selling_and_marketing: microsoft_fy2025_selling_and_marketing,
+      general_and_administrative: microsoft_fy2025_general_and_administrative,
+      operating_expenses_total: microsoft_fy2025_operating_expenses,
+      operating_income: microsoft_fy2025_operating_income
+    )
+}
+
+fn w_microsoft_fy2022_gross_profit_identity_holds() -> Bool {
+  match filed_amount(fact: microsoft_fy2022_revenue) {
+    Present { value: rev } =>
+      match filed_amount(fact: microsoft_fy2022_cost_of_goods_and_services) {
+        Present { value: cor } =>
+          match filed_amount(fact: microsoft_fy2022_gross_profit) {
+            Present { value: gp } =>
+              filed_gross_profit_matches_revenue_minus_cost(
+                revenue: rev,
+                cost_of_revenue: cor,
+                gross_profit: gp
+              )
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_microsoft_fy2022_components_reach_operating_income() -> Bool {
+  match filed_amount(fact: microsoft_fy2022_gross_profit) {
+    Present { value: gp } =>
+      match filed_amount(fact: microsoft_fy2022_research_and_development) {
+        Present { value: rd } =>
+          match filed_amount(fact: microsoft_fy2022_selling_and_marketing) {
+            Present { value: sm } =>
+              match filed_amount(fact: microsoft_fy2022_general_and_administrative) {
+                Present { value: ga } =>
+                  match filed_signed_value(fact: microsoft_fy2022_operating_income) {
+                    Present { value: opinc } => {
+                      let components = (usd_whole_dollars_count(m: rd) + usd_whole_dollars_count(m: sm)) + usd_whole_dollars_count(m: ga)
+                      signed_usd_value_equals(v: opinc, expected: usd_whole_dollars_count(m: gp) - components)
+                    }
+                    _ => false
+                  }
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn signed_usd_value_equals(v: SignedUsdWholeDollars, expected: Nat) -> Bool {
+  match v {
+    NonNegativeUsd { amount: a } => usd_whole_dollars_count(m: a) == expected
+    NegativeUsd { magnitude: _ } => false
+  }
+}
+
+fn w_microsoft_fy2022_operating_expenses_unfiled() -> Bool {
+  match filed_amount(fact: microsoft_fy2022_operating_expenses) {
+    Present { value: _ } => false
+    _ => true
+  }
+}
+
+fn w_microsoft_profitable_every_modeled_year() -> Bool {
+  w_signed_is_positive(fact: microsoft_fy2022_operating_income)
+    && w_signed_is_positive(fact: microsoft_fy2023_operating_income)
+    && w_signed_is_positive(fact: microsoft_fy2024_operating_income)
+    && w_signed_is_positive(fact: microsoft_fy2025_operating_income)
+}
+
+fn w_atlassian_all_four_years_cross_foot() -> Bool {
+  w_cross_foots(
+    revenue: atlassian_fy2022_revenue,
+    cost_of_revenue: atlassian_fy2022_cost_of_revenue,
+    gross_profit: atlassian_fy2022_gross_profit,
+    research_and_development: atlassian_fy2022_research_and_development,
+    selling_and_marketing: atlassian_fy2022_selling_and_marketing,
+    general_and_administrative: atlassian_fy2022_general_and_administrative,
+    operating_expenses_total: atlassian_fy2022_operating_expenses,
+    operating_income: atlassian_fy2022_operating_income
+  )
+    && w_cross_foots(
+      revenue: atlassian_fy2023_revenue,
+      cost_of_revenue: atlassian_fy2023_cost_of_revenue,
+      gross_profit: atlassian_fy2023_gross_profit,
+      research_and_development: atlassian_fy2023_research_and_development,
+      selling_and_marketing: atlassian_fy2023_selling_and_marketing,
+      general_and_administrative: atlassian_fy2023_general_and_administrative,
+      operating_expenses_total: atlassian_fy2023_operating_expenses,
+      operating_income: atlassian_fy2023_operating_income_loss
+    )
+    && w_cross_foots(
+      revenue: atlassian_fy2024_revenue,
+      cost_of_revenue: atlassian_fy2024_cost_of_revenue,
+      gross_profit: atlassian_fy2024_gross_profit,
+      research_and_development: atlassian_fy2024_research_and_development,
+      selling_and_marketing: atlassian_fy2024_selling_and_marketing,
+      general_and_administrative: atlassian_fy2024_general_and_administrative,
+      operating_expenses_total: atlassian_fy2024_operating_expenses,
+      operating_income: atlassian_fy2024_operating_income_loss
+    )
+    && w_cross_foots(
+      revenue: atlassian_fy2025_revenue,
+      cost_of_revenue: atlassian_fy2025_cost_of_goods_and_services,
+      gross_profit: atlassian_fy2025_gross_profit,
+      research_and_development: atlassian_fy2025_research_and_development,
+      selling_and_marketing: atlassian_fy2025_selling_and_marketing,
+      general_and_administrative: atlassian_fy2025_general_and_administrative,
+      operating_expenses_total: atlassian_fy2025_operating_expenses,
+      operating_income: atlassian_fy2025_operating_income_loss
+    )
+}
+
+fn w_atlassian_turns_from_profit_to_losses() -> Bool {
+  w_signed_is_positive(fact: atlassian_fy2022_operating_income)
+    && w_signed_is_negative(fact: atlassian_fy2023_operating_income_loss)
+    && w_signed_is_negative(fact: atlassian_fy2024_operating_income_loss)
+    && w_signed_is_negative(fact: atlassian_fy2025_operating_income_loss)
+}
+
+fn w_atlassian_cost_element_switches_mid_series() -> Bool {
+  (atlassian_fy2023_cost_of_revenue.element == us_gaap_cost_of_revenue)
+    && (atlassian_fy2024_cost_of_revenue.element == us_gaap_cost_of_revenue)
+    && (atlassian_fy2025_cost_of_goods_and_services.element == us_gaap_cost_of_goods_and_services_sold)
+    && (microsoft_fy2025_cost_of_goods_and_services.element == us_gaap_cost_of_goods_and_services_sold)
+}
+
+fn w_serving_cost_ordering_pure_play_above_platform() -> Bool {
+  w_gross_margin_in_band(
+    revenue: gitlab_fy2026_revenue,
+    gross_profit: gitlab_fy2026_gross_profit,
+    low_bp: basis_point(8700),
+    high_bp: basis_point(8799),
+  )
+    && w_gross_margin_in_band(
+      revenue: atlassian_fy2025_revenue,
+      gross_profit: atlassian_fy2025_gross_profit,
+      low_bp: basis_point(8200),
+      high_bp: basis_point(8299),
+    )
+    && w_gross_margin_in_band(
+      revenue: microsoft_fy2025_revenue,
+      gross_profit: microsoft_fy2025_gross_profit,
+      low_bp: basis_point(6800),
+      high_bp: basis_point(6899),
+    )
+}
+
+fn w_gitlab_fact_families_share_one_entity() -> Bool {
+  (gitlab_facts_subject.vendor.legal_name == gitlab_subscription_subject.legal_name)
+    && (cik_padded_digits(cik: gitlab_facts_subject.cik) == "0001653482")
+    && (gitlab_facts_subject.registrant_name == "Gitlab Inc.")
+}
+
+fn w_issuer_subjects_are_distinct_entities() -> Bool {
+  !(microsoft_facts_subject.vendor.legal_name == gitlab_facts_subject.vendor.legal_name)
+    && !(atlassian_facts_subject.vendor.legal_name == gitlab_facts_subject.vendor.legal_name)
+    && !(cik_padded_digits(cik: microsoft_facts_subject.cik) == cik_padded_digits(cik: atlassian_facts_subject.cik))
+    && (cik_padded_digits(cik: microsoft_facts_subject.cik) == "0000789019")
+    && (cik_padded_digits(cik: atlassian_facts_subject.cik) == "0001650372")
+}
+
+fn w_red_wrong_issuer_subject_fails_the_entity_edge() -> Bool {
+  !(microsoft_facts_subject.vendor.legal_name == gitlab_subscription_subject.legal_name)
+}
+
+fn w_red_atlassian_cost_element_is_not_normalized() -> Bool {
+  !(atlassian_fy2025_cost_of_goods_and_services.element == us_gaap_cost_of_revenue)
+    && !(atlassian_fy2023_cost_of_revenue.element == us_gaap_cost_of_goods_and_services_sold)
+}
+
+fn w_red_microsoft_margin_not_in_pure_play_band() -> Bool {
+  !w_gross_margin_in_band(
+    revenue: microsoft_fy2025_revenue,
+    gross_profit: microsoft_fy2025_gross_profit,
+    low_bp: basis_point(8700),
+    high_bp: basis_point(8799),
+  )
+}
+
+fn w_red_positive_operating_income_is_not_negative() -> Bool {
+  !w_signed_is_negative(fact: microsoft_fy2025_operating_income)
+    && !w_signed_is_positive(fact: atlassian_fy2025_operating_income_loss)
+}
+
+test fn scm_issuer_corpus_witness() -> Bool {
+  w_microsoft_all_four_years_cross_foot()
+    && w_microsoft_fy2022_gross_profit_identity_holds()
+    && w_microsoft_fy2022_components_reach_operating_income()
+    && w_microsoft_fy2022_operating_expenses_unfiled()
+    && w_microsoft_profitable_every_modeled_year()
+    && w_atlassian_all_four_years_cross_foot()
+    && w_atlassian_turns_from_profit_to_losses()
+    && w_atlassian_cost_element_switches_mid_series()
+    && w_serving_cost_ordering_pure_play_above_platform()
+    && w_gitlab_fact_families_share_one_entity()
+    && w_issuer_subjects_are_distinct_entities()
+    && w_red_wrong_issuer_subject_fails_the_entity_edge()
+    && w_red_atlassian_cost_element_is_not_normalized()
+    && w_red_microsoft_margin_not_in_pure_play_band()
+    && w_red_positive_operating_income_is_not_negative()
+}
