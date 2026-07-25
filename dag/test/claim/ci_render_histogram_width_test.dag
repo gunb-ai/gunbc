@@ -1,5 +1,7 @@
 module test.claim.ci_render_histogram_width
 
+import gunbc.ci_render { timing_histogram_frame, render_percentile_box, percentiles_box_frame_ns }
+import extdeps.unicode.display { string_display_width }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

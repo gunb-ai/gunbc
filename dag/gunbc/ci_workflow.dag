@@ -535,7 +535,7 @@ fn ci_heal_generated_artifacts_job() -> Job {
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
     steps: concat(
-      [ci_heal_branch_head_checkout_step(), ci_floor_gate_toolchain_step()],
+      [ci_heal_branch_head_checkout_step()],
       [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_heal_regen_step(), ci_heal_commit_push_step()]
     ),
     needs: ["build"],

@@ -61,9 +61,10 @@ pub use crate::v1_compiler_infer::{
 use crate::v1_compiler_infer_emit_info::RustCorpusRepr::{FaithfulFreeMonoid, HostNative};
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v1_compiler_infer_emit_info::{
-    collect_type_node_import_surface_names, emit_info_with_fn_type_context, empty_emit_graph_info,
-    find_variant_parent, is_enum_in_summaries, is_known_variant, lookup_emit_type_decl,
-    lookup_emit_type_summary, variant_belongs_to_enum, variant_summary_key,
+    collect_type_node_import_surface_names, emit_info_with_fn_return,
+    emit_info_with_fn_type_context, empty_emit_graph_info, find_variant_parent,
+    is_enum_in_summaries, is_known_variant, lookup_emit_type_decl, lookup_emit_type_summary,
+    variant_belongs_to_enum, variant_summary_key,
 };
 pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, RustCorpusRepr, TypeRepr, TypeSummary,
@@ -852,6 +853,315 @@ pub fn rust_normalize_witness_type_text(rendered: String) -> String {
         "witness<".to_string(),
         "v1_rt::Witness<".to_string(),
     )
+}
+
+pub fn rust_witness_parent_leaf(parent: String) -> bool {
+    (qualified_last_segment(parent.clone()) == "Witness".to_string())
+}
+
+pub fn rust_witness_variant_arm_names_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Holds/Violates literals below are the two arms of std.witness.Witness<C> (dag/std/witness.dag) — not minted nicknames. Pattern position still routes v1_rt::Witness via variant_pattern_qualified_path; construction turbofish here keys type-arg resolution off the modeled arm names only.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_peel_one_rc_type_node(
+    type_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    if (qualified_last_segment(type_node.name.clone()) != "Rc".to_string()) {
+        type_node
+    } else {
+        match type_node.children.clone().first().cloned() {
+            Some(inner) => inner.clone(),
+            None => match find_property(
+                type_node.properties.clone(),
+                "__applied_type_args".to_string(),
+                source_indices.clone(),
+            ) {
+                Some(applied) => match applied.children.clone().first().cloned() {
+                    Some(inner) => inner.clone(),
+                    None => type_node,
+                },
+                None => type_node,
+            },
+        }
+    }
+}
+
+pub fn rust_peel_all_rc_type_node(
+    mut type_node: Rc<Node>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    loop {
+        if (qualified_last_segment(type_node.name.clone()) == "Rc".to_string()) {
+            {
+                let __tco_0 = rust_peel_one_rc_type_node(type_node, source_indices.clone());
+                type_node = __tco_0;
+                continue;
+            }
+        } else {
+            break type_node.clone();
+        }
+    }
+}
+
+pub fn rust_witness_type_arg_admit_rendered(
+    rendered: String,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Option<String> {
+    if ((rendered.clone() == "_".to_string()) || (rendered.clone() == "".to_string())) {
+        None
+    } else {
+        if (((v1_rt::string_length(&rendered) == 1) && rust_is_uppercase_letter(rendered.clone()))
+            && !type_var_in_fn_generic_scope(
+                rendered.clone(),
+                emit_info.fn_generic_param_names.clone(),
+            ))
+        {
+            None
+        } else {
+            if rust_fold_rendered_type_has_any_spurious_generic(
+                rendered.clone(),
+                emit_info.fn_generic_param_names.clone(),
+            ) {
+                None
+            } else {
+                Some(rendered.clone())
+            }
+        }
+    }
+}
+
+pub fn rust_witness_applied_type_arg_node(
+    type_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match type_node.children.clone().first().cloned() {
+        Some(child) => Some(child.clone()),
+        None => match find_property(
+            type_node.properties.clone(),
+            "__applied_type_args".to_string(),
+            source_indices.clone(),
+        ) {
+            Some(applied) => match applied.children.clone().first().cloned() {
+                Some(child) => Some(child.clone()),
+                None => None,
+            },
+            None => None,
+        },
+    }
+}
+
+pub fn rust_witness_carrier_from_type_node(
+    type_node: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    {
+        if type_node_has_unbound_type_variable(
+            type_node.clone(),
+            emit_info.fn_generic_param_names.clone(),
+            source_indices.clone(),
+        ) {
+            return None;
+        }
+        let peeled = rust_peel_all_rc_type_node(type_node.clone(), source_indices.clone());
+        if (qualified_last_segment(peeled.name.clone()) == "Witness".to_string()) {
+            match rust_witness_applied_type_arg_node(peeled.clone(), source_indices.clone()) {
+                Some(arg_node) => rust_witness_type_arg_admit_rendered(
+                    render_rust_type(
+                        arg_node.clone(),
+                        shared_types.clone(),
+                        emit_info.corpus_repr.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ),
+                    emit_info.clone(),
+                ),
+                None => None,
+            }
+        } else {
+            rust_witness_type_arg_admit_rendered(
+                render_rust_type(
+                    peeled.clone(),
+                    shared_types.clone(),
+                    emit_info.corpus_repr.clone(),
+                    source_indices.clone(),
+                    emit_info.clone(),
+                ),
+                emit_info.clone(),
+            )
+        }
+    }
+}
+
+pub fn rust_witness_type_arg_render(
+    type_node: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    rust_witness_carrier_from_type_node(
+        type_node.clone(),
+        shared_types.clone(),
+        emit_info.clone(),
+        source_indices.clone(),
+    )
+}
+
+pub fn rust_witness_type_arg_from_holds_value_field(
+    fields: Rc<Vec<Rc<Node>>>,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for f in fields.clone().iter().cloned() {
+            if (field_init_node_name_at(f.clone(), source_indices.clone()) == "value".to_string()) {
+                __result.push(f);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(f) => {
+            let val_rt = resolved_type(field_init_node_value(f.clone()));
+            match rust_witness_carrier_from_type_node(
+                val_rt.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+                source_indices.clone(),
+            ) {
+                Some(arg) => Some(arg.clone()),
+                None => rust_witness_type_arg_from_fn_return(
+                    emit_info.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                ),
+            }
+        }
+        None => None,
+    }
+}
+
+pub fn rust_witness_type_arg_from_fn_return(
+    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match emit_info.fn_return_type.clone() {
+        Some(rt) => rust_witness_carrier_from_type_node(
+            rt.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+            source_indices.clone(),
+        ),
+        None => None,
+    }
+}
+
+pub fn rust_witness_type_arg_for_variant(
+    variant_name: String,
+    resolved_type: Rc<Node>,
+    fields: Rc<Vec<Rc<Node>>>,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    if (variant_name.clone() == "Holds".to_string()) {
+        match rust_witness_type_arg_from_holds_value_field(
+            fields.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+            source_indices.clone(),
+        ) {
+            Some(arg) => Some(arg.clone()),
+            None => rust_witness_type_arg_from_fn_return(
+                emit_info.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+            ),
+        }
+    } else {
+        if (variant_name.clone() == "Violates".to_string()) {
+            match rust_witness_type_arg_from_fn_return(
+                emit_info.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+            ) {
+                Some(arg) => Some(arg.clone()),
+                None => rust_witness_carrier_from_type_node(
+                    resolved_type.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                    source_indices.clone(),
+                ),
+            }
+        } else {
+            rust_witness_carrier_from_type_node(
+                resolved_type.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+                source_indices.clone(),
+            )
+        }
+    }
+}
+
+pub fn rust_witness_variant_ctor_path(
+    variant_name: String,
+    ctor_name: String,
+    effective_parent: Option<String>,
+    resolved_type: Rc<Node>,
+    fields: Rc<Vec<Rc<Node>>>,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match effective_parent.clone() {
+        Some(parent) => {
+            if !rust_witness_parent_leaf(parent.clone()) {
+                v1_rt::concat(
+                    v1_rt::concat(qualified_last_segment(parent.clone()), "::".to_string()),
+                    variant_name.clone(),
+                )
+            } else {
+                match rust_witness_type_arg_for_variant(
+                    variant_name.clone(),
+                    resolved_type.clone(),
+                    fields.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                    source_indices.clone(),
+                ) {
+                    Some(arg) => v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("Witness::<".to_string(), arg.clone()),
+                            ">::".to_string(),
+                        ),
+                        variant_name.clone(),
+                    ),
+                    None => v1_rt::concat(
+                        v1_rt::concat(
+                            "compile_error!(\"witness carrier type arg unresolved for variant "
+                                .to_string(),
+                            variant_name.clone(),
+                        ),
+                        "\")".to_string(),
+                    ),
+                }
+            }
+        }
+        None => ctor_name,
+    }
 }
 
 pub fn rust_normalize_partial_function_field_type_text(rendered: String) -> String {
@@ -4466,6 +4776,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             corpus_repr: base_info.corpus_repr.clone(),
             fn_generic_param_names: base_info.fn_generic_param_names.clone(),
             fn_type_env: base_info.fn_type_env.clone(),
+            fn_return_type: None,
         });
         let shared_types = emit_info.shared_types.clone();
         let registry = typed.item_registry.clone();
@@ -4852,6 +5163,7 @@ pub fn emit_module(
             corpus_repr: base_info.corpus_repr.clone(),
             fn_generic_param_names: base_info.fn_generic_param_names.clone(),
             fn_type_env: base_info.fn_type_env.clone(),
+            fn_return_type: None,
         });
         let shared_types = emit_info.shared_types.clone();
         let export_sets = build_module_export_sets(Rc::new(vec![typed_module.clone()]));
@@ -11217,6 +11529,7 @@ pub fn emit_typed_item(
                                 corpus_repr: emit_info.corpus_repr.clone(),
                                 fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
                                 fn_type_env: emit_info.fn_type_env.clone(),
+                                fn_return_type: emit_info.fn_return_type.clone(),
                             });
                             let is_effectful = match lookup_item(
                                 registry.clone(),
@@ -13401,10 +13714,13 @@ pub fn emit_fn_def(
                     }
                     __result
                 });
-                let body_emit_info = emit_info_with_fn_type_context(
-                    emit_info.clone(),
-                    generic_param_names.clone(),
-                    scope.type_env.clone(),
+                let body_emit_info = emit_info_with_fn_return(
+                    emit_info_with_fn_type_context(
+                        emit_info.clone(),
+                        generic_param_names.clone(),
+                        scope.type_env.clone(),
+                    ),
+                    Some(inferred.clone()),
                 );
                 let value_param_names = Rc::new({
                     let mut __result = Vec::new();
@@ -19911,6 +20227,7 @@ pub fn emit_rust_fold_method_call(
                             corpus_repr: emit_info.corpus_repr.clone(),
                             fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
                             fn_type_env: emit_info.fn_type_env.clone(),
+                            fn_return_type: emit_info.fn_return_type.clone(),
                         }),
                         None => emit_info.clone(),
                     }
@@ -19947,6 +20264,7 @@ pub fn emit_rust_fold_method_call(
                                 corpus_repr: emit_info.corpus_repr.clone(),
                                 fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
                                 fn_type_env: emit_info.fn_type_env.clone(),
+                                fn_return_type: emit_info.fn_return_type.clone(),
                             }),
                             None => emit_info.clone(),
                         }
@@ -23374,13 +23692,16 @@ pub fn emit_typed_record_lit(
                 let display_tn = if optional_variant.clone() {
                     rust_tn.clone()
                 } else {
-                    match effective_parent.clone() {
-                        Some(resolved_parent_enum) => v1_rt::concat(
-                            v1_rt::concat(resolved_parent_enum.clone(), "::".to_string()),
-                            rust_tn.clone(),
-                        ),
-                        None => ctor_name.clone(),
-                    }
+                    rust_witness_variant_ctor_path(
+                        rust_tn.clone(),
+                        ctor_name.clone(),
+                        effective_parent.clone(),
+                        resolved_type.clone(),
+                        fields.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        si.clone(),
+                    )
                 };
                 if ((optional_variant.clone() && is_some_like_variant_name(tn.clone()))
                     && ((fields.clone().len() as i64) == 1))
