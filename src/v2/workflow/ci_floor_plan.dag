@@ -1,7 +1,7 @@
 module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, known_red_probe_entries, falsifier_silent_pick_gate_entries, falsifier_rehomed_bin_wet_entries }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, known_red_probe_entries, falsifier_silent_pick_gate_entries, falsifier_rehomed_bin_wet_entries, falsifier_substrate_long_lane_entries }
 import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries, falsifier_native_cache_cold_roster }
 import v2.compiler.self_host.native_routing_frontier { native_routed_rows, NativeRoutingFrontierRow }
 import gunbc.ci_spec {
@@ -924,6 +924,7 @@ fn gunbc_falsifier_rehomed_bin_wet_batch() -> Runnable {
   }
 }
 
+<<<<<<< HEAD
 data falsifier_rehomed_hermetic_census_batch_note: String = "Nightly falsifier batch 6 (test-decomposition-wcf-cut.md Class C wave1_gate1_d_census row, 2026-07-25): re-homed interpreted-execution witnesses whose measured WITNESS wall (genuine corpus breadth, not a cost-shape defect) exceeds the per-PR fast-lane budget (gunbc.ci_layer_roots falsifier_rehomed_hermetic_census_rows — typed frontier rows, reason + dissolve_on each). Same RunnableDiscoveryBatch/SelectionApplied mechanism as falsifier_rehomed_bin_wet_batch but Hermetic-profiled: these rows spawn no host compiler and perform no host effects, so declaring Wet would be dishonest (and would misfile them into the subprocess-execution bin-wet lane, a §3 nickname). Correctness coverage continues at the 4-hourly cadence while the per-PR floor keeps only the mechanism-level fast-lane sibling."
 
 fn falsifier_rehomed_hermetic_census_batch_enrolled() -> Bool {
@@ -935,6 +936,19 @@ fn gunbc_falsifier_rehomed_hermetic_census_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: falsifier_rehomed_hermetic_census_entries(),
+=======
+data falsifier_substrate_long_lane_batch_note: String = "Nightly falsifier batch 6 (test-decomposition Class C, 2026-07-25): the declared Hermetic lane for SubstrateInputsOnly ingest/parse pipeline witnesses whose own eval exceeds the per-PR 5s fast-lane budget (gunbc_ci_fast_lane_rule_note) — the live-grain half of the provenance-producer Class C split (falsifier_substrate_long_lane_entries in gunbc.ci_layer_roots). Runs SelectionApplied after the rehomed-bin-wet batch; claim_executor halts this batch if an earlier one fails (fail-closed)."
+
+fn falsifier_substrate_long_lane_batch_enrolled() -> Bool {
+  length(xs: falsifier_substrate_long_lane_entries()) > 0
+}
+
+fn gunbc_falsifier_substrate_long_lane_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: falsifier_substrate_long_lane_entries(),
+>>>>>>> origin/proud-bat-741
     node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
@@ -964,15 +978,25 @@ fn gunbc_falsifier_batches() -> List<List<Runnable>> {
     enrolled: falsifier_silent_pick_gate_batch_enrolled(),
     batch: gunbc_falsifier_silent_pick_gate_batch()
   )
+<<<<<<< HEAD
   let with_rehomed_bin_wet = falsifier_batches_append_if_enrolled(
+=======
+  let with_rehomed = falsifier_batches_append_if_enrolled(
+>>>>>>> origin/proud-bat-741
     acc: with_silent_pick,
     enrolled: falsifier_rehomed_bin_wet_batch_enrolled(),
     batch: gunbc_falsifier_rehomed_bin_wet_batch()
   )
   falsifier_batches_append_if_enrolled(
+<<<<<<< HEAD
     acc: with_rehomed_bin_wet,
     enrolled: falsifier_rehomed_hermetic_census_batch_enrolled(),
     batch: gunbc_falsifier_rehomed_hermetic_census_batch()
+=======
+    acc: with_rehomed,
+    enrolled: falsifier_substrate_long_lane_batch_enrolled(),
+    batch: gunbc_falsifier_substrate_long_lane_batch()
+>>>>>>> origin/proud-bat-741
   )
 }
 
