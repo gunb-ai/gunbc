@@ -1,6 +1,25 @@
 module gunbc.ci_render
 
+import extdeps.render.glyphs { resolve_symbol }
+import extdeps.render.terminal { serialize_frame }
 import extdeps.unicode.display { string_display_width, truncate_text }
+import std.measure { Nanosecond, nanosecond, nanosecond_count }
+import std.render { Line, RenderCapability, Span, SpanStyle }
+import std.render_repeat_string_bootstrap { repeat_string }
+import std.symbols {
+  SymbolId,
+  Tier,
+  Unicode,
+  Ascii,
+  SemanticColor,
+  Dim,
+  BoxHorizontal,
+  BoxVertical,
+  BoxCornerTopLeft,
+  BoxCornerTopRight,
+  BoxCornerBottomLeft,
+  BoxCornerBottomRight,
+}
 
 fn glyph_for(id: SymbolId, tier: Tier) -> String {
   match resolve_symbol(id: id, tier: tier) {
