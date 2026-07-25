@@ -31,7 +31,7 @@ import v2.std.grammar {
   formal_production_to_node,
   grammar_relation_tokens_node
 }
-import v2.std.collection { Optional }
+import v2.std.collection { Absent, Optional, Present }
 import v2.std.compilers.lexing {
   CharClassPattern,
   CharPattern,
@@ -270,13 +270,11 @@ fn ecmascript_primitive_spec_facts(
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: ecmascript_inhabitant_atom(id: surface_spelling) }
+          Present { value: ecmascript_inhabitant_atom(id: surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: ecmascript_inhabitant_atom(id: encoding_value) }
+          Present { value: ecmascript_inhabitant_atom(id: encoding_value) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          Absent
       }
     }
   }

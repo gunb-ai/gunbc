@@ -53,7 +53,7 @@ import v2.std.compilers.lexing {
   WhitespaceChar,
   lex_rule_set_token_class_member
 }
-import v2.std.collection { List, Map, Set, empty_map, map_insert, Optional }
+import v2.std.collection { Absent, List, Map, Present, Set, empty_map, map_insert, Optional }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,
   AlgebraLawObligation,
@@ -1612,9 +1612,7 @@ fn swift_lex_token_symbol(sym: Symbol) -> Bool {
 fn swift_empty_primitive_spec_facts() -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      Violates {
-        diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-      }
+      Absent
     }
   }
 }

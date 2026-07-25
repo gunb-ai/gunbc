@@ -258,13 +258,11 @@ fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<Symbol, Node> 
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: sql_inhabitant_atom(id: facts.surface_spelling) }
+          Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          Holds { value: sql_inhabitant_atom(id: ^sql_tag_signed) }
+          Present { value: sql_inhabitant_atom(id: ^sql_tag_signed) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          Absent
       }
     }
   }
@@ -274,11 +272,9 @@ fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: sql_inhabitant_atom(id: facts.surface_spelling) }
+          Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          Absent
       }
     }
   }
@@ -288,13 +284,11 @@ fn sql_nonnumeric_spec_facts(facts: SqlNonNumericPrimitiveFacts) -> Map<Symbol, 
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: sql_inhabitant_atom(id: facts.surface_spelling) }
+          Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: sql_inhabitant_atom(id: facts.representation) }
+          Present { value: sql_inhabitant_atom(id: facts.representation) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          Absent
       }
     }
   }

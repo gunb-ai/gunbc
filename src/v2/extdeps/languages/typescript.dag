@@ -2132,15 +2132,13 @@ fn ts_number_spec_facts(facts: TsNumberPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: ts_inhabitant_atom(id: facts.surface_spelling) }
+          Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          Holds { value: ts_inhabitant_atom(id: ^ts_tag_bits64) }
+          Present { value: ts_inhabitant_atom(id: ^ts_tag_bits64) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: ts_inhabitant_atom(id: facts.ieee754_binary) }
+          Present { value: ts_inhabitant_atom(id: facts.ieee754_binary) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          Absent
       }
     }
   }
@@ -2150,13 +2148,11 @@ fn ts_bigint_spec_facts(facts: TsBigIntPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: ts_inhabitant_atom(id: facts.surface_spelling) }
+          Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: ts_inhabitant_atom(id: facts.encoding) }
+          Present { value: ts_inhabitant_atom(id: facts.encoding) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          Absent
       }
     }
   }
@@ -2166,13 +2162,11 @@ fn ts_bool_spec_facts(facts: TsBooleanPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: ts_inhabitant_atom(id: facts.surface_spelling) }
+          Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: ts_inhabitant_atom(id: facts.encoding) }
+          Present { value: ts_inhabitant_atom(id: facts.encoding) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          Absent
       }
     }
   }

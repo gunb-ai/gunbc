@@ -49,7 +49,7 @@ import v2.std.compilers.lexing {
   WhitespaceChar,
   lex_rule_set_token_class_member
 }
-import v2.std.collection { List, Map, Set, empty_map, map_insert, Optional }
+import v2.std.collection { Absent, List, Map, Present, Set, empty_map, map_insert, Optional }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,
   AlgebraLawObligation,
@@ -1587,19 +1587,17 @@ fn wasm_integer_spec_facts(facts: WasmIntegerPrimitiveFacts) -> Map<Symbol, Node
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: wasm_inhabitant_atom(id: facts.surface_spelling) }
+          Present { value: wasm_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          Holds { value: wasm_int_width_node(width: facts.width) }
+          Present { value: wasm_int_width_node(width: facts.width) }
       } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          Holds { value: wasm_inhabitant_atom(id: ^wasm_tag_sign_agnostic_modular) }
+          Present { value: wasm_inhabitant_atom(id: ^wasm_tag_sign_agnostic_modular) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: wasm_inhabitant_atom(id: ^wasm_repr_sign_agnostic_modular) }
+          Present { value: wasm_inhabitant_atom(id: ^wasm_repr_sign_agnostic_modular) }
       } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
-          Holds { value: wasm_inhabitant_atom(id: ^wasm_tag_modular_wrap) }
+          Present { value: wasm_inhabitant_atom(id: ^wasm_tag_modular_wrap) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          Absent
       }
     }
   }
@@ -1609,15 +1607,13 @@ fn wasm_float_spec_facts(facts: WasmFloatPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: wasm_inhabitant_atom(id: facts.surface_spelling) }
+          Present { value: wasm_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          Holds { value: wasm_float_width_node(width: facts.width) }
+          Present { value: wasm_float_width_node(width: facts.width) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: wasm_inhabitant_atom(id: facts.ieee754_binary) }
+          Present { value: wasm_inhabitant_atom(id: facts.ieee754_binary) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          Absent
       }
     }
   }

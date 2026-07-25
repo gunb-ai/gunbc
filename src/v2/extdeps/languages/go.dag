@@ -636,9 +636,7 @@ fn go_string_facts_node(facts: GoStringPrimitiveFacts) -> Node {
 fn go_empty_primitive_spec_facts() -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      Violates {
-        diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-      }
+      Absent
     }
   }
 }
