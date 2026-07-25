@@ -1,0 +1,20 @@
+module v2.test.claim.affected_set.affected_set_provenance_producer
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.test.lens_affected_set.provenance_producer {
+  provenance_producer_known_uncovered_diff_fail_closed_on_fixture_holds,
+  provenance_producer_unknown_diff_fail_closed_on_fixture_holds
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data affected_set_provenance_producer_fast_lane_note: String = "Class C per-PR fixture-wall half (test-decomposition-wcf-cut, 2026-07-25): fail-closed and selectivity mechanism REDs over hand-built NodeArtifactProvenance rows — zero parse-pipeline cost, under the 5s fast-lane eval budget. Selectivity superset receipts live in sg_claims_test.dag. Live-grain ingest/parse pipeline receipts live in long/affected_set_provenance_producer_witness_test.dag and enroll on falsifier_substrate_long_lane_entries (nightly falsifier batch 6)."
+
+test fn lens_affected_set_provenance_producer_unknown_diff_fail_closed_on_fixture_holds() -> Bool {
+  provenance_producer_unknown_diff_fail_closed_on_fixture_holds()
+}
+
+test fn lens_affected_set_provenance_producer_known_uncovered_diff_fail_closed_on_fixture_holds() -> Bool {
+  provenance_producer_known_uncovered_diff_fail_closed_on_fixture_holds()
+}

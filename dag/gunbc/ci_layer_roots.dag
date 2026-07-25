@@ -11,6 +11,7 @@ import std.witness_admission {
   DiscoverySelection,
   FalsifierSelfHostWet,
   FalsifierRehomedBinWet,
+  FalsifierSubstrateLongLane,
   BinWitnessWet,
   QuarantineProbeExpectRed,
   OfflineLocalRecipe,
@@ -40,6 +41,10 @@ data excl_bin_wet_dissolve: String = "the file migrates under the execution-corp
 data excl_rehomed_bin_wet_reason: String = "bin-execution witness class re-homed to the falsifier wet cadence (CI floor endgame D6): the file's enrolled fn(s) exceed bin_witness_wet_per_row_wall_budget_seconds, so they run as falsifier batch 5 via falsifier_rehomed_bin_wet_entries (typed frontier rows in falsifier_rehomed_bin_wet_rows)"
 
 data excl_rehomed_bin_wet_dissolve: String = "per falsifier_rehomed_bin_wet_rows dissolve_on: the row's realization lands under the per-row budget on a measured run and re-enrolls per-PR (or deletes as a duplicate); then this classification flips back to BinWitnessWet"
+
+data excl_substrate_long_lane_reason: String = "SubstrateInputsOnly long-lane witness class re-homed to the falsifier hermetic cadence (test-decomposition Class C, 2026-07-25): the row's own eval exceeds the per-PR 5s fast-lane budget but the mechanism is fixture-shaped ingest/parse pipeline coverage, not wet integration — so it runs as falsifier batch 6 via falsifier_substrate_long_lane_entries (typed frontier rows in falsifier_substrate_long_lane_rows)"
+
+data excl_substrate_long_lane_dissolve: String = "per falsifier_substrate_long_lane_rows dissolve_on: the row's eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery (or deletes as a duplicate); then this classification flips back to DiscoverySelection"
 
 data excl_behavioral_receipt_reason: String = "emit->compile->run->equals-seed self-host behavioral receipt class: enrolled fns run on the falsifier nightly Wet cadence (wet_receipt_enrollment / falsifier_self_host_wet_note); non-enrolled fns run by local recipe"
 
@@ -371,6 +376,18 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: excl_rehomed_bin_wet_dissolve
   },
   WitnessExclusionRow {
+    pattern: "affected_set_provenance_producer_witness_test.dag",
+    classification: FalsifierSubstrateLongLane,
+    reason: excl_substrate_long_lane_reason,
+    dissolve_on: excl_substrate_long_lane_dissolve
+  },
+  WitnessExclusionRow {
+    pattern: "edit_locus_source_provenance_witness_test.dag",
+    classification: FalsifierSubstrateLongLane,
+    reason: excl_substrate_long_lane_reason,
+    dissolve_on: excl_substrate_long_lane_dissolve
+  },
+  WitnessExclusionRow {
     pattern: "synthetic_orphan_admission_witness_test.dag",
     classification: NoConsumer,
     reason: "deliberate no-consumer synthetic path: the admission RED control keys on this reserved (nonexistent) entry to prove enrolled-with-zero-consumers refuses (witness_admission_test, cli_run admission tests)",
@@ -498,6 +515,7 @@ fn witness_exclusion_row_is_offline(row: WitnessExclusionRow) -> Bool {
     DiscoverySelection => false
     FalsifierSelfHostWet => false
     FalsifierRehomedBinWet => false
+    FalsifierSubstrateLongLane => false
     BinWitnessWet => false
     QuarantineProbeExpectRed => false
     FixtureExplicitRoster => false
@@ -511,6 +529,7 @@ fn witness_exclusion_row_is_fixture(row: WitnessExclusionRow) -> Bool {
     DiscoverySelection => false
     FalsifierSelfHostWet => false
     FalsifierRehomedBinWet => false
+    FalsifierSubstrateLongLane => false
     BinWitnessWet => false
     QuarantineProbeExpectRed => false
     OfflineLocalRecipe => false
@@ -523,6 +542,7 @@ fn witness_exclusion_row_is_discovery_selection(row: WitnessExclusionRow) -> Boo
     DiscoverySelection => true
     FalsifierSelfHostWet => false
     FalsifierRehomedBinWet => false
+    FalsifierSubstrateLongLane => false
     BinWitnessWet => false
     QuarantineProbeExpectRed => false
     OfflineLocalRecipe => false
@@ -534,6 +554,21 @@ fn witness_exclusion_row_is_discovery_selection(row: WitnessExclusionRow) -> Boo
 fn witness_exclusion_row_is_rehomed_bin_wet(row: WitnessExclusionRow) -> Bool {
   match row.classification {
     FalsifierRehomedBinWet => true
+    FalsifierSubstrateLongLane => false
+    BinWitnessWet => false
+    DiscoverySelection => false
+    FalsifierSelfHostWet => false
+    QuarantineProbeExpectRed => false
+    OfflineLocalRecipe => false
+    FixtureExplicitRoster => false
+    NoConsumer => false
+  }
+}
+
+fn witness_exclusion_row_is_substrate_long_lane(row: WitnessExclusionRow) -> Bool {
+  match row.classification {
+    FalsifierSubstrateLongLane => true
+    FalsifierRehomedBinWet => false
     BinWitnessWet => false
     DiscoverySelection => false
     FalsifierSelfHostWet => false
@@ -550,6 +585,7 @@ fn witness_exclusion_row_is_bin_witness_wet(row: WitnessExclusionRow) -> Bool {
     DiscoverySelection => false
     FalsifierSelfHostWet => false
     FalsifierRehomedBinWet => false
+    FalsifierSubstrateLongLane => false
     QuarantineProbeExpectRed => false
     OfflineLocalRecipe => false
     FixtureExplicitRoster => false
@@ -563,6 +599,7 @@ fn witness_exclusion_row_is_known_red(row: WitnessExclusionRow) -> Bool {
     DiscoverySelection => false
     FalsifierSelfHostWet => false
     FalsifierRehomedBinWet => false
+    FalsifierSubstrateLongLane => false
     BinWitnessWet => false
     OfflineLocalRecipe => false
     FixtureExplicitRoster => false
@@ -574,6 +611,7 @@ fn witness_exclusion_row_is_falsifier_wet(row: WitnessExclusionRow) -> Bool {
   match row.classification {
     FalsifierSelfHostWet => true
     FalsifierRehomedBinWet => false
+    FalsifierSubstrateLongLane => false
     DiscoverySelection => false
     BinWitnessWet => false
     QuarantineProbeExpectRed => false
@@ -589,6 +627,7 @@ fn witness_exclusion_row_is_no_consumer(row: WitnessExclusionRow) -> Bool {
     DiscoverySelection => false
     FalsifierSelfHostWet => false
     FalsifierRehomedBinWet => false
+    FalsifierSubstrateLongLane => false
     BinWitnessWet => false
     QuarantineProbeExpectRed => false
     OfflineLocalRecipe => false
@@ -765,6 +804,82 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
 fn falsifier_rehomed_bin_wet_entries() -> List<ScheduleWitnessEntry> {
   fold(falsifier_rehomed_bin_wet_rows, init: [], f: fn(acc, r) {
     concat(acc, [bin_wet(entry: r.entry, f: r.function)])
+  })
+}
+
+fn corpus_long(entry: String, f: String) -> ScheduleWitnessEntry {
+  ScheduleWitnessEntry { entry: entry, function: f, kind: CorpusWitnessKind }
+}
+
+type SubstrateLongLaneRow {
+  entry: String
+  function: String
+  reason: String
+  dissolve_on: String
+}
+
+data falsifier_substrate_long_lane_note: String = "Nightly falsifier batch 6 (test-decomposition Class C, 2026-07-25): the declared Hermetic lane for SubstrateInputsOnly ingest/parse pipeline witnesses whose own eval exceeds the per-PR 5s fast-lane budget (gunbc_ci_fast_lane_rule_note) but are not wet integration — the live-grain half of the provenance-producer Class C split (fixture fail-closed walls stay per-PR via hand-built rows in affected_set_provenance_producer_test.dag and sg_claims_test.dag selectivity receipts). Runs SelectionApplied after the rehomed-bin-wet batch; claim_executor halts this batch if an earlier one fails (fail-closed). Local recipe until enrolled: claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>."
+
+data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
+    function: "lens_affected_set_provenance_producer_single_read_emits_row_holds",
+    reason: "~9.5s measured eval per witness (proud-bat-741, 2026-07-25): node_artifact_provenance_from_source_root parse pipeline on inline fixture ingest — fixture-shaped, not corpus-breadth; per-PR fast-lane keeps hand-built fail-closed walls only",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
+    function: "lens_affected_set_provenance_producer_rejects_malformed_ingest_holds",
+    reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline wall receipt)",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
+    function: "lens_affected_set_provenance_producer_rejects_beyond_surface_ingest_holds",
+    reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline wall receipt)",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
+    function: "lens_affected_set_provenance_producer_parse_coverage_known_diff_fail_closed_holds",
+    reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline coverage receipt)",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
+    function: "lens_affected_set_provenance_producer_coverage_receipt_holds",
+    reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline coverage receipt)",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
+    function: "lens_affected_set_provenance_producer_git_diff_wire_holds",
+    reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline git-diff wire receipt)",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
+    function: "lens_affected_set_provenance_producer_unknown_diff_fail_closed_holds",
+    reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline fail-closed receipt; per-PR hand-built unknown-path wall lives in affected_set_provenance_producer_test.dag)",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
+    function: "edit_locus_source_provenance_affected_set_wire_holds",
+    reason: "Class C live-grain row (edit-locus provenance producer ×3 family): source_ir_node_artifact_provenance parse pipeline exceeds per-PR 5s budget",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
+    function: "edit_locus_source_provenance_producer_rejects_malformed_source_holds",
+    reason: "Class C live-grain row (edit-locus provenance producer ×3 family): malformed-source refusal through parse pipeline exceeds per-PR 5s budget",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  }
+]
+
+fn falsifier_substrate_long_lane_entries() -> List<ScheduleWitnessEntry> {
+  fold(falsifier_substrate_long_lane_rows, init: [], f: fn(acc, r) {
+    concat(acc, [corpus_long(entry: r.entry, f: r.function)])
   })
 }
 
