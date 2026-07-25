@@ -586,8 +586,10 @@ pub fn classify_field_recursion(
                     let value_type = match type_expr
                         .children
                         .clone()
-                        .get(value_index.clone() as usize)
+                        .iter()
                         .cloned()
+                        .skip(value_index.clone() as usize)
+                        .next()
                     {
                         Some(t) => authored_name_at(source_indices.clone(), t.clone()),
                         None => "".to_string(),
@@ -1211,7 +1213,7 @@ pub fn record_lit_instantiated_fields(
                                     {
                                         let subst = Rc::new(decl.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v1_rt::rc_empty_map::<String, Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
                         let slot = authored_name_at(scope.type_env.clone().source_indices.clone(), pair.1.clone());
-match exp.children.clone().get(pair.0.clone() as usize).cloned() {
+match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() {
     Some(arg) => v1_rt::rc_map_insert(acc.clone(), slot.clone(), resolved_type(arg.clone())),
     None => acc.clone(),
 }
@@ -1652,7 +1654,12 @@ pub fn borrowed_callable_call_type(
                         .cloned()
                         {
                             Some(named_ta) => Some(named_ta.clone()),
-                            None => typed_args.clone().get(pair.0.clone() as usize).cloned(),
+                            None => typed_args
+                                .clone()
+                                .iter()
+                                .cloned()
+                                .skip(pair.0.clone() as usize)
+                                .next(),
                         };
                         match matched_arg.clone() {
                             Some(ta) => unify_generics(
@@ -1726,7 +1733,12 @@ pub fn direct_call_arg_mismatch_diags(
                         .cloned()
                         {
                             Some(named_ta) => Some(named_ta.clone()),
-                            None => typed_args.clone().get(pair.0.clone() as usize).cloned(),
+                            None => typed_args
+                                .clone()
+                                .iter()
+                                .cloned()
+                                .skip(pair.0.clone() as usize)
+                                .next(),
                         };
                         match matched_arg.clone() {
                             Some(ta) => {
@@ -1894,7 +1906,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                         let operand_elem = if ((func_name.clone() == "set_insert".to_string())
                             || (func_name.clone() == "set_contains".to_string()))
                         {
-                            match typed_args.clone().get(1 as usize).cloned() {
+                            match typed_args.clone().iter().cloned().skip(1 as usize).next() {
                                 Some(insert_arg) => match arg_value(insert_arg.clone())
                                     .inferred
                                     .clone()
@@ -1909,7 +1921,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                                 None => None,
                             }
                         } else {
-                            match typed_args.clone().get(1 as usize).cloned() {
+                            match typed_args.clone().iter().cloned().skip(1 as usize).next() {
                                 Some(other_arg) => match arg_value(other_arg.clone())
                                     .inferred
                                     .clone()
@@ -1937,7 +1949,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                             None => false,
                         };
                         let union_other_bad = if (func_name.clone() == "set_union".to_string()) {
-                            match typed_args.clone().get(1 as usize).cloned() {
+                            match typed_args.clone().iter().cloned().skip(1 as usize).next() {
                                 Some(other_arg) => set_union_other_operand_is_resolved_non_set(
                                     other_arg.clone(),
                                     scope.clone(),
@@ -3710,8 +3722,10 @@ pub fn infer_expr(
                                         let a = pair.1.clone();
                                         let formal_lookup = value_params
                                             .clone()
-                                            .get(pair.0.clone() as usize)
-                                            .cloned();
+                                            .iter()
+                                            .cloned()
+                                            .skip(pair.0.clone() as usize)
+                                            .next();
                                         let formal_raw = match formal_lookup.clone() {
                                             Some(p) => param_node_type_expr(p.clone()),
                                             None => {
@@ -5423,7 +5437,14 @@ match bare_s.clone() {
                                     } else {
                                         Rc::new(SubValueRelation::SubValueUnknown)
                                     };
-                                    match exp.params.clone().get(pair.0.clone() as usize).cloned() {
+                                    match exp
+                                        .params
+                                        .clone()
+                                        .iter()
+                                        .cloned()
+                                        .skip(pair.0.clone() as usize)
+                                        .next()
+                                    {
                                         Some(cp) => extend_scope(
                                             acc.clone(),
                                             pair.1.clone(),
@@ -5540,11 +5561,16 @@ match bare_s.clone() {
                     {
                         __result.push({
                             let pn = pair.1.clone();
-                            let param_name =
-                                match lam_params.clone().get(pair.0.clone() as usize).cloned() {
-                                    Some(n) => n.clone(),
-                                    None => "".to_string(),
-                                };
+                            let param_name = match lam_params
+                                .clone()
+                                .iter()
+                                .cloned()
+                                .skip(pair.0.clone() as usize)
+                                .next()
+                            {
+                                Some(n) => n.clone(),
+                                None => "".to_string(),
+                            };
                             let param_type =
                                 match v1_rt::map_get(&lam_scope.locals.clone(), param_name.clone())
                                 {
@@ -6249,7 +6275,13 @@ pub fn alias_chain_type_arg_subst(
             v1_rt::rc_empty_map::<String, Rc<Node>>(),
             |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
                 let slot = generic_param_name_at(pair.1.clone(), env.source_indices.clone());
-                match type_args.clone().get(pair.0.clone() as usize).cloned() {
+                match type_args
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(pair.0.clone() as usize)
+                    .next()
+                {
                     Some(arg) => v1_rt::rc_map_insert(
                         acc.clone(),
                         slot.clone(),
@@ -7619,8 +7651,10 @@ pub fn maybe_insert_output_field_relation(
         let composed = match sig
             .output_provenance
             .clone()
-            .get(idx.clone() as usize)
+            .iter()
             .cloned()
+            .skip(idx.clone() as usize)
+            .next()
         {
             Some(param_map) => {
                 classify_call_via_provenance(val.clone(), param_map.clone(), ctx.clone())
@@ -9165,8 +9199,10 @@ pub fn build_call_evidence(
                         }
                         None => match positional_args
                             .clone()
-                            .get(def_idx.clone() as usize)
+                            .iter()
                             .cloned()
+                            .skip(def_idx.clone() as usize)
+                            .next()
                         {
                             Some(arg_val) => {
                                 read_arg_provenance(arg_val.clone(), pname.clone(), ctx.clone())
@@ -9239,7 +9275,12 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
                                                 Some(n) => n.clone(),
                                                 None => "".to_string(),
                                             };
-                                            let p2 = match lparams.clone().get(1 as usize).cloned()
+                                            let p2 = match lparams
+                                                .clone()
+                                                .iter()
+                                                .cloned()
+                                                .skip(1 as usize)
+                                                .next()
                                             {
                                                 Some(n) => n.clone(),
                                                 None => "".to_string(),
@@ -10053,8 +10094,10 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                                 );
                                 lparams
                                     .clone()
-                                    .get(elem_position.clone().unwrap() as usize)
+                                    .iter()
                                     .cloned()
+                                    .skip(elem_position.clone().unwrap() as usize)
+                                    .next()
                             }
                             None => None,
                         };
@@ -11085,7 +11128,13 @@ pub fn meet_per_field_results(
                                         let mut __result = Vec::new();
                                         for r in results.clone().iter().cloned() {
                                             __result.push(
-                                                match r.clone().get(idx.clone() as usize).cloned() {
+                                                match r
+                                                    .clone()
+                                                    .iter()
+                                                    .cloned()
+                                                    .skip(idx.clone() as usize)
+                                                    .next()
+                                                {
                                                     Some(m) => m.clone(),
                                                     None => empty_prov_map(),
                                                 },
@@ -11621,8 +11670,10 @@ if ((Rc::new(v1_rt::map_keys(&composed_field_map)).len() as i64) > 0) {
                         );
                         match stmts
                             .clone()
-                            .get((stmt_count.clone() - 1) as usize)
+                            .iter()
                             .cloned()
+                            .skip((stmt_count.clone() - 1) as usize)
+                            .next()
                         {
                             Some(last) => collect_variant_constructors(
                                 last.clone(),
@@ -17705,6 +17756,15 @@ pub struct ExportIndexModuleAccum {
     pub seen_names: Rc<BTreeSet<String>>,
 }
 
+pub fn export_index_canonical_is_the_fold_element_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "§6 bare-minimum cost, same receipt as module_exported_type_names_cost_note. export_index_merge_module's canonical binding was `filter(bindings |> map_values, b => b.name == name) |> first` — a rescan of the WHOLE binding map (with a fresh Vec allocation) once per distinct name, i.e. O(|bindings|^2) per module per closure assembly. It is dead work by construction: the enclosing fold walks THAT SAME map_values sequence in order, and seen_names skips every repeat, so the first element whose name matches is always the fold's own current element. `canonical = binding` is therefore the identical value, not an approximation of it — the order both expressions read is one traversal of one map value, so the equality does not depend on map_values being stable ACROSS runs (§5941 determinism), only on the two reads of the same value agreeing, which the rewrite removes the need for entirely.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn export_index_merge_module(
     acc: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
     m: Rc<TypedModule>,
@@ -17723,25 +17783,7 @@ pub fn export_index_merge_module(
                     state.clone()
                 } else {
                     {
-                        let canonical = match Rc::new({
-                            let mut __result = Vec::new();
-                            for b in
-                                Rc::new(v1_rt::map_values(&m.type_env.clone().bindings.clone()))
-                                    .iter()
-                                    .cloned()
-                            {
-                                if (b.name.clone() == name.clone()) {
-                                    __result.push(b);
-                                }
-                            }
-                            __result
-                        })
-                        .first()
-                        .cloned()
-                        {
-                            Some(b) => b.clone(),
-                            None => binding.clone(),
-                        };
+                        let canonical = binding.clone();
                         let seen_names =
                             v1_rt::rc_set_insert(state.seen_names.clone(), name.clone());
                         let index = match v1_rt::map_get(&state.index.clone(), name.clone()) {
@@ -17785,40 +17827,76 @@ pub fn build_type_name_export_index(
     )
 }
 
-pub fn module_exports_type_name(m: Rc<TypedModule>, name: String) -> bool {
-    ((Rc::new({
+pub fn module_exported_type_names_cost_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Cost shape (§6 bare-minimum cost, floor batch-3 receipt 2026-07-25): the type names a module exports is ONE derived fact — a set — and both consumers in rewire_type_env_import_str_binding_identity read it. Before this row it existed twice: the caller's per-module `local_names` fold, and `module_exports_type_name`, a LINEAR SCAN (map_values allocates a Vec of every binding, then filters by name) re-run once per (consumer module x inherited key x direct import). Measured on 79 discovery entries: that pass alone was 191.1s of a 331.9s resolve wall (99% of all rewire time, 2.4s/entry) while the other two rewire passes together cost 1.8s. Hoisting the set per module and testing membership makes direct_import_exporter_count O(direct imports) instead of O(direct imports x |parent bindings|), with no change to the predicate it computes. The caller reads its own row out of the SAME index rather than re-folding it (review 42566) — the Absent arm computes the true value from this one authority, so it is a structurally-unreachable fallback that is still honest, never a fabricated default (DESIGN section 5).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn module_exported_type_names(m: Rc<TypedModule>) -> Rc<BTreeSet<String>> {
+    Rc::new(v1_rt::map_values(&m.type_env.clone().bindings.clone()))
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_set::<String>(),
+            |acc: Rc<BTreeSet<String>>, b: Rc<TypeBinding>| {
+                v1_rt::rc_set_insert(acc, b.name.clone())
+            },
+        )
+}
+
+pub fn build_module_exported_type_name_index(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
+    modules.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+        |acc: Rc<HashMap<String, Rc<BTreeSet<String>>>>, m: Rc<TypedModule>| {
+            v1_rt::rc_map_insert(
+                acc,
+                authored_name_at(source_indices.clone(), m.module.clone()),
+                module_exported_type_names(m.clone()),
+            )
+        },
+    )
+}
+
+pub fn direct_import_export_name_sets(
+    m: Rc<TypedModule>,
+    export_name_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<BTreeSet<String>>>> {
+    Rc::new({
         let mut __result = Vec::new();
-        for b in Rc::new(v1_rt::map_values(&m.type_env.clone().bindings.clone()))
-            .iter()
-            .cloned()
-        {
-            if (b.name.clone() == name.clone()) {
-                __result.push(b);
-            }
+        for imp in module_imports(m.module.clone()).iter().cloned() {
+            __result.extend(
+                (*{
+                    let path = import_module_path_at(imp.clone(), source_indices.clone());
+                    match v1_rt::map_get(&export_name_index, path.clone()) {
+                        Some(names) => Rc::new(vec![names.clone()]),
+                        None => Rc::new(vec![]),
+                    }
+                })
+                .iter()
+                .cloned(),
+            );
         }
         __result
     })
-    .len() as i64)
-        > 0)
 }
 
 pub fn direct_import_exporter_count(
-    m: Rc<TypedModule>,
+    import_export_names: Rc<Vec<Rc<BTreeSet<String>>>>,
     name: String,
-    index: Rc<HashMap<String, Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> i64 {
     (Rc::new({
         let mut __result = Vec::new();
-        for imp in module_imports(m.module.clone()).iter().cloned() {
-            if {
-                let path = import_module_path_at(imp.clone(), source_indices.clone());
-                match v1_rt::map_get(&index, path.clone()) {
-                    Some(parent) => module_exports_type_name(parent.clone(), name.clone()),
-                    None => false,
-                }
-            } {
-                __result.push(imp);
+        for names in import_export_names.clone().iter().cloned() {
+            if v1_rt::set_contains(&names, name.clone()) {
+                __result.push(names);
             }
         }
         __result
@@ -17828,9 +17906,7 @@ pub fn direct_import_exporter_count(
 
 pub fn rewire_inherited_str_binding(
     type_name_index: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
-    module_index: Rc<HashMap<String, Rc<TypedModule>>>,
-    consumer: Rc<TypedModule>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    import_export_names: Rc<Vec<Rc<BTreeSet<String>>>>,
     local_names: Rc<BTreeSet<String>>,
     str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
@@ -17842,12 +17918,7 @@ pub fn rewire_inherited_str_binding(
             None => 0,
         };
         if ((v1_rt::set_contains(&local_names, name.clone())
-            || (direct_import_exporter_count(
-                consumer.clone(),
-                name.clone(),
-                module_index.clone(),
-                source_indices.clone(),
-            ) > 1))
+            || (direct_import_exporter_count(import_export_names.clone(), name.clone()) > 1))
             || (exporter_count.clone() > 1))
         {
             Rc::new(StrBindingsRewireAccum {
@@ -17896,27 +17967,24 @@ pub fn rewire_type_env_import_str_binding_identity(
 ) -> Rc<Vec<Rc<TypedModule>>> {
     {
         let type_name_index = build_type_name_export_index(modules.clone());
-        let index = modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
-            |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
-                v1_rt::rc_map_insert(
-                    acc,
-                    authored_name_at(source_indices.clone(), m.module.clone()),
-                    m.clone(),
-                )
-            },
-        );
+        let export_name_index =
+            build_module_exported_type_name_index(modules.clone(), source_indices.clone());
         Rc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
                 __result.push({
-                    let local_names =
-                        Rc::new(v1_rt::map_values(&m.type_env.clone().bindings.clone()))
-                            .iter()
-                            .cloned()
-                            .fold(v1_rt::rc_empty_set::<_>(), |acc: _, b: Rc<TypeBinding>| {
-                                v1_rt::rc_set_insert(acc, b.name.clone())
-                            });
+                    let local_names = match v1_rt::map_get(
+                        &export_name_index,
+                        authored_name_at(source_indices.clone(), m.module.clone()),
+                    ) {
+                        Some(names) => names.clone(),
+                        None => module_exported_type_names(m.clone()),
+                    };
+                    let import_export_names = direct_import_export_name_sets(
+                        m.clone(),
+                        export_name_index.clone(),
+                        source_indices.clone(),
+                    );
                     let ancestry_keys = Rc::new(v1_rt::map_keys(
                         &m.type_env.clone().ancestry_str_bindings.clone(),
                     ));
@@ -17931,9 +17999,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                         |acc: Rc<StrBindingsRewireAccum>, name: String| {
                             rewire_inherited_str_binding(
                                 type_name_index.clone(),
-                                index.clone(),
-                                m.clone(),
-                                source_indices.clone(),
+                                import_export_names.clone(),
                                 local_names.clone(),
                                 acc.str_bindings.clone(),
                                 acc.ancestry_str_bindings.clone(),
