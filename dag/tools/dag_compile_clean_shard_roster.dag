@@ -20,24 +20,42 @@ fn compile_clean_module_shard_from_decl(decl: CompileCleanModuleDeclFact) -> Com
   CompileCleanModuleShard { entry_path: decl.path }
 }
 
-fn compile_clean_module_shard_roster() -> List<CompileCleanModuleShard> {
-  fold(compile_clean_entry_module_facts(), init: [], f: fn(acc, decl) {
+fn compile_clean_module_shard_roster_from(
+  decl_facts: List<CompileCleanModuleDeclFact>
+) -> List<CompileCleanModuleShard> {
+  fold(decl_facts, init: [], f: fn(acc, decl) {
     concat(acc, [compile_clean_module_shard_from_decl(decl: decl)])
   })
 }
 
-fn compile_clean_shard_entry_paths() -> List<String> {
-  fold(compile_clean_module_shard_roster(), init: [], f: fn(acc, shard) {
+fn compile_clean_module_shard_roster() -> List<CompileCleanModuleShard> {
+  compile_clean_module_shard_roster_from(decl_facts: compile_clean_entry_module_facts())
+}
+
+fn compile_clean_shard_entry_paths_from(decl_facts: List<CompileCleanModuleDeclFact>) -> List<String> {
+  fold(compile_clean_module_shard_roster_from(decl_facts: decl_facts), init: [], f: fn(acc, shard) {
     concat(acc, [shard.entry_path])
   })
 }
 
+fn compile_clean_shard_entry_paths() -> List<String> {
+  compile_clean_shard_entry_paths_from(decl_facts: compile_clean_entry_module_facts())
+}
+
+fn compile_clean_shard_roster_count_from(decl_facts: List<CompileCleanModuleDeclFact>) -> Int {
+  list_length(items: compile_clean_module_shard_roster_from(decl_facts: decl_facts))
+}
+
 fn compile_clean_shard_roster_count() -> Int {
-  list_length(items: compile_clean_module_shard_roster())
+  compile_clean_shard_roster_count_from(decl_facts: compile_clean_entry_module_facts())
+}
+
+fn compile_clean_shard_roster_nonempty_from(decl_facts: List<CompileCleanModuleDeclFact>) -> Bool {
+  compile_clean_shard_roster_count_from(decl_facts: decl_facts) > 0
 }
 
 fn compile_clean_shard_roster_nonempty() -> Bool {
-  compile_clean_shard_roster_count() > 0
+  compile_clean_shard_roster_nonempty_from(decl_facts: compile_clean_entry_module_facts())
 }
 
 fn list_contains_path(xs: List<String>, target: String) -> Bool {
@@ -48,13 +66,53 @@ fn path_occurrence_count(xs: List<String>, target: String) -> Int {
   fold(xs, init: 0, f: fn(n, p) { if p == target { n + 1 } else { n } })
 }
 
-fn compile_clean_shard_roster_paths_duplicate_free() -> Bool {
-  let paths = compile_clean_shard_entry_paths()
+fn paths_duplicate_free(paths: List<String>) -> Bool {
   fold(paths, init: true, f: fn(ok, path) {
     ok && (path_occurrence_count(xs: paths, target: path) == 1)
   })
 }
 
+fn compile_clean_shard_roster_paths_duplicate_free_from(
+  decl_facts: List<CompileCleanModuleDeclFact>
+) -> Bool {
+  paths_duplicate_free(paths: compile_clean_shard_entry_paths_from(decl_facts: decl_facts))
+}
+
+fn compile_clean_shard_roster_paths_duplicate_free() -> Bool {
+  compile_clean_shard_roster_paths_duplicate_free_from(decl_facts: compile_clean_entry_module_facts())
+}
+
 fn witness_shard_roster_boundary_is_witness_layer_roots() -> Bool {
   compile_clean_partition_boundary().entry_roots == witness_layer_roots
+}
+
+data compile_clean_shard_roster_mechanism_fixture_facts: List<CompileCleanModuleDeclFact> = [
+  CompileCleanModuleDeclFact { module: "fixture.alpha", path: "dag/fixture/alpha.dag" },
+  CompileCleanModuleDeclFact { module: "fixture.beta", path: "dag/fixture/beta.dag" },
+  CompileCleanModuleDeclFact { module: "fixture.gamma", path: "dag/fixture/gamma.dag" }
+]
+
+data compile_clean_shard_roster_mechanism_fixture_duplicate_facts: List<CompileCleanModuleDeclFact> = [
+  CompileCleanModuleDeclFact { module: "fixture.alpha", path: "dag/fixture/alpha.dag" },
+  CompileCleanModuleDeclFact { module: "fixture.alpha_reexport", path: "dag/fixture/alpha.dag" }
+]
+
+data compile_clean_shard_roster_mechanism_fixture_note: String = "Class C split (docs/plans/test-decomposition-wcf-cut.md §5, session bright-newt-31 2026-07-25): the shard-selection MECHANISM (roster construction, nonempty, duplicate-free) is proven per-PR on this small synthetic decl-fact fixture — no module_declaration_facts scan of the real ~1,700-file pool. The real corpus's roster claim (does the LIVE tree's roster stay nonempty/duplicate-free) is a corpus-totality claim, same class as compile_clean_shard_totality_holds_on_live_tree, and is not re-derived here; see the falsifier-rehomed row in gunbc.ci_layer_roots."
+
+fn witness_roster_nonempty_on_fixture_facts() -> Bool {
+  compile_clean_shard_roster_nonempty_from(decl_facts: compile_clean_shard_roster_mechanism_fixture_facts)
+}
+
+fn witness_roster_duplicate_free_on_fixture_facts() -> Bool {
+  compile_clean_shard_roster_paths_duplicate_free_from(decl_facts: compile_clean_shard_roster_mechanism_fixture_facts)
+}
+
+fn witness_roster_reds_on_synthetic_duplicate_facts() -> Bool {
+  !compile_clean_shard_roster_paths_duplicate_free_from(
+    decl_facts: compile_clean_shard_roster_mechanism_fixture_duplicate_facts
+  )
+}
+
+fn witness_roster_empty_facts_are_not_nonempty() -> Bool {
+  !compile_clean_shard_roster_nonempty_from(decl_facts: [])
 }

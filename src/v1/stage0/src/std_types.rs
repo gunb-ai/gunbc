@@ -203,6 +203,15 @@ pub enum Bool {
     True,
     False,
 }
+// repr-grounding arm (b): Bool coproduct ↔ host bool bridge (v1 seed emit)
+impl From<Bool> for bool {
+    fn from(b: Bool) -> bool {
+        match b {
+            Bool::True => true,
+            Bool::False => false,
+        }
+    }
+}
 
 pub type Json = serde_json::Value;
 

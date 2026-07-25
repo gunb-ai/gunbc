@@ -27,7 +27,7 @@ import gunbc.ci_floor_measurement {
   SessionAggregateUnmeasured,
 }
 import extdeps.apt { package_systemd_oomd_defaults }
-import extdeps.os.oomd {
+import extdeps.systemd.oomd {
   OomdGlobalConfig,
   oomd_default_global_config,
   UnitManagedOomPolicy,
@@ -38,7 +38,7 @@ import extdeps.os.oomd {
   systemd_oomd_unit,
   oomd_managed_oom_memory_pressure_property,
 }
-import extdeps.os.systemd {
+import extdeps.systemd {
   SystemdUnitActiveState,
   Active,
   Inactive,
@@ -47,7 +47,7 @@ import extdeps.os.systemd {
   Reloading,
   Failed,
 }
-import extdeps.os.systemctl {
+import extdeps.systemd.systemctl {
   UnitFileState,
   UnitEnabled,
   UnitEnabledRuntime,

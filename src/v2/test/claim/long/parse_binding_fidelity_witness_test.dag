@@ -12,7 +12,7 @@ import v2.test.parse.parse_binding_fidelity {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data parse_binding_fidelity_long_note: String = "Census add-module parse+resolve binding fidelity exceeds the per-PR 5s fast-lane eval budget; enrolled in commit_workflow for long-lane CI."
+data parse_binding_fidelity_long_note: String = "Cadence: two module-ingest binding fidelity tests. Exceeds per-PR 5s fast-lane budget; explicitly enrolled in commit_workflow.dag for long-lane CI. Fixture split: parse/parse_binding_fidelity_test.dag (3 cross-file/fail-closed per-PR tests) — see parse_binding_fidelity_fast_note."
 
 test fn witness_parse_binding_fidelity_distinct_identifiers_holds() -> Bool {
   pbf_parse_preserves_param_x_binding()

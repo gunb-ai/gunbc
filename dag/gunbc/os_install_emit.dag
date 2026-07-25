@@ -9,7 +9,7 @@ import extdeps.os.ubuntu_autoinstall {
   StoragePolicyAbsent,
   StoragePolicyDirectLayout,
 }
-import extdeps.access.ssh { SshPublicKey, ssh_public_key_line }
+import extdeps.ssh { SshPublicKey, ssh_public_key_line }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
   yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool,

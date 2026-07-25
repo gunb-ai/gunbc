@@ -1,6 +1,6 @@
 module test.claim.os_systemd_witness
 
-import extdeps.os.systemd {
+import extdeps.systemd {
   SystemdUnitStatus,
   SystemdUnitActiveState,
   Active,
