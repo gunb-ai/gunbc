@@ -48,7 +48,7 @@ pub fn trait_derive_emit_v1_coproduct_shape_dissolve_on() -> String {
 pub fn trait_derive_emit_symbol_ord_carrier_dissolve_on() -> String {
     thread_local! {
         static CACHED: String = {
-            "authored_name_at == \"Symbol\" is interim v1 Node identity for ReprDeriveElemSymbolWrappedOrdCarrier; dissolves when Symbol kernel grounds on target_model.symbol_kernel_type_node (or equivalent typed atom) instead of string match.".to_string()
+            "rust_nominal_identity_carrier_shape_eligible gates on authored_name_at == \"Symbol\"; dissolves when Symbol kernel grounds on target_model.symbol_kernel_type_node (or equivalent typed atom) instead of string match. Single authority: trait_derive_emit (emit_rust imports; duplicate removed review 42525).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
