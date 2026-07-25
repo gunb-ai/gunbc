@@ -9,14 +9,14 @@ import std.trait_derive_shape {
   symbol_wrapped_ord_carrier_derive_traits,
   record_derive_traits_heap,
   record_derive_traits_copy,
-  repr_grounding_derive_completeness_predicate,
-  repr_grounding_supplemental_commutative_semiring_target,
-  repr_grounding_supplemental_bool_host_bridge_target
+  repr_grounding_derive_completeness_predicate
 }
 import extdeps.languages.rust.emit {
-  rust_trait_derive_attr_from_traits,
-  rust_supplemental_impls_commutative_semiring_magnitude,
-  rust_supplemental_impls_bool_coproduct
+  rust_trait_derive_attr_from_traits
+}
+import v1.compiler.trait_derive_emit {
+  v1_emit_struct_supplemental_impls,
+  v1_emit_enum_supplemental_impls
 }
 import v2.std.logic { Bool }
 
@@ -56,29 +56,38 @@ test fn payload_coproduct_predicate_satisfied() -> Bool {
 }
 
 test fn commutative_semiring_supplemental_impl_present() -> Bool {
-  let supplemental = rust_supplemental_impls_commutative_semiring_magnitude()
-  let target_ok = repr_grounding_supplemental_commutative_semiring_target(
+  let supplemental = v1_emit_struct_supplemental_impls(
     module_path: "std.algebra",
     name: "CommutativeSemiring"
   )
-  let target_absent = repr_grounding_supplemental_commutative_semiring_target(
+  let wrong_module = v1_emit_struct_supplemental_impls(
+    module_path: "std.magma",
+    name: "CommutativeSemiring"
+  )
+  let wrong_name = v1_emit_struct_supplemental_impls(
     module_path: "std.algebra",
     name: "Magma"
   )
-  target_ok && supplemental != "" && supplemental.contains("unimplemented!") && !target_absent
+  supplemental != ""
+    && supplemental.contains("unimplemented!")
+    && wrong_module == ""
+    && wrong_name == ""
 }
 
 test fn bool_supplemental_impl_present() -> Bool {
-  let supplemental = rust_supplemental_impls_bool_coproduct()
-  let target_ok = repr_grounding_supplemental_bool_host_bridge_target(
+  let supplemental = v1_emit_enum_supplemental_impls(
     module_path: "std.types",
     name: "Bool"
   )
-  let target_absent = repr_grounding_supplemental_bool_host_bridge_target(
+  let wrong_module = v1_emit_enum_supplemental_impls(
+    module_path: "std.logic",
+    name: "Bool"
+  )
+  let wrong_name = v1_emit_enum_supplemental_impls(
     module_path: "std.types",
     name: "Quantity"
   )
-  target_ok && supplemental != "" && !target_absent
+  supplemental != "" && wrong_module == "" && wrong_name == ""
 }
 
 test fn trait_derive_seed_emit_binding_witness_holds() -> Bool {
