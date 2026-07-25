@@ -3286,7 +3286,10 @@ mod tests {
             Some(901),
             true,
         );
-        assert_eq!(mirror, crawl, "mirror must be byte-equal to the seed oracle");
+        assert_eq!(
+            mirror, crawl,
+            "mirror must be byte-equal to the seed oracle"
+        );
         assert_eq!(
             mirror,
             "🕐 33 minutes in — still in witness discovery: entry 214 of 602. memory 15.0 GiB, swap 32.0 GiB, pressure 9.0%"

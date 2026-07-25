@@ -6741,9 +6741,7 @@ pub fn heartbeat_feed_enter_batch(batch_index: u64, label: &str, entry_total: Op
         Some(0) => None,
         other => other,
     };
-    let mut g = HEARTBEAT_FEED
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
+    let mut g = HEARTBEAT_FEED.lock().unwrap_or_else(|p| p.into_inner());
     *g = Some(HeartbeatFeedState {
         batch_index,
         batch_label: label.to_string(),
@@ -6758,9 +6756,7 @@ pub fn heartbeat_feed_set_entry_total(total: u64) {
     if total == 0 {
         return;
     }
-    let mut g = HEARTBEAT_FEED
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
+    let mut g = HEARTBEAT_FEED.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(state) = g.as_mut() {
         state.entry_total = Some(total);
     }
@@ -6770,9 +6766,7 @@ pub fn heartbeat_feed_set_entry_total(total: u64) {
 /// Caps at `entry_total` when known so a late double-complete cannot invent
 /// "entry N+1 of N".
 pub fn heartbeat_feed_entry_completed() {
-    let g = HEARTBEAT_FEED
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
+    let g = HEARTBEAT_FEED.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(state) = g.as_ref() {
         let prev = state.entry_done.fetch_add(1, Ordering::Relaxed);
         if let Some(total) = state.entry_total {
@@ -6788,9 +6782,7 @@ pub fn heartbeat_feed_entry_completed() {
 /// The heartbeat thread skips emit on `None` rather than printing a fabricated
 /// progress line.
 pub fn heartbeat_feed_snapshot() -> Option<HeartbeatFeedSnapshot> {
-    let g = HEARTBEAT_FEED
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
+    let g = HEARTBEAT_FEED.lock().unwrap_or_else(|p| p.into_inner());
     let state = g.as_ref()?;
     let entry_total = state.entry_total?;
     let entry_done = state.entry_done.load(Ordering::Relaxed).min(entry_total);
