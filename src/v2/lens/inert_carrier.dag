@@ -19,6 +19,7 @@ data inert_carrier_roster: List<FrontierRow> = [
   inert_row(unit: "FreeOutput", reason: "modeled output carrier with no live consumer yet"),
   inert_row(unit: "GcpProject", reason: "modeled gcp extdeps carrier with no live consumer yet"),
   inert_row(unit: "GitCliReportedVersion", reason: "modeled git-cli extdeps carrier with no live consumer yet"),
+  inert_row(unit: "HostToolchainReach", reason: "paired target/access carrier returned by host_toolchain_ensure_reach — witness-covered via srv3_subsumption pair/arm equality; roster hygiene until a non-test consumer reads rows outside the ensure spine"),
   inert_row(unit: "LocalAlias", reason: "inert G1 fixture type in qualified_module_projection_stripped_fixture.dag (see inert_carrier_local_alias_roster_note)"),
   inert_row(unit: "ProcMeminfo", reason: "modeled machine-facts carrier with no live consumer yet"),
   inert_row(unit: "ReactHookSite", reason: "modeled typescript extdeps carrier with no live consumer yet"),

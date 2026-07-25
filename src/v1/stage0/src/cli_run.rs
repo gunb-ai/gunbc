@@ -24884,12 +24884,6 @@ mod inert_carrier_tests {
     }
 
     #[test]
-    fn debug_print_live_inert_carrier_names() {
-        let names = inert_carrier_names_live();
-        panic!("live inert carrier names: {names:?}");
-    }
-
-    #[test]
     fn variant_consumed_coproduct_is_not_inert() {
         // The RustGramBuild1State shape: type name appears only at its declaration;
         // consumption is entirely via variant constructors/match arms in a nontest fn.
