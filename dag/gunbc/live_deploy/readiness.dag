@@ -64,10 +64,6 @@ import gunbc.typed_argv_exec {
 import extdeps.http.client
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 
-data http_client_get_path: String = "dag/extdeps/http/client.dag"
-data http_client_get_service: String = "http.Client"
-data http_client_get_operation: String = "Get"
-
 type ServiceReadyEvidence {
   body: String
 }
@@ -87,18 +83,6 @@ fn service_ready_apply_effect() -> ServiceReadyApplyEffect {
     unit: live_deploy_service_ready_unit_authority,
     endpoint: live_deploy_service_ready_endpoint_authority,
   }
-}
-
-fn http_client_get_operation_argv(url: NonEmptyStr) -> List<String> {
-  shell_materialize_argv_for_operation(
-    http_client_get_path,
-    http_client_get_service,
-    http_client_get_operation,
-    url as String,
-    "",
-    [],
-    ""
-  )
 }
 
 fn healthz_effective_read_from_get(success: Bool, body: String, error: String) -> HealthzEffectiveRead {
@@ -121,7 +105,7 @@ fn live_deploy_healthz_get_local(port: Int) -> HealthzEffectiveRead {
 
 fn live_deploy_healthz_get_ssh(port: Int, host: NonEmptyStr) -> HealthzEffectiveRead {
   let url = live_deploy_health_url_for_port(port: port)
-  let argv = http_client_get_operation_argv(url: url)
+  let argv = http_client_get_argv(url: url)
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: why } => HealthzEffectiveRead { body: "", probe_error: why }
     Absent =>
