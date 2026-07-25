@@ -7452,12 +7452,39 @@ pub struct ResolveStageNanos {
     pub typecheck_compute: u128,
     /// `collect_parent_envs` calls inside reconcile (every module, cache hit or miss).
     pub parent_envs: u128,
-    /// Reconcile total minus the two rows above: variant surfaces, registry merge,
-    /// transitive-service expansion, the three rewire passes, emit-graph info — the
-    /// whole-closure assembly residue that reruns per entry even at 100% cache hits.
+    /// Reconcile total minus the rows above and the assembly sub-rows below: the
+    /// unattributed whole-closure assembly residue that reruns per entry even at
+    /// 100% cache hits.
     pub reconcile_assembly: u128,
     /// `extract_ownership_proofs` + its diagnostics walk.
     pub ownership: u128,
+    // Assembly sub-rows (floor batch-3 lane, 2026-07-25). `reconcile_assembly` was one
+    // undifferentiated number covering ~96% of the discovery-corpus resolve wall — the same
+    // condition this struct's own doc-comment was written to end one level up, so the split
+    // is the same move applied to its own residue. These rows located
+    // `rewire_type_env_import_str_binding_identity` as 58% of the wall (see
+    // docs/plans/floor-time-namespace-walk-regression-diagnosis.md §7). Same dissolution
+    // trigger as `[gantt]` / `phase_profile`: a `.dag` `PerformanceReceipt` per-stage carrier
+    // (realization_measurement_loop Phase 0) consumed by a floor witness makes this the
+    // model's own attribution rather than a host-side stderr projection.
+    /// `module_schedule_batches` — antichain schedule build over the closure.
+    pub assembly_schedule: u128,
+    /// `try_reconcile_all_cache_hits` pass 1: per-module content key + store probe.
+    pub assembly_probe: u128,
+    /// `item_registry` merge fold across the closure's typed modules.
+    pub assembly_registry: u128,
+    /// `expand_transitive_services` (bounded 5-pass fixpoint over every bodied item).
+    pub assembly_services: u128,
+    /// The three `rewire_*` passes (type-env parents, import-str identity, func-env parents).
+    pub assembly_rewire: u128,
+    /// `rewire_type_env_parent_links` alone.
+    pub assembly_rewire_type_env: u128,
+    /// `rewire_type_env_import_str_binding_identity` alone.
+    pub assembly_rewire_import_str: u128,
+    /// `rewire_func_env_parent_links` alone.
+    pub assembly_rewire_func_env: u128,
+    /// `corpus_has_v1_seed_source_indices` + `build_emit_graph_info`.
+    pub assembly_emit_info: u128,
 }
 
 impl ResolveStageNanos {
@@ -7470,6 +7497,15 @@ impl ResolveStageNanos {
         self.parent_envs += other.parent_envs;
         self.reconcile_assembly += other.reconcile_assembly;
         self.ownership += other.ownership;
+        self.assembly_schedule += other.assembly_schedule;
+        self.assembly_probe += other.assembly_probe;
+        self.assembly_registry += other.assembly_registry;
+        self.assembly_services += other.assembly_services;
+        self.assembly_rewire += other.assembly_rewire;
+        self.assembly_rewire_type_env += other.assembly_rewire_type_env;
+        self.assembly_rewire_import_str += other.assembly_rewire_import_str;
+        self.assembly_rewire_func_env += other.assembly_rewire_func_env;
+        self.assembly_emit_info += other.assembly_emit_info;
     }
 
     /// Sum of the attributed stages; the caller's lump minus this is the
@@ -7483,6 +7519,12 @@ impl ResolveStageNanos {
             + self.parent_envs
             + self.reconcile_assembly
             + self.ownership
+            + self.assembly_schedule
+            + self.assembly_probe
+            + self.assembly_registry
+            + self.assembly_services
+            + self.assembly_rewire
+            + self.assembly_emit_info
     }
 }
 
@@ -7497,10 +7539,36 @@ thread_local! {
             parent_envs: 0,
             reconcile_assembly: 0,
             ownership: 0,
+            assembly_schedule: 0,
+            assembly_probe: 0,
+            assembly_registry: 0,
+            assembly_services: 0,
+            assembly_rewire: 0,
+            assembly_rewire_type_env: 0,
+            assembly_rewire_import_str: 0,
+            assembly_rewire_func_env: 0,
+            assembly_emit_info: 0,
         }) };
 }
 
+thread_local! {
+    static RESOLVE_STAGE_TOTAL: std::cell::RefCell<ResolveStageNanos> =
+        std::cell::RefCell::new(ResolveStageNanos::default());
+}
+
+/// Cumulative per-worker stage attribution across every entry resolve this thread
+/// has run (the per-entry slot folded in at each reset, plus the live slot). Read by
+/// `claim_batch`'s `[assembly-split]` receipt, which — unlike `claim_executor`'s
+/// discovery summary — has no per-entry receipt list to sum.
+pub fn resolve_stage_totals() -> ResolveStageNanos {
+    let mut total = RESOLVE_STAGE_TOTAL.with(|t| *t.borrow());
+    total.accumulate(&resolve_stage_slot_snapshot());
+    total
+}
+
 fn resolve_stage_slot_reset() {
+    let carried = resolve_stage_slot_snapshot();
+    RESOLVE_STAGE_TOTAL.with(|t| t.borrow_mut().accumulate(&carried));
     RESOLVE_STAGE_SLOT.with(|s| s.set(ResolveStageNanos::default()));
 }
 
@@ -7730,7 +7798,16 @@ fn resolved_graph_from_sources_with_index(
     // accumulated into the slot during this call (typecheck computes + parent envs).
     let reconcile_total = reconcile_started.elapsed().as_nanos();
     resolve_stage_slot_add(|s| {
-        s.reconcile_assembly += reconcile_total.saturating_sub(s.typecheck_compute + s.parent_envs);
+        s.reconcile_assembly += reconcile_total.saturating_sub(
+            s.typecheck_compute
+                + s.parent_envs
+                + s.assembly_schedule
+                + s.assembly_probe
+                + s.assembly_registry
+                + s.assembly_services
+                + s.assembly_rewire
+                + s.assembly_emit_info,
+        );
     });
 
     let has_type_errors = typed
@@ -8019,11 +8096,15 @@ fn finish_resolved_graph_assembly(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let (same_tree_fork_count, cross_tree_fork_count) = binding_fork_counts;
+    let registry_started = std::time::Instant::now();
     let item_registry = modules.iter().fold(v1_rt::rc_empty_map(), |acc, typed| {
         v1_rt::rc_map_merge(acc, typed.item_registry.clone())
     });
+    resolve_stage_slot_add(|s| s.assembly_registry += registry_started.elapsed().as_nanos());
+    let services_started = std::time::Instant::now();
     let expanded_registry =
         v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
+    resolve_stage_slot_add(|s| s.assembly_services += services_started.elapsed().as_nanos());
     let diagnostics: Rc<im::Vector<Rc<ErrorNode>>> = Rc::new({
         let mut acc = im::Vector::new();
         for chunk in &diag_chunks {
@@ -8037,16 +8118,27 @@ fn finish_resolved_graph_assembly(
             "[binding-fork-ledger] same_tree={same_tree_fork_count} cross_tree={cross_tree_fork_count} total={total_fork_count}"
         );
     }
+    let rewire_started = std::time::Instant::now();
     let modules =
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
+    resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
+    let rewire2_started = std::time::Instant::now();
     let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
         modules.clone(),
         source_indices.clone(),
     );
+    resolve_stage_slot_add(|s| {
+        s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos()
+    });
+    let rewire3_started = std::time::Instant::now();
     let modules =
         v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
+    resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
+    resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
+    let emit_info_started = std::time::Instant::now();
     let has_v1_seed = v1_compiler_infer::corpus_has_v1_seed_source_indices(modules.clone());
     let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone(), has_v1_seed);
+    resolve_stage_slot_add(|s| s.assembly_emit_info += emit_info_started.elapsed().as_nanos());
     Ok(Rc::new(ResolvedGraph {
         modules,
         item_registry: expanded_registry,
@@ -8092,6 +8184,7 @@ fn try_reconcile_all_cache_hits(
         closure_path_to_authored_name_map(closure_modules, closure_names);
     let mut results: Vec<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>> =
         vec![None; closure_modules.len()];
+    let probe_started = std::time::Instant::now();
     let mut pending: Vec<usize> = schedule.iter().flatten().copied().collect();
     let mut defer_pass = 0usize;
     while !pending.is_empty() {
@@ -8119,6 +8212,7 @@ fn try_reconcile_all_cache_hits(
                 Err(e) => return Err(e),
             };
             let Some(tc_result) = index_get_typed(index, &typed_key)? else {
+                resolve_stage_slot_add(|s| s.assembly_probe += probe_started.elapsed().as_nanos());
                 return Ok(None);
             };
             note_interface_hash(&mut interface_hash_by_name, mod_name, &tc_result);
@@ -8145,6 +8239,8 @@ fn try_reconcile_all_cache_hits(
             pending = next_pending;
         }
     }
+
+    resolve_stage_slot_add(|s| s.assembly_probe += probe_started.elapsed().as_nanos());
 
     // Pass 2 — resolver's ORIGINAL order, assembling the `ResolvedGraph` byte-identically to
     // the legacy serial fold (module order is an output-shape invariant, not just a schedule
@@ -8528,8 +8624,10 @@ fn reconcile_with_typed_cache(
         .iter()
         .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
         .collect();
+    let schedule_started = std::time::Instant::now();
     let (schedule, cycle_residue_slots) =
         module_schedule_batches(&closure_modules, &closure_names, index);
+    resolve_stage_slot_add(|s| s.assembly_schedule += schedule_started.elapsed().as_nanos());
     if let Some(assembled) = try_reconcile_all_cache_hits(
         &closure_modules,
         &closure_names,
