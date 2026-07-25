@@ -161,8 +161,8 @@ fn witness_enumerate_units_uses_typed_list_units_op() -> Bool {
   match systemctl_list_units_active_services(instance_glob: "actions-runner@srv3-*.service" as NonEmptyStr) {
     Present { value: units } =>
       length(units) == 2
-        && units.first() == Present { value: "actions-runner@srv3-01.service" as NonEmptyStr }
-        && units.skip(n: 1).first() == Present { value: "actions-runner@srv3-02.service" as NonEmptyStr }
+        && units.first() == "actions-runner@srv3-01.service" as NonEmptyStr
+        && units.skip(n: 1).first() == "actions-runner@srv3-02.service" as NonEmptyStr
     Absent => false
   }
 }
