@@ -29,7 +29,6 @@ import gunbc.live_deploy.service_ready {
 }
 import gunbc.live_deploy.intent {
   live_deploy_health_url_for_port,
-  live_deploy_unit_diagnosis_command,
 }
 import gunbc.roadmap_site_healthz_validate { roadmap_site_healthz_json_string_parses }
 import gunbc.live_deploy.spec {
@@ -43,19 +42,13 @@ import gunbc.ci_deploy_access {
   deploy_access_decision_reason,
 }
 import gunbc.host_effect {
-  ShellCommand,
-  HostOs,
-  host_effect_read_evidence,
   HostEffectTransport,
-  HostEffectIntent,
-  HostEffectEvidence,
-  ShellEffectApplied,
-  ConvergePlanApplied,
   LocalShell,
   SshShell,
   EmitArtifactThenThinRun,
 }
-import gunbc.host_effect_realize { host_effect_apply_gated, host_effect_privilege_verdict }
+import gunbc.host_effect_realize { host_effect_privilege_verdict }
+import gunbc.systemctl_status_read { systemctl_status_read, unit_status_capture_text }
 import std.access { Deny, Permit }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
@@ -222,40 +215,24 @@ fn live_deploy_service_ready_once() -> Reconciliation<ServiceReadyApplyEffect, S
   reconcile_service_ready_read(read: show_healthz_read_fixture_healthy())
 }
 
-fn unit_diagnosis_from_shell_apply(
-  r: Reconciliation<HostEffectIntent, HostEffectEvidence>
-) -> String {
-  match r {
-    Converged { evidence: e, applied: _ } =>
-      match e {
-        ShellEffectApplied { stdout: out, exit_code: _ } => out
-        ConvergePlanApplied { stdout: _, exit_code: _ } =>
-          "unit diagnosis capture returned ConvergePlanApplied; typed mismatch"
-      }
-    NotConverged { reason: why, applied: _ } =>
-      concat("unit diagnosis capture failed: ", why)
-  }
-}
-
 fn capture_unit_diagnosis(
   spec: DeploymentSpec,
   transport: HostEffectTransport,
   access: DeployAccess,
 ) -> String {
-  unit_diagnosis_from_shell_apply(
-    r: host_effect_apply_gated(
-      access: access,
-      target: HostOs { node: spec.target.host },
-      effect: ShellCommand {
-        script: live_deploy_unit_diagnosis_command(
-          unit: live_deploy_service_ready_unit_authority
-        ),
-      },
-      evidence: host_effect_read_evidence,
-      transport: transport,
-      fixture_actor: Absent,
-    )
-  )
+  let _ = spec
+  let verdict = host_effect_privilege_verdict(access: access, fixture_actor: Absent)
+  match verdict {
+    Deny { reason: _ } =>
+      concat("unit diagnosis capture failed: ", deploy_access_decision_reason(d: verdict))
+    Permit =>
+      unit_status_capture_text(
+        capture: systemctl_status_read(
+          transport: transport,
+          unit: live_deploy_service_ready_unit_authority,
+        )
+      )
+  }
 }
 
 type ServiceReadyPollOutcome =

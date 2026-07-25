@@ -40,6 +40,9 @@ import std.realization_reconcile {
 }
 import std.measure { measure_fit_count_floor, second_count }
 import extdeps.http.client { http_client_get_argv }
+import extdeps.os.systemctl
+import gunbc.systemctl_status_read { systemctl_status_operation_argv_matches_authority }
+import gunbc.live_deploy.service_ready { live_deploy_service_ready_unit_authority }
 import extdeps.tools.curl {
   curl_localhost_connect_timeout,
   curl_localhost_max_time,
@@ -116,6 +119,17 @@ fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
     DoesNotGround { reason: _ } => true
     Grounds { evidence: _ } => false
   }
+}
+
+fn witness_transport_status_probe_uses_typed_systemctl_argv() -> Bool {
+  systemctl_status_operation_argv_matches_authority(
+    unit: live_deploy_service_ready_unit_authority
+  )
+}
+
+fn witness_transport_status_probe_realizes_hermetically() -> Bool {
+  let r = systemd.Systemctl.Status(unit: live_deploy_service_ready_unit_authority)
+  r.stdout != ""
 }
 
 fn witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout() -> Bool {
@@ -216,6 +230,8 @@ test fn live_deploy_readiness_witnesses() -> Bool {
     && witness_healthz_bad_body_not_groundable()
     && witness_ssh_mock_stdout_is_discriminating_red()
     && witness_transport_probe_targets_localhost_healthz()
+    && witness_transport_status_probe_uses_typed_systemctl_argv()
+    && witness_transport_status_probe_realizes_hermetically()
     && witness_accept_no_response_probe_fails_fast_not_hangs()
     && witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout()
     && witness_service_ready_once_converges_on_healthy_fixture()

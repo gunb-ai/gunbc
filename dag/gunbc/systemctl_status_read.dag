@@ -1,0 +1,89 @@
+module gunbc.systemctl_status_read
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.os.systemctl
+import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
+import gunbc.typed_argv_exec {
+  typed_argv_exec_over_ssh,
+  typed_argv_shell_safe_refusal_argv,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+}
+
+data systemctl_status_path: String = "dag/extdeps/os/systemctl.dag"
+data systemctl_status_service: String = "systemd.Systemctl"
+data systemctl_status_operation: String = "Status"
+
+type UnitStatusCapture =
+    UnitStatusCaptured { text: String }
+  | UnitStatusCaptureRefused { reason: String }
+
+fn systemctl_status_operation_argv(unit: NonEmptyStr) -> List<String> {
+  shell_materialize_argv_for_operation(
+    systemctl_status_path,
+    systemctl_status_service,
+    systemctl_status_operation,
+    "",
+    "",
+    [],
+    unit as String
+  )
+}
+
+fn unit_status_capture_from_stdout(stdout: String, refusal: String) -> UnitStatusCapture {
+  if refusal != "" {
+    UnitStatusCaptureRefused { reason: refusal }
+  } else {
+    let trimmed = trim(stdout)
+    if trimmed == "" {
+      UnitStatusCaptureRefused { reason: "systemctl status returned empty stdout" }
+    } else {
+      UnitStatusCaptured { text: trimmed }
+    }
+  }
+}
+
+fn systemctl_status_read_local(unit: NonEmptyStr) -> UnitStatusCapture {
+  let result = systemd.Systemctl.Status(unit: unit)
+  unit_status_capture_from_stdout(stdout: result.stdout, refusal: "")
+}
+
+fn systemctl_status_read_ssh(host: NonEmptyStr, unit: NonEmptyStr) -> UnitStatusCapture {
+  let argv = systemctl_status_operation_argv(unit: unit)
+  match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    Present { value: why } =>
+      UnitStatusCaptureRefused { reason: why }
+    Absent =>
+      match typed_argv_exec_over_ssh(host: host, argv: argv) {
+        TypedArgvExecConverged { result: r } =>
+          unit_status_capture_from_stdout(stdout: r.stdout, refusal: "")
+        TypedArgvExecRefused { reason: why } =>
+          UnitStatusCaptureRefused { reason: why }
+      }
+  }
+}
+
+fn systemctl_status_read(transport: HostEffectTransport, unit: NonEmptyStr) -> UnitStatusCapture {
+  match transport {
+    LocalShell => systemctl_status_read_local(unit: unit)
+    SshShell { ssh_host: h } => systemctl_status_read_ssh(host: h, unit: unit)
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      UnitStatusCaptureRefused {
+        reason: "systemctl status refused EmitArtifactThenThinRun transport",
+      }
+  }
+}
+
+fn unit_status_capture_text(capture: UnitStatusCapture) -> String {
+  match capture {
+    UnitStatusCaptured { text: t } => t
+    UnitStatusCaptureRefused { reason: why } =>
+      concat("unit diagnosis capture failed: ", why)
+  }
+}
+
+fn systemctl_status_operation_argv_matches_authority(unit: NonEmptyStr) -> Bool {
+  let materialized = systemctl_status_operation_argv(unit: unit)
+  let authority = ["systemctl", "status", "--no-pager", "--full", unit as String]
+  join(materialized, " ") == join(authority, " ")
+}
