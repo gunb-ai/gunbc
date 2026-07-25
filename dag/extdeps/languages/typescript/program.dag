@@ -23,6 +23,7 @@ type TsExpr
   | Member { object: TsExpr, property: String }
   | Index { object: TsExpr, index: TsExpr }
   | Call { callee: TsExpr, args: List<TsExpr> }
+  | New { callee: TsExpr, args: List<TsExpr> }
   | ArrowFn { params: List<String>, body: TsStmt }
   | BinOp { left: TsExpr, op: String, right: TsExpr }
   | Prefix { op: String, expr: TsExpr }
@@ -79,6 +80,12 @@ fn ts_member(object: TsExpr, property: String) -> TsExpr {
 
 fn ts_call(callee: TsExpr, args: List<TsExpr>) -> TsExpr {
   Call { callee: callee, args: args }
+}
+
+data ts_new_note: String = "`new C(args)` — the NewExpression production, part of the cited language and previously absent from this grammar, so a constructor call had no representation at all. The gap is worth naming because the tempting alternative was Ident { name: \"new AudioContext()\" }: a hand-authored JS string smuggled through an identifier, which would have type-checked, serialized correctly, and defeated the entire point of modeling the program as a tree. That is the unmarked-workaround shape DESIGN rules a line-stop, so the production was added instead. Serialization does NOT parenthesize the callee, so a callee that is itself an operator expression (`new (a || b)()`) must be bound to a name first — the grammar has no Paren production and one is not minted speculatively (DESIGN section 6: priced by displaced cost, and no consumer needs it)."
+
+fn ts_new(callee: TsExpr, args: List<TsExpr>) -> TsExpr {
+  New { callee: callee, args: args }
 }
 
 fn ts_binop(left: TsExpr, op: String, right: TsExpr) -> TsExpr {
@@ -217,6 +224,8 @@ fn serialize_ts_expr(e: TsExpr) -> String {
       concat(serialize_ts_expr(e: o), concat("[", concat(serialize_ts_expr(e: i), "]")))
     Call { callee: c, args: a } =>
       concat(serialize_ts_expr(e: c), concat("(", concat(join_expr_args(args: a), ")")))
+    New { callee: c, args: a } =>
+      concat("new ", concat(serialize_ts_expr(e: c), concat("(", concat(join_expr_args(args: a), ")"))))
     ArrowFn { params: ps, body: b } =>
       concat("(", concat(join(ps, ", "), concat(") => ", serialize_ts_stmt_body(s: b))))
     BinOp { left: l, op: o, right: r } =>

@@ -1,0 +1,487 @@
+module extdeps.pricing.regional_compute
+
+import std.currency { Usd }
+import std.measure {
+  ByteSize,
+  HardwareThreadCount,
+  MoneyPerHour,
+  byte_size,
+  hardware_thread_count,
+  money_amount_micro,
+  money_rate_micros,
+}
+import std.nat { Nat }
+import std.types { NonEmptyStr, List }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "prices.azure.com/api/retail/prices"
+  }
+}
+
+data regional_compute_provenance_note: String = "Live-fetched 2026-07-25 (session gitlab-10k-scm-costs-baz90x). Two machine-readable authorities, one SKU each, held constant across every geography so a price difference is a REGION fact and not a hardware fact: AWS m7i.large (2 vCPU / 8 GiB, on-demand Linux, shared tenancy, no pre-installed software) streamed from the AWS Price List API regional CSVs -- the same authority extdeps.pricing.aws_ec2 already cites -- and Azure Standard_D2s_v5 (2 vCPU / 8 GiB, Linux pay-as-you-go) from the unauthenticated Azure retail price API (anchor above). Holding the SKU fixed is what makes the comparison honest; the one place it could not be held is recorded on its own row (Bahrain, below)."
+
+data local_provider_readability_note: String = "A structural finding about this market, recorded as rows rather than prose: the HYPERSCALERS publish machine-readable price APIs covering every geography, and essentially no regional or local provider does. Attempted and refused on 2026-07-25: E2E Networks (India) serves a GPU-only fragment and 404s its compute page; Magalu Cloud (Brazil) 404; Afrihost (South Africa) 404; Contabo 403s a non-browser fetch; Alibaba Cloud renders prices client-side; Oracle's price-list API returns an HTML error page. Sakura Internet (Japan) is the one local provider whose ladder IS readable, and it is blocked on a different axis (currency, below). Consequence for anyone building on this: a regionally-diverse cost model can be CITED only for the hyperscalers; local-provider quotes are hand-entered facts with a human in the loop, and should be typed as such rather than silently trusted."
+
+type Geography
+  = NorthAmerica
+  | SouthAmerica
+  | Europe
+  | Africa
+  | MiddleEast
+  | SouthAsia
+  | EastAsia
+  | SoutheastAsia
+
+fn geography_label(g: Geography) -> NonEmptyStr {
+  match g {
+    NorthAmerica => "North America"
+    SouthAmerica => "South America"
+    Europe => "Europe"
+    Africa => "Africa"
+    MiddleEast => "Middle East"
+    SouthAsia => "South Asia"
+    EastAsia => "East Asia"
+    SoutheastAsia => "Southeast Asia"
+  }
+}
+
+type ComputeProvider
+  = AwsEc2
+  | AzureVirtualMachines
+  | SakuraInternet
+  | E2ENetworks
+  | MagaluCloud
+  | Afrihost
+  | Contabo
+  | AlibabaCloud
+
+fn compute_provider_label(p: ComputeProvider) -> NonEmptyStr {
+  match p {
+    AwsEc2 => "AWS EC2"
+    AzureVirtualMachines => "Azure Virtual Machines"
+    SakuraInternet => "Sakura Internet"
+    E2ENetworks => "E2E Networks"
+    MagaluCloud => "Magalu Cloud"
+    Afrihost => "Afrihost"
+    Contabo => "Contabo"
+    AlibabaCloud => "Alibaba Cloud"
+  }
+}
+
+data hourly_rate_availability_note: String = "Same refusal discipline as extdeps.pricing.object_storage StorageRateAvailability: a rate this fetch could not read is a typed row with a stated cause, never a remembered number. HourlyUnrepresentable is a DISTINCT third arm from HourlyUnavailable because the obstacle is different in kind -- the price was read successfully but cannot be written down in the carrier (Sakura quotes JPY and std.currency admits only Eur and Usd today). Collapsing 'could not read it' and 'read it but cannot represent it' into one arm would hide a modeling gap behind a fetch failure."
+
+type HourlyRateAvailability
+  = HourlyCited { hourly: MoneyPerHour }
+  | HourlyUnavailable { cause: NonEmptyStr }
+  | HourlyUnrepresentable { observed: NonEmptyStr, cause: NonEmptyStr }
+
+type RegionalComputeRow {
+  provider: ComputeProvider
+  region_code: NonEmptyStr
+  region_label: NonEmptyStr
+  geography: Geography
+  instance_label: NonEmptyStr
+  vcpus: HardwareThreadCount
+  memory_bytes: ByteSize
+  hourly: HourlyRateAvailability
+  pricing_citation: NonEmptyStr
+}
+
+fn usd_per_hour(micros: Nat) -> HourlyRateAvailability {
+  HourlyCited {
+    hourly: MoneyPerHour { amount: money_amount_micro(count: micros), currency: Usd },
+  }
+}
+
+fn two_vcpu() -> HardwareThreadCount {
+  hardware_thread_count(2)
+}
+
+fn eight_gibibytes() -> ByteSize {
+  byte_size(count: 8589934592)
+}
+
+data aws_us_east_1: RegionalComputeRow = RegionalComputeRow {
+  provider: AwsEc2,
+  region_code: "us-east-1",
+  region_label: "US East (N. Virginia)",
+  geography: NorthAmerica,
+  instance_label: "m7i.large",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 100800),
+  pricing_citation: "AmazonEC2/us-east-1#m7i.large-OnDemand-Linux-Shared",
+}
+
+data aws_ap_south_1: RegionalComputeRow = RegionalComputeRow {
+  provider: AwsEc2,
+  region_code: "ap-south-1",
+  region_label: "Asia Pacific (Mumbai)",
+  geography: SouthAsia,
+  instance_label: "m7i.large",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 106050),
+  pricing_citation: "AmazonEC2/ap-south-1#m7i.large-OnDemand-Linux-Shared",
+}
+
+data aws_eu_central_1: RegionalComputeRow = RegionalComputeRow {
+  provider: AwsEc2,
+  region_code: "eu-central-1",
+  region_label: "EU (Frankfurt)",
+  geography: Europe,
+  instance_label: "m7i.large",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 120750),
+  pricing_citation: "AmazonEC2/eu-central-1#m7i.large-OnDemand-Linux-Shared",
+}
+
+data aws_me_central_1: RegionalComputeRow = RegionalComputeRow {
+  provider: AwsEc2,
+  region_code: "me-central-1",
+  region_label: "Middle East (UAE)",
+  geography: MiddleEast,
+  instance_label: "m7i.large",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 123590),
+  pricing_citation: "AmazonEC2/me-central-1#m7i.large-OnDemand-Linux-Shared",
+}
+
+data aws_ap_southeast_1: RegionalComputeRow = RegionalComputeRow {
+  provider: AwsEc2,
+  region_code: "ap-southeast-1",
+  region_label: "Asia Pacific (Singapore)",
+  geography: SoutheastAsia,
+  instance_label: "m7i.large",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 126000),
+  pricing_citation: "AmazonEC2/ap-southeast-1#m7i.large-OnDemand-Linux-Shared",
+}
+
+data aws_ap_northeast_1: RegionalComputeRow = RegionalComputeRow {
+  provider: AwsEc2,
+  region_code: "ap-northeast-1",
+  region_label: "Asia Pacific (Tokyo)",
+  geography: EastAsia,
+  instance_label: "m7i.large",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 130200),
+  pricing_citation: "AmazonEC2/ap-northeast-1#m7i.large-OnDemand-Linux-Shared",
+}
+
+data aws_bahrain_sku_substitution_note: String = "The one place the fixed-SKU rule could not hold, recorded rather than smoothed over: me-south-1 (Bahrain) does not offer m7i.large, so this row carries m6i.large -- a PREVIOUS-generation 2 vCPU / 8 GiB instance. Its 0.1320 USD/hr is therefore NOT directly comparable to the m7i rows above (an older generation usually prices lower for the same vCPU count, so the true m7i-equivalent Bahrain premium would likely be higher still, not lower). Instance-family availability differing by region is itself the finding: newer silicon reaches the largest regions first, so a smaller region pays more AND gets older hardware."
+
+data aws_me_south_1: RegionalComputeRow = RegionalComputeRow {
+  provider: AwsEc2,
+  region_code: "me-south-1",
+  region_label: "Middle East (Bahrain)",
+  geography: MiddleEast,
+  instance_label: "m6i.large",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 132000),
+  pricing_citation: "AmazonEC2/me-south-1#m6i.large-OnDemand-Linux-Shared",
+}
+
+data aws_af_south_1: RegionalComputeRow = RegionalComputeRow {
+  provider: AwsEc2,
+  region_code: "af-south-1",
+  region_label: "Africa (Cape Town)",
+  geography: Africa,
+  instance_label: "m7i.large",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 133350),
+  pricing_citation: "AmazonEC2/af-south-1#m7i.large-OnDemand-Linux-Shared",
+}
+
+data aws_ap_east_1: RegionalComputeRow = RegionalComputeRow {
+  provider: AwsEc2,
+  region_code: "ap-east-1",
+  region_label: "Asia Pacific (Hong Kong)",
+  geography: EastAsia,
+  instance_label: "m7i.large",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 138600),
+  pricing_citation: "AmazonEC2/ap-east-1#m7i.large-OnDemand-Linux-Shared",
+}
+
+data aws_sa_east_1: RegionalComputeRow = RegionalComputeRow {
+  provider: AwsEc2,
+  region_code: "sa-east-1",
+  region_label: "South America (Sao Paulo)",
+  geography: SouthAmerica,
+  instance_label: "m7i.large",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 160650),
+  pricing_citation: "AmazonEC2/sa-east-1#m7i.large-OnDemand-Linux-Shared",
+}
+
+data azure_eastus: RegionalComputeRow = RegionalComputeRow {
+  provider: AzureVirtualMachines,
+  region_code: "eastus",
+  region_label: "East US",
+  geography: NorthAmerica,
+  instance_label: "Standard_D2s_v5",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 96000),
+  pricing_citation: "prices.azure.com#eastus/Standard_D2s_v5/Consumption",
+}
+
+data azure_centralindia: RegionalComputeRow = RegionalComputeRow {
+  provider: AzureVirtualMachines,
+  region_code: "centralindia",
+  region_label: "Central India",
+  geography: SouthAsia,
+  instance_label: "Standard_D2s_v5",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 101000),
+  pricing_citation: "prices.azure.com#centralindia/Standard_D2s_v5/Consumption",
+}
+
+data azure_southindia: RegionalComputeRow = RegionalComputeRow {
+  provider: AzureVirtualMachines,
+  region_code: "southindia",
+  region_label: "South India",
+  geography: SouthAsia,
+  instance_label: "Standard_D2s_v5",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 135000),
+  pricing_citation: "prices.azure.com#southindia/Standard_D2s_v5/Consumption",
+}
+
+data azure_israelcentral: RegionalComputeRow = RegionalComputeRow {
+  provider: AzureVirtualMachines,
+  region_code: "israelcentral",
+  region_label: "Israel Central",
+  geography: MiddleEast,
+  instance_label: "Standard_D2s_v5",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 112000),
+  pricing_citation: "prices.azure.com#israelcentral/Standard_D2s_v5/Consumption",
+}
+
+data azure_uaenorth: RegionalComputeRow = RegionalComputeRow {
+  provider: AzureVirtualMachines,
+  region_code: "uaenorth",
+  region_label: "UAE North",
+  geography: MiddleEast,
+  instance_label: "Standard_D2s_v5",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 118000),
+  pricing_citation: "prices.azure.com#uaenorth/Standard_D2s_v5/Consumption",
+}
+
+data azure_qatarcentral: RegionalComputeRow = RegionalComputeRow {
+  provider: AzureVirtualMachines,
+  region_code: "qatarcentral",
+  region_label: "Qatar Central",
+  geography: MiddleEast,
+  instance_label: "Standard_D2s_v5",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 118000),
+  pricing_citation: "prices.azure.com#qatarcentral/Standard_D2s_v5/Consumption",
+}
+
+data azure_koreacentral: RegionalComputeRow = RegionalComputeRow {
+  provider: AzureVirtualMachines,
+  region_code: "koreacentral",
+  region_label: "Korea Central",
+  geography: EastAsia,
+  instance_label: "Standard_D2s_v5",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 118000),
+  pricing_citation: "prices.azure.com#koreacentral/Standard_D2s_v5/Consumption",
+}
+
+data azure_southeastasia: RegionalComputeRow = RegionalComputeRow {
+  provider: AzureVirtualMachines,
+  region_code: "southeastasia",
+  region_label: "Southeast Asia (Singapore)",
+  geography: SoutheastAsia,
+  instance_label: "Standard_D2s_v5",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 120000),
+  pricing_citation: "prices.azure.com#southeastasia/Standard_D2s_v5/Consumption",
+}
+
+data azure_japaneast: RegionalComputeRow = RegionalComputeRow {
+  provider: AzureVirtualMachines,
+  region_code: "japaneast",
+  region_label: "Japan East",
+  geography: EastAsia,
+  instance_label: "Standard_D2s_v5",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 124000),
+  pricing_citation: "prices.azure.com#japaneast/Standard_D2s_v5/Consumption",
+}
+
+data azure_southafricanorth: RegionalComputeRow = RegionalComputeRow {
+  provider: AzureVirtualMachines,
+  region_code: "southafricanorth",
+  region_label: "South Africa North",
+  geography: Africa,
+  instance_label: "Standard_D2s_v5",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 127000),
+  pricing_citation: "prices.azure.com#southafricanorth/Standard_D2s_v5/Consumption",
+}
+
+data azure_brazilsouth: RegionalComputeRow = RegionalComputeRow {
+  provider: AzureVirtualMachines,
+  region_code: "brazilsouth",
+  region_label: "Brazil South",
+  geography: SouthAmerica,
+  instance_label: "Standard_D2s_v5",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 153000),
+  pricing_citation: "prices.azure.com#brazilsouth/Standard_D2s_v5/Consumption",
+}
+
+data azure_westeurope: RegionalComputeRow = RegionalComputeRow {
+  provider: AzureVirtualMachines,
+  region_code: "westeurope",
+  region_label: "West Europe",
+  geography: Europe,
+  instance_label: "Standard_D2s_v5",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: usd_per_hour(micros: 115000),
+  pricing_citation: "prices.azure.com#westeurope/Standard_D2s_v5/Consumption",
+}
+
+data sakura_japan_vps: RegionalComputeRow = RegionalComputeRow {
+  provider: SakuraInternet,
+  region_code: "jp-tokyo-ishikari-osaka",
+  region_label: "Japan (Tokyo / Ishikari / Osaka)",
+  geography: EastAsia,
+  instance_label: "VPS 2 GB (3 virtual cores, 100 GB SSD)",
+  vcpus: hardware_thread_count(3),
+  memory_bytes: byte_size(count: 2147483648),
+  hourly: HourlyUnrepresentable {
+    observed: "1594 JPY per month (annual 19118 JPY), 3 virtual cores / 2 GB / 100 GB SSD, from the published VPS specification table",
+    cause: "std.currency CurrencyCode admits only Eur and Usd, so a JPY-quoted rate cannot be written into MoneyPerHour without either inventing a currency code or folding an undeclared FX rate into the amount. Both are refused. dissolve-on: Jpy added to std.currency (a legitimate std addition -- ISO 4217 is universal-framework vocabulary, unlike a vendor billing unit), after which this row carries the quoted monthly rate and cross-currency comparison takes a DECLARED FX assumption the way gunbc.econ.knowable_wedge already declares eur_to_usd.",
+  },
+  pricing_citation: "vps.sakura.ad.jp/specification#2GB-plan",
+}
+
+data e2e_networks_india: RegionalComputeRow = RegionalComputeRow {
+  provider: E2ENetworks,
+  region_code: "in-e2e",
+  region_label: "India (E2E Networks, NSE: E2E)",
+  geography: SouthAsia,
+  instance_label: "general-purpose compute",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: HourlyUnavailable {
+    cause: "the pricing page serves a GPU-only fragment (H200/H100 hourly rates) and the general compute page 404s; no machine-readable price list published. Refused rather than filled from memory.",
+  },
+  pricing_citation: "e2enetworks.com/pricing#compute-not-machine-readable",
+}
+
+data magalu_cloud_brazil: RegionalComputeRow = RegionalComputeRow {
+  provider: MagaluCloud,
+  region_code: "br-magalu",
+  region_label: "Brazil (Magalu Cloud)",
+  geography: SouthAmerica,
+  instance_label: "virtual machine",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: HourlyUnavailable {
+    cause: "pricing URL returned 404 to this fetch; no machine-readable price list found. Refused rather than filled from memory.",
+  },
+  pricing_citation: "magalu.cloud/pricing#404",
+}
+
+data afrihost_south_africa: RegionalComputeRow = RegionalComputeRow {
+  provider: Afrihost,
+  region_code: "za-afrihost",
+  region_label: "South Africa (Afrihost)",
+  geography: Africa,
+  instance_label: "cloud server",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: HourlyUnavailable {
+    cause: "cloud-server pricing URL returned 404 to this fetch. Refused rather than filled from memory.",
+  },
+  pricing_citation: "afrihost.com/cloud-servers#404",
+}
+
+data alibaba_cloud_asia: RegionalComputeRow = RegionalComputeRow {
+  provider: AlibabaCloud,
+  region_code: "cn-alibaba-ecs",
+  region_label: "Asia (Alibaba Cloud ECS)",
+  geography: EastAsia,
+  instance_label: "ECS instance",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: HourlyUnavailable {
+    cause: "ECS price-list page renders rates client-side; the fetched document carries no price text. Refused rather than filled from memory.",
+  },
+  pricing_citation: "alibabacloud.com/en/product/ecs-pricing-list#client-rendered",
+}
+
+data contabo_global: RegionalComputeRow = RegionalComputeRow {
+  provider: Contabo,
+  region_code: "global-contabo",
+  region_label: "Global (Contabo VPS, incl. Singapore and India)",
+  geography: SoutheastAsia,
+  instance_label: "VPS",
+  vcpus: two_vcpu(),
+  memory_bytes: eight_gibibytes(),
+  hourly: HourlyUnavailable {
+    cause: "returns HTTP 403 to a non-browser fetch (bot protection). Refused rather than filled from memory.",
+  },
+  pricing_citation: "contabo.com/en/vps#403",
+}
+
+fn regional_compute_catalog() -> List<RegionalComputeRow> {
+  [
+    aws_us_east_1, aws_ap_south_1, aws_eu_central_1, aws_me_central_1,
+    aws_ap_southeast_1, aws_ap_northeast_1, aws_me_south_1, aws_af_south_1,
+    aws_ap_east_1, aws_sa_east_1,
+    azure_eastus, azure_centralindia, azure_southindia, azure_israelcentral,
+    azure_uaenorth, azure_qatarcentral, azure_koreacentral, azure_southeastasia,
+    azure_japaneast, azure_southafricanorth, azure_brazilsouth, azure_westeurope,
+    sakura_japan_vps, e2e_networks_india, magalu_cloud_brazil,
+    afrihost_south_africa, alibaba_cloud_asia, contabo_global,
+  ]
+}
+
+fn hourly_micros(row: RegionalComputeRow) -> Nat? {
+  match row.hourly {
+    HourlyCited { hourly: h } => Present { value: money_rate_micros(q: h) }
+    HourlyUnavailable { cause: _ } => none
+    HourlyUnrepresentable { observed: _, cause: _ } => none
+  }
+}
+
+fn compute_provider_eq(a: ComputeProvider, b: ComputeProvider) -> Bool {
+  compute_provider_label(p: a) == compute_provider_label(p: b)
+}
+
+fn geography_eq(a: Geography, b: Geography) -> Bool {
+  geography_label(g: a) == geography_label(g: b)
+}

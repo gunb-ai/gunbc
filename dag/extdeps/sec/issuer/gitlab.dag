@@ -26,7 +26,7 @@ data gitlab_ticker: StockTicker = StockTicker { symbol: "GTLB" }
 
 data gitlab_issuer_catalog: IssuerCatalogRow = IssuerCatalogRow {
   cik: gitlab_cik,
-  legal_name: "GitLab Inc.",
+  registrant_name: "Gitlab Inc.",
   primary_ticker: gitlab_ticker,
   exchange: Nasdaq,
   vendor: gitlab,
