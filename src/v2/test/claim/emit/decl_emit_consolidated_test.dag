@@ -92,9 +92,16 @@ fn dc_derive_attr(binding: Symbol) -> Node {
   dc_conj(children: [ dc_pos(target: rust_inhabitant_atom(id: binding)) ])
 }
 
+fn dc_coproduct_derive_binding(coproduct: Node) -> Symbol {
+  match rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct) {
+    Accepted { value: binding, diagnostics: _ } => binding
+    Rejected { .. } => ^rust_decl_derive_enum_copy_binding
+  }
+}
+
 fn dc_enum_nongeneric(name: String, coproduct: Node, variants: List<Node>) -> Node {
   dc_conj(children: [
-    dc_pos(target: dc_derive_attr(binding: rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct))),
+    dc_pos(target: dc_derive_attr(binding: dc_coproduct_derive_binding(coproduct: coproduct))),
     dc_pos(target: dc_atom(s: name)),
     dc_pos(target: dc_variant_block(variants: variants))
   ])
@@ -102,7 +109,7 @@ fn dc_enum_nongeneric(name: String, coproduct: Node, variants: List<Node>) -> No
 
 fn dc_enum_generic(name: String, coproduct: Node, params: List<String>, variants: List<Node>) -> Node {
   dc_conj(children: [
-    dc_pos(target: dc_derive_attr(binding: rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct))),
+    dc_pos(target: dc_derive_attr(binding: dc_coproduct_derive_binding(coproduct: coproduct))),
     dc_pos(target: dc_atom(s: name)),
     dc_pos(target: dc_generic_params(params: params)),
     dc_pos(target: dc_variant_block(variants: variants))

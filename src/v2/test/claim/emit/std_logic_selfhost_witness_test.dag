@@ -49,9 +49,16 @@ fn sl_derive_attr(binding: Symbol) -> Node {
   sl_conj(children: [ sl_pos(target: rust_inhabitant_atom(id: binding)) ])
 }
 
+fn sl_coproduct_derive_binding(coproduct: Node) -> Symbol {
+  match rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct) {
+    Accepted { value: binding, diagnostics: _ } => binding
+    Rejected { .. } => ^rust_decl_derive_enum_copy_binding
+  }
+}
+
 fn sl_enum_nongeneric(name: String, coproduct: Node, variants: List<Node>) -> Node {
   sl_conj(children: [
-    sl_pos(target: sl_derive_attr(binding: rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct))),
+    sl_pos(target: sl_derive_attr(binding: sl_coproduct_derive_binding(coproduct: coproduct))),
     sl_pos(target: sl_atom(s: name)),
     sl_pos(target: sl_variant_block(variants: variants))
   ])
