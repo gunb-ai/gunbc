@@ -112,6 +112,10 @@ out.txt
 # Python is used only for local dev tooling; never committed to the .dag/.rs substrate
 *.py
 !docs/plans/witness-subject-execution-audit.py
+# census instrument for dag-note-prose-census.md -- the doc's numbers must
+# re-derive, else the census is specification-without-execution (DESIGN §5).
+# Deletes with that census when the typed carriers land.
+!docs/plans/dag-note-prose-census.py
 
 # --- CPython bytecode cache (PEP 3147) [cited: python.org/peps/pep-3147] ---
 __pycache__/
