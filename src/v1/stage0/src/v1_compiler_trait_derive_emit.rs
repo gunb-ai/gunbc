@@ -4,11 +4,12 @@
 pub use crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits;
 pub use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape;
 use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
-    ReprDeriveElemNullaryEnumCopy, ReprDeriveElemUnknown,
+    ReprDeriveElemNullaryEnumCopy, ReprDeriveElemSymbolWrappedOrdCarrier, ReprDeriveElemUnknown,
 };
 pub use crate::std_trait_derive_shape::{
     nullary_coproduct_derive_traits, payload_coproduct_derive_traits, record_derive_traits_copy,
     record_derive_traits_heap, repr_grounding_derive_completeness_predicate,
+    symbol_wrapped_ord_carrier_derive_traits,
 };
 pub use crate::std_types::is_container_type;
 pub use crate::v1_compiler_emit::to_pascal;
@@ -61,7 +62,7 @@ pub fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> ReprGroundingDeriveElemShape {
     if v1_symbol_wrapped_ord_carrier_shape_eligible(children.clone(), source_indices.clone()) {
-        ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy
+        ReprGroundingDeriveElemShape::ReprDeriveElemSymbolWrappedOrdCarrier
     } else {
         ReprGroundingDeriveElemShape::ReprDeriveElemUnknown
     }
@@ -105,10 +106,10 @@ pub fn v1_emit_struct_derives(
                     source_indices.clone(),
                 );
                 if repr_grounding_derive_completeness_predicate(
-                    nullary_coproduct_derive_traits(),
+                    symbol_wrapped_ord_carrier_derive_traits(),
                     shape.clone(),
                 ) {
-                    rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
+                    rust_trait_derive_attr_from_traits(symbol_wrapped_ord_carrier_derive_traits())
                 } else {
                     v1_trait_derive_refuse(
                         "trait_derive_emit: symbol-wrapped ord carrier refused".to_string(),

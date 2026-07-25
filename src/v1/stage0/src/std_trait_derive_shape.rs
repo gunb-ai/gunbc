@@ -53,6 +53,7 @@ pub enum ReprGroundingDeriveElemShape {
     ReprDeriveElemKernelBool,
     ReprDeriveElemKernelUnit,
     ReprDeriveElemNullaryEnumCopy,
+    ReprDeriveElemSymbolWrappedOrdCarrier,
     ReprDeriveElemUnknown,
 }
 
@@ -120,6 +121,18 @@ pub fn repr_grounding_derive_shape_has_trait(
             ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
             _ => false,
         },
+        ReprGroundingDeriveElemShape::ReprDeriveElemSymbolWrappedOrdCarrier => {
+            match derive_trait.clone() {
+                ReprGroundingDeriveTrait::ReprDeriveClone => true,
+                ReprGroundingDeriveTrait::ReprDerivePartialEq => true,
+                ReprGroundingDeriveTrait::ReprDeriveEq => true,
+                ReprGroundingDeriveTrait::ReprDerivePartialOrd => true,
+                ReprGroundingDeriveTrait::ReprDeriveOrd => true,
+                ReprGroundingDeriveTrait::ReprDeriveSerialize => true,
+                ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
+                _ => false,
+            }
+        }
         ReprGroundingDeriveElemShape::ReprDeriveElemUnknown => false,
     }
 }
@@ -235,6 +248,44 @@ pub fn nullary_coproduct_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
     })
 }
 
+pub fn symbol_wrapped_ord_carrier_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
+    Rc::new({
+        let mut __cons_v = (*Rc::new({
+            let mut __cons_v = (*Rc::new({
+                let mut __cons_v = (*Rc::new({
+                    let mut __cons_v = (*Rc::new({
+                        let mut __cons_v = (*Rc::new({
+                            let mut __cons_v = (*Rc::new({
+                                let mut __cons_v = (*Rc::new(vec![])).clone();
+                                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDeserialize);
+                                __cons_v
+                            }))
+                            .clone();
+                            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveSerialize);
+                            __cons_v
+                        }))
+                        .clone();
+                        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveOrd);
+                        __cons_v
+                    }))
+                    .clone();
+                    __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialOrd);
+                    __cons_v
+                }))
+                .clone();
+                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveEq);
+                __cons_v
+            }))
+            .clone();
+            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialEq);
+            __cons_v
+        }))
+        .clone();
+        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
+        __cons_v
+    })
+}
+
 pub fn payload_coproduct_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
     Rc::new({
         let mut __cons_v = (*Rc::new({
@@ -296,5 +347,7 @@ pub struct ReprDeriveElemKernelBool;
 pub struct ReprDeriveElemKernelUnit;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReprDeriveElemNullaryEnumCopy;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ReprDeriveElemSymbolWrappedOrdCarrier;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReprDeriveElemUnknown;

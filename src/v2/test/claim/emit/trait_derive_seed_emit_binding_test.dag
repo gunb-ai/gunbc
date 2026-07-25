@@ -2,7 +2,9 @@ module v2.test.emit.trait_derive_seed_emit_binding_test
 
 import std.trait_derive_shape {
   ReprDeriveElemNullaryEnumCopy,
+  ReprDeriveElemSymbolWrappedOrdCarrier,
   nullary_coproduct_derive_traits,
+  symbol_wrapped_ord_carrier_derive_traits,
   record_derive_traits_heap,
   record_derive_traits_copy,
   repr_grounding_derive_completeness_predicate
@@ -25,6 +27,22 @@ test fn record_heap_attr_contains_serde() -> Bool {
   heap_attr != "" && heap_attr != copy_attr
 }
 
+test fn ord_carrier_shape_rejects_nullary_copy_traits() -> Bool {
+  repr_grounding_derive_completeness_predicate(
+    nullary_coproduct_derive_traits(),
+    ReprDeriveElemSymbolWrappedOrdCarrier
+  ) == false
+}
+
+test fn ord_carrier_attr_differs_from_nullary() -> Bool {
+  let ord_attr = rust_trait_derive_attr_from_traits(symbol_wrapped_ord_carrier_derive_traits())
+  let nullary_attr = rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
+  ord_attr != "" && ord_attr != nullary_attr
+}
+
 test fn trait_derive_seed_emit_binding_witness_holds() -> Bool {
-  nullary_coproduct_predicate_satisfied() && record_heap_attr_contains_serde()
+  nullary_coproduct_predicate_satisfied()
+    && record_heap_attr_contains_serde()
+    && ord_carrier_shape_rejects_nullary_copy_traits()
+    && ord_carrier_attr_differs_from_nullary()
 }
