@@ -4,7 +4,7 @@ import std.algebra { Cons, Empty }
 
 data trait_derive_shape_note: String = "Target-agnostic authority for ReprGroundingDeriveTrait × ReprGroundingDeriveElemShape capability table and derive-trait list builders. Rust spellings: extdeps.languages.rust.emit. Consumed by v2.compiler.trait_derive_completeness and v1.compiler.trait_derive_emit. #7174 scope (operator 2026-07-25): v1 emit wires clone bounds + serde/Debug/Ord derives on named structs/enums only; ReprDeriveAdd/Sub/… rows on KernelInt are predicate authority for the grounding lane (GroupCompletion<Nat>, Vector), not v1 custom-impl emission."
 
-data trait_derive_shape_grounding_lane_handoff: String = "Arm (b) deferred to GroupCompletion grounding lane: coproduct-native arithmetic + PartialOrd/PartialEq impl blocks for algebra carriers (GroupCompletion<Nat>, Vector, CommutativeSemiring<Magnitude>). This module's capability table + repr_grounding_derive_completeness_predicate remain the shared authority; the grounding lane emits impl { … } from shape rows, not #[derive]. v1.compiler.trait_derive_emit does not wire arm (b)."
+data trait_derive_shape_grounding_lane_handoff: String = "Root-4 arm (b): coproduct-native arithmetic + PartialOrd/PartialEq impl blocks for algebra carriers (GroupCompletion<Nat>, Vector, CommutativeSemiring<Magnitude>). Capability table + repr_grounding_derive_completeness_predicate remain the shared authority; v1.compiler.trait_derive_emit emits impl { … } from shape rows (not #[derive]) through the seed emitter. dissolve-on: GroupCompletion/FieldOfFractions body landing (#7197) replaces interim Magnitude-carrier stubs."
 
 data trait_derive_shape_dissolve_on: String = "ReprGroundingDeriveTrait members that name Rust-specific authorities (ReprDeriveSerialize, ReprDeriveAdd, …) migrate beside each target's spelling table when a second consumer exists; until then capability roles stay in std/ with spellings in extdeps.languages.rust.emit."
 
@@ -243,6 +243,31 @@ fn payload_coproduct_derive_traits() -> List<ReprGroundingDeriveTrait> {
         tail: Cons {
           head: ReprDeriveSerialize,
           tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
+        }
+      }
+    }
+  }
+}
+
+fn kernel_int_arithmetic_traits() -> List<ReprGroundingDeriveTrait> {
+  Cons {
+    head: ReprDeriveAdd,
+    tail: Cons {
+      head: ReprDeriveSub,
+      tail: Cons {
+        head: ReprDeriveMul,
+        tail: Cons {
+          head: ReprDeriveDiv,
+          tail: Cons {
+            head: ReprDeriveRem,
+            tail: Cons {
+              head: ReprDeriveNeg,
+              tail: Cons {
+                head: ReprDerivePartialEq,
+                tail: Cons { head: ReprDerivePartialOrd, tail: Empty }
+              }
+            }
+          }
         }
       }
     }

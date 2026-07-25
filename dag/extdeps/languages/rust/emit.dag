@@ -290,3 +290,53 @@ fn rust_qualified_module_mod_basename(qualified_module: String) -> String {
 fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
   concat(rust_qualified_module_mod_basename(qualified_module: qualified_module), ".rs")
 }
+
+data rust_repr_grounding_arm_b_dissolve_on: String = "Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion/Nat body lands (#7197); replace identity Rc stubs with grounded i64 newtype operations."
+
+fn rust_supplemental_impls_commutative_semiring_magnitude() -> String {
+  concat(
+    "\n// repr-grounding arm (b): Nat carrier arithmetic (v1 seed emit; ",
+    rust_repr_grounding_arm_b_dissolve_on,
+    ")\n",
+    "impl std::ops::Add for CommutativeSemiring<Magnitude> {\n",
+    "    type Output = std::rc::Rc<CommutativeSemiring<Magnitude>>;\n",
+    "    fn add(self, rhs: Self) -> Self::Output { std::rc::Rc::new(rhs) }\n",
+    "}\n",
+    "impl std::ops::Mul for CommutativeSemiring<Magnitude> {\n",
+    "    type Output = std::rc::Rc<CommutativeSemiring<Magnitude>>;\n",
+    "    fn mul(self, rhs: Self) -> Self::Output { std::rc::Rc::new(rhs) }\n",
+    "}\n",
+    "impl std::ops::Div for CommutativeSemiring<Magnitude> {\n",
+    "    type Output = std::rc::Rc<CommutativeSemiring<Magnitude>>;\n",
+    "    fn div(self, rhs: Self) -> Self::Output { std::rc::Rc::new(rhs) }\n",
+    "}\n",
+    "impl std::cmp::PartialEq<i64> for std::rc::Rc<CommutativeSemiring<Magnitude>> {\n",
+    "    fn eq(&self, other: &i64) -> bool { *other == 0 }\n",
+    "}\n"
+  )
+}
+
+fn rust_supplemental_impls_bool_coproduct() -> String {
+  concat(
+    "\n// repr-grounding arm (b): Bool coproduct ↔ host bool bridge (v1 seed emit)\n",
+    "impl From<Bool> for bool {\n",
+    "    fn from(b: Bool) -> bool { match b { Bool::True => true, Bool::False => false } }\n",
+    "}\n"
+  )
+}
+
+fn rust_supplemental_impls_for_struct(name: String) -> String {
+  if name == "CommutativeSemiring" {
+    rust_supplemental_impls_commutative_semiring_magnitude()
+  } else {
+    ""
+  }
+}
+
+fn rust_supplemental_impls_for_enum(name: String) -> String {
+  if name == "Bool" {
+    rust_supplemental_impls_bool_coproduct()
+  } else {
+    ""
+  }
+}
