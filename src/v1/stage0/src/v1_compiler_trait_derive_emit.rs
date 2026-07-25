@@ -133,7 +133,8 @@ pub fn v1_emit_struct_derives(
     if has_fn_fields.clone() {
         rust_trait_derive_attr_from_traits(fn_field_derive_traits())
     } else {
-        if rust_symbol_wrapped_ord_carrier_shape_eligible(children.clone(), source_indices.clone()) {
+        if rust_symbol_wrapped_ord_carrier_shape_eligible(children.clone(), source_indices.clone())
+        {
             {
                 let shape = v1_repr_grounding_derive_elem_shape_for_ord_carrier(
                     children.clone(),
