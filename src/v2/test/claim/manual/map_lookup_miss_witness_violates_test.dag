@@ -1,7 +1,6 @@
 module v2.test.manual.map_lookup_miss_witness_violates
 
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 type LookupKey {
   id: Int
