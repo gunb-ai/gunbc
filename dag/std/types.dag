@@ -32,8 +32,8 @@ fn container_param_names_for(kind_name: String) -> List<String> {
   if kind_name == "Witness" {
     ["T"]
   } else {
-    match map_get(kernel_algebra_profile, kind_name) {
-      Present { value: p } => algebra_type_param_names(profile: p)
+    match map_get(std.algebra.kernel_algebra_profile, kind_name) {
+      Present { value: p } => std.algebra.algebra_type_param_names(profile: p)
       Absent => []
     }
   }

@@ -144,7 +144,7 @@ fn algebra_profile_to_dimension(profile: AlgebraProfile) -> IterationDimension? 
 fn type_iteration_dimension(type_name: String) -> IterationDimension? {
   if type_name == "Node" { Present { value: TreeDescent } }
   else {
-    match kernel_algebra_profile |> get(type_name) {
+    match std.algebra.kernel_algebra_profile |> get(type_name) {
       Present { value: p } => algebra_profile_to_dimension(profile: p)
       Absent => none
     }
