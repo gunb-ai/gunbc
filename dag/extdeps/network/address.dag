@@ -43,8 +43,7 @@ fn ip_address_is_v4(addr: IpAddress) -> Bool {
 
 fn ip_address_is_loopback(addr: IpAddress) -> Bool {
   match addr {
-    IpV4 { v4: a } =>
-      a.octet1 == 127 && a.octet2 == 0 && a.octet3 == 0 && a.octet4 == 1
+    IpV4 { v4: a } => a.octet1 == 127
     IpV6 { v6: a } => ipv6_is_loopback(addr: a)
   }
 }

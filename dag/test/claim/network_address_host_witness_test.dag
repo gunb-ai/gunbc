@@ -31,9 +31,11 @@ test fn ip_v6_render_refuses_not_fabricates() -> Bool {
   }
 }
 
-test fn ipv4_loopback_detected() -> Bool {
+test fn ipv4_loopback_is_the_whole_slash8() -> Bool {
   ip_address_is_loopback(addr: ip_v4(addr: ipv4_address(octet1: 127, octet2: 0, octet3: 0, octet4: 1)))
-    && ip_address_is_loopback(addr: ip_v4(addr: ipv4_address(octet1: 10, octet2: 0, octet3: 0, octet4: 1))) == false
+    && ip_address_is_loopback(addr: ip_v4(addr: ipv4_address(octet1: 127, octet2: 5, octet3: 9, octet4: 2)))
+    && ip_address_is_loopback(addr: ip_v4(addr: ipv4_address(octet1: 126, octet2: 0, octet3: 0, octet4: 1))) == false
+    && ip_address_is_loopback(addr: ip_v4(addr: ipv4_address(octet1: 128, octet2: 0, octet3: 0, octet4: 1))) == false
 }
 
 test fn ipv6_loopback_detected() -> Bool {

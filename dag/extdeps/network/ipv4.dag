@@ -56,29 +56,22 @@ fn render_ipv4_address(addr: Ipv4Address) -> NonEmptyStr {
   ], ".") as NonEmptyStr
 }
 
-fn parse_octet_at(parts: List<String>, position: Int) -> Ipv4ParseResult? {
+type OctetResult =
+    OctetOk { value: Octet }
+  | OctetErr { error: Ipv4ParseError }
+
+fn parse_octet_at(parts: List<String>, position: Int) -> OctetResult {
   match parts |> get(position) {
-    Absent => Present { value: Ipv4ParseFailed { error: Ipv4WrongOctetCount { observed_count: list_length(items: parts) } } }
+    Absent => OctetErr { error: Ipv4WrongOctetCount { observed_count: list_length(items: parts) } }
     Present { value: raw } =>
       match parse_int(s: raw) {
-        Absent => Present { value: Ipv4ParseFailed { error: Ipv4OctetNotNumeric { position: position, raw: raw } } }
+        Absent => OctetErr { error: Ipv4OctetNotNumeric { position: position, raw: raw } }
         Present { value: n } =>
           if n < 0 || n > 255 {
-            Present { value: Ipv4ParseFailed { error: Ipv4OctetOutOfRange { position: position, value: n } } }
+            OctetErr { error: Ipv4OctetOutOfRange { position: position, value: n } }
           } else {
-            none
+            OctetOk { value: n }
           }
-      }
-  }
-}
-
-fn octet_value_at(parts: List<String>, position: Int) -> Octet {
-  match parts |> get(position) {
-    Absent => 0
-    Present { value: raw } =>
-      match parse_int(s: raw) {
-        Absent => 0
-        Present { value: n } => if n < 0 || n > 255 { 0 } else { n }
       }
   }
 }
@@ -89,20 +82,15 @@ fn parse_ipv4_address(text: String) -> Ipv4ParseResult {
     Ipv4ParseFailed { error: Ipv4WrongOctetCount { observed_count: list_length(items: parts) } }
   } else {
     match parse_octet_at(parts: parts, position: 0) {
-      Present { value: fail0 } => fail0
-      Absent => match parse_octet_at(parts: parts, position: 1) {
-        Present { value: fail1 } => fail1
-        Absent => match parse_octet_at(parts: parts, position: 2) {
-          Present { value: fail2 } => fail2
-          Absent => match parse_octet_at(parts: parts, position: 3) {
-            Present { value: fail3 } => fail3
-            Absent => Ipv4Parsed {
-              address: Ipv4Address {
-                octet1: octet_value_at(parts: parts, position: 0),
-                octet2: octet_value_at(parts: parts, position: 1),
-                octet3: octet_value_at(parts: parts, position: 2),
-                octet4: octet_value_at(parts: parts, position: 3),
-              }
+      OctetErr { error: e0 } => Ipv4ParseFailed { error: e0 }
+      OctetOk { value: o1 } => match parse_octet_at(parts: parts, position: 1) {
+        OctetErr { error: e1 } => Ipv4ParseFailed { error: e1 }
+        OctetOk { value: o2 } => match parse_octet_at(parts: parts, position: 2) {
+          OctetErr { error: e2 } => Ipv4ParseFailed { error: e2 }
+          OctetOk { value: o3 } => match parse_octet_at(parts: parts, position: 3) {
+            OctetErr { error: e3 } => Ipv4ParseFailed { error: e3 }
+            OctetOk { value: o4 } => Ipv4Parsed {
+              address: Ipv4Address { octet1: o1, octet2: o2, octet3: o3, octet4: o4 }
             }
           }
         }
