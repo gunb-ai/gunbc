@@ -24679,7 +24679,16 @@ fn inert_carrier_type_carrier_blocks(content: &str) -> Vec<(String, String)> {
 // variant occurrences to the parent type or a live state machine reads as inert. Variant
 // names shared across coproducts merge their tallies — an approximation that errs toward
 // not flagging; the roster stays the per-name override.
-fn inert_carrier_variant_names(block: &str) -> Vec<String> {
+//
+// Nominal records (`type Foo = Foo { field: T }`) must NOT be read as a one-variant
+// coproduct: the repeated type name after `=` is the record constructor spelling, not a
+// variant. Treating it as one double-counts `self_block_refs` and can drive consumption
+// to ≤0 for a carrier that is actively constructed in the same file (HostToolchainReach
+// falsifier red 2026-07-25 — live consumer in gunbc.host_toolchain_ensure, falsely inert).
+fn inert_carrier_variant_names(type_name: &str, block: &str) -> Vec<String> {
+    if inert_carrier_block_is_nominal_record(type_name, block) {
+        return Vec::new();
+    }
     let mut out = Vec::new();
     for (idx, raw) in block.lines().enumerate() {
         let t = raw.trim_start();
@@ -24709,6 +24718,27 @@ fn inert_carrier_variant_names(block: &str) -> Vec<String> {
     out.sort();
     out.dedup();
     out
+}
+
+fn inert_carrier_block_is_nominal_record(type_name: &str, block: &str) -> bool {
+    let Some(first) = block.lines().next() else {
+        return false;
+    };
+    let trimmed = first.trim_start();
+    let Some(eq) = trimmed.find('=') else {
+        // `type Foo { ... }` brace-record form — no coproduct variants.
+        return trimmed.contains('{');
+    };
+    if trimmed[eq + 1..].contains('|') {
+        return false;
+    }
+    let after = trimmed[eq + 1..].trim_start();
+    after.starts_with(type_name)
+        && after
+            .as_bytes()
+            .get(type_name.len())
+            .is_some_and(|b| *b == b'{' || b.is_ascii_whitespace())
+        && after.contains('{')
 }
 
 const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
@@ -24791,7 +24821,7 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
             *decl_count.entry(name.clone()).or_insert(0) += 1;
             *self_block_refs.entry(name.clone()).or_insert(0) +=
                 inert_carrier_count_token(&block, &name);
-            for v in inert_carrier_variant_names(&block) {
+            for v in inert_carrier_variant_names(&name, &block) {
                 *self_block_refs.entry(v.clone()).or_insert(0) +=
                     inert_carrier_count_token(&block, &v);
                 type_variants.entry(name.clone()).or_default().push(v);
@@ -24930,6 +24960,27 @@ mod inert_carrier_tests {
         assert!(
             inert.contains(&"LonelyState".to_string()),
             "a coproduct whose variants are used nowhere outside its block must stay flagged; got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn nominal_record_spelling_is_not_a_coproduct_variant() {
+        // `type Foo = Foo { ... }` is a record carrier, not a one-variant sum. The
+        // repeated name after `=` must not inflate self_block_refs or the same-file
+        // constructor reads as consumption≤0 (HostToolchainReach false-inert).
+        let inert = inert_names_of(&[
+            (
+                "a.dag",
+                "module a\ntype Reach = Reach {\n  target: Int\n  access: Int\n}\nfn go(x: Int) -> Int {\n  let r = Reach { target: x, access: x }\n  r.target\n}\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { go(x: 1) == 1 }\nfn probe(s: Reach) -> Bool { true }\n",
+            ),
+        ]);
+        assert!(
+            !inert.contains(&"Reach".to_string()),
+            "nominal-record carrier with a same-file constructor must not be inert; got {inert:?}"
         );
     }
 
