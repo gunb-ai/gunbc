@@ -305,7 +305,7 @@ fn bound_spelling_from_map(
   binding_spellings: Map<Symbol, String>,
   binding: Symbol
 ) -> Outcome<String> {
-  match map_get(binding_spellings, binding) {
+  match v2.std.collection.map_get(binding_spellings, binding) {
     Accepted { value: opt, diagnostics: pending } => match opt {
       Present { value: spelling } => v2.std.diagnostic.Accepted { value: spelling, diagnostics: pending }
       Absent => symbol_interned_spelling(binding: binding)
@@ -395,7 +395,7 @@ fn bound_token_spelling_from_model(
   bind_outcome(
     o: target_binding_spelling_lookup(target: target, binding: binding),
     f: fn(spelling) {
-      match map_get(target.token_class_emit_transforms, token_class) {
+      match v2.std.collection.map_get(target.token_class_emit_transforms, token_class) {
         Accepted { value: Present { value: transform }, diagnostics: d } =>
           outcome_with_diagnostics(
             value: apply_emit_spelling_transform(transform: transform, spelling: spelling),
@@ -3654,7 +3654,7 @@ fn target_value_expr_effect_apply_callee(
   shape: TargetEffectApplyShape,
   expr: TargetValueExpression
 ) -> Outcome<Symbol> {
-  match map_get(
+  match v2.std.collection.map_get(
     m: fold_list(
       xs: shape.callees,
       empty: empty_map(),

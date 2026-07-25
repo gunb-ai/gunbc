@@ -525,7 +525,7 @@ fn mark_excluded(frontier: ReExecFrontier, key: ExclusionKey, proof: Propagation
     FailClosed { reason: e } => FailClosed { reason: e }
     ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
 
-      match map_get(decisions, key) {
+      match v2.std.collection.map_get(decisions, key) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: decision } =>
             match decision {
