@@ -144,13 +144,19 @@ fn design_witness_red_control_widen_on_path_shadow_rejected_by_gate() -> Bool {
     )
 }
 
-fn design_witness_path_authority_is_not_a_separate_builder() -> Bool {
-  string_contains(
+fn design_witness_path_authority_observation_not_emitted_as_shell() -> Bool {
+  !string_contains(
     s: build_cache_observe_stats_body(),
     pattern: "path_authority=SHADOWED",
-  ) && string_contains(
+  ) && !string_contains(
     s: build_cache_read_back_body(binary: sccache_installed_binary_path),
     pattern: "path_authority=SHADOWED",
+  ) && !string_contains(
+    s: build_cache_provision_script_body(
+      arch_token: "aarch64" as NonEmptyStr,
+      digest: sccache_release_0_15_0.digest_aarch64,
+    ),
+    pattern: "command -v sccache",
   )
 }
 
@@ -232,7 +238,7 @@ test fn host_build_cache_provision_design_witnesses() -> Bool {
   design_witness_read_back_fails_closed_in_shell()
     && design_witness_path_shadow_refuses_fail_closed()
     && design_witness_red_control_widen_on_path_shadow_rejected_by_gate()
-    && design_witness_path_authority_is_not_a_separate_builder()
+    && design_witness_path_authority_observation_not_emitted_as_shell()
     && design_witness_install_is_cited_not_package_manager()
     && design_witness_unit_execstart_matches_install_path()
     && design_witness_classifier_covers_every_cited_fragment()

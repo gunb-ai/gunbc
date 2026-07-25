@@ -59,7 +59,6 @@ test fn provision_read_back_failure_not_converged_by_real_execution() -> Bool {
     && seeded
     && !observed.success
     && string_contains(s: observed.stdout, pattern: "read_back=FAILED")
-    && !string_contains(s: observed.stdout, pattern: "path_authority=SHADOWED")
     && cleaned.success
     && match reconciled {
       NotConverged { reason: why, applied: _ } =>
@@ -69,22 +68,4 @@ test fn provision_read_back_failure_not_converged_by_real_execution() -> Bool {
     }
 }
 
-test fn provision_path_authority_refuses_healthy_shadowing_sccache() -> Bool {
-  let dir = shell.Mktemp.Dir()
-  let seeded = write_fake_sccache(dir_path: dir.path as String, exit_code: "0")
-  let observed = run_body(
-    prelude: concat(concat("export PATH=\"", dir.path as String), ":$PATH\"\n"),
-    body: build_cache_observe_stats_body(),
-  )
-  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success
-    && seeded
-    && !observed.success
-    && string_contains(s: observed.stdout, pattern: "path_authority=SHADOWED")
-    && cleaned.success
-}
-
-test fn provision_path_authority_passes_when_no_sccache_on_path() -> Bool {
-  let observed = run_body(prelude: "", body: build_cache_observe_stats_body())
-  !string_contains(s: observed.stdout, pattern: "path_authority=SHADOWED")
-}
+data path_authority_observation_staged_note: String = "The two live PATH-shadow shell witnesses that lived here (refuses-healthy-shadowing / passes-when-no-sccache) were removed 2026-07-24 (review 42343): the shell observation they exercised grew the A5 census scaffold's emitted surface, so it was withdrawn and the PATH-shadow judgement is now proven at the MODEL grain only (host_build_cache_provision_design_witness_test.design_witness_path_shadow_refuses_fail_closed, a synthetic DaemonPathShadowed → RefusalPathShadowed fold). The live observation is staged on the typed-argv dissolve-on (#5828); its real-execution witness returns when the observation is a typed op (shell.Which.Check), not hand-shell."
