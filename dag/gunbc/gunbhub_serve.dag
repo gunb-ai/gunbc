@@ -9,10 +9,11 @@ import extdeps.uri_path {
   parse_path_template,
 }
 import std.markup {
-  ElementNode,
-  TextNode,
-  MarkupAttr,
-  MarkupNode,
+  Element,
+  FragmentText,
+  Attribute,
+  attr,
+  Fragment,
 }
 import extdeps.languages.html {
   EmitOk,
@@ -48,30 +49,30 @@ type GunbhubServeResult
   | RouteNotFound
   | MethodNotAllowed
 
-type GunbhubPageSource = ReactPage { node: MarkupNode }
+type GunbhubPageSource = ReactPage { node: Fragment }
 
 type GunbhubRenderResult
   = RenderedHtml { html: String }
   | RenderRejected { reason: String }
 
-fn gunbhub_header() -> MarkupNode {
-  ElementNode {
+fn gunbhub_header() -> Fragment {
+  Element {
     tag: "header",
-    attrs: [],
+    attributes: [],
     children: [
-      ElementNode {
+      Element {
         tag: "h1",
-        attrs: [],
-        children: [ TextNode { text: "gunbc" } ],
+        attributes: [],
+        children: [ FragmentText { content: "gunbc" } ],
       },
-      ElementNode {
+      Element {
         tag: "nav",
-        attrs: [],
+        attributes: [],
         children: [
-          ElementNode {
+          Element {
             tag: "a",
-            attrs: [ MarkupAttr { name: "href", value: "/" } ],
-            children: [ TextNode { text: "Browse" } ],
+            attributes: [ attr(name: "href", value: "/" ) ],
+            children: [ FragmentText { content: "Browse" } ],
           },
         ],
       },
@@ -79,48 +80,48 @@ fn gunbhub_header() -> MarkupNode {
   }
 }
 
-fn gunbhub_browse_entry(name: String, path: String) -> MarkupNode {
-  ElementNode {
+fn gunbhub_browse_entry(name: String, path: String) -> Fragment {
+  Element {
     tag: "li",
-    attrs: [],
+    attributes: [],
     children: [
-      ElementNode {
+      Element {
         tag: "a",
-        attrs: [ MarkupAttr { name: "href", value: path } ],
-        children: [ TextNode { text: name } ],
+        attributes: [ attr(name: "href", value: path ) ],
+        children: [ FragmentText { content: name } ],
       },
     ],
   }
 }
 
-fn gunbhub_browse_page() -> MarkupNode {
-  ElementNode {
+fn gunbhub_browse_page() -> Fragment {
+  Element {
     tag: "html",
-    attrs: [],
+    attributes: [],
     children: [
-      ElementNode {
+      Element {
         tag: "head",
-        attrs: [],
+        attributes: [],
         children: [
-          ElementNode {
+          Element {
             tag: "title",
-            attrs: [],
-            children: [ TextNode { text: "gunbc" } ],
+            attributes: [],
+            children: [ FragmentText { content: "gunbc" } ],
           },
         ],
       },
-      ElementNode {
+      Element {
         tag: "body",
-        attrs: [],
+        attributes: [],
         children: [
           gunbhub_header(),
-          ElementNode {
+          Element {
             tag: "main",
-            attrs: [],
+            attributes: [],
             children: [
-              ElementNode {
+              Element {
                 tag: "ul",
-                attrs: [],
+                attributes: [],
                 children: [
                   gunbhub_browse_entry(name: "dag", path: "/dag"),
                   gunbhub_browse_entry(name: "src", path: "/src"),
@@ -135,49 +136,48 @@ fn gunbhub_browse_page() -> MarkupNode {
   }
 }
 
-fn gunbhub_hostile_page() -> MarkupNode {
-  ElementNode {
+fn gunbhub_hostile_page() -> Fragment {
+  Element {
     tag: "a",
-    attrs: [ MarkupAttr { name: "href", value: "javascript:alert(1)" } ],
-    children: [ TextNode { text: "x" } ],
+    attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
+    children: [ FragmentText { content: "x" } ],
   }
 }
 
-fn gunbhub_readme_page() -> MarkupNode {
-  ElementNode {
+fn gunbhub_readme_page() -> Fragment {
+  Element {
     tag: "html",
-    attrs: [],
+    attributes: [],
     children: [
-      ElementNode {
+      Element {
         tag: "head",
-        attrs: [],
+        attributes: [],
         children: [
-          ElementNode {
+          Element {
             tag: "title",
-            attrs: [],
-            children: [ TextNode { text: "gunbc — README" } ],
+            attributes: [],
+            children: [ FragmentText { content: "gunbc — README" } ],
           },
         ],
       },
-      ElementNode {
+      Element {
         tag: "body",
-        attrs: [],
+        attributes: [],
         children: [
           gunbhub_header(),
-          ElementNode {
+          Element {
             tag: "main",
-            attrs: [],
+            attributes: [],
             children: [
-              ElementNode {
+              Element {
                 tag: "article",
-                attrs: [],
+                attributes: [],
                 children: [
-                  ElementNode {
+                  Element {
                     tag: "p",
-                    attrs: [],
+                    attributes: [],
                     children: [
-                      TextNode {
-                        text: "DAG-modeled compiler and language project. Rust is bootstrap seed.",
+                      FragmentText { content: "DAG-modeled compiler and language project. Rust is bootstrap seed.",
                       },
                     ],
                   },
@@ -195,7 +195,7 @@ type GunbhubComposeResult
   = ComposedOk { html: String }
   | ComposeRejected { reason: String }
 
-fn gunbhub_compose_body(node: MarkupNode) -> GunbhubComposeResult {
+fn gunbhub_compose_body(node: Fragment) -> GunbhubComposeResult {
   match try_serialize_html_source(node: node) {
     EmitOk { html: h } => ComposedOk { html: h }
     EmitRejected { reason: r } => ComposeRejected { reason: r }

@@ -468,6 +468,19 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/meta_exec_confinement/roster_soundness_test.dag",
+      check_fns: [
+        "meta_exec_roster_shrunk_to_empty_holds",
+        "meta_exec_roster_emptiness_wall_planted_row_red_holds",
+        "meta_exec_roster_soundness_planted_stale_red_holds"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: "dag/test/claim/orchestration_if_emit_test.dag",
       check_fns: ["orch_if_band_holds"],
       kind: CorpusWitnessKind,
@@ -486,15 +499,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         "wave1_gate1_c1_unpriceable_combiner_refusal_witness_holds",
         "wave1_gate1_c1_multi_linear_ambiguous_refusal_witness_holds"
       ],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
-      check_fns: ["wave1_gate1_d_census_subsumption_witness_holds"],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
@@ -761,3 +765,5 @@ fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> Generated
 }
 
 data commit_workflow_long_lane_note: String = "Two complexity-lens enrollments (fold_lowering_test, accumulator_copy_fold_analysis_test) DELETED from the GithubActionsCiJob surface 2026-07-12: their check_fns measured over the fast-lane 5-second witness eval budget (operator rule; authority gunbc_ci_fast_lane_rule_note in v2.workflow.ci_floor_plan), and an explicit enrollment row bypasses discovery exclusion, so re-pathing the row to test/claim/long/ would keep the over-budget rows on every PR. Offlining an explicit row means deleting its declaration, never teaching exclusions to veto the roster (the enforcement-coverage precedent in gunbc.ci_layer_roots). The files live under src/v2/test/claim/long/ with the local recipe; dissolve-on: the long-lane scheduled trigger (falsifier follow-on) enrolls them and this note retires. Contrast: the parse_table_memo_governed enrollment above was REPOINTED to its long/ home, not deleted — its four enrolled check_fns each measured 0ms (audit 2026-07-12); only unenrolled siblings in that file (warm_equals_cold) are over budget, and an explicit row runs exactly its named check_fns. Delete when the enrolled fns themselves are slow; repoint when only the file moved. Wave 1 Gate 1 body-producer keystones (wave1_gate1_b1_bare_call_body_producer_witness_test.dag, wave1_gate1_a1_symbol_index_body_producer_witness_test.dag — five enrolled check_fns, ~5s+ each under floor load) were DELETED 2026-07-14 for the same reason: explicit rows bypass test/claim/long/ discovery exclusion, so affected-set selection on PRs touching target_model.dag (live case #6589) enrolled them into the 5s fast lane and REDed at EvalBudgetExceeded (~5013ms). Fast receipts stay in self_host/ (discovered); execution proofs stay in long/ (local recipe: claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>). Separately, two rows (parse_test floor/perf, dag_compile_clean_perturb_receipts) were DELETED 2026-07-12 as §3 de-duplication, not offlining: the same check_fns are declared in gunbc.ci_layer_roots bin_witness_wet_entries (the Wet bin-execution lane), and the double enrollment ran them a second time inside the HERMETIC corpus batch, where their run_witness_bin host effects refuse (CI receipt: run 29208529942, IsExecutable refusals). One fact, one roster: the bin lane keeps the per-PR coverage."
+
+data wave1_gate1_d_census_class_c_split_note: String = "wave1_gate1_d_census (test-decomposition-wcf-cut.md Class C row, ~141s measured) split 2026-07-25: attribution-by-execution (claim_batch, cold) showed the census's ENROLLED per-PR check_fn ran a witness wall of 134526ms against a one-time 32034ms entry-closure resolve — the cost lives in the witness body itself, which builds 10 ingested_fixture_arrows fixtures (each a real tokenize->parse_module->normalize->resolve pass) across two aggregator fns; this is genuine corpus breadth (Class C), not a fixture-shaped cost-shape defect (Class F ruled out by measurement, not by assumption). The mechanism-only sibling (self_host/wave1_gate1_d_mvp_subsumption_witness_test.dag's five table_fixture check_fns, measured eval_self=0.000ms each on a cold run — proves Arrow+body well-formedness/behavior-kind mechanism via table_fixture producers, no census ingest) carries no explicit CommitCheckEnrollment here: it is already picked up per-PR by the source-root *_test.dag discovery walk (ci_spec_discovery_flip_note), so an explicit roster row would be a second, redundant admission path for the same DiscoverySelection-covered file — a §3 duplication, not an accept requirement (a check_fn that is unconditionally discovered needs no roster entry to run). The real census-ingest execution (wave1_gate1_d_census_subsumption_witness_holds, long/wave1_gate1_d_mvp_subsumption_witness_test.dag) is re-homed off per-PR discovery onto the falsifier's 4-hourly cadence as one more row on falsifier_substrate_long_lane_entries (v2.workflow.ci_floor_plan gunbc_falsifier_substrate_long_lane_batch; frontier row in gunbc.ci_layer_roots falsifier_substrate_long_lane_rows, joining the sibling provenance-producer rows from PR #7230/test-decomposition-wcf-cut.md) — the single hermetic long-lane falsifier consumer for this witness class, not a parallel batch: this witness is ExecutionWitnessKind/SubstrateInputsOnly interpreted computation with no host effects, so folding it into the subprocess-execution Wet lane (falsifier_rehomed_bin_wet_batch) would be a §3 nickname. A WitnessExclusionRow (pattern \"long/wave1_gate1_d_mvp_subsumption_witness_test.dag\", classification FalsifierSubstrateLongLane) carves the file out of per-PR discovery so the classification is honest, not a lie against an unhandled default. Never orphaned: falsifier_substrate_long_lane_rows is non-empty, so the row always executes on the 4-hourly cadence. Dissolve-on: the census ingest's per-fixture pipeline cost drops under the per-PR fast-lane budget on a measured cold run (e.g. shared parse-table/resolve memoization landing for this closure) — then re-enroll wave1_gate1_d_census_subsumption_witness_holds per-PR discovery and delete the falsifier_substrate_long_lane_rows entry, the exclusion row, and this note."

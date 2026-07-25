@@ -2,7 +2,7 @@ module gunbc.roadmap_component
 
 import std.types { Int, String, Bool }
 import extdeps.languages.css.values { CssLength, css_ch, css_length_wire }
-import gunbc.design.scale { ScaleToken, space_4, height_row }
+import gunbc.design.scale { ScaleToken, space_4, space_8, height_row }
 import gunbc.roadmap_altitude { band_expands }
 import gunbc.design.component {
   Component, ComponentState, ComponentStateKind,
@@ -184,8 +184,11 @@ data roadmap_row_archetype: List<RoadmapRowRegion> = [
   RoadmapRowRegion { region: ActuatorRegion, placement: HeadTrack { track: AutoTrack } },
 ]
 
+data roadmap_row_gutter_split_note: String = "Two gutters, two jobs (operator-signed 2026-07-25, the third PROVISIONAL flip): the first cut ran ONE space-4 token as both the grid's column rhythm and the mid cell's badge-flow rhythm, and the operator's tune split them — column gaps (chip | title | actuator) breathe at space-8 while the badge flow inside the title cell keeps space-4. They are separate density decisions that happened to share a number for one commit; a later retune of either moves alone."
+
 data roadmap_row_height: ScaleToken = height_row
 data roadmap_row_gutter: ScaleToken = space_4
+data roadmap_row_column_gutter: ScaleToken = space_8
 
 fn roadmap_row_grid_template() -> String {
   join(

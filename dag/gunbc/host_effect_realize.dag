@@ -6,7 +6,6 @@ import gunbc.host_effect {
   SetHostnameCas,
   ReadEffectivePosixPrincipal,
   SudoNopasswdExecuteProbe,
-  DurableApprovalGrantRead,
   Srv3InstallMediaFetch,
   Srv3SeededInstallMediaRemaster,
   Srv3SeededInstallMediaToolchainEnsure,
@@ -113,7 +112,6 @@ import extdeps.cache.sccache {
   sccache_release_digest,
 }
 import gunbc.srv3_boot_once_cd {
-  srv3_boot_once_approval_grant_path,
   srv3_boot_once_apply_read_back_sleep,
 }
 import extdeps.filesystem.filesystem_io
@@ -177,7 +175,6 @@ type ResolvedHostEffectCell =
     }
   | ReceiptEmitOnHost { node: ComputeHost, lines: List<String> }
   | BootOnceReadBackSleepOnHost { node: ComputeHost }
-  | DurableApprovalGrantReadOnHost { node: ComputeHost }
   | SeededInstallMediaToolchainOnHost { node: ComputeHost }
   | BmcwebSessionLoginOnHost { node: ComputeHost }
   | BmcwebTokenExtractOnHost { node: ComputeHost }
@@ -211,8 +208,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           ReceiptEmitOnHost { node: n, lines: lines }
         Srv3BootOnceReadBackSleep =>
           BootOnceReadBackSleepOnHost { node: n }
-        DurableApprovalGrantRead =>
-          DurableApprovalGrantReadOnHost { node: n }
         Srv3SeededInstallMediaToolchainEnsure =>
           SeededInstallMediaToolchainOnHost { node: n }
         Srv3BmcwebSessionLogin =>
@@ -246,8 +241,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               OsInstallActuatorToolchainOnHost { node: n }
             ProvisionBuildCache { catalog_id: id } =>
               ProvisionBuildCacheOnHost { node: n, catalog_id: id }
-            DurableApprovalGrantRead =>
-              DurableApprovalGrantReadOnHost { node: n }
             Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
             Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
             Srv3SeededInstallMediaToolchainEnsure =>
@@ -303,8 +296,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             ProvisionBuildCache { catalog_id: _ } =>
               IncompatibleCell { reason: "host_effect: ProvisionBuildCache is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            DurableApprovalGrantRead =>
-              IncompatibleCell { reason: "host_effect: DurableApprovalGrantRead is in-band (actuator host typed read) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             Srv3InstallMediaFetch =>
               IncompatibleCell { reason: "host_effect: Srv3InstallMediaFetch is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             Srv3SeededInstallMediaRemaster =>
@@ -455,51 +446,6 @@ fn realize_boot_once_read_back_sleep_on_host(
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
         reason: "host_effect_apply: Srv3BootOnceReadBackSleep cannot use EmitArtifactThenThinRun transport; typed mismatch.",
-        applied: intent,
-      }
-  }
-}
-
-fn realize_durable_approval_grant_read_on_host(
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match transport {
-    LocalShell => {
-      let read = Filesystem.Read(path: srv3_boot_once_approval_grant_path)
-      if read.success {
-        srv3_shell_reconcile(
-          observed: ShellExecObserved {
-            exit_code: 0,
-            success: true,
-            stdout: read.content,
-            stderr: "",
-          },
-          intent: intent,
-        )
-      } else {
-        srv3_shell_reconcile(
-          observed: ShellExecObserved {
-            exit_code: 1,
-            success: false,
-            stdout: "",
-            stderr: concat(
-              "host_effect_apply: DurableApprovalGrantRead refused Filesystem.Read failure; fail-closed: ",
-              read.error,
-            ),
-          },
-          intent: intent,
-        )
-      }
-    }
-    SshShell { ssh_host: _ } =>
-      NotConverged {
-        reason: "host_effect_apply: DurableApprovalGrantRead runs in-process on the executor's own host; SshShell transport is a fail-closed Unimplemented stub until the typed read is realized over a remote-observe/apply transport.",
-        applied: intent,
-      }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      NotConverged {
-        reason: "host_effect_apply: DurableApprovalGrantRead cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
       }
   }
@@ -1647,8 +1593,6 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_receipt_emit_on_host(lines: lines, intent: intent)
     BootOnceReadBackSleepOnHost { node: _ } =>
       realize_boot_once_read_back_sleep_on_host(transport: transport, intent: intent)
-    DurableApprovalGrantReadOnHost { node: _ } =>
-      realize_durable_approval_grant_read_on_host(transport: transport, intent: intent)
     SeededInstallMediaToolchainOnHost { node: _ } =>
       realize_seeded_install_media_toolchain_ensure_on_host(transport: transport, intent: intent)
     BmcwebSessionLoginOnHost { node: _ } =>
@@ -1804,8 +1748,6 @@ fn host_effect_apply_gated(
           realize_receipt_emit_on_host(lines: lines, intent: intent)
         BootOnceReadBackSleepOnHost { node: _ } =>
           realize_boot_once_read_back_sleep_on_host(transport: transport, intent: intent)
-        DurableApprovalGrantReadOnHost { node: _ } =>
-          realize_durable_approval_grant_read_on_host(transport: transport, intent: intent)
         SeededInstallMediaToolchainOnHost { node: _ } =>
           realize_seeded_install_media_toolchain_ensure_on_host(transport: transport, intent: intent)
         BmcwebSessionLoginOnHost { node: _ } =>
@@ -1871,7 +1813,6 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             NbdProxySessionOnHost { node: _, intent: _, lease_key: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ReceiptEmitOnHost { node: _, lines: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BootOnceReadBackSleepOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            DurableApprovalGrantReadOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             SeededInstallMediaToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BmcwebSessionLoginOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BmcwebTokenExtractOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))

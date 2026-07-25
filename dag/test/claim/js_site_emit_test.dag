@@ -26,13 +26,13 @@ fn witness_hostile_tsx_rejected() -> Bool {
   }
 }
 
-data expected_home_html: String = "<html><head><title>gunbc — Home</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Home</a><a href=\"/about\">About</a><a href=\"/browse\">Browse</a></nav></header><main><p>DAG-modeled compiler. One MarkupNode source, two realizations.</p></main></body></html>"
+data expected_home_html: String = "<html><head><title>gunbc — Home</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Home</a><a href=\"/about\">About</a><a href=\"/browse\">Browse</a></nav></header><main><p>DAG-modeled compiler. One Fragment source, two realizations.</p></main></body></html>"
 
 data expected_browse_html: String = "<html><head><title>gunbc — Browse</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Home</a><a href=\"/about\">About</a><a href=\"/browse\">Browse</a></nav></header><main><ul><li><a href=\"/dag\">dag</a></li><li><a href=\"/src\">src</a></li><li><a href=\"/DESIGN.md\">DESIGN.md</a></li><li><a href=\"/ROADMAP.md\">ROADMAP.md</a></li></ul></main></body></html>"
 
 data expected_about_html: String = "<html><head><title>gunbc — About</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Home</a><a href=\"/about\">About</a><a href=\"/browse\">Browse</a></nav></header><main><p>gunbc models programs as dependency graphs. Rust is bootstrap seed.</p></main></body></html>"
 
-data expected_home_tsx: String = "export function JsSiteHomePage(): JSX.Element { return <html><head><title>gunbc — Home</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Home</a><a href=\"/about\">About</a><a href=\"/browse\">Browse</a></nav></header><main><p>DAG-modeled compiler. One MarkupNode source, two realizations.</p></main></body></html>; }"
+data expected_home_tsx: String = "export function JsSiteHomePage(): JSX.Element { return <html><head><title>gunbc — Home</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Home</a><a href=\"/about\">About</a><a href=\"/browse\">Browse</a></nav></header><main><p>DAG-modeled compiler. One Fragment source, two realizations.</p></main></body></html>; }"
 
 data expected_browse_tsx: String = "export function JsSiteBrowsePage(): JSX.Element { return <html><head><title>gunbc — Browse</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Home</a><a href=\"/about\">About</a><a href=\"/browse\">Browse</a></nav></header><main><ul><li><a href=\"/dag\">dag</a></li><li><a href=\"/src\">src</a></li><li><a href=\"/DESIGN.md\">DESIGN.md</a></li><li><a href=\"/ROADMAP.md\">ROADMAP.md</a></li></ul></main></body></html>; }"
 

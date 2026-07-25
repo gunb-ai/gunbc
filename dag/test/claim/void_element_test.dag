@@ -1,22 +1,25 @@
 module test.claim.void_element
 
+import std.markup { Fragment, Element, FragmentText, attr }
+import extdeps.languages.html { serialize_html_source }
+import extdeps.languages.react_jsx { serialize_jsx_component }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn br_node() -> MarkupNode {
-  ElementNode { tag: "br", attrs: [], children: [] }
+fn br_node() -> Fragment {
+  Element { tag: "br", attributes: [], children: [] }
 }
 
-fn meta_node() -> MarkupNode {
-  ElementNode {
+fn meta_node() -> Fragment {
+  Element {
     tag: "meta",
-    attrs: [ MarkupAttr { name: "charset", value: "utf-8" } ],
+    attributes: [ attr(name: "charset", value: "utf-8" ) ],
     children: [],
   }
 }
 
-fn div_node() -> MarkupNode {
-  ElementNode { tag: "div", attrs: [], children: [ TextNode { text: "content" } ] }
+fn div_node() -> Fragment {
+  Element { tag: "div", attributes: [], children: [ FragmentText { content: "content" } ] }
 }
 
 fn witness_html_br_omits_close() -> Bool {
