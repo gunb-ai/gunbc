@@ -30,7 +30,6 @@ mod coverage_completeness_lens_test;
 mod cross_representation_equality_test;
 #[cfg(test)]
 mod dag_comment_wall_test;
-mod e0308_mechanical_trio_probe_test;
 #[cfg(test)]
 mod data_cache_scoping_test;
 #[cfg(test)]
@@ -41,6 +40,8 @@ mod dependency_pool_index_compile_test;
 mod derive_bound_fail_closed_test;
 #[cfg(test)]
 mod direct_import_precedence_over_transitive_leak_test;
+#[cfg(test)]
+mod e0308_mechanical_trio_test;
 #[cfg(test)]
 mod eval_measurement_purity_test;
 #[cfg(test)]
