@@ -62,7 +62,7 @@ Pure computation sized "over the whole corpus" where the *mechanism* does not ne
 | `wave1_gate1_d_census` | 141s | census mechanism over a fixture module set | corpus census → cadence (re-home already ruled) |
 | `compile_clean_shard` totality + roster | 15s + 7s | shard-selection logic on fixtures | totality *claim* is corpus-grain — relocate to cadence, do not shrink |
 | provenance producer ×3 | 40s | fixture walls stay per-PR (ruled) | live grain → nightly |
-| `parse_binding_fidelity` | 13s | binding-fidelity discriminators on fixture sources (partial split already in tree — finish / verify enrollment) | corpus fidelity → cadence |
+| `parse_binding_fidelity` | 13s (long); fixture REDs on PR path | **Verified-in-tree** (#7227): 3 cross-file/fail-closed in `parse/` via `*_test.dag` walk; 2 module-ingest in `long/` + `commit_workflow`. Notes corrected. | enrolled |
 | `floor_skip_discovery` (289s), `cross_shard_seam` (183s) | re-homed | same template when they return | already on falsifier rehomed roster |
 
 **Accept (per Class C row):** (a) per-PR mechanism RED green-by-execution under the 5s fast-lane (or bin per-row budget); (b) corpus grain enrolled on a named cadence consumer (not orphaned); (c) attribute receipt if cost was defect-inflated — else Class F hand-off.
