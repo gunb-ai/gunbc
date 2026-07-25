@@ -2,15 +2,16 @@ module test.claim.live_deploy.readiness
 
 import gunbc.live_deploy.readiness {
   live_deploy_service_ready_once,
+  live_deploy_service_ready_once_for_deploy,
   live_deploy_poll_service_ready_after_attempts,
   healthz_body_groundable,
   ground_service_ready_from_healthz,
   reconcile_service_ready_read,
   show_healthz_read_fixture_healthy,
-  live_deploy_healthz_probe_script_for_port,
-  healthz_read_from_shell_apply,
+  live_deploy_healthz_get_for_port,
   HealthzEffectiveRead,
 }
+import gunbc.live_deploy.intent { live_deploy_health_url_for_port }
 import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_poll_bound,
   live_deploy_service_ready_poll_max_attempts,
@@ -24,13 +25,10 @@ import gunbc.live_deploy.service_ready {
 import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_plan_listen_port }
 import gunbc.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.host_effect {
-  ShellCommand,
-  HostOs,
-  host_effect_read_evidence,
+  LocalShell,
   SshShell,
 }
 import std.types { NonEmptyStr }
-import gunbc.host_effect_realize { host_effect_apply }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.realization_reconcile {
@@ -38,6 +36,7 @@ import std.realization_reconcile {
   NotConverged,
   DoesNotGround,
   Grounds,
+  ReadObserved,
 }
 import std.measure { measure_fit_count_floor }
 import extdeps.tools.sleep {
@@ -80,14 +79,11 @@ fn witness_ssh_mock_stdout_is_discriminating_red() -> Bool {
     }
 }
 
-fn witness_transport_probe_script_targets_localhost_healthz() -> Bool {
+fn witness_transport_probe_targets_localhost_healthz() -> Bool {
   let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
-  let script = live_deploy_healthz_probe_script_for_port(port: port)
-  string_contains(s: script, pattern: "curl -sf")
-    && string_contains(s: script, pattern: "--connect-timeout")
-    && string_contains(s: script, pattern: "--max-time")
-    && string_contains(s: script, pattern: "127.0.0.1:")
-    && string_contains(s: script, pattern: "/healthz")
+  let url = live_deploy_health_url_for_port(port: port)
+  string_contains(s: url as String, pattern: "127.0.0.1:")
+    && string_contains(s: url as String, pattern: "/healthz")
 }
 
 fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
@@ -102,22 +98,15 @@ fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
   }
 }
 
-fn witness_transport_curl_probe_over_ssh_does_not_ground_mock_stdout() -> Bool {
-  let spec = deployment_spec_srv1()
+fn witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout() -> Bool {
+  let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
+  let read = live_deploy_healthz_get_for_port(
+    port: port,
+    transport: SshShell { ssh_host: "srv1" as NonEmptyStr },
+  )
   !reconciliation_converged(
     r: reconcile_service_ready_read(
-      read: healthz_read_from_shell_apply(
-        r: host_effect_apply(
-          target: HostOs { node: spec.target.host },
-          effect: ShellCommand {
-            script: live_deploy_healthz_probe_script_for_port(
-              port: deployment_plan_listen_port(spec: spec)
-            ),
-          },
-          evidence: host_effect_read_evidence,
-          transport: SshShell { ssh_host: "srv1" as NonEmptyStr },
-        )
-      )
+      read: ReadObserved { value: read }
     )
   )
 }
@@ -149,19 +138,10 @@ fn witness_sleep_flat_scalar_dissolution_trigger_tracked() -> Bool {
 
 fn witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep() -> Bool {
   let spec = deployment_spec_srv1()
-  let probe = reconcile_service_ready_read(
-    read: healthz_read_from_shell_apply(
-      r: host_effect_apply(
-        target: HostOs { node: spec.target.host },
-        effect: ShellCommand {
-          script: live_deploy_healthz_probe_script_for_port(
-            port: deployment_plan_listen_port(spec: spec)
-          ),
-        },
-        evidence: host_effect_read_evidence,
-        transport: ci_deploy_srv1_access.transport,
-      )
-    )
+  let probe = live_deploy_service_ready_once_for_deploy(
+    spec: spec,
+    transport: ci_deploy_srv1_access.transport,
+    access: ci_deploy_srv1_access,
   )
   let delay = sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence_seconds())
   !reconciliation_converged(r: probe) && delay
@@ -215,9 +195,9 @@ test fn live_deploy_readiness_witnesses() -> Bool {
     && witness_healthz_malformed_extension_not_groundable()
     && witness_healthz_bad_body_not_groundable()
     && witness_ssh_mock_stdout_is_discriminating_red()
-    && witness_transport_probe_script_targets_localhost_healthz()
+    && witness_transport_probe_targets_localhost_healthz()
     && witness_accept_no_response_probe_fails_fast_not_hangs()
-    && witness_transport_curl_probe_over_ssh_does_not_ground_mock_stdout()
+    && witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout()
     && witness_service_ready_once_converges_on_healthy_fixture()
     && witness_reconcile_grounds_healthy_fixture_read()
     && witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep()

@@ -2,11 +2,6 @@ module gunbc.live_deploy.intent
 
 import std.types { String, NonEmptyStr, Int }
 import std.measure { Second }
-import extdeps.tools.curl {
-  curl_bounded_localhost_get_argv_prefix,
-  curl_localhost_connect_timeout,
-  curl_localhost_max_time,
-}
 import gunbc.live_deploy.service_ready {
   ServiceNotReady,
   live_deploy_service_ready_poll_bound,
@@ -73,17 +68,4 @@ fn live_deploy_unit_status_tail_command(unit: NonEmptyStr) -> String {
 
 fn live_deploy_unit_diagnosis_command(unit: NonEmptyStr) -> String {
   concat(live_deploy_unit_status_tail_command(unit: unit), "; exit 0")
-}
-
-fn live_deploy_health_probe_curl_command(health_url: NonEmptyStr) -> String {
-  concat(
-    concat(
-      curl_bounded_localhost_get_argv_prefix(
-        connect_timeout: curl_localhost_connect_timeout,
-        max_time: curl_localhost_max_time
-      ),
-      " "
-    ),
-    concat("\"", health_url as String, "\"")
-  )
 }

@@ -94,8 +94,8 @@ fn http_client_get_operation_argv(url: NonEmptyStr) -> List<String> {
     http_client_get_path,
     http_client_get_service,
     http_client_get_operation,
-    "url",
     url as String,
+    "",
     [],
     ""
   )
