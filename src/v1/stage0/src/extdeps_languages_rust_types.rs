@@ -188,22 +188,13 @@ pub fn trait_bound_template() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn integer_types() -> Rc<Vec<String>> {
+pub fn rust_types_name_catalog_dissolve_on() -> String {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["i8".to_string(), "i16".to_string(), "i32".to_string(), "i64".to_string(), "i128".to_string(), "isize".to_string(), "u8".to_string(), "u16".to_string(), "u32".to_string(), "u64".to_string(), "u128".to_string(), "usize".to_string()])
+        static CACHED: String = {
+            "dissolve-on: rust.types.integer_types/float_types — deleted bare String name lists with zero consumers; sole type-name catalog authority is extdeps.languages.rust.primitives rust_grounding_primitives.target_name rows.".to_string()
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
-}
-
-pub fn float_types() -> Rc<Vec<String>> {
-    thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["f32".to_string(), "f64".to_string()])
-        };
-    }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_cast_syntax() -> Rc<CastSyntax> {

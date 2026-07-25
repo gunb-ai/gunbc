@@ -188,6 +188,23 @@ fn markup_attr_to_fragment(attr: MarkupAttr) -> Attribute {
   }
 }
 
+fn fragment_to_markup_node(frag: Fragment) -> MarkupNode {
+  match frag {
+    FragmentText { content } => TextNode { text: content }
+    RawNode { content } => TextNode { text: content }
+    Element { tag, attributes, children } =>
+      ElementNode {
+        tag: tag,
+        attrs: map(attributes, a => MarkupAttr { name: a.name, value: a.value }),
+        children: map(children, c => fragment_to_markup_node(frag: c)),
+      }
+  }
+}
+
+fn fragments_to_markup_nodes(frags: List<Fragment>) -> List<MarkupNode> {
+  map(frags, f => fragment_to_markup_node(frag: f))
+}
+
 fn markup_node_to_fragment(node: MarkupNode) -> Fragment {
   match node {
     TextNode { text } =>
