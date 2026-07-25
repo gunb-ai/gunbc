@@ -308,7 +308,24 @@ Same 79 entries, same binary path, after the fix:
 ```
 
 All 79 witness verdicts byte-identical before vs after (`PASS`/`FAIL` set diffed, empty).
-Corpus-scale before/after: the PR's own floor run against main's `[resolve-split]` line.
+
+**Corpus scale** — main `c57c6e85` (run `30146392008`) vs PR #7205 `d66ef19c` (run
+`30148809630`). Both selected the **same 612 resolved entries** (2336−1724 and 2373−1761), so
+the denominator is like-for-like, not a selection artefact:
+
+| | main | #7205 | Δ |
+|---|---:|---:|---:|
+| discovery-corpus resolve | 980,695ms | **158,046ms** | **−83.9% (6.21×)** |
+| `reconcile_assembly` | 893,347ms | **48,043ms** | **−94.6% (18.6×)** |
+| per-entry resolve | 1.602s | **0.258s** | −83.9% |
+| batch-3 wall | 1161.1s | **319.5s** | **−72.5% (3.63×)** |
+| whole `ci` job | ~45–85min band | **30m50s** | — |
+
+Floor green, zero `FAIL [batch` rows — so no witness verdict flipped at corpus scale either.
+Batch-3 now sits at **15.2%** of the #7204 budget (2100s) and **19.0%** of the pre-flip 1680s
+basis it was raised from. The `regen` job ran unskipped (the diff is inside the
+`[src/v1, dag]` regen input closure) and both `RegenVerifyGate` and
+`SelfHostStalenessGate` passed: the self-host fixed point holds with the change.
 
 ### 7.5 Honest residue
 
