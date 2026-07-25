@@ -178,7 +178,7 @@ data js_site_expression_prop_markup_debt: Disposition = Scaffold {
   dissolves_to: SubstrateMandatoryTag,
   bind: DeclarationRef {
     module_path: "std.markup",
-    decl_name: "MarkupAttr",
+    decl_name: "Attribute",
     field: WholeDeclaration
   }
 }
