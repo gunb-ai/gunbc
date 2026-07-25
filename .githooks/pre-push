@@ -3,16 +3,8 @@
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
-ensure_bins() {
-  if [[ -x "$ROOT/target/release/claim_batch" ]]; then
-    CLAIM_BATCH="$ROOT/target/release/claim_batch"
-  elif [[ -x "$ROOT/target/debug/claim_batch" ]]; then
-    CLAIM_BATCH="$ROOT/target/debug/claim_batch"
-  else
-    echo "[pre-push] claim_batch not built; compiling debug (one-time)..."
-    (cd "$ROOT" && CTRL_BUILD_WRAP_CARGO=0 cargo build -p v1-compiler --bin claim_batch)
-    CLAIM_BATCH="$ROOT/target/debug/claim_batch"
-  fi
-}
-ensure_bins
-exec "$CLAIM_BATCH" --pre-push
+echo "[pre-push] cargo fmt --all --check"
+if ! cargo fmt --all --check; then
+  echo "[pre-push] rustfmt drift — run: cargo fmt --all   (then commit and re-push, or 'git push --no-verify' to skip)" >&2
+  exit 1
+fi

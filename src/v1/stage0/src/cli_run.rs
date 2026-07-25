@@ -23736,13 +23736,13 @@ pub fn non_fold_residue_synthetic_unrostered_red_holds() -> bool {
 const NON_FOLD_RESIDUE_AUTHORITY_REL: &str = "dag/gunbc/non_fold_residue.dag";
 const NON_FOLD_RESIDUE_FRONTIER_DATA_NAME: &str = "non_fold_residue_frontier";
 
-/// Project the `unit` site keys out of the typed `non_fold_residue_frontier` rows of the
+/// Project the path site keys out of the typed `non_fold_residue_frontier` rows of the
 /// `gunbc.non_fold_residue` authority SOURCE TEXT via the real front-end — the roster's
 /// re-home off this file's former `NON_FOLD_RESIDUE_ROSTER` const (group-of-units ruling,
 /// enrolled in `gunbc.roster_registry`). Per-row reasons and dissolution triggers are
 /// `.dag`-side facts the host does not consume. Fail-closed: a parse error, a missing data
-/// def, a non-record element, a missing/non-literal `unit` field, a duplicate unit, or an
-/// empty roster is a loud panic, never a silent fallback.
+/// def, a non-record element, a missing/non-literal `subject.path` field, a duplicate path,
+/// or an empty roster is a loud panic, never a silent fallback.
 // 🟡 dissolve-on: hand-Rust reader over the `.dag` authority — dissolves with
 // `witness_exclusion_rows_from_module_source` when the host consumes an emitted manifest of
 // the rows (module-binding supply-carrier pattern), and with the scan below into a pure
@@ -23796,44 +23796,75 @@ pub(crate) fn non_fold_residue_units_from_module_source(
                      not a record literal (refusing — rows must stay directly host-readable)"
                 );
             }
-            let mut unit: Option<String> = None;
+            let mut path: Option<String> = None;
             for field in el.children.iter() {
                 let fname = crate::v1_std_core::field_init_node_name_at(
                     field.clone(),
                     source_indices.clone(),
                 );
-                if fname != "unit" {
+                if fname != "subject" {
                     continue;
                 }
                 let value = crate::v1_std_core::field_init_node_value(field.clone());
                 match value.expr_data.as_ref() {
-                    ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
-                        LiteralValue::LitStr { value: s } => unit = Some(s.clone()),
-                        _ => panic!(
-                            "nfr frontier reader: `unit` in a `{data_name}` row of \
-                             {module_rel_path} is not a string literal"
-                        ),
-                    },
+                    ExprData::ExprRecordLit { .. } => {
+                        let variant_name = crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            value.clone(),
+                        );
+                        if variant_name != "PathSubject" {
+                            panic!(
+                                "nfr frontier reader: `subject` in a `{data_name}` row of \
+                                 {module_rel_path} is not PathSubject {{ ... }}"
+                            );
+                        }
+                        let mut row_path: Option<String> = None;
+                        for subfield in value.children.iter() {
+                            let subname = crate::v1_std_core::field_init_node_name_at(
+                                subfield.clone(),
+                                source_indices.clone(),
+                            );
+                            if subname != "path" {
+                                continue;
+                            }
+                            let path_value =
+                                crate::v1_std_core::field_init_node_value(subfield.clone());
+                            match path_value.expr_data.as_ref() {
+                                ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
+                                    LiteralValue::LitStr { value: s } => row_path = Some(s.clone()),
+                                    _ => panic!(
+                                        "nfr frontier reader: `path` in a `{data_name}` row \
+                                         of {module_rel_path} is not a string literal"
+                                    ),
+                                },
+                                _ => panic!(
+                                    "nfr frontier reader: `path` in a `{data_name}` row of \
+                                     {module_rel_path} is not a literal"
+                                ),
+                            }
+                        }
+                        path = row_path;
+                    }
                     _ => panic!(
-                        "nfr frontier reader: `unit` in a `{data_name}` row of \
-                         {module_rel_path} is not a literal"
+                        "nfr frontier reader: `subject` in a `{data_name}` row of \
+                         {module_rel_path} is not a record literal"
                     ),
                 }
             }
-            let unit = unit.unwrap_or_else(|| {
+            let path = path.unwrap_or_else(|| {
                 panic!(
                     "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
-                     `unit` field"
+                     `subject` field"
                 )
             });
-            if !seen.insert(unit.clone()) {
+            if !seen.insert(path.clone()) {
                 panic!(
-                    "nfr frontier reader: duplicate unit {unit:?} in `{data_name}` of \
+                    "nfr frontier reader: duplicate path {path:?} in `{data_name}` of \
                      {module_rel_path} (the const this replaced tolerated duplicates; the \
                      typed roster refuses them)"
                 );
             }
-            units.push(unit);
+            units.push(path);
         }
         if units.is_empty() {
             panic!(
@@ -24347,14 +24378,14 @@ mod nfr_tests {
         let synthetic = "module gunbc.non_fold_residue\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
                FrontierRow {\n\
-                 unit: \"synthetic/a.dag::f\",\n\
+                 subject: PathSubject { path: \"synthetic/a.dag::f\" },\n\
                  reason: shared_reason,\n\
-                 dissolve_on: \"synthetic trigger\"\n\
+                 trigger: TriggerProse { text: \"synthetic trigger\" }\n\
                },\n\
                FrontierRow {\n\
-                 unit: \"synthetic/b.dag::g\",\n\
+                 subject: PathSubject { path: \"synthetic/b.dag::g\" },\n\
                  reason: \"inline reason\",\n\
-                 dissolve_on: shared_trigger\n\
+                 trigger: TriggerProse { text: shared_trigger }\n\
                }\n\
              ]\n";
         assert_eq!(
@@ -24371,8 +24402,8 @@ mod nfr_tests {
     fn nfr_frontier_reader_refuses_duplicate_unit() {
         let synthetic = "module gunbc.non_fold_residue\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
-               FrontierRow { unit: \"synthetic/a.dag::f\", reason: \"r\", dissolve_on: \"d\" },\n\
-               FrontierRow { unit: \"synthetic/a.dag::f\", reason: \"r2\", dissolve_on: \"d2\" }\n\
+               FrontierRow { subject: PathSubject { path: \"synthetic/a.dag::f\" }, reason: \"r\", trigger: TriggerProse { text: \"d\" } },\n\
+               FrontierRow { subject: PathSubject { path: \"synthetic/a.dag::f\" }, reason: \"r2\", trigger: TriggerProse { text: \"d2\" } }\n\
              ]\n";
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
@@ -24380,7 +24411,7 @@ mod nfr_tests {
         .is_err();
         assert!(
             refused,
-            "a duplicate unit key must refuse loudly (fail-closed)"
+            "a duplicate path key must refuse loudly (fail-closed)"
         );
     }
 
@@ -24388,7 +24419,7 @@ mod nfr_tests {
     fn nfr_frontier_reader_refuses_missing_unit_field() {
         let synthetic = "module gunbc.non_fold_residue\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
-               FrontierRow { reason: \"r\", dissolve_on: \"d\" }\n\
+               FrontierRow { reason: \"r\", trigger: TriggerProse { text: \"d\" } }\n\
              ]\n";
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
@@ -24396,7 +24427,7 @@ mod nfr_tests {
         .is_err();
         assert!(
             refused,
-            "a row without a `unit` field must refuse loudly (fail-closed)"
+            "a row without a `subject` field must refuse loudly (fail-closed)"
         );
     }
 }
