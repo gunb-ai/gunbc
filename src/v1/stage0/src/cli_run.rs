@@ -1209,13 +1209,14 @@ const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
 // manifest of the frontier rows instead of parsing the authority source (the same
 // module-binding supply-carrier pattern as `witness_admission_explicit_consumer_manifest`;
 // same marker family as `non_fold_residue_units_from_module_source`).
-const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 7] = [
+const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 8] = [
     "OfflineLocalRecipe",
     "FixtureExplicitRoster",
     "BinWitnessWet",
     "QuarantineProbeExpectRed",
     "FalsifierSelfHostWet",
     "FalsifierRehomedBinWet",
+    "FalsifierSubstrateLongLane",
     "NoConsumer",
 ];
 const WET_RECEIPT_ENROLLMENT_AUTHORITY_REL: &str =
@@ -27030,7 +27031,7 @@ mod module_path_index_tests {
     #[test]
     fn extdeps_shell_resolves_to_the_dag_authority() {
         let path = source_path_for_module_path("extdeps.shell".to_string());
-        assert_eq!(path, "dag/extdeps/shell/shell.dag");
+        assert_eq!(path, "dag/extdeps/shell.dag");
     }
 
     #[test]

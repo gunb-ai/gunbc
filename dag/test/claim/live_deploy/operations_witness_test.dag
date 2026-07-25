@@ -4,7 +4,7 @@ import std.logic { Bool }
 import std.types { String, List }
 import extdeps.apt { package_nodejs, package_tailscale, apt_install_argv }
 import extdeps.dpkg { dpkg_status_argv }
-import extdeps.os.systemctl {
+import extdeps.systemd.systemctl {
   systemctl_daemon_reload_argv,
   systemctl_enable_argv,
   systemctl_restart_argv,
@@ -28,7 +28,7 @@ data apt_install_path: String = "dag/extdeps/package_managers/apt.dag"
 data apt_install_service: String = "apt.PackageManager"
 data apt_install_operation: String = "Install"
 
-data systemctl_path: String = "dag/extdeps/os/systemctl.dag"
+data systemctl_path: String = "dag/extdeps/systemd/systemctl.dag"
 data systemctl_service: String = "systemd.Systemctl"
 
 fn argv_join(argv: List<String>) -> String {

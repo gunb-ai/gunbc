@@ -59,7 +59,7 @@ type FleetHostEffectiveReadGroundedReceipt {
 }
 
 data gunbc_fleet_show_effective_read_scope_disposition: Disposition = std.disposition.Terminal {
-  reason: "Typed READ-ONLY live host-read seam for runner-allocation-v0 (three blocking knobs): (1) runner-slice MemoryMax on system-actions-runner.slice, (2) per-slot MemoryMax+MemorySwapMax on actions-runner@<host>-*.service, (3) runner_width active-unit count. systemctl show reads dissolve through extdeps.os.systemctl.ShowProperty typed argv (gunbc.systemctl_show_read) — no per-command HostEffect nicknames, no concat shell strings. Committed ShowEffectiveRead rows stay ReadAbsent until live or fixture-grounded read supplies ReadObserved. ManagedOOMMemoryPressureLimit percent-wire grounding lives in extdeps.os.oomd."
+  reason: "Typed READ-ONLY live host-read seam for runner-allocation-v0 (three blocking knobs): (1) runner-slice MemoryMax on system-actions-runner.slice, (2) per-slot MemoryMax+MemorySwapMax on actions-runner@<host>-*.service, (3) runner_width active-unit count. systemctl show reads dissolve through extdeps.systemd.systemctl.ShowProperty typed argv (gunbc.systemctl_show_read) — no per-command HostEffect nicknames, no concat shell strings. Committed ShowEffectiveRead rows stay ReadAbsent until live or fixture-grounded read supplies ReadObserved. ManagedOOMMemoryPressureLimit percent-wire grounding lives in extdeps.systemd.oomd."
 }
 
 data fleet_show_effective_read_transport_script_scaffold: Disposition = Scaffold {

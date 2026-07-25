@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data entropy_transport_linux_gnu_only: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "extdeps.os.os",
+    module_path: "extdeps.os",
     decl_name: "cited_operating_system_surface",
     field: WholeDeclaration
   }

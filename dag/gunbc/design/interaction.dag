@@ -1,8 +1,18 @@
 module gunbc.design.interaction
 
-import gunbc.design.material { TimingToken, respond_fast, reveal_deliberate }
+import gunbc.design.material {
+  TimingToken, respond_fast, reveal_deliberate,
+  MotionTrigger, OnHover, OnActive, OnStateClass,
+  scale_transform_wire, travel_scale_transform_wire,
+  rest_scale_per_mille, press_scale_per_mille,
+}
+import gunbc.design.scale { ScaleToken, scale_var, travel_lift, travel_press }
 
 data interaction_note: String = "Layer 2 interaction machinery (lifted from gunbc.site.interaction). Verbs x Responses x TimingToken, held as rows. ElementId is a closed enum — coverage_gaps is total by construction (design-register-library.md sect 10 Class 3, A.0)."
+
+data machine_side_verb_note: String = "Approach, Enter, StepBack, Copy, Traverse and Dispatch are all things a PERSON does to a control. Await and Accept are things the MACHINE does to it, and they are on the same axis rather than a parallel one because the axis was never 'user gesture' — it is the event class a control answers, and a control does not care whose event it was. The analog reading is the whole justification: a physical control left in an actuated position while a request is in flight, and then released into a new detent when the answer arrives, is one continuous mechanical story, and splitting it across two vocabularies would mean the register could describe the press but not the release.
+
+The consequence that matters is coverage: because these are ordinary verbs, an element declaring them is subject to the same total-assignment law as one declaring hover, so a machine-caused state with no declared response is a counted gap exactly like a dead hover. What they cannot use is a MotionTrigger — there is no pseudo-class for 'the server said yes' — which is why they realize through StateRule."
 
 type InteractionVerb
   = Approach
@@ -11,18 +21,30 @@ type InteractionVerb
   | Copy
   | Traverse
   | Dispatch
+  | Await
+  | Accept
+
+data physical_response_note: String = "Brighten, Reveal, CounterpartHighlight and Receipt are all responses of APPEARANCE — a thing changes colour or shows itself. The three added here are responses of POSITION, and the distinction is the analog root principle made a type: a real control answers a hand by MOVING, and a surface whose only vocabulary is colour can never be more than a diagram that lights up. Lift is the approach — the control rising to meet the hand, the 1 px that makes it read as an object sitting on the page rather than printed into it. Depress is engagement: downward travel plus compression, and it fires on pointer-DOWN because the acknowledgment belongs to the press and not to the release (the video-game rule — a control that waits for mouseup feels broken even when it is correct). Settle is the spring return into a new stable position, the only one of the three not caused directly by a finger, which is why it needs StateRule rather than a trigger.
+
+They are separate variants rather than fields on the existing ones because a row is one (element, verb, response) fact, and 'the edge brightens' and 'the control rises' are two answers to the same approach — genuinely two facts about one verb, not one fact with two spellings. That is also what forced merge_response_rules: two rows on one trigger is now representable, so the CSS shorthand collision it creates had to become unwritable."
 
 type Response
   = Brighten
   | Reveal
   | CounterpartHighlight
   | Receipt
+  | Lift
+  | Depress
+  | Settle
+  | Turn
 
 type ElementId
   = StarElement
   | HashElement
   | SwatchElement
   | DispatchBtnElement
+  | SoundToggleElement
+  | DisclosureElement
 
 fn element_id_key(id: ElementId) -> String {
   match id {
@@ -30,6 +52,8 @@ fn element_id_key(id: ElementId) -> String {
     HashElement => "hash"
     SwatchElement => "swatch"
     DispatchBtnElement => "dispatch-btn"
+    SoundToggleElement => "sound-toggle"
+    DisclosureElement => "disclosure"
   }
 }
 
@@ -41,6 +65,8 @@ fn verb_key(v: InteractionVerb) -> String {
     Copy => "copy"
     Traverse => "traverse"
     Dispatch => "dispatch"
+    Await => "await"
+    Accept => "accept"
   }
 }
 
@@ -50,6 +76,10 @@ fn response_key(r: Response) -> String {
     Reveal => "reveal"
     CounterpartHighlight => "counterpart-highlight"
     Receipt => "receipt"
+    Lift => "lift"
+    Depress => "depress"
+    Settle => "settle"
+    Turn => "turn"
   }
 }
 
@@ -98,4 +128,113 @@ fn coverage_gaps(elements: List<InteractiveElement>, rows: List<BehaviorRow>) ->
 
 fn coverage_complete(elements: List<InteractiveElement>, rows: List<BehaviorRow>) -> Bool {
   coverage_gaps(elements: elements, rows: rows).length() == 0
+}
+
+data detent_table_note: String = "The detent metaphor made literal, and it is pinned as DATA before any CSS because of a mechanical constraint that decides the whole design (review, 2026-07-24): a CSS transition fires only when a property CHANGES. So an edge between two states that hold the SAME transform cannot beat at all — no travel, no settle, nothing — and the only ways to fake a beat over a non-change are a keyframe (walled) or a JS transient class (choreography, which is the thing the analog law is trying to avoid). The consequence is not a styling preference: it means each state must OWN a distinct stable transform, and then every edge's travel is real and its settle is DERIVED from the transition plus the overshoot curve rather than authored per edge.
+
+That is why a detent carries a position and how it is REACHED rather than a duration and a distance. Reading it as a table also makes the failure legible: detent_edges_all_beat over the declared edges is a construction check, so an edge whose endpoints coincide is a red with both endpoint names in it, not a silently inert transition someone notices months later while wondering why the button feels dead. AtRest is the base configuration and has no trigger, which is what distinguishes 'where the control sits when nothing is happening' from 'a position something puts it in'."
+
+type DetentReach
+  = AtRest
+  | ByTrigger { trigger: MotionTrigger }
+
+type DetentTravel
+  = NoTravel
+  | Travel { token: ScaleToken }
+
+data detent_carries_position_only_note: String = "A detent carries POSITION and how it is reached, and deliberately NOT a duration — the word means a resting notch, not a movement. The weight of an edge lives on the BehaviorRow that causes it (element × verb × response × timing), so each fact has exactly one home: the table says where the control sits, the row says how heavily it gets there. Putting an entry timing here as well would have been the same fact in two places, and the usual outcome of that is a table and a row disagreeing while both look authoritative."
+
+type Detent {
+  state: String
+  reach: DetentReach
+  travel: DetentTravel
+  scale_per_mille: Int
+  turn_deg: Int
+}
+
+data detent_turn_axis_note: String = "turn_deg is the ROTATION axis of a position (remodel W1e, 2026-07-24: the disclosure mark turns 90 degrees at its open detent). Zero emits nothing — the wire appends ' rotate(Ndeg)' only when the detent actually turns — so every pre-existing detent's emission is byte-identical and the site digests hold; a detent that turns is the only one that says so."
+
+data house_pointer_detents_note: String = "The three positions every control shares, so a second control cannot quietly invent its own throw. Rest at unity, hover risen by the lift token at unity scale, pressed travelling down and compressing. A surface adds only the positions that are ITS OWN — a latched in-flight state, a terminal — by extending this list rather than restating it."
+
+fn house_pointer_detents(rest_state: String, hover_state: String, pressed_state: String) -> List<Detent> {
+  [
+    Detent { state: rest_state, reach: AtRest, travel: NoTravel, scale_per_mille: rest_scale_per_mille, turn_deg: 0 },
+    Detent {
+      state: hover_state,
+      reach: ByTrigger { trigger: OnHover },
+      travel: Travel { token: travel_lift },
+      scale_per_mille: rest_scale_per_mille,
+      turn_deg: 0,
+    },
+    Detent {
+      state: pressed_state,
+      reach: ByTrigger { trigger: OnActive },
+      travel: Travel { token: travel_press },
+      scale_per_mille: press_scale_per_mille,
+      turn_deg: 0,
+    },
+  ]
+}
+
+type DetentEdge {
+  from_state: String
+  to_state: String
+}
+
+data detent_edge_fault_note: String = "Two faults, kept apart, because the first cut of this check collapsed them and fell open. It read each endpoint's transform through a lookup that returned an empty string for an undeclared state, then compared the two strings — so an edge naming TWO states that do not exist compared equal-to-equal and was reported as a coinciding-position defect, while an edge naming ONE nonexistent state compared '' against a real transform and was reported as FINE. A typo in an edge row would have gone green. So an undeclared endpoint is now its own fault carrying the name that failed to resolve, and coincidence is only ever reported between two positions that actually exist."
+
+type DetentEdgeFault
+  = EndpointUndeclared { state: String }
+  | PositionsCoincide { transform: String }
+
+type DetentEdgeDefect {
+  from_state: String
+  to_state: String
+  fault: DetentEdgeFault
+}
+
+fn detent_transform_wire(d: Detent) -> String {
+  let base = match d.travel {
+    NoTravel => scale_transform_wire(per_mille: d.scale_per_mille)
+    Travel { token } =>
+      travel_scale_transform_wire(travel_var: scale_var(t: token), per_mille: d.scale_per_mille)
+  }
+  if d.turn_deg == 0 {
+    base
+  } else {
+    join([base, " rotate(", to_string(d.turn_deg), "deg)"], "")
+  }
+}
+
+fn detent_named(detents: List<Detent>, state: String) -> Detent? {
+  detents |> filter(d => d.state == state) |> first
+}
+
+fn detent_edge_faults(detents: List<Detent>, edge: DetentEdge) -> List<DetentEdgeFault> {
+  match detent_named(detents: detents, state: edge.from_state) {
+    Absent => [ EndpointUndeclared { state: edge.from_state } ]
+    Present { value: from_d } =>
+      match detent_named(detents: detents, state: edge.to_state) {
+        Absent => [ EndpointUndeclared { state: edge.to_state } ]
+        Present { value: to_d } => {
+          let from_t = detent_transform_wire(d: from_d)
+          let to_t = detent_transform_wire(d: to_d)
+          if from_t == to_t {
+            [ PositionsCoincide { transform: from_t } ]
+          } else {
+            []
+          }
+        }
+      }
+  }
+}
+
+fn detent_edge_defects(detents: List<Detent>, edges: List<DetentEdge>) -> List<DetentEdgeDefect> {
+  fold(edges, init: [], f: (acc, e) =>
+    concat(acc, map(detent_edge_faults(detents: detents, edge: e), f =>
+      DetentEdgeDefect { from_state: e.from_state, to_state: e.to_state, fault: f })))
+}
+
+fn detent_edges_all_beat(detents: List<Detent>, edges: List<DetentEdge>) -> Bool {
+  detent_edge_defects(detents: detents, edges: edges).length() == 0
 }

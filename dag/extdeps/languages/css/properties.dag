@@ -49,6 +49,7 @@ type CssPropertyName
   | MarginRight
   | MarginTop
   | MaxWidth
+  | MinHeight
   | MinWidth
   | Opacity
   | Overflow
@@ -58,6 +59,7 @@ type CssPropertyName
   | TextAlign
   | TextDecoration
   | TextTransform
+  | Transform
   | Transition
   | VerticalAlign
   | Width
@@ -101,6 +103,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     MarginRight => "margin-right"
     MarginTop => "margin-top"
     MaxWidth => "max-width"
+    MinHeight => "min-height"
     MinWidth => "min-width"
     Opacity => "opacity"
     Overflow => "overflow"
@@ -110,6 +113,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     TextAlign => "text-align"
     TextDecoration => "text-decoration"
     TextTransform => "text-transform"
+    Transform => "transform"
     Transition => "transition"
     VerticalAlign => "vertical-align"
     Width => "width"

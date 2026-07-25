@@ -3,7 +3,7 @@ module extdeps.shell.exec
 import std.types { String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.os.exec_arg_limit { host_exec_arg_max_strlen }
+import extdeps.exec.exec_arg_limit { host_exec_arg_max_strlen }
 import std.measure { ByteSize }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -15,9 +15,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type TransportScript = String where brand("TransportScript")
 
-data shell_exec_run_stdin_route_note: String = "shell.Exec.Run transport: argv is fixed [bash, -s]; the script input is routed through the transport stdin field. Large payloads belong here — they never become a single argv token, so they do not encounter the Linux per-argument exec ceiling modeled in extdeps.os.exec_arg_limit.host_exec_arg_max_strlen (deploy Part A / #6711)."
+data shell_exec_run_stdin_route_note: String = "shell.Exec.Run transport: argv is fixed [bash, -s]; the script input is routed through the transport stdin field. Large payloads belong here — they never become a single argv token, so they do not encounter the Linux per-argument exec ceiling modeled in extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen (deploy Part A / #6711)."
 
-data shell_exec_check_argv_embed_note: String = "shell.Exec.Check transport: argv is [sh, -c, command] — the entire command string is ONE argv element. On Linux hosts this is the surface that hits execve(2) MAX_ARG_STRLEN (extdeps.os.exec_arg_limit.host_exec_arg_max_strlen): an oversized embed fails E2BIG (opaque os error 7) unless the interpreter refuses first at dispatch_shell (InterpError::ArgvExceedsHostArgMax). Prefer Run for payloads approaching the per-argument ceiling."
+data shell_exec_check_argv_embed_note: String = "shell.Exec.Check transport: argv is [sh, -c, command] — the entire command string is ONE argv element. On Linux hosts this is the surface that hits execve(2) MAX_ARG_STRLEN (extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen): an oversized embed fails E2BIG (opaque os error 7) unless the interpreter refuses first at dispatch_shell (InterpError::ArgvExceedsHostArgMax). Prefer Run for payloads approaching the per-argument ceiling."
 
 data shell_exec_transport_ceiling_authority: ByteSize = host_exec_arg_max_strlen
 

@@ -32,27 +32,6 @@ fn srv3_host_effect_apply(
   )
 }
 
-fn srv3_host_effect_observe_apply(
-  include_git_meta: Bool,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  srv3_host_effect_apply(
-    effect: Srv3InstallReconcileObserve { include_git_meta: include_git_meta },
-  )
-}
-
-fn srv3_host_effect_observe_read_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  host_effect_apply(
-    target: srv3_actuator_target(),
-    effect: Srv3InstallReconcileObserve { include_git_meta: true },
-    evidence: host_effect_read_evidence,
-    transport: LocalShell,
-  )
-}
-
-fn srv3_durable_approval_grant_record_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  srv3_host_effect_apply(effect: DurableApprovalGrantRecord)
-}
-
 fn srv3_durable_approval_grant_read_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   host_effect_apply(
     target: srv3_actuator_target(),
@@ -79,10 +58,6 @@ fn srv3_seeded_install_media_toolchain_ensure_apply() -> Reconciliation<HostEffe
 
 fn srv3_seeded_install_media_remaster_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   srv3_host_effect_apply(effect: Srv3SeededInstallMediaRemaster)
-}
-
-fn srv3_sol_console_capture_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  srv3_host_effect_apply(effect: Srv3SolConsoleCapture)
 }
 
 fn srv3_bmcweb_session_login_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
