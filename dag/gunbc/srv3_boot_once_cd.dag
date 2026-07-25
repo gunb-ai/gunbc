@@ -1,5 +1,10 @@
 module gunbc.srv3_boot_once_cd
 
+import std.measure { Second, second }
+
+data srv3_boot_once_approval_grant_path: String = "/var/lib/gunbc/logs/approvals/srv3-boot-once-cd.grant"
+
+data srv3_boot_once_apply_read_back_sleep: Second = second(count: 45)
 
 data srv3_boot_once_cd_secret_debt: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,

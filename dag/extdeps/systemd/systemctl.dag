@@ -1,0 +1,242 @@
+module extdeps.systemd.systemctl
+
+import std.types { NonEmptyStr, String, List, Bool, Int }
+import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemctl.html"
+  }
+}
+
+fn systemctl_daemon_reload_argv() -> List<String> {
+  ["systemctl", "daemon-reload"]
+}
+
+fn systemctl_enable_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "enable", unit as String]
+}
+
+fn systemctl_restart_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "restart", unit as String]
+}
+
+fn systemctl_disable_now_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "disable", "--now", unit as String]
+}
+
+fn systemctl_set_property_argv(unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr) -> List<String> {
+  [
+    "systemctl",
+    "set-property",
+    unit as String,
+    concat(property as String, concat("=", value as String)),
+  ]
+}
+
+fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> List<String> {
+  [
+    "systemctl",
+    "show",
+    unit as String,
+    concat("--property=", systemd_unit_property_wire(property: property) as String),
+    "--value",
+  ]
+}
+
+fn systemctl_status_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "status", "--no-pager", "--full", unit as String]
+}
+
+type UnitFileState
+  = UnitEnabled
+  | UnitEnabledRuntime
+  | UnitLinked
+  | UnitMasked
+  | UnitStatic
+  | UnitDisabled
+  | UnitIndirect
+  | UnitGenerated
+  | UnitTransient
+  | UnitBad
+
+service systemd.Systemctl {
+  operation Enable {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "enable", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl enable failed"
+    }
+  }
+
+  operation Restart {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "restart", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl restart failed"
+    }
+  }
+
+  operation DisableNow {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "disable", "--now", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl disable --now failed"
+    }
+  }
+
+  operation Start {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "start", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl start failed"
+    }
+  }
+
+  operation SetProperty {
+    input { unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "set-property", "{unit}", "{property}={value}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl set-property failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.SetProperty"
+    }
+  }
+
+  operation DaemonReload {
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "daemon-reload"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl daemon-reload failed"
+    }
+  }
+
+  operation IsActive {
+    input { unit: NonEmptyStr }
+    output {
+      state: String from "stdout"
+      active: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "is-active", "{unit}"] }
+    exit {
+      0 => Unit
+      3 => Unit "unit is not active"
+      nonzero => String "systemctl is-active failed"
+    }
+  }
+
+  operation ShowProperty {
+    input { unit: NonEmptyStr, property: SystemdUnitProperty }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "show", "{unit}", "--property={property}", "--value"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl show failed"
+    }
+    mock_response {
+      0 => { value: "8589934592", success: true } "hermetic systemd.Systemctl.ShowProperty"
+    }
+  }
+
+  operation ListUnits {
+    input {
+      pattern: NonEmptyStr,
+      unit_type: String = "service",
+      state: String = "active",
+    }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "systemctl",
+        "list-units",
+        "--type={unit_type}",
+        "--state={state}",
+        "--no-legend",
+        "--plain",
+        "{pattern}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl list-units failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "actions-runner@srv3-01.service loaded active running GitHub Actions Runner\nactions-runner@srv3-02.service loaded active running GitHub Actions Runner\n",
+        success: true,
+      } "hermetic systemd.Systemctl.ListUnits (multi-column rows — consumer must take first field only)"
+    }
+  }
+
+  operation Status {
+    input { unit: NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "status", "--no-pager", "--full", "{unit}"] }
+    exit {
+      0 => Unit
+      1 => Unit "unit dead, pid file remains (LSB init-script code)"
+      2 => Unit "unit dead, lock file remains (LSB init-script code)"
+      3 => Unit "unit not running (LSB init-script code)"
+      4 => Unit "unit status unknown (LSB init-script code)"
+      nonzero => String "systemctl status failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "● demo.service - Demo\n     Loaded: loaded\n     Active: active (running)",
+        success: true,
+      } "hermetic systemd.Systemctl.Status active"
+    }
+  }
+}

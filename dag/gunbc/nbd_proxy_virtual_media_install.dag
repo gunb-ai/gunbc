@@ -53,7 +53,7 @@ import gunbc.host_effect {
   HostEffectIntent,
   LocalShell,
 }
-import gunbc.srv3_os_install_reconcile_types { srv3_nbd_proxy_lease_key }
+import gunbc.srv3_nbd_proxy_serve_intent { srv3_nbd_proxy_lease_key }
 
 type OsInstallActuatorStep
   = ActuatorNbdProxyServe {

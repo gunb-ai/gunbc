@@ -1,7 +1,7 @@
 module gunbc.systemctl_status_read
 
 import std.types { String, NonEmptyStr, List }
-import extdeps.os.systemctl
+import extdeps.systemd.systemctl
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
@@ -10,7 +10,7 @@ import gunbc.typed_argv_exec {
   TypedArgvExecRefused,
 }
 
-data systemctl_status_path: String = "dag/extdeps/os/systemctl.dag"
+data systemctl_status_path: String = "dag/extdeps/systemd/systemctl.dag"
 data systemctl_status_service: String = "systemd.Systemctl"
 data systemctl_status_operation: String = "Status"
 
