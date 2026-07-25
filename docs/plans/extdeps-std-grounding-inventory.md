@@ -23,11 +23,15 @@ each row carries a suggested grounding and its own dissolve-on.
 | **other** | 17 | 13 | 4 | misc grounding/decomposition notes |
 | **total** | 203 | 147 | 56 | |
 
-> **Std-side modeling census:** [§Std-side modeling census](#std-side-modeling-census) (2026-07-25)
-> prices five **std-modeling** defect classes the extdeps positioning and anemia sweeps did not cover
-> (uncited unit constants, foreign-domain literals, parallel mini-frameworks, basisless internal
-> constants, hand counts beside structure). Sections 1–6 below remain the corpus-wide grounding
-> inventory (56 std rows in the original snapshot).
+> **Std-side modeling census:** [§Std-side modeling census](#std-side-modeling-census) (2026-07-25,
+> #7207) prices five **std-modeling** defect classes the extdeps positioning and anemia sweeps did
+> not cover (uncited unit constants, foreign-domain literals, parallel mini-frameworks, basisless
+> internal constants, hand counts beside structure). Sections 1–6 below remain the corpus-wide
+> grounding inventory (56 std rows in the original snapshot).
+>
+> **Note-prose census:** [dag-note-prose-census.md](dag-note-prose-census.md) (2026-07-25, #7203)
+> classifies the 864 KiB / 1,284 prose-bearing String annotation rows by semantic intent (six
+> classes; append-rate priced). Complementary to this section's structural modeling defects.
 
 The spread is the point: grounding defects are **everywhere**, in both trees — location did not
 predict them (extdeps carries the bulk simply because it is the larger tree, 349 files to std's 102).
