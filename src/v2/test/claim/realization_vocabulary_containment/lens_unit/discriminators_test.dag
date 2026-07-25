@@ -1,6 +1,6 @@
 module v2.test.realization_vocabulary_containment.lens_unit.discriminators
 
-import v2.lens.layering_imports { LayerImportFact }
+import v2.std.layer { LayerImportFact }
 import v2.lens.realization_vocabulary_containment {
   realization_vocab_exception_paths,
   realization_vocab_leak_count,

@@ -70,17 +70,6 @@ fn is_meta_model_substrate_layer(layer: LayerPrefix) -> Bool {
   }
 }
 
-fn grounding_layer_direction_holds(enclosing_qn: String, matched_qn: String) -> Bool {
-  cross_tree_layer_direction_holds(edge: CrossTreeImport {
-    from_tree: V2Tree,
-    from_layer: layer_prefix_from_dotted_qualified_name(qn: enclosing_qn),
-    from_module: enclosing_qn,
-    to_tree: V2Tree,
-    to_layer: layer_prefix_from_dotted_qualified_name(qn: matched_qn),
-    to_module: matched_qn
-  })
-}
-
 fn is_meta_model_field_name(field: String) -> Bool {
   let f = norm_whole(s: field)
   (f == norm_whole(s: "field")) || (f == norm_whole(s: "name"))
@@ -98,20 +87,15 @@ fn is_meta_self_coincidence(
     && name_whole_coincides(field: field, concept_name: matched_name)
 }
 
-fn is_layer_inversion(enclosing_qn: String, matched_qn: String) -> Bool {
-  !grounding_layer_direction_holds(enclosing_qn: enclosing_qn, matched_qn: matched_qn)
-}
-
 fn compute_layer_excluded(
   field: String,
-  enclosing_qn: String,
   matched: QualifiedConcept
 ) -> Bool {
   is_meta_self_coincidence(
     field: field,
     matched_name: matched.concept.name,
     matched_qn: matched.qualified_name
-  ) || is_layer_inversion(enclosing_qn: enclosing_qn, matched_qn: matched.qualified_name)
+  )
 }
 
 fn str_starts_with(s: String, prefix: String) -> Bool {
@@ -248,7 +232,6 @@ fn candidates_of_decl(
       } else {
         let excluded = compute_layer_excluded(
           field: fr.field,
-          enclosing_qn: enclosing_qc.qualified_name,
           matched: matched
         )
         list_snoc_item(
@@ -317,7 +300,6 @@ fn decl_has_layer_included_candidate(
       } else {
         !compute_layer_excluded(
           field: fr.field,
-          enclosing_qn: enclosing_qc.qualified_name,
           matched: matched
         )
       }

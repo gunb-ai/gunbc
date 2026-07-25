@@ -1,6 +1,6 @@
 module v2.test.meta_exec_confinement.lens_unit.discriminators
 
-import v2.lens.layering_imports { LayerImportFact }
+import v2.std.layer { LayerImportFact }
 import v2.lens.meta_exec_confinement {
   meta_exec_leak_count_canonical,
   meta_exec_roster_stale_count,

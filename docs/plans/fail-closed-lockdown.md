@@ -18,7 +18,6 @@ The test for "locked": (a) wired into the floor (discovered + run), (b) fail-clo
 | --- | --- | --- |
 | DagCompileCleanGate | whole tree (fail-fast root) | `ci_spec.dag:41`; `ci_floor_plan.dag:82,106` |
 | RustMonolithGate | `.rs` + manifest | `ci_spec.dag:37`; `rust_gates_ci.dag` |
-| LayeringImportsGate | whole tree | `ci_spec.dag:39`; `layering_imports_gate.dag:39` |
 | GeneratedArtifactDriftGate | `ci.yml` / `ROADMAP.md` / `.gitignore` byte-drift + per-artifact perturb, over the committed (= generated AND not-ignored) registry | `ci_spec.dag` `GeneratedArtifactDriftGate`; `generated_artifact_gate.dag`; registry+commit-derivation `gunbc/generated_artifact.dag` |
 
 These are the **structural** gates. The gap is everything *analytical* and the *bootstrap purity* gate.

@@ -36,7 +36,6 @@ type LensIdV0
   | IntentLinearity
   | InterfaceSummary
   | LanguagesConsumerCensus
-  | LayeringImports
   | LeafModelVerification
   | LiveReadClassification
   | MachineShape
@@ -248,11 +247,6 @@ data lens_registry_v0_languages_consumer_census: LensRegistryEntryV0 = {
   module_path: Bound { path: "v2.lens.languages_consumer_census" }
 }
 
-data lens_registry_v0_layering_imports: LensRegistryEntryV0 = {
-  lens_id: LayeringImports
-  module_path: Bound { path: "v2.lens.layering_imports" }
-}
-
 data lens_registry_v0_leaf_model_verification: LensRegistryEntryV0 = {
   lens_id: LeafModelVerification
   module_path: Bound { path: "v2.lens.leaf_model_verification" }
@@ -388,7 +382,6 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_intent_linearity,
   lens_registry_v0_interface_summary,
   lens_registry_v0_languages_consumer_census,
-  lens_registry_v0_layering_imports,
   lens_registry_v0_leaf_model_verification,
   lens_registry_v0_live_read_classification,
   lens_registry_v0_machine_shape,
@@ -547,10 +540,6 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
     }
     LanguagesConsumerCensus => match right {
       LanguagesConsumerCensus => true
-      _ => false
-    }
-    LayeringImports => match right {
-      LayeringImports => true
       _ => false
     }
     LeafModelVerification => match right {
