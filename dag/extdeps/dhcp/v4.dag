@@ -8,6 +8,7 @@ import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.roster_frontier { FrontierRow, frontier_row }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -18,8 +19,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type MacAddress = NonEmptyStr where brand("MacAddress")
 
-data dissolve_on_mac_address_anemic_brand: List<String> = [
-  "closure:decompose_mac_address_octets|MacAddress is a branded NonEmptyStr hiding six grounded octets; deep-decompose to structured MAC carrier (e.g. MacAddress { octets: [UInt8; 6] }) at parse boundary|trigger:extdeps/network/mac.dag lands with parse_mac_address witness"
+data dissolve_on_mac_address_anemic_brand: List<FrontierRow> = [
+  frontier_row(
+    unit: "decompose_mac_address_octets",
+    reason: "MacAddress is a branded NonEmptyStr hiding six grounded octets; deep-decompose to structured MAC carrier (e.g. MacAddress { octets: [UInt8; 6] }) at parse boundary",
+    dissolve_on: "extdeps/network/mac.dag lands with parse_mac_address witness",
+  )
 ]
 
 data ipv4_address_brand_dissolved_note: String = "The Ipv4Address anemic brand (NonEmptyStr where brand) was dissolved 2026-07-24: it is now the structured four-octet carrier in extdeps.network.ipv4 (dissolve_on_ipv4_address_anemic_brand fired — its named trigger, extdeps/network/ipv4.dag + parse_ipv4_address witness, landed). Consumers import Ipv4Address from extdeps.network.ipv4 directly (ipv4 is a network concept, not a DHCP one — the prior re-home through this module was a layering artifact). The MacAddress brand above remains anemic; its dissolution (extdeps/network/mac.dag, hex-octet parse) is the fast-follow — same consumer files, deferred to keep the IPv4 reach-lane change focused."

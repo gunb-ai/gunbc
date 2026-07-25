@@ -21,6 +21,7 @@ import std.types { NonEmptyStr, List }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.roster_frontier { FrontierRow, frontier_row }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -31,8 +32,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data hetzner_dedicated_pricing_provenance_note: String = "Monthly prices excl. VAT live-fetched 2026-07-21 from Hetzner price-adjustment doc GE-D9256 (anchor above, Limited offerings table). Hardware specs cross-checked against robot.hetzner.com/order (same date). EUR only — no currency conversion."
 
-data dissolve_on_cpu_description_string_leaf: List<String> = [
-  "closure:decompose_cpu_description|cpu_description: NonEmptyStr is a cited-boundary locator string at current catalog size; decompose into extdeps.cpu CpuModelCatalogRow (vendor, codename, core count, architecture) when rows grow beyond price-only facts|trigger:hetzner_dedicated rows carry CpuFacts catalog instead of cpu_description"
+data dissolve_on_cpu_description_string_leaf: List<FrontierRow> = [
+  frontier_row(
+    unit: "decompose_cpu_description",
+    reason: "cpu_description: NonEmptyStr is a cited-boundary locator string at current catalog size; decompose into extdeps.cpu CpuModelCatalogRow (vendor, codename, core count, architecture) when rows grow beyond price-only facts",
+    dissolve_on: "hetzner_dedicated rows carry CpuFacts catalog instead of cpu_description",
+  )
 ]
 
 type HetznerDedicatedServerType

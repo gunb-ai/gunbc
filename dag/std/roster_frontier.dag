@@ -23,3 +23,49 @@ fn frontier_row_well_formed(row: FrontierRow) -> Bool {
 fn frontier_rows_well_formed(rows: List<FrontierRow>) -> Bool {
   fold(rows, init: true, f: fn(acc, row) { acc && frontier_row_well_formed(row: row) })
 }
+
+type FrontierExpiryReport {
+  unfired_count: Int
+  fired_still_present_count: Int
+}
+
+type FrontierExpiryAcc {
+  unfired_count: Int
+  fired_still_present_count: Int
+}
+
+fn frontier_unit_in_list(unit: String, units: List<String>) -> Bool {
+  fold(units, init: false, f: fn(acc, u) { acc || u == unit })
+}
+
+fn frontier_row_trigger_fired(row: FrontierRow, fired_units: List<String>) -> Bool {
+  frontier_unit_in_list(unit: row.unit, units: fired_units)
+}
+
+fn fold_frontier_expiry(rows: List<FrontierRow>, fired_units: List<String>) -> FrontierExpiryReport {
+  let acc = fold(
+    rows,
+    init: FrontierExpiryAcc { unfired_count: 0, fired_still_present_count: 0 },
+    f: fn(acc, row) {
+      if frontier_row_trigger_fired(row: row, fired_units: fired_units) {
+        FrontierExpiryAcc {
+          unfired_count: acc.unfired_count,
+          fired_still_present_count: acc.fired_still_present_count + 1,
+        }
+      } else {
+        FrontierExpiryAcc {
+          unfired_count: acc.unfired_count + 1,
+          fired_still_present_count: acc.fired_still_present_count,
+        }
+      }
+    },
+  )
+  FrontierExpiryReport {
+    unfired_count: acc.unfired_count,
+    fired_still_present_count: acc.fired_still_present_count,
+  }
+}
+
+fn frontier_expiry_clean(report: FrontierExpiryReport) -> Bool {
+  report.fired_still_present_count == 0
+}
