@@ -6,6 +6,7 @@ import extdeps.git
 import extdeps.shell
 import gunbc.retained_shell_script { retained_foreign }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import std.types { FilePath }
 import gunbc.merge_admission_produce {
   merge_admission_receipt_path,
   merge_admission_merge_base_ref,
@@ -97,9 +98,9 @@ func main() -> ProcessExit {
   let root = git.Core.Toplevel().path as String
   let path = merge_admission_receipt_path(root: root)
   let dir = concat(root, "/.gunbc")
-  let mkdir = shell.Exec.Run(script: retained_foreign(body: concat("mkdir -p \"", concat(dir, "\"")), reason: "merge_admission_stamp mkdir -p .gunbc receipt dir"))
+  let mkdir = shell.Mkdir.Parents(path: dir as FilePath)
   if !mkdir.success {
-    return exit_failure(reason: concat("merge_admission_stamp: mkdir .gunbc failed: ", mkdir.stderr))
+    return exit_failure(reason: "merge_admission_stamp: mkdir .gunbc failed")
   }
   let wire = render_receipt_wire(receipt: receipt)
   let write = Filesystem.Write(path: path, content: wire)
