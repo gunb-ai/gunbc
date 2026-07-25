@@ -61,7 +61,6 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
     SudoNopasswdExecuteProbe { probe: _ } => fallback
     OsInstallActuatorToolchainEnsure {} => fallback
     ProvisionBuildCache { catalog_id: _ } => fallback
-    DurableApprovalGrantRead => fallback
     Srv3InstallMediaFetch => fallback
     Srv3SeededInstallMediaRemaster => fallback
     Srv3SeededInstallMediaToolchainEnsure => fallback

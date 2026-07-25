@@ -1,6 +1,6 @@
 module gunbc.site.mark
 
-import std.markup { MarkupNode, ElementNode, MarkupAttr }
+import std.markup { Fragment, Element, FragmentText, Attribute, attr }
 
 data mark_note: String = "Layer 4: the mark — candidate A Confluence (design section 4e) as a SPEC, not a drawing. Four nodes, fork and re-join: the smallest honest DAG, the diamond property. One authority renders every scale: favicon = render_mark(depth: 0), nav = depth 1, hero = depth 3 — the levels cannot disagree. all_forks_rejoin is the confluence theorem about the edge rows, witnessed, not assumed."
 
@@ -59,12 +59,8 @@ fn all_forks_rejoin(nodes: List<MarkNode>, edges: List<MarkEdge>, source: String
       })
 }
 
-fn attr(name: String, value: String) -> MarkupAttr {
-  MarkupAttr { name: name, value: value }
-}
-
-fn svg_el(tag: String, attrs: List<MarkupAttr>) -> MarkupNode {
-  ElementNode { tag: tag, attrs: attrs, children: [] }
+fn svg_el(tag: String, attributes: List<Attribute>) -> Fragment {
+  Element { tag: tag, attributes: attributes, children: [] }
 }
 
 fn node_class(n: MarkNode) -> String {
@@ -75,11 +71,11 @@ fn halo_class(n: MarkNode) -> String {
   if n.sink { "mark-halo mark-halo-sink" } else { "mark-halo" }
 }
 
-fn mark_edge_lines(nodes: List<MarkNode>, edges: List<MarkEdge>) -> List<MarkupNode> {
+fn mark_edge_lines(nodes: List<MarkNode>, edges: List<MarkEdge>) -> List<Fragment> {
   map(edges, e => {
     let from = node_by_key(nodes: nodes, key: e.from_key)
     let to = node_by_key(nodes: nodes, key: e.to_key)
-    svg_el(tag: "line", attrs: [
+    svg_el(tag: "line", attributes: [
       attr(name: "x1", value: to_string(from.x)),
       attr(name: "y1", value: to_string(from.y)),
       attr(name: "x2", value: to_string(to.x)),
@@ -90,9 +86,9 @@ fn mark_edge_lines(nodes: List<MarkNode>, edges: List<MarkEdge>) -> List<MarkupN
   })
 }
 
-fn mark_node_halos(nodes: List<MarkNode>) -> List<MarkupNode> {
+fn mark_node_halos(nodes: List<MarkNode>) -> List<Fragment> {
   map(nodes, n =>
-    svg_el(tag: "circle", attrs: [
+    svg_el(tag: "circle", attributes: [
       attr(name: "cx", value: to_string(n.x)),
       attr(name: "cy", value: to_string(n.y)),
       attr(name: "r", value: "9"),
@@ -100,9 +96,9 @@ fn mark_node_halos(nodes: List<MarkNode>) -> List<MarkupNode> {
     ]))
 }
 
-fn mark_node_points(nodes: List<MarkNode>) -> List<MarkupNode> {
+fn mark_node_points(nodes: List<MarkNode>) -> List<Fragment> {
   map(nodes, n =>
-    svg_el(tag: "circle", attrs: [
+    svg_el(tag: "circle", attributes: [
       attr(name: "cx", value: to_string(n.x)),
       attr(name: "cy", value: to_string(n.y)),
       attr(name: "r", value: "3"),
@@ -110,12 +106,12 @@ fn mark_node_points(nodes: List<MarkNode>) -> List<MarkupNode> {
     ]))
 }
 
-fn render_mark(depth: Int) -> MarkupNode {
+fn render_mark(depth: Int) -> Fragment {
   let edges = if depth >= 1 { mark_edge_lines(nodes: mark_nodes, edges: mark_edges) } else { [] }
   let halos = if depth >= 3 { mark_node_halos(nodes: mark_nodes) } else { [] }
-  ElementNode {
+  Element {
     tag: "svg",
-    attrs: [
+    attributes: [
       attr(name: "viewBox", value: "0 0 120 72"),
       attr(name: "class", value: concat("mark mark-d", to_string(depth))),
       attr(name: "aria-label", value: "gunb.ai mark: confluence"),

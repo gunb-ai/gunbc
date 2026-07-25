@@ -159,20 +159,11 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
   }
 }
 
-type MarkupAttr {
-  name: String
-  value: String
-}
-
-type MarkupNode
-  = ElementNode { tag: String, attrs: List<MarkupAttr>, children: List<MarkupNode> }
-  | TextNode { text: String }
-
 fn attr_is_url_attr(name: String) -> Bool {
   name == "href" || name == "src"
 }
 
-fn markup_attr_escape_context(name: String) -> EscapeContext {
+fn attribute_escape_context(name: String) -> EscapeContext {
   if attr_is_url_attr(name: name) {
     UrlContext
   } else {
@@ -180,46 +171,12 @@ fn markup_attr_escape_context(name: String) -> EscapeContext {
   }
 }
 
-fn markup_attr_to_fragment(attr: MarkupAttr) -> Attribute {
+fn attr(name: String, value: String) -> Attribute {
   Attribute {
-    name: attr.name,
-    ctx: markup_attr_escape_context(name: attr.name),
-    value: attr.value,
+    name: name,
+    ctx: attribute_escape_context(name: name),
+    value: value,
   }
-}
-
-fn fragment_to_markup_node(frag: Fragment) -> MarkupNode {
-  match frag {
-    FragmentText { content } => TextNode { text: content }
-    RawNode { content } => TextNode { text: content }
-    Element { tag, attributes, children } =>
-      ElementNode {
-        tag: tag,
-        attrs: map(attributes, a => MarkupAttr { name: a.name, value: a.value }),
-        children: map(children, c => fragment_to_markup_node(frag: c)),
-      }
-  }
-}
-
-fn fragments_to_markup_nodes(frags: List<Fragment>) -> List<MarkupNode> {
-  map(frags, f => fragment_to_markup_node(frag: f))
-}
-
-fn markup_node_to_fragment(node: MarkupNode) -> Fragment {
-  match node {
-    TextNode { text } =>
-      FragmentText { content: text }
-    ElementNode { tag, attrs, children } =>
-      Element {
-        tag: tag,
-        attributes: map(attrs, a => markup_attr_to_fragment(attr: a)),
-        children: map(children, c => markup_node_to_fragment(node: c)),
-      }
-  }
-}
-
-fn serialize_markup_node_with(node: MarkupNode, medium: MarkupMedium) -> String {
-  serialize_fragment_with(frag: markup_node_to_fragment(node: node), medium: medium)
 }
 
 type MarkupSerializeResult
