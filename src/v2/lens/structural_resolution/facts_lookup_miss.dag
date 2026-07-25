@@ -1,4 +1,5 @@
 module v2.test.lens_structural_resolution.facts_lookup_miss
+import v2.std.collection { Map, optional_absent, optional_present }
 import v2.std.optional { Optional, Absent, Present }
 
 
@@ -46,9 +47,9 @@ fn sr_lookup_claim_fact_map() -> Map<Node, InferredFacts> {
   Map {
     lookup: fn(key) {
       if key == sr_lookup_use {
-        Absent
+        optional_absent()
       } else {
-        Present { value: resolved }
+        optional_present(value: resolved)
       }
     }
   }
