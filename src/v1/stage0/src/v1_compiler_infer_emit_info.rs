@@ -174,6 +174,7 @@ pub struct EmitGraphInfo {
     pub corpus_repr: RustCorpusRepr,
     pub fn_generic_param_names: Rc<Vec<String>>,
     pub fn_type_env: Rc<TypeEnv>,
+    pub fn_return_type: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -208,6 +209,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         corpus_repr: RustCorpusRepr::FaithfulFreeMonoid,
         fn_generic_param_names: Rc::new(vec![]),
         fn_type_env: empty_type_env(),
+        fn_return_type: None,
     })
 }
 
@@ -232,6 +234,31 @@ pub fn emit_info_with_fn_type_context(
         corpus_repr: emit_info.corpus_repr.clone(),
         fn_generic_param_names: generic_param_names.clone(),
         fn_type_env: env.clone(),
+        fn_return_type: emit_info.fn_return_type.clone(),
+    })
+}
+
+pub fn emit_info_with_fn_return(
+    emit_info: Rc<EmitGraphInfo>,
+    fn_return_type: Option<Rc<Node>>,
+) -> Rc<EmitGraphInfo> {
+    Rc::new(EmitGraphInfo {
+        type_summaries: emit_info.type_summaries.clone(),
+        type_decl_items: emit_info.type_decl_items.clone(),
+        recursive_type_set: emit_info.recursive_type_set.clone(),
+        fielded_variants: emit_info.fielded_variants.clone(),
+        positional_payload_variants: emit_info.positional_payload_variants.clone(),
+        shared_types: emit_info.shared_types.clone(),
+        ownership_index: emit_info.ownership_index.clone(),
+        movable: emit_info.movable.clone(),
+        variant_to_enum: emit_info.variant_to_enum.clone(),
+        owned_bindings: emit_info.owned_bindings.clone(),
+        read_only_params_index: emit_info.read_only_params_index.clone(),
+        read_only_params: emit_info.read_only_params.clone(),
+        corpus_repr: emit_info.corpus_repr.clone(),
+        fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
+        fn_type_env: emit_info.fn_type_env.clone(),
+        fn_return_type: fn_return_type.clone(),
     })
 }
 
