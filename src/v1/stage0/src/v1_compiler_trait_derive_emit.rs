@@ -85,18 +85,17 @@ pub fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
     }
 }
 
-pub fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
-    children: Rc<Vec<Rc<Node>>>,
+pub fn rust_nominal_identity_carrier_shape_eligible(
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> ReprGroundingDeriveElemShape {
-    if v1_symbol_wrapped_ord_carrier_shape_eligible(children.clone(), source_indices.clone()) {
-        ReprGroundingDeriveElemShape::ReprDeriveElemSymbolWrappedOrdCarrier
-    } else {
-        ReprGroundingDeriveElemShape::ReprDeriveElemUnknown
-    }
+) -> bool {
+    ((((authored_name_at(source_indices.clone(), n.clone()) == "Symbol".to_string())
+        && ((n.children.clone().len() as i64) == 0))
+        && ((n.params.clone().len() as i64) == 0))
+        && (n.connective.clone() == Connective::NoConnective))
 }
 
-pub fn v1_symbol_wrapped_ord_carrier_shape_eligible(
+pub fn rust_symbol_wrapped_ord_carrier_shape_eligible(
     children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -104,16 +103,23 @@ pub fn v1_symbol_wrapped_ord_carrier_shape_eligible(
         false
     } else {
         match children.clone().first().cloned() {
-            Some(child) => {
-                ((((authored_name_at(source_indices.clone(), child_type_node(child.clone()))
-                    == "Symbol".to_string())
-                    && ((child_type_node(child.clone()).children.clone().len() as i64) == 0))
-                    && ((child_type_node(child.clone()).params.clone().len() as i64) == 0))
-                    && (child_type_node(child.clone()).connective.clone()
-                        == Connective::NoConnective))
-            }
+            Some(child) => rust_nominal_identity_carrier_shape_eligible(
+                child_type_node(child.clone()),
+                source_indices.clone(),
+            ),
             None => false,
         }
+    }
+}
+
+pub fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
+    children: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> ReprGroundingDeriveElemShape {
+    if rust_symbol_wrapped_ord_carrier_shape_eligible(children.clone(), source_indices.clone()) {
+        ReprGroundingDeriveElemShape::ReprDeriveElemSymbolWrappedOrdCarrier
+    } else {
+        ReprGroundingDeriveElemShape::ReprDeriveElemUnknown
     }
 }
 
@@ -127,7 +133,7 @@ pub fn v1_emit_struct_derives(
     if has_fn_fields.clone() {
         rust_trait_derive_attr_from_traits(fn_field_derive_traits())
     } else {
-        if v1_symbol_wrapped_ord_carrier_shape_eligible(children.clone(), source_indices.clone()) {
+        if rust_symbol_wrapped_ord_carrier_shape_eligible(children.clone(), source_indices.clone()) {
             {
                 let shape = v1_repr_grounding_derive_elem_shape_for_ord_carrier(
                     children.clone(),

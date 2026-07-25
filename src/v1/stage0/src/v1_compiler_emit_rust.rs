@@ -101,6 +101,7 @@ pub use crate::v1_compiler_ownership::{
 pub use crate::v1_compiler_resolve::get_exported_names;
 pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
 pub use crate::v1_compiler_trait_derive_emit::{
+    rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible,
     v1_emit_enum_derives, v1_emit_struct_derives, v1_emit_type_params_with_clone_bounds,
     v1_generic_params_needing_clone_bound,
 };
@@ -2579,33 +2580,6 @@ pub fn rust_nominal_identity_carrier_def(name: String) -> String {
 
 pub fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> bool {
     false
-}
-
-pub fn rust_nominal_identity_carrier_shape_eligible(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    ((((authored_name_at(source_indices.clone(), n.clone()) == "Symbol".to_string())
-        && ((n.children.clone().len() as i64) == 0))
-        && ((n.params.clone().len() as i64) == 0))
-        && (n.connective.clone() == Connective::NoConnective))
-}
-
-pub fn rust_symbol_wrapped_ord_carrier_shape_eligible(
-    children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    if ((children.clone().len() as i64) != 1) {
-        false
-    } else {
-        match children.clone().first().cloned() {
-            Some(child) => rust_nominal_identity_carrier_shape_eligible(
-                child_type_node(child.clone()),
-                source_indices.clone(),
-            ),
-            None => false,
-        }
-    }
 }
 
 pub fn rust_nominal_ord_derives_for_shape(
