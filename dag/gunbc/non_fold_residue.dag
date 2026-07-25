@@ -346,11 +346,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolve_on: nfr_dissolve_wildcard_total
   },
   FrontierRow {
-    unit: "dag/std/filesystem.dag::is_text_encoding",
-    reason: nfr_reason_mint_era,
-    dissolve_on: nfr_dissolve_wildcard_total
-  },
-  FrontierRow {
     unit: "dag/std/induction.dag::compose_sub_value",
     reason: nfr_reason_mint_era,
     dissolve_on: nfr_dissolve_wildcard_total
