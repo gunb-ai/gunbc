@@ -304,7 +304,7 @@ type OpenApiDocumentRoot
     }
 
 type OpenApiOpenapiField3_1
-  = OpenApiOpenapi31Patch { patch: Nat }
+  = OpenApiOpenapi31Patch { patch: v2.std.nat.Nat }
 
 type OpenApiConcreteSyntaxAuthority
   = OpenApiJsonSyntax { json_document: JsonDocument }
@@ -365,7 +365,7 @@ type OpenApiHttpStatusCodeFacts {
   bounded_100_to_599: OpenApiHttpStatusCodeBoundedRangeWitness,
 }
 
-fn openapi_status_digit_value(digit: OpenApiStatusDigit) -> Nat {
+fn openapi_status_digit_value(digit: OpenApiStatusDigit) -> v2.std.nat.Nat {
   match digit {
     OpenApiDigit0 => 0
     OpenApiDigit1 => 1
@@ -380,7 +380,7 @@ fn openapi_status_digit_value(digit: OpenApiStatusDigit) -> Nat {
   }
 }
 
-fn openapi_status_hundreds_value(hundreds: OpenApiStatusHundreds) -> Nat {
+fn openapi_status_hundreds_value(hundreds: OpenApiStatusHundreds) -> v2.std.nat.Nat {
   match hundreds {
     OpenApiHundreds1 => 100
     OpenApiHundreds2 => 200
@@ -392,8 +392,8 @@ fn openapi_status_hundreds_value(hundreds: OpenApiStatusHundreds) -> Nat {
 
 type OpenApiResponseKeyWildcardBridgeRow {
   kind: OpenApiResponseKeyWildcardKind,
-  low: Nat,
-  high: Nat,
+  low: v2.std.nat.Nat,
+  high: v2.std.nat.Nat,
 }
 
 data openapi_wildcard_bridge_1xx: OpenApiResponseKeyWildcardBridgeRow = {
@@ -438,7 +438,7 @@ fn openapi_http_status_code_value(
   hundreds: OpenApiStatusHundreds,
   tens: OpenApiStatusDigit,
   ones: OpenApiStatusDigit
-) -> Nat {
+) -> v2.std.nat.Nat {
   openapi_status_hundreds_value(hundreds: hundreds) + (openapi_status_digit_value(digit: tens) * 10) + openapi_status_digit_value(digit: ones)
 }
 
