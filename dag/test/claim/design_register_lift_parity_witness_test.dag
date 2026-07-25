@@ -32,7 +32,9 @@ data roadmap_css_repin_row_archetype_note: String = "Re-pinned for composition s
 
 data roadmap_css_repin_altitude_note: String = "Re-pinned for composition slice 3 (page altitude): new emission for the section band — the fold summary rules (marker suppressed, pointer), the band strip (surface fill, baseline flex, tokened gap/padding/radius), the in-band h2 margin reset, and the counts chip (mono, dim, tabular). Behavioral receipts: the altitude witness (derivation totality, fold/open by statuses, counts wire, client expand chain with planted REDs), roadmap_page_keystone. Derived by execution; this digest only pins bytes."
 
-data roadmap_css_lift_parity_digest: String = "5cfdb3c06e603e38"
+data roadmap_css_repin_anomaly_evidence_note: String = "Re-pinned for composition slice 4 (anomaly evidence is a surface): one new rule — .disclosure-reason, the loud reason's persistent line in the row's disclosure (loud's own hue as the edge mark, tokened lengths, theme ink). Behavioral receipts: the anomaly-evidence witness (surface predicate + title-only RED + styled block pinned verbatim). Derived by execution; this digest only pins bytes."
+
+data roadmap_css_lift_parity_digest: String = "3a0411e16e69f2ab"
 data moodboard_thesis_themes_lift_parity_digest: String = "69e68066c49667f9"
 
 fn emission_content_digest(s: String) -> String {

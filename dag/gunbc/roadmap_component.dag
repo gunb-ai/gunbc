@@ -642,6 +642,50 @@ fn dispatch_terminal_apply_body() -> TsStmt {
       else_stmt: none,
     ),
     ts_if(
+      cond: ts_binop(
+        left: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: "loud")),
+        op: "&&",
+        right: ts_ident(name: "dt")),
+      then: ts_block(stmts: [
+        ts_let(name: "rl", value: ts_call(
+          callee: ts_member(object: ts_ident(name: "dt"), property: "querySelector"),
+          args: [ts_lit_str(value: ".disclosure-reason")])),
+        ts_if(
+          cond: ts_prefix(op: "!", expr: ts_ident(name: "rl")),
+          then: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_ident(name: "rl"),
+              op: "=",
+              right: ts_call(
+                callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+                args: [ts_lit_str(value: "div")]))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "rl"), property: "className"),
+              op: "=",
+              right: ts_lit_str(value: "disclosure-reason"))),
+            ts_const(name: "sm", value: ts_call(
+              callee: ts_member(object: ts_ident(name: "dt"), property: "querySelector"),
+              args: [ts_lit_str(value: "summary")])),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_ident(name: "sm"),
+              op: "&&",
+              right: ts_call(
+                callee: ts_member(object: ts_ident(name: "sm"), property: "insertAdjacentElement"),
+                args: [ts_lit_str(value: "afterend"), ts_ident(name: "rl")]))),
+          ]),
+          else_stmt: none,
+        ),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "rl"), property: "textContent"),
+          op: "=",
+          right: ts_binop(
+            left: ts_ident(name: "why"),
+            op: "||",
+            right: ts_lit_str(value: "belt fault — no located reason on the wire")))),
+      ]),
+      else_stmt: none,
+    ),
+    ts_if(
       cond: ts_prefix(op: "!", expr: ts_ident(name: "ok")),
       then: ts_block(stmts: [
         ts_expr_stmt(expr: ts_call(
