@@ -31,6 +31,13 @@ type ArrThresholdCustomerCountRow {
   citation: FiledFactCitation?
 }
 
+data registered_user_floor_note: String = "Issuers state platform reach in Item 1 as a floor ('more than N million registered users') -- the same lower-bound honesty as RateLowerBoundPercent: the filed claim is a floor, never an exact count, so the field name carries the floor semantics."
+
+type RegisteredUserCountRow {
+  registered_user_count_floor: Int
+  citation: FiledFactCitation?
+}
+
 fn disclosed_rate_at_least(rate: DisclosedPercentRate, threshold_percent: Int) -> Bool {
   match rate {
     RateExactPercent { percent: p } => p >= threshold_percent

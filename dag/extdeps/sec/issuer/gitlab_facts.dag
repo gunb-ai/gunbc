@@ -10,6 +10,7 @@ import extdeps.sec.facts {
 import extdeps.sec.operating_metrics {
   ArrThresholdCustomerCountRow,
   DollarBasedNetRetentionRow,
+  RegisteredUserCountRow,
 }
 import extdeps.sec.types { AnnualReport }
 import extdeps.sec.us_gaap {
@@ -694,5 +695,27 @@ data gitlab_fy2025_customers_100k_arr: ArrThresholdCustomerCountRow = ArrThresho
 data gitlab_fy2026_customers_100k_arr: ArrThresholdCustomerCountRow = ArrThresholdCustomerCountRow {
   arr_threshold: usd_whole_dollars(count: 100000),
   customer_count: 1456,
+  citation: Present { value: gitlab_fy2026_year_end_citation },
+}
+
+data gitlab_registered_users_note: String = "Item 1 Business platform-reach floors, quoted verbatim from each 10-K: 'we have more than 30 million registered users' (FY2023 and FY2024 filings) and 'we have more than 50 million registered users' (FY2025 and FY2026 filings). Registered users are overwhelmingly free-tier -- the paid base is the ARR customer rows above -- so cost-of-revenue divided by this floor upper-bounds average serving cost per (mostly free) user: gunbc.econ.free_tier_serving average_serving_cost_per_registered_user_year_micros_upper_bound."
+
+data gitlab_fy2023_registered_users: RegisteredUserCountRow = RegisteredUserCountRow {
+  registered_user_count_floor: 30000000,
+  citation: Present { value: gitlab_fy2023_year_end_citation },
+}
+
+data gitlab_fy2024_registered_users: RegisteredUserCountRow = RegisteredUserCountRow {
+  registered_user_count_floor: 30000000,
+  citation: Present { value: gitlab_fy2024_year_end_citation },
+}
+
+data gitlab_fy2025_registered_users: RegisteredUserCountRow = RegisteredUserCountRow {
+  registered_user_count_floor: 50000000,
+  citation: Present { value: gitlab_fy2025_year_end_citation },
+}
+
+data gitlab_fy2026_registered_users: RegisteredUserCountRow = RegisteredUserCountRow {
+  registered_user_count_floor: 50000000,
   citation: Present { value: gitlab_fy2026_year_end_citation },
 }
