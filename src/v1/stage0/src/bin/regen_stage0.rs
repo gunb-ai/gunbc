@@ -727,6 +727,9 @@ fn assert_bootstrap_emit_core_support(src_dir: &Path) -> Result<(), String> {
 /// normalization, crate-build-independent. A separate thread feeds stdin so a large file cannot
 /// deadlock against rustfmt's stdout. rustfmt's non-zero exit (unparseable emit) propagates as a
 /// hard error (fail-closed), never a silent skip.
+// SCAFFOLD — dissolve-on: emit-fresh regen can race concurrent rustfmt spawn (ETXTBSY on
+// srv1); remove when spawn is serialized or the gate no longer shares the outfile. Bounded
+// retry below still fails closed after exhaustion (receipt: CI #7195 @ 8bfc9a2, 2026-07-25).
 fn is_rustfmt_transient_spawn_error(err: &str) -> bool {
     err.contains("Text file busy")
 }
