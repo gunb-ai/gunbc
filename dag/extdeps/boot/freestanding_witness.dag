@@ -45,25 +45,25 @@ fn witness_emitted_entry_point() -> Bool {
 fn witness_emitted_first_phdr_is_pt_load_rx() -> Bool {
   let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
   match decode_elf64_phdr(bytes, freestanding_phoff) {
-    PhdrDecoded { value: phdr } =>
+    ElfDecoded { value: phdr } =>
       phdr.segment_type == PtLoad
         && phdr.flags == pf_r + pf_x
         && phdr.offset == freestanding_code_file_offset
         && phdr.vaddr == freestanding_load_vaddr
-    PhdrRejected { reason: _ } => false
+    ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_emitted_load_segment_carries_code() -> Bool {
   let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
   match decode_elf64_phdr(bytes, freestanding_phoff) {
-    PhdrDecoded { value: phdr } =>
+    ElfDecoded { value: phdr } =>
       let seg = elf64_phdr_to_load_segment(phdr)
       seg.file_size == count(pixel_writer_code_bytes)
         && seg.permissions.readable == true
         && seg.permissions.writable == false
         && seg.permissions.executable == true
-    PhdrRejected { reason: _ } => false
+    ElfRejected { reason: _ } => false
   }
 }
 
@@ -106,10 +106,10 @@ fn witness_shared_encode_roundtrips_hello_static_ehdr() -> Bool {
 
 fn witness_shared_encode_roundtrips_hello_static_phdr() -> Bool {
   match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
-    PhdrDecoded { value: phdr } =>
+    ElfDecoded { value: phdr } =>
       let out = encode_elf64_phdr(phdr)
       count(out) == elf64_phdr_size && int_lists_equal(static_hello_first_phdr_bytes, out)
-    PhdrRejected { reason: _ } => false
+    ElfRejected { reason: _ } => false
   }
 }
 

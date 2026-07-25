@@ -1,59 +1,21 @@
 module std.markdown_markup
 
 import std.markup {
-  MarkupNode, ElementNode, TextNode, MarkupAttr,
+  MarkupNode,
+  fragments_to_markup_nodes,
 }
 import std.markdown {
   MarkdownInline,
-  TextInline,
-  EmphasisInline,
-  StrongInline,
-  CodeInline,
-  LinkInline,
-  ImageInline,
+  markdown_inline_to_fragments,
+  markdown_inlines_to_fragments,
 }
+
+data markdown_markup_inline_mapping_dissolve_on: String = "dissolve-on: std.markdown_markup.markdown_inline_to_markup_nodes — deleted parallel MarkdownInline→MarkupNode mapping; sole authority is std.markdown.markdown_inline_to_fragments composed with std.markup.fragments_to_markup_nodes."
+
 fn markdown_inline_to_markup_nodes(inline: MarkdownInline) -> List<MarkupNode> {
-  match inline {
-    TextInline { text } =>
-      [ TextNode { text: text } ]
-    CodeInline { text } =>
-      [ ElementNode { tag: "code", attrs: [], children: [ TextNode { text: text } ] } ]
-    EmphasisInline { inlines } =>
-      [ ElementNode {
-          tag: "em",
-          attrs: [],
-          children: markdown_inlines_to_markup_nodes(inlines: inlines),
-        }
-      ]
-    StrongInline { inlines } =>
-      [ ElementNode {
-          tag: "strong",
-          attrs: [],
-          children: markdown_inlines_to_markup_nodes(inlines: inlines),
-        }
-      ]
-    LinkInline { inlines, url } =>
-      [ ElementNode {
-          tag: "a",
-          attrs: [ MarkupAttr { name: "href", value: url } ],
-          children: markdown_inlines_to_markup_nodes(inlines: inlines),
-        }
-      ]
-    ImageInline { alt, url } =>
-      [ ElementNode {
-          tag: "img",
-          attrs: [
-            MarkupAttr { name: "src", value: url },
-            MarkupAttr { name: "alt", value: alt },
-          ],
-          children: [],
-        }
-      ]
-  }
+  fragments_to_markup_nodes(frags: markdown_inline_to_fragments(inline: inline))
 }
 
 fn markdown_inlines_to_markup_nodes(inlines: List<MarkdownInline>) -> List<MarkupNode> {
-  reverse(inlines |> fold(init: [], f: fn(acc, inline) {
-    concat(markdown_inline_to_markup_nodes(inline: inline), acc)
-  }))
+  fragments_to_markup_nodes(frags: markdown_inlines_to_fragments(inlines: inlines))
 }
