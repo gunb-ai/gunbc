@@ -10,7 +10,7 @@
 
 Sweep of the corpus found `.dag` consumers that import the bash-AST sidecar `extdeps.languages.bash.program` (`ShellStmt`/`ShellWord`/`serialize_bash`) to express portable intent. **11 importers at authoring time, shrinking to 0 as the bash-sidecar arc migrates them.** The prose list below is *informational* and will rot — re-grep for the live number; it is **not** the lens's enforcement set:
 
-- `dag/tools/`: `build_step`, `host_prelude`, `dag_compile_clean_transport`, `emit_host_transport`, `layering_imports_transport`, `extdeps_external_authority_transport` (the last landed via #5418's external-authority arc, after #5445's roster snapshot — the introduction race, reconciled by #5453)
+- `dag/tools/`: `build_step`, `host_prelude`, `dag_compile_clean_transport`, `emit_host_transport`, `extdeps_external_authority_transport` (the last landed via #5418's external-authority arc, after #5445's roster snapshot — the introduction race, reconciled by #5453; `layering_imports_transport` was deleted with the direction rule, operator ruling 2026-07-24)
 - `dag/gunbc/`: `ci_yaml_validate`, `ci_spec` (the #5432 build-verification wiring)
 - `src/v2/workflow/`: `compiler_closure_ingest_transport`, `source_root_ingest_transport`
 
@@ -71,7 +71,7 @@ Extending emission=ingestion⁻¹ past syntax to the intent layer:
 
 **Rule:** a module may import the target-AST construction vocabulary (`extdeps.languages.bash.program` → `ShellStmt`/`serialize_bash`, + any future per-language AST sidecar) **iff** it is in the realization-edge allow-set. Any other importer is a `RealizationVocabularyLeak`.
 
-**Mechanism (N+M, not a new lens):** a sibling rule over `v2.lens.layering_imports`'s existing host-enumerated `LayerImportFact{layer, path, import_module}` rows. Predicate: `import_module ∈ target_ast_vocab_modules ∧ path ∉ realization_edge_allowset`.
+**Mechanism (N+M, not a new lens):** a sibling rule over `v2.std.layer`'s existing host-enumerated `LayerImportFact{layer, path, import_module}` rows (re-homed there from the deleted `v2.lens.layering_imports`, operator ruling 2026-07-24). Predicate: `import_module ∈ target_ast_vocab_modules ∧ path ∉ realization_edge_allowset`.
 
 **Sequencing (honest, fail-closed):** the 11 current importers would go RED under a pure wall, so it ships with them on the **frozen, shrinking exception roster** = a ratchet, not an instant wall. **Dissolve-on:** the bash-sidecar arc migrates each consumer to `emit(intent, Bash)` ⇒ roster empties ⇒ guard flips to a pure wall ⇒ `program.dag` is deletable. Discriminating witness: a fresh non-edge module importing `ShellStmt` goes RED; an edge module does not. This is what makes `shell(intent())` a realization-edge feature, never authored inside consumer code. **Ties to §6** (the item it protects).
 
@@ -131,7 +131,7 @@ The ② lens-residue emitters above (`serialize_yaml`, plus the `serialize_gitig
 
 ## 6. Independent §3-hygiene cleanup (not a roadmap item)
 
-Found in the same sweep, fixable now with existing authority (dispatched separately): `lit(text: "dag")` hardcoded as a policy literal in `compiler_closure_ingest_transport` (×3) + `source_root_ingest_transport` (×1) — should fold `witness_layer_roots`, the way `layering_imports_transport`'s `source_root_flags()` already does. A §3 policy-leak (an argv carrying a literal it should receive as a parameter).
+Found in the same sweep, fixable now with existing authority (dispatched separately): `lit(text: "dag")` hardcoded as a policy literal in `compiler_closure_ingest_transport` (×3) + `source_root_ingest_transport` (×1) — should fold `witness_layer_roots` (the shared source-root policy authority) instead of hardcoding the root. A §3 policy-leak (an argv carrying a literal it should receive as a parameter).
 
 Related: [emitter ownership de-fork](emitter-ownership-defork.md) — one authority for clone-vs-move at the emit seam, no silent fallback (lane `node://adhoc-0717d295-672`, PR #6248).
 

@@ -9,12 +9,6 @@ test fn corpus_dag_compile_clean_transport_clean_holds() -> Bool {
   ) == 0
 }
 
-test fn corpus_layering_imports_transport_clean_holds() -> Bool {
-  transport_script_live_literal_violation_count_for_path(
-    path: "dag/tools/layering_imports_transport.dag"
-  ) == 0
-}
-
 test fn corpus_emit_host_transport_carveout_clean_holds() -> Bool {
   transport_script_live_literal_violation_count_for_path(
     path: "dag/tools/emit_host_transport.dag"

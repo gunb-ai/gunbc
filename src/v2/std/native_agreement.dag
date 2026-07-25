@@ -13,7 +13,7 @@ type NativeAgreementDivergence {
   native_value: String
 }
 
-data native_agreement_authority_note: String = "Native-vs-interpreted agreement loudness (ROADMAP 2a Lane B, 2026-07-23): when emit_on_demand family-crate per-PR agreement redds, the floor receipt MUST name the failing member and BOTH runtime answers — the srv2-05 revert (#7091, routed_flip_reverted_note) carried compile_skipped=true x3 then Bool(false) with member and values unknown. This module is the typed divergence carrier + formatter; claim_executor invokes the companion *_failure_receipt fn on Bool(false) witnesses. Verdict-to-divergence extraction lives in v2.compiler.self_host.native_agreement_support (layering: std must not import compiler)."
+data native_agreement_authority_note: String = "Native-vs-interpreted agreement loudness (ROADMAP 2a Lane B, 2026-07-23): when emit_on_demand family-crate per-PR agreement redds, the floor receipt MUST name the failing member and BOTH runtime answers — the srv2-05 revert (#7091, routed_flip_reverted_note) carried compile_skipped=true x3 then Bool(false) with member and values unknown. This module is the typed divergence carrier + formatter; claim_executor invokes the companion *_failure_receipt fn on Bool(false) witnesses. Verdict-to-divergence extraction lives in v2.compiler.self_host.native_agreement_support (acyclicity: the compiler layer imports std, so std cannot import compiler back)."
 
 fn octet_display(octet: Int) -> String {
   if octet == 0 {
