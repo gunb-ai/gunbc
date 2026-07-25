@@ -34,7 +34,9 @@ data roadmap_css_repin_altitude_note: String = "Re-pinned for composition slice 
 
 data roadmap_css_repin_anomaly_evidence_note: String = "Re-pinned for composition slice 4 (anomaly evidence is a surface): one new rule — .disclosure-reason, the loud reason's persistent line in the row's disclosure (loud's own hue as the edge mark, tokened lengths, theme ink). Behavioral receipts: the anomaly-evidence witness (surface predicate + title-only RED + styled block pinned verbatim). Derived by execution; this digest only pins bytes."
 
-data roadmap_css_lift_parity_digest: String = "3a0411e16e69f2ab"
+data roadmap_css_repin_gutter_split_note: String = "Re-pinned for the operator's pass flips (2026-07-25, signed at the pass on #7234's live page): the row's column gutter splits from the badge-flow gutter — the node-head grid gap moves to space-8 (roadmap_row_column_gutter) while node-mid's flow keeps space-4. One decl's value changes; the row witness's expected head block moved with it (it reds on this change by design). Derived by execution; this digest only pins bytes."
+
+data roadmap_css_lift_parity_digest: String = "93b584dfe4efeb0f"
 data moodboard_thesis_themes_lift_parity_digest: String = "69e68066c49667f9"
 
 fn emission_content_digest(s: String) -> String {

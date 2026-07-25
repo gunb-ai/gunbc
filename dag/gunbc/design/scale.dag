@@ -115,7 +115,7 @@ data height_control_note: String = "The tactile target height (remodel W1c, oper
 
 data height_control: ScaleToken = named_length_token(name: "h-control", px: 40)
 
-data height_row_note: String = "The roadmap row's density token (composition slice 2, the signed actuator ruling 2026-07-24: chip-scale in rows, sixty pills must be quiet at arm's length — the instrument feel is carried by press physics, never by area). The ROW owns this height and the in-row actuator DERIVES its extent from it (min-height and line-height both var(--h-row) — derived-not-set, witnessed): there is no separate chip-height token to drift against the row that contains it. h-control stays the FULL-SIZE instrument's height, consumed by the sandbox gallery specimen where design work lives. PROVISIONAL (iteration protocol): 24px is the worker's call pending the operator's pass — flip is this one row."
+data height_row_note: String = "The roadmap row's density token (composition slice 2, the signed actuator ruling 2026-07-24: chip-scale in rows, sixty pills must be quiet at arm's length — the instrument feel is carried by press physics, never by area). The ROW owns this height and the in-row actuator DERIVES its extent from it (derived-not-set, witnessed): there is no separate chip-height token to drift against the row that contains it. h-control stays the FULL-SIZE instrument's height, consumed by the sandbox gallery specimen where design work lives. 24px SIGNED at the operator's pass (2026-07-25, chosen against 22 and 28 on the live page) — the former PROVISIONAL mark discharges."
 
 data height_row: ScaleToken = named_length_token(name: "h-row", px: 24)
 data width_status: ScaleToken = named_length_token(name: "w-status", px: 52)
