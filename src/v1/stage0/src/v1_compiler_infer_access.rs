@@ -83,7 +83,7 @@ pub fn keyed_collection_parts(
         && ((n.children.clone().len() as i64) >= 2))
     {
         match n.children.clone().first().cloned() {
-            Some(key_child) => match n.children.clone().get(1 as usize).cloned() {
+            Some(key_child) => match n.children.clone().iter().cloned().skip(1 as usize).next() {
                 Some(value_child) => Some(Rc::new(KeyedCollectionParts {
                     key_type: resolved_type(key_child.clone()),
                     value_type: resolved_type(value_child.clone()),
@@ -214,11 +214,16 @@ pub fn check_slice_access_node(
         let normed_base = normalize_access_type_node(base_type.clone());
         let base_is_string =
             node_type_equals(normed_base.clone(), string_type(), source_indices.clone());
-        let base_diags = if base_is_string.clone() {
+        let base_is_list =
+            (is_ordered_element_collection(authored_name_at(
+                source_indices.clone(),
+                normed_base.clone(),
+            )) && node_is_element_collection(normed_base.clone(), source_indices.clone()));
+        let base_diags = if (base_is_string.clone() || base_is_list.clone()) {
             Rc::new(vec![])
         } else {
             Rc::new(vec![access_error(
-                "slice is only supported for String values".to_string(),
+                "slice is only supported for String and list values".to_string(),
                 span.clone(),
                 module_name.clone(),
             )])
@@ -249,8 +254,17 @@ pub fn check_slice_access_node(
             v1_rt::concat(base_diags.clone(), start_diags.clone()),
             end_diags.clone(),
         );
+        let slice_result_type = if base_is_string.clone() {
+            string_type()
+        } else {
+            if base_is_list.clone() {
+                normed_base.clone()
+            } else {
+                string_type()
+            }
+        };
         access_result(
-            string_type(),
+            slice_result_type.clone(),
             all_diags.clone(),
             span.clone(),
             "invalid slice access".to_string(),
