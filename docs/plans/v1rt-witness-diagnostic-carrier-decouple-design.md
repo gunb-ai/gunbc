@@ -45,10 +45,11 @@ The tempting fix — point `v1_rt::Witness`'s `Violates.diagnostic` at the real 
   `Diagnostic` model it self-emits and behaviorally tests. Pointing `v1_rt` at the real
   `Diagnostic` fails to resolve in the bootstrap build (E0433) and risks reintroducing exactly the
   circularity that isolation was built to prevent.
-- Structurally it is also a **layer inversion**: `v1_rt` is a low-level runtime primitive
-  (host-boundary glue — raw `HashMap` lookup), and `Diagnostic`/`Witness` are std/domain
-  concepts one layer up (DESIGN §3's `std ← extdeps ← compiler ← workflow` import direction, "a
-  fact's home is its layer"). A runtime primitive importing upward inverts that.
+- Structurally it also violates the bootstrap isolation named above: `v1_rt` is host-boundary
+  glue (raw `HashMap` lookup) compiled into the hand-seed bootstrap crate, while `Diagnostic`/
+  `Witness` are modeled domain carriers the bootstrap deliberately does not depend on (§0). Wiring
+  the primitive at `Witness`/`Diagnostic` reintroduces that upward dependency — the circularity §0
+  was built to break.
 
 ## 1. The primitive-return-shape half (§1, tidy-boar-444)
 
