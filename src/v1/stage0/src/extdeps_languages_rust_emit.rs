@@ -632,32 +632,16 @@ pub fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
 pub fn rust_repr_grounding_arm_b_dissolve_on() -> String {
     thread_local! {
         static CACHED: String = {
-            "Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion/Nat body lands (#7197); replace identity Rc stubs with grounded i64 newtype operations.".to_string()
+            "Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion/Nat body lands (#7197); replace fail-closed unimplemented! stubs with grounded i64 newtype operations.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_supplemental_impls_commutative_semiring_magnitude() -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): Nat carrier arithmetic (v1 seed emit; ".to_string(), rust_repr_grounding_arm_b_dissolve_on()), ")\n".to_string()), "impl std::ops::Add for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n".to_string()), "    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;\n".to_string()), "    fn add(self, rhs: Self) -> Self::Output { std::rc::Rc::new(rhs) }\n".to_string()), "}\n".to_string()), "impl std::ops::Mul for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n".to_string()), "    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;\n".to_string()), "    fn mul(self, rhs: Self) -> Self::Output { std::rc::Rc::new(rhs) }\n".to_string()), "}\n".to_string()), "impl std::ops::Div for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n".to_string()), "    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;\n".to_string()), "    fn div(self, rhs: Self) -> Self::Output { std::rc::Rc::new(rhs) }\n".to_string()), "}\n".to_string()), "impl std::cmp::PartialEq<i64> for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n".to_string()), "    fn eq(&self, other: &i64) -> bool { *other == 0 }\n".to_string()), "}\n".to_string())
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): Nat carrier arithmetic (v1 seed emit; ".to_string(), rust_repr_grounding_arm_b_dissolve_on()), ")\n".to_string()), "impl std::ops::Add for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n".to_string()), "    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;\n".to_string()), "    fn add(self, _rhs: Self) -> Self::Output { unimplemented!(\"interim CommutativeSemiring<Magnitude> stub — see #7197\") }\n".to_string()), "}\n".to_string()), "impl std::ops::Mul for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n".to_string()), "    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;\n".to_string()), "    fn mul(self, _rhs: Self) -> Self::Output { unimplemented!(\"interim CommutativeSemiring<Magnitude> stub — see #7197\") }\n".to_string()), "}\n".to_string()), "impl std::ops::Div for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n".to_string()), "    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;\n".to_string()), "    fn div(self, _rhs: Self) -> Self::Output { unimplemented!(\"interim CommutativeSemiring<Magnitude> stub — see #7197\") }\n".to_string()), "}\n".to_string()), "impl std::cmp::PartialEq<i64> for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n".to_string()), "    fn eq(&self, _other: &i64) -> bool { unimplemented!(\"interim CommutativeSemiring<Magnitude> stub — see #7197\") }\n".to_string()), "}\n".to_string())
 }
 
 pub fn rust_supplemental_impls_bool_coproduct() -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): Bool coproduct ↔ host bool bridge (v1 seed emit)\n".to_string(), "impl From<Bool> for bool {\n".to_string()), "    fn from(b: Bool) -> bool { match b { Bool::True => true, Bool::False => false } }\n".to_string()), "}\n".to_string())
-}
-
-pub fn rust_supplemental_impls_for_struct(name: String) -> String {
-    if (name.clone() == "CommutativeSemiring".to_string()) {
-        rust_supplemental_impls_commutative_semiring_magnitude()
-    } else {
-        "".to_string()
-    }
-}
-
-pub fn rust_supplemental_impls_for_enum(name: String) -> String {
-    if (name.clone() == "Bool".to_string()) {
-        rust_supplemental_impls_bool_coproduct()
-    } else {
-        "".to_string()
-    }
 }

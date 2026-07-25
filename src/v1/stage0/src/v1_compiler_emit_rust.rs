@@ -12154,7 +12154,8 @@ pub fn emit_struct_from_children(
                     ),
                     "\n}".to_string(),
                 );
-                let supplemental = v1_emit_struct_supplemental_impls(name.clone());
+                let supplemental =
+                    v1_emit_struct_supplemental_impls(env.module_path.clone(), name.clone());
                 if (supplemental.clone() == "".to_string()) {
                     struct_def
                 } else {
@@ -12699,7 +12700,7 @@ pub fn emit_enum_from_children(
             env.clone(),
             emit_info.clone(),
         );
-        let supplemental = v1_emit_enum_supplemental_impls(name.clone());
+        let supplemental = v1_emit_enum_supplemental_impls(env.module_path.clone(), name.clone());
         let with_accessors = if (accessor_impl.clone() == "".to_string()) {
             enum_def.clone()
         } else {

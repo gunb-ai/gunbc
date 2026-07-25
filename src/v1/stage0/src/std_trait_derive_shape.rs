@@ -426,6 +426,21 @@ pub fn kernel_int_arithmetic_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
     })
 }
 
+pub fn repr_grounding_supplemental_commutative_semiring_target(
+    module_path: String,
+    name: String,
+) -> bool {
+    ((module_path.clone() == "std.algebra".to_string())
+        && (name.clone() == "CommutativeSemiring".to_string()))
+}
+
+pub fn repr_grounding_supplemental_bool_host_bridge_target(
+    module_path: String,
+    name: String,
+) -> bool {
+    ((module_path.clone() == "std.types".to_string()) && (name.clone() == "Bool".to_string()))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReprDeriveDebug;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

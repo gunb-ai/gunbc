@@ -2,7 +2,7 @@
 // Source module: v1.compiler.trait_derive_emit
 
 pub use crate::extdeps_languages_rust_emit::{
-    rust_supplemental_impls_for_enum, rust_supplemental_impls_for_struct,
+    rust_supplemental_impls_bool_coproduct, rust_supplemental_impls_commutative_semiring_magnitude,
     rust_trait_derive_attr_from_traits,
 };
 pub use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape;
@@ -13,7 +13,10 @@ use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
 pub use crate::std_trait_derive_shape::{
     fn_field_derive_traits, kernel_int_arithmetic_traits, nullary_coproduct_derive_traits,
     payload_coproduct_derive_traits, record_derive_traits_copy, record_derive_traits_heap,
-    repr_grounding_derive_completeness_predicate, symbol_wrapped_ord_carrier_derive_traits,
+    repr_grounding_derive_completeness_predicate,
+    repr_grounding_supplemental_bool_host_bridge_target,
+    repr_grounding_supplemental_commutative_semiring_target,
+    symbol_wrapped_ord_carrier_derive_traits,
 };
 pub use crate::std_types::is_container_type;
 pub use crate::v1_compiler_emit::to_pascal;
@@ -326,19 +329,23 @@ pub fn v1_emit_type_params_with_clone_bounds(
     }
 }
 
-pub fn v1_emit_struct_supplemental_impls(name: String) -> String {
-    if ((name.clone() == "CommutativeSemiring".to_string())
+pub fn v1_emit_struct_supplemental_impls(module_path: String, name: String) -> String {
+    if (repr_grounding_supplemental_commutative_semiring_target(module_path.clone(), name.clone())
         && repr_grounding_derive_completeness_predicate(
             kernel_int_arithmetic_traits(),
             ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt,
         ))
     {
-        rust_supplemental_impls_for_struct(name.clone())
+        rust_supplemental_impls_commutative_semiring_magnitude()
     } else {
         "".to_string()
     }
 }
 
-pub fn v1_emit_enum_supplemental_impls(name: String) -> String {
-    rust_supplemental_impls_for_enum(name.clone())
+pub fn v1_emit_enum_supplemental_impls(module_path: String, name: String) -> String {
+    if repr_grounding_supplemental_bool_host_bridge_target(module_path.clone(), name.clone()) {
+        rust_supplemental_impls_bool_coproduct()
+    } else {
+        "".to_string()
+    }
 }
