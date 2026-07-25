@@ -1,0 +1,304 @@
+module extdeps.sec.issuer.atlassian_facts
+
+import extdeps.sec.facts {
+  FiledFactCitation,
+  FiledMonetaryFact,
+  FiledSignedMonetaryFact,
+  signed_usd_negative,
+  signed_usd_non_negative,
+  usd_whole_dollars,
+}
+import extdeps.sec.issuer.atlassian { atlassian_issuer_catalog }
+import extdeps.sec.types { AnnualReport, IssuerCatalogRow }
+import extdeps.sec.us_gaap {
+  us_gaap_cost_of_goods_and_services_sold,
+  us_gaap_cost_of_revenue,
+  us_gaap_general_and_administrative_expense,
+  us_gaap_gross_profit,
+  us_gaap_net_income_loss,
+  us_gaap_operating_expenses,
+  us_gaap_operating_income_loss,
+  us_gaap_research_and_development_expense,
+  us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  us_gaap_selling_and_marketing_expense,
+}
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "data.sec.gov/api/xbrl/companyconcept/CIK0001650372"
+  }
+}
+
+data atlassian_facts_subject: IssuerCatalogRow = atlassian_issuer_catalog
+
+data atlassian_facts_provenance_note: String = "Every amount is a live pull from data.sec.gov companyconcept (2026-07-25, session gitlab-10k-scm-costs-baz90x). CIK 0001650372 verified on the EDGAR submissions API (ticker TEAM, Nasdaq, SIC 7372 Services-Prepackaged Software). Four fiscal years modeled, FY2022 through FY2025; Atlassian fiscal years end June 30. The nearest pure-play comparable to GitLab in the corpus: a developer-collaboration vendor whose products (Jira, Confluence, Bitbucket) include an SCM, sold on the same per-seat subscription shape. The face statement cross-foots exactly in all four years: Revenue - cost of revenue = GrossProfit; ResearchAndDevelopment + SellingAndMarketing + GeneralAndAdministrative = OperatingExpenses; GrossProfit - OperatingExpenses = OperatingIncomeLoss."
+
+data atlassian_comparative_period_note: String = "The FY2022 rows are the comparative period presented in the FY2023 10-K (accession 0001650372-23-000040). Atlassian re-domiciled to the United States in 2022; before that it filed as a foreign private issuer, so the FY2023 10-K is the earliest annual-report authority on this CIK for the FY2022 period. Same shape as the GitLab comparatives: EDGAR labels every row with the FILING's fiscal-year focus, so the citation carries fiscal_year 2023 while the FiledDuration bounds the fact's own fiscal year."
+
+data atlassian_cost_element_substitution_note: String = "Atlassian SWITCHED cost-of-revenue elements mid-series: the FY2023 and FY2024 10-Ks tag CostOfRevenue, and the FY2025 10-K tags CostOfGoodsAndServicesSold. Each row below carries the element ITS OWN filing used -- the actually-filed tag is the authority per filing (DESIGN section 3), never normalized to one nickname for series convenience. This is the same element-substitution case as Rollins/Chemed/Microsoft, but observed WITHIN one issuer across time rather than across issuers, which is why a per-row element field (not a per-issuer one) is the right grain."
+
+data atlassian_fy2022_comparative_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001650372-23-000040",
+  fiscal_year: 2023,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledDuration { start: "2021-07-01", end: "2022-06-30" },
+  filed_date: "2023-08-18",
+}
+
+data atlassian_fy2023_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001650372-23-000040",
+  fiscal_year: 2023,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledDuration { start: "2022-07-01", end: "2023-06-30" },
+  filed_date: "2023-08-18",
+}
+
+data atlassian_fy2024_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001650372-24-000036",
+  fiscal_year: 2024,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledDuration { start: "2023-07-01", end: "2024-06-30" },
+  filed_date: "2024-08-16",
+}
+
+data atlassian_fy2025_citation: FiledFactCitation = FiledFactCitation {
+  accession: "0001650372-25-000036",
+  fiscal_year: 2025,
+  fiscal_period: "FY",
+  form: AnnualReport,
+  period: FiledDuration { start: "2024-07-01", end: "2025-06-30" },
+  filed_date: "2025-08-15",
+}
+
+data atlassian_fy2022_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  amount: Filed { amount: usd_whole_dollars(count: 2802882000) },
+  citation: atlassian_fy2022_comparative_citation,
+}
+
+data atlassian_fy2022_cost_of_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_cost_of_revenue,
+  amount: Filed { amount: usd_whole_dollars(count: 452914000) },
+  citation: atlassian_fy2022_comparative_citation,
+}
+
+data atlassian_fy2022_gross_profit: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_gross_profit,
+  amount: Filed { amount: usd_whole_dollars(count: 2349968000) },
+  citation: atlassian_fy2022_comparative_citation,
+}
+
+data atlassian_fy2022_research_and_development: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_research_and_development_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 1291877000) },
+  citation: atlassian_fy2022_comparative_citation,
+}
+
+data atlassian_fy2022_selling_and_marketing: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_selling_and_marketing_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 535815000) },
+  citation: atlassian_fy2022_comparative_citation,
+}
+
+data atlassian_fy2022_general_and_administrative: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_general_and_administrative_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 452193000) },
+  citation: atlassian_fy2022_comparative_citation,
+}
+
+data atlassian_fy2022_operating_expenses: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_operating_expenses,
+  amount: Filed { amount: usd_whole_dollars(count: 2279885000) },
+  citation: atlassian_fy2022_comparative_citation,
+}
+
+data atlassian_fy2022_operating_income: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_operating_income_loss,
+  amount: FiledSigned { value: signed_usd_non_negative(count: 70083000) },
+  citation: atlassian_fy2022_comparative_citation,
+}
+
+data atlassian_fy2022_net_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_net_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 519510000) },
+  citation: atlassian_fy2022_comparative_citation,
+}
+
+data atlassian_fy2023_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  amount: Filed { amount: usd_whole_dollars(count: 3534647000) },
+  citation: atlassian_fy2023_citation,
+}
+
+data atlassian_fy2023_cost_of_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_cost_of_revenue,
+  amount: Filed { amount: usd_whole_dollars(count: 633765000) },
+  citation: atlassian_fy2023_citation,
+}
+
+data atlassian_fy2023_gross_profit: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_gross_profit,
+  amount: Filed { amount: usd_whole_dollars(count: 2900882000) },
+  citation: atlassian_fy2023_citation,
+}
+
+data atlassian_fy2023_research_and_development: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_research_and_development_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 1869881000) },
+  citation: atlassian_fy2023_citation,
+}
+
+data atlassian_fy2023_selling_and_marketing: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_selling_and_marketing_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 769861000) },
+  citation: atlassian_fy2023_citation,
+}
+
+data atlassian_fy2023_general_and_administrative: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_general_and_administrative_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 606362000) },
+  citation: atlassian_fy2023_citation,
+}
+
+data atlassian_fy2023_operating_expenses: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_operating_expenses,
+  amount: Filed { amount: usd_whole_dollars(count: 3246104000) },
+  citation: atlassian_fy2023_citation,
+}
+
+data atlassian_fy2023_operating_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_operating_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 345222000) },
+  citation: atlassian_fy2023_citation,
+}
+
+data atlassian_fy2023_net_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_net_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 486761000) },
+  citation: atlassian_fy2023_citation,
+}
+
+data atlassian_fy2024_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  amount: Filed { amount: usd_whole_dollars(count: 4358603000) },
+  citation: atlassian_fy2024_citation,
+}
+
+data atlassian_fy2024_cost_of_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_cost_of_revenue,
+  amount: Filed { amount: usd_whole_dollars(count: 803495000) },
+  citation: atlassian_fy2024_citation,
+}
+
+data atlassian_fy2024_gross_profit: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_gross_profit,
+  amount: Filed { amount: usd_whole_dollars(count: 3555108000) },
+  citation: atlassian_fy2024_citation,
+}
+
+data atlassian_fy2024_research_and_development: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_research_and_development_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 2184111000) },
+  citation: atlassian_fy2024_citation,
+}
+
+data atlassian_fy2024_selling_and_marketing: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_selling_and_marketing_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 877497000) },
+  citation: atlassian_fy2024_citation,
+}
+
+data atlassian_fy2024_general_and_administrative: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_general_and_administrative_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 610577000) },
+  citation: atlassian_fy2024_citation,
+}
+
+data atlassian_fy2024_operating_expenses: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_operating_expenses,
+  amount: Filed { amount: usd_whole_dollars(count: 3672185000) },
+  citation: atlassian_fy2024_citation,
+}
+
+data atlassian_fy2024_operating_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_operating_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 117077000) },
+  citation: atlassian_fy2024_citation,
+}
+
+data atlassian_fy2024_net_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_net_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 300519000) },
+  citation: atlassian_fy2024_citation,
+}
+
+data atlassian_fy2025_revenue: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  amount: Filed { amount: usd_whole_dollars(count: 5215304000) },
+  citation: atlassian_fy2025_citation,
+}
+
+data atlassian_fy2025_cost_of_goods_and_services: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_cost_of_goods_and_services_sold,
+  amount: Filed { amount: usd_whole_dollars(count: 894851000) },
+  citation: atlassian_fy2025_citation,
+}
+
+data atlassian_fy2025_gross_profit: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_gross_profit,
+  amount: Filed { amount: usd_whole_dollars(count: 4320453000) },
+  citation: atlassian_fy2025_citation,
+}
+
+data atlassian_fy2025_research_and_development: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_research_and_development_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 2669312000) },
+  citation: atlassian_fy2025_citation,
+}
+
+data atlassian_fy2025_selling_and_marketing: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_selling_and_marketing_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 1134535000) },
+  citation: atlassian_fy2025_citation,
+}
+
+data atlassian_fy2025_general_and_administrative: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_general_and_administrative_expense,
+  amount: Filed { amount: usd_whole_dollars(count: 646998000) },
+  citation: atlassian_fy2025_citation,
+}
+
+data atlassian_fy2025_operating_expenses: FiledMonetaryFact = FiledMonetaryFact {
+  element: us_gaap_operating_expenses,
+  amount: Filed { amount: usd_whole_dollars(count: 4450845000) },
+  citation: atlassian_fy2025_citation,
+}
+
+data atlassian_fy2025_operating_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_operating_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 130392000) },
+  citation: atlassian_fy2025_citation,
+}
+
+data atlassian_fy2025_net_income_loss: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+  element: us_gaap_net_income_loss,
+  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 256687000) },
+  citation: atlassian_fy2025_citation,
+}
+
+data atlassian_fy2025_filed_facts: List<FiledMonetaryFact> = [
+  atlassian_fy2025_revenue,
+  atlassian_fy2025_cost_of_goods_and_services,
+  atlassian_fy2025_gross_profit,
+  atlassian_fy2025_research_and_development,
+  atlassian_fy2025_selling_and_marketing,
+  atlassian_fy2025_general_and_administrative,
+  atlassian_fy2025_operating_expenses,
+]
