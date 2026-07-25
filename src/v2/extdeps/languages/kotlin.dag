@@ -52,7 +52,7 @@ import v2.std.compilers.lexing {
   TriviaRule,
   lex_rule_set_token_class_member
 }
-import v2.std.collection { List, Map, Set, empty_map, map_insert, Optional }
+import v2.std.collection { Absent, List, Map, Present, Set, empty_map, map_insert, Optional }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
