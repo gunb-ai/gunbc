@@ -4,7 +4,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { NonEmptyStr, GitRef }
 import extdeps.git
 import extdeps.shell
-import extdeps.shell.exec { transport_script_from_body }
+import gunbc.retained_shell_script { retained_foreign }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.merge_admission_produce {
   merge_admission_receipt_path,
@@ -39,7 +39,7 @@ fn pr_number_from_event() -> Int? {
   let line = match env_var(name: "GITHUB_EVENT_PATH") {
     Present { value: event_path } =>
       let result = shell.Exec.Run(
-        script: transport_script_from_body(body: concat(
+        script: retained_foreign(reason: "merge_admission_stamp read PR number from GITHUB_EVENT_PATH via jq", body: concat(
           concat("if [ -f \"", event_path),
           concat(
             "\" ]; then jq -r 'if (.pull_request.number | type) == \"number\" then .pull_request.number else empty end' \"",
@@ -97,7 +97,7 @@ func main() -> ProcessExit {
   let root = git.Core.Toplevel().path as String
   let path = merge_admission_receipt_path(root: root)
   let dir = concat(root, "/.gunbc")
-  let mkdir = shell.Exec.Run(script: transport_script_from_body(body: concat("mkdir -p \"", concat(dir, "\""))))
+  let mkdir = shell.Exec.Run(script: retained_foreign(body: concat("mkdir -p \"", concat(dir, "\"")), reason: "merge_admission_stamp mkdir -p .gunbc receipt dir"))
   if !mkdir.success {
     return exit_failure(reason: concat("merge_admission_stamp: mkdir .gunbc failed: ", mkdir.stderr))
   }
