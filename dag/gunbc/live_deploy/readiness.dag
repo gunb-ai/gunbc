@@ -216,11 +216,9 @@ fn live_deploy_service_ready_once() -> Reconciliation<ServiceReadyApplyEffect, S
 }
 
 fn capture_unit_diagnosis(
-  spec: DeploymentSpec,
   transport: HostEffectTransport,
   access: DeployAccess,
 ) -> String {
-  let _ = spec
   let verdict = host_effect_privilege_verdict(access: access, fixture_actor: Absent)
   match verdict {
     Deny { reason: _ } =>
@@ -339,7 +337,6 @@ fn live_deploy_poll_until_service_ready_for_deploy(
         refusal: service_not_ready_with_captured_diagnosis(
           refusal: refusal,
           text: capture_unit_diagnosis(
-            spec: spec,
             transport: transport,
             access: access,
           )
