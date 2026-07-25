@@ -68,13 +68,14 @@ fn mirror_ci_human_percent(bp: u64) -> String {
 }
 
 fn render_governor_info_line(text: &str, emoji: bool) -> String {
-    let glyph = if emoji { "🔄" } else { "◐" };
+    let glyph = if emoji { "🕐" } else { "◷" };
     format!("{glyph} {text}")
 }
 
 fn render_governor_done_line(text: &str, emoji: bool) -> String {
-    let glyph = if emoji { "✅" } else { "✓" };
-    format!("{glyph} {text}")
+    // Glyph discipline (operator live-log 2026-07-25): a receipt is *data*, not an
+    // outcome — StatusPulse, never the Done/success glyph.
+    render_governor_info_line(text, emoji)
 }
 
 /// Multiplicative-decrease divisor is 2 (halve), additive increase is +1 — classic AIMD.

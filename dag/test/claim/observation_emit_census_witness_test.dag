@@ -19,6 +19,10 @@ import gunbc.observation_emit_census {
   typecheck_attribution_site,
   measurement_site,
   shell_site,
+  floor_drain_site,
+  gate_warm_cost_site,
+  receipt_site,
+  file_trace_site,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -107,9 +111,22 @@ fn w_shell_has_migrated() -> Bool {
   string_contains(s: emit_site_dissolve_on(site: shell_site), pattern: "render_shell_effect_")
 }
 
-fn w_the_census_states_a_zero_tagged_frontier_count() -> Bool {
-  observation_emit_frontier_count() == 0 &&
-  count(observation_emit_roster) == 6
+fn w_the_census_states_post_snapshot_frontier_count() -> Bool {
+  observation_emit_frontier_count() == 4 &&
+  count(observation_emit_roster) == 10
+}
+
+data w_post_snapshot_live_tags_are_rostered_bidirectional_note: String = "Operator finding 3 (run 30142403230): hygiene is bidirectional — growth tags born after the initial census snapshot must appear on the roster, not only the reverse (rostered markers still exist)."
+
+fn w_post_snapshot_live_tags_are_rostered_bidirectional() -> Bool {
+  census_marker_present(site: floor_drain_site) &&
+  emit_site_is_frontier(site: floor_drain_site) &&
+  census_marker_present(site: gate_warm_cost_site) &&
+  emit_site_is_frontier(site: gate_warm_cost_site) &&
+  census_marker_present(site: receipt_site) &&
+  emit_site_is_frontier(site: receipt_site) &&
+  census_marker_present(site: file_trace_site) &&
+  emit_site_is_frontier(site: file_trace_site)
 }
 
 fn w_the_raw_byte_dump_shape_is_gone_from_the_seed() -> Bool {
@@ -175,7 +192,8 @@ test fn observation_emit_census_witnesses() -> Bool {
   w_typecheck_attribution_has_migrated() &&
   w_measurement_has_migrated() &&
   w_shell_has_migrated() &&
-  w_the_census_states_a_zero_tagged_frontier_count() &&
+  w_the_census_states_post_snapshot_frontier_count() &&
+  w_post_snapshot_live_tags_are_rostered_bidirectional() &&
   w_the_raw_byte_dump_shape_is_gone_from_the_seed() &&
   w_the_raw_gantt_shape_is_gone_from_the_seed() &&
   w_the_raw_governor_shape_is_gone_from_the_seed() &&

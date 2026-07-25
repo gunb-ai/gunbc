@@ -5,9 +5,9 @@ import std.nat { Nat }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data observation_emit_census_note: String = "P3 of the progress-and-observation lane: the census wall. Every place the floor emits a progress line today is either a PROJECTION of the observation event stream (migrated, P1/P2) or a COUNTED FRONTIER ROW carrying a reason and a dissolve-on — the same discipline the site subsumption lane uses for unthemed colours. This module is the census authority: the classification is a closed sum, so a site cannot be half-classified, and the roster below names the structured-tag emit families that exist in the seed today. The executable hygiene witness reads the live seed and reds when a rostered marker vanishes (a stale roster) or when a family the census claims is migrated still emits its raw form, so the census cannot rot into a lie."
+data observation_emit_census_note: String = "P3 of the progress-and-observation lane: the census wall. Every place the floor emits a progress line today is either a PROJECTION of the observation event stream (migrated, P1/P2) or a COUNTED FRONTIER ROW carrying a reason and a dissolve-on — the same discipline the site subsumption lane uses for unthemed colours. This module is the census authority: the classification is a closed sum, so a site cannot be half-classified, and the roster below names the structured-tag emit families that exist in the seed today. The executable hygiene witness is bidirectional: it reds when a rostered marker vanishes AND when a known live tag family is missing from the roster, so growth after the snapshot cannot silently understate."
 
-data observation_emit_census_sequencing_note: String = "Sequencing, per the operator ruling and design section 6b: the CI two-tier rework (PR-1 on #7162's line) rewrote the floor's emit sites, so the tagged structured-tag families migrate on this PR. Migrated: [floor-memory] (4b), [gantt], [governor], [typecheck-attribution], [measurement] (ci_measurement_rss_line / render_peak_rss_line_mirror), [shell] (shell_effect_*_line / render_shell_effect_*_line_mirror; Ambient via ShellTrace, Anomaly via disposition alone). Tagged frontier count is now 0. The unmarked raw eprintln sites in claim_executor remain the residue — currently 76 `eprintln!` call sites by live count — their per-print classification is the re-census this PR's dissolve condition named."
+data observation_emit_census_sequencing_note: String = "Sequencing, per the operator ruling and live-log review (run 30142403230): tagged migrations landed (floor-memory, gantt, governor, typecheck-attribution, measurement, shell with named-intent subjects; Ambient ShellTrace Suppressed at Normal). Post-census growth tags ([floor-drain], [gate-warm-cost], [receipt], [file]) are CountedFrontierSite rows so the roster cannot silently understate. Unmarked raw eprintln residue in claim_executor remains counted separately."
 
 type EmitSiteDisposition
   = MigratedToObservation { via: NonEmptyStr }
@@ -65,7 +65,43 @@ data shell_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[shell]" as NonEmptyStr,
   source_file: "src/v1/stage0/src/v1_interpreter.rs" as NonEmptyStr,
   disposition: MigratedToObservation {
-    via: "gunbc.observation_ci_render.ci_event_line (seed shell_effect_begin_line / shell_effect_done_line / shell_effect_failed_line; mirror render_shell_effect_*_line_mirror; Ambient via ShellTrace, Anomaly Failed self-describing via disposition alone)" as NonEmptyStr
+    via: "gunbc.observation_ci_render.ci_event_line (seed shell_effect_begin_line / shell_effect_done_line / shell_effect_failed_line; mirror render_shell_effect_*_line_mirror; named-intent subject; Ambient ShellTrace Suppressed-at-Normal; Anomaly Failed via disposition alone)" as NonEmptyStr
+  }
+}
+
+data floor_drain_site: CensusedEmitSite = CensusedEmitSite {
+  marker: "[floor-drain]" as NonEmptyStr,
+  source_file: "src/v1/stage0/src/cli_run.rs" as NonEmptyStr,
+  disposition: CountedFrontierSite {
+    reason: "schedule-retention / typed-cache drain diagnostics born after the initial census snapshot — retention kit instrumentation, not yet an observation projection" as NonEmptyStr,
+    dissolve_on: "re-census into MigratedToObservation once drain events speak the observation vocabulary (or retire the tag into a named group summary)" as NonEmptyStr
+  }
+}
+
+data gate_warm_cost_site: CensusedEmitSite = CensusedEmitSite {
+  marker: "[gate-warm-cost]" as NonEmptyStr,
+  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
+  disposition: CountedFrontierSite {
+    reason: "per-gate warm-cost TSV probe lines — the instrument producing the fleet receipt basis, still a raw tag family" as NonEmptyStr,
+    dissolve_on: "fold the TSV emit into an observation MeasurementSegment / receipt projection and retire the bracket tag" as NonEmptyStr
+  }
+}
+
+data receipt_site: CensusedEmitSite = CensusedEmitSite {
+  marker: "[receipt]" as NonEmptyStr,
+  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
+  disposition: CountedFrontierSite {
+    reason: "floor resolve / batch-wall / materialization receipt lines — data, not outcomes; still bracket-tagged" as NonEmptyStr,
+    dissolve_on: "collapse into the floor-receipts observation group as Ambient MeasurementSegment / StatusPulse lines" as NonEmptyStr
+  }
+}
+
+data file_trace_site: CensusedEmitSite = CensusedEmitSite {
+  marker: "[file]" as NonEmptyStr,
+  source_file: "src/v1/stage0/src/v1_interpreter.rs" as NonEmptyStr,
+  disposition: CountedFrontierSite {
+    reason: "Filesystem transport host-effect traces — sibling of the shell-echo class, still raw-tagged" as NonEmptyStr,
+    dissolve_on: "same named-intent ObservationEvent path as shell (Filesystem.Read/Write/…) once shell grain is proven" as NonEmptyStr
   }
 }
 
@@ -75,7 +111,11 @@ data observation_emit_roster: List<CensusedEmitSite> = [
   gantt_site,
   governor_site,
   measurement_site,
-  shell_site
+  shell_site,
+  floor_drain_site,
+  gate_warm_cost_site,
+  receipt_site,
+  file_trace_site
 ]
 
 data observation_emit_roster_completeness_disposition: Disposition = Scaffold {
@@ -87,7 +127,7 @@ data observation_emit_roster_completeness_disposition: Disposition = Scaffold {
   }
 }
 
-data observation_emit_roster_completeness_note: String = "Tagged structured-tag families are now all MigratedToObservation (frontier count 0). The roster does NOT yet enumerate the 76 unmarked raw eprintln sites in claim_executor as individual CountedFrontierSite rows — that per-print re-census is the remaining completeness scaffold, and its dissolve condition (\"when the post-rework sites are enumerated\") is satisfied by this PR's landing of the tagged migrations, so the enumeration itself is the next micro-pass on this bar. Until those rows land the honest count is: zero tagged frontier, six migrated families, 76 raw-print residue counted but unclassified, and the witness holds the roster against the seed so it cannot go stale."
+data observation_emit_roster_completeness_note: String = "Roster is bidirectional: every rostered marker must still exist in the seed, AND every known live tag family born after the initial snapshot must appear on the roster (operator finding 3, run 30142403230). Frontier count = 4 (floor-drain, gate-warm-cost, receipt, file). Six families MigratedToObservation. The unmarked eprintln sites remain the per-print completeness scaffold."
 
 fn emit_site_is_frontier(site: CensusedEmitSite) -> Bool {
   match site.disposition {
@@ -109,5 +149,5 @@ fn observation_emit_frontier_count() -> Nat {
 }
 
 data observation_emit_census_disposition: Disposition = Terminal {
-  reason: "The census MODEL is Terminal — a closed classification of emit sites is the wall's authority, not an interim stand-in. What is a scaffold is the ROSTER's completeness (declared above), because the site list grows when the rework's post-rewrite sites are enumerated. The model that classifies them does not change; only the rows do."
+  reason: "The census MODEL is Terminal — a closed classification of emit sites is the wall's authority, not an interim stand-in. What is a scaffold is the ROSTER's completeness (declared above), because the site list grows when post-rewrite sites are enumerated. The model that classifies them does not change; only the rows do."
 }

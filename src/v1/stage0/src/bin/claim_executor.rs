@@ -2889,6 +2889,9 @@ fn run() -> Result<ExitCode, ExitCode> {
         batch_clamp_params.as_deref(),
         budget_tighten_ms,
     );
+    // Floor receipts block — data, not outcomes. One named group; pulse glyphs only
+    // (operator live-log 2026-07-25: outcome glyphs for outcomes only).
+    v1_compiler::v1_interpreter::group_begin("floor receipts");
     match peak_rss_bytes() {
         Some(bytes) => {
             eprintln!(
@@ -2912,11 +2915,12 @@ fn run() -> Result<ExitCode, ExitCode> {
     // The governor receipt is the §5-counted degradation story for the run: every graceful
     // hold, hard back-off, and forced-serial admission, beside the width actually reached.
     eprintln!("{}", governor.receipt_line());
-    // [measurement] WHOLE-TREE cgroup peak — the SOUND placement divisor input (SELF-RSS above omits
+    // WHOLE-TREE cgroup peak — the SOUND placement divisor input (SELF-RSS above omits
     // child rustc/sccache PIDs; cgroup-v2 `memory.peak` at the leaf job cgroup is hierarchical and
     // captures them). Single authority `emit_cgroup_measurement` so the `ci` and `rust_tests` jobs
     // report an identically-shaped line. Runtime-harmless read-only.
     emit_cgroup_measurement("floor adaptive-width");
+    v1_compiler::v1_interpreter::group_end();
     floor_terminal_fast_exit(walk_exit_code(outcome.any_failed))
 }
 
@@ -3515,7 +3519,7 @@ mod tests {
 
     fn run_seed_shell_effect_failed_line(
         source_roots: &[String],
-        argv_summary: &str,
+        intent: &str,
         argv_collapsed: &str,
         exit_code: u64,
         elapsed_ms: u64,
@@ -3534,10 +3538,7 @@ mod tests {
             &ctx,
             "shell_effect_failed_line",
             &[
-                (
-                    Some("argv_summary".to_string()),
-                    Value::Str(argv_summary.to_string()),
-                ),
+                (Some("intent".to_string()), Value::Str(intent.to_string())),
                 (
                     Some("argv_collapsed".to_string()),
                     Value::Str(argv_collapsed.to_string()),
@@ -3571,7 +3572,7 @@ mod tests {
         ];
         let oracle = run_seed_shell_effect_failed_line(
             &roots,
-            "$ echo hi",
+            "shell.Exec.Run",
             "echo hi",
             1,
             2000,
@@ -3580,7 +3581,7 @@ mod tests {
         )
         .expect("shell_effect_failed_line must resolve and render");
         let mirror = v1_compiler::v1_interpreter::render_shell_effect_failed_line_mirror(
-            "$ echo hi",
+            "shell.Exec.Run",
             "echo hi",
             1,
             2000,
@@ -3592,7 +3593,7 @@ mod tests {
         );
         assert_eq!(
             oracle,
-            "❌ $ echo hi failed: $ echo hi (exit=1) in 2 seconds"
+            "❌ shell.Exec.Run failed: $ echo hi (exit=1) in 2 seconds"
         );
     }
 

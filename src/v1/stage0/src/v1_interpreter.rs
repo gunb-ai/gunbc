@@ -5057,7 +5057,7 @@ fn wet_service_call(
             msg: format!("no transport for service {}", key),
         })?;
     let param_env = build_service_param_env(op_node, args, env, ctx)?;
-    dispatch_service_wet(service_node, op_node, transport, &param_env, ctx)
+    dispatch_service_wet(service_node, op_node, transport, &param_env, ctx, &key)
 }
 
 fn unix_secs_from_clock_value(
@@ -5238,7 +5238,14 @@ fn eval_service_call(
                 .map(|requested| hermetic_checkout_read_disposition(&requested).is_ok())
                 .unwrap_or(false);
             if confirmed_checkout_input {
-                return dispatch_service_wet(service_node, op_node, transport, &param_env, ctx);
+                return dispatch_service_wet(
+                    service_node,
+                    op_node,
+                    transport,
+                    &param_env,
+                    ctx,
+                    &key,
+                );
             }
         }
         let published = ctx.published_mock_keys()?;
@@ -5283,7 +5290,7 @@ fn eval_service_call(
         return eval_mock_response(op_node, ctx);
     }
 
-    let result = dispatch_service_wet(service_node, op_node, transport, &param_env, ctx)?;
+    let result = dispatch_service_wet(service_node, op_node, transport, &param_env, ctx, &key)?;
 
     if ctx.execution_mode.is_record() {
         let store = ctx
@@ -5312,9 +5319,10 @@ fn dispatch_service_wet(
     transport: &Rc<Node>,
     param_env: &Rc<Env>,
     ctx: &InterpContext,
+    intent: &str,
 ) -> InterpResult<Value> {
     if is_shell_transport(transport.clone()) {
-        let result = dispatch_shell(transport, param_env, ctx)?;
+        let result = dispatch_shell(transport, param_env, ctx, intent)?;
         return map_shell_outputs(&result, op_node, ctx);
     }
 
@@ -5795,30 +5803,13 @@ fn trace_emit(channel: OutputChannel, line: &str) {
 pub const SHELL_CENSUS_MARKER: &str = "[shell]";
 
 /// Collapse argv into one readable line — runs of whitespace become a single space —
-/// so a multiline `sh -c` script reads as one command. Shared by Ambient Begin/Done
-/// (optionally capped) and Anomaly Failed (uncapped: an anomaly expands fully).
+/// so a multiline `sh -c` script reads as one command. Used in Failed.error (uncapped:
+/// an anomaly expands fully). Ambient subjects are named intents, not argv.
 fn shell_argv_collapsed(argv: &[String]) -> String {
     argv.join(" ")
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-/// `$ <collapsed>` identity for shell ObservationEvent subjects. `cap` truncates the
-/// command body (Condensed Ambient); `None` leaves it uncapped (Full / Anomaly).
-fn shell_argv_summary(argv: &[String], cap: Option<usize>) -> String {
-    let collapsed = shell_argv_collapsed(argv);
-    let body = if let Some(max) = cap {
-        if collapsed.chars().count() > max {
-            let head: String = collapsed.chars().take(max).collect();
-            format!("{head}…")
-        } else {
-            collapsed
-        }
-    } else {
-        collapsed
-    };
-    format!("$ {body}")
 }
 
 fn shell_obs_emoji() -> bool {
@@ -5836,30 +5827,26 @@ fn shell_obs_human_duration(ms: u64) -> String {
 }
 
 /// Mirror of `gunbc.observation_seed_render.shell_effect_begin_line`.
-pub fn render_shell_effect_begin_line_mirror(argv_summary: &str, emoji: bool) -> String {
+pub fn render_shell_effect_begin_line_mirror(intent: &str, emoji: bool) -> String {
     let _ = SHELL_CENSUS_MARKER;
     let glyph = if emoji { "🔄" } else { "◐" };
-    format!("{glyph} started {argv_summary}")
+    format!("{glyph} started {intent}")
 }
 
 /// Mirror of `gunbc.observation_seed_render.shell_effect_done_line`.
-pub fn render_shell_effect_done_line_mirror(
-    argv_summary: &str,
-    elapsed_ms: u64,
-    emoji: bool,
-) -> String {
+pub fn render_shell_effect_done_line_mirror(intent: &str, elapsed_ms: u64, emoji: bool) -> String {
     let _ = SHELL_CENSUS_MARKER;
     let glyph = if emoji { "✅" } else { "✓" };
     format!(
-        "{glyph} {argv_summary} done in {}",
+        "{glyph} {intent} done in {}",
         shell_obs_human_duration(elapsed_ms)
     )
 }
 
 /// Mirror of `gunbc.observation_seed_render.shell_effect_failed_line`.
-/// `argv_collapsed` is WITHOUT the `$ ` prefix (the seed concatenates it into Failed.error).
+/// Subject is the named intent; `argv_collapsed` (WITHOUT `$ `) feeds Failed.error only.
 pub fn render_shell_effect_failed_line_mirror(
-    argv_summary: &str,
+    intent: &str,
     argv_collapsed: &str,
     exit_code: u64,
     elapsed_ms: u64,
@@ -5868,29 +5855,17 @@ pub fn render_shell_effect_failed_line_mirror(
     let _ = SHELL_CENSUS_MARKER;
     let glyph = if emoji { "❌" } else { "✗" };
     format!(
-        "{glyph} {argv_summary} failed: $ {argv_collapsed} (exit={exit_code}) in {}",
+        "{glyph} {intent} failed: $ {argv_collapsed} (exit={exit_code}) in {}",
         shell_obs_human_duration(elapsed_ms)
     )
 }
 
-// Ambient shell Begin — gated by the installed ShellTrace channel decision
-// (Suppressed / Condensed / Full). Tables stay unread for Anomaly; only Ambient
-// spawn/done still read channel_decision(ShellTrace).
-fn render_shell_trace(argv: &[String]) {
-    let decision = output_decision(OutputChannel::ShellTrace);
-    if decision == OutputDecision::Suppressed {
+// Ambient shell Begin — named intent subject, ShellTrace-gated (Suppressed at Normal).
+fn render_shell_trace(intent: &str) {
+    if output_decision(OutputChannel::ShellTrace) == OutputDecision::Suppressed {
         return;
     }
-    // Fallback column bound (no Viewport at the trace site); the single authority is
-    // `gunbc.output_policy.shell_trace_summary_max_columns`.
-    const MAX: usize = 100;
-    let cap = if decision == OutputDecision::Condensed {
-        Some(MAX)
-    } else {
-        None
-    };
-    let summary = shell_argv_summary(argv, cap);
-    let line = render_shell_effect_begin_line_mirror(&summary, shell_obs_emoji());
+    let line = render_shell_effect_begin_line_mirror(intent, shell_obs_emoji());
     trace_emit(OutputChannel::ShellTrace, &line);
 }
 
@@ -5898,10 +5873,8 @@ fn render_shell_trace(argv: &[String]) {
 /// `effect_stream_disposition` alone (never silenced by ShellTrace Suppressed).
 /// Law 4: `group_end` before an Anomaly so it lands OutsideGroup.
 ///
-/// Carry-forward from 60a4496 as event properties: Failed.error is self-describing
+/// Subject is the typed service.op intent. Failed.error carries self-describing
 /// `$ <argv> (exit=N)`; empty stderr still surfaces via the Failed line alone.
-/// Captured stderr CONTENT (when present) follows as a neutralized, tail-bounded
-/// block — still gated by SurfaceContent, not by ShellTrace.
 fn render_shell_completion_trace(
     expected: ExpectedOutcome,
     exit_code: i32,
@@ -5909,6 +5882,7 @@ fn render_shell_completion_trace(
     stderr: &[u8],
     wall: std::time::Duration,
     argv: &[String],
+    intent: &str,
 ) {
     let disposition = effect_stream_disposition(expected, exit_code);
     let emoji = shell_obs_emoji();
@@ -5916,17 +5890,14 @@ fn render_shell_completion_trace(
     let collapsed = shell_argv_collapsed(argv);
 
     if disposition == StreamDisposition::SurfaceContent {
-        // Anomaly — disposition is the sole gate. Close the host-effects group first
-        // (idempotent) so law 4 places the failure OutsideGroup.
         group_end();
-        let summary = format!("$ {collapsed}");
         let code = if exit_code < 0 {
             exit_code.unsigned_abs() as u64
         } else {
             exit_code as u64
         };
         let line =
-            render_shell_effect_failed_line_mirror(&summary, &collapsed, code, elapsed_ms, emoji);
+            render_shell_effect_failed_line_mirror(intent, &collapsed, code, elapsed_ms, emoji);
         eprintln!("{line}");
         if let Some(block) = shell_completion_stderr_content(stderr) {
             eprintln!("{block}");
@@ -5934,19 +5905,10 @@ fn render_shell_completion_trace(
         return;
     }
 
-    // Ambient Done — ShellTrace-gated (agreement / non-surfacing dispositions).
-    let decision = output_decision(OutputChannel::ShellTrace);
-    if decision == OutputDecision::Suppressed {
+    if output_decision(OutputChannel::ShellTrace) == OutputDecision::Suppressed {
         return;
     }
-    const MAX: usize = 100;
-    let cap = if decision == OutputDecision::Condensed {
-        Some(MAX)
-    } else {
-        None
-    };
-    let summary = shell_argv_summary(argv, cap);
-    let line = render_shell_effect_done_line_mirror(&summary, elapsed_ms, emoji);
+    let line = render_shell_effect_done_line_mirror(intent, elapsed_ms, emoji);
     trace_emit(OutputChannel::ShellTrace, &line);
 }
 
@@ -6029,6 +5991,7 @@ fn dispatch_shell(
     transport: &Rc<Node>,
     param_env: &Rc<Env>,
     ctx: &InterpContext,
+    intent: &str,
 ) -> InterpResult<ShellResult> {
     // Migration default: every effect issues as `ExpectSuccess`, which makes the
     // dispatch below behaviour-identical to the untyped `exit != 0` proxy it
@@ -6053,7 +6016,7 @@ fn dispatch_shell(
         });
     }
 
-    render_shell_trace(&argv);
+    render_shell_trace(intent);
 
     // Arg-size wall: a single argv token over the host MAX_ARG_STRLEN would make
     // the spawn below die with an opaque `os error 7` (E2BIG). Refuse here with a
@@ -6110,6 +6073,7 @@ fn dispatch_shell(
             &output.stderr,
             wall_start.elapsed(),
             &argv,
+            intent,
         );
         output
     } else {
@@ -6127,6 +6091,7 @@ fn dispatch_shell(
             &output.stderr,
             wall_start.elapsed(),
             &argv,
+            intent,
         );
         output
     };
@@ -10247,24 +10212,28 @@ mod shell_completion_trace_tests {
 
     #[test]
     fn shell_effect_begin_mirror_formats_started_subject() {
-        let line = render_shell_effect_begin_line_mirror("$ echo hi", true);
-        assert_eq!(line, "🔄 started $ echo hi");
-        let unicode = render_shell_effect_begin_line_mirror("$ true", false);
-        assert_eq!(unicode, "◐ started $ true");
+        let line = render_shell_effect_begin_line_mirror("shell.Exec.Run", true);
+        assert_eq!(line, "🔄 started shell.Exec.Run");
+        let unicode = render_shell_effect_begin_line_mirror("git.Core.HeadCommit", false);
+        assert_eq!(unicode, "◐ started git.Core.HeadCommit");
     }
 
     #[test]
     fn shell_effect_done_mirror_formats_duration() {
-        let line = render_shell_effect_done_line_mirror("$ true", 5150, true);
-        assert_eq!(line, "✅ $ true done in 5 seconds");
+        let line = render_shell_effect_done_line_mirror("shell.Exec.Run", 5150, true);
+        assert_eq!(line, "✅ shell.Exec.Run done in 5 seconds");
     }
 
     #[test]
     fn shell_effect_failed_mirror_is_self_describing() {
         // Failed.error carries `$ <argv> (exit=N)` so the line stands alone when
         // stderr is empty (the common CI miss).
-        let line = render_shell_effect_failed_line_mirror("$ echo hi", "echo hi", 1, 2000, true);
-        assert_eq!(line, "❌ $ echo hi failed: $ echo hi (exit=1) in 2 seconds");
+        let line =
+            render_shell_effect_failed_line_mirror("shell.Exec.Run", "echo hi", 1, 2000, true);
+        assert_eq!(
+            line,
+            "❌ shell.Exec.Run failed: $ echo hi (exit=1) in 2 seconds"
+        );
     }
 
     #[test]
@@ -10314,14 +10283,10 @@ mod shell_completion_trace_tests {
             1
         )));
         let collapsed = shell_argv_collapsed(&av(&["git", "rev-parse", "--show-toplevel"]));
-        let line = render_shell_effect_failed_line_mirror(
-            &format!("$ {collapsed}"),
-            &collapsed,
-            1,
-            0,
-            false,
-        );
+        let line =
+            render_shell_effect_failed_line_mirror("git.Core.Toplevel", &collapsed, 1, 0, false);
         assert!(line.contains("failed: $ git rev-parse --show-toplevel (exit=1)"));
+        assert!(line.starts_with("✗ git.Core.Toplevel failed:"));
         assert_eq!(shell_completion_stderr_content(b""), None);
     }
 
@@ -10620,7 +10585,7 @@ mod argv_arg_limit_test {
         let ctx = argv_limit_test_context();
         let transport = shell_check_style_transport(&"x".repeat(HOST_ARG_MAX_STRLEN_BYTES + 1));
         let env = Env::empty();
-        match dispatch_shell(&transport, &env, &ctx) {
+        match dispatch_shell(&transport, &env, &ctx, "shell.Exec.Check") {
             Err(InterpError::ArgvExceedsHostArgMax {
                 actual_bytes,
                 limit_bytes,
@@ -10644,7 +10609,7 @@ mod argv_arg_limit_test {
         let ctx = argv_limit_test_context();
         let transport = shell_check_style_transport("true");
         let env = Env::empty();
-        match dispatch_shell(&transport, &env, &ctx) {
+        match dispatch_shell(&transport, &env, &ctx, "shell.Exec.Check") {
             Err(InterpError::ArgvExceedsHostArgMax { .. }) => {
                 panic!("small argv must not trip the arg-size wall")
             }

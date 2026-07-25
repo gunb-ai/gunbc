@@ -53,7 +53,7 @@ fn channel_decision(channel: OutputChannel, verbosity: Verbosity) -> OutputDecis
     }
     ShellTrace => match verbosity {
       Quiet => Suppressed
-      Normal => Condensed
+      Normal => Suppressed
       Verbose => Full
     }
     Instrumentation => match verbosity {
@@ -141,7 +141,7 @@ fn divergence_disposition(diverges: Bool) -> StreamDisposition {
   }
 }
 
-data effect_stream_dispatch_note: String = "Verbosity and divergence compose rather than compete: Quiet suppresses the stream whatever the outcome, Verbose surfaces it whatever the outcome (the operator asked for everything), and the divergence rule decides the Normal middle — which is where CI runs. So the channel's existing authority is consumed, not re-derived, and the new axis only refines the arm that was previously fixed."
+data effect_stream_dispatch_note: String = "Observation dissolve (operator live-log 2026-07-25): Ambient ShellTrace silence at Normal must not force StreamSuppressed — Anomaly Failed still surfaces via divergence alone. Quiet no longer swallows divergence either (DESIGN §5: a failing effect is never silent). Verbose still surfaces every stream (Full). The channel grades Ambient scaffolding; the stream policy grades subject content; they compose rather than conflate."
 
 fn effect_stream_disposition(
   channel: OutputChannel,
@@ -150,7 +150,7 @@ fn effect_stream_disposition(
   observed: ObservedOutcome
 ) -> StreamDisposition {
   match channel_decision(channel: channel, verbosity: verbosity) {
-    Suppressed => StreamSuppressed
+    Suppressed => divergence_disposition(diverges: outcome_diverges(expected: expected, observed: observed))
     Condensed => divergence_disposition(diverges: outcome_diverges(expected: expected, observed: observed))
     Full => SurfaceContent
   }
@@ -202,4 +202,4 @@ fn resolve_shell_trace_stream_policy(verbose: Bool, quiet: Bool) -> EffectStream
   shell_trace_stream_policy(verbosity: resolve_verbosity(env: VerbosityEnv { verbose: verbose, quiet: quiet }))
 }
 
-data shell_trace_observation_convergence_note: String = "CONVERGENCE (operator steer 2026-07-25, post-60a4496 revert): ShellTrace at Normal Condensed and effect_stream_disposition remain the channel-layer split until shell host-effects emit as ObservationEvents with per-event attention (routine Ambient / failure Anomaly). When the event path carries the traffic — Begin/Concluded projections, Anomaly OutsideGroup by law 4, self-describing $ argv and empty-stderr exit on Failed — this channel-level split dissolves: delete this note, retire Condensed-at-Normal as the Ambient gate, and let derived attention plus ci_line_placement supersede the dual-class conflation. Do NOT build an interim disposition↔channel decoupling; the observation wiring is the dissolve."
+data shell_trace_observation_convergence_note: String = "DISSOLVED (operator live-log 2026-07-25, run 30142403230): shell host-effects now emit as ObservationEvents with named-intent subjects (service.op); Ambient Begin/Done are ShellTrace-gated (Suppressed at Normal — silent scaffolding); Anomaly Failed surfaces from divergence disposition alone (channel Suppressed no longer forces StreamSuppressed). Derived attention + ci_line_placement supersede the dual-class conflation. Keep this note as the dissolve receipt; delete when a later census no longer needs the history."

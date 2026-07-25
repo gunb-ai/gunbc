@@ -194,15 +194,15 @@ fn seed_peak_rss_line(label: NonEmptyStr, rss_bytes: Nat, rss_available: Bool, e
   )
 }
 
-data seed_shell_effect_note: String = "Shell host-effect projection (operator steer 2026-07-25): effects become ObservationEvents with per-event attention — routine Begin/Concluded\{Done\} Ambient (collapses inside the host-effects group); failing Concluded\{Failed\} Anomaly (OutsideGroup by law 4). Carry-forward from 60a4496 as event properties: Failed.error is self-describing `$ <argv> (exit=N)` whitespace-collapsed; empty stderr still surfaces via the Failed line alone. ShellTrace channel decision and effect_stream_disposition tables stay unread-from for Anomaly gating differently: Ambient spawn/done still READ channel_decision(ShellTrace); Anomaly surfaces from SurfaceContent disposition alone and is never silenced by ShellTrace Suppressed. Hot-path mirrors in v1_interpreter; oracle RED keeps them honest."
+data seed_shell_effect_note: String = "Shell host-effect projection (operator live-log 2026-07-25 acceptance): subjects are NAMED INTENTS — the typed service.op key (`git.Core.HeadCommit`, `shell.Env.Get`), never raw `$ argv`. Argv is demoted to Failed.error (`$ <argv> (exit=N)`, whitespace-collapsed) and the Verbose/title channel. Routine Begin/Concluded\{Done\} are Ambient (ShellTrace-gated; Suppressed at Normal so scaffolding collapses); failing Concluded\{Failed\} is Anomaly (OutsideGroup by law 4), gated by divergence disposition alone — channel Suppressed must never silence a failure. Hot-path mirrors in v1_interpreter; oracle RED keeps them honest."
 
-fn seed_shell_subject(argv_summary: NonEmptyStr) -> ObservationSubject {
-  ObservationSubject { segments: [ PhaseSegment { name: argv_summary } ] }
+fn seed_shell_subject(intent: NonEmptyStr) -> ObservationSubject {
+  ObservationSubject { segments: [ PhaseSegment { name: intent } ] }
 }
 
-fn shell_effect_begin_line(argv_summary: NonEmptyStr, overhead_ms: Nat, emoji: Bool) -> String {
+fn shell_effect_begin_line(intent: NonEmptyStr, overhead_ms: Nat, emoji: Bool) -> String {
   let event = ObservationEvent {
-    subject: seed_shell_subject(argv_summary: argv_summary),
+    subject: seed_shell_subject(intent: intent),
     transition: Begin,
     wall: MeasuredUnavailable { cause: "begin has no elapsed yet" as NonEmptyStr },
     rss: MeasuredUnavailable { cause: "not sampled at shell spawn" as NonEmptyStr }
@@ -213,9 +213,9 @@ fn shell_effect_begin_line(argv_summary: NonEmptyStr, overhead_ms: Nat, emoji: B
   )
 }
 
-fn shell_effect_done_line(argv_summary: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat, emoji: Bool) -> String {
+fn shell_effect_done_line(intent: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat, emoji: Bool) -> String {
   let event = ObservationEvent {
-    subject: seed_shell_subject(argv_summary: argv_summary),
+    subject: seed_shell_subject(intent: intent),
     transition: Concluded { outcome: Done },
     wall: MeasuredValue { value: millisecond(count: elapsed_ms) },
     rss: MeasuredUnavailable { cause: "not sampled at shell completion" as NonEmptyStr }
@@ -227,7 +227,7 @@ fn shell_effect_done_line(argv_summary: NonEmptyStr, elapsed_ms: Nat, overhead_m
 }
 
 fn shell_effect_failed_line(
-  argv_summary: NonEmptyStr,
+  intent: NonEmptyStr,
   argv_collapsed: NonEmptyStr,
   exit_code: Nat,
   elapsed_ms: Nat,
@@ -239,7 +239,7 @@ fn shell_effect_failed_line(
     concat(argv_collapsed, concat(" (exit=", concat(to_string(exit_code), ")")))
   ) as NonEmptyStr
   let event = ObservationEvent {
-    subject: seed_shell_subject(argv_summary: argv_summary),
+    subject: seed_shell_subject(intent: intent),
     transition: Concluded {
       outcome: Failed { error: error, output: "" }
     },

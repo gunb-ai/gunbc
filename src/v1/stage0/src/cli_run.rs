@@ -9967,8 +9967,11 @@ fn failure_receipt_companion(function: &str) -> Option<String> {
 }
 
 /// Run a witness companion that returns `String` divergence detail (Lane B agreement loudness).
-/// Empty string = no divergence detail (clean companion). Non-empty refusal sentinel on
-/// interpreter error or wrong type — never silent None (review 41847, §5).
+/// Empty string = no divergence detail. An undeclared companion (`NoMainFunction` — the
+/// lookup miss misnamed for historical reasons) is treated as absent, not a refusal:
+/// almost no `*_holds` declares a companion, and stuffing `failure_receipt_refused: no main
+/// function found` onto every ordinary Bool(false) red defeats the point of the receipt.
+/// Wrong-type / real interp errors still refuse loudly (§5 / #7199 Finding 3).
 pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: &str) -> String {
     match v1_interpreter::run_in_context(ctx, function, false) {
         Ok(v1_interpreter::Value::Str(s)) => s,
@@ -9976,6 +9979,7 @@ pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: 
             "failure_receipt_refused: {function} returned {}, expected String",
             ctx.format_value(&other)
         ),
+        Err(v1_interpreter::InterpError::NoMainFunction) => String::new(),
         Err(e) => format!("failure_receipt_refused: {function}: {e}"),
     }
 }
