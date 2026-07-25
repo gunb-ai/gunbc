@@ -1,5 +1,7 @@
 module extdeps.currency.currency
 
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -10,4 +12,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data iso_4217_version_note: String = "ISO 4217:2015 authority for std.currency.CurrencyCode and currency_minor_unit_exponent. Cited minor-unit rows land here once std-over-extdeps layering allows std to consume extdeps without a parallel table in dag/std."
+data iso_4217_version_note: String = "ISO 4217:2015 authority for std.currency.CurrencyCode and currency_minor_unit_exponent."
+
+data iso_4217_cited_rows_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.currency",
+    decl_name: "currency_minor_unit_exponent",
+    field: WholeDeclaration
+  }
+}
