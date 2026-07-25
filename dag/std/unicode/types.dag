@@ -1,0 +1,22 @@
+module std.unicode.types
+
+import std.types { Int }
+
+type CharClass = Whitespace | Digit | IdentStart | IdentContinue
+
+type DisplayWidth = ZeroWidth | Narrow | Wide
+
+fn display_width_columns(w: DisplayWidth) -> Int {
+  match w {
+    ZeroWidth => 0
+    Narrow    => 1
+    Wide      => 2
+  }
+}
+
+type UnicodeBlock {
+  name: String
+  start: Int
+  end_inclusive: Int
+  default_width: DisplayWidth
+}

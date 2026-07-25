@@ -1,7 +1,15 @@
 module std.unicode
 
-
-type CharClass = Whitespace | Digit | IdentStart | IdentContinue
+import extdeps.unicode.blocks { zero_width_blocks, zero_width_codepoints, wide_blocks }
+import std.unicode.types {
+  CharClass,
+  DisplayWidth,
+  UnicodeBlock,
+  display_width_columns,
+  ZeroWidth,
+  Narrow,
+  Wide,
+}
 
 fn char_in_class(c: Char, class: CharClass) -> Bool =
   match class {
@@ -21,58 +29,6 @@ fn char_in_class(c: Char, class: CharClass) -> Bool =
       || code_point(c) >= 97 && code_point(c) <= 122
       || code_point(c) == 95
   }
-
-type DisplayWidth = ZeroWidth | Narrow | Wide
-
-fn display_width_columns(w: DisplayWidth) -> Int {
-  match w {
-    ZeroWidth => 0
-    Narrow    => 1
-    Wide      => 2
-  }
-}
-
-type UnicodeBlock {
-  name: String
-  start: Int
-  end_inclusive: Int
-  default_width: DisplayWidth
-}
-
-data zero_width_blocks: List<UnicodeBlock> = [
-  { name: "Combining Diacritical Marks",             start: 768,   end_inclusive: 879,   default_width: ZeroWidth },
-  { name: "Combining Diacritical Marks Extended",    start: 6832,  end_inclusive: 6911,  default_width: ZeroWidth },
-  { name: "Combining Diacritical Marks Supplement",  start: 7616,  end_inclusive: 7679,  default_width: ZeroWidth },
-  { name: "Combining Marks for Symbols",             start: 8400,  end_inclusive: 8447,  default_width: ZeroWidth },
-  { name: "Variation Selectors",                     start: 65024, end_inclusive: 65039, default_width: ZeroWidth },
-  { name: "Combining Half Marks",                    start: 65056, end_inclusive: 65071, default_width: ZeroWidth }
-]
-
-data zero_width_codepoints: List<Int> = [
-  8203,
-  8204,
-  8205,
-  65279
-]
-
-data wide_blocks: List<UnicodeBlock> = [
-  { name: "Hangul Jamo",                        start: 4352,   end_inclusive: 4447,   default_width: Wide },
-  { name: "CJK Radicals and Symbols",           start: 11904,  end_inclusive: 12350,  default_width: Wide },
-  { name: "Hiragana / Katakana / CJK Compat",   start: 12353,  end_inclusive: 13247,  default_width: Wide },
-  { name: "CJK Extension A",                    start: 13312,  end_inclusive: 19903,  default_width: Wide },
-  { name: "CJK Unified Ideographs",             start: 19968,  end_inclusive: 40959,  default_width: Wide },
-  { name: "Yi Syllables and Radicals",           start: 40960,  end_inclusive: 42191,  default_width: Wide },
-  { name: "Hangul Syllables",                    start: 44032,  end_inclusive: 55215,  default_width: Wide },
-  { name: "CJK Compatibility Ideographs",       start: 63744,  end_inclusive: 64255,  default_width: Wide },
-  { name: "CJK Compatibility Forms",            start: 65072,  end_inclusive: 65135,  default_width: Wide },
-  { name: "Fullwidth ASCII",                    start: 65281,  end_inclusive: 65376,  default_width: Wide },
-  { name: "Fullwidth Signs",                    start: 65504,  end_inclusive: 65510,  default_width: Wide },
-  { name: "CJK Extension B+",                   start: 131072, end_inclusive: 196607, default_width: Wide },
-  { name: "CJK Extension G+",                   start: 196608, end_inclusive: 262143, default_width: Wide },
-  { name: "Misc Symbols and Dingbats",           start: 9728,   end_inclusive: 10175,  default_width: Wide },
-  { name: "Symbols / Pictographs / Emoticons",   start: 127744, end_inclusive: 129535, default_width: Wide },
-  { name: "Symbols Extended",                   start: 129536, end_inclusive: 131071, default_width: Wide }
-]
 
 fn code_point(c: Char) -> Int = c + 0
 

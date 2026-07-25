@@ -1,0 +1,26 @@
+module extdeps.currency.currency
+
+import std.types { Int }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iso.org/iso-4217-currency-codes.html"
+  }
+}
+
+data iso_4217_version_note: String = "ISO 4217:2015 alphabetic codes and minor-unit exponents for the modeled currency rows (Eur, Usd)."
+
+type CurrencyCode =
+    Eur
+  | Usd
+
+fn currency_minor_unit_exponent(c: CurrencyCode) -> Int {
+  match c {
+    Eur => 2
+    Usd => 2
+  }
+}

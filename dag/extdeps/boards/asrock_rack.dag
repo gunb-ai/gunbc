@@ -1,5 +1,23 @@
 module extdeps.boards.asrock_rack
 
+import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
+import std.baseboard { BaseboardCatalogRow }
+import std.bmc {
+  BmcCapability,
+  BmcFirmwareCapabilityRow,
+  BmcFirmwareVersion,
+  CapabilityAccountManagement,
+  CapabilityBootSourceOverride,
+  CapabilityFirmwareUpdate,
+  CapabilityNbdProxyVirtualMedia,
+  CapabilityPowerControl,
+  CapabilitySerialConsole,
+  OpenBmc,
+}
+import std.types { List, NonEmptyStr, Bool }
+import extdeps.bmc.types { BmcwebNbdProxyEndpointVariant, NbdSlotEndpoint, VmSlotIndexEndpoint }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
