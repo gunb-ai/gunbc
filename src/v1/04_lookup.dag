@@ -417,7 +417,7 @@ fn map_lookup_result_type(product: Node, field: Node, source_indices: Map<String
   if authored_name_at(source_indices: source_indices, node: product) == "Map" {
     match product_field_result_type(field: field) {
       Present { value: raw } =>
-        if raw.return_cardinality == CardOptional {
+        if (raw.return_cardinality == CardOptional) {
           Present { value: raw }
         } else {
           Present { value: with_optional_cardinality(n: raw) }
