@@ -1,13 +1,5 @@
 module v2.test.emit.target_text_carrier
 
-import v2.std.compilers.target_model {
-  TargetText,
-  text_atom,
-  target_text_seq,
-  target_text_empty,
-  target_text_is_empty,
-  render_target_text
-}
 
 data target_text_carrier_control_note: String = "TargetText carrier discriminating control (DESIGN.md §5: a wall must be green-by-execution with a control that reds when the behavior is wrong). TargetText is the typed emit-seam carrier; text_atom is the single String->carrier introduction (one grammar-classified token), target_text_seq is the grammar-owned token-sequence join, render_target_text is the whole-value exit. These witnesses red if the join loses ORDER (a symmetrized/swapped seq), drops the empty identity, or the atom/render round-trip breaks -- the faithfulness the 06_translate serialize-family migration relies on. The larger byte-identity proof is the test/claim/emit/rust_*_emit goldens (which carry their own operand-swap discriminating controls); this file guards the carrier primitive those goldens are built on."
 

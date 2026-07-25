@@ -1,6 +1,5 @@
 module extdeps.sec.mock_corpus
 
-import std.hermetic_replay { PublishedMockCase }
 
 data sec_edgar_mock_case_get_company_facts: PublishedMockCase = PublishedMockCase {
   operation_key: "sec.Edgar.GetCompanyFacts",

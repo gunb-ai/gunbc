@@ -1,30 +1,5 @@
 module v2.test.self_host.compiler_closure_emit_from_ingest
 
-import gunbc.ci_layer_roots { witness_layer_roots }
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
-import v2.compiler.self_host.closure_witness_layer_roots {
-  self_host_closure_witness_layer_roots
-}
-import v2.compiler.source_authority { DagSourceReadWitness, source_root_coverage_is_complete }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { fold_list, length }
-import v2.std.collection { Absent, Optional }
-import v2.std.diagnostic {
-  Accepted,
-  Locus,
-  Rejected,
-}
-import v2.std.language_model { LanguageModel }
-import v2.std.node { Symbol }
-import v2.std.logic { Bool }
-import v2.test.workflow.host_source_root_ingest_manifest {
-  host_source_root_ingest,
-  host_source_root_ingest_coverage_receipt
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

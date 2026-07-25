@@ -1,57 +1,5 @@
 module gunbc.host_identity_converge
 
-import std.types { String, NonEmptyStr, Bool }
-import std.access { AccessDecision, Deny }
-import extdeps.dns.domain_name { DnsLabel }
-import std.effects {
-  EffectShape,
-  UpsertEffect,
-  KeySource,
-  CompositeKey,
-  IdempotencyEvidence,
-  LatticeEffect,
-}
-import gunbc.host_effect {
-  HostEffect,
-  SetHostnameCas,
-  NodeControlPlane,
-  HostEffectTransport,
-  HostEffectIntent,
-  HostEffectEvidence,
-}
-import gunbc.host_effect_realize { host_effect_apply_gated }
-import gunbc.host_identity_observation {
-  HostIdentityObservation,
-  host_identity_observation_apply,
-  host_identity_observation_from_apply,
-}
-import gunbc.host_identity_knob {
-  HostIdentityLeafVerdict,
-  host_identity_patch_from_intents,
-}
-import std.change {
-  KeyedApplyHunk,
-  KeyedUnchanged,
-  KeyedConflict,
-  KeyedVerdictAdded,
-  KeyedVerdictRemoved,
-  KeyedLeafVerdictFold,
-  keyed_leaf_verdict_fold,
-}
-import gunbc.deployed_intent_v0 { DeployedIntentV0, deployed_intent_observed_short_hostname }
-import gunbc.deployed_intent_v1 { DeployedIntentV1 }
-import gunbc.host_identity_access { host_identity_srv1_access, host_identity_hostnamectl_path }
-import gunbc.ci_deploy_access {
-  DeployAccess,
-  DeployAccessActor,
-  deploy_access_decision_reason,
-}
-import std.realization_reconcile {
-  Reconciliation,
-  Converged,
-  NotConverged,
-  reconciliation_converged,
-}
 
 fn host_identity_precondition_verdict(
   base: DeployedIntentV0,

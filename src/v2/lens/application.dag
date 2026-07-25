@@ -1,46 +1,5 @@
 module v2.lens.application
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { RealizationDispatch }
 
-import std.algebra { Cons, Empty }
-import v2.std.algebra { is_empty, fold_list, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  NonEmptyDiagnostics,
-  Outcome,
-  Rejected,
-  Unavailable,
-  bind_outcome,
-  diagnostics_singleton,
-  node_locus,
-  non_empty_diagnostics_append,
-  outcome_accepted,
-  outcome_rejected
-}
-import v2.std.node {
-  Conj,
-  Diff,
-  Edge,
-  Edit,
-  Named,
-  Node,
-  NodeKind,
-  Path,
-  Positional,
-  Symbol,
-  TypeNode,
-  name_occurrences,
-  node_rebuild,
-  SyntheticOccurrence
-}
-import v2.std.node_query {
-  find_named_child
-}
-import v2.std.report { Report, report_reason_to_diagnostic_reason }
 
 type DeclarationId {
   path: Path

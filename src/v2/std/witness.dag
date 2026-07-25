@@ -1,7 +1,5 @@
 module v2.std.witness
 
-import v2.std.diagnostic { Diagnostic }
-import v2.std.node { Node, Symbol }
 
 type Witness<C>
   = Holds { value: C }

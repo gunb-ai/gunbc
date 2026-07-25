@@ -1,14 +1,5 @@
 module gunbc.stage0_crate_layout_emit
 
-import v2.compiler.self_host.frontier {
-  emit_hand_maintained_pub_mod_block,
-  hand_maintained_pub_mod_basenames,
-  hand_maintained_stage0_dirs,
-  hand_maintained_stage0_filenames
-}
-import v2.std.algebra { fold_list }
-import v2.std.collection { List }
-import v2.std.text { String }
 
 fn escape_dag_string_body(s: String) -> String {
   replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")

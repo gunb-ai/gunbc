@@ -1,29 +1,5 @@
 module v2.test.manual.refinement_authoritative_constants
 
-import v2.std.refinement {
-  make_at_least_minus_one_int_at_authoritative,
-  make_at_least_minus_two_int_at_authoritative,
-  make_exact_one_int_at_authoritative,
-  make_non_negative_int_at_authoritative,
-  make_positive_int_at_authoritative,
-  positive_int_authoritative_literal,
-  positive_int_value
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Node }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.test.manual.connective_anchors {
-  stub_empty_conj,
-  stub_empty_disj
-}
 
 fn witness_positive_int_authoritative_literal_two_accepts() -> Bool {
   match make_positive_int_at_authoritative(value: 2) {

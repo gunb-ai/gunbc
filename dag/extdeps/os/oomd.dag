@@ -1,11 +1,6 @@
 module extdeps.os.oomd
 
-import std.types { NonEmptyStr, String, FilePath, Bool }
-import std.measure { Second, second, Percent, percent, percent_count }
-import std.types { Int }
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,32 +1,5 @@
 module gunbc.host_runner_memory_provision
 
-import std.types { String, List, Bool, NonEmptyStr }
-import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
-import product.placement_supply { HostIdentity }
-import gunbc.host_converge {
-  fleet_converge_policy,
-  HostConverge,
-  ConvergeKnob,
-  ConvergeVerdict,
-  NoMembershipProbe,
-}
-import gunbc.host_converge_slice1 { host_converge_from_policy }
-import gunbc.host_toolchain_ensure { host_toolchain_ensure_access }
-import gunbc.fleet_converge_apply { fleet_compute_host_for_identity }
-import gunbc.host_effect {
-  HostEffect,
-  ConvergePlan,
-  HostOs,
-  host_effect_converge_loop_evidence,
-}
-import gunbc.host_effect_realize { host_effect_apply_gated }
-import gunbc.host_converge_realize { interpret_converge_knob, KnobUnimplemented, KnobEffect }
-import gunbc.fleet_show_effective_read { per_slot_memory_cap_verdict_from_unit_read }
-import gunbc.runner_unit_live_read { RunnerUnitMemoryLiveRead }
-import std.realization_reconcile { Converged, NotConverged }
 
 data host_runner_memory_provision_scope_disposition: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,

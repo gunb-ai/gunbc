@@ -1,6 +1,5 @@
 module gunbc.design.interaction
 
-import gunbc.design.material { TimingToken, respond_fast, reveal_deliberate }
 
 data interaction_note: String = "Layer 2 interaction machinery (lifted from gunbc.site.interaction). Verbs x Responses x TimingToken, held as rows. ElementId is a closed enum — coverage_gaps is total by construction (design-register-library.md sect 10 Class 3, A.0)."
 

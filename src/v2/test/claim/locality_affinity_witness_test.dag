@@ -1,38 +1,5 @@
 module v2.test.claim.locality_affinity_witness
 
-import std.machine_shape {
-  DomainId,
-  ExecutionDomain,
-  LevelId,
-  MemoryLevel,
-  execution_shape_independent_lanes,
-}
-import std.measure { ByteSize, byte_size, byte_size_count, hardware_thread_count }
-import std.types { ContentHash }
-import v2.std.algebra { length }
-import v2.std.collection { List }
-import v2.std.dependency { BarrierBefore, DataDependsOn, DependencyView }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode, content_hash }
-import v2.workflow.locality_affinity {
-  AffinityClaim,
-  AffinityFlowRefused,
-  AffinityFootprintMismatch,
-  AffinityInsufficientConsumers,
-  AffinityNoFittingLevel,
-  AffinityOperandMismatch,
-  AffinityRefused,
-  ConsumerBatch,
-  TrafficAffinityRefused,
-  TrafficBatchAssignmentConflict,
-  TrafficBatchAssignmentMissing,
-  TrafficPriced,
-  TrafficPricingRefused,
-  derive_affinity,
-  price_operand_traffic,
-}
-import v2.workflow.operand_flow { OperandFlow, OperandFlowNoOperand, OperandFlowRefused, OperandFlowRow }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

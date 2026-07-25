@@ -1,19 +1,5 @@
 module v2.test.claim.self_host.wave1_gate1_a1_symbol_index_body_producer_witness
 
-import v2.compiler.body_lowering_fold {
-  body_lower_fn_decl_to_arrow,
-  body_lower_outcome_frontier_disposition,
-  body_lowering_forward_fold_surface_identities_agree,
-  body_lowering_interim_scaffold_seed_retained_count,
-  body_lowering_forward_behavior_row_count,
-  body_lowering_match_spine_identity_absent_dispatch_holds,
-  body_lowering_match_spine_identity_absent_sniff_holds,
-  BodyLoweringLowered,
-  BodyLoweringWrapperRetained
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, TypeNode, node_synthetic }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

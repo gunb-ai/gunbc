@@ -1,50 +1,5 @@
 module gunbc.roadmap_serve
 
-import std.types { String, Int, Bool, List, HttpMethod, GET, POST, HttpStatus }
-import std.http_path { PathParamBinding, path_param_value }
-import std.markup { MarkupNode }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.uri_path {
-  ParsedPathTemplate,
-  MalformedPathTemplate,
-  parse_path_template,
-  uri_query_param,
-}
-import extdeps.http.server {
-  MediaType, text_html_utf8, text_plain_utf8, application_json_utf8, text_javascript_utf8,
-  ServeHttpRequest,
-  ServeHttpResponse,
-  ServeWireResponse, serve_wire_response,
-  ServedRoute, StaticRoute, DynamicRoute,
-  ServedRouteTable,
-  RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
-  serve_select_route,
-  HttpMethodParse, KnownMethod, UnknownMethod,
-  parse_http_method_label,
-}
-import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
-import extdeps.languages.json.emit { serialize_json }
-import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority }
-import gunbc.roadmap_component {
-  dispatch_client_js_source, roadmap_dispatch_asset_path,
-  sandbox_client_js_source, sandbox_asset_path,
-}
-import gunbc.roadmap_sandbox { sandbox_page }
-import gunbc.roadmap_static_site {
-  roadmap_site_roadmap_md_body,
-  roadmap_site_dispatch_json_body,
-  roadmap_site_healthz_body,
-}
-import gunbc.roadmap_belt_actuate {
-  BeltDispatchResult,
-  DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
-  DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchSpawnFailed,
-  belt_dispatch_node,
-  belt_dispatch_result_json_value,
-  belt_dispatch_result_for_label,
-  belt_dispatch_all_status_labels,
-}
 
 data roadmap_serve_note: String = "The gunbc-served dashboard instantiation (docs/plans/gunbc-served-dashboard-design.md; belt B, parent-approved 2026-07-20). H = RoadmapServeHandler: every row is a DynamicRoute whose handler calls the SAME authority the static-site artifacts call (roadmap_page, roadmap_static_site) — the artifact table and this serve table are two projections of one authority set, never two copies of content, and every body is computed at request time so the served page is the LIVE roadmap, not a deploy-frozen snapshot (the section-3 dual-representation cost this module exists to remove). Dispatch: POST /dispatch/NODE_ID invokes gunbc.roadmap_belt_actuate.belt_dispatch_node IN-PROCESS — the single dispatch authority (#6914), no emitted JS, no subprocess exec, no env-var channel. The launch button that POSTs here is transport-agnostic and lands with belt A in roadmap_page (lane agreement 2026-07-20): the page never knows which backend answers."
 

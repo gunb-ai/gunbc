@@ -1,19 +1,5 @@
 module extdeps.realization.artifact_store_fs
 
-import extdeps.filesystem.filesystem_io
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import std.types { ContentHash, String, Bool, List }
-import std.effect_grant {
-  Verb, Write, Read,
-  NamespacePosition,
-  Admitted, EffectOutsideGrant,
-}
-import std.materialization_ladder { Frame }
-import std.artifact_store_scratch_grant {
-  artifact_store_scratch_read_admissible,
-  artifact_store_scratch_write_admissible,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

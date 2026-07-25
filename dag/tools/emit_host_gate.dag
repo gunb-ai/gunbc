@@ -1,18 +1,5 @@
 module tools.emit_host_gate
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.retained_shell_script { retained_foreign }
-import gunbc.shell_bash_runner { shell_printf_line }
-import tools.emit_host_transport {
-  run_rust_smoke,
-  run_python_smoke,
-  run_go_smoke,
-  run_ts_smoke,
-  run_node_http_serve_smoke,
-  run_c_smoke
-}
 
 data per_smoke_verdict_note: String = "The gate previously folded five smoke Bools into one refusal whose reason named no smoke — and the claim wrapper (emit_host_gate_passes = exit_ok(run_spec_gate)) discards the reason entirely, so a floor failure surfaced as bare Bool(false) and locating the failing language took log archaeology (receipt: the 2026-07-13 srv3 reprovisioning reds — five runs of forensics to name the ts/go/node toolchain gap, operator-signed fix same day). The failure arm now narrates the per-smoke verdict line through shell_printf_line (the sanctioned printf-with-escaping builder in gunbc.shell_bash_runner — never naive echo concat), visible in the claim executor's shell narration adjacent to the FAIL row, AND carries it as the refusal reason for the ProcessExit path. Narration is failure-arm-only (the floor log stays quiet on green, matching the typecheck-attribution threshold precedent); a refused narration is disclosed inside the reason, never silently dropped. The narration op itself is a marked scaffold — see emit_host_verdict_narration_dissolution_trigger."
 

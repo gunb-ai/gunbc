@@ -1,5 +1,6 @@
 module gunbc.live_deploy.intent
 
+<<<<<<< HEAD
 import std.types { String, NonEmptyStr, Int }
 import std.measure { Second }
 import gunbc.live_deploy.service_ready {
@@ -11,6 +12,8 @@ import gunbc.live_deploy.service_ready {
 }
 import gunbc.roadmap_static_site { roadmap_site_health_path }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_plan_listen_port }
+=======
+>>>>>>> c0eca1c67c (WIP: Namespace flip Dispatch 1 — turn on namespace-only resolution (global fl)
 
 type TransportCurlHealthzProbe {
   health_url: NonEmptyStr

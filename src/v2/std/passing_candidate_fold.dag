@@ -1,6 +1,5 @@
 module v2.std.passing_candidate_fold
 
-import v2.std.node { Node }
 
 type PassingCandidateFold
   = NoPassingCandidate

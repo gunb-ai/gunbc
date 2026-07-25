@@ -1,55 +1,5 @@
 module v2.test.manual.fold_call_closure_emit
 
-import v2.compiler.translate { translate_project_transform_in_arrow_scope }
-import v2.extdeps.languages.dag { dag_value_expression_projection }
-import v2.extdeps.languages.typescript {
-  ts_binding_spellings,
-  ts_source_text_authority,
-  ts_fn_add_lex_rules
-}
-import v2.std.collection { List }
-import v2.std.diagnostic {
-  Accepted,
-  None,
-  Outcome,
-  Rejected,
-  bind_outcome
-}
-import v2.std.logic { Bool }
-import v2.std.node {
-  Arrow,
-  Atom,
-  ComputationNode,
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  Transform,
-  TypeNode,
-  content_hash,
-  node_synthetic,
-  well_formed
-}
-import v2.std.compilers.target_model {
-  BoundToken,
-  ConcreteSyntaxToken,
-  FixedToken,
-  InfixToken,
-  TargetModel,
-  target_model_emit_transforms_empty,
-  canonical_operation_op_add,
-  concrete_syntax_token_list_to_node,
-  target_operator_realization_node,
-  target_operator_realizations_catalog_node,
-  target_project_arrow_body_to_value_expression,
-  target_value_expression_projection_from_target,
-  target_value_expression_tokens_from_target,
-  value_expr_projection_bundle_node
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

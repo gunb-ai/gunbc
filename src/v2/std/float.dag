@@ -1,11 +1,5 @@
 module v2.std.float
 
-import v2.std.algebra { Ordering, Less, Equal, Greater }
-import v2.std.diagnostic { Diagnostic, Outcome, port_locus, Unavailable, UserInputBoundary, Accepted, None, diagnostics_singleton }
-import v2.std.logic { Bool }
-import v2.std.machine { Bit, Word32, Word64 }
-import v2.std.nat { Nat, nat_compare, is_zero }
-import v2.std.node { Symbol }
 type Float32Interchange = Word32
 type Float64Interchange = Word64
 

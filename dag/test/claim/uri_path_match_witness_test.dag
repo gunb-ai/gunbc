@@ -1,14 +1,5 @@
 module test.claim.uri_path_match_witness
 
-import extdeps.uri_path {
-  ParsedPathTemplate,
-  MalformedPathTemplate,
-  parse_path_template,
-  PathTemplateMatch, PathMatched, PathNotMatched,
-  match_path_template,
-}
-import std.http_path { PathTemplate, PathParamBinding }
-import std.types { String, Bool, List }
 
 fn tpl(raw: String) -> PathTemplate {
   match parse_path_template(raw: raw) {

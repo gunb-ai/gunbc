@@ -1,16 +1,5 @@
 module test.claim.cli_run_repo_grant_witness
 
-import std.types { Bool, String }
-import std.effect_grant {
-  Read, Write, verb_eq,
-  EffectAdmission, Admitted, EffectOutsideGrant,
-}
-import gunbc.cli_run_repo_grant {
-  cli_run_repo_read_admissible,
-  cli_run_repo_write_admissible,
-  cli_run_repo_frame,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

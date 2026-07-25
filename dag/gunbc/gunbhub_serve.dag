@@ -1,36 +1,5 @@
 module gunbc.gunbhub_serve
 
-import std.types { HttpMethod, HttpStatus, GET }
-import std.http_path { PathTemplate, UrlPathToken }
-import extdeps.uri_path {
-  PathTemplateParseResult,
-  ParsedPathTemplate,
-  MalformedPathTemplate,
-  parse_path_template,
-}
-import std.markup {
-  ElementNode,
-  TextNode,
-  MarkupAttr,
-  MarkupNode,
-}
-import extdeps.languages.html {
-  EmitOk,
-  EmitRejected,
-  try_serialize_html_source,
-}
-import extdeps.http.server {
-  HttpServerRoute,
-  HttpStatusResponse,
-  MediaType,
-  text_html_utf8,
-  NoRequestBody,
-  TextRequestBody,
-  NodeHttpServerRouteBinding,
-  NodeHttpRequestListener,
-  ServedStaticRoute,
-  ServedStaticRouteTable,
-}
 
 type GunbhubServeRequest {
   method: HttpMethod

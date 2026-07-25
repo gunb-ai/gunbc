@@ -1,6 +1,5 @@
 module v2.std.program_segment
 
-import v2.std.node { Node, Path, Symbol }
 
 type ProgramSegment
   = WholeProgram

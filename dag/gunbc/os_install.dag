@@ -1,47 +1,5 @@
 module gunbc.os_install
 
-import std.logic { Bool }
-import std.types { NonEmptyStr, List }
-import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
-import extdeps.toolchain.types { Architecture, Aarch64 }
-import extdeps.uri { Uri, Https }
-import extdeps.provisioning.network_boot {
-  NetworkBootChain,
-  UefiHttpBoot,
-  DhcpBootDirection,
-  NativeDhcpBootOptions,
-  ProxyDhcp,
-}
-import extdeps.os.ubuntu_autoinstall {
-  UbuntuAutoinstallPayload,
-  AutoinstallIdentity,
-  NoCloudNet,
-  NoCloudLocal,
-  AutoinstallStoragePolicy,
-  StoragePolicyAbsent,
-  StoragePolicyDirectLayout,
-}
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4, operator_lan_segment }
-import gunbc.fleet_ssh_access { fleet_authorized_keys }
-import product.placement_supply { HostIdentity }
-import product.network_topology { NetworkSegment }
-import extdeps.bmc.types {
-  RedfishBootSourceOverrideTarget,
-  RedfishBootSourceOverrideEnabled,
-  BootOverrideOnce,
-  RedfishResetType,
-  ResetForceRestart,
-}
-import gunbc.os_install_mechanism {
-  srv3_install_boot_target,
-  srv3_install_mechanism,
-  install_boot_target_for,
-  OsInstallMechanism,
-  NbdProxyVirtualMediaInstall,
-  PxeHttpInstall,
-  VirtualMediaInstall,
-  FirmwareUpdateThenVirtualMedia,
-}
 
 type NetworkBootDelivery {
   chain: NetworkBootChain

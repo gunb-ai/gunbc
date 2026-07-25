@@ -1,37 +1,5 @@
 module v2.compiler.ingested_fixture_arrows
 
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.resolve { resolve }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.collection { Absent, Optional, Present }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  Unavailable,
-  bind_outcome,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected
-}
-import v2.std.node {
-  Arrow,
-  ComputationNode,
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode,
-  node_synthetic,
-  well_formed
-}
-import v2.std.node_query { find_arrow_body_child }
 
 data ingested_fixture_arrows_note: String = "Wave 1 Gate 1 Stage D: census-ingest Arrow fixtures replacing produce_* flat-token MVP producers. Every arrow is tokenize→parse_module→normalize→resolve→extract. dissolve-on: general body producer fully subsumes produce_* and flat-token StampBinding tables (wave-2). Well-formedness + behavior-kind: long/wave1_gate1_d_mvp_subsumption_witness_test.dag; ingested bind/loop execution+RED: long/wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag; add/pick/match execution: long/wave1_gate1_general_body_producer_witness_test.dag and execution/pick_ingested_*."
 

@@ -1,17 +1,5 @@
 module gunbc.srv3_os_install_reconcile_types
 
-import std.types { NonEmptyStr, Timestamp, String, ContentHash }
-import std.temporal_effect { EffectAttemptIntent, NextStepPlan }
-import std.measure { Second, second }
-import gunbc.os_install_deduction {
-  TargetDiskState,
-  ForeignOsPresent,
-  OsInstallPreflightVerdict,
-  OsInstallPreflightPlan,
-  OsInstallRuntimeDiagnosticVerdict,
-}
-import gunbc.srv3_os_install_diagnostic { Srv3InstallDiagnostic }
-import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_content_hash }
 
 type DeductionRuntimeHint
   = DeductionRuntimeAbsent

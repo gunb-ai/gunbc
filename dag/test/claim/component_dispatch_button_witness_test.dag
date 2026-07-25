@@ -1,18 +1,5 @@
 module test.claim.component_dispatch_button_witness
 
-import std.types { Int, String, Bool, List }
-import gunbc.design.scale { scale_well_formed }
-import gunbc.design.component {
-  Component, ComponentState,
-  component_wire_total, labels_missing_state, states_missing_label,
-  component_drop_state, component_terminal_states,
-  state_kind_ok, state_kind_key,
-}
-import gunbc.roadmap_component {
-  dispatch_button_component, dispatch_button_wire_total, dispatch_button_terminal_count,
-}
-import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels, belt_dispatch_ok_status_labels }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

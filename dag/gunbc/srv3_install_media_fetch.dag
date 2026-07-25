@@ -1,34 +1,5 @@
 module gunbc.srv3_install_media_fetch
 
-import extdeps.os.ubuntu_install_media {
-  UbuntuInstallMediaArtifactRow,
-  UbuntuInstallMediaMirrorHost,
-  UbuntuInstallMediaMirrorRow,
-  ubuntu_install_media_install_path,
-  ubuntu_install_media_mirror_rows,
-  ubuntu_install_media_mirror_url,
-}
-import extdeps.os.ubuntu_install_media_fetch {
-  install_media_fetch_bash_emit_dissolution_trigger,
-}
-import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
-import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
-import gunbc.fleet_intent { srv1_host, ComputeHost }
-import gunbc.srv3_host_effect_apply {
-  srv3_install_media_fetch_apply,
-  srv3_reconciliation_to_process_exit,
-}
-import std.effects {
-  EffectShape,
-  CreateEffect,
-  CreateIfAbsent,
-  InputField,
-}
-import std.measure { ByteSize }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { String, NonEmptyStr, Sha256, Milliseconds, List }
-import std.disposition { Disposition, Terminal }
-import std.resources { Network }
 
 data gunbc_srv3_install_media_fetch_scope_disposition: Disposition = Terminal {
   reason: "srv3 Ubuntu 24.04.3 live-server arm64 ISO acquisition — CreateIfAbsent keyed on content_sha256; N mirror transport handlers on one cited artifact row; runnable on srv1 actuator host before nbd-proxy serve."

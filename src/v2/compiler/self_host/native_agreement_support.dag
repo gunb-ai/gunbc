@@ -1,14 +1,5 @@
 module v2.compiler.self_host.native_agreement_support
 
-import v2.compiler.eval { TestClaimRun }
-import v2.std.collection { Optional, Present, Absent }
-import v2.std.diagnostic { Accepted }
-import v2.std.native_agreement {
-  NativeAgreementDivergence,
-  runtime_value_octet_label
-}
-import v2.std.runtime { RuntimeValue }
-import v2.std.verdict { Pass, SemanticMismatch, BuildFailed, RunFailed, Deferred }
 
 fn native_agreement_divergence_from_run<Subj>(
   member_id: String,

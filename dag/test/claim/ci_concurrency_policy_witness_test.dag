@@ -1,16 +1,5 @@
 module test.claim.ci_concurrency_policy_witness_test
 
-import gunbc.ci_workflow { ci_workflow }
-import gunbc.ci_workflow_expressions {
-  ci_concurrency_cancel_in_progress_if,
-  ci_concurrency_cancel_in_progress_expression,
-}
-import extdeps.github.actions {
-  ConcurrencyMappingQueueNotMax,
-  CancelInProgressExpression,
-}
-import v2.std.collection { Present }
-import v2.std.text { String }
 
 fn ci_concurrency_cancel_expression_holds() -> Bool {
   ci_concurrency_cancel_in_progress_expression() == ci_concurrency_cancel_in_progress_if

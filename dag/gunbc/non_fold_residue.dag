@@ -1,6 +1,5 @@
 module gunbc.non_fold_residue
 
-import std.roster_frontier { FrontierRow, frontier_units, frontier_rows_well_formed }
 
 data non_fold_residue_authority_note: String = "Single authority for the non-fold-residue roster (DESIGN §6 census; group-of-units re-home per gunbc.roster_registry, operator ruling 2026-07-22 — formerly the NON_FOLD_RESIDUE_ROSTER const in src/v1/stage0/src/cli_run.rs). Each row asserts a corpus site (a path::fn key) whose match over a closed-coproduct param carries a top-level wildcard arm, with its reason and dissolution trigger as typed fields — shared class strings below, per-row receipts where a dated landing receipt existed in the Rust const's comments. The census SCAN stays host-side (nfr_residue_sites in cli_run.rs) and reads these rows through non_fold_residue_units_from_module_source, so rows must stay DIRECT record literals (a helper-fn call would blind the host reader); the scan and reader fold together into a pure .dag Node-tree lens when compile-graph access lands (gunbc#5364). Detection-only: never auto-delete rows — greening a site deletes its row by hand with the receipt on the PR."
 

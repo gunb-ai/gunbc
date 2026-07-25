@@ -1,16 +1,5 @@
 module v2.compiler.self_host.wet_receipt_enrollment
 
-import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind }
-import v2.compiler.self_host.frontier {
-  CompilerModuleFrontierRow,
-  SelfEmitted,
-  SeedRetained,
-  compiler_frontier_roster
-}
-import v2.std.algebra { length }
-import v2.std.collection { List, Optional, Absent, Present, optional_absent, optional_present }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data falsifier_self_host_wet_enrollment_note: String = "Nightly falsifier Wet batch enrollment authority (Wave 2 CI substrate, 2026-07-15): falsifier_self_host_wet_entries = template rows (always enrolled when green) PLUS frontier-flipped module rows ONLY when compiler_frontier_roster disposition is SelfEmitted AND a declared SelfHostWetReceiptBinding exists for that module_path. SeedRetained modules stay off the nightly roster — a not-yet-migrated module is a declared frontier row, never an enrolled-but-red wet receipt (all-green nightly = healthy; any red = real regression). Each binding row is added at the moment its module self-emits and its wet receipt is green locally; the frontier flip and binding are the enrollment gate."
 

@@ -1,12 +1,5 @@
 module v2.compiler.self_host.emit_coverage_frontier
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.algebra { length, any }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.realization_schedule { ScheduleWitnessEntry }
-import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_template_entries }
 
 data emit_coverage_frontier_note: String = "Kernel-D Stage 3 (session loyal-raven-94, 2026-07-24): a typed, counted roster over the emit_host_*/rust_*_equals_eval witness families tracking NATIVE-EVAL CONSTRUCT COVERAGE — each row is exactly one of SelfEmittedNative (a real ingest to emit to compile to run witness exists and its body is decoded stdout, eval() never called) or InterpreterRetained (the family's coverage witness is an equals_eval AGREEMENT test — it calls v1_interpreter eval() as one of its two legs, so the construct is not yet proven native standalone). This is a DIFFERENT authority from v2.compiler.self_host.native_routing_frontier (that frontier tracks CI EXECUTION ROUTING COST for agreement legs that already run native in the floor — a family can be InterpretedRetained there for cost reasons while its underlying construct is already SelfEmittedNative here, or vice versa) and from v2.compiler.self_host.frontier (that frontier tracks COMPILER MODULE self-emission, a meta-level fact about the host pipeline, not about witness bodies). Reused shape (DESIGN section 2, horizontal): DeclarationRef subject + disposition enum with reason/dissolve_on + count-based census, the same pattern as both siblings."
 

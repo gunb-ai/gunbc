@@ -1,22 +1,5 @@
 module v2.std.host_transport
 
-import v2.std.algebra { length }
-import v2.std.collection { List }
-import v2.std.integer { Int }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  Outcome,
-  Rejected,
-  None,
-  diagnostics_singleton,
-  outcome_rejected,
-  port_locus
-}
-import v2.std.machine { Byte }
-import v2.std.node { Node, Symbol }
-import v2.std.runtime { RuntimePrimitive, RuntimeValue }
-import v2.std.text { String }
 
 type ByteString = List<Byte>
 

@@ -1,20 +1,5 @@
 module v2.std.refinement
 
-import v2.std.logic { Bool }
-import v2.std.diagnostic {
-  Diagnostic,
-  Locus,
-  Outcome,
-  Accepted,
-  Rejected,
-  None,
-  Unavailable,
-  UserInputBoundary,
-  diagnostics_singleton,
-  port_locus
-}
-import v2.std.integer { Int }
-import v2.std.node { Symbol }
 
 fn refinement_authoritative_locus() -> Locus {
   port_locus(port: ^refinement_authoritative_locus)

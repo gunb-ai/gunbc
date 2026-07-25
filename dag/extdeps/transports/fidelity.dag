@@ -1,19 +1,6 @@
 module extdeps.transports.fidelity
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
-import std.types { FermiDepth }
-import std.types { List }
-import std.fidelity {
-  TransportClass,
-  TransportFidelity,
-  DerivedClassification,
-  classify_fidelities,
-}
-import extdeps.transports.shell { shell_transport_fidelity }
-import extdeps.transports.file { file_transport_fidelity }
-import extdeps.transports.rest { rest_transport_fidelity }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

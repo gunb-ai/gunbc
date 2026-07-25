@@ -1,55 +1,5 @@
 module v2.test.execution.emit_ingest_type_decl_round_trip
 
-import v2.compiler.ingest {
-  grammar_relation_row_forward_selection,
-  grammar_relation_row_forward_token_selection
-}
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.translate {
-  grammar_relation_row_for_emitted,
-  grammar_relation_row_tokens_root,
-  serialize_concrete_syntax_tokens_to_source
-}
-import v2.extdeps.languages.dag {
-  dag_inhabitant_atom,
-  dag_type_decl_productions_only_translation_rules,
-  dag_type_decl_structural_formal_productions,
-  dag_type_decl_structural_target_model
-}
-import std.algebra { Empty }
-import v2.std.algebra { fold_list, list_append }
-import v2.std.collection { List }
-import v2.std.compilers.lexing { Token, token_stream_all }
-import v2.std.compilers.target_model {
-  BoundToken,
-  ConcreteSyntaxToken,
-  FixedToken,
-  TargetModel,
-  concrete_syntax_token_class,
-  concrete_syntax_token_list_from_node
-}
-import v2.std.diagnostic {
-  Accepted,
-  None,
-  Outcome,
-  Rejected,
-  bind_outcome,
-  outcome_accepted
-}
-import v2.std.grammar { formal_productions_catalog_to_node }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.node_query { find_named_child }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

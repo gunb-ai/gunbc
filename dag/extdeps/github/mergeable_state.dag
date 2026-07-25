@@ -1,8 +1,5 @@
 module extdeps.github.mergeable_state
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.github.mergeable_state_contracts { mergeable_state_wire_contract }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

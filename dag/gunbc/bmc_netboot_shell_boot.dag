@@ -1,23 +1,5 @@
 module gunbc.bmc_netboot_shell_boot
 
-import std.types { NonEmptyStr, String, List }
-import extdeps.uri { uri_wire, Uri, Https }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.firmware.uefi_shell {
-  UefiShellCommand,
-  Ifconfig,
-  IfconfigSetDhcp,
-  Ping,
-  Tftp,
-  ExecuteEfi,
-}
-import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
-import extdeps.exec.command { ArgvCommand }
-import gunbc.bmc_netboot_serve {
-  BmcNetbootServePlan,
-  srv4_bmc_netboot_serve_plan,
-  bmc_netboot_seed_datasource,
-}
 
 data tftp_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {

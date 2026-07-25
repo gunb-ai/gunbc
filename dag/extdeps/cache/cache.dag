@@ -1,8 +1,7 @@
 module extdeps.cache.cache
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
+<<<<<<< HEAD
 import extdeps.cache.buildbuddy { buildbuddy_cas_facts, buildbuddy_cas_id }
 import extdeps.cache.cargo { cargo_target_dir_facts, cargo_target_dir_id }
 import extdeps.cache.github_actions { gha_actions_cache_facts, gha_actions_cache_id }
@@ -44,6 +43,8 @@ import std.cache_interface {
   NativeInternalEncoding,
 }
 import std.types { ContentHash, List }
+=======
+>>>>>>> c0eca1c67c (WIP: Namespace flip Dispatch 1 — turn on namespace-only resolution (global fl)
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

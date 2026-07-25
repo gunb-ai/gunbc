@@ -1,13 +1,4 @@
 module test.claim.doc_reachability_witness
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import gunbc.doc_graph_roots {
-  doc_graph_roots_all,
-  hand_authored_slugs_all_unregistered,
-  hand_authored_plan_slug_is_unregistered,
-  HandAuthoredDocBind, PlanDoc,
-}
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.plan { HasTrigger }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

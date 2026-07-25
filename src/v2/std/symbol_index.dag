@@ -1,35 +1,6 @@
 module v2.std.symbol_index
 
 
-import std.algebra { Empty, FreeMonoid }
-import v2.std.algebra {
-  HeadAbsent,
-  HeadFound,
-  is_empty,
-  length,
-  list_head,
-  list_snoc_item
-}
-import v2.std.collection {
-  Absent,
-  Map,
-  Optional,
-  Present,
-  empty_map,
-  map_get,
-  map_insert,
-  optional_absent,
-  optional_present
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.qualified_name {
-  QualifiedName,
-  qualified_name_init,
-  qualified_name_last_segment,
-  qualified_name_snoc
-}
 
 type GlobalBareBindingState
   = GlobalBareUnique { node: Node, path: QualifiedName }

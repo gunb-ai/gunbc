@@ -1,6 +1,5 @@
 module gunbc.ownership
 
-import std.types { String }
 
 type Ownership = Owned | Ensured
 

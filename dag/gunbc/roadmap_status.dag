@@ -1,6 +1,5 @@
 module gunbc.roadmap_status
 
-import extdeps.github.pulls { PullRequest }
 
 type RoadmapItem
 

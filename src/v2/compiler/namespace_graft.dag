@@ -1,43 +1,5 @@
 module v2.compiler.namespace_graft
 
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list_right, list_snoc_item }
-import v2.std.collection { Absent, List, Present }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  Unavailable,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected
-}
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode,
-  node_rebuild
-}
-import v2.std.qualified_name { QualifiedName }
-import v2.std.compilers.lexing { symbol_lexeme }
-import v2.extdeps.languages.dag {
-  dag_named_edge,
-  dag_surface_module_header_metadata_edge,
-  namespace_graft_already_grafted,
-  namespace_graft_has_module_header,
-  namespace_graft_unwrap_module_working_root,
-  parse_production_emitted_identity_optional,
-  qualified_name_from_module_node
-}
 
 data namespace_graft_qn_reader_home_note: String = "The QN readers (qualified_name_from_module_node — graft-aware, single authority — plus the graft-spine walk cluster) live in v2.extdeps.languages.dag: the grafted module shape is a fact of the dag language surface, and homing the spine walk beside the header readers keeps one collapsed reader with no compiler-layer import (the former qualified_name_from_module_node_graft_aware Scaffold and its extdeps-coupling sibling dissolved to that SingleAuthority). This module keeps only the graft TRANSFORM (pre-graft tree -> containment spine) and its edge dispositions."
 

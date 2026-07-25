@@ -1,19 +1,5 @@
 module v2.std.provenance
 
-import v2.std.artifact { Artifact, GeneratorId, NodeArtifactProvenance }
-import v2.std.algebra { fold_list }
-import v2.std.collection { List, Map, empty_map, map_insert }
-import v2.std.diagnostic {
-  ByteRange,
-  Diagnostic,
-  ExternalContractUnknown,
-  Locus,
-  Textual,
-  Unavailable,
-  port_locus
-}
-import v2.std.node { Node, OccurrenceId, Symbol }
-import v2.std.witness { Holds, Violates, Witness }
 
 type OriginEvent
   = FromSource { locus: Locus }

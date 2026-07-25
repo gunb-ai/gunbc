@@ -1,19 +1,5 @@
 module v2.test.workflow.glob_discovery_law
 
-import std.algebra { Cons, Empty }
-import v2.std.algebra { filter, fold_list, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.compiler.discovery_enumeration {
-  OwnedBoolWitnessClaimInit,
-  OwnedDataDeclInitializer,
-  OwnedDataDeclRecord,
-  OwnedNodeCorpusInit,
-  OwnedOtherInit,
-  ResolvedDeclRef,
-  unified_claim_arm_bool_witness_claim_module,
-  unified_claim_arm_node_corpus_module
-}
 
 fn resolved_decl_is_bool_witness_claim_arm(d: ResolvedDeclRef) -> Bool {
   (d.module == unified_claim_arm_bool_witness_claim_module)

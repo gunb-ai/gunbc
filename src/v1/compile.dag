@@ -1,64 +1,24 @@
 module v1.compiler.compile
 
-import std.syntax { LiteralValue, BinOp }
-import v1.std.core {
-  CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
-  is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_message,
-  diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span, Connective,
-  NoConnective, Arrow, Cardinality, resource_use_name_at, resource_use_resource,
-  param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span,
-  field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value,
-  field_node_from_key, field_node_span, module_imports, module_items, import_is_all,
-  import_specific_names_at, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode,
-  Resolved, CompilerError, TypeVariable, VarBindingKind, CallSemantics, MethodSemantics,
-  PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, ExprErrorKind,
-  ExprData, MatchPattern, field_binding_name_at, field_binding_pattern, arg_name_at, arg_value,
-  arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value,
-  UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index,
-  field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at,
-  foreach_variable_at, expr_method_name_at, InternTable, empty_intern_table, pre_intern_tokens
-}
 
-import v1.compiler.tokenize { tokenize }
 
-import v1.compiler.parse { parse_with_table, ParseResult }
 
-import v1.compiler.resolve { resolve_modules, ModuleGraph }
 
-import v1.compiler.normalize { normalize_graph, NormalizeResult }
 
-import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 
-import v1.compiler.infer { reconcile, reconcile_with_census_extra }
 
-import v1.compiler.infer_types { algebra_field_kind_name }
 
-import v1.compiler.emit_core_support { EmitResult, escape_json_string }
 
-import v1.compiler.emit_rust { emit_rust }
 
-import v1.compiler.emit_python { emit_python }
 
-import v1.compiler.emit_go { emit_go }
 
-import v1.compiler.complexity { ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext, build_complexity_report, empty_complexity_report }
 
-import std.induction { SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, NonIncreasingValue, StrictAxisErased, MixedTop, SubValueUnknown, InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion }
 
-import std.computation { ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink }
 
-import std.termination {
-  PositiveDescentAmount, OneStep, AdditionalStep,
-  ProportionalDivisor, DivideByTwo, StrictlyLarger
-}
 
-import v1.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
 
-import v1.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
 
-import v1.compiler.dag_collect_support { DagCollectAcc, json_quote, connective_name }
 
-import v1.compiler.dag_collect { is_module_shell_node, dag_node_key, collect_dag_nodes }
 
 
 type SourceFile {

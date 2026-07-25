@@ -1,43 +1,5 @@
 module test.claim.machine_shape_witness
 
-import extdeps.gpu.apple { apple_m5_gpu_catalog }
-import extdeps.gpu.nvidia { nvidia_rtx_5090_catalog }
-import extdeps.gpu.machine_shape {
-  FromGpuModelCatalog,
-  shape_from_catalog,
-}
-import extdeps.storage.types { PcieLink, PcieGeneration, Gen4, pcie_interconnect_link, pcie_link_bandwidth }
-import std.measure {
-  ByteSize,
-  Bandwidth,
-  HardwareThreadCount,
-  hardware_thread_count_value,
-  byte_size_count,
-  bandwidth_count,
-  watt,
-  second,
-  energy_from_power_and_time,
-  joule_count,
-  watt_count,
-  second_count,
-}
-import std.nat { Nat }
-import std.types { list_length }
-import std.machine_shape {
-  DomainId,
-  LevelId,
-  MachineShape,
-  LinkEdge,
-  SharedLevelEdge,
-  MachineShapeOk,
-  MachineShapeRefused,
-  UnknownDomain,
-  UnknownLevel,
-  machine_shape_validate,
-  machine_shape_is_single_domain,
-  machine_shape_domain_lane_count,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

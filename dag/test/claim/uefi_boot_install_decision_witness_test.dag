@@ -1,22 +1,5 @@
 module test.claim.uefi_boot_install_decision
 
-import std.logic { Bool }
-import std.types { List }
-import extdeps.firmware.uefi_shell {
-  UefiShellEnvironment,
-  UefiNetworkInterface,
-  MediaDisconnected,
-  uefi_shell_script,
-}
-import gunbc.uefi_boot_install_decision {
-  diagnose_boot_install,
-  decide_boot_install,
-  boot_install_commands,
-  RefuseNoSource,
-  InstalledFleetNode,
-  NetworkUpNeedsDhcp,
-}
-import gunbc.srv4_uefi_observed { srv4_uefi_observed_environment }
 
 test fn srv4_diagnoses_network_needs_dhcp_and_acts() -> Bool {
   let sit = diagnose_boot_install(env: srv4_uefi_observed_environment)

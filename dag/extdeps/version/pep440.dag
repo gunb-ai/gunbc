@@ -1,12 +1,5 @@
 module extdeps.version.pep440
 
-import extdeps.version { VersionConstraint, VersionIdentity }
-import std.algebra { Equal, Greater, Less, Ordering }
-import std.integer { NonNegativeInt }
-import std.types { List }
-import std.types { NonEmptyStr }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

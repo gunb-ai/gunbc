@@ -1,10 +1,5 @@
 module v2.std.effects
 
-import v2.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode, SyntheticOccurrence }
-import std.effects {
-  EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect,
-  PostAlways, CreateIfAbsent, KeylessFallback
-}
 
 data defork_note: String = "v2.std.effects DISSOLVED onto the single std.effects authority (dag-v2 de-fork, docs/plans/dag-v2-defork-audit.md). The EffectShape<K> / CreateCause<K> TYPE is imported from std, never re-defined here -- what was the v2 fork (EffectShape = IsIdempotent | IsBreaking, a 2-level idempotency-class partition) is GONE: idempotency is DERIVED from the one flat EffectShape (DESIGN 4, ops from inhabitance). This module instantiates the type at K = KeySource (interned Symbol) for the substrate-witness harness (idempotency conformance by apply-once == apply-twice Node graphs) and builds shapes by direct construction. It does NOT call std.effects's predicates: those are concrete to EffectShape<std.KeySource> by the emitter generic-function-bound frontier (see std.effects.generic_predicate_frontier_note), and the harness needs only the type + constructors, not the predicates."
 

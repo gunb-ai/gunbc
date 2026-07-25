@@ -1,11 +1,5 @@
 module v2.test.claim.self_host.native_agreement_test
 
-import v2.std.native_agreement {
-  NativeAgreementDivergence,
-  format_native_agreement_divergence,
-  native_agreement_failure_receipt,
-  octet_display
-}
 
 test fn native_agreement_divergence_format_holds() -> Bool {
   let d = NativeAgreementDivergence {

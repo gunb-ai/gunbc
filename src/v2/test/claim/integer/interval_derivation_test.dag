@@ -1,33 +1,5 @@
 module v2.test.claim.integer.interval_derivation
 
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { Equal, Ordering, fold_list, length }
-import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.integer {
-  D0, D1, D2, D3, D4, D5, D6, D7, D8, D9,
-  DecimalNonZeroMagnitude,
-  IntegerBoundNegative, IntegerBoundNonNegative,
-  IntegerIntervalBound, IntegerIntervalSpec,
-  NonZeroD1, NonZeroD2, NonZeroD3, NonZeroD4, NonZeroD6, NonZeroD9,
-  Signed, Unsigned, Signedness,
-  StandardIntegerType,
-  Int8, Int16, Int32, Int64, Int128,
-  UInt8, UInt16, UInt32, UInt64, UInt128,
-  integer_concrete_bound, integer_concrete_zero, integer_interval,
-  integer_interval_bound_compare, integer_interval_bound_less_or_equal,
-  integer_interval_spec_node,
-  integer_machine_interval_spec,
-  integer_pow2_magnitude,
-  integer_standard_integer_type_from_node,
-  integer_standard_integer_type_interval_spec,
-  integer_standard_integer_type_roster,
-  integer_standard_integer_type_signedness,
-  integer_standard_integer_type_width_bits,
-  integer_nonzero_decimal_digit_widen
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

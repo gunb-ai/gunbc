@@ -1,11 +1,5 @@
 module v2.std.orchestration
 
-import v2.std.text { String }
-import std.nat { Nat }
-import std.algebra { FreeMonoid }
-import v2.std.collection { List, Optional }
-import v2.std.diagnostic { EmitDirective }
-import v2.std.node { Symbol }
 
 type EnvBinding
   = EnvSet { name: String, value: String }

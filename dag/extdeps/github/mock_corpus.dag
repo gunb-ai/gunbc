@@ -1,6 +1,5 @@
 module extdeps.github.mock_corpus
 
-import std.hermetic_replay { PublishedMockCase }
 
 data github_gist_mock_case_create: PublishedMockCase = PublishedMockCase {
   operation_key: "github.Gist.Create",

@@ -1,22 +1,5 @@
 module v2.compiler.self_host.witness_bulk_routing
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.algebra { Cons, Empty, length, filter }
-import v2.std.witness_execution_routing {
-  WitnessExecutionDisposition,
-  InterpretedRetained,
-  EmitIneligible,
-  BulkFlipPendingCensusIncomplete,
-  HostFedCeiling,
-  EmitOnDemandFamilyGrain,
-  RetainedPendingLongLane,
-  RetainedPendingOfflineRecipe,
-  RetainedReadsLiveTreeCarrier,
-  LongLaneScheduled,
-  OfflineLocalRecipe
-}
 
 data witness_bulk_routing_note: String = "Entry-grain bulk-native routing machine (ROADMAP 2a Lane B, 2026-07-23): the 744-entry discovery roster's routing frontier authority. Landing state is ALL InterpretedRetained or EmitIneligible — zero NativeRouted rows (flips last). The 16-entry stratified sample below is the first census slice; the full 744 sweep on srvN produces the per-entry first-error TSV whose classes populate EmitIneligibleCause. Hard ceiling from measurement: 77 ReadsLiveTree + 35 host-effect entries stay InterpretedRetained host_fed until native host-effect transport is its own lane. Family-grain emit-on-demand routing (9 rows) remains on native_routing_frontier until group-5a Derived membership subsumes those entries. Dissolve-on: this roster grows to totality (no entry unlisted) and retires hand frontier rows when closure-derived Group membership lands."
 

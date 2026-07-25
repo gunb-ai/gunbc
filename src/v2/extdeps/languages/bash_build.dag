@@ -1,17 +1,5 @@
 module v2.extdeps.languages.bash_build
 
-import v2.std.algebra { list_head, HeadFound, HeadAbsent }
-import v2.std.collection { List, Present, list_at_optional }
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Node,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
 
 fn bash_build_word_kinded(kind: Symbol, value: String) -> Node {
   Node {

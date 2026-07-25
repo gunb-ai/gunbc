@@ -1,55 +1,5 @@
 module v2.test.manual.timeseries_passive_map_fold_anchor
 
-import std.algebra { Cons, Empty }
-import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.nat { Zero }
-import v2.std.timeseries_signal {
-  CapacitorFold,
-  CapacitorRating,
-  CapacitorState,
-  FoldStep,
-  InductorFold,
-  InductorRating,
-  InductorState,
-  MapStep,
-  ResistorMap,
-  ResistorRating,
-  StepBranchVoltage,
-  StepCurrent,
-  StepPotentialDifference,
-  TimeSeriesSample,
-  TimeSeriesSignal,
-  TimeStep,
-  capacitance_micro,
-  capacitance_micro_count,
-  capacitor_fold_step,
-  charge_micro,
-  charge_micro_count,
-  current,
-  current_count,
-  duration_micro,
-  fold_capacitor_transient,
-  flux_micro,
-  flux_micro_count,
-  inductance_micro,
-  inductor_fold_step,
-  resistance_micro,
-  resistor_map_voltage,
-  voltage,
-  voltage_count,
-}
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

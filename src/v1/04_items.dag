@@ -1,46 +1,11 @@
 module v1.compiler.infer_items
 
-import std.types { SourceSpan }
 
-import std.interface_summary {
-  InterfaceSummary,
-  ExportEntry,
-  ExportFn,
-  ExportType,
-  ExportData,
-  ExportService,
-  ExportKind,
-  signature_contract,
-  interface_summary_rollup
-}
 
-import v1.std.core {
-  Node, ErrorNode,
-  make_param_node, param_node_name_at, param_node_type_expr,
-  make_field_node,
-  InferredNode, Resolved, CompilerError, TypeVariable,
-  Cardinality, Required,
-  expr_has_self_call, expr_has_non_tail_self_call,
-  Connective, Conj, Disj, NoConnective,
-  node_name_span, no_span,
-  NewlineIndex, authored_name_at
-}
 
-import v1.compiler.infer_types {
-  child_type_node
-}
 
-import v1.compiler.infer_env {
-  TypeEnv, TypeEnvCache, empty_type_env_cache
-}
 
-import v1.compiler.infer_sigs {
-  ResolvedFuncEnv
-}
 
-import v1.compiler.infer_emit_info {
-  EmitGraphInfo
-}
 
 
 type ItemKind = FnItem | FuncItem | TypeItem | DataItem | ServiceItem | OtherItem

@@ -1,17 +1,5 @@
 module v2.compiler.emit
 
-import extdeps.communication.medium { Medium }
-import v2.compiler.infer { InferredTree }
-import v2.compiler.translate {
-  TargetNodeTree,
-  target_serialize_source_from_model,
-  translate
-}
-import v2.std.diagnostic {
-  Outcome,
-  bind_outcome
-}
-import v2.std.compilers.target_model { TargetModel }
 
 fn serialize_source_for_emitted(
   emitted: TargetNodeTree,

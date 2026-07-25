@@ -1,5 +1,6 @@
 module tools.merge_admission_stamp
 
+<<<<<<< HEAD
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { NonEmptyStr, GitRef }
 import extdeps.git
@@ -21,6 +22,8 @@ import gunbc.merge_admission_produce {
   MergeTargetTreeHashRefused,
 }
 import extdeps.github.checks { CheckConclusion }
+=======
+>>>>>>> c0eca1c67c (WIP: Namespace flip Dispatch 1 — turn on namespace-only resolution (global fl)
 
 data merge_admission_stamp_missing_floor_exit_is_failure: String = "CI_FLOOR_EXIT unset stamps floor_exit_code as Failure (non-zero) — fail-closed per §5; only the ci.yml floor tail sets CI_FLOOR_EXIT from claim_executor"
 

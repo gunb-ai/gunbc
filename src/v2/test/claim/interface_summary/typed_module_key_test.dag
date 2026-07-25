@@ -1,15 +1,5 @@
 module v2.test.claim.interface_summary.typed_module_key
 
-import std.interface_summary {
-  InterfaceHash,
-  ModuleKey,
-  module_key,
-  typed_module_key,
-  interface_summary_rollup
-}
-import std.content_hash { content_hash_atom }
-import std.types { ContentHash, NonEmptyStr }
-import v2.std.logic { Bool }
 
 data purpose_note: NonEmptyStr = "RED controls proving each term of typed_module_key is load-bearing: vary compiler_identity alone -> key changes; vary interface_key alone -> key changes; drop neither -> extends the interface key. Synthetic inputs only; no store, no live tree."
 

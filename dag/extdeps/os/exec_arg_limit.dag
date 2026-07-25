@@ -1,11 +1,5 @@
 module extdeps.os.exec_arg_limit
 
-import std.measure { ByteSize, byte_size, byte_size_count }
-import std.nat { Nat }
-import std.types { String }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.runtime.architecture.x86_64_linux { x86_64_linux_architecture_profile }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

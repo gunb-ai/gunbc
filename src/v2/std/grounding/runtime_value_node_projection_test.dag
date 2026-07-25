@@ -1,37 +1,5 @@
 module v2.test.std_grounding.runtime_value_node_projection
 
-import std.algebra { Empty }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.machine { Byte }
-import v2.std.node {
-  Atom,
-  Node,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.node_query { find_named_child }
-import v2.std.runtime {
-  RuntimeAggregate,
-  RuntimeAggregateValue,
-  RuntimeClosure,
-  RuntimeClosureValue,
-  EvaluationEnvironment,
-  RuntimeFieldValue,
-  RuntimeIdentity,
-  RuntimePrimitive,
-  RuntimePrimitiveValue,
-  RuntimeReference,
-  RuntimeReferenceValue,
-  RuntimeUnit,
-  RuntimeUnitValue,
-  RuntimeValue,
-  RuntimeValueNodeProjected,
-  RuntimeValueNodeUnrepresentable,
-  runtime_value_node_projection
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

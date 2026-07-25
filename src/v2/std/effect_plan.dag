@@ -1,19 +1,5 @@
 module v2.std.effect_plan
 
-import v2.std.text { String }
-import std.nat { Nat }
-import v2.std.algebra { FreeMonoid }
-import v2.std.collection { List, Optional }
-import v2.std.diagnostic { EmitDirective }
-import v2.std.node { Symbol }
-import v2.std.orchestration {
-  Predicate,
-  FailurePolicy,
-  EscalationLevel,
-  ValueSource,
-  Expr,
-  EnvBinding,
-}
 
 type EffectPlanStep<E>
   = Do { effect: E }

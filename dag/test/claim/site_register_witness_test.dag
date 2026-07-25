@@ -1,42 +1,5 @@
 module test.claim.site_register_witness
 
-import gunbc.design.theme {
-  Theme, RoleAssignment, assign,
-  site_themes, theme_roles, night_theme, day_theme,
-  themes_coherent, theme_gaps, theme_area_coherent, theme_contrast_ok,
-  CanvasRole, night_canvas, warm_starlight, role_area, role_var,
-}
-import gunbc.design.material {
-  Material, PointArea,
-  chroma_admissible, quiet_envelope, area_key,
-  respond_fast, BuildRule, StaticRule, decl,
-}
-import gunbc.site.tokens {
-  FieldArea, DataVizArea,
-  FigureRole, FocusRole, BoundaryRole,
-  ResponseRule,
-}
-import gunbc.design.interaction {
-  BehaviorRow, InteractiveElement,
-  Approach, Enter, Receipt,
-  StarElement, HashElement,
-  element_id_eq, element_id_key,
-  coverage_gaps, coverage_complete, verb_key,
-}
-import gunbc.roadmap_style { roadmap_rules }
-import gunbc.site.mark {
-  mark_nodes, mark_edges, mark_grid_unit, MarkEdge,
-  mark_nodes_on_grid, all_forks_rejoin, render_mark,
-}
-import gunbc.site.constellation { layer_stars, brightest_is_authority }
-import gunbc.site.moodboard {
-  moodboard_html, moodboard_preconditions_hold, unrealized_behaviors,
-  moodboard_rules, moodboard_nav_js, moodboard_css,
-  moodboard_elements, moodboard_behaviors,
-}
-import gunbc.site.theme_transition { reframe_css, unthemed_color_decls }
-import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

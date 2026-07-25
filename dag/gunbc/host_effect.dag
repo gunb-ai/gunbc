@@ -1,28 +1,5 @@
 module gunbc.host_effect
 
-import std.types { String, Int, NonEmptyStr, List, ContentHash }
-import std.cache_identity { CacheInterfaceId }
-import std.access { AccessDecision }
-import std.disposition { Disposition, RealizationDispatch, Scaffold, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.bmc.types { RedfishSystemAction }
-import extdeps.dns.domain_name { DnsLabel }
-import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
-import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdExecuteProbeShape }
-import extdeps.bmc.webui.nbd_proxy_serve { NbdProxyServeTransportIntent }
-import gunbc.fleet_intent { ComputeHost }
-import gunbc.host_converge { HostConverge }
-import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
-import std.effects {
-  EffectShape,
-  KeySource,
-  ReadEffect,
-  AppendEffect,
-  IdempotencyEvidence,
-  LatticeEffect,
-  IdentityEffect,
-  NonIdempotent,
-}
 
 type HostEffect =
     ShellCommand { script: String }

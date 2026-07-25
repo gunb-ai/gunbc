@@ -1,43 +1,5 @@
 module gunbc.ci_deploy_access
 
-import std.types { NonEmptyStr, List, String, Bool }
-import std.access { AccessDecision, Permit, Deny }
-import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.materialization_ladder { Frame, SharedStateFrame }
-import std.effect_grant { Grant, Envelope, verb_of_effect_shape, admit_effect, EffectAdmission, Admitted, EffectOutsideGrant }
-import std.effects { ExecuteEffect }
-import gunbc.fleet_intent { ComputeHost, srv1_host }
-import gunbc.fleet_intent_network { operator_host_srv1 }
-import gunbc.fleet_posix_accounts {
-  GroundedPosixPrincipal,
-  PosixSudoGrant,
-  DeployRunnerPrincipal,
-  FleetAccountCiRunner,
-  FleetAccountOperator,
-  srv1_ci_deploy_runner_principal,
-  fleet_posix_principal,
-  fleet_deploy_job_principal,
-  grounded_posix_principal_name,
-  fleet_apt_get_binary_path,
-  posix_sudo_grant_to_effect_grant,
-}
-import gunbc.host_effect {
-  HostEffect,
-  ReadEffectivePosixPrincipal,
-  SudoNopasswdExecuteProbe,
-  HostEffectTransport,
-  LocalShell,
-  SshShell,
-  EmitArtifactThenThinRun,
-}
-import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
-import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdExecuteProbeShape }
-import gunbc.ci_deploy_target_host {
-  DeployTargetHostProof,
-  deploy_target_proof,
-  deploy_target_host_preflight_block,
-}
 
 type PrivilegedCommand {
   path: NonEmptyStr

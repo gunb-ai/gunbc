@@ -1,18 +1,5 @@
 module v2.std.host_run
 
-import v2.std.collection { List }
-import v2.std.diagnostic {
-  Outcome,
-  Accepted,
-  Rejected,
-  None,
-  diagnostics_singleton
-}
-import v2.std.machine { Byte }
-import v2.std.host_transport { ByteString }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.text { String }
-import v2.std.witness { Witness, Holds, Violates }
 
 
 type BuildLog {

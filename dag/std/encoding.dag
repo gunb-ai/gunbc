@@ -1,11 +1,5 @@
 module std.encoding
 
-import std.algebra { BoundedLattice }
-import std.types { Bytes }
-import std.integer { UInt8 }
-import std.bytes { pure_dag_seam_unreachable }
-import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type Encoding
   = ASCII

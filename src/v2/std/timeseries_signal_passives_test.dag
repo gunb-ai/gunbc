@@ -1,33 +1,5 @@
 module v2.test.std.timeseries_signal_passives
 
-import v2.std.logic { Bool }
-import v2.std.timeseries_signal {
-  BranchCurrent,
-  Current,
-  GroundReference,
-  PotentialDifference,
-  Voltage,
-  absolute_potential_from_named_preserves_reference,
-  branch_current_of_magnitude,
-  named_affine_voltage,
-  potential_difference_of_magnitude,
-  potential_reference_eq,
-  potential_reference_of_named,
-  timeseries_witness_approx_zero,
-  voltage,
-  current,
-}
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  StructuralEqualsClaim,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,5 +1,6 @@
 module test.claim.live_deploy.readiness
 
+<<<<<<< HEAD
 import gunbc.live_deploy.readiness {
   live_deploy_service_ready_once,
   live_deploy_service_ready_once_for_deploy,
@@ -53,6 +54,8 @@ import extdeps.tools.sleep {
 }
 import gunbc.roadmap_static_site { roadmap_site_healthz_body }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+=======
+>>>>>>> c0eca1c67c (WIP: Namespace flip Dispatch 1 — turn on namespace-only resolution (global fl)
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

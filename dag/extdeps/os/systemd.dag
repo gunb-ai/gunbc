@@ -1,11 +1,5 @@
 module extdeps.os.systemd
 
-import std.types { NonEmptyStr, String }
-import std.types { List }
-import std.measure { ByteSize, byte_size, byte_size_count }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.os.systemd_contracts { systemd_unit_active_state_wire_contract }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

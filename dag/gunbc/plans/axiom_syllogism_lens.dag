@@ -1,8 +1,5 @@
 module gunbc.plans.axiom_syllogism_lens
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone, ThematicBreak }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
 fn axiom_syllogism_lens_body() -> List<MarkdownBlock> {
   [

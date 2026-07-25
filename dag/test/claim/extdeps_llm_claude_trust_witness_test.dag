@@ -1,13 +1,5 @@
 module test.claim.extdeps_llm_claude_trust_witness
 
-import std.types { String, Bool }
-import extdeps.llm.cli {
-  claude_cli_program,
-  claude_trust_store_path,
-  claude_workspace_trust_seeded,
-  shape_claude_invoke_argv,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

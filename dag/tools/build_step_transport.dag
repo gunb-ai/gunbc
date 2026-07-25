@@ -1,27 +1,6 @@
 module tools.build_step_transport
 
 
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import extdeps.git
-import extdeps.gunbc
-import gunbc.cli_invoke { claim_executor_bin_name }
-import gunbc.cli_services
-import std.logic { Bool }
-import tools.host_prelude {
-  WitnessBinArtifactAbsent,
-  WitnessBinArtifactEmpty,
-  WitnessBinArtifactNotExecutable,
-  WitnessBinReadiness,
-  WitnessBinReady,
-  WitnessBinRefusalReason,
-  WitnessBinRefused,
-  witness_bin,
-  witness_bin_artifact_readiness,
-  witness_bin_ensure_built_typed,
-  witness_bin_readiness_is_ready,
-  witness_bin_release_path
-}
 
 
 

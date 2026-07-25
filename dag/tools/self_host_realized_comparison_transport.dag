@@ -1,7 +1,5 @@
 module tools.self_host_realized_comparison_transport
 
-import extdeps.git
-import tools.host_prelude { WitnessBin, run_witness_bin_program, witness_bin }
 
 data realized_comparison_stable_dir_rel: String = "target/v2-emit-fresh-realize"
 data realized_comparison_emitted_src_root_rel: String = "target/v2-emit-fresh-realize/src"

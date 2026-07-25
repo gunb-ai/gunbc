@@ -1,36 +1,5 @@
 module v2.test.manual.typescript_descriptor_node_run
 
-import v2.compiler.eval {
-  Inputs,
-  inputs_for_emit_host,
-}
-import v2.compiler.emit_host {
-  emit_host_exit_not_ok_diagnostic,
-  run_emit_host,
-  runtime_value_parse,
-  runtime_value_signed_i32_le_as_int
-}
-import v2.extdeps.languages.typescript { ts_target_model }
-import v2.std.diagnostic {
-  Accepted,
-  None,
-  Outcome,
-  Rejected,
-  diagnostics_singleton
-}
-import v2.std.host_run { HostLogicalRun }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.text { String }
-import v2.test.manual.add_body_emit_typescript {
-  add_body_ts_emit_from_producer_tree,
-  add_body_ts_target_model_minus_catalog
-}
-import v2.test.manual.connective_anchors { stub_empty_conj }
-import extdeps.communication.medium { Lossless, Medium }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

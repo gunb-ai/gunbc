@@ -1,37 +1,5 @@
 module v2.test.manual.refinement_ordered_iteration
 
-import v2.std.refinement {
-  IterationClassifier,
-  IterationOrdering,
-  StructurallyOrdered,
-  StructurallyUnordered,
-  refine_ordered_iteration,
-}
-import std.algebra { Empty }
-import v2.std.collection { List }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  Locus,
-  Outcome,
-  Rejected,
-  Textual,
-  WholeFile,
-}
-import v2.std.node { Node, Symbol }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor,
-}
-import v2.test.manual.connective_anchors {
-  stub_empty_conj,
-  stub_empty_disj,
-}
 
 fn ordered_classifier_for_list_int() -> IterationClassifier<List<Int>> {
   IterationClassifier { classify: fn(_) { StructurallyOrdered } }

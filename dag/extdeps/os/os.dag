@@ -1,26 +1,5 @@
 module extdeps.os.os
 
-import extdeps.os.macos { macos_distribution_catalog_row }
-import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
-import extdeps.os.windows { windows_distribution_catalog_row }
-import std.types { List }
-import std.os {
-  operating_system_surface_macos,
-  operating_system_surface_ubuntu,
-  operating_system_surface_windows,
-}
-import std.os.types {
-  MacosOs,
-  NobleNumbat2404Lts,
-  OperatingSystemProduct,
-  OperatingSystemSurface,
-  Sequoia15,
-  UbuntuOs,
-  Windows1124H2Build26100,
-  WindowsOs,
-}
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

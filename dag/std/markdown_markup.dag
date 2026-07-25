@@ -1,5 +1,6 @@
 module std.markdown_markup
 
+<<<<<<< HEAD
 import std.markup {
   MarkupNode,
   fragments_to_markup_nodes,
@@ -12,6 +13,8 @@ import std.markdown {
 
 data markdown_markup_inline_mapping_dissolve_on: String = "dissolve-on: std.markdown_markup.markdown_inline_to_markup_nodes — deleted parallel MarkdownInline→MarkupNode mapping; sole authority is std.markdown.markdown_inline_to_fragments composed with std.markup.fragments_to_markup_nodes."
 
+=======
+>>>>>>> c0eca1c67c (WIP: Namespace flip Dispatch 1 — turn on namespace-only resolution (global fl)
 fn markdown_inline_to_markup_nodes(inline: MarkdownInline) -> List<MarkupNode> {
   fragments_to_markup_nodes(frags: markdown_inline_to_fragments(inline: inline))
 }

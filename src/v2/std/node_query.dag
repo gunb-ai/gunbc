@@ -1,46 +1,5 @@
 module v2.std.node_query
 
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  Unavailable,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected
-}
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { TailAbsent, TailFound, is_empty, list_snoc_item, list_tail }
-import v2.std.collection { Absent, List, Present, list_at_optional }
-import v2.std.node {
-  Ambiguous,
-  Atom,
-  ArmPayload,
-  Arrow,
-  Behavior,
-  ComputationNode,
-  Conj,
-  CoproductArm,
-  CoproductArmPayloadPair,
-  Disj,
-  Edge,
-  Found,
-  Named,
-  Node,
-  Nullary,
-  Positional,
-  Symbol,
-  Transform,
-  TypeNode,
-  Typed,
-  arrow_body_target_lookup,
-  coproduct_nullary_payload_type_name,
-  name_occurrences,
-  named_edge_sort_key,
-  resolve_type_node
-}
 
 fn coproduct_arm_key_list_from_node(node: Node) -> List<Symbol> {
   fold(

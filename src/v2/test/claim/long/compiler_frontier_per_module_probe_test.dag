@@ -1,34 +1,5 @@
 module v2.test.long.compiler_frontier_per_module_probe
 
-import v2.compiler.self_host.frontier {
-  compiler_frontier_module_count_expected,
-  compiler_frontier_roster,
-  compiler_frontier_roster_all_classified_holds,
-  compiler_frontier_roster_located_reason_not_class_projection_holds,
-  compiler_frontier_row_for_path_matches_probe,
-  compiler_frontier_roster_matches_survey_holds
-}
-import v2.compiler.self_host.frontier_probe_survey {
-  CommonRoot,
-  HeterogeneousGaps,
-  frontier_gap_clustering_from_receipts,
-  frontier_probe_survey_has_unclassified,
-  frontier_wave2_emit_surface_module_count,
-  frontier_wave2_name_resolution_module_count,
-  frontier_wave2_self_emit_ready_module_count
-}
-import v2.compiler.self_host.frontier_probe_types {
-  EmitSurfaceGap,
-  NameResolutionGap,
-  SelfEmitReady
-}
-import v2.test.workflow.host_frontier_probe_survey_manifest {
-  host_frontier_probe_survey,
-  host_frontier_probe_survey_module_count
-}
-import v2.std.algebra { length }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

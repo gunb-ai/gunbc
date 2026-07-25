@@ -1,17 +1,5 @@
 module v2.test.formats.spice_rc_ngspice_oracle
 
-import v2.extdeps.formats.spice { spice_emit_ngspice }
-import v2.test.fixture.spice_rc_tran_deck {
-  spice_rc_tran_deck,
-  spice_rc_tran_deck_ngspice_golden
-}
-import v2.std.logic { Bool }
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

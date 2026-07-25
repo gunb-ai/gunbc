@@ -1,10 +1,5 @@
 module v2.lens.test_migration_debt
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data test_migration_debt_module_count_baseline: Int = 82
 data test_migration_debt_total_loc_baseline: Int = 28247

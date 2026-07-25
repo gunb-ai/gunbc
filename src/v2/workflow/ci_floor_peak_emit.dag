@@ -1,20 +1,5 @@
 module v2.workflow.ci_floor_peak_emit
 
-import v2.compiler.emit_orchestration { orch_emit_pipeline }
-import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
-import v2.std.orchestration {
-  Do,
-  ExitZero,
-  FailFast,
-  If,
-  Pipeline,
-  PipelineStep,
-  Predicate,
-  Run,
-  While
-}
-import v2.std.collection { Absent, Present }
-import v2.std.diagnostic { Accepted, Rejected, None, Some }
 
 data ci_floor_peak_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ floor-peak cgroup observation emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
 

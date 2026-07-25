@@ -1,14 +1,5 @@
 module tools.self_host_module_behavioral_transport_roster
 
-import tools.self_host_curated_seed_linked_harness {
-  CuratedSeedLinkedShimWrite,
-  CuratedSeedLinkedClaimRun,
-  cssl_seed_linked_behavioral_receipt
-}
-import v2.std.algebra { fold_list }
-import v2.std.collection { List, Optional, Absent, Present, optional_absent, optional_present }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data compiler_module_behavioral_transport_roster_doc: String = "The modeled per-module behavioral-receipt producer (Gate-1 receipt lane B1): one config row per src/v2/compiler/self_host/frontier.dag module, one generic dispatch fn (compiler_module_behavioral_receipt_for) replacing the 16 hand-authored tools.self_host_<mod>_behavioral_transport.dag files this roster supersedes (00_compile, 01_tokenize, 02_parse, 03_body_producer, 03_ingest, 03_normalize, 03_resolve, 04_infer, 07_target_carriers, discovery_enumeration, materialization_carriers, parse_engine_hooks, program_assembly, program_partition, source_authority, use_site_verdict). Each row is config data only (shim paths, driver path, pass marker, supplementary claim-runs) migrated verbatim from those files; the seed-vs-emitted execution stays entirely in the shared kernel (tools.self_host_curated_seed_linked_harness), so a new frontier row's receipt is one roster row, not a new file. Fail-closed: an unrecognized module_path returns false (never a fabricated pass) — see compiler_module_behavioral_receipt_for. tools.self_host_logic_behavioral_transport and tools.namespace_import_closure_behavioral_transport are deliberately NOT migrated here: neither is keyed by a frontier row (logic predates the frontier; namespace_import_closure proves an emitter CLASS property, not a per-module fact — see falsifier_self_host_wet_emit_class_note in v2.compiler.self_host.wet_receipt_enrollment)."
 

@@ -1,24 +1,5 @@
 module test.claim.sec_edgar_rollins_chemed_witness
 
-import extdeps.sec.facts {
-  FiledMonetaryFact,
-  derive_gross_margin_ratio_from_facts,
-  filed_amount,
-  gross_margin_ratio_in_band,
-  usd_whole_dollars,
-  usd_whole_dollars_count,
-}
-import extdeps.sec.issuer.rollins_facts {
-  rollins_fy2025_operating_income,
-  rollins_fy2025_revenue,
-}
-import extdeps.sec.issuer.rollins { rollins_cik }
-import extdeps.sec.issuer.chemed_facts {
-  chemed_fy2025_operating_income,
-  chemed_fy2025_revenue,
-}
-import extdeps.sec.issuer.chemed { chemed_cik }
-import extdeps.sec.edgar { cik_padded_digits }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

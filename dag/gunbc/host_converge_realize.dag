@@ -1,20 +1,5 @@
 module gunbc.host_converge_realize
 
-import std.types { String, List, Bool, NonEmptyStr }
-import gunbc.host_converge {
-  ConvergeKnob,
-  ConvergeTarget,
-  HostConverge,
-  ConvergeSlice,
-  converge_slice_label,
-  SliceProperty,
-  PerSlotMemoryCap,
-  RunnerWidth,
-  JobserverTokens,
-  VerifyOnlyCap,
-  GunbcPinnedTree,
-}
-import gunbc.host_axis_caps { desired_cap_member, cap_upsert_script }
 
 type ConvergeKnobInterpretVerdict =
     KnobUnimplemented { knob_name: String, target_kind: String, reason: String }

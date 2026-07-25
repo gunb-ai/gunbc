@@ -1,7 +1,5 @@
 module test.claim.argv_command_render
 
-import std.logic { Bool }
-import extdeps.exec.command { ArgvCommand, shell_command_render }
 
 test fn shell_quote_plain_args_single_quoted() -> Bool {
   shell_command_render(command: ArgvCommand { argv: ["nbd-client", "-N", "srv4iso"] }) == "'nbd-client' '-N' 'srv4iso'"

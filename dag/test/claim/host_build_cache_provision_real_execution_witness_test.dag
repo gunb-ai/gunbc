@@ -1,17 +1,5 @@
 module test.claim.host_build_cache_provision_real_execution
 
-import std.logic { Bool }
-import extdeps.shell
-import gunbc.retained_shell_script { retained_runtime }
-import extdeps.filesystem.filesystem_io
-import gunbc.shell_bash_runner { shell_exec_via_bash }
-import gunbc.host_build_cache_provision_script { build_cache_read_back_body }
-import gunbc.host_effect_realize {
-  provision_build_cache_reconcile_shell_observed,
-  ShellExecObserved,
-}
-import std.realization_reconcile { NotConverged, Converged }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

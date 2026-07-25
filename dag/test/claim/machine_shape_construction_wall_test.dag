@@ -1,22 +1,5 @@
 module test.claim.machine_shape_construction_wall
 
-import v2.lens.machine_shape { machine_shape_compile_gate }
-import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  ComputationNode,
-  Conj,
-  Edge,
-  Node,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  Transform,
-  TypeNode
-}
-import v2.std.witness { Witness }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

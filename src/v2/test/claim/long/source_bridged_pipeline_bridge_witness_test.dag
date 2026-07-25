@@ -1,10 +1,5 @@
 module v2.test.long.source_bridged_pipeline_bridge_witness
 
-import v2.compiler.ingested_fixture_arrows { ingested_add_module_source }
-import v2.test.complexity_gate.source_bridged_pipeline_bridge { source_bridged_resolved_root }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

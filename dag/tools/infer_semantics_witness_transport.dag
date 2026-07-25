@@ -1,6 +1,5 @@
 module tools.infer_semantics_witness_transport
 
-import tools.host_prelude { run_witness_bin }
 
 fn run_infer_semantics_witness() -> Bool {
   run_witness_bin(

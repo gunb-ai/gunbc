@@ -1,18 +1,5 @@
 module test.claim.runner_slot_allocation_witness
 
-import gunbc.runner_slot_allocation {
-  gunbc_runner_slot_allocation_wall_holds,
-  gunbc_runner_slot_oversubscription_within_slice,
-  gunbc_runner_slot_desired,
-  gunbc_runner_slots_per_host,
-  gunbc_runner_slice_cap_declared,
-  gunbc_committed_runner_slot_allocations,
-  gunbc_runner_slot_enforcement_expected_cap,
-  gunbc_floor_minimum_viable_armed_budget_wall_holds,
-  gunbc_floor_minimum_viable_armed_budget_bytes,
-}
-import std.measure { byte_size, byte_size_count }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

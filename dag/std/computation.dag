@@ -1,20 +1,5 @@
 module std.computation
 
-import std.iteration { }
-import std.termination {
-  DescentEvidence, DescentUnknown, RankingDimension,
-  PositiveDescentAmount, OneStep, AdditionalStep,
-  ProportionalDivisor, DivideByTwo, StrictlyLarger,
-  positive_descent_count
-}
-import std.algebra {
-  AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
-  BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
-  PointwisePowerCollectionProfile,
-  FreeMonoidScalarProfile, FreeMonoidCollectionProfile,
-  PartialFunctionProfile,
-  kernel_algebra_profile
-}
 
 
 type SizeBound

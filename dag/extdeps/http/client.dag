@@ -1,5 +1,6 @@
 module extdeps.http.client
 
+<<<<<<< HEAD
 import std.types { NonEmptyStr, String, Bool, List }
 import std.measure { second_count }
 import extdeps.external_authority { ExternalAuthority }
@@ -8,6 +9,8 @@ import extdeps.tools.curl {
   curl_localhost_connect_timeout,
   curl_localhost_max_time,
 }
+=======
+>>>>>>> c0eca1c67c (WIP: Namespace flip Dispatch 1 — turn on namespace-only resolution (global fl)
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

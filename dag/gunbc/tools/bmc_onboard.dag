@@ -1,36 +1,5 @@
 module gunbc.tools.bmc_onboard
 
-import extdeps.bmc.http
-import extdeps.filesystem.filesystem_io
-import extdeps.entropy
-import extdeps.cloud.gcp.secret_manager
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
-import gunbc.bmc_onboarding {
-  BmcOnboardingPlan,
-  srv3_onboarding_plan,
-  srv4_onboarding_plan,
-  BmcCredentialProbeResult,
-  FactoryCredentialActive,
-  RotatedCredentialActive,
-  CredentialStateUnknown,
-}
-import gunbc.auth.access_token_source {
-  AccessTokenSource,
-  GcloudPrintToken,
-  resolve_access_token,
-}
-import std.types { NonEmptyStr, Secret, String }
-import std.logic { Bool }
-import std.resources { Network }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.languages.json.emit {
-  serialize_json,
-  json_object,
-  json_kv,
-  json_string,
-}
 
 data bmc_onboard_netrc_path: String = "/tmp/bmc_onboard_netrc"
 data bmc_onboard_pwbody_path: String = "/tmp/bmc_onboard_pwbody.json"

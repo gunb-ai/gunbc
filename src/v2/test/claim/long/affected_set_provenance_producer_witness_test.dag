@@ -1,16 +1,5 @@
 module v2.test.long.affected_set_provenance_producer_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.test.lens_affected_set.provenance_producer {
-  provenance_producer_coverage_receipt_holds,
-  provenance_producer_git_diff_wire_holds,
-  provenance_producer_parse_coverage_known_diff_fail_closed_holds,
-  provenance_producer_rejects_beyond_surface_ingest_holds,
-  provenance_producer_rejects_malformed_ingest_holds,
-  provenance_producer_single_read_emits_row_holds,
-  provenance_producer_unknown_diff_fail_closed_holds
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

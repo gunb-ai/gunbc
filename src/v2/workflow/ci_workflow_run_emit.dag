@@ -1,18 +1,5 @@
 module v2.workflow.ci_workflow_run_emit
 
-import v2.compiler.emit_orchestration { orch_emit_pipeline }
-import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
-import gunbc.ci_materialization { ci_sccache_provider_shell_injection }
-import gunbc.merge_admission_produce { ci_documentation_only_gate_skip_prefix, ci_repo_root_shell }
-import v2.std.orchestration {
-  Do,
-  FailFast,
-  Pipeline,
-  PipelineStep,
-  Run
-}
-import v2.std.collection { Absent }
-import v2.std.diagnostic { Accepted, Rejected, None, Some }
 
 data ci_workflow_run_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ ci_workflow run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
 

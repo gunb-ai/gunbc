@@ -1,13 +1,5 @@
 module extdeps.version.semver
 
-import extdeps.version { VersionIdentity, VersionScheme, VersionConstraint }
-import std.algebra { Ordering, Less, Equal, Greater }
-import std.integer { NonNegativeInt }
-import std.types { List }
-import std.nat { nat_compare }
-import std.types { NonEmptyStr }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

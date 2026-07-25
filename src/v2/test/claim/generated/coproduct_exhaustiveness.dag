@@ -1,28 +1,5 @@
 module v2.test.generated.coproduct_exhaustiveness
 
-import v2.lens.testgen {
-  Generator,
-  TestgenConcept,
-  coproduct_exhaustiveness_anchor,
-  testgen_emit_coproduct_exhaustiveness_claim,
-  testgen_scheduled_coproduct_exhaustiveness_generators
-}
-import v2.std.algebra { length }
-import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.node_query { coproduct_arm_keys }
-import v2.std.verification {
-  ClaimAnchorKey,
-  DiagnosticClaim,
-  GeneratedAnchorKey,
-  GeneratedClaimAnchor,
-  GeneratedCoproductExhaustiveness,
-  TestClaim,
-  test_claim_anchor,
-  test_claim_input
-}
 
 fn reference_coproduct_exhaustiveness_anchor() -> GeneratedAnchorKey {
   coproduct_exhaustiveness_anchor(coproduct_type: ^TestClaim, omitted_variant: ^DiagnosticClaim)

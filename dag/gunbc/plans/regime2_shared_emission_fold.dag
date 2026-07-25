@@ -1,8 +1,5 @@
 module gunbc.plans.regime2_shared_emission_fold
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
 fn regime2_shared_emission_fold_body() -> List<MarkdownBlock> {
   [

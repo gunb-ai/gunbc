@@ -1,15 +1,5 @@
 module v2.lens.affected_set.corpus_dependency_view
 
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.measure { Millisecond, Minute, millisecond, minute }
-import std.nat { Nat }
-import v2.std.algebra { length }
-import v2.std.collection { List }
-import v2.std.dependency { DependencyView, append_dependency_views, dependency_lens }
-import v2.std.fn_index { fn_arrow_decl_facts_live, fn_arrow_decl_substrate_is_whole_tree }
-import v2.std.integer { Int }
-import v2.std.text { String }
 
 data corpus_dependency_view_resolve_budget: Minute = minute(count: 90)
 

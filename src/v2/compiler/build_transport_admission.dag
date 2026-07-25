@@ -1,21 +1,5 @@
 module v2.compiler.build_transport_admission
 
-import std.types { Bool, String, List }
-import std.effect_grant {
-  Read, Write,
-  FilesystemPathTree,
-  NamespacePosition,
-  Envelope,
-  EffectAdmission, Admitted, EffectOutsideGrant, admit_effect,
-}
-import std.filesystem_path_grant { rel_path_has_parent_segment }
-import std.materialization_ladder { Frame, SharedStateFrame }
-import v2.compiler.build_workspace_grant { build_workspace_grant_envelope }
-import v2.std.host_transport {
-  HostTransportDescriptor, WorkspaceFile, RelPath,
-  ProcessInvocation, ProcessProgram, HostToolProgram, ProducedProgram,
-  InvocationArg, LiteralArg, WorkspacePath, ProducedArtifact,
-}
 
 data build_transport_admission_note: String = "P-B enforcement decision (docs/plans/effect-namespace-grants.md 6, owned silent-ibex-417): whether a build transport may run in the replay/hermetic lane is DERIVED from its own declared structure, not a mode bit. build_transport_admissible projects each declared effect of a HostTransportDescriptor onto a NamespacePosition and runs std.effect_grant.admit_effect against the SINGLE build-envelope authority (v2.compiler.build_workspace_grant.build_workspace_grant_envelope -- consumed, never re-minted, DESIGN 3): a build that would touch anything outside that envelope is a located EffectOutsideGrant, never silently widened (DESIGN 5). This is the .dag half of the seam; the named consumer is the emit-host build transport (src/v2/compiler/emit_host.emit_host_run_transport, a v1_interpreter.rs intrinsic) which today refuses ALL hermetic builds by a blanket is_hermetic() early-return -- it becomes 'run only on an Admitted verdict', with the intrinsic's existing relative-path escape guard staying as the realization-side belt derived from this same containment. The build's reads of its own workspace (emitted sources + produced intermediates) are admitted because the authority grants the workspace Read+Write -- the ownership-implies-read resolution this seam settled. Two containment refinements fold in here: (1) a `..` PATH SEGMENT escapes but a `..` substring inside a filename (foo..bar) does not -- rel_path_is_workspace_contained brackets the path with slashes and matches the `/../` segment, so it no longer false-refuses well-formed names (review 39707); (2) an invocation's declared ARGS are checked too, not just its program -- a WorkspacePath/ProducedArtifact arg reads a workspace-relative position, so an escaping arg path is a located refusal on the same envelope (review 39684), while a LiteralArg carries no path and is the fold identity."
 

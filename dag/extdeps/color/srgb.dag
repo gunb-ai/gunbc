@@ -1,13 +1,5 @@
 module extdeps.color.srgb
 
-import std.types { Int, String, Bool }
-import std.integer { uint8_channel_inclusive_max_value }
-import std.measure {
-  permyriad_denominator, permyriad_half_for_round_half_up, percent_scale_hundred,
-}
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.numeric.base16 { byte_hex_lower }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

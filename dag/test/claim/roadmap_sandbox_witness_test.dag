@@ -1,17 +1,5 @@
 module test.claim.roadmap_sandbox_witness
 
-import std.types { Int, String, Bool, List }
-import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
-import gunbc.roadmap_sandbox { sandbox_page, sandbox_gallery_terminal_labels }
-import gunbc.roadmap_component {
-  dispatch_button_component, dispatch_state_display_text, sandbox_live_class,
-}
-import gunbc.design.component { component_terminal_states, component_drop_state }
-import gunbc.design.theme { role_var, CanvasRole, night_canvas }
-import gunbc.design.material { paint }
-import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
-import gunbc.roadmap_serve { roadmap_serve_respond }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

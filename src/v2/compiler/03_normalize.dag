@@ -1,50 +1,6 @@
 module v2.compiler.normalize
 
-import v2.std.algebra { list_snoc_item }
-import v2.std.collection { Absent, Present, optional_absent, optional_present }
-import v2.std.grammar { ParseTree }
 
-import v2.std.diagnostic {
-  Correction,
-  Diagnostic,
-  Diagnostics,
-  node_locus,
-  Outcome,
-  UserInputBoundary,
-  Accepted,
-  None,
-  diagnostics_merge,
-  diagnostics_singleton,
-  rejected_with_pending
-}
-import v2.std.node {
-  Atom,
-  Edge,
-  Node,
-  Symbol,
-  TypeNode,
-  node_rebuild,
-  well_formed
-}
-import v2.std.compilers.sugar {
-  ProductionIdentityKey,
-  SugarKey,
-  SurfaceAtomKey,
-  apply_sugar,
-  sugar_rule_for_key
-}
-import v2.compiler.body_lowering_fold {
-  body_lower_finish_for_normalize,
-  body_lower_is_deferred_lower_at_normalize
-}
-import v2.compiler.normalized_tree { NormalizedTree }
-import v2.compiler.namespace_graft {
-  module_header_containment_graft,
-  namespace_graft_is_graft_candidate
-}
-import v2.extdeps.languages.dag {
-  parse_production_emitted_identity_optional
-}
 
 fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {

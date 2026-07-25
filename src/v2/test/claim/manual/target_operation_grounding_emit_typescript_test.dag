@@ -1,56 +1,5 @@
 module v2.test.manual.target_operation_grounding_emit_typescript
 
-import v2.std.compilers.target_model {
-  CanonicalOperation,
-  InfixToken,
-  IsLess,
-  IsLessOrEqual,
-  IsGreater,
-  IsGreaterOrEqual,
-  IsEqual,
-  IsNotEqual,
-  TargetModel,
-  TargetValueExpression,
-  canonical_operation_op_add,
-  canonical_operation_op_sub,
-  canonical_operation_op_mul,
-  canonical_operation_op_div,
-  canonical_operation_op_negate,
-  canonical_operation_op_and,
-  canonical_operation_op_or,
-  canonical_operation_op_not,
-  canonical_operation_op_lt,
-  canonical_operation_op_le,
-  canonical_operation_op_gt,
-  canonical_operation_op_ge,
-  canonical_operation_op_eq,
-  canonical_operation_op_ne,
-  canonical_operation_wire_matches_operation,
-  equality_predicate_accepts,
-  ordering_predicate_accepts,
-  target_model_canonical_operation_wire_node,
-  target_model_emit_transforms_empty,
-  target_operator_realization_node,
-  target_operator_realizations_catalog_node,
-  target_value_expression_binding_ref,
-  target_value_expression_primitive_apply,
-  target_value_expression_primitive_apply_to_concrete_tokens,
-  render_target_text
-}
-import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
-import v2.extdeps.languages.typescript {
-  ts_lex_rule,
-  ts_binding_spellings,
-  ts_value_expression_projection
-}
-import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
-import v2.std.collection { List }
-import v2.std.algebra { Equal, Greater, Less, Ordering, zip_eq }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome }
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.std.logic { Bool }
-import v2.std.node { Conj, Node, Symbol, SyntheticOccurrence, TypeNode }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,11 +1,5 @@
 module v2.std.native_agreement
 
-import v2.std.algebra { Cons, Empty }
-import v2.std.collection { List, Optional, Present, Absent, list_at_optional }
-import v2.std.logic { Bool }
-import v2.std.integer { integer_nat_to_decimal_string }
-import v2.std.runtime { RuntimePrimitive, RuntimePrimitiveValue, RuntimeValue }
-import v2.std.text { String }
 
 type NativeAgreementDivergence {
   member_id: String

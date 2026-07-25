@@ -1,12 +1,5 @@
 module std.emit_on_demand
 
-import std.types { ContentHash, String, List, Bool, Int, list_length }
-import std.content_hash { content_hash_atom, content_hash_combine }
-import std.artifact_store {
-  ArtifactKey, artifact_key_hash, ArtifactStore,
-  StoreHit, StoreMiss, store_get,
-}
-import std.realization { Materialization, Share, Recompute }
 
 data emit_on_demand_module_note: String = "Witness-realization kernel (plan P3): the pure-spec authority for emit-on-demand native execution — closure ContentHash -> artifact store lookup -> cold (emit+build+run+put) | warm (run-only, compile skipped). Composes P2 std.artifact_store (ContentKeyed, eviction counted) and std.realization (Share on store hit). Source grain (toolchain: source-artifact) is the emit cache; native grain (toolchain: native-artifact) is the zero-compile warm path. The interpreter's surviving roles are named here with dissolution triggers (P3 ACCEPT (c)). Host transport: extdeps.realization.emit_on_demand_host; spine/realize_pack scheduling: v2.std.emit_on_demand. Serial kernel family: emit_host_add (#6879). Fan-out lane 2 (swift-stag-662): emit_host_field_access + emit_host_complement. Width-5 partition ratified on #6879 comment."
 

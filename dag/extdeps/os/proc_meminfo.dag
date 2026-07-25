@@ -1,10 +1,5 @@
 module extdeps.os.proc_meminfo
 
-import std.types { NonEmptyStr }
-import std.types { List }
-import std.measure { Kibibyte }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

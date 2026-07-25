@@ -1,20 +1,5 @@
 module v2.workflow.module_binding_supply_transport
 
-import extdeps.git
-import extdeps.gunbc
-import extdeps.shell
-import gunbc.ci_layer_roots { witness_layer_roots }
-import std.logic { Bool }
-import tools.host_prelude {
-  ClaimRun,
-  WitnessBinReady,
-  WitnessBinRefused,
-  run_gunbc_claims,
-  witness_bin,
-  witness_bin_ensure_built_typed,
-  witness_bin_release_path
-}
-import v2.std.text { String }
 
 data mbs_transport_note: String = "Executing consumer for the module-binding supply carrier. Emits BOTH manifests into one overlay source root and runs the consistency witness against them: --emit-module-binding-manifest supplies the whole-tree PARSED rows (module <-> path + provenance via v1_compiler_parse, no source text, so uncapped), and --emit-dag-manifest supplies the SOURCE TEXT the in-graph oracle re-derives from (bounded by that manifest's corpus-protection inline cap, hence the small scan dir). After task 4 both sides parse; the witness checks binding-table structural parity. The overlay root must sit UNDER the workspace root (an outside path panics in repo_relative_path_normalized) and must be ordered AFTER src/v2 so the committed stubs are superseded rather than colliding."
 

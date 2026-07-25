@@ -1,46 +1,5 @@
 module test.claim.floor_discovery_hand_rust_equivalence_witness
 
-import gunbc.floor_discovery_scaffold {
-  floor_discovery_hand_rust_scaffold,
-  floor_discovery_dissolve_trigger,
-  floor_discovery_producer_entry,
-  floor_discovery_equivalence_test_sidecar_misplaced,
-  floor_discovery_equivalence_test_scan_wire_contract,
-}
-import v2.compiler.discovery_enumeration {
-  OwnedBoolWitnessClaimInit,
-  OwnedDataDeclRecord
-}
-import v2.workflow.floor_discovery {
-  FloorDiscoveryRow,
-  FloorDiscoverySidecarViolation,
-  TestMarkedDecl,
-  WireContractDecl,
-  floor_discovery_test_decl_sidecar_violation
-}
-import v2.workflow.floor_discovery_producer {
-  FloorDiscoveryAccepted,
-  FloorDiscoveryRefused,
-  discover_floor_corpus_rows_from_host_facts,
-  floor_discovery_scan_test_decl_names,
-  floor_discovery_content_has_wire_contract_decl,
-  floor_discovery_wire_contract_sidecar_refusal_for_content,
-  floor_discovery_entry_live_tree_disposition_refusal_for_content,
-  floor_filename_hygiene_refusal_for_paths,
-  floor_discovery_sidecar_refusal_reason,
-  floor_discovery_surface_text_scan_scaffold,
-  floor_discovery_surface_text_scan_dissolve_on
-}
-import v2.workflow.floor_naming_hygiene {
-  floor_test_sidecar_suffix,
-  floor_wire_contract_sidecar_suffix
-}
-import v2.std.algebra { length, list_head, HeadFound, HeadAbsent }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import v2.std.collection { Absent, List, Optional, Present, fold_list }
-import std.types { Bool, String }
-import std.disposition { Scaffold, SingleAuthority }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

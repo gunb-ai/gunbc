@@ -1,25 +1,6 @@
 module extdeps.cache.buildbuddy
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
-import std.cache_identity { CacheInterfaceId }
-import std.cache_interface {
-  ContentAddressLookup,
-  WriteOnce,
-  MissThenCreate,
-  RawBytes,
-  CrossHostNetwork,
-  Never,
-  WriteThenCommit,
-  ApiKey,
-  LanMs,
-  Strong,
-  VendorCitation,
-  ManualPurge,
-  Network,
-}
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

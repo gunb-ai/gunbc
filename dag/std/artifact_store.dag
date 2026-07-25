@@ -1,9 +1,5 @@
 module std.artifact_store
 
-import std.types { ContentHash, NonEmptyStr, List, Int, Bool, String }
-import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
-import std.measure { ByteSize, byte_size, measure_count }
-import std.materialization_ladder { CacheProvider, EvictionClass, ScopeExit, SpacePacked }
 
 data artifact_store_module_note: String = "Witness-realization plan P2 (pure-spec half): the content-addressed artifact store - the corpus's first CacheProvider whose eviction field is READ (memory-control audit F5: eviction was write-only; here it gates construction and drives packing). The store is modeled as a pure fold: get bumps recency, put packs to budget by least-recent eviction with every eviction COUNTED in the returned receipt (a failure arm must refuse or count, never widen - DESIGN section 5). Keying is ContentHash BY SHAPE: no mtime, no existence input exists to consult, so ExistenceKeyed is unwritable here (the #6352 wall by construction). The host transport (real artifact directory + build wiring) is P2's second half; this spec is its single authority. Dissolve-on for the budget parameter: EvictionClass's budget field currently carries cited upstream policy PROSE in extdeps rows (two concepts in one field - our enforceable budget vs their described mechanism); when that splits into typed variants, store_over_provider derives the budget from the row instead of taking it beside the row."
 

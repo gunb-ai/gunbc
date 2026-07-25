@@ -1,10 +1,5 @@
 module std.integer
 
-import std.algebra { AbelianGroup, GroupCompletion }
-import std.nat { Nat }
-import std.machine_constraints { Compose, MachineWidth, PointerWidth }
-import std.measure { bit_width, bit_width_count, uint8_channel_bit_width, uint8_channel_inclusive_max }
-import std.induction { int_pow_bounded }
 
 type Int8 = Compose<Int, MachineWidth<8>>
 type Int16 = Compose<Int, MachineWidth<16>>

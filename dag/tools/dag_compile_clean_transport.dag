@@ -1,12 +1,5 @@
 module tools.dag_compile_clean_transport
 
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import extdeps.git
-import extdeps.gunbc
-import gunbc.ci_layer_roots { compile_clean_source_roots }
-import std.logic { Bool }
-import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
 data dcc_typed_transport_doc: String = "Compile-clean gate transports, typed. Each receipt is a composition of typed service operations (shell.Mktemp.Dir, Filesystem.Write, gunbc.WitnessBin.Run on the gunbc binary, shell.Remove.RecursiveForce) - no bash is serialized or executed. The former ShellProgram builders, their serialize-shape witnesses (shell_serializes_dcc_common_compile_invocation and the marker rows), and the two RealizationDispatch scaffold rows dissolved with the flip: the invocation facts are now carried by the typed args construction itself, so the spelling-drift class those witnesses validated is unwritable (DESIGN 5, construction over validation)."
 

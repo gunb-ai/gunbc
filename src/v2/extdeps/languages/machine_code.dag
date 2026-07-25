@@ -1,40 +1,5 @@
 module v2.extdeps.languages.machine_code
 
-import v2.std.grammar {
-  StampClass,
-  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
-import v2.std.compilers.lexing {
-  CharClassPattern,
-  LexPattern,
-  LexRule,
-  LexRuleSet,
-  LexRules,
-  LiteralPattern,
-  ModeledLexRules,
-  OneOrMorePattern,
-  TokenRule,
-  TriviaRule,
-  WhitespaceChar
-}
-import std.algebra { Empty }
-import v2.std.algebra { list_map }
-import v2.std.collection { List, Map }
-import v2.std.machine { Byte }
-import v2.std.text { String }
-import v2.std.model_core {
-  EffectSemanticsDecl,
-  ModelCore,
-  PartialitySemanticsDecl,
-  PrimitiveFactBundle,
-  ModelCoreFactAxisEncoding,
-  ModelCoreFactAxisOverflowDisposition,
-  ModelCoreFactAxisSignedness,
-  ModelCoreFactAxisSurfaceSpelling,
-  primitive_fact_axis_unbound_diagnostic,
-  ModelCoreFactAxisWidth
-}
-import v2.std.witness { Holds, Violates }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 
 type Isa
   = X86_64Isa { revision: Symbol }

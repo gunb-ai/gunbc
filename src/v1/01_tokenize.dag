@@ -1,24 +1,8 @@
 module v1.compiler.tokenize
 
-import std.types { SourceSpan }
 
-import v1.std.core {
-  make_file_span,
-  Token, TokenShape,
-  ShKeyword,
-  ShLBrace, ShRBrace, ShLParen, ShRParen, ShLBracket, ShRBracket,
-  ShLt, ShGt, ShLe, ShGe, ShFatArrow, ShArrow,
-  ShColon, ShComma, ShDot, ShDotDot, ShEq, ShEqEq, ShNe,
-  ShPlus, ShMinus, ShStar, ShSlash, ShPercent, ShBang, ShAnd, ShOr,
-  ShQuestion, ShNullCoalesce, ShCaret, ShPipe, ShPipeArrow,
-  ShLitStr, ShLitInt, ShLitFloat, ShIdent,
-  ShStrBegin, ShStrMid, ShStrEnd,
-  ShNewline, ShEof, ShUnknown
-}
 
-import extdeps.languages.dag.syntax { dag_keyword_set }
 
-import v1.compiler.languages { EmojiCharEscape, canonical_emoji_char_escape }
 
 
 

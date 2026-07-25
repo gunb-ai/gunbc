@@ -1,20 +1,6 @@
 
 module test.claim.generated_artifact_drift
 
-import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
-  RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
-  CommitPolicy, CommitRequired, NotCommitted,
-  generated_artifact_registry,
-  committed_generated_artifacts, artifact_path, artifact_commit_policy, artifact_is_committed, registry_contains
-}
-import gunbc.generated_artifact_emit { artifact_generate, artifact_extra_valid }
-import gunbc.os_install { srv3_autoinstall_spec, fleet_autoinstall_specs, srv3_install_server_spec, fleet_install_server_specs }
-import gunbc.gitignore_emit { path_is_ignored }
-import gunbc.plan_registry { all_plans }
-import gunbc.plans.idea_machine { idea_machine_plan }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

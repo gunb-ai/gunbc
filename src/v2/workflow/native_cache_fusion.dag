@@ -1,14 +1,5 @@
 module v2.workflow.native_cache_fusion
 
-import std.emit_on_demand {
-  EmitOnDemandLookup, EmitOnDemandHit, EmitOnDemandMiss,
-  EmitOnDemandCacheReceipt, materialization_for_lookup
-}
-import std.types { ContentHash }
-import std.content_hash { content_hash_atom }
-import std.realization { Materialization, Share, Recompute }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data native_cache_fusion_note: String = "P2/host fusion law (census R6 projection, 2026-07-22): the host transport decides warmness as compile_skipped = !cold_control && marker_exists (v1_interpreter.rs emit_host_run_transport_cached_in_workspace, the .native_ready rule), while the P2 model decides Share|Recompute via emit_on_demand_lookup over the artifact store. These are two realizations of ONE decision and must agree: marker-present under no control == store hit == Share; marker-absent or control-forced == miss == Recompute. This module states that agreement as the executable law over a modeled host observation (mirroring the cited Rust rule), so divergence between the model and the realization is a red, not silent drift. Full fusion — the host transport reading the P2 store itself — is the R6 construction end-state; until then this law is the tripwire."
 

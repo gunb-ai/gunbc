@@ -1,46 +1,5 @@
 module gunbc.srv3_host_effect_script
 
-import gunbc.retained_shell_script { RetainedShellScript, retained_srvn }
-import gunbc.host_effect {
-  HostEffect,
-  Srv3InstallDiagnosticObserve,
-  OsInstallActuatorToolchainEnsure,
-  ProvisionBuildCache,
-  Srv3InstallReconcileObserve,
-  DurableApprovalGrantRecord,
-  DurableApprovalGrantRead,
-  Srv3InstallMediaFetch,
-  Srv3SeededInstallMediaRemaster,
-  Srv3SeededInstallMediaToolchainEnsure,
-  Srv3SolConsoleCapture,
-  Srv3BmcwebSessionLogin,
-  Srv3BmcwebTokenExtract,
-  Srv3NbdProxyServe,
-  Srv3BootOnceReadBackSleep,
-  Srv3ReceiptEmit,
-  ShellCommand,
-  RedfishAction,
-  ConvergePlan,
-  LiveDeployApply,
-  LiveDeployRetract,
-  LiveDeployEnsureDependency,
-  LiveDeployDigestReadback,
-  DeployAccessPreflight,
-}
-import gunbc.shell_bash_runner { shell_exec_via_bash, shell_printf_line }
-import gunbc.srv3_os_install_diagnostic {
-  srv3_os_install_attempt_intent,
-  srv3_install_diagnostic_observe_script_for_intent,
-}
-import gunbc.srv3_os_install_reconcile_receipt { srv3_install_record_boot_once_approval_script }
-import extdeps.bmc.serial_console {
-  sol_console_capture_script,
-}
-import gunbc.srv3_sol_console_intent { srv3_sol_console_capture_intent }
-import extdeps.git { git_observe_meta_shell_fragment }
-import std.types { String, NonEmptyStr, List, Bool }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data srv3_host_effect_script_dissolution_trigger: String = "🟡 dissolve-on: srv3_host_effect_script — concat-built bash bodies for srv3 observe/effect intents (centralized handler staging post-P5a call-site migration); DISSOLVES WHEN bash-emit (#5828 / shell-emission slice0) realizes srv3 observe/effect intents as typed argv invocations / grammar-emitted nodes and srv3_host_effect_script_for retires without concat-built transport strings. Wave 4 residue (shell→dag census §1C category C). NOT gated on shell_exec_via_bash executor deletion (P5b)."
 

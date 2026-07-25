@@ -1,8 +1,5 @@
 module gunbc.floor_discovery_scaffold
 
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { String }
 
 data floor_discovery_hand_rust_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

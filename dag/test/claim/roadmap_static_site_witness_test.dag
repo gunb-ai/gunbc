@@ -1,31 +1,5 @@
 module test.claim.roadmap_static_site_witness
 
-import std.content_hash { content_hash_atom }
-import std.types { NonEmptyStr, ContentHash }
-import std.disposition { Scaffold, Terminal }
-import extdeps.http.server { media_type_wire_label }
-import extdeps.tools.curl { curl_localhost_bounded_get_argv_prefix }
-import gunbc.roadmap_authority { expected_roadmap_md }
-import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
-import gunbc.roadmap_static_site {
-  roadmap_site_static_allocation,
-  roadmap_site_text_artifacts,
-  roadmap_site_healthz_body,
-  roadmap_site_healthz_route,
-  roadmap_site_text_static_routes,
-  roadmap_site_static_route_authority_paths,
-  served_static_route_literal_path,
-  roadmap_site_readback_script,
-  roadmap_site_readback_script_scaffold,
-  roadmap_site_roadmap_md_artifact,
-  roadmap_site_dispatch_json_artifact,
-  roadmap_site_roadmap_url_path,
-  roadmap_site_dispatch_url_path,
-  roadmap_site_health_path,
-  RoadmapMarkdown,
-  RoadmapDispatchJson,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

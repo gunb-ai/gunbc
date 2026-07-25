@@ -1,20 +1,5 @@
 module v2.test.execution.floor_diff_observe_witness
 
-import std.logic { Bool }
-import gunbc.ci_spec { DiffMergeBase }
-import v2.workflow.floor_diff_observe {
-  FloorUnifiedDiffResult,
-  UnifiedDiffOk,
-  UnifiedDiffFail,
-  FloorNameStatusDiffResult,
-  NameStatusDiffOk,
-  NameStatusDiffFail,
-  floor_run_git_diff_unified,
-  floor_run_git_diff_name_status,
-  floor_observe_git_diff_unified_for_ci,
-  floor_observe_git_diff_name_status_for_ci
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

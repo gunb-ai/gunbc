@@ -1,47 +1,5 @@
 module test.claim.srv3_install_diagnostic_checklist
 
-import std.logic { Bool }
-import gunbc.srv3_os_install_diagnostic {
-  srv3_install_diagnostic_observe_script_for_intent,
-  srv3_install_diagnostic_observe_script_declares_five_surfaces,
-  srv3_os_install_attempt_intent,
-}
-import gunbc.srv3_install_diagnostic_observe_script {
-  srv3_install_diagnostic_observe_script_bash_emit_dissolution_trigger,
-}
-import gunbc.srv3_install_diagnostic_checklist {
-  srv3_install_diagnostic_checklist_entrypoint_is_declared,
-}
-import gunbc.srv3_os_install_diagnostic {
-  srv3_os_install_attempt_intent,
-  srv3_remote_bmc_probe_observation,
-  srv3_remote_bmc_probe_diagnostic_is_needs_serve_observation,
-  diagnose_srv3_install,
-  parse_srv3_install_debug_observation,
-  srv3_install_diagnostic_is_ready_to_boot,
-  InconclusiveNeedsServeObservation,
-  ServeDown,
-  ReadyToBoot,
-  ServeObserved,
-  ServePortAbsent,
-  TokenPresent,
-  IsoPresent,
-  WebsocketUpgradeAccepted,
-  WebsocketUnavailable,
-  NoAttachedServe,
-  NbdkitAbsent,
-  Srv3InstallDebugObservation,
-  RedfishBootObservation,
-  BootProgressNone,
-  SolConsoleContentObservation,
-}
-import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_content_hash }
-import gunbc.network_identity_subsumption { srv3_pre_install_lease_table }
-import extdeps.bmc.types { BootOverrideDisabled, BootTargetNone, On }
-import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
-import std.measure { byte_size }
-import std.disposition { Scaffold, Terminal, RealizationDispatch }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

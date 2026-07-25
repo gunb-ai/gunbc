@@ -1,13 +1,5 @@
 module test.claim.css_grain_witness
 
-import extdeps.languages.css.properties {
-  CssPropertyName, FontSize, BorderColor, ColorScheme, CustomProperty, RawProperty, css_property_wire,
-}
-import extdeps.languages.css.selectors {
-  SelectorSubject, ClassSelector, ElementSelector, PseudoSuffix, RawSelector,
-  selector_subject_wire, raw_selector_count,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,29 +1,5 @@
 module gunbc.roadmap_spawner
 
-import gunbc.roadmap_model {
-  RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
-  Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
-  Volume, VolumeSmall, VolumeMedium, VolumeLarge,
-  Acceptance, PrsMerged, ManualAcceptance,
-  NodeSizing, Unsized, Sized,
-  SectionElement, Prose, Group, SectionGroup,
-  RoadmapParent, TopLevel, UnderParent, roadmap_parent,
-}
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_is_done, item_superseded_by }
-import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
-import extdeps.languages.json.emit {
-  JsonValue, JsonNull,
-  serialize_json,
-  quote_json_string,
-  json_null,
-  json_string,
-  json_int,
-  json_array,
-  json_object,
-  json_kv,
-  json_str_list,
-}
 
 fn element_nodes(e: SectionElement) -> List<RoadmapNode> {
   match e {

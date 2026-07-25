@@ -1,20 +1,5 @@
 module v2.workflow.probe_selector_host_health
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.probe_selector {
-  CostBudget,
-  DiagnosticCapabilityFacts,
-  HostHealthHypothesis,
-  HostSupplyProjectionInput,
-  ProbeCatalogEntry,
-  ProbeResult,
-  SuspectedCausePrior,
-  TemporalAggregator,
-  diagnostic_capability_from_host_supply,
-  probe_select_host_health,
-  temporal_aggregator_drainable
-}
 
 fn wf_host_health_enumerate_available(
   supply: HostSupplyProjectionInput

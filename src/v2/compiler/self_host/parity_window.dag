@@ -1,9 +1,5 @@
 module v2.compiler.self_host.parity_window
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.algebra { length }
 
 data parity_window_note: String = "Parity window (P6 routing flip gate, 2026-07-22): a family may flip to NativeRouted in the native-routing frontier ONLY on evidence — N consecutive green falsifier cadence windows, where green means the family's equals_eval agreement leg passed AND the warm leg observed compile_skipped=true on the durable root. Any red or divergence RESETS the streak (consecutive, not cumulative). The flip is thereby unwritable without receipts (DESIGN section 5 construction over validation): the frontier row edit that flips a family must cite the window verdict, and the witness test pins the law on synthetic sequences. Receipt rows are authored from falsifier run observations; required_consecutive_green_windows is the single authority for N."
 

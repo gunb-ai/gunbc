@@ -1,14 +1,5 @@
 module extdeps.os.ubuntu_seeded_install_media
 
-import std.types { NonEmptyStr, String, ContentHash }
-import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
-import extdeps.os.ubuntu_install_media {
-  UbuntuInstallMediaArtifactRow,
-  ubuntu_install_media_artifacts_dir,
-}
-import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallPayload }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

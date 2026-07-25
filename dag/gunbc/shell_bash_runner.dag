@@ -1,8 +1,5 @@
 module gunbc.shell_bash_runner
 
-import std.types { String }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data gunbc_bash_heredoc_delimiter: String = "GUNBC_BASH_EOF"
 

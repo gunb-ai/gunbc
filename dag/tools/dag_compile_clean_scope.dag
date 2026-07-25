@@ -1,18 +1,5 @@
 module tools.dag_compile_clean_scope
 
-import gunbc.ci_layer_roots { witness_layer_roots }
-import tools.dag_compile_clean_partition { compile_clean_partition_boundary }
-import tools.dag_compile_clean_shard_roster { compile_clean_shard_entry_paths }
-import v2.lens.module_graph { entry_affected_by_touched_paths }
-import v2.workflow.floor_compile_clean_predicates {
-  compile_clean_all_touched_paths_docs_universe,
-  compile_clean_all_touched_paths_selectable,
-  compile_clean_departed_paths_outside_docs,
-  compile_clean_touched_path_selectable
-}
-import std.types { String, Bool, List, list_length }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type CompileCleanScopeDisposition
   = ScopedRun { entry_paths: List<String> }

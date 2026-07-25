@@ -1,24 +1,5 @@
 module v2.workflow.operand_flow
 
-import v2.std.algebra { list_map }
-import v2.std.collection { List }
-import v2.std.dependency {
-  DependencyKind,
-  DependencyKindClassifier,
-  DependencyView,
-  classify_dependency_kind
-}
-import v2.std.logic { Bool }
-import v2.std.node { Node, content_hash }
-import std.measure { ByteSize }
-import std.types { ContentHash }
-import v2.workflow.realization_runner {
-  NodeKeyedGraphArtifact,
-  NodeKeyedGraphTransitiveBytesMissingRow,
-  NodeKeyedGraphTransitiveBytesSettled,
-  NodeKeyedGraphTransitiveBytesUnsettled,
-  node_keyed_graph_transitive_bytes
-}
 
 data operand_flow_module_note: String = "Phase 2 of machine-shape-orthogonal-scheduling.md §4: DependencyView carries no operand today, so the scheduler's DependencyKindClassifier<Bool> collapse (v2.workflow.scheduler) discards shared-operand structure. operand_root/operand_flow_for_edge derive it without touching DependencyView's shape: operand identity is the producer node's content_hash (the same identity v2.std.materialize keys Share on), footprint is the single node_keyed_graph_transitive_bytes authority (v2.workflow.realization_runner) — no parallel size walk. Every DependencyKind other than DataDependsOn carries no operand by construction (the classifier is the single source of truth for which kinds apply, not a per-callsite match). operand_flows is total over its input edges: a non-applicable kind or an unsettled/missing footprint each yield a typed, located OperandFlowRefused row rather than being silently dropped, so refusals stay countable (DESIGN §5)."
 

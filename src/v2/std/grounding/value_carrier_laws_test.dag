@@ -1,21 +1,5 @@
 module v2.test.std_grounding.value_carrier_laws
 
-import v2.std.collection { empty_map, map_insert }
-import v2.std.runtime { ReferenceIdentical, StructurallyCompared, identity_evidence_equal }
-import v2.std.value_carrier {
-  Ephemeral,
-  FieldNames,
-  Persistent,
-  TypeNames,
-  VariantNames,
-  field_name_interning,
-  list_carrier,
-  map_carrier,
-  type_name_interning,
-  variant_name_interning
-}
-import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

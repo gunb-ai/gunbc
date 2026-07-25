@@ -1,6 +1,5 @@
 module gunbc.site.mark
 
-import std.markup { MarkupNode, ElementNode, MarkupAttr }
 
 data mark_note: String = "Layer 4: the mark — candidate A Confluence (design section 4e) as a SPEC, not a drawing. Four nodes, fork and re-join: the smallest honest DAG, the diamond property. One authority renders every scale: favicon = render_mark(depth: 0), nav = depth 1, hero = depth 3 — the levels cannot disagree. all_forks_rejoin is the confluence theorem about the edge rows, witnessed, not assumed."
 

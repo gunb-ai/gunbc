@@ -1,26 +1,5 @@
 module gunbc.live_deploy.spec
 
-import std.types { String, NonEmptyStr, List, Int, Bool, FilePath }
-import std.os.types { NobleNumbat2404Lts, OsPackageManager }
-import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
-import extdeps.apt {
-  package_tailscale,
-  package_tmux,
-}
-import gunbc.fleet_intent { srv1_host, ComputeHost }
-import gunbc.fleet_intent_network {
-  srv1_tailscale_endpoint,
-  fleet_intent_network,
-  operator_host_srv1,
-}
-import gunbc.host_layout {
-  srv1_gunbc_repo_root,
-  srv1_gunbc_serve_binary,
-  srv1_dispatch_worktree_root,
-}
-import extdeps.http.server { HttpServerListenConfig }
-import product.network_topology { NetworkEndpoint }
-import gunbc.ownership { Ownership, Owned, Ensured }
 
 data live_deploy_spec_belt_b_note: String = "Belt B membership (docs/plans/gunbc-served-dashboard-design.md section 5): the service is `gunbc serve` (the seed binary), not an emitted node server.js, so the members flip — ServeBinary + GunbcSourceTree + DispatchWorktreeRoot in (paths from the ONE gunbc.host_layout authority the belt also projects), ServerScript and the NodeJsPackage dependency out (the Ensured nodejs is never torn down — R5; the stale /opt/gunbc/server.js file is left inert on disk and reaped when belt A's interim retires). Deploy principal is ghrunner (DeployRunnerPrincipal.job_user; unit_user=root is NOT the authorization principal). #7011 realization: tree sync AS service user via gunbc-tree-sync.service; six roster sudo grants (Wave C adds visudo for dropin gate). Wave C envelope: in-script preflight + roster-emitted sudoers dropin (gunbc.live_deploy.emit deploy_apply_preamble_shell)."
 

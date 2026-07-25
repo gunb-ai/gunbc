@@ -1,27 +1,5 @@
 module v2.lens.schedule_lens
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { RealizationDispatch }
-import std.realization_schedule {
-  RealizationPlan,
-  Runnable,
-  schedule_batch_contains_label,
-}
-import v2.std.compilers.lexing { symbol_intern_lexeme }
-import v2.std.diagnostic {
-  CorrectionNotModeled,
-  Diagnostic,
-  Unavailable,
-  textual_whole_file_diagnostic,
-}
-import v2.std.lens_verdict {
-  Holds,
-  LensVerdict,
-  Violation,
-  lens_verdict_module_file,
-}
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
 type ScheduleLensViolation
   = EmptySchedule

@@ -1,27 +1,6 @@
 module extdeps.realization.parse_table_memo
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
-import std.cache_identity { CacheInterfaceId }
-import std.cache_interface {
-  ContentAddressLookup,
-  OverwriteAllowed,
-  MissThenCreate,
-  StructuredArtifact,
-  InProcess,
-  Never,
-  PerFile,
-  None,
-  InProcessNs,
-  Strong,
-  OperatorObserved,
-  ManualPurge,
-  Repo,
-}
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data parse_table_memo_seed_handler_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,

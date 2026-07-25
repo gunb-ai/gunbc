@@ -1,24 +1,5 @@
 module v2.std.probe_selector
 
-import std.algebra { Cons, Empty }
-import v2.std.algebra { contains, count_where, filter, fold_list, fold_list_right, length }
-import v2.std.change { AffectedSet }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.std.text { String }
-import v2.lens.affected_set {
-  RerunNodeSet,
-  RerunNodeSetFailClosed,
-  RerunNodeSetProduced,
-  affected_set_rerun_nodes
-}
-import v2.std.verification {
-  TestClaim,
-  test_claim_ci_selection_fail_closed,
-  test_claim_evaluation_touches_rerun_frontier,
-  test_claim_label
-}
 
 type DiagnosticInterfaceKind
   = DiagnosticSsh

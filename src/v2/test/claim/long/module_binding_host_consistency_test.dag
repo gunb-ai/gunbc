@@ -1,25 +1,5 @@
 module v2.test.long.module_binding_host_consistency
 
-import v2.compiler.source_authority {
-  ModuleStorageAgrees,
-  ModuleStorageDivergent,
-  ModuleStorageUncovered,
-  module_storage_bindings_from_ingest,
-  module_storage_host_agrees_with_oracle,
-  module_storage_module_for_path
-}
-import v2.test.workflow.host_module_binding_manifest {
-  host_module_binding_count,
-  host_module_bindings
-}
-import v2.test.workflow.host_source_root_ingest_manifest { host_source_root_ingest }
-import v2.std.collection { Absent, Present }
-import v2.std.algebra { length }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.logic { Bool }
-import v2.std.qualified_name { qualified_name_to_dotted_string }
-import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

@@ -1,22 +1,5 @@
 module v2.test.manual.target_model_operator_lookup_dissolution
 
-import v2.extdeps.languages.typescript { ts_add_operator_realization_row }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, SyntheticOccurrence, TypeNode }
-import v2.std.compilers.target_model {
-  canonical_operation_op_add,
-  target_operator_realization_catalog_lookup,
-}
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 fn operator_lookup_dissolution_probe_node() -> Node {
   Node {

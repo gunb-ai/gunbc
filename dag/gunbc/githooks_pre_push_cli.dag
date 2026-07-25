@@ -1,8 +1,5 @@
 module gunbc.githooks_pre_push_cli
 
-import std.disposition { Disposition, Terminal }
-import gunbc.githooks_pre_push_plan { pre_push_active_kinds, pre_push_source_roots }
-import extdeps.git.hooks { PrePushStdinRow, pre_push_zero_sha, pre_push_stdin_field_names }
 
 data githooks_pre_push_cli_stage0_receiver_disposition: Disposition = Terminal {
   reason: "stage0's `claim_batch --pre-push` argv dispatch (src/v1/stage0/src/pre_push.rs via cli_run::handle_pre_push) is the CLI transport handler for this interface (DESIGN §3 transport-is-a-handler): stdin parse and git diff collection are transport; gate policy is the typed plan in gunbc.githooks_pre_push_plan (pre_push_active_kinds derived from commit_gate_roster + local_tidy_trigger_globs + witness-corpus binding from #6706); the binary interprets the returned PrePushGateKind rows and emits typed receipts — no opaque imperative policy fork. The emitted `.githooks/pre-push` is a thin shim (`ensure_bins` + `exec claim_batch --pre-push`)."

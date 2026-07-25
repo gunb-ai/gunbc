@@ -1,13 +1,5 @@
 module v2.test.claim.self_host.wave1_gate1_general_body_producer_witness
 
-import v2.compiler.compile { always_required_lenses }
-import v2.compiler.self_host.frontier {
-  compiler_frontier_row_03_body_producer,
-  compiler_frontier_row_03_normalize
-}
-import v2.std.algebra { length }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

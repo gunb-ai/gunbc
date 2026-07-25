@@ -1,22 +1,5 @@
 module v2.test.claim.long.native_routing_membership_receipt_test
 
-import v2.compiler.self_host.native_routing_frontier {
-  NativeRoutingFrontierRow,
-  NativeRoutingEntryClosure,
-  native_routing_frontier_roster,
-  routing_frontier_agreement_entries_distinct,
-  native_routing_pool_closures,
-  native_routing_closure_reaches_subject,
-  native_routing_row_membership_derived,
-  native_routing_membership_facts_live,
-  family_subject
-}
-import v2.lens.module_graph { ModuleDeclarationFact }
-import v2.std.algebra { length, any }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

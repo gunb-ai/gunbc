@@ -1,17 +1,5 @@
 module gunbc.uefi_boot_config
 
-import std.types { NonEmptyStr, Int, List }
-import extdeps.firmware.uefi_shell {
-  UefiShellCommand,
-  BcfgDump,
-  BcfgAdd,
-  BcfgMove,
-  MapDevices,
-  Reset,
-  BcfgBoot,
-  ResetWarm,
-  uefi_shell_script,
-}
 
 type DesiredBootSource
   = BootFromInstallMedia { efi_file: NonEmptyStr }

@@ -1,10 +1,5 @@
 module gunbc.proactive_verification_ledger
 
-import gunbc.ci_layer_roots { known_red_probe_entries }
-import std.realization_schedule { ScheduleWitnessEntry }
-import std.types { String, Int, List }
-import v2.std.algebra { any, filter, fold_list, length }
-import v2.std.node { Symbol }
 
 data proactive_verification_ledger_law: String = "The PROACTIVE VERIFICATION LEDGER (operator no-soak ruling 2026-07-20; v1_deletion_plan ^v1_delete): enumerated executed receipts that gate v1_delete — never calendar soak, never elapsed-time claims. Each row is ONE deliberate run with a typed execution shape, a disposition (ExecutableNow | KnownRedPendingUnquarantine | BlockedOnCiFloorCutover), and an execution outcome (OutcomeGreen | OutcomePending | OutcomeRed) recorded only after a real run — never fabricated. Spine rows carry hand-declared disposition (BlockedOnCiFloorCutover until cutover). Family disposition is DERIVED by projecting gunbc.ci_layer_roots known_red_probe_entries — never hand-declared (§3 single authority). Spine: (1) whole-corpus cold v1-vs-v2 witness parity — falsifier predict-only cadence, zero unexplained divergence; (2) compile-clean parity; (3) regen behavioral fixed point. Families: nine witness-realization equals_eval receipts (#6879 partition). Dissolve-on: ci_floor_cutover + ledger all OutcomeGreen."
 

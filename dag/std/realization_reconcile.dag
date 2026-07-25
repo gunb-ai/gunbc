@@ -1,7 +1,5 @@
 module std.realization_reconcile
 
-import std.types { String, Bool }
-import std.disposition { Disposition, Terminal }
 
 type ShowEffectiveRead<R>
   = ReadObserved { value: R }

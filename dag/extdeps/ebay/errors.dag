@@ -1,8 +1,5 @@
 module extdeps.ebay.errors
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.ebay.ebay_contracts { error_category_wire_contract }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

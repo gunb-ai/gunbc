@@ -1,17 +1,5 @@
 module tools.build_step
 
-import v2.extdeps.languages.bash_build {
-  bash_build_command_with_words,
-  bash_build_exit,
-  bash_build_if,
-  bash_build_stmt_list_from_nodes,
-  bash_build_test_bracket,
-  bash_build_with_redir,
-  bash_build_word_concat_parts,
-  bash_build_word_lit,
-  bash_build_word_var
-}
-import v2.std.node { Node }
 
 data build_step_serialize_dissolution_note: String = "Shell text emission for build-artifact verification lives in v2.workflow.build_step_emit (grammar-row serializer via bash_command_fold_serialize.bash_fold_serialize_program). This module retains Node stmt construction only."
 

@@ -1,47 +1,5 @@
 module gunbc.live_deploy.host_effect_script
 
-import std.types { String, Int }
-import gunbc.retained_shell_script { RetainedShellScript, retained_srvn }
-import v2.std.collection { Present, Absent }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.host_effect {
-  HostEffect,
-  ShellCommand,
-  RedfishAction,
-  ConvergePlan,
-  Srv3InstallDiagnosticObserve,
-  OsInstallActuatorToolchainEnsure,
-  ProvisionBuildCache,
-  SetHostnameCas,
-  ReadEffectivePosixPrincipal,
-  SudoNopasswdExecuteProbe,
-  Srv3InstallReconcileObserve,
-  DurableApprovalGrantRecord,
-  DurableApprovalGrantRead,
-  Srv3InstallMediaFetch,
-  Srv3SeededInstallMediaRemaster,
-  Srv3SeededInstallMediaToolchainEnsure,
-  Srv3SolConsoleCapture,
-  Srv3BmcwebSessionLogin,
-  Srv3BmcwebTokenExtract,
-  Srv3NbdProxyServe,
-  Srv3BootOnceReadBackSleep,
-  Srv3ReceiptEmit,
-  LiveDeployApply,
-  LiveDeployRetract,
-  LiveDeployEnsureDependency,
-  LiveDeployDigestReadback,
-  DeployAccessPreflight,
-  HostIdentityShortHostnameRead,
-}
-import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
-import gunbc.live_deploy.emit {
-  live_deploy_apply_script_for,
-  live_deploy_retract_script_for,
-  deployment_ensure_dependency_script,
-}
-import gunbc.roadmap_static_site { roadmap_site_digest_readback_script }
 
 data live_deploy_host_effect_script_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,

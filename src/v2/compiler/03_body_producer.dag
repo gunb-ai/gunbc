@@ -1,27 +1,5 @@
 module v2.compiler.body_producer
 
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Unavailable,
-  bind_outcome,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected
-}
-import v2.std.node {
-  Arrow,
-  ComputationNode,
-  Edge,
-  Named,
-  Node,
-  Symbol,
-  TypeNode,
-  node_rebuild,
-  well_formed
-}
-import v2.std.algebra { list_snoc_item }
 
 fn body_producer_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {

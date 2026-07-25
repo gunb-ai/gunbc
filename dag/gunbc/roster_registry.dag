@@ -1,6 +1,5 @@
 module gunbc.roster_registry
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data roster_registry_taxonomy_note: String = "Group-of-units standard representation (operator ruling 2026-07-22, roadmap group 5a): a plurality of units must have a standard representation, never a nickname. Membership in a group is known exactly one of four ways — POSITIONAL (containment: being-in IS being-there, e.g. a module's members or a directory-grain lane), DERIVED (a computed relation: closure reachability, inhabitance, measurement), FRONTIER (asserted per-row WITH a reason and a dissolve_on trigger — countable, prioritizable, the typed self-host-frontier pattern), or NICKNAME (asserted, string-keyed, no trigger — the violation this registry exists to make visible). The migration pipeline for any hand-kept list is mint -> frontier -> query: a new group lands as typed frontier rows, and graduates to a derived query when its membership predicate is modelable. Every known unit-naming roster is enrolled below; the lens v2.lens.roster_registry holds each registration to ByContainment, ByDerivation, or DeclaredFrontier-with-nonempty-reason-and-trigger."
 

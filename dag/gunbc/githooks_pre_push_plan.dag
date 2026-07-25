@@ -1,19 +1,5 @@
 module gunbc.githooks_pre_push_plan
 
-import gunbc.commit_workflow {
-  commit_gate_roster,
-  project_local_tidy_checks,
-  LocalTidyCheck,
-  LocalTidyWitnessCheck,
-  LocalTidyCargoFmtCheck,
-}
-import gunbc.local_tidy_spec {
-  local_tidy_trigger_globs,
-  local_tidy_path_matches_glob,
-}
-import gunbc.ci_layer_roots { witness_layer_roots }
-import tools.rust_stage0_gates { path_is_rust_monolith }
-import extdeps.git.hooks { pre_push_zero_sha }
 
 type PrePushGateKind
   = DocWitnessRun { entry: String, function: String }

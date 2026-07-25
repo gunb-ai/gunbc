@@ -1,23 +1,5 @@
 module v2.test.manual.int_literal_parse_smoke
 
-import v2.compiler.ingested_fixture_arrows { ingested_loop_module_source }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag {
-  dag_int_literal_magnitude_int_from_node,
-  dag_int_literal_node_from_lexeme,
-  dag_language_model
-}
-import v2.std.compilers.lexing { token_stream_all, token_stream_first }
-import v2.std.collection { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.integer {
-  decimal_digits_to_magnitude,
-  integer_decimal_magnitude_node,
-  integer_string_to_decimal_digits_optional
-}
-import v2.std.logic { Bool }
-import v2.std.node { SyntheticOccurrence }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

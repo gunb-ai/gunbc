@@ -1,8 +1,5 @@
 module gunbc.plans.host_effect_orchestration
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownBlock, TableBlock, AlignNone, CodeBlock }
-import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
 
 fn host_effect_orchestration_body() -> List<MarkdownBlock> {
   [

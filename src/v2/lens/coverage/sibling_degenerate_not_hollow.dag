@@ -1,20 +1,5 @@
 module v2.test.lens_coverage.sibling_degenerate_not_hollow
 
-import v2.lens.coverage {
-  coverage_defect_degenerate_type,
-  coverage_defect_hollow_type
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data sibling_degenerate_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^sibling_degenerate_symbol } },

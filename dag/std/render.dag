@@ -1,8 +1,5 @@
 module std.render
 
-import std.render_repeat_string_bootstrap { repeat_string }
-import std.symbols { SemanticColor, SymbolId, Tier }
-import std.languages { CommentSyntax, ConfigFormat, Language }
 
 type SpanStyle {
   color: SemanticColor?

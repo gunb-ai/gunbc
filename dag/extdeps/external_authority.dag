@@ -1,7 +1,5 @@
 module extdeps.external_authority
 
-import std.types { NonEmptyStr }
-import extdeps.uri { Uri, File }
 
 type ExternalAuthority {
   uri: Uri

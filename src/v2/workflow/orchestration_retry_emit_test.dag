@@ -1,54 +1,5 @@
 module v2.workflow.orchestration_retry_emit_test
 
-import v2.compiler.emit_orchestration { orch_emit_step }
-import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
-import v2.compiler.emit { emit }
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.extdeps.languages.bash {
-  orch_retry_emitted_command,
-  orch_retry_target_model,
-  orch_retry_1level_emitted_command,
-  orch_retry_1level_target_model,
-  orch_retry_escalation_final_emitted_command,
-  orch_retry_escalation_final_target_model,
-  orch_retry_escalation_step_emitted_command,
-  orch_retry_escalation_step_target_model
-}
-import v2.test.manual.retry_eagain_bash {
-  retry_eagain_intent,
-  retry_eagain_example_command
-}
-import v2.std.orchestration {
-  PipelineStep,
-  Retry,
-  EscalationLevel,
-  EnvSet,
-  EnvUnset,
-  LogMatches,
-  Pipeline,
-  Do,
-  Run,
-  FailFast
-}
-import std.algebra { FreeMonoid }
-import v2.std.algebra { list_head, HeadFound, HeadAbsent }
-import v2.std.collection { Absent, Map }
-import v2.std.node { Node }
-import v2.std.witness { Violates, Witness }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  EmitDirective,
-  ExternalContractUnknown,
-  None,
-  Rejected,
-  SeverityWarning,
-  Unavailable,
-  node_locus
-}
-import v2.workflow.ci_retry_emit { ci_cargo_eagain_retry_core }
-import gunbc.ci_failure_class { infra_retry_grep_alternation }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

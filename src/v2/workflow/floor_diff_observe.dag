@@ -1,38 +1,5 @@
 module v2.workflow.floor_diff_observe
 
-import gunbc.ci_spec {
-  DiffMode,
-  DiffPolicy,
-  DiffMergeBase,
-  DiffTwoDot,
-  gunbc_ci_spec
-}
-import gunbc.diff_baseline {
-  CiDiffEvent,
-  DiffBaselineResolution,
-  BaselineSelected,
-  BaselineRefused,
-  resolve_diff_baseline,
-  diff_baseline_ref
-}
-import std.types { String, NonEmptyStr, GitRef }
-import std.logic { Bool }
-import extdeps.git
-import extdeps.git {
-  GitDiffNameStatusComplete,
-  GitDiffNameStatusTruncated,
-  GitDiffRange,
-  TwoDot,
-  ThreeDot,
-  git_diff_name_status_parse,
-  git_diff_status_entries_touched_paths,
-  git_diff_status_entries_departed_paths,
-  git_diff_status_entries_any_unknown,
-  git_diff_name_status_field_separator,
-  git_remote_ref_parts
-}
-import extdeps.github.actions { github_event_name_env, github_base_ref_env }
-import extdeps.shell
 
 type FloorUnifiedDiffResult
   = UnifiedDiffOk { text: String }

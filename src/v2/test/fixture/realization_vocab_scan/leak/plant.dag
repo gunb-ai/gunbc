@@ -1,6 +1,4 @@
 module v2.test.fixture.realization_vocab_scan.leak_plant
-import v2.extdeps.languages.bash_build { bash_build_word_lit }
-import v2.std.node { Node }
 
 data planted_bash_vocab_leak_note: String = "Planted leak fixture for realization_vocabulary_containment (scanned via planted_leak_test EXPLICIT roots). After Phase 4 generalized the wall to bash language-construction vocabulary, the live leak witness targets v2.extdeps.languages.bash_build (was extdeps.languages.typescript.program during the typescript-only ratchet)."
 

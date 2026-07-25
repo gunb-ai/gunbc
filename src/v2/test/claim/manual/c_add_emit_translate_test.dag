@@ -1,51 +1,5 @@
 module v2.test.manual.c_add_emit_translate
 
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.compiler.emit { emit }
-import v2.compiler.translate { target_serialize_source_from_model }
-import v2.extdeps.languages.c {
-  c_atom,
-  c_emitted_add_fn_node,
-  c_int_inhabitant_node,
-  c_lex,
-  c_source_text,
-  c_target_model,
-  c_target_model_node
-}
-import v2.compiler.infer { InferredFacts, InferredTree }
-import extdeps.communication.medium { Medium }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
-import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
-import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection { Map, empty_map }
-import v2.std.constraints {
-  CanonicalGrounding,
-  CanonicalGroundingWitness
-}
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  None,
-  Outcome,
-  Rejected,
-  Unavailable,
-  diagnostics_singleton,
-  node_locus
-}
-import v2.std.logic { Bool }
-import v2.std.node {
-  Arrow,
-  Conj,
-  Edge,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode,
-  SyntheticOccurrence
-}
-import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,40 +1,5 @@
 module v2.test.claim.live_read_classification_test
 
-import v2.lens.live_read_classification {
-  live_read_classification,
-  live_read_classification_from_facts,
-  live_read_classification_from_facts_v0,
-  live_read_classification_g2_from_facts,
-  live_read_classification_g2_from_facts_v0,
-  classification_is_local,
-  classification_has_runtime_read,
-  classification_has_corpus_scan_carrier,
-  classification_has_filesystem_read_carrier,
-  classification_has_literal_path,
-  runtime_read_carrier_module_names,
-  runtime_read_touched_by_path_g1,
-  runtime_read_touched_by_path_g2,
-  g2_implies_reads_live_tree
-}
-import v2.lens.witness_cost_locality { ModuleImportFact }
-import v2.std.live_read {
-  LiveReadClassification,
-  LiveReadCarrierHome,
-  FilesystemReadCarrier,
-  ModuleDeclarationFactsCarrier,
-  DeclFactsReflectionCarrier,
-  live_read_carrier_homes_v0
-}
-import v2.std.collection { List }
-import v2.std.fn_index {
-  fn_arrow_decl_facts_live,
-  fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger
-}
-import std.disposition { Scaffold, Terminal }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.test.claim.complexity.accumulator_copy_roster_gate { live_tree_disposition }
 
 data fixture_carriers: List<LiveReadCarrierHome> = [
   LiveReadCarrierHome { module: "fix.corpus_reader", kind: DeclFactsReflectionCarrier },

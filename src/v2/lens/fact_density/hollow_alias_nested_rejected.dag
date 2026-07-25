@@ -1,23 +1,6 @@
 module v2.test.lens_fact_density.hollow_alias_nested_rejected
 
-import v2.compiler.compile {
-  Eval,
-  validate_then_compile
-}
 
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.test.lens_common.infer_fixture { claim_atom_node }
 
 data hollow_alias_nested_child: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^hollow_alias_nested_el_subject } },

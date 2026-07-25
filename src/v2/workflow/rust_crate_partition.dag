@@ -1,39 +1,5 @@
 module v2.workflow.rust_crate_partition
 
-import std.algebra { Empty }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.graph {
-  CallGraph,
-  GraphEdge,
-  graph_has_multi_node_scc
-}
-import std.disposition { RealizationDispatch }
-import std.types { ContentHash, List, String, Bool, Int, NonEmptyStr }
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import v2.std.algebra { any, fold_list, length }
-import v2.std.collection { Absent, Optional, Present, empty_map, map_get, map_insert, optional_present }
-import v2.std.compilers.compilation_unit {
-  CompilationUnit,
-  CompilationUnitId,
-  ModuleDag,
-  ModuleDagEdge,
-  ModuleId,
-  ModuleTypeDefinitionRow,
-  PartitionFoldOk,
-  PartitionFoldRefused,
-  PartitionProvenance,
-  PartitionR4Refused,
-  PartitionR4Valid,
-  PartitionR4ValidityVerdict,
-  SccSplit,
-  UnitGraphCycle,
-  PartitionFoldOutcome,
-  PartitionFoldRefusalCause,
-  partition_fold_outcome,
-  partition_provenance_hand_explicit
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Node, Symbol }
 
 type PartitionPolicy {
   target_crate_count: Int

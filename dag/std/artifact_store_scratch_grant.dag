@@ -1,19 +1,5 @@
 module std.artifact_store_scratch_grant
 
-import std.types { String, Bool }
-import std.effect_grant {
-  Verb, Read, Write,
-  filesystem_position,
-  NamespacePosition,
-  RealTransport,
-  LifecycleByConvention,
-  Grant, Envelope,
-  EffectAdmission, Admitted, EffectOutsideGrant, admit_effect,
-}
-import std.filesystem_path_grant {
-  absolute_path_position,
-}
-import std.materialization_ladder { Frame, SharedStateFrame }
 
 data artifact_store_scratch_grant_note: String = "P-B scratch-grant authority (docs/plans/effect-namespace-grants.md 6): the artifact-store host transport's /tmp/gunbc_* store roots are declared frame-owned scratch grants (LifecycleByConvention). extdeps.realization.artifact_store_fs dispatches Write/Read only on Admitted verdicts from artifact_store_scratch_target_admissible — the SINGLE admission entry. INTERIM HONESTY (segment-prefix limit): grant roots use filesystem_position on segment tmp because NamespacePosition prefix is segment-exact — it cannot express in-segment /tmp/gunbc_* naming; is_gunbc_tmp_scratch_store_root is the precision gate in this same module until SymbolIndex-backed positions dissolve the path-string interim (std.filesystem_path_grant note). dissolve-on = P-C region model + envelope-derived LiveTreeDisposition retires hand-stamped ReadsLiveTree on witness rows."
 

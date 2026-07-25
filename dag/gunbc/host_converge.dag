@@ -1,46 +1,5 @@
 module gunbc.host_converge
 
-import std.types { String, List, Int, Bool, NonEmptyStr }
-import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, percent_count, Second, second, second_count }
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
-import gunbc.ci_runner_placement {
-  RunnerDeploymentPlan,
-  PlanDerived,
-  PlanUnsound,
-  RunnerHostDeployment,
-  runner_deployment_plan,
-  workload_class_cpu_weight,
-  WorkloadClass,
-  BatchLatencyTolerant,
-  InteractiveLatencySensitive,
-}
-import gunbc.ci_floor_measurement {
-  SessionReservationMode,
-  Regime2AggregateOomd,
-  Regime1WorstCase,
-  SessionReservationModeUnset,
-  SessionAggregateMeasured,
-  SessionAggregateUnmeasured,
-  gunbc_ci_session_reservation_mode,
-}
-import gunbc.ci_fleet { fleet_intent_offers }
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
-import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_slice }
-import extdeps.os.systemd {
-  systemd_memory_max_property,
-  systemd_memory_swap_max_property,
-  systemd_memory_high_property,
-  systemd_cpu_weight_property,
-}
-import extdeps.os.oomd {
-  oomd_managed_oom_memory_pressure_property,
-  oomd_managed_oom_memory_pressure_limit_property,
-  managed_oom_action_value,
-  managed_oom_pressure_limit_show_value,
-}
 
 
 data gunbc_cgroup_v2_root: String = "/sys/fs/cgroup"

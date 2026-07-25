@@ -1,15 +1,5 @@
 module test.claim.realize_pack_witness
 
-import std.logic { Bool }
-import std.types { Int }
-import std.measure { ByteSize, byte_size, hardware_thread_count, hardware_thread_count_value }
-import std.realize_pack {
-  DerivedBound, BoundDerived, BoundUnknown, derived_bound_of,
-  HostBudget, BudgetReadable, BudgetUnreadable,
-  RealizeVerdict, PackedWidth, MaturationReserve, BudgetRefused,
-  realize_pack_width, realize_verdict_width, realize_fits_budget,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

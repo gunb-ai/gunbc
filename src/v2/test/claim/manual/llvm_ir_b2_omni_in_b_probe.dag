@@ -1,34 +1,5 @@
 module v2.test.manual.llvm_ir_b2_omni_in_b_probe
 
-import v2.extdeps.languages.llvm_ir {
-  BasicBlock,
-  ConstantOperand,
-  ConditionalBr,
-  Defined,
-  FunctionBody,
-  IntegerType,
-  IntConstant,
-  LlvmType,
-  LocalRef,
-  PhiIncoming,
-  PhiNode,
-  RetValue,
-  UnconditionalBr,
-  block_successors,
-  block_well_formed
-}
-import v2.std.cardinality { NonZeroNat }
-import v2.std.nat { Zero }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier3,
-  Unit,
-  manual_claim_anchor
-}
 
 fn llvm_probe_atom(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],

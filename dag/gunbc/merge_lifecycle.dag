@@ -1,14 +1,5 @@
 module gunbc.merge_lifecycle
 
-import std.types { ContentHash, CommitSha, String, List, Bool, Int }
-import std.content_hash { content_hash_atom, content_hash_tagged }
-import extdeps.github.checks { Success }
-import gunbc.merge_admission {
-  MergeAdmissionReceipt,
-  AdmissionPolicy,
-  policy_admits,
-  mint_merge_admission_receipt,
-}
 
 data merge_lifecycle_authority_note: String = "Lifecycle DYNAMICS over the gunbc.merge_admission authority — no second admission predicate (DESIGN 2: derive, never restate). gunbc.merge_admission owns the static question (is THIS receipt admissible against THIS target tree and roster); this module owns the temporal one (does a merge PROCESS whose merge step consults policy_admits ever advance main to a tree the process never verified). Squash semantics per gunbc.plans.branch_merge_admission_model section 1: the landed tree is the PR applied to CURRENT main at merge time (squash_result_tree), never the base the receipt recorded — which is exactly why staleness is expressible at all. Trees and rosters are symbolic fixture identities (content_hash_atom roots advanced by content_hash_tagged, injective in tag x payload), the same fixture idiom test.claim.merge_admission_witness already uses for its b0/b1/r0/r1 hashes."
 

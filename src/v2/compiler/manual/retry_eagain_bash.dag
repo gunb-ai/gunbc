@@ -1,7 +1,5 @@
 module v2.test.manual.retry_eagain_bash
 
-import v2.std.orchestration { PipelineStep }
-import gunbc.ci_spec { ci_cargo_eagain_retry_intent }
 
 data retry_eagain_example_command: String = "cargo build -p v1-compiler --release --bins"
 

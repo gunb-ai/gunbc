@@ -1,47 +1,5 @@
 module v2.test.manual.sg2_typescript_type_expression_projection
 
-import v2.compiler.translate {
-  translate_type_expression_project,
-  target_serialize_source_from_model
-}
-import v2.extdeps.languages.typescript {
-  ts_sg2_arrow_labeled_xy_emitted,
-  ts_sg2_arrow_malformed_source_type_node,
-  ts_sg2_arrow_mixed_wire_emitted,
-  ts_sg2_arrow_source_type_node,
-  ts_sg2_arrow_xy_emitted,
-  ts_sg2_binary_fn_source_type_node,
-  ts_sg2_conj_source_type_node,
-  ts_sg2_conj_xy_emitted,
-  ts_sg2_disj_source_type_node,
-  ts_sg2_foobar_xy_emitted,
-  ts_sg2_instantiation_source_type_node,
-  ts_sg2_sum_xy_emitted,
-  ts_sg2_type_expr_target_model,
-  ts_type_expression_projection
-}
-import v2.std.compilers.target_model {
-  target_type_expr_arrow_labeled_codomain,
-  target_type_expr_arrow_labeled_param_slots,
-  target_type_expr_arrow_wire_shape,
-  target_type_expr_emitted_wire_decode,
-  TargetTypeExprArrowLabeledWire,
-  TargetTypeExprArrowPositionalWire
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, content_hash, SyntheticOccurrence }
-import v2.std.text { String }
-import v2.std.verification {
-  CompilesClaim,
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data ts_sg2_fail_text: String = ""
 data ts_sg2_expected_instantiation_text: String = "FooBar<X, Y>"

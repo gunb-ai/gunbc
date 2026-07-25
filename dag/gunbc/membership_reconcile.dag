@@ -1,14 +1,5 @@
 module gunbc.membership_reconcile
 
-import std.types { String, List, Bool, Int }
-import std.change {
-  KeyedRow, KeyedPatch, KeyedDiffHunk,
-  KeyedDiffAddedHunk, KeyedDiffRemovedHunk, KeyedDiffModifiedHunk,
-  keyed_two_way_diff
-}
-import gunbc.ownership { Ownership, Owned, Ensured }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type TeardownRefusalCause = MemberNotOwned | OwnershipUnknown
 

@@ -1,29 +1,5 @@
 module v2.extdeps.languages.ptx
 
-import v2.std.grammar {
-  StampClass,
-  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, Terminal, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
-import v2.std.compilers.lexing {
-  CharClassPattern,
-  IdentContinueChar,
-  IdentStartChar,
-  KeywordPattern,
-  LexPattern,
-  LexRule,
-  LexRuleSet,
-  LexRules,
-  LiteralPattern,
-  ModeledLexRules,
-  OneOrMorePattern,
-  RepeatPattern,
-  SequencePattern,
-  TokenRule,
-  TriviaRule,
-  WhitespaceChar
-}
-import v2.std.nat { Nat }
-import v2.std.cardinality { PositiveUpperBoundedNat }
-import v2.std.node { Symbol }
 
 type ParamScope
   = ParamEntry

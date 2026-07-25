@@ -1,25 +1,6 @@
 module v2.test.std_text.carrier_claims
 
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.logic { Bool }
-import v2.std.text {
-  Char,
-  CharAbsent,
-  CharFound,
-  HostStringText,
-  String,
-  host_string_text,
-  host_string_text_value,
-  string_head,
-  string_is_empty
-}
 
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

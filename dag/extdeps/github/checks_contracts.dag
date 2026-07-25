@@ -1,8 +1,5 @@
 module extdeps.github.checks_contracts
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import std.serialization { CoproductWireContract, StringVariant, SnakeCase }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

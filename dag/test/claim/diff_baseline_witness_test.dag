@@ -1,21 +1,5 @@
 module test.claim.diff_baseline_witness
 
-import std.logic { Bool }
-import std.types { String, GitRef }
-import gunbc.diff_baseline {
-  CiDiffEvent,
-  DiffBaseline,
-  DiffBaselineResolution,
-  MergeTarget,
-  PushParent,
-  OperatorOverride,
-  BaselineSelected,
-  BaselineRefused,
-  resolve_diff_baseline,
-  diff_baseline_ref
-}
-import gunbc.repo_identity { gunbc_merge_target_ref, gunbc_default_remote_name }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,10 +1,5 @@
 module v2.workflow.source_root_ingest_gate
 
-import v2.workflow.source_root_ingest_transport { run_real_ingest_gate }
-import v2.workflow.compiler_closure_ingest_transport { run_compiler_closure_ingest_gate }
-import v2.workflow.module_binding_supply_transport { run_module_binding_supply_gate }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data source_root_ingest_gate_composition_note: String = "The module-binding supply gate is enrolled HERE rather than as a new Gate variant. Both are the honest options; this one is chosen deliberately. A new variant would touch the exhaustive Gate matches in gunbc.ci_gate, v2.workflow.ci_floor_plan (4 sites), tools.ci_gates, gunbc.merge_admission, gunbc.ci_spec, gunbc.floor_materialization and gunbc.commit_workflow — seven CI-critical files — to buy separate scheduling this gate does not need. It shares the ingest gates' cadence and resource profile exactly (Wet, host bins, per-PR floor) and is the same KIND of fact: host-supplied source-root data checked against the model. Enrolling it here gives it a real executing consumer on that cadence with minimal blast radius. Dissolve-on: if this gate ever needs its own scheduling, selection, or resource profile, promote it to a Gate variant then — the promotion is mechanical and the composition is not load-bearing for correctness, only for cadence."
 

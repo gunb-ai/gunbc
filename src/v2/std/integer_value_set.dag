@@ -1,19 +1,5 @@
 module v2.std.integer_value_set
 
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  None,
-  Outcome,
-  Rejected,
-  diagnostics_singleton,
-  node_locus,
-  Unavailable
-}
-import v2.std.integer { integer_interval_spec_node_contains }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed, SyntheticOccurrence }
-import v2.std.node_query { find_named_child }
 
 type IntegerValueSet
   = IntegerValueSetUnbounded

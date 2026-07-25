@@ -1,18 +1,5 @@
 module v2.test.claim.interface_summary.interface_summary_firewall
 
-import std.interface_summary { export_entry_fingerprint }
-import std.types { ContentHash, NonEmptyStr, List }
-import std.disposition { Scaffold, Terminal }
-import v2.lens.interface_summary {
-  interface_summary_for_module,
-  import_interface_hashes_for_module
-}
-import v2.lens.module_graph { ImportResolutionFact }
-import std.algebra { Empty }
-import v2.std.collection { Present, Absent, optional_absent }
-import v2.std.decl_index { export_signature_facts_host_scaffold_dissolution_trigger }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

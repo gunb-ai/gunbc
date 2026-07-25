@@ -1,38 +1,6 @@
 module test.claim.ci_deploy_witness
 
-import gunbc.ci_spec {
-  gunbc_ci_spec,
-  gunbc_ci_deploy_stages,
-  gunbc_ci_deploy_srv1_stage,
-  live_deploy_apply_entry,
-  live_deploy_apply_srv1_wet_function,
-  gunbc_ci_deploy_invoke,
-  ci_release_build_line,
-}
-import v2.workflow.ci_release_build_emit { ci_release_build_script }
-import gunbc.ci_deploy_access {
-  ci_deploy_srv1_access,
-  deploy_access_is_local_apply,
-  deploy_access_check,
-  deploy_access_sudo_miss_reason,
-  Permit,
-  Deny,
-  DeployAccessActor,
-  gunbc_deploy_sudoers_dropin,
-  deploy_access_sudoers_line,
-  srv1_live_deploy_privileged_commands,
-}
 
-import gunbc.fleet_posix_accounts {
-  FleetAccountCiRunner,
-  fleet_posix_principal,
-  grounded_posix_principal_name,
-}
-import gunbc.ci_workflow { ci_workflow }
-import gunbc.ci_yaml_emit { expected_ci_yml }
-import gunbc.fleet_intent { srv1_host }
-import gunbc.host_effect { LocalShell }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

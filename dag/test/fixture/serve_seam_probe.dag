@@ -1,7 +1,5 @@
 module test.fixture.serve_seam_probe
 
-import extdeps.http.server { ServeWireResponse }
-import std.types { String, Int }
 
 data serve_seam_probe_note: String = "The minimal 3-arg serve-seam probe (parent review note 3, 2026-07-20): proves the host accept-loop's run_in_context_with_args call path — three named String args in, one ServeWireResponse record out — independently of the full roadmap handler graph. The echo body discriminates that the args actually crossed the seam (a fabricated fixed response could not contain the request's method/path/body)."
 

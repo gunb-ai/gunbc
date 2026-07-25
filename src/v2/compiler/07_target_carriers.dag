@@ -1,25 +1,5 @@
 module v2.compiler.target_carriers
 
-import extdeps.communication.fidelity_carriers { decode_fidelity_merge }
-import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.collection { Absent, Optional, Present }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  Diagnostics,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  Unavailable,
-  bind_outcome,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected
-}
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
-import v2.std.node_query { find_named_child }
-import v2.std.text { String }
 
 fn source_medium(text: String, fidelity: DecodeFidelity) -> Medium<String> {
   Medium { carried: text, fidelity: fidelity }

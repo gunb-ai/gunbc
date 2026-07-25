@@ -1,21 +1,5 @@
 module gunbc.os_install_emit
 
-import std.logic { Bool }
-import std.types { List, String }
-import extdeps.os.ubuntu_autoinstall {
-  UbuntuAutoinstallPayload,
-  AutoinstallIdentity,
-  AutoinstallStoragePolicy,
-  StoragePolicyAbsent,
-  StoragePolicyDirectLayout,
-}
-import extdeps.access.ssh { SshPublicKey, ssh_public_key_line }
-import extdeps.languages.yaml.types {
-  YamlValue, YamlKeyValue,
-  yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool,
-  kv, empty_yaml_values
-}
-import extdeps.languages.yaml.emit { serialize_yaml }
 
 fn identity_entries(id: AutoinstallIdentity) -> List<YamlKeyValue> {
   [

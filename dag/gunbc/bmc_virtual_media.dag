@@ -1,32 +1,5 @@
 module gunbc.bmc_virtual_media
 
-import std.types { NonEmptyStr, String, Int, Bool, List, Port }
-import extdeps.exec.command { ArgvCommand, shell_command_render }
-import extdeps.storage.nbd {
-  NbdExport,
-  NbdClientAttach,
-  nbd_server_config_text,
-  nbd_server_command,
-  nbd_client_attach_command,
-  nbd_client_disconnect_command,
-}
-import extdeps.linux.usb_gadget {
-  UsbGadget,
-  MassStorageLun,
-  ConfigfsOp,
-  usb_gadget_setup_ops,
-  usb_gadget_setup_script,
-  usb_gadget_teardown_script,
-}
-import extdeps.bmc.virtual_media {
-  VirtualMediaIntent,
-  VirtualMediaSource,
-  VirtualMediaTransport,
-  ConfigfsGadgetParams,
-  ConfigfsGadgetTransport,
-}
-import gunbc.fleet_intent_network { srv1_host_lan_endpoint }
-import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
 
 type BmcVirtualMediaPlan {
   bmc_host: NonEmptyStr

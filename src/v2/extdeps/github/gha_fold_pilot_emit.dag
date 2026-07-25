@@ -1,15 +1,5 @@
 module v2.extdeps.github.gha_fold_pilot_emit
 
-import extdeps.languages.yaml.types { YamlKeyValue }
-import extdeps.github.actions {
-  ActionRef,
-  RunStep,
-  ShellType,
-  Step,
-  UsesStep
-}
-import v2.std.algebra { for_all }
-import v2.std.collection { Absent, List, Optional, Present }
 
 type GhaPilotStepEmit
   = GhaPilotRunEmit { run: String }

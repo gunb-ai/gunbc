@@ -1,13 +1,6 @@
 module extdeps.github.auth
 
-import extdeps.github.github { GitHubAuthToken, GitHubScope, ScopeGist, ScopeRepo }
-import std.credentials { CredentialSource, EnvVar }
-import extdeps.shell.credentials { env_credential }
-import std.types { NonEmptyStr, Timestamp }
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

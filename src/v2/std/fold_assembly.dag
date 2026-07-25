@@ -1,20 +1,5 @@
 module v2.std.fold_assembly
 
-import v2.std.node {
-  Node, Edge, EdgeLabel, Named,
-  NodeKind, TypeNode, Connective, Conj,
-  Symbol, node_synthetic, node_subtree_nodes,
-  NamedEdgeTargetLookup, Found, Ambiguous, Absent, named_edge_target_lookup
-}
-import std.algebra { FreeMonoid }
-import v2.std.algebra { freemonoid_empty, fold_list, fold_list_node, list_append, list_snoc_item, length, is_empty, count_where, ListHeadResult, HeadFound, HeadAbsent, list_head, ListTailResult, TailFound, TailAbsent, list_tail }
-import v2.std.anti_unification { ChainGeneralization, is_hole, hole_node }
-import v2.std.diagnostic {
-  Outcome, Accepted, Rejected,
-  Diagnostic, Correction, Unavailable, NoCorrectionReason, ExternalContractUnknown,
-  node_locus, outcome_accepted, outcome_rejected
-}
-import v2.std.logic { Bool }
 
 data fold_template_edge: Symbol = ^fold_template
 data fold_elements_edge: Symbol = ^fold_elements

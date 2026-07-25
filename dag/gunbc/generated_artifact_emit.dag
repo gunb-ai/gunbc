@@ -1,39 +1,6 @@
 
 module gunbc.generated_artifact_emit
 
-import gunbc.generated_artifact {
-  GeneratedArtifact,
-  CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact,
-  RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact,
-  AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
-  Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
-  Stage0CratePartitionGeneratedDagArtifact,
-  LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact,
-  artifact_path
-}
-import gunbc.ci_yaml_emit { expected_ci_yml }
-import gunbc.falsifier_workflow { expected_falsifier_yml }
-import gunbc.ci_yaml_validate { ci_yml_parses }
-import gunbc.gitignore_emit { expected_gitignore }
-import gunbc.roadmap_authority { expected_roadmap_md }
-import gunbc.design_document { expected_design_md }
-import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
-import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
-import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
-import gunbc.os_install_emit { autoinstall_user_data }
-import gunbc.install_server_emit { install_server_dnsmasq_conf }
-import gunbc.plan { expected_plan_md }
-import gunbc.stage0_crate_layout_emit {
-  expected_stage0_crate_layout_generated_dag,
-  expected_stage0_crate_layout_generated_rs
-}
-import gunbc.stage0_crate_partition_emit {
-  expected_stage0_crate_partition_generated_dag
-}
-import gunbc.live_deploy.emit {
-  expected_live_deploy_apply_script,
-  expected_live_deploy_retract_script
-}
 
 fn artifact_generate(a: GeneratedArtifact) -> String {
   match a {

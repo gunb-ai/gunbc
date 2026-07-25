@@ -1,6 +1,5 @@
 module v2.lens.complexity_linearity_audit
 
-import std.roster_frontier { FrontierRow, frontier_row, frontier_units }
 
 data complexity_linearity_debt_row_reason: String = "closed-coproduct wildcard arm classified migration-debt (not kernel-permanent): the match is over a closed coproduct and the wildcard hides arms a total match would surface"
 

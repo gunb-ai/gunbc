@@ -1,11 +1,5 @@
 module extdeps.tools.sha256sum
 
-import std.types { NonEmptyStr, String, Bool }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.tools { CliTool, SourceCoreutils }
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

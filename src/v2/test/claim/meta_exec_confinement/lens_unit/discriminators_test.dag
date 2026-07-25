@@ -1,17 +1,5 @@
 module v2.test.meta_exec_confinement.lens_unit.discriminators
 
-import v2.lens.layering_imports { LayerImportFact }
-import v2.lens.meta_exec_confinement {
-  meta_exec_leak_count_canonical,
-  meta_exec_roster_stale_count,
-  meta_exec_roster_sound,
-  target_meta_exec_module
-}
-import v2.std.collection { List }
-import v2.std.layer { LayerPrefixStd, LayerPrefixExtdeps }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

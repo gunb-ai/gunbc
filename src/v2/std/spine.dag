@@ -1,16 +1,5 @@
 module v2.std.spine
 
-import v2.std.node { Node, Edge, NodeFold, fold_node, node_subtree_nodes }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { length, reduce_or }
-import v2.std.collection { List }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.materialize {
-  materialize_node_count,
-  materialize_distinct_computation_count,
-  materialize_redundant_computation_count
-}
 
 data spine_module_note: String = "The ANALYSIS spine (execution-spine-design.md FLAG A, §9; Rc-safe increment 1). run ≙ realize ∘ materialize ∘ dependency_view; this module composes the two catamorphisms that need NO interpreter thread-safety: dependency_view (the level-profile over the DependencyView DAG → critical-path depth + independence width) and materialize (content-hash Share/dedup → redundant-computation count). It emits the SpineReceipt the operator's §9 acceptance asks for BY COMPUTATION, not assertion. The RUNNER (actual wall-clock parallel execution) is increment 2+, realized by emit-on-demand native artifacts orchestrated by DependencyView independence — NOT by parallelizing the interpreter (the Rc→Arc gate is removed; ROADMAP §④, execution-spine-design.md reconciliation 2026-07-10, operator-signed). The level profile is a tree-fold over occurrences: profile[d] = count of node occurrences at depth d below the root; a DAG-shared subtree is counted once per parent here (that is exactly the redundancy materialize's Share collapses — the two readings are complementary, not a fork). critical_path_depth = number of levels (longest dependency chain, the reduce spine, §5); independence_width = max nodes at any one level (what parallelizes to hardware width, §5). Discriminating RED: a single chain A→B→C has depth 3 / width 1; a root over N independent leaves has depth 2 / width N (§9 discriminating RED)."
 

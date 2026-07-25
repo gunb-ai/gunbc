@@ -1,18 +1,5 @@
 module v2.compiler.self_host.candidate_generation
 
-import v2.compiler.infer { infer }
-import v2.compiler.name_resolve { Admission }
-import v2.compiler.program_assembly { assemble_program_from_ingest }
-import v2.compiler.source_authority { SourceRootIngest }
-import v2.compiler.translate { translate }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.diagnostic {
-  Outcome,
-  bind_outcome,
-  outcome_accepted
-}
-import v2.std.node { Node }
 
 type StageEmissionCandidate {
   emitted: Node

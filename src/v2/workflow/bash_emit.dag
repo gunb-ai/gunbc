@@ -1,36 +1,5 @@
 module v2.workflow.bash_emit
 
-import v2.extdeps.languages.bash {
-  bash_stmt_env_prefixed_emitted,
-  bash_stmt_env_prefixed_source_text,
-  bash_stmt_env_prefixed_target_model,
-  bash_stmt_heredoc_emitted,
-  bash_stmt_heredoc_source_text,
-  bash_stmt_heredoc_target_model,
-  bash_stmt_negation_emitted,
-  bash_stmt_negation_target_model,
-  bash_word_pass_emitted,
-  bash_word_pass_target_model
-}
-import v2.extdeps.languages.bash_build { bash_build_negation }
-import v2.workflow.bash_command_fold_serialize {
-  bash_fold_serialize_emit_from_node,
-  bash_fold_serialize_node,
-  bash_fold_serialize_program
-}
-import v2.std.algebra { fold_list, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.diagnostic {
-  Accepted,
-  None,
-  Outcome,
-  Rejected,
-  bind_outcome
-}
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.witness { Holds, Violates, Witness }
 
 type BashEmitStmt {
   node: Node

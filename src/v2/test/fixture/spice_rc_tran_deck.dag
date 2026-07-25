@@ -1,24 +1,5 @@
 module v2.test.fixture.spice_rc_tran_deck
 
-import std.algebra { Cons, Empty }
-import v2.extdeps.formats.spice {
-  Capacitor,
-  DeckComponent,
-  DeckDirective,
-  DeckStatement,
-  Ground,
-  InitialCondition,
-  Named,
-  NamedNode,
-  NodeVoltageBinding,
-  NodeVoltageBindings,
-  Resistor,
-  SpiceNetlist,
-  SpiceValue,
-  Tran,
-  VoltageSource,
-  spice_emit_ngspice
-}
 
 data spice_rc_tran_deck: SpiceNetlist = SpiceNetlist {
   title: "* rc tran witness",

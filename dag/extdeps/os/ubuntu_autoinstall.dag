@@ -1,10 +1,5 @@
 module extdeps.os.ubuntu_autoinstall
 
-import std.types { Int, NonEmptyStr, Bool, List }
-import std.os.types { UbuntuDistribution }
-import extdeps.access.ssh { SshPublicKey }
-import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalAuthority }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

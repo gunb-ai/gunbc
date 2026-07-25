@@ -1,11 +1,5 @@
 module test.claim.nested_fold_generic_param_emit
 
-import std.nat { Nat }
-import std.measure { Measure, Time, time_measure, measure_count }
-import std.realization_measurement {
-  schedule_batch_critical_path,
-  schedule_critical_path_time,
-}
 
 fn witness_flat_fold_resolves_generic_scale() -> Bool {
   let batch = [time_measure(count: 10)]

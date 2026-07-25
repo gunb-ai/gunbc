@@ -1,23 +1,5 @@
 module gunbc.ci_deploy_access_emit
 
-import std.types { String, NonEmptyStr, List, Bool }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.algebra { fold_list, any }
-import gunbc.fleet_posix_accounts { grounded_posix_principal_name }
-import gunbc.ci_deploy_access {
-  DeployAccess,
-  PrivilegedCommand,
-  deploy_access_refusal_prefix,
-}
-import extdeps.sudo.nopasswd_execute_probe {
-  SudoNopasswdExecuteProbeShape,
-  sudo_nopasswd_grant_list_probe_note,
-}
-import extdeps.access.posix_effective_principal {
-  EffectivePosixPrincipalRead,
-  posix_effective_principal_read_note,
-}
 
 data deploy_access_emit_preflight_note: String = "Wave C envelope-only on #7011 realization: deploy-access preflight + roster-emitted sudoers dropin run in-script before the first mutation (apply and retract share deploy_apply_preamble_shell; retract may install the dropin on first retract-after-flip — idempotent). Bootstrap order (review 40903): principal + roster grants first, then sudoers install — no blessed-helper grant (#7011 owns tree-sync/ownership/teardown realization). Package-managed grant paths (tailscale) use sudo -l grant-list probes so a missing binary cannot masquerade as a sudoers miss (review 41039). Typed refusal prefixes match deploy_access_refusal_prefix; no absorbing fallback."
 

@@ -1,15 +1,5 @@
 module extdeps.llm.anthropic_rest
 
-import extdeps.llm.anthropic {
-  AnthropicChatMessage,
-  AnthropicMessages200Body,
-  AnthropicStopReason,
-  current_api_version
-}
-import extdeps.llm.anthropic_errors { AnthropicErrorShape }
-import std.credentials { EnvVar }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

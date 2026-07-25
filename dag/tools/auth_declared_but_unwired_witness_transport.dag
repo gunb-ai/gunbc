@@ -1,6 +1,5 @@
 module tools.auth_declared_but_unwired_witness_transport
 
-import tools.host_prelude { run_witness_bin }
 
 fn run_auth_declared_but_unwired_witness() -> Bool {
   run_witness_bin(

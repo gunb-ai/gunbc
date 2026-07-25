@@ -1,20 +1,5 @@
 module test.claim.artifact_store_witness
 
-import std.logic { Bool }
-import std.types { ContentHash, List, Int }
-import std.content_hash { content_hash_atom }
-import std.measure { ByteSize, byte_size, measure_count }
-import std.materialization_ladder {
-  CacheProvider, CoversAllComputations, ReferenceTier, ArtifactTier, ContentKeyed,
-  ScopeExit, SpacePacked, provider_row,
-}
-import std.artifact_store {
-  ArtifactKey, artifact_key_hash,
-  ArtifactStore, StoreReady, StoreRefusedEviction, store_over_provider,
-  StoreHit, StoreMiss, store_get,
-  StorePutReceipt, store_put, store_bytes_used,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

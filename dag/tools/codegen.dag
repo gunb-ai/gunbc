@@ -1,4 +1,2 @@
 module tools.codegen
 
-import std.resources { Filesystem }
-import extdeps.gunbc { shell.Codegen }

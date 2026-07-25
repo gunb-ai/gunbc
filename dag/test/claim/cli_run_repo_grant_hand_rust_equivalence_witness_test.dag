@@ -1,21 +1,5 @@
 module test.claim.cli_run_repo_grant_hand_rust_equivalence_witness
 
-import gunbc.cli_run_repo_grant_scaffold {
-  cli_run_repo_grant_hand_rust_scaffold,
-  cli_run_repo_grant_dissolve_trigger,
-  cli_run_repo_grant_receipt_plan_anchor,
-  cli_run_repo_grant_equivalence_test_contained,
-  cli_run_repo_grant_equivalence_test_absolute_outside,
-  cli_run_repo_grant_equivalence_test_parent_segment,
-}
-import gunbc.cli_run_repo_grant {
-  cli_run_repo_write_admissible,
-  cli_run_repo_read_admissible,
-}
-import std.disposition { Scaffold, SingleAuthority }
-import std.types { Bool, String }
-import std.effect_grant { EffectAdmission, Admitted, EffectOutsideGrant }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

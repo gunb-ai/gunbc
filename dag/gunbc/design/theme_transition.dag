@@ -1,19 +1,5 @@
 module gunbc.design.theme_transition
 
-import gunbc.design.material {
-  BuildRule, StaticRule, ResponseRule, CssDecl, decl, css_block,
-  TimingToken, reframe_page, response_base_selector,
-}
-import extdeps.languages.css.properties { css_property_wire }
-import extdeps.languages.css.selectors { selector_subject_wire }
-import gunbc.design.theme {
-  night_theme, day_theme,
-}
-import extdeps.languages.typescript.program {
-  TsProgram, serialize_typescript_program,
-  ts_ident, ts_lit_str, ts_lit_num, ts_member, ts_call, ts_binop, ts_cond,
-  ts_arrow, ts_block, ts_const, ts_let, ts_expr_stmt,
-}
 
 data theme_transition_note: String = "The general-purpose theme reframe (operator, eighth pass 2026-07-20: universally nail dark->light and light->dark — everyone either gets it for free or has to implement it). Model: a theme flip is a TOUCH (OS toggle or in-page control), so the still-until-touched law grants it exactly one answer — a page-wide cross-fade of every themed property on ONE clock (tokens.reframe_page), never a per-element ripple. Construction: the reframe CSS is DERIVED from the same BuildRule rows that made the colors themed — route a color through a role var and the transition is free BY DERIVATION; bypass the role system and the literal shows up in unthemed_color_decls, a counted census row (opting out is visible, never silent). ORDERING (proven by probe, 2026-07-20): a raw prefers-color-scheme media block recolors in the same style pass as the flip, BEFORE any change event runs — a class added afterwards has nothing left to animate (single-frame snap, measured). So the watcher OWNS the applied theme: at load it pins :root[data-theme] to the current scheme (same values the media block was painting — no flash), which makes the :root:not([data-theme]) media block inert; every subsequent flip is recolored by OUR attribute mutation, set in the same turn as html.reframing, so the cross-fade is structural, not a race. CSS ms and JS ms share one authority (tokens.reframe_page). No JS = media block drives, instant recolor (degraded, never removed); prefers-reduced-motion collapses the reframe to instant by the same guard as every response."
 

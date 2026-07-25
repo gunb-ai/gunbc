@@ -1,11 +1,5 @@
 module std.effect_axes
 
-import std.types { Bool, List, String }
-import std.effect_grant {
-  NamespacePosition, filesystem_position, position_under,
-  Grant, Envelope, Read, Write, verb_eq,
-  RealTransport, Replay,
-}
 
 data effect_axes_note: String = "P-C derived axes (docs/plans/effect-namespace-grants.md lines 27-30, 62, owned silent-ibex-417): the OLD execution-mode axes are PROJECTIONS over the std.effect_grant Envelope, not stamped bits (dissolving derived_projections_deferred_note in effect_grant). replayable = every Read grant content-addressed (SubstrateClosure region) or Replay-bound; isolated = every Write grant root a FrameScratch region; live_tree_intersects = any Read grant that reaches the RepoTree region for real (RealTransport). Region is DERIVED from the grant root position via canonical region roots + position_under -- the SAME containment relation admit_effect walks -- never a stamped marker (DESIGN 3/4). Two fail-closed choices (DESIGN 5): (a) an UnclassifiedRegion read is ASSUMED to intersect the live tree -- retiring the machine-stamped-FALSE class that let #6654's orphan wall get skipped (design line 29); (b) live_tree_intersects is BINDING-AWARE -- a Replay-bound read is served from a fixture, not live state, so it never intersects, which is what keeps 'replayable => SubstrateInputsOnly' consistent (a Replay-bound RepoTree read is replayable per line 27, so it must NOT also read the live tree). INTERIM: canonical roots are path-prefix positions (the NamespacePosition interim, effect_grant namespace_tree_note); the scattered real roots (v2.compiler.build_transport_admission closure/workspace, std.artifact_store_scratch_grant tmp, std.filesystem_path_grant repo) consume these as their single authority at migration. FrameScratch is 'under the canonical scratch root'; the per-frame OWNERSHIP refinement (design 'owned by the frame') is a declared stub. dissolve-on = SymbolIndex-backed positions supersede the path-prefix regions AND the real-envelope roots repoint here; the Hermetic|Wet|Record presets (v2.std.execution_envelope) delete when that enum retires."
 

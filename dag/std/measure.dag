@@ -1,8 +1,5 @@
 module std.measure
 
-import std.currency { CurrencyCode }
-import std.nat { Nat }
-import std.types { Int }
 
 type Quantity =
     Time

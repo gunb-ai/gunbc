@@ -1,37 +1,5 @@
 module v2.compiler.self_host.compiler_closure_emit
 
-import v2.compiler.infer { infer }
-import v2.compiler.name_resolve { Admission }
-import v2.compiler.program_assembly { assemble_program_from_ingest }
-import v2.compiler.program_partition { emit_for_target }
-import v2.compiler.source_authority { SourceRootIngest }
-import extdeps.communication.medium { Medium }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.lens.affected_set { AffectedSetClosureAcc, affected_set_closure }
-import v2.std.algebra { contains, length }
-import v2.std.collection { List }
-import v2.std.dependency {
-  DependencyView,
-  dependency_lens,
-  ready_set,
-  topological_layers
-}
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Unavailable,
-  bind_outcome,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected
-}
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.node { Node }
-import v2.std.program_segment {
-  partition_boundary_fail_closed,
-  program_segment_whole_program
-}
 
 type CompilerClosureEmitReceipt {
   closure_size: Int

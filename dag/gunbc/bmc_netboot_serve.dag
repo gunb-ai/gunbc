@@ -1,30 +1,5 @@
 module gunbc.bmc_netboot_serve
 
-import std.types { NonEmptyStr, String, Int, List, Port }
-import extdeps.uri { Uri, Http, Https, uri_wire }
-import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallPayload }
-import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
-import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
-import extdeps.firmware.uefi_http_boot { UefiHttpBootEntry }
-import extdeps.tools.busybox { busybox_cli_tool, busybox_httpd_command }
-import extdeps.exec.command {
-  ArgvCommand,
-  CommandTransport,
-  LocalExec,
-  SshExec,
-  command_over_transport,
-  shell_command_render,
-  scp_command,
-}
-import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.shell_bash_runner { shell_exec_via_bash }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.os_install { srv4_ubuntu_autoinstall_on_iso }
-import gunbc.os_install_emit { autoinstall_user_data }
 
 type BmcNetbootServePlan {
   bmc_host: NonEmptyStr

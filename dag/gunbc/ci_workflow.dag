@@ -1,54 +1,5 @@
 module gunbc.ci_workflow
 
-import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
-import gunbc.ci_workflow_expressions {
-  ci_concurrency_group, ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys,
-  ci_concurrency_cancel_in_progress_expression,
-}
-import gunbc.ci_spec {
-  CiSpec, gunbc_ci_spec, gunbc_ci_floor_run,
-  gunbc_ci_regen_spec, gunbc_ci_regen_floor_run,
-  gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_invoke,
-  ci_release_bins_pack_script, ci_release_bins_unpack_verify_script,
-  ci_release_bins_archive_name,
-  gunbc_ci_heal_regen_invoke, gunbc_ci_heal_commit_push_script,
-}
-import gunbc.merge_admission_produce {
-  ci_merge_admission_gate_script,
-}
-import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if, ci_regen_heal_if }
-import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
-import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec, ci_runner_target_ram_speed_budget, selected_ci_runner_target }
-import gunbc.ci_materialization {
-  ci_floor_resolve_receipt_gate_script,
-  ci_floor_materialization_receipt_gate_script
-}
-import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
-import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
-import v2.workflow.ci_floor_peak_emit {
-  ci_cgroup_peak_locate_shell,
-  ci_floor_peak_pre_script,
-  ci_floor_peak_post_script
-}
-import v2.workflow.ci_workflow_run_emit {
-  ci_isolate_toolchain_script,
-  ci_pin_rustup_default_script,
-  ci_selection_control_script
-}
-import v2.workflow.ci_release_build_emit { ci_release_build_script }
-import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { Duration }
-import gunbc.repo_identity { gunbc_default_branch_name }
-import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep,
-  WorkflowTrigger, Push, PullRequest, WorkflowDispatch, MergeGroup,
-  PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
-  WorkflowPermissions, PermRead, PermWrite,
-  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool, CancelInProgressExpression,
-  checkout_action, setup_rust_action, cache_action,
-  upload_artifact_action, download_artifact_action
-}
 
 fn ci_checkout_step() -> Step {
   UsesStep {

@@ -1,8 +1,5 @@
 module gunbc.githooks_pre_commit_emit
 
-import gunbc.githooks_pre_push_emit { emit_freshness_path_fn }
-import gunbc.local_tidy_spec { local_tidy_trigger_globs, LocalTidyCargoFmtCheck }
-import extdeps.git { git_toplevel_shell_subexpr }
 
 data githooks_pre_commit_note: String = "Commit-time fmt gate (operator request 2026-07-12: add fmt to the commit hook). The staged path set is matched against the same LocalTidyCargoFmtCheck trigger globs the pre-push hook and the CI rust gate consume — one fmt-relevance authority, three surfaces. Both commit-time and push-time hooks are CHECK-ONLY: on drift they refuse with the fix recipe instead of mutating the index or auto-committing (git add -u under a partially-staged tree would sweep unstaged edits into the commit — a silent widen; push-time auto-commit was retired in #6706 non-invasive gates, and #6720 carries the same check-only policy into the typed plan/Rust transport). dissolve-on: shell emission via the grammar path (the bash medium modeled as GrammarRelationRow rows read forward, superseding these concat-built shell string literals — same trigger as the githooks_pre_push_emit sibling; the medium-as-string debt is tracked once for the hook-emit family, here explicitly rather than implicitly via the sibling roster). Follow-on (not modeled here): a GitPreCommitHook CommitWorkflowSurface row binding this artifact into commit_workflow_realization_bindings."
 

@@ -1,22 +1,5 @@
 module v2.test.long.module_storage_binding_derivation
 
-import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.source_authority {
-  DagSourceReadWitness,
-  SourceRootIngest,
-  module_storage_bindings_from_ingest,
-  module_storage_module_for_path,
-  module_storage_path_for_module
-}
-import v2.std.artifact { Artifact, SourceFile }
-import v2.std.collection { Absent, Present }
-import v2.std.cross_tree.import_model { V2Tree }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
-import v2.std.text { String }
-import std.algebra { Cons, Empty }
 
 data msb_qualified_name_collision_note: String = "QualifiedName values here are constructed directly from Cons/Empty. Historical: the constructor name qualified_name_from_segment_list was FORKED across std/extdeps (FreeMonoid<Symbol> vs Outcome<QualifiedName>) when this witness was authored; that fork was DISSOLVED in this integration wave by renaming apart — qualified_name_from_string_segments (std, List<String>) vs qualified_name_from_symbol_segments (extdeps dag parse, List<Symbol> -> Outcome). Direct construction is retained here so the witness stays independent of either helper."
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -1,45 +1,5 @@
 module v2.test.manual.match_infer_fail_open_audit
 
-import v2.compiler.infer { infer }
-import v2.extdeps.languages.dag {
-  dag_arrow_with_body_node,
-  dag_complement_arrow_with_body_fixture,
-  dag_complement_body_fixture,
-  dag_match_arm_node,
-  dag_match_body_from_arms,
-  dag_match_if_body_fixture,
-  dag_type_atom_node
-}
-import v2.std.algebra { fold_list }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostics,
-  None,
-  NonEmptyDiagnostics,
-  Outcome,
-  Rejected,
-  Some
-}
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Conj,
-  ComputationNode,
-  Edge,
-  Match,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

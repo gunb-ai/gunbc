@@ -1,22 +1,5 @@
 module v2.test.claim.diagnostic_sequence_outcome_witness
 
-import v2.std.diagnostic {
-  Outcome,
-  Accepted,
-  Rejected,
-  StageDiagnosticPolicy,
-  ShortCircuit,
-  Accumulate,
-  outcome_accepted,
-  outcome_rejected,
-  sequence_outcome,
-  port_locus,
-  Diagnostic,
-  ExternalContractUnknown,
-  Unavailable,
-}
-import v2.std.collection { List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

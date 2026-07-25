@@ -1,11 +1,5 @@
 module extdeps.docker.container_stats
 
-import std.types { Timestamp, String, Int, Float }
-import std.nat { Nat }
-import std.measure { ByteSize, byte_size, byte_size_count, Nanosecond, nanosecond, nanosecond_count, Microsecond }
-import extdeps.docker.endpoint { docker_default_endpoint }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

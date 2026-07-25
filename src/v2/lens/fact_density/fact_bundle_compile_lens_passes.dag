@@ -1,28 +1,5 @@
 module v2.test.lens_fact_density.fact_bundle_compile_lens_passes
 
-import v2.compiler.compile {
-  CompileLensEnforce,
-  apply_compile_lens,
-  fact_density_lens
-}
-import v2.compiler.infer { InferredTree }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.test.lens_common.infer_fixture {
-  claim_atom_node,
-  claim_inferred_facts,
-  claim_inferred_tree
-}
 
 data fact_bundle_cl_child: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^fact_bundle_cl_child_symbol } },

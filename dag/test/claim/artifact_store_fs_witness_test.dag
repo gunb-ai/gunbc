@@ -1,19 +1,5 @@
 module test.claim.artifact_store_fs_witness
 
-import std.logic { Bool }
-import std.types { ContentHash, String }
-import std.content_hash { content_hash_atom }
-import std.artifact_store { ArtifactKey, artifact_key_hash }
-import std.effect_grant { Read, verb_eq }
-import std.artifact_store_scratch_grant { artifact_store_scratch_frame }
-import extdeps.realization.artifact_store_fs {
-  artifact_fs_put, artifact_fs_get, artifact_fs_delete, artifact_fs_list,
-  ArtifactFsLookup, ArtifactFsHit, ArtifactFsMiss, ArtifactFsRefused,
-  ArtifactFsPutOk, ArtifactFsPutRefused, ArtifactFsPutFailed,
-  ArtifactFsDeleteOk, ArtifactFsDeleteRefused, ArtifactFsDeleteFailed,
-  ArtifactFsListOk, ArtifactFsListRefused, ArtifactFsListFailed,
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

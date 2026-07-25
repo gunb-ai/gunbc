@@ -1,22 +1,5 @@
 module v1.compiler.infer_emit_info
 
-import v1.std.core {
-  Node,
-  authored_name_at, NewlineIndex, find_child_named, has_child_named,
-  InferredNode, Resolved, TypeVariable,
-  FieldAccessStyle, StoredField, EnumAccessor, TupleFirst, TupleSecond,
-  FieldValueShape, PlainValue, OptionalValue,
-  FieldSummary,
-  with_required_cardinality,
-  Connective, Conj, NoConnective, Arrow,
-  CardOptional,
-  param_node_name_at
-}
-import v1.compiler.infer_env { TypeEnv, empty_symbol_index, empty_type_env }
-import v1.compiler.infer_types {
-  normalize_access_type_node,
-  child_type_node, emit_map_has, node_type_equals
-}
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
     TypeVariable { id: _ } => true

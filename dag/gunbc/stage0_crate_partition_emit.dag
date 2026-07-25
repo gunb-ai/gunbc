@@ -1,15 +1,5 @@
 module gunbc.stage0_crate_partition_emit
 
-import v2.workflow.rust_crate_partition {
-  Stage0EmitCoreCrate,
-  Stage0FoundationCrate,
-  Stage0LayeredCoreCrate,
-  Stage0PartitionCrateRow,
-  stage0_partition_crate_rows
-}
-import v2.std.algebra { fold_list }
-import v2.std.collection { List }
-import v2.std.text { String }
 
 fn escape_dag_string_body(s: String) -> String {
   replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")

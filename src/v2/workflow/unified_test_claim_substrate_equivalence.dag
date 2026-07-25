@@ -1,27 +1,5 @@
 module v2.test.workflow.unified_test_claim_substrate_equivalence
 
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.verification {
-  EvalOnly,
-  NodeCorpus,
-  UnifiedBoolWitnessModality,
-  UnifiedNodeCorpusModality,
-  UnifiedTestClaim,
-  bool_witness_descriptor,
-  bool_witness_matches_entry_function,
-  unified_test_claim_bool_witness,
-  unified_test_claim_modality
-}
-import v2.test.lens_affected_set.edit_locus_resolver {
-  edit_locus_narrow_resolution_holds_symbol,
-  unified_claim_edit_locus_narrow
-}
-import v2.std.text { String }
-import v2.test.manual.eval_runtime { claim_eval_test_claim_route }
-import v2.test.workflow.host_discovered_owned_data_manifest {
-  host_owned_data_discovery_receipt
-}
 
 data substrate_equivalence_sample_bool_witness_entry: String = "src/v2/lens/affected_set/edit_locus_resolver_test.dag"
 

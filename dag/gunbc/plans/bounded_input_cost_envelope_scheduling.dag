@@ -1,8 +1,5 @@
 module gunbc.plans.bounded_input_cost_envelope_scheduling
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, BlockquoteBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote }
 
 fn bounded_input_cost_envelope_scheduling_body() -> List<MarkdownBlock> {
   [

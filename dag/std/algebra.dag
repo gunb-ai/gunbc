@@ -1,6 +1,5 @@
 module std.algebra
 
-import std.error_primitives { DivError, Result }
 
 type Magma<T> {
   op: fn(T, T) -> T

@@ -1,7 +1,5 @@
 module test.claim.githooks_pre_push_emit
 
-import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

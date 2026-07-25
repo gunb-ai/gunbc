@@ -1,49 +1,5 @@
 module v2.std.cardinality
 
-import std.algebra { Cons, Empty }
-import std.termination {
-  DescentEvidence,
-  Strict,
-  NonIncreasing,
-  DescentUnknown,
-  descent_evidence_lattice_meet,
-  evidence_rank
-}
-import v2.std.collection { Absent, List, Optional, Present }
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  node_locus,
-  Unavailable
-}
-import v2.std.nat { Nat }
-import v2.std.node {
-  Arrow,
-  Atom,
-  Behavior,
-  Bind,
-  Branch,
-  Cardinality,
-  ComputationNode,
-  Conj,
-  Connective,
-  Disj,
-  Edge,
-  Instantiation,
-  Loop,
-  Named,
-  Node,
-  NodeFold,
-  Symbol,
-  Transform,
-  TypeNode,
-  Value,
-  fold_node,
-  loop_behavior_edges_conform,
-  loop_bound_measure_target,
-  name_occurrences
-}
-import v2.std.witness { Holds, Violates, Witness }
 
 type Never
 type Unit

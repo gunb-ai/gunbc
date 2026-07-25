@@ -1,11 +1,5 @@
 module test.claim.http_client_get_real_execution
 
-import std.logic { Bool }
-import std.types { String, NonEmptyStr }
-import extdeps.http.client
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

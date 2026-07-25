@@ -1,10 +1,5 @@
 module v2.lens.mandatory_tag.corpus_scan
 
-import std.algebra { Cons, Empty }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.qualified_name { QualifiedName }
-import v2.std.text { String }
 
 data corpus_scan_scaffold_note: String = "SCAFFOLD (shrunken corpus-consumer core) - the .dag surface over the three retained host builtins in cli_run.rs (extdeps_external_authority_facts_for_qualified_name, extdeps_external_authority_live_clean_tree_holds, extdeps_external_authority_live_roster_module_count). The VERDICT authority for the extdeps anchor requirement is v2.lens.mandatory_tag (the SubstrateMandatoryTag region fold, enrolled in always_required_root_lenses, red/green-controlled at the v2 parse grain); this host seam survives ONLY for corpus cadence, because the interpreted v2 pipeline prices the whole-corpus parse-grain witness out of every CI lane (measured 2026-07-22: ~33s/module parse + ~5.5s/module tokenize interpreted, ~330 extdeps modules; the modeled witness lives at src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag as the offline recipe). Dissolution trigger: witness realization (docs/plans/witness-realization-plan.md) executes that parse-grain corpus witness at native speed, then this module, the host block, and its three builtins delete. The shadow-mask sub-check dissolved 2026-07-22 onto SingleAuthority (module-path collisions refuse loudly at index build); the backfill queue dissolved drained-empty."
 

@@ -1,6 +1,5 @@
 module test.claim.rest_transport_axes_emit_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,12 +1,5 @@
 module v2.extdeps.posix
 
-import v2.extdeps.file_system { AbsolutePath, Filesystem, PosixByteString }
-import std.algebra { FreeMonoid }
-import v2.std.diagnostic { Accepted, Locus, Outcome, Rejected }
-import v2.std.integer { Int }
-import v2.std.machine { Byte }
-import v2.std.node { Symbol }
-import v2.std.refinement { Refined, Validation, refine }
 
 type ProcessId {
   refined: Refined<Int>

@@ -1,36 +1,5 @@
 module gunbc.ci_deploy_access_observe
 
-import std.types { NonEmptyStr, Bool, List }
-import std.access { AccessDecision, decision_meet }
-import gunbc.host_effect {
-  HostEffect,
-  ShellCommand,
-  ReadEffectivePosixPrincipal,
-  SudoNopasswdExecuteProbe,
-  LiveDeployApply,
-  LiveDeployRetract,
-  LiveDeployEnsureDependency,
-  LiveDeployDigestReadback,
-  DeployAccessPreflight,
-}
-import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do }
-import v2.std.orchestration { FailFast }
-import v2.std.algebra { list_snoc_item, fold_list }
-import gunbc.ci_deploy_access {
-  DeployAccess,
-  DeployAccessActor,
-  PrivilegedCommand,
-  deploy_access_check,
-  deploy_access_read_principal_effect,
-  deploy_access_sudo_probe_effect,
-  deploy_target_proof_from_access,
-}
-import gunbc.ci_deploy_target_host {
-  DeployTargetHostObservation,
-  deploy_target_host_check,
-  deploy_target_host_check_observed,
-}
-import gunbc.host_effect_realize { deploy_access_check_observed }
 
 fn deploy_access_privileged_probe_step(cmd: PrivilegedCommand) -> EffectPlanStep<HostEffect> {
   Do { effect: deploy_access_sudo_probe_effect(cmd: cmd) }

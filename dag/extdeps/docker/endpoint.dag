@@ -1,8 +1,5 @@
 module extdeps.docker.endpoint
 
-import std.types { String }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data docker_default_endpoint: String = "unix:///var/run/docker.sock"
 

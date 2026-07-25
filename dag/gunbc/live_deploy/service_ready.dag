@@ -1,13 +1,5 @@
 module gunbc.live_deploy.service_ready
 
-import std.types { NonEmptyStr, String, Bool, List }
-import std.measure { Second, second, second_count, measure_fit_count_floor }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
-import gunbc.roadmap_static_site { roadmap_site_health_path }
-import v2.std.dependency { ready_set }
-import v2.std.node { Node }
 
 data live_deploy_service_ready_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
