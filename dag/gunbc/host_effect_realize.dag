@@ -1790,15 +1790,6 @@ fn host_effect_apply_gated(
         ConvergeOnHost { node: _, host_converge: hc } =>
           realize_converge_on_host(host_converge: hc, transport: transport, intent: intent)
         TypedReconcileOnHost { node: _, kind: k } => realize_srv3_typed_reconcile(kind: k, transport: transport, intent: intent)
-        Srv3DiagnosticObserveOnHost { node: _, bmc: b, port: p, iso_path: ip, intent_content_hash: h } =>
-          realize_srv3_install_diagnostic_observe(
-            bmc: b,
-            port: p,
-            iso_path: ip,
-            intent_content_hash: h,
-            transport: transport,
-            effect_intent: intent,
-          )
         OsInstallActuatorToolchainOnHost { node: _ } =>
           realize_os_install_actuator_toolchain_ensure(effect_intent: intent)
         ProvisionBuildCacheOnHost { node: _, catalog_id: _ } =>
