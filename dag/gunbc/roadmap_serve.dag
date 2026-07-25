@@ -2,7 +2,7 @@ module gunbc.roadmap_serve
 
 import std.types { String, Int, Bool, List, HttpMethod, GET, POST, HttpStatus }
 import std.http_path { PathParamBinding, path_param_value }
-import std.markup { MarkupNode }
+import std.markup { Fragment }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri_path {
@@ -151,7 +151,7 @@ fn serve_text_response(status: HttpStatus, content_type: MediaType, body: String
 
 data serve_page_response_note: String = "A page render refusal is a TYPED 500 carrying the emitter's reason — never an empty page and never a dropped route (the EmitRejected => [] route-drop in node_http_server_emit is a silent widen this path deliberately does not copy; DESIGN 5). The BODY of both arms is roadmap_static_site.served_page_body, shared with the healthz digest map rather than spelled twice: healthz publishes the digest of the served surface so a deploy can prove the running process is serving THIS tree, and a digest taken over a body that is merely supposed to match the route's would be validation standing where construction was available — the check would go green while the route lied. Only the STATUS split lives here, because a digest has no status."
 
-fn serve_page_response(page: MarkupNode) -> ServeHttpResponse {
+fn serve_page_response(page: Fragment) -> ServeHttpResponse {
   match try_serialize_html_source(node: page) {
     EmitOk { html: h } =>
       serve_text_response(status: 200, content_type: text_html_utf8, body: h)

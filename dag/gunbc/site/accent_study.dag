@@ -1,6 +1,6 @@
 module gunbc.site.accent_study
 
-import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
+import std.markup { Fragment, Element, FragmentText, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import gunbc.design.theme {
@@ -38,12 +38,12 @@ fn theme_vars_style(t: Theme) -> String {
   join(map(theme_var_decls(t: t), d => join([css_property_wire(p: d.prop), ": ", d.value], "")), "; ")
 }
 
-fn candidate_panel(r: StarlightRender) -> MarkupNode {
-  ElementNode {
+fn candidate_panel(r: StarlightRender) -> Fragment {
+  Element {
     tag: "div",
-    attrs: [
-      MarkupAttr { name: "class", value: "panel variant" },
-      MarkupAttr { name: "style", value: figure_vars_style(figure: r.figure) },
+    attributes: [
+      attr(name: "class", value: "panel variant" ),
+      attr(name: "style", value: figure_vars_style(figure: r.figure) ),
     ],
     children: [
       constellation_svg(stars: layer_stars, edges: layer_import_edges),
@@ -54,15 +54,15 @@ fn candidate_panel(r: StarlightRender) -> MarkupNode {
   }
 }
 
-fn verdigris_panel() -> MarkupNode {
-  ElementNode {
+fn verdigris_panel() -> Fragment {
+  Element {
     tag: "div",
-    attrs: [
-      MarkupAttr { name: "class", value: "panel variant" },
-      MarkupAttr { name: "style", value: join([
+    attributes: [
+      attr(name: "class", value: "panel variant" ),
+      attr(name: "style", value: join([
         figure_vars_style(figure: g_figure()),
         "; --figure-edge: ", paint_alpha(m: verdigris_patina, alpha_pct: 65),
-      ], "") },
+      ], "") ),
     ],
     children: [
       constellation_svg(stars: layer_stars, edges: layer_import_edges),
@@ -83,12 +83,12 @@ fn g_figure() -> Material {
   })
 }
 
-fn day_panel() -> MarkupNode {
-  ElementNode {
+fn day_panel() -> Fragment {
+  Element {
     tag: "div",
-    attrs: [
-      MarkupAttr { name: "class", value: "panel variant day-panel" },
-      MarkupAttr { name: "style", value: theme_vars_style(t: day_theme) },
+    attributes: [
+      attr(name: "class", value: "panel variant day-panel" ),
+      attr(name: "style", value: theme_vars_style(t: day_theme) ),
     ],
     children: [
       constellation_svg(stars: layer_stars, edges: layer_import_edges),
@@ -162,10 +162,10 @@ fn study_root_css() -> String {
   ], "\n")
 }
 
-fn accent_study_page() -> MarkupNode {
-  ElementNode { tag: "html", attrs: [ MarkupAttr { name: "lang", value: "en" } ], children: [
+fn accent_study_page() -> Fragment {
+  Element { tag: "html", attributes: [ attr(name: "lang", value: "en" ) ], children: [
     el("head", [
-      ElementNode { tag: "meta", attrs: [ MarkupAttr { name: "charset", value: "utf-8" } ], children: [] },
+      Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
       el("title", [ txt("gunb.ai — starlight accent study (phase 0, preview only)") ]),
       el("style", [ txt(study_root_css()) ]),
     ]),

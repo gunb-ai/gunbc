@@ -32,15 +32,6 @@ fn srv3_host_effect_apply(
   )
 }
 
-fn srv3_durable_approval_grant_read_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  host_effect_apply(
-    target: srv3_actuator_target(),
-    effect: DurableApprovalGrantRead,
-    evidence: host_effect_read_evidence,
-    transport: LocalShell,
-  )
-}
-
 fn srv3_install_media_fetch_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   srv3_host_effect_apply(effect: Srv3InstallMediaFetch)
 }
