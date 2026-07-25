@@ -41,7 +41,8 @@ fn return_sig(emitted: &str, fn_name: &str) -> String {
 
 #[test]
 fn string_length_call_borrows_string_arg() {
-    let source = "module strcall.fixture\n\nfn use_len(s: String) -> Int {\n  string_length(s: s)\n}\n";
+    let source =
+        "module strcall.fixture\n\nfn use_len(s: String) -> Int {\n  string_length(s: s)\n}\n";
     let body = fn_body(&emit(source), "use_len");
     assert!(
         body.contains("v1_rt::string_length(&"),
@@ -61,7 +62,8 @@ fn read_only_string_param_renders_str_signature() {
 
 #[test]
 fn list_slice_emits_usize_range_on_rc_vec() {
-    let source = "module slice.fixture\n\nfn tail(items: List<Int>) -> List<Int> {\n  items[1..3]\n}\n";
+    let source =
+        "module slice.fixture\n\nfn tail(items: List<Int>) -> List<Int> {\n  items[1..3]\n}\n";
     let body = fn_body(&emit(source), "tail");
     assert!(
         body.contains("[1 as usize..3 as usize]"),
