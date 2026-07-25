@@ -106,41 +106,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     trigger: TriggerProse { text: nfr_dissolve_owning_fold },
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/srv3_os_install_reconcile.dag::kvm_screen_from_diagnostic" },
-    reason: nfr_reason_land_red_era,
-    trigger: TriggerProse { text: nfr_dissolve_owning_fold },
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/srv3_os_install_reconcile.dag::optional_kvm_attestation_from_observation" },
-    reason: nfr_reason_land_red_era,
-    trigger: TriggerProse { text: nfr_dissolve_owning_fold },
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/srv3_os_install_reconcile.dag::reconcile_pending_step_id" },
-    reason: nfr_reason_land_red_era,
-    trigger: TriggerProse { text: nfr_dissolve_owning_fold },
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/srv3_os_install_reconcile.dag::workflow_approval_from_durable_grant" },
-    reason: nfr_reason_land_red_era,
-    trigger: TriggerProse { text: nfr_dissolve_owning_fold },
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/srv3_os_install_reconcile_apply.dag::process_exit_succeeded" },
-    reason: nfr_reason_land_red_era,
-    trigger: TriggerProse { text: nfr_dissolve_owning_fold },
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/srv3_os_install_reconcile_receipt.dag::durable_grant_is_active" },
-    reason: nfr_reason_land_red_era,
-    trigger: TriggerProse { text: nfr_dissolve_owning_fold },
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/srv3_os_install_reconcile_receipt.dag::reconcile_refusal_reason_wire" },
-    reason: nfr_reason_land_red_era,
-    trigger: TriggerProse { text: nfr_dissolve_owning_fold },
-  },
-  FrontierRow {
     subject: PathSubject { path: "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_body_not_located" },
     reason: nfr_reason_land_red_era,
     trigger: TriggerProse { text: nfr_dissolve_owning_fold },
