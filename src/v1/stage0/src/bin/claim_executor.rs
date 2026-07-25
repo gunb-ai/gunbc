@@ -2885,9 +2885,8 @@ mod tests {
             "src/v2/test/claim/manual/english_emit_add_test.dag".into(),
             "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag".into(),
         ];
-        let wet_known_red = vec![
-            "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag".into(),
-        ];
+        let wet_known_red =
+            vec!["dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag".into()];
         assert!(discovery_entries_are_expect_red(
             &[(
                 "src/v2/test/claim/emit/logic_ground_truth_test.dag".into(),
@@ -2912,7 +2911,11 @@ mod tests {
             &hermetic,
             &wet_known_red
         ));
-        assert!(!discovery_entries_are_expect_red(&[], &hermetic, &wet_known_red));
+        assert!(!discovery_entries_are_expect_red(
+            &[],
+            &hermetic,
+            &wet_known_red
+        ));
     }
 
     #[test]
@@ -2949,9 +2952,8 @@ mod tests {
 
     #[test]
     fn silent_pick_roster_intersection_scopes_own_wall_budget() {
-        let silent_pick = vec![
-            "dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag".into(),
-        ];
+        let silent_pick =
+            vec!["dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag".into()];
         assert!(discovery_entries_intersect_roster(
             &[(
                 "dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag".into(),

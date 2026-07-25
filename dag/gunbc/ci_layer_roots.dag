@@ -241,14 +241,14 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "self_host_logic_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
-    reason: excl_behavioral_receipt_reason,
-    dissolve_on: excl_behavioral_receipt_dissolve
+    reason: "REHOME 2026-07-25: green-wet TEMPLATE on the separate build-verification cadence (falsifier_self_host_wet_build_verification_cadence_note) — owner #7199 / briansrls, target 2026-08-08; local recipe claim_batch --wet until that cadence or falsifier green-wet reactivation owns it",
+    dissolve_on: "falsifier_self_host_wet_build_verification_cadence_note target met (dedicated wet workflow enrolls, or falsifier_self_host_wet_cadence_active flips true after dated under-budget receipt); classification returns to FalsifierSelfHostWet"
   },
   WitnessExclusionRow {
     pattern: "namespace_import_closure_witness_test.dag",
     classification: OfflineLocalRecipe,
-    reason: "REHOME 2026-07-25: was FalsifierSelfHostWet on the affected-set falsifier wet cadence; cadence inactive (falsifier_self_host_wet_cadence_rehome_note) — local recipe claim_batch --wet until a separate build-verification cadence owns it",
-    dissolve_on: "falsifier_self_host_wet_cadence_active flips true (or a dedicated wet workflow enrolls this row); classification returns to FalsifierSelfHostWet"
+    reason: "REHOME 2026-07-25: green-wet TEMPLATE on the separate build-verification cadence (falsifier_self_host_wet_build_verification_cadence_note) — owner #7199 / briansrls, target 2026-08-08; local recipe claim_batch --wet until that cadence or falsifier green-wet reactivation owns it",
+    dissolve_on: "falsifier_self_host_wet_build_verification_cadence_note target met (dedicated wet workflow enrolls, or falsifier_self_host_wet_cadence_active flips true after dated under-budget receipt); classification returns to FalsifierSelfHostWet"
   },
   WitnessExclusionRow {
     pattern: "self_host_parse_engine_hooks_behavioral_witness_test.dag",
