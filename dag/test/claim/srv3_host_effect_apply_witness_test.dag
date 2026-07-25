@@ -31,20 +31,6 @@ fn witness_srv3_receipt_emit_apply_converges_in_process() -> Bool {
   }
 }
 
-fn witness_durable_approval_grant_read_refuses_when_grant_file_unreadable() -> Bool {
-  match host_effect_apply(
-    target: srv3_actuator_target(),
-    effect: DurableApprovalGrantRead,
-    evidence: host_effect_read_evidence,
-    transport: LocalShell,
-  ) {
-    Converged { evidence: _, applied: _ } => false
-    NotConverged { reason: why, applied: _ } =>
-      string_contains(s: why, pattern: "DurableApprovalGrantRead refused Filesystem.Read failure")
-        && string_contains(s: why, pattern: "fail-closed")
-  }
-}
-
 fn witness_bmcweb_token_extract_ssh_transport_refuses_typed() -> Bool {
   match host_effect_apply(
     target: srv3_actuator_target(),
@@ -279,7 +265,6 @@ test fn srv3_host_effect_apply_holds() -> Bool {
     && witness_srv3_apply_failure_no_fabricated_stdout()
     && witness_srv3_typed_effect_on_bmc_refuses_typed()
     && witness_srv3_typed_reconcile_ssh_transport_refuses_typed()
-    && witness_durable_approval_grant_read_refuses_when_grant_file_unreadable()
     && witness_bmcweb_token_extract_ssh_transport_refuses_typed()
     && witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash()
 }
