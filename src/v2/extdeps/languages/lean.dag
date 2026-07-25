@@ -52,7 +52,6 @@ import v2.std.model_core {
   primitive_fact_axis_unbound_diagnostic,
   ModelCoreFactAxisWidth
 }
-import v2.std.witness { Holds, Violates }
 import v2.std.node {
   Atom,
   Conj,
@@ -370,15 +369,15 @@ fn lean_int_spec_facts(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: Lean
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          Present { value: lean_int_width_node(width: width) }
+          v2.std.optional.Present { value: lean_int_width_node(width: width) }
       } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          Present { value: lean_int_kind_node(kind: kind) }
+          v2.std.optional.Present { value: lean_int_kind_node(kind: kind) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Present { value: lean_inhabitant_atom(id: facts.representation) }
+          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
       } else {
-          Absent
+          v2.std.optional.Absent
       }
     }
   }
@@ -388,11 +387,11 @@ fn lean_bool_spec_facts(facts: LeanPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Present { value: lean_inhabitant_atom(id: facts.representation) }
+          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
       } else {
-          Absent
+          v2.std.optional.Absent
       }
     }
   }

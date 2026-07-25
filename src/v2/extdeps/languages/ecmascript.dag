@@ -63,7 +63,6 @@ import v2.std.model_core {
   ModelCoreFactAxisSurfaceSpelling,
   primitive_fact_axis_unbound_diagnostic
 }
-import v2.std.witness { Holds, Violates }
 import v2.std.node {
   Arrow,
   Atom,
@@ -270,11 +269,11 @@ fn ecmascript_primitive_spec_facts(
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Present { value: ecmascript_inhabitant_atom(id: surface_spelling) }
+          v2.std.optional.Present { value: ecmascript_inhabitant_atom(id: surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Present { value: ecmascript_inhabitant_atom(id: encoding_value) }
+          v2.std.optional.Present { value: ecmascript_inhabitant_atom(id: encoding_value) }
       } else {
-          Absent
+          v2.std.optional.Absent
       }
     }
   }

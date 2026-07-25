@@ -50,7 +50,6 @@ import v2.std.model_core {
   primitive_fact_axis_unbound_diagnostic,
   ModelCoreFactAxisWidth
 }
-import v2.std.witness { Holds, Violates }
 import v2.std.nat { Nat }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 

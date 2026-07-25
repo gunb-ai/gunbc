@@ -33,7 +33,6 @@ import v2.std.model_core {
   primitive_fact_axis_unbound_diagnostic,
   ModelCoreFactAxisWidth
 }
-import v2.std.witness { Holds, Violates }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 
 type Isa
@@ -377,17 +376,17 @@ fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> Map<Symbol, Nod
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Present { value: mc_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: mc_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          Present { value: mc_int_width_node(width: facts.width) }
+          v2.std.optional.Present { value: mc_int_width_node(width: facts.width) }
       } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          Present { value: mc_int_kind_node(kind: facts.kind) }
+          v2.std.optional.Present { value: mc_int_kind_node(kind: facts.kind) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Present { value: mc_inhabitant_atom(id: ^mc_repr_twos_complement) }
+          v2.std.optional.Present { value: mc_inhabitant_atom(id: ^mc_repr_twos_complement) }
       } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
-          Present { value: mc_overflow_node(overflow: facts.overflow_release) }
+          v2.std.optional.Present { value: mc_overflow_node(overflow: facts.overflow_release) }
       } else {
-          Absent
+          v2.std.optional.Absent
       }
     }
   }

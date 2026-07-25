@@ -28,7 +28,6 @@ import v2.std.model_core {
   ModelCoreFactAxisSurfaceSpelling,
   primitive_fact_axis_unbound_diagnostic
 }
-import v2.std.witness { Holds, Violates }
 
 type SqlDialect
   = SqlDialectIso9075
@@ -258,11 +257,11 @@ fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<Symbol, Node> 
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          Present { value: sql_inhabitant_atom(id: ^sql_tag_signed) }
+          v2.std.optional.Present { value: sql_inhabitant_atom(id: ^sql_tag_signed) }
       } else {
-          Absent
+          v2.std.optional.Absent
       }
     }
   }
@@ -272,9 +271,9 @@ fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
       } else {
-          Absent
+          v2.std.optional.Absent
       }
     }
   }
@@ -284,11 +283,11 @@ fn sql_nonnumeric_spec_facts(facts: SqlNonNumericPrimitiveFacts) -> Map<Symbol, 
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Present { value: sql_inhabitant_atom(id: facts.representation) }
+          v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.representation) }
       } else {
-          Absent
+          v2.std.optional.Absent
       }
     }
   }
@@ -487,7 +486,7 @@ fn sql_serialize_identifier_list(ids: List<SqlIdentifier>) -> String {
 fn sql_serialize_primary_key_clause(pk: Optional<List<SqlIdentifier>>) -> String {
   match pk {
     Absent => ""
-    Present { value: cols } =>
+    v2.std.optional.Present { value: cols } =>
       concat(
         ", PRIMARY KEY (",
         concat(

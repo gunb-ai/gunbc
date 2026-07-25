@@ -68,7 +68,6 @@ import v2.std.model_core {
   primitive_fact_axis_unbound_diagnostic,
   ModelCoreFactAxisWidth
 }
-import v2.std.witness { Holds, Violates }
 import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.node {
@@ -1587,17 +1586,17 @@ fn wasm_integer_spec_facts(facts: WasmIntegerPrimitiveFacts) -> Map<Symbol, Node
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Present { value: wasm_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: wasm_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          Present { value: wasm_int_width_node(width: facts.width) }
+          v2.std.optional.Present { value: wasm_int_width_node(width: facts.width) }
       } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          Present { value: wasm_inhabitant_atom(id: ^wasm_tag_sign_agnostic_modular) }
+          v2.std.optional.Present { value: wasm_inhabitant_atom(id: ^wasm_tag_sign_agnostic_modular) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Present { value: wasm_inhabitant_atom(id: ^wasm_repr_sign_agnostic_modular) }
+          v2.std.optional.Present { value: wasm_inhabitant_atom(id: ^wasm_repr_sign_agnostic_modular) }
       } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
-          Present { value: wasm_inhabitant_atom(id: ^wasm_tag_modular_wrap) }
+          v2.std.optional.Present { value: wasm_inhabitant_atom(id: ^wasm_tag_modular_wrap) }
       } else {
-          Absent
+          v2.std.optional.Absent
       }
     }
   }
@@ -1607,13 +1606,13 @@ fn wasm_float_spec_facts(facts: WasmFloatPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Present { value: wasm_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: wasm_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          Present { value: wasm_float_width_node(width: facts.width) }
+          v2.std.optional.Present { value: wasm_float_width_node(width: facts.width) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Present { value: wasm_inhabitant_atom(id: facts.ieee754_binary) }
+          v2.std.optional.Present { value: wasm_inhabitant_atom(id: facts.ieee754_binary) }
       } else {
-          Absent
+          v2.std.optional.Absent
       }
     }
   }

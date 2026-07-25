@@ -2132,13 +2132,13 @@ fn ts_number_spec_facts(facts: TsNumberPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          Present { value: ts_inhabitant_atom(id: ^ts_tag_bits64) }
+          v2.std.optional.Present { value: ts_inhabitant_atom(id: ^ts_tag_bits64) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Present { value: ts_inhabitant_atom(id: facts.ieee754_binary) }
+          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.ieee754_binary) }
       } else {
-          Absent
+          v2.std.optional.Absent
       }
     }
   }
@@ -2148,11 +2148,11 @@ fn ts_bigint_spec_facts(facts: TsBigIntPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Present { value: ts_inhabitant_atom(id: facts.encoding) }
+          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.encoding) }
       } else {
-          Absent
+          v2.std.optional.Absent
       }
     }
   }
@@ -2162,11 +2162,11 @@ fn ts_bool_spec_facts(facts: TsBooleanPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Present { value: ts_inhabitant_atom(id: facts.encoding) }
+          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.encoding) }
       } else {
-          Absent
+          v2.std.optional.Absent
       }
     }
   }

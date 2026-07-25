@@ -72,7 +72,6 @@ import v2.std.model_core {
   primitive_fact_axis_unbound_diagnostic,
   ModelCoreFactAxisWidth
 }
-import v2.std.witness { Holds, Violates }
 import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.node {
@@ -1612,7 +1611,7 @@ fn swift_lex_token_symbol(sym: Symbol) -> Bool {
 fn swift_empty_primitive_spec_facts() -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      Absent
+      v2.std.optional.Absent
     }
   }
 }
