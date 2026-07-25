@@ -1,9 +1,10 @@
 # v1_rt Witness/Diagnostic decouple — design note (Gate-1 root, 879 E0308 / 53%)
 
-**Status:** design-first (model-before-implement), per sharp-bee-290's ruling. Load-bearing —
-`v1_rt.rs` is dual-compiled into the hand-seed bootstrap crate *and* synthesized into every
-emitted target crate, and `regen_stage0`'s fixed-point gate requires the two byte-identical.
-**No `v1_rt.rs` / `runtime_rust.dag` edit lands until sharp-bee-290 signs this note.**
+**Status:** LANDED (#7211, 2026-07-25). Stage 2+3 shipped atomically: native
+`v1_rt::Witness<V>` deleted, `lookup` → `Option<V>`, `v2.std.optional` hoist +
+`witness_from_optional` bridge, `Map.lookup` → `Optional<V>`, `05_emit_rust` emit
+routing de-aliases modeled `Witness` off `v1_rt`, seed regen. **Remaining:** Stage 4
+— Gate-1 E0308 burn-down probe receipt (§3; measurement, not structural work).
 
 Reasoned serially per DESIGN.md's preamble: §1 fixes the blocker from receipts, §2 is vivid-
 raven-588's domain-wrap half, §3 is the combined staged plan, §4 is scope fence + flags.
@@ -229,6 +230,8 @@ bucket's remaining `v1_rt::Witness.Violates{diagnostic: String}` vs. modeled
 is why they were sized and staffed as one 879-count bucket rather than two.
 
 ## 3. Combined staged plan
+
+**Execution (2026-07-25):** Stages 0–3 LANDED in #7211. Stage 4 remains open.
 
 - **Stage 0 — this design note.** No `v1_rt.rs`/`runtime_rust.dag`/`04_infer.dag` edit. Sent to
   sharp-bee-290 for sign-off (load-bearing — bootstrap + regen fixed-point).
