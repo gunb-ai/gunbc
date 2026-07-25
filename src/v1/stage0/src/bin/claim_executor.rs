@@ -2678,10 +2678,13 @@ fn emit_falsifier_failure_class(details: &[String]) {
         "Infra" => "FloorFailed{class:Infra}",
         _ => "FloorFailed{class:Structural}",
     };
-    eprintln!("[falsifier-failure-class] ci_failure_class_arm={ci_arm} reason_preview={}", {
-        let preview: String = joined.chars().take(240).collect();
-        preview
-    });
+    eprintln!(
+        "[falsifier-failure-class] ci_failure_class_arm={ci_arm} reason_preview={}",
+        {
+            let preview: String = joined.chars().take(240).collect();
+            preview
+        }
+    );
 }
 
 /// The walk outcome's process exit code — extracted so the fast-exit wiring is testable
