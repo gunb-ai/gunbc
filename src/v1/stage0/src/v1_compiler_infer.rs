@@ -4339,7 +4339,7 @@ match bare_s.clone() {
                                                                     node: ret,
                                                                     ..
                                                                 }) => ret.clone(),
-                                                                other => error_type(),
+                                                                _ => error_type(),
                                                             };
                                                             Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
