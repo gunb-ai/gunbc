@@ -106,6 +106,9 @@ fn w2_bulk_resweep_held_ids() -> List<String> {
   map(w2_bulk_resweep_held, h => h.node_id)
 }
 
+data ticket_write_interface_note: String = "Recorded at the operator's question mid-bulk (2026-07-25): is the migration a consumer for a programmatic read/write interface? Assessed — the READ side exists and is proven at this grain (non_fold_residue_units_from_module_source reads typed record rows from module source; ingest parses any module to a Node tree), the WRITE side exists only as emission (authority -> projection via main_wet; dag is a registered emit target), and there is no in-place source editor — the Node-tree read/write seam is what gunbc#5364 gates. VERDICT: the one-time migration is NOT the right first consumer (its hard half is editorial judgment no interface removes; its mechanical half is already execution-verified per tranche — a harness for the remainder is the purity trap, section 6). The RECURRING consumer is typed TicketUpdate APPEND: belt verdicts landing on the sheet (ts-wf-shape / ts-dispatch-verdict), sessions writing back at close (ts-doc-anchor), typed dissolution triggers firing (ts-group-dissolve-typed) — bounded, typed, append-only writes to the updates axis the migration created. When the write interface lands, the updates axis is its first API and those three rows are its first consumers."
+
+
 data ticket_carrier_constructors_note: String = "ticket_doc / ticket_pp (W2-bulk): the carrier-preserving ticket constructors, the exact siblings authored_doc/authored_pp are to authored. Without them, migrating a pointer-carrying prose row through ticket_row would silently DROP its carriers — the doc-graph's inbound links — which is content loss the migration's own honesty rules forbid and the orphan witness may red on. References reuse the node's carriers per ticket_line_note; these constructors are that reuse, not a new refs concept."
 
 fn ticket_doc(id: String, done: Bool, t: TicketFields, path: String) -> RoadmapNode {
