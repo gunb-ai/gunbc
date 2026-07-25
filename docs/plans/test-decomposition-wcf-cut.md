@@ -60,7 +60,7 @@ Pure computation sized "over the whole corpus" where the *mechanism* does not ne
 |---|---|---|---|
 | `dag_compile_clean_perturb_receipts` | 141s | RED arms (`perturb_unresolved_import`, `perturb_optional_skew`) on a 3-module fixture closure in <1s | live-tree / full gate → cadence. *Attribute first* if 53→141s is #7205 residual (then reclassify F). |
 | `wave1_gate1_d_census` | 141s | census mechanism over a fixture module set | corpus census → cadence (re-home already ruled) |
-| `compile_clean_shard` totality + roster | 15s + 7s | shard-selection logic on fixtures | totality *claim* is corpus-grain — relocate to cadence, do not shrink |
+| `compile_clean_shard` totality + roster | 15s + 7s | **Done (#7228)**: roster+totality algebra on synthetic fixtures per-PR; live-tree totality → `falsifier_rehomed_bin_wet_rows` (falsifier batch 5) | enrolled |
 | provenance producer ×3 | 40s | fixture walls stay per-PR (ruled) | live grain → nightly |
 | `parse_binding_fidelity` | 13s (long); fixture REDs on PR path | **Verified-in-tree** (#7227): 3 cross-file/fail-closed in `parse/` via `*_test.dag` walk; 2 module-ingest in `long/` + `commit_workflow`. Notes corrected. | enrolled |
 | `floor_skip_discovery` (289s), `cross_shard_seam` (183s) | re-homed | same template when they return | already on falsifier rehomed roster |
