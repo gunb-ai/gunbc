@@ -800,7 +800,7 @@ pub fn has_nested_records_node(
             } else {
                 let is_map = node_is_keyed_collection(n.clone(), source_indices.clone());
                 if is_map.clone() {
-                    match n.children.clone().get(1 as usize).cloned() {
+                    match n.children.clone().iter().cloned().skip(1 as usize).next() {
                         Some(val_child) => {
                             let __tco_0 = child_type_node(val_child.clone());
                             n = __tco_0;
@@ -1531,26 +1531,27 @@ pub fn render_node_type(
                             }
                             None => "_".to_string(),
                         };
-                        let second_child = match n.children.clone().get(1 as usize).cloned() {
-                            Some(c) => {
-                                if (c.inferred.clone() != None) {
-                                    render_node_type(
-                                        resolved_type(c.clone()),
-                                        target.clone(),
-                                        shared_types.clone(),
-                                        source_indices.clone(),
-                                    )
-                                } else {
-                                    render_node_type(
-                                        c.clone(),
-                                        target.clone(),
-                                        shared_types.clone(),
-                                        source_indices.clone(),
-                                    )
+                        let second_child =
+                            match n.children.clone().iter().cloned().skip(1 as usize).next() {
+                                Some(c) => {
+                                    if (c.inferred.clone() != None) {
+                                        render_node_type(
+                                            resolved_type(c.clone()),
+                                            target.clone(),
+                                            shared_types.clone(),
+                                            source_indices.clone(),
+                                        )
+                                    } else {
+                                        render_node_type(
+                                            c.clone(),
+                                            target.clone(),
+                                            shared_types.clone(),
+                                            source_indices.clone(),
+                                        )
+                                    }
                                 }
-                            }
-                            None => "_".to_string(),
-                        };
+                                None => "_".to_string(),
+                            };
                         let tuple_str = render_tuple_parts(
                             Rc::new(vec![first_child.clone(), second_child.clone()]),
                             target.clone(),
@@ -1697,7 +1698,7 @@ pub fn render_node_type(
                     ),
                     None => "_".to_string(),
                 };
-                let v = match n.children.clone().get(1 as usize).cloned() {
+                let v = match n.children.clone().iter().cloned().skip(1 as usize).next() {
                     Some(vn) => render_node_type(
                         child_type_node(vn.clone()),
                         target.clone(),
@@ -1793,7 +1794,7 @@ pub fn render_tuple_parts(parts: Rc<Vec<String>>, target: RenderTarget) -> Strin
         if ((parts.clone().len() as i64) > 0) {
             if ((parts.clone().len() as i64) == 2) {
                 match parts.clone().first().cloned() {
-                    Some(p0) => match parts.clone().get(1 as usize).cloned() {
+                    Some(p0) => match parts.clone().iter().cloned().skip(1 as usize).next() {
                         Some(p1) => {
                             apply_type_template2(ts.pair_template.clone(), p0.clone(), p1.clone())
                         }
@@ -6290,7 +6291,13 @@ pub fn emit_typed_tco_reassign_shared(
             {
                 if {
                     let pname = param_node_name_at(pair.1.clone(), source_indices.clone());
-                    let av = match arg_values.clone().get(pair.0.clone() as usize).cloned() {
+                    let av = match arg_values
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(pair.0.clone() as usize)
+                        .next()
+                    {
                         Some(v) => v.clone(),
                         None => pair.1.clone(),
                     };
@@ -6305,7 +6312,13 @@ pub fn emit_typed_tco_reassign_shared(
             let mut __result = Vec::new();
             for pair in pairs.clone().iter().cloned() {
                 __result.push(
-                    match arg_values.clone().get(pair.0.clone() as usize).cloned() {
+                    match arg_values
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(pair.0.clone() as usize)
+                        .next()
+                    {
                         Some(v) => v.clone(),
                         None => pair.1.clone(),
                     },
