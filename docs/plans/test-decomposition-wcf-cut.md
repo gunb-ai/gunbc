@@ -59,7 +59,7 @@ Pure computation sized "over the whole corpus" where the *mechanism* does not ne
 | row | cost | fixture-grain per-PR version | corpus grain |
 |---|---|---|---|
 | `dag_compile_clean_perturb_receipts` | 141s | **Done (#7229)**: Class C (4× full-corpus compiles, not #7205); fixture RED+green on `bin_witness_wet`; corpus legs → `falsifier_rehomed_bin_wet_rows` | enrolled |
-| `wave1_gate1_d_census` | 141s | census mechanism over a fixture module set | corpus census → cadence (re-home already ruled) |
+| `wave1_gate1_d_census` | 141s | **Done (#7232)**: table_fixture via discovery per-PR; census → `falsifier_substrate_long_lane_rows` (batch 6, with #7230) | enrolled |
 | `compile_clean_shard` totality + roster | 15s + 7s | **Done (#7228)**: roster+totality algebra on synthetic fixtures per-PR; live-tree totality → `falsifier_rehomed_bin_wet_rows` (falsifier batch 5) | enrolled |
 | provenance producer ×3 | 40s | **Done (#7230)**: hand-built fail-closed walls + sg_claims selectivity per-PR; live grain → `falsifier_substrate_long_lane_entries` (falsifier batch 6); ~9.5s ingest Class F hand-off | enrolled |
 | `parse_binding_fidelity` | 13s (long); fixture REDs on PR path | **Verified-in-tree** (#7227): 3 cross-file/fail-closed in `parse/` via `*_test.dag` walk; 2 module-ingest in `long/` + `commit_workflow`. Notes corrected. | enrolled |
