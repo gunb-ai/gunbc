@@ -29,13 +29,18 @@ fn usd_whole_dollars_count(m: UsdWholeDollars) -> Nat {
   measure_count(m)
 }
 
+data filed_period_shape_note: String = "XBRL facts are either duration-typed (start and end bound a flow, e.g. income-statement lines) or instant-typed (a single as-of date, e.g. balance and commitment amounts; the upstream companyconcept row simply omits start). The period is a closed sum so a half-specified period is unwritable (DESIGN section 5, correctness by construction) rather than two optional date fields."
+
+type FiledPeriod
+  = FiledDuration { start: EdgarCalendarDate, end: EdgarCalendarDate }
+  | FiledInstant { as_of: EdgarCalendarDate }
+
 type FiledFactCitation {
   accession: NonEmptyStr
   fiscal_year: Int
   fiscal_period: NonEmptyStr
   form: FilingForm
-  period_start: EdgarCalendarDate
-  period_end: EdgarCalendarDate
+  period: FiledPeriod
   filed_date: EdgarCalendarDate
 }
 
@@ -46,7 +51,7 @@ type FiledAmount
 type FiledMonetaryFact {
   element: NonEmptyStr
   amount: FiledAmount
-  citation: FiledFactCitation?
+  citation: FiledFactCitation
 }
 
 fn filed_amount(fact: FiledMonetaryFact) -> UsdWholeDollars? {
@@ -56,12 +61,67 @@ fn filed_amount(fact: FiledMonetaryFact) -> UsdWholeDollars? {
   }
 }
 
+data signed_usd_group_completion_note: String = "Credit-balance income-statement elements (OperatingIncomeLoss, NetIncomeLoss) file SIGNED values -- a loss is a negative companyconcept val, which the Nat-counted MoneyAmount magnitude cannot inhabit. The signed value is sign-as-sum over the same magnitude authority (the GroupCompletion-of-Nat shape): NonNegativeUsd carries the filed non-negative amount, NegativeUsd carries the strictly positive magnitude of a negative filed val (zero is always NonNegativeUsd). FiledMonetaryFact remains the refinement for lines verified non-negative at authoring time (revenue, costs, expense magnitudes). dissolve-on: std Int = GroupCompletion<Nat> grounding (DESIGN open thread), at which point this sum collapses onto the grounded signed carrier."
+
+type SignedUsdWholeDollars
+  = NonNegativeUsd { amount: UsdWholeDollars }
+  | NegativeUsd { magnitude: UsdWholeDollars }
+
+fn signed_usd_non_negative(count: Nat) -> SignedUsdWholeDollars {
+  NonNegativeUsd { amount: usd_whole_dollars(count: count) }
+}
+
+fn signed_usd_negative(magnitude_count: Nat) -> SignedUsdWholeDollars {
+  NegativeUsd { magnitude: usd_whole_dollars(count: magnitude_count) }
+}
+
+fn signed_usd_value(v: SignedUsdWholeDollars) -> Int {
+  match v {
+    NonNegativeUsd { amount: a } => usd_whole_dollars_count(m: a)
+    NegativeUsd { magnitude: m } => 0 - usd_whole_dollars_count(m: m)
+  }
+}
+
+type FiledSignedAmount
+  = FiledSigned { value: SignedUsdWholeDollars }
+  | UnfiledSigned { cause: NonEmptyStr }
+
+type FiledSignedMonetaryFact {
+  element: NonEmptyStr
+  amount: FiledSignedAmount
+  citation: FiledFactCitation
+}
+
+fn filed_signed_value(fact: FiledSignedMonetaryFact) -> SignedUsdWholeDollars? {
+  match fact.amount {
+    FiledSigned { value: v } => Present { value: v }
+    UnfiledSigned { cause: _ } => none
+  }
+}
+
 fn filed_gross_profit_matches_revenue_minus_cost(
   revenue: UsdWholeDollars,
   cost_of_revenue: UsdWholeDollars,
   gross_profit: UsdWholeDollars
 ) -> Bool {
   usd_whole_dollars_count(gross_profit) == (usd_whole_dollars_count(revenue) - usd_whole_dollars_count(cost_of_revenue))
+}
+
+fn filed_operating_expenses_match_components(
+  selling_and_marketing: UsdWholeDollars,
+  research_and_development: UsdWholeDollars,
+  general_and_administrative: UsdWholeDollars,
+  operating_expenses_total: UsdWholeDollars
+) -> Bool {
+  usd_whole_dollars_count(operating_expenses_total) == ((usd_whole_dollars_count(selling_and_marketing) + usd_whole_dollars_count(research_and_development)) + usd_whole_dollars_count(general_and_administrative))
+}
+
+fn filed_operating_income_matches_components(
+  gross_profit: UsdWholeDollars,
+  operating_expenses_total: UsdWholeDollars,
+  operating_income: SignedUsdWholeDollars
+) -> Bool {
+  signed_usd_value(v: operating_income) == (usd_whole_dollars_count(gross_profit) - usd_whole_dollars_count(operating_expenses_total))
 }
 
 fn derive_gross_margin_ratio(revenue: UsdWholeDollars, gross_profit: UsdWholeDollars) -> Float? {
