@@ -17466,6 +17466,8 @@ pub fn build_emit_graph_info(
             corpus_repr: rust_corpus_repr(has_v1_seed.clone()),
             fn_generic_param_names: Rc::new(vec![]),
             fn_type_env: empty_type_env(),
+            fn_return_type: error_type(),
+            fn_return_type_present: false,
         })
     }
 }

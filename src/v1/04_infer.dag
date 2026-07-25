@@ -7869,7 +7869,9 @@ fn build_emit_graph_info(modules: List<TypedModule>, has_v1_seed: Bool) -> EmitG
     read_only_params: empty_set(),
     corpus_repr: rust_corpus_repr(has_v1_seed: has_v1_seed),
     fn_generic_param_names: [],
-    fn_type_env: empty_type_env()
+    fn_type_env: empty_type_env(),
+    fn_return_type: error_type,
+    fn_return_type_present: false
   }
 }
 

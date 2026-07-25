@@ -8,6 +8,7 @@ import v1.std.core {
   qualified_last_segment, expr_var_name_at, expr_call_func_at, field_access_field_at,
   param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at,
   field_node_type_expr, generic_param_name_at, ExprData, NoExprData, ExprLiteral, ExprError,
+  error_type,
   ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet,
   ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn, make_expr_node, FieldSummary,
@@ -498,25 +499,26 @@ fn rust_witness_parent_leaf(parent: String) -> Bool {
 }
 
 fn rust_peel_one_rc_type_node(type_node: Node, source_indices: Map<String, NewlineIndex>) -> Node {
-  let head = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_node))
-  if head != "Rc" { return type_node }
-  match type_node.children |> first {
-    Present { value: inner } => inner
-    Absent =>
-      match find_property(props: type_node.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
-        Present { value: applied } =>
-          match applied.children |> first {
-            Present { value: inner } => inner
-            Absent => type_node
-          }
-        Absent => type_node
-      }
+  if qualified_last_segment(name: type_node.name) != "Rc" {
+    type_node
+  } else {
+    match type_node.children |> first {
+      Present { value: inner } => inner
+      Absent =>
+        match find_property(props: type_node.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+          Present { value: applied } =>
+            match applied.children |> first {
+              Present { value: inner } => inner
+              Absent => type_node
+            }
+          Absent => type_node
+        }
+    }
   }
 }
 
 fn rust_witness_type_arg_render(type_node: Node, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
-  let head = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_node))
-  if head != "Witness" { return none }
+  if qualified_last_segment(name: type_node.name) != "Witness" { return none }
   let arg_node = match type_node.children |> first {
     Present { value: child } => child
     Absent =>
@@ -537,7 +539,8 @@ fn rust_witness_type_arg_from_holds_value_field(fields: List<Node>, shared_types
   match fields |> filter(f => field_init_node_name_at(n: f, source_indices: source_indices) == "value") |> first {
     Present { value: f } =>
       let val_rt = resolved_type(n: field_init_node_value(n: f))
-      rust_witness_type_arg_render(type_node: val_rt, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+      let rendered = render_rust_type(n: val_rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices, emit_info: emit_info)
+      if rendered == "_" || rendered == "" { none } else { Present { value: rendered } }
     Absent => none
   }
 }
@@ -2056,7 +2059,9 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     read_only_params: empty_set(),
     corpus_repr: base_info.corpus_repr,
     fn_generic_param_names: base_info.fn_generic_param_names,
-    fn_type_env: base_info.fn_type_env
+    fn_type_env: base_info.fn_type_env,
+    fn_return_type: error_type,
+    fn_return_type_present: false
   }
   let shared_types = emit_info.shared_types
   let registry = typed.item_registry
@@ -2208,7 +2213,9 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     read_only_params: empty_set(),
     corpus_repr: base_info.corpus_repr,
     fn_generic_param_names: base_info.fn_generic_param_names,
-    fn_type_env: base_info.fn_type_env
+    fn_type_env: base_info.fn_type_env,
+    fn_return_type: error_type,
+    fn_return_type_present: false
   }
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
@@ -4515,7 +4522,9 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       read_only_params: fn_read_only,
       corpus_repr: emit_info.corpus_repr,
       fn_generic_param_names: emit_info.fn_generic_param_names,
-      fn_type_env: emit_info.fn_type_env
+      fn_type_env: emit_info.fn_type_env,
+      fn_return_type: emit_info.fn_return_type,
+      fn_return_type_present: emit_info.fn_return_type_present
     }
 
     let is_effectful = match lookup_item(registry: registry, name: authored_name(env: env, node: item)) {
@@ -5157,7 +5166,10 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     return concat("compile_error!(\"type param name collides with a value param in fn '", name, "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n")
   }
   let generic_param_names = type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
-  let body_emit_info = emit_info_with_fn_type_context(emit_info: emit_info, generic_param_names: generic_param_names, env: scope.type_env)
+  let body_emit_info = emit_info_with_fn_return(
+    emit_info: emit_info_with_fn_type_context(emit_info: emit_info, generic_param_names: generic_param_names, env: scope.type_env),
+    fn_return_type: inferred
+  )
   let value_param_names = value_params |> map(p => p.name)
   let ret_name = authored_name_at(source_indices: si, node: inferred)
   let return_is_bare_generic = (generic_param_names |> filter(g => g == ret_name) |> count) > 0
@@ -7110,7 +7122,9 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               read_only_params: emit_info.read_only_params,
               corpus_repr: emit_info.corpus_repr,
               fn_generic_param_names: emit_info.fn_generic_param_names,
-              fn_type_env: emit_info.fn_type_env
+              fn_type_env: emit_info.fn_type_env,
+              fn_return_type: emit_info.fn_return_type,
+              fn_return_type_present: emit_info.fn_return_type_present
             }
           Absent => emit_info
         }
@@ -7137,7 +7151,9 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               read_only_params: emit_info.read_only_params,
               corpus_repr: emit_info.corpus_repr,
               fn_generic_param_names: emit_info.fn_generic_param_names,
-              fn_type_env: emit_info.fn_type_env
+              fn_type_env: emit_info.fn_type_env,
+              fn_return_type: emit_info.fn_return_type,
+              fn_return_type_present: emit_info.fn_return_type_present
             }
           Absent => emit_info
         }
