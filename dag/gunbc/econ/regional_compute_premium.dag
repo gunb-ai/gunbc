@@ -1,0 +1,76 @@
+module gunbc.econ.regional_compute_premium
+
+import extdeps.pricing.regional_compute {
+  ComputeProvider,
+  Geography,
+  RegionalComputeRow,
+  compute_provider_eq,
+  hourly_micros,
+}
+import std.measure { basis_point, BasisPoint, hardware_thread_count_value }
+import std.nat { Nat }
+
+data regional_premium_note: String = "The read the regional rows exist for: what does the SAME machine cost in region X versus a baseline region, expressed as a basis-point premium. Derived at read time from cited rows, never stored (DESIGN section 2). The comparison is only meaningful when the two rows hold the hardware fixed, so the derivation refuses across providers -- an AWS m7i.large against an Azure D2s_v5 is a vendor comparison wearing a region comparison's clothes, and the two vendors price their generations differently even where the vCPU and memory match."
+
+data wage_intuition_note: String = "Why this read exists at all (operator question 2026-07-25: 'wages in India are much lower than in America -- is compute cheaper there?'). The measured answer is no, and it is no in EVERY geography sampled: every region priced above its provider's US baseline, from +5 percent (Mumbai, Central India) to +59 percent (Sao Paulo, Brazil South -- the same figure on BOTH providers independently). Datacenter cost is dominated by globally-priced capital equipment, power, cooling, land and network transit; wages are a thin slice of hyperscale opex, so a low-wage economy does not buy cheap compute. The practical consequence runs the opposite way from the intuition: buying compute where it is cheap and serving it outward beats provisioning locally, for any workload whose latency budget tolerates the distance."
+
+type RegionalPremiumRefusalCause
+  = BaselineRateUnavailable
+  | RegionRateUnavailable
+  | BaselineRateZero
+  | ProviderMismatch
+  | VcpuCountMismatch
+
+type RegionalPremiumResult
+  = RegionalPremiumDerived { premium_bp: BasisPoint }
+  | RegionalPremiumRefused { cause: RegionalPremiumRefusalCause }
+
+data premium_definition_note: String = "premium_bp is the region's excess over the baseline in basis points: (region - baseline) * 10000 / baseline. A region at parity reads 0; Sao Paulo against US East reads about 5937 (a 59.4 percent premium). Integer basis points on integer micro-USD, so there is no float in the derivation and the value is exact for the cited rates."
+
+fn derive_regional_premium(
+  baseline: RegionalComputeRow,
+  region: RegionalComputeRow,
+) -> RegionalPremiumResult {
+  if !compute_provider_eq(a: baseline.provider, b: region.provider) {
+    RegionalPremiumRefused { cause: ProviderMismatch }
+  } else if !(hardware_thread_count_value(t: baseline.vcpus) == hardware_thread_count_value(t: region.vcpus)) {
+    RegionalPremiumRefused { cause: VcpuCountMismatch }
+  } else {
+    match hourly_micros(row: baseline) {
+      Present { value: base } =>
+        match hourly_micros(row: region) {
+          Present { value: reg } =>
+            if base <= 0 {
+              RegionalPremiumRefused { cause: BaselineRateZero }
+            } else {
+              RegionalPremiumDerived {
+                premium_bp: basis_point(count: ((reg - base) * 10000) / base),
+              }
+            }
+          _ => RegionalPremiumRefused { cause: RegionRateUnavailable }
+        }
+      _ => RegionalPremiumRefused { cause: BaselineRateUnavailable }
+    }
+  }
+}
+
+data vcpu_month_note: String = "Monthly cost for the row's whole instance at the conventional 730-hour billing month, and the same figure divided by the instance's vCPU count -- the per-vCPU number is what makes a 2-vCPU cloud instance comparable to a 12-thread dedicated box (extdeps.pricing.hetzner_dedicated), which is the comparison that shows on-demand cloud compute costing several times a rented machine."
+
+fn monthly_micros(row: RegionalComputeRow) -> Nat? {
+  match hourly_micros(row: row) {
+    Present { value: h } => Present { value: h * 730 }
+    _ => none
+  }
+}
+
+fn per_vcpu_month_micros(row: RegionalComputeRow) -> Nat? {
+  let cores = hardware_thread_count_value(t: row.vcpus)
+  if cores <= 0 {
+    none
+  } else {
+    match monthly_micros(row: row) {
+      Present { value: m } => Present { value: m / cores }
+      _ => none
+    }
+  }
+}

@@ -80,7 +80,16 @@ type DispatchBriefFields {
   repo: String
   intricacy_label: String
   volume_label: String
+  displaced_cost: String
+  current_state: String
+  first_slice: String
+  red_control: String
+  out_of_scope: String
+  handback: String
+  paths: String
 }
+
+data dispatch_brief_slot_note: String = "The template's workflow slots are REAL fields when the node is a TicketLine (remodel W2: the template was always the spec of the schema — its slot names became TicketFields), and honest stubs only on the legacy prose frontier: a legacy row's brief still repeats the title where a fact should be, which is exactly the burn-down pressure W2-bulk answers. A ticket node's brief carries its own displaced cost, current state, first slice, RED, scope, and hand-back conditions; paths come from the node's carriers."
 
 type TmuxLsEntry {
   session_name: String
@@ -178,38 +187,100 @@ fn dispatch_tmux_session_scope(node_id: RoadmapNodeId) -> TmuxSessionScope {
   }
 }
 
+fn carrier_paths_label(carriers: List<Pointer>, repo: String) -> String {
+  if count(carriers) == 0 {
+    concat("dag/gunbc/roadmap_dispatch_actuator.dag (repo=", concat(repo, ")"))
+  } else {
+    join(map(carriers, p => p.path), " · ")
+  }
+}
+
+fn dispatch_slot_fields(node: RoadmapNode, repo: String) -> DispatchBriefFields {
+  let title = node_title(item: node.line)
+  match line_ticket(item: node.line) {
+    Present { value: t } =>
+      DispatchBriefFields {
+        node_id: node.node,
+        title: title,
+        repo: repo,
+        intricacy_label: "",
+        volume_label: "",
+        displaced_cost: t.displaced_cost,
+        current_state: t.current_state,
+        first_slice: t.first_slice,
+        red_control: t.red_control,
+        out_of_scope: t.out_of_scope,
+        handback: t.handback,
+        paths: carrier_paths_label(carriers: node.carriers, repo: repo),
+      }
+    Absent =>
+      DispatchBriefFields {
+        node_id: node.node,
+        title: title,
+        repo: repo,
+        intricacy_label: "",
+        volume_label: "",
+        displaced_cost: title,
+        current_state: title,
+        first_slice: title,
+        red_control: "drop modeled argv row and witness goes red",
+        out_of_scope: "see parent roadmap dispatch plan",
+        handback: "node not ready, foreign lease, or unsupported repo",
+        paths: carrier_paths_label(carriers: node.carriers, repo: repo),
+      }
+  }
+}
+
 fn dispatch_brief_fields(node: RoadmapNode) -> DispatchBriefFields {
   match node.sizing {
-  Sized { intricacy, volume, repo, acceptance: _ } =>
+  Sized { intricacy, volume, repo, acceptance: _ } => {
+    let f = dispatch_slot_fields(node: node, repo: repo)
     DispatchBriefFields {
-      node_id: node.node,
-      title: node_title(item: node.line),
+      node_id: f.node_id,
+      title: f.title,
       repo: repo,
       intricacy_label: intricacy_label(i: intricacy),
       volume_label: volume_label(v: volume),
+      displaced_cost: f.displaced_cost,
+      current_state: f.current_state,
+      first_slice: f.first_slice,
+      red_control: f.red_control,
+      out_of_scope: f.out_of_scope,
+      handback: f.handback,
+      paths: f.paths,
     }
-  Unsized =>
+  }
+  Unsized => {
+    let f = dispatch_slot_fields(node: node, repo: "")
     DispatchBriefFields {
-      node_id: node.node,
-      title: node_title(item: node.line),
+      node_id: f.node_id,
+      title: f.title,
       repo: "",
       intricacy_label: "unsized",
       volume_label: "unsized",
+      displaced_cost: f.displaced_cost,
+      current_state: f.current_state,
+      first_slice: f.first_slice,
+      red_control: f.red_control,
+      out_of_scope: f.out_of_scope,
+      handback: f.handback,
+      paths: f.paths,
     }
+  }
   }
 }
 
 fn fill_dispatch_brief(template: String, fields: DispatchBriefFields) -> String {
   template
     .replace(from: "<node_id>", to: fields.node_id)
-    .replace(from: "<displaced cost / what it unblocks>", to: fields.title)
-    .replace(from: "<explicitly out of scope>", to: "see parent roadmap dispatch plan")
-    .replace(from: "<prove current state / reproduce the gap>", to: fields.title)
-    .replace(from: "<first implementation slice>", to: fields.title)
-    .replace(from: "<perturbation that goes red>", to: "drop modeled argv row and witness goes red")
+    .replace(from: "<displaced cost / what it unblocks>", to: fields.displaced_cost)
+    .replace(from: "<explicitly out of scope>", to: fields.out_of_scope)
+    .replace(from: "<prove current state / reproduce the gap>", to: fields.current_state)
+    .replace(from: "<first implementation slice>", to: fields.first_slice)
+    .replace(from: "<perturbation that goes red>", to: fields.red_control)
     .replace(from: "<execution on the real path>", to: "tmux ls shows gunbc-dispatch session on srv1")
-    .replace(from: "<named hand-back conditions>", to: "node not ready, foreign lease, or unsupported repo")
-    .replace(from: "<paths>", to: concat("dag/gunbc/roadmap_dispatch_actuator.dag (repo=", fields.repo, ")"))
+    .replace(from: "<named hand-back conditions>", to: fields.handback)
+    .replace(from: "<paths>", to: fields.paths)
     .replace(from: "<repro/verify commands>", to: "cargo test roadmap_dispatch_actuator_witness")
     .replace(from: "<what comes back even if the fix does not land>", to: "dispatch argv receipt + witness log")
 }

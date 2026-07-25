@@ -76,6 +76,8 @@ fn line_inlines(line: RoadmapItem) -> List<MarkdownInline> {
     AuthoredLine { done: _, content } => [TextInline { text: content }]
     PlainLine { content } => [TextInline { text: content }]
     SupersededLine { by, content } => [TextInline { text: concat(concat("~~", content), concat("~~ **superseded →** ", by)) }]
+    TicketLine { done: _, ticket } =>
+      [TextInline { text: join(["**", ticket.headline, "** — ", ticket.brief], "") }]
   }
 }
 
@@ -85,6 +87,7 @@ fn node_is_plain(rn: RoadmapNode) -> Bool {
     DerivableLine { prs: _, title: _, description: _ } => false
     AuthoredLine { done: _, content: _ } => false
     SupersededLine { by: _, content: _ } => false
+    TicketLine { done: _, ticket: _ } => false
   }
 }
 

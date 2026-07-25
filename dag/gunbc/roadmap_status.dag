@@ -2,6 +2,27 @@ module gunbc.roadmap_status
 
 import extdeps.github.pulls { PullRequest }
 
+data ticket_line_note: String = "The ticket decomposition (remodel W2, operator direction 2026-07-24; the model half of ts-wf-node-schema): an AuthoredLine's single content String fuses headline, brief, workflow fields, references, and the item's whole history — so the page can only dump it, the dispatch brief can only stub its slots with the title, and every update concatenates into the blob because no time axis exists (ts-dispatch-elevate was the live specimen). TicketLine carries the fields as fields. The field set is the union of ts-wf-node-schema's list and the dispatch_brief_template slots — the template was always the spec of what dispatch needs — plus the updates thread. References reuse the node's carriers (Pointer is the existing ref concept; a ticket-local refs list would be a second one). AuthoredLine survives as the counted LEGACY frontier: every remaining prose row is burn-down for the mechanical migration (W2-bulk), and a new prose row where a ticket was possible is the review reject."
+
+type TicketUpdate {
+  on: String
+  note: String
+}
+
+type TicketFields {
+  headline: String
+  brief: String
+  displaced_cost: String
+  current_state: String
+  first_slice: String
+  red_control: String
+  out_of_scope: String
+  handback: String
+  updates: List<TicketUpdate>
+  authored_on: String
+  last_verified_on: String
+}
+
 type RoadmapItem
 
   = DerivableLine { prs: List<Int>, title: String, description: String }
@@ -11,6 +32,8 @@ type RoadmapItem
   | PlainLine { content: String }
 
   | SupersededLine { by: String, content: String }
+
+  | TicketLine { done: Bool, ticket: TicketFields }
 
 type Signoff
   = Unsigned
@@ -58,6 +81,7 @@ fn item_is_done(item: RoadmapItem, merged: List<Int>) -> Bool {
     AuthoredLine { done, content: _ } => done
     PlainLine { content: _ } => false
     SupersededLine { by: _, content: _ } => true
+    TicketLine { done, ticket: _ } => done
   }
 }
 
@@ -67,6 +91,17 @@ fn item_superseded_by(item: RoadmapItem) -> String {
     AuthoredLine { done: _, content: _ } => ""
     PlainLine { content: _ } => ""
     SupersededLine { by, content: _ } => by
+    TicketLine { done: _, ticket: _ } => ""
+  }
+}
+
+fn line_ticket(item: RoadmapItem) -> TicketFields? {
+  match item {
+    DerivableLine { prs: _, title: _, description: _ } => Absent
+    AuthoredLine { done: _, content: _ } => Absent
+    PlainLine { content: _ } => Absent
+    SupersededLine { by: _, content: _ } => Absent
+    TicketLine { done: _, ticket } => Present { value: ticket }
   }
 }
 
@@ -81,6 +116,7 @@ fn status_drift(item: RoadmapItem, committed_box: Bool, merged: List<Int>) -> Dr
     AuthoredLine { done: _, content: _ } => Underivable
     PlainLine { content: _ } => Underivable
     SupersededLine { by: _, content: _ } => Underivable
+    TicketLine { done: _, ticket: _ } => Underivable
     DerivableLine { prs, title: _, description: _ } =>
       if committed_box == prs_all_merged(prs: prs, merged: merged) {
         Clean
