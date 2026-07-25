@@ -30,6 +30,10 @@ fn list_of_element(element: Node) -> Node {
   make_container_type(kind_name: "List", element: element).ty
 }
 
+fn witness_of_element(element: Node) -> Node {
+  make_container_type(kind_name: "Witness", element: element).ty
+}
+
 fn seed_node_map(key: String, value: Node) -> Map<String, Node> {
   map_insert(empty_map(), key, value)
 }
@@ -83,7 +87,7 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "rc_vec_ptr_eq", bool_type)
   let m = map_insert(m, "emit_map_has", bool_type)
   let m = map_insert(m, "set_contains", bool_type)
-  let m = map_insert(m, "lookup", with_optional_cardinality(n: type_variable_node(id: "map_value")))
+  let m = map_insert(m, "lookup", witness_of_element(element: type_variable_node(id: "map_value")))
   let m = map_insert(m, "map_get", with_optional_cardinality(n: type_variable_node(id: "map_value")))
   let m = map_insert(m, "Some", with_optional_cardinality(n: type_variable_node(id: "some_inner")))
   let m = map_insert(m, "map_keys", list_of_type_variable(id: "collection_element"))
