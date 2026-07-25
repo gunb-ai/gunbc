@@ -737,6 +737,10 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> std.types.ContentHash {
   }
 }
 
+fn node_hash_combine(left: std.types.ContentHash, right: std.types.ContentHash) -> std.types.ContentHash {
+  hash_combine(left, right)
+}
+
 fn symbol_identity_digest(sym: Symbol) -> std.types.ContentHash {
   std.content_hash.content_hash_atom(value: sym)
 }
@@ -798,7 +802,7 @@ fn byte_offset_residual_quotient_magnitude_window_digest(quotient: Int, shift_st
   if shift_steps == byte_offset_residual_quotient_magnitude_max_shift && shifted >= 256 * 256 {
     let base = byte_offset_residual_quotient_limb_pair_digest(shifted)
     let tail = byte_offset_overflow_quotient_high_band_terminal_digest(shifted / 65536, byte_offset_cache_digest_overflow_limbs)
-    hash_combine(base, tail)
+    std.content_hash.content_hash_combine(base, tail)
   } else {
     byte_offset_residual_quotient_limb_pair_digest(shifted)
   }
