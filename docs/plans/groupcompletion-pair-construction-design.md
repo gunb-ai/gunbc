@@ -1,6 +1,6 @@
 # Design — ground `GroupCompletion<M>` as the Grothendieck pair construction
 
-**Status:** DRAFT — awaiting sharp-bee-290 sign-off at law grain (mandate `msg_d3099357-370b-4e49-9345-88e38df28573`). No implementation lands until signed. Linked from [DESIGN.md](../../DESIGN.md) open threads (numeric-tower bullet).
+**Status:** SIGNED (law grain, sharp-bee-290, 2026-07-25, mandate `msg_6fc2ba88-549b-491e-9b6f-ab949539d682`) and IMPLEMENTED — PR #7197. §2 model fix + §3-eval construction-side collapse + (b) emitter checkpoint-order fix landed together per the mandate's hard condition #1; FieldOfFractions stays HELD (not started). Linked from [DESIGN.md](../../DESIGN.md) open threads (numeric-tower bullet).
 
 Owner: eager-crane-304 (GroupCompletion grounding lane). Sequence: **GroupCompletion now** → `FieldOfFractions<R>` (algebra.dag:40, identical latent sibling anemia) pending operator nod → Bool → C.
 
