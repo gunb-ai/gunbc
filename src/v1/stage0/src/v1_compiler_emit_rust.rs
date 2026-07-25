@@ -28228,40 +28228,9 @@ pub fn emit_data_def_body(
                             } else {
                                 "".to_string()
                             };
-                            let debug_iaw = if is_already_wrapped.clone() {
-                                "true".to_string()
-                            } else {
-                                "false".to_string()
-                            };
-                            let debug_rt_str = match value.inferred.clone().as_deref().cloned() {
-                                Some(InferredNode::Resolved { node: rt, .. }) => render_rust_type(
-                                    rt.clone(),
-                                    shared_types.clone(),
-                                    emit_info.corpus_repr.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                    emit_info.clone(),
-                                ),
-                                _ => "NOINFER".to_string(),
-                            };
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        "            /* DEBUG is_already_wrapped="
-                                                            .to_string(),
-                                                        debug_iaw.clone(),
-                                                    ),
-                                                    " rt=".to_string(),
-                                                ),
-                                                debug_rt_str.clone(),
-                                            ),
-                                            " */\n            ".to_string(),
-                                        ),
-                                        wrap_start.clone(),
-                                    ),
+                                    v1_rt::concat("            ".to_string(), wrap_start.clone()),
                                     val_str.clone(),
                                 ),
                                 wrap_end.clone(),
