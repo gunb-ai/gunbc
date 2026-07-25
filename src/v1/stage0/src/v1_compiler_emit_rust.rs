@@ -14973,16 +14973,7 @@ pub fn variant_pattern_qualified_path(
         Some(parent) => {
             let parent_leaf = qualified_last_segment(parent.clone());
             if (parent_leaf.clone() == "Witness".to_string()) {
-                if ((scrut_rendered.clone() != "".to_string())
-                    && !v1_rt::string_contains(&scrut_rendered, "v1_rt::Witness".to_string()))
-                {
-                    v1_rt::concat(
-                        v1_rt::concat(parent_leaf.clone(), "::".to_string()),
-                        rust_name.clone(),
-                    )
-                } else {
-                    v1_rt::concat("v1_rt::Witness::".to_string(), rust_name.clone())
-                }
+                v1_rt::concat("v1_rt::Witness::".to_string(), rust_name.clone())
             } else {
                 v1_rt::concat(
                     v1_rt::concat(parent_leaf.clone(), "::".to_string()),
