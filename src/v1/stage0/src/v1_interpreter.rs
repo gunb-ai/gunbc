@@ -5460,6 +5460,7 @@ pub enum ArgvRefusalCause {
     ExecutablePositionNotLiteral(String),
     TokenListInStringPosition(String),
     ArgvExpressionUnsupported(String),
+    BindingMalformed(String),
 }
 
 fn argv_expr_kind_label(node: &Rc<Node>) -> &'static str {
@@ -5523,18 +5524,18 @@ fn operation_input_binding_entry(
     ctx: &InterpContext,
 ) -> Result<(String, Value), ArgvRefusalCause> {
     let Value::Record { fields, .. } = item else {
-        return Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
+        return Err(ArgvRefusalCause::BindingMalformed(format!(
             "binding list element is {}, expected an OperationInputBinding record",
             item.type_label()
         )));
     };
     let Some(Value::Str(name)) = fields_get(fields, ctx.sym("name")).cloned() else {
-        return Err(ArgvRefusalCause::ArgvExpressionUnsupported(
+        return Err(ArgvRefusalCause::BindingMalformed(
             "OperationInputBinding.name must be a String".to_string(),
         ));
     };
     let Some(value) = fields_get(fields, ctx.sym("value")).cloned() else {
-        return Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
+        return Err(ArgvRefusalCause::BindingMalformed(format!(
             "OperationInputBinding `{name}` carries no value"
         )));
     };
@@ -5548,7 +5549,7 @@ fn operation_input_binding_entry(
                 match fields_get(fields, ctx.sym("text")).cloned() {
                     Some(Value::Str(text)) => Value::Str(text),
                     _ => {
-                        return Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
+                        return Err(ArgvRefusalCause::BindingMalformed(format!(
                             "InputText for `{name}` carries no String text"
                         )))
                     }
@@ -5558,25 +5559,25 @@ fn operation_input_binding_entry(
                     Some(items) => match free_monoid_to_vec(&items) {
                         Some(vals) => list_value(vals),
                         None => {
-                            return Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
+                            return Err(ArgvRefusalCause::BindingMalformed(format!(
                                 "InputTextList for `{name}` carries no List<String> items"
                             )))
                         }
                     },
                     None => {
-                        return Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
+                        return Err(ArgvRefusalCause::BindingMalformed(format!(
                             "InputTextList for `{name}` carries no items field"
                         )))
                     }
                 }
             } else {
-                return Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
+                return Err(ArgvRefusalCause::BindingMalformed(format!(
                     "OperationInputValue for `{name}` is an unknown variant"
                 )));
             }
         }
         other => {
-            return Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
+            return Err(ArgvRefusalCause::BindingMalformed(format!(
                 "OperationInputValue for `{name}` is {}, expected InputText | InputTextList",
                 other.type_label()
             )))
@@ -5595,7 +5596,12 @@ fn operation_input_binding_env(
     declared: &[(String, Option<Rc<Node>>)],
     ctx: &InterpContext,
 ) -> Result<HashMap<String, Value>, ArgvRefusalCause> {
-    let items = free_monoid_to_vec(bindings).unwrap_or_default();
+    let Some(items) = free_monoid_to_vec(bindings) else {
+        return Err(ArgvRefusalCause::BindingMalformed(format!(
+            "bindings argument is {}, expected a List<OperationInputBinding>",
+            bindings.type_label()
+        )));
+    };
     let mut env: HashMap<String, Value> = HashMap::new();
     for item in items.iter() {
         let (name, value) = operation_input_binding_entry(item, ctx)?;
@@ -5741,6 +5747,10 @@ fn argv_refusal_cause_value(cause: &ArgvRefusalCause, ctx: &InterpContext) -> Va
         ),
         ArgvRefusalCause::ArgvExpressionUnsupported(detail) => variant(
             "ArgvExpressionUnsupported",
+            vec![(ctx.sym("detail"), Value::Str(detail.clone()))],
+        ),
+        ArgvRefusalCause::BindingMalformed(detail) => variant(
+            "BindingMalformed",
             vec![(ctx.sym("detail"), Value::Str(detail.clone()))],
         ),
     }

@@ -7,6 +7,8 @@ data operation_argv_authority_note: String = "An operation's transport argv is m
 
 data operation_argv_executable_position_note: String = "The executable position (argv[0]) is NOT bindable: it must be a string literal in the operation's own declaration. A generic binder that let a declared input decide WHICH PROGRAM RUNS would be strictly worse than the hardcoded list it replaces, so the class is refused, never sanitized and never escaped (DESIGN 5 construction-over-validation: the refusal has no arm that proceeds). Corpus-measured at authoring time: argv[0] is a declaration literal in 139 of 139 shell-transport operations, so the wall is zero-false-positive today."
 
+data operation_argv_binding_shape_note: String = "A binding the seed cannot DECODE is its own cause (BindingMalformed), separate from an argv element it cannot EVALUATE (ArgvExpressionUnsupported): they name different work and would be one state-space conflation if fused. A bindings argument that is not a list refuses here too -- reading it as `no bindings` would silently turn a caller error into a DeclaredInputUnbound refusal against the wrong subject (DESIGN 5)."
+
 data operation_argv_expression_residue_note: String = "Materialization binds names; it does not EVALUATE argv element expressions. An argv element that is a call or a field access (7 operations at authoring time, e.g. git.Core.DiffUnified0's git_diff_range_argv(..) element) is refused as ArgvExpressionUnsupported -- typed, located, and counted, never absorbed into a fabricated argv. Those operations never materialized through the seed builtin before this module either; they execute through the interpreter's service-invocation path (dispatch_shell), which evaluates argv expressions in the full evaluator and is untouched here. Dissolves when argv element evaluation lands, which is a separate lane."
 
 type OperationRef {
@@ -33,6 +35,7 @@ type ArgvRefusalCause
   | ExecutablePositionNotLiteral { detail: String }
   | TokenListInStringPosition { name: String }
   | ArgvExpressionUnsupported { detail: String }
+  | BindingMalformed { detail: String }
 
 type ArgvMaterialization
   = ArgvMaterialized { argv: List<String> }
@@ -75,6 +78,7 @@ fn operation_argv_cause_label(cause: ArgvRefusalCause) -> String {
     ExecutablePositionNotLiteral { detail: d } => concat("ExecutablePositionNotLiteral:", d)
     TokenListInStringPosition { name: n } => concat("TokenListInStringPosition:", n)
     ArgvExpressionUnsupported { detail: d } => concat("ArgvExpressionUnsupported:", d)
+    BindingMalformed { detail: d } => concat("BindingMalformed:", d)
   }
 }
 
@@ -107,6 +111,7 @@ fn operation_argv_cause_is_expression_unsupported(cause: ArgvRefusalCause) -> Bo
     ExecutablePositionNotLiteral { detail: _ } => false
     TokenListInStringPosition { name: _ } => false
     ArgvExpressionUnsupported { detail: _ } => true
+    BindingMalformed { detail: _ } => false
   }
 }
 
@@ -120,6 +125,7 @@ fn operation_argv_cause_is_executable_position(cause: ArgvRefusalCause) -> Bool 
     ExecutablePositionNotLiteral { detail: _ } => true
     TokenListInStringPosition { name: _ } => false
     ArgvExpressionUnsupported { detail: _ } => false
+    BindingMalformed { detail: _ } => false
   }
 }
 
