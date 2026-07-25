@@ -21,7 +21,19 @@ import v2.test.emit.fold_call_closure_fixture {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Optional, Present, Absent, List, Map, list_at_optional, list_nth, optional_present, optional_absent }
+import v2.std.collection {
+  List,
+  Map,
+  list_at_optional,
+  list_nth
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,

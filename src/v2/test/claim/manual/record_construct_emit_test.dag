@@ -20,7 +20,16 @@ import v2.extdeps.languages.dag {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection { Optional, Present, Absent, Map, optional_present, optional_absent }
+import v2.std.collection {
+  Map
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness

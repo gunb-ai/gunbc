@@ -23,7 +23,19 @@ import v2.extdeps.runtimes.v2_evaluator {
   v2_evaluator_interpretation_structure_witness
 }
 import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection { Optional, Absent, List, Map, Present, map_get, map_insert, optional_present, optional_absent }
+import v2.std.collection {
+  List,
+  Map,
+  map_get,
+  map_insert
+}
+import v2.std.optional {
+  Optional,
+  Absent,
+  Present,
+  optional_present,
+  optional_absent
+}
 import v2.std.witness { Holds, Witness }
 import v2.std.diagnostic {
   Accepted,

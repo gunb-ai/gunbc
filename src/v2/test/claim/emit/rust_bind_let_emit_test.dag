@@ -12,7 +12,18 @@ import v2.extdeps.languages.rust {
   rust_fn_add_lex_rules
 }
 import v2.std.algebra { list_append }
-import v2.std.collection { Optional, Present, Absent, Map, empty_map, map_insert, optional_present, optional_absent }
+import v2.std.collection {
+  Map,
+  empty_map,
+  map_insert
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }

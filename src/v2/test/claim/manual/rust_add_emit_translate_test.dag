@@ -50,7 +50,17 @@ import v2.test.manual.infer_ground_add {
   infer_receipt_context
 }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
-import v2.std.collection { Optional, Present, Absent, Map, empty_map, optional_present, optional_absent }
+import v2.std.collection {
+  Map,
+  empty_map
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.coercion {
   CoercionQuality,
   Exact,

@@ -18,7 +18,19 @@ import v2.compiler.eval {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import std.algebra { Empty }
-import v2.std.collection { Optional, Absent, List, Map, Present, list_at_optional, map_insert, optional_present, optional_absent }
+import v2.std.collection {
+  List,
+  Map,
+  list_at_optional,
+  map_insert
+}
+import v2.std.optional {
+  Optional,
+  Absent,
+  Present,
+  optional_present,
+  optional_absent
+}
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.extdeps.languages.dag {

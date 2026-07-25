@@ -7,11 +7,13 @@ import v2.compiler.infer { InferredFacts, InferredTree, infer_facts_lookup_miss_
 import v2.std.algebra { bag_eq, list_snoc_item, non_empty }
 import v2.std.collection {
   List,
+  optional_present_witness
+}
+import v2.std.optional {
   Optional,
   optional_absent,
   optional_prefer_first_present,
-  optional_present,
-  optional_present_witness
+  optional_present
 }
 import v2.std.dependency {
   ClassifiedDependencyView,

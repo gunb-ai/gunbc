@@ -17,7 +17,12 @@ import v2.extdeps.languages.dag {
   dag_language_model,
   parse_production_emitted_identity_optional
 }
-import v2.std.collection { Absent, Optional, Present, optional_present }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_present
+}
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node {

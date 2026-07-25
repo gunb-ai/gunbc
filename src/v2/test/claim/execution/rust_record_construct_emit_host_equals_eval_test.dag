@@ -27,7 +27,18 @@ import extdeps.communication.medium { Medium }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.algebra { length }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Optional, Present, Absent, List, Map, list_at_optional, optional_present, optional_absent }
+import v2.std.collection {
+  List,
+  Map,
+  list_at_optional
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
   Accepted,

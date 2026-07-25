@@ -19,7 +19,20 @@ import v2.extdeps.languages.dag {
   dag_node_is_int_literal_atom
 }
 import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection { Optional, Absent, List, Map, Present, list_at_optional, map_get, map_insert, optional_present, optional_absent }
+import v2.std.collection {
+  List,
+  Map,
+  list_at_optional,
+  map_get,
+  map_insert
+}
+import v2.std.optional {
+  Optional,
+  Absent,
+  Present,
+  optional_present,
+  optional_absent
+}
 import v2.std.witness { Holds, Witness }
 import v2.std.diagnostic {
   Accepted,

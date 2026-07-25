@@ -23,7 +23,17 @@ import v2.std.cardinality {
   TerminationProof,
   structural_node_size_termination_proof
 }
-import v2.std.collection { Optional, Present, Absent, List, Map, optional_present, optional_absent }
+import v2.std.collection {
+  List,
+  Map
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.witness { Holds, Witness }
 import v2.std.diagnostic {
   Accepted,

@@ -14,7 +14,16 @@ import v2.extdeps.languages.rust_test {
   rust_field_access_target_model_staging
 }
 import extdeps.communication.medium { Medium }
-import v2.std.collection { Optional, Present, Absent, Map, optional_present, optional_absent }
+import v2.std.collection {
+  Map
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
   Accepted,

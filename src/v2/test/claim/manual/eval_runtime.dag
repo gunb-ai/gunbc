@@ -17,7 +17,19 @@ import v2.compiler.infer {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Optional, Present, Absent, List, Map, empty_map, list_nth, optional_present, optional_absent }
+import v2.std.collection {
+  List,
+  Map,
+  empty_map,
+  list_nth
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 
 import v2.std.diagnostic {
   Accepted,

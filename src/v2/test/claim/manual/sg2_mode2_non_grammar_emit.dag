@@ -25,7 +25,16 @@ import v2.extdeps.languages.rust {
   rust_type_expression_projection
 }
 import v2.std.algebra { is_empty }
-import v2.std.collection { Optional, Absent, Map, Present, optional_present, optional_absent }
+import v2.std.collection {
+  Map
+}
+import v2.std.optional {
+  Optional,
+  Absent,
+  Present,
+  optional_present,
+  optional_absent
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,

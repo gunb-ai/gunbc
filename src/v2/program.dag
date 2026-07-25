@@ -20,7 +20,18 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
   effect_io_pure_unit_type_node
 }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Optional, Absent, List, Map, Present, list_at_optional, optional_present, optional_absent }
+import v2.std.collection {
+  List,
+  Map,
+  list_at_optional
+}
+import v2.std.optional {
+  Optional,
+  Absent,
+  Present,
+  optional_present,
+  optional_absent
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostics,

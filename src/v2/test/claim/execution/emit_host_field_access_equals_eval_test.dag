@@ -22,7 +22,18 @@ import v2.extdeps.languages.rust_test { rust_field_access_target_model_staging }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.algebra { length }
-import v2.std.collection { Optional, List, Map, Absent, Present, list_at_optional, optional_present, optional_absent }
+import v2.std.collection {
+  List,
+  Map,
+  list_at_optional
+}
+import v2.std.optional {
+  Optional,
+  Absent,
+  Present,
+  optional_present,
+  optional_absent
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,

@@ -12,7 +12,16 @@ import v2.test.emit.fold_call_closure_fixture {
   fold_fixture_param_arrow_with_closure
 }
 import extdeps.communication.medium { Medium }
-import v2.std.collection { Optional, Present, Absent, Map, optional_present, optional_absent }
+import v2.std.collection {
+  Map
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
   Accepted,

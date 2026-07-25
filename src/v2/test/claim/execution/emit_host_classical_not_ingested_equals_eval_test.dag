@@ -34,7 +34,16 @@ import v2.extdeps.languages.rust_test {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional }
+import v2.std.collection {
+  List,
+  Map,
+  list_at_optional
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present
+}
 import v2.std.compilers.target_model { match_arm_body }
 import v2.std.diagnostic {
   Accepted,

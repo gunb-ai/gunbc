@@ -31,7 +31,11 @@ import v2.std.grammar {
   formal_production_to_node,
   grammar_relation_tokens_node
 }
-import v2.std.collection { Absent, Optional, Present }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present
+}
 import v2.std.compilers.lexing {
   CharClassPattern,
   CharPattern,

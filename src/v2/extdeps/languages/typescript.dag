@@ -52,14 +52,16 @@ import v2.std.compilers.lexing {
   TokenRule
 }
 import v2.std.collection {
-  Absent,
   List,
   Map,
-  Optional,
-  Present,
   Set,
   empty_map,
-  map_insert,
+  map_insert
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
   optional_absent,
   optional_present
 }

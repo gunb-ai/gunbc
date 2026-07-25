@@ -8,7 +8,16 @@ import v2.extdeps.languages.bash {
   emit_directive_bash_target_model,
   emit_directive_bash_to_stdout_wrong_target_model
 }
-import v2.std.collection { Optional, Present, Absent, Map, optional_present, optional_absent }
+import v2.std.collection {
+  Map
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,

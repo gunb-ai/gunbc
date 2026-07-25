@@ -12,13 +12,15 @@ import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, length }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection {
-  Absent,
   List,
   Map,
+  list_at_optional,
+  list_nth
+}
+import v2.std.optional {
+  Absent,
   Optional,
   Present,
-  list_at_optional,
-  list_nth,
   optional_absent,
   optional_present
 }

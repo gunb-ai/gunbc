@@ -27,7 +27,16 @@ import v2.extdeps.languages.bash_orch_if {
 import v2.extdeps.languages.bash_orch_tier2 {
   orch_cmdsubst_assign_target_model
 }
-import v2.std.collection { Optional, Present, Absent, Map, optional_present, optional_absent }
+import v2.std.collection {
+  Map
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
   Accepted,

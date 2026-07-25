@@ -30,7 +30,19 @@ import v2.extdeps.languages.dag {
   dag_int_literal_node_from_lexeme,
   dag_language_model
 }
-import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional, map_insert, optional_present, optional_absent }
+import v2.std.collection {
+  List,
+  Map,
+  list_at_optional,
+  map_insert
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_present,
+  optional_absent
+}
 import v2.std.compilers.lexing { Token, TokenStream }
 import v2.std.grammar { ParseTree }
 import v2.std.cardinality {

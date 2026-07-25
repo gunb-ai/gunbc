@@ -61,7 +61,20 @@ import v2.std.provenance {
   span_index_merge,
   span_index_record
 }
-import v2.std.collection { Absent, List, Map, Optional, Present, Set, empty_map, list_at_optional, map_get, map_insert }
+import v2.std.collection {
+  List,
+  Map,
+  Set,
+  empty_map,
+  list_at_optional,
+  map_get,
+  map_insert
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present
+}
 import std.algebra { Cons, Empty }
 import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_head, list_reverse, list_snoc_item, list_tail, unique }
 import v2.std.text { Char, CharAbsent, CharFound, string_head }

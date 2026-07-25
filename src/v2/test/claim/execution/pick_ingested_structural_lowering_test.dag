@@ -20,7 +20,18 @@ import v2.extdeps.languages.dag {
   dag_language_model,
   dag_node_is_int_literal_atom
 }
-import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional, optional_present, optional_absent }
+import v2.std.collection {
+  List,
+  Map,
+  list_at_optional
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_present,
+  optional_absent
+}
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.diagnostic {
