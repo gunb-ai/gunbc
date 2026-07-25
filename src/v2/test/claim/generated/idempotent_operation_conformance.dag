@@ -156,9 +156,9 @@ fn idempotent_operation_inferred_facts(root: Node) -> InferredFacts {
     resolved: root,
     algebra: root,
     descent: Holds {
-      value: TerminationProof {
+      value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
-        strict: RankingDimension { measured: ^idempotent_operation_descent_dimension }
+        strict: v2.std.cardinality.RankingDimension { measured: ^idempotent_operation_descent_dimension }
       }
     }
   )

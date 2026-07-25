@@ -18,8 +18,8 @@ type FloatSpecial
 type FloatBody
   = Finite {
       sign: Bit
-      biased_exponent: Nat
-      trailing_significand: Nat
+      biased_exponent: v2.std.nat.Nat
+      trailing_significand: v2.std.nat.Nat
     }
   | NonFinite { tag: FloatSpecial }
 
@@ -31,10 +31,10 @@ type Float64 {
   body: FloatBody
 }
 type Float = Float64
-fn sign_rank_lex(s: Bit) -> Nat {
+fn sign_rank_lex(s: Bit) -> v2.std.nat.Nat {
   match s {
-    true => Zero
-    false => Succ { prev: Zero }
+    true => v2.std.nat.Zero
+    false => v2.std.nat.Succ { prev: v2.std.nat.Zero }
   }
 }
 fn ordering_invert(o: Ordering) -> Ordering {
@@ -45,10 +45,10 @@ fn ordering_invert(o: Ordering) -> Ordering {
   }
 }
 fn float_finite_unsigned_field_order(
-  ea: Nat,
-  fa: Nat,
-  eb: Nat,
-  fb: Nat,
+  ea: v2.std.nat.Nat,
+  fa: v2.std.nat.Nat,
+  eb: v2.std.nat.Nat,
+  fb: v2.std.nat.Nat,
 ) -> Ordering {
   let o2 = nat_compare(a: ea, b: eb)
   match o2 {
@@ -58,12 +58,12 @@ fn float_finite_unsigned_field_order(
   }
 }
 
-fn float_special_rank(t: FloatSpecial) -> Nat {
+fn float_special_rank(t: FloatSpecial) -> v2.std.nat.Nat {
   match t {
-    NegInfinity => Zero
-    PosInfinity => Succ { prev: Zero }
-    QuietNan => Succ { prev: Succ { prev: Zero } }
-    SignalingNan => Succ { prev: Succ { prev: Succ { prev: Zero } } }
+    NegInfinity => v2.std.nat.Zero
+    PosInfinity => v2.std.nat.Succ { prev: v2.std.nat.Zero }
+    QuietNan => v2.std.nat.Succ { prev: v2.std.nat.Succ { prev: v2.std.nat.Zero } }
+    SignalingNan => v2.std.nat.Succ { prev: v2.std.nat.Succ { prev: v2.std.nat.Succ { prev: v2.std.nat.Zero } } }
   }
 }
 
@@ -74,7 +74,7 @@ fn float_body_is_nan(x: FloatBody) -> Bool {
     _ => false
   }
 }
-fn float_finite_magnitude_zero(e: Nat, f: Nat) -> Bool {
+fn float_finite_magnitude_zero(e: v2.std.nat.Nat, f: v2.std.nat.Nat) -> Bool {
   is_zero(e) && is_zero(f)
 }
 fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> Ordering {

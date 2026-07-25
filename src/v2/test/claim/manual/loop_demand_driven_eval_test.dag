@@ -222,10 +222,10 @@ fn loop_eval_context() -> EvalContext {
   )
 }
 
-fn loop_eval_loop_termination_proof() -> TerminationProof {
-  TerminationProof {
+fn loop_eval_loop_termination_proof() -> v2.std.cardinality.TerminationProof {
+  v2.std.cardinality.TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: ^loop_eval_measure_sym }
+    strict: v2.std.cardinality.RankingDimension { measured: ^loop_eval_measure_sym }
   }
 }
 
@@ -236,7 +236,7 @@ fn loop_eval_node_is_loop(node: Node) -> Bool {
   }
 }
 
-fn loop_eval_bounded_descent() -> Witness<TerminationProof> {
+fn loop_eval_bounded_descent() -> Witness<v2.std.cardinality.TerminationProof> {
   Holds { value: structural_node_size_termination_proof() }
 }
 

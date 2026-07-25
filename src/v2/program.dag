@@ -175,10 +175,10 @@ data program_pick_if_branch_with_effect_io: Node = dag_pick_if_body_from_arms(
   else_arm: program_literal_two()
 )
 
-fn program_termination_proof() -> TerminationProof {
-  TerminationProof {
+fn program_termination_proof() -> v2.std.cardinality.TerminationProof {
+  v2.std.cardinality.TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: ^program_descent_dimension }
+    strict: v2.std.cardinality.RankingDimension { measured: ^program_descent_dimension }
   }
 }
 
