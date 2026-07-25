@@ -1,6 +1,6 @@
 module v2.std.integer
 
-import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, OrderedRing, Ordering, Less, Equal, Greater }
+import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, OrderedRing, Ordering, Less, Equal, Greater }
 import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
 import v2.std.algebra { TailAbsent, TailFound, fold_list, fold_list_node, length }
 import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
@@ -19,7 +19,6 @@ import v2.std.machine {
 }
 import v2.std.nat { Nat }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
-type GroupCompletion<M>
 type Int = GroupCompletion<Nat>
 type UInt = Nat
 type Compose<carrier, dimension>

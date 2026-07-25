@@ -2739,6 +2739,10 @@ fn match_pattern(
                     }
                     _ => None,
                 },
+                // GroupCompletion{pos,neg} destructuring against a native Value::Int is
+                // deliberately unhandled here (no corpus site exercises it yet, #5-scoped
+                // deferral) — an unmatched pattern name falls through to `_ => None` below,
+                // refusing rather than fabricating a wrong (pos, neg) pair.
                 Value::Int(n) if name_last == "Zero" || name_last == "Succ" => match name_last {
                     "Zero" => {
                         if *n == 0 {
@@ -4266,6 +4270,14 @@ fn eval_record_lit(
             fields: Rc::new(fields),
         })
     } else {
+        if type_name == "GroupCompletion" {
+            if let (Some(Value::Int(pos)), Some(Value::Int(neg))) = (
+                fields_get(&fields, ctx.sym("pos")),
+                fields_get(&fields, ctx.sym("neg")),
+            ) {
+                return Ok(Value::Int(pos - neg));
+            }
+        }
         Ok(Value::Record {
             type_name: ctx.sym(&type_name),
             fields: Rc::new(fields),
