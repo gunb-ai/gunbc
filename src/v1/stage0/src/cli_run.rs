@@ -9888,6 +9888,11 @@ pub fn run_claim_measured(
     if let Some(budget_ms) = ctx.witness_eval_budget() {
         ctx.arm_eval_deadline(budget_ms);
     }
+    if let Some(budget_ms) = ctx.witness_wall_budget() {
+        // Kill-at-deadline: shell waits poll this and SIGKILL at the ceiling.
+        // Completion-side `wall_budget_completion_outcome` stays as the backstop.
+        ctx.arm_wall_deadline(budget_ms);
+    }
     let started = std::time::Instant::now();
     let cpu_started_nanos = v1_interpreter::thread_cpu_nanos();
     let outcome = run_claim(ctx, function);
@@ -9897,6 +9902,7 @@ pub fn run_claim_measured(
     let cpu_nanos = v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_started_nanos);
     let wall_nanos = started.elapsed().as_nanos();
     ctx.clear_eval_deadline();
+    ctx.clear_wall_deadline();
     v1_interpreter::eval_subject_clear();
     let outcome = budget_completion_outcome(ctx.witness_eval_budget(), outcome, cpu_nanos);
     let outcome = wall_budget_completion_outcome(ctx.witness_wall_budget(), outcome, wall_nanos);

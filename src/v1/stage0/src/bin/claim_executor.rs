@@ -27,10 +27,18 @@ use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
 };
 
-#[derive(Clone, Copy, Default)]
+/// Whole-receipt wall/interp budgets for the falsifier Wet *self-host* lane only
+/// (`gunbc_falsifier_self_host_wet_receipt_wall_budget` / interp twin). Other Wet
+/// discovery batches (silent-pick gate, rehomed bin) must not inherit them — that
+/// mis-scope is what reds `resolution_divergence_silent_pick_gate` against the
+/// 600s self-host ceiling after the self-host cadence rehome.
+#[derive(Clone, Default)]
 struct FalsifierSelfHostWetBudgets {
     wall_budget_ms: Option<u64>,
     interp_eval_budget_ms: Option<u64>,
+    /// Entry paths from `falsifier_self_host_wet_entries` — single authority for
+    /// which Wet discovery batches arm the whole-receipt wall budget.
+    roster_entry_paths: Vec<String>,
 }
 
 fn read_positive_budget_ms(
@@ -709,23 +717,27 @@ fn run_batch_unit(
         } => {
             // The fast-lane eval budget (operator 5s rule) governs the HERMETIC per-PR
             // discovery corpus — witnesses whose own eval must stay cheap or move to a
-            // long/ lane. A Wet execution batch (the bin-witness roster: compile-clean
-            // seam checks, floor-skip/interp-fixture drivers) spends its wall time in
-            // declared subprocess I/O, not in eval, and legitimately runs for minutes;
-            // the budget's completion-side wall check would kill it for doing exactly its
-            // declared job. So the budget applies only to a hermetic batch. This is not a
-            // silent widen: the Wet roster is a small explicit set with its own resource
-            // profile, and the eval-wedge risk the budget guards (the s1_closure class)
-            // lives in the wide hermetic corpus, not here.
+            // long/ lane. Wet batches skip that budget (subprocess I/O is their job).
+            // The whole-receipt wall/interp budgets are narrower still: they arm ONLY
+            // for the falsifier Wet self-host roster (`falsifier_self_host_wet_entries`),
+            // never for every Wet discovery batch. Silent-pick / rehomed-bin Wet rows
+            // share the Wet envelope but not the self-host Definition-of-Done ceiling
+            // (receipt: silent-pick 707s red under a mis-scoped 600s self-host budget
+            // while batch walls stayed green — 2026-07-25).
             let (effective_fast_lane, wet_wall_budget_ms, wet_interp_budget_ms) =
                 if execution_mode.is_hermetic() {
                     (fast_lane_eval_budget_ms, None, None)
-                } else {
+                } else if discovery_entries_are_self_host_wet(
+                    &explicit_entries,
+                    &falsifier_self_host_wet_budgets.roster_entry_paths,
+                ) {
                     (
                         None,
                         falsifier_self_host_wet_budgets.wall_budget_ms,
                         falsifier_self_host_wet_budgets.interp_eval_budget_ms,
                     )
+                } else {
+                    (None, None, None)
                 };
             vec![run_discovery_batch_node(
                 roots,
@@ -1097,6 +1109,51 @@ fn discovery_entries_are_known_red_probe(explicit_entries: &[(String, String)]) 
                 || entry.contains("english_emit_add_test.dag")
                 || entry.contains("compiler_closure_emit_from_ingest_test.dag")
         })
+}
+
+/// True when this discovery batch's explicit entries intersect the Wet self-host
+/// roster (`falsifier_self_host_wet_entries`). Path equality is the gate — the
+/// roster is the single authority; substring heuristics would re-fork it.
+fn discovery_entries_are_self_host_wet(
+    explicit_entries: &[(String, String)],
+    roster_entry_paths: &[String],
+) -> bool {
+    if roster_entry_paths.is_empty() || explicit_entries.is_empty() {
+        return false;
+    }
+    explicit_entries
+        .iter()
+        .any(|(entry, _)| roster_entry_paths.iter().any(|p| p == entry))
+}
+
+fn read_self_host_wet_roster_entry_paths(plan_ctx: &InterpContext) -> Result<Vec<String>, String> {
+    match run_value(plan_ctx, "falsifier_self_host_wet_entries") {
+        Ok(v) => {
+            let mut out = Vec::new();
+            for elem in free_monoid_elems(&v, plan_ctx)? {
+                let fields = match elem {
+                    Value::Record { fields, .. } => fields,
+                    Value::Variant { fields, .. } => fields,
+                    other => {
+                        return Err(format!(
+                            "claim_executor: falsifier_self_host_wet_entries element is {}, not a record (fail-closed)",
+                            other.type_label_public()
+                        ))
+                    }
+                };
+                out.push(str_field(
+                    fields,
+                    "entry",
+                    "falsifier_self_host_wet_entries",
+                    plan_ctx,
+                )?);
+            }
+            Ok(out)
+        }
+        Err(msg) => Err(format!(
+            "claim_executor: falsifier_self_host_wet_entries is unavailable (fail-closed): {msg}"
+        )),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1948,7 +2005,7 @@ fn run_walk(
             .map(|unit| {
                 let roots = source_roots.to_vec();
                 let unit_governor = governor.clone();
-                let wet_budgets = falsifier_self_host_wet_budgets;
+                let wet_budgets = falsifier_self_host_wet_budgets.clone();
                 thread::spawn(move || {
                     run_batch_unit(
                         roots,
@@ -1989,7 +2046,7 @@ fn run_walk(
                 unit,
                 governor.clone(),
                 fast_lane_eval_budget_ms,
-                falsifier_self_host_wet_budgets,
+                falsifier_self_host_wet_budgets.clone(),
             ));
         }
         // Collect all results before printing any PASS/FAIL — the prints must land
@@ -2536,6 +2593,13 @@ fn run() -> Result<ExitCode, ExitCode> {
                     return Err(ExitCode::from(1));
                 }
             },
+            roster_entry_paths: match read_self_host_wet_roster_entry_paths(&plan_ctx) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
         }
     } else {
         FalsifierSelfHostWetBudgets::default()
@@ -2646,7 +2710,11 @@ fn run() -> Result<ExitCode, ExitCode> {
 /// names BudgetExceeded{wall,budget} vs WitnessRed{claims} vs Infra{spawn/toolchain/eviction}
 /// so "falsifier dark" is one of three modes, never an undifferentiated exit 1.
 fn falsifier_failure_mode(details: &[String]) -> &'static str {
-    if details.iter().any(|d| d.contains("BudgetExceeded{")) {
+    if details.iter().any(|d| {
+        d.contains("BudgetExceeded{")
+            || d.contains("wet self-host receipt wall budget exceeded")
+            || d.contains("eval budget exceeded")
+    }) {
         "BudgetExceeded"
     } else if details.iter().any(|d| {
         d.contains("infra=")
@@ -2755,10 +2823,48 @@ mod tests {
     }
 
     #[test]
+    fn self_host_wet_roster_intersection_scopes_wall_budget() {
+        let roster = vec![
+            "dag/test/claim/self_host_logic_behavioral_witness_test.dag".into(),
+            "dag/test/claim/namespace_import_closure_witness_test.dag".into(),
+        ];
+        assert!(discovery_entries_are_self_host_wet(
+            &[(
+                "dag/test/claim/self_host_logic_behavioral_witness_test.dag".into(),
+                "self_host_logic_behavioral_receipt_holds".into()
+            )],
+            &roster
+        ));
+        // Silent-pick is Wet but not on the self-host roster — must not inherit
+        // the 600s whole-receipt ceiling (mis-scope receipt 2026-07-25).
+        assert!(!discovery_entries_are_self_host_wet(
+            &[(
+                "dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag".into(),
+                "resolution_divergence_silent_pick_gate_keystone_holds".into()
+            )],
+            &roster
+        ));
+        assert!(!discovery_entries_are_self_host_wet(&[], &roster));
+        assert!(!discovery_entries_are_self_host_wet(
+            &[(
+                "dag/test/claim/self_host_logic_behavioral_witness_test.dag".into(),
+                "self_host_logic_behavioral_receipt_holds".into()
+            )],
+            &[]
+        ));
+    }
+
+    #[test]
     fn falsifier_failure_mode_classifies_three_arms() {
         assert_eq!(
             falsifier_failure_mode(&[
                 "batch=1 BudgetExceeded{wall_ms=900000,budget_ms=600000}".into()
+            ]),
+            "BudgetExceeded"
+        );
+        assert_eq!(
+            falsifier_failure_mode(&[
+                "batch=3 fn=resolution_divergence_silent_pick_gate_keystone_holds detail=wet self-host receipt wall budget exceeded: 707687ms elapsed > 600000ms whole-receipt budget".into()
             ]),
             "BudgetExceeded"
         );
