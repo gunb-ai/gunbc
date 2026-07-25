@@ -4,21 +4,16 @@ import v2.lens.complexity_linearity_audit {
   ComplexityLinearityWildcardFact,
   complexity_linearity_wildcard_facts_live,
   complexity_linearity_wildcard_total_live,
-  complexity_linearity_migration_debt_roster_live,
-  migration_roster_contains,
   triage_wildcard
 }
-import v2.std.algebra { Empty, TailAbsent, TailFound, fold, fold_list, length, list_tail }
+import v2.std.algebra { Empty, TailAbsent, TailFound, fold_list, length, list_tail }
 import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
 import v2.std.logic { Bool }
 import v2.std.node {
-  Behavior,
   ComputationNode,
-  Edge,
   Match,
   Node,
   NodeFold,
-  Positional,
   Symbol,
   TypeNode,
   Conj,
@@ -50,12 +45,12 @@ fn match_arm_wire_is_well_formed(arm: Node) -> Bool {
   match arm.kind {
     TypeNode { connective: Conj } =>
       match find_named_child(root: arm, name: match_arm_pattern) {
-        Present { value: _ } =>
+        Accepted { value: _, diagnostics: _ } =>
           match find_named_child(root: arm, name: match_arm_body) {
-            Present { value: _ } => true
-            Absent => false
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
           }
-        Absent => false
+        Rejected { diagnostics: _ } => false
       }
     _ => false
   }
@@ -63,8 +58,8 @@ fn match_arm_wire_is_well_formed(arm: Node) -> Bool {
 
 fn match_arm_pattern_node(arm: Node) -> Optional<Node> {
   match find_named_child(root: arm, name: match_arm_pattern) {
-    Present { value: pat } => optional_present(value: pat)
-    Absent => optional_absent()
+    Accepted { value: pat, diagnostics: _ } => optional_present(value: pat)
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
