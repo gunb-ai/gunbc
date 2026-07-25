@@ -1,6 +1,11 @@
 module extdeps.cloud.hetzner
 
-import std.roster_frontier { FrontierRow, frontier_row }
+import std.roster_frontier {
+  FrontierRow,
+  TriggerProse,
+  decl_ref,
+  frontier_row_decl,
+}
 
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -12,11 +17,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type HetznerCloudServerType = Cax11 | Cax21 | Cax31 | Cax41
 
-data dissolve_on_anemic_money_rate_carrier: List<FrontierRow> = [
-  frontier_row(
-    unit: "migrate_to_money_rate",
-    reason: "hourly/monthly_cap: MoneyAmountMicro + separate currency forks std.measure MoneyRate<P> (MoneyPerHour/MoneyPerMonth); §3 parallel representation",
-    dissolve_on: "next hetzner-cloud catalog edit routes hourly and monthly_cap through MoneyPerHour/MoneyPerMonth",
+data hetzner_money_rate_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "HetznerCloudServerCatalogRow"),
+    reason: "hourly/monthly_cap: MoneyAmountMicro + separate currency forks std.measure MoneyRate<P> (MoneyPerHour/MoneyPerMonth); parallel representation fork",
+    trigger: TriggerProse {
+      text: "next hetzner-cloud catalog edit routes hourly and monthly_cap through MoneyPerHour/MoneyPerMonth",
+    },
   )
 ]
 
