@@ -23843,7 +23843,12 @@ pub(crate) fn non_fold_residue_units_from_module_source(
                                 ),
                             }
                         }
-                        path = row_path;
+                        path = Some(row_path.unwrap_or_else(|| {
+                            panic!(
+                                "nfr frontier reader: `subject` in a `{data_name}` row of \
+                                 {module_rel_path} is `PathSubject` but carries no `path` field"
+                            )
+                        }));
                     }
                     _ => panic!(
                         "nfr frontier reader: `subject` in a `{data_name}` row of \
