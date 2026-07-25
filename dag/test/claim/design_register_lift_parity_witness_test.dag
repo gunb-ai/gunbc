@@ -30,7 +30,9 @@ data roadmap_css_repin_merge_note: String = "Merge resolution 2026-07-25 (main i
 
 data roadmap_css_repin_row_archetype_note: String = "Re-pinned for composition slice 2 (the RoadmapRow archetype): the roadmap bytes move intentionally — the node-head flex rules become the archetype-derived grid (template from roadmap_row_grid_template, density on h-row and the row gutter), the node-mid cell rule and the chip-scale row actuator override are new emission, the margin-left:auto pusher rule deletes (the grid's third track places the actuator), and scale_root_css gains --h-row. Slice 1's re-derivation was proven byte-identical against the PREVIOUS pin (50410951147178f6, zero re-pin) before this slice moved bytes, so the two changes are separately attested. Behavioral receipts: the row archetype witness (grid-derived template + derived-not-set actuator + planted RED), roadmap_register_keystone, dispatch_presentation_keystone, roadmap_tactile_keystone (press physics unchanged at both scales). This digest only pins bytes; derived by execution from the merged tree."
 
-data roadmap_css_lift_parity_digest: String = "8d2372be4c9d6d61"
+data roadmap_css_repin_altitude_note: String = "Re-pinned for composition slice 3 (page altitude): new emission for the section band — the fold summary rules (marker suppressed, pointer), the band strip (surface fill, baseline flex, tokened gap/padding/radius), the in-band h2 margin reset, and the counts chip (mono, dim, tabular). Behavioral receipts: the altitude witness (derivation totality, fold/open by statuses, counts wire, client expand chain with planted REDs), roadmap_page_keystone. Derived by execution; this digest only pins bytes."
+
+data roadmap_css_lift_parity_digest: String = "5cfdb3c06e603e38"
 data moodboard_thesis_themes_lift_parity_digest: String = "69e68066c49667f9"
 
 fn emission_content_digest(s: String) -> String {

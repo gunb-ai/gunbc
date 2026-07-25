@@ -21,6 +21,7 @@ import gunbc.roadmap_status {
   item_superseded_by, item_is_done, signoff_accepts, signoff_by,
 }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes }
 import gunbc.roadmap_component {
@@ -585,9 +586,43 @@ fn element_markup(e: SectionElement, merged: List<Int>) -> List<MarkupNode> {
   }
 }
 
+data altitude_section_note: String = "Page altitude from the attention law (composition slice 3; gunbc.roadmap_altitude carries the law, this page is its renderer — the workspace as the third renderer of 'routine collapses, anomaly expands'). A node-bearing section renders as a BAND: a details.section-fold whose summary carries the section's title and its derived counts, open exactly when the section holds non-routine work — statuses_all_routine folds the finished lanes, one working or anomalous member holds the band open, and the open attribute is DERIVED, never authored per section. A section without nodes has no altitude axis and renders flat, so prose leads never fold themselves away."
+
+fn altitude_section(cls: String, title_nodes: List<MarkupNode>, statuses: List<String>, body: List<MarkupNode>) -> MarkupNode {
+  if count(statuses) == 0 {
+    el_class("section", cls, concat(title_nodes, body))
+  } else {
+    let counts = el_class("span", "section-counts", [ txt(section_counts_wire(c: section_counts(statuses: statuses))) ])
+    let band = el_class("summary", "section-band", concat(title_nodes, [ counts ]))
+    let fold_attrs = if statuses_all_routine(statuses: statuses) {
+      [ MarkupAttr { name: "class", value: "section-fold" } ]
+    } else {
+      [ MarkupAttr { name: "class", value: "section-fold" }, MarkupAttr { name: "open", value: "" } ]
+    }
+    el_class("section", cls, [
+      ElementNode { tag: "details", attrs: fold_attrs, children: concat([ band ], body) },
+    ])
+  }
+}
+
+fn group_statuses(g: SectionGroup, merged: List<Int>) -> List<String> {
+  map(g.nodes, rn => node_status_symbol(rn: rn, merged: merged))
+}
+
+fn section_statuses(s: RoadmapSection, merged: List<Int>) -> List<String> {
+  fold(s.elements, init: [], f: (acc, e) => match e {
+    Prose { prose: _ } => acc
+    Group { group } => concat(acc, group_statuses(g: group, merged: merged))
+  })
+}
+
 fn section_markup(s: RoadmapSection, merged: List<Int>) -> MarkupNode {
   let body = fold(s.elements, init: [], f: (acc, e) => concat(acc, element_markup(e: e, merged: merged)))
-  el_class("section", "roadmap-section", concat([ el("h2", [ txt(s.title) ]) ], body))
+  altitude_section(
+    cls: "roadmap-section",
+    title_nodes: [ el("h2", [ txt(s.title) ]) ],
+    statuses: section_statuses(s: s, merged: merged),
+    body: body)
 }
 
 fn frontier_flat_node_li(rn: RoadmapNode, merged: List<Int>) -> MarkupNode {
@@ -606,10 +641,11 @@ fn frontier_bucket_ul(items: List<RoadmapNode>, merged: List<Int>) -> MarkupNode
 }
 
 fn frontier_bucket_markup(label: String, cls: String, items: List<RoadmapNode>, merged: List<Int>) -> MarkupNode {
-  el_class("section", concat("frontier-bucket frontier-", cls), [
-    el("h2", [ txt(label) ]),
-    frontier_bucket_ul(items: items, merged: merged),
-  ])
+  altitude_section(
+    cls: concat("frontier-bucket frontier-", cls),
+    title_nodes: [ el("h2", [ txt(label) ]) ],
+    statuses: map(items, rn => node_status_symbol(rn: rn, merged: merged)),
+    body: [ frontier_bucket_ul(items: items, merged: merged) ])
 }
 
 fn roadmap_frontier_markup(frontier: SpawnFrontier, merged: List<Int>) -> MarkupNode {

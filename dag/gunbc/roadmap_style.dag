@@ -305,6 +305,30 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "roadmap-section" }, decls: [
       decl(prop: MarginBottom, value: scale_var(t: space_24)),
     ] },
+    StaticRule { selector: RawSelector { text: "details.section-fold > summary" }, decls: [
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: ListStyle, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: "details.section-fold > summary::-webkit-details-marker" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "section-band" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: Padding, value: scale_pair(a: space_4, b: space_8)),
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+    ] },
+    StaticRule { selector: RawSelector { text: ".section-band h2" }, decls: [
+      decl(prop: Margin, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "section-counts" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontVariantNumeric, value: "tabular-nums"),
+    ] },
     StaticRule { selector: ElementSelector { tag: "ul" }, decls: [
       decl(prop: ListStyle, value: "none"),
       decl(prop: PaddingLeft, value: scale_var(t: space_16)),
