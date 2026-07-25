@@ -12,7 +12,11 @@ import extdeps.systemd {
   MemoryLimitUnbounded,
   MemoryLimitAbsent,
 }
-import gunbc.systemctl_show_read { systemctl_show_property_read_local }
+import gunbc.systemctl_show_read {
+  systemctl_show_property_read_local,
+  SystemdPropertyCaptured,
+  SystemdPropertyCaptureRefused,
+}
 import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
 import gunbc.fleet_host_budget { declared_runner_count }
@@ -125,7 +129,10 @@ fn host_converge_slice1_probed_at() -> NonEmptyStr? {
 }
 
 fn host_converge_slice1_read_memory_max_raw(unit: NonEmptyStr) -> String? {
-  systemctl_show_property_read_local(unit: unit, property: MemoryMax)
+  match systemctl_show_property_read_local(unit: unit, property: MemoryMax) {
+    SystemdPropertyCaptured { value: raw } => Present { value: raw }
+    SystemdPropertyCaptureRefused { reason: _ } => none
+  }
 }
 
 fn host_converge_slice1_apply_memory_max(unit: NonEmptyStr, bytes_value: String) -> Bool {
@@ -212,7 +219,10 @@ type HostConvergeSlice1UsageGuardOutcome
 data host_converge_slice1_usage_guard_placeholder_probed_at: NonEmptyStr = "host_converge_slice1_usage_guard"
 
 fn host_converge_slice1_read_memory_current_raw(unit: NonEmptyStr) -> String? {
-  systemctl_show_property_read_local(unit: unit, property: MemoryCurrent)
+  match systemctl_show_property_read_local(unit: unit, property: MemoryCurrent) {
+    SystemdPropertyCaptured { value: raw } => Present { value: raw }
+    SystemdPropertyCaptureRefused { reason: _ } => none
+  }
 }
 
 fn host_converge_slice1_usage_guard(unit: NonEmptyStr, target_bytes_value: String) -> HostConvergeSlice1UsageGuardOutcome {

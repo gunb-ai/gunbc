@@ -180,11 +180,11 @@ fn runner_memory_cap_live_read(host: HostIdentity) -> RunnerUnitMemoryLiveRead? 
                       }
                     )
                   }
-                Absent => none
+                SystemdPropertyCaptureRefused { reason: _ } => none
               }
-            Absent => none
+            SystemdPropertyCaptureRefused { reason: _ } => none
           }
-        Absent => none
+        SystemdPropertyCaptureRefused { reason: _ } => none
       }
     Absent => none
   }
