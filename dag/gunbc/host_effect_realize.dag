@@ -1633,15 +1633,6 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
     ConvergeOnHost { node: _, host_converge: hc } =>
       realize_converge_on_host(host_converge: hc, transport: transport, intent: intent)
     TypedReconcileOnHost { node: _, kind: k } => realize_srv3_typed_reconcile(kind: k, transport: transport, intent: intent)
-    Srv3DiagnosticObserveOnHost { node: _, bmc: b, port: p, iso_path: ip, intent_content_hash: h } =>
-      realize_srv3_install_diagnostic_observe(
-        bmc: b,
-        port: p,
-        iso_path: ip,
-        intent_content_hash: h,
-        transport: transport,
-        effect_intent: intent,
-      )
     OsInstallActuatorToolchainOnHost { node: _ } =>
       realize_os_install_actuator_toolchain_ensure(effect_intent: intent)
     ProvisionBuildCacheOnHost { node: _, catalog_id: _ } =>
@@ -1882,7 +1873,6 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             ShellOnHost { node: _, script: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ConvergeOnHost { node: _, host_converge: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             TypedReconcileOnHost { node: _, kind: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            Srv3DiagnosticObserveOnHost { node: _, bmc: _, port: _, iso_path: _, intent_content_hash: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             OsInstallActuatorToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ProvisionBuildCacheOnHost { node: _, catalog_id: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
