@@ -201,3 +201,5 @@ fn shell_trace_stream_policy(verbosity: Verbosity) -> EffectStreamPolicy {
 fn resolve_shell_trace_stream_policy(verbose: Bool, quiet: Bool) -> EffectStreamPolicy {
   shell_trace_stream_policy(verbosity: resolve_verbosity(env: VerbosityEnv { verbose: verbose, quiet: quiet }))
 }
+
+data shell_trace_observation_convergence_note: String = "CONVERGENCE (operator steer 2026-07-25, post-60a4496 revert): ShellTrace at Normal Condensed and effect_stream_disposition remain the channel-layer split until shell host-effects emit as ObservationEvents with per-event attention (routine Ambient / failure Anomaly). When the event path carries the traffic — Begin/Concluded projections, Anomaly OutsideGroup by law 4, self-describing $ argv and empty-stderr exit on Failed — this channel-level split dissolves: delete this note, retire Condensed-at-Normal as the Ambient gate, and let derived attention plus ci_line_placement supersede the dual-class conflation. Do NOT build an interim disposition↔channel decoupling; the observation wiring is the dissolve."

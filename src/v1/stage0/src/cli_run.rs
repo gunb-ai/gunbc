@@ -6713,6 +6713,46 @@ fn index_record_schedule_module(
 #[allow(dead_code)]
 pub const TYPECHECK_ATTRIBUTION_CENSUS_MARKER: &str = "[typecheck-attribution]";
 
+/// Kept so `gunbc.observation_emit_census` roster hygiene cannot go stale after the
+/// raw `[measurement] … bytes (VmHWM)` dump dissolves into `ci_measurement_rss_line`.
+#[allow(dead_code)]
+pub const MEASUREMENT_CENSUS_MARKER: &str = "[measurement]";
+
+const MEASUREMENT_UNREADABLE_CAUSE: &str = "no /proc/self/status";
+
+fn measurement_emoji() -> bool {
+    std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+}
+
+fn measurement_human_bytes(bytes: u64) -> String {
+    // Mirror of ci_gibibyte_tenths: (bytes * 10) / gibibyte_scale_factor_bytes (2^30).
+    let tenths = (bytes.saturating_mul(10)) / 1_073_741_824;
+    format!("{}.{} GiB", tenths / 10, tenths % 10)
+}
+
+/// Mirror of `gunbc.observation_seed_render.seed_peak_rss_line` —
+/// `ci_measurement_rss_line ∘ ci_render_line`. Identity-first label, human GiB.
+/// When `rss_bytes` is `None`, `unreadable_cause` names the MeasuredUnavailable cause
+/// (seed default: `no /proc/self/status`).
+pub fn render_peak_rss_line_mirror(label: &str, rss_bytes: Option<u64>, emoji: bool) -> String {
+    render_peak_rss_line_mirror_with_cause(label, rss_bytes, MEASUREMENT_UNREADABLE_CAUSE, emoji)
+}
+
+pub fn render_peak_rss_line_mirror_with_cause(
+    label: &str,
+    rss_bytes: Option<u64>,
+    unreadable_cause: &str,
+    emoji: bool,
+) -> String {
+    let _ = MEASUREMENT_CENSUS_MARKER;
+    let glyph = if emoji { "🕐" } else { "◷" };
+    let rss = match rss_bytes {
+        Some(b) => measurement_human_bytes(b),
+        None => format!("unreadable ({unreadable_cause})"),
+    };
+    format!("{glyph} {label} — {rss}")
+}
+
 const TYPECHECK_MINUTE_SWITCH_SECONDS: u64 = 90;
 
 fn typecheck_emoji() -> bool {

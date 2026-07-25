@@ -7,7 +7,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data observation_emit_census_note: String = "P3 of the progress-and-observation lane: the census wall. Every place the floor emits a progress line today is either a PROJECTION of the observation event stream (migrated, P1/P2) or a COUNTED FRONTIER ROW carrying a reason and a dissolve-on — the same discipline the site subsumption lane uses for unthemed colours. This module is the census authority: the classification is a closed sum, so a site cannot be half-classified, and the roster below names the structured-tag emit families that exist in the seed today. The executable hygiene witness reads the live seed and reds when a rostered marker vanishes (a stale roster) or when a family the census claims is migrated still emits its raw form, so the census cannot rot into a lie."
 
-data observation_emit_census_sequencing_note: String = "Sequencing, per the operator ruling and design section 6b: the CI two-tier rework (PR-1 on #7162's line) rewrites the floor's emit sites, so the EXHAUSTIVE per-print wall over every raw eprintln in claim_executor is a declared frontier gated on that rebase — censusing sites about to be rewritten would be work churned twice, the migration class the operator ruled out. What lands now is the census MODEL, the roster of the structured-tag families that exist regardless of the rework, and the hygiene witness. Migrated so far: [floor-memory] (4b), [gantt], [governor], [typecheck-attribution] (ModuleSegment+PhaseSegment typecheck via typecheck_*_line / render_typecheck_*_line_mirror). Each keeps its marker string so the roster cannot go stale."
+data observation_emit_census_sequencing_note: String = "Sequencing, per the operator ruling and design section 6b: the CI two-tier rework (PR-1 on #7162's line) rewrote the floor's emit sites, so the tagged structured-tag families migrate on this PR. Migrated: [floor-memory] (4b), [gantt], [governor], [typecheck-attribution], [measurement] (ci_measurement_rss_line / render_peak_rss_line_mirror), [shell] (shell_effect_*_line / render_shell_effect_*_line_mirror; Ambient via ShellTrace, Anomaly via disposition alone). Tagged frontier count is now 0. The unmarked raw eprintln sites in claim_executor remain the residue — currently 76 `eprintln!` call sites by live count — their per-print classification is the re-census this PR's dissolve condition named."
 
 type EmitSiteDisposition
   = MigratedToObservation { via: NonEmptyStr }
@@ -56,9 +56,16 @@ data governor_site: CensusedEmitSite = CensusedEmitSite {
 data measurement_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[measurement]" as NonEmptyStr,
   source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
-  disposition: CountedFrontierSite {
-    reason: "peak-RSS and per-shard memory samples consumed by the placement divisor and compile-jobs derive — a MEASUREMENT feed with real downstream consumers, not a progress line, so its migration is subtler than the display sites" as NonEmptyStr,
-    dissolve_on: "re-census after the CI two-tier rework PR: the rework changes which measurements the placement axis consumes, so classifying this as projection-or-frontier before the rework would classify a site about to be rewritten" as NonEmptyStr
+  disposition: MigratedToObservation {
+    via: "gunbc.observation_ci_render.ci_measurement_rss_line (seed seed_peak_rss_line; mirror render_peak_rss_line_mirror; identity-first label, human GiB)" as NonEmptyStr
+  }
+}
+
+data shell_site: CensusedEmitSite = CensusedEmitSite {
+  marker: "[shell]" as NonEmptyStr,
+  source_file: "src/v1/stage0/src/v1_interpreter.rs" as NonEmptyStr,
+  disposition: MigratedToObservation {
+    via: "gunbc.observation_ci_render.ci_event_line (seed shell_effect_begin_line / shell_effect_done_line / shell_effect_failed_line; mirror render_shell_effect_*_line_mirror; Ambient via ShellTrace, Anomaly Failed self-describing via disposition alone)" as NonEmptyStr
   }
 }
 
@@ -67,7 +74,8 @@ data observation_emit_roster: List<CensusedEmitSite> = [
   typecheck_attribution_site,
   gantt_site,
   governor_site,
-  measurement_site
+  measurement_site,
+  shell_site
 ]
 
 data observation_emit_roster_completeness_disposition: Disposition = Scaffold {
@@ -79,7 +87,7 @@ data observation_emit_roster_completeness_disposition: Disposition = Scaffold {
   }
 }
 
-data observation_emit_roster_completeness_note: String = "The roster covers the STRUCTURED-TAG emit families that exist in the seed regardless of the rework. It does NOT yet cover the ~75 unmarked raw eprintln sites in claim_executor: those are exactly the sites the CI two-tier rework rewrites, so their per-print classification is the declared frontier that dissolves when this PR rebases over that rework and re-censuses. Until then the honest count is stated, never zero: one tag family still frontier (measurement), four migrated (floor-memory, gantt, governor, typecheck-attribution), the raw-print residue counted but unclassified, and the witness holds the roster against the seed so it cannot go stale in the meantime. The end state — a live wall that reds any new bare print outside the projection — is reached when the post-rework sites are enumerated, per the design section 5 P3."
+data observation_emit_roster_completeness_note: String = "Tagged structured-tag families are now all MigratedToObservation (frontier count 0). The roster does NOT yet enumerate the 76 unmarked raw eprintln sites in claim_executor as individual CountedFrontierSite rows — that per-print re-census is the remaining completeness scaffold, and its dissolve condition (\"when the post-rework sites are enumerated\") is satisfied by this PR's landing of the tagged migrations, so the enumeration itself is the next micro-pass on this bar. Until those rows land the honest count is: zero tagged frontier, six migrated families, 76 raw-print residue counted but unclassified, and the witness holds the roster against the seed so it cannot go stale."
 
 fn emit_site_is_frontier(site: CensusedEmitSite) -> Bool {
   match site.disposition {

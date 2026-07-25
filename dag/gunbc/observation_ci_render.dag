@@ -449,6 +449,17 @@ fn ci_refusal_restate_line(subject: ObservationSubject, diagnostic: NonEmptyStr)
 
 data ci_subject_text_guard_note: String = "A restated diagnostic is text this repo relays from a SUBJECT process, so it goes through extdeps.github.log_annotations.neutralize_workflow_commands: a child whose captured stderr happens to begin with the workflow-command prefix would otherwise mint annotations in the parent run that no gunbc code authored. Consuming the existing guard rather than re-deriving it is the point — the neutralization rule is that module's fact, not this renderer's."
 
+
+data ci_measurement_rss_note: String = "Measurement-feed projection (wiring flip): peak-RSS and cgroup samples are not progress Begin/Concluded pairs — they are Measured facts about the run. This line is Ambient, identity-first (the label), vitals in human GiB via ci_measured_bytes_text, never a raw byte dump. Placement consumers and receipts still read the typed facts; this is the log surface only."
+
+fn ci_measurement_rss_line(label: NonEmptyStr, rss: Measured<ByteSize>) -> RenderedLine {
+  RenderedLine {
+    glyph: StatusPulse,
+    text: concat(label, concat(" — ", ci_measured_bytes_text(m: rss))),
+    attention: Ambient
+  }
+}
+
 data observation_ci_render_disposition: Disposition = Terminal {
   reason: "The CI-log renderer is Terminal, not a scaffold: append-only line projection is what the GitHub Actions medium IS, not an interim stand-in for a richer one. The TTY renderer is a sibling projection of the same carriers rather than this module's successor, and the dashboard is a third. What dissolves later is the hand-rolled emit sites this renderer replaces, each counted by the P3 census."
 }

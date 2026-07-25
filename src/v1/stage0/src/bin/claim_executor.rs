@@ -1626,8 +1626,17 @@ fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
 /// standalone `--measure-cgroup-peak` mode so the `ci` and `rust_tests` jobs report an
 /// identically-shaped line. `context` distinguishes the call site.
 fn emit_cgroup_measurement(context: &str) {
+    let emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
     match cgroup_job_measurement() {
         Some(m) => {
+            let label = format!("cgroup peak @ {} ({context})", m.leaf_rel);
+            eprintln!(
+                "{}",
+                v1_compiler::cli_run::render_peak_rss_line_mirror(&label, Some(m.leaf_peak), emoji)
+            );
+            // Diagnostic companions (cap/pids/sccache) stay as Ambient detail beside the
+            // Measured peak — not the old raw-byte `[measurement]` dump. Placement still
+            // reads the typed `cgroup_job_measurement` fact, not this prose.
             let cap = match m.cap_bytes {
                 Some(b) => format!("{b} bytes"),
                 None => "uncapped(RAM-bound)".to_string(),
@@ -1642,16 +1651,23 @@ fn emit_cgroup_measurement(context: &str) {
                 (None, _) => "not-found (treat as fixed host overhead)".to_string(),
             };
             eprintln!(
-                "[measurement] cgroup peak: {peak} bytes (memory.peak @ {rel}) memory.max={cap} host_ram={host_ram} pids.current={pc} pids.max={pm} sccache-server-cgroup={sccache} context={context}",
-                peak = m.leaf_peak,
-                rel = m.leaf_rel,
+                "  memory.max={cap} host_ram={host_ram} pids_current={pc} pids_max={pm} sccache-server-cgroup={sccache}",
                 pc = m.pids_current,
                 pm = m.pids_max
             );
         }
-        None => eprintln!(
-            "[measurement] cgroup peak: unavailable (no leaf cgroup or memory.peak unreadable; kernel < 5.19?) context={context}"
-        ),
+        None => {
+            let label = format!("cgroup peak ({context})");
+            eprintln!(
+                "{}",
+                v1_compiler::cli_run::render_peak_rss_line_mirror_with_cause(
+                    &label,
+                    None,
+                    "no leaf cgroup or memory.peak unreadable; kernel < 5.19?",
+                    emoji,
+                )
+            );
+        }
     }
 }
 
@@ -2875,10 +2891,22 @@ fn run() -> Result<ExitCode, ExitCode> {
     );
     match peak_rss_bytes() {
         Some(bytes) => {
-            eprintln!("[measurement] floor peak RSS: {bytes} bytes (VmHWM) (adaptive width)");
+            eprintln!(
+                "{}",
+                v1_compiler::cli_run::render_peak_rss_line_mirror(
+                    "floor peak RSS (adaptive width)",
+                    Some(bytes),
+                    std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"),
+                )
+            );
         }
         None => eprintln!(
-            "[measurement] floor peak RSS: unavailable (no /proc/self/status) (adaptive width)"
+            "{}",
+            v1_compiler::cli_run::render_peak_rss_line_mirror(
+                "floor peak RSS (adaptive width)",
+                None,
+                std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"),
+            )
         ),
     }
     // The governor receipt is the §5-counted degradation story for the run: every graceful
@@ -3409,6 +3437,162 @@ mod tests {
         assert_eq!(
             begin_mirror,
             "🔄 started typecheck v2.compiler.normalized_tree"
+        );
+    }
+
+    fn run_seed_peak_rss_line(
+        source_roots: &[String],
+        label: &str,
+        rss_bytes: u64,
+        rss_available: bool,
+        emoji: bool,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_seed_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let out = run_in_context_with_args(
+            &ctx,
+            "seed_peak_rss_line",
+            &[
+                (Some("label".to_string()), Value::Str(label.to_string())),
+                (Some("rss_bytes".to_string()), Value::Int(rss_bytes as i64)),
+                (
+                    Some("rss_available".to_string()),
+                    Value::Bool(rss_available),
+                ),
+                (Some("emoji".to_string()), Value::Bool(emoji)),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn peak_rss_mirror_matches_seed_oracle() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        // 1 GiB exact → "1.0 GiB"
+        let oracle = run_seed_peak_rss_line(&roots, "floor peak RSS", 1_073_741_824, true, true)
+            .expect("seed_peak_rss_line must resolve and render");
+        let mirror = v1_compiler::cli_run::render_peak_rss_line_mirror(
+            "floor peak RSS",
+            Some(1_073_741_824),
+            true,
+        );
+        assert_eq!(oracle, mirror, "peak RSS mirror must be byte-equal to seed");
+        assert_eq!(oracle, "🕐 floor peak RSS — 1.0 GiB");
+
+        // 1536 MiB → "1.5 GiB"
+        let oracle15 = run_seed_peak_rss_line(&roots, "cgroup peak", 1_610_612_736, true, false)
+            .expect("seed");
+        let mirror15 = v1_compiler::cli_run::render_peak_rss_line_mirror(
+            "cgroup peak",
+            Some(1_610_612_736),
+            false,
+        );
+        assert_eq!(oracle15, mirror15);
+        assert_eq!(oracle15, "◷ cgroup peak — 1.5 GiB");
+
+        let unread = run_seed_peak_rss_line(&roots, "floor peak RSS", 0, false, true)
+            .expect("unreadable seed");
+        let unread_mirror =
+            v1_compiler::cli_run::render_peak_rss_line_mirror("floor peak RSS", None, true);
+        assert_eq!(unread, unread_mirror);
+        assert!(unread.contains("unreadable (no /proc/self/status)"));
+    }
+
+    fn run_seed_shell_effect_failed_line(
+        source_roots: &[String],
+        argv_summary: &str,
+        argv_collapsed: &str,
+        exit_code: u64,
+        elapsed_ms: u64,
+        overhead_ms: u64,
+        emoji: bool,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_seed_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let out = run_in_context_with_args(
+            &ctx,
+            "shell_effect_failed_line",
+            &[
+                (
+                    Some("argv_summary".to_string()),
+                    Value::Str(argv_summary.to_string()),
+                ),
+                (
+                    Some("argv_collapsed".to_string()),
+                    Value::Str(argv_collapsed.to_string()),
+                ),
+                (Some("exit_code".to_string()), Value::Int(exit_code as i64)),
+                (
+                    Some("elapsed_ms".to_string()),
+                    Value::Int(elapsed_ms as i64),
+                ),
+                (
+                    Some("overhead_ms".to_string()),
+                    Value::Int(overhead_ms as i64),
+                ),
+                (Some("emoji".to_string()), Value::Bool(emoji)),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn shell_effect_failed_mirror_matches_seed_oracle() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let oracle = run_seed_shell_effect_failed_line(
+            &roots,
+            "$ echo hi",
+            "echo hi",
+            1,
+            2000,
+            300_000,
+            true,
+        )
+        .expect("shell_effect_failed_line must resolve and render");
+        let mirror = v1_compiler::v1_interpreter::render_shell_effect_failed_line_mirror(
+            "$ echo hi",
+            "echo hi",
+            1,
+            2000,
+            true,
+        );
+        assert_eq!(
+            oracle, mirror,
+            "shell Failed mirror must be byte-equal to seed oracle"
+        );
+        assert_eq!(
+            oracle,
+            "❌ $ echo hi failed: $ echo hi (exit=1) in 2 seconds"
         );
     }
 
