@@ -8118,7 +8118,9 @@ fn finish_resolved_graph_assembly(
         modules.clone(),
         source_indices.clone(),
     );
-    resolve_stage_slot_add(|s| s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos());
+    resolve_stage_slot_add(|s| {
+        s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos()
+    });
     let rewire3_started = std::time::Instant::now();
     let modules =
         v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
