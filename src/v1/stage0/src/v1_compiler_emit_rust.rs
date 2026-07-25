@@ -18391,7 +18391,7 @@ pub fn emit_discriminant_call_lowering(
                                                         "\"".to_string(),
                                                         child_text.clone(),
                                                     ),
-                                                    "\"".to_string(),
+                                                    "\".to_string()".to_string(),
                                                 ),
                                                 emit_info.corpus_repr.clone(),
                                             ),
@@ -21666,7 +21666,7 @@ pub fn freemonoid_nonempty_branch_body(
             } else {
                 v1_rt::concat(
                     v1_rt::concat("let ".to_string(), tail_bind.clone()),
-                    ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ".to_string(),
+                    ": Rc<Vec<_>> = Rc::new((*__fm)[1 as usize..].to_vec()); ".to_string(),
                 )
             };
             v1_rt::concat(
@@ -24455,7 +24455,7 @@ pub fn freemonoid_tco_nonempty_branch_body(
             } else {
                 v1_rt::concat(
                     v1_rt::concat("let ".to_string(), tail_bind.clone()),
-                    ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ".to_string(),
+                    ": Rc<Vec<_>> = Rc::new((*__fm)[1 as usize..].to_vec()); ".to_string(),
                 )
             };
             v1_rt::concat(
