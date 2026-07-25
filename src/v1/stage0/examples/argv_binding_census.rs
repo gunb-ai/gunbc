@@ -3,7 +3,9 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 use v1_compiler::cli_run::parse_extdeps_module_items;
-use v1_compiler::v1_std_core::{expr_var_name_at, param_node_name_at, ExprData, LiteralValue, Node};
+use v1_compiler::v1_std_core::{
+    expr_var_name_at, param_node_name_at, ExprData, LiteralValue, Node,
+};
 
 fn walk_dag_files(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
     let Ok(rd) = std::fs::read_dir(root) else {
@@ -52,7 +54,8 @@ fn classify(
             for part in
                 v1_compiler::v1_compiler_emit::extract_string_interp_parts(node.clone()).iter()
             {
-                if let v1_compiler::v1_std_core::StringPart::Interpolation { expr } = part.as_ref() {
+                if let v1_compiler::v1_std_core::StringPart::Interpolation { expr } = part.as_ref()
+                {
                     classify(expr, si, refs, shapes);
                 }
             }
@@ -103,7 +106,8 @@ fn main() {
             }
             let service_name = item.name.clone();
             for op in item.children.iter() {
-                let Some(transport) = op.transport.clone().or_else(|| item.transport.clone()) else {
+                let Some(transport) = op.transport.clone().or_else(|| item.transport.clone())
+                else {
                     continue;
                 };
                 // shell transport: children are argv nodes and body marker present
@@ -132,11 +136,7 @@ fn main() {
                 if let Some(a0) = argv.first() {
                     let lit = matches!(a0.expr_data.as_ref(), ExprData::ExprLiteral { value } if matches!(value.as_ref(), LiteralValue::LitStr{..}));
                     if !lit {
-                        argv0_nonliteral.push((
-                            rel.clone(),
-                            service_name.clone(),
-                            op.name.clone(),
-                        ));
+                        argv0_nonliteral.push((rel.clone(), service_name.clone(), op.name.clone()));
                     }
                 }
                 all_shapes.literal += shapes.literal;
@@ -174,12 +174,7 @@ fn main() {
                 if outside.is_empty() {
                     bindable_today += 1;
                 } else {
-                    unbindable.push((
-                        rel.clone(),
-                        service_name.clone(),
-                        op.name.clone(),
-                        outside,
-                    ));
+                    unbindable.push((rel.clone(), service_name.clone(), op.name.clone(), outside));
                 }
                 let _ = declared;
             }
@@ -191,9 +186,15 @@ fn main() {
     println!("shell-ish ops: {shell_ops}");
     println!("bindable with today's 5-name vocabulary: {bindable_today}");
     println!("UNBINDABLE today: {}", unbindable.len());
-    println!("ops with unsupported argv expr shapes: {}", unsupported_expr.len());
+    println!(
+        "ops with unsupported argv expr shapes: {}",
+        unsupported_expr.len()
+    );
     println!("argv[0] non-literal: {}", argv0_nonliteral.len());
-    println!("argv expr shape totals: literal={} var={} interp={} other={:?}", all_shapes.literal, all_shapes.var, all_shapes.interp, all_shapes.other);
+    println!(
+        "argv expr shape totals: literal={} var={} interp={} other={:?}",
+        all_shapes.literal, all_shapes.var, all_shapes.interp, all_shapes.other
+    );
     println!("\n--- UNBINDABLE (path service op | outside-vocab refs) ---");
     for (p, s, o, refs) in &unbindable {
         println!("{p}\t{s}\t{o}\t{}", refs.join(","));
