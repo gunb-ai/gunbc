@@ -11,7 +11,7 @@ use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::{
     ReprDeriveDiv, ReprDeriveEq, ReprDeriveMul, ReprDeriveNeg, ReprDeriveOrd, ReprDerivePartialEq,
     ReprDerivePartialOrd, ReprDeriveRem, ReprDeriveSerialize, ReprDeriveSub,
 };
-use crate::std_trait_derive_shape::{
+pub use crate::std_trait_derive_shape::{
     nullary_coproduct_derive_traits, payload_coproduct_derive_traits, record_derive_traits_copy,
     record_derive_traits_heap,
 };
@@ -140,19 +140,39 @@ pub fn rust_string_types() -> Rc<Vec<String>> {
 }
 
 pub fn rust_struct_derives() -> String {
-    rust_trait_derive_attr_from_traits(record_derive_traits_heap())
+    thread_local! {
+        static CACHED: String = {
+            rust_trait_derive_attr_from_traits(record_derive_traits_heap())
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_struct_derives_copy() -> String {
-    rust_trait_derive_attr_from_traits(record_derive_traits_copy())
+    thread_local! {
+        static CACHED: String = {
+            rust_trait_derive_attr_from_traits(record_derive_traits_copy())
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_enum_derives() -> String {
-    rust_trait_derive_attr_from_traits(payload_coproduct_derive_traits())
+    thread_local! {
+        static CACHED: String = {
+            rust_trait_derive_attr_from_traits(payload_coproduct_derive_traits())
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_enum_derives_copy() -> String {
-    rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
+    thread_local! {
+        static CACHED: String = {
+            rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_trait_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> String {
