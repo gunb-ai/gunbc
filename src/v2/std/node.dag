@@ -780,13 +780,13 @@ fn byte_limb_hash_peano_digest(limb: Int) -> std.types.ContentHash {
     if limb == 1 {
       std.content_hash.content_hash_atom(value: ^canonical_tag_scalar_int_one)
     } else {
-      std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_scalar_int_succ), byte_limb_hash_peano_digest(limb - 1))
+      node_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_scalar_int_succ), byte_limb_hash_peano_digest(limb - 1))
     }
   }
 }
 
 fn byte_offset_byte_digest(b: Int) -> std.types.ContentHash {
-  std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_byte), byte_limb_hash_peano_digest(b))
+  node_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_byte), byte_limb_hash_peano_digest(b))
 }
 
 fn byte_offset_quotient_divide_by_256_steps(quotient: Int, steps: Int) -> Int {
@@ -802,7 +802,7 @@ fn byte_offset_residual_quotient_magnitude_window_digest(quotient: Int, shift_st
   if shift_steps == byte_offset_residual_quotient_magnitude_max_shift && shifted >= 256 * 256 {
     let base = byte_offset_residual_quotient_limb_pair_digest(shifted)
     let tail = byte_offset_overflow_quotient_high_band_terminal_digest(shifted / 65536, byte_offset_cache_digest_overflow_limbs)
-    std.content_hash.content_hash_combine(base, tail)
+    node_hash_combine(base, tail)
   } else {
     byte_offset_residual_quotient_limb_pair_digest(shifted)
   }
@@ -810,14 +810,14 @@ fn byte_offset_residual_quotient_magnitude_window_digest(quotient: Int, shift_st
 
 fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> std.types.ContentHash {
   if quotient < 256 * 256 {
-    std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_residual_quotient_limb_pair), std.content_hash.content_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_byte_digest(quotient / 256)))
+    node_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_residual_quotient_limb_pair), node_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_byte_digest(quotient / 256)))
   } else {
-    std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_residual_discarded_high_truncated), std.content_hash.content_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_byte_digest((quotient / 256) - (quotient / 65536) * 256)))
+    node_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_residual_discarded_high_truncated), node_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_byte_digest((quotient / 256) - (quotient / 65536) * 256)))
   }
 }
 
 fn byte_offset_residual_quotient_magnitude_digest(quotient: Int) -> std.types.ContentHash {
-  std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_residual_quotient_magnitude), std.content_hash.content_hash_combine(byte_offset_residual_quotient_magnitude_window_digest(quotient, 0), std.content_hash.content_hash_combine(byte_offset_residual_quotient_magnitude_window_digest(quotient, byte_offset_residual_quotient_magnitude_shift_limbs), std.content_hash.content_hash_combine(byte_offset_residual_quotient_magnitude_window_digest(quotient, 8), std.content_hash.content_hash_combine(byte_offset_residual_quotient_magnitude_window_digest(quotient, 12), std.content_hash.content_hash_combine(byte_offset_residual_quotient_magnitude_window_digest(quotient, 16), std.content_hash.content_hash_combine(byte_offset_residual_quotient_magnitude_window_digest(quotient, 20), std.content_hash.content_hash_combine(byte_offset_residual_quotient_magnitude_window_digest(quotient, 24), byte_offset_residual_quotient_magnitude_window_digest(quotient, byte_offset_residual_quotient_magnitude_max_shift)))))))))
+  node_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_residual_quotient_magnitude), node_hash_combine(byte_offset_residual_quotient_magnitude_window_digest(quotient, 0), node_hash_combine(byte_offset_residual_quotient_magnitude_window_digest(quotient, byte_offset_residual_quotient_magnitude_shift_limbs), node_hash_combine(byte_offset_residual_quotient_magnitude_window_digest(quotient, 8), node_hash_combine(byte_offset_residual_quotient_magnitude_window_digest(quotient, 12), node_hash_combine(byte_offset_residual_quotient_magnitude_window_digest(quotient, 16), node_hash_combine(byte_offset_residual_quotient_magnitude_window_digest(quotient, 20), node_hash_combine(byte_offset_residual_quotient_magnitude_window_digest(quotient, 24), byte_offset_residual_quotient_magnitude_window_digest(quotient, byte_offset_residual_quotient_magnitude_max_shift)))))))))
 }
 
 fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_remaining: Int) -> std.types.ContentHash {
@@ -825,8 +825,8 @@ fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_
     if quotient == 0 {
       std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_zero)
     } else if quotient < 256 * 256 {
-      let peel = std.content_hash.content_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_byte_digest(quotient / 256))
-      std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted), peel)
+      let peel = node_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_byte_digest(quotient / 256))
+      node_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted), peel)
     } else {
       byte_offset_residual_quotient_limb_pair_digest(quotient)
     }
@@ -835,7 +835,7 @@ fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_
   } else {
     let low = byte_offset_byte_digest(quotient - (quotient / 256) * 256)
     let high = byte_offset_overflow_quotient_high_band_terminal_digest(quotient / 256, limbs_remaining - 1)
-    std.content_hash.content_hash_combine(low, high)
+    node_hash_combine(low, high)
   }
 }
 
@@ -844,8 +844,8 @@ fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining
     if quotient == 0 {
       std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_zero)
     } else if quotient < 256 * 256 {
-      let peel = std.content_hash.content_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_byte_digest(quotient / 256))
-      std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted), peel)
+      let peel = node_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_byte_digest(quotient / 256))
+      node_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted), peel)
     } else {
       byte_offset_overflow_quotient_high_band_terminal_digest(quotient, byte_offset_cache_digest_overflow_limbs)
     }
@@ -854,7 +854,7 @@ fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining
   } else {
     let low = byte_offset_byte_digest(quotient - (quotient / 256) * 256)
     let high = byte_offset_overflow_quotient_high_band_digest(quotient / 256, limbs_remaining - 1)
-    std.content_hash.content_hash_combine(low, high)
+    node_hash_combine(low, high)
   }
 }
 
@@ -862,7 +862,7 @@ fn byte_offset_overflow_residual_discarded_high_digest(quotient: Int) -> std.typ
   if quotient < 65536 {
     std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_residual_discarded_high_zero)
   } else {
-    std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_residual_discarded_high_band), byte_offset_overflow_quotient_high_band_digest(quotient / 65536, byte_offset_cache_digest_overflow_limbs
+    node_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_residual_discarded_high_band), byte_offset_overflow_quotient_high_band_digest(quotient / 65536, byte_offset_cache_digest_overflow_limbs
       ))
   }
 }
@@ -874,7 +874,7 @@ fn byte_offset_cache_digest_ineligible_witness_digest(
 ) -> std.types.ContentHash {
   if boundary_tag == ^canonical_tag_byte_offset_overflow_residual_unrepresentable {
     byte_offset_cache_digest_ineligible_hash(
-      within_ceiling_digest: std.content_hash.content_hash_combine(within_ceiling_digest, std.content_hash.content_hash_combine(byte_offset_overflow_residual_discarded_high_digest(quotient), byte_offset_residual_quotient_magnitude_digest(quotient))),
+      within_ceiling_digest: node_hash_combine(within_ceiling_digest, node_hash_combine(byte_offset_overflow_residual_discarded_high_digest(quotient), byte_offset_residual_quotient_magnitude_digest(quotient))),
       boundary_tag: boundary_tag
     )
   } else {
@@ -889,7 +889,7 @@ fn byte_offset_cache_digest_ineligible_hash(
   within_ceiling_digest: std.types.ContentHash,
   boundary_tag: Symbol
 ) -> std.types.ContentHash {
-  std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_cache_digest_ineligible), std.content_hash.content_hash_combine(within_ceiling_digest, std.content_hash.content_hash_atom(value: boundary_tag)))
+  node_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_cache_digest_ineligible), node_hash_combine(within_ceiling_digest, std.content_hash.content_hash_atom(value: boundary_tag)))
 }
 
 fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
@@ -903,11 +903,11 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
       }
     } else if quotient < 256 * 256 {
       ByteOffsetWithinCeiling {
-        digest: std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted), std.content_hash.content_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_byte_digest(quotient / 256)))
+        digest: node_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted), node_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_byte_digest(quotient / 256)))
       }
     } else {
       ByteOffsetCacheDigestIneligible {
-        within_ceiling_digest: std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted), std.content_hash.content_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_byte_digest((quotient / 256) - (quotient / 65536) * 256))),
+        within_ceiling_digest: node_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted), node_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_byte_digest((quotient / 256) - (quotient / 65536) * 256))),
         boundary_tag: ^canonical_tag_byte_offset_overflow_residual_unrepresentable,
         residual_quotient: quotient
       }
@@ -923,7 +923,7 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
     ) {
       ByteOffsetWithinCeiling { digest: tail } =>
         ByteOffsetWithinCeiling {
-          digest: std.content_hash.content_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), tail)
+          digest: node_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), tail)
         }
       ByteOffsetCacheDigestIneligible {
         within_ceiling_digest: within_ceiling_digest,
@@ -931,7 +931,7 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
         residual_quotient: residual_quotient
       } =>
         ByteOffsetCacheDigestIneligible {
-          within_ceiling_digest: std.content_hash.content_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), within_ceiling_digest),
+          within_ceiling_digest: node_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), within_ceiling_digest),
           boundary_tag: boundary_tag,
           residual_quotient: quotient
         }
@@ -940,7 +940,7 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
         quotient: _
       } =>
         ByteOffsetCacheDigestIneligible {
-          within_ceiling_digest: std.content_hash.content_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), within_ceiling_digest),
+          within_ceiling_digest: node_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), within_ceiling_digest),
           boundary_tag: ^canonical_tag_byte_offset_overflow_residual_unrepresentable,
           residual_quotient: quotient
         }
@@ -965,7 +965,7 @@ fn byte_offset_cache_digest_overflow_tail_authority(quotient: Int) -> ByteOffset
       ) {
         ByteOffsetWithinCeiling { digest: digest } =>
           ByteOffsetWithinCeiling {
-            digest: std.content_hash.content_hash_combine(prefix, digest)
+            digest: node_hash_combine(prefix, digest)
           }
         ByteOffsetCacheDigestIneligible {
           within_ceiling_digest: peel_within_ceiling_digest,
@@ -973,7 +973,7 @@ fn byte_offset_cache_digest_overflow_tail_authority(quotient: Int) -> ByteOffset
           residual_quotient: residual_quotient
         } =>
           ByteOffsetCacheDigestIneligible {
-            within_ceiling_digest: std.content_hash.content_hash_combine(prefix, peel_within_ceiling_digest),
+            within_ceiling_digest: node_hash_combine(prefix, peel_within_ceiling_digest),
             boundary_tag: boundary_tag,
             residual_quotient: tail
           }
@@ -982,7 +982,7 @@ fn byte_offset_cache_digest_overflow_tail_authority(quotient: Int) -> ByteOffset
           quotient: _
         } =>
           ByteOffsetCacheDigestIneligible {
-            within_ceiling_digest: std.content_hash.content_hash_combine(prefix, peel_within_ceiling_digest),
+            within_ceiling_digest: node_hash_combine(prefix, peel_within_ceiling_digest),
             boundary_tag: ^canonical_tag_byte_offset_overflow_residual_unrepresentable,
             residual_quotient: tail
           }
@@ -1030,14 +1030,14 @@ fn byte_offset_cache_key_from_authority(auth: ByteOffsetCacheDigestAuthority) ->
           ByteOffsetCacheIneligible {
             boundary_tag: boundary_tag,
             witness: byte_offset_cache_digest_ineligible_witness_digest(
-              within_ceiling_digest: std.content_hash.content_hash_combine(within_ceiling_digest, tail_within_ceiling_digest),
+              within_ceiling_digest: node_hash_combine(within_ceiling_digest, tail_within_ceiling_digest),
               boundary_tag: boundary_tag,
               quotient: residual_quotient
             )
           }
         ByteOffsetWithinCeiling { digest: tail_digest } =>
           ByteOffsetCacheEligible {
-            digest: std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_out_of_ceiling), std.content_hash.content_hash_combine(within_ceiling_digest, tail_digest))
+            digest: node_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_out_of_ceiling), node_hash_combine(within_ceiling_digest, tail_digest))
           }
         ByteOffsetOverCeiling {
           within_ceiling_digest: tail_within_ceiling_digest,
@@ -1046,7 +1046,7 @@ fn byte_offset_cache_key_from_authority(auth: ByteOffsetCacheDigestAuthority) ->
           ByteOffsetCacheIneligible {
             boundary_tag: ^canonical_tag_byte_offset_overflow_residual_unrepresentable,
             witness: byte_offset_cache_digest_ineligible_witness_digest(
-              within_ceiling_digest: std.content_hash.content_hash_combine(within_ceiling_digest, tail_within_ceiling_digest),
+              within_ceiling_digest: node_hash_combine(within_ceiling_digest, tail_within_ceiling_digest),
               boundary_tag: ^canonical_tag_byte_offset_overflow_residual_unrepresentable,
               quotient: quotient
             )
@@ -1081,14 +1081,14 @@ fn byte_offset_cache_digest_nonneg_bounded_authority(
     ) {
       ByteOffsetWithinCeiling { digest: tail } =>
         ByteOffsetWithinCeiling {
-          digest: std.content_hash.content_hash_combine(byte_offset_byte_digest(i - (i / 256) * 256), tail)
+          digest: node_hash_combine(byte_offset_byte_digest(i - (i / 256) * 256), tail)
         }
       ByteOffsetOverCeiling {
         within_ceiling_digest: prefix,
         quotient: quotient
       } =>
         ByteOffsetOverCeiling {
-          within_ceiling_digest: std.content_hash.content_hash_combine(byte_offset_byte_digest(i - (i / 256) * 256), prefix),
+          within_ceiling_digest: node_hash_combine(byte_offset_byte_digest(i - (i / 256) * 256), prefix),
           quotient: quotient
         }
       ByteOffsetCacheDigestIneligible {
@@ -1097,7 +1097,7 @@ fn byte_offset_cache_digest_nonneg_bounded_authority(
         residual_quotient: residual_quotient
       } =>
         ByteOffsetCacheDigestIneligible {
-          within_ceiling_digest: std.content_hash.content_hash_combine(byte_offset_byte_digest(i - (i / 256) * 256), within_ceiling_digest),
+          within_ceiling_digest: node_hash_combine(byte_offset_byte_digest(i - (i / 256) * 256), within_ceiling_digest),
           boundary_tag: boundary_tag,
           residual_quotient: residual_quotient
         }
@@ -1117,14 +1117,14 @@ fn byte_offset_cache_digest_authority(i: Int) -> ByteOffsetCacheDigestAuthority 
     match byte_offset_cache_digest_nonneg_authority(i: 0 - i) {
       ByteOffsetWithinCeiling { digest: digest } =>
         ByteOffsetWithinCeiling {
-          digest: std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_neg), digest)
+          digest: node_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_neg), digest)
         }
       ByteOffsetOverCeiling {
         within_ceiling_digest: within_ceiling_digest,
         quotient: quotient
       } =>
         ByteOffsetOverCeiling {
-          within_ceiling_digest: std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_neg), within_ceiling_digest),
+          within_ceiling_digest: node_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_neg), within_ceiling_digest),
           quotient: quotient
         }
       ByteOffsetCacheDigestIneligible {
@@ -1133,7 +1133,7 @@ fn byte_offset_cache_digest_authority(i: Int) -> ByteOffsetCacheDigestAuthority 
         residual_quotient: residual_quotient
       } =>
         ByteOffsetCacheDigestIneligible {
-          within_ceiling_digest: std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_neg), within_ceiling_digest),
+          within_ceiling_digest: node_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_neg), within_ceiling_digest),
           boundary_tag: boundary_tag,
           residual_quotient: residual_quotient
         }
@@ -1325,12 +1325,12 @@ fn byte_offset_cache_key(i: Int) -> ByteOffsetCacheKey {
 fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> std.types.ContentHash {
   match key {
     ByteOffsetCacheEligible { digest: digest } =>
-      std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_cache_key_eligible), digest)
+      node_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_cache_key_eligible), digest)
     ByteOffsetCacheIneligible {
       boundary_tag: boundary_tag,
       witness: witness
     } =>
-      std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_cache_key_ineligible), std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: boundary_tag), witness))
+      node_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_cache_key_ineligible), node_hash_combine(std.content_hash.content_hash_atom(value: boundary_tag), witness))
   }
 }
 
@@ -1339,7 +1339,7 @@ fn bag_hash_digest(empty: std.types.ContentHash, xs: List<std.types.ContentHash>
     sort_by(xs, fn(h) { h }),
     init: empty,
     f: fn(acc, h) {
-      std.content_hash.content_hash_combine(acc, h)
+      node_hash_combine(acc, h)
     }
   )
 }
@@ -1350,7 +1350,7 @@ fn content_hash(n: Node) -> std.types.ContentHash {
     algebra: NodeFold {
       init: fn(n0) { canonical_hash_of_node_kind(kind: n0.kind) },
       step: fn(acc, e, child_hash) {
-        std.content_hash.content_hash_combine(std.content_hash.content_hash_combine(acc, canonical_hash_of_edge_label(label: e.label)), child_hash)
+        node_hash_combine(node_hash_combine(acc, canonical_hash_of_edge_label(label: e.label)), child_hash)
       }
     }
   )
