@@ -17830,7 +17830,7 @@ pub fn build_type_name_export_index(
 pub fn module_exported_type_names_cost_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Cost shape (§6 bare-minimum cost, floor batch-3 receipt 2026-07-25): the type names a module exports is ONE derived fact — a set — and both consumers in rewire_type_env_import_str_binding_identity read it. Before this row it existed twice: the caller's per-module `local_names` fold, and `module_exports_type_name`, a LINEAR SCAN (map_values allocates a Vec of every binding, then filters by name) re-run once per (consumer module x inherited key x direct import). Measured on 79 discovery entries: that pass alone was 191.1s of a 331.9s resolve wall (99% of all rewire time, 2.4s/entry) while the other two rewire passes together cost 1.8s. Hoisting the set per module and testing membership makes direct_import_exporter_count O(direct imports) instead of O(direct imports x |parent bindings|), with no change to the predicate it computes.".to_string()
+            "Cost shape (§6 bare-minimum cost, floor batch-3 receipt 2026-07-25): the type names a module exports is ONE derived fact — a set — and both consumers in rewire_type_env_import_str_binding_identity read it. Before this row it existed twice: the caller's per-module `local_names` fold, and `module_exports_type_name`, a LINEAR SCAN (map_values allocates a Vec of every binding, then filters by name) re-run once per (consumer module x inherited key x direct import). Measured on 79 discovery entries: that pass alone was 191.1s of a 331.9s resolve wall (99% of all rewire time, 2.4s/entry) while the other two rewire passes together cost 1.8s. Hoisting the set per module and testing membership makes direct_import_exporter_count O(direct imports) instead of O(direct imports x |parent bindings|), with no change to the predicate it computes. The caller reads its own row out of the SAME index rather than re-folding it (review 42566) — the Absent arm computes the true value from this one authority, so it is a structurally-unreachable fallback that is still honest, never a fabricated default (DESIGN section 5).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -17973,7 +17973,13 @@ pub fn rewire_type_env_import_str_binding_identity(
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
                 __result.push({
-                    let local_names = module_exported_type_names(m.clone());
+                    let local_names = match v1_rt::map_get(
+                        &export_name_index,
+                        authored_name_at(source_indices.clone(), m.module.clone()),
+                    ) {
+                        Some(names) => names.clone(),
+                        None => module_exported_type_names(m.clone()),
+                    };
                     let import_export_names = direct_import_export_name_sets(
                         m.clone(),
                         export_name_index.clone(),

@@ -8014,7 +8014,7 @@ fn build_type_name_export_index(modules: List<TypedModule>) -> Map<String, TypeN
   fold(modules, init: empty_map(), f: (acc, m) => export_index_merge_module(acc: acc, m: m))
 }
 
-data module_exported_type_names_cost_note: String = "Cost shape (§6 bare-minimum cost, floor batch-3 receipt 2026-07-25): the type names a module exports is ONE derived fact — a set — and both consumers in rewire_type_env_import_str_binding_identity read it. Before this row it existed twice: the caller's per-module `local_names` fold, and `module_exports_type_name`, a LINEAR SCAN (map_values allocates a Vec of every binding, then filters by name) re-run once per (consumer module x inherited key x direct import). Measured on 79 discovery entries: that pass alone was 191.1s of a 331.9s resolve wall (99% of all rewire time, 2.4s/entry) while the other two rewire passes together cost 1.8s. Hoisting the set per module and testing membership makes direct_import_exporter_count O(direct imports) instead of O(direct imports x |parent bindings|), with no change to the predicate it computes."
+data module_exported_type_names_cost_note: String = "Cost shape (§6 bare-minimum cost, floor batch-3 receipt 2026-07-25): the type names a module exports is ONE derived fact — a set — and both consumers in rewire_type_env_import_str_binding_identity read it. Before this row it existed twice: the caller's per-module `local_names` fold, and `module_exports_type_name`, a LINEAR SCAN (map_values allocates a Vec of every binding, then filters by name) re-run once per (consumer module x inherited key x direct import). Measured on 79 discovery entries: that pass alone was 191.1s of a 331.9s resolve wall (99% of all rewire time, 2.4s/entry) while the other two rewire passes together cost 1.8s. Hoisting the set per module and testing membership makes direct_import_exporter_count O(direct imports) instead of O(direct imports x |parent bindings|), with no change to the predicate it computes. The caller reads its own row out of the SAME index rather than re-folding it (review 42566) — the Absent arm computes the true value from this one authority, so it is a structurally-unreachable fallback that is still honest, never a fabricated default (DESIGN section 5)."
 
 fn module_exported_type_names(m: TypedModule) -> Set<String> {
   fold(m.type_env.bindings |> map_values, init: empty_set(), f: (acc, b) => set_insert(acc, b.name))
@@ -8076,7 +8076,10 @@ fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, sourc
   let type_name_index = build_type_name_export_index(modules: modules)
   let export_name_index = build_module_exported_type_name_index(modules: modules, source_indices: source_indices)
   map(modules, m =>
-    let local_names = module_exported_type_names(m: m)
+    let local_names = match map_get(export_name_index, authored_name_at(source_indices: source_indices, node: m.module)) {
+      Present { value: names } => names
+      Absent => module_exported_type_names(m: m)
+    }
     let import_export_names = direct_import_export_name_sets(m: m, export_name_index: export_name_index, source_indices: source_indices)
     let ancestry_keys = m.type_env.ancestry_str_bindings |> map_keys
     let str_keys = m.type_env.str_bindings |> map_keys

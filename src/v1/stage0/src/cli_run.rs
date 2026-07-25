@@ -7801,6 +7801,15 @@ pub struct ResolveStageNanos {
     pub reconcile_assembly: u128,
     /// `extract_ownership_proofs` + its diagnostics walk.
     pub ownership: u128,
+    // Assembly sub-rows (floor batch-3 lane, 2026-07-25). `reconcile_assembly` was one
+    // undifferentiated number covering ~96% of the discovery-corpus resolve wall — the same
+    // condition this struct's own doc-comment was written to end one level up, so the split
+    // is the same move applied to its own residue. These rows located
+    // `rewire_type_env_import_str_binding_identity` as 58% of the wall (see
+    // docs/plans/floor-time-namespace-walk-regression-diagnosis.md §7). Same dissolution
+    // trigger as `[gantt]` / `phase_profile`: a `.dag` `PerformanceReceipt` per-stage carrier
+    // (realization_measurement_loop Phase 0) consumed by a floor witness makes this the
+    // model's own attribution rather than a host-side stderr projection.
     /// `module_schedule_batches` — antichain schedule build over the closure.
     pub assembly_schedule: u128,
     /// `try_reconcile_all_cache_hits` pass 1: per-module content key + store probe.

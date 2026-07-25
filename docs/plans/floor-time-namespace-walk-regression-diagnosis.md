@@ -287,6 +287,16 @@ once per pass, hoist each consumer's direct-import name sets out of the per-key 
 `direct_import_exporter_count` a membership test — O(direct imports). The predicate is
 unchanged by construction; `module_exports_type_name` is deleted (no remaining consumer).
 
+The same pass carries a second instance of the same shape, fixed with it (§6: fix related
+systems together, never a per-site exception). `export_index_merge_module` recomputed its
+canonical binding as `filter(bindings |> map_values, b => b.name == name) |> first` — a full
+rescan of the module's binding map, with a fresh `Vec`, once per distinct name:
+O(|bindings|²) per module per closure assembly. It is **dead by construction**: the enclosing
+fold walks that same `map_values` sequence in order and `seen_names` skips every repeat, so
+the first name-matching element *is* the fold's current element. `canonical = binding` is the
+identical value, not an approximation — and the rewrite removes the second traversal the
+equality would otherwise have to be argued over.
+
 ### 7.4 Receipt (by execution)
 
 Same 79 entries, same binary path, after the fix:
@@ -298,19 +308,58 @@ Same 79 entries, same binary path, after the fix:
 ```
 
 All 79 witness verdicts byte-identical before vs after (`PASS`/`FAIL` set diffed, empty).
-Corpus-scale before/after: the PR's own floor run against main's `[resolve-split]` line.
+
+**Corpus scale** — main `c57c6e85` (run `30146392008`) vs three PR #7205 heads. **Every arm
+selected the same 612 resolved entries** (2336−1724, 2373−1761), so the denominator is
+like-for-like, not a selection artefact:
+
+| | main `c57c6e85` | `d66ef19c` | `c1ef5942` | `72272b25` |
+|---|---:|---:|---:|---:|
+| run | `30146392008` | `30148809630` | `30150594174` | `30154337953` |
+| discovery-corpus resolve | 980,695ms | 158,046ms | 171,399ms | **144,066ms** |
+| total assembly | 893,347ms | 116,926ms | 124,838ms | **107,250ms** |
+| per-entry resolve | 1.602s | 0.258s | 0.280s | **0.235s** |
+| batch-3 wall | 1161.1s | 319.5s | 347.9s | **295.5s** |
+| `FAIL [batch` rows | 0 | 0 | 0 | 0 |
+
+Three post-fix observations, **295.5 / 319.5 / 347.9s** — mean 321.0s, spread 17.7%.
+Speed-up on resolve **5.7–6.8×**, on total assembly **7.2–8.3×**, on batch-3 wall **3.3–3.9×**.
+`72272b25` is the first arm on a tree with main merged in, hence the best number.
+
+Two fidelity notes on reading that table, because both are easy to get wrong:
+
+- **Total assembly, not the `reconcile_assembly` row.** Post-fix, `[resolve-split]`'s
+  `reconcile_assembly` is the *residue* left after the six new `[assembly-split]` rows are
+  subtracted; main's binary has no sub-rows, so its number is the *whole* assembly. Comparing
+  the two directly reads 18.6×, which is an artefact of the instrumentation, not a measurement
+  — the honest comparison sums the residue back with its sub-rows (7.2–8.3×). An earlier
+  revision of this table quoted the 18.6×; it is wrong and is corrected here.
+- Batch-3 wall is derived from the `ci`-job timestamps of `claim_executor: batch 3` and
+  `PASS [batch 3] discovery-corpus`, so it includes scheduling and worker spin-up that the
+  resolve number does not — which is why the wall ratio is smaller than the resolve ratio.
+
+Floor green on all three, zero `FAIL [batch` rows — no witness verdict flipped at corpus scale
+either. Batch-3 now sits at **14–17% of the #7204 budget** (2100s) and **18–21% of the
+pre-flip 1680s basis** it was raised from. The `regen` job ran unskipped on each (the diff is
+inside the `[src/v1, dag]` regen input closure) and both `RegenVerifyGate` and
+`SelfHostStalenessGate` passed: the self-host fixed point holds with the change.
 
 ### 7.5 Honest residue
 
 This does **not** close #6848's named class — it shows the class is no longer where the wall
-is. Post-fix, the remaining per-entry assembly is attributed by the same sub-rows: `residue`
-(the uninstrumented reconcile remainder — symbol-index build, variant surfaces, pass-2
-assembly), then `rewire`, `emit_info`, `services`. Those are the next lane's targets, and they
-are now *named and counted* rather than pooled in one number.
+is. Post-fix, the remaining ~107s of corpus assembly is attributed by the same sub-rows
+(`72272b25`, corpus): `rewire` 43.7s, `residue` 43.2s (the uninstrumented reconcile remainder
+— symbol-index build, variant surfaces, pass-2 assembly), `emit_info` 11.1s, `services` 8.8s,
+`registry`/`probe`/`schedule` together 0.5s. Whatever survives of #6848's class lives in those
+rows; they are the next lane's targets, and they are now *named and counted* rather than
+pooled in one number.
 
 **Dissolution trigger:** when a post-merge main floor run shows batch-3 back under the
 pre-flip 1680s basis, the #7204 stopgap row (`gunbc.ci_spec`, 2100s) re-tightens by ordinary
-receipt note — that re-tighten is this change's dissolution event.
+receipt note — that re-tighten is this change's dissolution event. Whoever re-tightens should
+size off all three observations above (295.5 / 319.5 / 347.9s), not the best one: #7204's own
+raise faulted sizing off too few points, and repeating that in the tightening direction is the
+same defect with a worse failure mode.
 
 ## 8. Provenance
 
