@@ -518,39 +518,73 @@ fn rust_peel_one_rc_type_node(type_node: Node, source_indices: Map<String, Newli
   }
 }
 
-fn rust_witness_type_arg_render(type_node: Node, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
-  if qualified_last_segment(name: type_node.name) != "Witness" { return none }
-  let arg_node = match type_node.children |> first {
-    Present { value: child } => child
+fn rust_peel_all_rc_type_node(type_node: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  if qualified_last_segment(name: type_node.name) == "Rc" {
+    rust_peel_all_rc_type_node(type_node: rust_peel_one_rc_type_node(type_node: type_node, source_indices: source_indices), source_indices: source_indices)
+  } else {
+    type_node
+  }
+}
+
+fn rust_witness_type_arg_admit_rendered(rendered: String, emit_info: EmitGraphInfo) -> String? {
+  if rendered == "_" || rendered == "" { none }
+  else if rust_fold_rendered_type_has_any_spurious_generic(type_str: rendered, generic_param_names: emit_info.fn_generic_param_names) { none }
+  else { Present { value: rendered } }
+}
+
+fn rust_witness_applied_type_arg_node(type_node: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match type_node.children |> first {
+    Present { value: child } => Present { value: child }
     Absent =>
       match find_property(props: type_node.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
         Present { value: applied } =>
           match applied.children |> first {
-            Present { value: child } => child
-            Absent => return none
+            Present { value: child } => Present { value: child }
+            Absent => none
           }
-        Absent => return none
+        Absent => none
       }
   }
-  let rendered = render_rust_type(n: arg_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices, emit_info: emit_info)
-  if rendered == "_" || rendered == "" { none } else { Present { value: rendered } }
+}
+
+fn rust_witness_carrier_from_type_node(type_node: Node, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+  let peeled = rust_peel_all_rc_type_node(type_node: type_node, source_indices: source_indices)
+  if qualified_last_segment(name: peeled.name) == "Witness" {
+    match rust_witness_applied_type_arg_node(type_node: peeled, source_indices: source_indices) {
+      Present { value: arg_node } =>
+        rust_witness_type_arg_admit_rendered(
+          rendered: render_rust_type(n: arg_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices, emit_info: emit_info),
+          emit_info: emit_info
+        )
+      Absent => none
+    }
+  } else {
+    rust_witness_type_arg_admit_rendered(
+      rendered: render_rust_type(n: peeled, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices, emit_info: emit_info),
+      emit_info: emit_info
+    )
+  }
+}
+
+fn rust_witness_type_arg_render(type_node: Node, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+  rust_witness_carrier_from_type_node(type_node: type_node, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
 }
 
 fn rust_witness_type_arg_from_holds_value_field(fields: List<Node>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
   match fields |> filter(f => field_init_node_name_at(n: f, source_indices: source_indices) == "value") |> first {
     Present { value: f } =>
       let val_rt = resolved_type(n: field_init_node_value(n: f))
-      let rendered = render_rust_type(n: val_rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices, emit_info: emit_info)
-      if rendered == "_" || rendered == "" { none } else { Present { value: rendered } }
+      match rust_witness_carrier_from_type_node(type_node: val_rt, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
+        Present { value: arg } => Present { value: arg }
+        Absent => rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
+      }
     Absent => none
   }
 }
 
 fn rust_witness_type_arg_from_fn_return(emit_info: EmitGraphInfo, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String? {
   match emit_info.fn_return_type {
-    Present { value: rt } =>
-      let peeled = rust_peel_one_rc_type_node(type_node: rt, source_indices: source_indices)
-      rust_witness_type_arg_render(type_node: peeled, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+    Present { value: rt } => rust_witness_carrier_from_type_node(type_node: rt, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
     Absent => none
   }
 }
@@ -564,10 +598,10 @@ fn rust_witness_type_arg_for_variant(variant_name: String, resolved_type: Node, 
   } else if variant_name == "Violates" {
     match rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices) {
       Present { value: arg } => Present { value: arg }
-      Absent => rust_witness_type_arg_render(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+      Absent => rust_witness_carrier_from_type_node(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
     }
   } else {
-    rust_witness_type_arg_render(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+    rust_witness_carrier_from_type_node(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
   }
 }
 
@@ -579,7 +613,7 @@ fn rust_witness_variant_ctor_path(variant_name: String, ctor_name: String, effec
       } else {
         match rust_witness_type_arg_for_variant(variant_name: variant_name, resolved_type: resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
           Present { value: arg } => concat("Witness::<", arg, ">::", variant_name)
-          Absent => concat("Witness::", variant_name)
+          Absent => concat("compile_error!(\"witness carrier type arg unresolved for variant ", variant_name, "\")")
         }
       }
     Absent => ctor_name
