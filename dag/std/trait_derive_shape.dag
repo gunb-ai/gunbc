@@ -26,6 +26,7 @@ type ReprGroundingDeriveElemShape
   | ReprDeriveElemKernelBool
   | ReprDeriveElemKernelUnit
   | ReprDeriveElemNullaryEnumCopy
+  | ReprDeriveElemSymbolWrappedOrdCarrier
   | ReprDeriveElemUnknown
 
 fn repr_grounding_derive_shape_has_trait(
@@ -97,6 +98,17 @@ fn repr_grounding_derive_shape_has_trait(
         ReprDeriveDeserialize => true
         _ => false
       }
+    ReprDeriveElemSymbolWrappedOrdCarrier =>
+      match derive_trait {
+        ReprDeriveClone => true
+        ReprDerivePartialEq => true
+        ReprDeriveEq => true
+        ReprDerivePartialOrd => true
+        ReprDeriveOrd => true
+        ReprDeriveSerialize => true
+        ReprDeriveDeserialize => true
+        _ => false
+      }
     ReprDeriveElemUnknown => false
   }
 }
@@ -154,6 +166,28 @@ fn nullary_coproduct_derive_traits() -> List<ReprGroundingDeriveTrait> {
                 head: ReprDeriveSerialize,
                 tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
               }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn symbol_wrapped_ord_carrier_derive_traits() -> List<ReprGroundingDeriveTrait> {
+  Cons {
+    head: ReprDeriveClone,
+    tail: Cons {
+      head: ReprDerivePartialEq,
+      tail: Cons {
+        head: ReprDeriveEq,
+        tail: Cons {
+          head: ReprDerivePartialOrd,
+          tail: Cons {
+            head: ReprDeriveOrd,
+            tail: Cons {
+              head: ReprDeriveSerialize,
+              tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
             }
           }
         }

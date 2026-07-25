@@ -9,11 +9,13 @@ import v1.compiler.emit { to_pascal }
 import std.trait_derive_shape {
   ReprGroundingDeriveElemShape,
   ReprDeriveElemNullaryEnumCopy,
+  ReprDeriveElemSymbolWrappedOrdCarrier,
   ReprDeriveElemUnknown,
   repr_grounding_derive_completeness_predicate,
   record_derive_traits_heap,
   record_derive_traits_copy,
   nullary_coproduct_derive_traits,
+  symbol_wrapped_ord_carrier_derive_traits,
   payload_coproduct_derive_traits
 }
 import extdeps.languages.rust.emit { rust_trait_derive_attr_from_traits }
@@ -43,7 +45,7 @@ fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
   source_indices: Map<String, NewlineIndex>
 ) -> ReprGroundingDeriveElemShape {
   if v1_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
-    ReprDeriveElemNullaryEnumCopy
+    ReprDeriveElemSymbolWrappedOrdCarrier
   } else {
     ReprDeriveElemUnknown
   }
@@ -75,8 +77,8 @@ fn v1_emit_struct_derives(
     "#[derive(Clone)]"
   } else if v1_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
     let shape = v1_repr_grounding_derive_elem_shape_for_ord_carrier(children: children, source_indices: source_indices)
-    if repr_grounding_derive_completeness_predicate(nullary_coproduct_derive_traits(), shape) {
-      rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
+    if repr_grounding_derive_completeness_predicate(symbol_wrapped_ord_carrier_derive_traits(), shape) {
+      rust_trait_derive_attr_from_traits(symbol_wrapped_ord_carrier_derive_traits())
     } else {
       v1_trait_derive_refuse("trait_derive_emit: symbol-wrapped ord carrier refused")
     }
