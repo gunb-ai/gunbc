@@ -541,7 +541,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             list_index: "{0}[({1}) as usize].clone()".to_string(),
             map_index: "({0}).get(&{1}).cloned()".to_string(),
             string_index: "v1_rt::char_at(&{0}, {1})".to_string(),
-            list_slice: Some("Rc::new((*{0})[{1} as usize..{2} as usize].to_vec())".to_string()),
+            list_slice: None,
             string_slice: Some("v1_rt::substring(&{0}, {1}, {2})".to_string()),
         }),
         annotations: Rc::new(AnnotationRequirements {
@@ -1075,7 +1075,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             list_index: "{0}[({1}) as usize].clone()".to_string(),
             map_index: "({0}).get(&{1}).cloned()".to_string(),
             string_index: "v1_rt::char_at(&{0}, {1})".to_string(),
-            list_slice: Some("Rc::new((*{0})[{1} as usize..{2} as usize].to_vec())".to_string()),
+            list_slice: None,
             string_slice: Some("v1_rt::substring(&{0}, {1}, {2})".to_string()),
         }),
         annotations: Rc::new(AnnotationRequirements {
