@@ -19838,7 +19838,7 @@ fn project_layer_import_syntax_facts(
     }
 }
 
-/// Layer-scoped dependency edges for `v2.lens.layering_imports` and sibling consumers.
+/// Layer-scoped dependency edges for `v2.std.layer` (`LayerImportFact`) and sibling consumers.
 ///
 /// Transitional producer (namespace terminal step, docs/plans/layering-imports-reference-repoint-design.md §3.1):
 /// import-syntax facts for import-bearing files, plus `reference_edges_as_import_facts(..., strict=true)`

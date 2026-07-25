@@ -9,28 +9,22 @@ data dag_only_roots: SourceRootSet = [DagTree]
 
 data dag_std_to_v2_std_edge: CrossTreeImport = CrossTreeImport {
   from_tree: DagTree,
-  from_layer: LayerPrefixStd,
   from_module: "dag.std.freeMonoid",
   to_tree: V2Tree,
-  to_layer: LayerPrefixStd,
   to_module: "v2.std.algebra"
 }
 
 data dag_std_to_v2_compiler_edge: CrossTreeImport = CrossTreeImport {
   from_tree: DagTree,
-  from_layer: LayerPrefixStd,
-  from_module: "dag.std.bad",
+  from_module: "dag.std.freeMonoid",
   to_tree: V2Tree,
-  to_layer: LayerPrefixCompiler,
   to_module: "v2.compiler.tokenize"
 }
 
 data v2_workflow_to_dag_std_edge: CrossTreeImport = CrossTreeImport {
   from_tree: V2Tree,
-  from_layer: LayerPrefixWorkflow,
   from_module: "v2.workflow.ci_floor_plan",
   to_tree: DagTree,
-  to_layer: LayerPrefixStd,
   to_module: "dag.std.types"
 }
 
@@ -79,14 +73,14 @@ fn witness_import_closure_all_admitted_holds() -> Bool {
   }
 }
 
-fn witness_layer_direction_violated_denied_holds() -> Bool {
+fn witness_layer_direction_deleted_now_admitted_holds() -> Bool {
   match cross_tree_import_admitted(
     edge: dag_std_to_v2_compiler_edge,
     roots: both_roots,
     order: MoreFundamental
   ) {
-    CrossTreeAdmitted => false
-    CrossTreeDenied { reason: _ } => true
+    CrossTreeAdmitted => true
+    CrossTreeDenied { reason: _ } => false
   }
 }
 
@@ -123,12 +117,12 @@ fn witness_less_fundamental_denied_holds() -> Bool {
   }
 }
 
-fn witness_closure_denied_on_bad_edge_holds() -> Bool {
+fn witness_closure_denied_on_less_fundamental_holds() -> Bool {
   let closure = [dag_std_to_v2_std_edge, dag_std_to_v2_compiler_edge]
   match cross_tree_import_closure_admitted(
     closure: closure,
     roots: both_roots,
-    order: MoreFundamental
+    order: LessFundamental
   ) {
     CrossTreeAdmitted => false
     CrossTreeDenied { reason: _ } => true
@@ -140,9 +134,9 @@ test fn cross_tree_import_model_witnesses() -> Bool {
     && witness_dag_std_to_v2_std_co_fundamental_admitted_holds()
     && witness_v2_workflow_to_dag_std_more_fundamental_admitted_holds()
     && witness_import_closure_all_admitted_holds()
-    && witness_layer_direction_violated_denied_holds()
+    && witness_layer_direction_deleted_now_admitted_holds()
     && witness_fundamentality_unknown_denied_holds()
     && witness_missing_root_denied_holds()
     && witness_less_fundamental_denied_holds()
-    && witness_closure_denied_on_bad_edge_holds()
+    && witness_closure_denied_on_less_fundamental_holds()
 }

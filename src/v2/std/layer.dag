@@ -6,15 +6,6 @@ type LayerPrefix
   | LayerPrefixCompiler
   | LayerPrefixWorkflow
 
-fn layer_prefix_ordinal(l: LayerPrefix) -> Int {
-  match l {
-    LayerPrefixStd => 0
-    LayerPrefixExtdeps => 1
-    LayerPrefixCompiler => 2
-    LayerPrefixWorkflow => 3
-  }
-}
-
 data layer_prefix_convention_note: String = "LayerPrefix classifies a module's browsing home (std / extdeps / compiler / workflow) — a folder convention, NOT an import law. The former strict layer DAG (std ← extdeps ← compiler ← workflow, imports point toward std) and its direction lens v2.lens.layering_imports were deleted by operator ruling 2026-07-24: the only structural law on the import graph is acyclicity, and a folder-prefix direction rule was convention standing where no necessity stood — it blocked correct grounding (a std surface citing the extdeps rows that ground it). The prefix and the fact rows below survive because the containment lenses (realization_vocabulary_containment, meta_exec_confinement) scan by browsing root; the extdeps citation duty (ExtdepsExternalAuthorityGate) is untouched."
 
 type LayerImportFact {
