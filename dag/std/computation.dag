@@ -1,5 +1,20 @@
 module std.computation
 
+import std.iteration { }
+import std.termination {
+  DescentEvidence, DescentUnknown, RankingDimension,
+  PositiveDescentAmount, OneStep, AdditionalStep,
+  ProportionalDivisor, DivideByTwo, StrictlyLarger,
+  positive_descent_count
+}
+import std.algebra {
+  AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
+  BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
+  PointwisePowerCollectionProfile,
+  FreeMonoidScalarProfile, FreeMonoidCollectionProfile,
+  PartialFunctionProfile,
+  kernel_algebra_profile
+}
 
 
 type SizeBound
@@ -144,7 +159,7 @@ fn algebra_profile_to_dimension(profile: AlgebraProfile) -> IterationDimension? 
 fn type_iteration_dimension(type_name: String) -> IterationDimension? {
   if type_name == "Node" { Present { value: TreeDescent } }
   else {
-    match std.algebra.kernel_algebra_profile |> get(type_name) {
+    match kernel_algebra_profile |> get(type_name) {
       Present { value: p } => algebra_profile_to_dimension(profile: p)
       Absent => none
     }
