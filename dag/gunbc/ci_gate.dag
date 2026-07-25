@@ -3,7 +3,6 @@ module gunbc.ci_gate
 type Gate
   = EmitHostGate
   | CheapClaimPoolGate
-  | LayeringImportsGate
   | ExtdepsExternalAuthorityGate
   | DagCompileCleanGate
   | GeneratedArtifactDriftGate

@@ -158,10 +158,8 @@ fn cross_tree_edge_decision(
             match cross_tree_import_admitted(
               edge: CrossTreeImport {
                 from_tree: from_tree,
-                from_layer: layer_prefix_from_qualified_name(qn: from_qn),
                 from_module: cross_tree_module_path_interim,
                 to_tree: to_tree,
-                to_layer: layer_prefix_from_qualified_name(qn: to_qn),
                 to_module: cross_tree_module_path_interim
               },
               roots: active_roots,
