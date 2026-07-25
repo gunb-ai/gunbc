@@ -21591,6 +21591,17 @@ pub fn arms_are_freemonoid_coproduct(
     }
 }
 
+pub fn freemonoid_tail_let_from_fm(tail_bind: String) -> String {
+    if (tail_bind.clone() == "_".to_string()) {
+        "".to_string()
+    } else {
+        v1_rt::concat(
+            v1_rt::concat("let ".to_string(), tail_bind.clone()),
+            ": Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect()); ".to_string(),
+        )
+    }
+}
+
 pub fn freemonoid_empty_branch_body(
     empty_arm: Option<Rc<Node>>,
     catchall: Option<Rc<Node>>,
@@ -21661,14 +21672,7 @@ pub fn freemonoid_nonempty_branch_body(
                     " = (*__fm)[0].clone(); ".to_string(),
                 )
             };
-            let tail_let = if (tail_bind.clone() == "_".to_string()) {
-                "".to_string()
-            } else {
-                v1_rt::concat(
-                    v1_rt::concat("let ".to_string(), tail_bind.clone()),
-                    ": Rc<Vec<_>> = Rc::new((*__fm)[1 as usize..].to_vec()); ".to_string(),
-                )
-            };
+            let tail_let = freemonoid_tail_let_from_fm(tail_bind.clone());
             v1_rt::concat(
                 v1_rt::concat(head_let.clone(), tail_let.clone()),
                 emit_typed_expr(
@@ -24450,14 +24454,7 @@ pub fn freemonoid_tco_nonempty_branch_body(
                     " = (*__fm)[0].clone(); ".to_string(),
                 )
             };
-            let tail_let = if (tail_bind.clone() == "_".to_string()) {
-                "".to_string()
-            } else {
-                v1_rt::concat(
-                    v1_rt::concat("let ".to_string(), tail_bind.clone()),
-                    ": Rc<Vec<_>> = Rc::new((*__fm)[1 as usize..].to_vec()); ".to_string(),
-                )
-            };
+            let tail_let = freemonoid_tail_let_from_fm(tail_bind.clone());
             v1_rt::concat(
                 v1_rt::concat(head_let.clone(), tail_let.clone()),
                 emit_typed_tco_expr(
