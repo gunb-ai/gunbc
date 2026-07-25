@@ -33,7 +33,6 @@ type HostEffect =
   | SetHostnameCas { hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead }
   | SudoNopasswdExecuteProbe { probe: SudoNopasswdExecuteProbeShape }
-  | DurableApprovalGrantRead
   | Srv3InstallMediaFetch
   | Srv3SeededInstallMediaRemaster
   | Srv3SeededInstallMediaToolchainEnsure
