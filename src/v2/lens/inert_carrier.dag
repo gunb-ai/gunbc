@@ -23,13 +23,11 @@ data inert_carrier_roster: List<FrontierRow> = [
   inert_row(path: "FreeOutput", reason: "modeled output carrier with no live consumer yet"),
   inert_row(path: "GcpProject", reason: "modeled gcp extdeps carrier with no live consumer yet"),
   inert_row(path: "GitCliReportedVersion", reason: "modeled git-cli extdeps carrier with no live consumer yet"),
+  inert_row(path: "HostToolchainReach", reason: "paired target/access carrier returned by host_toolchain_ensure_reach — witness-covered via srv3_subsumption pair/arm equality; roster hygiene until a non-test consumer reads rows outside the ensure spine"),
   inert_row(path: "LocalAlias", reason: "inert G1 fixture type in qualified_module_projection_stripped_fixture.dag (see inert_carrier_local_alias_roster_note)"),
   inert_row(path: "ProcMeminfo", reason: "modeled machine-facts carrier with no live consumer yet"),
   inert_row(path: "ReactHookSite", reason: "modeled typescript extdeps carrier with no live consumer yet"),
   inert_row(path: "SystemdUnitStatus", reason: "modeled systemd extdeps carrier with no live consumer yet"),
-  inert_row(path: "FrontierSubject", reason: "roster_frontier subject coproduct declared ahead of its non-test consumer"),
-  inert_row(path: "DissolveTrigger", reason: "roster_frontier trigger coproduct declared ahead of its non-test consumer"),
-  inert_row(path: "FrontierExpiryReport", reason: "roster_frontier expiry fold report declared ahead of its non-test consumer"),
 ]
 
 fn inert_carrier_rostered_names() -> List<String> {
