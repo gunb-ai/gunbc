@@ -28,10 +28,24 @@ use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
 };
 
-#[derive(Clone, Copy, Default)]
+/// Whole-receipt wall/interp budgets for falsifier Wet lanes that own a dated
+/// ceiling. Self-host wet (green + known-red quarantine) share the 600s budget;
+/// silent-pick owns `gunbc_falsifier_silent_pick_gate_receipt_wall_budget` (900s).
+/// Rehomed-bin Wet must not inherit either — the prior mis-scope reds silent-pick
+/// against the 600s self-host ceiling after the self-host cadence rehome.
+#[derive(Clone, Default)]
 struct FalsifierSelfHostWetBudgets {
     wall_budget_ms: Option<u64>,
     interp_eval_budget_ms: Option<u64>,
+    /// Entry paths from `falsifier_self_host_wet_entries` (green wet roster).
+    roster_entry_paths: Vec<String>,
+    /// Entry paths from `falsifier_self_host_wet_known_red_entries` — Wet expect_red
+    /// quarantine; arms the same self-host wall budget + expect_red invert.
+    known_red_entry_paths: Vec<String>,
+    /// Hermetic known-red probe paths (`known_red_probe_entries`) — expect_red only.
+    hermetic_known_red_entry_paths: Vec<String>,
+    silent_pick_wall_budget_ms: Option<u64>,
+    silent_pick_entry_paths: Vec<String>,
 }
 
 fn read_positive_budget_ms(
@@ -748,24 +762,43 @@ fn run_batch_unit(
         } => {
             // The fast-lane eval budget (operator 5s rule) governs the HERMETIC per-PR
             // discovery corpus — witnesses whose own eval must stay cheap or move to a
-            // long/ lane. A Wet execution batch (the bin-witness roster: compile-clean
-            // seam checks, floor-skip/interp-fixture drivers) spends its wall time in
-            // declared subprocess I/O, not in eval, and legitimately runs for minutes;
-            // the budget's completion-side wall check would kill it for doing exactly its
-            // declared job. So the budget applies only to a hermetic batch. This is not a
-            // silent widen: the Wet roster is a small explicit set with its own resource
-            // profile, and the eval-wedge risk the budget guards (the s1_closure class)
-            // lives in the wide hermetic corpus, not here.
+            // long/ lane. Wet batches skip that budget (subprocess I/O is their job).
+            // Whole-receipt wall budgets are roster-scoped: self-host wet (green OR
+            // known-red quarantine) → 600s; silent-pick → 900s dated ceiling; rehomed
+            // bin inherits neither (receipt: silent-pick 707s red under a mis-scoped
+            // 600s self-host budget while batch walls stayed green — 2026-07-25).
             let (effective_fast_lane, wet_wall_budget_ms, wet_interp_budget_ms) =
                 if execution_mode.is_hermetic() {
                     (fast_lane_eval_budget_ms, None, None)
-                } else {
+                } else if discovery_entries_intersect_roster(
+                    &explicit_entries,
+                    &falsifier_self_host_wet_budgets.roster_entry_paths,
+                ) || discovery_entries_intersect_roster(
+                    &explicit_entries,
+                    &falsifier_self_host_wet_budgets.known_red_entry_paths,
+                ) {
                     (
                         None,
                         falsifier_self_host_wet_budgets.wall_budget_ms,
                         falsifier_self_host_wet_budgets.interp_eval_budget_ms,
                     )
+                } else if discovery_entries_intersect_roster(
+                    &explicit_entries,
+                    &falsifier_self_host_wet_budgets.silent_pick_entry_paths,
+                ) {
+                    (
+                        None,
+                        falsifier_self_host_wet_budgets.silent_pick_wall_budget_ms,
+                        None,
+                    )
+                } else {
+                    (None, None, None)
                 };
+            let expect_red = discovery_entries_are_expect_red(
+                &explicit_entries,
+                &falsifier_self_host_wet_budgets.hermetic_known_red_entry_paths,
+                &falsifier_self_host_wet_budgets.known_red_entry_paths,
+            );
             vec![run_discovery_batch_node(
                 roots,
                 scan_dirs,
@@ -778,6 +811,7 @@ fn run_batch_unit(
                 effective_fast_lane,
                 wet_wall_budget_ms,
                 wet_interp_budget_ms,
+                expect_red,
             )]
         }
         BatchUnit::SharedClaims {
@@ -1126,6 +1160,66 @@ fn emit_slowest_witness_attribution(source_roots: &[String], summary: &Discovery
     }
 }
 
+/// Known-red probe cadence (gunbc.ci_layer_roots known_red_probe_entries) and
+/// Wet assemble-red quarantine (falsifier_self_host_wet_known_red_entries): the
+/// batch EXPECTS RED. Greening is the un-quarantine event — so inverted verdict:
+/// still-red (Bool(false) / resolve refuse) ⇒ PASS; unexpected green ⇒ FAIL.
+fn discovery_entries_are_expect_red(
+    explicit_entries: &[(String, String)],
+    hermetic_known_red_paths: &[String],
+    wet_known_red_paths: &[String],
+) -> bool {
+    if explicit_entries.is_empty() {
+        return false;
+    }
+    explicit_entries.iter().all(|(entry, _)| {
+        hermetic_known_red_paths.iter().any(|p| p == entry)
+            || wet_known_red_paths.iter().any(|p| p == entry)
+    })
+}
+
+/// True when this discovery batch's explicit entries intersect `roster_entry_paths`.
+/// Path equality is the gate — substring heuristics would re-fork the roster.
+fn discovery_entries_intersect_roster(
+    explicit_entries: &[(String, String)],
+    roster_entry_paths: &[String],
+) -> bool {
+    if roster_entry_paths.is_empty() || explicit_entries.is_empty() {
+        return false;
+    }
+    explicit_entries
+        .iter()
+        .any(|(entry, _)| roster_entry_paths.iter().any(|p| p == entry))
+}
+
+fn read_schedule_witness_entry_paths(
+    plan_ctx: &InterpContext,
+    function: &str,
+) -> Result<Vec<String>, String> {
+    match run_value(plan_ctx, function) {
+        Ok(v) => {
+            let mut out = Vec::new();
+            for elem in free_monoid_elems(&v, plan_ctx)? {
+                let fields = match elem {
+                    Value::Record { fields, .. } => fields,
+                    Value::Variant { fields, .. } => fields,
+                    other => {
+                        return Err(format!(
+                            "claim_executor: {function} element is {}, not a record (fail-closed)",
+                            other.type_label_public()
+                        ))
+                    }
+                };
+                out.push(str_field(fields, "entry", function, plan_ctx)?);
+            }
+            Ok(out)
+        }
+        Err(msg) => Err(format!(
+            "claim_executor: {function} is unavailable (fail-closed): {msg}"
+        )),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_discovery_batch_node(
     source_roots: Vec<String>,
@@ -1139,12 +1233,14 @@ fn run_discovery_batch_node(
     fast_lane_eval_budget_ms: Option<u64>,
     wet_receipt_wall_budget_ms: Option<u64>,
     wet_receipt_interp_eval_budget_ms: Option<u64>,
+    expect_red: bool,
 ) -> ClaimResult {
     set_phase(FloorPhase::Discovery, "discovery-corpus");
     let label = format!(
-        "discovery-corpus[{} root(s)+{} explicit, adaptive width]",
+        "discovery-corpus[{} root(s)+{} explicit, adaptive width{}]",
         source_roots.len(),
         explicit_entries.len(),
+        if expect_red { ", expect_red" } else { "" },
     );
     match run_discovery_corpus_with_options(
         &source_roots,
@@ -1207,42 +1303,99 @@ fn run_discovery_batch_node(
                 Err(msg) => eprintln!("{msg}"),
             }
             emit_slowest_witness_attribution(&source_roots, &summary);
-            ClaimResult {
-                function: format!("{label} ({} witnesses)", summary.total),
-                ok: true,
-                detail: String::new(),
-                wall_nanos: 0,
-                resolve_nanos: 0,
-                corpus_resolve_nanos: summary.total_resolve_nanos,
-                corpus_eval_nanos: summary.total_measured_nanos,
-                corpus_witnesses: summary.total,
+            if expect_red && summary.total > 0 {
+                // All green on an expect-red probe = stale quarantine (dissolve-on fired).
+                ClaimResult {
+                    function: label,
+                    ok: false,
+                    detail: format!(
+                        "expect_red probe unexpectedly green: {} witness(es) passed — un-quarantine (delete known_red_probe_entries / falsifier_self_host_wet_known_red_entries rows) or restore the discriminating red",
+                        summary.total
+                    ),
+                    wall_nanos: 0,
+                    resolve_nanos: 0,
+                    corpus_resolve_nanos: summary.total_resolve_nanos,
+                    corpus_eval_nanos: summary.total_measured_nanos,
+                    corpus_witnesses: summary.total,
+                }
+            } else {
+                ClaimResult {
+                    function: format!("{label} ({} witnesses)", summary.total),
+                    ok: true,
+                    detail: String::new(),
+                    wall_nanos: 0,
+                    resolve_nanos: 0,
+                    corpus_resolve_nanos: summary.total_resolve_nanos,
+                    corpus_eval_nanos: summary.total_measured_nanos,
+                    corpus_witnesses: summary.total,
+                }
             }
         }
-        Ok(summary) => ClaimResult {
-            function: label,
-            ok: false,
-            detail: format!(
-                "{} of {} discovery witness(es) failed: {}",
-                summary.failures.len(),
-                summary.total,
-                summary.failures.join("; ")
-            ),
-            wall_nanos: 0,
-            resolve_nanos: 0,
-            corpus_resolve_nanos: summary.total_resolve_nanos,
-            corpus_eval_nanos: summary.total_measured_nanos,
-            corpus_witnesses: summary.total,
-        },
-        Err(msg) => ClaimResult {
-            function: label,
-            ok: false,
-            detail: format!("discovery corpus failed: {msg}"),
-            wall_nanos: 0,
-            resolve_nanos: 0,
-            corpus_resolve_nanos: 0,
-            corpus_eval_nanos: 0,
-            corpus_witnesses: 0,
-        },
+        Ok(summary) => {
+            if expect_red {
+                eprintln!(
+                    "[expect-red] known-red probe still red: {} of {} failed (agreement — quarantine holds)",
+                    summary.failures.len(),
+                    summary.total
+                );
+                ClaimResult {
+                    function: format!("{label} (expect_red still-red OK)"),
+                    ok: true,
+                    detail: String::new(),
+                    wall_nanos: 0,
+                    resolve_nanos: 0,
+                    corpus_resolve_nanos: summary.total_resolve_nanos,
+                    corpus_eval_nanos: summary.total_measured_nanos,
+                    corpus_witnesses: summary.total,
+                }
+            } else {
+                ClaimResult {
+                    function: label,
+                    ok: false,
+                    detail: format!(
+                        "{} of {} discovery witness(es) failed: {}",
+                        summary.failures.len(),
+                        summary.total,
+                        summary.failures.join("; ")
+                    ),
+                    wall_nanos: 0,
+                    resolve_nanos: 0,
+                    corpus_resolve_nanos: summary.total_resolve_nanos,
+                    corpus_eval_nanos: summary.total_measured_nanos,
+                    corpus_witnesses: summary.total,
+                }
+            }
+        }
+        Err(msg) => {
+            if expect_red {
+                // Resolve-refuse is the documented known-red shape for logic_ground_truth
+                // (imported bare variants unbound in expression position).
+                eprintln!(
+                    "[expect-red] known-red probe still red via resolve/eval refuse (agreement — quarantine holds): {msg}"
+                );
+                ClaimResult {
+                    function: format!("{label} (expect_red still-red OK)"),
+                    ok: true,
+                    detail: String::new(),
+                    wall_nanos: 0,
+                    resolve_nanos: 0,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
+                }
+            } else {
+                ClaimResult {
+                    function: label,
+                    ok: false,
+                    detail: format!("discovery corpus failed: {msg}"),
+                    wall_nanos: 0,
+                    resolve_nanos: 0,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
+                }
+            }
+        }
     }
 }
 
@@ -1277,6 +1430,8 @@ fn eval_plan(
 struct WalkOutcome {
     any_failed: bool,
     batches_run: usize,
+    /// Failed claim details collected across the walk (for typed terminal classification).
+    failure_details: Vec<String>,
 }
 
 /// Render a floor phase-completion line through the single-authority observation
@@ -2101,6 +2256,7 @@ fn run_walk(
 ) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
+    let mut failure_details: Vec<String> = Vec::new();
     let walk_start = Instant::now();
     let mut batch_records: Vec<BatchRecord> = Vec::new();
     // Cross-batch resolve memo: SharedClaims whose runnable does a heavy whole-tree resolve
@@ -2172,7 +2328,7 @@ fn run_walk(
             .map(|unit| {
                 let roots = source_roots.to_vec();
                 let unit_governor = governor.clone();
-                let wet_budgets = falsifier_self_host_wet_budgets;
+                let wet_budgets = falsifier_self_host_wet_budgets.clone();
                 thread::spawn(move || {
                     run_batch_unit(
                         roots,
@@ -2213,7 +2369,7 @@ fn run_walk(
                 unit,
                 governor.clone(),
                 fast_lane_eval_budget_ms,
-                falsifier_self_host_wet_budgets,
+                falsifier_self_host_wet_budgets.clone(),
             ));
         }
         // Collect all results before printing any PASS/FAIL — the prints must land
@@ -2260,6 +2416,12 @@ fn run_walk(
                         sgr::ERROR
                     )
                 );
+                failure_details.push(format!(
+                    "batch={} fn={} detail={}",
+                    bi + 1,
+                    result.function,
+                    result.detail
+                ));
                 any_failed = true;
             }
         }
@@ -2271,6 +2433,7 @@ fn run_walk(
                     sgr::ERROR
                 )
             );
+            failure_details.push(format!("batch={} infra=thread_panic", bi + 1));
             any_failed = true;
         }
         let batch_wall_nanos = batch_start.elapsed().as_nanos();
@@ -2352,6 +2515,7 @@ fn run_walk(
             || !gate_warm_cost_receipt_ok
             || !materialization_receipt_ok,
         batches_run,
+        failure_details,
     }
 }
 
@@ -2806,6 +2970,56 @@ fn run() -> Result<ExitCode, ExitCode> {
                     return Err(ExitCode::from(1));
                 }
             },
+            roster_entry_paths: match read_schedule_witness_entry_paths(
+                &plan_ctx,
+                "falsifier_self_host_wet_entries",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
+            known_red_entry_paths: match read_schedule_witness_entry_paths(
+                &plan_ctx,
+                "falsifier_self_host_wet_known_red_roster",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
+            hermetic_known_red_entry_paths: match read_schedule_witness_entry_paths(
+                &plan_ctx,
+                "known_red_probe_roster",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
+            silent_pick_wall_budget_ms: match read_positive_budget_ms(
+                &plan_ctx,
+                "gunbc_falsifier_silent_pick_gate_receipt_wall_budget_ms",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
+            silent_pick_entry_paths: match read_schedule_witness_entry_paths(
+                &plan_ctx,
+                "falsifier_silent_pick_gate_roster",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
         }
     } else {
         FalsifierSelfHostWetBudgets::default()
@@ -2934,6 +3148,56 @@ fn run() -> Result<ExitCode, ExitCode> {
     floor_terminal_fast_exit(walk_exit_code(outcome.any_failed))
 }
 
+/// Typed terminal failure class for the falsifier/floor walk (brief Step 2, 2026-07-25):
+/// names BudgetExceeded{wall,budget} vs WitnessRed{claims} vs Infra{spawn/toolchain/eviction}
+/// so "falsifier dark" is one of three modes, never an undifferentiated exit 1.
+fn falsifier_failure_mode(details: &[String]) -> &'static str {
+    if details.iter().any(|d| {
+        d.contains("BudgetExceeded{")
+            || d.contains("witness receipt wall budget exceeded")
+            || d.contains("wet self-host receipt wall budget exceeded")
+            || d.contains("eval budget exceeded")
+    }) {
+        "BudgetExceeded"
+    } else if details.iter().any(|d| {
+        d.contains("infra=")
+            || d.contains("thread_panic")
+            || d.contains("Resource temporarily unavailable")
+            || d.contains("failed to spawn")
+            || d.contains("sccache")
+    }) {
+        "Infra"
+    } else {
+        "WitnessRed"
+    }
+}
+
+fn emit_falsifier_failure_class(details: &[String]) {
+    let joined = details.join(" | ");
+    let mode = falsifier_failure_mode(details);
+    eprintln!("[falsifier-failure-class] mode={mode}");
+    if details.is_empty() {
+        eprintln!("[falsifier-failure-class] detail=<receipt/write failure or empty ledger>");
+    } else {
+        for d in details {
+            eprintln!("[falsifier-failure-class] {d}");
+        }
+    }
+    // Natural fit into gunbc.ci_failure_class vocabulary: BudgetExceeded/WitnessRed → Structural;
+    // Infra signatures stay Infra (OOM-reclassification consumer stays on its own design doc).
+    let ci_arm = match mode {
+        "Infra" => "FloorFailed{class:Infra}",
+        _ => "FloorFailed{class:Structural}",
+    };
+    eprintln!(
+        "[falsifier-failure-class] ci_failure_class_arm={ci_arm} reason_preview={}",
+        {
+            let preview: String = joined.chars().take(240).collect();
+            preview
+        }
+    );
+}
+
 /// The walk outcome's process exit code — extracted so the fast-exit wiring is testable
 /// without exiting the test process.
 fn walk_exit_code(any_failed: bool) -> i32 {
@@ -2986,6 +3250,141 @@ mod tests {
     fn walk_exit_code_maps_failure_to_one_success_to_zero() {
         assert_eq!(walk_exit_code(true), 1);
         assert_eq!(walk_exit_code(false), 0);
+    }
+
+    #[test]
+    fn known_red_probe_entry_paths_detect_expect_red_batch() {
+        let hermetic = vec![
+            "src/v2/test/claim/emit/logic_ground_truth_test.dag".into(),
+            "src/v2/test/claim/manual/english_emit_add_test.dag".into(),
+            "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag".into(),
+        ];
+        let wet_known_red =
+            vec!["dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag".into()];
+        assert!(discovery_entries_are_expect_red(
+            &[(
+                "src/v2/test/claim/emit/logic_ground_truth_test.dag".into(),
+                "logic_complement_truth_table".into()
+            )],
+            &hermetic,
+            &[]
+        ));
+        assert!(discovery_entries_are_expect_red(
+            &[(
+                "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag".into(),
+                "self_host_03_normalize_behavioral_receipt_holds".into()
+            )],
+            &[],
+            &wet_known_red
+        ));
+        assert!(!discovery_entries_are_expect_red(
+            &[(
+                "dag/test/claim/design_register_lift_parity_witness_test.dag".into(),
+                "design_register_lift_parity_holds".into()
+            )],
+            &hermetic,
+            &wet_known_red
+        ));
+        assert!(!discovery_entries_are_expect_red(
+            &[],
+            &hermetic,
+            &wet_known_red
+        ));
+    }
+
+    #[test]
+    fn self_host_wet_roster_intersection_scopes_wall_budget() {
+        let roster = vec![
+            "dag/test/claim/self_host_logic_behavioral_witness_test.dag".into(),
+            "dag/test/claim/namespace_import_closure_witness_test.dag".into(),
+        ];
+        assert!(discovery_entries_intersect_roster(
+            &[(
+                "dag/test/claim/self_host_logic_behavioral_witness_test.dag".into(),
+                "self_host_logic_behavioral_receipt_holds".into()
+            )],
+            &roster
+        ));
+        // Silent-pick is Wet but not on the self-host roster — must not inherit
+        // the 600s whole-receipt ceiling (mis-scope receipt 2026-07-25).
+        assert!(!discovery_entries_intersect_roster(
+            &[(
+                "dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag".into(),
+                "resolution_divergence_silent_pick_gate_keystone_holds".into()
+            )],
+            &roster
+        ));
+        assert!(!discovery_entries_intersect_roster(&[], &roster));
+        assert!(!discovery_entries_intersect_roster(
+            &[(
+                "dag/test/claim/self_host_logic_behavioral_witness_test.dag".into(),
+                "self_host_logic_behavioral_receipt_holds".into()
+            )],
+            &[]
+        ));
+    }
+
+    #[test]
+    fn silent_pick_roster_intersection_scopes_own_wall_budget() {
+        let silent_pick =
+            vec!["dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag".into()];
+        assert!(discovery_entries_intersect_roster(
+            &[(
+                "dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag".into(),
+                "resolution_divergence_silent_pick_gate_keystone_holds".into()
+            )],
+            &silent_pick
+        ));
+        assert!(!discovery_entries_intersect_roster(
+            &[(
+                "dag/test/claim/self_host_logic_behavioral_witness_test.dag".into(),
+                "self_host_logic_behavioral_receipt_holds".into()
+            )],
+            &silent_pick
+        ));
+    }
+
+    #[test]
+    fn falsifier_failure_mode_classifies_three_arms() {
+        assert_eq!(
+            falsifier_failure_mode(&[
+                "batch=1 BudgetExceeded{wall_ms=900000,budget_ms=600000}".into()
+            ]),
+            "BudgetExceeded"
+        );
+        assert_eq!(
+            falsifier_failure_mode(&[
+                "batch=3 fn=resolution_divergence_silent_pick_gate_keystone_holds detail=witness receipt wall budget exceeded: 707687ms elapsed > 600000ms whole-receipt budget".into()
+            ]),
+            "BudgetExceeded"
+        );
+        assert_eq!(
+            falsifier_failure_mode(&[
+                "batch=3 fn=resolution_divergence_silent_pick_gate_keystone_holds detail=wet self-host receipt wall budget exceeded: 707687ms elapsed > 600000ms whole-receipt budget".into()
+            ]),
+            "BudgetExceeded"
+        );
+        assert_eq!(
+            falsifier_failure_mode(&[
+                "batch=2 infra=thread_panic".into(),
+                "batch=1 fn=x detail=stale digest".into()
+            ]),
+            "Infra"
+        );
+        assert_eq!(
+            falsifier_failure_mode(&[
+                "batch=1 fn=design_register_lift_parity_holds detail=false".into()
+            ]),
+            "WitnessRed"
+        );
+        // BudgetExceeded wins when co-present with witness detail (honest wall kill).
+        assert_eq!(
+            falsifier_failure_mode(&[
+                "batch=2 fn=wet detail=cargo refuse".into(),
+                "batch=2 BudgetExceeded{wall_ms=601000,budget_ms=600000}".into()
+            ]),
+            "BudgetExceeded"
+        );
     }
 
     // D2 RED control: a receipt that cannot be written REDS the walk (returns false,
