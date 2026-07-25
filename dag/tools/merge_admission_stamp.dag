@@ -1,30 +1,5 @@
 module tools.merge_admission_stamp
 
-<<<<<<< HEAD
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { NonEmptyStr, GitRef }
-import extdeps.git
-import extdeps.shell
-import gunbc.retained_shell_script { retained_foreign }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import std.types { FilePath }
-import gunbc.merge_admission_produce {
-  merge_admission_receipt_path,
-  merge_admission_merge_base_ref,
-  stamp_floor_receipt_with_conclusion,
-  render_receipt_wire,
-  shell_stdout_line,
-  floor_exit_to_check_conclusion,
-  floor_disposition_to_check_conclusion,
-  observe_merge_target_tree_hash,
-  merge_target_tree_hash_refusal_reason,
-  MergeTargetTreeHashOk,
-  MergeTargetTreeHashRefused,
-}
-import extdeps.github.checks { CheckConclusion }
-=======
->>>>>>> c0eca1c67c (WIP: Namespace flip Dispatch 1 — turn on namespace-only resolution (global fl)
-
 data merge_admission_stamp_missing_floor_exit_is_failure: String = "CI_FLOOR_EXIT unset stamps floor_exit_code as Failure (non-zero) — fail-closed per §5; only the ci.yml floor tail sets CI_FLOOR_EXIT from claim_executor"
 
 data merge_admission_stamp_non_pr_omits_pr_number: String = "non-PR CI events (push to main, workflow_dispatch) omit pr_number from the receipt wire — jq requires .pull_request.number be a JSON number; absent field, not fabricated 0"
