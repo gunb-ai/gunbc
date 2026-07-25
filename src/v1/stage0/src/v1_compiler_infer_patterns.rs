@@ -512,18 +512,8 @@ pub fn lookup_result_subject(result: Rc<NodeLookupResult>) -> Rc<PatternSubject>
 pub fn pattern_binding_type(subject: Rc<PatternSubject>) -> Rc<Node> {
     match (*subject.clone()).clone() {
         PatternSubject::PatternResolved { node: resolved, .. } => resolved.clone(),
-        PatternSubject::PatternDynamic { span: dynamic_span, .. } => {
-            if std::env::var("GUNBC_DEBUG_CASCADE").is_ok() {
-                eprintln!("[CASCADE-PBT-DYNAMIC] span={}:{}-{}", dynamic_span.file, dynamic_span.start, dynamic_span.end);
-            }
-            error_type()
-        }
-        PatternSubject::PatternLookupBlocked => {
-            if std::env::var("GUNBC_DEBUG_CASCADE").is_ok() {
-                eprintln!("[CASCADE-PBT-BLOCKED]");
-            }
-            error_type()
-        }
+        PatternSubject::PatternDynamic { span: _, .. } => error_type(),
+        PatternSubject::PatternLookupBlocked => error_type(),
     }
 }
 
@@ -719,27 +709,17 @@ pub fn lookup_field_in_variant(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<NodeLookupResult> {
     match (*variant.clone()).clone() {
-        PatternSubject::PatternLookupBlocked => {
-            if std::env::var("GUNBC_DEBUG_CASCADE").is_ok() {
-                eprintln!("[CASCADE-LFV-BLOCKED] field={}", field_name);
-            }
-            node_lookup_failed(Rc::new(vec![]))
-        }
+        PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
         PatternSubject::PatternDynamic {
             span: dynamic_span, ..
-        } => {
-            if std::env::var("GUNBC_DEBUG_CASCADE").is_ok() {
-                eprintln!("[CASCADE-LFV-DYNAMIC] field={} span={}:{}-{}", field_name, dynamic_span.file, dynamic_span.start, dynamic_span.end);
-            }
-            node_lookup_failed(Rc::new(vec![make_error_node(
+        } => node_lookup_failed(Rc::new(vec![make_error_node(
             Rc::new(CompilerDiagnostic::FieldNotFound {
                 field: field_name.clone(),
                 type_name: "unresolved".to_string(),
                 span: dynamic_span.clone(),
             }),
             module_name.clone(),
-        )]))
-        }
+        )])),
         PatternSubject::PatternResolved {
             node: variant_node, ..
         } => match find_child_named(
@@ -751,19 +731,14 @@ pub fn lookup_field_in_variant(
                 let resolved = child_type_node(field_child.clone());
                 node_lookup_resolved(resolved.clone())
             }
-            None => {
-                if std::env::var("GUNBC_DEBUG_CASCADE").is_ok() {
-                    eprintln!("[CASCADE-LFV-NOTFOUND] field={} variant_type={}", field_name, authored_name_at(source_indices.clone(), variant_node.clone()));
-                }
-                node_lookup_failed(Rc::new(vec![make_error_node(
+            None => node_lookup_failed(Rc::new(vec![make_error_node(
                 Rc::new(CompilerDiagnostic::FieldNotFound {
                     field: field_name.clone(),
                     type_name: authored_name_at(source_indices.clone(), variant_node.clone()),
                     span: variant_node.span.clone(),
                 }),
                 module_name.clone(),
-            )]))
-            }
+            )])),
         },
     }
 }
