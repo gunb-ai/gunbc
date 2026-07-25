@@ -1,5 +1,6 @@
 module test.claim.ci_render_histogram_width
 
+import extdeps.unicode.display { string_display_width }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
