@@ -1,0 +1,46 @@
+module test.claim.shell_dag_census_5a_typed_ops_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.dns.domain_name { DnsLabel }
+import extdeps.os.hostname { hostname_set_argv }
+import extdeps.os.systemctl
+import extdeps.os.id
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data shell_dag_census_5a_scope_note: String = "Hermetic witnesses for the shell->dag census §5.A finite new-op list: os.Hostname.Set, systemd.Systemctl.ListUnits, systemd.Systemctl.Status, extdeps.os.id (Uid/Gid/Lookup). Model-before-implement only (D1) — each op's mock_response proves the typed exit{}/output shape realizes hermetically; call-site migration (§5.B) is a separate, later lane. Each op cites its upstream authority in its home file's extdeps_external_authority_anchor."
+
+fn witness_hostname_set_argv_is_typed_not_concat() -> Bool {
+  join(hostname_set_argv(desired: "srv9" as DnsLabel), " ") == "hostnamectl set-hostname srv9"
+}
+
+fn witness_hostname_set_realizes_hermetically() -> Bool {
+  let r = os.Hostname.Set(desired: "srv9" as DnsLabel)
+  r.success && r.stderr == ""
+}
+
+fn witness_systemctl_list_units_realizes_hermetically() -> Bool {
+  let r = systemd.Systemctl.ListUnits(pattern: "demo@*.service" as NonEmptyStr)
+  r.success && r.stdout != ""
+}
+
+fn witness_systemctl_status_realizes_hermetically() -> Bool {
+  let r = systemd.Systemctl.Status(unit: "demo.service" as NonEmptyStr)
+  r.success && r.stdout != ""
+}
+
+fn witness_os_id_uid_realizes_hermetically() -> Bool {
+  let r = os.Id.Uid()
+  r.success && r.value == "1000"
+}
+
+fn witness_os_id_gid_realizes_hermetically() -> Bool {
+  let r = os.Id.Gid()
+  r.success && r.value == "1000"
+}
+
+fn witness_os_id_lookup_realizes_hermetically() -> Bool {
+  let r = os.Id.Lookup(user: "demo" as NonEmptyStr)
+  r.success && r.stdout != ""
+}

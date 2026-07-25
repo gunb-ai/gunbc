@@ -1,0 +1,175 @@
+module test.claim.network_grounding
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data network_grounding_witness_home_note: String = "Consolidated green-by-execution proofs for the extdeps.network grounding leaves — the structured IPv4 address, the IpAddress/NetworkHost/SocketAddress surfaces, and the reach model. These were three witness files (ipv4_address / network_address_host / network_reach) until 2026-07-25; each was its own floor entry resolve, so consolidating them into one entry is a §6 cost-shape fix (fewer whole-tree closure resolves, zero coverage lost) — all three prove the same extdeps.network module family. The three original witness notes are preserved verbatim below."
+
+data ipv4_address_witness_note: String = "Green-by-execution proof for the structured IPv4 leaf (extdeps.network.ipv4), the witness the dissolution trigger dissolve_on_ipv4_address_anemic_brand requires. Proves parse recovers the four octets from wire text, render is its inverse (round-trip both ways), and — the fail-closed half — malformed input REFUSES with a typed, located Ipv4ParseError (wrong octet count, out-of-range, non-numeric), never a fabricated address. The discriminating controls are the three distinct refusal shapes: a parser that fabricated on bad input would return Ipv4Parsed and red these."
+
+fn ipv4_or_none(text: String) -> Ipv4Address? {
+  match parse_ipv4_address(text: text) {
+    Ipv4Parsed { address: a } => Present { value: a }
+    Ipv4ParseFailed { error: _ } => none
+  }
+}
+
+test fn ipv4_parse_recovers_octets() -> Bool {
+  match parse_ipv4_address(text: "192.168.1.221") {
+    Ipv4Parsed { address: a } =>
+      a.octet1 == 192 && a.octet2 == 168 && a.octet3 == 1 && a.octet4 == 221
+    Ipv4ParseFailed { error: _ } => false
+  }
+}
+
+test fn ipv4_render_is_parse_inverse() -> Bool {
+  match parse_ipv4_address(text: "10.0.42.7") {
+    Ipv4Parsed { address: a } => render_ipv4_address(addr: a) as String == "10.0.42.7"
+    Ipv4ParseFailed { error: _ } => false
+  }
+}
+
+test fn ipv4_constructor_renders_dotted_decimal() -> Bool {
+  let rendered = render_ipv4_address(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 192))
+  rendered as String == "192.168.1.192"
+}
+
+test fn ipv4_wrong_octet_count_refuses() -> Bool {
+  match parse_ipv4_address(text: "192.168.1") {
+    Ipv4Parsed { address: _ } => false
+    Ipv4ParseFailed { error: Ipv4WrongOctetCount { observed_count: c } } => c == 3
+    Ipv4ParseFailed { error: _ } => false
+  }
+}
+
+test fn ipv4_out_of_range_refuses_located() -> Bool {
+  match parse_ipv4_address(text: "192.168.1.999") {
+    Ipv4Parsed { address: _ } => false
+    Ipv4ParseFailed { error: Ipv4OctetOutOfRange { position: p, value: v } } => p == 3 && v == 999
+    Ipv4ParseFailed { error: _ } => false
+  }
+}
+
+test fn ipv4_non_numeric_refuses_located() -> Bool {
+  match parse_ipv4_address(text: "192.168.one.4") {
+    Ipv4Parsed { address: _ } => false
+    Ipv4ParseFailed { error: Ipv4OctetNotNumeric { position: p, raw: r } } => p == 2 && r == "one"
+    Ipv4ParseFailed { error: _ } => false
+  }
+}
+
+test fn ipv4_valid_and_invalid_discriminate() -> Bool {
+  match ipv4_or_none(text: "192.168.1.221") {
+    Present { value: _ } =>
+      match ipv4_or_none(text: "999.999.999.999") {
+        Present { value: _ } => false
+        Absent => true
+      }
+    Absent => false
+  }
+}
+
+data network_address_host_witness_note: String = "Green-by-execution proof for the address+host leaves of extdeps/network: the IpAddress = V4 | V6 coproduct, NetworkHost = ByName | ByAddress (reusing the grounded HostName + IpAddress), and SocketAddress (reusing std.types.Port). The load-bearing control is ip_v6_render_refuses_not_fabricates: the v6 string codec is staged, so render_ip_address on a v6 value must return Absent — a parser/renderer that fabricated a v6 string would red this. Loopback is checked on both arms (127.0.0.1 and ::1) so the coproduct's two arms are both exercised."
+
+fn srv2_hostname() -> HostName {
+  HostName {
+    name: DomainName { labels: ["srv2" as DnsLabel] },
+    qualification: PartiallyQualified,
+  }
+}
+
+test fn ipv4_ipaddress_renders_dotted_decimal() -> Bool {
+  let a = ip_v4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 221))
+  match render_ip_address(addr: a) {
+    Present { value: s } => s as String == "192.168.1.221"
+    Absent => false
+  }
+}
+
+test fn ip_v6_render_refuses_not_fabricates() -> Bool {
+  let a = ip_v6(addr: ipv6_address(
+    group1: 65152, group2: 0, group3: 0, group4: 0,
+    group5: 0, group6: 0, group7: 0, group8: 1,
+  ))
+  match render_ip_address(addr: a) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn ipv4_loopback_is_the_whole_slash8() -> Bool {
+  ip_address_is_loopback(addr: ip_v4(addr: ipv4_address(octet1: 127, octet2: 0, octet3: 0, octet4: 1)))
+    && ip_address_is_loopback(addr: ip_v4(addr: ipv4_address(octet1: 127, octet2: 5, octet3: 9, octet4: 2)))
+    && ip_address_is_loopback(addr: ip_v4(addr: ipv4_address(octet1: 126, octet2: 0, octet3: 0, octet4: 1))) == false
+    && ip_address_is_loopback(addr: ip_v4(addr: ipv4_address(octet1: 128, octet2: 0, octet3: 0, octet4: 1))) == false
+}
+
+test fn ipv6_loopback_detected() -> Bool {
+  let lo = ip_v6(addr: ipv6_address(group1: 0, group2: 0, group3: 0, group4: 0, group5: 0, group6: 0, group7: 0, group8: 1))
+  let not_lo = ip_v6(addr: ipv6_address(group1: 65152, group2: 0, group3: 0, group4: 0, group5: 0, group6: 0, group7: 0, group8: 1))
+  ip_address_is_loopback(addr: lo) && ip_address_is_loopback(addr: not_lo) == false
+}
+
+test fn network_host_by_address_renders() -> Bool {
+  let h = host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 188))
+  match render_network_host(host: h) {
+    Present { value: s } => s as String == "192.168.1.188"
+    Absent => false
+  }
+}
+
+test fn network_host_by_name_renders_wire() -> Bool {
+  match render_network_host(host: host_by_name(name: srv2_hostname())) {
+    Present { value: s } => s as String == "srv2"
+    Absent => false
+  }
+}
+
+test fn socket_address_pairs_host_and_port() -> Bool {
+  let sa = socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 188)), port: 22)
+  sa.port == 22 && ip_address_is_v4(addr: match sa.host { HostByAddress { address: a } => a  HostByName { name: _ } => ip_v4(addr: ipv4_address(octet1: 0, octet2: 0, octet3: 0, octet4: 0)) })
+}
+
+data network_reach_witness_note: String = "Green-by-execution proof for extdeps.network.reach — the network-reach model independent of shell transport. The load-bearing §5 control is fabric_tunnel_refuses_realization: FabricTunnel is the intended long-term reach that does NOT work yet, so its realizability MUST be ReachRefused{FabricTunnelNotOperational}; a model that let it fall through as realizable would red this. DirectLan and a non-empty ProxyJump are realizable; an empty-chain ProxyJump refuses by construction (a jump with no hops is a modeling error, not a direct reach). reach_target extracts the ultimate target across all three arms. Together these prove the interim srv3-via-srv2 ProxyJump is a realizable, cited config while the fabric it stands in for stays honestly refused."
+
+fn reach_srv2() -> NetworkHost {
+  host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 188))
+}
+
+fn reach_srv3() -> NetworkHost {
+  host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 221))
+}
+
+test fn direct_lan_is_realizable() -> Bool {
+  reach_is_realizable(reach: direct_lan(host: reach_srv2()))
+}
+
+test fn proxy_jump_via_srv2_to_srv3_is_realizable() -> Bool {
+  reach_is_realizable(reach: proxy_jump(jumps: [reach_srv2()], target: reach_srv3()))
+}
+
+test fn fabric_tunnel_refuses_realization() -> Bool {
+  match reach_realizability(reach: fabric_tunnel(target: reach_srv3())) {
+    ReachRealizable => false
+    ReachRefused { cause: FabricTunnelNotOperational } => true
+    ReachRefused { cause: ProxyJumpChainEmpty } => false
+  }
+}
+
+test fn empty_proxy_jump_chain_refuses_by_construction() -> Bool {
+  match reach_realizability(reach: proxy_jump(jumps: [], target: reach_srv3())) {
+    ReachRealizable => false
+    ReachRefused { cause: ProxyJumpChainEmpty } => true
+    ReachRefused { cause: FabricTunnelNotOperational } => false
+  }
+}
+
+test fn reach_target_extracts_ultimate_target_across_arms() -> Bool {
+  let via = proxy_jump(jumps: [reach_srv2()], target: reach_srv3())
+  let direct = direct_lan(host: reach_srv3())
+  let fabric = fabric_tunnel(target: reach_srv3())
+  let via_t = render_network_host(host: reach_target(reach: via))
+  let direct_t = render_network_host(host: reach_target(reach: direct))
+  let fabric_t = render_network_host(host: reach_target(reach: fabric))
+  via_t == direct_t && fabric_t == direct_t
+}

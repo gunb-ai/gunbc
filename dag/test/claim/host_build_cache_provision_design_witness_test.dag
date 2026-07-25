@@ -103,8 +103,156 @@ fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
     && design_witness_authority_gate_accepts_absent_refusal()
 }
 
+fn path_shadow_observation_fixture() -> BuildCacheDaemonObservation {
+  DaemonPathShadowed { resolved: "/usr/bin/sccache", expected: "/usr/local/bin/sccache" }
+}
+
+fn design_witness_path_shadow_refuses_fail_closed() -> Bool {
+  match provision_build_cache_verdict(
+    catalog_id: sccache_local_id,
+    observed: path_shadow_observation_fixture(),
+  ) {
+    ProvisionRefused { cause: RefusalPathShadowed, reason: reason } =>
+      string_contains(s: reason as String, pattern: "/usr/bin/sccache")
+        && string_contains(s: reason as String, pattern: "/usr/local/bin/sccache")
+        && string_contains(s: reason as String, pattern: "Fail-closed")
+    ProvisionRefused { cause: _, reason: _ } => false
+    ProvisionConverged { catalog_id: _, stats_line: _ } => false
+  }
+}
+
+fn design_witness_red_control_widen_on_path_shadow_rejected_by_gate() -> Bool {
+  match provision_build_cache_absorbing_fallback_widen_sketch(
+    catalog_id: sccache_local_id,
+    observed: path_shadow_observation_fixture(),
+  ) {
+    ProvisionConverged { catalog_id: _, stats_line: _ } => true
+    ProvisionRefused { cause: _, reason: _ } => false
+  } && !build_cache_provision_gate_accepts(
+      verdict: provision_build_cache_absorbing_fallback_widen_sketch(
+        catalog_id: sccache_local_id,
+        observed: path_shadow_observation_fixture(),
+      ),
+      observed: path_shadow_observation_fixture(),
+    )
+    && build_cache_provision_gate_accepts(
+      verdict: provision_build_cache_verdict(
+        catalog_id: sccache_local_id,
+        observed: path_shadow_observation_fixture(),
+      ),
+      observed: path_shadow_observation_fixture(),
+    )
+}
+
+fn design_witness_path_authority_observation_not_emitted_as_shell() -> Bool {
+  !string_contains(
+    s: build_cache_observe_stats_body(),
+    pattern: "path_authority=SHADOWED",
+  ) && !string_contains(
+    s: build_cache_read_back_body(binary: sccache_installed_binary_path),
+    pattern: "path_authority=SHADOWED",
+  ) && !string_contains(
+    s: build_cache_provision_script_body(
+      arch_token: "aarch64" as NonEmptyStr,
+      digest: sccache_release_0_15_0.digest_aarch64,
+    ),
+    pattern: "command -v sccache",
+  )
+}
+
+fn design_witness_install_is_cited_not_package_manager() -> Bool {
+  build_cache_install_is_cited_not_package_manager()
+}
+
+fn design_witness_unit_execstart_matches_install_path() -> Bool {
+  build_cache_unit_execstart_matches_install_path()
+}
+
+fn design_witness_unit_is_foreground_supervised() -> Bool {
+  build_cache_unit_is_foreground_supervised()
+}
+
+fn design_witness_classifier_covers_every_cited_fragment() -> Bool {
+  build_cache_classifier_covers_every_cited_fragment()
+}
+
+fn design_witness_classifier_is_a_fold_not_an_unrolled_chain() -> Bool {
+  !string_contains(s: build_cache_classify_failure_body(), pattern: "elif")
+    && string_contains(s: build_cache_classify_failure_body(), pattern: "for frag in ")
+}
+
+fn design_witness_fragment_words_are_shell_safe() -> Bool {
+  build_cache_fragment_words_are_shell_safe()
+}
+
+fn design_witness_release_arch_token_is_fail_closed() -> Bool {
+  match sccache_release_arch_token(arch: Aarch64) {
+    Present { value: token } => token as String == "aarch64"
+    Absent => false
+  } && match sccache_release_arch_token(arch: X86_64) {
+    Present { value: token } => token as String == "x86_64"
+    Absent => false
+  } && match sccache_release_arch_token(arch: Riscv64) {
+    Absent => true
+    Present { value: _ } => false
+  } && match sccache_release_arch_token(arch: Wasm32) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn design_witness_release_digest_is_fail_closed() -> Bool {
+  match sccache_release_digest(rel: sccache_release_0_15_0, arch: Aarch64) {
+    Present { value: d } => d == sccache_release_0_15_0.digest_aarch64
+    Absent => false
+  } && match sccache_release_digest(rel: sccache_release_0_15_0, arch: X86_64) {
+    Present { value: d } => d == sccache_release_0_15_0.digest_x86_64
+    Absent => false
+  } && match sccache_release_digest(rel: sccache_release_0_15_0, arch: Riscv64) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn design_witness_arch_unknown_host_refuses_realization() -> Bool {
+  match realize_provision_build_cache(
+    effect_intent: provision_build_cache_arch_unknown_intent_fixture(),
+  ) {
+    NotConverged { reason: why, applied: _ } =>
+      string_contains(s: why, pattern: "cannot derive a target architecture")
+        && string_contains(s: why, pattern: "no default arch")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+fn design_witness_known_arch_host_does_not_refuse_for_arch() -> Bool {
+  match provision_build_cache_host_arch(
+    effect_intent: provision_build_cache_witness_intent(),
+  ) {
+    Present { value: arch } =>
+      match sccache_release_arch_token(arch: arch) {
+        Present { value: token } => token as String == "aarch64"
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
 test fn host_build_cache_provision_design_witnesses() -> Bool {
   design_witness_read_back_fails_closed_in_shell()
+    && design_witness_path_shadow_refuses_fail_closed()
+    && design_witness_red_control_widen_on_path_shadow_rejected_by_gate()
+    && design_witness_path_authority_observation_not_emitted_as_shell()
+    && design_witness_install_is_cited_not_package_manager()
+    && design_witness_unit_execstart_matches_install_path()
+    && design_witness_unit_is_foreground_supervised()
+    && design_witness_classifier_covers_every_cited_fragment()
+    && design_witness_classifier_is_a_fold_not_an_unrolled_chain()
+    && design_witness_fragment_words_are_shell_safe()
+    && design_witness_release_arch_token_is_fail_closed()
+    && design_witness_release_digest_is_fail_closed()
+    && design_witness_arch_unknown_host_refuses_realization()
+    && design_witness_known_arch_host_does_not_refuse_for_arch()
     && design_witness_unknown_catalog_refuses_at_gate()
     && design_witness_known_non_sccache_catalog_refuses_at_gate()
     && design_witness_known_non_sccache_catalog_refuses_at_verdict()

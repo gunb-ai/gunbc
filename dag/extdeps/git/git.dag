@@ -460,7 +460,11 @@ service git.Core {
 
   operation Show {
     input { ref: GitRef, path: FilePath }
-    output { content: String from "stdout" }
+    output {
+      content: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
     readonly
     transport shell { argv: ["git", "show", "{ref}:{path}"] }
     exit {

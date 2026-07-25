@@ -1,16 +1,20 @@
 module gunbc.host_build_cache_provision_script
 
-import std.types { String, Bool }
+import std.types { String, NonEmptyStr, Bool, List }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.crypto.hash { Digest }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import extdeps.cache.sccache {
-  sccache_fatal_error_log_fragment,
-  sccache_rustc_wrapper_exit_254_log_fragment,
-  sccache_failed_to_execute_compile_log_fragment,
+  sccache_misconfigured_log_fragments,
+  sccache_installed_binary_path,
+  sccache_install_script,
+  sccache_release_0_15_0,
 }
 
 data host_build_cache_provision_script_dissolution_trigger: String = "🟡 dissolve-on: host_build_cache_provision_script — concat-built systemd/sccache ensure shell; DISSOLVES WHEN bash-emit (#5828) realizes ProvisionBuildCache observe/ensure/read-back as typed host-effect argv and realize_provision_build_cache retires shell_exec_via_bash transport."
+
+data host_build_cache_provision_script_census_row_note: String = "CENSUS STANDING: docs/plans/shell-to-dag-residual-census-and-arc-completion.md §4.A keys this file as the builder for host_effect_realize.ProvisionBuildCache, action DECOMPOSE, sub-class A5 (srv* cluster, deferred by operator 2026-07-22 — real debt, NOT done; un-defer trigger is the operator). This site is RUNTIME-PRESENT (it realizes through host_effect_apply_gated on LocalShell/SshShell), so per that doc's routing decision its end state is a typed effect-plan with NO bash emitted — the six *_body builders below are the debt, not the design. Standing constraint while the row is deferred, stated precisely (review 42401 sharpened this): NEW emitted shell must be either a DEDUCTION or a cited-de-fork SWAP — never an unbounded, uncited addition. Two exact deltas this PR made, both accounted: (1) the sccache DE-FORK swap — `apt-get install sccache` + an `ExecStart=/usr/bin/sccache` unit went OUT, and the cited-tarball install invocation (sccache_install_script, one authority row) came IN; that is the §3 fork removal this PR exists to make, a swap that de-duplicates rather than grows. (2) `sudo -n loginctl enable-linger \"$USER\"` is genuinely NEW shell, not a swap — acknowledged here as growth rather than hidden: it is the one primitive that makes the already-selected user-scope systemd handler viable at all (a `--user` manager is torn down with the login otherwise), justified in build_cache_user_service_linger_note, and it is bounded (a single fixed leaf, not a corpus-denominated fold). What must NOT grow is the PATH-shadow OBSERVATION: the judgement went to gunbc.host_build_cache_provision (DaemonPathShadowed / RefusalPathShadowed + verdict fold, witnessed against a synthetic observation), and its live shell observation is STAGED, NOT emitted here — an earlier attempt folded `command -v sccache` lines into the two existing bodies, which kept the builder count at six but still grew the shell surface (review 42343 rejected that as a census regression). The observation lands when ProvisionBuildCache realizes as typed argv (dissolve-on #5828). Adding a *_body, or an uncited emitted-shell leaf that is neither a deduction nor a de-fork swap, is a census regression even when the behaviour it adds is correct. FOLLOW-UP #7206 delta (correctness swap, accounted): the unit's `ExecStart=... --start-server` became bare `ExecStart=...` + two `Environment=` lines (SCCACHE_START_SERVER=1 / SCCACHE_NO_DAEMON=1) — net +1 line, and NOT uncited growth: it is a swap toward the production ctrl-sccache.service invocation (the single authority the whole lane converges on), replacing a form live execution on srv3 proved is a Type=simple no-op (build_cache_unit_foreground_supervision_note). A correctness swap toward the cited production authority is the sanctioned shape, exactly like delta (1)."
 
 data host_build_cache_provision_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -21,172 +25,181 @@ data host_build_cache_provision_script_scaffold: Disposition = Scaffold {
   }
 }
 
-data build_cache_systemd_user_unit_path: String = ".config/systemd/user/sccache.service"
+data build_cache_install_authority_note: String = "The ensure arm installs sccache by calling the cited authority extdeps.cache.sccache.sccache_install_script (pinned release, per-arch sha256 verified, landing at sccache_installed_binary_path) — it does NOT hand-roll a package-manager install. Until 2026-07-24 this module ran `sudo -n apt-get install -y sccache` and wrote a unit with ExecStart=/usr/bin/sccache, a §3 fork of the same concept: P1:runner-deploy-slot installs the pinned tarball to /usr/local/bin and then P1b:build-cache-provision pointed its unit at a path that install never creates, so the daemon could not start and the read-back refused. Both the install and the unit now read ONE path row, so the two phases cannot disagree."
 
-data build_cache_systemd_user_unit_body: String = "[Unit]\nDescription=sccache compiler cache (gunbc host standup)\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/bin/sccache --start-server\nRestart=on-failure\n\n[Install]\nWantedBy=default.target\n"
+data build_cache_systemd_user_unit_path: String = "$HOME/.config/systemd/user/sccache.service"
+
+fn build_cache_systemd_user_unit_body() -> String {
+  join([
+    "[Unit]",
+    "Description=sccache compiler cache (gunbc host standup)",
+    "After=network.target",
+    "",
+    "[Service]",
+    "Type=simple",
+    "Environment=SCCACHE_START_SERVER=1",
+    "Environment=SCCACHE_NO_DAEMON=1",
+    join(["ExecStart=", sccache_installed_binary_path], ""),
+    "Restart=on-failure",
+    "",
+    "[Install]",
+    "WantedBy=default.target",
+    "",
+  ], "\n")
+}
+
+data build_cache_path_authority_note: String = "The PATH-shadow JUDGEMENT lives in the model — gunbc.host_build_cache_provision.DaemonPathShadowed / RefusalPathShadowed and the verdict fold that refuses it, proven by design_witness_path_shadow_refuses_fail_closed against a synthetic DaemonPathShadowed observation. Its LIVE OBSERVATION is STAGED, deliberately NOT emitted as hand-shell here: this file is an A5 `decompose` scaffold that the census pledges may SHRINK but must not GROW (dissolve-on #5828), and a `command -v sccache` observation folded into the bodies still GROWS the emitted shell surface — a census regression even though the model verdict it feeds is correct (review 42343 caught this; the earlier 'folded in, count six' defense counted *_body builders, not the shell surface). The observation lands when ProvisionBuildCache realizes as typed host-effect argv (this module's own dissolve-on): the resolve becomes a typed op (shell.Which.Check) and the comparison a typed predicate over captured values (the deploy-preflight `whoami` precedent: a negated StrEq, never a minted StrNeq). Until then the model carries the state and its refusal; only the live producer is deferred."
 
 fn build_cache_observe_stats_body() -> String {
-  concat(
-    "stats_rc=0\n",
-    concat(
-      "stats_out=\"$(sccache --show-stats 2>&1)\" || stats_rc=$?\n",
-      concat(
-        "if [ \"$stats_rc\" -eq 0 ]; then\n",
-        concat(
-          "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=ok\"\n",
-          concat(
-            "  printf '%s\\n' \"$stats_out\"\n",
-            "  exit 0\n",
-          )
-        )
-      )
-    )
+  join([
+    "stats_out=\"\"",
+    "stats_rc=0",
+    join(["if [ -x '", sccache_installed_binary_path, "' ]; then"], ""),
+    join(["  stats_out=\"$('", sccache_installed_binary_path, "' --show-stats 2>&1)\" || stats_rc=$?"], ""),
+    "else",
+    "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=absent\"",
+    "  stats_rc=127",
+    "fi",
+    "if [ \"$stats_rc\" -eq 0 ]; then",
+    "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=ok\"",
+    "  printf '%s\\n' \"$stats_out\"",
+    "  exit 0",
+    "fi",
+    "",
+  ], "\n")
+}
+
+fn build_cache_fragment_word(fragment: String) -> String {
+  join(["'", fragment, "'"], "")
+}
+
+fn build_cache_fragment_words() -> String {
+  join(
+    map(sccache_misconfigured_log_fragments, f => build_cache_fragment_word(fragment: f)),
+    " ",
   )
 }
+
+data build_cache_classify_fold_note: String = "The misconfigured-fragment classifier is a FOLD over the cited roster extdeps.cache.sccache.sccache_misconfigured_log_fragments, not one emitted branch per fragment. It was a hand-unrolled 3-way if/elif chain until 2026-07-24, which meant the emitter named each cited fragment individually and a fourth citation could not take effect without an edit here. The roster is now data the loop iterates: adding a fragment upstream changes the emitted word list and nothing else. Fragments are single-quoted as shell words, which is total only while no fragment contains a single quote — build_cache_fragment_words_are_shell_safe() is the construction check that keeps it so."
 
 fn build_cache_classify_failure_body() -> String {
-  concat(
-    concat(
-      concat(
-        "if printf '%s' \"$stats_out\" | grep -Fq ",
-        concat("\"", sccache_fatal_error_log_fragment),
-      ),
-      "\"; then\n",
-    ),
-    concat(
-      concat(
-        concat(
-          "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=misconfigured fragment=",
-          sccache_fatal_error_log_fragment,
-        ),
-        "\"\n",
-      ),
-      concat(
-        concat(
-          concat(
-            "elif printf '%s' \"$stats_out\" | grep -Fq ",
-            concat("\"", sccache_rustc_wrapper_exit_254_log_fragment),
-          ),
-          "\"; then\n",
-        ),
-        concat(
-          concat(
-            concat(
-              "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=misconfigured fragment=",
-              sccache_rustc_wrapper_exit_254_log_fragment,
-            ),
-            "\"\n",
-          ),
-          concat(
-            concat(
-              concat(
-                "elif printf '%s' \"$stats_out\" | grep -Fq ",
-                concat("\"", sccache_failed_to_execute_compile_log_fragment),
-              ),
-              "\"; then\n",
-            ),
-            concat(
-              concat(
-                concat(
-                  "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=misconfigured fragment=",
-                  sccache_failed_to_execute_compile_log_fragment,
-                ),
-                "\"\n",
-              ),
-              "else\n  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=unresponsive\"\nfi\n"
-            )
-          )
-        )
-      )
-    )
-  )
+  join([
+    "observe_class=unresponsive",
+    "observe_fragment=\"\"",
+    join(["for frag in ", build_cache_fragment_words(), "; do"], ""),
+    "  if printf '%s' \"$stats_out\" | grep -Fq \"$frag\"; then",
+    "    observe_class=misconfigured",
+    "    observe_fragment=\"$frag\"",
+    "    break",
+    "  fi",
+    "done",
+    "if [ \"$observe_class\" = misconfigured ]; then",
+    "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=misconfigured fragment=$observe_fragment\"",
+    "else",
+    "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=unresponsive\"",
+    "fi",
+    "",
+  ], "\n")
 }
 
-fn build_cache_ensure_daemon_body() -> String {
-  concat(
-    "if ! command -v sccache >/dev/null 2>&1; then\n",
-    concat(
-      "  sudo -n apt-get update -qq && sudo -n apt-get install -y sccache\n",
-      concat(
-        "fi\n",
-        concat(
-          concat("mkdir -p \"$(dirname ", build_cache_systemd_user_unit_path, ")\""),
-          concat(
-            "\n",
-            concat(
-              concat("cat > ", build_cache_systemd_user_unit_path, " <<'__GUNBC_SCCACHE_UNIT__'\n"),
-              concat(
-                build_cache_systemd_user_unit_body,
-                concat(
-                  "__GUNBC_SCCACHE_UNIT__\n",
-                  "systemctl --user daemon-reload\nsystemctl --user enable --now sccache.service\n",
-                )
-              )
-            )
-          )
-        )
-      )
-    )
-  )
+fn build_cache_ensure_daemon_body(arch_token: NonEmptyStr, digest: Digest) -> String {
+  join([
+    join(["if [ ! -x '", sccache_installed_binary_path, "' ]; then"], ""),
+    sccache_install_script(rel: sccache_release_0_15_0, arch: arch_token, digest: digest),
+    "fi",
+    join(["mkdir -p \"$(dirname \"", build_cache_systemd_user_unit_path, "\")\""], ""),
+    join(["cat > \"", build_cache_systemd_user_unit_path, "\" <<'__GUNBC_SCCACHE_UNIT__'"], ""),
+    build_cache_systemd_user_unit_body(),
+    "__GUNBC_SCCACHE_UNIT__",
+    "sudo -n loginctl enable-linger \"$USER\"",
+    "systemctl --user daemon-reload",
+    "systemctl --user enable --now sccache.service",
+    "",
+  ], "\n")
 }
 
-fn build_cache_read_back_body() -> String {
-  concat(
-    "if stats_out=\"$(sccache --show-stats 2>&1)\"; then\n",
-    concat(
-      "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=ok\"\n",
-      concat(
-        "  printf '%s\\n' \"$stats_out\"\n",
-        concat(
-          "  exit 0\n",
-          concat(
-            "else\n",
-            concat(
-              "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=FAILED sccache unhealthy after ensure\"\n",
-              concat(
-                "  printf '%s\\n' \"$stats_out\"\n",
-                "  exit 1\n",
-              )
-            )
-          )
-        )
-      )
-    )
-  )
+data build_cache_user_service_linger_note: String = "A `systemd --user` manager is torn down when the user's last session ends, so on a headless runner host an enabled user unit stops the moment the provisioning ssh connection closes — the daemon would be observed healthy by the read-back in the same connection and be gone before the first CI job. enable-linger keeps the manager running without a login, which is what makes the user-scope handler viable at all. It does NOT settle open question 1 of the srvN build-cache design (user service vs system service for the shared daemon) — that handler choice is still operator-open; this only makes the handler already selected in tree behave as modeled."
+
+fn build_cache_read_back_body(binary: String) -> String {
+  join([
+    join(["if stats_out=\"$('", binary, "' --show-stats 2>&1)\"; then"], ""),
+    "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=ok\"",
+    "  printf '%s\\n' \"$stats_out\"",
+    "  exit 0",
+    "else",
+    "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=FAILED sccache unhealthy after ensure\"",
+    "  printf '%s\\n' \"$stats_out\"",
+    "  exit 1",
+    "fi",
+    "",
+  ], "\n")
 }
 
-fn build_cache_provision_script_body() -> String {
-  concat(
-    "set -euo pipefail\n",
-    concat(
-      build_cache_observe_stats_body(),
-      concat(
-        build_cache_classify_failure_body(),
-        concat(
-          "printf '%s\\n' \"BuildCacheProvisionReceipt: ensure=starting\"\n",
-          concat(
-            build_cache_ensure_daemon_body(),
-            build_cache_read_back_body(),
-          )
-        )
-      )
-    )
-  )
+fn build_cache_provision_script_body(arch_token: NonEmptyStr, digest: Digest) -> String {
+  join([
+    "set -euo pipefail",
+    build_cache_observe_stats_body(),
+    build_cache_classify_failure_body(),
+    "printf '%s\\n' \"BuildCacheProvisionReceipt: ensure=starting\"",
+    build_cache_ensure_daemon_body(arch_token: arch_token, digest: digest),
+    build_cache_read_back_body(binary: sccache_installed_binary_path),
+  ], "\n")
 }
 
 fn build_cache_provision_read_back_fails_closed() -> Bool {
-  string_contains(
-    s: build_cache_read_back_body(),
-    pattern: "read_back=FAILED",
-  ) && string_contains(
-    s: build_cache_read_back_body(),
-    pattern: "exit 1",
-  ) && !string_contains(
-    s: build_cache_read_back_body(),
-    pattern: "stats_rc",
+  let body = build_cache_read_back_body(binary: sccache_installed_binary_path)
+  string_contains(s: body, pattern: "read_back=FAILED")
+    && string_contains(s: body, pattern: "exit 1")
+    && !string_contains(s: body, pattern: "stats_rc")
+}
+
+fn build_cache_fragment_words_are_shell_safe() -> Bool {
+  fold(
+    sccache_misconfigured_log_fragments,
+    init: true,
+    f: (acc, frag) => acc && !string_contains(s: frag, pattern: "'"),
   )
 }
 
-fn build_cache_provision_shell_script() -> String {
-  shell_exec_via_bash(body: build_cache_provision_script_body())
+fn build_cache_install_is_cited_not_package_manager() -> Bool {
+  let body = build_cache_provision_script_body(
+    arch_token: "aarch64" as NonEmptyStr,
+    digest: sccache_release_0_15_0.digest_aarch64,
+  )
+  string_contains(s: body, pattern: "github.com/mozilla/sccache/releases/download/")
+    && string_contains(s: body, pattern: sccache_release_0_15_0.version as String)
+    && !string_contains(s: body, pattern: "apt-get install")
+    && !string_contains(s: body, pattern: "/usr/bin/sccache")
+}
+
+fn build_cache_unit_execstart_matches_install_path() -> Bool {
+  string_contains(
+    s: build_cache_systemd_user_unit_body(),
+    pattern: join(["ExecStart=", sccache_installed_binary_path], ""),
+  )
+}
+
+data build_cache_unit_foreground_supervision_note: String = "The unit is Type=simple, so systemd tracks the ExecStart process AS the service — it MUST stay in the foreground. `sccache --start-server` DAEMONIZES and returns 0, so under Type=simple systemd sees the ExecStart exit cleanly and marks the unit `inactive (dead)` the instant it starts; the backgrounded server then idle-times-out unsupervised and Restart=on-failure never fires (the exit was success). Proven live on srv3 2026-07-25: the earlier `--start-server` form left the unit inactive with no sccache process, the daemon surviving only via sccache's own per-invocation auto-start — i.e. the unit was a no-op. This is the §5 specification-without-execution trap: the string witness that ExecStart equals the install path was green while the unit did nothing. The foreground form matches the production ctrl-sccache.service invocation (bare ExecStart + SCCACHE_START_SERVER=1 SCCACHE_NO_DAEMON=1 env, verified running month+ on srv1/srv2), reducing the §3 fork between the modeled unit and production rather than inventing a third shape. build_cache_unit_is_foreground_supervised makes the defective combo (Type=simple paired with a backgrounding --start-server) UNWRITABLE; the runtime is-active proof is the live srv3 re-provision (systemd --user is not runnable in the hermetic CI container, so the construction wall carries the CI grain and live execution carries the runtime grain)."
+
+fn build_cache_unit_is_foreground_supervised() -> Bool {
+  let body = build_cache_systemd_user_unit_body()
+  string_contains(s: body, pattern: "Type=simple")
+    && string_contains(s: body, pattern: "SCCACHE_START_SERVER=1")
+    && string_contains(s: body, pattern: "SCCACHE_NO_DAEMON=1")
+    && !string_contains(s: body, pattern: "--start-server")
+}
+
+fn build_cache_classifier_covers_every_cited_fragment() -> Bool {
+  fold(
+    sccache_misconfigured_log_fragments,
+    init: true,
+    f: (acc, frag) =>
+      acc && string_contains(s: build_cache_classify_failure_body(), pattern: frag),
+  )
+}
+
+fn build_cache_provision_shell_script(arch_token: NonEmptyStr, digest: Digest) -> String {
+  shell_exec_via_bash(
+    body: build_cache_provision_script_body(arch_token: arch_token, digest: digest),
+  )
 }
