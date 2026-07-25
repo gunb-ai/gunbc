@@ -1,10 +1,6 @@
 module v2.test.claim.trait_derive_completeness_predicate
 
 import v2.compiler.trait_derive_completeness {
-  ReprDeriveAdd,
-  ReprDeriveClone,
-  ReprDeriveOrd,
-  ReprDeriveSerialize,
   TraitDeriveCompletenessIncomplete,
   TraitDeriveCompletenessSatisfied,
   repr_grounding_derive_completeness_predicate_for_elem,
@@ -14,10 +10,14 @@ import v2.compiler.trait_derive_completeness {
   trait_derive_int_kernel_type_node
 }
 import std.trait_derive_shape {
+  ReprDeriveAdd,
+  ReprDeriveClone,
   ReprDeriveElemKernelString,
   ReprDeriveElemNullaryEnumCopy,
   ReprDeriveElemPayloadCoproduct,
   ReprDeriveElemUnknown,
+  ReprDeriveOrd,
+  ReprDeriveSerialize,
   payload_coproduct_derive_traits,
   repr_grounding_derive_completeness_predicate
 }
