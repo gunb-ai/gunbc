@@ -5783,22 +5783,18 @@ fn trace_emit(channel: OutputChannel, line: &str) {
 // `gunbc.output_policy` ShellTrace decision (Suppressed / Condensed / Full)
 // rather than re-deriving it from verbosity — keeps CI logs readable instead of
 // dumping every `sh -c` script.
-/// Collapse an argv into one readable line — runs of whitespace become a single space —
-/// so a multiline `sh -c` script reads as one command. Shared by the Ambient pre-spawn
-/// echo (capped) and the Anomaly failure block (uncapped: an anomaly expands fully).
-fn shell_argv_collapsed(argv: &[String]) -> String {
-    argv.join(" ")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 fn render_shell_trace(argv: &[String]) {
     match output_decision(OutputChannel::ShellTrace) {
         OutputDecision::Suppressed => {}
         OutputDecision::Full => eprintln!("[shell] {}", argv.join(" ")),
         OutputDecision::Condensed => {
-            let collapsed = shell_argv_collapsed(argv);
+            // Collapse newlines/runs of whitespace into a single readable line,
+            // then truncate so a multiline `sh -c` script is one tidy summary.
+            let collapsed: String = argv
+                .join(" ")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
             // Fallback column bound (no Viewport at the trace site); the single
             // authority is `gunbc.output_policy.shell_trace_summary_max_columns`.
             const MAX: usize = 100;
@@ -5844,46 +5840,30 @@ fn render_shell_completion_trace(
     stdout_bytes: usize,
     stderr: &[u8],
     wall: std::time::Duration,
-    argv: &[String],
 ) {
-    // Routine count line — Ambient (ShellTrace channel): silent at Normal, Verbose-only.
     trace_emit(
         OutputChannel::ShellTrace,
         &shell_completion_trace_line(exit_code, stdout_bytes, stderr.len(), wall),
     );
     let disposition = effect_stream_disposition(expected, exit_code);
-    if let Some(block) = shell_completion_stderr_trace_block(disposition, exit_code, stderr, argv) {
-        // Anomaly — surfaced regardless of the ShellTrace channel decision. The disposition
-        // (SurfaceContent) is the sole gate, so the routine echo going silent at Normal
-        // cannot silence a failure. Un-dimmed and un-grouped: an anomaly expands, and at
-        // Normal grouping is inactive (both trace channels Suppressed) so it stands alone.
-        eprintln!("{block}");
+    if let Some(block) = shell_completion_stderr_trace_block(disposition, exit_code, stderr) {
+        trace_emit(OutputChannel::ShellTrace, &block);
     }
 }
 
-/// The failure block for a diverging host effect — the Anomaly half of the shell trace,
-/// gated by the effect-stream `disposition` ALONE (not the `ShellTrace` channel), so
-/// suppressing the routine Ambient echo at Normal can never silence a failure (§5). Two
-/// upgrades over borrowing identity from the now-silent pre-spawn echo:
-///   1. SELF-DESCRIBING — carries its own `$ <argv>`, so the failing command never scrolls
-///      away from its stderr (the pre-spawn echo is Ambient and gone at Normal).
-///   2. SURFACES ON EMPTY STDERR — the routine `[shell] done exit=…` count that used to
-///      carry the exit code is now silent at Normal, so this block is the SOLE failure
-///      signal and must name the exit even when the command wrote nothing to stderr.
-/// Returns `None` off `SurfaceContent` (routine/suppressed). Kept pure (no emit) so the
-/// surfacing decision is unit-testable with a RED control.
+/// Pure tail-bounding of captured stderr for the completion trace. Returns `None` when the
+/// disposition is not `SurfaceContent`, or when there is no stderr to surface; `Some(block)`
+/// is the `[shell] stderr` diagnostic, its content tail-bounded with a leading elision marker
+/// when it exceeds the cap and every subject line guarded so relayed text cannot mint workflow
+/// commands in the parent run. Kept pure (no `trace_emit`) so the surfacing decision is
+/// unit-testable with a RED control.
 fn shell_completion_stderr_trace_block(
     disposition: StreamDisposition,
     exit_code: i32,
     stderr: &[u8],
-    argv: &[String],
 ) -> Option<String> {
-    if disposition != StreamDisposition::SurfaceContent {
+    if disposition != StreamDisposition::SurfaceContent || stderr.is_empty() {
         return None;
-    }
-    let header = format!("[shell] $ {} (exit={exit_code})", shell_argv_collapsed(argv));
-    if stderr.is_empty() {
-        return Some(header);
     }
     const MAX_STDERR_TRACE: usize = 16384;
     let (elided, tail) = if stderr.len() > MAX_STDERR_TRACE {
@@ -5900,7 +5880,7 @@ fn shell_completion_stderr_trace_block(
         String::new()
     };
     Some(format!(
-        "{header}:\n{prefix}{}",
+        "[shell] stderr (exit={exit_code}):\n{prefix}{}",
         // Trailing newlines are stripped before guarding so a subject whose stderr
         // ends in `\n` (almost all of them) does not render a stray guard-only line.
         // This is presentation of the block, not a change to the guard rule: the
@@ -6030,7 +6010,6 @@ fn dispatch_shell(
             output.stdout.len(),
             &output.stderr,
             wall_start.elapsed(),
-            &argv,
         );
         output
     } else {
@@ -6047,7 +6026,6 @@ fn dispatch_shell(
             output.stdout.len(),
             &output.stderr,
             wall_start.elapsed(),
-            &argv,
         );
         output
     };
@@ -10155,11 +10133,6 @@ mod shell_completion_trace_tests {
         StreamDisposition::SurfaceContent
     }
 
-    /// An owned argv from string literals (the failure block now carries its own).
-    fn av(parts: &[&str]) -> Vec<String> {
-        parts.iter().map(|s| s.to_string()).collect()
-    }
-
     #[test]
     fn shell_completion_trace_line_formats_exit_stdout_stderr_wall() {
         let line = shell_completion_trace_line(0, 1234, 56, Duration::from_millis(5150));
@@ -10171,17 +10144,10 @@ mod shell_completion_trace_tests {
 
     #[test]
     fn stderr_block_surfaces_content_on_nonzero_exit() {
-        // Self-describing: the block carries its own `$ <argv>` — the failing command
-        // never scrolls away from its stderr, and it is not borrowed from the pre-spawn
-        // echo (Ambient, silent at Normal).
-        let block = shell_completion_stderr_trace_block(
-            surfacing(),
-            101,
-            b"error: manifest not found\n",
-            &av(&["cargo", "build"]),
-        )
-        .expect("non-zero exit with stderr must surface a diagnostic block");
-        assert!(block.starts_with("[shell] $ cargo build (exit=101):\n"));
+        let block =
+            shell_completion_stderr_trace_block(surfacing(), 101, b"error: manifest not found\n")
+                .expect("non-zero exit with stderr must surface a diagnostic block");
+        assert!(block.starts_with("[shell] stderr (exit=101):\n"));
         assert!(block.contains("error: manifest not found"));
     }
 
@@ -10189,13 +10155,13 @@ mod shell_completion_trace_tests {
     fn stderr_block_none_when_disposition_is_not_surface_content() {
         // RED control: the block is gated on the .dag disposition, not on a local
         // `exit != 0` re-derivation — a non-surfacing disposition yields nothing even
-        // with a non-zero exit and non-empty stderr.
+        // with a non-zero exit and non-empty stderr, and an empty stderr yields
+        // nothing even when the disposition says surface.
         assert_eq!(
             shell_completion_stderr_trace_block(
                 StreamDisposition::SummarizeCounts,
                 1,
-                b"error: real failure\n",
-                &av(&["git", "status"]),
+                b"error: real failure\n"
             ),
             None
         );
@@ -10203,61 +10169,20 @@ mod shell_completion_trace_tests {
             shell_completion_stderr_trace_block(
                 StreamDisposition::StreamSuppressed,
                 1,
-                b"error: real failure\n",
-                &av(&["git", "status"]),
+                b"error: real failure\n"
             ),
             None
         );
-    }
-
-    #[test]
-    fn stderr_block_surfaces_on_surface_content_even_with_empty_stderr() {
-        // §5 upgrade + RED control. The routine `[shell] done exit=…` count that used to
-        // carry the exit code is now Ambient (ShellTrace, silent at Normal), so on
-        // SurfaceContent this block is the SOLE failure signal and must name the command +
-        // exit even when the command wrote nothing to stderr — a failing effect is never
-        // silent. The OLD behavior returned None here (`stderr.is_empty()` short-circuit),
-        // which would silence an empty-stderr failure at Normal now that the count is gone.
-        let block = shell_completion_stderr_trace_block(surfacing(), 1, b"", &av(&["printenv", "MISSING"]))
-            .expect("a failing effect with empty stderr must still surface its identity");
-        assert_eq!(block, "[shell] $ printenv MISSING (exit=1)");
-    }
-
-    #[test]
-    fn at_normal_a_failing_effect_surfaces_its_command_a_passing_one_is_silent() {
-        // The §5 proof for the shell-echo split: the routine `$ argv`/`[shell] done` trace
-        // is Ambient (ShellTrace Suppressed at Normal), but a FAILURE is Anomaly and must
-        // still surface — self-describingly. Composes the .dag disposition (ExpectSuccess ×
-        // exit → the Normal four corners) with the block; the uninstalled fallback mirrors
-        // Normal. GREEN control: a passing effect → SummarizeCounts → no block (silent).
         assert_eq!(
-            shell_completion_stderr_trace_block(
-                effect_stream_disposition(ExpectedOutcome::ExpectSuccess, 0),
-                0,
-                b"",
-                &av(&["printenv", "PATH"]),
-            ),
+            shell_completion_stderr_trace_block(surfacing(), 1, b""),
             None
         );
-        // Discriminating RED: a failing effect → SurfaceContent → surfaces `$ <argv>` +
-        // stderr even though the pre-spawn echo went silent. If the split ever routes the
-        // block back through the suppressed ShellTrace channel (silencing the failure) or
-        // drops the command identity, this reds.
-        let block = shell_completion_stderr_trace_block(
-            effect_stream_disposition(ExpectedOutcome::ExpectSuccess, 1),
-            1,
-            b"fatal: not a git repository\n",
-            &av(&["git", "rev-parse", "--show-toplevel"]),
-        )
-        .expect("a failing effect must surface at Normal");
-        assert!(block.starts_with("[shell] $ git rev-parse --show-toplevel (exit=1):"));
-        assert!(block.contains("fatal: not a git repository"));
     }
 
     #[test]
     fn stderr_block_tail_bounds_and_marks_elision() {
         let big = vec![b'x'; 16384 + 500];
-        let block = shell_completion_stderr_trace_block(surfacing(), 1, &big, &av(&["cargo", "build"]))
+        let block = shell_completion_stderr_trace_block(surfacing(), 1, &big)
             .expect("oversized stderr surfaces");
         assert!(block.contains("<500 earlier stderr bytes elided>"));
         // Only the 16384-byte tail is carried, not the full 16884-byte body: the trailing
@@ -10275,7 +10200,6 @@ mod shell_completion_trace_tests {
             surfacing(),
             1,
             b"::error::build verification: artifact absent\n::warning::next\n",
-            &av(&["sh", "-c", "build"]),
         )
         .expect("failing effect surfaces its stderr");
         for line in block.lines().skip(1) {
