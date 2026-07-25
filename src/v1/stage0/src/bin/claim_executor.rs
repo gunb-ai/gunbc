@@ -3222,6 +3222,120 @@ mod tests {
         );
     }
 
+    fn run_seed_psi_hold_line(
+        source_roots: &[String],
+        avg10_bp: u64,
+        emoji: bool,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_seed_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let out = run_in_context_with_args(
+            &ctx,
+            "seed_psi_hold_line",
+            &[
+                (Some("avg10_bp".to_string()), Value::Int(avg10_bp as i64)),
+                (Some("emoji".to_string()), Value::Bool(emoji)),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    fn run_seed_high_water_hold_line(
+        source_roots: &[String],
+        current_bytes: u64,
+        high_water_bytes: u64,
+        emoji: bool,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_seed_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let out = run_in_context_with_args(
+            &ctx,
+            "seed_high_water_hold_line",
+            &[
+                (
+                    Some("current_bytes".to_string()),
+                    Value::Int(current_bytes as i64),
+                ),
+                (
+                    Some("high_water_bytes".to_string()),
+                    Value::Int(high_water_bytes as i64),
+                ),
+                (Some("emoji".to_string()), Value::Bool(emoji)),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    // Governor flip byte-oracle: HoldReason → ci_hold_cause_text mirrors must stay
+    // byte-equal to seed_psi_hold_line / seed_high_water_hold_line.
+    #[test]
+    fn governor_hold_mirrors_match_seed_oracle() {
+        use v1_compiler::memory_governor::{
+            render_governor_hold_line_mirror, HoldReason,
+        };
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        // 37.5% → 3750 basis points
+        let psi_oracle = run_seed_psi_hold_line(&roots, 3750, true)
+            .expect("seed_psi_hold_line must resolve and render");
+        let psi_mirror = render_governor_hold_line_mirror(
+            &HoldReason::PsiPressure { avg10: 37.5 },
+            true,
+        );
+        assert_eq!(
+            psi_oracle, psi_mirror,
+            "psi hold mirror must be byte-equal to seed oracle"
+        );
+        assert!(
+            psi_oracle.starts_with('⏳') && psi_oracle.contains("blocked on memory reclaim"),
+            "psi hold shape: {psi_oracle:?}"
+        );
+
+        let hw_oracle =
+            run_seed_high_water_hold_line(&roots, 8_589_934_592, 10_737_418_240, true)
+                .expect("seed_high_water_hold_line must resolve and render");
+        let hw_mirror = render_governor_hold_line_mirror(
+            &HoldReason::CurrentHighWater {
+                current: 8_589_934_592,
+                high_water: 10_737_418_240,
+            },
+            true,
+        );
+        assert_eq!(
+            hw_oracle, hw_mirror,
+            "high-water hold mirror must be byte-equal to seed oracle"
+        );
+        assert!(
+            hw_oracle.contains("blocked on the memory high-water line"),
+            "high-water hold shape: {hw_oracle:?}"
+        );
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn run_seed_heartbeat_line(
         source_roots: &[String],

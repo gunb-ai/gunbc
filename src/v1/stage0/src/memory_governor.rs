@@ -45,6 +45,38 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+/// Kept so `gunbc.observation_emit_census` roster hygiene cannot go stale after the
+/// raw `[governor]` key=value shapes dissolve into the observation projection.
+#[allow(dead_code)]
+pub const GOVERNOR_CENSUS_MARKER: &str = "[governor]";
+
+fn governor_emoji() -> bool {
+    std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+}
+
+fn mirror_ci_tenths_text(tenths: u64) -> String {
+    format!("{}.{}", tenths / 10, tenths % 10)
+}
+
+fn mirror_ci_human_bytes(bytes: u64) -> String {
+    let tenths = (bytes.saturating_mul(10)) / 1_073_741_824;
+    format!("{} GiB", mirror_ci_tenths_text(tenths))
+}
+
+fn mirror_ci_human_percent(bp: u64) -> String {
+    format!("{}%", mirror_ci_tenths_text(bp / 10))
+}
+
+fn render_governor_info_line(text: &str, emoji: bool) -> String {
+    let glyph = if emoji { "🔄" } else { "◐" };
+    format!("{glyph} {text}")
+}
+
+fn render_governor_done_line(text: &str, emoji: bool) -> String {
+    let glyph = if emoji { "✅" } else { "✓" };
+    format!("{glyph} {text}")
+}
+
 /// Multiplicative-decrease divisor is 2 (halve), additive increase is +1 — classic AIMD.
 /// The remaining thresholds are POLICY (like TCP's), not measurements of any workload:
 /// they scale with the budget or are dimensionless, so no per-corpus constant returns.
@@ -115,6 +147,8 @@ pub enum HoldReason {
 
 impl HoldReason {
     fn describe(&self) -> String {
+        // Internal diagnostic text retained for tests/debug; log projection goes through
+        // `render_governor_hold_line_mirror` (ci_hold_cause_text authority).
         match self {
             HoldReason::WindowFull { active, target } => {
                 format!("window full (active={active} target={target})")
@@ -144,6 +178,15 @@ impl HoldReason {
             ),
         }
     }
+    fn emit_hold_line(&self, old_target: usize, new_target: usize) -> String {
+        let _ = GOVERNOR_CENSUS_MARKER;
+        let base = render_governor_hold_line_mirror(self, governor_emoji());
+        if old_target != new_target {
+            format!("{base} — target_width {old_target}→{new_target}")
+        } else {
+            base
+        }
+    }
     fn is_memory_creep(&self) -> bool {
         !matches!(
             self,
@@ -153,6 +196,39 @@ impl HoldReason {
                 | HoldReason::AdmissionCeiling { .. }
         )
     }
+}
+
+/// Mirror of `gunbc.observation_ci_render.ci_hold_cause_text` over the seed's HoldReason
+/// (lockstep with SchedulerHold). Proven byte-equal to the seed oracle for the two
+/// narrated arms (PsiPressure, CurrentHighWater); other variants share the model's
+/// generic "blocked on scheduler admission" text.
+pub fn mirror_ci_hold_cause_text(hold: &HoldReason) -> String {
+    match hold {
+        HoldReason::CurrentHighWater {
+            current,
+            high_water,
+        } => format!(
+            "blocked on the memory high-water line ({} of {})",
+            mirror_ci_human_bytes(*current),
+            mirror_ci_human_bytes(*high_water)
+        ),
+        HoldReason::PsiPressure { avg10 } => {
+            // avg10 is percent with one decimal; basis points = percent × 100.
+            let bp = (*avg10 * 100.0).round() as u64;
+            format!(
+                "blocked on memory reclaim (pressure {})",
+                mirror_ci_human_percent(bp)
+            )
+        }
+        _ => "blocked on scheduler admission".to_string(),
+    }
+}
+
+/// Mirror of `gunbc.observation_seed_render.seed_governor_hold_line` —
+/// `ci_hold_cause_text ∘ StatusBlocked ∘ ci_render_line`.
+pub fn render_governor_hold_line_mirror(hold: &HoldReason, emoji: bool) -> String {
+    let glyph = if emoji { "⏳" } else { "◷" };
+    format!("{glyph} {}", mirror_ci_hold_cause_text(hold))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -258,17 +334,16 @@ struct HardEvent {
 }
 
 impl HardEvent {
-    fn describe(&self) -> String {
+    fn emit_line(&self) -> String {
+        let _ = GOVERNOR_CENSUS_MARKER;
+        let glyph = if governor_emoji() { "⏳" } else { "◷" };
         let cause = if self.budget_exceeded {
-            "memory.current exceeded the declared budget".to_string()
+            "blocked on the declared memory budget"
         } else {
-            format!(
-                "memory.events high +{} oom_kill +{}",
-                self.high_delta, self.oom_kill_delta
-            )
+            "blocked on memory reclaim"
         };
         format!(
-            "[governor] hard back-off: {cause} — target_width {}→{} (workers drain between units)",
+            "{glyph} {cause} — target_width {}→{}",
             self.old_target, self.new_target
         )
     }
@@ -665,18 +740,25 @@ impl MemoryGovernor {
             budget_source: source_label,
             max_width: max_width.max(1),
         };
+        let _ = GOVERNOR_CENSUS_MARKER;
         eprintln!(
-            "[governor] adaptive width (AIMD): budget={} source={} max_width={} sensors={}",
-            limits
-                .budget_bytes
-                .map(|b| b.to_string())
-                .unwrap_or_else(|| "unknown".into()),
-            limits.budget_source,
-            limits.max_width,
-            sensor_dir
-                .as_ref()
-                .map(|d| d.display().to_string())
-                .unwrap_or_else(|| "none (creep checks inert)".into()),
+            "{}",
+            render_governor_info_line(
+                &format!(
+                    "governor adaptive width — budget={} source={} max_width={} sensors={}",
+                    limits
+                        .budget_bytes
+                        .map(|b| b.to_string())
+                        .unwrap_or_else(|| "unknown".into()),
+                    limits.budget_source,
+                    limits.max_width,
+                    sensor_dir
+                        .as_ref()
+                        .map(|d| d.display().to_string())
+                        .unwrap_or_else(|| "none (creep checks inert)".into()),
+                ),
+                governor_emoji()
+            )
         );
         MemoryGovernor {
             limits,
@@ -695,16 +777,11 @@ impl MemoryGovernor {
         let new_target = core.target_width;
         drop(core);
         if let Some(h) = hard {
-            eprintln!("{}", h.describe());
+            eprintln!("{}", h.emit_line());
         }
         if let AdmitDecision::Hold(reason) = &decision {
             if reason.is_memory_creep() && !was_holding {
-                eprintln!(
-                    "[governor] creep back-off: {} — target_width {}→{} (admissions held; workers drain between units)",
-                    reason.describe(),
-                    old_target,
-                    new_target
-                );
+                eprintln!("{}", reason.emit_hold_line(old_target, new_target));
             }
         }
         if let AdmitDecision::Admit {
@@ -712,7 +789,11 @@ impl MemoryGovernor {
         } = &decision
         {
             eprintln!(
-                "[governor] progress floor: signals hot but zero workers active — admitting one (counted forced_serial)"
+                "{}",
+                render_governor_info_line(
+                    "governor progress floor — signals hot but zero workers active; admitting one (counted forced_serial)",
+                    governor_emoji()
+                )
             );
         }
         decision
@@ -749,12 +830,11 @@ impl MemoryGovernor {
         let (hard, creep_backoff) = note_completion(&mut core, &sig, &self.limits, kind);
         drop(core);
         if let Some(h) = hard {
-            eprintln!("{}", h.describe());
+            eprintln!("{}", h.emit_line());
         }
         if let Some((old, new)) = creep_backoff {
-            eprintln!(
-                "[governor] creep back-off (observed at completion): target_width {old}→{new} (admissions held; workers drain between units)"
-            );
+            let glyph = if governor_emoji() { "⏳" } else { "◷" };
+            eprintln!("{glyph} blocked on scheduler admission — target_width {old}→{new}");
         }
     }
 
@@ -768,7 +848,14 @@ impl MemoryGovernor {
         if !had_share {
             if let Some(s) = share {
                 eprintln!(
-                    "[governor] measured worker share: {s} bytes (first slot's cost over the pool baseline) — headroom gate armed"
+                    "{}",
+                    render_governor_info_line(
+                        &format!(
+                            "governor measured worker share — {} (first slot cost over pool baseline); headroom gate armed",
+                            mirror_ci_human_bytes(s)
+                        ),
+                        governor_emoji()
+                    )
                 );
             }
         }
@@ -803,32 +890,36 @@ impl MemoryGovernor {
 
     /// The end-of-run receipt: the counted degradations (§5 — observable, prioritizable).
     pub fn receipt_line(&self) -> String {
+        let _ = GOVERNOR_CENSUS_MARKER;
         let core = self.core.lock().unwrap();
-        format!(
-            "[governor] receipt: budget={} source={} max_width_reached={} admissions={} \
+        render_governor_done_line(
+            &format!(
+                "governor receipt — budget={} source={} max_width_reached={} admissions={} \
              width_growths={} creep_backoffs={} pacing_holds={} headroom_holds={} \
              ceiling_holds={} hard_backoffs={} budget_exceeded={} forced_serial={} \
              peak_current={}",
-            self.limits
-                .budget_bytes
-                .map(|b| b.to_string())
-                .unwrap_or_else(|| "unknown".into()),
-            self.limits.budget_source,
-            core.max_width_reached,
-            core.admissions,
-            core.width_growths,
-            core.creep_backoffs,
-            core.pacing_holds,
-            core.headroom_holds,
-            core.ceiling_holds,
-            core.hard_backoffs,
-            core.budget_exceeded_backoffs,
-            core.forced_serial_admissions,
-            if core.peak_current_bytes == 0 {
-                "unreadable".to_string()
-            } else {
-                core.peak_current_bytes.to_string()
-            },
+                self.limits
+                    .budget_bytes
+                    .map(|b| b.to_string())
+                    .unwrap_or_else(|| "unknown".into()),
+                self.limits.budget_source,
+                core.max_width_reached,
+                core.admissions,
+                core.width_growths,
+                core.creep_backoffs,
+                core.pacing_holds,
+                core.headroom_holds,
+                core.ceiling_holds,
+                core.hard_backoffs,
+                core.budget_exceeded_backoffs,
+                core.forced_serial_admissions,
+                if core.peak_current_bytes == 0 {
+                    "unreadable".to_string()
+                } else {
+                    core.peak_current_bytes.to_string()
+                },
+            ),
+            governor_emoji(),
         )
     }
 }
