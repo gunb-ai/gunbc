@@ -8,6 +8,14 @@ NamespaceOnlyY). Ground truth for the residue is the `compile_clean_diagnostic_h
 with the policy flipped ON in an isolated worktree, **not** the `resolution_divergence_census`
 proxy (self-flagged unsound — a compile-path raw-count).
 
+> **STATUS 2026-07-24 — residue = 0, LANDED.** The full 90 → 0 burn-down is done by execution.
+> The doable-now lane (62) landed via #7156 (homonyms) + #7157 (consolidations); the four two-std
+> forks (28) landed via **#7165** (proud-ibex-240 — Char + the FreeMonoid emit-seam relocation,
+> then Set/Map/Byte authority-collapse). Flip-oracle against merged main (isolated worktree, policy
+> ON): **`HISTOGRAM_TOTAL_HARD 0`**. The corpus is now **unambiguous under NamespaceOnlyY** — i.e.
+> flip-ready. What remains is no longer *de-forking*; it is the flip itself and the deletion it
+> unblocks — see **[Post-0 roadmap](#post-0-roadmap--flip--global-deletion-two-dispatches)** below.
+
 ## Residue state
 
 | stage | hard reds | what clears them |
@@ -16,10 +24,14 @@ proxy (self-flagged unsound — a compile-path raw-count).
 | − §13 mechanism fix (#7147) | (was +32 InternalError) | two §13-unaware `None`-arms in `04_infer` now route through `AmbiguousReference`, not `inference_error` |
 | − doable-now lane | **−62** | homonym renames (42) + local/DSL consolidations (20) — no Root-A dependency |
 | = two-std forks left | **28** | `Set` (10) · `Map` (9) · `Byte` (5) · `Char` (4) |
-| target | **0** | flip default ON, histogram 0-hard = GREEN |
+| − two-std de-fork (#7165) | **−28** | Char + FreeMonoid seam relocation, then Set/Map/Byte authority-collapse (delete v2-local dup, import from std) |
+| = **LANDED** | **0** | flip-oracle on merged main: `HISTOGRAM_TOTAL_HARD 0` ✓ |
 
-The flip stays **honestly red** on these four until they consolidate — no qualify-bridge
-(operator, 2026-07-23).
+The flip stayed **honestly red** on these four until they consolidated — no qualify-bridge
+(operator, 2026-07-23). All four are now collapsed to a single authority, so the residue is 0 by
+execution. **Key lesson banked:** a §13 red clears only when the name has exactly **one reachable
+definition** — aligning the two models *structurally* is not enough; one side's def must be
+deleted/redirected.
 
 ## The key insight
 
@@ -129,10 +141,107 @@ before any owner touches the emit seam. When the four land: flip
 `NameResolutionPolicy = NamespaceOnlyY` on, run `compile_clean_diagnostic_histogram`, confirm 0
 hard.
 
-**Verification note:** "reaches 0" is trust-but-unverified — one flip-on dry-run after the four
-land confirms no fifth name hides in the 28 before flipping the default. clever-pike-49 owns that
-flip-oracle verification (flips the bool in an isolated worktree, runs the histogram); no worker
-flips the bool themselves.
+**Verification note (DISCHARGED).** "reaches 0" was trust-but-unverified — one flip-on dry-run
+after the four landed was owed to confirm no fifth name hid in the 28. clever-pike-49 ran it against
+merged main (`b4b433a27b`) in an isolated worktree with the bool flipped ON:
+`HISTOGRAM_TOTAL_HARD 0`. No fifth name. The corpus is flip-ready.
 
 ---
-*Scoped by execution against main; residue 10+9+5+4 = 28; edges adversarially verified.*
+
+## Post-0 roadmap — flip → global deletion (two dispatches)
+
+Residue = 0 means de-forking is *done*. Two dispatches remain, and **only two** — this section
+draws them explicitly because the number is the point.
+
+### Why exactly two (the anti-infinity guarantee)
+
+The open concern was infinite regress: between "flip-ready" and "import is deleted" there is an
+unbounded chain of *minimization/micro-scoping* steps we could keep inventing (the Gojo-infinity
+worry). The defense is **decidability** (DESIGN §5 — "never" is a trap; check the wall vs the
+ratchet). Each dispatch below has a **decidable done-line** — a wall, not a ratchet — so it
+terminates and cannot be sub-divided into more dispatches without one of those done-lines already
+being green:
+
+- **Dispatch 1 done-line:** with imports *stripped in a throwaway worktree*, the corpus still
+  compiles clean under NamespaceOnlyY. That green **proves the imports are already redundant** —
+  every reference binds by containment, not by its import line. Decidable: the histogram is 0 or it
+  is not.
+- **Dispatch 2 done-line:** `import` is a **parse error**. Decidable: the grammar production is
+  present or it is absent.
+
+There is no third decidable wall between them, so there is no room for a third dispatch. Any
+"further minimization" would either be pre-empted by Dispatch 1's done-line (already redundant) or
+be post-deletion cleanup (cosmetic, not a blocker).
+
+### Operator ruling — INLINE + GLOBAL (2026-07-24)
+
+Supersedes the older per-subtree / file-alias wording in
+[namespace-resolution-design.md §8](namespace-resolution-design.md):
+
+- **INLINE qualification, not file-level aliases.** Where a reference needs help to resolve without
+  its import, qualify it **at the use site** (`container.member`, e.g. `medium.Foo`) — do *not*
+  introduce a file-level alias / `using` declaration. Inline is Rule-1-minimal and survives when
+  modules stop being files; a file-scoped alias is a naming authority that only exists because files
+  do, and would have to be dissolved again the moment the storage-realization stops being 1 file =
+  1 module (the module-identity-vs-storage lane). (This is C++-style qualification, *not* a
+  C++ `using namespace` alias.)
+- **GLOBAL flip, not per-subtree rollout.** Because residue = 0, the *whole* corpus is unambiguous
+  under NamespaceOnlyY at once — flip the policy default globally. No incremental subtree staging
+  (that staging only existed to bound a still-red corpus; there is nothing left to bound).
+
+### Dispatch 1 — the flip
+
+Turn on namespace-only resolution and inline-qualify the references that need it to bind without
+their import.
+
+- **Mechanism:** flip `NAME_RESOLUTION_POLICY_NAMESPACE_ONLY` default `false → true`
+  (`src/v1/stage0/src/v1_rt.rs`). Under NamespaceOnlyY a bare name binds by walking the containment
+  tree, not by an import list — so every reference that today resolves *only because* an import
+  dragged its target into the pool (#6985 Class-B pool-membership-coincidence) must instead be
+  written `container.member` at the use site.
+- **Worklist = the forked-name refs the *witness corpus* exposes (NOT the policy census).**
+  Established by execution, correcting an earlier guess: under the flip a bare *unlisted* ref only
+  breaks when its name is **forked** (2+ reachable defs) and the compilation closure sees both.
+  Almost all forks are benign (the ~30-name integer tower is referenced in disjoint closures). The
+  ambiguous ones surface in the **witness corpus** — lens/test files whose closure sees both defs —
+  e.g. `TerminationProof`/`RankingDimension` across ~56 witness files (see
+  [formal-concepts extdeps grounding](formal-concepts-extdeps-grounding.md)) and `Nat`/`Zero`/`Succ`
+  across ~26. The policy census (the sibling dispatch's `UnlistedImportUse` TSV) is **not** this
+  worklist — it is `UnlistedImportUse`-scoped, resolves each name to one definer, and does not
+  contain the forked refs (a *listed* import to a forked name still breaks under the flip).
+- **The `compile_clean_diagnostic_histogram` is a *partial* oracle.** Proven by execution: strip the
+  qualifications, keep the flip on, re-run → still `HISTOGRAM_TOTAL_HARD 0`. The histogram and the
+  floor's compile-clean *gate* share an exclusion scope (`whole_tree_strict_resolve_exclusion_substrings`:
+  `/test/`, several `lens/*`) that never sees the ambiguous closures. So `residue = 0` held for
+  compile-clean scope but not the whole tree.
+- **Acceptance (the done-line) = the FLOOR / `ci` job green under the flip** (the whole witness
+  corpus), *not* the histogram. That is the consumer that compiles the lens/test files with both
+  forked defs in closure. clever-pike-49 owns the flip-oracle verification; the histogram remains a
+  fast compile-clean-scope check, the floor the completeness gate.
+- **Not in scope:** deleting the actual import lines or the import grammar — that is Dispatch 2.
+  Dispatch 1 leaves imports in place (harmless once redundant); it only makes them redundant.
+
+### Dispatch 2 — global import deletion
+
+Delete every `import` line and the `import` grammar production itself.
+
+- **Mechanism:** remove the import statements corpus-wide, then delete the `import` production from
+  `02_parse.dag`. Dependencies are thereafter derived purely from `container.member` references
+  (Rule-1 end-state, namespace-resolution-design.md §8 step 5). The flip (Dispatch 1) *is* the
+  closure-independent binding mechanism the PR-5b strip was historically blocked on — with binding
+  by containment, deletion no longer risks losing a resolution.
+- **Acceptance (the done-line):** `import` is a **parse error**; the corpus compiles with deps
+  derived from references alone.
+
+### The one thing that could make it three (named, not hidden)
+
+§12 runtime-dispatch (namespace-resolution-design.md §12) makes the containment tree a **third**
+consumer (resolution walks it, content-addressing hashes it, termination reads its sub-value edges —
+runtime dispatch would be the fourth). If wiring runtime dispatch onto the tree turns out to need
+its *own* policy flip (a NamespaceOnlyY-equivalent for the dispatch path), that work **folds into
+Dispatch 1** (same flip-shaped acceptance), not a new dispatch. It does not extend the plan to three;
+it is called out here only so it is not mistaken for hidden regress.
+
+---
+*Scoped by execution against main; residue 10+9+5+4 = 28 → **0** (#7165). Post-0 roadmap: 2
+dispatches, decidable done-lines. Edges adversarially verified.*
