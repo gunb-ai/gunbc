@@ -24897,6 +24897,30 @@ mod inert_carrier_tests {
     }
 
     #[test]
+    fn debug_inert_receipt_once() {
+        let live = inert_carrier_names_live();
+        let roster: Vec<String> = [
+            "AccessPolicy", "CargoDependency", "CargoPackage", "FilePermissions",
+            "FloorWitnessRow", "FreeOutput", "GcpProject", "GitCliReportedVersion",
+            "LocalAlias", "ProcMeminfo", "ReactHookSite", "SystemdUnitStatus",
+            "FrontierSubject", "DissolveTrigger", "FrontierExpiryReport",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+        for n in &live {
+            if !roster.contains(n) {
+                eprintln!("unrostered: {n}");
+            }
+        }
+        for n in &roster {
+            if !live.contains(n) {
+                eprintln!("stale: {n}");
+            }
+        }
+    }
+
+    #[test]
     fn type_carrier_blocks_extracts_names_and_bodies() {
         let c = "module m\ntype Connective = Atom | Conj\ntype WorkDemand {\n  field: Int\n}\nfn f() -> Int { 1 }\n";
         let blocks = inert_carrier_type_carrier_blocks(c);
