@@ -188,7 +188,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
 }
 
 pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> RecursionContext {
-    RecursionContext {};
+    RecursionContext {}
 }
 
 pub fn module_ownership_proofs(m: Rc<TypedModule>) -> Rc<Vec<Rc<OwnershipProof>>> {
@@ -2144,8 +2144,8 @@ pub fn validate_boundaries(plan: Rc<ArtifactPlan>) -> Rc<Vec<Rc<ErrorNode>>> {
             for b in plan.boundaries.clone().iter().cloned() {
                 __result.extend(
                     (*v1_rt::concat(
-                        boundary_ref_error(names.clone(), &b.from_artifact.clone()),
-                        boundary_ref_error(names.clone(), &b.to_artifact.clone()),
+                        boundary_ref_error(names.clone(), b.from_artifact.clone()),
+                        boundary_ref_error(names.clone(), b.to_artifact.clone()),
                     ))
                     .iter()
                     .cloned(),

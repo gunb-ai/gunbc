@@ -105,7 +105,7 @@ pub fn lookup_func_sig(
             candidates: cands.clone(),
         }),
         FuncSigLookup::FuncSigUnresolved => {
-            match func_sig_from_global_bare(type_env.clone(), &name) {
+            match func_sig_from_global_bare(type_env.clone(), name.clone()) {
                 Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() }),
                 None => Rc::new(FuncSigLookup::FuncSigUnresolved),
             }
@@ -191,7 +191,7 @@ pub fn func_sig_from_global_bare(
                         owner_module_path: type_env.module_path.clone(),
                         node: binding.resolved.clone(),
                     })),
-                    None => borrowed_census_decl(type_env.clone(), &name),
+                    None => borrowed_census_decl(type_env.clone(), name.clone()),
                 };
                 match borrowed.clone() {
                     Some(bd) => {
@@ -303,8 +303,11 @@ pub fn lookup_field_type_node(
                 if (field_name.clone() == "value".to_string()) {
                     Some(inner.clone())
                 } else {
-                    match lookup_field_type_node(inner.clone(), &field_name, source_indices.clone())
-                    {
+                    match lookup_field_type_node(
+                        inner.clone(),
+                        field_name.clone(),
+                        source_indices.clone(),
+                    ) {
                         Some(inner_result) => Some(with_optional_cardinality(inner_result.clone())),
                         None => None,
                     }
@@ -327,18 +330,11 @@ pub fn lookup_field_type_node(
                                         && (field_name.clone() == "lookup".to_string()))
                                     {
                                         {
-                                            let value_child = match n
-                                                .children
-                                                .clone()
-                                                .iter()
-                                                .cloned()
-                                                .skip(1 as usize)
-                                                .next()
-                                                .cloned()
-                                            {
-                                                Some(child) => child_type_node(child.clone()),
-                                                None => nominal_type_ref("V".to_string()),
-                                            };
+                                            let value_child =
+                                                match n.children.clone().get(1 as usize).cloned() {
+                                                    Some(child) => child_type_node(child.clone()),
+                                                    None => nominal_type_ref("V".to_string()),
+                                                };
                                             Some(
                                                 make_container_type(
                                                     "Witness".to_string(),
@@ -357,7 +353,7 @@ pub fn lookup_field_type_node(
                         } else {
                             lookup_coproduct_common_field_node(
                                 n.children.clone(),
-                                &field_name,
+                                field_name.clone(),
                                 source_indices.clone(),
                             )
                         }
@@ -367,7 +363,7 @@ pub fn lookup_field_type_node(
                         Some(InferredNode::Resolved { node: target, .. }) => {
                             lookup_field_type_node(
                                 target.clone(),
-                                &field_name,
+                                field_name.clone(),
                                 source_indices.clone(),
                             )
                         }
@@ -568,15 +564,7 @@ pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc
         if (node_is_keyed_collection(map_type.clone(), env.source_indices.clone())
             && ((map_type.children.clone().len() as i64) >= 2))
         {
-            match map_type
-                .children
-                .clone()
-                .iter()
-                .cloned()
-                .skip(1 as usize)
-                .next()
-                .cloned()
-            {
+            match map_type.children.clone().get(1 as usize).cloned() {
                 Some(value_type) => Some(value_type.clone()),
                 None => None,
             }
@@ -640,7 +628,7 @@ pub fn field_summary_for_type(
             if normed_opt.clone() {
                 {
                     let inner = with_required_cardinality(normed.clone());
-                    match field_summary_for_type(inner.clone(), env.clone(), &field) {
+                    match field_summary_for_type(inner.clone(), env.clone(), field.clone()) {
                         Some(inner_summary) => Some(Rc::new(FieldSummary {
                             access_style: inner_summary.access_style.clone(),
                             value_shape: FieldValueShape::OptionalValue,
@@ -722,7 +710,7 @@ pub fn map_lookup_result_type(
     if (authored_name_at(source_indices.clone(), product.clone()) == "Map".to_string()) {
         match product_field_result_type(field.clone()) {
             Some(raw) => {
-                if is_witness_type_name(&authored_name_at(source_indices.clone(), raw.clone())) {
+                if is_witness_type_name(authored_name_at(source_indices.clone(), raw.clone())) {
                     Some(raw.clone())
                 } else {
                     Some(
@@ -794,7 +782,7 @@ pub fn lookup_structural_method(
             {
                 let direct = lookup_field_in_product(
                     receiver_type.clone(),
-                    &method_name,
+                    method_name.clone(),
                     source_indices.clone(),
                 );
                 Rc::new(StructuralMethodLookup {
@@ -815,7 +803,7 @@ pub fn lookup_structural_method(
                     {
                         let base_result = lookup_field_in_product(
                             enriched.ty.clone(),
-                            &method_name,
+                            method_name.clone(),
                             source_indices.clone(),
                         );
                         match base_result.clone() {
@@ -882,8 +870,11 @@ pub fn resolve_known_method_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KnownMethodResolution> {
     {
-        let tier0 =
-            lookup_structural_method(receiver_type.clone(), &method_name, source_indices.clone());
+        let tier0 = lookup_structural_method(
+            receiver_type.clone(),
+            method_name.clone(),
+            source_indices.clone(),
+        );
         match tier0.resolution.clone() {
             Some(mfr) => {
                 let semantics = Rc::new(MethodSemantics::AlgebraMethodSemantics {

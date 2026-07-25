@@ -239,7 +239,7 @@ pub fn merge_branch_usages(
                         &branch.bindings.clone(),
                         name.clone(),
                     ) {
-                        Some(usage) => map_usage_merge_at(acc.clone(), &name, usage.clone()),
+                        Some(usage) => map_usage_merge_at(acc.clone(), name.clone(), usage.clone()),
                         None => acc.clone(),
                     },
                 )
@@ -293,7 +293,7 @@ pub fn walk_expr(
                 if in_tail.clone() {
                     record_use(
                         accum.clone(),
-                        &n,
+                        n.clone(),
                         EdgeKind::Consumed,
                         "return".to_string(),
                         bk.clone(),
@@ -302,7 +302,7 @@ pub fn walk_expr(
                 } else {
                     record_use(
                         accum.clone(),
-                        &n,
+                        n.clone(),
                         EdgeKind::Read,
                         "read".to_string(),
                         bk.clone(),
@@ -321,7 +321,7 @@ pub fn walk_expr(
                         let f = field_access_field_at(texpr.clone(), si.clone());
                         record_use(
                             accum.clone(),
-                            &vn,
+                            vn.clone(),
                             EdgeKind::Projected,
                             v1_rt::concat(".".to_string(), f.clone()),
                             bk.clone(),
@@ -356,7 +356,7 @@ pub fn walk_expr(
                                         let vn = expr_var_name_at(ia_val.clone(), si.clone());
                                         record_use(
                                             accum.clone(),
-                                            &vn,
+                                            vn.clone(),
                                             EdgeKind::Threaded,
                                             "fold_init".to_string(),
                                             bk.clone(),
@@ -423,7 +423,7 @@ pub fn walk_expr(
                                         let vn = expr_var_name_at(ia_val.clone(), si.clone());
                                         record_use(
                                             recv_accum.clone(),
-                                            &vn,
+                                            vn.clone(),
                                             EdgeKind::Threaded,
                                             "fold_init".to_string(),
                                             bk.clone(),
@@ -581,7 +581,7 @@ pub fn walk_expr(
                         |acc: Rc<UsageAccum>, usage: Rc<BindingUsage>| {
                             record_use(
                                 acc,
-                                &usage.name.clone(),
+                                usage.name.clone(),
                                 EdgeKind::Read,
                                 "lambda-capture".to_string(),
                                 None,
@@ -611,7 +611,7 @@ pub fn walk_expr(
                         |acc: Rc<UsageAccum>, usage: Rc<BindingUsage>| {
                             record_use(
                                 acc,
-                                &usage.name.clone(),
+                                usage.name.clone(),
                                 EdgeKind::Read,
                                 "foreach-capture".to_string(),
                                 None,
@@ -1024,7 +1024,7 @@ pub fn summarize_fold_acc_uses(
                                 acc,
                                 summarize_fold_acc_uses(
                                     child.clone(),
-                                    &acc_name,
+                                    acc_name.clone(),
                                     si.clone(),
                                     inside_nested.clone(),
                                 ),
@@ -1034,8 +1034,12 @@ pub fn summarize_fold_acc_uses(
                 }
             }
             ExprData::ExprLambda => {
-                let body_summary =
-                    summarize_fold_acc_uses(lambda_body(node.clone()), &acc_name, si.clone(), true);
+                let body_summary = summarize_fold_acc_uses(
+                    lambda_body(node.clone()),
+                    acc_name.clone(),
+                    si.clone(),
+                    true,
+                );
                 if (((body_summary.whole_acc_uses.clone() > 0)
                     || ((body_summary.field_moves.clone().len() as i64) > 0))
                     || body_summary.nested_acc_refs.clone())
@@ -1052,13 +1056,13 @@ pub fn summarize_fold_acc_uses(
             ExprData::ExprForEach => {
                 let coll_summary = summarize_fold_acc_uses(
                     foreach_collection(node.clone()),
-                    &acc_name,
+                    acc_name.clone(),
                     si.clone(),
                     inside_nested.clone(),
                 );
                 let body_summary = summarize_fold_acc_uses(
                     foreach_body(node.clone()),
-                    &acc_name,
+                    acc_name.clone(),
                     si.clone(),
                     true,
                 );
@@ -1083,7 +1087,7 @@ pub fn summarize_fold_acc_uses(
                         acc,
                         summarize_fold_acc_uses(
                             child.clone(),
-                            &acc_name,
+                            acc_name.clone(),
                             si.clone(),
                             inside_nested.clone(),
                         ),
@@ -1102,7 +1106,7 @@ pub fn fold_lambda_acc_use_summary(
     match (*lambda_node.expr_data.clone()).clone() {
         ExprData::ExprLambda => summarize_fold_acc_uses(
             lambda_body(lambda_node.clone()),
-            &acc_name,
+            acc_name.clone(),
             si.clone(),
             false,
         ),
@@ -1173,14 +1177,7 @@ pub fn analyze_single_fold(
             Some(a) => arg_value(a.clone()),
             None => method_call.clone(),
         };
-        let fold_lambda_node = match args
-            .clone()
-            .iter()
-            .cloned()
-            .skip(1 as usize)
-            .next()
-            .cloned()
-        {
+        let fold_lambda_node = match args.clone().get(1 as usize).cloned() {
             Some(a) => arg_value(a.clone()),
             None => method_call.clone(),
         };
