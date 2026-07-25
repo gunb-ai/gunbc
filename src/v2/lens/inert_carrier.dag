@@ -1,36 +1,32 @@
 module v2.lens.inert_carrier
 
-import std.roster_frontier { FrontierRow, frontier_row_path, frontier_path_subjects, TriggerProse }
+import std.roster_frontier { FrontierRow, frontier_row, frontier_units }
 
 data inert_carrier_local_alias_roster_note: String = "Floor hygiene: roster LocalAlias for inert G1 fixture type in qualified_module_projection_stripped_fixture.dag (latent main gap; exposed by W1.2 broad affected set; not W3.1 reachability migration)."
 
 data inert_carrier_row_dissolve: String = "a live consumer reads the carrier; the stale-roster check then forces this row's deletion"
 
-fn inert_row(path: String, reason: String) -> FrontierRow {
-  frontier_row_path(
-    path: path,
-    reason: reason,
-    trigger: TriggerProse { text: inert_carrier_row_dissolve },
-  )
+fn inert_row(unit: String, reason: String) -> FrontierRow {
+  frontier_row(unit: unit, reason: reason, dissolve_on: inert_carrier_row_dissolve)
 }
 
 data inert_carrier_roster: List<FrontierRow> = [
-  inert_row(path: "AccessPolicy", reason: "modeled access-policy carrier with no live consumer yet (facts-before-abstraction: the data row lands ahead of its reader)"),
-  inert_row(path: "CargoDependency", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
-  inert_row(path: "CargoPackage", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
-  inert_row(path: "FilePermissions", reason: "modeled filesystem-semantics carrier with no live consumer yet"),
-  inert_row(path: "FloorWitnessRow", reason: "modeled floor-receipt carrier with no live consumer yet"),
-  inert_row(path: "FreeOutput", reason: "modeled output carrier with no live consumer yet"),
-  inert_row(path: "GcpProject", reason: "modeled gcp extdeps carrier with no live consumer yet"),
-  inert_row(path: "GitCliReportedVersion", reason: "modeled git-cli extdeps carrier with no live consumer yet"),
-  inert_row(path: "LocalAlias", reason: "inert G1 fixture type in qualified_module_projection_stripped_fixture.dag (see inert_carrier_local_alias_roster_note)"),
-  inert_row(path: "ProcMeminfo", reason: "modeled machine-facts carrier with no live consumer yet"),
-  inert_row(path: "ReactHookSite", reason: "modeled typescript extdeps carrier with no live consumer yet"),
-  inert_row(path: "SystemdUnitStatus", reason: "modeled systemd extdeps carrier with no live consumer yet")
+  inert_row(unit: "AccessPolicy", reason: "modeled access-policy carrier with no live consumer yet (facts-before-abstraction: the data row lands ahead of its reader)"),
+  inert_row(unit: "CargoDependency", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
+  inert_row(unit: "CargoPackage", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
+  inert_row(unit: "FilePermissions", reason: "modeled filesystem-semantics carrier with no live consumer yet"),
+  inert_row(unit: "FloorWitnessRow", reason: "modeled floor-receipt carrier with no live consumer yet"),
+  inert_row(unit: "FreeOutput", reason: "modeled output carrier with no live consumer yet"),
+  inert_row(unit: "GcpProject", reason: "modeled gcp extdeps carrier with no live consumer yet"),
+  inert_row(unit: "GitCliReportedVersion", reason: "modeled git-cli extdeps carrier with no live consumer yet"),
+  inert_row(unit: "LocalAlias", reason: "inert G1 fixture type in qualified_module_projection_stripped_fixture.dag (see inert_carrier_local_alias_roster_note)"),
+  inert_row(unit: "ProcMeminfo", reason: "modeled machine-facts carrier with no live consumer yet"),
+  inert_row(unit: "ReactHookSite", reason: "modeled typescript extdeps carrier with no live consumer yet"),
+  inert_row(unit: "SystemdUnitStatus", reason: "modeled systemd extdeps carrier with no live consumer yet")
 ]
 
 fn inert_carrier_rostered_names() -> List<String> {
-  frontier_path_subjects(rows: inert_carrier_roster)
+  frontier_units(rows: inert_carrier_roster)
 }
 
 data empty_inert_carrier_names: List<String> = []

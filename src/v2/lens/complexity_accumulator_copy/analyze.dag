@@ -459,7 +459,7 @@ fn analyze_postfix_projection_call(
   }
 }
 
-data lowered_substrate_call_note: String = "Stage B cross-decl: normalize lowers fn bodies to ComputationNode substrate (Loop for fold-family, Transform for calls/projections). The surface primary_expr walk is blind to lowered trees — these arms re-establish fold iteration and call classification on the producer output (projection-call residue dissolved; repairs post-#6840 accumulator-copy regressions on ingested fold bodies)."
+data lowered_substrate_call_note: String = "Stage B cross-decl: normalize lowers fn bodies to ComputationNode substrate (Loop for fold-family, Transform for calls/projections). The surface primary_expr walk is blind to lowered trees — these arms re-establish fold iteration and call classification on the producer output (dissolves projection_call_residue_note; repairs post-#6840 accumulator-copy regressions on ingested fold bodies)."
 
 type LoweredTransformPortAcc {
   saw_operator: Bool

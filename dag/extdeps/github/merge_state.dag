@@ -3,12 +3,6 @@ module extdeps.github.merge_state
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.github.merge_state_contracts { merge_state_status_wire_contract }
-import std.roster_frontier {
-  FrontierRow,
-  TriggerProse,
-  decl_ref,
-  frontier_row_decl,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -27,12 +21,6 @@ type MergeStateStatus
   | Unknown
   | Unstable
 
-data merge_state_graphql_transport_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.github.merge_state", decl_name: "MergeStateStatus"),
-    reason: "MergeStateStatus|transport:graphql-only",
-    trigger: TriggerProse {
-      text: "dashboard shadow lane adds graphql transport handler when extdeps.github.graphql module lands",
-    },
-  )
+data structural_coverage_gap_merge_state_graphql_transport: List<String> = [
+  "closure:merge_state_graphql_transport|MergeStateStatus|transport:graphql-only|trigger:dashboard shadow lane adds graphql transport handler when extdeps.github.graphql module lands"
 ]

@@ -121,7 +121,8 @@ fn is_compiler_family_module(module: &str) -> bool {
         || module.starts_with("v1_compiler_")
 }
 
-/// The emit-artifact sanitize scaffold is DISSOLVED (2026-07-23): its last rule
+/// The emit-artifact sanitize scaffold is DISSOLVED (2026-07-23, dissolution
+/// trigger in `cssl_emit_artifact_sanitize_scaffold_debt` fired): its last rule
 /// (dedupe symbols across `pub use` lines) moved to the emitter's construction
 /// seam (`strip_repeated_use_symbols` in v1.compiler.emit_rust), and the 21-module
 /// curated sweep census (docs/probes/curated_cargo_frontier_probe_sweep.tsv,

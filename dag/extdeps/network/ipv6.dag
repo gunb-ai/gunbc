@@ -3,12 +3,6 @@ module extdeps.network.ipv6
 import std.types { Int, String, Bool, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.roster_frontier {
-  FrontierRow,
-  TriggerDeclExists,
-  decl_ref,
-  frontier_row_decl,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -26,14 +20,8 @@ data ipv6_text_representation_authority: ExternalAuthority = ExternalAuthority {
 
 data ipv6_grounding_note: String = "Structured IPv6 address (RFC 4291 §2.5): eight 16-bit groups. The group is the grounded unit — a 0..65535 bound modeled with the same `Int where range` refinement std.types.Port uses (reuses the bound idiom, not a fresh nickname), parallel to extdeps.network.ipv4's octet. STAGED CODEC (deliberate, §6): the TYPE and constructor are grounded, but the string codec (canonical text form, RFC 5952 — lowercase hex groups with :: run-length compression) is NOT built here. It is a decode/encode over extdeps.numeric.base16 (the cited hex authority — render via its int-to-hex, parse via a reverse-fold over base16_digit_rows), and there are ZERO IPv6 addresses in the fleet today, so building a wire parser now would be building for a host that does not diverge. The codec lands when a real v6 address needs (de)serializing — dissolution trigger below. This keeps IpAddress an HONESTLY CLOSED coproduct (an IP is v4 or v6) with a grounded v6 arm, without an anemic string or a speculative parser."
 
-data ipv6_text_codec_staged_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.network.ipv6", decl_name: "Ipv6Address"),
-    reason: "Ipv6Address has no RFC 5952 string parse/render yet; it reuses extdeps.numeric.base16 (render) and a reverse-fold over base16_digit_rows (parse), with :: compression",
-    trigger: TriggerDeclExists {
-      ref: decl_ref(module_path: "extdeps.network.ipv6", decl_name: "parse_ipv6_address"),
-    },
-  )
+data dissolve_on_ipv6_text_codec_staged: List<String> = [
+  "closure:ipv6_text_codec|Ipv6Address has no RFC 5952 string parse/render yet; it reuses extdeps.numeric.base16 (render) and a reverse-fold over base16_digit_rows (parse), with :: compression|trigger:the first fleet IPv6 address needs ingesting or emitting (parse_ipv6_address / render_ipv6_address land with a round-trip witness)"
 ]
 
 type Hextet = Int where range(min: 0, max: 65535)
