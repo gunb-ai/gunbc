@@ -7,7 +7,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data observation_emit_census_note: String = "P3 of the progress-and-observation lane: the census wall. Every place the floor emits a progress line today is either a PROJECTION of the observation event stream (migrated, P1/P2) or a COUNTED FRONTIER ROW carrying a reason and a dissolve-on — the same discipline the site subsumption lane uses for unthemed colours. This module is the census authority: the classification is a closed sum, so a site cannot be half-classified, and the roster below names the structured-tag emit families that exist in the seed today. The executable hygiene witness is bidirectional: it reds when a rostered marker vanishes AND when a known live tag family is missing from the roster, so growth after the snapshot cannot silently understate."
 
-data observation_emit_census_sequencing_note: String = "Sequencing, per the operator ruling and live-log review (run 30142403230): tagged migrations landed (floor-memory, gantt, governor, typecheck-attribution, measurement, shell with named-intent subjects; Ambient ShellTrace Suppressed at Normal). Post-census growth tags ([floor-drain], [gate-warm-cost], [receipt], [file]) are CountedFrontierSite rows so the roster cannot silently understate. Unmarked raw eprintln residue in claim_executor remains counted separately."
+data observation_emit_census_sequencing_note: String = "Sequencing, per the operator ruling and live-log review (run 30142403230): tagged migrations landed (floor-memory, gantt, governor, typecheck-attribution, measurement, shell with named-intent subjects; Ambient ShellTrace Suppressed at Normal). Post-census growth tags ([floor-drain], [gate-warm-cost], [receipt], [file], and #7205's [resolve-split]/[assembly-split]) are CountedFrontierSite rows so the roster cannot silently understate. Unmarked raw eprintln residue in claim_executor remains counted separately."
 
 type EmitSiteDisposition
   = MigratedToObservation { via: NonEmptyStr }
@@ -105,6 +105,24 @@ data file_trace_site: CensusedEmitSite = CensusedEmitSite {
   }
 }
 
+data resolve_split_site: CensusedEmitSite = CensusedEmitSite {
+  marker: "[resolve-split]" as NonEmptyStr,
+  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
+  disposition: CountedFrontierSite {
+    reason: "per-entry resolve-stage timing split (#7205 / #6848 cost instrumentation) — load/parse/resolve/normalize/typecheck/parent_envs/assembly/ownership" as NonEmptyStr,
+    dissolve_on: "fold into a MeasurementSegment / StatusPulse receipt projection under the floor-receipts group" as NonEmptyStr
+  }
+}
+
+data assembly_split_site: CensusedEmitSite = CensusedEmitSite {
+  marker: "[assembly-split]" as NonEmptyStr,
+  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
+  disposition: CountedFrontierSite {
+    reason: "reconcile-assembly sub-split (#7205) — schedule/probe/registry/services/rewire/emit_info/residue timings that priced the type-export-set memo" as NonEmptyStr,
+    dissolve_on: "fold into the same MeasurementSegment receipt projection as resolve-split" as NonEmptyStr
+  }
+}
+
 data observation_emit_roster: List<CensusedEmitSite> = [
   floor_memory_site,
   typecheck_attribution_site,
@@ -115,7 +133,9 @@ data observation_emit_roster: List<CensusedEmitSite> = [
   floor_drain_site,
   gate_warm_cost_site,
   receipt_site,
-  file_trace_site
+  file_trace_site,
+  resolve_split_site,
+  assembly_split_site
 ]
 
 data observation_emit_roster_completeness_disposition: Disposition = Scaffold {
@@ -127,7 +147,7 @@ data observation_emit_roster_completeness_disposition: Disposition = Scaffold {
   }
 }
 
-data observation_emit_roster_completeness_note: String = "Roster is bidirectional: every rostered marker must still exist in the seed, AND every known live tag family born after the initial snapshot must appear on the roster (operator finding 3, run 30142403230). Frontier count = 4 (floor-drain, gate-warm-cost, receipt, file). Six families MigratedToObservation. The unmarked eprintln sites remain the per-print completeness scaffold."
+data observation_emit_roster_completeness_note: String = "Roster is bidirectional: every rostered marker must still exist in the seed, AND every known live tag family born after the initial snapshot must appear on the roster (operator finding 3, run 30142403230). Frontier count = 6 (floor-drain, gate-warm-cost, receipt, file, resolve-split, assembly-split). Six families MigratedToObservation. The unmarked eprintln sites remain the per-print completeness scaffold."
 
 fn emit_site_is_frontier(site: CensusedEmitSite) -> Bool {
   match site.disposition {

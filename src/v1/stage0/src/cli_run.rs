@@ -10640,6 +10640,14 @@ pub fn handle_run_with_options(
         std::process::exit(1);
     }
 
+    // Same install as claim_executor / claim_batch: without it, host-effect traces
+    // fall back to Full and the merge-admission stamp (`gunbc run … merge_admission_stamp`)
+    // dumps every Ambient Begin/Done as emoji shell noise (operator live-log
+    // 2026-07-25). Install before any Wet eval so ShellTrace Suppressed-at-Normal
+    // collapses Ambient scaffolding; Anomaly Failed still surfaces via disposition.
+    install_output_policy(&source_roots);
+    install_group_syntax(&source_roots);
+
     if let Ok(secs) = std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS") {
         if let Ok(secs) = secs.parse::<u64>() {
             std::thread::spawn(move || loop {
