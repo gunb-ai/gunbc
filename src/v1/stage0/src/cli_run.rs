@@ -24897,6 +24897,36 @@ mod inert_carrier_tests {
     }
 
     #[test]
+    fn debug_inert_carrier_receipt_now() {
+        let live: std::collections::BTreeSet<String> =
+            inert_carrier_names_live().into_iter().collect();
+        let roster = [
+            "AccessPolicy",
+            "CargoDependency",
+            "CargoPackage",
+            "FilePermissions",
+            "FloorWitnessRow",
+            "FreeOutput",
+            "GcpProject",
+            "GitCliReportedVersion",
+            "LocalAlias",
+            "ProcMeminfo",
+            "ReactHookSite",
+            "SystemdUnitStatus",
+        ];
+        for n in live.iter() {
+            if !roster.contains(&n.as_str()) {
+                eprintln!("unrostered inert carrier: {n}");
+            }
+        }
+        for n in roster {
+            if !live.contains(n) {
+                eprintln!("stale inert roster: {n}");
+            }
+        }
+    }
+
+    #[test]
     fn type_carrier_blocks_extracts_names_and_bodies() {
         let c = "module m\ntype Connective = Atom | Conj\ntype WorkDemand {\n  field: Int\n}\nfn f() -> Int { 1 }\n";
         let blocks = inert_carrier_type_carrier_blocks(c);
