@@ -17,3 +17,7 @@ fn el_class(tag: String, cls: String, children: List<Fragment>) -> Fragment {
     children: children,
   }
 }
+
+fn el_attrs(tag: String, attributes: List<Attribute>, children: List<Fragment>) -> Fragment {
+  Element { tag: tag, attributes: attributes, children: children }
+}

@@ -1,7 +1,7 @@
 module test.claim.roadmap_register_witness
 
 import std.types { Int, String, Bool }
-import std.markup { Fragment, Element, FragmentText }
+import std.markup { Fragment, Element, FragmentText, RawNode }
 import gunbc.design.material {
   BuildRule, StaticRule, CssDecl, decl,
   Material, FieldArea, PointArea, paint, reduced_motion_block, respond_fast,
@@ -138,6 +138,7 @@ fn header_children_contain_mark(h: Fragment) -> Bool {
       tag == "header"
         && fold(children, init: false, f: (acc, c) => acc || c == render_mark(depth: 1))
     FragmentText { content: _ } => false
+    RawNode { content: _ } => false
   }
 }
 
