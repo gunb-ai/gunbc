@@ -43,10 +43,6 @@ fn witness_moodboard_thesis_themes_digest_pinned() -> Bool {
   moodboard_digest() == moodboard_thesis_themes_lift_parity_digest
 }
 
-fn main() -> String {
-  emission_content_digest(s: roadmap_css())
-}
-
 test fn design_register_lift_parity_holds() -> Bool {
   witness_moodboard_css_digest_pinned()
     && witness_moodboard_html_digest_pinned()
