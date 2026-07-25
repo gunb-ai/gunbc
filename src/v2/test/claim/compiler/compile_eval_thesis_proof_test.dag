@@ -90,3 +90,15 @@ test fn compile_eval_thesis_proof_holds() -> Bool {
     && compile_eval_bool_via_compile_entry_holds()
     && compile_eval_unit_unrepresentable_red_holds()
 }
+
+test fn isolate_t1_holds() -> Bool {
+  compile_eval_bool_reaches_node_value_holds()
+}
+
+test fn isolate_t2_holds() -> Bool {
+  compile_eval_bool_via_compile_entry_holds()
+}
+
+test fn isolate_t3_holds() -> Bool {
+  compile_eval_unit_unrepresentable_red_holds()
+}
