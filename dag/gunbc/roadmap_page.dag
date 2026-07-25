@@ -366,26 +366,15 @@ fn item_detail_block(rn: RoadmapNode) -> List<Fragment> {
     []
   } else {
     let is_ticket = item_is_ticket(rn: rn)
-    let detail: Fragment = Element {
-      tag: "details",
-      attributes: [ attr(name: "class", value: if is_ticket { "item-detail ticket-row" } else { "item-detail" } ) ],
-      children: [
-        Element {
-          tag: "summary",
-          attributes: [],
-          children: [
-            Element {
-              tag: "span",
-              attributes: [ attr(name: "class", value: disclosure_mark_class ) ],
-              children: [ txt(disclosure_mark_glyph) ],
-            },
-            txt(if is_ticket { "ticket" } else { "brief" }),
-          ],
-        },
+    [ el_attrs("details", [
+        attr(name: "class", value: if is_ticket { "item-detail ticket-row" } else { "item-detail" } ),
+      ], [
+        el("summary", [
+          el_class("span", disclosure_mark_class, [ txt(disclosure_mark_glyph) ]),
+          txt(if is_ticket { "ticket" } else { "brief" }),
+        ]),
         el_class("div", "item-body", item_body_nodes(rn: rn)),
-      ],
-    }
-    [ detail ]
+      ]) ]
   }
 }
 
