@@ -4253,9 +4253,8 @@ fn extract_field(
                 type_name: ctx.resolve(*type_name).to_string(),
                 field: field.to_string(),
             }),
-        Value::Map(_) => {
-            raw_map_lookup(value, &Value::Str(field.to_string()), env, ctx).map(RawMapLookup::into_raw)
-        }
+        Value::Map(_) => raw_map_lookup(value, &Value::Str(field.to_string()), env, ctx)
+            .map(RawMapLookup::into_raw),
         _ => Err(InterpError::TypeError {
             msg: format!("cannot access field '{}' on {}", field, value.type_label()),
         }),
