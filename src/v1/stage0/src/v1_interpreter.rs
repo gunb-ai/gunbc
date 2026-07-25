@@ -4125,15 +4125,28 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
     if let Some(MethodSemantics::ServiceMethodSemantics { service_name, .. }) = semantics.as_deref()
     {
         let extra_args = method_arg_nodes(node.clone());
-        let named_args: Vec<(Option<String>, Value)> = extra_args
-            .iter()
-            .map(|a| {
-                let name = arg_name_at(a.clone(), ctx.si());
-                let val = eval_expr(&arg_value(a.clone()), env, ctx)?;
-                Ok((name, val))
-            })
-            .collect::<InterpResult<_>>()?;
-        return eval_service_call(service_name, &method_name, &named_args, env, ctx);
+        // The declared-expectation edge is read off THIS node — the call site — and
+        // partitioned out before anything becomes a bound param. See
+        // EFFECT_EXPECTATION_ARG for why the call node is the only correct home.
+        let mut named_args: Vec<(Option<String>, Value)> = Vec::new();
+        let mut declared_expectation: Option<ExpectedOutcome> = None;
+        for a in extra_args.iter() {
+            let name = arg_name_at(a.clone(), ctx.si());
+            let val = eval_expr(&arg_value(a.clone()), env, ctx)?;
+            if name.as_deref() == Some(EFFECT_EXPECTATION_ARG) {
+                declared_expectation = Some(expectation_from_declared_arg(&val)?);
+                continue;
+            }
+            named_args.push((name, val));
+        }
+        return eval_service_call(
+            service_name,
+            &method_name,
+            &named_args,
+            env,
+            ctx,
+            declared_expectation.unwrap_or(ExpectedOutcome::ExpectSuccess),
+        );
     }
 
     let receiver_val = eval_expr(&method_receiver(node.clone()), env, ctx)?;
@@ -5072,7 +5085,18 @@ fn wet_service_call(
             msg: format!("no transport for service {}", key),
         })?;
     let param_env = build_service_param_env(op_node, args, env, ctx)?;
-    dispatch_service_wet(service_node, op_node, transport, &param_env, ctx, &key)
+    // No call node here: this is the interpreter's own internal seam (Clock.UnixSecs
+    // and friends), not a .dag call site, so it declares the default explicitly
+    // rather than inheriting one.
+    dispatch_service_wet(
+        service_node,
+        op_node,
+        transport,
+        &param_env,
+        ctx,
+        &key,
+        ExpectedOutcome::ExpectSuccess,
+    )
 }
 
 fn unix_secs_from_clock_value(
@@ -5125,7 +5149,14 @@ fn wet_env_var(name: &str) -> Option<String> {
 fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> {
     if ctx.service_ops.contains_key("shell.Env.Get") {
         let args = [(Some("name".to_string()), Value::Str(var_name.to_string()))];
-        match eval_service_call("shell.Env", "Get", &args, &Env::empty(), ctx) {
+        match eval_service_call(
+            "shell.Env",
+            "Get",
+            &args,
+            &Env::empty(),
+            ctx,
+            ExpectedOutcome::ExpectSuccess,
+        ) {
             Ok(Value::Record { fields, .. }) => ctx.field(&fields, "value").and_then(|v| match v {
                 Value::Str(s) if !s.is_empty() => Some(s.clone()),
                 _ => None,
@@ -5195,6 +5226,7 @@ fn eval_service_call(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
     ctx: &InterpContext,
+    expected: ExpectedOutcome,
 ) -> InterpResult<Value> {
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
@@ -5257,6 +5289,7 @@ fn eval_service_call(
                     &param_env,
                     ctx,
                     &key,
+                    expected,
                 );
             }
         }
@@ -5302,7 +5335,15 @@ fn eval_service_call(
         return eval_mock_response(op_node, ctx);
     }
 
-    let result = dispatch_service_wet(service_node, op_node, transport, &param_env, ctx, &key)?;
+    let result = dispatch_service_wet(
+        service_node,
+        op_node,
+        transport,
+        &param_env,
+        ctx,
+        &key,
+        expected,
+    )?;
 
     if ctx.execution_mode.is_record() {
         let store = ctx
@@ -5332,6 +5373,7 @@ fn dispatch_service_wet(
     param_env: &Rc<Env>,
     ctx: &InterpContext,
     intent: &str,
+    expected: ExpectedOutcome,
 ) -> InterpResult<Value> {
     // Local Env.Get: reading THIS process's own environment is not a host effect
     // (shell-to-dag residual census §0b / DESIGN §3(b)). `printenv` was the wrong
@@ -5344,7 +5386,7 @@ fn dispatch_service_wet(
     }
 
     if is_shell_transport(transport.clone()) {
-        let result = dispatch_shell(transport, param_env, ctx, intent)?;
+        let result = dispatch_shell(transport, param_env, ctx, intent, expected)?;
         return map_shell_outputs(&result, op_node, ctx);
     }
 
@@ -5690,6 +5732,56 @@ pub fn output_decision(channel: OutputChannel) -> OutputDecision {
 pub enum ExpectedOutcome {
     ExpectSuccess,
     ExpectFailure,
+}
+
+/// The reserved call-site argument through which a caller DECLARES what it expects
+/// an effect to do — the sibling edge on the CALL node (operator decision
+/// 2026-07-25), resolving the open question this file carried at `dispatch_shell`.
+///
+/// It is stripped from the argument list before `build_service_param_env`, so it
+/// never becomes a bound param and therefore never reaches
+/// `content_hash_service_inputs` — which iterates `op_node.params` and looks each up
+/// in `param_env`. The exclusion is structural, not a remembered filter, which is
+/// exactly why a service-op `input {}` was the wrong home: that IS a param, so it
+/// would join the digest and two invocations differing only in what the caller
+/// expected would become different cache identities for the same request.
+///
+/// It is equally NOT a transport property, despite `transport_stdin` /
+/// `transport_response_format` being the nearest local precedent. `dispatch_service_wet`
+/// receives the transport from `op_node.transport.or(service_node.transport)` — the
+/// extdeps service-op DECLARATION, shared by every caller. Hanging the expectation
+/// there would make it a per-operation fact, so a red control and a genuine check
+/// both calling `shell.Test.IsFile` could not differ, and caller policy declared in
+/// extdeps is the DESIGN §3 layer inversion. That shape would have typechecked and
+/// read as green while being wrong in both directions.
+pub const EFFECT_EXPECTATION_ARG: &str = "expect";
+
+/// Read the caller's declared expectation off the reserved argument's value.
+///
+/// Absent is handled by the caller as `ExpectSuccess` — the DECLARED migration
+/// default, behaviour-identical to the untyped `exit != 0` proxy this replaces, so
+/// no existing call site changes meaning. A PRESENT but unreadable value REFUSES
+/// instead of falling back: `gunbc.output_policy` deliberately has no `ExpectAny`
+/// arm, so a value we cannot read is ignorance, and answering it with a default
+/// would be ⊤-as-answer conflated with ⊤-as-ignorance (DESIGN §5 — a failure arm
+/// refuses, never widens).
+fn expectation_from_declared_arg(val: &Value) -> InterpResult<ExpectedOutcome> {
+    match val {
+        Value::Variant { variant_name, .. } => match resolve_sym(*variant_name).as_str() {
+            "ExpectSuccess" => Ok(ExpectedOutcome::ExpectSuccess),
+            "ExpectFailure" => Ok(ExpectedOutcome::ExpectFailure),
+            other => Err(InterpError::TypeError {
+                msg: format!(
+                    "`{EFFECT_EXPECTATION_ARG}:` must be an ExpectedOutcome (ExpectSuccess | ExpectFailure), got variant `{other}`"
+                ),
+            }),
+        },
+        _ => Err(InterpError::TypeError {
+            msg: format!(
+                "`{EFFECT_EXPECTATION_ARG}:` must be an ExpectedOutcome (ExpectSuccess | ExpectFailure), got a non-variant value"
+            ),
+        }),
+    }
 }
 
 /// Carrier for `gunbc.output_policy.StreamDisposition` — what becomes of an effect's
@@ -6045,17 +6137,12 @@ fn dispatch_shell(
     param_env: &Rc<Env>,
     ctx: &InterpContext,
     intent: &str,
+    expected: ExpectedOutcome,
 ) -> InterpResult<ShellResult> {
-    // Migration default: every effect issues as `ExpectSuccess`, which makes the
-    // dispatch below behaviour-identical to the untyped `exit != 0` proxy it
-    // replaces. This single binding is the seam a declared per-call-site
-    // expectation threads through, so probes can annotate `ExpectFailure`; where
-    // that declaration LIVES is still open (a service-op `input {}` would put it in
-    // `param_env` here, but it would also join `content_hash_service_inputs`, and
-    // two invocations differing only in what the caller expected are the same
-    // request — a cache-identity impurity, plus caller policy declared in extdeps
-    // is the layer inversion DESIGN §3 names).
-    let expected = ExpectedOutcome::ExpectSuccess;
+    // `expected` is the caller's DECLARED expectation, threaded from the sibling edge
+    // on the call node (EFFECT_EXPECTATION_ARG). Absent at the call site it is
+    // ExpectSuccess, which keeps every undeclared site behaviour-identical to the
+    // untyped `exit != 0` proxy this replaces.
     let argv_nodes = &transport.children;
     let mut argv: Vec<String> = Vec::new();
     for node in argv_nodes.iter() {
@@ -7211,7 +7298,14 @@ fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResu
     }
 
     let args = [(Some("path".to_string()), Value::Str(path))];
-    let result = eval_service_call("Filesystem", "Read", &args, &Env::empty(), ctx)?;
+    let result = eval_service_call(
+        "Filesystem",
+        "Read",
+        &args,
+        &Env::empty(),
+        ctx,
+        ExpectedOutcome::ExpectSuccess,
+    )?;
 
     let (content, success, error) = match result {
         Value::Record { fields, .. } => {
@@ -10547,8 +10641,8 @@ mod argv_arg_limit_test {
     use crate::v1_std_core::{make_span, make_text_part_node, shell_transport_node, Node};
 
     use super::{
-        argv_arg_limit_refusal, dispatch_shell, Env, ExecutionMode, InterpContext, InterpError,
-        HOST_ARG_MAX_STRLEN_BYTES,
+        argv_arg_limit_refusal, dispatch_shell, Env, ExecutionMode, ExpectedOutcome, InterpContext,
+        InterpError, HOST_ARG_MAX_STRLEN_BYTES,
     };
 
     fn argv_limit_test_context() -> InterpContext {
@@ -10638,7 +10732,13 @@ mod argv_arg_limit_test {
         let ctx = argv_limit_test_context();
         let transport = shell_check_style_transport(&"x".repeat(HOST_ARG_MAX_STRLEN_BYTES + 1));
         let env = Env::empty();
-        match dispatch_shell(&transport, &env, &ctx, "shell.Exec.Check") {
+        match dispatch_shell(
+            &transport,
+            &env,
+            &ctx,
+            "shell.Exec.Check",
+            ExpectedOutcome::ExpectSuccess,
+        ) {
             Err(InterpError::ArgvExceedsHostArgMax {
                 actual_bytes,
                 limit_bytes,
@@ -10662,7 +10762,13 @@ mod argv_arg_limit_test {
         let ctx = argv_limit_test_context();
         let transport = shell_check_style_transport("true");
         let env = Env::empty();
-        match dispatch_shell(&transport, &env, &ctx, "shell.Exec.Check") {
+        match dispatch_shell(
+            &transport,
+            &env,
+            &ctx,
+            "shell.Exec.Check",
+            ExpectedOutcome::ExpectSuccess,
+        ) {
             Err(InterpError::ArgvExceedsHostArgMax { .. }) => {
                 panic!("small argv must not trip the arg-size wall")
             }

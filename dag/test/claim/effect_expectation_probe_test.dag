@@ -1,0 +1,22 @@
+module test.claim.effect_expectation_probe
+
+import std.types { Bool, FilePath, String }
+import extdeps.shell
+import gunbc.output_policy { ExpectFailure }
+
+data effect_expectation_probe_note: String = "Discriminating pair for the layer-1 expectation seam. Both call sites issue the SAME effect against the SAME absent path and both return the same verdict; the only difference is that the second DECLARES expect: ExpectFailure at the call site. Under the four-corner policy the first is ExpectSuccess x ObservedFailure = divergence = SurfaceContent (its Failed line renders), and the second is ExpectFailure x ObservedFailure = agreement = SummarizeCounts (no Failed line). So the observable that discriminates is the RENDERING, not the verdict — which is exactly why a verdict-only assertion could not have caught the hardwired ExpectSuccess this replaces."
+
+fn probe_undeclared_failure() -> Bool {
+  !shell.Test.IsFile(path: "/nonexistent/effect-expectation-probe" as FilePath)
+}
+
+fn probe_declared_failure() -> Bool {
+  !shell.Test.IsFile(
+    path: "/nonexistent/effect-expectation-probe" as FilePath,
+    expect: ExpectFailure
+  )
+}
+
+fn probe_declared_failure_but_succeeds() -> Bool {
+  shell.Test.IsFile(path: "/etc/hostname" as FilePath, expect: ExpectFailure).is_file
+}
