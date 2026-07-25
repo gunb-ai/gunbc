@@ -1,0 +1,231 @@
+module v2.lens.fallback_arm_census
+
+import v2.lens.common.construction_justification {
+  ConstructionJustification,
+  WallAfterGrounding
+}
+import std.disposition { RealizationDispatch }
+import std.algebra { Empty }
+import v2.std.algebra { fold_list, list_tail, TailFound, TailAbsent }
+import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.logic { Bool }
+import v2.std.node {
+  ComputationNode,
+  Match,
+  Node,
+  Symbol,
+  TypeNode,
+  match_arm_body,
+  match_arm_pattern
+}
+import v2.std.node_query { find_named_child, node_positional_child_targets }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.extdeps.languages.dag {
+  dag_match_arm_node,
+  dag_match_body_from_arms,
+  dag_type_atom_node
+}
+import v2.std.grammar { node_atom_identity_optional }
+
+data fallback_arm_census_law: String = "W2 fallback-arm census (docs/plans/fallback-arm-census.md; DESIGN §5 absorbing fallback): every match wildcard arm (_ => / MatchPattern::Wildcard) lands in exactly one FallbackArmClass. AnswersOnOpen is the defect (success-shaped body over an open unmatched space — exemplar: wrap-decision Instantiation bypass). CompletesClosedTotal is healthy-but-counted (forfeits exhaustiveness). ClassifierUnknown is counted, never silently binned healthy. The classifier's own matches are total — no answering _. Corpus walk is host-seamed until #5364 exposes MatchPattern to .dag; substrate planted fixtures classify here without the host. Zero production behavior change — register and route only. Dissolves when W3 promotes this lens to a compile refusal (zero-false-positive corpus-wide)."
+
+data fallback_planted_wildcard: Symbol = ^fallback_planted_wildcard
+data fallback_body_refuses: Symbol = ^fallback_body_refuses
+data fallback_body_answers: Symbol = ^fallback_body_answers
+data fallback_body_opaque: Symbol = ^fallback_body_opaque
+
+type FallbackArmClass
+  = Refuses
+  | CompletesClosedTotal
+  | DeclaredInterim
+  | AnswersOnOpen
+  | ClassifierUnknown { cause: Symbol }
+
+type FallbackArmSite {
+  class: FallbackArmClass
+}
+
+type FallbackArmClassifyInput {
+  pattern_is_wildcard: Bool
+  body_refuses: Bool
+  body_answers: Bool
+  scrutinee_closed_total: Bool
+  interim_declared: Bool
+}
+
+data fallback_unknown_not_wildcard: Symbol = ^not_wildcard_arm
+data fallback_unknown_undecidable_body: Symbol = ^undecidable_body_shape
+data fallback_unknown_needs_scrutinee: Symbol = ^needs_scrutinee_closedness
+
+fn fallback_arm_class_is_defect(c: FallbackArmClass) -> Bool {
+  match c {
+    AnswersOnOpen => true
+    Refuses => false
+    CompletesClosedTotal => false
+    DeclaredInterim => false
+    ClassifierUnknown { cause: _ } => false
+  }
+}
+
+fn fallback_arm_class_is_unknown(c: FallbackArmClass) -> Bool {
+  match c {
+    ClassifierUnknown { cause: _ } => true
+    Refuses => false
+    CompletesClosedTotal => false
+    DeclaredInterim => false
+    AnswersOnOpen => false
+  }
+}
+
+fn classify_fallback_arm(input: FallbackArmClassifyInput) -> FallbackArmClass {
+  if !input.pattern_is_wildcard {
+    ClassifierUnknown { cause: fallback_unknown_not_wildcard }
+  } else if input.interim_declared {
+    DeclaredInterim
+  } else if input.body_refuses {
+    Refuses
+  } else if input.body_answers {
+    if input.scrutinee_closed_total {
+      CompletesClosedTotal
+    } else {
+      AnswersOnOpen
+    }
+  } else {
+    ClassifierUnknown { cause: fallback_unknown_undecidable_body }
+  }
+}
+
+fn pattern_node_is_planted_wildcard(pattern: Node) -> Bool {
+  match node_atom_identity_optional(node: pattern) {
+    Present { value: id } => id == fallback_planted_wildcard
+    Absent => false
+  }
+}
+
+fn body_node_marks_refuses(body: Node) -> Bool {
+  match node_atom_identity_optional(node: body) {
+    Present { value: id } => id == fallback_body_refuses
+    Absent => false
+  }
+}
+
+fn body_node_marks_answers(body: Node) -> Bool {
+  match node_atom_identity_optional(node: body) {
+    Present { value: id } => id == fallback_body_answers
+    Absent => false
+  }
+}
+
+fn classify_planted_arm(
+  arm: Node,
+  scrutinee_closed_total: Bool,
+  interim_declared: Bool
+) -> FallbackArmClass {
+  match find_named_child(root: arm, name: match_arm_pattern) {
+    Accepted { value: pattern, diagnostics: _ } =>
+      match find_named_child(root: arm, name: match_arm_body) {
+        Accepted { value: body, diagnostics: _ } =>
+          classify_fallback_arm(
+            input: FallbackArmClassifyInput {
+              pattern_is_wildcard: pattern_node_is_planted_wildcard(pattern: pattern),
+              body_refuses: body_node_marks_refuses(body: body),
+              body_answers: body_node_marks_answers(body: body),
+              scrutinee_closed_total: scrutinee_closed_total,
+              interim_declared: interim_declared
+            }
+          )
+        Rejected { diagnostics: _ } =>
+          ClassifierUnknown { cause: fallback_unknown_undecidable_body }
+      }
+    Rejected { diagnostics: _ } =>
+      ClassifierUnknown { cause: fallback_unknown_not_wildcard }
+  }
+}
+
+fn planted_wildcard_arm(body_lit: Symbol) -> Node {
+  dag_match_arm_node(pattern_lit: fallback_planted_wildcard, body_lit: body_lit)
+}
+
+fn planted_named_arm(pattern_lit: Symbol, body_lit: Symbol) -> Node {
+  dag_match_arm_node(pattern_lit: pattern_lit, body_lit: body_lit)
+}
+
+fn planted_match_with_wildcard_answers() -> Node {
+  dag_match_body_from_arms(
+    scrutinee: dag_type_atom_node(identity: ^scrutinee),
+    true_arm: planted_named_arm(pattern_lit: ^VariantA, body_lit: fallback_body_answers),
+    false_arm: planted_wildcard_arm(body_lit: fallback_body_answers)
+  )
+}
+
+fn planted_match_with_wildcard_refuses() -> Node {
+  dag_match_body_from_arms(
+    scrutinee: dag_type_atom_node(identity: ^scrutinee),
+    true_arm: planted_named_arm(pattern_lit: ^VariantA, body_lit: fallback_body_answers),
+    false_arm: planted_wildcard_arm(body_lit: fallback_body_refuses)
+  )
+}
+
+fn planted_match_with_wildcard_opaque() -> Node {
+  dag_match_body_from_arms(
+    scrutinee: dag_type_atom_node(identity: ^scrutinee),
+    true_arm: planted_named_arm(pattern_lit: ^VariantA, body_lit: fallback_body_answers),
+    false_arm: planted_wildcard_arm(body_lit: fallback_body_opaque)
+  )
+}
+
+fn match_positional_arms(match_node: Node) -> List<Node> {
+  match match_node.kind {
+    ComputationNode { behavior: Match } =>
+      match list_tail(xs: node_positional_child_targets(node: match_node)) {
+        TailFound { tail: arms } => arms
+        TailAbsent => Empty
+      }
+    TypeNode { connective: _ } => Empty
+    ComputationNode { behavior: _ } => Empty
+  }
+}
+
+fn last_list_node(xs: List<Node>) -> Optional<Node> {
+  fold_list(
+    xs: xs,
+    empty: Absent,
+    cons: fn(_acc, n) { Present { value: n } }
+  )
+}
+
+fn classify_last_arm_of_planted_match(
+  match_node: Node,
+  scrutinee_closed_total: Bool,
+  interim_declared: Bool
+) -> FallbackArmClass {
+  match last_list_node(xs: match_positional_arms(match_node: match_node)) {
+    Present { value: arm } =>
+      classify_planted_arm(
+        arm: arm,
+        scrutinee_closed_total: scrutinee_closed_total,
+        interim_declared: interim_declared
+      )
+    Absent => ClassifierUnknown { cause: fallback_unknown_not_wildcard }
+  }
+}
+
+fn fallback_arm_class_eq(a: FallbackArmClass, b: FallbackArmClass) -> Bool {
+  match a {
+    Refuses => match b { Refuses => true  CompletesClosedTotal => false  DeclaredInterim => false  AnswersOnOpen => false  ClassifierUnknown { cause: _ } => false }
+    CompletesClosedTotal => match b { CompletesClosedTotal => true  Refuses => false  DeclaredInterim => false  AnswersOnOpen => false  ClassifierUnknown { cause: _ } => false }
+    DeclaredInterim => match b { DeclaredInterim => true  Refuses => false  CompletesClosedTotal => false  AnswersOnOpen => false  ClassifierUnknown { cause: _ } => false }
+    AnswersOnOpen => match b { AnswersOnOpen => true  Refuses => false  CompletesClosedTotal => false  DeclaredInterim => false  ClassifierUnknown { cause: _ } => false }
+    ClassifierUnknown { cause: ca } => match b {
+      ClassifierUnknown { cause: cb } => ca == cb
+      Refuses => false
+      CompletesClosedTotal => false
+      DeclaredInterim => false
+      AnswersOnOpen => false
+    }
+  }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}
