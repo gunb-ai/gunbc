@@ -153,6 +153,19 @@ fn main() {
                         shapes,
                     ));
                 }
+                let not_declared: Vec<String> = refs
+                    .iter()
+                    .filter(|r| !declared.contains(r))
+                    .cloned()
+                    .collect();
+                if !not_declared.is_empty() {
+                    println!(
+                        "REF-NOT-DECLARED\t{rel}\t{service_name}\t{}\t{}\tdeclared={}",
+                        op.name,
+                        not_declared.join(","),
+                        declared.join(",")
+                    );
+                }
                 let outside: Vec<String> = refs
                     .iter()
                     .filter(|r| !hardcoded.contains(&r.as_str()))
