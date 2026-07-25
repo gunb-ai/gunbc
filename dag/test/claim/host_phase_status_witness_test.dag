@@ -146,3 +146,15 @@ test fn host_phase_status_witnesses() -> Bool {
     && witness_unmodeled_cells_track_spine_gaps()
     && witness_remaining_work_excludes_nothing_silently()
 }
+
+fn debug_coverage_count() -> Int {
+  host_phase_observation_coverage_count(hosts: fleet_subsumption_hosts)
+}
+
+fn debug_srv3_verdict_rank() -> Int {
+  observation_verdict_rank(v: srv3_post_install_actuation_verdict(elapsed: millisecond(count: 0)))
+}
+
+fn debug_actuated_label_present() -> Bool {
+  filter(host_standup_spine, s => (s.label as String) == "prefix:os-install-actuated").length() == 1
+}

@@ -35,57 +35,63 @@ type HostPhaseCell {
   phase_label: String
 }
 
-type HostPhaseStatus
-  = StatusUnmodeled { refusal: String }
-  | StatusObserved { verdict: ObservationVerdict }
-
 type HostPhaseCellStatus {
   cell: HostPhaseCell
-  status: HostPhaseStatus
+  disposition: PhaseDisposition
+  observation: ObservationVerdict?
 }
 
 data host_phase_no_producer_is_unknown_not_converged_note: String = "THE fail-closed hinge of this module (DESIGN §5). When a modeled phase has NO live observation producer for a host, the derived verdict is UnknownRefused — never Converged, and never silently omitted from the matrix. The tempting arm is the absorbing fallback in its purest form: nothing is known to be wrong, so report converged; the matrix goes green, the coverage deficit's frequency drops to zero by construction, and the status read becomes a fabricated plausible output exactly like a stats probe that auto-starts the server it is measuring (the DaemonUnsupervised finding, #7213). It is also why UnknownRefused and Inaccessible must stay DISTINCT arms rather than one 'not converged': Inaccessible means we asked the host and could not reach it (remedy: fix reach — the A1 materialized-secret lane); UnknownRefused means we have no way to ask at all (remedy: build the producer). Different states, different owners, different work — and the count of each is the honest measure of how far subsumption actually is. host_phase_status_absorbing_fallback_widen_sketch models the forbidden arm as a RED control so the fold cannot drift back into it unnoticed."
 
-fn host_phase_status_from(
-  disposition: PhaseDisposition,
-  observation: ObservationVerdict?,
-) -> HostPhaseStatus {
-  match disposition {
-    DeclaredGap { interim_realization: _, refusal: r } => StatusUnmodeled { refusal: r }
-    ModeledCompose { authorities: _ } =>
-      match observation {
-        Present { value: v } => StatusObserved { verdict: v }
-        Absent => StatusObserved { verdict: UnknownRefused }
-      }
+fn host_phase_verdict_from(observation: ObservationVerdict?) -> ObservationVerdict {
+  match observation {
+    Present { value: v } => v
+    Absent => UnknownRefused
   }
 }
 
-fn host_phase_status_absorbing_fallback_widen_sketch(
-  disposition: PhaseDisposition,
+fn host_phase_verdict_absorbing_fallback_widen_sketch(
   observation: ObservationVerdict?,
-) -> HostPhaseStatus {
-  match disposition {
-    DeclaredGap { interim_realization: _, refusal: r } => StatusUnmodeled { refusal: r }
-    ModeledCompose { authorities: _ } =>
-      match observation {
-        Present { value: v } => StatusObserved { verdict: v }
-        Absent => StatusObserved { verdict: Converged }
-      }
+) -> ObservationVerdict {
+  match observation {
+    Present { value: v } => v
+    Absent => Converged
   }
 }
 
-fn host_phase_status_gate_accepts(
-  status: HostPhaseStatus,
+fn host_phase_verdict_gate_accepts(
+  verdict: ObservationVerdict,
   observation: ObservationVerdict?,
 ) -> Bool {
   match observation {
     Present { value: _ } => true
     Absent =>
-      match status {
-        StatusObserved { verdict: Converged } => false
-        StatusObserved { verdict: _ } => true
-        StatusUnmodeled { refusal: _ } => true
+      match verdict {
+        Converged => false
+        std.upsert_decision.Absent => true
+        Drifted => true
+        Conflict => true
+        Inaccessible => true
+        UnknownRefused => true
       }
+  }
+}
+
+fn host_phase_cell_verdict(c: HostPhaseCellStatus) -> ObservationVerdict {
+  host_phase_verdict_from(observation: c.observation)
+}
+
+fn host_phase_cell_is_modeled(c: HostPhaseCellStatus) -> Bool {
+  match c.disposition {
+    ModeledCompose { authorities: _ } => true
+    DeclaredGap { interim_realization: _, refusal: _ } => false
+  }
+}
+
+fn host_phase_cell_has_live_producer(c: HostPhaseCellStatus) -> Bool {
+  match c.observation {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
@@ -106,10 +112,8 @@ fn host_phase_observation(host: HostIdentity, step: HostStandupStep) -> Observat
 fn host_phase_cell_status(host: HostIdentity, step: HostStandupStep) -> HostPhaseCellStatus {
   HostPhaseCellStatus {
     cell: HostPhaseCell { host: host, phase_label: step.label as String },
-    status: host_phase_status_from(
-      disposition: step.disposition,
-      observation: host_phase_observation(host: host, step: step),
-    ),
+    disposition: step.disposition,
+    observation: host_phase_observation(host: host, step: step),
   }
 }
 
