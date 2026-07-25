@@ -972,18 +972,17 @@ pub fn rust_witness_type_arg_from_fn_return(
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    {
-        if !emit_info.fn_return_type_present.clone() {
-            return None;
+    match emit_info.fn_return_type.clone() {
+        Some(rt) => {
+            let peeled = rust_peel_one_rc_type_node(rt.clone(), source_indices.clone());
+            rust_witness_type_arg_render(
+                peeled.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+                source_indices.clone(),
+            )
         }
-        let peeled =
-            rust_peel_one_rc_type_node(emit_info.fn_return_type.clone(), source_indices.clone());
-        rust_witness_type_arg_render(
-            peeled.clone(),
-            shared_types.clone(),
-            emit_info.clone(),
-            source_indices.clone(),
-        )
+        None => None,
     }
 }
 
@@ -4686,8 +4685,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             corpus_repr: base_info.corpus_repr.clone(),
             fn_generic_param_names: base_info.fn_generic_param_names.clone(),
             fn_type_env: base_info.fn_type_env.clone(),
-            fn_return_type: error_type(),
-            fn_return_type_present: false,
+            fn_return_type: None,
         });
         let shared_types = emit_info.shared_types.clone();
         let registry = typed.item_registry.clone();
@@ -5074,8 +5072,7 @@ pub fn emit_module(
             corpus_repr: base_info.corpus_repr.clone(),
             fn_generic_param_names: base_info.fn_generic_param_names.clone(),
             fn_type_env: base_info.fn_type_env.clone(),
-            fn_return_type: error_type(),
-            fn_return_type_present: false,
+            fn_return_type: None,
         });
         let shared_types = emit_info.shared_types.clone();
         let export_sets = build_module_export_sets(Rc::new(vec![typed_module.clone()]));
@@ -11436,7 +11433,6 @@ pub fn emit_typed_item(
                                 fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
                                 fn_type_env: emit_info.fn_type_env.clone(),
                                 fn_return_type: emit_info.fn_return_type.clone(),
-                                fn_return_type_present: emit_info.fn_return_type_present.clone(),
                             });
                             let is_effectful = match lookup_item(
                                 registry.clone(),
@@ -13627,7 +13623,7 @@ pub fn emit_fn_def(
                         generic_param_names.clone(),
                         scope.type_env.clone(),
                     ),
-                    inferred.clone(),
+                    Some(inferred.clone()),
                 );
                 let value_param_names = Rc::new({
                     let mut __result = Vec::new();
@@ -19766,7 +19762,6 @@ pub fn emit_rust_fold_method_call(
                             fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
                             fn_type_env: emit_info.fn_type_env.clone(),
                             fn_return_type: emit_info.fn_return_type.clone(),
-                            fn_return_type_present: emit_info.fn_return_type_present.clone(),
                         }),
                         None => emit_info.clone(),
                     }
@@ -19804,7 +19799,6 @@ pub fn emit_rust_fold_method_call(
                                 fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
                                 fn_type_env: emit_info.fn_type_env.clone(),
                                 fn_return_type: emit_info.fn_return_type.clone(),
-                                fn_return_type_present: emit_info.fn_return_type_present.clone(),
                             }),
                             None => emit_info.clone(),
                         }

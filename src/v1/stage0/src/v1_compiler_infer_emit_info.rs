@@ -18,7 +18,7 @@ use crate::v1_std_core::FieldAccessStyle::{EnumAccessor, StoredField, TupleFirst
 use crate::v1_std_core::FieldValueShape::{OptionalValue, PlainValue};
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
 pub use crate::v1_std_core::{
-    authored_name_at, error_type, find_child_named, has_child_named, param_node_name_at,
+    authored_name_at, find_child_named, has_child_named, param_node_name_at,
     with_required_cardinality,
 };
 pub use crate::v1_std_core::{
@@ -174,8 +174,7 @@ pub struct EmitGraphInfo {
     pub corpus_repr: RustCorpusRepr,
     pub fn_generic_param_names: Rc<Vec<String>>,
     pub fn_type_env: Rc<TypeEnv>,
-    pub fn_return_type: Rc<Node>,
-    pub fn_return_type_present: bool,
+    pub fn_return_type: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -210,8 +209,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         corpus_repr: RustCorpusRepr::FaithfulFreeMonoid,
         fn_generic_param_names: Rc::new(vec![]),
         fn_type_env: empty_type_env(),
-        fn_return_type: error_type(),
-        fn_return_type_present: false,
+        fn_return_type: None,
     })
 }
 
@@ -237,13 +235,12 @@ pub fn emit_info_with_fn_type_context(
         fn_generic_param_names: generic_param_names.clone(),
         fn_type_env: env.clone(),
         fn_return_type: emit_info.fn_return_type.clone(),
-        fn_return_type_present: emit_info.fn_return_type_present.clone(),
     })
 }
 
 pub fn emit_info_with_fn_return(
     emit_info: Rc<EmitGraphInfo>,
-    fn_return_type: Rc<Node>,
+    fn_return_type: Option<Rc<Node>>,
 ) -> Rc<EmitGraphInfo> {
     Rc::new(EmitGraphInfo {
         type_summaries: emit_info.type_summaries.clone(),
@@ -262,7 +259,6 @@ pub fn emit_info_with_fn_return(
         fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
         fn_type_env: emit_info.fn_type_env.clone(),
         fn_return_type: fn_return_type.clone(),
-        fn_return_type_present: true,
     })
 }
 
