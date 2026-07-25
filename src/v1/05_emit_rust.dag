@@ -6700,7 +6700,7 @@ fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemIn
           } else {
             concat(ty_name, "::", child_text, " { .. }")
           }
-        concat("        ", pat, " => ", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", child_text, "\""), corpus_repr: emit_info.corpus_repr), ",")
+        concat("        ", pat, " => ", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", child_text, "\".to_string()"), corpus_repr: emit_info.corpus_repr), ",")
         )
 
         let scrut_ref = if set_contains(shared_types, ty_name) {
@@ -7674,7 +7674,7 @@ fn freemonoid_nonempty_branch_body(cons_arm: Node?, catchall: Node?, si: Map<Str
       let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
       let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
       let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
-      let tail_let = if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ") }
+      let tail_let = if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm)[1 as usize..].to_vec()); ") }
       concat(head_let, tail_let, emit_typed_expr(texpr: arm_body(n: ca), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
     Absent => match catchall {
       Present { value: wa } =>
@@ -8533,7 +8533,7 @@ fn freemonoid_tco_nonempty_branch_body(cons_arm: Node?, catchall: Node?, si: Map
       let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
       let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
       let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
-      let tail_let = if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ") }
+      let tail_let = if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm)[1 as usize..].to_vec()); ") }
       concat(head_let, tail_let, emit_typed_tco_expr(texpr: arm_body(n: ca), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
     Absent => match catchall {
       Present { value: wa } =>
