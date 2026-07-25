@@ -94,10 +94,10 @@ fn effect_io_eval_algebra_node() -> Node {
   effect_io_eval_atom(s: ^effect_io_eval_algebra_symbol)
 }
 
-fn effect_io_eval_termination_proof() -> TerminationProof {
-  TerminationProof {
+fn effect_io_eval_termination_proof() -> v2.std.cardinality.TerminationProof {
+  v2.std.cardinality.TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: ^effect_io_eval_descent_dimension }
+    strict: v2.std.cardinality.RankingDimension { measured: ^effect_io_eval_descent_dimension }
   }
 }
 

@@ -237,7 +237,7 @@ type StepBranchVoltage {
 }
 
 type TimeSeriesSample {
-  tick: Nat
+  tick: v2.std.nat.Nat
   microvolts: Voltage
 }
 

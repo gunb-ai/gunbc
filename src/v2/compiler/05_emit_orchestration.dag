@@ -529,7 +529,7 @@ fn orch_emit_while_step(
 }
 
 fn orch_emit_bounded_poll_step(
-  max_attempts: Nat,
+  max_attempts: v2.std.nat.Nat,
   body: Pipeline,
   success: Predicate,
   medium: OrchestrationEmitMedium
