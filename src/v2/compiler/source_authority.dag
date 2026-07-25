@@ -1,4 +1,58 @@
 module v2.compiler.source_authority
+import v2.std.language_model { LanguageModel }
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.parse {
+  ParseArtifact,
+  PreparedGrammar,
+  parse,
+  parse_module,
+  parse_module_prepared,
+  prepare_grammar,
+}
+import v2.compiler.resolve { resolve, ResolvedTree }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_language_model,
+  qualified_name_from_module_node
+}
+import v2.std.compilers.lexing { TokenStream }
+import v2.std.provenance { span_index_empty }
+import std.algebra { Empty, FreeMonoid }
+import v2.std.algebra { fold_list, length, list_snoc_item }
+import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  Diagnostics,
+  ExternalContractUnknown,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  diagnostics_singleton,
+  outcome_accepted,
+  outcome_rejected,
+  port_locus
+}
+import v2.std.grammar { ParseTree }
+import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, RealizationDispatch, Scaffold }
+import v2.std.collection { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet }
+import v2.std.cross_tree.resolution { source_root_set_insert }
+import v2.std.provenance { SpanIndex }
+import v2.std.compilers.target_model { TargetModel }
+import extdeps.communication.fidelity_carriers { medium_section_equal }
+import extdeps.communication.medium { DecodeFidelity, Medium }
+import v2.compiler.translate { target_serialize_source_from_model }
+import std.types { ContentHash }
+import v2.std.text { String }
+import v2.std.witness { Holds, Violates, Witness }
 
 
 data source_authority_module_note: String = "Wave 2 Gate-A flip lane: v2.compiler.source_authority is the cross-tree ingest and round-trip authority (parse→normalize→resolve→serialize laws over DagSourceReadWitness / SourceRootIngest). Curated seed-linked scaffold defers full tree behavioral oracle until emitter Rc/Optional coherence (#6775) greens rustc on the closure."
