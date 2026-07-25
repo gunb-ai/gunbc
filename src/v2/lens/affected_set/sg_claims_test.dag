@@ -64,7 +64,7 @@ test fn lens_affected_set_changed_edit_yields_changed_subgraph_holds() -> Bool {
   irt1_public_affected_set_changed_edit_yields_changed_subgraph()
 }
 
-data sg_claims_fast_lane_note: String = "Source-root provenance producer ingest witnesses (single-read, malformed, coverage, git-diff wire) live in long/affected_set_provenance_producer_witness_test.dag — exceed 5s fast-lane budget."
+data sg_claims_fast_lane_note: String = "Class C per-PR fixture-wall half (test-decomposition-wcf-cut, 2026-07-25): selectivity superset mechanism REDs and hand-built fail-closed walls in affected_set_provenance_producer_test.dag stay in per-PR discovery (under 5s). Source-root ingest/parse pipeline receipts live in long/affected_set_provenance_producer_witness_test.dag and enroll on falsifier_substrate_long_lane_entries (nightly falsifier batch 6)."
 
 test fn lens_affected_set_provenance_producer_selectivity_superset_holds() -> Bool {
   provenance_producer_selectivity_superset_holds()

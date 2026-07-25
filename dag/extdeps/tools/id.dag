@@ -1,0 +1,81 @@
+module extdeps.tools.id
+
+import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man1/id.1.html"
+  }
+}
+
+fn id_uid_argv() -> List<String> {
+  ["id", "-u"]
+}
+
+fn id_gid_argv() -> List<String> {
+  ["id", "-g"]
+}
+
+fn id_lookup_argv(user: NonEmptyStr) -> List<String> {
+  ["id", user as String]
+}
+
+service os.Id {
+  operation Uid {
+    input {}
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["id", "-u"] }
+    exit {
+      0 => Unit
+      nonzero => String "id -u failed"
+    }
+    mock_response {
+      0 => { value: "1000", success: true } "hermetic os.Id.Uid"
+    }
+  }
+
+  operation Gid {
+    input {}
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["id", "-g"] }
+    exit {
+      0 => Unit
+      nonzero => String "id -g failed"
+    }
+    mock_response {
+      0 => { value: "1000", success: true } "hermetic os.Id.Gid"
+    }
+  }
+
+  operation Lookup {
+    input { user: NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["id", "{user}"] }
+    exit {
+      0 => Unit
+      1 => Unit "no such user (id nonzero exit)"
+      nonzero => String "id failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "uid=1000(demo) gid=1000(demo) groups=1000(demo)",
+        success: true,
+      } "hermetic os.Id.Lookup"
+    }
+  }
+}

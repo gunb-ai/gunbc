@@ -16,8 +16,10 @@ import gunbc.ci_layer_roots {
   witness_exclusion_row_is_known_red,
   witness_exclusion_row_is_falsifier_wet,
   witness_exclusion_row_is_rehomed_bin_wet,
+  witness_exclusion_row_is_substrate_long_lane,
   falsifier_silent_pick_gate_entries,
-  falsifier_rehomed_bin_wet_entries
+  falsifier_rehomed_bin_wet_entries,
+  falsifier_substrate_long_lane_entries
 }
 import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries, falsifier_native_cache_cold_roster }
 import std.realization_schedule {
@@ -35,6 +37,7 @@ import std.witness_admission {
   DiscoverySelection,
   FalsifierSelfHostWet,
   FalsifierRehomedBinWet,
+  FalsifierSubstrateLongLane,
   BinWitnessWet,
   QuarantineProbeExpectRed,
   OfflineLocalRecipe,
@@ -102,6 +105,12 @@ fn consumer_for_explicit_rosters(entry: String, function: String) -> WitnessCons
     function: function
   ) {
     FalsifierRehomedBinWet
+  } else if schedule_contains_entry(
+    xs: falsifier_substrate_long_lane_entries(),
+    entry: entry,
+    function: function
+  ) {
+    FalsifierSubstrateLongLane
   } else {
     NoConsumer
   }
@@ -171,13 +180,16 @@ fn witness_admission_manifest_entry_key(entry: String, function: String) -> Stri
 
 fn witness_admission_explicit_consumer_manifest() -> List<String> {
   fold_list(
-    xs: concat(
-      concat(
-        concat(falsifier_self_host_wet_entries(), bin_witness_wet_entries),
-        known_red_probe_entries
+    xs:       concat(
+        concat(
+          concat(falsifier_self_host_wet_entries(), bin_witness_wet_entries),
+          known_red_probe_entries
+        ),
+        concat(
+          falsifier_rehomed_bin_wet_entries(),
+          falsifier_substrate_long_lane_entries()
+        )
       ),
-      falsifier_rehomed_bin_wet_entries()
-    ),
     empty: Empty,
     cons: fn(acc, w) {
       list_snoc_item(
@@ -235,7 +247,8 @@ fn witness_exclusion_explicit_roster_rows_consistent(
   rows: List<WitnessExclusionRow>,
   bin_entries: List<ScheduleWitnessEntry>,
   probe_entries: List<ScheduleWitnessEntry>,
-  rehomed_entries: List<ScheduleWitnessEntry>
+  rehomed_entries: List<ScheduleWitnessEntry>,
+  substrate_long_entries: List<ScheduleWitnessEntry>
 ) -> Bool {
   !any(
     xs: rows,
@@ -246,6 +259,8 @@ fn witness_exclusion_explicit_roster_rows_consistent(
             && !schedule_entries_cover_pattern(xs: probe_entries, pattern: row.pattern))
         || (witness_exclusion_row_is_rehomed_bin_wet(row: row)
             && !schedule_entries_cover_pattern(xs: rehomed_entries, pattern: row.pattern))
+        || (witness_exclusion_row_is_substrate_long_lane(row: row)
+            && !schedule_entries_cover_pattern(xs: substrate_long_entries, pattern: row.pattern))
     }
   )
 }
@@ -259,7 +274,8 @@ fn witness_exclusion_explicit_roster_rows_consistent_holds() -> Bool {
     rows: witness_exclusion_frontier,
     bin_entries: witness_exclusion_bin_witness_wet_universe(),
     probe_entries: known_red_probe_entries,
-    rehomed_entries: falsifier_rehomed_bin_wet_entries()
+    rehomed_entries: falsifier_rehomed_bin_wet_entries(),
+    substrate_long_entries: falsifier_substrate_long_lane_entries()
   )
 }
 

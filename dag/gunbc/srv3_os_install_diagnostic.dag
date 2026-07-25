@@ -42,10 +42,6 @@ import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_cont
 import product.placement_supply { HostIdentity }
 import gunbc.srv3_actuate_shell_paths {
   srv3_bmcweb_token_path,
-  srv3_sol_console_log_path,
-}
-import gunbc.srv3_install_diagnostic_observe_script {
-  srv3_install_diagnostic_observe_script,
 }
 
 data srv3_nbd_proxy_local_port: Int = 10809
@@ -137,26 +133,6 @@ data srv3_os_install_attempt_intent: OsInstallAttemptIntent = OsInstallAttemptIn
   boot_source: BootTargetCd,
   boot_override: BootOverrideOnce,
   serve_port: srv3_nbd_proxy_local_port,
-}
-
-fn srv3_install_diagnostic_observe_script_for_intent(intent: OsInstallAttemptIntent) -> String {
-  srv3_install_diagnostic_observe_script(
-    token_path: srv3_bmcweb_token_path,
-    bmc: intent.bmc_endpoint as String,
-    port: intent.serve_port as String,
-    iso_path: intent.iso_path as String,
-    intent_content_hash: intent.iso_content_hash as String,
-    sol_log: srv3_sol_console_log_path as String,
-  )
-}
-
-fn srv3_install_diagnostic_observe_script_declares_five_surfaces() -> Bool {
-  let script = srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent)
-  string_contains(s: script, pattern: "surface=serve")
-    && string_contains(s: script, pattern: "surface=bmc_websocket")
-    && string_contains(s: script, pattern: "surface=redfish")
-    && string_contains(s: script, pattern: "surface=sol")
-    && string_contains(s: script, pattern: "surface=router")
 }
 
 type NbdServeProcessObservation
@@ -1407,7 +1383,7 @@ fn srv3_install_diagnostic_recommended_action_wire(verdict: Srv3InstallDiagnosti
     OsInstalled => "confirm router dynamic lease option-12 srv3; proceed post-install witnesses"
     KvmUntrusted => "do not use KVM as success oracle; read SOL and router lease"
     Inconclusive => "collect missing observation surfaces before next actuation"
-    InconclusiveNeedsServeObservation => "run srv3_install_diagnostic_checklist on srv1 actuator host"
+    InconclusiveNeedsServeObservation => "collect actuator-host serve observation surfaces before next actuation"
   }
 }
 

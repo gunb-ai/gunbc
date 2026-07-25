@@ -114,6 +114,10 @@ data height_bar: ScaleToken = named_length_token(name: "h-bar", px: 10)
 data height_control_note: String = "The tactile target height (remodel W1c, operator archetype 2026-07-24: the GitHub merge button — a control you press with confidence needs the hand-scale target, ~40px class, not a text-line strip). This token plus radius-999 (the oblong/pill radius) are the first two rows of the control-geometry axis; the axis stays token-grain until a SECOND instrument lands (the archetype library's own second-consumer discipline), at which point the rows lift into a typed ControlGeometry carrier."
 
 data height_control: ScaleToken = named_length_token(name: "h-control", px: 40)
+
+data height_row_note: String = "The roadmap row's density token (composition slice 2, the signed actuator ruling 2026-07-24: chip-scale in rows, sixty pills must be quiet at arm's length — the instrument feel is carried by press physics, never by area). The ROW owns this height and the in-row actuator DERIVES its extent from it (min-height and line-height both var(--h-row) — derived-not-set, witnessed): there is no separate chip-height token to drift against the row that contains it. h-control stays the FULL-SIZE instrument's height, consumed by the sandbox gallery specimen where design work lives. PROVISIONAL (iteration protocol): 24px is the worker's call pending the operator's pass — flip is this one row."
+
+data height_row: ScaleToken = named_length_token(name: "h-row", px: 24)
 data width_status: ScaleToken = named_length_token(name: "w-status", px: 52)
 data width_brick_state: ScaleToken = named_length_token(name: "w-brick-state", px: 62)
 
@@ -124,7 +128,7 @@ data travel_press: ScaleToken = named_length_token(name: "travel-press", px: 1)
 
 data dimension_scale: List<ScaleToken> = [
   radius_3, radius_5, radius_999, border_1, border_2, measure_page,
-  height_mark, height_bar, height_control, width_status, width_brick_state,
+  height_mark, height_bar, height_control, height_row, width_status, width_brick_state,
   travel_lift, travel_press,
 ]
 
