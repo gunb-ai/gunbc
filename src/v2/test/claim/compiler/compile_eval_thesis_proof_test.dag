@@ -1,4 +1,5 @@
 module v2.test.claim.compiler.compile_eval_thesis_proof
+import v2.std.optional { Optional, Absent, Present }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -10,9 +11,9 @@ fn compile_eval_thesis_termination_proof() -> v2.std.cardinality.TerminationProo
   }
 }
 
-fn compile_eval_thesis_facts_lookup(key: Node) -> Witness<InferredFacts> {
+fn compile_eval_thesis_facts_lookup(key: Node) -> Optional<InferredFacts> {
   if key == v2_eval_bool_literal_pin {
-    Holds {
+    Present {
       value: claim_inferred_facts_from_nodes(
         resolved: v2_eval_bool_literal_pin,
         algebra: v2_eval_bool_literal_pin,
@@ -20,7 +21,7 @@ fn compile_eval_thesis_facts_lookup(key: Node) -> Witness<InferredFacts> {
       )
     }
   } else if key == v2_eval_unit_literal_pin {
-    Holds {
+    Present {
       value: claim_inferred_facts_from_nodes(
         resolved: v2_eval_unit_literal_pin,
         algebra: v2_eval_unit_literal_pin,
@@ -28,9 +29,7 @@ fn compile_eval_thesis_facts_lookup(key: Node) -> Witness<InferredFacts> {
       )
     }
   } else {
-    Violates {
-      diagnostic: eval_diagnostic(reason: ^compile_eval_thesis_facts_miss, node: key)
-    }
+    Absent
   }
 }
 

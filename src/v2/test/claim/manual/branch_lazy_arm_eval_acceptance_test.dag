@@ -19,7 +19,7 @@ import v2.extdeps.languages.dag {
   dag_node_is_int_literal_atom
 }
 import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection {
+import v2.std.collection { Optional,
   Absent,
   List,
   Map,
@@ -494,8 +494,8 @@ fn lazy_arm_tree_root(call: Node, expected: Node) -> Node {
   }
 }
 
-fn lazy_arm_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  Holds {
+fn lazy_arm_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  Present {
     value: claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: lazy_arm_i64(),

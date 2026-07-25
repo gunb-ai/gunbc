@@ -1,5 +1,6 @@
 module v2.test.emit.rust_call_emit
 
+import v2.std.optional { Optional, Present, Absent }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.rust { rust_target_model_bundle_core }
@@ -215,14 +216,8 @@ fn rust_call_target_model(authority_source_text: String) -> TargetModel {
   }
 }
 
-fn rust_call_facts_miss(key: Node) -> Witness<InferredFacts> {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^rust_call_emit_facts_not_consulted,
-      at: node_locus(node: key),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
+fn rust_call_facts_miss(key: Node) -> Optional<InferredFacts> {
+  Absent
 }
 
 fn rust_call_inferred_tree_for(root: Node) -> InferredTree {

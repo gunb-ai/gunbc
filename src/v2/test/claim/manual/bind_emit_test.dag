@@ -20,7 +20,7 @@ import v2.compiler.translate {
   target_serialize_source_from_model,
   translate_emitted_node
 }
-import v2.std.collection { Map, list_at_optional }
+import v2.std.collection { Optional, Map, list_at_optional }
 import v2.std.diagnostic {
   Accepted,
   None,
@@ -48,7 +48,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn bind_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
+fn bind_emit_facts_lookup(key: Node) -> Optional<InferredFacts> {
   bind_round_trip_inferred_facts_for(node: key)
 }
 

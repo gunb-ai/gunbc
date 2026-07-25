@@ -20,7 +20,7 @@ import v2.compiler.eval {
   test_claim_typed_input_node
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.std.collection {
+import v2.std.collection { Optional,
   Absent,
   List,
   Map,
@@ -309,9 +309,9 @@ fn loop_bounded_descent() -> Witness<v2.std.cardinality.TerminationProof> {
   Holds { value: structural_node_size_termination_proof() }
 }
 
-fn loop_facts_lookup(key: Node) -> Witness<InferredFacts> {
+fn loop_facts_lookup(key: Node) -> Optional<InferredFacts> {
   if loop_node_is_loop(node: key) {
-    Holds {
+    Present {
       value: claim_inferred_facts_from_nodes(
         resolved: key,
         algebra: loop_i64_node(),
@@ -319,7 +319,7 @@ fn loop_facts_lookup(key: Node) -> Witness<InferredFacts> {
       )
     }
   } else {
-    Holds {
+    Present {
       value: claim_inferred_facts_from_nodes(
         resolved: key,
         algebra: loop_i64_node(),

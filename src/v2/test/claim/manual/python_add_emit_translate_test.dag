@@ -38,7 +38,7 @@ import v2.test.manual.infer_ground_add {
   infer_receipt_context
 }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
-import v2.std.collection { Map, empty_map }
+import v2.std.collection { Optional, Present, Absent, Map, empty_map }
 import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness
@@ -228,14 +228,14 @@ fn python_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding>
   }
 }
 
-fn python_add_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
+fn python_add_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
   match python_add_canonical_grounding_for(node: node) {
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => Absent
     Holds { value: grounding } =>
       match termination_proof_witness_for_node(n: node) {
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Violates { diagnostic: d } => Absent
         Holds { value: proof } =>
-          Holds {
+          Present {
             value: claim_inferred_facts_witness(
               grounding: grounding,
               descent: Holds { value: proof }
@@ -245,7 +245,7 @@ fn python_add_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
   }
 }
 
-fn python_add_facts_lookup(key: Node) -> Witness<InferredFacts> {
+fn python_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
   python_add_inferred_facts_for(node: key)
 }
 

@@ -21,7 +21,7 @@ import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
 import v2.extdeps.languages.rust_test { rust_logic_complement_target_model_staging }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Absent, List, Map, Present, list_at_optional }
+import v2.std.collection { Optional, Absent, List, Map, Present, list_at_optional }
 import v2.std.node { match_arm_body }
 import v2.std.diagnostic {
   Accepted,
@@ -93,8 +93,8 @@ fn emit_complement_eval_generic_facts(node: Node) -> InferredFacts {
   )
 }
 
-fn emit_complement_eval_composed_facts(key: Node) -> Witness<InferredFacts> {
-  Holds { value: emit_complement_eval_generic_facts(node: key) }
+fn emit_complement_eval_composed_facts(key: Node) -> Optional<InferredFacts> {
+  Present { value: emit_complement_eval_generic_facts(node: key) }
 }
 
 fn emit_complement_eval_tree_for(root: Node) -> InferredTree {

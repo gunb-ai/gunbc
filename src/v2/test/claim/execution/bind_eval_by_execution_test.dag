@@ -20,7 +20,7 @@ import v2.compiler.eval {
   test_claim_typed_input_node
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.std.collection {
+import v2.std.collection { Optional,
   Absent,
   List,
   Map,
@@ -279,8 +279,8 @@ fn bind_tree_root(call: Node, expected: Node) -> Node {
   }
 }
 
-fn bind_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  Holds {
+fn bind_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  Present {
     value: claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: bind_i64_node(),

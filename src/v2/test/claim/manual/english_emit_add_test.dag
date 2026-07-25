@@ -22,7 +22,7 @@ import v2.extdeps.languages.english {
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.std.algebra { fold_list }
 import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection { Map }
+import v2.std.collection { Optional, Present, Absent, Map }
 import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness
@@ -132,14 +132,14 @@ fn english_emit_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrou
   }
 }
 
-fn english_emit_add_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
+fn english_emit_add_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
   match english_emit_add_canonical_grounding_for(node: node) {
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => Absent
     Holds { value: grounding } =>
       match termination_proof_witness_for_node(n: node) {
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Violates { diagnostic: d } => Absent
         Holds { value: proof } =>
-          Holds {
+          Present {
             value: claim_inferred_facts_witness(
               grounding: grounding,
               descent: Holds { value: proof }
@@ -149,7 +149,7 @@ fn english_emit_add_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
   }
 }
 
-fn english_emit_add_facts_lookup(key: Node) -> Witness<InferredFacts> {
+fn english_emit_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
   english_emit_add_inferred_facts_for(node: key)
 }
 

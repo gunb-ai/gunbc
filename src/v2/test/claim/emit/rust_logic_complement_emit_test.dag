@@ -11,7 +11,7 @@ import v2.extdeps.languages.rust_test {
   rust_logic_complement_swapped_arms_source_text,
   rust_logic_complement_target_model_staging
 }
-import v2.std.collection { Map }
+import v2.std.collection { Optional, Present, Absent, Map }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -28,14 +28,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn rust_logic_complement_emit_facts_miss(key: Node) -> Witness<InferredFacts> {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^rust_logic_complement_emit_facts_not_consulted,
-      at: node_locus(node: key),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
+fn rust_logic_complement_emit_facts_miss(key: Node) -> Optional<InferredFacts> {
+  Absent
 }
 
 fn rust_logic_complement_emit_inferred_tree_for(root: Node) -> InferredTree {

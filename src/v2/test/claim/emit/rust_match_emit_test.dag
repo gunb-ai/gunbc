@@ -11,7 +11,7 @@ import v2.extdeps.languages.rust_test {
   rust_match_target_model_staging
 }
 import extdeps.communication.medium { Medium }
-import v2.std.collection { Map }
+import v2.std.collection { Optional, Present, Absent, Map }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
   Accepted,
@@ -33,14 +33,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_match_emit_swapped_source_text: String = "fn one_or_two() -> i32 { match (true) { true => 2, false => 1 } }"
 
-fn rust_match_emit_facts_miss(key: Node) -> Witness<InferredFacts> {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^rust_match_emit_facts_not_consulted,
-      at: node_locus(node: key),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
+fn rust_match_emit_facts_miss(key: Node) -> Optional<InferredFacts> {
+  Absent
 }
 
 fn rust_match_emit_inferred_tree_for(root: Node) -> InferredTree {

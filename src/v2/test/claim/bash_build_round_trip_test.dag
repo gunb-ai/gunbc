@@ -16,7 +16,7 @@ import v2.extdeps.languages.bash_command_fold {
   bash_fold_cmd_wc_minus_c_emitted,
   bash_fold_target_model_for_emitted_witness
 }
-import v2.std.collection { Map }
+import v2.std.collection { Optional, Present, Absent, Map }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
   Accepted,
@@ -40,14 +40,8 @@ data bash_build_round_trip_exit_42_golden: String = "exit 42"
 data bash_build_round_trip_and_then_golden: String = "'true' && 'false'"
 data bash_build_round_trip_pipe_golden: String = "'echo' 'hi' | 'wc' '-c'"
 
-fn bash_build_round_trip_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^bash_build_round_trip_facts_unexpected_consultation,
-      at: node_locus(node: key),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
+fn bash_build_round_trip_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  Absent
 }
 
 fn bash_build_round_trip_emit_matches_golden(

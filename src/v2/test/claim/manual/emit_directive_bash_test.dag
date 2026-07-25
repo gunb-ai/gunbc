@@ -8,7 +8,7 @@ import v2.extdeps.languages.bash {
   emit_directive_bash_target_model,
   emit_directive_bash_to_stdout_wrong_target_model
 }
-import v2.std.collection { Map }
+import v2.std.collection { Optional, Present, Absent, Map }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -28,14 +28,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn emit_directive_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^emit_directive_bash_facts_unexpected_consultation,
-      at: node_locus(node: key),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
+fn emit_directive_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  Absent
 }
 
 data emit_directive_error_example: EmitDirective = EmitDirective {

@@ -18,7 +18,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection { Map }
+import v2.std.collection { Optional, Present, Absent, Map }
 import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness
@@ -110,14 +110,14 @@ fn dag_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   }
 }
 
-fn dag_add_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
+fn dag_add_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
   match dag_add_canonical_grounding_for(node: node) {
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => Absent
     Holds { value: grounding } =>
       match termination_proof_witness_for_node(n: node) {
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Violates { diagnostic: d } => Absent
         Holds { value: proof } =>
-          Holds {
+          Present {
             value: claim_inferred_facts_witness(
               grounding: grounding,
               descent: Holds { value: proof }
@@ -127,7 +127,7 @@ fn dag_add_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
   }
 }
 
-fn dag_add_facts_lookup(key: Node) -> Witness<InferredFacts> {
+fn dag_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
   dag_add_inferred_facts_for(node: key)
 }
 

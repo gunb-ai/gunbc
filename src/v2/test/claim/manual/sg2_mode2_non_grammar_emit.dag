@@ -25,7 +25,7 @@ import v2.extdeps.languages.rust {
   rust_type_expression_projection
 }
 import v2.std.algebra { is_empty }
-import v2.std.collection { Absent, Map, Present }
+import v2.std.collection { Optional, Absent, Map, Present }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -103,14 +103,8 @@ fn sg2_mode2_target() -> TargetModel {
   rust_sg2_type_expr_target_model()
 }
 
-fn sg2_mode2_facts_lookup(_key: Node) -> Witness<InferredFacts> {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^sg2_mode2_facts_unavailable,
-      at: node_locus(node: sg2_mode2_fail_node()),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
+fn sg2_mode2_facts_lookup(_key: Node) -> Optional<InferredFacts> {
+  Absent
 }
 
 data sg2_mode2_inferred_tree: InferredTree = InferredTree {

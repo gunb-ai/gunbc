@@ -1,4 +1,5 @@
 module v2.test.lens_structural_resolution.unresolved_infer_witness
+import v2.std.optional { Optional, Absent, Present }
 
 
 data sr_infer_claim_hash: Hash = sr_infer_claim_hash
@@ -36,10 +37,8 @@ fn sr_infer_resolved_facts() -> InferredFacts {
   )
 }
 
-fn sr_infer_usage_site_witness() -> Witness<InferredFacts> {
-  Violates {
-    diagnostic: infer_descent_not_derived_diagnostic(at: node_locus(node: sr_infer_use))
-  }
+fn sr_infer_usage_site_witness() -> Optional<InferredFacts> {
+  Absent
 }
 
 fn sr_infer_claim_fact_map() -> Map<Node, InferredFacts> {

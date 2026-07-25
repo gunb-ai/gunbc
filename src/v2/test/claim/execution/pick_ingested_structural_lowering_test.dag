@@ -316,8 +316,8 @@ fn pick_eval_tree_root(call: Node, expected: Node) -> Node {
   }
 }
 
-fn pick_eval_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  Holds {
+fn pick_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  Present {
     value: claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: pick_eval_int_type_node(),

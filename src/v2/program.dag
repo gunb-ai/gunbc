@@ -20,7 +20,7 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
   effect_io_pure_unit_type_node
 }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection {
+import v2.std.collection { Optional,
   Absent,
   List,
   Map,
@@ -336,23 +336,21 @@ fn program_facts_for(node: Node) -> InferredFacts {
   )
 }
 
-fn program_facts_lookup(node: Node) -> Witness<InferredFacts> {
+fn program_facts_lookup(node: Node) -> Optional<InferredFacts> {
   if node == program_pick_if_branch_with_effect_io {
-    Holds { value: program_facts_for(node: program_pick_if_branch_with_effect_io) }
+    Present { value: program_facts_for(node: program_pick_if_branch_with_effect_io) }
   } else if node == program_effect_io_roundtrip {
-    Holds { value: program_facts_for(node: program_effect_io_roundtrip) }
+    Present { value: program_facts_for(node: program_effect_io_roundtrip) }
   } else if node == program_locator_literal {
-    Holds { value: program_facts_for(node: program_locator_literal) }
+    Present { value: program_facts_for(node: program_locator_literal) }
   } else if node == program_payload_literal {
-    Holds { value: program_facts_for(node: program_payload_literal) }
+    Present { value: program_facts_for(node: program_payload_literal) }
   } else if node == program_kw_true() {
-    Holds { value: program_facts_for(node: program_kw_true()) }
+    Present { value: program_facts_for(node: program_kw_true()) }
   } else if node == program_literal_two() {
-    Holds { value: program_facts_for(node: program_literal_two()) }
+    Present { value: program_facts_for(node: program_literal_two()) }
   } else {
-    Violates {
-      diagnostic: eval_diagnostic(reason: ^program_facts_miss, node: node)
-    }
+    Absent
   }
 }
 
@@ -386,8 +384,8 @@ fn program_pick_if_call(callee: Node) -> Node {
   }
 }
 
-fn program_pick_if_arrow_facts_lookup(node: Node) -> Witness<InferredFacts> {
-  Holds {
+fn program_pick_if_arrow_facts_lookup(node: Node) -> Optional<InferredFacts> {
+  Present {
     value: claim_inferred_facts_from_nodes(
       resolved: node,
       algebra: program_i64_type(),

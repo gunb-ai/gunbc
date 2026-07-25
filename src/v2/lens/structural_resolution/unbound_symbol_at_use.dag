@@ -1,4 +1,5 @@
 module v2.test.lens_structural_resolution.unbound_symbol_at_use
+import v2.std.optional { Optional, Absent, Present }
 
 data sr_unbound_claim_hash: Hash = sr_unbound_claim_hash
 
@@ -48,10 +49,8 @@ fn sr_unbound_resolved_facts() -> InferredFacts {
   )
 }
 
-fn sr_unbound_usage_site_witness() -> Witness<InferredFacts> {
-  Violates {
-    diagnostic: unbound_symbol_diagnostic(n: sr_unbound_use)
-  }
+fn sr_unbound_usage_site_witness() -> Optional<InferredFacts> {
+  Absent
 }
 
 fn sr_unbound_claim_fact_map() -> Map<Node, InferredFacts> {

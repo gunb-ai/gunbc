@@ -22,7 +22,7 @@ import v2.extdeps.languages.rust_test { rust_field_access_target_model_staging }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.algebra { length }
-import v2.std.collection { List, Map, Absent, Present, list_at_optional }
+import v2.std.collection { Optional, List, Map, Absent, Present, list_at_optional }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -101,12 +101,12 @@ fn emit_field_eval_generic_facts(node: Node) -> InferredFacts {
   )
 }
 
-fn emit_field_eval_composed_facts(key: Node) -> Witness<InferredFacts> {
-  Holds { value: emit_field_eval_generic_facts(node: key) }
+fn emit_field_eval_composed_facts(key: Node) -> Optional<InferredFacts> {
+  Present { value: emit_field_eval_generic_facts(node: key) }
 }
 
-fn emit_field_eval_alt_descent_composed_facts(key: Node) -> Witness<InferredFacts> {
-  Holds {
+fn emit_field_eval_alt_descent_composed_facts(key: Node) -> Optional<InferredFacts> {
+  Present {
     value: emit_field_eval_facts_with_descent(
       node: key,
       descent_symbol: ^emit_field_eval_alt_descent

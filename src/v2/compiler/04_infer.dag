@@ -357,18 +357,16 @@ fn infer_node_facts(n: Node, partials: List<Node>) -> Outcome<InferredFacts> {
 fn lookup_inferred_facts_in_entries(
   entries: List<InferredFactsEntry>,
   key: Node,
-) -> Witness<InferredFacts> {
+) -> Optional<InferredFacts> {
   fold(
     entries,
-    init: Violates {
-      diagnostic: infer_facts_lookup_miss_diagnostic(key: key)
-    },
+    init: Absent,
     f: fn(acc, entry) {
       match acc {
-        Holds { value: _ } => acc
-        Violates { diagnostic: _ } =>
+        Present { value: _ } => acc
+        Absent =>
           if entry.node == key {
-            Holds { value: entry.facts }
+            Present { value: entry.facts }
           } else {
             acc
           }
@@ -398,10 +396,7 @@ fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<Map<Node
       Accepted {
         value: Map {
           lookup: fn(key) {
-            match lookup_inferred_facts_in_entries(entries: admitted, key: key) {
-              Holds { value: v } => Present { value: v }
-              Violates { diagnostic: _ } => Absent
-            }
+            lookup_inferred_facts_in_entries(entries: admitted, key: key)
           }
         },
         diagnostics: d
