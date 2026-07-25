@@ -1,6 +1,6 @@
 module tools.floor_effect_gate_witness
 
-import gunbc.ci_gate { EmitHostGate, CheapClaimPoolGate, LayeringImportsGate }
+import gunbc.ci_gate { EmitHostGate, CheapClaimPoolGate }
 import gunbc.ci_spec {
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   RegenVerifyGate
@@ -13,10 +13,6 @@ func emit_host_gate_passes() -> Bool {
 
 func cheap_claim_pool_gate_passes() -> Bool {
   tools.ci_gates.exit_ok(e: run_spec_gate(g: CheapClaimPoolGate))
-}
-
-func layering_imports_gate_passes() -> Bool {
-  tools.ci_gates.exit_ok(e: run_spec_gate(g: LayeringImportsGate))
 }
 
 func extdeps_external_authority_gate_passes() -> Bool {

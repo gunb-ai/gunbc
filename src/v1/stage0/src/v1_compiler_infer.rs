@@ -17517,6 +17517,7 @@ pub fn build_emit_graph_info(
             corpus_repr: rust_corpus_repr(has_v1_seed.clone()),
             fn_generic_param_names: Rc::new(vec![]),
             fn_type_env: empty_type_env(),
+            fn_return_type: None,
         })
     }
 }
@@ -17756,6 +17757,15 @@ pub struct ExportIndexModuleAccum {
     pub seen_names: Rc<BTreeSet<String>>,
 }
 
+pub fn export_index_canonical_is_the_fold_element_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "§6 bare-minimum cost, same receipt as module_exported_type_names_cost_note. export_index_merge_module's canonical binding was `filter(bindings |> map_values, b => b.name == name) |> first` — a rescan of the WHOLE binding map (with a fresh Vec allocation) once per distinct name, i.e. O(|bindings|^2) per module per closure assembly. It is dead work by construction: the enclosing fold walks THAT SAME map_values sequence in order, and seen_names skips every repeat, so the first element whose name matches is always the fold's own current element. `canonical = binding` is therefore the identical value, not an approximation of it — the order both expressions read is one traversal of one map value, so the equality does not depend on map_values being stable ACROSS runs (§5941 determinism), only on the two reads of the same value agreeing, which the rewrite removes the need for entirely.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn export_index_merge_module(
     acc: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
     m: Rc<TypedModule>,
@@ -17774,25 +17784,7 @@ pub fn export_index_merge_module(
                     state.clone()
                 } else {
                     {
-                        let canonical = match Rc::new({
-                            let mut __result = Vec::new();
-                            for b in
-                                Rc::new(v1_rt::map_values(&m.type_env.clone().bindings.clone()))
-                                    .iter()
-                                    .cloned()
-                            {
-                                if (b.name.clone() == name.clone()) {
-                                    __result.push(b);
-                                }
-                            }
-                            __result
-                        })
-                        .first()
-                        .cloned()
-                        {
-                            Some(b) => b.clone(),
-                            None => binding.clone(),
-                        };
+                        let canonical = binding.clone();
                         let seen_names =
                             v1_rt::rc_set_insert(state.seen_names.clone(), name.clone());
                         let index = match v1_rt::map_get(&state.index.clone(), name.clone()) {
@@ -17836,40 +17828,76 @@ pub fn build_type_name_export_index(
     )
 }
 
-pub fn module_exports_type_name(m: Rc<TypedModule>, name: String) -> bool {
-    ((Rc::new({
+pub fn module_exported_type_names_cost_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Cost shape (§6 bare-minimum cost, floor batch-3 receipt 2026-07-25): the type names a module exports is ONE derived fact — a set — and both consumers in rewire_type_env_import_str_binding_identity read it. Before this row it existed twice: the caller's per-module `local_names` fold, and `module_exports_type_name`, a LINEAR SCAN (map_values allocates a Vec of every binding, then filters by name) re-run once per (consumer module x inherited key x direct import). Measured on 79 discovery entries: that pass alone was 191.1s of a 331.9s resolve wall (99% of all rewire time, 2.4s/entry) while the other two rewire passes together cost 1.8s. Hoisting the set per module and testing membership makes direct_import_exporter_count O(direct imports) instead of O(direct imports x |parent bindings|), with no change to the predicate it computes. The caller reads its own row out of the SAME index rather than re-folding it (review 42566) — the Absent arm computes the true value from this one authority, so it is a structurally-unreachable fallback that is still honest, never a fabricated default (DESIGN section 5).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn module_exported_type_names(m: Rc<TypedModule>) -> Rc<BTreeSet<String>> {
+    Rc::new(v1_rt::map_values(&m.type_env.clone().bindings.clone()))
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_set::<String>(),
+            |acc: Rc<BTreeSet<String>>, b: Rc<TypeBinding>| {
+                v1_rt::rc_set_insert(acc, b.name.clone())
+            },
+        )
+}
+
+pub fn build_module_exported_type_name_index(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
+    modules.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+        |acc: Rc<HashMap<String, Rc<BTreeSet<String>>>>, m: Rc<TypedModule>| {
+            v1_rt::rc_map_insert(
+                acc,
+                authored_name_at(source_indices.clone(), m.module.clone()),
+                module_exported_type_names(m.clone()),
+            )
+        },
+    )
+}
+
+pub fn direct_import_export_name_sets(
+    m: Rc<TypedModule>,
+    export_name_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<BTreeSet<String>>>> {
+    Rc::new({
         let mut __result = Vec::new();
-        for b in Rc::new(v1_rt::map_values(&m.type_env.clone().bindings.clone()))
-            .iter()
-            .cloned()
-        {
-            if (b.name.clone() == name.clone()) {
-                __result.push(b);
-            }
+        for imp in module_imports(m.module.clone()).iter().cloned() {
+            __result.extend(
+                (*{
+                    let path = import_module_path_at(imp.clone(), source_indices.clone());
+                    match v1_rt::map_get(&export_name_index, path.clone()) {
+                        Some(names) => Rc::new(vec![names.clone()]),
+                        None => Rc::new(vec![]),
+                    }
+                })
+                .iter()
+                .cloned(),
+            );
         }
         __result
     })
-    .len() as i64)
-        > 0)
 }
 
 pub fn direct_import_exporter_count(
-    m: Rc<TypedModule>,
+    import_export_names: Rc<Vec<Rc<BTreeSet<String>>>>,
     name: String,
-    index: Rc<HashMap<String, Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> i64 {
     (Rc::new({
         let mut __result = Vec::new();
-        for imp in module_imports(m.module.clone()).iter().cloned() {
-            if {
-                let path = import_module_path_at(imp.clone(), source_indices.clone());
-                match v1_rt::map_get(&index, path.clone()) {
-                    Some(parent) => module_exports_type_name(parent.clone(), name.clone()),
-                    None => false,
-                }
-            } {
-                __result.push(imp);
+        for names in import_export_names.clone().iter().cloned() {
+            if v1_rt::set_contains(&names, name.clone()) {
+                __result.push(names);
             }
         }
         __result
@@ -17879,9 +17907,7 @@ pub fn direct_import_exporter_count(
 
 pub fn rewire_inherited_str_binding(
     type_name_index: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
-    module_index: Rc<HashMap<String, Rc<TypedModule>>>,
-    consumer: Rc<TypedModule>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    import_export_names: Rc<Vec<Rc<BTreeSet<String>>>>,
     local_names: Rc<BTreeSet<String>>,
     str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
@@ -17893,12 +17919,7 @@ pub fn rewire_inherited_str_binding(
             None => 0,
         };
         if ((v1_rt::set_contains(&local_names, name.clone())
-            || (direct_import_exporter_count(
-                consumer.clone(),
-                name.clone(),
-                module_index.clone(),
-                source_indices.clone(),
-            ) > 1))
+            || (direct_import_exporter_count(import_export_names.clone(), name.clone()) > 1))
             || (exporter_count.clone() > 1))
         {
             Rc::new(StrBindingsRewireAccum {
@@ -17947,27 +17968,24 @@ pub fn rewire_type_env_import_str_binding_identity(
 ) -> Rc<Vec<Rc<TypedModule>>> {
     {
         let type_name_index = build_type_name_export_index(modules.clone());
-        let index = modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
-            |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
-                v1_rt::rc_map_insert(
-                    acc,
-                    authored_name_at(source_indices.clone(), m.module.clone()),
-                    m.clone(),
-                )
-            },
-        );
+        let export_name_index =
+            build_module_exported_type_name_index(modules.clone(), source_indices.clone());
         Rc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
                 __result.push({
-                    let local_names =
-                        Rc::new(v1_rt::map_values(&m.type_env.clone().bindings.clone()))
-                            .iter()
-                            .cloned()
-                            .fold(v1_rt::rc_empty_set::<_>(), |acc: _, b: Rc<TypeBinding>| {
-                                v1_rt::rc_set_insert(acc, b.name.clone())
-                            });
+                    let local_names = match v1_rt::map_get(
+                        &export_name_index,
+                        authored_name_at(source_indices.clone(), m.module.clone()),
+                    ) {
+                        Some(names) => names.clone(),
+                        None => module_exported_type_names(m.clone()),
+                    };
+                    let import_export_names = direct_import_export_name_sets(
+                        m.clone(),
+                        export_name_index.clone(),
+                        source_indices.clone(),
+                    );
                     let ancestry_keys = Rc::new(v1_rt::map_keys(
                         &m.type_env.clone().ancestry_str_bindings.clone(),
                     ));
@@ -17982,9 +18000,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                         |acc: Rc<StrBindingsRewireAccum>, name: String| {
                             rewire_inherited_str_binding(
                                 type_name_index.clone(),
-                                index.clone(),
-                                m.clone(),
-                                source_indices.clone(),
+                                import_export_names.clone(),
                                 local_names.clone(),
                                 acc.str_bindings.clone(),
                                 acc.ancestry_str_bindings.clone(),

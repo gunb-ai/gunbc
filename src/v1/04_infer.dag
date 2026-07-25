@@ -7869,7 +7869,8 @@ fn build_emit_graph_info(modules: List<TypedModule>, has_v1_seed: Bool) -> EmitG
     read_only_params: empty_set(),
     corpus_repr: rust_corpus_repr(has_v1_seed: has_v1_seed),
     fn_generic_param_names: [],
-    fn_type_env: empty_type_env()
+    fn_type_env: empty_type_env(),
+    fn_return_type: none
   }
 }
 
@@ -7986,16 +7987,15 @@ type ExportIndexModuleAccum {
   seen_names: Set<String>
 }
 
+data export_index_canonical_is_the_fold_element_note: String = "§6 bare-minimum cost, same receipt as module_exported_type_names_cost_note. export_index_merge_module's canonical binding was `filter(bindings |> map_values, b => b.name == name) |> first` — a rescan of the WHOLE binding map (with a fresh Vec allocation) once per distinct name, i.e. O(|bindings|^2) per module per closure assembly. It is dead work by construction: the enclosing fold walks THAT SAME map_values sequence in order, and seen_names skips every repeat, so the first element whose name matches is always the fold's own current element. `canonical = binding` is therefore the identical value, not an approximation of it — the order both expressions read is one traversal of one map value, so the equality does not depend on map_values being stable ACROSS runs (§5941 determinism), only on the two reads of the same value agreeing, which the rewrite removes the need for entirely."
+
 fn export_index_merge_module(acc: Map<String, TypeNameExportFacts>, m: TypedModule) -> Map<String, TypeNameExportFacts> {
   fold(m.type_env.bindings |> map_values, init: ExportIndexModuleAccum { index: acc, seen_names: empty_set() }, f: (state, binding) =>
     let name = binding.name
     if set_contains(state.seen_names, name) {
       state
     } else {
-      let canonical = match filter(m.type_env.bindings |> map_values, b => b.name == name) |> first {
-        Present { value: b } => b
-        Absent => binding
-      }
+      let canonical = binding
       let seen_names = set_insert(state.seen_names, name)
       let index = match map_get(state.index, name) {
         Absent =>
@@ -8015,25 +8015,35 @@ fn build_type_name_export_index(modules: List<TypedModule>) -> Map<String, TypeN
   fold(modules, init: empty_map(), f: (acc, m) => export_index_merge_module(acc: acc, m: m))
 }
 
-fn module_exports_type_name(m: TypedModule, name: String) -> Bool {
-  (filter(m.type_env.bindings |> map_values, b => b.name == name) |> count) > 0
+data module_exported_type_names_cost_note: String = "Cost shape (§6 bare-minimum cost, floor batch-3 receipt 2026-07-25): the type names a module exports is ONE derived fact — a set — and both consumers in rewire_type_env_import_str_binding_identity read it. Before this row it existed twice: the caller's per-module `local_names` fold, and `module_exports_type_name`, a LINEAR SCAN (map_values allocates a Vec of every binding, then filters by name) re-run once per (consumer module x inherited key x direct import). Measured on 79 discovery entries: that pass alone was 191.1s of a 331.9s resolve wall (99% of all rewire time, 2.4s/entry) while the other two rewire passes together cost 1.8s. Hoisting the set per module and testing membership makes direct_import_exporter_count O(direct imports) instead of O(direct imports x |parent bindings|), with no change to the predicate it computes. The caller reads its own row out of the SAME index rather than re-folding it (review 42566) — the Absent arm computes the true value from this one authority, so it is a structurally-unreachable fallback that is still honest, never a fabricated default (DESIGN section 5)."
+
+fn module_exported_type_names(m: TypedModule) -> Set<String> {
+  fold(m.type_env.bindings |> map_values, init: empty_set(), f: (acc, b) => set_insert(acc, b.name))
 }
 
-fn direct_import_exporter_count(m: TypedModule, name: String, index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> Int {
-  module_imports(n: m.module) |> filter(imp =>
+fn build_module_exported_type_name_index(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, Set<String>> {
+  fold(modules, init: empty_map(), f: (acc, m) =>
+    map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), module_exported_type_names(m: m))
+  )
+}
+
+fn direct_import_export_name_sets(m: TypedModule, export_name_index: Map<String, Set<String>>, source_indices: Map<String, NewlineIndex>) -> List<Set<String>> {
+  flat_map(module_imports(n: m.module), imp =>
     let path = import_module_path_at(imp: imp, source_indices: source_indices)
-    match map_get(index, path) {
-      Present { value: parent } => module_exports_type_name(m: parent, name: name)
-      Absent => false
+    match map_get(export_name_index, path) {
+      Present { value: names } => [names]
+      Absent => []
     }
-  ) |> count
+  )
+}
+
+fn direct_import_exporter_count(import_export_names: List<Set<String>>, name: String) -> Int {
+  import_export_names |> filter(names => set_contains(names, name)) |> count
 }
 
 fn rewire_inherited_str_binding(
   type_name_index: Map<String, TypeNameExportFacts>,
-  module_index: Map<String, TypedModule>,
-  consumer: TypedModule,
-  source_indices: Map<String, NewlineIndex>,
+  import_export_names: List<Set<String>>,
   local_names: Set<String>,
   str_bindings: Map<String, TypeBinding>,
   ancestry_str_bindings: Map<String, TypeBinding>,
@@ -8043,7 +8053,7 @@ fn rewire_inherited_str_binding(
     Present { value: facts } => facts.exporter_count
     Absent => 0
   }
-  if set_contains(local_names, name) || direct_import_exporter_count(m: consumer, name: name, index: module_index, source_indices: source_indices) > 1 || exporter_count > 1 {
+  if set_contains(local_names, name) || direct_import_exporter_count(import_export_names: import_export_names, name: name) > 1 || exporter_count > 1 {
     StrBindingsRewireAccum { str_bindings: str_bindings, ancestry_str_bindings: ancestry_str_bindings }
   } else {
     match map_get(type_name_index, name) {
@@ -8065,20 +8075,20 @@ fn rewire_inherited_str_binding(
 
 fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
   let type_name_index = build_type_name_export_index(modules: modules)
-  let index = fold(modules, init: empty_map(), f: (acc, m) =>
-    map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
-  )
+  let export_name_index = build_module_exported_type_name_index(modules: modules, source_indices: source_indices)
   map(modules, m =>
-    let local_names = fold(m.type_env.bindings |> map_values, init: empty_set(), f: (acc, b) => set_insert(acc, b.name))
+    let local_names = match map_get(export_name_index, authored_name_at(source_indices: source_indices, node: m.module)) {
+      Present { value: names } => names
+      Absent => module_exported_type_names(m: m)
+    }
+    let import_export_names = direct_import_export_name_sets(m: m, export_name_index: export_name_index, source_indices: source_indices)
     let ancestry_keys = m.type_env.ancestry_str_bindings |> map_keys
     let str_keys = m.type_env.str_bindings |> map_keys
     let inherited_keys = concat(ancestry_keys, str_keys)
     let rewired = fold(inherited_keys, init: StrBindingsRewireAccum { str_bindings: m.type_env.str_bindings, ancestry_str_bindings: m.type_env.ancestry_str_bindings }, f: (acc, name) =>
       rewire_inherited_str_binding(
         type_name_index: type_name_index,
-        module_index: index,
-        consumer: m,
-        source_indices: source_indices,
+        import_export_names: import_export_names,
         local_names: local_names,
         str_bindings: acc.str_bindings,
         ancestry_str_bindings: acc.ancestry_str_bindings,

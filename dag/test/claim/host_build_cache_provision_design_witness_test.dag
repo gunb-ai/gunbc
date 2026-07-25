@@ -168,6 +168,88 @@ fn design_witness_unit_execstart_matches_install_path() -> Bool {
   build_cache_unit_execstart_matches_install_path()
 }
 
+fn design_witness_unit_is_foreground_supervised() -> Bool {
+  build_cache_unit_is_foreground_supervised()
+}
+
+data unit_self_exiting_sketch_note: String = "RED-control fixture: the unit body EXACTLY as #7206 shipped it — foreground-supervised, and still self-exiting because sccache's default 600s idle timeout is left in place. It is a fixture, never emitted (the authority body is build_cache_systemd_user_unit_body), and it is what makes design_witness_unit_daemon_runs_until_stopped discriminating rather than tautological: the predicate is parameterized over a body, the authority body passes it, and this sketch — the shape live execution on srv3 proved dies after `Duration: 10min 8.215s` with status 0 — fails it. Without the sketch the witness would only assert that a string the same module wrote is present in the string it wrote."
+
+fn unit_self_exiting_sketch_body() -> String {
+  join([
+    "[Unit]",
+    "Description=sccache compiler cache (gunbc host standup)",
+    "After=network.target",
+    "",
+    "[Service]",
+    "Type=simple",
+    "Environment=SCCACHE_START_SERVER=1",
+    "Environment=SCCACHE_NO_DAEMON=1",
+    join(["ExecStart=", sccache_installed_binary_path], ""),
+    "Restart=on-failure",
+    "",
+    "[Install]",
+    "WantedBy=default.target",
+    "",
+  ], "\n")
+}
+
+fn design_witness_unit_daemon_runs_until_stopped() -> Bool {
+  build_cache_unit_daemon_runs_until_stopped()
+    && !build_cache_unit_body_runs_until_stopped(body: unit_self_exiting_sketch_body())
+    && build_cache_unit_body_runs_until_stopped(body: build_cache_systemd_user_unit_body())
+}
+
+fn unsupervised_observation_fixture() -> BuildCacheDaemonObservation {
+  DaemonUnsupervised { unit: "sccache.service", unit_state: "inactive (dead)" }
+}
+
+fn design_witness_unsupervised_refuses_fail_closed() -> Bool {
+  match provision_build_cache_verdict(
+    catalog_id: sccache_local_id,
+    observed: unsupervised_observation_fixture(),
+  ) {
+    ProvisionRefused { cause: RefusalDaemonUnsupervised, reason: reason } =>
+      string_contains(s: reason as String, pattern: "sccache.service")
+        && string_contains(s: reason as String, pattern: "inactive (dead)")
+        && string_contains(s: reason as String, pattern: "Fail-closed")
+    ProvisionRefused { cause: _, reason: _ } => false
+    ProvisionConverged { catalog_id: _, stats_line: _ } => false
+  }
+}
+
+fn design_witness_red_control_widen_on_unsupervised_rejected_by_gate() -> Bool {
+  match provision_build_cache_absorbing_fallback_widen_sketch(
+    catalog_id: sccache_local_id,
+    observed: unsupervised_observation_fixture(),
+  ) {
+    ProvisionConverged { catalog_id: _, stats_line: _ } => true
+    ProvisionRefused { cause: _, reason: _ } => false
+  } && !build_cache_provision_gate_accepts(
+      verdict: provision_build_cache_absorbing_fallback_widen_sketch(
+        catalog_id: sccache_local_id,
+        observed: unsupervised_observation_fixture(),
+      ),
+      observed: unsupervised_observation_fixture(),
+    )
+    && build_cache_provision_gate_accepts(
+      verdict: provision_build_cache_verdict(
+        catalog_id: sccache_local_id,
+        observed: unsupervised_observation_fixture(),
+      ),
+      observed: unsupervised_observation_fixture(),
+    )
+}
+
+fn design_witness_supervision_observation_not_emitted_as_shell() -> Bool {
+  !string_contains(
+    s: build_cache_observe_stats_body(),
+    pattern: "is-active",
+  ) && !string_contains(
+    s: build_cache_read_back_body(binary: sccache_installed_binary_path),
+    pattern: "is-active",
+  )
+}
+
 fn design_witness_classifier_covers_every_cited_fragment() -> Bool {
   build_cache_classifier_covers_every_cited_fragment()
 }
@@ -241,6 +323,11 @@ test fn host_build_cache_provision_design_witnesses() -> Bool {
     && design_witness_path_authority_observation_not_emitted_as_shell()
     && design_witness_install_is_cited_not_package_manager()
     && design_witness_unit_execstart_matches_install_path()
+    && design_witness_unit_is_foreground_supervised()
+    && design_witness_unit_daemon_runs_until_stopped()
+    && design_witness_unsupervised_refuses_fail_closed()
+    && design_witness_red_control_widen_on_unsupervised_rejected_by_gate()
+    && design_witness_supervision_observation_not_emitted_as_shell()
     && design_witness_classifier_covers_every_cited_fragment()
     && design_witness_classifier_is_a_fold_not_an_unrolled_chain()
     && design_witness_fragment_words_are_shell_safe()
