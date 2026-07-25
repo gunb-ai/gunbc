@@ -62,7 +62,6 @@ import v2.std.model_core {
   ModelCoreFactAxisOverflowDisposition,
   ModelCoreFactAxisSignedness,
   ModelCoreFactAxisSurfaceSpelling,
-  primitive_fact_axis_unbound_diagnostic,
   ModelCoreFactAxisWidth
 }
 import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }

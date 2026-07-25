@@ -25,8 +25,7 @@ import v2.std.model_core {
   PrimitiveFactBundle,
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSignedness,
-  ModelCoreFactAxisSurfaceSpelling,
-  primitive_fact_axis_unbound_diagnostic
+  ModelCoreFactAxisSurfaceSpelling
 }
 
 type SqlDialect

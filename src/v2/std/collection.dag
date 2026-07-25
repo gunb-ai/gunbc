@@ -49,13 +49,6 @@ type IndexedLookup<T> {
 type ListAtLookup<T>
   = ListAtMissing { remaining: Int }
   | ListAtFound { value: T }
-fn map_absent_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: ^map_key_absent,
-    at: port_locus(port: ^map_lookup_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
 fn empty_map_primitive_delegate<K, V>() -> Map<K, V> {
   empty_map_primitive_delegate()
 }

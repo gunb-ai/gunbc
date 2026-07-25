@@ -47,7 +47,6 @@ import v2.std.model_core {
   PrimitiveFactBundle,
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSurfaceSpelling,
-  primitive_fact_axis_unbound_diagnostic,
   ModelCoreFactAxisWidth
 }
 import v2.std.nat { Nat }
