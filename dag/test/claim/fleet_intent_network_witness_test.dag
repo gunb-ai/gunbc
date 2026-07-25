@@ -12,10 +12,19 @@ test fn fleet_intent_network_container_to_host_lan_denied() -> Bool {
 }
 
 test fn fleet_intent_network_topology_endpoint_count_holds() -> Bool {
-  list_length(items: fleet_intent_network.endpoints) == 10
+  list_length(items: fleet_intent_network.endpoints) == 11
 }
 
 test fn fleet_intent_network_srv1_addresses_holds() -> Bool {
   srv1_host_lan_endpoint.address == "192.168.1.185"
     && srv1_bmc_endpoint.address == "192.168.1.183"
+}
+
+data fleet_intent_network_srv3_host_witness_note: String = "The count row above is a tripwire, not a fact about srv3 — it reds on ANY topology edit and says nothing about WHICH endpoint appeared. This row is the discriminating half for the 2026-07-24 srv3 host addition, mirroring fleet_intent_network_srv1_addresses_holds: srv3 must be modeled with BOTH of its interfaces distinguished by role (its BMC at .192 was modeled since the srv3 onboarding lane; its host OS at .221 was not, so a model that named srv3 could still not name the machine). Asserting both addresses AND the role split is what makes a regression that collapses host onto BMC — the exact confusion this row was added to end — go red rather than merely shifting a count."
+
+test fn fleet_intent_network_srv3_addresses_holds() -> Bool {
+  srv3_host_lan_endpoint.address == "192.168.1.221"
+    && srv3_host_lan_endpoint.role == HostOperatingSystem
+    && srv3_bmc_endpoint.address == "192.168.1.192"
+    && srv3_bmc_endpoint.role == BmcOutOfBand
 }

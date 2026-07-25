@@ -17,11 +17,4 @@ data typed_module_artifact_kind: ArtifactKindId = "typed_module"
 
 data hermetic_fixture_artifact_kind: ArtifactKindId = "hermetic_fixture"
 
-type CacheInterfaceProduct
-  = GhaActionsCache
-  | SccacheLocal
-  | BuildbuddyCas
-  | CargoTargetDir
-  | RustupToolchainStore
-  | ResolvedGraphCache
-  | ParseTableMemo
+data cache_interface_product_dissolve_on: String = "dissolve-on: std.cache_identity.CacheInterfaceProduct — deleted closed enum fork; sole cache-backend identity authority is CacheInterfaceId (extdeps/cache/*.dag cited rows keyed by id)."
