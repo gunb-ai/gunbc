@@ -1177,7 +1177,7 @@ pub fn analyze_single_fold(
             Some(a) => arg_value(a.clone()),
             None => method_call.clone(),
         };
-        let fold_lambda_node = match args.clone().get(1 as usize).cloned() {
+        let fold_lambda_node = match args.clone().iter().cloned().skip(1 as usize).next() {
             Some(a) => arg_value(a.clone()),
             None => method_call.clone(),
         };

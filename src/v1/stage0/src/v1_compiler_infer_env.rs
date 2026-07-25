@@ -1377,22 +1377,20 @@ pub fn record_global_bare_ambiguous_silent_pick(
     name: String,
     cands: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> () {
-    {
-        let cand_count = (cands.clone().len() as i64);
-        match global_bare_nearest_ancestor_candidate(env_module_path.clone(), cands.clone()) {
-            Some(cand) => v1_rt::resolution_silent_pick_record_global_bare_lcp_pick(
-                env_module_path.clone(),
-                name.clone(),
-                cand_count.clone(),
-                cand.module_path.clone(),
-            ),
-            None => v1_rt::resolution_silent_pick_record_global_bare_lcp_tie(
-                env_module_path.clone(),
-                name.clone(),
-                cand_count.clone(),
-            ),
-        }
-    }
+    let cand_count = (cands.clone().len() as i64);
+    match global_bare_nearest_ancestor_candidate(env_module_path.clone(), cands.clone()) {
+        Some(cand) => v1_rt::resolution_silent_pick_record_global_bare_lcp_pick(
+            env_module_path.clone(),
+            name.clone(),
+            cand_count.clone(),
+            cand.module_path.clone(),
+        ),
+        None => v1_rt::resolution_silent_pick_record_global_bare_lcp_tie(
+            env_module_path.clone(),
+            name.clone(),
+            cand_count.clone(),
+        ),
+    };
 }
 
 pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {

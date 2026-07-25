@@ -1,0 +1,9 @@
+module test.retirement.e0308_mechanical_trio_retained
+
+
+data e0308_mechanical_trio_retention: TestModuleRetirement = TestModuleRetirement {
+  module: "e0308_mechanical_trio_test.rs",
+  disposition: RetainedNonMigratable {
+    reason: "The E0308 mechanical-trio witnesses compile minimal .dag fixtures through the v1 seed emitter (compile_dag_target → RenderTarget::Rust) and assert substring properties of the emitted Rust (Range-vs-usize on skip().first() and list slices, String-vs-str borrow at rt_ref_map call sites, Unit-vs-Option tail discard on -> Unit bodies). That host-Rust compile-and-inspect path is the v1 seed-emitter realization surface under repair in src/v1/05_emit_rust.dag; a .dag floor witness cannot reach it without importing the v1 compiler crate (off the compile-clean witness layer roots). Retained until src/v1 deletes at v2 self-host; not migration debt and not a delete candidate."
+  }
+}
