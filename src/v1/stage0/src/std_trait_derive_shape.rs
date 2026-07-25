@@ -16,7 +16,7 @@ use std::rc::Rc;
 pub fn trait_derive_shape_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Target-agnostic authority for ReprGroundingDeriveTrait × ReprGroundingDeriveElemShape capability table and derive-trait list builders. Rust spellings: extdeps.languages.rust.emit. Consumed by v2.compiler.trait_derive_completeness and v1.compiler.trait_derive_emit. #7174 scope (operator 2026-07-25): v1 emit wires clone bounds + serde/Debug/Ord derives on named structs/enums only; ReprDeriveAdd/Sub/… rows on KernelInt are predicate authority for the grounding lane (GroupCompletion<Nat>, Vector), not v1 custom-impl emission.".to_string()
+            "Target-agnostic authority for ReprGroundingDeriveTrait × ReprGroundingDeriveElemShape capability table and derive-trait list builders. Rust spellings: extdeps.languages.rust.emit. Consumed by v2.compiler.trait_derive_completeness and v1.compiler.trait_derive_emit. #7174 (operator 2026-07-25): v1 emit wires (a) clone bounds and (c) serde/Debug/Ord #[derive] on named structs/enums. Root-4 arm (b): predicate-gated supplemental impl { … } blocks for coproduct-native arithmetic carriers — see trait_derive_shape_grounding_lane_handoff; ReprDeriveAdd/Sub/… rows on KernelInt are capability-table authority for repr_grounding_derive_completeness_predicate, not spellings.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
