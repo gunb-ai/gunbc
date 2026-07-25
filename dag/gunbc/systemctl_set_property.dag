@@ -1,0 +1,23 @@
+module gunbc.systemctl_set_property
+
+import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.os.systemctl
+
+fn systemctl_set_property_operation_argv(unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr) -> List<String> {
+  systemctl_set_property_argv(unit: unit, property: property, value: value)
+}
+
+fn systemctl_set_property_operation_argv_matches_transport(
+  unit: NonEmptyStr,
+  property: NonEmptyStr,
+  value: NonEmptyStr,
+) -> Bool {
+  let materialized = systemctl_set_property_operation_argv(unit: unit, property: property, value: value)
+  let authority = systemctl_set_property_argv(unit: unit, property: property, value: value)
+  join(materialized, " ") == join(authority, " ")
+}
+
+fn systemctl_set_property_local(unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr) -> Bool {
+  let result = systemd.Systemctl.SetProperty(unit: unit, property: property, value: value)
+  result.success
+}

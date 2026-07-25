@@ -11,13 +11,13 @@ import v2.compiler.self_host.witness_entry_eligibility_census {
 
 test fn census_long_lane_row_holds() -> Bool {
   census_disposition_column_for_entry(
-    entry: "src/v2/test/claim/long/layering_imports_clean_tree_test.dag"
+    entry: "src/v2/test/claim/long/meta_exec_confinement_clean_tree_test.dag"
   ) == "EmitIneligible"
     && census_reason_column_for_entry(
-      entry: "src/v2/test/claim/long/layering_imports_clean_tree_test.dag"
+      entry: "src/v2/test/claim/long/meta_exec_confinement_clean_tree_test.dag"
     ) == "LongLaneScheduled"
     && census_execution_leg_label(
-      entry: "src/v2/test/claim/long/layering_imports_clean_tree_test.dag"
+      entry: "src/v2/test/claim/long/meta_exec_confinement_clean_tree_test.dag"
     ) == census_default_interpreted_leg_label
 }
 

@@ -61,7 +61,7 @@
 
 ### 2.7 Import & module-graph host facts
 
-**Today:** host builtins `import_resolution_facts`, `module_declaration_facts`, `layer_import_facts` regex-scan sources and feed lenses. **Subsumes:** `v2.lens.module_graph`, `v2.lens.layering_imports`. **Disposition:** emit-when. **Trigger:** Reconcile-defork Phase 1 + layering reference-repoint terminal (import grammar deletion).
+**Today:** host builtins `import_resolution_facts`, `module_declaration_facts`, `layer_import_facts` regex-scan sources and feed lenses. **Subsumes:** `v2.lens.module_graph` (the `v2.lens.layering_imports` direction lens was deleted by operator ruling 2026-07-24 — `layer_import_facts` now feeds `v2.std.layer`'s `LayerImportFact` containment consumers, not a direction lens). **Disposition:** emit-when. **Trigger:** Reconcile-defork Phase 1 + layering reference-repoint terminal (import grammar deletion).
 
 ### 2.8 Reference / cross-tree edges
 

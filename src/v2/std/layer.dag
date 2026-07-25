@@ -6,11 +6,21 @@ type LayerPrefix
   | LayerPrefixCompiler
   | LayerPrefixWorkflow
 
-fn layer_prefix_ordinal(l: LayerPrefix) -> Int {
-  match l {
-    LayerPrefixStd => 0
-    LayerPrefixExtdeps => 1
-    LayerPrefixCompiler => 2
-    LayerPrefixWorkflow => 3
-  }
+data layer_prefix_convention_note: String = "LayerPrefix classifies a module's browsing home (std / extdeps / compiler / workflow) — a folder convention, NOT an import law. The former strict layer DAG (std ← extdeps ← compiler ← workflow, imports point toward std) and its direction lens v2.lens.layering_imports were deleted by operator ruling 2026-07-24: the only structural law on the import graph is acyclicity, and a folder-prefix direction rule was convention standing where no necessity stood — it blocked correct grounding (a std surface citing the extdeps rows that ground it). The prefix and the fact rows below survive because the containment lenses (realization_vocabulary_containment, meta_exec_confinement) scan by browsing root; the extdeps citation duty (ExtdepsExternalAuthorityGate) is untouched."
+
+type LayerImportFact {
+  layer: LayerPrefix
+  path: String
+  import_module: String
 }
+
+fn layer_import_facts_live(
+  std_roots: List<String>,
+  extdeps_roots: List<String>
+) -> List<LayerImportFact> {
+  layer_import_facts(std_roots: std_roots, extdeps_roots: extdeps_roots)
+}
+
+data layer_import_facts_live_producer_note: String = "Transitional host producer (layering-imports-reference-repoint-design.md §3.1): import-syntax rows for import-bearing files in the scan roots, plus reference_edges_as_import_facts(strict=true) for import-less files; import-syntax wins on (path, target_module) collision. Terminal step (namespace import-grammar deletion, Phase 3) deletes the import-syntax arm — only then does layer_import_facts_live become single-authority. Consumers: v2.lens.realization_vocabulary_containment, v2.lens.meta_exec_confinement (re-homed here from the deleted direction lens v2.lens.layering_imports, 2026-07-25)."
+
+data layer_prefix_classifier_scaffold_note: String = "🟡 dissolve-on: host layer_import_facts stamps LayerImportFact.layer via CLI_RUN_LAYER_PREFIX_FROM_DOTTED_MODULE_SCAFFOLD_MARKER — a Rust mirror of v2.std.cross_tree.resolution.layer_prefix_from_dotted_qualified_name. Deletes when the builtin routes layer through that .dag authority (or a shared host projection beside reference_resolution_facts)."

@@ -523,3 +523,114 @@ This work item closes as diagnosis-complete. Fixes (the env/pool-membership
 mechanism, the LOUDNESS diagnostic, PR-4, and the zero-arity test) go to
 fresh work items for the operator to sequence — none are authorized to land
 from this investigation.
+
+## 14. Post-flip re-observation — Class B is *type*-only, and it fails OPEN (CONFIRMED by execution, 2026-07-25)
+
+§13 closed this diagnosis before the namespace flip landed. #7178 (Dispatch 1,
+namespace-only resolution default ON) changed the substrate underneath it, so
+Class B was re-run against the flipped tree. Two things changed, and the second
+is worse than anything §13 records.
+
+Trigger: #7200 (Dispatch 2, global import deletion) went red on exactly six
+sites in `src/v2/std/node.dag`, all of the shape
+`if branches resolve to incompatible types: Primitive(std.types.ContentHash)
+vs Product(<anon>)`.
+
+### 14.1 What was run
+
+`gunbc compile --target dag`, release build at main+#7178, source roots
+`dag` + a scratch dir, one entry per probe. Eight probes, each isolating one
+variable. Subject throughout: a cross-module **type** name
+(`std.types.ContentHash`) referenced from a module that does not import
+`std.types`.
+
+| # | spelling in type position | reachable on an import chain? | result |
+|---|---|---|---|
+| 1 | bare `ContentHash` | yes — own `import std.types { ContentHash }` | **GREEN**, 0 diagnostics |
+| 2 | bare `ContentHash` | yes — transitively, via an imported module that imports `std.types` | **GREEN**, 4 *advisory* `UnlistedImportUse` |
+| 3 | bare `ContentHash` | no — and absent from the pool entirely | **RED, correctly**: `unresolved type 'ContentHash'`, located |
+| 4 | bare `ContentHash` | no — but *present* in the pool | `Product(<anon>)`, red only where an `if` juxtaposes it |
+| 5 | qualified `std.types.ContentHash` | no — but *present* in the pool | `Product(<anon>)`, identical to row 4 |
+
+Control, in the same file as rows 4/5: `fn local_int(x: Int) -> Int` called
+bare in an `if` branch is **clean**. Same-module bare *callee* resolution
+works. The failure is specific to the cross-module **type** name in the
+signature. A second control: adding one *irrelevant* import (a sibling module
+that does not reach `std.types`) does not help — so it is not a
+"module has zero imports" degeneracy, it is import-chain reachability of the
+name itself.
+
+### 14.2 Finding 1 — the qualified spelling buys no binding
+
+Row 5 is the load-bearing one. `std.types.ContentHash` written out in full, in
+type position, resolves no better than the bare name. **There is no
+containment-based binding path for cross-module type references today.** The
+flip gave containment binding to values/functions (row-4 control) and not to
+types.
+
+This falsifies the premise Dispatch 2 was cleared on — that with binding by
+containment, deletion no longer risks losing a resolution. That holds for
+values; it does not hold for types. `namespace-resolution-design.md`'s Rule-1
+end-state (delete the `import` grammar, derive deps from `container.member`
+references) is therefore **not reachable for type references** on the current
+resolver, in either spelling.
+
+### 14.3 Finding 2 — the failure arm widens instead of refusing (§5 fail-open)
+
+Compare rows 3 and 4. When the name is **absent** from the pool, the resolver
+does the right thing: a typed, located `unresolved type 'ContentHash'`. When
+the name is **present in the pool but not import-reachable**, it does not
+refuse — it fabricates an anonymous product, `Product(<anon>)`, which then
+unifies with everything downstream.
+
+Two probes show it passing silently, with no `if` to catch it:
+
+- fabricated `ContentHash` flowing through two functions →
+  `0 blocking error(s), 6 advisory`.
+- fabricated value fed directly into
+  `std.content_hash.content_hash_combine(left: ContentHash, right: ContentHash)`
+  — a real cross-module consumer carrying the real type →
+  `0 blocking error(s), 4 advisory`.
+
+**Argument-position checking does not catch it.** The only thing that caught it
+in `node.dag` is the accident that six `if`-expressions juxtaposed a fabricated
+branch against a correctly-typed one. The two `if`s in that same file whose
+branches are *both* fabricated
+(`byte_offset_residual_quotient_limb_pair_digest`,
+`byte_offset_residual_quotient_magnitude_window_digest`) are **not** flagged —
+fabricated-vs-fabricated agrees.
+
+This is DESIGN §5's named class — *fabricated plausible output* — sitting
+directly under a 1658-file mechanical strip. A corpus-wide strip could compile
+GREEN and be silently mis-typed throughout, with only incidental `if`
+juxtapositions reding. **Green would not have meant anything.** It is also why
+§13's phrase "never assumed safe from 'it typechecks today'" understates the
+risk for types: for types, typechecking today is not merely an accidental
+property of the rest of the corpus, it is not even a signal.
+
+### 14.4 Consequence for the wave rule
+
+§13's blocker stands and **extends to Dispatch 2**, which was not exempt from
+it. Restated for the flipped substrate:
+
+- Import deletion is sound for **value/function** references (containment
+  binding, row-4 control).
+- Import deletion is **unsound for type references**, in both the bare and the
+  qualified spelling, and its unsoundness is **not observable** from a green
+  compile.
+- Fixing the six `node.dag` sites would only restore the accident that made the
+  defect visible. It is not a fix.
+
+Ordering follows §5 (construction before validation, and a failure arm must
+refuse rather than widen): the **fail-open is the first fix**, independent of
+whether the strip ever resumes — pool-present-but-not-import-reachable must
+become a typed, located, counted refusal. It is also the precondition that
+makes a binding fix *verifiable*: until the arm refuses, no strip's green is
+evidence. A containment binding path for type references is the second, and
+only then is Dispatch 2 mechanical again.
+
+Rows 3 and 4 are the discriminating pair any fix must turn: row 4 must become
+row 3's shape (a located refusal), while rows 1 and 2 must stay green.
+
+Nothing lands from this section either — it is a receipt. Dispatch 2's branch
+is left in place as evidence.

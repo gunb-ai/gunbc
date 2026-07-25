@@ -22,6 +22,8 @@ Status: **DESIGN ANCHOR** — operator review before implementation (2026-07-17,
 
 STEP 2 is **explicitly out of scope** for the first implementation PR. Removing the fallback before provisioning is reliable would red the whole fleet.
 
+**STEP 2 status (2026-07-23): the cache-drop half LANDED.** `ci_retry_escalation_level2` (`-u RUSTC_WRAPPER`) is deleted — the escalation now stops at `CARGO_BUILD_JOBS=1` (keeps sccache) and then fails loud via verify-build-artifacts, so no arm drops the cache any more. The sketch `provision_build_cache_absorbing_fallback_widen_sketch` stays as the RED control guarding the verdict fold against re-introduction. Level 1 was kept as EAGAIN containment rather than converted to a refusal (§4.4's open decision, resolved toward "keep"). Still open under STEP 2: `ci_sccache_opportunistic_detect` — CI's `if sccache --show-stats` is still an opportunistic detect rather than a fail-closed require, and §5.4 Finding 2 sharpens why that flip needs a supervisor read and not a stats read to key on.
+
 ## 2. Reuse map — single authorities, never fork (§3 DFS)
 
 | Concern | Single authority (reuse verbatim) | What's NEW |
@@ -202,10 +204,35 @@ Walk of `host_standup_spine` phases that could touch compile/cache **before** P1
 | **T1** | catalog authority | `catalog_id == sccache_local_id` pins to cited row | wrong id → `CatalogUnknown` |
 | **T2** | spine consumer | `host_standup_spine` includes `P1b:build-cache-provision` row | remove row → `host_standup_gap_count` witness fails |
 | **T3** | srv1 dry-run | `host_toolchain_ensure(host: srv1, kind: BuildCache)` dry-run receipt on operator host | — |
-| **T4** | live read-back | post-apply `sccache --show-stats` on srv1 **and** srv2; independent of our write | hand-stop daemon → next standup run → `ProvisionRefused`, counted |
+| **T4** | live read-back | **superseded — see §5.4.** A post-apply stats read cannot discharge this tier | hand-stop daemon → next standup run → `ProvisionRefused`, counted |
 | **T5** | CI consumer | STEP 2: build job without `RUSTC_WRAPPER` unset arm stays green for 7d on main | disable daemon on one host → build job typed refuse, not local fallback |
 
 Design-anchor PR lands **T1** only (scaffold + type witnesses). T2+ follow implementation PR.
+
+### 5.4 T4 restated — a stats read-back cannot discharge it (2026-07-25)
+
+T4 was written as "post-apply `sccache --show-stats`, independent of our write." Live execution on srv3 falsified **both** halves of that, and the tier is restated here rather than quietly re-scoped.
+
+**Finding 1 — the unit still died, for a second reason.** #7206 foregrounded the server (`Type=simple` + bare `ExecStart` + `SCCACHE_START_SERVER=1` / `SCCACHE_NO_DAEMON=1`), which fixed the daemonize-and-exit no-op. A read-back six hours later found the unit `inactive (dead) since 06:38:56`, `Main PID … (code=exited, status=0/SUCCESS)`, `Duration: 10min 8.215s`, and **no sccache process at all**. Root cause: `SCCACHE_IDLE_TIMEOUT` defaults to 600s, so the foreground process exits *cleanly* on the first quiet ten minutes, and `Restart=on-failure` cannot fire on a success exit. Same end state as the bug #7206 fixed, one level deeper — and #7206's own claim that "the live srv3 re-provision carries the runtime is-active grain" was the overclaim that hid it, because that read was taken in the same minutes as the write.
+
+- **Fix:** `Environment=SCCACHE_IDLE_TIMEOUT=0` — cited to sccache `docs/Configuration.md`: *"how long the local daemon process waits for more client requests before exiting, in seconds. Set to 0 to run sccache permanently."*
+- **Not `Restart=always`:** that would relaunch *through* the clean exit and make the deficit invisible — §5's absorbing fallback. With the timeout disabled a status-0 exit is unreachable by configuration, so `on-failure` is the honest policy and a dead unit stays a real, refusable state.
+- **Receipt — controlled A/B under guaranteed idleness (srv3, 2026-07-25 13:20:29 → 13:32:36).** Two sccache 0.15.0 servers from the same binary, started in the same second, each with a private `SCCACHE_DIR` and a non-standard `SCCACHE_SERVER_PORT` (4301 / 4302) so no client could reach either — idleness by construction, not by hoping the host is quiet. One variable differs.
+  - **A**, default idle timeout: **gone** at 12:10 elapsed. Exited on its own.
+  - **B**, `SCCACHE_IDLE_TIMEOUT=0`: **still running** at 12:10, same PID.
+- **Receipt — the modeled unit itself.** `build_cache_systemd_user_unit_body()` rendered from the `.dag`, installed on srv3 with the probe drop-in removed, `active (running)` / `NRestarts=0` / stable `Main PID 3678958` at +13min and +26min. Stated with its limit: srv3 is a live CI runner and a job hit the daemon during that window, so this receipt shows the modeled artifact deploys and stays up — it is **not** an idle test. The A/B pair above is what discharges the idle claim, and it is the one to re-run when the knob changes.
+- **Receipt (red control), same host, prior form:** the unit exactly as #7206 shipped it — `Duration: 10min 8.215s`, `code=exited, status=0/SUCCESS`, `inactive (dead)`, no sccache process. The construction check `build_cache_unit_daemon_runs_until_stopped` is parameterized over a unit body so the witness runs both sides of this pair, and dropping the knob from the emitter reds it (verified by perturbation).
+- **srv1/srv2 are not the counter-example they look like — and their unit is unread.** Whether production's `ctrl-sccache.service` sets the knob is **unverified**: neither host is reachable from a session container today, and the only in-tree description of that unit (#7206's note) lists two env lines and no idle timeout — an absence in a summary, not evidence of absence in the file. What the month-plus uptime does *not* establish is durability: those hosts run CI continuously, so traffic holds the daemon below the idle threshold whether or not the timer is disabled. The line therefore lands as a **deduction** from the cited doc plus the A/B receipt, and is explicitly *not* claimed as a swap toward a production form nobody has read.
+
+**Finding 2 — `--show-stats` is not an independent observation.** Any sccache invocation auto-starts a server when none is listening, so the probe manufactures the evidence it reports. On srv3 it printed a full stats table while the unit had been dead for six hours. Read through the verdict fold as it stood, that host observed `DaemonStatsOk` and **converged** — a provisioning act reporting success over a host with no durable cache (§5 fabricated plausible output, the same shape as `DaemonPathShadowed`).
+
+- **Model:** `DaemonUnsupervised { unit, unit_state }` → `RefusalDaemonUnsupervised`. "A daemon answered" and "the modeled supervisor is running it" are different states with different remedies, so they get different names rather than one `Ok`.
+- **Live observation STAGED**, on the PATH-shadow precedent (review 42343): the `systemctl --user is-active` read is *not* emitted as hand-shell into the A5 census row; it lands with the typed-argv dissolve-on (#5828). The model carries the state and its refusal today.
+- Construction covers hosts *this lane* provisions (the self-exiting unit is unwritable); the observation's standing job is the residue construction cannot reach — a unit stopped, masked or replaced out of band.
+
+**T4 restated.** The tier is discharged by a **delayed supervisor read**, not a post-apply stats read: after provisioning, read `systemctl --user is-active` (and the main PID) **separated from the write by longer than every self-exit timer in the supervised process**, on each subsumed host. An is-active read taken at provisioning time proves the unit *started*, never that it *stays*.
+
+**T4 status:** srv3 **green** at the restated bar (13-minute delayed read, modeled unit, PID stable). srv1 and srv2 remain **open** — not for a modeling reason: neither host is reachable from a session container with the fleet key today (`Permission denied (publickey)` for `ubuntu`/`briansrls`/`node-orch`), which is the A1/A2/B2 reach-and-identity gap already typed in `gunbc.plans.fleet_subsumption_manual_gaps`. The downstream triggers (`ctrl_sccache_service_retired`, and the `ci_sccache_opportunistic_detect` cutover) stay blocked on those two hosts, and the srv1/srv2 units should be expected to carry the same latent defect until re-provisioned from the model.
 
 ## 6. Dissolution triggers (every scaffold names its exit)
 

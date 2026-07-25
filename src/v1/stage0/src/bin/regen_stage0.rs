@@ -729,7 +729,14 @@ fn assert_bootstrap_emit_core_support(src_dir: &Path) -> Result<(), String> {
 /// normalization, crate-build-independent. A separate thread feeds stdin so a large file cannot
 /// deadlock against rustfmt's stdout. rustfmt's non-zero exit (unparseable emit) propagates as a
 /// hard error (fail-closed), never a silent skip.
-fn normalize_generated_source(content: &str) -> Result<String, String> {
+// SCAFFOLD — dissolve-on: emit-fresh regen can race concurrent rustfmt spawn (ETXTBSY on
+// srv1); remove when spawn is serialized or the gate no longer shares the outfile. Bounded
+// retry below still fails closed after exhaustion (receipt: CI #7195 @ 8bfc9a2, 2026-07-25).
+fn is_rustfmt_transient_spawn_error(err: &str) -> bool {
+    err.contains("Text file busy")
+}
+
+fn normalize_generated_source_attempt(content: &str) -> Result<String, String> {
     let mut child = Command::new("rustfmt")
         .arg("--edition")
         .arg("2021")
@@ -756,6 +763,22 @@ fn normalize_generated_source(content: &str) -> Result<String, String> {
     } else {
         Err(String::from_utf8_lossy(&out.stderr).to_string())
     }
+}
+
+fn normalize_generated_source(content: &str) -> Result<String, String> {
+    const MAX_ATTEMPTS: usize = 3;
+    let mut last_err = String::new();
+    for attempt in 0..MAX_ATTEMPTS {
+        match normalize_generated_source_attempt(content) {
+            Ok(formatted) => return Ok(formatted),
+            Err(err) if is_rustfmt_transient_spawn_error(&err) && attempt + 1 < MAX_ATTEMPTS => {
+                last_err = err;
+                std::thread::sleep(std::time::Duration::from_millis(50 * (attempt as u64 + 1)));
+            }
+            Err(err) => return Err(err),
+        }
+    }
+    Err(last_err)
 }
 
 fn rustfmt_generated_crate(dir: &Path) -> Result<(), String> {
