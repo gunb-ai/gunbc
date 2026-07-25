@@ -15,6 +15,24 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type Architecture = X86_64 | X86 | Aarch64 | Arm | Armv7 | Mips | Mipsel | Mips64 | Mips64el | Riscv64 | Wasm32
 
+data architecture_diagnostic_name_note: String = "A total variant name for Architecture, for DIAGNOSTICS ONLY — a refusal that cannot say which architecture it refused is typed but not located (§5). Deliberately NOT a wire label: every upstream that names architectures does so differently (debian arm64, Go GOARCH, sccache's musl tarball token, grub EFI filenames), and each of those already lives with its own upstream as a partial projection that REFUSES the arches that upstream does not publish. Reusing this name as a wire label would re-coin those authorities and defeat their fail-closed arms, so it is named for its purpose."
+
+fn architecture_diagnostic_name(arch: Architecture) -> NonEmptyStr {
+  match arch {
+    X86_64 => "X86_64" as NonEmptyStr
+    X86 => "X86" as NonEmptyStr
+    Aarch64 => "Aarch64" as NonEmptyStr
+    Arm => "Arm" as NonEmptyStr
+    Armv7 => "Armv7" as NonEmptyStr
+    Mips => "Mips" as NonEmptyStr
+    Mipsel => "Mipsel" as NonEmptyStr
+    Mips64 => "Mips64" as NonEmptyStr
+    Mips64el => "Mips64el" as NonEmptyStr
+    Riscv64 => "Riscv64" as NonEmptyStr
+    Wasm32 => "Wasm32" as NonEmptyStr
+  }
+}
+
 type TripleVendor = UnknownVendor | Pc | Apple | W64
 type Os = Linux | Macos | Windows | Freebsd | Android | Ios | Wasi
 type AbiEnv = NoneAbi | Gnu | GnuEabi | GnuEabihf | Musl | Msvc | AndroidAbi | Eabi | Eabihf

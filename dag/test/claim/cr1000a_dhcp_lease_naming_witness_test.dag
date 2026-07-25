@@ -10,7 +10,7 @@ data srv1_option12_host_name: HostName = HostName {
 
 data sample_dynamic_srv1_lease: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
   mac_address: "48:21:0B:81:C6:EA" as MacAddress,
-  ipv4_address: "192.168.1.185" as Ipv4Address,
+  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 185),
   lease: DynamicDhcpLease {
     client_hostname: Present { value: srv1_option12_host_name },
     lease_time_remaining: dhcp_lease_remaining_from_cited_minutes(minutes: 120),
@@ -20,7 +20,7 @@ data sample_dynamic_srv1_lease: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
 
 data sample_static_srv3_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
   mac_address: "48:21:0B:81:C5:14" as MacAddress,
-  ipv4_address: "192.168.1.192" as Ipv4Address,
+  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 192),
   lease: StaticDhcpReservation {
     reservation_label: "bmc-altrad8ud-1l2t-3" as NonEmptyStr,
     status: extdeps.dhcp.v4.Active,
