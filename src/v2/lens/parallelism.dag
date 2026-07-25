@@ -13,7 +13,7 @@ import v2.lens.common.algebraic_composition {
 }
 import std.disposition { SingleAuthority }
 
-import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_descent }
+import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_descent, infer_facts_lookup_miss_diagnostic }
 import v2.std.algebra { bag_eq, list_snoc_item }
 import v2.std.collection {
   List,
@@ -39,7 +39,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
-import v2.std.witness { Holds, Violates, Witness }
+import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 
 type ParallelismFact {
   dependencies: List<ClassifiedDependencyView<ParallelismRelation>>
@@ -68,7 +68,7 @@ fn parallelism_witness_diagnostic() -> Diagnostic {
 }
 
 fn parallelism_facts_for_source(tree: InferredTree, view: DependencyView) -> Witness<InferredFacts> {
-  tree.facts.lookup(view.source)
+  witness_from_optional(opt: tree.facts.lookup(view.source), absent: infer_facts_lookup_miss_diagnostic(key: view.source))
 }
 
 fn parallelism_coupling_absent_diagnostic(facts: InferredFacts) -> Diagnostic {

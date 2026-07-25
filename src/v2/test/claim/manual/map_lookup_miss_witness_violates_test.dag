@@ -9,7 +9,7 @@ type LookupKey {
 
 type LookupTable = Map<LookupKey, Int>
 
-fn lookup_table(table: LookupTable, key: LookupKey) -> Witness<Int> {
+fn lookup_table(table: LookupTable, key: LookupKey) -> Optional<Int> {
   table.lookup(key)
 }
 
@@ -17,20 +17,20 @@ fn one_entry_table() -> LookupTable {
   map_insert(m: empty_map(), key: LookupKey { id: 1 }, value: 100)
 }
 
-fn map_miss_is_violates() -> Bool {
+fn map_miss_is_absent() -> Bool {
   match lookup_table(table: one_entry_table(), key: LookupKey { id: 2 }) {
-    Holds { value: _ } => false
-    Violates { diagnostic: _ } => true
+    Present { value: _ } => false
+    Absent => true
   }
 }
 
-fn map_hit_is_holds() -> Bool {
+fn map_hit_is_present() -> Bool {
   match lookup_table(table: one_entry_table(), key: LookupKey { id: 1 }) {
-    Holds { value: v } => v == 100
-    Violates { diagnostic: _ } => false
+    Present { value: v } => v == 100
+    Absent => false
   }
 }
 
-test fn map_lookup_miss_violates_and_hit_holds() -> Bool {
-  map_miss_is_violates() && map_hit_is_holds()
+test fn map_lookup_miss_absent_and_hit_present() -> Bool {
+  map_miss_is_absent() && map_hit_is_present()
 }

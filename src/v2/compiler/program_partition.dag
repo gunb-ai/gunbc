@@ -411,7 +411,7 @@ fn partition_closure_entry_for_node(
   node: Node
 ) -> Outcome<InferredFactsEntry> {
   match ambient.facts.lookup(node) {
-    Holds { value: facts } =>
+    Present { value: facts } =>
       if partition_fail_closed_boundary_admits(
         segment_root: segment_root,
         boundary: boundary,
@@ -422,7 +422,7 @@ fn partition_closure_entry_for_node(
       } else {
         outcome_rejected(d: partition_boundary_free_ref_diagnostic(node: node))
       }
-    Violates { diagnostic: _ } =>
+    Absent =>
       outcome_rejected(d: partition_facts_miss_diagnostic(key: node))
   }
 }

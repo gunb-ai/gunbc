@@ -3,7 +3,7 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import v2.lens.common.algebraic_composition { EffectClassification, effect_classifier }
 import std.disposition { SingleAuthority }
 
-import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.compiler.infer { InferredFacts, InferredTree, infer_facts_lookup_miss_diagnostic }
 import v2.std.algebra { bag_eq, list_snoc_item, non_empty }
 import v2.std.collection {
   List,
@@ -28,7 +28,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
-import v2.std.witness { Holds, Violates, Witness }
+import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 
 type EffectFact {
   dependencies: List<ClassifiedDependencyView<EffectClassification>>
@@ -50,7 +50,7 @@ fn effect_fact(tree: InferredTree, dependencies: List<DependencyView>) -> Effect
 }
 
 fn effect_usage_facts_witness(tree: InferredTree, source: Node) -> Witness<InferredFacts> {
-  tree.facts.lookup(source)
+  witness_from_optional(opt: tree.facts.lookup(source), absent: infer_facts_lookup_miss_diagnostic(key: source))
 }
 
 fn effect_first_upstream_diagnostic(

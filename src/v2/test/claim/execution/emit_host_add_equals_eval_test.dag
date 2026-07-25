@@ -22,7 +22,7 @@ import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree }
 import v2.test.manual.eval_runtime { eval_add_subgraph_node }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { List, Map, list_nth }
+import v2.std.collection { Absent, List, Map, Optional, Present, list_nth }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -204,10 +204,10 @@ fn emit_eval_generic_facts(node: Node) -> InferredFacts {
   )
 }
 
-fn emit_eval_composed_facts(node: Node) -> Witness<InferredFacts> {
+fn emit_eval_composed_facts(node: Node) -> Optional<InferredFacts> {
   match rust_add_inferred_tree.facts.lookup(node) {
-    Holds { value: f } => Holds { value: f }
-    Violates { diagnostic: _ } => Holds { value: emit_eval_generic_facts(node: node) }
+    Present { value: f } => Present { value: f }
+    Absent => Present { value: emit_eval_generic_facts(node: node) }
   }
 }
 
