@@ -18,10 +18,16 @@ import gunbc.design.theme {
   FigureRole, FocusRole, BoundaryRole,
 }
 import gunbc.site.moodboard { figure_rules }
-import gunbc.roadmap_interaction { roadmap_behavior_rules, roadmap_behaviors }
+import gunbc.roadmap_interaction {
+  roadmap_behavior_rules, roadmap_behaviors,
+  dispatch_state_family, dispatch_stateful_channels,
+}
+import gunbc.design.state_response {
+  StateVarRole, FillVar, InkVar, PressedVar,
+  state_var_name, state_rest_decl, state_paint_rules,
+}
 import gunbc.roadmap_component {
-  dispatch_reserved_width, dispatch_class_requested, dispatch_class_ok, dispatch_class_refused,
-  dispatch_class_loud, theme_toggle_class, theme_toggle_reserved_width,
+  dispatch_reserved_width, theme_toggle_class, theme_toggle_reserved_width,
   sound_toggle_class, sound_toggle_reserved_width,
   disclosure_mark_class, swatch_toggle_class, swatch_toggle_reserved_width,
 }
@@ -91,11 +97,13 @@ fn band_paints_for_theme(t: Theme) -> List<BandPaint> {
   workspace_band_paints()
 }
 
+data band_var_grammar_note: String = "The band var NAMES route through gunbc.design.state_response.state_var_name with the family's own prefix (composition slice 1): the prefix and role-suffix grammar was previously spelled here AND in every consumer that referenced a var — the census, the receipt values, the paint rules — so a rename would have been a hunt. Now the family row owns the prefix and the role enum owns the suffixes; this fold and every reference derive from the same two authorities."
+
 fn band_var_decls(rows: List<BandPaint>) -> List<CssDecl> {
   fold(rows, init: [], f: (acc, r) => concat(acc, [
-    decl(prop: CustomProperty { name: join(["band-", r.key], "") }, value: swatch_paint(sw: r.fill)),
-    decl(prop: CustomProperty { name: join(["band-", r.key, "-ink"], "") }, value: swatch_paint(sw: r.ink)),
-    decl(prop: CustomProperty { name: join(["band-", r.key, "-pressed"], "") }, value: band_pressed_paint(r: r)),
+    decl(prop: CustomProperty { name: state_var_name(prefix: dispatch_state_family.var_prefix, key: r.key, role: FillVar) }, value: swatch_paint(sw: r.fill)),
+    decl(prop: CustomProperty { name: state_var_name(prefix: dispatch_state_family.var_prefix, key: r.key, role: InkVar) }, value: swatch_paint(sw: r.ink)),
+    decl(prop: CustomProperty { name: state_var_name(prefix: dispatch_state_family.var_prefix, key: r.key, role: PressedVar) }, value: band_pressed_paint(r: r)),
   ]))
 }
 
@@ -209,7 +217,42 @@ fn roadmap_rules() -> List<BuildRule> {
     concat(figure_rules(), roadmap_behavior_rules(rows: roadmap_behaviors)))
 }
 
+data dispatch_btn_base_decls_note: String = "The instrument's base rule, with its rest-state paint DERIVED (composition slice 1): the ink/fill/border decls splice in from the family roster's rest member via state_rest_decl at the exact positions the authored order demands, so the rest-to-invite binding is spelled only in dispatch_state_family — the base rule can no longer disagree with the roster it used to restate. Geometry decls stay authored here; they are the button's own facts, not state functions."
+
+fn dispatch_btn_base_decls() -> List<CssDecl> {
+  concat([
+    decl(prop: FontSize, value: scale_var(t: text_13)),
+    decl(prop: FontFamily, value: scale_var(t: font_sans)),
+  ],
+  concat(state_rest_decl(f: dispatch_state_family, prop: Color, role: InkVar),
+  concat(state_rest_decl(f: dispatch_state_family, prop: Background, role: FillVar),
+  concat([
+    decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+    decl(prop: BorderRadius, value: scale_var(t: radius_999)),
+    decl(prop: Padding, value: scale_pair(a: space_8, b: space_16)),
+    decl(prop: MarginLeft, value: scale_var(t: space_6)),
+    decl(prop: Cursor, value: "pointer"),
+    decl(prop: Display, value: "inline-flex"),
+    decl(prop: AlignItems, value: "center"),
+    decl(prop: JustifyContent, value: "center"),
+    decl(prop: MinHeight, value: scale_var(t: height_control)),
+    decl(prop: MinWidth, value: dispatch_reserved_width()),
+    decl(prop: TextAlign, value: "center"),
+  ],
+  concat(state_rest_decl(f: dispatch_state_family, prop: BorderColor, role: FillVar), [
+    decl(prop: FontWeight, value: "600"),
+  ])))))
+}
+
+data instance_rules_splice_note: String = "roadmap_instance_rules composes head + the state-paint fold + tail at the exact position the four hand per-state rules occupied (composition slice 1): the per-state blocks now emit from state_paint_rules over dispatch_state_family x dispatch_stateful_channels — roster order, channel order — so the mapping lives once and a new family member paints itself. The split into head/tail is placement, not meaning: byte order is pinned by the digest oracle."
+
 fn roadmap_instance_rules() -> List<BuildRule> {
+  concat(roadmap_instance_rules_head(),
+    concat(state_paint_rules(f: dispatch_state_family, channels: dispatch_stateful_channels),
+      roadmap_instance_rules_tail()))
+}
+
+fn roadmap_instance_rules_head() -> List<BuildRule> {
   [
     StaticRule { selector: RawSelector { text: "*" }, decls: [
       decl(prop: BoxSizing, value: "border-box"),
@@ -451,25 +494,7 @@ fn roadmap_instance_rules() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".brick-gated .brick-state" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "dispatch-btn" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-      decl(prop: FontFamily, value: scale_var(t: font_sans)),
-      decl(prop: Color, value: "var(--band-invite-ink)"),
-      decl(prop: Background, value: "var(--band-invite)"),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_999)),
-      decl(prop: Padding, value: scale_pair(a: space_8, b: space_16)),
-      decl(prop: MarginLeft, value: scale_var(t: space_6)),
-      decl(prop: Cursor, value: "pointer"),
-      decl(prop: Display, value: "inline-flex"),
-      decl(prop: AlignItems, value: "center"),
-      decl(prop: JustifyContent, value: "center"),
-      decl(prop: MinHeight, value: scale_var(t: height_control)),
-      decl(prop: MinWidth, value: dispatch_reserved_width()),
-      decl(prop: TextAlign, value: "center"),
-      decl(prop: BorderColor, value: "var(--band-invite)"),
-      decl(prop: FontWeight, value: "600"),
-    ] },
+    StaticRule { selector: ClassSelector { name: "dispatch-btn" }, decls: dispatch_btn_base_decls() },
     StaticRule { selector: ClassSelector { name: sound_toggle_class }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_10)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
@@ -558,26 +583,11 @@ fn roadmap_instance_rules() -> List<BuildRule> {
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: MarginRight, value: scale_var(t: space_6)),
     ] },
-    StaticRule { selector: RawSelector { text: join([".dispatch-btn.", dispatch_class_requested], "") }, decls: [
-      decl(prop: Color, value: "var(--band-in-progress-ink)"),
-      decl(prop: Background, value: "var(--band-in-progress)"),
-      decl(prop: BorderColor, value: "var(--band-in-progress)"),
-    ] },
-    StaticRule { selector: RawSelector { text: join([".dispatch-btn.", dispatch_class_ok], "") }, decls: [
-      decl(prop: Color, value: "var(--band-ok-ink)"),
-      decl(prop: Background, value: "var(--band-ok)"),
-      decl(prop: BorderColor, value: "var(--band-ok)"),
-    ] },
-    StaticRule { selector: RawSelector { text: join([".dispatch-btn.", dispatch_class_refused], "") }, decls: [
-      decl(prop: Color, value: "var(--band-fail-ink)"),
-      decl(prop: Background, value: "var(--band-fail)"),
-      decl(prop: BorderColor, value: "var(--band-fail)"),
-    ] },
-    StaticRule { selector: RawSelector { text: join([".dispatch-btn.", dispatch_class_loud], "") }, decls: [
-      decl(prop: Color, value: "var(--band-loud-ink)"),
-      decl(prop: Background, value: "var(--band-loud)"),
-      decl(prop: BorderColor, value: "var(--band-loud)"),
-    ] },
+  ]
+}
+
+fn roadmap_instance_rules_tail() -> List<BuildRule> {
+  [
     StaticRule { selector: ClassSelector { name: swatch_toggle_class }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_10)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
