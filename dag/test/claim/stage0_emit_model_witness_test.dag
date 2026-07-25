@@ -9,6 +9,14 @@ fn w_hand_maintained_not_classified_generated() -> Bool {
   !is_generated_stage0_file(basename: "main.rs")
 }
 
+fn w_generated_files_classified_generated() -> Bool {
+  is_generated_stage0_file(basename: "std_execution_mode.rs") &&
+  is_generated_stage0_file(basename: "v1_compiler_closure_stub_v2_std_integer_rust.rs") &&
+  is_generated_stage0_file(basename: "v1_compiler_closure_stub_v2_std_text_rust.rs") &&
+  is_generated_stage0_file(basename: "lib.rs") &&
+  is_generated_stage0_file(basename: "std_algebra.rs")
+}
+
 fn w_emit_naming_rule() -> Bool {
   stage0_module_emit_basename(module_path: "v1.compiler.emit_rust") == "v1_compiler_emit_rust" &&
   stage0_module_emit_filename(module_path: "gunbc.stage0_emit_model") == "gunbc_stage0_emit_model.rs"
@@ -16,5 +24,6 @@ fn w_emit_naming_rule() -> Bool {
 
 test fn stage0_emit_model_witnesses() -> Bool {
   w_hand_maintained_not_classified_generated() &&
+  w_generated_files_classified_generated() &&
   w_emit_naming_rule()
 }
