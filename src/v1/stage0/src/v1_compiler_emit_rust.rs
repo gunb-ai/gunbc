@@ -13613,7 +13613,7 @@ pub fn emit_rust_fn_body_expr(
 pub fn inferred_expr_is_optional(texpr: Rc<Node>) -> bool {
     match texpr.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            rt.return_cardinality.clone() == Cardinality::CardOptional
+            (rt.return_cardinality.clone() == Cardinality::CardOptional)
         }
         _ => false,
     }
@@ -13636,11 +13636,9 @@ pub fn emit_rust_unit_discarding_optional_typed(
             ),
         },
         ExprData::ExprRecordLit { parent_enum: _, .. } => {
-            let field_count = texpr.children.clone().len() as i64;
-            if field_count == 0 {
-                "()".to_string()
-            } else if field_count == 1 {
-                match texpr.children.clone().first().cloned() {
+            match (texpr.children.clone().len() as i64) {
+                0 => "()".to_string(),
+                1 => match texpr.children.clone().first().cloned() {
                     Some(f) => emit_rust_unit_discarding_stmt(
                         field_init_node_value(f.clone()),
                         registry.clone(),
@@ -13653,12 +13651,11 @@ pub fn emit_rust_unit_discarding_optional_typed(
                         "unit-discard: optional record literal missing payload field".to_string(),
                         RenderTarget::Rust,
                     ),
-                }
-            } else {
-                emit_error_expr(
+                },
+                _ => emit_error_expr(
                     "unit-discard: optional record literal with unexpected field count".to_string(),
                     RenderTarget::Rust,
-                )
+                ),
             }
         }
         _ => emit_error_expr(
@@ -13848,7 +13845,9 @@ pub fn emit_rust_unit_discarding_stmt(
                     }
                 }
             }
-            ExprData::ExprVar { .. } => v1_rt::concat(
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => v1_rt::concat(
                 emit_typed_expr(
                     texpr.clone(),
                     registry.clone(),
