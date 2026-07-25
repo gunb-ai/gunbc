@@ -13,7 +13,7 @@ fn phase_profile_proof_batches() -> List<List<Runnable>> {
   [[
     RunnableSingleClaim {
       entry: phase_profile_gate_entry,
-      function: "layering_imports_gate_passes",
+      function: "extdeps_external_authority_gate_passes",
       profile: runnable_resource_profile_negligible()
     }
   ]]

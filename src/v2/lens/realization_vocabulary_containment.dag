@@ -3,7 +3,7 @@ module v2.lens.realization_vocabulary_containment
 import std.roster_frontier { FrontierRow, frontier_row, frontier_units }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
-import v2.lens.layering_imports {
+import v2.std.layer {
   LayerImportFact,
   layer_import_facts_live
 }

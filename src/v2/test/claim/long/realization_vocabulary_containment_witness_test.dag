@@ -1,6 +1,6 @@
 module v2.test.long.realization_vocabulary_containment_witness
 
-import v2.lens.layering_imports { layer_import_facts_live }
+import v2.std.layer { layer_import_facts_live }
 import v2.lens.realization_vocabulary_containment {
   realization_vocab_consumer_scan_roots,
   realization_vocab_exception_paths,

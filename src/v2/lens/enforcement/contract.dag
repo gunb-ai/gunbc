@@ -31,7 +31,6 @@ import v2.lens.registry {
   lens_registry_v0_intent_linearity,
   lens_registry_v0_interface_summary,
   lens_registry_v0_languages_consumer_census,
-  lens_registry_v0_layering_imports,
   lens_registry_v0_leaf_model_verification,
   lens_registry_v0_live_read_classification,
   lens_registry_v0_machine_shape,
@@ -343,15 +342,6 @@ data lens_contract_languages_consumer_census: LensContract = {
   boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
 }
 
-data lens_contract_layering_imports: LensContract = {
-  entry: lens_registry_v0_layering_imports,
-  mode: AuditOnly,
-  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
-  exemptions: [],
-  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
-}
-
 data lens_contract_leaf_model_verification: LensContract = {
   entry: lens_registry_v0_leaf_model_verification,
   mode: AuditOnly,
@@ -550,7 +540,6 @@ data lens_contract_registry: List<LensContract> = [
   lens_contract_intent_linearity,
   lens_contract_interface_summary,
   lens_contract_languages_consumer_census,
-  lens_contract_layering_imports,
   lens_contract_leaf_model_verification,
   lens_contract_live_read_classification,
   lens_contract_machine_shape,
@@ -597,7 +586,6 @@ data lens_contracts_pending_fn_body_reflection: List<LensIdV0> = [
   IntentLinearity,
   InterfaceSummary,
   LanguagesConsumerCensus,
-  LayeringImports,
   LeafModelVerification,
   LiveReadClassification,
   MachineShape,
