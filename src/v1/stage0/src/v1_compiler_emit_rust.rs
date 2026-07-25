@@ -15647,6 +15647,97 @@ pub fn analyze_rc_pattern(
     })
 }
 
+pub fn box_bound_fields_for_pattern(
+    pattern: Rc<MatchPattern>,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<String>> {
+    match (*pattern.clone()).clone() {
+        MatchPattern::VariantPattern {
+            name: n,
+            parent_enum,
+            field_bindings: fbs,
+            ..
+        } => {
+            let bare_n = qualified_last_segment(n.clone());
+            if (is_optional_variant_name(bare_n.clone()) && is_optional_parent(parent_enum.clone()))
+            {
+                Rc::new(vec![])
+            } else {
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for fb in fbs.clone().iter().cloned() {
+                        __result.extend(
+                            (*{
+                                let fb_name = field_binding_name_at(
+                                    fb.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                );
+                                let fb_pat = field_binding_pattern(fb.clone());
+                                if (fb_name.clone() == "0".to_string()) {
+                                    Rc::new(vec![])
+                                } else {
+                                    match (*fb_pat.clone()).clone() {
+                                        MatchPattern::Wildcard => Rc::new(vec![]),
+                                        _ => {
+                                            if rust_record_field_needs_box(
+                                                scope.clone(),
+                                                emit_info.clone(),
+                                                shared_types.clone(),
+                                                bare_n.clone(),
+                                                fb_name.clone(),
+                                            ) {
+                                                Rc::new(vec![fb_name.clone()])
+                                            } else {
+                                                Rc::new(vec![])
+                                            }
+                                        }
+                                    }
+                                }
+                            })
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                })
+            }
+        }
+        _ => Rc::new(vec![]),
+    }
+}
+
+pub fn rc_pattern_analysis_with_box_fields(
+    rc_analysis: Rc<RcPatternAnalysis>,
+    arm_pat: Rc<MatchPattern>,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    scope: Rc<InferScope>,
+) -> Rc<RcPatternAnalysis> {
+    {
+        let box_fields = box_bound_fields_for_pattern(
+            arm_pat.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+            scope.clone(),
+        );
+        if ((box_fields.clone().len() as i64) == 0) {
+            rc_analysis.clone()
+        } else {
+            Rc::new(RcPatternAnalysis {
+                matches_rc_variant: rc_analysis.matches_rc_variant.clone(),
+                matches_option_rc_variant: rc_analysis.matches_option_rc_variant.clone(),
+                needs_rc_pattern: true,
+                ref_bound_fields: v1_rt::concat(
+                    rc_analysis.ref_bound_fields.clone(),
+                    box_fields.clone(),
+                ),
+            })
+        }
+    }
+}
+
 pub fn analyze_rc_match(
     scrutinee: Rc<Node>,
     arms: Rc<Vec<Rc<Node>>>,
@@ -16201,6 +16292,14 @@ pub fn emit_variant_pattern_rc_aware(
     }
 }
 
+pub fn match_pattern_is_irrefutable(pattern: Rc<MatchPattern>) -> bool {
+    match (*pattern.clone()).clone() {
+        MatchPattern::Bind { name: _, .. } => true,
+        MatchPattern::Wildcard => true,
+        _ => false,
+    }
+}
+
 pub fn rc_pattern_preludes(
     pattern: Rc<MatchPattern>,
     rc_analysis: Rc<RcPatternAnalysis>,
@@ -16295,38 +16394,50 @@ pub fn rc_pattern_preludes(
                                                 fb_name.clone(),
                                                 rc_analysis.clone(),
                                             ) {
-                                                Rc::new(vec![v1_rt::concat(
-                                                    v1_rt::concat(
+                                                {
+                                                    let fb_pat_here =
+                                                        field_binding_pattern(fb.clone());
+                                                    let bound_str = emit_pattern(
+                                                        fb_pat_here.clone(),
+                                                        v1_rt::rc_list_push(
+                                                            v1_rt::rc_list_push(
+                                                                Rc::new(vec![]),
+                                                                bare_n.clone(),
+                                                            ),
+                                                            fb_name.clone(),
+                                                        ),
+                                                        shared_types.clone(),
+                                                        "".to_string(),
+                                                        source_indices.clone(),
+                                                        emit_info.clone(),
+                                                    );
+                                                    let tail = if match_pattern_is_irrefutable(
+                                                        fb_pat_here.clone(),
+                                                    ) {
+                                                        ";".to_string()
+                                                    } else {
+                                                        " else { unreachable!() };".to_string()
+                                                    };
+                                                    Rc::new(vec![v1_rt::concat(
                                                         v1_rt::concat(
                                                             v1_rt::concat(
-                                                                "let ".to_string(),
-                                                                emit_pattern(
-                                                                    field_binding_pattern(
-                                                                        fb.clone(),
+                                                                v1_rt::concat(
+                                                                    v1_rt::concat(
+                                                                        "let ".to_string(),
+                                                                        bound_str.clone(),
                                                                     ),
-                                                                    v1_rt::rc_list_push(
-                                                                        v1_rt::rc_list_push(
-                                                                            Rc::new(vec![]),
-                                                                            bare_n.clone(),
-                                                                        ),
-                                                                        fb_name.clone(),
-                                                                    ),
-                                                                    shared_types.clone(),
-                                                                    "".to_string(),
-                                                                    source_indices.clone(),
-                                                                    emit_info.clone(),
+                                                                    " = ".to_string(),
+                                                                ),
+                                                                emit_ident(
+                                                                    fb_name.clone(),
+                                                                    RenderTarget::Rust,
                                                                 ),
                                                             ),
-                                                            " = ".to_string(),
+                                                            ".as_ref()".to_string(),
                                                         ),
-                                                        emit_ident(
-                                                            fb_name.clone(),
-                                                            RenderTarget::Rust,
-                                                        ),
-                                                    ),
-                                                    ".as_ref() else { unreachable!() };"
-                                                        .to_string(),
-                                                )])
+                                                        tail.clone(),
+                                                    )])
+                                                }
                                             } else {
                                                 Rc::new(vec![])
                                             }
@@ -21871,12 +21982,19 @@ pub fn emit_typed_match_arm(
         let arm_g = arm_guard(arm.clone());
         let arm_b = arm_body(arm.clone());
         let si = scope.type_env.clone().source_indices.clone();
-        let rc_analysis = analyze_rc_pattern(
+        let rc_analysis_raw = analyze_rc_pattern(
             arm_pat.clone(),
             scrut_type.clone(),
             shared_types.clone(),
             emit_info.clone(),
             si.clone(),
+        );
+        let rc_analysis = rc_pattern_analysis_with_box_fields(
+            rc_analysis_raw.clone(),
+            arm_pat.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+            scope.clone(),
         );
         let pat_str = if string_from_mode.clone() {
             match (*arm_pat.clone()).clone() {
@@ -24908,12 +25026,19 @@ pub fn emit_typed_tco_match_arm(
         let arm_g = arm_guard(arm.clone());
         let arm_b = arm_body(arm.clone());
         let si = scope.type_env.clone().source_indices.clone();
-        let rc_analysis = analyze_rc_pattern(
+        let rc_analysis_raw = analyze_rc_pattern(
             arm_pat.clone(),
             scrut_type.clone(),
             shared_types.clone(),
             emit_info.clone(),
             si.clone(),
+        );
+        let rc_analysis = rc_pattern_analysis_with_box_fields(
+            rc_analysis_raw.clone(),
+            arm_pat.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+            scope.clone(),
         );
         let pat_str = if rc_analysis.needs_rc_pattern.clone() {
             emit_pattern_rc_aware(
@@ -28161,6 +28286,24 @@ pub fn rust_nominal_identity_data_expr(
     }
 }
 
+pub fn value_inferred_type_is_rc_wrapped(
+    value: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    match value.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => rust_type_is_rc_wrapped(render_rust_type(
+            rt.clone(),
+            shared_types.clone(),
+            emit_info.corpus_repr.clone(),
+            scope.type_env.clone().source_indices.clone(),
+            emit_info.clone(),
+        )),
+        _ => false,
+    }
+}
+
 pub fn emit_data_def_body(
     type_node: Rc<Node>,
     value: Rc<Node>,
@@ -28450,10 +28593,20 @@ pub fn emit_data_def_body(
                                             shared_types.clone(),
                                             emit_info.corpus_repr.clone(),
                                         ),
-                                        None => false,
+                                        None => value_inferred_type_is_rc_wrapped(
+                                            value.clone(),
+                                            shared_types.clone(),
+                                            scope.clone(),
+                                            emit_info.clone(),
+                                        ),
                                     }
                                 }
-                                _ => false,
+                                _ => value_inferred_type_is_rc_wrapped(
+                                    value.clone(),
+                                    shared_types.clone(),
+                                    scope.clone(),
+                                    emit_info.clone(),
+                                ),
                             };
                             let wrap_start = if (needs_rc.clone() && !is_already_wrapped.clone()) {
                                 "Rc::new(".to_string()
