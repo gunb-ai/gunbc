@@ -325,6 +325,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "witness_compile_clean_cli_floor_verdicts_agree".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "test_migration_debt_module_count".to_string(),
             int_type(),
         );

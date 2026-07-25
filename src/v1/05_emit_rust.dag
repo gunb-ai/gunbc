@@ -620,6 +620,13 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
     match rust_scalar_checkpoint_render_base(dag_name: base_name, corpus_repr: corpus_repr) {
       Present { value: scalar } => scalar
       Absent =>
+    if rust_fn_sig_peel_closed_alias(env: env, n: n) {
+      let bare = match rust_seed_host_container_base(name: base_name, corpus_repr: corpus_repr) {
+        Present { value: host } => host
+        Absent => rust_applied_type_base(name: base_name, corpus_repr: corpus_repr)
+      }
+      render_rust_shared_type_if_needed(type_name: base_name, rendered: bare, shared_types: shared_types)
+    } else {
     let base = match rust_seed_host_container_base(name: base_name, corpus_repr: corpus_repr) {
       Present { value: host } => host
       Absent => rust_applied_type_base(name: base_name, corpus_repr: corpus_repr)
@@ -633,6 +640,7 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
       }
     ) |> join(separator: ", ")
     concat(base, "<", args, ">")
+    }
     }
   }
 }
@@ -4639,8 +4647,6 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, cor
         let applied_name = authored_name_at(source_indices: source_indices, node: applied)
         if outer_name != "" && n.connective == NoConnective && (n.children |> count) == 0 {
           if outer_name != applied_name {
-            render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
-          } else if set_contains(shared_types, outer_name) {
             render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
           } else {
             render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() })
