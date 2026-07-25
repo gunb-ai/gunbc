@@ -689,6 +689,34 @@ fn run() -> Result<ExitCode, ExitCode> {
         "[resolve-summary] {} resolve(s) in {}ms; {} witness(es) in {}ms",
         timings.resolves, timings.resolve_ms, timings.witnesses, timings.witness_ms,
     );
+    {
+        let st = v1_compiler::cli_run::resolve_stage_totals();
+        let ms = |n: u128| n as f64 / 1.0e6;
+        eprintln!(
+            "[resolve-split] load={:.1}ms parse={:.1}ms resolve={:.1}ms normalize={:.1}ms typecheck={:.1}ms parent_envs={:.1}ms reconcile_assembly={:.1}ms ownership={:.1}ms",
+            ms(st.load),
+            ms(st.parse),
+            ms(st.resolve),
+            ms(st.normalize),
+            ms(st.typecheck_compute),
+            ms(st.parent_envs),
+            ms(st.reconcile_assembly),
+            ms(st.ownership),
+        );
+        eprintln!(
+            "[assembly-split] schedule={:.1}ms probe={:.1}ms registry={:.1}ms services={:.1}ms rewire={:.1}ms (type_env={:.1}ms import_str={:.1}ms func_env={:.1}ms) emit_info={:.1}ms residue={:.1}ms",
+            ms(st.assembly_schedule),
+            ms(st.assembly_probe),
+            ms(st.assembly_registry),
+            ms(st.assembly_services),
+            ms(st.assembly_rewire),
+            ms(st.assembly_rewire_type_env),
+            ms(st.assembly_rewire_import_str),
+            ms(st.assembly_rewire_func_env),
+            ms(st.assembly_emit_info),
+            ms(st.reconcile_assembly),
+        );
+    }
 
     emit_rss_measurement("per-shard-peak-rss");
     if let Some(bytes) = children_max_rss_bytes() {

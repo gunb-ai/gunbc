@@ -7468,6 +7468,12 @@ pub struct ResolveStageNanos {
     pub assembly_services: u128,
     /// The three `rewire_*` passes (type-env parents, import-str identity, func-env parents).
     pub assembly_rewire: u128,
+    /// `rewire_type_env_parent_links` alone.
+    pub assembly_rewire_type_env: u128,
+    /// `rewire_type_env_import_str_binding_identity` alone.
+    pub assembly_rewire_import_str: u128,
+    /// `rewire_func_env_parent_links` alone.
+    pub assembly_rewire_func_env: u128,
     /// `corpus_has_v1_seed_source_indices` + `build_emit_graph_info`.
     pub assembly_emit_info: u128,
 }
@@ -7487,6 +7493,9 @@ impl ResolveStageNanos {
         self.assembly_registry += other.assembly_registry;
         self.assembly_services += other.assembly_services;
         self.assembly_rewire += other.assembly_rewire;
+        self.assembly_rewire_type_env += other.assembly_rewire_type_env;
+        self.assembly_rewire_import_str += other.assembly_rewire_import_str;
+        self.assembly_rewire_func_env += other.assembly_rewire_func_env;
         self.assembly_emit_info += other.assembly_emit_info;
     }
 
@@ -7526,11 +7535,31 @@ thread_local! {
             assembly_registry: 0,
             assembly_services: 0,
             assembly_rewire: 0,
+            assembly_rewire_type_env: 0,
+            assembly_rewire_import_str: 0,
+            assembly_rewire_func_env: 0,
             assembly_emit_info: 0,
         }) };
 }
 
+thread_local! {
+    static RESOLVE_STAGE_TOTAL: std::cell::RefCell<ResolveStageNanos> =
+        std::cell::RefCell::new(ResolveStageNanos::default());
+}
+
+/// Cumulative per-worker stage attribution across every entry resolve this thread
+/// has run (the per-entry slot folded in at each reset, plus the live slot). Read by
+/// `claim_batch`'s `[assembly-split]` receipt, which — unlike `claim_executor`'s
+/// discovery summary — has no per-entry receipt list to sum.
+pub fn resolve_stage_totals() -> ResolveStageNanos {
+    let mut total = RESOLVE_STAGE_TOTAL.with(|t| *t.borrow());
+    total.accumulate(&resolve_stage_slot_snapshot());
+    total
+}
+
 fn resolve_stage_slot_reset() {
+    let carried = resolve_stage_slot_snapshot();
+    RESOLVE_STAGE_TOTAL.with(|t| t.borrow_mut().accumulate(&carried));
     RESOLVE_STAGE_SLOT.with(|s| s.set(ResolveStageNanos::default()));
 }
 
@@ -7760,7 +7789,16 @@ fn resolved_graph_from_sources_with_index(
     // accumulated into the slot during this call (typecheck computes + parent envs).
     let reconcile_total = reconcile_started.elapsed().as_nanos();
     resolve_stage_slot_add(|s| {
-        s.reconcile_assembly += reconcile_total.saturating_sub(s.typecheck_compute + s.parent_envs);
+        s.reconcile_assembly += reconcile_total.saturating_sub(
+            s.typecheck_compute
+                + s.parent_envs
+                + s.assembly_schedule
+                + s.assembly_probe
+                + s.assembly_registry
+                + s.assembly_services
+                + s.assembly_rewire
+                + s.assembly_emit_info,
+        );
     });
 
     let has_type_errors = typed
@@ -8074,12 +8112,17 @@ fn finish_resolved_graph_assembly(
     let rewire_started = std::time::Instant::now();
     let modules =
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
+    resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
+    let rewire2_started = std::time::Instant::now();
     let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
         modules.clone(),
         source_indices.clone(),
     );
+    resolve_stage_slot_add(|s| s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos());
+    let rewire3_started = std::time::Instant::now();
     let modules =
         v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
+    resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
     resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
     let emit_info_started = std::time::Instant::now();
     let has_v1_seed = v1_compiler_infer::corpus_has_v1_seed_source_indices(modules.clone());
@@ -8130,6 +8173,7 @@ fn try_reconcile_all_cache_hits(
         closure_path_to_authored_name_map(closure_modules, closure_names);
     let mut results: Vec<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>> =
         vec![None; closure_modules.len()];
+    let probe_started = std::time::Instant::now();
     let mut pending: Vec<usize> = schedule.iter().flatten().copied().collect();
     let mut defer_pass = 0usize;
     while !pending.is_empty() {
@@ -8157,6 +8201,7 @@ fn try_reconcile_all_cache_hits(
                 Err(e) => return Err(e),
             };
             let Some(tc_result) = index_get_typed(index, &typed_key)? else {
+                resolve_stage_slot_add(|s| s.assembly_probe += probe_started.elapsed().as_nanos());
                 return Ok(None);
             };
             note_interface_hash(&mut interface_hash_by_name, mod_name, &tc_result);
@@ -8183,6 +8228,8 @@ fn try_reconcile_all_cache_hits(
             pending = next_pending;
         }
     }
+
+    resolve_stage_slot_add(|s| s.assembly_probe += probe_started.elapsed().as_nanos());
 
     // Pass 2 — resolver's ORIGINAL order, assembling the `ResolvedGraph` byte-identically to
     // the legacy serial fold (module order is an output-shape invariant, not just a schedule
@@ -8566,8 +8613,10 @@ fn reconcile_with_typed_cache(
         .iter()
         .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
         .collect();
+    let schedule_started = std::time::Instant::now();
     let (schedule, cycle_residue_slots) =
         module_schedule_batches(&closure_modules, &closure_names, index);
+    resolve_stage_slot_add(|s| s.assembly_schedule += schedule_started.elapsed().as_nanos());
     if let Some(assembled) = try_reconcile_all_cache_hits(
         &closure_modules,
         &closure_names,
