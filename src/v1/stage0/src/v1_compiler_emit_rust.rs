@@ -5,8 +5,8 @@ pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
 pub use crate::extdeps_languages_rust_emit::HigherOrderMethodSpec;
 pub use crate::extdeps_languages_rust_emit::{
     rt_bridge_function_names, rt_functions, rt_ref_map_functions, rt_wraps_result,
-    rust_container_templates, rust_higher_order_methods,
-    rust_method_templates, rust_method_wraps_result, rust_serde_rename_all_screaming_snake_case,
+    rust_container_templates, rust_higher_order_methods, rust_method_templates,
+    rust_method_wraps_result, rust_serde_rename_all_screaming_snake_case,
     rust_serde_rename_all_snake_case,
 };
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
