@@ -291,7 +291,7 @@ fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
   concat(rust_qualified_module_mod_basename(qualified_module: qualified_module), ".rs")
 }
 
-data rust_repr_grounding_arm_b_dissolve_on: String = "Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion/Nat body lands (#7197); replace identity Rc stubs with grounded i64 newtype operations."
+data rust_repr_grounding_arm_b_dissolve_on: String = "Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion/Nat body lands (#7197); replace fail-closed unimplemented! stubs with grounded i64 newtype operations."
 
 fn rust_supplemental_impls_commutative_semiring_magnitude() -> String {
   concat(
@@ -300,18 +300,18 @@ fn rust_supplemental_impls_commutative_semiring_magnitude() -> String {
     ")\n",
     "impl std::ops::Add for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n",
     "    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;\n",
-    "    fn add(self, rhs: Self) -> Self::Output { std::rc::Rc::new(rhs) }\n",
+    "    fn add(self, _rhs: Self) -> Self::Output { unimplemented!(\"interim CommutativeSemiring<Magnitude> stub — see #7197\") }\n",
     "}\n",
     "impl std::ops::Mul for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n",
     "    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;\n",
-    "    fn mul(self, rhs: Self) -> Self::Output { std::rc::Rc::new(rhs) }\n",
+    "    fn mul(self, _rhs: Self) -> Self::Output { unimplemented!(\"interim CommutativeSemiring<Magnitude> stub — see #7197\") }\n",
     "}\n",
     "impl std::ops::Div for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n",
     "    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;\n",
-    "    fn div(self, rhs: Self) -> Self::Output { std::rc::Rc::new(rhs) }\n",
+    "    fn div(self, _rhs: Self) -> Self::Output { unimplemented!(\"interim CommutativeSemiring<Magnitude> stub — see #7197\") }\n",
     "}\n",
     "impl std::cmp::PartialEq<i64> for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n",
-    "    fn eq(&self, other: &i64) -> bool { *other == 0 }\n",
+    "    fn eq(&self, _other: &i64) -> bool { unimplemented!(\"interim CommutativeSemiring<Magnitude> stub — see #7197\") }\n",
     "}\n"
   )
 }
@@ -323,20 +323,4 @@ fn rust_supplemental_impls_bool_coproduct() -> String {
     "    fn from(b: Bool) -> bool { match b { Bool::True => true, Bool::False => false } }\n",
     "}\n"
   )
-}
-
-fn rust_supplemental_impls_for_struct(name: String) -> String {
-  if name == "CommutativeSemiring" {
-    rust_supplemental_impls_commutative_semiring_magnitude()
-  } else {
-    ""
-  }
-}
-
-fn rust_supplemental_impls_for_enum(name: String) -> String {
-  if name == "Bool" {
-    rust_supplemental_impls_bool_coproduct()
-  } else {
-    ""
-  }
 }

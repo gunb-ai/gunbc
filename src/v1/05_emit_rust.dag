@@ -4737,7 +4737,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
     } else { field_lines }
     let fields_str = all_field_lines |> join(separator: "\n")
     let struct_def = concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, " {\n", fields_str, "\n}")
-    let supplemental = v1_emit_struct_supplemental_impls(name: name)
+    let supplemental = v1_emit_struct_supplemental_impls(module_path: env.module_path, name: name)
     if supplemental == "" { struct_def } else { concat(struct_def, supplemental) }
   }
 }
@@ -4854,7 +4854,7 @@ fn emit_enum_from_children(name: String, type_params: String, generic_param_name
   let tag_line = if serde_policy.enum_attr == "" { "" } else { concat(serde_policy.enum_attr, "\n") }
   let enum_def = concat(derives, "\n", tag_line, rust_visibility_prefix(), rust_items().enum_keyword, " ", name, type_params, " {\n", variants_str, "\n}")
   let accessor_impl = emit_enum_shared_accessors(name: name, type_params: type_params, generic_param_names: generic_param_names, children: children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
-  let supplemental = v1_emit_enum_supplemental_impls(name: name)
+  let supplemental = v1_emit_enum_supplemental_impls(module_path: env.module_path, name: name)
   let with_accessors = if accessor_impl == "" { enum_def } else { concat(enum_def, "\n", accessor_impl) }
   if supplemental == "" { with_accessors } else { concat(with_accessors, supplemental) }
 }

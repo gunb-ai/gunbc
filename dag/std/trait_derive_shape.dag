@@ -273,3 +273,11 @@ fn kernel_int_arithmetic_traits() -> List<ReprGroundingDeriveTrait> {
     }
   }
 }
+
+fn repr_grounding_supplemental_commutative_semiring_target(module_path: String, name: String) -> Bool {
+  module_path == "std.algebra" && name == "CommutativeSemiring"
+}
+
+fn repr_grounding_supplemental_bool_host_bridge_target(module_path: String, name: String) -> Bool {
+  module_path == "std.types" && name == "Bool"
+}

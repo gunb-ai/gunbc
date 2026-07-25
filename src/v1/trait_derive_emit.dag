@@ -20,12 +20,14 @@ import std.trait_derive_shape {
   payload_coproduct_derive_traits,
   fn_field_derive_traits,
   kernel_int_arithmetic_traits,
-  ReprDeriveElemKernelInt
+  ReprDeriveElemKernelInt,
+  repr_grounding_supplemental_commutative_semiring_target,
+  repr_grounding_supplemental_bool_host_bridge_target
 }
 import extdeps.languages.rust.emit {
   rust_trait_derive_attr_from_traits,
-  rust_supplemental_impls_for_struct,
-  rust_supplemental_impls_for_enum
+  rust_supplemental_impls_commutative_semiring_magnitude,
+  rust_supplemental_impls_bool_coproduct
 }
 import std.types { is_container_type }
 
@@ -192,18 +194,22 @@ fn v1_emit_type_params_with_clone_bounds(
   }
 }
 
-fn v1_emit_struct_supplemental_impls(name: String) -> String {
-  if name == "CommutativeSemiring"
+fn v1_emit_struct_supplemental_impls(module_path: String, name: String) -> String {
+  if repr_grounding_supplemental_commutative_semiring_target(module_path: module_path, name: name)
     && repr_grounding_derive_completeness_predicate(
       kernel_int_arithmetic_traits(),
       ReprDeriveElemKernelInt
     ) {
-    rust_supplemental_impls_for_struct(name: name)
+    rust_supplemental_impls_commutative_semiring_magnitude()
   } else {
     ""
   }
 }
 
-fn v1_emit_enum_supplemental_impls(name: String) -> String {
-  rust_supplemental_impls_for_enum(name: name)
+fn v1_emit_enum_supplemental_impls(module_path: String, name: String) -> String {
+  if repr_grounding_supplemental_bool_host_bridge_target(module_path: module_path, name: name) {
+    rust_supplemental_impls_bool_coproduct()
+  } else {
+    ""
+  }
 }

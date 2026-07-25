@@ -9,12 +9,14 @@ import std.trait_derive_shape {
   symbol_wrapped_ord_carrier_derive_traits,
   record_derive_traits_heap,
   record_derive_traits_copy,
-  repr_grounding_derive_completeness_predicate
+  repr_grounding_derive_completeness_predicate,
+  repr_grounding_supplemental_commutative_semiring_target,
+  repr_grounding_supplemental_bool_host_bridge_target
 }
 import extdeps.languages.rust.emit {
   rust_trait_derive_attr_from_traits,
-  rust_supplemental_impls_for_struct,
-  rust_supplemental_impls_for_enum
+  rust_supplemental_impls_commutative_semiring_magnitude,
+  rust_supplemental_impls_bool_coproduct
 }
 import v2.std.logic { Bool }
 
@@ -54,15 +56,29 @@ test fn payload_coproduct_predicate_satisfied() -> Bool {
 }
 
 test fn commutative_semiring_supplemental_impl_present() -> Bool {
-  let supplemental = rust_supplemental_impls_for_struct(name: "CommutativeSemiring")
-  let absent = rust_supplemental_impls_for_struct(name: "Magma")
-  supplemental != "" && absent == ""
+  let supplemental = rust_supplemental_impls_commutative_semiring_magnitude()
+  let target_ok = repr_grounding_supplemental_commutative_semiring_target(
+    module_path: "std.algebra",
+    name: "CommutativeSemiring"
+  )
+  let target_absent = repr_grounding_supplemental_commutative_semiring_target(
+    module_path: "std.algebra",
+    name: "Magma"
+  )
+  target_ok && supplemental != "" && supplemental.contains("unimplemented!") && !target_absent
 }
 
 test fn bool_supplemental_impl_present() -> Bool {
-  let supplemental = rust_supplemental_impls_for_enum(name: "Bool")
-  let absent = rust_supplemental_impls_for_enum(name: "Quantity")
-  supplemental != "" && absent == ""
+  let supplemental = rust_supplemental_impls_bool_coproduct()
+  let target_ok = repr_grounding_supplemental_bool_host_bridge_target(
+    module_path: "std.types",
+    name: "Bool"
+  )
+  let target_absent = repr_grounding_supplemental_bool_host_bridge_target(
+    module_path: "std.types",
+    name: "Quantity"
+  )
+  target_ok && supplemental != "" && !target_absent
 }
 
 test fn trait_derive_seed_emit_binding_witness_holds() -> Bool {
