@@ -1,4 +1,4 @@
-module v1.compiler.emit_rust_frontier
+module gunbc.v1_emit_rust_closure_frontier
 
 import std.roster_frontier {
   FrontierRow,

@@ -24,6 +24,14 @@ fn frontier_row_path(path: String, reason: String, trigger: DissolveTrigger) -> 
   FrontierRow { subject: PathSubject { path: path }, reason: reason, trigger: trigger }
 }
 
+fn frontier_row(unit: String, reason: String, dissolve_on: String) -> FrontierRow {
+  frontier_row_path(
+    path: unit,
+    reason: reason,
+    trigger: TriggerProse { text: dissolve_on },
+  )
+}
+
 fn frontier_row_decl(ref: DeclarationRef, reason: String, trigger: DissolveTrigger) -> FrontierRow {
   FrontierRow { subject: DeclSubject { ref: ref }, reason: reason, trigger: trigger }
 }
@@ -112,9 +120,13 @@ fn frontier_path_subjects(rows: List<FrontierRow>) -> List<String> {
   fold(rows, init: [], f: fn(acc, row) {
     match row.subject {
       PathSubject { path: p } => concat(acc, [p])
-      DeclSubject { ref: _ } => acc
+      DeclSubject { ref: r } => concat(acc, [concat(r.module_path as String, concat("::", r.decl_name as String))])
     }
   })
+}
+
+fn frontier_units(rows: List<FrontierRow>) -> List<String> {
+  frontier_path_subjects(rows: rows)
 }
 
 fn concat_frontier_row_groups(groups: List<List<FrontierRow>>) -> List<FrontierRow> {
