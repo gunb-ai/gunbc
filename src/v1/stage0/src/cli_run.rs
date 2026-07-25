@@ -23738,10 +23738,17 @@ pub(crate) fn non_fold_residue_units_from_module_source(
     module_rel_path: &str,
     content: &str,
 ) -> Vec<String> {
-    use crate::v1_std_core::{ExprData, LiteralValue, Node};
+    use crate::v1_std_core::{ExprData, LiteralValue, NewlineIndex, Node};
+    use std::rc::Rc;
 
-    fn string_literal_from_field(field: Node, source_indices: &std::rc::Rc<HashMap<String, crate::v1_std_core::NewlineIndex>>, field_name: &str, context: &str) -> Option<String> {
-        let fname = crate::v1_std_core::field_init_node_name_at(field.clone(), source_indices.clone());
+    fn string_literal_from_field(
+        field: Rc<Node>,
+        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        field_name: &str,
+        context: &str,
+    ) -> Option<String> {
+        let fname =
+            crate::v1_std_core::field_init_node_name_at(field.clone(), source_indices.clone());
         if fname != field_name {
             return None;
         }
@@ -23755,9 +23762,16 @@ pub(crate) fn non_fold_residue_units_from_module_source(
         }
     }
 
-    fn path_subject_from_record(el: &Node, source_indices: &std::rc::Rc<HashMap<String, crate::v1_std_core::NewlineIndex>>, context: &str) -> Option<String> {
+    fn path_subject_from_record(
+        el: &Rc<Node>,
+        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        context: &str,
+    ) -> Option<String> {
         for field in el.children.iter() {
-            let fname = crate::v1_std_core::field_init_node_name_at(field.clone(), source_indices.clone());
+            let fname = crate::v1_std_core::field_init_node_name_at(
+                field.clone(),
+                source_indices.clone(),
+            );
             if fname != "subject" {
                 continue;
             }
@@ -23766,7 +23780,9 @@ pub(crate) fn non_fold_residue_units_from_module_source(
                 panic!("{context}: `subject` is not a record literal");
             }
             for sub in value.children.iter() {
-                if let Some(path) = string_literal_from_field(sub.clone(), source_indices, "path", context) {
+                if let Some(path) =
+                    string_literal_from_field(sub.clone(), source_indices.clone(), "path", context)
+                {
                     return Some(path);
                 }
             }
@@ -23822,7 +23838,7 @@ pub(crate) fn non_fold_residue_units_from_module_source(
             for field in el.children.iter() {
                 if let Some(path) = string_literal_from_field(
                     field.clone(),
-                    &source_indices,
+                    source_indices.clone(),
                     "unit",
                     &format!("nfr frontier reader: a `{data_name}` row of {module_rel_path}"),
                 ) {
@@ -23833,7 +23849,7 @@ pub(crate) fn non_fold_residue_units_from_module_source(
             if unit.is_none() {
                 unit = path_subject_from_record(
                     el,
-                    &source_indices,
+                    source_indices.clone(),
                     &format!("nfr frontier reader: a `{data_name}` row of {module_rel_path}"),
                 );
             }
