@@ -27298,6 +27298,28 @@ pub struct ExtdepsShapeTransportPolicyModuleFacts {
     pub gist_create_files_keyed_by_filename: bool,
 }
 
+type ExtdepsParsedModule = (
+    Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
+    Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+);
+
+thread_local! {
+    /// Content-keyed memo for `parse_extdeps_module_items`. Keyed on the file's own
+    /// bytes (hashed), never on the path alone, so a mutated file re-parses and the
+    /// memo cannot serve a stale tree — the cache-purity rule DESIGN names (key on
+    /// declared-input content). The corpus argv census folds every operation row
+    /// through this reader, which without the memo re-parses one module per row.
+    static EXTDEPS_PARSE_MEMO: std::cell::RefCell<HashMap<String, (u64, ExtdepsParsedModule)>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+fn extdeps_source_content_hash(content: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    content.hash(&mut hasher);
+    hasher.finish()
+}
+
 pub fn parse_extdeps_module_items(
     path: &str,
 ) -> (
@@ -27321,6 +27343,16 @@ pub fn parse_extdeps_module_items(
     let path_str = resolved.to_string_lossy();
     let content = std::fs::read_to_string(&resolved)
         .unwrap_or_else(|e| panic!("parse_extdeps_module_items: failed to read {path_str}: {e}"));
+    let memo_key = resolved.to_string_lossy().to_string();
+    let content_hash = extdeps_source_content_hash(&content);
+    if let Some(hit) = EXTDEPS_PARSE_MEMO.with(|memo| {
+        memo.borrow()
+            .get(&memo_key)
+            .filter(|(hash, _)| *hash == content_hash)
+            .map(|(_, parsed)| parsed.clone())
+    }) {
+        return hit;
+    }
     let filename = resolved
         .file_name()
         .and_then(|s| s.to_str())
@@ -27341,7 +27373,12 @@ pub fn parse_extdeps_module_items(
         .module
         .as_ref()
         .expect("parse_extdeps_module_items: missing module");
-    (module.children.clone(), source_indices)
+    let parsed: ExtdepsParsedModule = (module.children.clone(), source_indices);
+    EXTDEPS_PARSE_MEMO.with(|memo| {
+        memo.borrow_mut()
+            .insert(memo_key, (content_hash, parsed.clone()));
+    });
+    parsed
 }
 
 pub fn shell_argv_nodes_for_operation(

@@ -26,6 +26,7 @@ type OperationInputBinding {
 
 type ArgvRefusalCause
   = OperationNotFound
+  | ArgvEmpty
   | UndeclaredInputBound { name: String }
   | DuplicateInputBinding { name: String }
   | DeclaredInputUnbound { name: String }
@@ -67,6 +68,7 @@ fn operation_argv_is_materialized(m: ArgvMaterialization) -> Bool {
 fn operation_argv_cause_label(cause: ArgvRefusalCause) -> String {
   match cause {
     OperationNotFound => "OperationNotFound"
+    ArgvEmpty => "ArgvEmpty"
     UndeclaredInputBound { name: n } => concat("UndeclaredInputBound:", n)
     DuplicateInputBinding { name: n } => concat("DuplicateInputBinding:", n)
     DeclaredInputUnbound { name: n } => concat("DeclaredInputUnbound:", n)
@@ -98,12 +100,34 @@ fn operation_argv_tokens_or_refusal_label(m: ArgvMaterialization) -> List<String
 fn operation_argv_cause_is_expression_unsupported(cause: ArgvRefusalCause) -> Bool {
   match cause {
     OperationNotFound => false
+    ArgvEmpty => false
     UndeclaredInputBound { name: _ } => false
     DuplicateInputBinding { name: _ } => false
     DeclaredInputUnbound { name: _ } => false
     ExecutablePositionNotLiteral { detail: _ } => false
     TokenListInStringPosition { name: _ } => false
     ArgvExpressionUnsupported { detail: _ } => true
+  }
+}
+
+fn operation_argv_cause_is_executable_position(cause: ArgvRefusalCause) -> Bool {
+  match cause {
+    OperationNotFound => false
+    ArgvEmpty => false
+    UndeclaredInputBound { name: _ } => false
+    DuplicateInputBinding { name: _ } => false
+    DeclaredInputUnbound { name: _ } => false
+    ExecutablePositionNotLiteral { detail: _ } => true
+    TokenListInStringPosition { name: _ } => false
+    ArgvExpressionUnsupported { detail: _ } => false
+  }
+}
+
+fn operation_argv_is_executable_position_refusal(m: ArgvMaterialization) -> Bool {
+  match m {
+    ArgvMaterialized { argv: _ } => false
+    ArgvMaterializationRefused { at: _, cause: c } =>
+      operation_argv_cause_is_executable_position(cause: c)
   }
 }
 
