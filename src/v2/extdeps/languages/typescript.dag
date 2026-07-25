@@ -77,7 +77,7 @@ import v2.std.model_core {
   PrimitiveOperationRef,
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSurfaceSpelling,
-  ModelCoreFactAxisWidth,
+  ModelCoreFactAxisWidth
 }
 import v2.std.diagnostic {
   Accepted,

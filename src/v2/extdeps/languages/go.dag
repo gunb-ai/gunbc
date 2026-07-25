@@ -53,7 +53,7 @@ import v2.std.model_core {
   ModelCoreFactAxisWidth,
   ModelCorePrimitiveFactAxis,
   PartialitySemanticsDecl,
-  PrimitiveFactBundle,
+  PrimitiveFactBundle
 }
 import v2.std.grounding {
   empty_per_language_fact_bundle_registry,

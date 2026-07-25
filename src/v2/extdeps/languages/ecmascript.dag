@@ -60,7 +60,7 @@ import v2.std.model_core {
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
   ModelCoreFactAxisEncoding,
-  ModelCoreFactAxisSurfaceSpelling,
+  ModelCoreFactAxisSurfaceSpelling
 }
 import v2.std.node {
   Arrow,
