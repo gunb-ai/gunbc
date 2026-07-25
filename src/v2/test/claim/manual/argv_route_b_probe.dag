@@ -1,92 +1,34 @@
 module test.claim.manual.argv_route_b_probe
 
 import std.types { String, List }
+import v2.std.algebra { fold_list }
 import v2.std.operation_argv {
   ArgvMaterialization,
-  operation_argv_bind_text,
-  operation_argv_bind_text_list,
-  operation_argv_tokens_or_refusal_label,
+  ShellTransportOperationRow,
+  operation_argv_is_materialized,
+  operation_argv_is_executable_position_refusal,
+  operation_argv_is_expression_residue,
+  operation_argv_refusal_label,
+  operation_argv_row_bindings,
 }
 
-fn probe_line(label: String, m: ArgvMaterialization) -> String {
-  concat(concat(label, " | "), join(operation_argv_tokens_or_refusal_label(m: m), " "))
+data empty_labels: List<String> = []
+
+fn row_m(row: ShellTransportOperationRow) -> ArgvMaterialization {
+  shell_materialize_operation_argv(row.at.path, row.at.service, row.at.operation, operation_argv_row_bindings(row: row))
 }
 
 fn main() -> List<String> {
-  [
-    probe_line(
-      label: "systemctl.ShowProperty",
-      m: shell_materialize_operation_argv(
-        "dag/extdeps/systemd/systemctl.dag",
-        "systemd.Systemctl",
-        "ShowProperty",
-        [
-          operation_argv_bind_text(name: "unit", text: "gunbc.service"),
-          operation_argv_bind_text(name: "property", text: "ActiveState")
-        ]
-      )
-    ),
-    probe_line(
-      label: "git.Core.Diff-default-head",
-      m: shell_materialize_operation_argv(
-        "dag/extdeps/git/git.dag",
-        "git.Core",
-        "Diff",
-        [operation_argv_bind_text(name: "base", text: "origin/main")]
-      )
-    ),
-    probe_line(
-      label: "cargo.Build.Build-list",
-      m: shell_materialize_operation_argv(
-        "dag/extdeps/rust/cargo_build.dag",
-        "cargo.Build",
-        "Build",
-        [operation_argv_bind_text_list(name: "extra_args", items: ["--release", "-p", "v1-compiler"])]
-      )
-    ),
-    probe_line(
-      label: "bmc-redfish-GetSystem",
-      m: shell_materialize_operation_argv(
-        "dag/extdeps/bmc/http.dag",
-        "redfish.Http",
-        "GetSystem",
-        [
-          operation_argv_bind_text(name: "username", text: "admin"),
-          operation_argv_bind_text(name: "password", text: "secret"),
-          operation_argv_bind_text(name: "bmc_host", text: "srv4-bmc")
-        ]
-      )
-    ),
-    probe_line(
-      label: "RED-undeclared-bin-injection",
-      m: shell_materialize_operation_argv(
-        "dag/extdeps/systemd/systemctl.dag",
-        "systemd.Systemctl",
-        "ShowProperty",
-        [
-          operation_argv_bind_text(name: "unit", text: "gunbc.service"),
-          operation_argv_bind_text(name: "property", text: "ActiveState"),
-          operation_argv_bind_text(name: "bin", text: "/usr/bin/curl")
-        ]
-      )
-    ),
-    probe_line(
-      label: "RED-expression-residue-DiffUnified0",
-      m: shell_materialize_operation_argv(
-        "dag/extdeps/git/git.dag",
-        "git.Core",
-        "DiffUnified0",
-        [operation_argv_bind_text(name: "base", text: "origin/main")]
-      )
-    ),
-    probe_line(
-      label: "RED-missing-operation",
-      m: shell_materialize_operation_argv(
-        "dag/extdeps/git/git.dag",
-        "git.Core",
-        "NoSuchOperation",
-        []
-      )
-    )
-  ]
+  fold_list(
+    xs: shell_transport_operation_rows(),
+    empty: empty_labels,
+    cons: fn(acc, row) {
+      let m = row_m(row: row)
+      if operation_argv_is_materialized(m: m) {
+        acc
+      } else {
+        append(acc, items: [operation_argv_refusal_label(m: m)])
+      }
+    }
+  )
 }

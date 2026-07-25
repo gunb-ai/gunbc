@@ -77,17 +77,16 @@ fn operation_argv_tally_row(acc: ArgvCorpusTally, row: ShellTransportOperationRo
   let exec_position = operation_argv_is_executable_position_refusal(m: m)
   let unexplained = !materialized && !residue && !exec_position
   let outside = operation_argv_row_is_outside_legacy_vocabulary(row: row)
+  let exec_outside_fixture = exec_position && (row.at.path != operation_argv_fixture_path)
   ArgvCorpusTally {
     rows: acc.rows + 1,
     materialized: acc.materialized + operation_argv_flag(b: materialized),
     expression_residue: acc.expression_residue + operation_argv_flag(b: residue),
     executable_position: acc.executable_position + operation_argv_flag(b: exec_position),
-    executable_position_outside_fixture: acc.executable_position_outside_fixture
-      + operation_argv_flag(b: exec_position && (row.at.path != operation_argv_fixture_path)),
+    executable_position_outside_fixture: acc.executable_position_outside_fixture + operation_argv_flag(b: exec_outside_fixture),
     unexplained: acc.unexplained + operation_argv_flag(b: unexplained),
     outside_legacy: acc.outside_legacy + operation_argv_flag(b: outside),
-    outside_legacy_materialized: acc.outside_legacy_materialized
-      + operation_argv_flag(b: outside && materialized)
+    outside_legacy_materialized: acc.outside_legacy_materialized + operation_argv_flag(b: outside && materialized)
   }
 }
 
@@ -139,8 +138,7 @@ test fn operation_argv_corpus_RED_smuggled_executable_is_refused_and_located() -
       [operation_argv_bind_text(name: "bin", text: "/usr/bin/curl")]
     )
   )
-  string_contains(label, "ExecutablePositionNotLiteral")
-    && string_contains(label, "ArgvExecutablePositionProbe.SmuggleExecutable")
+  string_contains(label, "ExecutablePositionNotLiteral") && string_contains(label, "ArgvExecutablePositionProbe.SmuggleExecutable")
 }
 
 test fn operation_argv_corpus_RED_literal_executable_control_materializes() -> Bool {

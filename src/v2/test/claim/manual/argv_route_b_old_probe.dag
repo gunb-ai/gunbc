@@ -1,7 +1,0 @@
-module test.claim.manual.argv_route_b_old_probe
-
-import std.types { String, List }
-
-fn main() -> List<String> {
-  shell_materialize_argv_for_operation("dag/gunbc/cli_services.dag", "claim_executor.Executor", "VerifyBuildArtifacts", "", "", [], "")
-}

@@ -27530,11 +27530,32 @@ fn dag_source_files_under(root: &std::path::Path, out: &mut Vec<std::path::PathB
     }
 }
 
-/// Every shell-transport operation declared under the corpus source roots.
+/// Whether a source *could* declare a shell transport: the literal keyword `transport`
+/// followed, on the SAME line, by `shell`.
 ///
-/// The `transport` keyword prefilter is a *necessary* condition of the construct
-/// (a shell transport cannot be declared without it), so it is a sound superset —
-/// not a heuristic that could miss a declaration.
+/// This is a sound necessary condition rather than a heuristic, and it is read off the
+/// parser rather than guessed: `parse_transport_binding` inspects the token
+/// immediately after `transport` with no `skip_newlines`, so the kind keyword cannot be
+/// on a following line. Horizontal whitespace between the two is admitted because the
+/// tokenizer skips it. A string literal mentioning the phrase makes this a superset,
+/// which costs one parse and misses nothing.
+fn source_may_declare_shell_transport(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut at = 0usize;
+    while let Some(found) = text[at..].find("transport") {
+        let mut i = at + found + "transport".len();
+        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+            i += 1;
+        }
+        if text[i..].starts_with("shell") {
+            return true;
+        }
+        at = at + found + "transport".len();
+    }
+    false
+}
+
+/// Every shell-transport operation declared under the corpus source roots.
 pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow> {
     let root = workspace_root();
     let mut files: Vec<std::path::PathBuf> = Vec::new();
@@ -27546,7 +27567,7 @@ pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow>
         let Ok(text) = std::fs::read_to_string(file) else {
             continue;
         };
-        if !text.contains("transport") {
+        if !source_may_declare_shell_transport(&text) {
             continue;
         }
         let Ok(rel) = file.strip_prefix(&root) else {
