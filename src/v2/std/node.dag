@@ -796,7 +796,9 @@ fn byte_offset_quotient_divide_by_256_steps(quotient: Int, steps: Int) -> Int {
 fn byte_offset_residual_quotient_magnitude_window_digest(quotient: Int, shift_steps: Int) -> std.types.ContentHash {
   let shifted = byte_offset_quotient_divide_by_256_steps(quotient, shift_steps)
   if shift_steps == byte_offset_residual_quotient_magnitude_max_shift && shifted >= 256 * 256 {
-    std.content_hash.content_hash_combine(byte_offset_residual_quotient_limb_pair_digest(shifted), byte_offset_overflow_quotient_high_band_terminal_digest(shifted / 65536, byte_offset_cache_digest_overflow_limbs))
+    let base = byte_offset_residual_quotient_limb_pair_digest(shifted)
+    let tail = byte_offset_overflow_quotient_high_band_terminal_digest(shifted / 65536, byte_offset_cache_digest_overflow_limbs)
+    std.content_hash.content_hash_combine(base, tail)
   } else {
     byte_offset_residual_quotient_limb_pair_digest(shifted)
   }
@@ -819,15 +821,17 @@ fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_
     if quotient == 0 {
       std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_zero)
     } else if quotient < 256 * 256 {
-      std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted), std.content_hash.content_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_byte_digest(quotient / 256)))
+      let peel = std.content_hash.content_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_byte_digest(quotient / 256))
+      std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted), peel)
     } else {
       byte_offset_residual_quotient_limb_pair_digest(quotient)
     }
   } else if quotient == 0 {
     std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_zero)
   } else {
-    std.content_hash.content_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_overflow_quotient_high_band_terminal_digest(quotient / 256, limbs_remaining - 1
-      ))
+    let low = byte_offset_byte_digest(quotient - (quotient / 256) * 256)
+    let high = byte_offset_overflow_quotient_high_band_terminal_digest(quotient / 256, limbs_remaining - 1)
+    std.content_hash.content_hash_combine(low, high)
   }
 }
 
@@ -836,16 +840,17 @@ fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining
     if quotient == 0 {
       std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_zero)
     } else if quotient < 256 * 256 {
-      std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted), std.content_hash.content_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_byte_digest(quotient / 256)))
+      let peel = std.content_hash.content_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_byte_digest(quotient / 256))
+      std.content_hash.content_hash_combine(std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_overflow_peel_exhausted), peel)
     } else {
-      byte_offset_overflow_quotient_high_band_terminal_digest(quotient, byte_offset_cache_digest_overflow_limbs
-      )
+      byte_offset_overflow_quotient_high_band_terminal_digest(quotient, byte_offset_cache_digest_overflow_limbs)
     }
   } else if quotient == 0 {
     std.content_hash.content_hash_atom(value: ^canonical_tag_byte_offset_zero)
   } else {
-    std.content_hash.content_hash_combine(byte_offset_byte_digest(quotient - (quotient / 256) * 256), byte_offset_overflow_quotient_high_band_digest(quotient / 256, limbs_remaining - 1
-      ))
+    let low = byte_offset_byte_digest(quotient - (quotient / 256) * 256)
+    let high = byte_offset_overflow_quotient_high_band_digest(quotient / 256, limbs_remaining - 1)
+    std.content_hash.content_hash_combine(low, high)
   }
 }
 
