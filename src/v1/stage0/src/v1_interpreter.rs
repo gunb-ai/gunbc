@@ -2551,6 +2551,15 @@ fn match_pattern(
             parent_enum,
             field_bindings,
         } => {
+            // A qualified pattern spelling (`module.Variant`) resolves the arm name to its
+            // containment path, but values are constructed with the bare last segment
+            // (see the short-name normalization at value construction). Every name-vs-literal
+            // reconciliation below — the native Int/Str/List coproducts and the Optional/
+            // Witness raw (value-or-Null) unwraps — must compare that short segment, mirroring
+            // the `Value::Variant` arm's fallback; otherwise a qualified `Zero`/`Succ` (Nat
+            // grounded to native Int), `Empty`/`Cons`, or `Present`/`Absent` pattern misses
+            // its native value and the match falls through non-exhaustive.
+            let name_last = name.rsplit('.').next().unwrap_or(name);
             // Kernel-optional / witness raw representation (value-or-Null):
             // the `_ if Present+Optional` / `_ if Holds+Witness` unwrap arms
             // below the kind-specific arms were UNREACHABLE for Record/List/
@@ -2561,7 +2570,7 @@ fn match_pattern(
             // located via the interpreted-parse suite reds). Hoisted here
             // verbatim; Variant payloads are excluded so the Variant arm's
             // inline raw-value handling stays authoritative.
-            if name == "Present"
+            if name_last == "Present"
                 && parent_enum.as_deref() == Some("Optional")
                 && !matches!(value, Value::Null)
                 && !matches!(value, Value::Variant { .. })
@@ -2574,7 +2583,7 @@ fn match_pattern(
                 }
                 return Some(bindings);
             }
-            if name == "Holds"
+            if name_last == "Holds"
                 && parent_enum.as_deref() == Some("Witness")
                 && !matches!(value, Value::Null)
                 && !matches!(value, Value::Variant { .. })
@@ -2593,7 +2602,7 @@ fn match_pattern(
                     fields,
                     ..
                 } => {
-                    if name == "Holds"
+                    if name_last == "Holds"
                         && parent_enum.as_deref() == Some("Witness")
                         && *variant_name != ctx.sym("Holds")
                         && *variant_name != ctx.sym("Violates")
@@ -2606,7 +2615,7 @@ fn match_pattern(
                         }
                         return Some(bindings);
                     }
-                    if name == "Present"
+                    if name_last == "Present"
                         && parent_enum.as_deref() == Some("Optional")
                         && *variant_name != ctx.sym("Present")
                         && *variant_name != ctx.sym("Absent")
@@ -2658,7 +2667,7 @@ fn match_pattern(
                     }
                     Some(bindings)
                 }
-                Value::List(items) => match name.as_str() {
+                Value::List(items) => match name_last {
                     "Empty" => {
                         if items.is_empty() {
                             Some(HashMap::new())
@@ -2694,7 +2703,7 @@ fn match_pattern(
                     }
                     _ => None,
                 },
-                Value::Str(s) if name == "Empty" || name == "Cons" => match name.as_str() {
+                Value::Str(s) if name_last == "Empty" || name_last == "Cons" => match name_last {
                     "Empty" => {
                         if s.is_empty() {
                             Some(HashMap::new())
@@ -2730,7 +2739,7 @@ fn match_pattern(
                     }
                     _ => None,
                 },
-                Value::Int(n) if name == "Zero" || name == "Succ" => match name.as_str() {
+                Value::Int(n) if name_last == "Zero" || name_last == "Succ" => match name_last {
                     "Zero" => {
                         if *n == 0 {
                             Some(HashMap::new())
@@ -2759,7 +2768,9 @@ fn match_pattern(
                     }
                     _ => None,
                 },
-                Value::Null if name == "Violates" && parent_enum.as_deref() == Some("Witness") => {
+                Value::Null
+                    if name_last == "Violates" && parent_enum.as_deref() == Some("Witness") =>
+                {
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
                         let field_name =
@@ -2774,13 +2785,17 @@ fn match_pattern(
                     }
                     Some(bindings)
                 }
-                Value::Null if name == "None" && parent_enum.as_deref() == Some("Diagnostics") => {
+                Value::Null
+                    if name_last == "None" && parent_enum.as_deref() == Some("Diagnostics") =>
+                {
                     Some(HashMap::new())
                 }
-                Value::Null if name == "Absent" && parent_enum.as_deref() == Some("Optional") => {
+                Value::Null
+                    if name_last == "Absent" && parent_enum.as_deref() == Some("Optional") =>
+                {
                     Some(HashMap::new())
                 }
-                _ if name == "Present" && parent_enum.as_deref() == Some("Optional") => {
+                _ if name_last == "Present" && parent_enum.as_deref() == Some("Optional") => {
                     if matches!(value, Value::Null) {
                         return None;
                     }
@@ -2792,7 +2807,7 @@ fn match_pattern(
                     }
                     Some(bindings)
                 }
-                _ if name == "Holds" && parent_enum.as_deref() == Some("Witness") => {
+                _ if name_last == "Holds" && parent_enum.as_deref() == Some("Witness") => {
                     if matches!(value, Value::Null) {
                         return None;
                     }
@@ -8813,6 +8828,10 @@ fn eval_builtin_inner(
         ))),
         "consume_floor_compile_clean_gate_verdict" => Ok(Some(Value::Bool(
             crate::cli_run::consume_floor_compile_clean_gate_verdict(),
+        ))),
+
+        "witness_compile_clean_cli_floor_verdicts_agree" => Ok(Some(Value::Bool(
+            crate::cli_run::witness_compile_clean_cli_floor_verdicts_agree(),
         ))),
 
         "test_migration_debt_module_count" => Ok(Some(Value::Int(
