@@ -1,0 +1,19 @@
+module test.claim.long.dag_compile_clean_perturb_corpus
+
+import tools.dag_compile_clean_transport {
+  run_cross_tree_import_green_receipt,
+  run_dag_shell_primary_precedence_receipt,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data dag_compile_clean_perturb_corpus_note: String = "Class C corpus-grain legs for compile-clean perturb receipts: cross_tree_import and dag_shell_primary_precedence compile against compile_clean_source_roots (live-tree pool). Enrolled on falsifier_rehomed_bin_wet_entries (nightly batch 5); local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/long/dag_compile_clean_perturb_corpus_witness_test.dag --function <name>."
+
+test fn perturb_cross_tree_import_corpus_green_holds() -> Bool {
+  run_cross_tree_import_green_receipt()
+}
+
+test fn perturb_dag_shell_primary_corpus_green_holds() -> Bool {
+  run_dag_shell_primary_precedence_receipt()
+}

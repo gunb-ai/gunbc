@@ -98,10 +98,24 @@ fn witness_converge_cli_verify_output_projects_receipt() -> Bool {
   }
 }
 
-fn witness_verify_transport_script_scaffold_carries_dissolution_trigger() -> Bool {
-  match host_runner_memory_cap_verify_transport_script_scaffold {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
+fn witness_verify_absent_live_read_refuses_not_widens() -> Bool {
+  match runner_memory_cap_verify_result_from_live_read(host: operator_host_srv3, read: none) {
+    RunnerMemoryCapVerifyObserved { receipt: _ } => false
+    RunnerMemoryCapVerifyRefused { host: h, reason: why } =>
+      h == operator_host_srv3
+        && string_contains(s: why, pattern: "live typed read absent")
+        && string_contains(s: why, pattern: "fail-closed")
+  }
+}
+
+fn witness_verify_present_live_read_observes() -> Bool {
+  match runner_memory_cap_verify_result_from_live_read(
+    host: operator_host_srv3,
+    read: Present { value: srv3_memory_cap_converged_read() },
+  ) {
+    RunnerMemoryCapVerifyObserved { receipt: receipt } =>
+      runner_memory_cap_verify_receipt_converged(receipt: receipt)
+    RunnerMemoryCapVerifyRefused { host: _, reason: _ } => false
   }
 }
 
@@ -113,5 +127,6 @@ test fn srv3_runner_memory_cap_plan_verify_holds() -> Bool {
     && witness_verify_receipt_counts_drifted_red_control()
     && witness_converge_cli_verify_routes_srv3()
     && witness_converge_cli_verify_output_projects_receipt()
-    && witness_verify_transport_script_scaffold_carries_dissolution_trigger()
+    && witness_verify_absent_live_read_refuses_not_widens()
+    && witness_verify_present_live_read_observes()
 }
