@@ -99,7 +99,7 @@ pub fn parse_href_scheme(url: String) -> Rc<ParsedHrefScheme> {
         if v1_rt::starts_with(s.clone(), "//".to_string()) {
             Rc::new(ParsedHrefScheme::UnknownHref)
         } else {
-            if href_is_relative_reference(&s) {
+            if href_is_relative_reference(s.clone()) {
                 Rc::new(ParsedHrefScheme::RelativeHref)
             } else {
                 if (v1_rt::starts_with(s.clone(), "javascript:".to_string())

@@ -384,8 +384,8 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
                     (*{
                         let inhs =
                             unique_inhabitants_for_template_tests(target_inhabitants(t.clone()));
-                        let int_target = coerce_primitive_type(t.clone(), &"Int".to_string());
-                        let str_target = coerce_primitive_type(t.clone(), &"String".to_string());
+                        let int_target = coerce_primitive_type(t.clone(), "Int".to_string());
+                        let str_target = coerce_primitive_type(t.clone(), "String".to_string());
                         Rc::new({
                             let mut __result = Vec::new();
                             for inh in inhs.clone().iter().cloned() {

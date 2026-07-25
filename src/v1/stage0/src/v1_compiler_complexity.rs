@@ -360,12 +360,7 @@ pub fn iteration_element_name(
     {
         let params = lambda_param_names_at(lambda.clone(), si.clone());
         match method_callback_element_position(method_semantics.clone()) {
-            Some(pos) => params
-                .clone()
-                .iter()
-                .cloned()
-                .skip(pos.clone() as usize)
-                .next(),
+            Some(pos) => params.clone().get(pos.clone() as usize).cloned(),
             None => None,
         }
     }
@@ -615,7 +610,7 @@ pub fn parser_state_expr_progress(
             }
             ExprData::ExprLet => {
                 let next_env = parser_env_with_binding(
-                    &let_binding_name_at(expr.clone(), si.clone()),
+                    let_binding_name_at(expr.clone(), si.clone()),
                     let_value(expr.clone()),
                     env.clone(),
                     state_param.clone(),
@@ -699,7 +694,7 @@ pub fn parser_block_state_progress(
                 {
                     ExprData::ExprLet => match let_body(stmt.clone()) {
                         None => parser_env_with_binding(
-                            &let_binding_name_at(stmt.clone(), si.clone()),
+                            let_binding_name_at(stmt.clone(), si.clone()),
                             let_value(stmt.clone()),
                             acc_env.clone(),
                             state_param.clone(),
@@ -897,7 +892,7 @@ pub fn collect_parser_progress_block_edges(
                     None => {
                         let value_expr = let_value(stmt.clone());
                         let value_edges = collect_parser_progress_edges(
-                            &caller,
+                            caller.clone(),
                             value_expr.clone(),
                             state_param.clone(),
                             scc_name_set.clone(),
@@ -907,7 +902,7 @@ pub fn collect_parser_progress_block_edges(
                             si.clone(),
                         );
                         let next_env = parser_env_with_binding(
-                            &let_binding_name_at(stmt.clone(), si.clone()),
+                            let_binding_name_at(stmt.clone(), si.clone()),
                             value_expr.clone(),
                             acc.env.clone(),
                             state_param.clone(),
@@ -922,7 +917,7 @@ pub fn collect_parser_progress_block_edges(
                     }
                     Some(_) => {
                         let stmt_edges = collect_parser_progress_edges(
-                            &caller,
+                            caller.clone(),
                             stmt.clone(),
                             state_param.clone(),
                             scc_name_set.clone(),
@@ -939,7 +934,7 @@ pub fn collect_parser_progress_block_edges(
                 },
                 _ => {
                     let stmt_edges = collect_parser_progress_edges(
-                        &caller,
+                        caller.clone(),
                         stmt.clone(),
                         state_param.clone(),
                         scc_name_set.clone(),
@@ -996,7 +991,7 @@ pub fn collect_parser_progress_edges(
                     for child in body.children.clone().iter().cloned() {
                         __result.extend(
                             (*collect_parser_progress_edges(
-                                &caller,
+                                caller.clone(),
                                 child.clone(),
                                 state_param.clone(),
                                 scc_name_set.clone(),
@@ -1016,7 +1011,7 @@ pub fn collect_parser_progress_edges(
             ExprData::ExprIf => {
                 let cond = if_condition(body.clone());
                 let cond_edges = collect_parser_progress_edges(
-                    &caller,
+                    caller.clone(),
                     cond.clone(),
                     state_param.clone(),
                     scc_name_set.clone(),
@@ -1032,7 +1027,7 @@ pub fn collect_parser_progress_edges(
                     None => consumed_true_set.clone(),
                 };
                 let then_edges = collect_parser_progress_edges(
-                    &caller,
+                    caller.clone(),
                     if_then_branch(body.clone()),
                     state_param.clone(),
                     scc_name_set.clone(),
@@ -1043,7 +1038,7 @@ pub fn collect_parser_progress_edges(
                 );
                 let else_edges = match if_else_branch(body.clone()) {
                     Some(eb) => collect_parser_progress_edges(
-                        &caller,
+                        caller.clone(),
                         eb.clone(),
                         state_param.clone(),
                         scc_name_set.clone(),
@@ -1062,7 +1057,7 @@ pub fn collect_parser_progress_edges(
             ExprData::ExprLet => {
                 let value_expr = let_value(body.clone());
                 let value_edges = collect_parser_progress_edges(
-                    &caller,
+                    caller.clone(),
                     value_expr.clone(),
                     state_param.clone(),
                     scc_name_set.clone(),
@@ -1072,7 +1067,7 @@ pub fn collect_parser_progress_edges(
                     si.clone(),
                 );
                 let next_env = parser_env_with_binding(
-                    &let_binding_name_at(body.clone(), si.clone()),
+                    let_binding_name_at(body.clone(), si.clone()),
                     value_expr.clone(),
                     env.clone(),
                     state_param.clone(),
@@ -1082,7 +1077,7 @@ pub fn collect_parser_progress_edges(
                 );
                 let body_edges = match let_body(body.clone()) {
                     Some(b) => collect_parser_progress_edges(
-                        &caller,
+                        caller.clone(),
                         b.clone(),
                         state_param.clone(),
                         scc_name_set.clone(),
@@ -1107,7 +1102,7 @@ pub fn collect_parser_progress_edges(
             ),
             ExprData::ExprMatch => {
                 let scrut_edges = collect_parser_progress_edges(
-                    &caller,
+                    caller.clone(),
                     match_scrutinee(body.clone()),
                     state_param.clone(),
                     scc_name_set.clone(),
@@ -1121,7 +1116,7 @@ pub fn collect_parser_progress_edges(
                     for arm_node in match_arm_nodes(body.clone()).iter().cloned() {
                         __result.extend(
                             (*collect_parser_progress_edges(
-                                &caller,
+                                caller.clone(),
                                 arm_body(arm_node.clone()),
                                 state_param.clone(),
                                 scc_name_set.clone(),
@@ -1143,7 +1138,7 @@ pub fn collect_parser_progress_edges(
                 for child in body.children.clone().iter().cloned() {
                     __result.extend(
                         (*collect_parser_progress_edges(
-                            &caller,
+                            caller.clone(),
                             child.clone(),
                             state_param.clone(),
                             scc_name_set.clone(),
@@ -1301,7 +1296,7 @@ pub fn parser_success_progress(
             }
             ExprData::ExprLet => {
                 let next_env = parser_env_with_binding(
-                    &let_binding_name_at(expr.clone(), si.clone()),
+                    let_binding_name_at(expr.clone(), si.clone()),
                     let_value(expr.clone()),
                     env.clone(),
                     state_param.clone(),
@@ -1340,7 +1335,7 @@ pub fn parser_success_progress(
                         ExprData::ExprLet => match let_body(stmt.clone()) {
                             None => {
                                 let next_env = parser_env_with_binding(
-                                    &let_binding_name_at(stmt.clone(), si.clone()),
+                                    let_binding_name_at(stmt.clone(), si.clone()),
                                     let_value(stmt.clone()),
                                     acc.env.clone(),
                                     state_param.clone(),
@@ -1384,7 +1379,7 @@ pub fn parser_member_is_always_advancing(
     match parser_state_param(entry.params.clone(), si.clone()) {
         Some(state_param) => {
             let edges = collect_parser_progress_edges(
-                &entry.name.clone(),
+                entry.name.clone(),
                 entry.body.clone(),
                 state_param.clone(),
                 parser_name_set.clone(),
@@ -1697,7 +1692,7 @@ pub fn collect_parser_edges_for_scc(
                                 Some(entry) => {
                                     match parser_state_param(entry.params.clone(), si.clone()) {
                                         Some(state_param) => collect_parser_progress_edges(
-                                            &name,
+                                            name.clone(),
                                             entry.body.clone(),
                                             state_param.clone(),
                                             scc_name_set.clone(),
@@ -1793,7 +1788,7 @@ pub fn count_self_calls(
                 .iter()
                 .cloned()
                 .fold(0, |acc: i64, child: Rc<Node>| {
-                    (acc + count_self_calls(child.clone(), &func_name, si.clone()))
+                    (acc + count_self_calls(child.clone(), func_name.clone(), si.clone()))
                 });
         (own.clone() + from_children.clone())
     })
@@ -1804,7 +1799,7 @@ pub fn max_path_self_calls(
     func_name: String,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> i64 {
-    max_path_self_calls_with_cont(body.clone(), &func_name, 0, si.clone())
+    max_path_self_calls_with_cont(body.clone(), func_name.clone(), 0, si.clone())
 }
 
 pub fn max_path_self_calls_with_cont(
@@ -1834,7 +1829,7 @@ pub fn max_path_self_calls_with_cont(
                                     (acc.clone()
                                         + max_path_self_calls_with_cont(
                                             lambda_body(val.clone()),
-                                            &func_name,
+                                            func_name.clone(),
                                             0,
                                             si.clone(),
                                         ))
@@ -1843,7 +1838,7 @@ pub fn max_path_self_calls_with_cont(
                                     (acc.clone()
                                         + max_path_self_calls_with_cont(
                                             val.clone(),
-                                            &func_name,
+                                            func_name.clone(),
                                             0,
                                             si.clone(),
                                         ))
@@ -1855,7 +1850,7 @@ pub fn max_path_self_calls_with_cont(
             ExprData::ExprMatch => {
                 let scrut_calls = max_path_self_calls_with_cont(
                     match_scrutinee(body.clone()),
-                    &func_name,
+                    func_name.clone(),
                     0,
                     si.clone(),
                 );
@@ -1864,7 +1859,7 @@ pub fn max_path_self_calls_with_cont(
                     |acc: i64, arm_node: Rc<Node>| {
                         let arm_calls = max_path_self_calls_with_cont(
                             arm_body(arm_node.clone()),
-                            &func_name,
+                            func_name.clone(),
                             continue_calls.clone(),
                             si.clone(),
                         );
@@ -1880,20 +1875,20 @@ pub fn max_path_self_calls_with_cont(
             ExprData::ExprIf => {
                 let cond_calls = max_path_self_calls_with_cont(
                     if_condition(body.clone()),
-                    &func_name,
+                    func_name.clone(),
                     0,
                     si.clone(),
                 );
                 let then_calls = max_path_self_calls_with_cont(
                     if_then_branch(body.clone()),
-                    &func_name,
+                    func_name.clone(),
                     continue_calls.clone(),
                     si.clone(),
                 );
                 let else_calls = match if_else_branch(body.clone()) {
                     Some(eb) => max_path_self_calls_with_cont(
                         eb.clone(),
-                        &func_name,
+                        func_name.clone(),
                         continue_calls.clone(),
                         si.clone(),
                     ),
@@ -1909,7 +1904,7 @@ pub fn max_path_self_calls_with_cont(
             ExprData::ExprForEach => {
                 (max_path_self_calls_with_cont(
                     foreach_collection(body.clone()),
-                    &func_name,
+                    func_name.clone(),
                     0,
                     si.clone(),
                 ) + continue_calls.clone())
@@ -1917,14 +1912,14 @@ pub fn max_path_self_calls_with_cont(
             ExprData::ExprLet => {
                 let val_calls = max_path_self_calls_with_cont(
                     let_value(body.clone()),
-                    &func_name,
+                    func_name.clone(),
                     0,
                     si.clone(),
                 );
                 let body_calls = match let_body(body.clone()) {
                     Some(b) => max_path_self_calls_with_cont(
                         b.clone(),
-                        &func_name,
+                        func_name.clone(),
                         continue_calls.clone(),
                         si.clone(),
                     ),
@@ -1935,7 +1930,7 @@ pub fn max_path_self_calls_with_cont(
             ExprData::ExprBlock => v1_rt::reverse(body.children.clone()).iter().cloned().fold(
                 continue_calls.clone(),
                 |acc: i64, stmt: Rc<Node>| {
-                    max_path_self_calls_with_cont(stmt.clone(), &func_name, acc, si.clone())
+                    max_path_self_calls_with_cont(stmt.clone(), func_name.clone(), acc, si.clone())
                 },
             ),
             ExprData::ExprMethodCall {
@@ -1944,7 +1939,7 @@ pub fn max_path_self_calls_with_cont(
             } => {
                 let recv_calls = max_path_self_calls_with_cont(
                     method_receiver(body.clone()),
-                    &func_name,
+                    func_name.clone(),
                     0,
                     si.clone(),
                 );
@@ -1957,7 +1952,7 @@ pub fn max_path_self_calls_with_cont(
                                 (acc.clone()
                                     + max_path_self_calls_with_cont(
                                         lambda_body(val.clone()),
-                                        &func_name,
+                                        func_name.clone(),
                                         0,
                                         si.clone(),
                                     ))
@@ -1966,7 +1961,7 @@ pub fn max_path_self_calls_with_cont(
                                 (acc.clone()
                                     + max_path_self_calls_with_cont(
                                         val.clone(),
-                                        &func_name,
+                                        func_name.clone(),
                                         0,
                                         si.clone(),
                                     ))
@@ -1976,9 +1971,12 @@ pub fn max_path_self_calls_with_cont(
                 );
                 ((recv_calls.clone() + arg_calls.clone()) + continue_calls.clone())
             }
-            ExprData::ExprReturn => {
-                max_path_self_calls_with_cont(return_value(body.clone()), &func_name, 0, si.clone())
-            }
+            ExprData::ExprReturn => max_path_self_calls_with_cont(
+                return_value(body.clone()),
+                func_name.clone(),
+                0,
+                si.clone(),
+            ),
             _ => {
                 (body
                     .children
@@ -1988,7 +1986,7 @@ pub fn max_path_self_calls_with_cont(
                     .fold(0, |acc: i64, child: Rc<Node>| {
                         (acc + max_path_self_calls_with_cont(
                             child.clone(),
-                            &func_name,
+                            func_name.clone(),
                             0,
                             si.clone(),
                         ))
@@ -2008,7 +2006,7 @@ pub fn max_path_self_calls_block(
     v1_rt::reverse(stmts.clone()).iter().cloned().fold(
         continue_calls.clone(),
         |acc: i64, stmt: Rc<Node>| {
-            max_path_self_calls_with_cont(stmt.clone(), &func_name, acc, si.clone())
+            max_path_self_calls_with_cont(stmt.clone(), func_name.clone(), acc, si.clone())
         },
     )
 }
@@ -2638,7 +2636,7 @@ pub fn has_arithmetic_descent(
                     {
                         let mut __found = false;
                         for c in body.children.clone().iter().cloned() {
-                            if has_arithmetic_descent(c.clone(), &func_name, si.clone()) {
+                            if has_arithmetic_descent(c.clone(), func_name.clone(), si.clone()) {
                                 __found = true;
                                 break;
                             }
@@ -2650,7 +2648,7 @@ pub fn has_arithmetic_descent(
             _ => {
                 let mut __found = false;
                 for c in body.children.clone().iter().cloned() {
-                    if has_arithmetic_descent(c.clone(), &func_name, si.clone()) {
+                    if has_arithmetic_descent(c.clone(), func_name.clone(), si.clone()) {
                         __found = true;
                         break;
                     }
@@ -2764,13 +2762,13 @@ pub fn is_structural_children(
                 } => match method_size_effect(ms.clone()) {
                     Some(CollectionSizeEffect::ShrinkEffect) => is_structural_children(
                         method_receiver(expr.clone()),
-                        &param_name,
+                        param_name.clone(),
                         vars.clone(),
                         si.clone(),
                     ),
                     Some(CollectionSizeEffect::IdentityEffect) => is_structural_children(
                         method_receiver(expr.clone()),
-                        &param_name,
+                        param_name.clone(),
                         vars.clone(),
                         si.clone(),
                     ),
@@ -2944,9 +2942,12 @@ pub fn is_tokens_consuming_call(
 ) -> bool {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => match consuming_tokens_arg(expr.clone(), si.clone()) {
-            Some(tokens_arg) => {
-                is_tokens_input_expr(tokens_arg.clone(), &param_name, vars.clone(), si.clone())
-            }
+            Some(tokens_arg) => is_tokens_input_expr(
+                tokens_arg.clone(),
+                param_name.clone(),
+                vars.clone(),
+                si.clone(),
+            ),
             None => false,
         },
         _ => false,
@@ -3075,7 +3076,7 @@ pub fn is_descent_arg(
             ((check_child.clone()
                 && is_child_descent_expr(
                     expr.clone(),
-                    &param_name,
+                    param_name.clone(),
                     descent_vars.clone(),
                     si.clone(),
                 ))
@@ -3095,7 +3096,7 @@ pub fn expr_contains_descent(
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if ((check_child.clone()
-            && is_child_descent_expr(expr.clone(), &param_name, vars.clone(), si.clone()))
+            && is_child_descent_expr(expr.clone(), param_name.clone(), vars.clone(), si.clone()))
             || (check_list.clone()
                 && is_list_shrink_expr(expr.clone(), param_name.clone(), si.clone())))
         {
@@ -3105,7 +3106,7 @@ pub fn expr_contains_descent(
                 ExprData::ExprIf => {
                     (expr_contains_descent(
                         if_then_branch(expr.clone()),
-                        &param_name,
+                        param_name.clone(),
                         vars.clone(),
                         check_child.clone(),
                         check_list.clone(),
@@ -3113,7 +3114,7 @@ pub fn expr_contains_descent(
                     ) && match if_else_branch(expr.clone()) {
                         Some(eb) => expr_contains_descent(
                             eb.clone(),
-                            &param_name,
+                            param_name.clone(),
                             vars.clone(),
                             check_child.clone(),
                             check_list.clone(),
@@ -3125,7 +3126,7 @@ pub fn expr_contains_descent(
                 ExprData::ExprBlock => match expr.children.clone().last().cloned() {
                     Some(last_stmt) => expr_contains_descent(
                         last_stmt.clone(),
-                        &param_name,
+                        param_name.clone(),
                         vars.clone(),
                         check_child.clone(),
                         check_list.clone(),
@@ -3159,7 +3160,7 @@ pub fn expr_contains_descent(
                     match method_size_effect(ms.clone()) {
                         Some(CollectionSizeEffect::ShrinkEffect) => expr_contains_descent(
                             receiver.clone(),
-                            &param_name,
+                            param_name.clone(),
                             vars.clone(),
                             check_child.clone(),
                             check_list.clone(),
@@ -3167,7 +3168,7 @@ pub fn expr_contains_descent(
                         ),
                         Some(CollectionSizeEffect::ProjectionEffect) => expr_contains_descent(
                             receiver.clone(),
-                            &param_name,
+                            param_name.clone(),
                             vars.clone(),
                             check_child.clone(),
                             check_list.clone(),
@@ -3175,7 +3176,7 @@ pub fn expr_contains_descent(
                         ),
                         Some(CollectionSizeEffect::IdentityEffect) => expr_contains_descent(
                             receiver.clone(),
-                            &param_name,
+                            param_name.clone(),
                             vars.clone(),
                             check_child.clone(),
                             check_list.clone(),
@@ -3228,7 +3229,7 @@ pub fn is_if_option_descent(
             let then_branch = if_then_branch(val.clone());
             let then_has_descent = expr_contains_descent(
                 then_branch.clone(),
-                &param_name,
+                param_name.clone(),
                 vars.clone(),
                 check_child.clone(),
                 check_list.clone(),
@@ -3266,7 +3267,7 @@ pub fn is_match_option_descent(
             let scrut = match_scrutinee(val.clone());
             let scrut_has_descent = expr_contains_descent(
                 scrut.clone(),
-                &param_name,
+                param_name.clone(),
                 vars.clone(),
                 check_child.clone(),
                 check_list.clone(),
@@ -3351,7 +3352,12 @@ pub fn collect_descent_vars(
             ExprData::ExprLet => {
                 let val = let_value(body.clone());
                 let is_direct_descent = ((check_child.clone()
-                    && is_child_descent_expr(val.clone(), &param_name, vars.clone(), si.clone()))
+                    && is_child_descent_expr(
+                        val.clone(),
+                        param_name.clone(),
+                        vars.clone(),
+                        si.clone(),
+                    ))
                     || (check_list.clone()
                         && is_list_shrink_expr(val.clone(), param_name.clone(), si.clone())));
                 let is_descent_var = match (*val.expr_data.clone()).clone() {
@@ -3370,7 +3376,7 @@ pub fn collect_descent_vars(
                 );
                 let is_match_descent = is_match_option_descent(
                     val.clone(),
-                    &param_name,
+                    param_name.clone(),
                     vars.clone(),
                     check_child.clone(),
                     check_list.clone(),
@@ -3383,7 +3389,7 @@ pub fn collect_descent_vars(
                         let inner_is_descent = ((check_child.clone()
                             && is_child_descent_expr(
                                 inner.clone(),
-                                &param_name,
+                                param_name.clone(),
                                 vars.clone(),
                                 si.clone(),
                             ))
@@ -3410,7 +3416,7 @@ pub fn collect_descent_vars(
                         let inner_is_descent = ((check_child.clone()
                             && is_child_descent_expr(
                                 inner.clone(),
-                                &param_name,
+                                param_name.clone(),
                                 vars.clone(),
                                 si.clone(),
                             ))
@@ -3464,7 +3470,7 @@ pub fn collect_descent_vars(
                             (((check_child.clone()
                                 && is_child_descent_expr(
                                     inner.clone(),
-                                    &param_name,
+                                    param_name.clone(),
                                     vars.clone(),
                                     si.clone(),
                                 ))
@@ -3517,7 +3523,7 @@ pub fn collect_descent_vars(
                 match let_body(body.clone()) {
                     Some(b) => collect_descent_vars(
                         b.clone(),
-                        &param_name,
+                        param_name.clone(),
                         next_vars.clone(),
                         check_child.clone(),
                         check_list.clone(),
@@ -3530,7 +3536,7 @@ pub fn collect_descent_vars(
                 let scrut = match_scrutinee(body.clone());
                 let scrut_is_descent = expr_contains_descent(
                     scrut.clone(),
-                    &param_name,
+                    param_name.clone(),
                     vars.clone(),
                     check_child.clone(),
                     check_list.clone(),
@@ -3583,7 +3589,7 @@ pub fn collect_descent_vars(
                     |acc: Rc<HashMap<String, bool>>, arm_node: Rc<Node>| {
                         let arm_result = collect_descent_vars(
                             arm_body(arm_node.clone()),
-                            &param_name,
+                            param_name.clone(),
                             with_patterns.clone(),
                             check_child.clone(),
                             check_list.clone(),
@@ -3596,7 +3602,7 @@ pub fn collect_descent_vars(
             ExprData::ExprIf => {
                 let then_vars = collect_descent_vars(
                     if_then_branch(body.clone()),
-                    &param_name,
+                    param_name.clone(),
                     vars.clone(),
                     check_child.clone(),
                     check_list.clone(),
@@ -3605,7 +3611,7 @@ pub fn collect_descent_vars(
                 let else_vars = match if_else_branch(body.clone()) {
                     Some(eb) => collect_descent_vars(
                         eb.clone(),
-                        &param_name,
+                        param_name.clone(),
                         vars.clone(),
                         check_child.clone(),
                         check_list.clone(),
@@ -3620,7 +3626,7 @@ pub fn collect_descent_vars(
                 |acc: Rc<HashMap<String, bool>>, stmt: Rc<Node>| {
                     collect_descent_vars(
                         stmt.clone(),
-                        &param_name,
+                        param_name.clone(),
                         acc,
                         check_child.clone(),
                         check_list.clone(),
@@ -3631,7 +3637,7 @@ pub fn collect_descent_vars(
             ExprData::ExprReturn => match body.children.clone().first().cloned() {
                 Some(inner) => collect_descent_vars(
                     inner.clone(),
-                    &param_name,
+                    param_name.clone(),
                     vars.clone(),
                     check_child.clone(),
                     check_list.clone(),
@@ -3654,8 +3660,8 @@ pub fn all_self_calls_descend(
 ) -> bool {
     all_self_calls_descend_inc(
         body.clone(),
-        &func_name,
-        &param_name,
+        func_name.clone(),
+        param_name.clone(),
         v1_rt::rc_empty_map::<String, bool>(),
         check_child.clone(),
         check_list.clone(),
@@ -3679,15 +3685,20 @@ pub fn all_self_calls_descend_inc(
                 let val = let_value(body.clone());
                 let val_ok = all_self_calls_descend_inc(
                     val.clone(),
-                    &func_name,
-                    &param_name,
+                    func_name.clone(),
+                    param_name.clone(),
                     vars.clone(),
                     check_child.clone(),
                     check_list.clone(),
                     si.clone(),
                 );
                 let is_direct = ((check_child.clone()
-                    && is_child_descent_expr(val.clone(), &param_name, vars.clone(), si.clone()))
+                    && is_child_descent_expr(
+                        val.clone(),
+                        param_name.clone(),
+                        vars.clone(),
+                        si.clone(),
+                    ))
                     || (check_list.clone()
                         && is_list_shrink_expr(val.clone(), param_name.clone(), si.clone())));
                 let is_var = match (*val.expr_data.clone()).clone() {
@@ -3736,8 +3747,8 @@ pub fn all_self_calls_descend_inc(
                 let body_ok = match let_body(body.clone()) {
                     Some(b) => all_self_calls_descend_inc(
                         b.clone(),
-                        &func_name,
-                        &param_name,
+                        func_name.clone(),
+                        param_name.clone(),
                         next_vars.clone(),
                         check_child.clone(),
                         check_list.clone(),
@@ -3751,8 +3762,8 @@ pub fn all_self_calls_descend_inc(
                 let scrut = match_scrutinee(body.clone());
                 let scrut_ok = all_self_calls_descend_inc(
                     scrut.clone(),
-                    &func_name,
-                    &param_name,
+                    func_name.clone(),
+                    param_name.clone(),
                     vars.clone(),
                     check_child.clone(),
                     check_list.clone(),
@@ -3760,7 +3771,7 @@ pub fn all_self_calls_descend_inc(
                 );
                 let scrut_is_descent = expr_contains_descent(
                     scrut.clone(),
-                    &param_name,
+                    param_name.clone(),
                     vars.clone(),
                     check_child.clone(),
                     check_list.clone(),
@@ -3811,8 +3822,8 @@ pub fn all_self_calls_descend_inc(
                             };
                             all_self_calls_descend_inc(
                                 arm_body(arm_node.clone()),
-                                &func_name,
-                                &param_name,
+                                func_name.clone(),
+                                param_name.clone(),
                                 arm_vars.clone(),
                                 check_child.clone(),
                                 check_list.clone(),
@@ -3830,8 +3841,8 @@ pub fn all_self_calls_descend_inc(
             ExprData::ExprIf => {
                 let cond_ok = all_self_calls_descend_inc(
                     if_condition(body.clone()),
-                    &func_name,
-                    &param_name,
+                    func_name.clone(),
+                    param_name.clone(),
                     vars.clone(),
                     check_child.clone(),
                     check_list.clone(),
@@ -3839,8 +3850,8 @@ pub fn all_self_calls_descend_inc(
                 );
                 let then_ok = all_self_calls_descend_inc(
                     if_then_branch(body.clone()),
-                    &func_name,
-                    &param_name,
+                    func_name.clone(),
+                    param_name.clone(),
                     vars.clone(),
                     check_child.clone(),
                     check_list.clone(),
@@ -3849,8 +3860,8 @@ pub fn all_self_calls_descend_inc(
                 let else_ok = match if_else_branch(body.clone()) {
                     Some(eb) => all_self_calls_descend_inc(
                         eb.clone(),
-                        &func_name,
-                        &param_name,
+                        func_name.clone(),
+                        param_name.clone(),
                         vars.clone(),
                         check_child.clone(),
                         check_list.clone(),
@@ -3873,8 +3884,8 @@ pub fn all_self_calls_descend_inc(
                             {
                                 let stmt_ok = all_self_calls_descend_inc(
                                     stmt.clone(),
-                                    &func_name,
-                                    &param_name,
+                                    func_name.clone(),
+                                    param_name.clone(),
                                     acc.vars.clone(),
                                     check_child.clone(),
                                     check_list.clone(),
@@ -3882,7 +3893,7 @@ pub fn all_self_calls_descend_inc(
                                 );
                                 let next_vars = collect_descent_vars(
                                     stmt.clone(),
-                                    &param_name,
+                                    param_name.clone(),
                                     acc.vars.clone(),
                                     check_child.clone(),
                                     check_list.clone(),
@@ -3913,7 +3924,7 @@ pub fn all_self_calls_descend_inc(
                                 } else {
                                     is_descent_arg(
                                         arg_value(arg_node.clone()),
-                                        &param_name,
+                                        param_name.clone(),
                                         vars.clone(),
                                         check_child.clone(),
                                         check_list.clone(),
@@ -3935,8 +3946,8 @@ pub fn all_self_calls_descend_inc(
                     for child in body.children.clone().iter().cloned() {
                         if !(all_self_calls_descend_inc(
                             child.clone(),
-                            &func_name,
-                            &param_name,
+                            func_name.clone(),
+                            param_name.clone(),
                             vars.clone(),
                             check_child.clone(),
                             check_list.clone(),
@@ -3955,14 +3966,18 @@ pub fn all_self_calls_descend_inc(
             } => {
                 let receiver = method_receiver(body.clone());
                 let is_iter = is_algebra_iteration_method(ms.clone());
-                let is_struct =
-                    is_structural_children(receiver.clone(), &param_name, vars.clone(), si.clone());
+                let is_struct = is_structural_children(
+                    receiver.clone(),
+                    param_name.clone(),
+                    vars.clone(),
+                    si.clone(),
+                );
                 if (is_iter.clone() && is_struct.clone()) {
                     {
                         let recv_ok = all_self_calls_descend_inc(
                             receiver.clone(),
-                            &func_name,
-                            &param_name,
+                            func_name.clone(),
+                            param_name.clone(),
                             vars.clone(),
                             check_child.clone(),
                             check_list.clone(),
@@ -3987,8 +4002,8 @@ pub fn all_self_calls_descend_inc(
                                                 );
                                                 all_self_calls_descend_inc(
                                                     lambda_body(arg_val.clone()),
-                                                    &func_name,
-                                                    &param_name,
+                                                    func_name.clone(),
+                                                    param_name.clone(),
                                                     ext_vars.clone(),
                                                     check_child.clone(),
                                                     check_list.clone(),
@@ -3999,8 +4014,8 @@ pub fn all_self_calls_descend_inc(
                                         },
                                         _ => all_self_calls_descend_inc(
                                             arg_val.clone(),
-                                            &func_name,
-                                            &param_name,
+                                            func_name.clone(),
+                                            param_name.clone(),
                                             vars.clone(),
                                             check_child.clone(),
                                             check_list.clone(),
@@ -4022,8 +4037,8 @@ pub fn all_self_calls_descend_inc(
                         for child in body.children.clone().iter().cloned() {
                             if !(all_self_calls_descend_inc(
                                 child.clone(),
-                                &func_name,
-                                &param_name,
+                                func_name.clone(),
+                                param_name.clone(),
                                 vars.clone(),
                                 check_child.clone(),
                                 check_list.clone(),
@@ -4042,8 +4057,8 @@ pub fn all_self_calls_descend_inc(
                 for child in body.children.clone().iter().cloned() {
                     if !(all_self_calls_descend_inc(
                         child.clone(),
-                        &func_name,
-                        &param_name,
+                        func_name.clone(),
+                        param_name.clone(),
                         vars.clone(),
                         check_child.clone(),
                         check_list.clone(),
@@ -4219,7 +4234,7 @@ pub fn classify_self_call_evidence(
         if (check_child.clone()
             && is_child_descent_expr(
                 arg_expr.clone(),
-                &param_name,
+                param_name.clone(),
                 descent_vars.clone(),
                 si.clone(),
             ))
@@ -4255,7 +4270,7 @@ pub fn classify_self_call_evidence(
                             if is_tree_size_preserving_wrapper(arg_expr.clone(), si.clone()) {
                                 classify_self_call_evidence(
                                     wrapper_inner_arg(arg_expr.clone()),
-                                    &param_name,
+                                    param_name.clone(),
                                     descent_vars.clone(),
                                     check_child.clone(),
                                     check_list.clone(),
@@ -4266,7 +4281,7 @@ pub fn classify_self_call_evidence(
                                     {
                                         let inner_ev = classify_self_call_evidence(
                                             extractor_inner_arg(arg_expr.clone()),
-                                            &param_name,
+                                            param_name.clone(),
                                             descent_vars.clone(),
                                             check_child.clone(),
                                             check_list.clone(),
@@ -4287,7 +4302,7 @@ pub fn classify_self_call_evidence(
                                         ) {
                                             Some(inner) => classify_self_call_evidence(
                                                 inner.clone(),
-                                                &param_name,
+                                                param_name.clone(),
                                                 descent_vars.clone(),
                                                 check_child.clone(),
                                                 check_list.clone(),
@@ -4336,7 +4351,7 @@ pub fn classify_self_call_evidence(
                                     let recv = method_receiver(arg_expr.clone());
                                     let recv_ev = classify_self_call_evidence(
                                         recv.clone(),
-                                        &param_name,
+                                        param_name.clone(),
                                         descent_vars.clone(),
                                         check_child.clone(),
                                         check_list.clone(),
@@ -4372,8 +4387,8 @@ pub fn try_dimension_for_param(
 ) -> Option<DescentEvidence> {
     collect_evidence_incremental(
         body.clone(),
-        &func_name,
-        &param_name,
+        func_name.clone(),
+        param_name.clone(),
         v1_rt::rc_empty_map::<String, bool>(),
         check_child.clone(),
         check_list.clone(),
@@ -4392,8 +4407,8 @@ pub fn try_branching_dimension_for_param(
 ) -> Option<DescentEvidence> {
     collect_evidence_incremental(
         body.clone(),
-        &func_name,
-        &param_name,
+        func_name.clone(),
+        param_name.clone(),
         v1_rt::rc_empty_map::<String, bool>(),
         check_child.clone(),
         check_list.clone(),
@@ -4426,8 +4441,8 @@ pub fn collect_evidence_incremental(
                 let val = let_value(body.clone());
                 let val_ev = collect_evidence_incremental(
                     val.clone(),
-                    &func_name,
-                    &param_name,
+                    func_name.clone(),
+                    param_name.clone(),
                     vars.clone(),
                     check_child.clone(),
                     check_list.clone(),
@@ -4435,7 +4450,12 @@ pub fn collect_evidence_incremental(
                     si.clone(),
                 );
                 let is_direct = ((check_child.clone()
-                    && is_child_descent_expr(val.clone(), &param_name, vars.clone(), si.clone()))
+                    && is_child_descent_expr(
+                        val.clone(),
+                        param_name.clone(),
+                        vars.clone(),
+                        si.clone(),
+                    ))
                     || (check_list.clone()
                         && is_list_shrink_expr(val.clone(), param_name.clone(), si.clone())));
                 let is_var = match (*val.expr_data.clone()).clone() {
@@ -4454,7 +4474,7 @@ pub fn collect_evidence_incremental(
                 );
                 let is_match_descent = is_match_option_descent(
                     val.clone(),
-                    &param_name,
+                    param_name.clone(),
                     vars.clone(),
                     check_child.clone(),
                     check_list.clone(),
@@ -4466,7 +4486,7 @@ pub fn collect_evidence_incremental(
                         let inner_d = ((check_child.clone()
                             && is_child_descent_expr(
                                 inner.clone(),
-                                &param_name,
+                                param_name.clone(),
                                 vars.clone(),
                                 si.clone(),
                             ))
@@ -4493,7 +4513,7 @@ pub fn collect_evidence_incremental(
                         let inner_d = ((check_child.clone()
                             && is_child_descent_expr(
                                 inner.clone(),
-                                &param_name,
+                                param_name.clone(),
                                 vars.clone(),
                                 si.clone(),
                             ))
@@ -4546,7 +4566,7 @@ pub fn collect_evidence_incremental(
                             (((check_child.clone()
                                 && is_child_descent_expr(
                                     inner.clone(),
-                                    &param_name,
+                                    param_name.clone(),
                                     vars.clone(),
                                     si.clone(),
                                 ))
@@ -4598,8 +4618,8 @@ pub fn collect_evidence_incremental(
                 let body_ev = match let_body(body.clone()) {
                     Some(b) => collect_evidence_incremental(
                         b.clone(),
-                        &func_name,
-                        &param_name,
+                        func_name.clone(),
+                        param_name.clone(),
                         next_vars.clone(),
                         check_child.clone(),
                         check_list.clone(),
@@ -4614,8 +4634,8 @@ pub fn collect_evidence_incremental(
                 let scrut = match_scrutinee(body.clone());
                 let scrut_ev = collect_evidence_incremental(
                     scrut.clone(),
-                    &func_name,
-                    &param_name,
+                    func_name.clone(),
+                    param_name.clone(),
                     vars.clone(),
                     check_child.clone(),
                     check_list.clone(),
@@ -4624,7 +4644,7 @@ pub fn collect_evidence_incremental(
                 );
                 let scrut_is_descent = expr_contains_descent(
                     scrut.clone(),
-                    &param_name,
+                    param_name.clone(),
                     vars.clone(),
                     check_child.clone(),
                     check_list.clone(),
@@ -4688,8 +4708,8 @@ pub fn collect_evidence_incremental(
                                     };
                                 let arm_ev = collect_evidence_incremental(
                                     arm_body(arm_node.clone()),
-                                    &func_name,
-                                    &param_name,
+                                    func_name.clone(),
+                                    param_name.clone(),
                                     arm_vars.clone(),
                                     check_child.clone(),
                                     check_list.clone(),
@@ -4706,8 +4726,8 @@ pub fn collect_evidence_incremental(
             ExprData::ExprIf => {
                 let cond_ev = collect_evidence_incremental(
                     if_condition(body.clone()),
-                    &func_name,
-                    &param_name,
+                    func_name.clone(),
+                    param_name.clone(),
                     vars.clone(),
                     check_child.clone(),
                     check_list.clone(),
@@ -4734,8 +4754,8 @@ pub fn collect_evidence_incremental(
                 } else {
                     collect_evidence_incremental(
                         then_branch.clone(),
-                        &func_name,
-                        &param_name,
+                        func_name.clone(),
+                        param_name.clone(),
                         vars.clone(),
                         check_child.clone(),
                         check_list.clone(),
@@ -4749,8 +4769,8 @@ pub fn collect_evidence_incremental(
                     match else_opt.clone() {
                         Some(eb) => collect_evidence_incremental(
                             eb.clone(),
-                            &func_name,
-                            &param_name,
+                            func_name.clone(),
+                            param_name.clone(),
                             vars.clone(),
                             check_child.clone(),
                             check_list.clone(),
@@ -4777,7 +4797,7 @@ pub fn collect_evidence_incremental(
                                 {
                                     classify_self_call_evidence(
                                         arg_value(arg_node.clone()),
-                                        &param_name,
+                                        param_name.clone(),
                                         vars.clone(),
                                         check_child.clone(),
                                         check_list.clone(),
@@ -4801,8 +4821,8 @@ pub fn collect_evidence_incremental(
                         .fold(None, |acc: _, child: Rc<Node>| {
                             let ce = collect_evidence_incremental(
                                 child.clone(),
-                                &func_name,
-                                &param_name,
+                                func_name.clone(),
+                                param_name.clone(),
                                 vars.clone(),
                                 check_child.clone(),
                                 check_list.clone(),
@@ -4822,8 +4842,8 @@ pub fn collect_evidence_incremental(
                     |acc: Rc<EvidenceBlockAcc>, stmt: Rc<Node>| {
                         let stmt_ev = collect_evidence_incremental(
                             stmt.clone(),
-                            &func_name,
-                            &param_name,
+                            func_name.clone(),
+                            param_name.clone(),
                             acc.vars.clone(),
                             check_child.clone(),
                             check_list.clone(),
@@ -4832,7 +4852,7 @@ pub fn collect_evidence_incremental(
                         );
                         let next_vars = collect_descent_vars(
                             stmt.clone(),
-                            &param_name,
+                            param_name.clone(),
                             acc.vars.clone(),
                             check_child.clone(),
                             check_list.clone(),
@@ -4855,14 +4875,18 @@ pub fn collect_evidence_incremental(
             } => {
                 let receiver = method_receiver(body.clone());
                 let is_iter = is_algebra_iteration_method(ms.clone());
-                let is_struct =
-                    is_structural_children(receiver.clone(), &param_name, vars.clone(), si.clone());
+                let is_struct = is_structural_children(
+                    receiver.clone(),
+                    param_name.clone(),
+                    vars.clone(),
+                    si.clone(),
+                );
                 if (is_iter.clone() && is_struct.clone()) {
                     {
                         let recv_ev = collect_evidence_incremental(
                             receiver.clone(),
-                            &func_name,
-                            &param_name,
+                            func_name.clone(),
+                            param_name.clone(),
                             vars.clone(),
                             check_child.clone(),
                             check_list.clone(),
@@ -4887,8 +4911,8 @@ pub fn collect_evidence_incremental(
                                             );
                                             collect_evidence_incremental(
                                                 lambda_body(arg_val.clone()),
-                                                &func_name,
-                                                &param_name,
+                                                func_name.clone(),
+                                                param_name.clone(),
                                                 ext_vars.clone(),
                                                 check_child.clone(),
                                                 check_list.clone(),
@@ -4900,8 +4924,8 @@ pub fn collect_evidence_incremental(
                                     },
                                     _ => collect_evidence_incremental(
                                         arg_val.clone(),
-                                        &func_name,
-                                        &param_name,
+                                        func_name.clone(),
+                                        param_name.clone(),
                                         vars.clone(),
                                         check_child.clone(),
                                         check_list.clone(),
@@ -4922,8 +4946,8 @@ pub fn collect_evidence_incremental(
                         .fold(None, |acc: _, child: Rc<Node>| {
                             let ce = collect_evidence_incremental(
                                 child.clone(),
-                                &func_name,
-                                &param_name,
+                                func_name.clone(),
+                                param_name.clone(),
                                 vars.clone(),
                                 check_child.clone(),
                                 check_list.clone(),
@@ -4942,8 +4966,8 @@ pub fn collect_evidence_incremental(
                 .fold(None, |acc: _, child: Rc<Node>| {
                     let ce = collect_evidence_incremental(
                         child.clone(),
-                        &func_name,
-                        &param_name,
+                        func_name.clone(),
+                        param_name.clone(),
                         vars.clone(),
                         check_child.clone(),
                         check_list.clone(),
@@ -5033,7 +5057,7 @@ pub fn construct_termination_proof(
                         Some(dim) => try_type_directed_dimension(
                             body.clone(),
                             func_name.clone(),
-                            &pname,
+                            pname.clone(),
                             dim.clone(),
                             si.clone(),
                         ),
@@ -5108,7 +5132,7 @@ pub fn construct_termination_proof(
                 Some(state_param) => {
                     let self_set = seed_bool_map(func_name.clone());
                     let edges = collect_parser_progress_edges(
-                        &func_name,
+                        func_name.clone(),
                         body.clone(),
                         state_param.clone(),
                         self_set.clone(),
@@ -5484,7 +5508,7 @@ pub fn classify_recursion_pattern(
                 } else {
                     {
                         let proof = construct_termination_proof(
-                            &func_name,
+                            func_name.clone(),
                             body.clone(),
                             params.clone(),
                             parser_always_advancing.clone(),
@@ -5766,7 +5790,7 @@ pub fn collect_local_call_edges_in_expr(
             for child in body.children.clone().iter().cloned() {
                 __result.extend(
                     (*collect_local_call_edges_in_expr(
-                        &caller,
+                        caller.clone(),
                         child.clone(),
                         local_func_set.clone(),
                         si.clone(),
@@ -5804,7 +5828,7 @@ pub fn build_call_graph(
             for entry in func_entries.clone().iter().cloned() {
                 __result.extend(
                     (*collect_local_call_edges_in_expr(
-                        &entry.name.clone(),
+                        entry.name.clone(),
                         entry.body.clone(),
                         local_func_set.clone(),
                         si.clone(),
@@ -5857,7 +5881,7 @@ pub fn classify_scc_call_progress(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if is_child_descent_expr(
             arg_expr.clone(),
-            &param_name,
+            param_name.clone(),
             descent_vars.clone(),
             si.clone(),
         ) {
@@ -5885,7 +5909,7 @@ pub fn classify_scc_call_progress(
                         if is_tree_size_preserving_wrapper(arg_expr.clone(), si.clone()) {
                             classify_scc_call_progress(
                                 wrapper_inner_arg(arg_expr.clone()),
-                                &param_name,
+                                param_name.clone(),
                                 descent_vars.clone(),
                                 si.clone(),
                             )
@@ -5894,7 +5918,7 @@ pub fn classify_scc_call_progress(
                                 {
                                     let inner_progress = classify_scc_call_progress(
                                         extractor_inner_arg(arg_expr.clone()),
-                                        &param_name,
+                                        param_name.clone(),
                                         descent_vars.clone(),
                                         si.clone(),
                                     );
@@ -5908,7 +5932,7 @@ pub fn classify_scc_call_progress(
                                     match list_passthrough_inner_arg(arg_expr.clone(), si.clone()) {
                                         Some(inner) => classify_scc_call_progress(
                                             inner.clone(),
-                                            &param_name,
+                                            param_name.clone(),
                                             descent_vars.clone(),
                                             si.clone(),
                                         ),
@@ -5955,7 +5979,7 @@ pub fn classify_scc_call_progress(
                                 let recv = method_receiver(arg_expr.clone());
                                 let recv_progress = classify_scc_call_progress(
                                     recv.clone(),
-                                    &param_name,
+                                    param_name.clone(),
                                     descent_vars.clone(),
                                     si.clone(),
                                 );
@@ -6015,7 +6039,7 @@ pub fn collect_scc_child_edges(
                                     {
                                         let arg_progress = classify_scc_call_progress(
                                             arg_value(arg_node.clone()),
-                                            &param_name,
+                                            param_name.clone(),
                                             descent_vars.clone(),
                                             si.clone(),
                                         );
@@ -6048,8 +6072,8 @@ pub fn collect_scc_child_edges(
                         __result.extend(
                             (*collect_scc_child_edges(
                                 child.clone(),
-                                &caller,
-                                &param_name,
+                                caller.clone(),
+                                param_name.clone(),
                                 descent_vars.clone(),
                                 target_set.clone(),
                                 check_child.clone(),
@@ -6073,7 +6097,7 @@ pub fn collect_scc_child_edges(
                 let is_iter = is_algebra_iteration_method(ms.clone());
                 let is_struct = is_structural_children(
                     receiver.clone(),
-                    &param_name,
+                    param_name.clone(),
                     descent_vars.clone(),
                     si.clone(),
                 );
@@ -6081,8 +6105,8 @@ pub fn collect_scc_child_edges(
                     {
                         let recv_edges = collect_scc_child_edges(
                             receiver.clone(),
-                            &caller,
-                            &param_name,
+                            caller.clone(),
+                            param_name.clone(),
                             descent_vars.clone(),
                             target_set.clone(),
                             check_child.clone(),
@@ -6110,8 +6134,8 @@ pub fn collect_scc_child_edges(
                                                     );
                                                     collect_scc_child_edges(
                                                         lambda_body(arg_val.clone()),
-                                                        &caller,
-                                                        &param_name,
+                                                        caller.clone(),
+                                                        param_name.clone(),
                                                         ext_vars.clone(),
                                                         target_set.clone(),
                                                         check_child.clone(),
@@ -6124,8 +6148,8 @@ pub fn collect_scc_child_edges(
                                             },
                                             _ => collect_scc_child_edges(
                                                 arg_val.clone(),
-                                                &caller,
-                                                &param_name,
+                                                caller.clone(),
+                                                param_name.clone(),
                                                 descent_vars.clone(),
                                                 target_set.clone(),
                                                 check_child.clone(),
@@ -6150,8 +6174,8 @@ pub fn collect_scc_child_edges(
                             __result.extend(
                                 (*collect_scc_child_edges(
                                     child.clone(),
-                                    &caller,
-                                    &param_name,
+                                    caller.clone(),
+                                    param_name.clone(),
                                     descent_vars.clone(),
                                     target_set.clone(),
                                     check_child.clone(),
@@ -6171,8 +6195,8 @@ pub fn collect_scc_child_edges(
                 let val = let_value(body.clone());
                 let val_edges = collect_scc_child_edges(
                     val.clone(),
-                    &caller,
-                    &param_name,
+                    caller.clone(),
+                    param_name.clone(),
                     descent_vars.clone(),
                     target_set.clone(),
                     check_child.clone(),
@@ -6183,7 +6207,7 @@ pub fn collect_scc_child_edges(
                 let is_direct = ((check_child.clone()
                     && is_child_descent_expr(
                         val.clone(),
-                        &param_name,
+                        param_name.clone(),
                         descent_vars.clone(),
                         si.clone(),
                     ))
@@ -6208,7 +6232,7 @@ pub fn collect_scc_child_edges(
                 );
                 let is_match_descent = is_match_option_descent(
                     val.clone(),
-                    &param_name,
+                    param_name.clone(),
                     descent_vars.clone(),
                     check_child.clone(),
                     check_list.clone(),
@@ -6220,7 +6244,7 @@ pub fn collect_scc_child_edges(
                         let inner_d = ((check_child.clone()
                             && is_child_descent_expr(
                                 inner.clone(),
-                                &param_name,
+                                param_name.clone(),
                                 descent_vars.clone(),
                                 si.clone(),
                             ))
@@ -6250,7 +6274,7 @@ pub fn collect_scc_child_edges(
                         let inner_d = ((check_child.clone()
                             && is_child_descent_expr(
                                 inner.clone(),
-                                &param_name,
+                                param_name.clone(),
                                 descent_vars.clone(),
                                 si.clone(),
                             ))
@@ -6306,7 +6330,7 @@ pub fn collect_scc_child_edges(
                             (((check_child.clone()
                                 && is_child_descent_expr(
                                     inner.clone(),
-                                    &param_name,
+                                    param_name.clone(),
                                     descent_vars.clone(),
                                     si.clone(),
                                 ))
@@ -6358,8 +6382,8 @@ pub fn collect_scc_child_edges(
                 let body_edges = match let_body(body.clone()) {
                     Some(b) => collect_scc_child_edges(
                         b.clone(),
-                        &caller,
-                        &param_name,
+                        caller.clone(),
+                        param_name.clone(),
                         next_vars.clone(),
                         target_set.clone(),
                         check_child.clone(),
@@ -6375,8 +6399,8 @@ pub fn collect_scc_child_edges(
                 let scrut = match_scrutinee(body.clone());
                 let scrut_edges = collect_scc_child_edges(
                     scrut.clone(),
-                    &caller,
-                    &param_name,
+                    caller.clone(),
+                    param_name.clone(),
                     descent_vars.clone(),
                     target_set.clone(),
                     check_child.clone(),
@@ -6390,8 +6414,8 @@ pub fn collect_scc_child_edges(
                         __result.extend(
                             (*collect_scc_child_edges(
                                 arm_body(arm_node.clone()),
-                                &caller,
-                                &param_name,
+                                caller.clone(),
+                                param_name.clone(),
                                 descent_vars.clone(),
                                 target_set.clone(),
                                 check_child.clone(),
@@ -6416,8 +6440,8 @@ pub fn collect_scc_child_edges(
                     |acc: Rc<SccEdgeBlockAcc>, stmt: Rc<Node>| {
                         let stmt_edges = collect_scc_child_edges(
                             stmt.clone(),
-                            &caller,
-                            &param_name,
+                            caller.clone(),
+                            param_name.clone(),
                             acc.vars.clone(),
                             target_set.clone(),
                             check_child.clone(),
@@ -6427,7 +6451,7 @@ pub fn collect_scc_child_edges(
                         );
                         let next_vars = collect_descent_vars(
                             stmt.clone(),
-                            &param_name,
+                            param_name.clone(),
                             acc.vars.clone(),
                             check_child.clone(),
                             check_list.clone(),
@@ -6444,8 +6468,8 @@ pub fn collect_scc_child_edges(
             ExprData::ExprIf => {
                 let cond_edges = collect_scc_child_edges(
                     if_condition(body.clone()),
-                    &caller,
-                    &param_name,
+                    caller.clone(),
+                    param_name.clone(),
                     descent_vars.clone(),
                     target_set.clone(),
                     check_child.clone(),
@@ -6457,8 +6481,8 @@ pub fn collect_scc_child_edges(
                 let else_opt = if_else_branch(body.clone());
                 let then_edges = collect_scc_child_edges(
                     then_branch.clone(),
-                    &caller,
-                    &param_name,
+                    caller.clone(),
+                    param_name.clone(),
                     descent_vars.clone(),
                     target_set.clone(),
                     check_child.clone(),
@@ -6469,8 +6493,8 @@ pub fn collect_scc_child_edges(
                 let else_edges = match else_opt.clone() {
                     Some(eb) => collect_scc_child_edges(
                         eb.clone(),
-                        &caller,
-                        &param_name,
+                        caller.clone(),
+                        param_name.clone(),
                         descent_vars.clone(),
                         target_set.clone(),
                         check_child.clone(),
@@ -6491,8 +6515,8 @@ pub fn collect_scc_child_edges(
                     __result.extend(
                         (*collect_scc_child_edges(
                             child.clone(),
-                            &caller,
-                            &param_name,
+                            caller.clone(),
+                            param_name.clone(),
                             descent_vars.clone(),
                             target_set.clone(),
                             check_child.clone(),
@@ -6531,7 +6555,7 @@ pub fn is_scc_container_child_descent(
                                     let pname = param_node_name_at(p.clone(), si.clone());
                                     let descent_vars = collect_descent_vars(
                                         entry.body.clone(),
-                                        &pname,
+                                        pname.clone(),
                                         v1_rt::rc_empty_map::<String, bool>(),
                                         true,
                                         true,
@@ -6539,8 +6563,8 @@ pub fn is_scc_container_child_descent(
                                     );
                                     let param_edges = collect_scc_child_edges(
                                         entry.body.clone(),
-                                        &name,
-                                        &pname,
+                                        name.clone(),
+                                        pname.clone(),
                                         descent_vars.clone(),
                                         scc_name_set.clone(),
                                         true,
@@ -6631,8 +6655,8 @@ pub fn collect_scc_proof_edges_for_dim(
     Some(entry) => {
             let best_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                 let pname = param_node_name_at(p.clone(), si.clone());
-let descent_vars = collect_descent_vars(entry.body.clone(), &pname, v1_rt::rc_empty_map::<String, bool>(), check_child.clone(), check_list.clone(), si.clone());
-let param_edges = collect_scc_child_edges(entry.body.clone(), &name, &pname, descent_vars.clone(), scc_name_set.clone(), check_child.clone(), check_list.clone(), measure_params.clone(), si.clone());
+let descent_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), check_child.clone(), check_list.clone(), si.clone());
+let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), descent_vars.clone(), scc_name_set.clone(), check_child.clone(), check_list.clone(), measure_params.clone(), si.clone());
 let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best, param_map.clone())
 });
@@ -6706,15 +6730,15 @@ pub fn collect_scc_independent_dim_edges(
     Some(entry) => {
             let tree_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                 let pname = param_node_name_at(p.clone(), si.clone());
-let tree_vars = collect_descent_vars(entry.body.clone(), &pname, v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
-let param_edges = collect_scc_child_edges(entry.body.clone(), &name, &pname, tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
+let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
+let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
 let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best_map, param_map.clone())
 });
 let list_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                 let pname = param_node_name_at(p.clone(), si.clone());
-let list_vars = collect_descent_vars(entry.body.clone(), &pname, v1_rt::rc_empty_map::<String, bool>(), false, true, si.clone());
-let param_edges = collect_scc_child_edges(entry.body.clone(), &name, &pname, list_vars.clone(), scc_name_set.clone(), false, true, measure_params.clone(), si.clone());
+let list_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), false, true, si.clone());
+let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), list_vars.clone(), scc_name_set.clone(), false, true, measure_params.clone(), si.clone());
 let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best_map, param_map.clone())
 });
@@ -6793,8 +6817,8 @@ pub fn collect_scc_tree_parser_dim_edges(
     Some(entry) => {
                     let tree_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                         let pname = param_node_name_at(p.clone(), si.clone());
-let tree_vars = collect_descent_vars(entry.body.clone(), &pname, v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
-let param_edges = collect_scc_child_edges(entry.body.clone(), &name, &pname, tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
+let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
+let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
 let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best_map, param_map.clone())
 });
@@ -7862,7 +7886,7 @@ pub fn resolve_callback_cost(
                 let fn_ref = expr_var_name_at(la.clone(), si.clone());
                 match v1_rt::map_get(&func_index, fn_ref.clone()) {
                     Some(_) => get_or_compute_summary(
-                        &fn_ref,
+                        fn_ref.clone(),
                         func_index.clone(),
                         scc_index.clone(),
                         recv_r.table.clone(),
@@ -8933,7 +8957,7 @@ pub fn cost_of_expr(
                 let fname = expr_call_func_at(texpr.clone(), si.clone());
                 let callee_result = match v1_rt::map_get(&func_index, fname.clone()) {
                     Some(entry) => get_or_compute_summary(
-                        &fname,
+                        fname.clone(),
                         func_index.clone(),
                         scc_index.clone(),
                         table.clone(),
@@ -9042,7 +9066,7 @@ pub fn cost_of_expr(
                                     recv_r.clone(),
                                     mc_args.clone(),
                                     size.clone(),
-                                    &binder,
+                                    binder.clone(),
                                     func_index.clone(),
                                     scc_index.clone(),
                                     parser_always_advancing.clone(),
@@ -9766,10 +9790,8 @@ pub fn merge_param_evidence(
         DescentEvidence::Strict,
         |acc: DescentEvidence, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match call_evidence
             .clone()
-            .iter()
+            .get(param_index.clone() as usize)
             .cloned()
-            .skip(param_index.clone() as usize)
-            .next()
         {
             Some(rel) => {
                 descent_evidence_lattice_meet(acc.clone(), sub_value_to_evidence(rel.clone()))
@@ -9791,10 +9813,8 @@ pub fn extract_shrink_factor(
             None => None,
             Some(prev) => match call_evidence
                 .clone()
-                .iter()
+                .get(param_index.clone() as usize)
                 .cloned()
-                .skip(param_index.clone() as usize)
-                .next()
             {
                 Some(rel) => match (*rel.clone()).clone() {
                     SubValueRelation::StrictSubValue { factor: f, .. } => {
@@ -9844,21 +9864,17 @@ pub fn max_path_descending(
                 let callee = expr_call_func_at(body.clone(), si.clone());
                 let own = if (callee.clone() == fn_name.clone()) {
                     match de.clone() {
-                        Some(evidence) => match evidence
-                            .clone()
-                            .iter()
-                            .cloned()
-                            .skip(param_index.clone() as usize)
-                            .next()
-                        {
-                            Some(rel) => match (*rel.clone()).clone() {
-                                SubValueRelation::StrictSubValue { .. } => 1,
-                                SubValueRelation::IteratedSubValue { field: _, .. } => 1,
-                                SubValueRelation::ArithmeticDescent { .. } => 1,
-                                _ => 0,
-                            },
-                            None => 0,
-                        },
+                        Some(evidence) => {
+                            match evidence.clone().get(param_index.clone() as usize).cloned() {
+                                Some(rel) => match (*rel.clone()).clone() {
+                                    SubValueRelation::StrictSubValue { .. } => 1,
+                                    SubValueRelation::IteratedSubValue { field: _, .. } => 1,
+                                    SubValueRelation::ArithmeticDescent { .. } => 1,
+                                    _ => 0,
+                                },
+                                None => 0,
+                            }
+                        }
                         None => 0,
                     }
                 } else {
@@ -9872,7 +9888,7 @@ pub fn max_path_descending(
                         .fold(0, |acc: i64, child: Rc<Node>| {
                             (acc + max_path_descending(
                                 child.clone(),
-                                &fn_name,
+                                fn_name.clone(),
                                 param_index.clone(),
                                 si.clone(),
                             ))
@@ -9882,21 +9898,24 @@ pub fn max_path_descending(
             ExprData::ExprIf => {
                 let cond_count = max_path_descending(
                     if_condition(body.clone()),
-                    &fn_name,
+                    fn_name.clone(),
                     param_index.clone(),
                     si.clone(),
                 );
                 let then_count = max_path_descending(
                     if_then_branch(body.clone()),
-                    &fn_name,
+                    fn_name.clone(),
                     param_index.clone(),
                     si.clone(),
                 );
                 let else_branch = if_else_branch(body.clone());
                 let else_count = match else_branch.clone() {
-                    Some(eb) => {
-                        max_path_descending(eb.clone(), &fn_name, param_index.clone(), si.clone())
-                    }
+                    Some(eb) => max_path_descending(
+                        eb.clone(),
+                        fn_name.clone(),
+                        param_index.clone(),
+                        si.clone(),
+                    ),
                     None => 0,
                 };
                 let branch_max = if (then_count.clone() > else_count.clone()) {
@@ -9909,7 +9928,7 @@ pub fn max_path_descending(
             ExprData::ExprMatch => {
                 let scrut_count = max_path_descending(
                     match_scrutinee(body.clone()),
-                    &fn_name,
+                    fn_name.clone(),
                     param_index.clone(),
                     si.clone(),
                 );
@@ -9921,7 +9940,7 @@ pub fn max_path_descending(
                     .fold(0, |acc: i64, arm: Rc<Node>| {
                         let arm_count = max_path_descending(
                             arm_body(arm.clone()),
-                            &fn_name,
+                            fn_name.clone(),
                             param_index.clone(),
                             si.clone(),
                         );
@@ -9941,7 +9960,7 @@ pub fn max_path_descending(
                 .fold(0, |acc: i64, child: Rc<Node>| {
                     (acc + max_path_descending(
                         child.clone(),
-                        &fn_name,
+                        fn_name.clone(),
                         param_index.clone(),
                         si.clone(),
                     ))
@@ -9960,10 +9979,8 @@ pub fn distinct_descended_fields(
             |acc: Rc<HashMap<String, bool>>, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| {
                 match call_evidence
                     .clone()
-                    .iter()
+                    .get(param_index.clone() as usize)
                     .cloned()
-                    .skip(param_index.clone() as usize)
-                    .next()
                 {
                     Some(rel) => match (*rel.clone()).clone() {
                         SubValueRelation::StrictSubValue { field: f, .. } => {
@@ -10020,7 +10037,7 @@ pub fn analyze_structural_bounds(
                                     Some(factor) => {
                                         let branches = max_path_descending(
                                             entry.body.clone(),
-                                            &entry.name.clone(),
+                                            entry.name.clone(),
                                             param_index.clone(),
                                             si.clone(),
                                         );
@@ -10123,7 +10140,7 @@ pub fn build_complexity_report(
                     {
                         {
                             let pattern = classify_recursion_pattern(
-                                &entry.name.clone(),
+                                entry.name.clone(),
                                 entry.body.clone(),
                                 entry.params.clone(),
                                 parser_always_advancing.clone(),
@@ -10196,7 +10213,7 @@ pub fn build_complexity_report(
             ) {
                 Some(entry) => {
                     let sr = get_or_compute_summary(
-                        &func_name,
+                        func_name.clone(),
                         func_index.clone(),
                         full_scc_index.clone(),
                         acc.table.clone(),

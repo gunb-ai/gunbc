@@ -384,7 +384,7 @@ pub fn source_tree_of(file: String) -> String {
 }
 
 pub fn conflict_is_cross_tree(c: Rc<TypeEnvCacheMergeConflict>) -> bool {
-    (source_tree_of(&c.existing_site.clone()) != source_tree_of(&c.incoming_site.clone()))
+    (source_tree_of(c.existing_site.clone()) != source_tree_of(c.incoming_site.clone()))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -475,9 +475,9 @@ pub fn guarded_union_str_bindings_into_acc(
                                         .clone(),
                                     span: incoming.resolved.clone().span.clone(),
                                     same_tree: (source_tree_of(
-                                        &existing.resolved.clone().span.clone().file.clone(),
+                                        existing.resolved.clone().span.clone().file.clone(),
                                     ) == source_tree_of(
-                                        &incoming.resolved.clone().span.clone().file.clone(),
+                                        incoming.resolved.clone().span.clone().file.clone(),
                                     )),
                                 })]),
                             ),
@@ -539,9 +539,9 @@ pub fn guarded_union_str_bindings_into_overlay(
                                         .clone(),
                                     span: incoming.resolved.clone().span.clone(),
                                     same_tree: (source_tree_of(
-                                        &accumulated.resolved.clone().span.clone().file.clone(),
+                                        accumulated.resolved.clone().span.clone().file.clone(),
                                     ) == source_tree_of(
-                                        &incoming.resolved.clone().span.clone().file.clone(),
+                                        incoming.resolved.clone().span.clone().file.clone(),
                                     )),
                                 })]),
                             ),
@@ -819,16 +819,16 @@ pub fn lookup_binding_by_name_local(env: Rc<TypeEnv>, name: String) -> Option<Rc
 }
 
 pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    match lookup_binding_by_name_local(env.clone(), &name) {
+    match lookup_binding_by_name_local(env.clone(), name.clone()) {
         Some(binding) => Some(binding.clone()),
-        None => lookup_binding_after_global_bare(env.clone(), &name),
+        None => lookup_binding_after_global_bare(env.clone(), name.clone()),
     }
 }
 
 pub fn lookup_binding_after_global_bare(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    match global_bare_lookup(env.clone(), &name) {
+    match global_bare_lookup(env.clone(), name.clone()) {
         Some(binding) => Some(binding.clone()),
-        None => lookup_qualified_module_projection(env.clone(), &name),
+        None => lookup_qualified_module_projection(env.clone(), name.clone()),
     }
 }
 
@@ -1072,7 +1072,7 @@ pub fn bare_name_miss_diagnostic(
     span: Rc<SourceSpan>,
 ) -> Rc<CompilerDiagnostic> {
     {
-        let cands = global_bare_strict_ambiguity_candidates(env.clone(), &name);
+        let cands = global_bare_strict_ambiguity_candidates(env.clone(), name.clone());
         if ((cands.clone().len() as i64) > 0) {
             Rc::new(CompilerDiagnostic::AmbiguousReference {
                 name: name.clone(),
@@ -1180,7 +1180,7 @@ pub fn qualify_decl_reference_positions(
             for c in n.children.clone().iter().cloned() {
                 __result.push(qualify_decl_reference_positions(
                     c.clone(),
-                    &owner_module_path,
+                    owner_module_path.clone(),
                     env.clone(),
                     excluded.clone(),
                 ));
@@ -1204,7 +1204,7 @@ pub fn qualify_borrowed_type_names(
                 for c in n.children.clone().iter().cloned() {
                     __result.push(qualify_borrowed_type_names(
                         c.clone(),
-                        &owner_module_path,
+                        owner_module_path.clone(),
                         env.clone(),
                         excluded.clone(),
                     ));
@@ -1217,7 +1217,7 @@ pub fn qualify_borrowed_type_names(
                 for c in n.children.clone().iter().cloned() {
                     __result.push(qualify_decl_reference_positions(
                         c.clone(),
-                        &owner_module_path,
+                        owner_module_path.clone(),
                         env.clone(),
                         excluded.clone(),
                     ));
@@ -1237,7 +1237,7 @@ pub fn qualify_borrowed_type_names(
             && !v1_rt::map_has(&excluded, name.clone()))
             && !is_type_var.clone());
         let owner_hit = if rewrite.clone() {
-            global_bare_owner_module(env.clone(), owner_module_path.clone(), &name)
+            global_bare_owner_module(env.clone(), owner_module_path.clone(), name.clone())
         } else {
             None
         };
@@ -1333,7 +1333,7 @@ pub fn qualify_borrowed_inferred(
         Some(InferredNode::Resolved { node: t, .. }) => Some(Rc::new(InferredNode::Resolved {
             node: qualify_borrowed_type_names(
                 t.clone(),
-                &owner_module_path,
+                owner_module_path.clone(),
                 env.clone(),
                 excluded.clone(),
             ),
@@ -1377,20 +1377,22 @@ pub fn record_global_bare_ambiguous_silent_pick(
     name: String,
     cands: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> () {
-    let cand_count = (cands.clone().len() as i64);
-    match global_bare_nearest_ancestor_candidate(env_module_path.clone(), cands.clone()) {
-        Some(cand) => v1_rt::resolution_silent_pick_record_global_bare_lcp_pick(
-            env_module_path.clone(),
-            name.clone(),
-            cand_count.clone(),
-            cand.module_path.clone(),
-        ),
-        None => v1_rt::resolution_silent_pick_record_global_bare_lcp_tie(
-            env_module_path.clone(),
-            name.clone(),
-            cand_count.clone(),
-        ),
-    };
+    {
+        let cand_count = (cands.clone().len() as i64);
+        match global_bare_nearest_ancestor_candidate(env_module_path.clone(), cands.clone()) {
+            Some(cand) => v1_rt::resolution_silent_pick_record_global_bare_lcp_pick(
+                env_module_path.clone(),
+                name.clone(),
+                cand_count.clone(),
+                cand.module_path.clone(),
+            ),
+            None => v1_rt::resolution_silent_pick_record_global_bare_lcp_tie(
+                env_module_path.clone(),
+                name.clone(),
+                cand_count.clone(),
+            ),
+        }
+    }
 }
 
 pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
@@ -1415,7 +1417,7 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
                         && ((cands.clone().len() as i64) >= 2))
                     {
                         record_global_bare_ambiguous_silent_pick(
-                            &env.module_path.clone(),
+                            env.module_path.clone(),
                             name.clone(),
                             cands.clone(),
                         )
@@ -1452,7 +1454,7 @@ pub fn lookup_binding(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<TypeBinding>> {
         Some(binding) => Some(binding.clone()),
         None => {
             let name = intern_str(env.intern_table.clone(), ident.clone());
-            lookup_binding_by_name(env.clone(), &name)
+            lookup_binding_by_name(env.clone(), name.clone())
         }
     }
 }
@@ -1479,7 +1481,7 @@ pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
 }
 
 pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
-    match lookup_binding_by_name(env.clone(), &name) {
+    match lookup_binding_by_name(env.clone(), name.clone()) {
         Some(binding) => match (v1_rt::contains(name.clone(), ".".to_string())
             || binding_declares_name(binding.clone(), name.clone(), env.source_indices.clone()))
         {
@@ -1542,7 +1544,7 @@ pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
             }
             None => None,
         },
-        None => lookup_type_by_name(env.clone(), &authored_name(env.clone(), node.clone())),
+        None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
     }
 }
 
@@ -1568,7 +1570,7 @@ pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<In
                     if ((acc.clone().len() as i64) > 0) {
                         acc.clone()
                     } else {
-                        inductive_fields_for(parent.clone(), &type_name)
+                        inductive_fields_for(parent.clone(), type_name.clone())
                     }
                 },
             )
@@ -1584,7 +1586,7 @@ pub fn is_inductive_field(
 ) -> bool {
     {
         let mut __found = false;
-        for f in inductive_fields_for(env.clone(), &type_name)
+        for f in inductive_fields_for(env.clone(), type_name.clone())
             .iter()
             .cloned()
         {

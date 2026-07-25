@@ -5349,41 +5349,6 @@ fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types
   }
 }
 
-fn lookup_callee_read_only_params(func: String, scope: InferScope, emit_info: EmitGraphInfo) -> Set<String> {
-  let qualified = if string_contains(s: func, pattern: ".") { func } else { concat(scope.module_name, ".", func) }
-  match map_get(emit_info.read_only_params_index, qualified) {
-    Present { value: m } => m
-    Absent =>
-      match map_get(emit_info.read_only_params_index, func) {
-        Present { value: m2 } => m2
-        Absent => empty_set()
-      }
-  }
-}
-
-fn build_callee_borrow_positions(callee: ItemInfo?, func: String, filled_args: List<Node>, scope: InferScope, emit_info: EmitGraphInfo) -> Map<String, Bool> {
-  let si = scope.type_env.source_indices
-  let callee_read_only = lookup_callee_read_only_params(func: func, scope: scope, emit_info: emit_info)
-  match callee {
-    Present { value: info } =>
-      filled_args |> enumerate |> fold(init: empty_string_bool_map(), f: (acc, pair) =>
-        let idx = pair.first
-        let a = pair.second
-        match info.params |> skip(idx) |> first {
-          Present { value: param } =>
-            let pname = param_node_name_at(n: param, source_indices: si)
-            if set_contains(callee_read_only, pname)
-              && is_rust_string_like(n: resolved_type(n: param), source_indices: si)
-              && is_string_typed_expr(e: arg_value(n: a), source_indices: si) {
-              map_insert(acc, to_string(value: idx), true)
-            } else { acc }
-          Absent => acc
-        }
-      )
-    Absent => empty_string_bool_map()
-  }
-}
-
 fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let pname = param_node_name_at(n: param, source_indices: source_indices)
   let authored = param_node_type_expr(n: param)
@@ -6820,16 +6785,12 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
   let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let is_rt = map_contains_key(rt_functions(), func)
   let is_rt_ref_map = map_contains_key(rt_ref_map_functions(), func)
-  let callee_borrow_positions = build_callee_borrow_positions(callee: callee, func: func, filled_args: filled_args, scope: collection_scope, emit_info: emit_info)
   let arg_strs = filled_args |> enumerate |> map(pair =>
     let idx = pair.first
     let a = pair.second
     if is_rt_ref_map && idx == 0 {
       let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       concat("&", base)
-    } else if map_contains_key(callee_borrow_positions, to_string(value: idx)) {
-      let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-      apply_type_template1(template: sharing_for_target(target: Rust).borrow_arg_template, arg0: base)
     } else {
       let base = emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       rust_call_arg_fail_closed_unwrap(arg_str: base, arg: arg_value(n: a), callee: callee, idx: idx, func: func)

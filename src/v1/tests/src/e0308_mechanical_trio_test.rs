@@ -1,5 +1,5 @@
 //! Mechanical E0308 trio in the v1 seed emitter: Range-vs-usize (`skip().first()`),
-//! String-vs-str (read-only callee borrow at call sites), and Unit-vs-Option
+//! String-vs-str (`rt_ref_map` borrow at call sites), and Unit-vs-Option
 //! (optional tail on `-> Unit` must discard, not return `Some`/`None`).
 
 use crate::helpers::compile_dag_target;
@@ -47,16 +47,6 @@ fn string_length_call_borrows_string_arg() {
     assert!(
         body.contains("v1_rt::string_length(&"),
         "String arg to string_length must borrow at the call site, got:\n{body}"
-    );
-}
-
-#[test]
-fn callee_borrow_passes_str_ref_to_readonly_callee() {
-    let source = "module strsig.fixture\n\nfn readonly_sink(x: String, y: String) -> Unit {\n  let a = x\n  let b = x\n}\n\nfn caller(a: String, b: String) -> Unit {\n  readonly_sink(a, b)\n}\n";
-    let body = fn_body(&emit(source), "caller");
-    assert!(
-        body.contains("readonly_sink(&a") || body.contains("readonly_sink(& a"),
-        "read-only String args at call sites must borrow, got:\n{body}"
     );
 }
 
