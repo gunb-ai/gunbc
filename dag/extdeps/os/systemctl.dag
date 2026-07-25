@@ -165,4 +165,62 @@ service systemd.Systemctl {
       0 => { value: "8589934592", success: true } "hermetic systemd.Systemctl.ShowProperty"
     }
   }
+
+  operation ListUnits {
+    input {
+      pattern: NonEmptyStr,
+      unit_type: String = "service",
+      state: String = "active",
+    }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "systemctl",
+        "list-units",
+        "--type={unit_type}",
+        "--state={state}",
+        "--no-legend",
+        "--plain",
+        "{pattern}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl list-units failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "demo@1.service loaded active running Demo unit 1",
+        success: true,
+      } "hermetic systemd.Systemctl.ListUnits"
+    }
+  }
+
+  operation Status {
+    input { unit: NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "status", "--no-pager", "--full", "{unit}"] }
+    exit {
+      0 => Unit
+      1 => Unit "unit dead, pid file remains (LSB init-script code)"
+      2 => Unit "unit dead, lock file remains (LSB init-script code)"
+      3 => Unit "unit not running (LSB init-script code)"
+      4 => Unit "unit status unknown (LSB init-script code)"
+      nonzero => String "systemctl status failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "● demo.service - Demo\n     Loaded: loaded\n     Active: active (running)",
+        success: true,
+      } "hermetic systemd.Systemctl.Status active"
+    }
+  }
 }

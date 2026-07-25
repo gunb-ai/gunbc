@@ -47,7 +47,7 @@ type SqlDataType
   | SqlTypeBigInt
   | SqlTypeReal
   | SqlTypeDoublePrecision
-  | SqlTypeNumeric { precision: NonZeroNat, scale: Nat }
+  | SqlTypeNumeric { precision: NonZeroNat, scale: v2.std.nat.Nat }
   | SqlTypeCharacter { length: NonZeroNat }
   | SqlTypeCharacterVarying { length: NonZeroNat }
   | SqlTypeCharacterLargeObject
