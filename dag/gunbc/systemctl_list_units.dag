@@ -21,7 +21,7 @@ fn systemctl_list_units_line_nonempty(line: String) -> Bool {
 }
 
 fn systemctl_list_units_line_as_unit(line: String) -> NonEmptyStr {
-  systemctl_list_units_line_trimmed(line: line) as NonEmptyStr
+  split(s: systemctl_list_units_line_trimmed(line: line), delimiter: " ").first() as NonEmptyStr
 }
 
 fn systemctl_list_units_active_services(instance_glob: NonEmptyStr) -> List<NonEmptyStr>? {

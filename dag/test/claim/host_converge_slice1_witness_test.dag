@@ -18,7 +18,10 @@ import gunbc.systemctl_show_read {
   systemctl_show_property_operation_argv_matches_transport,
 }
 import gunbc.systemctl_set_property { systemctl_set_property_operation_argv_matches_transport }
-import gunbc.systemctl_list_units { systemctl_list_units_active_services }
+import gunbc.systemctl_list_units {
+  systemctl_list_units_active_services,
+  systemctl_list_units_line_as_unit,
+}
 import gunbc.host_converge_slice1 {
   host_converge_slice1_probe_unit,
   host_converge_slice1_knob_name,
@@ -148,9 +151,18 @@ test fn host_converge_slice1_wires_srv1_memory_cap() -> Bool {
     && witness_transport_script_scaffold_carries_dissolution_trigger()
 }
 
+fn witness_list_units_line_parser_takes_first_field_only() -> Bool {
+  systemctl_list_units_line_as_unit(
+    line: "actions-runner@srv3-01.service loaded active running GitHub Actions Runner",
+  ) == "actions-runner@srv3-01.service" as NonEmptyStr
+}
+
 fn witness_enumerate_units_uses_typed_list_units_op() -> Bool {
   match systemctl_list_units_active_services(instance_glob: "actions-runner@srv3-*.service" as NonEmptyStr) {
-    Present { value: units } => length(units) >= 0
+    Present { value: units } =>
+      length(units) == 2
+        && units.first() == Present { value: "actions-runner@srv3-01.service" as NonEmptyStr }
+        && units.skip(n: 1).first() == Present { value: "actions-runner@srv3-02.service" as NonEmptyStr }
     Absent => false
   }
 }
@@ -183,7 +195,8 @@ fn witness_usage_guard_refusal_routes_to_legacy_refused_with_retryable_reason() 
 }
 
 test fn host_converge_slice1_wires_srv3_multi_unit_generalization() -> Bool {
-  witness_enumerate_units_uses_typed_list_units_op()
+  witness_list_units_line_parser_takes_first_field_only()
+    && witness_enumerate_units_uses_typed_list_units_op()
     && witness_cross_check_enumeration_none_iff_length_matches_declared()
     && witness_usage_guard_refusal_routes_to_legacy_refused_with_retryable_reason()
 }
