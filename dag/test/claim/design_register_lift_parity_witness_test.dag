@@ -39,6 +39,10 @@ fn witness_roadmap_css_digest_pinned() -> Bool {
   emission_content_digest(s: roadmap_css()) == roadmap_css_lift_parity_digest
 }
 
+fn roadmap_css_digest_probe() -> String {
+  emission_content_digest(s: roadmap_css())
+}
+
 fn witness_moodboard_thesis_themes_digest_pinned() -> Bool {
   moodboard_digest() == moodboard_thesis_themes_lift_parity_digest
 }
