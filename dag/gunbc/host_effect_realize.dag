@@ -101,7 +101,13 @@ import gunbc.ci_deploy_access {
   deploy_access_sudo_probe_effect,
 }
 import gunbc.srv3_host_effect_script { srv3_host_effect_script_for }
-import gunbc.live_deploy.host_effect_script { live_deploy_host_effect_script_for }
+import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
+import gunbc.live_deploy.emit {
+  live_deploy_apply_script_for,
+  live_deploy_retract_script_for,
+  deployment_ensure_dependency_script,
+}
+import gunbc.roadmap_static_site { roadmap_site_digest_readback_script }
 import gunbc.host_build_cache_provision_script { build_cache_provision_shell_script }
 import gunbc.host_build_cache_catalog_gate {
   provision_build_cache_catalog_gate_verdict,
@@ -148,7 +154,7 @@ import extdeps.bmc.webui.nbd_proxy_serve {
   NbdProxyServeTransportIntent,
   bmcweb_session_login_curl_args,
 }
-import std.types { String, NonEmptyStr, List, Bool }
+import std.types { String, NonEmptyStr, List, Bool, Int }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
@@ -175,6 +181,10 @@ type ResolvedHostEffectCell =
   | BmcwebTokenExtractOnHost { node: ComputeHost }
   | EffectivePrincipalReadOnHost { node: ComputeHost, read: EffectivePosixPrincipalRead }
   | SudoNopasswdProbeOnHost { node: ComputeHost, probe: SudoNopasswdExecuteProbeShape }
+  | LiveDeployApplyOnHost { node: ComputeHost, spec: DeploymentSpec }
+  | LiveDeployRetractOnHost { node: ComputeHost, spec: DeploymentSpec }
+  | LiveDeployEnsureDependencyOnHost { node: ComputeHost, dep: DeploymentDependencyStep }
+  | LiveDeployDigestReadbackOnHost { node: ComputeHost, port: Int }
   | IncompatibleCell { reason: String }
 
 fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverge) -> String {
@@ -219,13 +229,18 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           BmcwebSessionLoginOnHost { node: n }
         Srv3BmcwebTokenExtract =>
           BmcwebTokenExtractOnHost { node: n }
+        LiveDeployApply { spec: s } =>
+          LiveDeployApplyOnHost { node: n, spec: s }
+        LiveDeployRetract { spec: s } =>
+          LiveDeployRetractOnHost { node: n, spec: s }
+        LiveDeployEnsureDependency { dep: d } =>
+          LiveDeployEnsureDependencyOnHost { node: n, dep: d }
+        LiveDeployDigestReadback { port: p } =>
+          LiveDeployDigestReadbackOnHost { node: n, port: p }
         _ =>
           match srv3_host_effect_script_for(effect: effect) {
             Present { value: script } => ShellOnHost { node: n, script: script }
             Absent =>
-              match live_deploy_host_effect_script_for(effect: effect) {
-                Present { value: script } => ShellOnHost { node: n, script: script }
-                Absent =>
               match effect {
                 ShellCommand { script: s } =>
                   ShellOnHost {
@@ -273,19 +288,18 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   NbdProxySessionOnHost { node: n, intent: i, lease_key: k }
                 HostIdentityShortHostnameRead =>
                   HostnameReadOnHost { node: n }
+                LiveDeployApply { spec: s } =>
+                  LiveDeployApplyOnHost { node: n, spec: s }
+                LiveDeployRetract { spec: s } =>
+                  LiveDeployRetractOnHost { node: n, spec: s }
+                LiveDeployEnsureDependency { dep: d } =>
+                  LiveDeployEnsureDependencyOnHost { node: n, dep: d }
+                LiveDeployDigestReadback { port: p } =>
+                  LiveDeployDigestReadbackOnHost { node: n, port: p }
                 DeployAccessPreflight {} =>
                   IncompatibleCell {
                     reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot be applied; typed mismatch, DESIGN section 5.",
                   }
-                LiveDeployApply { spec: _ } =>
-                  srv3_host_effect_script_resolution_failed_cell()
-                LiveDeployRetract { spec: _ } =>
-                  srv3_host_effect_script_resolution_failed_cell()
-                LiveDeployEnsureDependency { dep: _ } =>
-                  srv3_host_effect_script_resolution_failed_cell()
-                LiveDeployDigestReadback { port: _ } =>
-                  srv3_host_effect_script_resolution_failed_cell()
-              }
               }
           }
       }
@@ -304,10 +318,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
             Present { value: _ } =>
               IncompatibleCell { reason: "host_effect: srv3 shell effects are in-band (actuator host LocalShell) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             Absent =>
-              match live_deploy_host_effect_script_for(effect: effect) {
-                Present { value: _ } =>
-                  IncompatibleCell { reason: "host_effect: live_deploy shell effects are in-band (actuator host LocalShell) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-                Absent =>
               match effect {
                 ShellCommand { script: _ } =>
                   IncompatibleCell { reason: "host_effect: ShellCommand is in-band (shell/systemd) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -358,7 +368,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   IncompatibleCell { reason: "host_effect: LiveDeployDigestReadback is in-band (actuator host shell readback) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 DeployAccessPreflight {} =>
                   IncompatibleCell { reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot target BmcController; typed mismatch, DESIGN section 5." }
-              }
               }
           }
       }
@@ -1465,6 +1474,66 @@ fn realize_nbd_proxy_session_on_host(
   }
 }
 
+fn realize_live_deploy_apply_on_host(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  realize_shell_on_host(
+    script: retained_srvn(
+      body: live_deploy_apply_script_for(spec: spec),
+      reason: "live_deploy apply (unit install + start)",
+    ),
+    transport: transport,
+    intent: intent,
+  )
+}
+
+fn realize_live_deploy_retract_on_host(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  realize_shell_on_host(
+    script: retained_srvn(
+      body: live_deploy_retract_script_for(spec: spec),
+      reason: "live_deploy retract (unit teardown)",
+    ),
+    transport: transport,
+    intent: intent,
+  )
+}
+
+fn realize_live_deploy_ensure_dependency_on_host(
+  dep: DeploymentDependencyStep,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  realize_shell_on_host(
+    script: retained_srvn(
+      body: deployment_ensure_dependency_script(dep: dep),
+      reason: "live_deploy ensure dependency",
+    ),
+    transport: transport,
+    intent: intent,
+  )
+}
+
+fn realize_live_deploy_digest_readback_on_host(
+  port: Int,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  realize_shell_on_host(
+    script: retained_srvn(
+      body: roadmap_site_digest_readback_script(port: port),
+      reason: "live_deploy digest readback probe",
+    ),
+    transport: transport,
+    intent: intent,
+  )
+}
+
 fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: IdempotencyEvidence, transport: HostEffectTransport) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let intent = HostEffectIntent {
     target: target,
@@ -1513,6 +1582,14 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_effective_principal_read_on_host(read: r, transport: transport, intent: intent)
     SudoNopasswdProbeOnHost { node: _, probe: p } =>
       realize_sudo_nopasswd_probe_on_host(probe: p, transport: transport, intent: intent)
+    LiveDeployApplyOnHost { node: _, spec: s } =>
+      realize_live_deploy_apply_on_host(spec: s, transport: transport, intent: intent)
+    LiveDeployRetractOnHost { node: _, spec: s } =>
+      realize_live_deploy_retract_on_host(spec: s, transport: transport, intent: intent)
+    LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>
+      realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
+    LiveDeployDigestReadbackOnHost { node: _, port: p } =>
+      realize_live_deploy_digest_readback_on_host(port: p, transport: transport, intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
       NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
     IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -1671,6 +1748,14 @@ fn host_effect_apply_gated(
           realize_effective_principal_read_on_host(read: r, transport: transport, intent: intent)
         SudoNopasswdProbeOnHost { node: _, probe: p } =>
           realize_sudo_nopasswd_probe_on_host(probe: p, transport: transport, intent: intent)
+        LiveDeployApplyOnHost { node: _, spec: s } =>
+          realize_live_deploy_apply_on_host(spec: s, transport: transport, intent: intent)
+        LiveDeployRetractOnHost { node: _, spec: s } =>
+          realize_live_deploy_retract_on_host(spec: s, transport: transport, intent: intent)
+        LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>
+          realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
+        LiveDeployDigestReadbackOnHost { node: _, port: p } =>
+          realize_live_deploy_digest_readback_on_host(port: p, transport: transport, intent: intent)
         RedfishOnBmc { node: _, action: _ } =>
           NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
         IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -1725,6 +1810,10 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             BmcwebTokenExtractOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EffectivePrincipalReadOnHost { node: _, read: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             SudoNopasswdProbeOnHost { node: _, probe: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            LiveDeployApplyOnHost { node: _, spec: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            LiveDeployRetractOnHost { node: _, spec: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            LiveDeployEnsureDependencyOnHost { node: _, dep: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            LiveDeployDigestReadbackOnHost { node: _, port: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
           }
       }

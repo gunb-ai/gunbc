@@ -119,6 +119,9 @@ service systemd.Systemctl {
       0 => Unit
       nonzero => String "systemctl set-property failed"
     }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.SetProperty"
+    }
   }
 
   operation DaemonReload {

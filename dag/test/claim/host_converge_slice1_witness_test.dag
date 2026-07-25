@@ -1,7 +1,7 @@
 module test.claim.host_converge_slice1_witness
 
 import std.types { Bool, NonEmptyStr, List }
-import extdeps.os.systemd { systemd_memory_max_property }
+import extdeps.os.systemd { systemd_memory_max_property, MemoryMax }
 import gunbc.host_converge { Drifted, PerSlotMemoryCap }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.runner_unit_live_read {
@@ -17,16 +17,15 @@ import gunbc.systemctl_show_read {
   systemctl_show_property_read_local,
   systemctl_show_property_operation_argv_matches_transport,
 }
-import extdeps.os.systemd { MemoryMax }
+import gunbc.systemctl_set_property { systemctl_set_property_local }
+import gunbc.systemctl_list_units { systemctl_list_units_active_services }
 import gunbc.host_converge_slice1 {
   host_converge_slice1_probe_unit,
   host_converge_slice1_knob_name,
   host_converge_slice1_srv1_per_slot_memory_max_knob,
   host_converge_slice1_memory_cap_verdict,
   host_converge_slice1_fixture_receipt,
-  host_converge_slice1_memory_max_set_script,
   host_converge_slice1_transport_script_scaffold,
-  host_converge_slice1_enumerate_units_script,
   host_converge_slice1_cross_check_enumeration,
   host_converge_slice1_usage_guard,
   HostConvergeSlice1UsageSafe,
@@ -125,9 +124,10 @@ fn witness_transport_reads_use_show_property_authority() -> Bool {
     property: MemoryMax,
   )
     && witness_slice1_show_property_local_read_holds()
-    && string_contains(
-      s: host_converge_slice1_memory_max_set_script(unit: host_converge_slice1_probe_unit, bytes_value: "17179869184"),
-      pattern: "set-property",
+    && systemctl_set_property_local(
+      unit: host_converge_slice1_probe_unit,
+      property: systemd_memory_max_property,
+      value: "17179869184" as NonEmptyStr,
     )
 }
 
@@ -148,11 +148,11 @@ test fn host_converge_slice1_wires_srv1_memory_cap() -> Bool {
     && witness_transport_script_scaffold_carries_dissolution_trigger()
 }
 
-fn witness_enumerate_units_script_is_read_only_list_units() -> Bool {
-  let script = host_converge_slice1_enumerate_units_script(instance_glob: "actions-runner@srv3-*.service")
-  string_contains(s: script, pattern: "systemctl list-units")
-    && string_contains(s: script, pattern: "actions-runner@srv3-*.service")
-    && string_contains(s: script, pattern: "awk")
+fn witness_enumerate_units_uses_typed_list_units_op() -> Bool {
+  match systemctl_list_units_active_services(instance_glob: "actions-runner@srv3-*.service" as NonEmptyStr) {
+    Present { value: units } => length(units) >= 0
+    Absent => false
+  }
 }
 
 fn witness_cross_check_enumeration_none_iff_length_matches_declared() -> Bool {
@@ -183,7 +183,7 @@ fn witness_usage_guard_refusal_routes_to_legacy_refused_with_retryable_reason() 
 }
 
 test fn host_converge_slice1_wires_srv3_multi_unit_generalization() -> Bool {
-  witness_enumerate_units_script_is_read_only_list_units()
+  witness_enumerate_units_uses_typed_list_units_op()
     && witness_cross_check_enumeration_none_iff_length_matches_declared()
     && witness_usage_guard_refusal_routes_to_legacy_refused_with_retryable_reason()
 }
