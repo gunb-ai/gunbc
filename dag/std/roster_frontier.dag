@@ -1,25 +1,182 @@
 module std.roster_frontier
 
-data roster_frontier_note: String = "The typed declared-frontier row (DESIGN §7 self-host-frontier pattern generalized to any group of units, operator ruling 2026-07-22): a unit asserted into a group by hand is admissible only as a counted row carrying its reason and its migration trigger — never a bare string in a nickname list. unit is the member's own key in the roster's unit_kind (a path, a module name, a type name, a site key); reason says why the row exists; dissolve_on names the condition under which the row deletes. The group-grain taxonomy (positional / derived / frontier / nickname) and the registry of enrolled rosters live in gunbc.roster_registry; this module owns only the row shape so std-, lens-, and workflow-layer rosters share one carrier instead of re-minting it per file."
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
+import std.types { NonEmptyStr }
+
+data roster_frontier_note: String = "The typed declared-frontier row (DESIGN section 7 self-host-frontier pattern generalized to any group of units, operator ruling 2026-07-22): a row is admissible only as a counted carrier beside its subject, carrying reason and a typed migration trigger — never a bare string in a nickname list. subject anchors the annotated declaration (DeclSubject) or a path-keyed roster member (PathSubject); reason says why the row exists; trigger names the checkable condition under which the row deletes. The group-grain taxonomy and enrolled roster registry live in gunbc.roster_registry; this module owns only the row shape so std-, lens-, and workflow-layer rosters share one carrier instead of re-minting it per file."
+
+type FrontierSubject
+  = PathSubject { path: String }
+  | DeclSubject { ref: DeclarationRef }
+
+type DissolveTrigger
+  = TriggerDeclExists { ref: DeclarationRef }
+  | TriggerLensGreen { lens: String }
+  | TriggerProse { text: String }
 
 type FrontierRow {
-  unit: String
+  subject: FrontierSubject
   reason: String
-  dissolve_on: String
+  trigger: DissolveTrigger
+}
+
+fn frontier_row_path(path: String, reason: String, trigger: DissolveTrigger) -> FrontierRow {
+  FrontierRow { subject: PathSubject { path: path }, reason: reason, trigger: trigger }
 }
 
 fn frontier_row(unit: String, reason: String, dissolve_on: String) -> FrontierRow {
-  FrontierRow { unit: unit, reason: reason, dissolve_on: dissolve_on }
+  frontier_row_path(
+    path: unit,
+    reason: reason,
+    trigger: TriggerProse { text: dissolve_on },
+  )
 }
 
-fn frontier_units(rows: List<FrontierRow>) -> List<String> {
-  fold(rows, init: [], f: fn(acc, row) { concat(acc, [row.unit]) })
+fn frontier_row_decl(ref: DeclarationRef, reason: String, trigger: DissolveTrigger) -> FrontierRow {
+  FrontierRow { subject: DeclSubject { ref: ref }, reason: reason, trigger: trigger }
+}
+
+fn decl_ref(module_path: String, decl_name: String) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path as NonEmptyStr,
+    decl_name: decl_name as NonEmptyStr,
+    field: WholeDeclaration,
+  }
+}
+
+fn decl_field_ref(module_path: String, decl_name: String, field_name: String) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path as NonEmptyStr,
+    decl_name: decl_name as NonEmptyStr,
+    field: NamedField { field_name: field_name as NonEmptyStr },
+  }
+}
+
+fn decl_field_eq(a: DeclField, b: DeclField) -> Bool {
+  match a {
+    WholeDeclaration =>
+      match b {
+        WholeDeclaration => true
+        NamedField { field_name: _ } => false
+      }
+    NamedField { field_name: fa } =>
+      match b {
+        WholeDeclaration => false
+        NamedField { field_name: fb } => fa == fb
+      }
+  }
+}
+
+fn declaration_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
+  a.module_path == b.module_path
+    && a.decl_name == b.decl_name
+    && decl_field_eq(a: a.field, b: b.field)
+}
+
+fn declaration_ref_in_list(target: DeclarationRef, refs: List<DeclarationRef>) -> Bool {
+  fold(refs, init: false, f: fn(acc, r) { acc || declaration_ref_eq(a: target, b: r) })
+}
+
+fn prose_in_list(text: String, prose_fired: List<String>) -> Bool {
+  fold(prose_fired, init: false, f: fn(acc, t) { acc || t == text })
+}
+
+fn lens_in_list(lens: String, lenses_green: List<String>) -> Bool {
+  fold(lenses_green, init: false, f: fn(acc, l) { acc || l == lens })
+}
+
+fn dissolve_trigger_fired(
+  trigger: DissolveTrigger,
+  prose_fired: List<String>,
+  present_decls: List<DeclarationRef>,
+  lenses_green: List<String>,
+) -> Bool {
+  match trigger {
+    TriggerDeclExists { ref: r } => declaration_ref_in_list(target: r, refs: present_decls)
+    TriggerLensGreen { lens: l } => lens_in_list(lens: l, lenses_green: lenses_green)
+    TriggerProse { text: t } => prose_in_list(text: t, prose_fired: prose_fired)
+  }
 }
 
 fn frontier_row_well_formed(row: FrontierRow) -> Bool {
-  !(row.unit == "") && !(row.reason == "") && !(row.dissolve_on == "")
+  !(row.reason == "")
+    && match row.trigger {
+      TriggerDeclExists { ref: r } =>
+        !(r.module_path == "") && !(r.decl_name == "")
+      TriggerLensGreen { lens: l } => !(l == "")
+      TriggerProse { text: t } => !(t == "")
+    }
+    && match row.subject {
+      PathSubject { path: p } => !(p == "")
+      DeclSubject { ref: r } => !(r.module_path == "") && !(r.decl_name == "")
+    }
 }
 
 fn frontier_rows_well_formed(rows: List<FrontierRow>) -> Bool {
   fold(rows, init: true, f: fn(acc, row) { acc && frontier_row_well_formed(row: row) })
+}
+
+fn frontier_path_subjects(rows: List<FrontierRow>) -> List<String> {
+  fold(rows, init: [], f: fn(acc, row) {
+    match row.subject {
+      PathSubject { path: p } => concat(acc, [p])
+      DeclSubject { ref: r } => concat(acc, [concat(r.module_path as String, concat("::", r.decl_name as String))])
+    }
+  })
+}
+
+fn frontier_units(rows: List<FrontierRow>) -> List<String> {
+  frontier_path_subjects(rows: rows)
+}
+
+fn concat_frontier_row_groups(groups: List<List<FrontierRow>>) -> List<FrontierRow> {
+  fold(groups, init: [], f: fn(acc, group) { concat(acc, group) })
+}
+
+type FrontierExpiryReport {
+  unfired_count: Int
+  fired_still_present_count: Int
+}
+
+type FrontierExpiryAcc {
+  unfired_count: Int
+  fired_still_present_count: Int
+}
+
+fn fold_frontier_expiry(
+  rows: List<FrontierRow>,
+  prose_fired: List<String>,
+  present_decls: List<DeclarationRef>,
+  lenses_green: List<String>,
+) -> FrontierExpiryReport {
+  let acc = fold(
+    rows,
+    init: FrontierExpiryAcc { unfired_count: 0, fired_still_present_count: 0 },
+    f: fn(acc, row) {
+      if dissolve_trigger_fired(
+        trigger: row.trigger,
+        prose_fired: prose_fired,
+        present_decls: present_decls,
+        lenses_green: lenses_green,
+      ) {
+        FrontierExpiryAcc {
+          unfired_count: acc.unfired_count,
+          fired_still_present_count: acc.fired_still_present_count + 1,
+        }
+      } else {
+        FrontierExpiryAcc {
+          unfired_count: acc.unfired_count + 1,
+          fired_still_present_count: acc.fired_still_present_count,
+        }
+      }
+    },
+  )
+  FrontierExpiryReport {
+    unfired_count: acc.unfired_count,
+    fired_still_present_count: acc.fired_still_present_count,
+  }
+}
+
+fn frontier_expiry_clean(report: FrontierExpiryReport) -> Bool {
+  report.fired_still_present_count == 0
 }
