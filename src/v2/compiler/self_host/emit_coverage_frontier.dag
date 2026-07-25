@@ -233,7 +233,7 @@ fn coverage_frontier_row_for_subject(subject: DeclarationRef) -> List<EmitCovera
   )
 }
 
-fn coverage_row_is_native(row: EmitCoverageFrontierRow) -> Bool {
+fn schedule_entry_matches(entry: ScheduleWitnessEntry, backing_entry: String, backing_function: String) -> Bool {
   (entry.entry == backing_entry) && (entry.function == backing_function)
 }
 

@@ -222,7 +222,7 @@ fn routing_frontier_row_for_subject(subject: DeclarationRef) -> List<NativeRouti
   )
 }
 
-fn routing_row_is_native(row: NativeRoutingFrontierRow) -> Bool {
+fn string_eq_native_routing(a: String, b: String) -> Bool {
   a == b
 }
 
