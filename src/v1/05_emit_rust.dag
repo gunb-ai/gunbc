@@ -4428,7 +4428,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
     } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
       emit_zero_param_phantom_opaque_struct(item: item, source_indices: env.source_indices)
     } else {
-      match rust_seed_host_numeric_alias(name: item_text, corpus_repr: emit_info.corpus_repr) {
+      match rust_scalar_checkpoint_render_base(dag_name: item_text, corpus_repr: emit_info.corpus_repr) {
         Present { value: host } =>
           concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", host, ";")
         Absent =>

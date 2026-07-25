@@ -2,7 +2,7 @@
 // Source module: v1.compiler.trait_derive_emit
 
 pub use crate::extdeps_languages_rust_emit::{
-    rust_supplemental_impls_bool_coproduct, rust_supplemental_impls_commutative_semiring_magnitude,
+    rust_supplemental_impls_bool_coproduct, rust_supplemental_impls_group_completion,
     rust_trait_derive_attr_from_traits,
 };
 pub use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape;
@@ -15,8 +15,7 @@ pub use crate::std_trait_derive_shape::{
     payload_coproduct_derive_traits, record_derive_traits_copy, record_derive_traits_heap,
     repr_grounding_derive_completeness_predicate,
     repr_grounding_supplemental_bool_host_bridge_target,
-    repr_grounding_supplemental_commutative_semiring_target,
-    symbol_wrapped_ord_carrier_derive_traits,
+    repr_grounding_supplemental_group_completion_target, symbol_wrapped_ord_carrier_derive_traits,
 };
 pub use crate::std_types::is_container_type;
 pub use crate::v1_compiler_emit::to_pascal;
@@ -36,7 +35,7 @@ use std::rc::Rc;
 pub fn trait_derive_emit_scope_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Root-4 arm (b): v1 seed emit wires supplemental impl blocks for coproduct-native arithmetic + PartialOrd/PartialEq (CommutativeSemiring<Magnitude> Nat carrier, Bool↔bool bridge) when repr_grounding_derive_completeness_predicate authorizes kernel-int traits. Also: (a) clone bounds on generic params; (c) serde/Debug/Ord #[derive] on named structs/enums.".to_string()
+            "Root-4 arm (b): v1 seed emit wires supplemental impl blocks for coproduct-native arithmetic + PartialOrd/PartialEq (GroupCompletion<M> pos/neg pair Add/Sub/Mul/Div, Bool↔bool bridge) when repr_grounding_derive_completeness_predicate authorizes kernel-int traits. Also: (a) clone bounds on generic params; (c) serde/Debug/Ord #[derive] on named structs/enums.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -330,13 +329,13 @@ pub fn v1_emit_type_params_with_clone_bounds(
 }
 
 pub fn v1_emit_struct_supplemental_impls(module_path: String, name: String) -> String {
-    if (repr_grounding_supplemental_commutative_semiring_target(module_path.clone(), name.clone())
+    if (repr_grounding_supplemental_group_completion_target(module_path.clone(), name.clone())
         && repr_grounding_derive_completeness_predicate(
             kernel_int_arithmetic_traits(),
             ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt,
         ))
     {
-        rust_supplemental_impls_commutative_semiring_magnitude()
+        rust_supplemental_impls_group_completion()
     } else {
         "".to_string()
     }
