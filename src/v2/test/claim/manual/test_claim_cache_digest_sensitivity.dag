@@ -74,8 +74,6 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
-import v2.std.witness { Violates }
-
 fn tcc_cache_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^tcc_cache_pass_sym } },
@@ -104,17 +102,9 @@ fn tcc_cache_eval_node_b() -> Node {
   claim_atom_node(s: ^tcc_cache_eval_b_sym)
 }
 
-fn tcc_cache_facts_diagnostic(reason: Symbol) -> Diagnostic {
-  Diagnostic {
-    reason: reason,
-    at: node_locus(node: tcc_cache_root()),
-    correction: Unavailable { reason: AmbiguousIntent }
-  }
-}
-
 fn tcc_cache_tree_facts_violates(reason: Symbol) -> InferredTree {
   InferredTree {
-    root: tcc_cache_root(),
+    root: claim_atom_node(s: reason),
     facts: Map {
       lookup: fn(_) {
         Absent
