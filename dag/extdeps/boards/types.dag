@@ -9,5 +9,3 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "www.asrockrack.com/general/productdetail.asp?Model=ALTRAD8UD-1L2T"
   }
 }
-
-data asrock_rack_altrad8ud_board_authority: ExternalAuthority = extdeps_external_authority_anchor
