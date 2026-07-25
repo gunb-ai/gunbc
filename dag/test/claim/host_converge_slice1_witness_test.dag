@@ -17,7 +17,7 @@ import gunbc.systemctl_show_read {
   systemctl_show_property_read_local,
   systemctl_show_property_operation_argv_matches_transport,
 }
-import gunbc.systemctl_set_property { systemctl_set_property_local }
+import gunbc.systemctl_set_property { systemctl_set_property_operation_argv_matches_transport }
 import gunbc.systemctl_list_units { systemctl_list_units_active_services }
 import gunbc.host_converge_slice1 {
   host_converge_slice1_probe_unit,
@@ -124,7 +124,7 @@ fn witness_transport_reads_use_show_property_authority() -> Bool {
     property: MemoryMax,
   )
     && witness_slice1_show_property_local_read_holds()
-    && systemctl_set_property_local(
+    && systemctl_set_property_operation_argv_matches_transport(
       unit: host_converge_slice1_probe_unit,
       property: systemd_memory_max_property,
       value: "17179869184" as NonEmptyStr,

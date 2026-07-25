@@ -29,6 +29,15 @@ fn systemctl_disable_now_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "disable", "--now", unit as String]
 }
 
+fn systemctl_set_property_argv(unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr) -> List<String> {
+  [
+    "systemctl",
+    "set-property",
+    unit as String,
+    concat(property as String, concat("=", value as String)),
+  ]
+}
+
 fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> List<String> {
   [
     "systemctl",
