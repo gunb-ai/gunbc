@@ -1,4 +1,4 @@
-module extdeps.os.ubuntu_seeded_install_media_toolchain
+module extdeps.provisioning.ubuntu_seeded_install_media_toolchain
 
 import std.types { NonEmptyStr, List, Bool }
 import extdeps.tools { CliTool }

@@ -1,0 +1,69 @@
+module extdeps.bmc.mock_corpus
+
+
+data redfish_http_mock_case_get_system: PublishedMockCase = PublishedMockCase {
+  operation_key: "redfish.Http.GetSystem",
+  service: "redfish.Http",
+  operation: "GetSystem",
+  case_id: 0
+}
+
+data redfish_http_mock_case_get_system_with_netrc: PublishedMockCase = PublishedMockCase {
+  operation_key: "redfish.Http.GetSystemWithNetrc",
+  service: "redfish.Http",
+  operation: "GetSystemWithNetrc",
+  case_id: 0
+}
+
+data redfish_http_mock_case_get_chassis_sensors: PublishedMockCase = PublishedMockCase {
+  operation_key: "redfish.Http.GetChassisSensors",
+  service: "redfish.Http",
+  operation: "GetChassisSensors",
+  case_id: 0
+}
+
+data redfish_http_mock_case_get_power: PublishedMockCase = PublishedMockCase {
+  operation_key: "redfish.Http.GetPower",
+  service: "redfish.Http",
+  operation: "GetPower",
+  case_id: 0
+}
+
+data redfish_http_mock_case_get_thermal: PublishedMockCase = PublishedMockCase {
+  operation_key: "redfish.Http.GetThermal",
+  service: "redfish.Http",
+  operation: "GetThermal",
+  case_id: 0
+}
+
+data bmc_ipmi_tool_mock_case_sensor_list: PublishedMockCase = PublishedMockCase {
+  operation_key: "diagnostic.ipmi.Tool.SensorList",
+  service: "diagnostic.ipmi.Tool",
+  operation: "SensorList",
+  case_id: 0
+}
+
+data bmc_ipmi_tool_mock_case_sdr_list: PublishedMockCase = PublishedMockCase {
+  operation_key: "diagnostic.ipmi.Tool.SdrList",
+  service: "diagnostic.ipmi.Tool",
+  operation: "SdrList",
+  case_id: 0
+}
+
+data bmc_ipmi_tool_mock_case_sel_list: PublishedMockCase = PublishedMockCase {
+  operation_key: "diagnostic.ipmi.Tool.SelList",
+  service: "diagnostic.ipmi.Tool",
+  operation: "SelList",
+  case_id: 0
+}
+
+data bmc_published_mock_corpus: List<PublishedMockCase> = [
+  redfish_http_mock_case_get_system,
+  redfish_http_mock_case_get_system_with_netrc,
+  redfish_http_mock_case_get_chassis_sensors,
+  redfish_http_mock_case_get_power,
+  redfish_http_mock_case_get_thermal,
+  bmc_ipmi_tool_mock_case_sensor_list,
+  bmc_ipmi_tool_mock_case_sdr_list,
+  bmc_ipmi_tool_mock_case_sel_list,
+]

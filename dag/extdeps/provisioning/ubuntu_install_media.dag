@@ -1,4 +1,4 @@
-module extdeps.os.ubuntu_install_media
+module extdeps.provisioning.ubuntu_install_media
 
 import std.os.types { NobleNumbat2404Lts }
 import std.types { List, NonEmptyStr, Sha256, String }

@@ -1,4 +1,4 @@
-module extdeps.os.id
+module extdeps.tools.id
 
 import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.external_authority { ExternalAuthority }

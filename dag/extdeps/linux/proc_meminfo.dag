@@ -1,4 +1,4 @@
-module extdeps.os.proc_meminfo
+module extdeps.linux.proc_meminfo
 
 import std.types { NonEmptyStr }
 import std.types { List }

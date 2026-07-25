@@ -1,0 +1,37 @@
+module extdeps.ssh.mock_corpus
+
+
+data ssh_session_mock_case_exec: PublishedMockCase = PublishedMockCase {
+  operation_key: "ssh.Session.Exec",
+  service: "ssh.Session",
+  operation: "Exec",
+  case_id: 0
+}
+
+data ssh_session_mock_case_exec_script: PublishedMockCase = PublishedMockCase {
+  operation_key: "ssh.Session.ExecScript",
+  service: "ssh.Session",
+  operation: "ExecScript",
+  case_id: 0
+}
+
+data ssh_session_mock_case_exec_argv: PublishedMockCase = PublishedMockCase {
+  operation_key: "ssh.Session.ExecArgv",
+  service: "ssh.Session",
+  operation: "ExecArgv",
+  case_id: 0
+}
+
+data ssh_session_mock_case_reachability: PublishedMockCase = PublishedMockCase {
+  operation_key: "ssh.Session.Reachability",
+  service: "ssh.Session",
+  operation: "Reachability",
+  case_id: 0
+}
+
+data ssh_published_mock_corpus: List<PublishedMockCase> = [
+  ssh_session_mock_case_exec,
+  ssh_session_mock_case_exec_script,
+  ssh_session_mock_case_exec_argv,
+  ssh_session_mock_case_reachability,
+]

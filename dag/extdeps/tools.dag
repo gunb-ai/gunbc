@@ -5,7 +5,7 @@ import extdeps.uri { Uri, Https }
 
 import std.types { FilePath, NonEmptyStr }
 import extdeps.shell
-import extdeps.gnu_coreutils
+import extdeps.tools.gnu_coreutils
 import extdeps.rustup { rustup_install_url }
 import extdeps.brew   { brew_install_url }
 import extdeps.apt

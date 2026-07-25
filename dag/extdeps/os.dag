@@ -1,4 +1,4 @@
-module extdeps.os.os
+module extdeps.os
 
 import extdeps.os.macos { macos_distribution_catalog_row }
 import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }

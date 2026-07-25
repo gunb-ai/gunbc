@@ -1,4 +1,4 @@
-module extdeps.access.ssh
+module extdeps.ssh
 
 import std.types { NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority }

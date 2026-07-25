@@ -1,4 +1,4 @@
-module extdeps.gnu_coreutils
+module extdeps.tools.gnu_coreutils
 
 import std.types { NonEmptyStr, FilePath }
 import extdeps.version { VersionConstraint }
@@ -15,7 +15,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data grep_recursive_quiet_flags: NonEmptyStr = "-rqE"
 data grep_recursive_numbered_flags: NonEmptyStr = "-rnE"
 
-data gnu_coreutils_diff_flags_dissolve_on: String = "dissolve-on: gnu_coreutils.diff_recursive_flags — deleted fork of diff argv literals; sole authority is extdeps.diffutils shell.Diff.Recursive transport (diff -r \{left\} \{right\})."
+data gnu_coreutils_diff_flags_dissolve_on: String = "dissolve-on: gnu_coreutils.diff_recursive_flags — deleted fork of diff argv literals; sole authority is extdeps.tools.diffutils shell.Diff.Recursive transport (diff -r \{left\} \{right\})."
 
 data rm_force_recursive_flags: NonEmptyStr = "-rf"
 

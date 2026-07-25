@@ -1,5 +1,38 @@
 module v2.test.lens_mock_totality.diagnostic_mock_totality
 
+import extdeps.ssh.mock_corpus {
+  ssh_session_mock_case_exec,
+  ssh_session_mock_case_exec_script,
+  ssh_session_mock_case_exec_argv,
+  ssh_session_mock_case_reachability,
+}
+import extdeps.linux.mock_corpus { linux_edac_rasmcctl_mock_case_correctable_counts }
+import extdeps.bmc.mock_corpus {
+  redfish_http_mock_case_get_system,
+  redfish_http_mock_case_get_system_with_netrc,
+  redfish_http_mock_case_get_chassis_sensors,
+  redfish_http_mock_case_get_power,
+  redfish_http_mock_case_get_thermal,
+  bmc_ipmi_tool_mock_case_sensor_list,
+  bmc_ipmi_tool_mock_case_sdr_list,
+  bmc_ipmi_tool_mock_case_sel_list,
+}
+
+data diagnostic_published_mock_corpus: List<PublishedMockCase> = [
+  ssh_session_mock_case_exec,
+  ssh_session_mock_case_exec_script,
+  ssh_session_mock_case_exec_argv,
+  ssh_session_mock_case_reachability,
+  redfish_http_mock_case_get_system,
+  redfish_http_mock_case_get_system_with_netrc,
+  redfish_http_mock_case_get_chassis_sensors,
+  redfish_http_mock_case_get_power,
+  redfish_http_mock_case_get_thermal,
+  linux_edac_rasmcctl_mock_case_correctable_counts,
+  bmc_ipmi_tool_mock_case_sensor_list,
+  bmc_ipmi_tool_mock_case_sdr_list,
+  bmc_ipmi_tool_mock_case_sel_list,
+]
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
