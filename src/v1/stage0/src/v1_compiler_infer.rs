@@ -17756,6 +17756,15 @@ pub struct ExportIndexModuleAccum {
     pub seen_names: Rc<BTreeSet<String>>,
 }
 
+pub fn export_index_canonical_is_the_fold_element_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "§6 bare-minimum cost, same receipt as module_exported_type_names_cost_note. export_index_merge_module's canonical binding was `filter(bindings |> map_values, b => b.name == name) |> first` — a rescan of the WHOLE binding map (with a fresh Vec allocation) once per distinct name, i.e. O(|bindings|^2) per module per closure assembly. It is dead work by construction: the enclosing fold walks THAT SAME map_values sequence in order, and seen_names skips every repeat, so the first element whose name matches is always the fold's own current element. `canonical = binding` is therefore the identical value, not an approximation of it — the order both expressions read is one traversal of one map value, so the equality does not depend on map_values being stable ACROSS runs (§5941 determinism), only on the two reads of the same value agreeing, which the rewrite removes the need for entirely.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn export_index_merge_module(
     acc: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
     m: Rc<TypedModule>,
@@ -17774,25 +17783,7 @@ pub fn export_index_merge_module(
                     state.clone()
                 } else {
                     {
-                        let canonical = match Rc::new({
-                            let mut __result = Vec::new();
-                            for b in
-                                Rc::new(v1_rt::map_values(&m.type_env.clone().bindings.clone()))
-                                    .iter()
-                                    .cloned()
-                            {
-                                if (b.name.clone() == name.clone()) {
-                                    __result.push(b);
-                                }
-                            }
-                            __result
-                        })
-                        .first()
-                        .cloned()
-                        {
-                            Some(b) => b.clone(),
-                            None => binding.clone(),
-                        };
+                        let canonical = binding.clone();
                         let seen_names =
                             v1_rt::rc_set_insert(state.seen_names.clone(), name.clone());
                         let index = match v1_rt::map_get(&state.index.clone(), name.clone()) {
