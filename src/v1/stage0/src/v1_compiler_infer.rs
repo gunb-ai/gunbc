@@ -4339,15 +4339,7 @@ match bare_s.clone() {
                                                                     node: ret,
                                                                     ..
                                                                 }) => ret.clone(),
-                                                                other => {
-                                                                    if std::env::var("GUNBC_DEBUG_CASCADE").is_ok() {
-                                                                        eprintln!(
-                                                                            "[CASCADE-CALLABLE-LOCAL] func_name={:?} span={}:{}-{} callable_type.inferred={:?}",
-                                                                            func_name, span.file, span.start, span.end, other
-                                                                        );
-                                                                    }
-                                                                    error_type()
-                                                                }
+                                                                other => error_type(),
                                                             };
                                                             Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
