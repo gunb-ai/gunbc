@@ -388,6 +388,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: excl_substrate_long_lane_dissolve
   },
   WitnessExclusionRow {
+    pattern: "long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
+    classification: FalsifierSubstrateLongLane,
+    reason: excl_substrate_long_lane_reason,
+    dissolve_on: excl_substrate_long_lane_dissolve
+  },
+  WitnessExclusionRow {
     pattern: "synthetic_orphan_admission_witness_test.dag",
     classification: NoConsumer,
     reason: "deliberate no-consumer synthetic path: the admission RED control keys on this reserved (nonexistent) entry to prove enrolled-with-zero-consumers refuses (witness_admission_test, cli_run admission tests)",
