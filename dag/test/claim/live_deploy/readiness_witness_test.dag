@@ -28,7 +28,7 @@ import gunbc.host_effect {
   LocalShell,
   SshShell,
 }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String, List }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.realization_reconcile {
@@ -38,7 +38,12 @@ import std.realization_reconcile {
   Grounds,
   ReadObserved,
 }
-import std.measure { measure_fit_count_floor }
+import std.measure { measure_fit_count_floor, second_count }
+import extdeps.http.client { http_client_get_argv }
+import extdeps.tools.curl {
+  curl_localhost_connect_timeout,
+  curl_localhost_max_time,
+}
 import extdeps.tools.sleep {
   sleep_delay_seconds_flat_scalar_dissolution_trigger,
   sleep_delay_seconds_second_carrier_projection,
@@ -79,10 +84,25 @@ fn witness_ssh_mock_stdout_is_discriminating_red() -> Bool {
     }
 }
 
+fn witness_argv_join(argv: List<String>) -> String {
+  fold_list(
+    xs: argv,
+    empty: "",
+    cons: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
+  )
+}
+
 fn witness_transport_probe_targets_localhost_healthz() -> Bool {
   let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
   let url = live_deploy_health_url_for_port(port: port)
-  string_contains(s: url as String, pattern: "127.0.0.1:")
+  let argv = http_client_get_argv(url: url)
+  let surface = witness_argv_join(argv: argv)
+  string_contains(s: surface, pattern: "curl")
+    && string_contains(s: surface, pattern: "--connect-timeout")
+    && string_contains(s: surface, pattern: to_string(second_count(s: curl_localhost_connect_timeout)))
+    && string_contains(s: surface, pattern: "--max-time")
+    && string_contains(s: surface, pattern: to_string(second_count(s: curl_localhost_max_time)))
+    && string_contains(s: url as String, pattern: "127.0.0.1:")
     && string_contains(s: url as String, pattern: "/healthz")
 }
 

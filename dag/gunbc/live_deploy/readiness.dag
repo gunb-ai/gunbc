@@ -40,6 +40,7 @@ import gunbc.live_deploy.spec {
 import gunbc.ci_deploy_access {
   DeployAccess,
   ci_deploy_srv1_access,
+  deploy_access_decision_reason,
 }
 import gunbc.host_effect {
   ShellCommand,
@@ -54,7 +55,8 @@ import gunbc.host_effect {
   SshShell,
   EmitArtifactThenThinRun,
 }
-import gunbc.host_effect_realize { host_effect_apply_gated }
+import gunbc.host_effect_realize { host_effect_apply_gated, host_effect_privilege_verdict }
+import std.access { Deny, Permit }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
   typed_argv_shell_safe_refusal_argv,
@@ -95,7 +97,7 @@ fn healthz_effective_read_from_get(success: Bool, body: String, error: String) -
 
 fn live_deploy_healthz_get_local(port: Int) -> HealthzEffectiveRead {
   let url = live_deploy_health_url_for_port(port: port)
-  let got = http.Client.Get(url: url)
+  let got = http.Client.GetLocalhostBounded(url: url)
   healthz_effective_read_from_get(
     success: got.success,
     body: got.body,
@@ -155,12 +157,22 @@ fn show_healthz_read_for_deploy(
   transport: HostEffectTransport,
   access: DeployAccess,
 ) -> ShowEffectiveRead<HealthzEffectiveRead> {
-  let _ = access
-  ReadObserved {
-    value: live_deploy_healthz_get_for_port(
-      port: deployment_plan_listen_port(spec: spec),
-      transport: transport,
-    )
+  let verdict = host_effect_privilege_verdict(access: access, fixture_actor: Absent)
+  match verdict {
+    Deny { reason: _ } =>
+      ReadObserved {
+        value: HealthzEffectiveRead {
+          body: "",
+          probe_error: deploy_access_decision_reason(d: verdict),
+        }
+      }
+    Permit =>
+      ReadObserved {
+        value: live_deploy_healthz_get_for_port(
+          port: deployment_plan_listen_port(spec: spec),
+          transport: transport,
+        )
+      }
   }
 }
 
