@@ -548,9 +548,12 @@ fn rust_witness_type_arg_from_holds_value_field(fields: List<Node>, shared_types
 }
 
 fn rust_witness_type_arg_from_fn_return(emit_info: EmitGraphInfo, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String? {
-  if !emit_info.fn_return_type_present { return none }
-  let peeled = rust_peel_one_rc_type_node(type_node: emit_info.fn_return_type, source_indices: source_indices)
-  rust_witness_type_arg_render(type_node: peeled, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+  match emit_info.fn_return_type {
+    Present { value: rt } =>
+      let peeled = rust_peel_one_rc_type_node(type_node: rt, source_indices: source_indices)
+      rust_witness_type_arg_render(type_node: peeled, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+    Absent => none
+  }
 }
 
 fn rust_witness_type_arg_for_variant(variant_name: String, resolved_type: Node, fields: List<Node>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
@@ -2069,8 +2072,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     corpus_repr: base_info.corpus_repr,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
-    fn_return_type: error_type,
-    fn_return_type_present: false
+    fn_return_type: none
   }
   let shared_types = emit_info.shared_types
   let registry = typed.item_registry
@@ -2223,8 +2225,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     corpus_repr: base_info.corpus_repr,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
-    fn_return_type: error_type,
-    fn_return_type_present: false
+    fn_return_type: none
   }
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
@@ -4532,8 +4533,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       corpus_repr: emit_info.corpus_repr,
       fn_generic_param_names: emit_info.fn_generic_param_names,
       fn_type_env: emit_info.fn_type_env,
-      fn_return_type: emit_info.fn_return_type,
-      fn_return_type_present: emit_info.fn_return_type_present
+      fn_return_type: emit_info.fn_return_type
     }
 
     let is_effectful = match lookup_item(registry: registry, name: authored_name(env: env, node: item)) {
@@ -5177,7 +5177,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let generic_param_names = type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
   let body_emit_info = emit_info_with_fn_return(
     emit_info: emit_info_with_fn_type_context(emit_info: emit_info, generic_param_names: generic_param_names, env: scope.type_env),
-    fn_return_type: inferred
+    fn_return_type: Present { value: inferred }
   )
   let value_param_names = value_params |> map(p => p.name)
   let ret_name = authored_name_at(source_indices: si, node: inferred)
@@ -7192,8 +7192,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               corpus_repr: emit_info.corpus_repr,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
-              fn_return_type: emit_info.fn_return_type,
-              fn_return_type_present: emit_info.fn_return_type_present
+              fn_return_type: emit_info.fn_return_type
             }
           Absent => emit_info
         }
@@ -7221,8 +7220,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               corpus_repr: emit_info.corpus_repr,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
-              fn_return_type: emit_info.fn_return_type,
-              fn_return_type_present: emit_info.fn_return_type_present
+              fn_return_type: emit_info.fn_return_type
             }
           Absent => emit_info
         }

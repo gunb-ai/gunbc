@@ -11,7 +11,6 @@ import v1.std.core {
   Connective, Conj, NoConnective, Arrow,
   CardOptional,
   param_node_name_at,
-  error_type
 }
 import v1.compiler.infer_env { TypeEnv, empty_symbol_index, empty_type_env }
 import v1.compiler.infer_types {
@@ -93,8 +92,7 @@ type EmitGraphInfo {
 
   fn_generic_param_names: List<String>
   fn_type_env: TypeEnv
-  fn_return_type: Node
-  fn_return_type_present: Bool
+  fn_return_type: Node?
 }
 
 type EmitInfoBuildState {
@@ -122,8 +120,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     corpus_repr: FaithfulFreeMonoid,
     fn_generic_param_names: [],
     fn_type_env: empty_type_env(),
-    fn_return_type: error_type,
-    fn_return_type_present: false
+    fn_return_type: none
   }
 }
 
@@ -144,12 +141,11 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     corpus_repr: emit_info.corpus_repr,
     fn_generic_param_names: generic_param_names,
     fn_type_env: env,
-    fn_return_type: emit_info.fn_return_type,
-    fn_return_type_present: emit_info.fn_return_type_present
+    fn_return_type: emit_info.fn_return_type
   }
 }
 
-fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node) -> EmitGraphInfo {
+fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
@@ -166,8 +162,7 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node) -> E
     corpus_repr: emit_info.corpus_repr,
     fn_generic_param_names: emit_info.fn_generic_param_names,
     fn_type_env: emit_info.fn_type_env,
-    fn_return_type: fn_return_type,
-    fn_return_type_present: true
+    fn_return_type: fn_return_type
   }
 }
 
