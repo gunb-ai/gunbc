@@ -180,7 +180,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "release bin name (cross-job artifact manifest entry)",
     membership: DeclaredFrontier {
       reason: "the single cross-job handoff manifest for the build->ci job split. Its FAN-OUT is already derived and needs no migration: ci_release_build_line folds it into --bin flags, ci_floor_build_verify_script maps it to verify paths, and ci_release_bins_pack_script folds it into the pack list, so the multiple --bin spellings visible in .github/workflows/ci.yml are one authority rendered by the drift-gated emit, NOT synchronized copies (traced 2026-07-25: PR #7199's authority-side diff is one line, +resolution_divergence_census). What stays hand-kept is MEMBERSHIP, which the carrier's own ci_floor_required_artifact_names_note admits is the floor-invoked bins plus the FULL bin_name universe of tools.host_prelude transports that corpus witnesses can address — a set the witness declarations already carry, so a witness addressing a newly-named bin needs a hand roster edit and a miss re-absorbs the cold monolith build the job split exists to bound",
-      dissolve_on: "membership derives from witness-declared bin needs, so a bin any witness can address is enrolled by construction and an unenrolled one is a typed refusal rather than an in-run cargo build (#7216 diagnosis 2); then the literal list and this row delete"
+      dissolve_on: ""
     }
   },
   RosterRegistration {
