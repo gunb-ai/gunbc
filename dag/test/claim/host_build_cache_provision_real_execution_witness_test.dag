@@ -2,7 +2,7 @@ module test.claim.host_build_cache_provision_real_execution
 
 import std.logic { Bool }
 import extdeps.shell
-import extdeps.shell.exec { transport_script_from_body }
+import gunbc.retained_shell_script { retained_runtime }
 import extdeps.filesystem.filesystem_io
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.host_build_cache_provision_script { build_cache_read_back_body }
@@ -21,7 +21,7 @@ test fn provision_read_back_failure_not_converged_by_real_execution() -> Bool {
   let dir = shell.Mktemp.Dir()
   let fake_sccache_path = concat(dir.path as String, "/sccache")
   let wrote = Filesystem.Write(path: fake_sccache_path, content: "#!/bin/sh\nexit 1\n")
-  let chmod = shell.Exec.Run(script: transport_script_from_body(body: concat("chmod +x ", fake_sccache_path)))
+  let chmod = shell.Exec.Run(script: retained_runtime(body: concat("chmod +x ", fake_sccache_path), reason: "build-cache provision witness chmod +x fake sccache stub"))
   let body = concat(
     "set -euo pipefail\n",
     concat(
@@ -30,7 +30,7 @@ test fn provision_read_back_failure_not_converged_by_real_execution() -> Bool {
     ),
   )
   let script = shell_exec_via_bash(body: body)
-  let result = shell.Exec.Run(script: transport_script_from_body(body: script))
+  let result = shell.Exec.Run(script: retained_runtime(body: script, reason: "build-cache provision witness read-back body under fake failing sccache"))
   let observed = ShellExecObserved {
     exit_code: result.exit_code,
     success: result.success,

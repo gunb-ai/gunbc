@@ -1,0 +1,88 @@
+module v2.test.host_language_transport_script.corpus.wall_residue_live
+
+
+data wall_residue_live_note: String = "§5.E wall activation (operator ruling 2026-07-24): the previously-inert host_language_transport_script lens is wired as a per-PR live consumer over the shell.Exec.Run anchor sites that route host/foreign shell bodies through the RetainedShellScript record wall + the retained_* counted bridges. Each site must carry ZERO literal-blob transport-script positions: after the wall every script body is either a RetainedShellScript row or a retained_foreign/retained_runtime/retained_transport call (ComputedApplication, deliberately green — the counted, reviewed path), never a bare/let/interp literal typed directly at Exec.Run. A NEW raw literal at any enrolled Run position reds this witness. Disposition is ReadsLiveTree: the lens re-reads module source text by path (parse_module_items_for_transport_script), reaching outside a root lens's hermetic compiled-tree input, so it is stamped live and never predict-skips per the CI floor's host/live-tree rule."
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data wall_residue_roster_note: String = "The roster is the non-test corpus set of shell.Exec.Run anchor sites carrying host/foreign shell bodies (the residue the wall governs). A new file with an Exec.Run script position must be added here — an unenrolled Run site is a counted review gap, not silent coverage. The already-covered dag/tools/*_transport.dag + src/v2/workflow/*_transport.dag emit carve-outs stay in the sibling migrated_transports_clean witness."
+
+test fn residue_host_effect_realize_clean() -> Bool {
+  transport_script_live_literal_violation_count_for_path(
+    path: "dag/gunbc/host_effect_realize.dag"
+  ) == 0
+}
+
+test fn residue_host_converge_slice1_clean() -> Bool {
+  transport_script_live_literal_violation_count_for_path(
+    path: "dag/gunbc/host_converge_slice1.dag"
+  ) == 0
+}
+
+test fn residue_host_identity_adopt_clean() -> Bool {
+  transport_script_live_literal_violation_count_for_path(
+    path: "dag/gunbc/host_identity_adopt.dag"
+  ) == 0
+}
+
+test fn residue_host_identity_assimilation_clean() -> Bool {
+  transport_script_live_literal_violation_count_for_path(
+    path: "dag/gunbc/host_identity_assimilation.dag"
+  ) == 0
+}
+
+test fn residue_host_runner_memory_cap_verify_clean() -> Bool {
+  transport_script_live_literal_violation_count_for_path(
+    path: "dag/gunbc/host_runner_memory_cap_verify.dag"
+  ) == 0
+}
+
+test fn residue_srv3_install_diagnostic_checklist_clean() -> Bool {
+  transport_script_live_literal_violation_count_for_path(
+    path: "dag/gunbc/srv3_install_diagnostic_checklist.dag"
+  ) == 0
+}
+
+test fn residue_command_runner_clean() -> Bool {
+  transport_script_live_literal_violation_count_for_path(
+    path: "dag/gunbc/command_runner.dag"
+  ) == 0
+}
+
+test fn residue_tools_review_clean() -> Bool {
+  transport_script_live_literal_violation_count_for_path(
+    path: "dag/gunbc/tools/review.dag"
+  ) == 0
+}
+
+test fn residue_emit_host_gate_clean() -> Bool {
+  transport_script_live_literal_violation_count_for_path(
+    path: "dag/tools/emit_host_gate.dag"
+  ) == 0
+}
+
+test fn residue_gunbc_ci_clean() -> Bool {
+  transport_script_live_literal_violation_count_for_path(
+    path: "dag/tools/gunbc_ci.dag"
+  ) == 0
+}
+
+test fn residue_host_prelude_clean() -> Bool {
+  transport_script_live_literal_violation_count_for_path(
+    path: "dag/tools/host_prelude.dag"
+  ) == 0
+}
+
+test fn residue_merge_admission_stamp_clean() -> Bool {
+  transport_script_live_literal_violation_count_for_path(
+    path: "dag/tools/merge_admission_stamp.dag"
+  ) == 0
+}
+
+data red_control_note: String = "RED control: the planted bare-literal fixture MUST flag > 0 so a green residue roster is never vacuously green — it proves the live scan actually detects a raw literal at an Exec.Run position. If this goes to 0 the scanner has gone blind and every clean-holds above is meaningless."
+
+test fn red_control_planted_bare_literal_flags() -> Bool {
+  transport_script_live_literal_violation_count_for_path(
+    path: "src/v2/test/fixture/transport_script_scan/bare_string_literal/plant.dag"
+  ) > 0
+}
