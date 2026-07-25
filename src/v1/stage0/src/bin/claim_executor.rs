@@ -3145,6 +3145,9 @@ fn run() -> Result<ExitCode, ExitCode> {
     // report an identically-shaped line. Runtime-harmless read-only.
     emit_cgroup_measurement("floor adaptive-width");
     v1_compiler::v1_interpreter::group_end();
+    if outcome.any_failed {
+        emit_falsifier_failure_class(&outcome.failure_details);
+    }
     floor_terminal_fast_exit(walk_exit_code(outcome.any_failed))
 }
 

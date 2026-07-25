@@ -9533,11 +9533,13 @@ fn install_effect_stream_policy(ctx: &v1_interpreter::InterpContext, verbose: bo
     // otherwise be silently defaulted, which is the fabricated-plausible-output the
     // funnel exists to avoid. Leave the policy uninstalled instead — the documented
     // fallback table is honest about being a fallback.
-    let (Some(ess), Some(esf), Some(efs), Some(eff)) = (
+    let (Some(ess), Some(esf), Some(efs), Some(eff), Some(ods), Some(odf)) = (
         disposition("expect_success_observed_success"),
         disposition("expect_success_observed_failure"),
         disposition("expect_failure_observed_success"),
         disposition("expect_failure_observed_failure"),
+        disposition("outcome_is_data_observed_success"),
+        disposition("outcome_is_data_observed_failure"),
     ) else {
         return;
     };
@@ -9545,7 +9547,7 @@ fn install_effect_stream_policy(ctx: &v1_interpreter::InterpContext, verbose: bo
         return;
     };
     v1_interpreter::set_effect_stream_policy(InstalledEffectStreamPolicy {
-        dispositions: [ess, esf, efs, eff],
+        dispositions: [ess, esf, efs, eff, ods, odf],
         subject_line_guard: guard.to_string(),
     });
 }

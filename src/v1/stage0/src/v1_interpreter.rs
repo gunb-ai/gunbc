@@ -5769,6 +5769,13 @@ pub fn output_decision(channel: OutputChannel) -> OutputDecision {
 pub enum ExpectedOutcome {
     ExpectSuccess,
     ExpectFailure,
+    /// The exit code is an OBSERVATION consumed by a typed downstream verdict, not a
+    /// pass/fail judgment of its own — a probe whose non-zero exit means "subject
+    /// absent" rather than "something broke". Renders ambient regardless of code;
+    /// only dispatch failure (the probe could not run) stays anomalous. Admissible
+    /// ONLY where the annotated helper returns a typed observation or verdict, never
+    /// unit — see `gunbc.output_policy` outcome_is_data_note for the guard.
+    OutcomeIsData,
 }
 
 /// The reserved call-site argument through which a caller DECLARES what it expects
@@ -5807,9 +5814,10 @@ fn expectation_from_declared_arg(val: &Value) -> InterpResult<ExpectedOutcome> {
         Value::Variant { variant_name, .. } => match resolve_sym(*variant_name).as_str() {
             "ExpectSuccess" => Ok(ExpectedOutcome::ExpectSuccess),
             "ExpectFailure" => Ok(ExpectedOutcome::ExpectFailure),
+            "OutcomeIsData" => Ok(ExpectedOutcome::OutcomeIsData),
             other => Err(InterpError::TypeError {
                 msg: format!(
-                    "`{EFFECT_EXPECTATION_ARG}:` must be an ExpectedOutcome (ExpectSuccess | ExpectFailure), got variant `{other}`"
+                    "`{EFFECT_EXPECTATION_ARG}:` must be an ExpectedOutcome (ExpectSuccess | ExpectFailure | OutcomeIsData), got variant `{other}`"
                 ),
             }),
         },
@@ -5839,7 +5847,7 @@ pub enum StreamDisposition {
 #[derive(Clone)]
 pub struct InstalledEffectStreamPolicy {
     /// Indexed by `stream_policy_index(expected, observed_success)`.
-    pub dispositions: [StreamDisposition; 4],
+    pub dispositions: [StreamDisposition; 6],
     pub subject_line_guard: String,
 }
 
@@ -5852,11 +5860,14 @@ static EFFECT_STREAM_POLICY: std::sync::OnceLock<InstalledEffectStreamPolicy> =
 /// zero", exactly what this file did before the expectation axis existed.
 /// `effect_stream_policy_mirror_matches_dag_authority` pins it to the same golden
 /// the `.dag` witness asserts, so the two cannot drift silently.
-const EFFECT_STREAM_POLICY_FALLBACK: [StreamDisposition; 4] = [
+const EFFECT_STREAM_POLICY_FALLBACK: [StreamDisposition; 6] = [
     StreamDisposition::SummarizeCounts, // ExpectSuccess × observed success
     StreamDisposition::SurfaceContent,  // ExpectSuccess × observed failure
     StreamDisposition::SurfaceContent,  // ExpectFailure × observed success
     StreamDisposition::SummarizeCounts, // ExpectFailure × observed failure
+    StreamDisposition::SummarizeCounts, // OutcomeIsData × observed success
+    StreamDisposition::SummarizeCounts, // OutcomeIsData × observed failure — the exit is
+                                        // an answer, so neither pole is an anomaly
 ];
 
 /// Mirror of `extdeps.github.log_annotations.subject_text_line_guard`, used when no
@@ -5869,6 +5880,8 @@ fn stream_policy_index(expected: ExpectedOutcome, observed_success: bool) -> usi
         (ExpectedOutcome::ExpectSuccess, false) => 1,
         (ExpectedOutcome::ExpectFailure, true) => 2,
         (ExpectedOutcome::ExpectFailure, false) => 3,
+        (ExpectedOutcome::OutcomeIsData, true) => 4,
+        (ExpectedOutcome::OutcomeIsData, false) => 5,
     }
 }
 
@@ -10611,7 +10624,7 @@ mod shell_completion_trace_tests {
 
     #[test]
     fn effect_stream_policy_mirror_matches_dag_authority() {
-        // Mirror pin for the uninstalled fallback: these are the four corners the
+        // Mirror pin for the uninstalled fallback: these are the six corners the
         // .dag witness `w_shell_trace_stream_policy_projects_the_four_corners`
         // asserts at Normal verbosity, and the guard literal
         // `extdeps.github.log_annotations.subject_text_line_guard` publishes. If the
@@ -10623,6 +10636,9 @@ mod shell_completion_trace_tests {
                 StreamDisposition::SummarizeCounts,
                 StreamDisposition::SurfaceContent,
                 StreamDisposition::SurfaceContent,
+                StreamDisposition::SummarizeCounts,
+                // OutcomeIsData: neither pole is an anomaly — the exit is an answer.
+                StreamDisposition::SummarizeCounts,
                 StreamDisposition::SummarizeCounts,
             ]
         );

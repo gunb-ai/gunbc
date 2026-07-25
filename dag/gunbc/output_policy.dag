@@ -104,7 +104,9 @@ fn is_condensed(channel: OutputChannel, verbosity: Verbosity) -> Bool {
 
 data effect_expectation_note: String = "channel_decision above answers how loud a CHANNEL is. It cannot answer whether a given effect's captured streams are worth surfacing, because that needs a fact it was never given: what the caller EXPECTED. Before this row 'failure' was hand-coded downstream as exit != 0 — an untyped proxy that silently assumes every effect expects success (the empty set). Naming the expectation makes the rule one line: DIVERGENCE SURFACES, AGREEMENT COUNTS, where failure means observed differs from declared-expected at the grain that declared it. That closes two leaks in one dispatch. The noisy one: a red-control child failing exactly as declared is AGREEMENT, so its stderr is counted, not replayed — and a subject stderr carrying '::error::' stops minting annotations in the parent run. The silent one, which nobody has hit yet and which is the real payoff: a red control that SUCCEEDS (the wall failing to fire) is divergence, and today logs nothing at all — the single most diagnosis-worthy event in the system is currently the quietest. There is deliberately no ExpectAny arm: an effect whose expectation is unknown would make every observation agree, restoring the empty set (DESIGN 5 — a failure arm must refuse, never widen)."
 
-type ExpectedOutcome = ExpectSuccess | ExpectFailure
+data outcome_is_data_note: String = "OutcomeIsData is the third arm (operator ruling 2026-07-25), and it exists because ExpectSuccess|ExpectFailure mis-models a whole class of site: a PROBE whose exit code is an ANSWER, not a verdict. `test -x` returning 1 means 'subject absent' — ambient in BOTH contexts, because production's ensure-bins responds by building and a witness's discriminating arm responds by asserting. The effect layer's anomaly glyph there is a second, cruder judgment of an event whose real adjudicator is typed logic downstream, so the honest disposition is: render ambient regardless of exit; only DISPATCH failure (the probe itself could not run) is anomalous. That distinction — subject-absent versus probe-broken — is the DaemonUnsupervised lesson applied to exit codes. Loudness does not disappear under this arm, it MOVES to the layer holding the context, which is this model's whole thesis. It is annotatable on a shared helper's own call node, once, correct for every caller — which is why it dissolves the apparent trilemma between threading a test concern through production signatures and an ambient frame that can be left open. ADMISSIBILITY GUARD (§5, what stops this becoming a silence-anything sticker): OutcomeIsData is admissible ONLY where the exit provably feeds a typed consumer — the annotated helper returns a typed observation or verdict, never unit. Both clusters it was ruled for qualify today: witness_bin_artifact_readiness returns its WitnessBinReadiness arms, and belt_actuate_spawn_member's exit feeds the belt's per-variant status mapping. The guard is checkable, so it belongs in the wiring test and eventually a lens; until that lands it is a REVIEW obligation, not a mechanical one, and this note is where the criterion is written down."
+
+type ExpectedOutcome = ExpectSuccess | ExpectFailure | OutcomeIsData
 
 type ObservedOutcome = ObservedSuccess | ObservedFailure { exit: Int }
 
@@ -128,6 +130,10 @@ fn outcome_diverges(expected: ExpectedOutcome, observed: ObservedOutcome) -> Boo
     }
     ExpectFailure => match observed {
       ObservedSuccess => true
+      ObservedFailure { exit: exit } => false
+    }
+    OutcomeIsData => match observed {
+      ObservedSuccess => false
       ObservedFailure { exit: exit } => false
     }
   }
@@ -173,6 +179,8 @@ type EffectStreamPolicy {
   expect_success_observed_failure: StreamDisposition
   expect_failure_observed_success: StreamDisposition
   expect_failure_observed_failure: StreamDisposition
+  outcome_is_data_observed_success: StreamDisposition
+  outcome_is_data_observed_failure: StreamDisposition
   subject_line_guard: String
 }
 
@@ -193,6 +201,14 @@ fn shell_trace_stream_policy(verbosity: Verbosity) -> EffectStreamPolicy {
     expect_failure_observed_failure: effect_stream_disposition(
       channel: ShellTrace, verbosity: verbosity,
       expected: ExpectFailure, observed: observed_outcome_from_exit(exit: 1)
+    )
+    outcome_is_data_observed_success: effect_stream_disposition(
+      channel: ShellTrace, verbosity: verbosity,
+      expected: OutcomeIsData, observed: ObservedSuccess
+    )
+    outcome_is_data_observed_failure: effect_stream_disposition(
+      channel: ShellTrace, verbosity: verbosity,
+      expected: OutcomeIsData, observed: observed_outcome_from_exit(exit: 1)
     )
     subject_line_guard: subject_text_line_guard
   }

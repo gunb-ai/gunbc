@@ -173,7 +173,23 @@ fn w_shell_trace_stream_policy_projects_the_four_corners() -> Bool {
   disp_is(d: p.expect_success_observed_failure, surface: true, counts: false, suppressed: false) &&
   disp_is(d: p.expect_failure_observed_success, surface: true, counts: false, suppressed: false) &&
   disp_is(d: p.expect_failure_observed_failure, surface: false, counts: true, suppressed: false) &&
+  disp_is(d: p.outcome_is_data_observed_success, surface: false, counts: true, suppressed: false) &&
+  disp_is(d: p.outcome_is_data_observed_failure, surface: false, counts: true, suppressed: false) &&
   p.subject_line_guard == "| "
+}
+
+data outcome_is_data_discrimination_note: String = "The two OutcomeIsData corners above both assert counts-not-surface, which on its own is the shape a rubber stamp would also have — so it is NOT the discriminating claim. The claim that discriminates is w_outcome_is_data_is_exit_invariant below: under ExpectSuccess and ExpectFailure the disposition FLIPS between the two observed poles, and under OutcomeIsData it must NOT, because the exit is an answer rather than a verdict. An implementation that quietly treated OutcomeIsData as an alias for ExpectSuccess would pass the corner assertions and fail this one."
+
+fn disp_surfaces(d: StreamDisposition) -> Bool {
+  disp_is(d: d, surface: true, counts: false, suppressed: false)
+}
+
+fn w_outcome_is_data_is_exit_invariant() -> Bool {
+  let p = resolve_shell_trace_stream_policy(verbose: false, quiet: false)
+  let es_flips = disp_surfaces(d: p.expect_success_observed_failure) && !disp_surfaces(d: p.expect_success_observed_success)
+  let ef_flips = disp_surfaces(d: p.expect_failure_observed_success) && !disp_surfaces(d: p.expect_failure_observed_failure)
+  let oid_still = disp_surfaces(d: p.outcome_is_data_observed_success) == disp_surfaces(d: p.outcome_is_data_observed_failure)
+  es_flips && ef_flips && oid_still
 }
 
 test fn output_policy_effect_stream_witnesses() -> Bool {
@@ -185,7 +201,8 @@ test fn output_policy_effect_stream_witnesses() -> Bool {
   w_quiet_ambient_silent_but_divergence_still_surfaces() &&
   w_effect_stream_disposition_is_exit_invariant() &&
   w_expectation_axis_is_load_bearing_red_control() &&
-  w_shell_trace_stream_policy_projects_the_four_corners()
+  w_shell_trace_stream_policy_projects_the_four_corners() &&
+  w_outcome_is_data_is_exit_invariant()
 }
 
 test fn output_policy_witnesses() -> Bool {
