@@ -2551,6 +2551,15 @@ fn match_pattern(
             parent_enum,
             field_bindings,
         } => {
+            // A qualified pattern spelling (`module.Variant`) resolves the arm name to its
+            // containment path, but values are constructed with the bare last segment
+            // (see the short-name normalization at value construction). Every name-vs-literal
+            // reconciliation below — the native Int/Str/List coproducts and the Optional/
+            // Witness raw (value-or-Null) unwraps — must compare that short segment, mirroring
+            // the `Value::Variant` arm's fallback; otherwise a qualified `Zero`/`Succ` (Nat
+            // grounded to native Int), `Empty`/`Cons`, or `Present`/`Absent` pattern misses
+            // its native value and the match falls through non-exhaustive.
+            let name_last = name.rsplit('.').next().unwrap_or(name);
             // Kernel-optional / witness raw representation (value-or-Null):
             // the `_ if Present+Optional` / `_ if Holds+Witness` unwrap arms
             // below the kind-specific arms were UNREACHABLE for Record/List/
@@ -2561,7 +2570,7 @@ fn match_pattern(
             // located via the interpreted-parse suite reds). Hoisted here
             // verbatim; Variant payloads are excluded so the Variant arm's
             // inline raw-value handling stays authoritative.
-            if name == "Present"
+            if name_last == "Present"
                 && parent_enum.as_deref() == Some("Optional")
                 && !matches!(value, Value::Null)
                 && !matches!(value, Value::Variant { .. })
@@ -2574,7 +2583,7 @@ fn match_pattern(
                 }
                 return Some(bindings);
             }
-            if name == "Holds"
+            if name_last == "Holds"
                 && parent_enum.as_deref() == Some("Witness")
                 && !matches!(value, Value::Null)
                 && !matches!(value, Value::Variant { .. })
@@ -2593,7 +2602,7 @@ fn match_pattern(
                     fields,
                     ..
                 } => {
-                    if name == "Holds"
+                    if name_last == "Holds"
                         && parent_enum.as_deref() == Some("Witness")
                         && *variant_name != ctx.sym("Holds")
                         && *variant_name != ctx.sym("Violates")
@@ -2606,7 +2615,7 @@ fn match_pattern(
                         }
                         return Some(bindings);
                     }
-                    if name == "Present"
+                    if name_last == "Present"
                         && parent_enum.as_deref() == Some("Optional")
                         && *variant_name != ctx.sym("Present")
                         && *variant_name != ctx.sym("Absent")
@@ -2658,7 +2667,7 @@ fn match_pattern(
                     }
                     Some(bindings)
                 }
-                Value::List(items) => match name.as_str() {
+                Value::List(items) => match name_last {
                     "Empty" => {
                         if items.is_empty() {
                             Some(HashMap::new())
@@ -2694,7 +2703,7 @@ fn match_pattern(
                     }
                     _ => None,
                 },
-                Value::Str(s) if name == "Empty" || name == "Cons" => match name.as_str() {
+                Value::Str(s) if name_last == "Empty" || name_last == "Cons" => match name_last {
                     "Empty" => {
                         if s.is_empty() {
                             Some(HashMap::new())
@@ -2730,7 +2739,7 @@ fn match_pattern(
                     }
                     _ => None,
                 },
-                Value::Int(n) if name == "Zero" || name == "Succ" => match name.as_str() {
+                Value::Int(n) if name_last == "Zero" || name_last == "Succ" => match name_last {
                     "Zero" => {
                         if *n == 0 {
                             Some(HashMap::new())
@@ -2759,7 +2768,9 @@ fn match_pattern(
                     }
                     _ => None,
                 },
-                Value::Null if name == "Violates" && parent_enum.as_deref() == Some("Witness") => {
+                Value::Null
+                    if name_last == "Violates" && parent_enum.as_deref() == Some("Witness") =>
+                {
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
                         let field_name =
@@ -2774,13 +2785,17 @@ fn match_pattern(
                     }
                     Some(bindings)
                 }
-                Value::Null if name == "None" && parent_enum.as_deref() == Some("Diagnostics") => {
+                Value::Null
+                    if name_last == "None" && parent_enum.as_deref() == Some("Diagnostics") =>
+                {
                     Some(HashMap::new())
                 }
-                Value::Null if name == "Absent" && parent_enum.as_deref() == Some("Optional") => {
+                Value::Null
+                    if name_last == "Absent" && parent_enum.as_deref() == Some("Optional") =>
+                {
                     Some(HashMap::new())
                 }
-                _ if name == "Present" && parent_enum.as_deref() == Some("Optional") => {
+                _ if name_last == "Present" && parent_enum.as_deref() == Some("Optional") => {
                     if matches!(value, Value::Null) {
                         return None;
                     }
@@ -2792,7 +2807,7 @@ fn match_pattern(
                     }
                     Some(bindings)
                 }
-                _ if name == "Holds" && parent_enum.as_deref() == Some("Witness") => {
+                _ if name_last == "Holds" && parent_enum.as_deref() == Some("Witness") => {
                     if matches!(value, Value::Null) {
                         return None;
                     }
@@ -5093,15 +5108,16 @@ fn realize_clock_unix_secs_transport() -> Result<u64, crate::recorded_fixture::F
         .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)
 }
 
+/// Native read of THIS process's own environment. Was a `printenv` subprocess: a modeled
+/// operation realized by spawning a shell tool to ask for a value the process already holds
+/// (§3(b) — the interface shape is name → value?; the shell argv is ONE handler, and the
+/// wrong one when the target is the reading process itself). Semantics preserved exactly:
+/// unset → None (printenv exited 1), empty → None (printenv exited 0 with empty stdout),
+/// value trimmed. The `shell.Env.Get` service declaration remains valid as the REMOTE
+/// handler; routing the corpus's local env reads onto a native transport is the named
+/// follow-on (a new `transport env` kind — parser + core predicate + dispatch arm).
 fn wet_env_var(name: &str) -> Option<String> {
-    let output = std::process::Command::new("printenv")
-        .arg(name)
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let s = std::env::var(name).ok()?.trim().to_string();
     if s.is_empty() {
         None
     } else {

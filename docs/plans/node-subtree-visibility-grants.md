@@ -164,6 +164,45 @@ The `visible_from` fold, resolver seam (`.` projection), and phase plan for this
 unchanged from the prior draft and are folded into §6's combined phase list below rather than
 repeated twice.
 
+### 3.1 — Named residue row: the `x as Brand` cast-mint (filed from the shell→dag §5.E wall, 2026-07-24)
+
+The §5.E transport-script wall (shell→dag lane; `dag/gunbc/retained_shell_script.dag`) closes the
+computed-join fake class *by construction* at the record edge — `ShellOnHost.script:
+RetainedShellScript` is a record, so a hand-assembled `String` cannot fill it, and the free minter
+`extdeps.shell.exec.transport_script_from_body` is deleted. But one seam is **structurally
+unclosable at the `.dag` layer today** and is filed here as a concrete future consumer of the
+`Reference` verb, *not* an ad-hoc seed feature:
+
+- **The residue.** `TransportScript = String where brand("TransportScript")` is a *transparent*
+  brand (peeled to base by `peel_nominal_alias_identity`), and `x as TransportScript` is allowed
+  anywhere, by anyone, with no cast-visibility mechanism. The wall funnels every sanctioned mint
+  through the single `retained_shell_script_to_transport` body (one conspicuous `as TransportScript`,
+  taking the counted record — not a raw `String`), but nothing *prevents* a second
+  `<computed string> as TransportScript` elsewhere. It cannot be made unwritable by a record, because
+  the cast target is the brand itself. This is exactly DESIGN §3's "below-boundary representation is
+  opaque" gap that §9's last row already names `Reference` as the enforcement mechanism for.
+- **Why `Reference` is the right verb, not a new mechanism.** A `base as Brand` cast *forms a
+  reference edge to the brand's nominal constructor* — the same "may this edge be formed" question
+  §3 answers for `.` projection, read at the brand-constructor node. Governing who may mint a brand
+  is a `Declared { grants: [...] }` on that constructor whose single grant root is the sanctioned
+  module subtree (here `gunbc.retained_shell_script`); any cast edge formed from outside that root is
+  refused, fail-closed, exactly like `admit_effect_go`. *Public* brands (most of the corpus) stay
+  `LegacyOpen` — the cast is unrestricted, no incident class — so this is opt-in per brand, priced by
+  the pain it removes (a brand whose unrestricted mint is a recurring §5 fail-open, like this one),
+  never a blanket cast tax.
+- **The fold this closes with the wall.** Once `Reference` gates brand-cast edges,
+  `retained_shell_script_to_transport`'s `as TransportScript` becomes the *only admissible* mint site
+  (a one-grant `Declared`), and the wall is construction-complete: not just "the record edge refuses a
+  String" but "no other module can manufacture a `TransportScript` at all." Until then the residue is
+  a **counted, located** debt — the lens `host_language_transport_script` backstops raw literals at
+  `shell.Exec.Run` positions and the `retained_*` bridges are the counted roster, but a stray
+  `as TransportScript` in a fresh module is caught only by review, not by construction. That gap is
+  this row.
+
+This row takes no new dependency: it is one more `Declared`-grant application of §3's verb against
+the `CodeNameTree` position of a brand constructor. It is listed among §6's Phase-1 candidate
+consumers (the compile-time `Reference` refusals) as the first brand with a concrete displaced cost.
+
 ## 4. `Publish` verb — audience-parameterized storage admission
 
 ```

@@ -15,11 +15,11 @@ fn rung34_algebra_evidence_node() -> Node {
   }
 }
 
-fn rung34_descent_witness() -> Witness<TerminationProof> {
+fn rung34_descent_witness() -> Witness<v2.std.cardinality.TerminationProof> {
   Holds {
-    value: TerminationProof {
+    value: v2.std.cardinality.TerminationProof {
       non_increasing: [],
-      strict: RankingDimension { measured: ^rung34_inferred_descent_symbol }
+      strict: v2.std.cardinality.RankingDimension { measured: ^rung34_inferred_descent_symbol }
     }
   }
 }
