@@ -80,6 +80,32 @@ fn ticket_row(id: String, done: Bool, t: TicketFields) -> RoadmapNode {
   RoadmapNode { node: nid(s: id), line: TicketLine { done: done, ticket: t }, carriers: [], sizing: Unsized, owner: "", signoff: Unsigned }
 }
 
+data w2_bulk_resweep_hold_note: String = "The typed hold (management ruling 2026-07-25, ratifying the migration-side finding and sharpening it into a counted state): the ts-pr-audit children are one-fact PR-disposition snapshots — a ticket around a one-liner is nine empty fields of costume, the exact dual of the anemic-String defect (schema over-fit), and the fused-fields defect W2 kills is absent in them, so migrating displaces no cost. They are HELD, not forgotten: this roster is the mechanical worklist the operator's re-sweep consumes, and the legacy frontier decomposes honestly into not-yet-migrated vs held-for-disposition. DISSOLVE-ON: ts-pr-audit's re-sweep after the merge wave settles — each child merges, folds, or closes there; a child the sweep keeps open either migrates on its merits or, if a second one-fact family has appeared by then, earns the lighter row species at its second consumer (deliberately not minted now — the hold is what makes deferring that call cheap). A held id whose row has been migrated or deleted is a red: the hold outlived its state."
+
+type HeldForOperatorResweep {
+  node_id: String
+}
+
+data w2_bulk_resweep_held: List<HeldForOperatorResweep> = [
+  HeldForOperatorResweep { node_id: "ts-pr-7008" },
+  HeldForOperatorResweep { node_id: "ts-pr-7027" },
+  HeldForOperatorResweep { node_id: "ts-pr-7050" },
+  HeldForOperatorResweep { node_id: "ts-pr-7058" },
+  HeldForOperatorResweep { node_id: "ts-pr-7066" },
+  HeldForOperatorResweep { node_id: "ts-pr-7068" },
+  HeldForOperatorResweep { node_id: "ts-pr-7069" },
+  HeldForOperatorResweep { node_id: "ts-pr-7072" },
+  HeldForOperatorResweep { node_id: "ts-pr-7074" },
+  HeldForOperatorResweep { node_id: "ts-pr-7076" },
+  HeldForOperatorResweep { node_id: "ts-pr-7077" },
+  HeldForOperatorResweep { node_id: "ts-pr-7078" },
+  HeldForOperatorResweep { node_id: "ts-pr-7080" },
+]
+
+fn w2_bulk_resweep_held_ids() -> List<String> {
+  map(w2_bulk_resweep_held, h => h.node_id)
+}
+
 fn ticket_wi(id: String, done: Bool, t: TicketFields, intricacy: Intricacy, volume: Volume, repo: String) -> RoadmapNode {
   RoadmapNode {
     node: nid(s: id),
@@ -931,7 +957,21 @@ fn task_sheet_lead_lane() -> RoadmapSection {
       section_group(
         label: "4a · Open-PR audit — disposition every open PR (12 at snapshot)",
         nodes: [
-          authored(id: "ts-pr-audit", done: false, content: "**audit the remaining open PRs and decide each one's disposition** — merge · review-then-merge · fold into another lane · close; the 12 open at snapshot (16:30 UTC) are the children below; re-sweep after the merge wave settles, applying item 4's checklist and item 5's modeling audit to each."),
+          ticket_row(id: "ts-pr-audit", done: false, t: TicketFields {
+            headline: "audit the remaining open PRs and decide each one's disposition",
+            brief: "merge · review-then-merge · fold into another lane · close; the PRs open at snapshot (16:30 UTC) are the children beneath. Each child is a one-fact disposition snapshot, not a blob — they are HELD from the W2-bulk migration on the typed roster (w2_bulk_resweep_held) awaiting this row's sweep, never guessed into ticket costume.",
+            displaced_cost: "",
+            current_state: "children on the typed hold roster; several already carry MERGED marks from the wave",
+            first_slice: "re-sweep after the merge wave settles, applying item 4's checklist and item 5's modeling audit to each child",
+            red_control: "",
+            out_of_scope: "",
+            handback: "the sweep itself — each child's disposition is the operator's call",
+            updates: [
+              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk); children held on the typed roster per the management ruling — the hold is a counted state with this row's sweep as its dissolve-on" },
+            ],
+            authored_on: "",
+            last_verified_on: "",
+          }),
           authored(id: "ts-pr-7080", done: true, content: "#7080 layering gate false edges — the reference-derived producer misattributed prelude bare names, binders, and record-literal labels as cross-layer import edges (the one floor red left after #7082); fix verified pre-merge by a local red/green pair (gate witness false on main's tree, true with the PR applied, same tree same witness) — MERGED 2026-07-22 (7c222fc). Also the enabler for closure-derived Group<U> membership (group 5a)."),
           authored(id: "ts-pr-7078", done: true, content: "#7078 §13 alias APPLY — CLOSED unmerged 2026-07-23 by the namespace lane as premature: dispatched off the design doc's stale import→alias sequencing; the fresh execution receipt shows the flip is a cheap safe substitution that goes first, making the alias tooling premature. Disposition executed; the doc reconcile rides the namespace lane."),
           authored(id: "ts-pr-7077", done: true, content: "#7077 srv1 deploy readiness fix (was mistitled `dag roadmap work`) — poll bound 30s→120s grounded in measurement: four srv1 starts listening at 35–39s against a 30s bound, so every prior deploy red was the probe quitting ~4s early on a successful start; expectation (40s) and bound (×3 margin) split into separate decls with the demand-scoped-load dissolution trigger — MERGED 2026-07-22 (fec005aa). Residual: `witness_poll_max_attempts_is_thirty` now asserts 120 — rename on next touch."),
