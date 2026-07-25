@@ -763,7 +763,6 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag", f: "compile_clean_shard_a_exemplar_compile_green"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag", f: "compile_clean_shard_roster_is_well_formed"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag", f: "compile_clean_shard_totality_algebra_holds"),
-  bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag", f: "compile_clean_shard_totality_holds_on_live_tree"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_seam_witness_test.dag", f: "cross_shard_seam_algebra_holds"),
   bin_wet(entry: "dag/test/claim/srv3_install_media_fetch_real_execution_witness_test.dag", f: "install_media_hash_matches_true_by_real_execution"),
   bin_wet(entry: "dag/test/claim/srv3_install_media_fetch_real_execution_witness_test.dag", f: "install_media_hash_matches_false_on_wrong_hash_by_real_execution"),
@@ -798,6 +797,12 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
     function: "cross_shard_seam_preservation_holds_on_live_tree",
     reason: "183s measured on run 30009199696 (3x the per-row budget): the live-tree seam-preservation leg compiles real cross-shard closures per seam; its cheap algebra sibling (cross_shard_seam_algebra_holds) stays per-PR as the smoke row for the concern",
     dissolve_on: "seam preservation gains a scoped or receipt-consuming realization measured under the per-row budget; then re-enroll per-PR and delete this row"
+  },
+  RehomedBinWetRow {
+    entry: "dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag",
+    function: "compile_clean_shard_totality_holds_on_live_tree",
+    reason: "Class C corpus-totality claim (docs/plans/test-decomposition-wcf-cut.md §5, criterion 2, session bright-newt-31 2026-07-25): shells out git.Core.Toplevel + shell.Find.Files over the whole live tree to prove the shard roster is total against the real corpus (~15s) — the claim is legitimately corpus-grain, not shrinkable, since the whole point is whether the REAL tree's partition is still total. The mechanism (orphan/duplicate/surplus verdict algebra) is proven per-PR on synthetic glob results by compile_clean_shard_totality_algebra_holds, which stays per-PR",
+    dissolve_on: "re-priced only if the shard partition boundary itself changes shape enough that a fixture can stand in for the real tree without losing coverage — until then this is the honest corpus-grain residue, not a defect"
   }
 ]
 
