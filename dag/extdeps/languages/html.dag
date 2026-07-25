@@ -4,10 +4,10 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
 import std.markup {
-  MarkupNode, MarkupAttr, ElementNode, TextNode,
+  Fragment, Element, FragmentText, Attribute, attr,
   MarkupBracket, MarkupMedium, EscapeHtml,
   VoidTagRendering, OmitClose,
-  serialize_markup_node_with, tag_in_set,
+  serialize_fragment_with, tag_in_set,
   unescape_text, unescape_attribute, unescape_url,
   attr_is_url_attr,
 }
@@ -33,7 +33,7 @@ data canonical_html_spellings: MarkupBracket = MarkupBracket {
 }
 
 type HtmlIngestResult
-  = IngestedNode { node: MarkupNode }
+  = IngestedNode { node: Fragment }
   | IngestRejected { reason: String }
 
 type HtmlSplitResult {
@@ -51,7 +51,7 @@ type HtmlCloseState {
 }
 
 type HtmlAttrFoldState {
-  attrs: List<MarkupAttr>
+  attributes: List<Attribute>
   pending_name: String
   is_value: Bool
   rejected: Bool
@@ -59,11 +59,11 @@ type HtmlAttrFoldState {
 }
 
 type HtmlParseOneResult
-  = ParsedOne { node: MarkupNode, rest: String }
+  = ParsedOne { node: Fragment, rest: String }
   | ParseOneRejected { reason: String }
 
 type HtmlChildrenResult
-  = ParsedChildren { nodes: List<MarkupNode> }
+  = ParsedChildren { nodes: List<Fragment> }
   | ChildrenRejected { reason: String }
 
 fn html_count_str(s: String, pattern: String) -> Int {
@@ -132,7 +132,7 @@ fn find_matching_close_with(s: String, tag: String, sp: MarkupBracket) -> HtmlSp
 fn parse_attrs_with(attrs_str: String, sp: MarkupBracket) -> HtmlAttrFoldState {
   let pieces = split(s: attrs_str, delimiter: sp.attr_quote)
   fold(pieces, init: HtmlAttrFoldState {
-    attrs: [],
+    attributes: [],
     pending_name: "",
     is_value: false,
     rejected: false,
@@ -149,7 +149,7 @@ fn parse_attrs_with(attrs_str: String, sp: MarkupBracket) -> HtmlAttrFoldState {
         match validate_href(url: unescaped) {
           RejectedHref { reason: _ } =>
             HtmlAttrFoldState {
-              attrs: acc.attrs,
+              attributes: acc.attributes,
               pending_name: "",
               is_value: false,
               rejected: true,
@@ -157,7 +157,7 @@ fn parse_attrs_with(attrs_str: String, sp: MarkupBracket) -> HtmlAttrFoldState {
             }
           SafeHref { url: safe } =>
             HtmlAttrFoldState {
-              attrs: concat(acc.attrs, [MarkupAttr { name: name, value: safe }]),
+              attributes: concat(acc.attributes, [attr(name: name, value: safe )]),
               pending_name: "",
               is_value: false,
               rejected: false,
@@ -166,7 +166,7 @@ fn parse_attrs_with(attrs_str: String, sp: MarkupBracket) -> HtmlAttrFoldState {
         }
       } else {
         HtmlAttrFoldState {
-          attrs: concat(acc.attrs, [MarkupAttr { name: name, value: unescaped }]),
+          attributes: concat(acc.attributes, [attr(name: name, value: unescaped )]),
           pending_name: "",
           is_value: false,
           rejected: false,
@@ -182,7 +182,7 @@ fn parse_attrs_with(attrs_str: String, sp: MarkupBracket) -> HtmlAttrFoldState {
         acc
       } else {
         HtmlAttrFoldState {
-          attrs: acc.attrs,
+          attributes: acc.attributes,
           pending_name: stripped,
           is_value: true,
           rejected: false,
@@ -214,7 +214,7 @@ fn parse_one_with(s: String, sp: MarkupBracket) -> HtmlParseOneResult {
         ChildrenRejected { reason } => ParseOneRejected { reason: reason }
         ParsedChildren { nodes } =>
           ParsedOne {
-            node: ElementNode { tag: tag, attrs: attr_result.attrs, children: nodes },
+            node: Element { tag: tag, attributes: attr_result.attributes, children: nodes },
             rest: split_result.rest,
           }
       }
@@ -222,7 +222,7 @@ fn parse_one_with(s: String, sp: MarkupBracket) -> HtmlParseOneResult {
   } else {
     let text_raw = split(s: s, delimiter: sp.tag_open).first()
     let rest = html_strip_prefix(s: s, prefix: text_raw)
-    ParsedOne { node: TextNode { text: unescape_text(s: text_raw) }, rest: rest }
+    ParsedOne { node: FragmentText { content: unescape_text(s: text_raw) }, rest: rest }
   }
 }
 
@@ -265,11 +265,11 @@ fn html_medium_with(sp: MarkupBracket) -> MarkupMedium {
   }
 }
 
-fn serialize_html_source_with(node: MarkupNode, sp: MarkupBracket) -> String {
-  serialize_markup_node_with(node: node, medium: html_medium_with(sp: sp))
+fn serialize_html_source_with(node: Fragment, sp: MarkupBracket) -> String {
+  serialize_fragment_with(frag: node, medium: html_medium_with(sp: sp))
 }
 
-fn serialize_html_source(node: MarkupNode) -> String {
+fn serialize_html_source(node: Fragment) -> String {
   serialize_html_source_with(node: node, sp: canonical_html_spellings)
 }
 
@@ -286,7 +286,7 @@ fn ingest_html_source(src: String) -> HtmlIngestResult {
   ingest_html_source_with(src: src, sp: canonical_html_spellings)
 }
 
-fn html_medium_lossless(node: MarkupNode) -> Medium<MarkupNode> {
+fn html_medium_lossless(node: Fragment) -> Medium<Fragment> {
   Medium { carried: node, fidelity: Lossless }
 }
 
@@ -294,17 +294,17 @@ type HtmlEmitResult
   = EmitOk { html: String }
   | EmitRejected { reason: String }
 
-fn raw_text_children_text(children: List<MarkupNode>) -> String {
+fn raw_text_children_text(children: List<Fragment>) -> String {
   fold(children, init: "", f: (acc, c) => match c {
-    TextNode { text: t } => concat(acc, t)
-    ElementNode { tag: _, attrs: _, children: _ } => acc
+    FragmentText { content: t } => concat(acc, t)
+    Element { tag: _, attributes: _, children: _ } => acc
   })
 }
 
-fn raw_text_hazard(node: MarkupNode) -> String {
+fn raw_text_hazard(node: Fragment) -> String {
   match node {
-    TextNode { text: _ } => ""
-    ElementNode { tag: t, attrs: _, children: kids } =>
+    FragmentText { content: _ } => ""
+    Element { tag: t, attributes: _, children: kids } =>
       if tag_in_set(tag: t, tags: html5_raw_text_tags) {
         if string_contains(s: raw_text_children_text(children: kids), pattern: concat("</", t)) {
           join(["raw-text element <", t, "> content contains its own close sequence '</", t, "' — refusing to serialize (corruption otherwise); restructure the content"], "")
@@ -317,11 +317,11 @@ fn raw_text_hazard(node: MarkupNode) -> String {
   }
 }
 
-fn raw_text_children_hazard(children: List<MarkupNode>) -> String {
+fn raw_text_children_hazard(children: List<Fragment>) -> String {
   fold(children, init: "", f: (acc, c) => if acc == "" { raw_text_hazard(node: c) } else { acc })
 }
 
-fn try_serialize_html_source(node: MarkupNode) -> HtmlEmitResult {
+fn try_serialize_html_source(node: Fragment) -> HtmlEmitResult {
   match find_first_rejected_url(node: node) {
     Present { value: r } =>
       EmitRejected { reason: r.url }
@@ -338,8 +338,4 @@ fn try_serialize_html_source(node: MarkupNode) -> HtmlEmitResult {
 
 fn html_markup_medium() -> MarkupMedium {
   html_medium_with(sp: canonical_html_spellings)
-}
-
-fn serialize_markup_node(node: MarkupNode) -> String {
-  serialize_markup_node_with(node: node, medium: html_markup_medium())
 }

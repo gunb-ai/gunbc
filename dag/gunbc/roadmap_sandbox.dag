@@ -1,8 +1,8 @@
 module gunbc.roadmap_sandbox
 
 import std.types { Int, String, Bool, List }
-import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
-import gunbc.site.markup { txt, el, el_class }
+import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
+import gunbc.site.markup { txt, el, el_class, el_attributes }
 import gunbc.roadmap_page { roadmap_header }
 import gunbc.roadmap_style { roadmap_css }
 import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl, serialize_rules, Material, paint }
@@ -104,19 +104,19 @@ fn sandbox_css() -> String {
   join([roadmap_css(), serialize_rules(rules: sandbox_rules())], "\n")
 }
 
-fn role_swatch(theme: Theme, role: ThemeRole) -> MarkupNode {
-  ElementNode {
+fn role_swatch(theme: Theme, role: ThemeRole) -> Fragment {
+  Element {
     tag: "span",
-    attrs: [
-      MarkupAttr { name: "class", value: "swatch" },
-      MarkupAttr { name: "style", value: join(["background: ", paint(m: assignment_material(t: theme, r: role))], "") },
-      MarkupAttr { name: "title", value: join([theme.name, " ", role_key(r: role)], "") },
+    attributes: [
+      attr(name: "class", value: "swatch" ),
+      attr(name: "style", value: join(["background: ", paint(m: assignment_material(t: theme, r: role))], "") ),
+      attr(name: "title", value: join([theme.name, " ", role_key(r: role)], "") ),
     ],
     children: [],
   }
 }
 
-fn role_row(role: ThemeRole) -> MarkupNode {
+fn role_row(role: ThemeRole) -> Fragment {
   el_class("div", "swatch-row", [
     role_swatch(theme: night_theme, role: role),
     role_swatch(theme: day_theme, role: role),
@@ -125,26 +125,26 @@ fn role_row(role: ThemeRole) -> MarkupNode {
   ])
 }
 
-fn roles_section() -> MarkupNode {
+fn roles_section() -> Fragment {
   el_class("section", "sandbox-roles",
     concat([ el("h2", [ txt("roles — night / day") ]) ],
       map(theme_roles, r => role_row(role: r))))
 }
 
-fn scale_token_row(t: ScaleToken) -> MarkupNode {
+fn scale_token_row(t: ScaleToken) -> Fragment {
   el_class("div", "token-row", [
     el_class("span", "token-name", [ txt(t.name) ]),
     el_class("span", "token-value", [ txt(scale_value_wire(v: t.value)) ]),
   ])
 }
 
-fn scale_group(label: String, tokens: List<ScaleToken>) -> MarkupNode {
+fn scale_group(label: String, tokens: List<ScaleToken>) -> Fragment {
   el_class("div", "scale-group",
     concat([ el_class("h3", "group-label", [ txt(label) ]) ],
       map(tokens, t => scale_token_row(t: t))))
 }
 
-fn scales_section() -> MarkupNode {
+fn scales_section() -> Fragment {
   el_class("section", "sandbox-scales", [
     el("h2", [ txt("scales") ]),
     scale_group(label: "spacing", tokens: spacing_scale),
@@ -162,31 +162,31 @@ data gallery_arm_sublabel_note: String = "The caption collapse (W1d) makes band 
 
 data band_chip_note: String = "The auditioner's live preview (W1f visibility fix, operator report 2026-07-24: 'the swatches button doesn't seem to do anything' — the toggle worked, proven by execution in a DOM-stub harness, but nothing NEAR it consumed the band vars; the roles section beside it paints theme literals by design). Five chips filled from var(--band-*) sit beside the control, so a set flip repaints the strip in the same glance that clicked it. Keys derive from workspace_band_paints — the chip strip cannot drift from the band vocabulary."
 
-fn band_chip(key: String) -> MarkupNode {
-  ElementNode {
+fn band_chip(key: String) -> Fragment {
+  Element {
     tag: "span",
-    attrs: [
-      MarkupAttr { name: "class", value: "band-chip" },
-      MarkupAttr { name: "style", value: join(["background: var(--band-", key, "); color: var(--band-", key, "-ink)"], "") },
+    attributes: [
+      attr(name: "class", value: "band-chip" ),
+      attr(name: "style", value: join(["background: var(--band-", key, "); color: var(--band-", key, "-ink)"], "") ),
     ],
     children: [ txt(key) ],
   }
 }
 
-fn gallery_cell(button: MarkupNode, arm: String) -> MarkupNode {
+fn gallery_cell(button: Fragment, arm: String) -> Fragment {
   el_class("div", "gallery-cell", [ button, el_class("span", "gallery-arm", [ txt(arm) ]) ])
 }
 
-fn gallery_instance(state: ComponentState) -> MarkupNode {
+fn gallery_instance(state: ComponentState) -> Fragment {
   let cls = dispatch_state_class(state: state)
   let full = if cls == "" { "dispatch-btn" } else { join(["dispatch-btn ", cls], "") }
   gallery_cell(
-    button: ElementNode {
+    button: Element {
       tag: "button",
-      attrs: [
-        MarkupAttr { name: "class", value: full },
-        MarkupAttr { name: "type", value: "button" },
-        MarkupAttr { name: "disabled", value: "" },
+      attributes: [
+        attr(name: "class", value: full ),
+        attr(name: "type", value: "button" ),
+        attr(name: "disabled", value: "" ),
       ],
       children: [ txt(dispatch_state_display_text(state: state)) ],
     },
@@ -194,56 +194,48 @@ fn gallery_instance(state: ComponentState) -> MarkupNode {
   )
 }
 
-fn gallery_section() -> MarkupNode {
+fn gallery_section() -> Fragment {
   el_class("section", "sandbox-gallery", [
     el("h2", [ txt("dispatch button — every state (static)") ]),
     el_class("div", "gallery-row", map(gallery_states(), s => gallery_instance(state: s))),
   ])
 }
 
-fn live_instance(wire_label: String) -> MarkupNode {
+fn live_instance(wire_label: String) -> Fragment {
   gallery_cell(
-    button: ElementNode {
-      tag: "button",
-      attrs: [
-        MarkupAttr { name: "class", value: join(["dispatch-btn ", sandbox_live_class], "") },
-        MarkupAttr { name: "type", value: "button" },
-        MarkupAttr { name: "data-status", value: wire_label },
-      ],
-      children: [ txt(dispatch_caption_idle) ],
-    },
+    button: el_attrs("button", [
+      attr(name: "class", value: join(["dispatch-btn ", sandbox_live_class], "") ),
+      attr(name: "type", value: "button" ),
+      attr(name: "data-status", value: wire_label ),
+    ], [ txt(dispatch_caption_idle) ]),
     arm: wire_label,
   )
 }
 
-fn live_section() -> MarkupNode {
+fn live_section() -> Fragment {
   el_class("section", "sandbox-live", [
     el("h2", [ txt("live — press to exercise each wire arm (POST /sandbox/echo)") ]),
     el_class("div", "gallery-row", map(belt_dispatch_all_status_labels(), l => live_instance(wire_label: l))),
   ])
 }
 
-fn sandbox_page() -> MarkupNode {
-  ElementNode {
+fn sandbox_page() -> Fragment {
+  Element {
     tag: "html",
-    attrs: [],
+    attributes: [],
     children: [
       el("head", [
-        ElementNode { tag: "meta", attrs: [ MarkupAttr { name: "charset", value: "utf-8" } ], children: [] },
+        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
         el("style", [ txt(sandbox_css()) ]),
         el("title", [ txt("gunbc — sandbox") ]),
       ]),
       el("body", [
         roadmap_header(title: "gunbc — sandbox"),
         el_class("div", "auditioner-bar", concat(
-          [ ElementNode {
-              tag: "button",
-              attrs: [
-                MarkupAttr { name: "class", value: swatch_toggle_class },
-                MarkupAttr { name: "type", value: "button" },
-              ],
-              children: [],
-            } ],
+          [ el_attrs("button", [
+              attr(name: "class", value: swatch_toggle_class ),
+              attr(name: "type", value: "button" ),
+            ], []) ],
           map(workspace_band_paints(), p => band_chip(key: p.key)))),
         el_class("main", "sandbox", [
           roles_section(),
@@ -251,11 +243,11 @@ fn sandbox_page() -> MarkupNode {
           gallery_section(),
           live_section(),
         ]),
-        ElementNode {
+        Element {
           tag: "script",
-          attrs: [
-            MarkupAttr { name: "src", value: sandbox_asset_path },
-            MarkupAttr { name: "defer", value: "" },
+          attributes: [
+            attr(name: "src", value: sandbox_asset_path ),
+            attr(name: "defer", value: "" ),
           ],
           children: [],
         },

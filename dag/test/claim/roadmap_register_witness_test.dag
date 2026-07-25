@@ -1,7 +1,7 @@
 module test.claim.roadmap_register_witness
 
 import std.types { Int, String, Bool }
-import std.markup { MarkupNode, ElementNode, TextNode }
+import std.markup { Fragment, Element, FragmentText }
 import gunbc.design.material {
   BuildRule, StaticRule, CssDecl, decl,
   Material, FieldArea, PointArea, paint, reduced_motion_block, respond_fast,
@@ -132,12 +132,12 @@ fn witness_archetype_verbs_match_declared_elements() -> Bool {
       all(e.verbs, w => archetype_admits_verb(a: dashboard_archetype, v: w)))
 }
 
-fn header_children_contain_mark(h: MarkupNode) -> Bool {
+fn header_children_contain_mark(h: Fragment) -> Bool {
   match h {
-    ElementNode { tag, attrs: _, children } =>
+    Element { tag, attributes: _, children } =>
       tag == "header"
         && fold(children, init: false, f: (acc, c) => acc || c == render_mark(depth: 1))
-    TextNode { text: _ } => false
+    FragmentText { content: _ } => false
   }
 }
 

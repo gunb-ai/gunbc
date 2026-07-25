@@ -66,11 +66,11 @@ fn witness_mailto_href_accepted() -> Bool {
   }
 }
 
-fn javascript_link_node() -> MarkupNode {
-  ElementNode {
+fn javascript_link_node() -> Fragment {
+  Element {
     tag: "a",
-    attrs: [ MarkupAttr { name: "href", value: "javascript:alert(1)" } ],
-    children: [ TextNode { text: "x" } ],
+    attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
+    children: [ FragmentText { content: "x" } ],
   }
 }
 

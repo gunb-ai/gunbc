@@ -115,7 +115,7 @@ fn signed_off_dispatch_node() -> RoadmapNode {
   }
 }
 
-fn dispatch_doc_page(rn: RoadmapNode) -> MarkupNode {
+fn dispatch_doc_page(rn: RoadmapNode) -> Fragment {
   let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
   roadmap_page(doc: doc, merged: [])
@@ -143,10 +143,10 @@ fn witness_page_script_census_clean() -> Bool {
   page_script_census(page: dispatch_doc_page(rn: open_dispatch_node())).length() == 0
 }
 
-fn hand_inline_script_page() -> MarkupNode {
-  ElementNode { tag: "body", attrs: [], children: [
+fn hand_inline_script_page() -> Fragment {
+  Element { tag: "body", attributes: [], children: [
     dispatch_client_script(),
-    ElementNode { tag: "script", attrs: [], children: [ TextNode { text: "alert('rogue')" } ] },
+    Element { tag: "script", attributes: [], children: [ FragmentText { content: "alert('rogue')" } ] },
   ] }
 }
 
@@ -155,10 +155,10 @@ fn witness_inline_hand_script_reds() -> Bool {
   v.length() == 1 && all(v, x => x.kind == "inline-js" && x.detail == "alert('rogue')")
 }
 
-fn rogue_src_script_page() -> MarkupNode {
-  ElementNode { tag: "body", attrs: [], children: [
+fn rogue_src_script_page() -> Fragment {
+  Element { tag: "body", attributes: [], children: [
     dispatch_client_script(),
-    ElementNode { tag: "script", attrs: [ MarkupAttr { name: "src", value: "https://evil.example/x.js" } ], children: [] },
+    Element { tag: "script", attributes: [ attr(name: "src", value: "https://evil.example/x.js" ) ], children: [] },
   ] }
 }
 
@@ -250,10 +250,10 @@ fn witness_style_child_combinator_unescaped() -> Bool {
 }
 
 fn witness_raw_text_close_guard_refuses() -> Bool {
-  let bad = ElementNode {
+  let bad = Element {
     tag: "style",
-    attrs: [],
-    children: [ TextNode { text: "a \{ color: red } </style><p>escaped</p>" } ],
+    attributes: [],
+    children: [ FragmentText { content: "a \{ color: red } </style><p>escaped</p>" } ],
   }
   match try_serialize_html_source(node: bad) {
     EmitOk { html: _ } => false

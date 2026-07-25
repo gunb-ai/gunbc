@@ -1,11 +1,11 @@
 module gunbc.gunbhub_serve_html
 
 
-fn sample_html_page() -> MarkupNode {
-  ElementNode {
+fn sample_html_page() -> Fragment {
+  Element {
     tag: "p",
-    attrs: [],
-    children: [ TextNode { text: "gunbhub" } ],
+    attributes: [],
+    children: [ FragmentText { content: "gunbhub" } ],
   }
 }
 

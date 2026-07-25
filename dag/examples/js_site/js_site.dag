@@ -7,30 +7,30 @@ type JsSitePage {
   id: JsSitePageId
   path: String
   tsx_fn_name: String
-  node: MarkupNode
+  node: Fragment
 }
 
-fn js_site_nav_link(href: String, label: String) -> MarkupNode {
-  ElementNode {
+fn js_site_nav_link(href: String, label: String) -> Fragment {
+  Element {
     tag: "a",
-    attrs: [ MarkupAttr { name: "href", value: href } ],
-    children: [ TextNode { text: label } ],
+    attributes: [ attr(name: "href", value: href ) ],
+    children: [ FragmentText { content: label } ],
   }
 }
 
-fn js_site_header() -> MarkupNode {
-  ElementNode {
+fn js_site_header() -> Fragment {
+  Element {
     tag: "header",
-    attrs: [],
+    attributes: [],
     children: [
-      ElementNode {
+      Element {
         tag: "h1",
-        attrs: [],
-        children: [ TextNode { text: "gunbc" } ],
+        attributes: [],
+        children: [ FragmentText { content: "gunbc" } ],
       },
-      ElementNode {
+      Element {
         tag: "nav",
-        attrs: [],
+        attributes: [],
         children: [
           js_site_nav_link(href: "/", label: "Home"),
           js_site_nav_link(href: "/about", label: "About"),
@@ -41,30 +41,30 @@ fn js_site_header() -> MarkupNode {
   }
 }
 
-fn js_site_page_shell(title: String, main: MarkupNode) -> MarkupNode {
-  ElementNode {
+fn js_site_page_shell(title: String, main: Fragment) -> Fragment {
+  Element {
     tag: "html",
-    attrs: [],
+    attributes: [],
     children: [
-      ElementNode {
+      Element {
         tag: "head",
-        attrs: [],
+        attributes: [],
         children: [
-          ElementNode {
+          Element {
             tag: "title",
-            attrs: [],
-            children: [ TextNode { text: title } ],
+            attributes: [],
+            children: [ FragmentText { content: title } ],
           },
         ],
       },
-      ElementNode {
+      Element {
         tag: "body",
-        attrs: [],
+        attributes: [],
         children: [
           js_site_header(),
-          ElementNode {
+          Element {
             tag: "main",
-            attrs: [],
+            attributes: [],
             children: [ main ],
           },
         ],
@@ -73,48 +73,46 @@ fn js_site_page_shell(title: String, main: MarkupNode) -> MarkupNode {
   }
 }
 
-fn js_site_home_main() -> MarkupNode {
-  ElementNode {
+fn js_site_home_main() -> Fragment {
+  Element {
     tag: "p",
-    attrs: [],
+    attributes: [],
     children: [
-      TextNode {
-        text: "DAG-modeled compiler. One MarkupNode source, two realizations.",
+      FragmentText { content: "DAG-modeled compiler. One Fragment source, two realizations.",
       },
     ],
   }
 }
 
-fn js_site_about_main() -> MarkupNode {
-  ElementNode {
+fn js_site_about_main() -> Fragment {
+  Element {
     tag: "p",
-    attrs: [],
+    attributes: [],
     children: [
-      TextNode {
-        text: "gunbc models programs as dependency graphs. Rust is bootstrap seed.",
+      FragmentText { content: "gunbc models programs as dependency graphs. Rust is bootstrap seed.",
       },
     ],
   }
 }
 
-fn js_site_doc_link(name: String, path: String) -> MarkupNode {
-  ElementNode {
+fn js_site_doc_link(name: String, path: String) -> Fragment {
+  Element {
     tag: "li",
-    attrs: [],
+    attributes: [],
     children: [
-      ElementNode {
+      Element {
         tag: "a",
-        attrs: [ MarkupAttr { name: "href", value: path } ],
-        children: [ TextNode { text: name } ],
+        attributes: [ attr(name: "href", value: path ) ],
+        children: [ FragmentText { content: name } ],
       },
     ],
   }
 }
 
-fn js_site_browse_main() -> MarkupNode {
-  ElementNode {
+fn js_site_browse_main() -> Fragment {
+  Element {
     tag: "ul",
-    attrs: [],
+    attributes: [],
     children: [
       js_site_doc_link(name: "dag", path: "/dag"),
       js_site_doc_link(name: "src", path: "/src"),
@@ -124,15 +122,15 @@ fn js_site_browse_main() -> MarkupNode {
   }
 }
 
-fn js_site_home_page() -> MarkupNode {
+fn js_site_home_page() -> Fragment {
   js_site_page_shell(title: "gunbc — Home", main: js_site_home_main())
 }
 
-fn js_site_about_page() -> MarkupNode {
+fn js_site_about_page() -> Fragment {
   js_site_page_shell(title: "gunbc — About", main: js_site_about_main())
 }
 
-fn js_site_browse_page() -> MarkupNode {
+fn js_site_browse_page() -> Fragment {
   js_site_page_shell(title: "gunbc — Browse", main: js_site_browse_main())
 }
 
@@ -163,15 +161,15 @@ fn js_site_page_count() -> Int {
   count(xs: js_site_pages())
 }
 
-fn js_site_interactivity_exhaustion_exemplar() -> MarkupNode {
-  ElementNode {
+fn js_site_interactivity_exhaustion_exemplar() -> Fragment {
+  Element {
     tag: "button",
-    attrs: [ MarkupAttr { name: "onClick", value: "handleClick" } ],
-    children: [ TextNode { text: "Go" } ],
+    attributes: [ attr(name: "onClick", value: "handleClick" ) ],
+    children: [ FragmentText { content: "Go" } ],
   }
 }
 
-data js_site_markup_to_jsx_interactivity_medium: Medium<MarkupNode> = extdeps.communication.medium.Medium {
+data js_site_markup_to_jsx_interactivity_medium: Medium<Fragment> = extdeps.communication.medium.Medium {
   carried: js_site_interactivity_exhaustion_exemplar(),
   fidelity: Lossy
 }

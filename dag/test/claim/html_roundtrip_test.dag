@@ -3,20 +3,20 @@ module test.claim.html_roundtrip
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn roundtrip_core_node() -> MarkupNode {
-  ElementNode {
+fn roundtrip_core_node() -> Fragment {
+  Element {
     tag: "div",
-    attrs: [],
+    attributes: [],
     children: [
-      ElementNode {
+      Element {
         tag: "p",
-        attrs: [],
-        children: [TextNode { text: "hello & world" }],
+        attributes: [],
+        children: [FragmentText { content: "hello & world" }],
       },
-      ElementNode {
+      Element {
         tag: "a",
-        attrs: [MarkupAttr { name: "href", value: "https://example.com" }],
-        children: [TextNode { text: "link" }],
+        attributes: [attr(name: "href", value: "https://example.com" )],
+        children: [FragmentText { content: "link" }],
       },
     ],
   }
@@ -40,11 +40,11 @@ fn perturbed_spellings() -> MarkupBracket {
   }
 }
 
-fn perturbed_node() -> MarkupNode {
-  ElementNode {
+fn perturbed_node() -> Fragment {
+  Element {
     tag: "a",
-    attrs: [MarkupAttr { name: "href", value: "/about" }],
-    children: [TextNode { text: "plain text" }],
+    attributes: [attr(name: "href", value: "/about" )],
+    children: [FragmentText { content: "plain text" }],
   }
 }
 
@@ -56,11 +56,11 @@ fn witness_roundtrip_under_perturbed_rows() -> Bool {
   }
 }
 
-fn attr_node() -> MarkupNode {
-  ElementNode {
+fn attr_node() -> Fragment {
+  Element {
     tag: "a",
-    attrs: [MarkupAttr { name: "href", value: "https://example.com" }],
-    children: [TextNode { text: "click" }],
+    attributes: [attr(name: "href", value: "https://example.com" )],
+    children: [FragmentText { content: "click" }],
   }
 }
 
@@ -82,10 +82,10 @@ fn witness_core_advertised_lossless() -> Bool {
 }
 
 fn witness_frontier_unsafe_href_rejected() -> Bool {
-  let serialized = serialize_html_source(node: ElementNode {
+  let serialized = serialize_html_source(node: Element {
     tag: "a",
-    attrs: [MarkupAttr { name: "href", value: "javascript:alert(1)" }],
-    children: [TextNode { text: "x" }],
+    attributes: [attr(name: "href", value: "javascript:alert(1)" )],
+    children: [FragmentText { content: "x" }],
   })
   match ingest_html_source(src: serialized) {
     IngestRejected { reason: _ } => true
@@ -93,13 +93,13 @@ fn witness_frontier_unsafe_href_rejected() -> Bool {
   }
 }
 
-fn adjacent_text_node() -> MarkupNode {
-  ElementNode {
+fn adjacent_text_node() -> Fragment {
+  Element {
     tag: "span",
-    attrs: [],
+    attributes: [],
     children: [
-      TextNode { text: "a" },
-      TextNode { text: "b" },
+      FragmentText { content: "a" },
+      FragmentText { content: "b" },
     ],
   }
 }

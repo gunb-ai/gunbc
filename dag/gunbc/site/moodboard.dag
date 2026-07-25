@@ -1,6 +1,6 @@
 module gunbc.site.moodboard
 
-import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
+import std.markup { Fragment, Element, FragmentText, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class }
 import std.types { NonEmptyStr }
 import std.content_hash { content_hash_atom }
@@ -289,14 +289,14 @@ fn short_digest(digest: String) -> String {
   substring(s: digest, start: 0, end: 8)
 }
 
-fn masthead() -> MarkupNode {
+fn masthead() -> Fragment {
   el_class("header", "masthead", [
     el_class("p", "wordmark", [ txt("gunb.ai") ]),
     el_class("p", "thesis", [ txt(register_thesis) ]),
   ])
 }
 
-fn mark_section() -> MarkupNode {
+fn mark_section() -> Fragment {
   el("section", [
     el("h2", [ txt("the mark — one spec, three depths") ]),
     el_class("div", "panel", [
@@ -307,35 +307,35 @@ fn mark_section() -> MarkupNode {
   ])
 }
 
-fn hero_section() -> MarkupNode {
+fn hero_section() -> Fragment {
   el("section", [
     el("h2", [ txt("the layer dag as an asterism — touch a star") ]),
     el_class("div", "panel", [ constellation_figure() ]),
   ])
 }
 
-fn theme_chip(paint_value: String) -> MarkupNode {
-  ElementNode {
+fn theme_chip(paint_value: String) -> Fragment {
+  Element {
     tag: "span",
-    attrs: [
-      MarkupAttr { name: "class", value: "chip-inline" },
-      MarkupAttr { name: "style", value: concat("background: ", paint_value) },
+    attributes: [
+      attr(name: "class", value: "chip-inline" ),
+      attr(name: "style", value: concat("background: ", paint_value) ),
     ],
     children: [],
   }
 }
 
-fn theme_cell(t: Theme, r: ThemeRole) -> MarkupNode {
+fn theme_cell(t: Theme, r: ThemeRole) -> Fragment {
   let p = theme_paint_of(t: t, r: r)
-  ElementNode {
+  Element {
     tag: "td",
-    attrs: [],
+    attributes: [],
     children: [
-      ElementNode {
+      Element {
         tag: "span",
-        attrs: [
-          MarkupAttr { name: "class", value: "swatch" },
-          MarkupAttr { name: "tabindex", value: "0" },
+        attributes: [
+          attr(name: "class", value: "swatch" ),
+          attr(name: "tabindex", value: "0" ),
         ],
         children: [ theme_chip(paint_value: p), el_class("span", "mono", [ txt(p) ]) ],
       },
@@ -343,7 +343,7 @@ fn theme_cell(t: Theme, r: ThemeRole) -> MarkupNode {
   }
 }
 
-fn theme_role_row(r: ThemeRole) -> MarkupNode {
+fn theme_role_row(r: ThemeRole) -> Fragment {
   el("tr", [
     el_class("td", "mono", [ txt(role_key(r: r)) ]),
     theme_cell(t: night_theme, r: r),
@@ -351,7 +351,7 @@ fn theme_role_row(r: ThemeRole) -> MarkupNode {
   ])
 }
 
-fn themes_section() -> MarkupNode {
+fn themes_section() -> Fragment {
   el("section", [
     el("h2", [ txt("themes — one role model, night and day projections") ]),
     el_class("table", "ledger", concat(
@@ -364,21 +364,21 @@ fn themes_section() -> MarkupNode {
   ])
 }
 
-fn timing_row(t: TimingToken) -> MarkupNode {
+fn timing_row(t: TimingToken) -> Fragment {
   el("tr", [
     el_class("td", "mono", [ txt(t.name) ]),
     el_class("td", "mono", [ txt(join([to_string(t.duration_ms), "ms ", t.easing], "")) ]),
   ])
 }
 
-fn timing_section() -> MarkupNode {
+fn timing_section() -> Fragment {
   el("section", [
     el("h2", [ txt("the timing scale — three tokens, no other durations exist") ]),
     el_class("table", "ledger", map(timing_scale, t => timing_row(t: t))),
   ])
 }
 
-fn principle_row(p: RegisterPrinciple) -> MarkupNode {
+fn principle_row(p: RegisterPrinciple) -> Fragment {
   el("tr", [
     el_class("td", "mono", [ txt(principle_id_key(id: p.id)) ]),
     el("td", [ txt(p.law) ]),
@@ -386,14 +386,14 @@ fn principle_row(p: RegisterPrinciple) -> MarkupNode {
   ])
 }
 
-fn principles_section() -> MarkupNode {
+fn principles_section() -> Fragment {
   el("section", [
     el("h2", [ txt("base principles — each law names its enforcing carrier") ]),
     el_class("table", "ledger", map(register_principles, p => principle_row(p: p))),
   ])
 }
 
-fn boundary_section() -> MarkupNode {
+fn boundary_section() -> Fragment {
   el("section", [
     el("h2", [ txt("a boundary — refusal does not glow") ]),
     el_class("div", "panel boundary", [
@@ -404,13 +404,13 @@ fn boundary_section() -> MarkupNode {
   ])
 }
 
-fn hallmark() -> MarkupNode {
+fn hallmark() -> Fragment {
   let digest = moodboard_digest()
-  ElementNode {
+  Element {
     tag: "footer",
-    attrs: [
-      MarkupAttr { name: "class", value: "foot hash" },
-      MarkupAttr { name: "tabindex", value: "0" },
+    attributes: [
+      attr(name: "class", value: "foot hash" ),
+      attr(name: "tabindex", value: "0" ),
     ],
     children: [
       el_class("span", "mono", [ txt(concat("emitted from gunbc.site.moodboard · thesis+themes digest ", short_digest(digest: digest))) ]),
@@ -419,19 +419,19 @@ fn hallmark() -> MarkupNode {
   }
 }
 
-fn moodboard_page() -> MarkupNode {
-  ElementNode { tag: "html", attrs: [ MarkupAttr { name: "lang", value: "en" } ], children: [
+fn moodboard_page() -> Fragment {
+  Element { tag: "html", attributes: [ attr(name: "lang", value: "en" ) ], children: [
     el("head", [
-      ElementNode { tag: "meta", attrs: [ MarkupAttr { name: "charset", value: "utf-8" } ], children: [] },
-      ElementNode { tag: "meta", attrs: [
-        MarkupAttr { name: "name", value: "viewport" },
-        MarkupAttr { name: "content", value: "width=device-width, initial-scale=1" },
+      Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+      Element { tag: "meta", attributes: [
+        attr(name: "name", value: "viewport" ),
+        attr(name: "content", value: "width=device-width, initial-scale=1" ),
       ], children: [] },
       el("title", [ txt("gunb.ai — register moodboard (phase 0)") ]),
       el("style", [ txt(moodboard_css()) ]),
-      ElementNode { tag: "script", attrs: [
-        MarkupAttr { name: "src", value: "assets/nav.js" },
-        MarkupAttr { name: "defer", value: "" },
+      Element { tag: "script", attributes: [
+        attr(name: "src", value: "assets/nav.js" ),
+        attr(name: "defer", value: "" ),
       ], children: [] },
     ]),
     el("body", [
