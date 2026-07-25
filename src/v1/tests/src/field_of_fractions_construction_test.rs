@@ -57,10 +57,9 @@ fn with_receipts_ctx<R>(body: impl FnOnce(&v1_interpreter::InterpContext) -> R) 
 #[test]
 fn field_of_fractions_pair_stays_boxed_record_not_native_collapse() {
     with_receipts_ctx(|ctx| {
-        for (f, expected_num, expected_denom) in [
-            ("one_half", 1i64, 2i64),
-            ("three_quarters", 3i64, 4i64),
-        ] {
+        for (f, expected_num, expected_denom) in
+            [("one_half", 1i64, 2i64), ("three_quarters", 3i64, 4i64)]
+        {
             match v1_interpreter::run_in_context(ctx, f, false) {
                 Ok(Value::Record { type_name, fields }) => {
                     assert!(

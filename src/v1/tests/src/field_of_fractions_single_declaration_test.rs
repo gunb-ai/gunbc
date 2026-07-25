@@ -43,14 +43,22 @@ fn field_of_fractions_has_exactly_one_declaration_corpuswide() {
     for dir in ["dag", "src/v2"] {
         collect_dag_files(&ws.join(dir), &mut files);
     }
-    assert!(!files.is_empty(), "no .dag sources found under dag/ or src/v2/");
+    assert!(
+        !files.is_empty(),
+        "no .dag sources found under dag/ or src/v2/"
+    );
 
     let declaring: Vec<String> = files
         .into_iter()
         .filter_map(|p| {
             let content = std::fs::read_to_string(&p).ok()?;
             if declares_field_of_fractions(&content) {
-                Some(p.strip_prefix(&ws).unwrap_or(&p).to_string_lossy().into_owned())
+                Some(
+                    p.strip_prefix(&ws)
+                        .unwrap_or(&p)
+                        .to_string_lossy()
+                        .into_owned(),
+                )
             } else {
                 None
             }
