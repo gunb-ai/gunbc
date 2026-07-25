@@ -2,7 +2,7 @@ module test.claim.exec_arg_limit_witness
 
 import std.types { Bool, String }
 import std.measure { byte_size_count }
-import extdeps.os.exec_arg_limit {
+import extdeps.exec.exec_arg_limit {
   host_exec_arg_max_strlen,
   host_exec_arg_max_strlen_from_page,
   linux_execve_max_arg_strlen_page_factor,

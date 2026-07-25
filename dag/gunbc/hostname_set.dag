@@ -1,0 +1,109 @@
+module gunbc.hostname_set
+
+import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.dns.domain_name { DnsLabel }
+import extdeps.tools.hostname
+import gunbc.hostname_read { hostname_short_read }
+import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
+import gunbc.typed_argv_exec {
+  typed_argv_exec_over_ssh,
+  typed_argv_shell_safe_refusal_argv,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+}
+
+type HostnameSetCasOutcome
+  = HostnameSetCasApplied
+  | HostnameSetCasReadAbsent
+  | HostnameSetCasBaseMismatch { observed: String, base: DnsLabel }
+  | HostnameSetCasApplyFailed { stderr: String }
+
+fn hostname_set_operation_argv(desired: DnsLabel) -> List<String> {
+  hostname_set_argv(desired: desired)
+}
+
+fn hostname_set_privileged_operation_argv(
+  hostnamectl_path: NonEmptyStr,
+  desired: DnsLabel,
+) -> List<String> {
+  ["sudo", "-n", hostnamectl_path as String, "set-hostname", desired as String]
+}
+
+fn hostname_set_operation_argv_matches_authority(desired: DnsLabel) -> Bool {
+  let materialized = hostname_set_operation_argv(desired: desired)
+  let authority = hostname_set_argv(desired: desired)
+  join(materialized, " ") == join(authority, " ")
+}
+
+fn hostname_set_privileged_operation_argv_matches_fleet_grant(
+  hostnamectl_path: NonEmptyStr,
+  desired: DnsLabel,
+) -> Bool {
+  join(
+    hostname_set_privileged_operation_argv(hostnamectl_path: hostnamectl_path, desired: desired),
+    " ",
+  ) == concat(
+    concat("sudo -n ", hostnamectl_path as String),
+    concat(" set-hostname ", desired as String),
+  )
+}
+
+fn hostname_set_local(desired: DnsLabel) -> HostnameSetCasOutcome {
+  let result = os.Hostname.Set(desired: desired)
+  if result.success {
+    HostnameSetCasApplied
+  } else {
+    HostnameSetCasApplyFailed { stderr: result.stderr }
+  }
+}
+
+fn hostname_set_ssh(
+  hostnamectl_path: NonEmptyStr,
+  host: NonEmptyStr,
+  desired: DnsLabel,
+) -> HostnameSetCasOutcome {
+  let argv = hostname_set_privileged_operation_argv(hostnamectl_path: hostnamectl_path, desired: desired)
+  match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    Present { value: _ } => HostnameSetCasApplyFailed { stderr: "typed argv shell-safe refusal" }
+    Absent =>
+      match typed_argv_exec_over_ssh(host: host, argv: argv) {
+        TypedArgvExecConverged { result: r } =>
+          if r.success {
+            HostnameSetCasApplied
+          } else {
+            HostnameSetCasApplyFailed { stderr: r.stderr }
+          }
+        TypedArgvExecRefused { reason: why } => HostnameSetCasApplyFailed { stderr: why }
+      }
+  }
+}
+
+fn hostname_set_apply(
+  hostnamectl_path: NonEmptyStr,
+  transport: HostEffectTransport,
+  desired: DnsLabel,
+) -> HostnameSetCasOutcome {
+  match transport {
+    LocalShell => hostname_set_local(desired: desired)
+    SshShell { ssh_host: h } => hostname_set_ssh(hostnamectl_path: hostnamectl_path, host: h, desired: desired)
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      HostnameSetCasApplyFailed { stderr: "EmitArtifactThenThinRun unsupported for hostname set" }
+  }
+}
+
+fn hostname_set_cas(
+  hostnamectl_path: NonEmptyStr,
+  transport: HostEffectTransport,
+  base: DnsLabel,
+  desired: DnsLabel,
+) -> HostnameSetCasOutcome {
+  match hostname_short_read(transport: transport) {
+    Present { value: observed } =>
+      if observed == (base as String) {
+        hostname_set_apply(hostnamectl_path: hostnamectl_path, transport: transport, desired: desired)
+      } else {
+        HostnameSetCasBaseMismatch { observed: observed, base: base }
+      }
+    Absent => HostnameSetCasReadAbsent
+  }
+}

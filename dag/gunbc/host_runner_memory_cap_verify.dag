@@ -19,7 +19,7 @@ import gunbc.host_runner_memory_provision {
   runner_memory_knobs_from,
   runner_memory_cap_readback_verdict,
 }
-import extdeps.os.systemd { MemoryMax, MemorySwapMax, MemoryHigh }
+import extdeps.systemd { MemoryMax, MemorySwapMax, MemoryHigh }
 import gunbc.systemctl_show_read { systemctl_show_property_read_local }
 import gunbc.runner_unit_live_read {
   RunnerUnitMemoryLiveRead,

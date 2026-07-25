@@ -29,13 +29,13 @@ import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_slice }
-import extdeps.os.systemd {
+import extdeps.systemd {
   systemd_memory_max_property,
   systemd_memory_swap_max_property,
   systemd_memory_high_property,
   systemd_cpu_weight_property,
 }
-import extdeps.os.oomd {
+import extdeps.systemd.oomd {
   oomd_managed_oom_memory_pressure_property,
   oomd_managed_oom_memory_pressure_limit_property,
   managed_oom_action_value,

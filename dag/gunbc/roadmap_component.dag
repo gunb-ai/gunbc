@@ -2,6 +2,8 @@ module gunbc.roadmap_component
 
 import std.types { Int, String, Bool }
 import extdeps.languages.css.values { CssLength, css_ch, css_length_wire }
+import gunbc.design.scale { ScaleToken, space_4, space_8, height_row }
+import gunbc.roadmap_altitude { band_expands }
 import gunbc.design.component {
   Component, ComponentState, ComponentStateKind,
   IdleState, RequestedState, TerminalState,
@@ -10,16 +12,34 @@ import gunbc.design.component {
 }
 import gunbc.design.theme {
   ThemeRole, TextRole, TextDimRole, FigureRole, SurfaceRole, BorderRole, BoundaryRole, FocusRole,
+  day_theme, night_theme,
 }
 import gunbc.design.interaction { DispatchBtnElement, Approach, Dispatch }
 import gunbc.roadmap_belt_actuate {
   belt_dispatch_all_status_labels, belt_dispatch_label_is_ok,
   belt_dispatch_ok_status_labels, belt_dispatch_path_prefix,
+  belt_dispatch_label_band_rows, belt_dispatch_label_band_key,
 }
 import extdeps.languages.typescript.program {
   TsProgram, TsExpr, TsStmt, serialize_typescript_program,
-  ts_ident, ts_lit_str, ts_member, ts_call, ts_binop, ts_arrow, ts_block,
-  ts_const, ts_expr_stmt, ts_if, ts_cond, ts_prefix, ts_object, ts_field,
+  ts_ident, ts_lit_str, ts_lit_num, ts_member, ts_call, ts_binop, ts_arrow, ts_block,
+  ts_const, ts_let, ts_return, ts_new, ts_expr_stmt, ts_if, ts_cond, ts_prefix, ts_object, ts_field,
+}
+import gunbc.design.sound {
+  SoundSpec, engage_detent_click,
+  sound_spec_frequency_wire, sound_spec_decay_seconds_wire,
+  sound_spec_peak_gain_wire, sound_spec_timbre_wire,
+  sound_mute_storage_key,
+}
+import extdeps.web_audio {
+  web_audio_context_interface,
+  web_audio_create_oscillator_method, web_audio_create_gain_method,
+  web_audio_connect_method, web_audio_destination_property,
+  web_audio_current_time_property, web_audio_frequency_property,
+  web_audio_gain_property, web_audio_type_property, web_audio_value_property,
+  web_audio_set_value_at_time_method, web_audio_exponential_ramp_method,
+  web_audio_start_method, web_audio_stop_method,
+  web_audio_gain_epsilon_micros, micros_decimal_wire,
 }
 
 data roadmap_component_note: String = "The DispatchButton — the first instantiation of the component concept (gunbc.design.component), and the second consumer that unlocks the archetype library's component axis. It lives HERE, one layer above the register, because it binds the belt wire vocabulary: its terminal states are DERIVED from belt_dispatch_all_status_labels (the grounded label set), never a hand enum, so the state totality is a projection of the served contract — the exact thing the dispatch-button incident needed (the button's states cannot drift from what belt B answers). Role/material binding follows the ok/refusal split of the wire authority: an ok terminal (spawned/already_live) reads through the figure role (the lit/accent material, the same the progress bar uses); a refusal terminal reads through the boundary role (clay — the warning material, never brass-as-text). idle reads text, requested reads text-dim (the in-flight hush). P3 renders these rows as chips + reserved widths; P4 galleries them; here they are just the modeled rows."
@@ -74,7 +94,7 @@ fn dispatch_button_terminal_count() -> Int {
   count(component_terminal_states(c: dispatch_button_component()))
 }
 
-data dispatch_reserved_width_note: String = "The dispatch button's reserved width is a PROJECTION of the label authority, not a hand pixel (P3): min-width is the longest wire label (in ch, the mono-font character unit the button uses) plus a fixed gutter for border+padding. Because every terminal renders its wire label as the button text, reserving the longest label's width up front means a text swap (dispatch -> dispatching... -> already_done_signed_off) never reflows the row — the layout jump dies as a class. Add a longer wire arm and the reserved width grows by derivation; there is no pixel to re-tune."
+data dispatch_reserved_width_note: String = "The dispatch button's reserved width is a PROJECTION of the caption authority, not a hand pixel (P3, re-pointed by remodel W1d): min-width is the longest CAPTION the button can wear (band phrases + the session-chip morphs derived from the ok labels) plus a fixed gutter. Wire labels no longer render as captions, so they no longer drive geometry — the A.4 complaint's root (the control shaped by its worst-case diagnostic string) dissolves here. A caption or ok-label change moves the reservation by derivation; there is no pixel to re-tune."
 
 data dispatch_button_ch_gutter: Int = 2
 
@@ -87,8 +107,14 @@ fn dispatch_reserved_ch_for(labels: List<String>) -> Int {
   longest_label_len(labels: labels) + dispatch_button_ch_gutter
 }
 
+fn dispatch_caption_set() -> List<String> {
+  concat(
+    [dispatch_caption_idle, dispatch_caption_requested, dispatch_caption_fail, dispatch_caption_loud],
+    map(belt_dispatch_ok_status_labels(), l => join([dispatch_session_chip_prefix, l], "")))
+}
+
 fn dispatch_reserved_ch() -> Int {
-  dispatch_reserved_ch_for(labels: belt_dispatch_all_status_labels())
+  dispatch_reserved_ch_for(labels: dispatch_caption_set())
 }
 
 fn dispatch_reserved_length() -> CssLength {
@@ -99,9 +125,313 @@ fn dispatch_reserved_width() -> String {
   css_length_wire(l: dispatch_reserved_length())
 }
 
+data dispatch_session_chip_note: String = "On acceptance the button stops being a button and becomes the session's chip — the morph the exemplar's checkpoint 2 asks for. The label is the prefix plus the belt's own status word, so `session · spawned` and `session · already_live` are both PROJECTIONS of what the belt answered rather than a phrase the page decided to display: every response true, including this one. It renders only on the ok branch, so a refusal never claims a session exists.
+
+The prefix stays inside the reserved width the button already derives from the longest wire label, so the morph cannot reflow the row it sits in — and this is the SESSION chip, type-distinct from the node's status chip at the head of the row. Those are two different state spaces (what the roadmap thinks of the work, versus what the belt is doing right now) and overloading one carrier with both is the conflation the normalized plan corrected."
+
+data dispatch_session_chip_prefix: String = "session · "
+
 data dispatch_class_requested: String = "dispatch-requested"
 data dispatch_class_ok: String = "dispatch-ok"
 data dispatch_class_refused: String = "dispatch-refused"
+data dispatch_class_loud: String = "dispatch-loud"
+
+data roadmap_row_archetype_note: String = "The RoadmapRow archetype (composition slice 2; refines the round-5 flex head line, does not rebuild it): the row's five regions DECLARED as data — status chip, title, meta, disclosure, actuator — each with its placement, and the head line's grid template DERIVED from the placements rather than authored as a magic string. Placements: the chip and the actuator own auto head tracks (identity left, action right — the GitHub PR-row shape the operator named); the title owns the flex track; meta FLOWS inside the title's track (badge count varies per node, so meta is a flow, not a column); the disclosure sits under the head on its own line, indented by its landed token. Density rides two tokens on the scale grammar — roadmap_row_height (h-row; the actuator in rows derives its extent from THIS token, derived-not-set, per the signed chip-scale ruling) and roadmap_row_gutter — no bare pixels anywhere in the realization. The full-size instrument specimen (h-control grain) lives in the sandbox gallery by selector scope: the row override applies only under .node-head, so gallery buttons keep the design-surface geometry with the SAME press physics rules (the detent and receipt folds target .dispatch-btn in both contexts, per-family-honest everywhere)."
+
+type RowTrack
+  = AutoTrack
+  | FlexTrack
+
+fn row_track_wire(t: RowTrack) -> String {
+  match t {
+    AutoTrack => "auto"
+    FlexTrack => "1fr"
+  }
+}
+
+type RowPlacement
+  = HeadTrack { track: RowTrack }
+  | InTitleFlow
+  | UnderHead
+
+type RowRegion
+  = StatusChipRegion
+  | TitleRegion
+  | MetaRegion
+  | DisclosureRegion
+  | ActuatorRegion
+
+fn row_region_key(r: RowRegion) -> String {
+  match r {
+    StatusChipRegion => "status-chip"
+    TitleRegion => "title"
+    MetaRegion => "meta"
+    DisclosureRegion => "disclosure"
+    ActuatorRegion => "actuator"
+  }
+}
+
+type RoadmapRowRegion {
+  region: RowRegion
+  placement: RowPlacement
+}
+
+data roadmap_row_archetype: List<RoadmapRowRegion> = [
+  RoadmapRowRegion { region: StatusChipRegion, placement: HeadTrack { track: AutoTrack } },
+  RoadmapRowRegion { region: TitleRegion, placement: HeadTrack { track: FlexTrack } },
+  RoadmapRowRegion { region: MetaRegion, placement: InTitleFlow },
+  RoadmapRowRegion { region: DisclosureRegion, placement: UnderHead },
+  RoadmapRowRegion { region: ActuatorRegion, placement: HeadTrack { track: AutoTrack } },
+]
+
+data roadmap_row_gutter_split_note: String = "Two gutters, two jobs (operator-signed 2026-07-25, the third PROVISIONAL flip): the first cut ran ONE space-4 token as both the grid's column rhythm and the mid cell's badge-flow rhythm, and the operator's tune split them — column gaps (chip | title | actuator) breathe at space-8 while the badge flow inside the title cell keeps space-4. They are separate density decisions that happened to share a number for one commit; a later retune of either moves alone."
+
+data roadmap_row_height: ScaleToken = height_row
+data roadmap_row_gutter: ScaleToken = space_4
+data roadmap_row_column_gutter: ScaleToken = space_8
+
+fn roadmap_row_grid_template() -> String {
+  join(
+    fold(roadmap_row_archetype, init: [], f: (acc, r) => match r.placement {
+      HeadTrack { track } => concat(acc, [row_track_wire(t: track)])
+      InTitleFlow => acc
+      UnderHead => acc
+    }),
+    " ")
+}
+
+data node_mid_class_note: String = "The title track's cell: the wrapper that carries the title plus the flowing meta regions (badges, carrier links). It exists because the archetype's grid has exactly the head tracks as columns and a node's badge count varies — meta declared InTitleFlow realizes as flex flow inside this cell, never as a column that would ragged the grid."
+
+data node_mid_class: String = "node-mid"
+
+data dispatch_caption_note: String = "The operator-facing captions (remodel W1d, operator ruling 2026-07-24): the wire taxonomy never renders as button text. The caption is the BAND's verb — ok keeps the session-chip morph (prefix + the belt's own status word, an honest projection, checkpoint 2); fail and loud collapse to one operator phrase each, with the wire label and its located fields demoted to the title/detail channel. BandInProgress renders the requested caption. These rows are the caption authority for the client program, the gallery, and the reserved width — one vocabulary, three consumers."
+
+data dispatch_caption_idle: String = "dispatch"
+data dispatch_caption_requested: String = "dispatching..."
+data dispatch_caption_fail: String = "not dispatchable"
+data dispatch_caption_loud: String = "belt fault"
+
+data theme_toggle_note: String = "The day/night control (operator 2026-07-24, remodel W1g): a property of the whole surface like the mute, cycling auto -> day -> night. auto removes data-theme so the prefers-color-scheme projection governs; a named choice pins data-theme to the Theme's OWN name (derived from day_theme/night_theme, never a re-typed string), which the theme_root_css selector grammar already answers. Persisted in this browser's storage for the same reason the mute is: the preference belongs to these eyes."
+
+data disclosure_component_note: String = "The brief disclosure enters the register (remodel W1e, operator 2026-07-24: the UA triangle read as debug chrome — a ticket affordance, not a tree-widget default). The MARK is a real span inside the summary, never a UA marker or a pseudo-element: the client program mirrors the details element's open state onto the mark as a state class (the browser owns [open]; the state class belongs to the client program — the same split the dispatch button's OnStateClass note establishes), so the register's existing trigger + detent machinery drives the turn with no new trigger vocabulary and no descendant selector. The open detent is the first consumer of the detent model's rotation axis (turn_deg)."
+
+data disclosure_mark_class: String = "disclosure-mark"
+data disclosure_open_class: String = "disclosure-open"
+data disclosure_mark_glyph: String = "›"
+
+data theme_storage_key: String = "gunbc.theme"
+data theme_toggle_class: String = "theme-toggle"
+data theme_toggle_auto_value: String = "auto"
+data theme_toggle_label_prefix: String = "theme · "
+
+fn theme_toggle_labels() -> List<String> {
+  map([theme_toggle_auto_value, day_theme.name, night_theme.name],
+    v => join([theme_toggle_label_prefix, v], ""))
+}
+
+fn theme_toggle_reserved_width() -> String {
+  css_length_wire(l: css_ch(n: dispatch_reserved_ch_for(labels: theme_toggle_labels())))
+}
+
+data sound_toggle_class: String = "sound-toggle"
+
+data sound_toggle_note: String = "The mute control, and its whole design is one operator sentence: an instrument can be muted, not argued with. So it is a single persisted boolean with no volume axis, no per-sound settings, and no prompt — the mechanism has one voice and you either hear it or you do not. Default is SOUNDING, because a sound feature shipped off by default is a sound feature nobody discovers, and the sounds here are 5 ms operation ticks rather than notifications.
+
+Both labels are rendered from one authority so the toggle can never disagree with the state it reports, and the reserved width is DERIVED from the longer of them (the same discipline the dispatch button's width uses) so flipping the label cannot reflow the header. Persistence is localStorage rather than a cookie or a server round-trip: the preference is about this browser's speakers, so it belongs to the browser, and a mute that needed the belt to be up would be a mute that failed when the dashboard was most annoying.
+
+The toggle deliberately ticks when it is switched ON and stays silent when switched OFF, which needs no branch — the tick already checks the mute state, so calling it after the flip produces confirmation on unmute and silence on mute. That is the instrument answering with its own voice, which is the only honest way for a sound control to acknowledge itself."
+
+data sound_toggle_label_on: String = "sound · on"
+data sound_toggle_label_off: String = "sound · off"
+
+fn sound_toggle_labels() -> List<String> {
+  [sound_toggle_label_on, sound_toggle_label_off]
+}
+
+fn sound_toggle_reserved_width() -> String {
+  css_length_wire(l: css_ch(n: dispatch_reserved_ch_for(labels: sound_toggle_labels())))
+}
+
+data sound_muted_storage_value: String = "1"
+data sound_sounding_storage_value: String = "0"
+
+data js_sound_muted_fn: String = "gunbcSoundMuted"
+data js_audio_context_var: String = "gunbcAudioContext"
+data js_tick_fn: String = "gunbcTick"
+
+fn js_local_storage_get(key: String) -> TsExpr {
+  ts_call(
+    callee: ts_member(object: ts_ident(name: "localStorage"), property: "getItem"),
+    args: [ts_lit_str(value: key)],
+  )
+}
+
+fn js_sound_muted_predicate() -> TsStmt {
+  ts_const(
+    name: js_sound_muted_fn,
+    value: ts_arrow(
+      params: [],
+      body: ts_expr_stmt(expr: ts_binop(
+        left: js_local_storage_get(key: sound_mute_storage_key),
+        op: "===",
+        right: ts_lit_str(value: sound_muted_storage_value),
+      )),
+    ),
+  )
+}
+
+fn js_actx_member(name: String) -> TsExpr {
+  ts_member(object: ts_ident(name: js_audio_context_var), property: name)
+}
+
+fn js_oscillator_tick_body(s: SoundSpec) -> TsStmt {
+  let decay_s = sound_spec_decay_seconds_wire(s: s)
+  ts_block(stmts: [
+    ts_if(
+      cond: ts_call(callee: ts_ident(name: js_sound_muted_fn), args: []),
+      then: ts_block(stmts: [ts_return(expr: none)]),
+      else_stmt: none,
+    ),
+    ts_if(
+      cond: ts_prefix(op: "!", expr: ts_ident(name: js_audio_context_var)),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_ident(name: js_audio_context_var),
+          op: "=",
+          right: ts_new(callee: ts_ident(name: web_audio_context_interface), args: []),
+        )),
+      ]),
+      else_stmt: none,
+    ),
+    ts_const(name: "play", value: ts_arrow(params: [], body: ts_block(stmts: js_oscillator_schedule_stmts(s: s, decay_s: decay_s)))),
+    ts_if(
+      cond: ts_binop(left: js_actx_member(name: "state"), op: "===", right: ts_lit_str(value: "running")),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "play"), args: [])),
+        ts_return(expr: none),
+      ]),
+      else_stmt: none,
+    ),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_call(callee: js_actx_member(name: "resume"), args: []), property: "then"),
+      args: [ts_ident(name: "play")],
+    )),
+  ])
+}
+
+fn js_oscillator_schedule_stmts(s: SoundSpec, decay_s: String) -> List<TsStmt> {
+  [
+    ts_const(name: "t0", value: js_actx_member(name: web_audio_current_time_property)),
+    ts_const(name: "osc", value: ts_call(callee: js_actx_member(name: web_audio_create_oscillator_method), args: [])),
+    ts_const(name: "amp", value: ts_call(callee: js_actx_member(name: web_audio_create_gain_method), args: [])),
+    ts_const(name: "t1", value: ts_binop(left: ts_ident(name: "t0"), op: "+", right: ts_lit_num(text: decay_s))),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: ts_ident(name: "osc"), property: web_audio_type_property),
+      op: "=",
+      right: ts_lit_str(value: sound_spec_timbre_wire(s: s)),
+    )),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(
+        object: ts_member(object: ts_ident(name: "osc"), property: web_audio_frequency_property),
+        property: web_audio_value_property,
+      ),
+      op: "=",
+      right: ts_lit_num(text: sound_spec_frequency_wire(s: s)),
+    )),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_member(object: ts_ident(name: "amp"), property: web_audio_gain_property),
+        property: web_audio_set_value_at_time_method,
+      ),
+      args: [ts_lit_num(text: sound_spec_peak_gain_wire(s: s)), ts_ident(name: "t0")],
+    )),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_member(object: ts_ident(name: "amp"), property: web_audio_gain_property),
+        property: web_audio_exponential_ramp_method,
+      ),
+      args: [ts_lit_num(text: micros_decimal_wire(micros: web_audio_gain_epsilon_micros)), ts_ident(name: "t1")],
+    )),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "osc"), property: web_audio_connect_method),
+      args: [ts_ident(name: "amp")],
+    )),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "amp"), property: web_audio_connect_method),
+      args: [js_actx_member(name: web_audio_destination_property)],
+    )),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "osc"), property: web_audio_start_method),
+      args: [ts_ident(name: "t0")],
+    )),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "osc"), property: web_audio_stop_method),
+      args: [ts_ident(name: "t1")],
+    )),
+  ]
+}
+
+data sound_preamble_note: String = "Three statements, in this order for reasons that are not stylistic. The mute predicate comes first because the tick calls it. The AudioContext is a LET initialised to null and constructed lazily inside the tick, not at load: a context created outside a user gesture starts suspended under every browser's autoplay policy, and constructing one per tick would leak a hardware resource per click. The earlier claim that a pointerdown-born context needs no resume dance was measured in Chrome only and did not survive the operator's ears (remodel W1d, A.2): a fresh context can sit suspended with currentTime frozen at 0, so a 5 ms tick scheduled on that clock is silently swallowed — the first press, at least, made no sound. The tick therefore wraps its scheduling in `play` and gates on state: running plays immediately; anything else goes through resume().then(play), which is a no-op cost when the engine was already running and the difference between silence and a first-press tick everywhere else."
+
+fn sound_preamble_statements() -> List<TsStmt> {
+  [
+    js_sound_muted_predicate(),
+    ts_let(name: js_audio_context_var, value: ts_ident(name: "null")),
+    ts_const(
+      name: js_tick_fn,
+      value: ts_arrow(
+        params: [],
+        body: js_oscillator_tick_body(s: engage_detent_click),
+      ),
+    ),
+  ]
+}
+
+data sound_toggle_program_note: String = "The toggle paints itself from the same predicate the tick reads, then repaints after each flip, so the label is a projection of the stored state rather than a second copy of it — a toggle whose label and behaviour can disagree is worse than no toggle. paint() runs once at bind time because the stored preference outlives the page: on load the label must already say what this browser will actually do."
+
+fn sound_toggle_bind_statements() -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+          args: [ts_lit_str(value: join([".", sound_toggle_class], ""))],
+        ),
+        property: "forEach",
+      ),
+      args: [ts_arrow(params: ["t"], body: ts_block(stmts: [
+        ts_const(name: "paint", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "t"), property: "textContent"),
+          op: "=",
+          right: ts_cond(
+            test: ts_call(callee: ts_ident(name: js_sound_muted_fn), args: []),
+            consequent: ts_lit_str(value: sound_toggle_label_off),
+            alternate: ts_lit_str(value: sound_toggle_label_on),
+          ),
+        )))),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "t"), property: "addEventListener"),
+          args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_member(object: ts_ident(name: "localStorage"), property: "setItem"),
+              args: [
+                ts_lit_str(value: sound_mute_storage_key),
+                ts_cond(
+                  test: ts_call(callee: ts_ident(name: js_sound_muted_fn), args: []),
+                  consequent: ts_lit_str(value: sound_sounding_storage_value),
+                  alternate: ts_lit_str(value: sound_muted_storage_value),
+                ),
+              ],
+            )),
+            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
+            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_tick_fn), args: [])),
+          ]))],
+        )),
+      ]))],
+    )),
+  ]
+}
 
 data dispatch_state_class_note: String = "The single authority for a state's CSS modifier class, consumed by the client script (which flips classes on the live button), the stylesheet (which paints each class through the state's role material), and the P4 gallery (which renders each state statically) — three consumers, one class vocabulary, so the live button and the gallery cannot disagree. idle is the base (no modifier); the terminals collapse to their ok/refusal MATERIAL group (figure vs boundary), the per-label distinction living in the text, not the color."
 
@@ -109,7 +439,14 @@ fn dispatch_state_class(state: ComponentState) -> String {
   match state.kind {
     IdleState => ""
     RequestedState => dispatch_class_requested
-    TerminalState { wire_label: _, ok } => if ok { dispatch_class_ok } else { dispatch_class_refused }
+    TerminalState { wire_label: wl, ok: ok } =>
+      if ok {
+        dispatch_class_ok
+      } else if belt_dispatch_label_band_key(wire_label: wl) == "loud" {
+        join([dispatch_class_refused, " ", dispatch_class_loud], "")
+      } else {
+        dispatch_class_refused
+      }
   }
 }
 
@@ -154,7 +491,7 @@ fn dispatch_or_chain(exprs: List<TsExpr>) -> TsExpr {
 }
 
 fn dispatch_ok_predicate_expr() -> TsExpr {
-  dispatch_or_chain(exprs: map(belt_dispatch_ok_status_labels, l => dispatch_ok_status_comparison(wire_label: l)))
+  dispatch_or_chain(exprs: map(belt_dispatch_ok_status_labels(), l => dispatch_ok_status_comparison(wire_label: l)))
 }
 
 fn dispatch_fetch_url_expr() -> TsExpr {
@@ -168,40 +505,189 @@ fn dispatch_fetch_url_expr() -> TsExpr {
   )
 }
 
-fn dispatch_response_handler_body() -> TsStmt {
+data dispatch_choreography_note: String = "The presented-state choreography (remodel W1d, operator ruling 2026-07-24: transitions are sugar over the data layer). The DATA layer applies the wire answer the moment it arrives — b.dataset.status lands immediately, nothing about the operation waits. The PRESENTATION holds the requested phase for at least the read dwell (dispatch_requested_read_dwell_ms — a reading duration with its own authority row, never a borrowed transition clock) and then applies the terminal render: setTimeout(apply, max(0, t0 + dwell - now)), so a 1 ms echo appears as a deliberate act and a 30 s belt answer appears the moment it lands. Presentation never fabricates a state that did not occur — apply renders exactly the answer stored on the data layer, later, never a different one. The terminal caption is the BAND's phrase (dispatch_caption_note); the wire label and located fields live in the title channel; the loud band additionally marks dispatch_class_loud so the stylesheet and any detail affordance can key on it."
+
+data dispatch_requested_read_dwell_note: String = "The requested phase's minimum presentation is a READING duration, not a transition clock (operator ruling 2026-07-24: 160 ms — the first cut borrowed reveal_deliberate — was too short to actually read 'dispatching...'; a dwell exists so the caption is USEFUL, so it is priced in reading time). It is deliberately its own authority row rather than a retune of a shared TimingToken: the hover reveal and this hold are different concepts that happened to share a number for one commit, and retuning the shared token would have made every hover a half-second. Operator-tuned twice: 500 ms first (readable), then 300 ms (2026-07-24 — readable AND quick). The deeper direction is filed as the motion-modeling follow-up: a single long hold is the wrong shape — the requested phase wants MOVING PARTS (the Discord-mute reference: the state lands fast, the motion continues to hold attention), i.e. phase-structured choreography rows, not one dwell scalar. This row survives until that session replaces it."
+
+data dispatch_requested_read_dwell_ms: Int = 300
+
+data js_dwell_const: String = "gunbcDwellMs"
+
+fn dispatch_preamble_statements() -> List<TsStmt> {
+  [ts_const(name: js_dwell_const, value: ts_lit_num(text: to_string(dispatch_requested_read_dwell_ms)))]
+}
+
+fn dwell_remaining_expr() -> TsExpr {
+  ts_call(
+    callee: ts_member(object: ts_ident(name: "Math"), property: "max"),
+    args: [
+      ts_lit_num(text: "0"),
+      ts_binop(
+        left: ts_binop(left: ts_ident(name: "t0"), op: "+", right: ts_ident(name: js_dwell_const)),
+        op: "-",
+        right: ts_call(callee: ts_member(object: ts_ident(name: "Date"), property: "now"), args: []),
+      ),
+    ],
+  )
+}
+
+fn dispatch_band_chain_expr() -> TsExpr {
+  fold(belt_dispatch_label_band_rows(), init: ts_lit_str(value: "loud"), f: (acc, row) =>
+    ts_cond(
+      test: ts_binop(left: ts_ident(name: "s"), op: "===", right: ts_lit_str(value: row.wire_label)),
+      consequent: ts_lit_str(value: row.band_key),
+      alternate: acc,
+    ))
+}
+
+data dispatch_expand_chain_note: String = "The client grain of the attention law (composition slice 3): which terminal bands auto-expand the row's disclosure is DERIVED — the distinct band keys of the wire-band rows filtered through gunbc.roadmap_altitude.band_expands (anomaly expands; routine and working never do) — so the emitted predicate `(band === \"fail\") || (band === \"loud\")` moves when either authority moves and no band name is hand-chosen at the emit site. The fold seeds `false`, which serializes as a visible leading arm rather than a fabricated default."
+
+fn key_present(keys: List<String>, key: String) -> Bool {
+  fold(keys, init: false, f: (acc, k) => acc || k == key)
+}
+
+fn dispatch_expand_band_keys() -> List<String> {
+  fold(belt_dispatch_label_band_rows(), init: [], f: (acc, row) =>
+    if band_expands(band_key: row.band_key) && !key_present(keys: acc, key: row.band_key) {
+      concat(acc, [row.band_key])
+    } else {
+      acc
+    })
+}
+
+fn dispatch_expand_chain_expr() -> TsExpr {
+  fold(dispatch_expand_band_keys(), init: ts_ident(name: "false"), f: (acc, k) =>
+    ts_binop(
+      left: acc,
+      op: "||",
+      right: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: k))))
+}
+
+fn dispatch_terminal_apply_body() -> TsStmt {
   ts_block(stmts: [
-    ts_const(name: "ok", value: dispatch_ok_predicate_expr()),
+    ts_const(name: "s", value: ts_binop(left: js_j_status(), op: "||", right: ts_lit_str(value: ""))),
+    ts_const(name: "band", value: dispatch_band_chain_expr()),
+    ts_const(name: "ok", value: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: "ok"))),
     ts_expr_stmt(expr: ts_binop(
       left: js_b_member(name: "textContent"),
       op: "=",
-      right: ts_binop(left: js_j_status(), op: "||", right: ts_lit_str(value: "no status")),
+      right: ts_cond(
+        test: ts_ident(name: "ok"),
+        consequent: ts_binop(
+          left: ts_lit_str(value: dispatch_session_chip_prefix),
+          op: "+",
+          right: ts_ident(name: "s"),
+        ),
+        alternate: ts_cond(
+          test: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: "fail")),
+          consequent: ts_lit_str(value: dispatch_caption_fail),
+          alternate: ts_lit_str(value: dispatch_caption_loud),
+        ),
+      ),
     )),
     js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_requested)),
     js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_ok)),
     js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_refused)),
+    js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_loud)),
     js_classlist_call(method: "add", arg: ts_cond(
       test: ts_ident(name: "ok"),
       consequent: ts_lit_str(value: dispatch_class_ok),
       alternate: ts_lit_str(value: dispatch_class_refused),
     )),
+    ts_if(
+      cond: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: "loud")),
+      then: ts_block(stmts: [
+        js_classlist_call(method: "add", arg: ts_lit_str(value: dispatch_class_loud)),
+      ]),
+      else_stmt: none,
+    ),
     ts_const(name: "d", value: ts_binop(left: js_j_member(name: "detail"), op: "||", right: ts_lit_str(value: ""))),
+    ts_const(name: "why", value: ts_cond(
+      test: js_j_member(name: "step"),
+      consequent: ts_binop(
+        left: ts_binop(left: js_j_member(name: "step"), op: "+", right: ts_lit_str(value: ": ")),
+        op: "+",
+        right: ts_ident(name: "d"),
+      ),
+      alternate: ts_binop(left: js_j_member(name: "reason"), op: "||", right: ts_lit_str(value: "")),
+    )),
+    ts_const(name: "base", value: ts_binop(left: ts_ident(name: "s"), op: "||", right: ts_lit_str(value: "no status"))),
     ts_expr_stmt(expr: ts_binop(
       left: js_b_member(name: "title"),
       op: "=",
       right: ts_cond(
-        test: js_j_member(name: "step"),
+        test: ts_ident(name: "why"),
         consequent: ts_binop(
-          left: ts_binop(left: js_j_member(name: "step"), op: "+", right: ts_lit_str(value: ": ")),
+          left: ts_binop(left: ts_ident(name: "base"), op: "+", right: ts_lit_str(value: " — ")),
           op: "+",
-          right: ts_ident(name: "d"),
+          right: ts_ident(name: "why"),
         ),
-        alternate: ts_binop(
-          left: ts_binop(left: js_j_member(name: "reason"), op: "||", right: js_j_status()),
-          op: "||",
-          right: ts_lit_str(value: "no status"),
-        ),
+        alternate: ts_ident(name: "base"),
       ),
     )),
+    ts_const(name: "expandRow", value: dispatch_expand_chain_expr()),
+    ts_const(name: "rowEl", value: ts_call(callee: js_b_member(name: "closest"), args: [ts_lit_str(value: "li")])),
+    ts_const(name: "dt", value: ts_binop(
+      left: ts_ident(name: "rowEl"),
+      op: "&&",
+      right: ts_call(
+        callee: ts_member(object: ts_ident(name: "rowEl"), property: "querySelector"),
+        args: [ts_lit_str(value: "details.item-detail")]),
+    )),
+    ts_if(
+      cond: ts_binop(left: ts_ident(name: "expandRow"), op: "&&", right: ts_ident(name: "dt")),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "dt"), property: "open"),
+          op: "=",
+          right: ts_ident(name: "true"))),
+      ]),
+      else_stmt: none,
+    ),
+    ts_if(
+      cond: ts_binop(
+        left: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: "loud")),
+        op: "&&",
+        right: ts_ident(name: "dt")),
+      then: ts_block(stmts: [
+        ts_let(name: "rl", value: ts_call(
+          callee: ts_member(object: ts_ident(name: "dt"), property: "querySelector"),
+          args: [ts_lit_str(value: ".disclosure-reason")])),
+        ts_if(
+          cond: ts_prefix(op: "!", expr: ts_ident(name: "rl")),
+          then: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_ident(name: "rl"),
+              op: "=",
+              right: ts_call(
+                callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+                args: [ts_lit_str(value: "div")]))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "rl"), property: "className"),
+              op: "=",
+              right: ts_lit_str(value: "disclosure-reason"))),
+            ts_const(name: "sm", value: ts_call(
+              callee: ts_member(object: ts_ident(name: "dt"), property: "querySelector"),
+              args: [ts_lit_str(value: "summary")])),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_ident(name: "sm"),
+              op: "&&",
+              right: ts_call(
+                callee: ts_member(object: ts_ident(name: "sm"), property: "insertAdjacentElement"),
+                args: [ts_lit_str(value: "afterend"), ts_ident(name: "rl")]))),
+          ]),
+          else_stmt: none,
+        ),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "rl"), property: "textContent"),
+          op: "=",
+          right: ts_binop(
+            left: ts_ident(name: "why"),
+            op: "||",
+            right: ts_lit_str(value: "belt fault — no located reason on the wire")))),
+      ]),
+      else_stmt: none,
+    ),
     ts_if(
       cond: ts_prefix(op: "!", expr: ts_ident(name: "ok")),
       then: ts_block(stmts: [
@@ -216,12 +702,29 @@ fn dispatch_response_handler_body() -> TsStmt {
   ])
 }
 
+fn dispatch_response_handler_body() -> TsStmt {
+  ts_block(stmts: [
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: js_b_member(name: "dataset"), property: "status"),
+      op: "=",
+      right: ts_binop(left: js_j_status(), op: "||", right: ts_lit_str(value: "")),
+    )),
+    ts_const(name: "apply", value: ts_arrow(params: [], body: dispatch_terminal_apply_body())),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_ident(name: "setTimeout"),
+      args: [ts_ident(name: "apply"), dwell_remaining_expr()],
+    )),
+  ])
+}
+
 fn dispatch_click_handler_body(url_expr: TsExpr) -> TsStmt {
   ts_block(stmts: [
     ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "disabled"), op: "=", right: ts_ident(name: "true"))),
-    ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "textContent"), op: "=", right: ts_lit_str(value: "dispatching..."))),
+    ts_const(name: "t0", value: ts_call(callee: ts_member(object: ts_ident(name: "Date"), property: "now"), args: [])),
+    ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "textContent"), op: "=", right: ts_lit_str(value: dispatch_caption_requested))),
     js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_ok)),
     js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_refused)),
+    js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_loud)),
     js_classlist_call(method: "add", arg: ts_lit_str(value: dispatch_class_requested)),
     ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "title"), op: "=", right: ts_lit_str(value: ""))),
     ts_expr_stmt(expr: ts_call(
@@ -245,34 +748,302 @@ fn dispatch_click_handler_body(url_expr: TsExpr) -> TsStmt {
         property: "catch",
       ),
       args: [ts_arrow(params: ["e"], body: ts_block(stmts: [
-        ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "textContent"), op: "=", right: ts_lit_str(value: "error"))),
-        ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "disabled"), op: "=", right: ts_ident(name: "false"))),
+        ts_const(name: "applyErr", value: ts_arrow(params: [], body: ts_block(stmts: [
+          ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "textContent"), op: "=", right: ts_lit_str(value: dispatch_caption_loud))),
+          js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_requested)),
+          js_classlist_call(method: "add", arg: ts_lit_str(value: dispatch_class_refused)),
+          js_classlist_call(method: "add", arg: ts_lit_str(value: dispatch_class_loud)),
+          ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "title"), op: "=", right: ts_lit_str(value: "network error"))),
+          ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "disabled"), op: "=", right: ts_ident(name: "false"))),
+        ]))),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "setTimeout"), args: [ts_ident(name: "applyErr"), dwell_remaining_expr()])),
       ]))],
     )),
   ])
+}
+
+data pointerdown_tick_isolation_note: String = "The tick rides its OWN pointerdown listener rather than living inside the click handler, and the separation is load-bearing in two independent ways.
+
+MECHANICALLY it is when the sound belongs. Acknowledgment is owed to the press, not the release — the video-game rule the whole register follows — and pointerdown is the event that fires as the control starts travelling, in the same frame the CSS :active depression begins. Putting the tick in the click handler would fire it on RELEASE, so the sound and the visible travel would disagree about when the mechanism engaged.
+
+SAFETY-WISE it means a sound failure cannot break dispatch. Two listeners on one element are independent: if WebAudio is unavailable or throws in some browser, the exception is contained in the tick listener and the click listener still POSTs. Had the tick been a statement inside the click handler, a throw would have aborted the dispatch before the fetch — trading a working button for a decorative noise, which is exactly the wrong direction. This is also why no capability probe or try/catch appears here: the isolation makes the failure harmless, so there is nothing to degrade gracefully around and no silent fallback to write."
+
+fn dispatch_bind_statements(selector: String, url_expr: TsExpr) -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+          args: [ts_lit_str(value: selector)],
+        ),
+        property: "forEach",
+      ),
+      args: [ts_arrow(params: ["b"], body: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_call(
+          callee: js_b_member(name: "addEventListener"),
+          args: [
+            ts_lit_str(value: "pointerdown"),
+            ts_arrow(params: [], body: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_tick_fn), args: []))),
+          ],
+        )),
+        ts_expr_stmt(expr: ts_call(
+          callee: js_b_member(name: "addEventListener"),
+          args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: dispatch_click_handler_body(url_expr: url_expr))],
+        )),
+      ]))],
+    )),
+  ]
+}
+
+data swatch_toggle_note: String = "The auditioner control (remodel W1f): cycles the active swatch set island-pastel -> okabe-ito -> solarized -> island-pastel, persisted like the mute because a palette audition is a property of these eyes. island is the ABSENT attribute (the emitted default); a named set pins data-swatch-set, which the audition blocks in roadmap_style answer. Rendered only on /sandbox (the design surface owns auditioning) but applied by the shared client program on load, so a choice made in the sandbox follows the operator to the live roadmap — auditioning against real content, not specimens."
+
+data swatch_storage_key: String = "gunbc.swatch-set"
+data swatch_toggle_class: String = "swatch-toggle"
+data swatch_default_set_value: String = "okabe-ito"
+data swatch_audition_a: String = "island-pastel"
+data swatch_audition_b: String = "solarized"
+data swatch_audition_values: List<String> = [swatch_audition_a, swatch_audition_b]
+data swatch_toggle_label_prefix: String = "swatches · "
+
+fn swatch_toggle_labels() -> List<String> {
+  map(concat([swatch_default_set_value], swatch_audition_values),
+    v => join([swatch_toggle_label_prefix, v], ""))
+}
+
+fn swatch_toggle_reserved_width() -> String {
+  css_length_wire(l: css_ch(n: dispatch_reserved_ch_for(labels: swatch_toggle_labels())))
+}
+
+data js_theme_choice_fn: String = "gunbcThemeChoice"
+data js_theme_apply_fn: String = "gunbcApplyTheme"
+
+fn js_document_element() -> TsExpr {
+  ts_member(object: ts_ident(name: "document"), property: "documentElement")
+}
+
+fn theme_toggle_bind_statements() -> List<TsStmt> {
+  [
+    ts_const(name: js_theme_choice_fn, value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_binop(
+      left: js_local_storage_get(key: theme_storage_key),
+      op: "||",
+      right: ts_lit_str(value: theme_toggle_auto_value))))),
+    ts_const(name: js_theme_apply_fn, value: ts_arrow(params: [], body: ts_block(stmts: [
+      ts_const(name: "t", value: ts_call(callee: ts_ident(name: js_theme_choice_fn), args: [])),
+      ts_if(
+        cond: ts_binop(left: ts_ident(name: "t"), op: "===", right: ts_lit_str(value: theme_toggle_auto_value)),
+        then: ts_block(stmts: [
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_member(object: js_document_element(), property: "removeAttribute"),
+            args: [ts_lit_str(value: "data-theme")],
+          )),
+          ts_return(expr: none),
+        ]),
+        else_stmt: none,
+      ),
+      ts_expr_stmt(expr: ts_call(
+        callee: ts_member(object: js_document_element(), property: "setAttribute"),
+        args: [ts_lit_str(value: "data-theme"), ts_ident(name: "t")],
+      )),
+    ]))),
+    ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_theme_apply_fn), args: [])),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+          args: [ts_lit_str(value: join([".", theme_toggle_class], ""))],
+        ),
+        property: "forEach",
+      ),
+      args: [ts_arrow(params: ["t"], body: ts_block(stmts: [
+        ts_const(name: "paint", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "t"), property: "textContent"),
+          op: "=",
+          right: ts_binop(
+            left: ts_lit_str(value: theme_toggle_label_prefix),
+            op: "+",
+            right: ts_call(callee: ts_ident(name: js_theme_choice_fn), args: []),
+          ),
+        )))),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "t"), property: "addEventListener"),
+          args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: ts_block(stmts: [
+            ts_const(name: "cur", value: ts_call(callee: ts_ident(name: js_theme_choice_fn), args: [])),
+            ts_const(name: "next", value: ts_cond(
+              test: ts_binop(left: ts_ident(name: "cur"), op: "===", right: ts_lit_str(value: theme_toggle_auto_value)),
+              consequent: ts_lit_str(value: day_theme.name),
+              alternate: ts_cond(
+                test: ts_binop(left: ts_ident(name: "cur"), op: "===", right: ts_lit_str(value: day_theme.name)),
+                consequent: ts_lit_str(value: night_theme.name),
+                alternate: ts_lit_str(value: theme_toggle_auto_value),
+              ),
+            )),
+            ts_if(
+              cond: ts_binop(left: ts_ident(name: "next"), op: "===", right: ts_lit_str(value: theme_toggle_auto_value)),
+              then: ts_block(stmts: [
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_member(object: ts_ident(name: "localStorage"), property: "removeItem"),
+                  args: [ts_lit_str(value: theme_storage_key)],
+                )),
+              ]),
+              else_stmt: none,
+            ),
+            ts_if(
+              cond: ts_binop(left: ts_ident(name: "next"), op: "!==", right: ts_lit_str(value: theme_toggle_auto_value)),
+              then: ts_block(stmts: [
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_member(object: ts_ident(name: "localStorage"), property: "setItem"),
+                  args: [ts_lit_str(value: theme_storage_key), ts_ident(name: "next")],
+                )),
+              ]),
+              else_stmt: none,
+            ),
+            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_theme_apply_fn), args: [])),
+            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
+          ]))],
+        )),
+      ]))],
+    )),
+  ]
+}
+
+fn disclosure_bind_statements() -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+          args: [ts_lit_str(value: "details.item-detail")],
+        ),
+        property: "forEach",
+      ),
+      args: [ts_arrow(params: ["d"], body: ts_block(stmts: [
+        ts_const(name: "m", value: ts_call(
+          callee: ts_member(object: ts_ident(name: "d"), property: "querySelector"),
+          args: [ts_lit_str(value: join([".", disclosure_mark_class], ""))],
+        )),
+        ts_if(
+          cond: ts_prefix(op: "!", expr: ts_ident(name: "m")),
+          then: ts_block(stmts: [ts_return(expr: none)]),
+          else_stmt: none,
+        ),
+        ts_const(name: "paint", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_member(object: ts_ident(name: "m"), property: "classList"), property: "toggle"),
+          args: [ts_lit_str(value: disclosure_open_class), ts_member(object: ts_ident(name: "d"), property: "open")],
+        )))),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "d"), property: "addEventListener"),
+          args: [ts_lit_str(value: "toggle"), ts_ident(name: "paint")],
+        )),
+      ]))],
+    )),
+  ]
+}
+
+fn swatch_toggle_bind_statements() -> List<TsStmt> {
+  [
+    ts_const(name: "gunbcSwatchChoice", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_binop(
+      left: js_local_storage_get(key: swatch_storage_key),
+      op: "||",
+      right: ts_lit_str(value: swatch_default_set_value))))),
+    ts_const(name: "gunbcApplySwatch", value: ts_arrow(params: [], body: ts_block(stmts: [
+      ts_const(name: "t", value: ts_call(callee: ts_ident(name: "gunbcSwatchChoice"), args: [])),
+      ts_if(
+        cond: ts_binop(left: ts_ident(name: "t"), op: "===", right: ts_lit_str(value: swatch_default_set_value)),
+        then: ts_block(stmts: [
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_member(object: js_document_element(), property: "removeAttribute"),
+            args: [ts_lit_str(value: "data-swatch-set")],
+          )),
+          ts_return(expr: none),
+        ]),
+        else_stmt: none,
+      ),
+      ts_expr_stmt(expr: ts_call(
+        callee: ts_member(object: js_document_element(), property: "setAttribute"),
+        args: [ts_lit_str(value: "data-swatch-set"), ts_ident(name: "t")],
+      )),
+    ]))),
+    ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcApplySwatch"), args: [])),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+          args: [ts_lit_str(value: join([".", swatch_toggle_class], ""))],
+        ),
+        property: "forEach",
+      ),
+      args: [ts_arrow(params: ["t"], body: ts_block(stmts: [
+        ts_const(name: "paint", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "t"), property: "textContent"),
+          op: "=",
+          right: ts_binop(
+            left: ts_lit_str(value: swatch_toggle_label_prefix),
+            op: "+",
+            right: ts_call(callee: ts_ident(name: "gunbcSwatchChoice"), args: []),
+          ),
+        )))),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "t"), property: "addEventListener"),
+          args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: ts_block(stmts: [
+            ts_const(name: "cur", value: ts_call(callee: ts_ident(name: "gunbcSwatchChoice"), args: [])),
+            ts_const(name: "next", value: ts_cond(
+              test: ts_binop(left: ts_ident(name: "cur"), op: "===", right: ts_lit_str(value: swatch_default_set_value)),
+              consequent: ts_lit_str(value: swatch_audition_a),
+              alternate: ts_cond(
+                test: ts_binop(left: ts_ident(name: "cur"), op: "===", right: ts_lit_str(value: swatch_audition_a)),
+                consequent: ts_lit_str(value: swatch_audition_b),
+                alternate: ts_lit_str(value: swatch_default_set_value),
+              ),
+            )),
+            ts_if(
+              cond: ts_binop(left: ts_ident(name: "next"), op: "===", right: ts_lit_str(value: swatch_default_set_value)),
+              then: ts_block(stmts: [
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_member(object: ts_ident(name: "localStorage"), property: "removeItem"),
+                  args: [ts_lit_str(value: swatch_storage_key)],
+                )),
+              ]),
+              else_stmt: none,
+            ),
+            ts_if(
+              cond: ts_binop(left: ts_ident(name: "next"), op: "!==", right: ts_lit_str(value: swatch_default_set_value)),
+              then: ts_block(stmts: [
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_member(object: ts_ident(name: "localStorage"), property: "setItem"),
+                  args: [ts_lit_str(value: swatch_storage_key), ts_ident(name: "next")],
+                )),
+              ]),
+              else_stmt: none,
+            ),
+            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcApplySwatch"), args: [])),
+            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
+          ]))],
+        )),
+      ]))],
+    )),
+  ]
 }
 
 fn dispatch_client_program_for(selector: String, url_expr: TsExpr, header: List<String>) -> TsProgram {
   TsProgram {
     ts_nocheck: false,
     header_lines: header,
-    statements: [
-      ts_expr_stmt(expr: ts_call(
-        callee: ts_member(
-          object: ts_call(
-            callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
-            args: [ts_lit_str(value: selector)],
-          ),
-          property: "forEach",
-        ),
-        args: [ts_arrow(params: ["b"], body: ts_block(stmts: [
-          ts_expr_stmt(expr: ts_call(
-            callee: js_b_member(name: "addEventListener"),
-            args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: dispatch_click_handler_body(url_expr: url_expr))],
-          )),
-        ]))],
-      )),
-    ],
+    statements: concat(
+      sound_preamble_statements(),
+      concat(
+        dispatch_preamble_statements(),
+        concat(
+          dispatch_bind_statements(selector: selector, url_expr: url_expr),
+          concat(
+            sound_toggle_bind_statements(),
+            concat(
+              theme_toggle_bind_statements(),
+              concat(
+                disclosure_bind_statements(),
+                swatch_toggle_bind_statements())))))),
   }
 }
 
@@ -284,6 +1055,8 @@ fn dispatch_client_program() -> TsProgram {
       "gunbc roadmap dispatch button — emitted from gunbc.roadmap_component.dispatch_client_program",
       "POSTs to the dispatch route and reads belt B's status contract (ok set derived from",
       "belt_dispatch_ok_status_labels); served as an external asset, referenced by <script src>",
+      "Operation sound: a 5ms detent tick on pointerdown, synthesized through WebAudio from",
+      "gunbc.design.sound rows — no audio files, and a persisted mute the instrument obeys",
     ],
   )
 }
@@ -325,8 +1098,15 @@ fn sandbox_client_js_source() -> String {
 
 fn dispatch_state_display_text(state: ComponentState) -> String {
   match state.kind {
-    IdleState => "dispatch"
-    RequestedState => "dispatching..."
-    TerminalState { wire_label, ok: _ } => wire_label
+    IdleState => dispatch_caption_idle
+    RequestedState => dispatch_caption_requested
+    TerminalState { wire_label: wl, ok: ok } =>
+      if ok {
+        join([dispatch_session_chip_prefix, wl], "")
+      } else if belt_dispatch_label_band_key(wire_label: wl) == "loud" {
+        dispatch_caption_loud
+      } else {
+        dispatch_caption_fail
+      }
   }
 }

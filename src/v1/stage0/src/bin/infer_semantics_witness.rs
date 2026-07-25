@@ -615,9 +615,18 @@ fn malformed_map_index_returns_compiler_error_type() {
     assert_compiler_error(&result.inferred, "key type does not match");
 }
 
+// Negative control for slice admission. `ordered_element_collections()`
+// (std_types.rs) holds `List` alone, so a `Map` base is neither String nor an
+// ordered element collection and must still refuse. Re-pointed from `List<Int>`
+// at #7196, which deliberately admitted list slicing (`base_is_list` in
+// `check_slice_access_node`) and left this control pinning the withdrawn
+// refusal — the witness went stale, the compiler did not.
 fn invalid_slice_returns_compiler_error_type() {
     let result = v1_compiler_infer_access::check_slice_access_node(
-        container_node("List".to_string(), leaf_node("Int".to_string())),
+        map_node(
+            leaf_node("String".to_string()),
+            leaf_node("Int".to_string()),
+        ),
         leaf_node("Int".to_string()),
         leaf_node("Int".to_string()),
         zero_span(),
@@ -627,6 +636,34 @@ fn invalid_slice_returns_compiler_error_type() {
 
     assert_eq!(result.diagnostics.len(), 1);
     assert_compiler_error(&result.inferred, "slice is only supported");
+}
+
+// Positive control #7196 admitted but never witnessed: a list slice is legal and
+// preserves the base type (`slice_result_type = normed_base` on the list arm),
+// where a String slice yields String. Discriminating against the pre-#7196
+// behaviour, which produced one diagnostic and a String result here.
+fn valid_list_slice_preserves_list_type() {
+    let result = v1_compiler_infer_access::check_slice_access_node(
+        container_node("List".to_string(), leaf_node("Int".to_string())),
+        leaf_node("Int".to_string()),
+        leaf_node("Int".to_string()),
+        zero_span(),
+        "test".to_string(),
+        empty_source_indices(),
+    );
+
+    assert!(result.diagnostics.is_empty());
+    match result
+        .inferred
+        .as_ref()
+        .expect("expected return type")
+        .as_ref()
+    {
+        InferredNode::Resolved { node, .. } => {
+            assert_eq!(node.name, "List");
+        }
+        other => panic!("expected resolved list return type, got {:?}", other),
+    }
 }
 
 fn valid_map_index_preserves_optional_value_type() {
@@ -1705,6 +1742,10 @@ fn main() -> ExitCode {
         (
             "invalid_slice_returns_compiler_error_type",
             invalid_slice_returns_compiler_error_type,
+        ),
+        (
+            "valid_list_slice_preserves_list_type",
+            valid_list_slice_preserves_list_type,
         ),
         (
             "valid_map_index_preserves_optional_value_type",

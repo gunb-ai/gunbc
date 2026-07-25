@@ -46,6 +46,10 @@ data nfr_reason_ci_floor_gate_membership: String = "gate-identity membership fol
 
 data nfr_dissolve_gate_membership: String = "derived equality on Gate from inhabitance lands (dag/std/algebra, DESIGN §3/§4): the nested per-variant match is a hand-rolled sg-equals-g test, so the membership fold collapses to found or sg == g, the nested matches delete, and the row deletes with them"
 
+data nfr_reason_trait_derive_shape_table: String = "trait-shape→derive-trait capability table (nested match on ReprGroundingDeriveElemShape × ReprGroundingDeriveTrait with off-trait wildcard arms returning false) landed with Gate-1 sub-wall #2 predicate scaffold (#7174); surfaced by whole-corpus nfr receipt after affected-set predict-skipped corpus-read witness at landing"
+
+data nfr_dissolve_trait_derive_shape_table: String = "the #7174 v1 emit arms (clone bounds + serde/debug/ord derives on named types) wire through trait_derive_completeness.dag and the hand table migrates to derived rows (or a total match) — row deletes with that wiring; coproduct-native arithmetic impl emission is out of scope (GroupCompletion grounding lane)"
+
 data nfr_reason_native_agreement_octet: String = "RuntimeValue primitive-discriminant projection (RuntimePrimitive arm extracts byte[1]; off-variant wildcard Absent) landed with Lane B native-agreement loudness (#7111); surfaced by whole-corpus nfr receipt after affected-set predict-skipped corpus-read witness at landing"
 
 data nfr_dissolve_native_agreement_octet: String = "RuntimeValue model↔realization grounds each primitive variant and the wildcard arm migrates to a total match — or the receipt formatter derives from inhabitance and the row deletes"
@@ -98,41 +102,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   },
   FrontierRow {
     unit: "dag/extdeps/git/git.dag::git_diff_name_status_pending_after_status",
-    reason: nfr_reason_land_red_era,
-    dissolve_on: nfr_dissolve_owning_fold
-  },
-  FrontierRow {
-    unit: "dag/gunbc/srv3_os_install_reconcile.dag::kvm_screen_from_diagnostic",
-    reason: nfr_reason_land_red_era,
-    dissolve_on: nfr_dissolve_owning_fold
-  },
-  FrontierRow {
-    unit: "dag/gunbc/srv3_os_install_reconcile.dag::optional_kvm_attestation_from_observation",
-    reason: nfr_reason_land_red_era,
-    dissolve_on: nfr_dissolve_owning_fold
-  },
-  FrontierRow {
-    unit: "dag/gunbc/srv3_os_install_reconcile.dag::reconcile_pending_step_id",
-    reason: nfr_reason_land_red_era,
-    dissolve_on: nfr_dissolve_owning_fold
-  },
-  FrontierRow {
-    unit: "dag/gunbc/srv3_os_install_reconcile.dag::workflow_approval_from_durable_grant",
-    reason: nfr_reason_land_red_era,
-    dissolve_on: nfr_dissolve_owning_fold
-  },
-  FrontierRow {
-    unit: "dag/gunbc/srv3_os_install_reconcile_apply.dag::process_exit_succeeded",
-    reason: nfr_reason_land_red_era,
-    dissolve_on: nfr_dissolve_owning_fold
-  },
-  FrontierRow {
-    unit: "dag/gunbc/srv3_os_install_reconcile_receipt.dag::durable_grant_is_active",
-    reason: nfr_reason_land_red_era,
-    dissolve_on: nfr_dissolve_owning_fold
-  },
-  FrontierRow {
-    unit: "dag/gunbc/srv3_os_install_reconcile_receipt.dag::reconcile_refusal_reason_wire",
     reason: nfr_reason_land_red_era,
     dissolve_on: nfr_dissolve_owning_fold
   },
@@ -665,6 +634,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     unit: "src/v2/std/qualified_name.dag::qn_fold_step",
     reason: nfr_reason_mint_era,
     dissolve_on: nfr_dissolve_wildcard_total
+  },
+  FrontierRow {
+    unit: "dag/std/trait_derive_shape.dag::repr_grounding_derive_shape_has_trait",
+    reason: nfr_reason_trait_derive_shape_table,
+    dissolve_on: nfr_dissolve_trait_derive_shape_table
   },
   FrontierRow {
     unit: "src/v2/workflow/ci_floor_plan.dag::gate_in_cheap_floor_membership",

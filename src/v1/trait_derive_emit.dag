@@ -1,0 +1,219 @@
+module v1.compiler.trait_derive_emit
+
+import v1.compiler.emit { to_pascal }
+import v1.compiler.infer_types { child_type_node }
+import v1.std.core {
+  Node, NewlineIndex, authored_name_at, generic_param_name_at, param_node_type_expr,
+  NoConnective
+}
+import std.trait_derive_shape {
+  ReprGroundingDeriveElemShape,
+  ReprDeriveElemNullaryEnumCopy,
+  ReprDeriveElemPayloadCoproduct,
+  ReprDeriveElemSymbolWrappedOrdCarrier,
+  ReprDeriveElemUnknown,
+  repr_grounding_derive_completeness_predicate,
+  record_derive_traits_heap,
+  record_derive_traits_copy,
+  nullary_coproduct_derive_traits,
+  symbol_wrapped_ord_carrier_derive_traits,
+  payload_coproduct_derive_traits,
+  fn_field_derive_traits,
+  kernel_int_arithmetic_traits,
+  ReprDeriveElemKernelInt,
+  repr_grounding_supplemental_commutative_semiring_target,
+  repr_grounding_supplemental_bool_host_bridge_target
+}
+import extdeps.languages.rust.emit {
+  rust_trait_derive_attr_from_traits,
+  rust_supplemental_impls_commutative_semiring_magnitude,
+  rust_supplemental_impls_bool_coproduct
+}
+import std.types { is_container_type }
+
+data trait_derive_emit_scope_note: String = "Root-4 arm (b): v1 seed emit wires supplemental impl blocks for coproduct-native arithmetic + PartialOrd/PartialEq (CommutativeSemiring<Magnitude> Nat carrier, Bool↔bool bridge) when repr_grounding_derive_completeness_predicate authorizes kernel-int traits. Also: (a) clone bounds on generic params; (c) serde/Debug/Ord #[derive] on named structs/enums."
+
+data trait_derive_emit_v1_coproduct_shape_dissolve_on: String = "v1_coproduct_all_variants_nullary duplicates v2.std.compilers.coproduct_variant_shape.coproduct_all_variants_nullary (nullary = zero Conj children on v1 Node); dissolves when v1 trait_derive_emit imports the v2 shape authority instead of minting a parallel walk."
+
+data trait_derive_emit_symbol_ord_carrier_dissolve_on: String = "rust_nominal_identity_carrier_shape_eligible gates on authored_name_at == \"Symbol\"; dissolves when Symbol kernel grounds on target_model.symbol_kernel_type_node (or equivalent typed atom) instead of string match. Single authority: trait_derive_emit (emit_rust imports; duplicate removed review 42525)."
+
+fn v1_trait_derive_refuse(message: String) -> String {
+  concat("compile_error!(\"", message, "\");")
+}
+
+fn v1_coproduct_all_variants_nullary(children: List<Node>) -> Bool {
+  children |> all(v => v.children |> count == 0)
+}
+
+fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
+  children: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> ReprGroundingDeriveElemShape {
+  if v1_coproduct_all_variants_nullary(children: children) {
+    ReprDeriveElemNullaryEnumCopy
+  } else {
+    ReprDeriveElemPayloadCoproduct
+  }
+}
+
+fn rust_nominal_identity_carrier_shape_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  authored_name_at(source_indices: source_indices, node: n) == "Symbol"
+    && (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective
+}
+
+fn rust_symbol_wrapped_ord_carrier_shape_eligible(children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if (children |> count) != 1 {
+    false
+  } else {
+    match children |> first {
+      Present { value: child } =>
+        rust_nominal_identity_carrier_shape_eligible(n: child_type_node(ch: child), source_indices: source_indices)
+      Absent => false
+    }
+  }
+}
+
+fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
+  children: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> ReprGroundingDeriveElemShape {
+  if rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
+    ReprDeriveElemSymbolWrappedOrdCarrier
+  } else {
+    ReprDeriveElemUnknown
+  }
+}
+
+fn v1_emit_struct_derives(
+  name: String,
+  children: List<Node>,
+  shared_types: Set<String>,
+  has_fn_fields: Bool,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  if has_fn_fields {
+    rust_trait_derive_attr_from_traits(fn_field_derive_traits())
+  } else if rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
+    let shape = v1_repr_grounding_derive_elem_shape_for_ord_carrier(children: children, source_indices: source_indices)
+    if repr_grounding_derive_completeness_predicate(symbol_wrapped_ord_carrier_derive_traits(), shape) {
+      rust_trait_derive_attr_from_traits(symbol_wrapped_ord_carrier_derive_traits())
+    } else {
+      v1_trait_derive_refuse("trait_derive_emit: symbol-wrapped ord carrier refused")
+    }
+  } else {
+    if set_contains(shared_types, name) {
+      rust_trait_derive_attr_from_traits(record_derive_traits_heap())
+    } else {
+      rust_trait_derive_attr_from_traits(record_derive_traits_copy())
+    }
+  }
+}
+
+fn v1_emit_enum_derives(children: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+  let shape = v1_repr_grounding_derive_elem_shape_from_coproduct_children(children: children, source_indices: source_indices)
+  match shape {
+    ReprDeriveElemNullaryEnumCopy =>
+      if repr_grounding_derive_completeness_predicate(nullary_coproduct_derive_traits(), shape) {
+        rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
+      } else {
+        v1_trait_derive_refuse("trait_derive_emit: nullary coproduct derive completeness refused")
+      }
+    ReprDeriveElemPayloadCoproduct =>
+      if repr_grounding_derive_completeness_predicate(payload_coproduct_derive_traits(), shape) {
+        rust_trait_derive_attr_from_traits(payload_coproduct_derive_traits())
+      } else {
+        v1_trait_derive_refuse("trait_derive_emit: payload coproduct derive completeness refused")
+      }
+    _ =>
+      v1_trait_derive_refuse("trait_derive_emit: coproduct elem shape unsupported for derive selection")
+  }
+}
+
+fn v1_generic_param_used_as_collection_element(
+  param_name: String,
+  value_params: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  value_params |> any(vp =>
+    let te = param_node_type_expr(n: vp)
+    is_container_type(name: authored_name_at(source_indices: source_indices, node: te))
+      && (te.children |> any(c => authored_name_at(source_indices: source_indices, node: c) == param_name))
+  )
+}
+
+fn v1_type_param_needs_clone_bound(
+  param_name: String,
+  return_is_bare_generic: Bool,
+  ret_name: String,
+  body_is_param_ref: Bool,
+  value_params: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  let structural = (return_is_bare_generic && !body_is_param_ref && param_name == ret_name)
+    || v1_generic_param_used_as_collection_element(param_name: param_name, value_params: value_params, source_indices: source_indices)
+  structural
+}
+
+fn v1_generic_params_needing_clone_bound(
+  generic_param_names: List<String>,
+  value_params: List<Node>,
+  return_is_bare_generic: Bool,
+  ret_name: String,
+  body_is_param_ref: Bool,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  generic_param_names |> filter(g =>
+    v1_type_param_needs_clone_bound(
+      param_name: g,
+      return_is_bare_generic: return_is_bare_generic,
+      ret_name: ret_name,
+      body_is_param_ref: body_is_param_ref,
+      value_params: value_params,
+      source_indices: source_indices
+    )
+  )
+}
+
+fn v1_emit_type_params_with_clone_bounds(
+  params: List<Node>,
+  clone_param_names: List<String>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  if params |> count == 0 { "" }
+  else {
+    let names = params |> map(p =>
+      let pname = generic_param_name_at(n: p, source_indices: source_indices)
+      let pascal = to_pascal(name: pname)
+      if clone_param_names |> any(c => c == pname) {
+        concat(pascal, ": Clone")
+      } else {
+        pascal
+      }
+    )
+    concat("<", names |> join(separator: ", "), ">")
+  }
+}
+
+fn v1_emit_struct_supplemental_impls(module_path: String, name: String) -> String {
+  if repr_grounding_supplemental_commutative_semiring_target(module_path: module_path, name: name)
+    && repr_grounding_derive_completeness_predicate(
+      kernel_int_arithmetic_traits(),
+      ReprDeriveElemKernelInt
+    ) {
+    rust_supplemental_impls_commutative_semiring_magnitude()
+  } else {
+    ""
+  }
+}
+
+fn v1_emit_enum_supplemental_impls(module_path: String, name: String) -> String {
+  if repr_grounding_supplemental_bool_host_bridge_target(module_path: module_path, name: name)
+    && repr_grounding_derive_completeness_predicate(
+      nullary_coproduct_derive_traits(),
+      ReprDeriveElemNullaryEnumCopy
+    ) {
+    rust_supplemental_impls_bool_coproduct()
+  } else {
+    ""
+  }
+}

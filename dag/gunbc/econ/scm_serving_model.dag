@@ -1,0 +1,439 @@
+module gunbc.econ.scm_serving_model
+
+import extdeps.pricing.object_storage {
+  BinaryGibibyte,
+  ByteBasis,
+  ByteBasisUnstated,
+  DecimalGigabyte,
+  ObjectStorageClassRow,
+  ObjectStorageEgressRow,
+  ObjectStorageRequestRow,
+  egress_rate_micros,
+  storage_rate_micros,
+  storage_vendor_eq,
+}
+import std.measure {
+  ByteSize,
+  byte_size,
+  byte_size_count,
+  money_rate_micros,
+}
+import std.nat { Nat, nat_max, nat_min }
+import std.types { Bool, List, NonEmptyStr, list_length }
+
+data scm_serving_model_note: String = "How to compute an SCM's serving bill from workload primitives instead of guessing at a monthly number. Four axes, each derived from the profile and each priced by its own cited vendor row (extdeps.pricing.object_storage): CAPACITY held (stored bytes after dedup, times a billing month), NETWORK moved (egress bytes -- clones and fetches leaving the network), OPERATIONS counted (object reads and writes, the axis most models forget entirely), and COMPUTE, which is deliberately NOT modeled here because it already has carriers: gunbc.econ.knowable_wedge prices CI minutes against cited runner rows and gunbc.econ.free_tier_serving prices self-managed boxes. Storing a second compute model here would be the dual representation DESIGN section 3 forbids."
+
+data replication_double_count_note: String = "The replica-count multiplication that gunbc.econ.free_tier_serving applies to Hetzner DEDICATED boxes must NOT be applied to these object-storage rates. A cited object-storage GB-month already buys eleven-nines durability (extdeps.pricing.object_storage durability_standard_note), i.e. the vendor's own erasure-coded redundancy across facilities; multiplying it by a replica count charges twice for redundancy already purchased. Self-managed block storage is the opposite case -- one box is one copy, so replicas are the modeler's responsibility. Two storage realizations, two different cost shapes, one reason: who owns the durability."
+
+type ScmWorkloadProfile {
+  user_count: Nat
+  stored_bytes_per_user_after_dedup: ByteSize
+  monthly_egress_bytes_per_user: ByteSize
+  monthly_object_reads_per_user: Nat
+  monthly_object_writes_per_user: Nat
+}
+
+type ByteBasisAssumption
+  = BasisAssumed { basis: ByteBasis, rationale: NonEmptyStr }
+  | BasisUnknown
+
+type ScmUsageRefusalCause
+  = UserCountZero
+  | StoredBytesPerUserZero
+  | BasisAssumptionUnknown
+  | BasisAssumptionUnstated
+  | BasisContradictsCitedRow
+  | StorageRateUnavailable
+  | EgressRateUnavailable
+  | VendorMismatchAcrossRows
+
+type ScmUsage {
+  stored_billing_units: Nat
+  egress_billing_units: Nat
+  object_reads: Nat
+  object_writes: Nat
+}
+
+type ScmUsageResult
+  = ScmUsageDerived { usage: ScmUsage }
+  | ScmUsageRefused { cause: ScmUsageRefusalCause }
+
+type ScmMonthlyCostResult
+  = ScmMonthlyCostDerived {
+      storage_micros: Nat,
+      egress_micros: Nat,
+      operations_micros: Nat,
+      total_micros: Nat,
+    }
+  | ScmMonthlyCostRefused { cause: ScmUsageRefusalCause }
+
+fn decimal_gigabyte_bytes() -> Nat {
+  1000000000
+}
+
+fn binary_gibibyte_bytes() -> Nat {
+  1073741824
+}
+
+data billing_unit_rounding_note: String = "Vendors round a partial billing unit UP (Cloudflare states it outright: 'Cloudflare rounds up your usage to the next billing unit'), so bytes convert to billing units by ceiling division, never truncation. Truncating would under-state every bill by up to one unit per axis -- small at these sizes, wrong at every size."
+
+fn bytes_to_billing_units(bytes: Nat, basis: ByteBasis) -> Nat? {
+  match basis {
+    DecimalGigabyte => {
+      let d = decimal_gigabyte_bytes()
+      Present { value: ((bytes + d) - 1) / d }
+    }
+    BinaryGibibyte => {
+      let d = binary_gibibyte_bytes()
+      Present { value: ((bytes + d) - 1) / d }
+    }
+    ByteBasisUnstated => none
+  }
+}
+
+fn assumed_basis(assumption: ByteBasisAssumption) -> ByteBasis? {
+  match assumption {
+    BasisAssumed { basis: b, rationale: _ } =>
+      match b {
+        ByteBasisUnstated => none
+        DecimalGigabyte => Present { value: b }
+        BinaryGibibyte => Present { value: b }
+      }
+    BasisUnknown => none
+  }
+}
+
+data basis_reconciliation_note: String = "A cited row that DOES state its byte basis (Google's replication row states GiB) outranks the caller's assumption: if they disagree the derivation refuses with BasisContradictsCitedRow rather than silently preferring either. A row whose basis is ByteBasisUnstated -- every storage row in the catalogue today -- accepts the declared assumption, because that is exactly the knowable-wedge shape: proceed on a declared assumption, refuse on an absent one."
+
+fn basis_compatible_with_row(row_basis: ByteBasis, assumed: ByteBasis) -> Bool {
+  match row_basis {
+    ByteBasisUnstated => true
+    DecimalGigabyte => match assumed { DecimalGigabyte => true  BinaryGibibyte => false  ByteBasisUnstated => false }
+    BinaryGibibyte => match assumed { BinaryGibibyte => true  DecimalGigabyte => false  ByteBasisUnstated => false }
+  }
+}
+
+fn derive_scm_usage(
+  profile: ScmWorkloadProfile,
+  assumption: ByteBasisAssumption,
+) -> ScmUsageResult {
+  match assumed_basis(assumption: assumption) {
+    Present { value: basis } => {
+      let per_user_stored = byte_size_count(b: profile.stored_bytes_per_user_after_dedup)
+      let per_user_egress = byte_size_count(b: profile.monthly_egress_bytes_per_user)
+      if profile.user_count <= 0 {
+        ScmUsageRefused { cause: UserCountZero }
+      } else if per_user_stored <= 0 {
+        ScmUsageRefused { cause: StoredBytesPerUserZero }
+      } else {
+        let stored_bytes = profile.user_count * per_user_stored
+        let egress_bytes = profile.user_count * per_user_egress
+        match bytes_to_billing_units(bytes: stored_bytes, basis: basis) {
+          Present { value: stored_units } =>
+            match bytes_to_billing_units(bytes: egress_bytes, basis: basis) {
+              Present { value: egress_units } =>
+                ScmUsageDerived {
+                  usage: ScmUsage {
+                    stored_billing_units: stored_units,
+                    egress_billing_units: egress_units,
+                    object_reads: profile.user_count * profile.monthly_object_reads_per_user,
+                    object_writes: profile.user_count * profile.monthly_object_writes_per_user,
+                  }
+                }
+              _ => ScmUsageRefused { cause: BasisAssumptionUnstated }
+            }
+          _ => ScmUsageRefused { cause: BasisAssumptionUnstated }
+        }
+      }
+    }
+    _ => ScmUsageRefused { cause: BasisAssumptionUnknown }
+  }
+}
+
+fn requests_cost_micros(count: Nat, row: ObjectStorageRequestRow) -> Nat {
+  (count * money_rate_micros(q: row.per_million)) / 1000000
+}
+
+fn derive_scm_monthly_cost(
+  profile: ScmWorkloadProfile,
+  storage_row: ObjectStorageClassRow,
+  egress_row: ObjectStorageEgressRow,
+  read_row: ObjectStorageRequestRow,
+  write_row: ObjectStorageRequestRow,
+  assumption: ByteBasisAssumption,
+) -> ScmMonthlyCostResult {
+  match assumed_basis(assumption: assumption) {
+    Present { value: basis } =>
+      if !all_rows_same_vendor(storage_row: storage_row, egress_row: egress_row, read_row: read_row, write_row: write_row) {
+        ScmMonthlyCostRefused { cause: VendorMismatchAcrossRows }
+      } else if !basis_compatible_with_row(row_basis: cited_storage_basis(row: storage_row), assumed: basis) {
+        ScmMonthlyCostRefused { cause: BasisContradictsCitedRow }
+      } else if !basis_compatible_with_row(row_basis: cited_egress_basis(row: egress_row), assumed: basis) {
+        ScmMonthlyCostRefused { cause: BasisContradictsCitedRow }
+      } else {
+        match storage_rate_micros(row: storage_row) {
+          Present { value: storage_rate } =>
+            match egress_rate_micros(row: egress_row) {
+              Present { value: egress_rate } =>
+                match derive_scm_usage(profile: profile, assumption: assumption) {
+                  ScmUsageDerived { usage: u } => {
+                    let storage_micros = u.stored_billing_units * storage_rate
+                    let egress_micros = u.egress_billing_units * egress_rate
+                    let operations_micros = requests_cost_micros(count: u.object_reads, row: read_row) + requests_cost_micros(count: u.object_writes, row: write_row)
+                    ScmMonthlyCostDerived {
+                      storage_micros: storage_micros,
+                      egress_micros: egress_micros,
+                      operations_micros: operations_micros,
+                      total_micros: (storage_micros + egress_micros) + operations_micros,
+                    }
+                  }
+                  ScmUsageRefused { cause: c } => ScmMonthlyCostRefused { cause: c }
+                }
+              _ => ScmMonthlyCostRefused { cause: EgressRateUnavailable }
+            }
+          _ => ScmMonthlyCostRefused { cause: StorageRateUnavailable }
+        }
+      }
+    _ => ScmMonthlyCostRefused { cause: BasisAssumptionUnknown }
+  }
+}
+
+data vendor_mismatch_guard_note: String = "A bill assembled from one vendor's storage rate and another's egress rate is the cheapest-looking and most wrong number in this whole area -- it is how 'S3 with free egress' gets into a spreadsheet. The four rows must name ONE vendor or the derivation refuses, so that blend is unwritable rather than merely discouraged (DESIGN section 5, construction over validation)."
+
+fn all_rows_same_vendor(
+  storage_row: ObjectStorageClassRow,
+  egress_row: ObjectStorageEgressRow,
+  read_row: ObjectStorageRequestRow,
+  write_row: ObjectStorageRequestRow,
+) -> Bool {
+  storage_vendor_eq(a: storage_row.vendor, b: egress_row.vendor)
+    && storage_vendor_eq(a: storage_row.vendor, b: read_row.vendor)
+    && storage_vendor_eq(a: storage_row.vendor, b: write_row.vendor)
+}
+
+fn cited_storage_basis(row: ObjectStorageClassRow) -> ByteBasis {
+  match row.storage_rate {
+    RateCited { rate: _, quoted_unit_label: _, byte_basis: b } => b
+    RateUnavailable { cause: _ } => ByteBasisUnstated
+  }
+}
+
+fn cited_egress_basis(row: ObjectStorageEgressRow) -> ByteBasis {
+  match row.egress_rate {
+    TransferCited { rate: _, quoted_unit_label: _, byte_basis: b } => b
+    TransferIncludedAtNoCharge { terms: _ } => ByteBasisUnstated
+    TransferUnavailable { cause: _ } => ByteBasisUnstated
+  }
+}
+
+data egress_dominance_note: String = "The reason this model separates network from capacity rather than quoting one blended number: for an SCM they diverge by more than an order of magnitude. A git host's read traffic is clones and fetches -- bytes LEAVING the network -- so egress scales with developer activity while stored bytes scale only with distinct content, and content-addressed dedup deliberately flattens the second. On a metered-egress vendor the network term therefore dominates the bill; on a zero-egress vendor it vanishes and capacity dominates. The witness sizes both against the SAME profile, so the spread is a derived fact rather than a claim."
+
+data progressive_tier_note: String = "Flat-rate multiplication is correct only below the first tier boundary, and an SCM crosses those boundaries exactly when it starts to matter: at a million users on this profile the workload holds 100 TB and moves 500 TB a month, which is past AWS's 50 TB storage step and past all three of its egress steps. Vendor tiers are PROGRESSIVE (each rate applies only to the slice inside its own band, like tax brackets), so pricing the whole volume at the top band's rate under-states the bill and pricing it at the first band's rate over-states it. This fold applies each band to its own slice; a ladder is a list of rows ascending by lower bound, and the last band runs to the workload's actual volume."
+
+data saturating_sub_note: String = "Nat subtraction below zero is not representable, and a tier slice legitimately goes negative when the workload never reaches that band -- so the clamp is explicit rather than an if-branch returning a bare literal (which types as Int and would fork the carrier)."
+
+fn saturating_sub(a: Nat, b: Nat) -> Nat {
+  nat_max(a: a, b: b) - b
+}
+
+type RateTier {
+  lower_bound_units: Nat
+  rate_micros: Nat
+}
+
+type TierFoldAcc {
+  started: Bool
+  prev_lower: Nat
+  prev_rate: Nat
+  total_micros: Nat
+}
+
+fn progressive_cost(units: Nat, tiers: List<RateTier>) -> Nat {
+  let acc = fold(tiers, init: TierFoldAcc { started: false, prev_lower: 0, prev_rate: 0, total_micros: 0 }, f: fn(a, tier) {
+    if !a.started {
+      TierFoldAcc { started: true, prev_lower: tier.lower_bound_units, prev_rate: tier.rate_micros, total_micros: 0 }
+    } else {
+      let cap = nat_min(a: units, b: tier.lower_bound_units)
+      let slice = saturating_sub(a: cap, b: a.prev_lower)
+      TierFoldAcc {
+        started: true,
+        prev_lower: tier.lower_bound_units,
+        prev_rate: tier.rate_micros,
+        total_micros: a.total_micros + (slice * a.prev_rate),
+      }
+    }
+  })
+  let tail_slice = saturating_sub(a: units, b: acc.prev_lower)
+  acc.total_micros + (tail_slice * acc.prev_rate)
+}
+
+type TierLadderAcc {
+  ok: Bool
+  tiers: List<RateTier>
+}
+
+fn storage_ladder(rows: List<ObjectStorageClassRow>) -> List<RateTier>? {
+  let acc = fold(rows, init: TierLadderAcc { ok: true, tiers: [] }, f: fn(a, row) {
+    match storage_rate_micros(row: row) {
+      Present { value: r } =>
+        TierLadderAcc {
+          ok: a.ok,
+          tiers: concat(a.tiers, [RateTier { lower_bound_units: row.tier_lower_bound_gb, rate_micros: r }]),
+        }
+      _ => TierLadderAcc { ok: false, tiers: a.tiers }
+    }
+  })
+  if acc.ok && (list_length(items: acc.tiers) > 0) { Present { value: acc.tiers } } else { none }
+}
+
+fn egress_ladder(rows: List<ObjectStorageEgressRow>) -> List<RateTier>? {
+  let acc = fold(rows, init: TierLadderAcc { ok: true, tiers: [] }, f: fn(a, row) {
+    match egress_rate_micros(row: row) {
+      Present { value: r } =>
+        TierLadderAcc {
+          ok: a.ok,
+          tiers: concat(a.tiers, [RateTier { lower_bound_units: row.tier_lower_bound_gb, rate_micros: r }]),
+        }
+      _ => TierLadderAcc { ok: false, tiers: a.tiers }
+    }
+  })
+  if acc.ok && (list_length(items: acc.tiers) > 0) { Present { value: acc.tiers } } else { none }
+}
+
+data request_pricing_note: String = "Two vendors here state that requests are not billed at all (Wasabi: 'No fees for egress or API requests'; Storj: 'No API fees'). That is a DIFFERENT fact from a zero rate and from an unknown rate, so it gets its own arm -- a model that encoded it as rate zero could not tell 'the vendor says free' apart from 'nobody filled this in yet'."
+
+type RequestPricing
+  = RequestsBilled { read_row: ObjectStorageRequestRow, write_row: ObjectStorageRequestRow }
+  | RequestsIncludedAtNoCharge { terms: NonEmptyStr }
+
+type ProviderQuote {
+  vendor: StorageVendor
+  quote_label: NonEmptyStr
+  storage_rows: List<ObjectStorageClassRow>
+  egress_rows: List<ObjectStorageEgressRow>
+  requests: RequestPricing
+  quoted_basis: ByteBasis
+}
+
+data quoted_basis_note: String = "A quote carries the byte basis its own vendor states (BinaryGibibyte for Google, which says 'per 1 gibibyte'), or ByteBasisUnstated when the vendor does not say -- in which case the caller's declared assumption fills in. The vendor OUTRANKS the modeler: a stated basis is never overridden by an assumption, which is why the matrix can hold Google beside AWS without pretending they quote the same unit."
+
+fn effective_basis(quoted: ByteBasis, assumption: ByteBasisAssumption) -> ByteBasis? {
+  match quoted {
+    ByteBasisUnstated => assumed_basis(assumption: assumption)
+    DecimalGigabyte => Present { value: quoted }
+    BinaryGibibyte => Present { value: quoted }
+  }
+}
+
+type ProviderMonthlyQuoteResult
+  = ProviderQuoted {
+      storage_micros: Nat,
+      egress_micros: Nat,
+      operations_micros: Nat,
+      total_micros: Nat,
+    }
+  | ProviderQuoteRefused { cause: ScmUsageRefusalCause }
+
+fn quote_provider_monthly(
+  profile: ScmWorkloadProfile,
+  quote: ProviderQuote,
+  assumption: ByteBasisAssumption,
+) -> ProviderMonthlyQuoteResult {
+  match effective_basis(quoted: quote.quoted_basis, assumption: assumption) {
+    Present { value: basis } =>
+      match storage_ladder(rows: quote.storage_rows) {
+        Present { value: st_tiers } =>
+          match egress_ladder(rows: quote.egress_rows) {
+            Present { value: eg_tiers } => {
+              let stored_bytes = profile.user_count * byte_size_count(b: profile.stored_bytes_per_user_after_dedup)
+              let egress_bytes = profile.user_count * byte_size_count(b: profile.monthly_egress_bytes_per_user)
+              match bytes_to_billing_units(bytes: stored_bytes, basis: basis) {
+                Present { value: st_units } =>
+                  match bytes_to_billing_units(bytes: egress_bytes, basis: basis) {
+                    Present { value: eg_units } => {
+                      let storage_micros = progressive_cost(units: st_units, tiers: st_tiers)
+                      let egress_micros = progressive_cost(units: eg_units, tiers: eg_tiers)
+                      let ops_micros = match quote.requests {
+                        RequestsIncludedAtNoCharge { terms: _ } => 0
+                        RequestsBilled { read_row: rr, write_row: wr } => requests_cost_micros(count: profile.user_count * profile.monthly_object_reads_per_user, row: rr) + requests_cost_micros(count: profile.user_count * profile.monthly_object_writes_per_user, row: wr)
+                      }
+                      ProviderQuoted {
+                        storage_micros: storage_micros,
+                        egress_micros: egress_micros,
+                        operations_micros: ops_micros,
+                        total_micros: (storage_micros + egress_micros) + ops_micros,
+                      }
+                    }
+                    _ => ProviderQuoteRefused { cause: BasisAssumptionUnstated }
+                  }
+                _ => ProviderQuoteRefused { cause: BasisAssumptionUnstated }
+              }
+            }
+            _ => ProviderQuoteRefused { cause: EgressRateUnavailable }
+          }
+        _ => ProviderQuoteRefused { cause: StorageRateUnavailable }
+      }
+    _ => ProviderQuoteRefused { cause: BasisAssumptionUnknown }
+  }
+}
+
+data magnitude_scaling_note: String = "The matrix scales ONE profile by user count rather than re-authoring a profile per magnitude, so a rate difference across columns is always a tier effect and never a quietly different workload. Per-user behaviour is held constant by construction; if real per-user behaviour changes with scale (it does -- large installations have more forks per user and better cache hit rates), that is a change to the profile, made explicitly and visibly, not an adjustment hidden inside the matrix."
+
+fn profile_at_user_count(profile: ScmWorkloadProfile, user_count: Nat) -> ScmWorkloadProfile {
+  ScmWorkloadProfile {
+    user_count: user_count,
+    stored_bytes_per_user_after_dedup: profile.stored_bytes_per_user_after_dedup,
+    monthly_egress_bytes_per_user: profile.monthly_egress_bytes_per_user,
+    monthly_object_reads_per_user: profile.monthly_object_reads_per_user,
+    monthly_object_writes_per_user: profile.monthly_object_writes_per_user,
+  }
+}
+
+fn quote_total_micros(result: ProviderMonthlyQuoteResult) -> Nat? {
+  match result {
+    ProviderQuoted { storage_micros: _, egress_micros: _, operations_micros: _, total_micros: t } =>
+      Present { value: t }
+    ProviderQuoteRefused { cause: _ } => none
+  }
+}
+
+data agentic_request_amplification_note: String = "The read/write counts in a human-authored profile are the wrong order of magnitude for agent-driven development, and the axis they load is the one that looks negligible at human rates: operations. A human developer reads a few hundred objects a month; an agent working continuously reads thousands an HOUR, and it writes far more often because it commits intermediate states a human would never bother to save. Multiply that by the node grain a .dag-native SCM actually wants -- where a read is a NODE, not a file -- and the object count amplifies again. Operations are ~0.4 percent of a request-metered bill at human rates and can exceed 99 percent at agent rates, which means the vendor ranking computed on a human profile does not survive contact with the workload this SCM is being built for."
+
+data packing_policy_note: String = "The mitigation, and the load-bearing design decision it exposes: per-request billing punishes fine granularity, so a node-grain store that maps one node to one object pays a request fee per node. Packing many nodes into one stored object (git's own packfile move, and the reason git does not store one file per blob on the wire) divides the operation count by the packing factor while leaving the byte count alone. The policy is modeled rather than assumed because it is a real architectural choice with a real cost consequence, and because UnpackedNodeGrain is the shape a naive content-addressed store falls into by default -- the expensive default is exactly the one worth making visible."
+
+type PackingPolicy
+  = UnpackedNodeGrain
+  | PackedObjects { nodes_per_object: Nat }
+
+fn packed_object_count(logical_node_ops: Nat, policy: PackingPolicy) -> Nat {
+  match policy {
+    UnpackedNodeGrain => logical_node_ops
+    PackedObjects { nodes_per_object: n } =>
+      if n <= 0 { logical_node_ops } else { ((logical_node_ops + n) - 1) / n }
+  }
+}
+
+data agentic_profile_construction_note: String = "Builds a priced profile from LOGICAL node operations plus a packing policy, so the workload is stated in the terms the SCM actually thinks in (nodes touched) and the billing consequence is derived rather than hand-entered. Storage and egress pass through unchanged: packing changes how many OBJECTS carry the bytes, not how many bytes there are."
+
+fn profile_with_packed_ops(
+  base: ScmWorkloadProfile,
+  logical_node_reads_per_user: Nat,
+  logical_node_writes_per_user: Nat,
+  policy: PackingPolicy,
+) -> ScmWorkloadProfile {
+  ScmWorkloadProfile {
+    user_count: base.user_count,
+    stored_bytes_per_user_after_dedup: base.stored_bytes_per_user_after_dedup,
+    monthly_egress_bytes_per_user: base.monthly_egress_bytes_per_user,
+    monthly_object_reads_per_user: packed_object_count(logical_node_ops: logical_node_reads_per_user, policy: policy),
+    monthly_object_writes_per_user: packed_object_count(logical_node_ops: logical_node_writes_per_user, policy: policy),
+  }
+}
+
+fn quote_operations_micros(result: ProviderMonthlyQuoteResult) -> Nat? {
+  match result {
+    ProviderQuoted { storage_micros: _, egress_micros: _, operations_micros: o, total_micros: _ } =>
+      Present { value: o }
+    ProviderQuoteRefused { cause: _ } => none
+  }
+}

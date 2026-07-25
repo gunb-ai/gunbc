@@ -1,0 +1,133 @@
+module extdeps.ssh.session
+
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "datatracker.ietf.org/doc/html/rfc4253"
+  }
+}
+
+data ssh_typed_argv_exec_note: String = "Structured remote argv dispatch: ssh host -- argv... (OpenSSH end-of-options separator). ExecArgv splices a List<String> remote argv without embedding a shell command string. Portable-argv allowlist is enforced at the gunbc realization edge before calling this transport (Wave C5 / bash-emit #5828 slice)."
+
+type SshSessionExecResult {
+  exit_code: Int
+  success: Bool
+  stdout: String
+  stderr: String
+}
+
+service ssh.Session {
+  operation Exec {
+    input { host: NonEmptyStr, command: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["ssh", "{host}", "{command}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "ssh remote command failed"
+    }
+  }
+
+  operation ExecArgv {
+    input { host: NonEmptyStr, argv: List<String> }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["ssh", "{host}", "--", argv]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "ssh remote argv exec failed"
+    }
+    mock_response {
+      0 => { exit_code: 0, success: true, stdout: "mock-ssh-argv", stderr: "" } "hermetic ssh.Session.ExecArgv"
+    }
+  }
+
+  operation ExecScript {
+    input { host: NonEmptyStr, script: String }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["ssh", "{host}", "bash", "-s"]
+      stdin: script
+    }
+    exit {
+      0 => Unit
+      nonzero => String "ssh remote script failed"
+    }
+    mock_response {
+      0 => { exit_code: 0, success: true, stdout: "mock ssh stdin script executed", stderr: "" } "ok"
+    }
+  }
+
+  operation Reachability {
+    input { host: NonEmptyStr }
+    output { reachable: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "{host}", "true"] }
+    exit {
+      0 => Unit
+      nonzero => String "ssh unreachable"
+    }
+  }
+}
+
+fn ssh_session_exec_result_from_service(
+  exit_code: Int,
+  success: Bool,
+  stdout: String,
+  stderr: String,
+) -> SshSessionExecResult {
+  SshSessionExecResult {
+    exit_code: exit_code,
+    success: success,
+    stdout: stdout,
+    stderr: stderr,
+  }
+}
+
+fn ssh_session_exec(host: NonEmptyStr, command: NonEmptyStr) -> SshSessionExecResult {
+  let result = ssh.Session.Exec(host: host, command: command)
+  ssh_session_exec_result_from_service(
+    exit_code: result.exit_code,
+    success: result.success,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  )
+}
+
+fn ssh_session_exec_argv(host: NonEmptyStr, argv: List<String>) -> SshSessionExecResult {
+  let result = ssh.Session.ExecArgv(host: host, argv: argv)
+  ssh_session_exec_result_from_service(
+    exit_code: result.exit_code,
+    success: result.success,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  )
+}
+
+fn ssh_session_exec_script(host: NonEmptyStr, script: String) -> SshSessionExecResult {
+  let result = ssh.Session.ExecScript(host: host, script: script)
+  ssh_session_exec_result_from_service(
+    exit_code: result.exit_code,
+    success: result.success,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  )
+}

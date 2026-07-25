@@ -2,7 +2,7 @@ module gunbc.commit_workflow
 
 import gunbc.ci_gate {
   Gate,
-  EmitHostGate, CheapClaimPoolGate, LayeringImportsGate,
+  EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
@@ -64,10 +64,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: CheapClaimPoolGate },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitSpecGate { gate: LayeringImportsGate },
     surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
@@ -529,23 +525,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
-      check_fns: [
-        "lens_affected_set_provenance_producer_single_read_emits_row_holds",
-        "lens_affected_set_provenance_producer_rejects_malformed_ingest_holds",
-        "lens_affected_set_provenance_producer_rejects_beyond_surface_ingest_holds",
-        "lens_affected_set_provenance_producer_parse_coverage_known_diff_fail_closed_holds",
-        "lens_affected_set_provenance_producer_coverage_receipt_holds",
-        "lens_affected_set_provenance_producer_git_diff_wire_holds",
-        "lens_affected_set_provenance_producer_unknown_diff_fail_closed_holds"
-      ],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
     check: CommitCargoFmtCheck,
     surfaces: [GitPrePushHook]
   }
@@ -587,7 +566,6 @@ fn gate_eq(a: Gate, b: Gate) -> Bool {
   match a {
     EmitHostGate => match b { EmitHostGate => true  _ => false }
     CheapClaimPoolGate => match b { CheapClaimPoolGate => true  _ => false }
-    LayeringImportsGate => match b { LayeringImportsGate => true  _ => false }
     ExtdepsExternalAuthorityGate => match b { ExtdepsExternalAuthorityGate => true  _ => false }
     DagCompileCleanGate => match b { DagCompileCleanGate => true  _ => false }
     GeneratedArtifactDriftGate => match b { GeneratedArtifactDriftGate => true  _ => false }

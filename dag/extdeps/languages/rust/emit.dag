@@ -1,6 +1,28 @@
 module extdeps.languages.rust.emit
 
 import std.emit_model { SimpleMethodSpec }
+import std.trait_derive_shape {
+  ReprGroundingDeriveTrait,
+  ReprDeriveDebug,
+  ReprDeriveClone,
+  ReprDeriveCopy,
+  ReprDerivePartialEq,
+  ReprDeriveEq,
+  ReprDerivePartialOrd,
+  ReprDeriveOrd,
+  ReprDeriveSerialize,
+  ReprDeriveDeserialize,
+  ReprDeriveAdd,
+  ReprDeriveSub,
+  ReprDeriveMul,
+  ReprDeriveDiv,
+  ReprDeriveRem,
+  ReprDeriveNeg,
+  record_derive_traits_heap,
+  record_derive_traits_copy,
+  payload_coproduct_derive_traits,
+  nullary_coproduct_derive_traits
+}
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -62,12 +84,40 @@ data rust_reserved_escape_suffix: String = "_"
 
 data rust_string_types: List<String> = ["String", "Secret"]
 
-data rust_struct_derives: String = "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]"
+data rust_struct_derives: String = rust_trait_derive_attr_from_traits(record_derive_traits_heap())
 
-data rust_struct_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]"
-data rust_enum_derives: String = "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]"
+data rust_struct_derives_copy: String = rust_trait_derive_attr_from_traits(record_derive_traits_copy())
+data rust_enum_derives: String = rust_trait_derive_attr_from_traits(payload_coproduct_derive_traits())
 
-data rust_enum_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]"
+data rust_enum_derives_copy: String = rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
+
+fn rust_trait_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> String {
+  match derive_trait {
+    ReprDeriveDebug => "Debug"
+    ReprDeriveClone => "Clone"
+    ReprDeriveCopy => "Copy"
+    ReprDerivePartialEq => "PartialEq"
+    ReprDeriveEq => "Eq"
+    ReprDerivePartialOrd => "PartialOrd"
+    ReprDeriveOrd => "Ord"
+    ReprDeriveSerialize => "serde::Serialize"
+    ReprDeriveDeserialize => "serde::Deserialize"
+    ReprDeriveAdd => "std::ops::Add"
+    ReprDeriveSub => "std::ops::Sub"
+    ReprDeriveMul => "std::ops::Mul"
+    ReprDeriveDiv => "std::ops::Div"
+    ReprDeriveRem => "std::ops::Rem"
+    ReprDeriveNeg => "std::ops::Neg"
+  }
+}
+
+fn rust_trait_derive_attr_from_traits(traits: List<ReprGroundingDeriveTrait>) -> String {
+  concat(
+    "#[derive(",
+    traits |> map(t => rust_trait_derive_spelling(t)) |> join(separator: ", "),
+    ")]"
+  )
+}
 
 data rust_serde_tag: String = "#[serde(tag = \"_variant\")]"
 
@@ -239,4 +289,38 @@ fn rust_qualified_module_mod_basename(qualified_module: String) -> String {
 
 fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
   concat(rust_qualified_module_mod_basename(qualified_module: qualified_module), ".rs")
+}
+
+data rust_repr_grounding_arm_b_dissolve_on: String = "Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion/Nat body lands (#7197); replace fail-closed unimplemented! stubs with grounded i64 newtype operations. Do not retain PartialEq<i64> cross-representation bridge — numeric-tower grounding replaces the straddle."
+
+fn rust_supplemental_impls_commutative_semiring_magnitude() -> String {
+  concat(
+    "\n// repr-grounding arm (b): Nat carrier arithmetic (v1 seed emit; ",
+    rust_repr_grounding_arm_b_dissolve_on,
+    ")\n",
+    "impl std::ops::Add for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n",
+    "    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;\n",
+    "    fn add(self, _rhs: Self) -> Self::Output { unimplemented!(\"interim CommutativeSemiring<Magnitude> stub — see #7197\") }\n",
+    "}\n",
+    "impl std::ops::Mul for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n",
+    "    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;\n",
+    "    fn mul(self, _rhs: Self) -> Self::Output { unimplemented!(\"interim CommutativeSemiring<Magnitude> stub — see #7197\") }\n",
+    "}\n",
+    "impl std::ops::Div for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n",
+    "    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;\n",
+    "    fn div(self, _rhs: Self) -> Self::Output { unimplemented!(\"interim CommutativeSemiring<Magnitude> stub — see #7197\") }\n",
+    "}\n",
+    "impl std::cmp::PartialEq<i64> for CommutativeSemiring<crate::std_magnitude::Magnitude> {\n",
+    "    fn eq(&self, _other: &i64) -> bool { unimplemented!(\"interim CommutativeSemiring<Magnitude> stub — see #7197\") }\n",
+    "}\n"
+  )
+}
+
+fn rust_supplemental_impls_bool_coproduct() -> String {
+  concat(
+    "\n// repr-grounding arm (b): Bool coproduct ↔ host bool bridge (v1 seed emit)\n",
+    "impl From<Bool> for bool {\n",
+    "    fn from(b: Bool) -> bool { match b { Bool::True => true, Bool::False => false } }\n",
+    "}\n"
+  )
 }

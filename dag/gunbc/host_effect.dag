@@ -28,24 +28,15 @@ type HostEffect =
     ShellCommand { script: String }
   | RedfishAction { action: RedfishSystemAction }
   | ConvergePlan { policy: HostConverge }
-  | Srv3InstallDiagnosticObserve {
-      bmc: NonEmptyStr,
-      port: Int,
-      iso_path: NonEmptyStr,
-      iso_content_hash: ContentHash,
-    }
   | OsInstallActuatorToolchainEnsure {}
   | ProvisionBuildCache { catalog_id: CacheInterfaceId }
   | SetHostnameCas { hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead }
   | SudoNopasswdExecuteProbe { probe: SudoNopasswdExecuteProbeShape }
-  | Srv3InstallReconcileObserve { include_git_meta: Bool }
-  | DurableApprovalGrantRecord
   | DurableApprovalGrantRead
   | Srv3InstallMediaFetch
   | Srv3SeededInstallMediaRemaster
   | Srv3SeededInstallMediaToolchainEnsure
-  | Srv3SolConsoleCapture
   | Srv3BmcwebSessionLogin
   | Srv3BmcwebTokenExtract
   | Srv3NbdProxyServe {

@@ -71,14 +71,14 @@ fn witness_real_infra_reasons_are_non_blocking() -> Bool {
 fn witness_structural_not_swallowed_as_infra() -> Bool {
   let compile_err = "error[E0599]: no method named `frobnicate` found for type `Node`"
   let inference = "type inference failed: cannot unify Int with String at dag/gunbc/foo.dag:42"
-  let assertion = "witness layering_imports_clean returned false (1 upward import)"
-  let layering = "layering_imports gate: upward import std -> extdeps at dag/std/credentials.dag:7"
+  let assertion = "witness cheap_pool_chunk_totality_holds returned false (1 uncovered claim)"
+  let gate = "extdeps_external_authority gate: uncited external dependency at dag/extdeps/foo.dag:3"
   let drift = "generated_artifact_drift gate: .github/workflows/ci.yml differs from gunbc ci output"
   let oom_structural = "thread 'main' panicked: index out of bounds; aborting (exit code 137)"
   reason_blocks_merge(reason: compile_err)
     && reason_blocks_merge(reason: inference)
     && reason_blocks_merge(reason: assertion)
-    && reason_blocks_merge(reason: layering)
+    && reason_blocks_merge(reason: gate)
     && reason_blocks_merge(reason: drift)
     && reason_blocks_merge(reason: oom_structural)
     && outcome_is_structural(o: classify_floor_exit(e: ExitFailure { code: 137, reason: oom_structural }))
