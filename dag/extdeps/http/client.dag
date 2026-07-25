@@ -50,9 +50,6 @@ service http.Client {
       0 => Unit
       nonzero => String "http client GET failed"
     }
-    mock_response {
-      0 => { body: "", success: false } "hermetic: no live HTTP endpoint; readiness probe refuses rather than fabricate a body"
-    }
   }
 
   operation GetLocalhostBounded {
