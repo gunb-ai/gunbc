@@ -1,5 +1,16 @@
 module v2.lens.affected_set.declared_source_ref_selection
 
+import v2.compiler.source_authority {
+  ModuleStorageIndex,
+  SourceRef,
+  module_storage_binding_file_path,
+  source_ref_path
+}
+import v2.lens.module_graph { path_matches_touched }
+import v2.std.algebra { any, fold_list, length }
+import v2.std.collection { Absent, List, Present }
+import v2.std.logic { Bool }
+import v2.std.text { String }
 
 data declared_source_ref_selection_note: String = "Task 5 of docs/plans/declared-source-ref-selection-design.md: selection-edge source for per-row opt-in declared SourceRef rows. Selection asks whether the touched set intersects refs this row declares, resolving each ref through the derived ModuleStorageIndex — never a hand-maintained path list. Module-backed paths resolve via index file_path membership; storage-only paths (.rs shims) resolve at the host bridge via workspace file existence (the index is module-grain only). Arms: no refs → caller keeps ReadsLiveTree default; unresolvable ref → widen to RUN (typed, counted); resolves + intersects → selected; resolves + no intersection → skip-eligible on this axis."
 

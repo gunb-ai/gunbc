@@ -1,5 +1,18 @@
 module v2.test.lens_affected_set.verified_by_in_frontier
 
+import v2.lens.affected_set { dependency_in_lens_frontier }
+import v2.std.dependency { DependencyView, VerifiedBy }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
 
 fn verified_by_node(s: Symbol) -> Node {
   Node {

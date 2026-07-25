@@ -1,5 +1,18 @@
 module v2.test.lens_affected_set.projection_dep_in_frontier
 
+import v2.lens.affected_set { dependency_in_lens_frontier }
+import v2.std.dependency { DependencyView, ProjectionDependsOn }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
 
 fn projection_dep_node(s: Symbol) -> Node {
   Node {

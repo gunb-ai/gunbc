@@ -1,5 +1,40 @@
 module v2.test.lens_affected_set.provenance_producer
 
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.source_authority {
+  source_root_coverage_is_complete,
+    DagSourceReadWitness,
+  SourceRootIngest,
+  node_artifact_provenance_from_source_root,
+  source_root_provenance_coverage_receipt
+}
+import v2.lens.edit_locus {
+  GitDiffNameOnly,
+  RepoPath,
+  affected_set_reading_from_git_diff_provenance
+}
+import v2.std.collection { List }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { contains, count_equal, for_all, length }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.exact_structural_equality_zip_fold_predicate {
+  exact_structural_equality_zip_fold
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.witness { Holds, Violates, Witness }
+import v2.test.lens_affected_set.node_precision {
+  affected_set_claim_tree,
+  affected_set_leaf,
+  affected_set_mid,
+  affected_set_root
+}
+import v2.test.lens_common.infer_fixture {
+  claim_inferred_facts,
+  claim_inferred_tree
+}
 
 data provenance_producer_path_fixture: RepoPath = "src/v2/lens/affected_set/source_producer_fixture.dag"
 data provenance_producer_path_mid: RepoPath = "src/v2/lens/affected_set.dag"
