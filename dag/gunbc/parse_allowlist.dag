@@ -10,10 +10,10 @@ type ParseAllowlistEntry {
 
 data dag_v2_parse_allowlist: List<ParseAllowlistEntry> = [
   {
-    path: { path: "dag/std/unicode.dag" },
+    path: { path: "dag/std/unicode/types.dag" },
     tag: V2ParserDebt {
       reason: "fn expression body (= match) not accepted by v2 parser",
-      ref: "std/unicode.dag char_in_class"
+      ref: "std/unicode/types.dag char_in_class"
     }
   }
 ]
