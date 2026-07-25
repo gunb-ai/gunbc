@@ -1,8 +1,12 @@
 # `.dag` note-prose census — what the long strings are, and what that prices
 
-**Status:** census complete, measured 2026-07-25. No code migrated. This document is the
-*reading*; `docs/plans/dag-note-prose-census.py` is the authority — every number below
-re-derives with `python3 docs/plans/dag-note-prose-census.py` from the repo root.
+**Status:** census complete, **measured at `2c33d6a610`, 2026-07-25**. No code migrated. This
+document is the *reading*; `docs/plans/dag-note-prose-census.py` is the authority — every number
+below re-derives with `python3 docs/plans/dag-note-prose-census.py` from the repo root.
+
+Totals drift as the corpus grows (merging main mid-census moved the total by 0.4 KiB, which is
+§4's finding in miniature), so figures are pinned to that commit. Re-run rather than trust the
+table if the delta matters; shares are stable to well within §6's error bar.
 
 **Scaffold, with a dissolution trigger:** both files delete when the typed carriers land and
 the annotation-budget lens counts *rows*. A lexical census over prose is superseded the moment
