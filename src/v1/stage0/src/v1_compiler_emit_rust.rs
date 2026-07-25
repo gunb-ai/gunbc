@@ -5,9 +5,9 @@ pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
 pub use crate::extdeps_languages_rust_emit::HigherOrderMethodSpec;
 pub use crate::extdeps_languages_rust_emit::{
     rt_bridge_function_names, rt_functions, rt_ref_map_functions, rt_wraps_result,
-    rust_container_templates, rust_enum_derives, rust_enum_derives_copy, rust_higher_order_methods,
-    rust_method_templates, rust_method_wraps_result, rust_serde_rename_all_screaming_snake_case,
-    rust_serde_rename_all_snake_case, rust_struct_derives, rust_struct_derives_copy,
+    rust_container_templates, rust_higher_order_methods, rust_method_templates,
+    rust_method_wraps_result, rust_serde_rename_all_screaming_snake_case,
+    rust_serde_rename_all_snake_case,
 };
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
@@ -101,6 +101,11 @@ pub use crate::v1_compiler_ownership::{
 };
 pub use crate::v1_compiler_resolve::get_exported_names;
 pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
+pub use crate::v1_compiler_trait_derive_emit::{
+    rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible,
+    v1_emit_enum_derives, v1_emit_struct_derives, v1_emit_type_params_with_clone_bounds,
+    v1_generic_params_needing_clone_bound,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
@@ -2856,22 +2861,6 @@ pub fn rust_items() -> Rc<ItemKeywords> {
     language_spec(RenderTarget::Rust).items.clone()
 }
 
-pub fn rust_struct_derives_text() -> String {
-    rust_struct_derives()
-}
-
-pub fn rust_struct_derives_copy_text() -> String {
-    rust_struct_derives_copy()
-}
-
-pub fn rust_enum_derives_text() -> String {
-    rust_enum_derives()
-}
-
-pub fn rust_enum_derives_copy_text() -> String {
-    rust_enum_derives_copy()
-}
-
 pub fn rust_ord_derives_text() -> String {
     "#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]"
         .to_string()
@@ -2902,33 +2891,6 @@ pub fn rust_nominal_identity_carrier_def(name: String) -> String {
 
 pub fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> bool {
     false
-}
-
-pub fn rust_nominal_identity_carrier_shape_eligible(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    ((((authored_name_at(source_indices.clone(), n.clone()) == "Symbol".to_string())
-        && ((n.children.clone().len() as i64) == 0))
-        && ((n.params.clone().len() as i64) == 0))
-        && (n.connective.clone() == Connective::NoConnective))
-}
-
-pub fn rust_symbol_wrapped_ord_carrier_shape_eligible(
-    children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    if ((children.clone().len() as i64) != 1) {
-        false
-    } else {
-        match children.clone().first().cloned() {
-            Some(child) => rust_nominal_identity_carrier_shape_eligible(
-                child_type_node(child.clone()),
-                source_indices.clone(),
-            ),
-            None => false,
-        }
-    }
 }
 
 pub fn rust_nominal_ord_derives_for_shape(
@@ -12031,28 +11993,13 @@ pub fn emit_struct_from_children(
 ) -> String {
     {
         let has_fn_fields = type_has_fn_fields(name.clone(), emit_info.clone());
-        let derives = if has_fn_fields.clone() {
-            "#[derive(Clone)]".to_string()
-        } else {
-            if (rust_nominal_ord_derives_for_shape(
-                name.clone(),
-                children.clone(),
-                env.source_indices.clone(),
-            ) != "".to_string())
-            {
-                rust_nominal_ord_derives_for_shape(
-                    name.clone(),
-                    children.clone(),
-                    env.source_indices.clone(),
-                )
-            } else {
-                if v1_rt::set_contains(&shared_types, name.clone()) {
-                    rust_struct_derives_text()
-                } else {
-                    rust_struct_derives_copy_text()
-                }
-            }
-        };
+        let derives = v1_emit_struct_derives(
+            name.clone(),
+            children.clone(),
+            shared_types.clone(),
+            has_fn_fields.clone(),
+            env.source_indices.clone(),
+        );
         if ((children.clone().len() as i64) == 0) {
             v1_rt::concat(
                 v1_rt::concat(
@@ -12599,22 +12546,12 @@ pub fn emit_rust_field_definition(
     }
 }
 
-pub fn enum_derives(name: String, children: Rc<Vec<Rc<Node>>>) -> String {
-    {
-        let complex = Rc::new({
-            let mut __result = Vec::new();
-            for v in children.clone().iter().cloned() {
-                if ((v.children.clone().len() as i64) > 0) {
-                    __result.push(v);
-                }
-            }
-            __result
-        });
-        match ((complex.clone().len() as i64) == 0) {
-            true => rust_ord_derives_copy_text(),
-            false => rust_enum_derives_text(),
-        }
-    }
+pub fn enum_derives(
+    name: String,
+    children: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    v1_emit_enum_derives(children.clone(), source_indices.clone())
 }
 
 pub fn emit_enum_from_children(
@@ -12629,7 +12566,7 @@ pub fn emit_enum_from_children(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let derives = enum_derives(name.clone(), children.clone());
+        let derives = enum_derives(name.clone(), children.clone(), env.source_indices.clone());
         let variant_lines = Rc::new({
             let mut __result = Vec::new();
             for child in children.clone().iter().cloned() {
@@ -13687,40 +13624,19 @@ pub fn emit_fn_def(
                 })
                 .len() as i64)
                     > 0);
-                let return_based_clone =
-                    (return_is_bare_generic.clone() && !body_is_param_ref.clone());
-                let element_clone_param = if body_is_param_ref.clone() {
-                    None
-                } else {
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for g in generic_param_names.clone().iter().cloned() {
-                            if type_param_is_collection_element_in_values(
-                                g.clone(),
-                                value_params.clone(),
-                                si.clone(),
-                            ) {
-                                __result.push(g);
-                            }
-                        }
-                        __result
-                    })
-                    .first()
-                    .cloned()
-                };
-                let clone_param = if return_based_clone.clone() {
-                    ret_name.clone()
-                } else {
-                    match element_clone_param.clone() {
-                        Some(g) => g.clone(),
-                        None => "".to_string(),
-                    }
-                };
-                let needs_clone_bound = (clone_param.clone() != "".to_string());
+                let clone_param_names = v1_generic_params_needing_clone_bound(
+                    generic_param_names.clone(),
+                    value_params.clone(),
+                    return_is_bare_generic.clone(),
+                    ret_name.clone(),
+                    body_is_param_ref.clone(),
+                    si.clone(),
+                );
+                let needs_clone_bound = ((clone_param_names.clone().len() as i64) > 0);
                 let type_params_str = if needs_clone_bound.clone() {
-                    emit_type_params_with_clone_bound(
+                    v1_emit_type_params_with_clone_bounds(
                         type_params.clone(),
-                        clone_param.clone(),
+                        clone_param_names.clone(),
                         si.clone(),
                     )
                 } else {
