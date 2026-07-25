@@ -40,10 +40,7 @@ type GroupCompletion<M> {
   neg: M
 }
 
-type FieldOfFractions<R> {
-  num: R
-  denom: R
-}
+type FieldOfFractions<R>
 
 type Semiring<T> {
   add: fn(T, T) -> T
