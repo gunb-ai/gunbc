@@ -29,7 +29,7 @@ struct ExprShapes {
 
 fn classify(
     node: &Rc<Node>,
-    si: &Rc<std::collections::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
+    si: &Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
     refs: &mut Vec<String>,
     shapes: &mut ExprShapes,
 ) {
@@ -49,9 +49,11 @@ fn classify(
         }
         ExprData::ExprStringInterp => {
             shapes.interp += 1;
-            for child in node.children.iter() {
-                if matches!(child.expr_data.as_ref(), ExprData::ExprVar { .. }) {
-                    refs.push(expr_var_name_at(child.clone(), si.clone()));
+            for part in
+                v1_compiler::v1_compiler_emit::extract_string_interp_parts(node.clone()).iter()
+            {
+                if let v1_compiler::v1_std_core::StringPart::Interpolation { expr } = part.as_ref() {
+                    classify(expr, si, refs, shapes);
                 }
             }
         }
