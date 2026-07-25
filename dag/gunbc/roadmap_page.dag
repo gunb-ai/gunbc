@@ -514,9 +514,11 @@ fn page_script_census(page: MarkupNode) -> List<PageScriptViolation> {
   collect_script_violations(node: page, known_src: roadmap_dispatch_asset_path)
 }
 
-fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> MarkupNode {
+data node_head_row_note: String = "The row composition (remodel round 5, operator: 'the positioning of everything is still very clunky' — the pill sat alone on its own line, the disclosure floated, badges ragged). One flex HEAD LINE per node — status chip, title, badges, carrier links, and the dispatch control pushed to the row's right edge (the GitHub PR-row shape: identity left, action right) — with the disclosure indented beneath it. This is the deferred P3 flex-container refactor landing with the operator as the browser: the earlier deferral reason ('unverifiable without a browser') dissolved when the review loop gained live eyes."
+
+fn node_head_row(rn: RoadmapNode, merged: List<Int>) -> MarkupNode {
   let status = node_status_symbol(rn: rn, merged: merged)
-  let head = concat(
+  el_class("div", "node-head", concat(
     concat(
       concat(
         [
@@ -527,6 +529,13 @@ fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, 
       ),
       concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)),
     ),
+    dispatch_button_nodes(rn: rn, merged: merged)))
+}
+
+fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> MarkupNode {
+  let status = node_status_symbol(rn: rn, merged: merged)
+  let head = concat(
+    [ node_head_row(rn: rn, merged: merged) ],
     item_detail_block(rn: rn),
   )
   let kids = children_of(nodes: nodes, edges: edges, parent: rn.node)
@@ -552,7 +561,7 @@ fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, 
   ElementNode {
     tag: "li",
     attrs: [ MarkupAttr { name: "class", value: concat("node node-", status) } ],
-    children: concat(concat(head, dispatch_button_nodes(rn: rn, merged: merged)), child_block),
+    children: concat(head, child_block),
   }
 }
 
@@ -584,23 +593,12 @@ fn section_markup(s: RoadmapSection, merged: List<Int>) -> MarkupNode {
 
 fn frontier_flat_node_li(rn: RoadmapNode, merged: List<Int>) -> MarkupNode {
   let status = node_status_symbol(rn: rn, merged: merged)
-  let head = concat(
-    concat(
-      concat(
-        [
-          el_class("span", concat("status status-", status), [ txt(status) ]),
-          el_class("span", "title", lead_nodes(line: rn.line)),
-        ],
-        concat(superseded_badge(rn: rn), owner_badge(rn: rn)),
-      ),
-      concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)),
-    ),
-    item_detail_block(rn: rn),
-  )
   ElementNode {
     tag: "li",
     attrs: [ MarkupAttr { name: "class", value: concat("node node-", status) } ],
-    children: concat(head, dispatch_button_nodes(rn: rn, merged: merged)),
+    children: concat(
+      [ node_head_row(rn: rn, merged: merged) ],
+      item_detail_block(rn: rn)),
   }
 }
 

@@ -485,8 +485,18 @@ fn roadmap_instance_rules() -> List<BuildRule> {
       decl(prop: TextTransform, value: "lowercase"),
       decl(prop: LetterSpacing, value: "0.03em"),
     ] },
+    StaticRule { selector: ClassSelector { name: "node-head" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+      decl(prop: FlexWrap, value: "wrap"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".node-head > .dispatch-btn" }, decls: [
+      decl(prop: MarginLeft, value: "auto"),
+    ] },
     StaticRule { selector: RawSelector { text: "details.item-detail" }, decls: [
       decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_3)),
+      decl(prop: MarginLeft, value: scale_var(t: space_12)),
     ] },
     StaticRule { selector: RawSelector { text: "details.item-detail > summary" }, decls: [
       decl(prop: Cursor, value: "pointer"),
