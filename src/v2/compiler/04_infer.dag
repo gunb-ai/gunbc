@@ -1,6 +1,76 @@
 module v2.compiler.infer
 
 
+import v2.std.algebra { length, list_snoc_item }
+import v2.std.bounded_lattice_completeness {
+  infer_bounded_lattice_consumer_gate,
+  partial_bounded_lattice_instances_in_tree
+}
+import v2.compiler.resolve { ResolvedTree }
+import v2.extdeps.languages.dag { dag_node_is_int_literal_atom }
+import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
+import v2.std.collection {
+  Absent,
+  List,
+  Map,
+  Optional,
+  Present,
+  list_at_optional,
+  optional_absent,
+  optional_present
+}
+import v2.std.constraints {
+  CanonicalGrounding,
+  CanonicalGroundingWitness,
+  ConstraintGraph,
+  ConstraintSolvePolicy,
+  solve_constraints
+}
+import v2.std.diagnostic {
+  Diagnostic,
+  Diagnostics,
+  ExternalContractUnknown,
+  Locus,
+  node_locus,
+  Outcome,
+  Unavailable,
+  Accepted,
+  None,
+  Rejected,
+  Some,
+  bind_outcome,
+  diagnostics_merge,
+  diagnostics_singleton,
+  outcome_rejected,
+  outcome_accepted,
+  rejected_with_pending
+}
+import v2.std.logic { Bool, bool_node }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Branch,
+  ComputationNode,
+  Conj,
+  Edge,
+  Loop,
+  Match,
+  Named,
+  Node,
+  NodeFold,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode,
+  all_edges_positional,
+  fold_node,
+  loop_edge_contributes_to_iteration_fold,
+  match_arm_body,
+  match_arm_pattern,
+  well_formed
+}
+import v2.std.node_query { find_named_child, node_positional_child_targets }
+import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+
 
 type AlgebraRef {
   algebra: Node
