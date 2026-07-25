@@ -58,7 +58,7 @@ Pure computation sized "over the whole corpus" where the *mechanism* does not ne
 
 | row | cost | fixture-grain per-PR version | corpus grain |
 |---|---|---|---|
-| `dag_compile_clean_perturb_receipts` | 141s | RED arms (`perturb_unresolved_import`, `perturb_optional_skew`) on a 3-module fixture closure in <1s | live-tree / full gate → cadence. *Attribute first* if 53→141s is #7205 residual (then reclassify F). |
+| `dag_compile_clean_perturb_receipts` | 141s | **Done (#7229)**: Class C (4× full-corpus compiles, not #7205); fixture RED+green on `bin_witness_wet`; corpus legs → `falsifier_rehomed_bin_wet_rows` | enrolled |
 | `wave1_gate1_d_census` | 141s | census mechanism over a fixture module set | corpus census → cadence (re-home already ruled) |
 | `compile_clean_shard` totality + roster | 15s + 7s | **Done (#7228)**: roster+totality algebra on synthetic fixtures per-PR; live-tree totality → `falsifier_rehomed_bin_wet_rows` (falsifier batch 5) | enrolled |
 | provenance producer ×3 | 40s | **Done (#7230)**: hand-built fail-closed walls + sg_claims selectivity per-PR; live grain → `falsifier_substrate_long_lane_entries` (falsifier batch 6); ~9.5s ingest Class F hand-off | enrolled |
