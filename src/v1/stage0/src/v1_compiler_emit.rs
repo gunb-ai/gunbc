@@ -800,7 +800,15 @@ pub fn has_nested_records_node(
             } else {
                 let is_map = node_is_keyed_collection(n.clone(), source_indices.clone());
                 if is_map.clone() {
-                    match n.children.clone().get(1 as usize).cloned() {
+                    match n
+                        .children
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .next()
+                        .cloned()
+                    {
                         Some(val_child) => {
                             let __tco_0 = child_type_node(val_child.clone());
                             n = __tco_0;
@@ -1462,7 +1470,7 @@ pub fn render_node_type(
                     source_indices.clone(),
                 );
                 let opt_str =
-                    emit_container("optional".to_string(), inner_str.clone(), target.clone());
+                    emit_container(&"optional".to_string(), inner_str.clone(), target.clone());
                 return opt_str;
             }
         }
@@ -1531,7 +1539,15 @@ pub fn render_node_type(
                             }
                             None => "_".to_string(),
                         };
-                        let second_child = match n.children.clone().get(1 as usize).cloned() {
+                        let second_child = match n
+                            .children
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .next()
+                            .cloned()
+                        {
                             Some(c) => {
                                 if (c.inferred.clone() != None) {
                                     render_node_type(
@@ -1570,7 +1586,7 @@ pub fn render_node_type(
                                 let base = if (snake.clone() == "map".to_string()) {
                                     emit_map_type("_".to_string(), "_".to_string(), target.clone())
                                 } else {
-                                    emit_container(snake.clone(), "_".to_string(), target.clone())
+                                    emit_container(&snake, "_".to_string(), target.clone())
                                 };
                                 let conj_container_str = if shared.clone() {
                                     wrap_shared_type(target.clone(), base.clone())
@@ -1625,7 +1641,7 @@ pub fn render_node_type(
                     emit_map_type("_".to_string(), "_".to_string(), target.clone())
                 } else {
                     if bare_is_collection.clone() {
-                        emit_container(to_snake(tn.clone()), "_".to_string(), target.clone())
+                        emit_container(&to_snake(tn.clone()), "_".to_string(), target.clone())
                     } else {
                         if (has_container_template.clone() && (param_count.clone() == 1)) {
                             {
@@ -1638,7 +1654,7 @@ pub fn render_node_type(
                                     ),
                                     None => "_".to_string(),
                                 };
-                                emit_container(to_snake(tn.clone()), inner.clone(), target.clone())
+                                emit_container(&to_snake(tn.clone()), inner.clone(), target.clone())
                             }
                         } else {
                             if (param_count.clone() > 0) {
@@ -1697,7 +1713,15 @@ pub fn render_node_type(
                     ),
                     None => "_".to_string(),
                 };
-                let v = match n.children.clone().get(1 as usize).cloned() {
+                let v = match n
+                    .children
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .next()
+                    .cloned()
+                {
                     Some(vn) => render_node_type(
                         child_type_node(vn.clone()),
                         target.clone(),
@@ -1728,7 +1752,7 @@ pub fn render_node_type(
                 };
                 let is_container = node_is_collection(n.clone(), source_indices.clone());
                 let base = if is_container.clone() {
-                    emit_container(to_snake(tn.clone()), child_str.clone(), target.clone())
+                    emit_container(&to_snake(tn.clone()), child_str.clone(), target.clone())
                 } else {
                     {
                         let type_base = coerce_primitive_type(target.clone(), tn.clone());
@@ -1793,7 +1817,14 @@ pub fn render_tuple_parts(parts: Rc<Vec<String>>, target: RenderTarget) -> Strin
         if ((parts.clone().len() as i64) > 0) {
             if ((parts.clone().len() as i64) == 2) {
                 match parts.clone().first().cloned() {
-                    Some(p0) => match parts.clone().get(1 as usize).cloned() {
+                    Some(p0) => match parts
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .next()
+                        .cloned()
+                    {
                         Some(p1) => {
                             apply_type_template2(ts.pair_template.clone(), p0.clone(), p1.clone())
                         }
@@ -2941,7 +2972,7 @@ pub fn shared_tco_reassign(
             spec.tco.clone().temp_assign_op.clone(),
             spec.block_syntax.clone().stmt_terminator.clone(),
             spec.tco.clone().continue_str.clone(),
-            "".to_string(),
+            &"".to_string(),
         );
         all_lines.clone().join(&"\n".to_string())
     }
@@ -2965,7 +2996,7 @@ pub fn unified_tco_recurse(
             scope: scope.clone(),
             depth: depth.clone(),
         }),
-        fn_name.clone(),
+        &fn_name,
         params.clone(),
         target.clone(),
         registry.clone(),
@@ -3006,7 +3037,7 @@ pub fn emit_unified_tco_expr(
                     spec.clone(),
                     |f, args, scope, depth| {
                         emit_typed_call_unified(
-                            f.clone(),
+                            &f,
                             args.clone(),
                             target.clone(),
                             registry.clone(),
@@ -3113,7 +3144,7 @@ pub fn emit_unified_tco_body(
                 scope: scope.clone(),
                 depth: (depth.clone() + 1),
             }),
-            fn_name.clone(),
+            &fn_name,
             params.clone(),
             target.clone(),
             registry.clone(),
@@ -3194,7 +3225,7 @@ pub fn emit_tco_match_go(
                             scope: scope.clone(),
                             depth: body_depth.clone(),
                         }),
-                        fn_name.clone(),
+                        &fn_name,
                         params.clone(),
                         RenderTarget::Go,
                         registry.clone(),
@@ -3312,7 +3343,7 @@ pub fn emit_unified_tco_match(
                         for arm in arm_list.clone().iter().cloned() {
                             __result.push(emit_unified_tco_match_arm(
                                 arm.clone(),
-                                fn_name.clone(),
+                                &fn_name,
                                 params.clone(),
                                 target.clone(),
                                 registry.clone(),
@@ -3397,7 +3428,7 @@ pub fn emit_unified_tco_match_arm(
                     scope: scope.clone(),
                     depth: body_depth.clone(),
                 }),
-                fn_name.clone(),
+                &fn_name,
                 params.clone(),
                 target.clone(),
                 registry.clone(),
@@ -3674,19 +3705,17 @@ pub fn is_tco_candidate(
             }
             ExprData::ExprReturn => is_tco_candidate(
                 return_value(texpr.clone()),
-                func_name.clone(),
+                &func_name,
                 source_indices.clone(),
             ),
             ExprData::ExprIf => {
                 let then_cand = is_tco_candidate(
                     if_then_branch(texpr.clone()),
-                    func_name.clone(),
+                    &func_name,
                     source_indices.clone(),
                 );
                 let else_cand = match if_else_branch(texpr.clone()) {
-                    Some(e) => {
-                        is_tco_candidate(e.clone(), func_name.clone(), source_indices.clone())
-                    }
+                    Some(e) => is_tco_candidate(e.clone(), &func_name, source_indices.clone()),
                     None => false,
                 };
                 (then_cand.clone() || else_cand.clone())
@@ -3696,7 +3725,7 @@ pub fn is_tco_candidate(
                 for arm_node in match_arm_nodes(texpr.clone()).iter().cloned() {
                     if is_tco_candidate(
                         arm_body(arm_node.clone()),
-                        func_name.clone(),
+                        &func_name,
                         source_indices.clone(),
                     ) {
                         __found = true;
@@ -3706,13 +3735,13 @@ pub fn is_tco_candidate(
                 __found
             }
             ExprData::ExprLet => match let_body(texpr.clone()) {
-                Some(b) => is_tco_candidate(b.clone(), func_name.clone(), source_indices.clone()),
+                Some(b) => is_tco_candidate(b.clone(), &func_name, source_indices.clone()),
                 None => false,
             },
             ExprData::ExprBlock => {
                 let mut __found = false;
                 for s in texpr.children.clone().iter().cloned() {
-                    if is_tco_candidate(s.clone(), func_name.clone(), source_indices.clone()) {
+                    if is_tco_candidate(s.clone(), &func_name, source_indices.clone()) {
                         __found = true;
                         break;
                     }
@@ -3722,7 +3751,7 @@ pub fn is_tco_candidate(
             ExprData::NoExprData => {
                 let mut __found = false;
                 for child in texpr.children.clone().iter().cloned() {
-                    if is_tco_candidate(child.clone(), func_name.clone(), source_indices.clone()) {
+                    if is_tco_candidate(child.clone(), &func_name, source_indices.clone()) {
                         __found = true;
                         break;
                     }
@@ -3794,11 +3823,7 @@ pub fn emit_suffix_escape_ident(
             __found
         };
         if (is_reserved.clone()
-            || suffix_escape_collides_with_reserved_chain(
-                converted.clone(),
-                suffix.clone(),
-                keywords.clone(),
-            ))
+            || suffix_escape_collides_with_reserved_chain(&converted, &suffix, keywords.clone()))
         {
             v1_rt::concat(converted.clone(), suffix.clone())
         } else {
@@ -3877,12 +3902,12 @@ pub fn escape_emoji_codepoints_inner(
 
 pub fn escape_emoji_codepoints(name: String, prefix: String, suffix: String) -> String {
     escape_emoji_codepoints_inner(
-        name.clone(),
+        &name,
         0,
         v1_rt::string_length(&name),
         "".to_string(),
-        prefix.clone(),
-        suffix.clone(),
+        &prefix,
+        &suffix,
     )
 }
 
@@ -3892,7 +3917,7 @@ pub fn apply_char_sanitization(name: String, rule: CharSanitization) -> String {
         match rule.clone() {
             CharSanitization::NoCharSanitization => name,
             CharSanitization::EmojiEscape => {
-                escape_emoji_codepoints(name, esc.prefix.clone(), esc.suffix.clone())
+                escape_emoji_codepoints(&name, esc.prefix.clone(), esc.suffix.clone())
             }
         }
     }
@@ -3924,8 +3949,8 @@ pub fn emit_ident(name: String, target: RenderTarget) -> String {
                     v1_rt::concat(p.clone(), sanitized.clone())
                 }
                 ReservedWordStrategy::SuffixEscape { suffix: s, .. } => emit_suffix_escape_ident(
-                    sanitized.clone(),
-                    s.clone(),
+                    &sanitized,
+                    &s,
                     spec.reserved_words.clone().keywords.clone(),
                 ),
                 ReservedWordStrategy::NoEscape => sanitized.clone(),
@@ -3933,8 +3958,8 @@ pub fn emit_ident(name: String, target: RenderTarget) -> String {
         } else {
             match (*spec.reserved_words.clone().strategy.clone()).clone() {
                 ReservedWordStrategy::SuffixEscape { suffix: s, .. } => emit_suffix_escape_ident(
-                    sanitized.clone(),
-                    s.clone(),
+                    &sanitized,
+                    &s,
                     spec.reserved_words.clone().keywords.clone(),
                 ),
                 _ => sanitized.clone(),
@@ -3965,8 +3990,8 @@ pub fn emit_export_ident(name: String, target: RenderTarget) -> String {
                     match (*spec.reserved_words.clone().strategy.clone()).clone() {
                         ReservedWordStrategy::SuffixEscape { suffix: s, .. } => {
                             emit_suffix_escape_ident(
-                                result.clone(),
-                                s.clone(),
+                                &result,
+                                &s,
                                 spec.reserved_words.clone().keywords.clone(),
                             )
                         }
@@ -3979,8 +4004,8 @@ pub fn emit_export_ident(name: String, target: RenderTarget) -> String {
                     match (*spec.reserved_words.clone().strategy.clone()).clone() {
                         ReservedWordStrategy::SuffixEscape { suffix: s, .. } => {
                             emit_suffix_escape_ident(
-                                result.clone(),
-                                s.clone(),
+                                &result,
+                                &s,
                                 spec.reserved_words.clone().keywords.clone(),
                             )
                         }
@@ -5408,7 +5433,7 @@ pub fn emit_typed_method_call_unified(
                     let first_arg_str =
                         emit_typed_first_arg_shared(args.clone(), target.clone(), recurse.clone());
                     emit_algebra_method_call_unified(
-                        mn.clone(),
+                        &mn,
                         receiver.clone(),
                         args.clone(),
                         target.clone(),
@@ -5939,7 +5964,7 @@ pub fn emit_unified_typed_expr(
             },
             |expr| {
                 emit_typed_call_unified(
-                    expr_call_func_at(expr.clone(), si.clone()),
+                    &expr_call_func_at(expr.clone(), si.clone()),
                     expr.children.clone(),
                     target.clone(),
                     registry.clone(),
@@ -6056,7 +6081,7 @@ pub fn emit_unified_typed_expr(
                     render_pattern.clone(),
                 );
                 emit_typed_let_shared(
-                    let_binding_name_at(expr.clone(), si.clone()),
+                    &let_binding_name_at(expr.clone(), si.clone()),
                     val_str.clone(),
                     let_body(expr.clone()),
                     target.clone(),
@@ -6164,7 +6189,7 @@ pub fn emit_unified_typed_expr(
             },
             |expr| {
                 emit_typed_for_each_shared(
-                    foreach_variable_at(expr.clone(), si.clone()),
+                    &foreach_variable_at(expr.clone(), si.clone()),
                     foreach_collection(expr.clone()),
                     foreach_body(expr.clone()),
                     target.clone(),
@@ -6290,7 +6315,14 @@ pub fn emit_typed_tco_reassign_shared(
             {
                 if {
                     let pname = param_node_name_at(pair.1.clone(), source_indices.clone());
-                    let av = match arg_values.clone().get(pair.0.clone() as usize).cloned() {
+                    let av = match arg_values
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(pair.0.clone() as usize)
+                        .next()
+                        .cloned()
+                    {
                         Some(v) => v.clone(),
                         None => pair.1.clone(),
                     };
@@ -6305,7 +6337,14 @@ pub fn emit_typed_tco_reassign_shared(
             let mut __result = Vec::new();
             for pair in pairs.clone().iter().cloned() {
                 __result.push(
-                    match arg_values.clone().get(pair.0.clone() as usize).cloned() {
+                    match arg_values
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(pair.0.clone() as usize)
+                        .next()
+                        .cloned()
+                    {
                         Some(v) => v.clone(),
                         None => pair.1.clone(),
                     },

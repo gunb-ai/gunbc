@@ -164,7 +164,7 @@ pub fn dfs_finish_order(
                         order: acc.order.clone(),
                     }),
                     |inner: Rc<DfsFinishAcc>, neighbor: String| {
-                        dfs_finish_order(neighbor.clone(), adjacency.clone(), inner)
+                        dfs_finish_order(&neighbor, adjacency.clone(), inner)
                     },
                 );
                 Rc::new(DfsFinishAcc {
@@ -198,7 +198,7 @@ pub fn dfs_collect_component(
                         members: next_members.clone(),
                     }),
                     |inner: Rc<SccComponentAcc>, neighbor: String| {
-                        dfs_collect_component(neighbor.clone(), adjacency.clone(), inner)
+                        dfs_collect_component(&neighbor, adjacency.clone(), inner)
                     },
                 )
             }
@@ -215,7 +215,7 @@ pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) ->
                 order: Rc::new(vec![]),
             }),
             |acc: Rc<DfsFinishAcc>, name: String| {
-                dfs_finish_order(name.clone(), adjacency.forward.clone(), acc)
+                dfs_finish_order(&name, adjacency.forward.clone(), acc)
             },
         );
         let result = v1_rt::reverse(finish.order.clone()).iter().cloned().fold(
@@ -231,7 +231,7 @@ pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) ->
                 } else {
                     {
                         let component = dfs_collect_component(
-                            name.clone(),
+                            &name,
                             adjacency.reverse.clone(),
                             Rc::new(SccComponentAcc {
                                 visited: acc.visited.clone(),
