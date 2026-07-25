@@ -287,6 +287,16 @@ once per pass, hoist each consumer's direct-import name sets out of the per-key 
 `direct_import_exporter_count` a membership test — O(direct imports). The predicate is
 unchanged by construction; `module_exports_type_name` is deleted (no remaining consumer).
 
+The same pass carries a second instance of the same shape, fixed with it (§6: fix related
+systems together, never a per-site exception). `export_index_merge_module` recomputed its
+canonical binding as `filter(bindings |> map_values, b => b.name == name) |> first` — a full
+rescan of the module's binding map, with a fresh `Vec`, once per distinct name:
+O(|bindings|²) per module per closure assembly. It is **dead by construction**: the enclosing
+fold walks that same `map_values` sequence in order and `seen_names` skips every repeat, so
+the first name-matching element *is* the fold's current element. `canonical = binding` is the
+identical value, not an approximation — and the rewrite removes the second traversal the
+equality would otherwise have to be argued over.
+
 ### 7.4 Receipt (by execution)
 
 Same 79 entries, same binary path, after the fix:
