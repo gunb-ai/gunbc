@@ -96,7 +96,8 @@ fn assumed_basis(assumption: ByteBasisAssumption) -> ByteBasis? {
     BasisAssumed { basis: b, rationale: _ } =>
       match b {
         ByteBasisUnstated => none
-        _ => Present { value: b }
+        DecimalGigabyte => Present { value: b }
+        BinaryGibibyte => Present { value: b }
       }
     BasisUnknown => none
   }
@@ -107,8 +108,8 @@ data basis_reconciliation_note: String = "A cited row that DOES state its byte b
 fn basis_compatible_with_row(row_basis: ByteBasis, assumed: ByteBasis) -> Bool {
   match row_basis {
     ByteBasisUnstated => true
-    DecimalGigabyte => match assumed { DecimalGigabyte => true  _ => false }
-    BinaryGibibyte => match assumed { BinaryGibibyte => true  _ => false }
+    DecimalGigabyte => match assumed { DecimalGigabyte => true  BinaryGibibyte => false  ByteBasisUnstated => false }
+    BinaryGibibyte => match assumed { BinaryGibibyte => true  DecimalGigabyte => false  ByteBasisUnstated => false }
   }
 }
 
@@ -319,7 +320,8 @@ data quoted_basis_note: String = "A quote carries the byte basis its own vendor 
 fn effective_basis(quoted: ByteBasis, assumption: ByteBasisAssumption) -> ByteBasis? {
   match quoted {
     ByteBasisUnstated => assumed_basis(assumption: assumption)
-    _ => Present { value: quoted }
+    DecimalGigabyte => Present { value: quoted }
+    BinaryGibibyte => Present { value: quoted }
   }
 }
 
