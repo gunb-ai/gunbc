@@ -168,10 +168,10 @@ pub fn measure_count<Q, S, M: Clone>(m: Rc<Measure<Q, S, M>>) -> M {
 }
 
 pub fn measure_scale_fraction_floor<Q, S>(
-    m: Rc<Measure<Q, S, Nat>>,
+    m: Rc<Measure<Q, S, i64>>,
     num: Nat,
     den: Nat,
-) -> Rc<Measure<Q, S, Nat>> {
+) -> Rc<Measure<Q, S, i64>> {
     Rc::new(Measure {
         count: if (den.clone() == 0) {
             den.clone()
@@ -183,8 +183,8 @@ pub fn measure_scale_fraction_floor<Q, S>(
 }
 
 pub fn measure_fit_count_floor<Q, S>(
-    capacity: Rc<Measure<Q, S, Nat>>,
-    each: Rc<Measure<Q, S, Nat>>,
+    capacity: Rc<Measure<Q, S, i64>>,
+    each: Rc<Measure<Q, S, i64>>,
 ) -> Nat {
     {
         let each_count = each.count.clone();
@@ -197,10 +197,10 @@ pub fn measure_fit_count_floor<Q, S>(
 }
 
 pub fn measure_scale_fraction_ceil<Q, S>(
-    m: Rc<Measure<Q, S, Nat>>,
+    m: Rc<Measure<Q, S, i64>>,
     num: Nat,
     den: Nat,
-) -> Rc<Measure<Q, S, Nat>> {
+) -> Rc<Measure<Q, S, i64>> {
     Rc::new(Measure {
         count: if (den.clone() == 0) {
             (m.count.clone() * num.clone())
@@ -212,20 +212,20 @@ pub fn measure_scale_fraction_ceil<Q, S>(
 }
 
 pub fn measure_add<Q, S>(
-    a: Rc<Measure<Q, S, Nat>>,
-    b: Rc<Measure<Q, S, Nat>>,
-) -> Rc<Measure<Q, S, Nat>> {
+    a: Rc<Measure<Q, S, i64>>,
+    b: Rc<Measure<Q, S, i64>>,
+) -> Rc<Measure<Q, S, i64>> {
     Rc::new(Measure {
         count: (a.count.clone() + b.count.clone()),
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn measure_le<Q, S>(a: Rc<Measure<Q, S, Nat>>, b: Rc<Measure<Q, S, Nat>>) -> bool {
+pub fn measure_le<Q, S>(a: Rc<Measure<Q, S, i64>>, b: Rc<Measure<Q, S, i64>>) -> bool {
     (a.count.clone() <= b.count.clone())
 }
 
-pub fn time_measure<S>(count: Nat) -> Rc<Measure<(), S, Nat>> {
+pub fn time_measure<S>(count: Nat) -> Rc<Measure<(), S, i64>> {
     Rc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,

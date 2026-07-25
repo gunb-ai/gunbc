@@ -1,0 +1,35 @@
+module extdeps.os.hostname
+
+import std.types { String, List, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man1/hostname.1.html"
+  }
+}
+
+fn hostname_short_read_argv() -> List<String> {
+  ["hostname", "-s"]
+}
+
+service os.Hostname {
+  operation ReadShort {
+    input {}
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["hostname", "-s"] }
+    exit {
+      0 => Unit
+      nonzero => String "hostname -s failed"
+    }
+    mock_response {
+      0 => { value: "localhost", success: true } "hermetic os.Hostname.ReadShort"
+    }
+  }
+}
