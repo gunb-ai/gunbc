@@ -153,4 +153,5 @@ test fn host_network_diagnosis_witnesses() -> Bool {
     && witness_healthy_host_diagnoses_healthy()
     && witness_unobserved_carrier_refuses_both_blames()
     && witness_persistence_bar_discriminates()
+    && witness_network_axis_cell_refuses_and_counts()
 }
