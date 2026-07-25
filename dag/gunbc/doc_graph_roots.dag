@@ -91,6 +91,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
+    slug: "rc-scalar-wrap-fresh-build-correction-2026-07-25",
+    work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "value_inferred_type_is_rc_wrapped", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the residual generic function return-type substitution RC_SCALAR_WRAP sub-class (materialization_carriers, flat at 15) lands via the shared Root-4 lane" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
     slug: "srv2-05-native-agreement-divergence-diagnosis",
     work: DeclarationRef { module_path: "v2.compiler.self_host.witness_entry_eligibility_census", decl_name: "witness_entry_eligibility_census_note", field: WholeDeclaration },
     dissolution: HasTrigger { text: "native re-flip greens on >=2 runner hosts with loud divergence receipts; diagnosis absorbed into frontier carrier" },
