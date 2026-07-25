@@ -13,7 +13,7 @@ import extdeps.http.server {
   application_json_utf8,
   ServedStaticRoute,
 }
-import std.markup { MarkupNode }
+import std.markup { Fragment }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import gunbc.roadmap_authority { expected_roadmap_md, authored_merged_prs, roadmap_authority }
 import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
@@ -88,7 +88,7 @@ fn page_render_refusal_body(reason: String) -> String {
   join([page_render_refusal_prefix, reason, "\n"], "")
 }
 
-fn served_page_body(page: MarkupNode) -> String {
+fn served_page_body(page: Fragment) -> String {
   match try_serialize_html_source(node: page) {
     EmitOk { html: h } => h
     EmitRejected { reason: r } => page_render_refusal_body(reason: r)
