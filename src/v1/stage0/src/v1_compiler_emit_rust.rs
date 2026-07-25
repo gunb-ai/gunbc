@@ -1228,45 +1228,73 @@ pub fn render_rust_applied_type(
             match rust_scalar_checkpoint_render_base(base_name.clone(), corpus_repr.clone()) {
                 Some(scalar) => scalar.clone(),
                 None => {
-                    let base =
-                        match rust_seed_host_container_base(base_name.clone(), corpus_repr.clone())
+                    if rust_fn_sig_peel_closed_alias(env.clone(), n.clone()) {
                         {
-                            Some(host) => host.clone(),
-                            None => rust_applied_type_base(base_name.clone(), corpus_repr.clone()),
-                        };
-                    let peel = is_parametric_opaque_type_by_name(env.clone(), base_name.clone());
-                    let args = Rc::new({
-                        let mut __result = Vec::new();
-                        for arg in n.children.clone().iter().cloned() {
-                            __result.push(if peel.clone() {
-                                render_rust_phantom_opaque_applied_decl_arg(
-                                    arg.clone(),
-                                    generic_param_names.clone(),
-                                    shared_types.clone(),
-                                    corpus_repr.clone(),
-                                    source_indices.clone(),
-                                    variant_to_enum.clone(),
-                                    env.clone(),
-                                )
-                            } else {
-                                render_rust_applied_type_arg(
-                                    arg.clone(),
-                                    generic_param_names.clone(),
-                                    shared_types.clone(),
-                                    corpus_repr.clone(),
-                                    source_indices.clone(),
-                                    variant_to_enum.clone(),
-                                    env.clone(),
-                                )
-                            });
+                            let bare = match rust_seed_host_container_base(
+                                base_name.clone(),
+                                corpus_repr.clone(),
+                            ) {
+                                Some(host) => host.clone(),
+                                None => {
+                                    rust_applied_type_base(base_name.clone(), corpus_repr.clone())
+                                }
+                            };
+                            render_rust_shared_type_if_needed(
+                                base_name.clone(),
+                                bare.clone(),
+                                shared_types.clone(),
+                            )
                         }
-                        __result
-                    })
-                    .join(&", ".to_string());
-                    v1_rt::concat(
-                        v1_rt::concat(v1_rt::concat(base.clone(), "<".to_string()), args.clone()),
-                        ">".to_string(),
-                    )
+                    } else {
+                        {
+                            let base = match rust_seed_host_container_base(
+                                base_name.clone(),
+                                corpus_repr.clone(),
+                            ) {
+                                Some(host) => host.clone(),
+                                None => {
+                                    rust_applied_type_base(base_name.clone(), corpus_repr.clone())
+                                }
+                            };
+                            let peel =
+                                is_parametric_opaque_type_by_name(env.clone(), base_name.clone());
+                            let args = Rc::new({
+                                let mut __result = Vec::new();
+                                for arg in n.children.clone().iter().cloned() {
+                                    __result.push(if peel.clone() {
+                                        render_rust_phantom_opaque_applied_decl_arg(
+                                            arg.clone(),
+                                            generic_param_names.clone(),
+                                            shared_types.clone(),
+                                            corpus_repr.clone(),
+                                            source_indices.clone(),
+                                            variant_to_enum.clone(),
+                                            env.clone(),
+                                        )
+                                    } else {
+                                        render_rust_applied_type_arg(
+                                            arg.clone(),
+                                            generic_param_names.clone(),
+                                            shared_types.clone(),
+                                            corpus_repr.clone(),
+                                            source_indices.clone(),
+                                            variant_to_enum.clone(),
+                                            env.clone(),
+                                        )
+                                    });
+                                }
+                                __result
+                            })
+                            .join(&", ".to_string());
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(base.clone(), "<".to_string()),
+                                    args.clone(),
+                                ),
+                                ">".to_string(),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -11883,50 +11911,37 @@ pub fn render_rust_type_with_applied_binding(
                                     shared_types.clone(),
                                 )
                             } else {
-                                if v1_rt::set_contains(&shared_types, outer_name.clone()) {
-                                    render_rust_shared_type_with_optional(
-                                        n.clone(),
-                                        outer_name.clone(),
-                                        outer_name.clone(),
-                                        shared_types.clone(),
-                                    )
-                                } else {
-                                    render_rust_applied_type_shared(
-                                        applied.clone(),
-                                        Rc::new(vec![]),
-                                        shared_types.clone(),
-                                        corpus_repr.clone(),
-                                        source_indices.clone(),
-                                        v1_rt::rc_empty_map::<String, String>(),
-                                        Rc::new(TypeEnv {
-                                            module_path: "".to_string(),
-                                            bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-                                            str_bindings: v1_rt::rc_empty_map::<
-                                                String,
-                                                Rc<TypeBinding>,
-                                            >(
-                                            ),
-                                            ancestry_str_bindings: v1_rt::rc_empty_map::<
-                                                String,
-                                                Rc<TypeBinding>,
-                                            >(
-                                            ),
-                                            parents: Rc::new(vec![]),
-                                            recursive_types: Rc::new(vec![]),
-                                            recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
-                                            inductive_fields: v1_rt::rc_empty_map::<
-                                                String,
-                                                Rc<Vec<Rc<InductiveField>>>,
-                                            >(
-                                            ),
-                                            source_indices: source_indices.clone(),
-                                            intern_table: empty_intern_table(),
-                                            source_visible_names: v1_rt::rc_empty_map::<String, bool>(
-                                            ),
-                                            symbol_index: empty_symbol_index(),
-                                        }),
-                                    )
-                                }
+                                render_rust_applied_type_shared(
+                                    applied.clone(),
+                                    Rc::new(vec![]),
+                                    shared_types.clone(),
+                                    corpus_repr.clone(),
+                                    source_indices.clone(),
+                                    v1_rt::rc_empty_map::<String, String>(),
+                                    Rc::new(TypeEnv {
+                                        module_path: "".to_string(),
+                                        bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                                        str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(
+                                        ),
+                                        ancestry_str_bindings: v1_rt::rc_empty_map::<
+                                            String,
+                                            Rc<TypeBinding>,
+                                        >(
+                                        ),
+                                        parents: Rc::new(vec![]),
+                                        recursive_types: Rc::new(vec![]),
+                                        recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
+                                        inductive_fields: v1_rt::rc_empty_map::<
+                                            String,
+                                            Rc<Vec<Rc<InductiveField>>>,
+                                        >(
+                                        ),
+                                        source_indices: source_indices.clone(),
+                                        intern_table: empty_intern_table(),
+                                        source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+                                        symbol_index: empty_symbol_index(),
+                                    }),
+                                )
                             }
                         } else {
                             render_rust_applied_type_shared(
@@ -21763,14 +21778,11 @@ pub fn rust_struct_field_type_node(
     field_name: String,
 ) -> Option<Rc<Node>> {
     match lookup_type_by_name(scope.type_env.clone(), struct_name.clone()) {
-        Some(struct_node) => match find_child_named(
+        Some(struct_node) => rust_struct_field_type_node_from_container(
             struct_node.clone(),
             field_name.clone(),
             scope.type_env.clone().source_indices.clone(),
-        ) {
-            Some(field_node) => Some(resolved_type(field_node.clone())),
-            None => None,
-        },
+        ),
         None => None,
     }
 }
@@ -21825,6 +21837,56 @@ pub fn rust_receiver_has_callable_method_field(
     }
 }
 
+pub fn rust_struct_field_type_node_variant_aware(
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
+    struct_name: String,
+    field_name: String,
+) -> Option<Rc<Node>> {
+    match rust_struct_field_type_node(scope.clone(), struct_name.clone(), field_name.clone()) {
+        Some(n) => Some(n.clone()),
+        None => match v1_rt::map_get(&emit_info.variant_to_enum.clone(), struct_name.clone()) {
+            Some(enum_name) => {
+                if (enum_name.clone() == "".to_string()) {
+                    None
+                } else {
+                    match lookup_type_by_name(scope.type_env.clone(), enum_name.clone()) {
+                        Some(enum_node) => match find_child_named(
+                            enum_node.clone(),
+                            struct_name.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ) {
+                            Some(variant_node) => rust_struct_field_type_node_from_container(
+                                variant_node.clone(),
+                                field_name.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
+                            None => None,
+                        },
+                        None => None,
+                    }
+                }
+            }
+            None => None,
+        },
+    }
+}
+
+pub fn rust_struct_field_type_node_from_container(
+    container: Rc<Node>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match find_child_named(
+        container.clone(),
+        field_name.clone(),
+        source_indices.clone(),
+    ) {
+        Some(field_node) => Some(resolved_type(field_node.clone())),
+        None => None,
+    }
+}
+
 pub fn rust_record_field_needs_box(
     scope: Rc<InferScope>,
     emit_info: Rc<EmitGraphInfo>,
@@ -21832,7 +21894,12 @@ pub fn rust_record_field_needs_box(
     struct_name: String,
     field_name: String,
 ) -> bool {
-    match rust_struct_field_type_node(scope.clone(), struct_name.clone(), field_name.clone()) {
+    match rust_struct_field_type_node_variant_aware(
+        scope.clone(),
+        emit_info.clone(),
+        struct_name.clone(),
+        field_name.clone(),
+    ) {
         Some(field_type) => needs_box_wrapping(
             field_type.clone(),
             emit_info.recursive_type_set.clone(),
@@ -23007,7 +23074,10 @@ pub fn emit_typed_record_lit(
                                                     let mut __result = Vec::new();
                                                     for fname in missing.clone().iter().cloned() {
                                                         __result.extend((*if is_optional_struct_field(emit_info.clone(), variant_summary_name.clone(), fname.clone()) {
-                                            Rc::new(vec![v1_rt::concat(v1_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": None,".to_string())])
+                                            {
+                                                let wrapped_none = wrap_rust_record_field_value("None".to_string(), scope.clone(), emit_info.clone(), shared_types.clone(), ctor_name.clone(), fname.clone());
+Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": ".to_string()), wrapped_none.clone()), ",".to_string())])
+}
                                         } else {
                                             match v1_rt::map_get(&ftm, fname.clone()) {
     Some(ft) => match rust_zero_value(ft.clone(), emit_info.corpus_repr.clone()) {

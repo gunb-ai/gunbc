@@ -70,9 +70,9 @@ type LlvmType
   | MetadataType
   | IntegerType { bits: NonZeroNat }
   | FloatingType { kind: FloatKind }
-  | PointerType { address_space: Nat }
+  | PointerType { address_space: v2.std.nat.Nat }
   | VectorType { element: LlvmType, count: NonZeroNat, scalable: VectorScaling }
-  | ArrayType { element: LlvmType, count: Nat }
+  | ArrayType { element: LlvmType, count: v2.std.nat.Nat }
   | StructType { fields: List<LlvmType>, packed: StructPacking }
   | FunctionType { result: LlvmType, params: List<LlvmType>, var_arg: VarArg }
   | NamedType { name: Symbol }

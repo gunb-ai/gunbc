@@ -66,10 +66,10 @@ func review_pr(
     pull_number: pr_number
   )
   design = shell.Exec.Run(
-    script: transport_script_from_body(body: "cd ~/gunbc && git fetch origin {pr.pr.head.ref} 2>/dev/null; git show origin/{pr.pr.head.ref}:DESIGN.md 2>/dev/null || echo '(not found)'")
+    script: retained_foreign(body: "cd ~/gunbc && git fetch origin {pr.pr.head.ref} 2>/dev/null; git show origin/{pr.pr.head.ref}:DESIGN.md 2>/dev/null || echo '(not found)'", reason: "review.dag git fetch+show DESIGN.md from PR head ref")
   )
   algebra_ref = shell.Exec.Run(
-    script: transport_script_from_body(body: "cd ~/gunbc && git show origin/{pr.pr.head.ref}:dag/std/algebra.dag 2>/dev/null || echo '(not found)'")
+    script: retained_foreign(body: "cd ~/gunbc && git show origin/{pr.pr.head.ref}:dag/std/algebra.dag 2>/dev/null || echo '(not found)'", reason: "review.dag git show dag/std/algebra.dag from PR head ref")
   )
 
   system_prompt = build_system_prompt(

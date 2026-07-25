@@ -421,7 +421,7 @@ data corpus_ci_gate_row_js_site_emit_keystone: ClaimWitnessCorpusClaimRunRow = C
 }
 
 data corpus_ci_gate_row_measure_nat_magnitude_roundtrip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
-  label: "measure carrier M=Nat magnitude round-trip",
+  label: "measure carrier M=v2.std.nat.Nat magnitude round-trip",
   entry: "dag/test/claim/measure_magnitude_carrier.dag",
   function: "measure_nat_magnitude_roundtrip_holds",
   expected: ExpectPass

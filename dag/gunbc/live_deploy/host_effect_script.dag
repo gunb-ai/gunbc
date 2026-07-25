@@ -1,6 +1,7 @@
 module gunbc.live_deploy.host_effect_script
 
 import std.types { String, Int }
+import gunbc.retained_shell_script { RetainedShellScript, retained_srvn }
 import v2.std.collection { Present, Absent }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -67,16 +68,16 @@ fn live_deploy_digest_readback_effect_script(port: Int) -> String {
   roadmap_site_digest_readback_script(port: port)
 }
 
-fn live_deploy_host_effect_script_for(effect: HostEffect) -> String? {
+fn live_deploy_host_effect_script_for(effect: HostEffect) -> RetainedShellScript? {
   match effect {
     LiveDeployApply { spec: s } =>
-      Present { value: live_deploy_apply_effect_script(spec: s) }
+      Present { value: retained_srvn(body: live_deploy_apply_effect_script(spec: s), reason: "live_deploy apply (unit install + start)") }
     LiveDeployRetract { spec: s } =>
-      Present { value: live_deploy_retract_effect_script(spec: s) }
+      Present { value: retained_srvn(body: live_deploy_retract_effect_script(spec: s), reason: "live_deploy retract (unit teardown)") }
     LiveDeployEnsureDependency { dep: d } =>
-      Present { value: live_deploy_ensure_dependency_effect_script(dep: d) }
+      Present { value: retained_srvn(body: live_deploy_ensure_dependency_effect_script(dep: d), reason: "live_deploy ensure dependency") }
     LiveDeployDigestReadback { port: p } =>
-      Present { value: live_deploy_digest_readback_effect_script(port: p) }
+      Present { value: retained_srvn(body: live_deploy_digest_readback_effect_script(port: p), reason: "live_deploy digest readback probe") }
     DeployAccessPreflight {} => Absent
     ShellCommand { script: _ } => Absent
     RedfishAction { action: _ } => Absent
