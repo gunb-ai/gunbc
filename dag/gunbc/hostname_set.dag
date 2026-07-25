@@ -2,7 +2,7 @@ module gunbc.hostname_set
 
 import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.dns.domain_name { DnsLabel }
-import extdeps.os.hostname
+import extdeps.tools.hostname
 import gunbc.hostname_read { hostname_short_read }
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
 import gunbc.typed_argv_exec {

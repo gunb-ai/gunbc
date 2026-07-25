@@ -1,9 +1,11 @@
 module test.claim.dag_compile_clean_shard_totality_witness
 
 import tools.dag_compile_clean_shard_roster {
-  compile_clean_shard_roster_nonempty,
-  compile_clean_shard_roster_paths_duplicate_free,
-  witness_shard_roster_boundary_is_witness_layer_roots
+  witness_shard_roster_boundary_is_witness_layer_roots,
+  witness_roster_nonempty_on_fixture_facts,
+  witness_roster_duplicate_free_on_fixture_facts,
+  witness_roster_reds_on_synthetic_duplicate_facts,
+  witness_roster_empty_facts_are_not_nonempty
 }
 import tools.dag_compile_clean_shard_totality {
   witness_totality_holds_on_live_tree,
@@ -13,14 +15,18 @@ import tools.dag_compile_clean_shard_totality {
   witness_totality_fails_closed_on_glob_failure,
   witness_totality_green_when_glob_matches_roster
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data class_c_shard_totality_roster_split_note: String = "Class C split (docs/plans/test-decomposition-wcf-cut.md §5, session bright-newt-31 2026-07-25, criterion 2): both rows in this file are now fixture-grain mechanism REDs — roster selection logic and totality-verdict algebra — proven on synthetic decl-facts/glob-results, never a real scan of the live tree. The corpus-totality CLAIM itself (does the real live tree's roster stay total/nonempty/duplicate-free right now) is legitimately corpus-grain and is not shrunk: it is relocated to the falsifier wet cadence as compile_clean_shard_totality_holds_on_live_tree, a typed row in gunbc.ci_layer_roots falsifier_rehomed_bin_wet_rows (batch 5, named consumer ci_floor_plan.dag), never orphaned."
 
 test fn compile_clean_shard_roster_is_well_formed() -> Bool {
-  compile_clean_shard_roster_nonempty()
-    && compile_clean_shard_roster_paths_duplicate_free()
-    && witness_shard_roster_boundary_is_witness_layer_roots()
+  witness_shard_roster_boundary_is_witness_layer_roots()
+    && witness_roster_nonempty_on_fixture_facts()
+    && witness_roster_duplicate_free_on_fixture_facts()
+    && witness_roster_reds_on_synthetic_duplicate_facts()
+    && witness_roster_empty_facts_are_not_nonempty()
 }
 
 test fn compile_clean_shard_totality_algebra_holds() -> Bool {
@@ -30,6 +36,8 @@ test fn compile_clean_shard_totality_algebra_holds() -> Bool {
     && witness_totality_fails_closed_on_glob_failure()
     && witness_totality_green_when_glob_matches_roster()
 }
+
+data compile_clean_shard_totality_holds_on_live_tree_falsifier_note: String = "NOT a per-PR row: falsifier-rehomed (gunbc.ci_layer_roots falsifier_rehomed_bin_wet_rows) per the Class C split above. Excluded from per-PR bin_witness_wet_entries; runs on the falsifier wet cadence (batch 5, ci_floor_plan.dag) as its named consumer."
 
 test fn compile_clean_shard_totality_holds_on_live_tree() -> Bool {
   witness_totality_holds_on_live_tree()

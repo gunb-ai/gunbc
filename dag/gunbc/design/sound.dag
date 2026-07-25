@@ -1,0 +1,87 @@
+module gunbc.design.sound
+
+import std.types { String, Int, Bool, Milliseconds }
+import std.measure { Hertz, hertz, hertz_count }
+import extdeps.web_audio {
+  OscillatorType, Sine, Square, Sawtooth, Triangle,
+  oscillator_type_wire,
+  micros_decimal_wire,
+}
+
+data design_sound_note: String = "The register's aural axis, and it is governed by the SAME root principle as the visual one: simulate real analog behavior in a digital space. That principle decides everything here, so almost nothing is a taste call. A real control makes noise when it ENGAGES — the detent catching, the spring returning — and is silent the rest of the time, so sound is emitted on TRANSITIONS only and a steady state is silent exactly as it is still. This is why SoundOccasion enumerates mechanical events (engage, settle, blocked travel) rather than application events (success, error, complete): a notification chime is a message ABOUT the machine, an operation sound is the machine, and the analog law admits only the second. It is also why hovering is not an occasion — waving your hand at a switch does not click it.
+
+The envelope is the aural sibling of the material layer's GlareEnvelope, and it exists for the same reason: to make the tasteless register inadmissible BY ROW rather than by review. Where the visual envelope refuses bright AND chromatic together, operation_sound_envelope refuses the four things that turn an operation sound into a notification: a long decay (a tone that rings is a chime), a nonzero attack (a swell is not a mechanism — real contacts are instantaneous), a loud peak (an instrument is heard, not announced), and a frequency outside the band where a small mechanism actually lives. The negative control is a 400 ms 880 Hz sine at half gain — a textbook notification bell — and it is provably refused, the same role the operator-rejected gamer cyan plays for colour.
+
+Timbre for the engage click is Square deliberately: the harmonic richness is what reads as a snap rather than a boop, and at 5 ms and low gain the harshness a square is otherwise criticised for is inaudible. Amplitudes are micros for the reason the extdeps carrier records — the substrate's arithmetic here is integral, and a fractional literal would be a second representation of the same magnitude.
+
+Mute is a state of the instrument, not an argument with it (operator: an instrument can be muted, not argued with): one persisted boolean, default SOUNDING, and no other volume axis — a mechanism has one voice, and a volume slider would be a second control the exemplar's scope forbids."
+
+data sound_occasion_axis_note: String = "The occasion AXIS is deliberately not a sum type yet, and the reason is the consumption rule rather than a shortcut. The analog law names three mechanical events that make noise — engagement, the spring settling into a new detent, and blocked travel — but this PR ships exactly one of them, the press tick. Declaring a three-variant enum here would put two rows in the register with no consumer at merge, which the contract calls a defect rather than a foundation; and a one-variant enum is not a discrimination, it is a name with nothing to distinguish it from. So the occasion sum lands in the PR that brings the settle tone and the refusal thud, which is the first moment a fold over occasions decides anything. Until then the wall is the ENVELOPE, which is the part that actually keeps the register honest: every declared spec must be an operation sound, and that check does not need a discriminant to work.
+
+A substrate note, recorded because it shaped the decision rather than being routed around: a single-variant coproduct is not expressible here — `type T = OnlyVariant` parses as an alias to a type named OnlyVariant, so the constructor never exists. That is a real property of the grammar and it happens to point the same way the consumption rule does."
+
+data sound_growth_trigger: String = "SoundOccasion becomes a closed sum — MechanismEngage | MechanismSettle | MechanismBlocked — in the PR that lands checkpoint 7b (the accept settle tone and the refusal thud). At that point sound_specs becomes a total occasion→spec assignment with a coverage census mirroring interaction coverage_gaps, and every_declared_sound_admissible folds over the occasions instead of over a hand list."
+
+type SoundSpec {
+  frequency: Hertz
+  timbre: OscillatorType
+  attack: Milliseconds
+  decay: Milliseconds
+  peak_gain_micros: Int
+}
+
+data engage_detent_click: SoundSpec = SoundSpec {
+  frequency: hertz(2200),
+  timbre: Square,
+  attack: 0,
+  decay: 5,
+  peak_gain_micros: 120000,
+}
+
+data sound_specs: List<SoundSpec> = [engage_detent_click]
+
+data operation_sound_max_decay_ms: Milliseconds = 60
+data operation_sound_max_peak_gain_micros: Int = 250000
+data operation_sound_min_hz: Int = 120
+data operation_sound_max_hz: Int = 5000
+
+fn operation_sound_envelope(s: SoundSpec) -> Bool {
+  let hz = hertz_count(h: s.frequency)
+  s.decay <= operation_sound_max_decay_ms
+    && s.attack == 0
+    && s.peak_gain_micros <= operation_sound_max_peak_gain_micros
+    && s.peak_gain_micros > 0
+    && hz >= operation_sound_min_hz
+    && hz <= operation_sound_max_hz
+}
+
+fn every_declared_sound_admissible() -> Bool {
+  all(sound_specs, s => operation_sound_envelope(s: s))
+}
+
+data notification_chime_negative_control: SoundSpec = SoundSpec {
+  frequency: hertz(880),
+  timbre: Sine,
+  attack: 20,
+  decay: 400,
+  peak_gain_micros: 500000,
+}
+
+data sound_default_sounding: Bool = true
+data sound_mute_storage_key: String = "gunbc.sound.muted"
+
+fn sound_spec_frequency_wire(s: SoundSpec) -> String {
+  to_string(hertz_count(h: s.frequency))
+}
+
+fn sound_spec_decay_seconds_wire(s: SoundSpec) -> String {
+  micros_decimal_wire(micros: s.decay * 1000)
+}
+
+fn sound_spec_peak_gain_wire(s: SoundSpec) -> String {
+  micros_decimal_wire(micros: s.peak_gain_micros)
+}
+
+fn sound_spec_timbre_wire(s: SoundSpec) -> String {
+  oscillator_type_wire(t: s.timbre)
+}
