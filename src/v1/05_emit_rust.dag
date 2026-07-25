@@ -37,7 +37,6 @@ import v1.std.core {
 import v1.compiler.artifact { RenderTarget, Rust }
 import extdeps.languages.rust.emit {
   rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_method_templates,
-  rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy,
   rust_serde_rename_all_snake_case, rust_serde_rename_all_screaming_snake_case,
   HigherOrderMethodSpec, rust_higher_order_methods
 }
@@ -55,6 +54,11 @@ import v1.compiler.compiler_tests_rust { compiler_tests_source }
 import v1.compiler.closure_stub_v2_std_integer_rust { closure_stub_v2_std_integer_source }
 import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_source }
 import v1.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint }
+import v1.compiler.trait_derive_emit {
+  v1_emit_struct_derives, v1_emit_enum_derives,
+  v1_generic_params_needing_clone_bound, v1_emit_type_params_with_clone_bounds,
+  rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible
+}
 
 import std.types { is_container_type, is_kernel_type, container_template_algebra }
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
@@ -1196,22 +1200,6 @@ fn rust_items() -> ItemKeywords {
   language_spec(target: Rust).items
 }
 
-fn rust_struct_derives_text() -> String {
-  rust_struct_derives
-}
-
-fn rust_struct_derives_copy_text() -> String {
-  rust_struct_derives_copy
-}
-
-fn rust_enum_derives_text() -> String {
-  rust_enum_derives
-}
-
-fn rust_enum_derives_copy_text() -> String {
-  rust_enum_derives_copy
-}
-
 fn rust_ord_derives_text() -> String {
   "#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]"
 }
@@ -1226,23 +1214,6 @@ fn rust_nominal_identity_carrier_def(name: String) -> String {
 
 fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> Bool {
   false
-}
-
-fn rust_nominal_identity_carrier_shape_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  authored_name_at(source_indices: source_indices, node: n) == "Symbol"
-    && (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective
-}
-
-fn rust_symbol_wrapped_ord_carrier_shape_eligible(children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if (children |> count) != 1 {
-    false
-  } else {
-    match children |> first {
-      Present { value: child } =>
-        rust_nominal_identity_carrier_shape_eligible(n: child_type_node(ch: child), source_indices: source_indices)
-      Absent => false
-    }
-  }
 }
 
 fn rust_nominal_ord_derives_for_shape(name: String, children: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
@@ -4747,15 +4718,13 @@ fn struct_needs_serde(name: String, emit_info: EmitGraphInfo) -> Bool {
 
 fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
-  let derives = if has_fn_fields {
-    "#[derive(Clone)]"
-  } else if rust_nominal_ord_derives_for_shape(name: name, children: children, source_indices: env.source_indices) != "" {
-    rust_nominal_ord_derives_for_shape(name: name, children: children, source_indices: env.source_indices)
-  } else if set_contains(shared_types, name) {
-    rust_struct_derives_text()
-  } else {
-    rust_struct_derives_copy_text()
-  }
+  let derives = v1_emit_struct_derives(
+    name: name,
+    children: children,
+    shared_types: shared_types,
+    has_fn_fields: has_fn_fields,
+    source_indices: env.source_indices
+  )
   if children |> count == 0 {
     concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, ";")
   } else {
@@ -4871,16 +4840,12 @@ fn emit_rust_field_definition(authored: String, final_ty: String, rename_attr: S
   concat(keyword_rename, rename_attr, indent, visibility, emitted, ": ", final_ty, ",")
 }
 
-fn enum_derives(name: String, children: List<Node>) -> String {
-  let complex = children |> filter(v => v.children |> count > 0)
-  match complex |> count == 0 {
-    true => rust_ord_derives_copy_text()
-    false => rust_enum_derives_text()
-  }
+fn enum_derives(name: String, children: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+  v1_emit_enum_derives(children: children, source_indices: source_indices)
 }
 
 fn emit_enum_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
-  let derives = enum_derives(name: name, children: children)
+  let derives = enum_derives(name: name, children: children, source_indices: env.source_indices)
   let variant_lines = children |> map(child => emit_variant_from_child(child: child, enum_name: name, generic_param_names: generic_param_names, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info))
   let variants_str = variant_lines |> join(separator: "\n")
   let tag_line = if serde_policy.enum_attr == "" { "" } else { concat(serde_policy.enum_attr, "\n") }
@@ -5218,16 +5183,17 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let ret_name = authored_name_at(source_indices: si, node: inferred)
   let return_is_bare_generic = (generic_param_names |> filter(g => g == ret_name) |> count) > 0
   let body_is_param_ref = (value_param_names |> filter(n => n == body.name) |> count) > 0
-  let return_based_clone = return_is_bare_generic && !body_is_param_ref
-  let element_clone_param = if body_is_param_ref { none } else {
-    generic_param_names |> filter(g => type_param_is_collection_element_in_values(param_name: g, value_params: value_params, source_indices: si)) |> first
-  }
-  let clone_param = if return_based_clone { ret_name } else {
-    match element_clone_param { Present { value: g } => g  Absent => "" }
-  }
-  let needs_clone_bound = clone_param != ""
+  let clone_param_names = v1_generic_params_needing_clone_bound(
+    generic_param_names: generic_param_names,
+    value_params: value_params,
+    return_is_bare_generic: return_is_bare_generic,
+    ret_name: ret_name,
+    body_is_param_ref: body_is_param_ref,
+    source_indices: si
+  )
+  let needs_clone_bound = (clone_param_names |> count) > 0
   let type_params_str = if needs_clone_bound {
-    emit_type_params_with_clone_bound(params: type_params, clone_param: clone_param, source_indices: si)
+    v1_emit_type_params_with_clone_bounds(params: type_params, clone_param_names: clone_param_names, source_indices: si)
   } else {
     emit_type_params(params: type_params, source_indices: si)
   }
