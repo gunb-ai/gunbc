@@ -1,0 +1,29 @@
+module v2.std.compilers.coproduct_variant_shape
+
+import v2.std.algebra { Cons, Empty, fold_list }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Edge, TypeNode }
+
+data coproduct_variant_shape_note: String = "Single authority for nullary vs payload-bearing coproduct variant classification (Conj-child presence on variant targets). Consumed by semantic_decl_emission decoration rules, rust derive-binding rows, and trait_derive_completeness elem-shape. Fail-closed: non-Conj targets carry no payload."
+
+fn coproduct_variant_edge_has_payload(edge: Edge) -> Bool {
+  match edge.target.kind {
+    TypeNode { connective: Conj } =>
+      match edge.target.children {
+        Empty => false
+        Cons { head: _, tail: _ } => true
+      }
+    _ => false
+  }
+}
+
+fn coproduct_all_variants_nullary(edges: List<Edge>) -> Bool {
+  fold_list(
+    xs: edges,
+    empty: true,
+    cons: fn(acc, edge) {
+      acc && !coproduct_variant_edge_has_payload(edge: edge)
+    }
+  )
+}

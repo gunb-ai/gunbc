@@ -167,6 +167,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     work: DeclarationRef { module_path: "v2.lens.enforcement.standing_intent", decl_name: "StandingIntent", field: WholeDeclaration },
     dissolution: HasTrigger { text: "the typed annotation carriers land (ruling rows on StandingIntent, an event log keyed to the declaration, citation edges) and the annotation-budget lens counts ROWS — at which point a lexical census over prose is superseded by a fold over typed rows, and the doc plus its instrument delete together" },
   },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "extdeps-positioning-restructure",
+    work: DeclarationRef { module_path: "v2.lens.extdeps_shape_transport_policy", decl_name: "extdeps_shape_transport_policy_clean_holds", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the extdeps positioning restructure PR (pure git mv + import repoint: os/ de-grab-bag + findings 1-4 hub-loose, all under the §3 extdeps discipline this lens enforces) lands and the extdeps directories are §3-congruent — the brief's scope is discharged; delete this row and the doc together" },
+  },
 ]
 
 fn hand_authored_doc_graph_roots() -> List<String> {
