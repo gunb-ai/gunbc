@@ -22,6 +22,8 @@ data operator_host_srv2: HostIdentity = "srv2"
 data operator_host_srv3: HostIdentity = "srv3"
 data operator_host_srv4: HostIdentity = "srv4"
 
+data network_endpoint_address_grounding_residual_note: String = "🟡 dissolve-on: the NetworkEndpoint.address / NetworkSegment.cidr / gateway literals in this file are still bare `\"192.168.1.x\"` / CIDR strings even though this same lane grounded the address leaves (extdeps.network.ipv4 Ipv4Address = 4 bounded Octets, extdeps.network.address IpAddress = IpV4|IpV6, and the DHCP lease rows migrated to the ipv4_address constructor). The octet decomposition is half-consumed here: product.network_topology.NetworkEndpoint.address is typed String, so grounding these sites means re-typing that field to extdeps.network.address.IpAddress (and cidr/gateway to their grounded carriers) and migrating every NetworkEndpoint/NetworkSegment consumer — a product-layer field change, not a gunbc-local edit, so it is deliberately deferred rather than half-done. DISSOLVES WHEN NetworkEndpoint.address re-grounds onto IpAddress; until then these literals are the §3 residual the reach lane closes, tracked here so the loop is visible rather than silently forked. The grounded rows the reach lane already built — gunbc.fleet_reach.srv2_lan_ipv4 / srv3_lan_ipv4 (extdeps.network.ipv4.Ipv4Address, consumed by srv3_reach) — are the CONVERGENCE TARGET these bare strings dissolve onto, not an independent second grounding: srv2/srv3's address becomes those rows when the field re-types, so the transitional dual representation is marked debt heading toward one authority, not a permanent fork."
+
 data operator_lan_segment: NetworkSegment = NetworkSegment {
   cidr: "192.168.1.0/24",
   gateway: Present { value: "192.168.1.1" },
@@ -96,6 +98,16 @@ data srv4_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
+data srv3_host_lan_endpoint_note: String = "srv3's HOST OS endpoint, absent from this topology until 2026-07-24 — only srv3_bmc_endpoint (192.168.1.192) was modeled, so the model could name srv3's out-of-band controller but not the machine itself. Observed live from the operator's DHCP table (192.168.1.221, MAC 48:21:0B:81:C7:1D) and confirmed addressable by probe (sshd answers on :22). REACHABLE via the srv2 hop (corrected 2026-07-25): ubuntu@srv3 runs commands today authenticated by srv2's local node-orch key (proven live — hostname=srv3, aarch64, 128 cores). What is NOT yet present is the FLEET identity: the fleet-automation-ssh-key is authorized for no user on srv3 (born Jul 13 with ssh.authorized-keys EMPTY, hand-keyed post-install with node-orch@srv2 / briansrls@srv1 / macbook only), the B2 runner-user + A1 secret-materialization gap in gunbc.plans.fleet_subsumption_manual_gaps — a one-time host_authorized_keys_reconcile upsert over the working node-orch hop, not a networking fact and not an unreachable host. LEASE STATUS: as of 2026-07-24 the operator converted this to a STATIC reservation (192.168.1.221 ↔ MAC 48:21:0B:81:C7:1D), so the literal is now a fact rather than a lease-lifetime observation — matching the srv1/srv2 hosts and the srv1/srv2/srv3 BMCs. STILL DYNAMIC and therefore provisional: srv4's host (192.168.1.196) and srv4's BMC (192.168.1.195); those two literals remain only as stable as their leases until the operator reserves them. The DHCP-reservation act itself is an unmodeled manual step — a static-lease intent (MAC ↔ address binding on the operator's router) has no carrier here yet; see gunbc.plans.fleet_subsumption_manual_gaps for where that gap is tracked."
+
+data srv3_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv3-host-lan",
+  host: Present { value: operator_host_srv3 },
+  address: "192.168.1.221",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
 data srv1_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv1-tailscale",
   host: Present { value: operator_host_srv1 },
@@ -131,6 +143,7 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
     operator_lan_gateway_endpoint,
     srv1_host_lan_endpoint,
     srv2_host_lan_endpoint,
+    srv3_host_lan_endpoint,
     srv4_host_lan_endpoint,
     srv1_bmc_endpoint,
     srv2_bmc_endpoint,

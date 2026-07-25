@@ -1,8 +1,10 @@
 module std.filesystem
 
-import std.encoding { Encoding }
+import std.encoding { Encoding, is_text_encoding }
 import std.types { FilePath, MimeType }
 import std.filesystem.types { EntryKind, SymlinkTarget }
+
+data filesystem_is_text_encoding_dissolve_on: String = "dissolve-on: std.filesystem.is_text_encoding — deleted duplicate Optional-lifted predicate; sole authority is std.encoding.is_text_encoding (Encoding, not Encoding?)."
 
 type FileEntry {
   path: FilePath
@@ -24,21 +26,18 @@ type PartitionResult {
 
 fn is_text_readable(entry: FileEntry) -> Bool {
   match entry.kind {
-    RegularFile => is_text_encoding(e: entry.encoding)
-    Symlink     => entry.symlink_target == TargetFile && is_text_encoding(e: entry.encoding)
+    RegularFile => is_text_encoding_optional(e: entry.encoding)
+    Symlink     => entry.symlink_target == TargetFile && is_text_encoding_optional(e: entry.encoding)
     Directory   => false
     Missing     => false
     Other       => false
   }
 }
 
-fn is_text_encoding(e: Encoding?) -> Bool {
+fn is_text_encoding_optional(e: Encoding?) -> Bool {
   match e {
-    Present { value: ASCII } => true
-    Present { value: UTF8 } => true
-    Present { value: Latin1 } => true
-    Present { value: Text } => true
-    _ => false
+    Present { value: enc } => is_text_encoding(e: enc)
+    Absent => false
   }
 }
 

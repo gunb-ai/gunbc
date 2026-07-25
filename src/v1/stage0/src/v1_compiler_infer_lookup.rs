@@ -330,11 +330,17 @@ pub fn lookup_field_type_node(
                                         && (field_name.clone() == "lookup".to_string()))
                                     {
                                         {
-                                            let value_child =
-                                                match n.children.clone().get(1 as usize).cloned() {
-                                                    Some(child) => child_type_node(child.clone()),
-                                                    None => nominal_type_ref("V".to_string()),
-                                                };
+                                            let value_child = match n
+                                                .children
+                                                .clone()
+                                                .iter()
+                                                .cloned()
+                                                .skip(1 as usize)
+                                                .next()
+                                            {
+                                                Some(child) => child_type_node(child.clone()),
+                                                None => nominal_type_ref("V".to_string()),
+                                            };
                                             Some(
                                                 make_container_type(
                                                     "Witness".to_string(),
@@ -564,7 +570,14 @@ pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc
         if (node_is_keyed_collection(map_type.clone(), env.source_indices.clone())
             && ((map_type.children.clone().len() as i64) >= 2))
         {
-            match map_type.children.clone().get(1 as usize).cloned() {
+            match map_type
+                .children
+                .clone()
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .next()
+            {
                 Some(value_type) => Some(value_type.clone()),
                 None => None,
             }
