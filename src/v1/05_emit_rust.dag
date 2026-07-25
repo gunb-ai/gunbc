@@ -56,6 +56,7 @@ import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_sour
 import v1.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint }
 import v1.compiler.trait_derive_emit {
   v1_emit_struct_derives, v1_emit_enum_derives,
+  v1_emit_struct_supplemental_impls, v1_emit_enum_supplemental_impls,
   v1_generic_params_needing_clone_bound, v1_emit_type_params_with_clone_bounds,
   rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible
 }
@@ -4717,7 +4718,9 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
       concat(field_lines, [concat("    ", rust_visibility_prefix(), rust_phantom_field_name(), ": std::marker::PhantomData<", rust_phantom_marker_inner(unused: unused_params), ">,")])
     } else { field_lines }
     let fields_str = all_field_lines |> join(separator: "\n")
-    concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, " {\n", fields_str, "\n}")
+    let struct_def = concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, " {\n", fields_str, "\n}")
+    let supplemental = v1_emit_struct_supplemental_impls(module_path: env.module_path, name: name)
+    if supplemental == "" { struct_def } else { concat(struct_def, supplemental) }
   }
 }
 
@@ -4833,8 +4836,9 @@ fn emit_enum_from_children(name: String, type_params: String, generic_param_name
   let tag_line = if serde_policy.enum_attr == "" { "" } else { concat(serde_policy.enum_attr, "\n") }
   let enum_def = concat(derives, "\n", tag_line, rust_visibility_prefix(), rust_items().enum_keyword, " ", name, type_params, " {\n", variants_str, "\n}")
   let accessor_impl = emit_enum_shared_accessors(name: name, type_params: type_params, generic_param_names: generic_param_names, children: children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
-  if accessor_impl == "" { enum_def }
-  else { concat(enum_def, "\n", accessor_impl) }
+  let supplemental = v1_emit_enum_supplemental_impls(module_path: env.module_path, name: name)
+  let with_accessors = if accessor_impl == "" { enum_def } else { concat(enum_def, "\n", accessor_impl) }
+  if supplemental == "" { with_accessors } else { concat(with_accessors, supplemental) }
 }
 
 fn find_shared_enum_fields(children: List<Node>, env: TypeEnv) -> List<String> {

@@ -6,7 +6,7 @@ data roster_registry_taxonomy_note: String = "Group-of-units standard representa
 
 data roster_registry_enforcement_intent_convergence_note: String = "Convergence, not implementation: the enforcement-intent thread (DESIGN open thread 'enforcement intent — ask once, compile forever'; docs/plans/enforcement-intent-design.md) absorbs this registry when StandingIntent / LensContract land — its subject_roster IS this concept (a registered group of units with declared membership provenance). Do not build that machinery here; this carrier stays the minimal data authority and the lens stays a data-shape check until that thread lands and this registry becomes its subject_roster carrier."
 
-data roster_registry_visibility_note: String = "Honesty bound: the lens sees only ENROLLED registrations. An unregistered bare list elsewhere in the tree is invisible to it — until enforcement-intent lands, unregistered nickname lists are caught at review by the group-5a rule (registry admission is the review bar for any new 'pool'/'class'/'lane'/'family' String key), not by this lens. The one residue this note formerly walled — NON_FOLD_RESIDUE_ROSTER, a host-side Rust const whose per-row reasons and triggers lived as comments — is re-homed: the rows are gunbc.non_fold_residue.non_fold_residue_frontier (typed FrontierRow, host census reads through non_fold_residue_units_from_module_source in cli_run.rs) and the roster is enrolled below. No known unregistered residue remains."
+data roster_registry_visibility_note: String = "Honesty bound: the lens sees only ENROLLED registrations. An unregistered bare list elsewhere in the tree is invisible to it — until enforcement-intent lands, unregistered nickname lists are caught at review by the group-5a rule (registry admission is the review bar for any new 'pool'/'class'/'lane'/'family' String key), not by this lens. The one residue this note formerly walled — NON_FOLD_RESIDUE_ROSTER, a host-side Rust const whose per-row reasons and triggers lived as comments — is re-homed: the rows are gunbc.non_fold_residue.non_fold_residue_frontier (typed FrontierRow, host census reads through non_fold_residue_units_from_module_source in cli_run.rs) and the roster is enrolled below. RESIDUE ACCOUNTING (corrected 2026-07-25): this note formerly claimed 'no known unregistered residue remains' and that claim was FALSE — a CI-land census that day found five unenrolled hand lists outside gunbc.ci_layer_roots, whose own enrollment lane was complete and had made the gap look closed: ci_floor_required_artifact_names and gunbc_ci_floor_batch_wall_budget_seconds (gunbc.ci_spec), commit_gate_roster (gunbc.commit_workflow), gunbc_ci_cheap_floor_gate_membership (v2.workflow.ci_floor_plan), and ci_cost_floor_exempt_step_names (gunbc.ci_materialization). All five are enrolled below. The lesson is this note's own visibility bound applied to itself: enrollment completeness in one module is not evidence of completeness in the tree, so a 'no residue remains' claim is only ever as good as its last census and carries the census date. KNOWN REMAINING RESIDUE, unenrolled by construction rather than oversight: GENERATED_STAGE0_FILES (src/v1/stage0/src/bin/regen_stage0.rs:32, 101 entries at this basis) is a host-side Rust const whose reason and dissolve trigger live as source comments, the exact shape NON_FOLD_RESIDUE_ROSTER had before its re-homing; it cannot carry a RosterRegistration until its rows re-home into .dag, so it is named here rather than silently absent. Its own in-code trigger already names the fix (regen_stage0 reads the emitted gunbc_stage0_emit_model.rs roster). By contrast regen_input_sources (cli_run.rs) is NOT residue and is deliberately not listed: it derives its set by walking the import closure from the entry roots, so it is already ByDerivation in substance."
 
 data roster_registry_upcoming_targets_note: String = "Walls for in-flight lanes (registry admission is the rule): (a) the bulk-native flip's 744 frontier rows MUST land ByDerivation — the native_routing_frontier registration below is the template (subject-keyed, closure-derived membership, equivalence receipt); (b) chore-remedy classification is already by-construction (subject types) and needs no registration; (c) the deploy lease/generation guard reuses Grant/containment-prefix plus git ancestry — no new group concept, nothing to enroll; (d) machine-shape scheduling and CI-ergonomics lanes: any 'pool'/'class'/'lane' String key at review enrolls here or is rejected as a nickname; (e) the long/ dir lane is BLESSED Form-C — storage grain WITH a construction backstop (the 5-second eval deadline makes an over-budget fast-lane witness unwritable-in-place) — registered ByContainment below, not restructured."
 
@@ -60,6 +60,14 @@ data roster_registry: List<RosterRegistration> = [
     membership: DeclaredFrontier {
       reason: "bin-execution rows re-homed off the per-PR wet batch because their measured wall exceeds bin_witness_wet_per_row_wall_budget_seconds (CI floor endgame D6); per-row measured wall, reason, and dissolve_on in-row",
       dissolve_on: "per row: the row's realization lands under the per-row budget on a measured run and it re-enrolls per-PR (or deletes as a duplicate); roster-wide, the enforcement-intent registry absorbs the frontier"
+    }
+  },
+  RosterRegistration {
+    roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "falsifier_substrate_long_lane_rows"),
+    unit_kind: "schedule witness entry (entry file x function)",
+    membership: DeclaredFrontier {
+      reason: "SubstrateInputsOnly ingest/parse pipeline rows re-homed off per-PR discovery because their own eval exceeds the 5s fast-lane budget (test-decomposition Class C); per-row reason and dissolve_on in falsifier_substrate_long_lane_note",
+      dissolve_on: "per row: eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery (or deletes as duplicate); roster-wide, the enforcement-intent registry absorbs the frontier"
     }
   },
   RosterRegistration {
@@ -165,6 +173,46 @@ data roster_registry: List<RosterRegistration> = [
     membership: DeclaredFrontier {
       reason: "hand variant enumeration standing in for coproduct-arm enumeration: belt_dispatch_result_exemplars lists one exemplar per BeltDispatchResult arm to derive the wire-label set (belt_dispatch_all_status_labels). belt_dispatch_status_label's total match walls a 7th VARIANT at compile time, but nothing ties THIS list to the variant set, so a missed exemplar would silently narrow both the derived label set and the component wire-total that reads it while the live server emits the unmodeled label",
       dissolve_on: "substrate inhabitance enumeration lands (DESIGN section 4, fold over a coproduct's arms without a hand roster), or the exemplars derive from the serve JSON emit's own total match (belt_dispatch_result_json_value); then this list and its roster row delete"
+    }
+  },
+  RosterRegistration {
+    roster: roster_decl(module_path: "gunbc.ci_spec", decl_name: "ci_floor_required_artifact_names"),
+    unit_kind: "release bin name (cross-job artifact manifest entry)",
+    membership: DeclaredFrontier {
+      reason: "the single cross-job handoff manifest for the build->ci job split. Its FAN-OUT is already derived and needs no migration: ci_release_build_line folds it into --bin flags, ci_floor_build_verify_script maps it to verify paths, and ci_release_bins_pack_script folds it into the pack list, so the multiple --bin spellings visible in .github/workflows/ci.yml are one authority rendered by the drift-gated emit, NOT synchronized copies (traced 2026-07-25: PR #7199's authority-side diff is one line, +resolution_divergence_census). What stays hand-kept is MEMBERSHIP, which the carrier's own ci_floor_required_artifact_names_note admits is the floor-invoked bins plus the FULL bin_name universe of tools.host_prelude transports that corpus witnesses can address — a set the witness declarations already carry, so a witness addressing a newly-named bin needs a hand roster edit and a miss re-absorbs the cold monolith build the job split exists to bound",
+      dissolve_on: "membership derives from witness-declared bin needs, so a bin any witness can address is enrolled by construction and an unenrolled one is a typed refusal rather than an in-run cargo build (#7216 diagnosis 2); then the literal list and this row delete"
+    }
+  },
+  RosterRegistration {
+    roster: roster_decl(module_path: "gunbc.ci_spec", decl_name: "gunbc_ci_floor_batch_wall_budget_seconds"),
+    unit_kind: "per-batch floor wall budget (seconds, positional by batch index)",
+    membership: DeclaredFrontier {
+      reason: "per-batch wall ceilings enforced by claim_executor as FLOOR-BATCH-OVER-BUDGET refusals under the operator-signed raise discipline. Membership is POSITIONAL against gunbc_ci_floor_batches but the coupling is by index rather than identity, so a schedule reorder misassigns every ceiling; the carrier's own follow-up row (b) IDENTITY-KEYED BUDGETS names this, and its raise history (1320 -> 1440 -> 1680 -> 2100 on batch 3 alone) is the record of the list being re-fitted to cost rather than derived from it",
+      dissolve_on: "#7216's derived clamps absorb the width axis so a ceiling becomes a re-signed rate (units x rate) rather than a literal, and budgets key by batch content-identity rather than index (the carrier's follow-up (b), riding the ComputationIdentity lane); then the literal list and this row delete"
+    }
+  },
+  RosterRegistration {
+    roster: roster_decl(module_path: "gunbc.commit_workflow", decl_name: "commit_gate_roster"),
+    unit_kind: "commit check enrollment (gate x lane)",
+    membership: DeclaredFrontier {
+      reason: "the single enrollment authority for commit and CI gates; its three lane projections in gunbc.ci_spec (gunbc_ci_floor_gates, gunbc_ci_regen_floor_gates, gunbc_ci_floor_witness_entries) are already derived from it, so the fan-out is not the debt. The hand-kept fact is which gates enroll in which lane — substantially a policy declaration and registered as such — but nothing ties this roster to the Gate coproduct, so a newly-added Gate arm can exist wholly unenrolled with no signal, the same silent-narrowing class belt_dispatch_result_exemplars is enrolled for",
+      dissolve_on: "substrate inhabitance enumeration over the Gate coproduct (DESIGN section 4: fold over a coproduct's arms without a hand roster) makes an unenrolled arm unwritable, leaving only genuine lane policy per gate; then this roster narrows to that policy and the completeness half of this row deletes"
+    }
+  },
+  RosterRegistration {
+    roster: roster_decl(module_path: "v2.workflow.ci_floor_plan", decl_name: "gunbc_ci_cheap_floor_gate_membership"),
+    unit_kind: "cheap-floor gate",
+    membership: DeclaredFrontier {
+      reason: "explicit cheap-batch gate membership, deliberately NOT inferred from gate profile fields so enrollment changes are counted roster edits rather than silent drift (the carrier's own membership note); these gates also serve as floor_resource_anchor nodes whose batch-0 placement avoids a scheduler deadlock, so membership carries a structural obligation beyond cost. The carrier already declares Disposition Scaffold dissolves_to SingleAuthority, and this row is that declaration made countable at the registry grain",
+      dissolve_on: "per-gate cost attribution lands and membership derives from measurement rather than assertion (the carrier's own declared trigger); then the literal list and this row delete"
+    }
+  },
+  RosterRegistration {
+    roster: roster_decl(module_path: "gunbc.ci_materialization", decl_name: "ci_cost_floor_exempt_step_names"),
+    unit_kind: "workflow step name (cost-floor exemption)",
+    membership: DeclaredFrontier {
+      reason: "steps exempted from the materialization cost floor, keyed BY STEP NAME and resolved to script identities against the live workflow at gate time rather than held as a stale copied string; each named step is a sub-second environment write whose store-tier discharge would cost more than the recompute it would save, so the exemption is a cost fact asserted per row rather than measured",
+      dissolve_on: "per-step cost attribution lands so exemption derives from measured sub-threshold cost rather than a named list; per row, a row naming a step the live workflow no longer contains deletes (the gate-time resolution already makes such a row loud rather than silent)"
     }
   },
   RosterRegistration {

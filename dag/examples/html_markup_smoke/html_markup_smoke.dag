@@ -1,44 +1,47 @@
 module examples.html_markup_smoke
 
+import std.markup { Fragment, Element, FragmentText, attr, escape_text }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import std.process { exit_code_general_error }
 
-data tiny: MarkupNode = ElementNode {
+data tiny: Fragment = Element {
   tag: "p",
-  attrs: [],
-  children: [ TextNode { text: "ok" } ],
+  attributes: [],
+  children: [ FragmentText { content: "ok" } ],
 }
 
-data with_attr: MarkupNode = ElementNode {
+data with_attr: Fragment = Element {
   tag: "a",
-  attrs: [ MarkupAttr { name: "href", value: "/tree/dag" } ],
-  children: [ TextNode { text: "dag" } ],
+  attributes: [ attr(name: "href", value: "/tree/dag" ) ],
+  children: [ FragmentText { content: "dag" } ],
 }
 
-data href_amp: MarkupNode = ElementNode {
+data href_amp: Fragment = Element {
   tag: "a",
-  attrs: [ MarkupAttr { name: "href", value: "/x?a=1&b=2" } ],
-  children: [ TextNode { text: "link" } ],
+  attributes: [ attr(name: "href", value: "/x?a=1&b=2" ) ],
+  children: [ FragmentText { content: "link" } ],
 }
 
-data href_hostile: MarkupNode = ElementNode {
+data href_hostile: Fragment = Element {
   tag: "a",
-  attrs: [ MarkupAttr { name: "href", value: "x\"&<y onmouseover=z" } ],
+  attributes: [ attr(name: "href", value: "x\"&<y onmouseover=z" ) ],
   children: [],
 }
 
-data href_javascript: MarkupNode = ElementNode {
+data href_javascript: Fragment = Element {
   tag: "a",
-  attrs: [ MarkupAttr { name: "href", value: "javascript:alert(1)" } ],
-  children: [ TextNode { text: "click" } ],
+  attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
+  children: [ FragmentText { content: "click" } ],
 }
 
-fn serialize_ok(node: MarkupNode, expected: String) -> Bool {
+fn serialize_ok(node: Fragment, expected: String) -> Bool {
   match try_serialize_html_source(node: node) {
     EmitOk { html: h } => h == expected
     EmitRejected { reason: _ } => false
   }
 }
 
-fn serialize_rejects(node: MarkupNode) -> Bool {
+fn serialize_rejects(node: Fragment) -> Bool {
   match try_serialize_html_source(node: node) {
     EmitRejected { reason: _ } => true
     EmitOk { html: _ } => false

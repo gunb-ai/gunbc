@@ -8,8 +8,8 @@ import v2.workflow.witness_admission {
 }
 import std.witness_admission {
   FalsifierRehomedBinWet,
+  FalsifierSubstrateLongLane,
   WitnessConsumerCadence,
-  FalsifierSelfHostWet,
   BinWitnessWet,
   QuarantineProbeExpectRed,
   OfflineLocalRecipe,
@@ -23,21 +23,23 @@ import v2.std.text { String }
 data normalize_entry: String = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag"
 data normalize_fn: String = "self_host_03_normalize_behavioral_receipt_holds"
 
+data normalize_wet_known_red_admission_note: String = "2026-07-25 review #7199: SelfEmitted wet bindings that red on assemble are Wet expect_red quarantine (falsifier_self_host_wet_known_red_entries). 03_normalize's behavioral receipt consumer is QuarantineProbeExpectRed via the explicit roster (takes priority); the file-grain exclusion stays OfflineLocalRecipe so sibling declared_source_refs_complete_holds is not orphaned (english_emit_add pattern). Dissolve-on: local wet greens → known-red entry deletes → SelfHostWetReceiptBinding restores."
+
 data synthetic_orphan_entry: String = "dag/test/claim/synthetic_orphan_admission_witness_test.dag"
 data synthetic_orphan_fn: String = "synthetic_orphan_no_consumer_holds"
 
-fn witness_03_normalize_falsifier_wet_consumer_holds() -> Bool {
+fn witness_03_normalize_wet_known_red_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: normalize_entry,
     function: normalize_fn,
     excluded_from_discovery: true
   ) {
-    FalsifierSelfHostWet => true
+    QuarantineProbeExpectRed => true
     _ => false
   }
 }
 
-fn witness_03_normalize_manifest_covers_holds() -> Bool {
+fn witness_03_normalize_wet_known_red_manifest_covers_holds() -> Bool {
   witness_admission_manifest_covers_row(entry: normalize_entry, function: normalize_fn)
 }
 
@@ -76,7 +78,7 @@ fn witness_field_access_wet_falsifier_consumer_holds() -> Bool {
     function: "emit_on_demand_field_access_family_witnesses",
     excluded_from_discovery: true
   ) {
-    FalsifierSelfHostWet => true
+    OfflineLocalRecipe => true
     _ => false
   }
 }
@@ -87,7 +89,7 @@ fn witness_complement_wet_falsifier_consumer_holds() -> Bool {
     function: "emit_on_demand_complement_family_witnesses",
     excluded_from_discovery: true
   ) {
-    FalsifierSelfHostWet => true
+    OfflineLocalRecipe => true
     _ => false
   }
 }
@@ -132,13 +134,31 @@ fn witness_rehomed_bin_wet_manifest_covers_holds() -> Bool {
   )
 }
 
+fn witness_substrate_long_lane_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
+    function: "lens_affected_set_provenance_producer_single_read_emits_row_holds",
+    excluded_from_discovery: true
+  ) {
+    FalsifierSubstrateLongLane => true
+    _ => false
+  }
+}
+
+fn witness_substrate_long_lane_manifest_covers_holds() -> Bool {
+  witness_admission_manifest_covers_row(
+    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
+    function: "lens_affected_set_provenance_producer_single_read_emits_row_holds"
+  )
+}
+
 fn witness_explicit_manifest_nonempty_holds() -> Bool {
   length(xs: witness_admission_explicit_consumer_manifest()) > 0
 }
 
 test fn witness_admission_invariant_holds() -> Bool {
-  witness_03_normalize_falsifier_wet_consumer_holds()
-    && witness_03_normalize_manifest_covers_holds()
+  witness_03_normalize_wet_known_red_consumer_holds()
+    && witness_03_normalize_wet_known_red_manifest_covers_holds()
     && witness_synthetic_orphan_has_no_consumer_holds()
     && witness_synthetic_orphan_admission_red_holds()
     && witness_known_red_probe_consumer_holds()
@@ -148,5 +168,7 @@ test fn witness_admission_invariant_holds() -> Bool {
     && witness_discovery_row_consumer_holds()
     && witness_rehomed_bin_wet_consumer_holds()
     && witness_rehomed_bin_wet_manifest_covers_holds()
+    && witness_substrate_long_lane_consumer_holds()
+    && witness_substrate_long_lane_manifest_covers_holds()
     && witness_explicit_manifest_nonempty_holds()
 }

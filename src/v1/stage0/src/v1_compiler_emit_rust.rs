@@ -103,7 +103,8 @@ pub use crate::v1_compiler_resolve::get_exported_names;
 pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
 pub use crate::v1_compiler_trait_derive_emit::{
     rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible,
-    v1_emit_enum_derives, v1_emit_struct_derives, v1_emit_type_params_with_clone_bounds,
+    v1_emit_enum_derives, v1_emit_enum_supplemental_impls, v1_emit_struct_derives,
+    v1_emit_struct_supplemental_impls, v1_emit_type_params_with_clone_bounds,
     v1_generic_params_needing_clone_bound,
 };
 use crate::v1_rt;
@@ -12063,7 +12064,7 @@ pub fn emit_struct_from_children(
                     field_lines.clone()
                 };
                 let fields_str = all_field_lines.clone().join(&"\n".to_string());
-                v1_rt::concat(
+                let struct_def = v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
@@ -12087,7 +12088,14 @@ pub fn emit_struct_from_children(
                         fields_str.clone(),
                     ),
                     "\n}".to_string(),
-                )
+                );
+                let supplemental =
+                    v1_emit_struct_supplemental_impls(env.module_path.clone(), name.clone());
+                if (supplemental.clone() == "".to_string()) {
+                    struct_def
+                } else {
+                    v1_rt::concat(struct_def, supplemental.clone())
+                }
             }
         }
     }
@@ -12627,13 +12635,19 @@ pub fn emit_enum_from_children(
             env.clone(),
             emit_info.clone(),
         );
-        if (accessor_impl.clone() == "".to_string()) {
-            enum_def
+        let supplemental = v1_emit_enum_supplemental_impls(env.module_path.clone(), name.clone());
+        let with_accessors = if (accessor_impl.clone() == "".to_string()) {
+            enum_def.clone()
         } else {
             v1_rt::concat(
-                v1_rt::concat(enum_def, "\n".to_string()),
+                v1_rt::concat(enum_def.clone(), "\n".to_string()),
                 accessor_impl.clone(),
             )
+        };
+        if (supplemental.clone() == "".to_string()) {
+            with_accessors
+        } else {
+            v1_rt::concat(with_accessors, supplemental.clone())
         }
     }
 }

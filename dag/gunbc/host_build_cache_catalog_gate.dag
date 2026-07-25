@@ -3,7 +3,7 @@ module gunbc.host_build_cache_catalog_gate
 import std.cache_identity { CacheInterfaceId }
 import std.types { NonEmptyStr }
 import extdeps.cache.sccache { sccache_local_id }
-import extdeps.cache.cache { cache_catalog }
+import extdeps.cache { cache_catalog }
 
 data provision_build_cache_unknown_catalog_fixture: CacheInterfaceId = "gunbc-test-unknown-cache-interface-id"
 

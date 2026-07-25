@@ -73,17 +73,12 @@ fn deploy_access_effect_is_typed_probe(effect: HostEffect) -> Bool {
     ShellCommand { script: _ } => false
     RedfishAction { action: _ } => false
     ConvergePlan { policy: _ } => false
-    Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } => false
     OsInstallActuatorToolchainEnsure {} => false
     ProvisionBuildCache { catalog_id: _ } => false
     SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => false
-    Srv3InstallReconcileObserve { include_git_meta: _ } => false
-    DurableApprovalGrantRecord => false
-    DurableApprovalGrantRead => false
     Srv3InstallMediaFetch => false
     Srv3SeededInstallMediaRemaster => false
     Srv3SeededInstallMediaToolchainEnsure => false
-    Srv3SolConsoleCapture => false
     Srv3BmcwebSessionLogin => false
     Srv3BmcwebTokenExtract => false
     Srv3NbdProxyServe { intent: _, lease_key: _ } => false

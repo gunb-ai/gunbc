@@ -38,7 +38,7 @@ import v2.std.compilers.target_model {
   TargetCollectionWitnessOrd
 }
 
-data trait_derive_completeness_note: String = "Gate-1 sub-wall #2 (#7174 narrowed 2026-07-25): v2 Node elem-shape classifier + collection-witness gate over std.trait_derive_shape. v1 emit wires (a) clone bounds on generic params and (c) serde/Debug/Ord #[derive] on named structs/enums; arm (b) coproduct-native arithmetic impls deferred to GroupCompletion grounding lane (see std.trait_derive_shape.trait_derive_shape_grounding_lane_handoff). Fail-closed: unknown shapes refuse. Dissolve-on: those two v1 emit arms + layer-boundary mock test wire through this module."
+data trait_derive_completeness_note: String = "Gate-1 sub-wall #2 (#7174 narrowed 2026-07-25): v2 Node elem-shape classifier + collection-witness gate over std.trait_derive_shape. v1 emit wires (a) clone bounds on generic params, (b) coproduct-native supplemental impl blocks, and (c) serde/Debug/Ord #[derive] on named structs/enums — arm (b) detail in std.trait_derive_shape.trait_derive_shape_grounding_lane_handoff. Fail-closed: unknown shapes refuse. Dissolve-on: those three v1 emit arms + layer-boundary mock test wire through this module."
 
 type TraitDeriveCompletenessGate
   = TraitDeriveCompletenessSatisfied

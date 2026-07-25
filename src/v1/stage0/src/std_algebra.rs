@@ -82,6 +82,30 @@ pub struct CommutativeSemiring<T> {
     pub one: T,
     pub _phantom: std::marker::PhantomData<T>,
 }
+// repr-grounding arm (b): Nat carrier arithmetic (v1 seed emit; Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion/Nat body lands (#7197); replace fail-closed unimplemented! stubs with grounded i64 newtype operations. Do not retain PartialEq<i64> cross-representation bridge — numeric-tower grounding replaces the straddle.)
+impl std::ops::Add for CommutativeSemiring<crate::std_magnitude::Magnitude> {
+    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;
+    fn add(self, _rhs: Self) -> Self::Output {
+        unimplemented!("interim CommutativeSemiring<Magnitude> stub — see #7197")
+    }
+}
+impl std::ops::Mul for CommutativeSemiring<crate::std_magnitude::Magnitude> {
+    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;
+    fn mul(self, _rhs: Self) -> Self::Output {
+        unimplemented!("interim CommutativeSemiring<Magnitude> stub — see #7197")
+    }
+}
+impl std::ops::Div for CommutativeSemiring<crate::std_magnitude::Magnitude> {
+    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;
+    fn div(self, _rhs: Self) -> Self::Output {
+        unimplemented!("interim CommutativeSemiring<Magnitude> stub — see #7197")
+    }
+}
+impl std::cmp::PartialEq<i64> for CommutativeSemiring<crate::std_magnitude::Magnitude> {
+    fn eq(&self, _other: &i64) -> bool {
+        unimplemented!("interim CommutativeSemiring<Magnitude> stub — see #7197")
+    }
+}
 
 #[derive(Clone)]
 pub struct Ring<T> {

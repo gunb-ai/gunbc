@@ -1209,13 +1209,14 @@ const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
 // manifest of the frontier rows instead of parsing the authority source (the same
 // module-binding supply-carrier pattern as `witness_admission_explicit_consumer_manifest`;
 // same marker family as `non_fold_residue_units_from_module_source`).
-const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 7] = [
+const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 8] = [
     "OfflineLocalRecipe",
     "FixtureExplicitRoster",
     "BinWitnessWet",
     "QuarantineProbeExpectRed",
     "FalsifierSelfHostWet",
     "FalsifierRehomedBinWet",
+    "FalsifierSubstrateLongLane",
     "NoConsumer",
 ];
 const WET_RECEIPT_ENROLLMENT_AUTHORITY_REL: &str =
@@ -9676,8 +9677,12 @@ fn failure_receipt_companion(function: &str) -> Option<String> {
 }
 
 /// Run a witness companion that returns `String` divergence detail (Lane B agreement loudness).
-/// Empty string = no divergence detail (clean companion). Non-empty refusal sentinel on
-/// interpreter error or wrong type — never silent None (review 41847, §5).
+/// Empty string = no divergence detail (clean companion **or** companion not declared).
+/// Non-empty refusal sentinel on wrong type / non-missing interpreter error — never silent
+/// None when a companion *is* declared (review 41847, §5). A missing companion
+/// (`NoSuchFunction` / `NoMainFunction` from the `_holds` → `_failure_receipt` naming
+/// convention) is "not declared", not a refused receipt — the auto-derived name must not
+/// invent a required loudness hook for every Bool(false) witness.
 pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: &str) -> String {
     match v1_interpreter::run_in_context(ctx, function, false) {
         Ok(v1_interpreter::Value::Str(s)) => s,
@@ -9685,6 +9690,8 @@ pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: 
             "failure_receipt_refused: {function} returned {}, expected String",
             ctx.format_value(&other)
         ),
+        Err(v1_interpreter::InterpError::NoSuchFunction { .. })
+        | Err(v1_interpreter::InterpError::NoMainFunction) => String::new(),
         Err(e) => format!("failure_receipt_refused: {function}: {e}"),
     }
 }
@@ -9882,6 +9889,11 @@ pub fn run_claim_measured(
     if let Some(budget_ms) = ctx.witness_eval_budget() {
         ctx.arm_eval_deadline(budget_ms);
     }
+    if let Some(budget_ms) = ctx.witness_wall_budget() {
+        // Kill-at-deadline: shell waits poll this and SIGKILL at the ceiling.
+        // Completion-side `wall_budget_completion_outcome` stays as the backstop.
+        ctx.arm_wall_deadline(budget_ms);
+    }
     let started = std::time::Instant::now();
     let cpu_started_nanos = v1_interpreter::thread_cpu_nanos();
     let outcome = run_claim(ctx, function);
@@ -9891,6 +9903,7 @@ pub fn run_claim_measured(
     let cpu_nanos = v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_started_nanos);
     let wall_nanos = started.elapsed().as_nanos();
     ctx.clear_eval_deadline();
+    ctx.clear_wall_deadline();
     v1_interpreter::eval_subject_clear();
     let outcome = budget_completion_outcome(ctx.witness_eval_budget(), outcome, cpu_nanos);
     let outcome = wall_budget_completion_outcome(ctx.witness_wall_budget(), outcome, wall_nanos);
@@ -10070,7 +10083,7 @@ mod budget_completion_tests {
         match wall_budget_completion_outcome(Some(600), ClaimOutcome::Pass, 601_000_000_000) {
             ClaimOutcome::RuntimeError { message } => {
                 assert!(
-                    message.contains("wet self-host receipt wall budget exceeded"),
+                    message.contains("witness receipt wall budget exceeded"),
                     "typed refusal expected; got {message}"
                 );
             }
@@ -12022,12 +12035,13 @@ fn witness_admission_entry_function_keys_from_source(
             keys.push(key);
         }
     }
-    let heads: [(&str, &str); 5] = [
+    let heads: [(&str, &str); 6] = [
         ("bin_wet(", "entry: String"),
         ("probe_red(", "entry: String"),
         ("self_host_wet_entry(", "entry: String"),
         ("SelfHostWetReceiptBinding {", ""),
         ("RehomedBinWetRow {", ""),
+        ("SubstrateLongLaneRow {", ""),
     ];
     for (head, def_sig) in heads {
         let mut search_from = 0;
@@ -24667,7 +24681,16 @@ fn inert_carrier_type_carrier_blocks(content: &str) -> Vec<(String, String)> {
 // variant occurrences to the parent type or a live state machine reads as inert. Variant
 // names shared across coproducts merge their tallies — an approximation that errs toward
 // not flagging; the roster stays the per-name override.
-fn inert_carrier_variant_names(block: &str) -> Vec<String> {
+//
+// Nominal records (`type Foo = Foo { field: T }`) must NOT be read as a one-variant
+// coproduct: the repeated type name after `=` is the record constructor spelling, not a
+// variant. Treating it as one double-counts `self_block_refs` and can drive consumption
+// to ≤0 for a carrier that is actively constructed in the same file (HostToolchainReach
+// falsifier red 2026-07-25 — live consumer in gunbc.host_toolchain_ensure, falsely inert).
+fn inert_carrier_variant_names(type_name: &str, block: &str) -> Vec<String> {
+    if inert_carrier_block_is_nominal_record(type_name, block) {
+        return Vec::new();
+    }
     let mut out = Vec::new();
     for (idx, raw) in block.lines().enumerate() {
         let t = raw.trim_start();
@@ -24697,6 +24720,27 @@ fn inert_carrier_variant_names(block: &str) -> Vec<String> {
     out.sort();
     out.dedup();
     out
+}
+
+fn inert_carrier_block_is_nominal_record(type_name: &str, block: &str) -> bool {
+    let Some(first) = block.lines().next() else {
+        return false;
+    };
+    let trimmed = first.trim_start();
+    let Some(eq) = trimmed.find('=') else {
+        // `type Foo { ... }` brace-record form — no coproduct variants.
+        return trimmed.contains('{');
+    };
+    if trimmed[eq + 1..].contains('|') {
+        return false;
+    }
+    let after = trimmed[eq + 1..].trim_start();
+    after.starts_with(type_name)
+        && after
+            .as_bytes()
+            .get(type_name.len())
+            .is_some_and(|b| *b == b'{' || b.is_ascii_whitespace())
+        && after.contains('{')
 }
 
 const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
@@ -24779,7 +24823,7 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
             *decl_count.entry(name.clone()).or_insert(0) += 1;
             *self_block_refs.entry(name.clone()).or_insert(0) +=
                 inert_carrier_count_token(&block, &name);
-            for v in inert_carrier_variant_names(&block) {
+            for v in inert_carrier_variant_names(&name, &block) {
                 *self_block_refs.entry(v.clone()).or_insert(0) +=
                     inert_carrier_count_token(&block, &v);
                 type_variants.entry(name.clone()).or_default().push(v);
@@ -24918,6 +24962,27 @@ mod inert_carrier_tests {
         assert!(
             inert.contains(&"LonelyState".to_string()),
             "a coproduct whose variants are used nowhere outside its block must stay flagged; got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn nominal_record_spelling_is_not_a_coproduct_variant() {
+        // `type Foo = Foo { ... }` is a record carrier, not a one-variant sum. The
+        // repeated name after `=` must not inflate self_block_refs or the same-file
+        // constructor reads as consumption≤0 (HostToolchainReach false-inert).
+        let inert = inert_names_of(&[
+            (
+                "a.dag",
+                "module a\ntype Reach = Reach {\n  target: Int\n  access: Int\n}\nfn go(x: Int) -> Int {\n  let r = Reach { target: x, access: x }\n  r.target\n}\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { go(x: 1) == 1 }\nfn probe(s: Reach) -> Bool { true }\n",
+            ),
+        ]);
+        assert!(
+            !inert.contains(&"Reach".to_string()),
+            "nominal-record carrier with a same-file constructor must not be inert; got {inert:?}"
         );
     }
 
@@ -26967,7 +27032,7 @@ mod module_path_index_tests {
     #[test]
     fn extdeps_shell_resolves_to_the_dag_authority() {
         let path = source_path_for_module_path("extdeps.shell".to_string());
-        assert_eq!(path, "dag/extdeps/shell/shell.dag");
+        assert_eq!(path, "dag/extdeps/shell.dag");
     }
 
     #[test]
@@ -27161,6 +27226,29 @@ mod module_path_index_tests {
         assert!(
             keys.contains(&"dag/test/claim/x_test.dag::x_holds".to_string()),
             "a RehomedBinWetRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
+        );
+    }
+
+    #[test]
+    fn substrate_long_lane_rows_parse_as_explicit_consumer_keys() {
+        let synthetic = "module gunbc.ci_layer_roots\n\n\
+             type SubstrateLongLaneRow {\n\
+               entry: String\n\
+               function: String\n\
+             }\n\n\
+             data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [\n\
+               SubstrateLongLaneRow {\n\
+                 entry: \"dag/test/claim/y_test.dag\",\n\
+                 function: \"y_holds\",\n\
+                 reason: \"r\",\n\
+                 dissolve_on: \"d\"\n\
+               }\n\
+             ]\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.contains(&"dag/test/claim/y_test.dag::y_holds".to_string()),
+            "a SubstrateLongLaneRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
         );
     }
 

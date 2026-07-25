@@ -1,0 +1,112 @@
+module gunbc.readback_independence
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data readback_independence_authority_note: String = "THE standing criterion generalized out of #7213 Finding 2, which was found once, by hand, on one host: `sccache --show-stats` printed a healthy stats table over srv3 while the modeled unit had been inactive (dead) for six hours and no sccache process existed before the probe ran — because ANY sccache invocation auto-starts a server. The read did not observe the state, it CREATED it. That was written down as a note beside one verdict fold, which leaves the criterion as prose the next probe author has to happen to read. The criterion itself is general and has nothing to do with sccache: a read-back is evidence about a subject only if performing the read could not have established the subject. A probe that can establish what it reports is not measuring, it is asserting — the fabricated plausible output of DESIGN §5, arriving as a genuinely-executed command with genuinely-correct output. The class is not exotic and it is not rare. It is every probe whose transport shares a mechanism with the thing provisioned: a client that auto-starts its daemon, a mount check that triggers an automount, a token read that refreshes the token, a health endpoint that lazily initializes on first request, an ensure-shaped operation used as a query. The tell is always the same and it is a question about the TRANSPORT rather than the value: could running this have made the answer true?"
+
+data readback_independence_asymmetry_note: String = "The correction is deliberately ASYMMETRIC, and getting that right is what keeps the criterion from being a blunt instrument that discards good evidence. A self-establishing probe's NEGATIVE results stay trustworthy: if `--show-stats` had failed outright, that failure is real — the probe was willing and able to bring the subject into existence and still could not report it. Only the positive is poisoned, because that is the one outcome the probe's own side effect can manufacture. So the fold rewrites Converged and passes every other verdict through unchanged, and it rewrites Converged to UnknownRefused specifically — not to Absent, which would assert the subject is missing, and not to Conflict, which would assert two sources disagree. The honest statement is that this probe cannot answer this question, and UnknownRefused is exactly that statement. It is also the arm that keeps the deficit COUNTABLE: an UnknownRefused cell ranks for a producer to be built, while a silently-downgraded or silently-accepted one ranks for nothing."
+
+type ProbeEffectOnSubject
+  = ProbeInert
+  | ProbeMayEstablish { mechanism: NonEmptyStr }
+  | ProbeEffectUnknown { reason: NonEmptyStr }
+
+type ReadBackProbe {
+  label: NonEmptyStr
+  subject: NonEmptyStr
+  effect_on_subject: ProbeEffectOnSubject
+}
+
+fn readback_probe_is_independent(p: ReadBackProbe) -> Bool {
+  match p.effect_on_subject {
+    ProbeInert => true
+    ProbeMayEstablish { mechanism: _ } => false
+    ProbeEffectUnknown { reason: _ } => false
+  }
+}
+
+data readback_unknown_effect_is_not_inert_note: String = "An UNCLASSIFIED probe is treated exactly as a self-establishing one, and this is the fail-closed hinge. The tempting default is the other way — nobody has shown this probe has a side effect, so assume it does not — and that default is the absorbing fallback with the burden of proof reversed: it converts every un-audited transport into evidence, and the population of un-audited transports is the whole tree. Independence is a property that must be ESTABLISHED for a specific transport, so ProbeEffectUnknown carries a reason and yields the same correction as ProbeMayEstablish. The two stay distinct arms anyway, because their remedies differ: ProbeMayEstablish is a probe to REPLACE, ProbeEffectUnknown is a transport to AUDIT."
+
+fn readback_evidence_verdict(p: ReadBackProbe, observed: ObservationVerdict) -> ObservationVerdict {
+  if readback_probe_is_independent(p: p) {
+    observed
+  } else {
+    match observed {
+      Converged => UnknownRefused
+      std.upsert_decision.Absent => std.upsert_decision.Absent
+      Drifted => Drifted
+      Conflict => Conflict
+      Inaccessible => Inaccessible
+      UnknownRefused => UnknownRefused
+    }
+  }
+}
+
+data readback_trusting_widen_red_control_note: String = "The forbidden arm as an executable declaration: trust the probe's own answer whatever the transport can do to the subject. It is the corpus's behaviour everywhere the criterion has not yet been applied, so the sketch is a description of today rather than a hypothetical, and the gate rejects it on exactly the inputs #7213 hit live."
+
+fn readback_evidence_trusting_widen_sketch(
+  p: ReadBackProbe,
+  observed: ObservationVerdict,
+) -> ObservationVerdict {
+  observed
+}
+
+fn readback_verdict_is_converged(v: ObservationVerdict) -> Bool {
+  match v {
+    Converged => true
+    std.upsert_decision.Absent => false
+    Drifted => false
+    Conflict => false
+    Inaccessible => false
+    UnknownRefused => false
+  }
+}
+
+fn readback_evidence_gate_accepts(p: ReadBackProbe, verdict: ObservationVerdict) -> Bool {
+  if readback_probe_is_independent(p: p) {
+    true
+  } else {
+    !readback_verdict_is_converged(v: verdict)
+  }
+}
+
+data readback_probe_roster_note: String = "The lane's real probes, classified. This roster is a small honest inventory and not a claim of completeness — it covers the transports this lane has actually reasoned about, and a probe absent from it is unclassified, which the criterion already treats as non-independent. sccache_show_stats is the cited instance and the reason the module exists. systemd_show_property and systemd_is_active are the ones that make the criterion non-vacuous in the other direction: `systemctl show` and `systemctl is-active` read the manager's recorded state and start nothing, so they are genuinely inert and their Converged results survive — a criterion that refused every probe would be the absorbing fallback wearing a safety badge. proc_swaps_read is classified inert on the same reasoning: reading /proc/swaps enumerates active swap areas and cannot activate one, unlike `swapon` whose ensure shape would establish the very backing a query is supposed to find."
+
+data sccache_show_stats_probe: ReadBackProbe = ReadBackProbe {
+  label: "sccache --show-stats",
+  subject: "sccache daemon is running under the modeled unit",
+  effect_on_subject: ProbeMayEstablish {
+    mechanism: "any sccache client invocation auto-starts a server when none is listening, so the probe can create the daemon it reports on (#7213 Finding 2, observed live on srv3 2026-07-25)",
+  },
+}
+
+data systemd_show_property_probe: ReadBackProbe = ReadBackProbe {
+  label: "systemctl show -p <property>",
+  subject: "cgroup property value on a unit",
+  effect_on_subject: ProbeInert,
+}
+
+data systemd_is_active_probe: ReadBackProbe = ReadBackProbe {
+  label: "systemctl --user is-active <unit>",
+  subject: "unit is running under its supervisor",
+  effect_on_subject: ProbeInert,
+}
+
+data proc_swaps_read_probe: ReadBackProbe = ReadBackProbe {
+  label: "read /proc/swaps",
+  subject: "host has swap backing active",
+  effect_on_subject: ProbeInert,
+}
+
+data readback_probe_roster: List<ReadBackProbe> = [
+  sccache_show_stats_probe,
+  systemd_show_property_probe,
+  systemd_is_active_probe,
+  proc_swaps_read_probe,
+]
+
+fn readback_non_independent_probe_count() -> Int {
+  filter(readback_probe_roster, p => !readback_probe_is_independent(p: p)).length()
+}

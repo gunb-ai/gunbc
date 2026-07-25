@@ -234,6 +234,33 @@ T4 was written as "post-apply `sccache --show-stats`, independent of our write."
 
 **T4 status:** srv3 **green** at the restated bar (13-minute delayed read, modeled unit, PID stable). srv1 and srv2 remain **open** — not for a modeling reason: neither host is reachable from a session container with the fleet key today (`Permission denied (publickey)` for `ubuntu`/`briansrls`/`node-orch`), which is the A1/A2/B2 reach-and-identity gap already typed in `gunbc.plans.fleet_subsumption_manual_gaps`. The downstream triggers (`ctrl_sccache_service_retired`, and the `ci_sccache_opportunistic_detect` cutover) stay blocked on those two hosts, and the srv1/srv2 units should be expected to carry the same latent defect until re-provisioned from the model.
 
+### 5.5 Finding 2 generalized — read-back independence is a standing criterion (2026-07-25)
+
+Finding 2 was recorded as a note beside one verdict fold, which leaves it as prose the next probe author has to happen to read. The criterion is general and has nothing to do with sccache: **a read-back is evidence about a subject only if performing the read could not have established the subject.** A probe that can establish what it reports is not measuring, it is asserting — §5's fabricated plausible output arriving as a genuinely-executed command with genuinely-correct output.
+
+The class is not rare. It is every probe whose transport shares a mechanism with the thing provisioned: a client that auto-starts its daemon, a mount check that triggers an automount, a token read that refreshes the token, a health endpoint that lazily initializes on first request, an ensure-shaped operation used as a query. The tell is a question about the **transport**, never about the value: *could running this have made the answer true?*
+
+Landed as `gunbc.readback_independence` (`ProbeEffectOnSubject = ProbeInert | ProbeMayEstablish{mechanism} | ProbeEffectUnknown{reason}`), with three properties worth naming:
+
+- **Asymmetric correction.** A tainted probe's *negative* results survive — it had every opportunity to bring the subject into existence and still could not report it. Only `Converged` is rewritten, and to `UnknownRefused` (this probe cannot answer), never `Absent` (asserting the subject is missing) or `Conflict` (asserting two sources disagree). The `UnknownRefused` arm is what keeps the deficit countable.
+- **Unclassified ⇒ tainted.** `ProbeEffectUnknown` gets the same correction as `ProbeMayEstablish`. The opposite default converts every un-audited transport into evidence, and the population of un-audited transports is the whole tree. The two arms stay distinct because the remedies differ: replace the probe vs audit the transport.
+- **Non-vacuous in both directions.** `systemctl show` / `is-active` / a `/proc/swaps` read are classified `ProbeInert` and keep their `Converged` — a criterion that refused every probe would be the absorbing fallback wearing a safety badge.
+
+Live consumer: `gunbc.host_swap_backing` routes every host verdict through it. The routing is a no-op today (`/proc/swaps` is inert), so the witness proves it by **substitution** — the same verdict carried by the sccache probe is refused. That is what makes the classification load-bearing rather than decorative: swapping the transport for an ensure-shaped one changes the answer, and it does so by editing a cited row rather than silently inside a transport.
+
+### 5.6 The swap-cap presupposition — a converged knob over a resource nothing models (2026-07-25)
+
+Found while modeling swap as an axis, and it is the same shape as Finding 2 in different dress. `gunbc.runner_slot_allocation` declares `memory_swap_max = 34359738368` (32 GiB) per runner slot; `gunbc.host_converge` drives it onto every host as `MemorySwapMax` via the per-slot drop-in; `gunbc.runner_unit_live_read` reads it back and reports `Converged` when the property matches. Every step is correct in isolation and the composition still proves nothing, because `MemorySwapMax` is a **ceiling**: systemd accepts it, reports it, and matches it byte-for-byte on a host with zero swap devices. The knob converges green over a resource that may not exist — and nothing anywhere in the tree models whether it does (zero `mkswap`/`swapon`/`fallocate`/`/proc/swaps` occurrences; swap appears only as prose in `fleet_acceptance_criteria` and as the floor-timeout mechanism in `ci_budget_tree`).
+
+`gunbc.host_swap_backing` makes the presupposition representable:
+
+- **Requirement derived, never authored.** No one in this session can read `/proc/swaps` on srv1..srv4 (the A1 reach gap), so a per-host swap table here would be invention. Declaring a nonzero `MemorySwapMax` *is* declaring that backing must exist, so the requirement falls out of `gunbc_runner_slot_desired().memory_swap_max` and moves when it moves. **Declared limit:** `min_total` is the per-slot cap, not slots × cap — whether five concurrent slots can each reach their ceiling is an aggregate question nobody has measured, and multiplying would assert a worst case as fact.
+- **Four separable states**, because each names different work: no producer → `UnknownRefused` (build one); zero total → `Absent` (provision backing); undersized → `Drifted` (resize); sufficient → `Converged`. There is deliberately **no** "assume the distro default gave us swap" arm — srv1..srv4 were installed across at least two paths, so its error rate would be unmeasurable by construction.
+- **Cap qualified by backing.** A `MemorySwapMax` verdict carries information only when backing is observed `Converged`; every other backing state dominates. This is a presupposition check and explicitly *not* a lattice meet — a witness pins the asymmetry so a refactor cannot quietly symmetrize it.
+- **Observation frontier counted, not silent.** All four enrolled hosts derive `UnknownRefused` today; the count is exported and pinned by witness, so landing a producer is a visible event and a fabricated fixture would *red* the witness rather than green the matrix.
+
+**Realization is blocked, and on nothing swap-specific:** the argv materializer binds a hardcoded five-parameter vocabulary (`path`, `service`, `operation`, `package`, `bin`, `args`, `unit`), so `fallocate`/`mkswap`/`swapon`/fstab and a `/proc/swaps` read cannot be expressed as typed host effects. Declaring them before that binding is generic would add census rows no consumer can reach — the parallel-representation debt the census exists to prevent. Scaffold binds `gunbc.host_effect.HostEffectTransport`; the materializer itself has no `.dag` declaration to bind to, which is part of why it is the blocker.
+
 ## 6. Dissolution triggers (every scaffold names its exit)
 
 | Scaffold | Dissolves to | Trigger |

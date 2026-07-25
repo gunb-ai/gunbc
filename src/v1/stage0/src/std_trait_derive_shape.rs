@@ -14,7 +14,7 @@ use std::rc::Rc;
 pub fn trait_derive_shape_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Target-agnostic authority for ReprGroundingDeriveTrait × ReprGroundingDeriveElemShape capability table and derive-trait list builders. Rust spellings: extdeps.languages.rust.emit. Consumed by v2.compiler.trait_derive_completeness and v1.compiler.trait_derive_emit. #7174 scope (operator 2026-07-25): v1 emit wires clone bounds + serde/Debug/Ord derives on named structs/enums only; ReprDeriveAdd/Sub/… rows on KernelInt are predicate authority for the grounding lane (GroupCompletion<Nat>, Vector), not v1 custom-impl emission.".to_string()
+            "Target-agnostic authority for ReprGroundingDeriveTrait × ReprGroundingDeriveElemShape capability table and derive-trait list builders. Rust spellings: extdeps.languages.rust.emit. Consumed by v2.compiler.trait_derive_completeness and v1.compiler.trait_derive_emit. #7174 (operator 2026-07-25): v1 emit wires (a) clone bounds and (c) serde/Debug/Ord #[derive] on named structs/enums. Root-4 arm (b): predicate-gated supplemental impl { … } blocks for coproduct-native arithmetic carriers — see trait_derive_shape_grounding_lane_handoff; ReprDeriveAdd/Sub/… rows on KernelInt are capability-table authority for repr_grounding_derive_completeness_predicate, not spellings.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -23,7 +23,7 @@ pub fn trait_derive_shape_note() -> String {
 pub fn trait_derive_shape_grounding_lane_handoff() -> String {
     thread_local! {
         static CACHED: String = {
-            "Arm (b) deferred to GroupCompletion grounding lane: coproduct-native arithmetic + PartialOrd/PartialEq impl blocks for algebra carriers (GroupCompletion<Nat>, Vector, CommutativeSemiring<Magnitude>). This module's capability table + repr_grounding_derive_completeness_predicate remain the shared authority; the grounding lane emits impl { … } from shape rows, not #[derive]. v1.compiler.trait_derive_emit does not wire arm (b).".to_string()
+            "Root-4 arm (b): coproduct-native arithmetic + PartialOrd/PartialEq impl blocks for algebra carriers (GroupCompletion<Nat>, Vector, CommutativeSemiring<Magnitude>). Capability table + repr_grounding_derive_completeness_predicate remain the shared authority; v1.compiler.trait_derive_emit emits impl { … } from shape rows (not #[derive]) through the seed emitter. dissolve-on: GroupCompletion/FieldOfFractions body landing (#7197) replaces interim Magnitude-carrier stubs.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -378,6 +378,65 @@ pub fn payload_coproduct_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDebug);
         __cons_v
     })
+}
+
+pub fn kernel_int_arithmetic_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
+    Rc::new({
+        let mut __cons_v = (*Rc::new({
+            let mut __cons_v = (*Rc::new({
+                let mut __cons_v = (*Rc::new({
+                    let mut __cons_v = (*Rc::new({
+                        let mut __cons_v = (*Rc::new({
+                            let mut __cons_v = (*Rc::new({
+                                let mut __cons_v = (*Rc::new({
+                                    let mut __cons_v = (*Rc::new(vec![])).clone();
+                                    __cons_v
+                                        .insert(0, ReprGroundingDeriveTrait::ReprDerivePartialOrd);
+                                    __cons_v
+                                }))
+                                .clone();
+                                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialEq);
+                                __cons_v
+                            }))
+                            .clone();
+                            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveNeg);
+                            __cons_v
+                        }))
+                        .clone();
+                        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveRem);
+                        __cons_v
+                    }))
+                    .clone();
+                    __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDiv);
+                    __cons_v
+                }))
+                .clone();
+                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveMul);
+                __cons_v
+            }))
+            .clone();
+            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveSub);
+            __cons_v
+        }))
+        .clone();
+        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveAdd);
+        __cons_v
+    })
+}
+
+pub fn repr_grounding_supplemental_commutative_semiring_target(
+    module_path: String,
+    name: String,
+) -> bool {
+    ((module_path.clone() == "std.algebra".to_string())
+        && (name.clone() == "CommutativeSemiring".to_string()))
+}
+
+pub fn repr_grounding_supplemental_bool_host_bridge_target(
+    module_path: String,
+    name: String,
+) -> bool {
+    ((module_path.clone() == "std.types".to_string()) && (name.clone() == "Bool".to_string()))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

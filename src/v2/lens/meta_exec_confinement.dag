@@ -42,11 +42,6 @@ data meta_exec_confinement_exception_roster: List<FrontierRow> = [
     dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
   ),
   frontier_row(
-    unit: "dag/gunbc/srv3_install_diagnostic_checklist.dag",
-    reason: "srv3 install diagnostic checklist still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
-    dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
-  ),
-  frontier_row(
     unit: "dag/gunbc/tools/review.dag",
     reason: "review tooling still invokes shell.Exec directly at the intent layer (pre-typed-transport site, per meta_exec_confinement_law)",
     dissolve_on: "the site migrates to typed host_effect_apply / emit(intent, Bash); row deletes (roster is shrink-only)"
