@@ -350,6 +350,37 @@ fn process_escapes(raw: String) -> String {
   process_escapes_loop(source: raw, pos: 0, acc: [])
 }
 
+data hex_escape_note: String = "\\xNN decodes to the byte NN names. Before this arm every \\x fell through to the unknown-escape branch below, which preserves the backslash literally — so every ANSI code authored in .dag (extdeps.render.ansi.csi_esc, extdeps.render.terminal's reset, gunbc.ci_render's red/reset) emitted the six characters backslash-x-1-b instead of ESC, and no colour this repo authored had ever rendered. The witness that was supposed to catch it compared one undecoded literal against another, so it agreed with itself and could not fail (DESIGN §5 — a check satisfied by editing the declaration while the realization lies)."
+
+data unknown_escape_passthrough_frontier: String = "🟡 dissolve-on: tokenizer_unknown_escape_strict_close (opened 2026-07-25) — the else-arm below resolves an UNRECOGNIZED escape to concat(backslash, next), so \\s silently means backslash-s and is indistinguishable from a typo'd escape. That is a closed-vocabulary violation (DESIGN §4: the vocabulary is closed; §5: a failure arm refuses, never widens) and it is knowingly RETAINED, not accepted: refusing today would red 142 occurrences across 38 files (textual census 2026-07-25 — grep over .dag, so an upper bound, and DESIGN's own caution about grep census applies), overwhelmingly regex fragments (\\' 28, \\. 19, \\| 13, \\/ 12, \\B 10) that intend the backslash to survive. NOT the four sites a \\x-only count suggests. DISSOLVES WHEN a raw-string form lands to carry regex fragments, the 142 occurrences migrate onto it, and this arm becomes a typed located parse refusal (the Rust rule: unknown escape is an error, a literal backslash is spelled \\\\). Because that is a PARSE-SEMANTICS change over a tokenizer every lane's probes compile through, the strict close lands with a corpus-wide compile receipt, never the site migration alone."
+
+fn hex_digit_value(ch: String) -> Int? {
+  let cp = code_point(ch)
+  if cp >= 48 && cp <= 57 {
+    Present { value: cp - 48 }
+  } else {
+    if cp >= 97 && cp <= 102 {
+      Present { value: cp - 87 }
+    } else {
+      if cp >= 65 && cp <= 70 {
+        Present { value: cp - 55 }
+      } else {
+        none
+      }
+    }
+  }
+}
+
+fn hex_escape_char(hi: String, lo: String) -> String? {
+  match hex_digit_value(ch: hi) {
+    Present { value: h } => match hex_digit_value(ch: lo) {
+      Present { value: l } => Present { value: from_code_point(h * 16 + l) }
+      Absent => none
+    }
+    Absent => none
+  }
+}
+
 fn process_escapes_loop(source: String, pos: Int, acc: List<String>) -> String {
   if pos >= string_length(s: source) {
     join(acc, separator: "")
@@ -357,14 +388,23 @@ fn process_escapes_loop(source: String, pos: Int, acc: List<String>) -> String {
     let ch = char_at(s: source, pos: pos)
     if ch == "\\" && pos + 1 < string_length(s: source) {
       let next = char_at(s: source, pos: pos + 1)
-      let resolved = if next == "\"" { "\"" }
-        else if next == "\\" { "\\" }
-        else if next == "n" { "\n" }
-        else if next == "t" { "\t" }
-        else if next == "{" { "{" }
-        else if next == "}" { "}" }
-        else { concat("\\", next) }
-      process_escapes_loop(source: source, pos: pos + 2, acc: list_push(acc, resolved))
+      if next == "x" && pos + 3 < string_length(s: source) {
+        match hex_escape_char(hi: char_at(s: source, pos: pos + 2), lo: char_at(s: source, pos: pos + 3)) {
+          Present { value: decoded } =>
+            process_escapes_loop(source: source, pos: pos + 4, acc: list_push(acc, decoded))
+          Absent =>
+            process_escapes_loop(source: source, pos: pos + 2, acc: list_push(acc, concat("\\", next)))
+        }
+      } else {
+        let resolved = if next == "\"" { "\"" }
+          else if next == "\\" { "\\" }
+          else if next == "n" { "\n" }
+          else if next == "t" { "\t" }
+          else if next == "{" { "{" }
+          else if next == "}" { "}" }
+          else { concat("\\", next) }
+        process_escapes_loop(source: source, pos: pos + 2, acc: list_push(acc, resolved))
+      }
     } else {
       process_escapes_loop(source: source, pos: pos + 1, acc: list_push(acc, ch))
     }
