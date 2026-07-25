@@ -5343,9 +5343,9 @@ fn dag_round_trip_grammar_ready(lm: LanguageModel) -> Bool {
 }
 
 fn dag_round_trip_trivia_fidelity_resolved() -> Bool {
-  dag_whitespace_fidelity() == DeclaredNormalized { feature: DagWhitespaceDeclaredNormalized } &&
-  dag_line_comment_fidelity() == FailClosed { feature: DagLineCommentFailClosed } &&
-  dag_block_comment_fidelity() == FailClosed { feature: DagBlockCommentFailClosed }
+  dag_whitespace_fidelity() == v2.extdeps.languages.fidelity.DeclaredNormalized { feature: DagWhitespaceDeclaredNormalized } &&
+  dag_line_comment_fidelity() == v2.extdeps.languages.fidelity.FailClosed { feature: DagLineCommentFailClosed } &&
+  dag_block_comment_fidelity() == v2.extdeps.languages.fidelity.FailClosed { feature: DagBlockCommentFailClosed }
 }
 
 fn dag_round_trip_authorities_ready() -> Bool {
