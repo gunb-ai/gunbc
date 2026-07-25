@@ -10,3 +10,11 @@ fn roadmap_site_healthz_json_string_parses(body: String) -> Bool {
 fn roadmap_site_healthz_body_parses() -> Bool {
   roadmap_site_healthz_json_string_parses(body: roadmap_site_healthz_body())
 }
+
+data healthz_surface_freshness_note: String = "PARSES and IS-THIS-TREE are two different questions about one body, kept as two predicates rather than one: 'the endpoint returned something that is not JSON' and 'the endpoint returned a well-formed fingerprint for a DIFFERENT tree' are different states whose remedies differ (the first is a broken or wrong process, the second is a process that never rebound its graph), and collapsing them would leave the second unlocatable. Freshness is whole-body equality, not a field-by-field walk, because roadmap_site_healthz_body is already a pure projection of the served surface — so the equality IS the fingerprint comparison the deploy needs, with no second definition of the page to drift from. The trailing-LF trim is the transport's, not the content's: curl over the shell transport can pick one up."
+
+fn roadmap_site_healthz_surface_is_current(observed_body: String) -> Bool {
+  let observed = json_text_trim_trailing_lf(body: observed_body)
+  let expected = json_text_trim_trailing_lf(body: roadmap_site_healthz_body())
+  observed == expected
+}

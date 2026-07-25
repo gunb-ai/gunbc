@@ -10,10 +10,14 @@ fn authority_page_html() -> String {
   }
 }
 
+data header_gained_the_sound_toggle_note: String = "The two header assertions below moved because the header genuinely gained a control: the mute toggle sits after the h1, pushed to the far edge. They are updated rather than loosened — the toggle is spelled out in the expected string, so the header's shape stays pinned exactly as tightly as before and a THIRD element appearing would still red. Loosening them to stop at </h1> would have been the easy fix and would have quietly retired the assertion."
+
 fn witness_authority_serializes_with_structure() -> Bool {
   let h = authority_page_html()
   string_contains(s: h, pattern: "<header><svg viewBox=\"0 0 120 72\" class=\"mark mark-d1\"")
-    && string_contains(s: h, pattern: "</svg><h1>gunbc — roadmap</h1></header>")
+    && string_contains(
+      s: h,
+      pattern: "</svg><h1>gunbc — roadmap</h1><button class=\"sound-toggle\" type=\"button\"></button><button class=\"theme-toggle\" type=\"button\"></button></header>")
     && string_contains(s: h, pattern: "<main class=\"roadmap\">")
     && string_contains(s: h, pattern: "class=\"roadmap-section\"")
     && string_contains(s: h, pattern: "class=\"status status-")
@@ -32,7 +36,9 @@ fn witness_empty_doc_is_minimal_shell() -> Bool {
   starts_with(s: h, prefix: "<html><head><meta charset=\"utf-8\"")
     && string_contains(s: h, pattern: "<title>gunbc — roadmap</title></head>")
     && string_contains(s: h, pattern: "<body><header><svg viewBox=\"0 0 120 72\" class=\"mark mark-d1\"")
-    && string_contains(s: h, pattern: "</svg><h1>gunbc — roadmap</h1></header><main class=\"roadmap\"></main></body></html>")
+    && string_contains(
+      s: h,
+      pattern: "</svg><h1>gunbc — roadmap</h1><button class=\"sound-toggle\" type=\"button\"></button><button class=\"theme-toggle\" type=\"button\"></button></header><main class=\"roadmap\"></main></body></html>")
 }
 
 fn witness_authority_differs_from_empty() -> Bool {
@@ -127,8 +133,8 @@ fn witness_open_node_doc_emits_button_and_external_script() -> Bool {
 fn witness_dispatch_asset_reads_belt_b_status_contract() -> Bool {
   let js = dispatch_client_js_source()
   string_contains(s: js, pattern: "fetch('/dispatch/")
-    && string_contains(s: js, pattern: "j.status === 'spawned'")
-    && string_contains(s: js, pattern: "j.status === 'already_live'")
+    && string_contains(s: js, pattern: "s === 'spawned' ? 'ok'")
+    && string_contains(s: js, pattern: "s === 'already_live' ? 'ok'")
     && !string_contains(s: js, pattern: "j.ok")
     && !string_contains(s: js, pattern: "j.node)")
 }
@@ -177,6 +183,40 @@ fn witness_superseded_node_marked_no_button() -> Bool {
     && !string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
 }
 
+data readable_witness_enrollment_note: String = "The six readability witnesses below (raw-text style serialization, chip min-width, container centering, the <details> disclosure, the dispatch accent) were authored with the fixes they verify but never bundled into this file's only `test fn`, and discovery keys on the `test fn `/`test data ` prefix — so they had ZERO executing consumers and CI was blind to the exact regressions they were written to catch. Proven by execution rather than by reading, 2026-07-24: reverting `.status` min-width back to width (the original defect) left roadmap_page_keystone_holds returning true. That is the orphaned-enrollment shape DESIGN calls coverage by illusion, and an inert witness is a lie about coverage, so they are enrolled here. Every witness in this file is now reachable from this one entry; adding an unbundled `fn witness_*` is the defect to look for in review."
+
+fn witness_ticket_rows_render_structured() -> Bool {
+  let h = authority_page_html()
+  string_contains(s: h, pattern: "class=\"item-detail ticket-row\"><summary><span class=\"disclosure-mark\">›</span>ticket</summary>")
+    && string_contains(s: h, pattern: "class=\"ticket-brief\"")
+    && string_contains(s: h, pattern: ">displaced cost</span>")
+    && string_contains(s: h, pattern: "class=\"ticket-updates\"")
+    && string_contains(s: h, pattern: "href=\"https://github.com/gunb-ai/gunbc/blob/main/docs/plans/dispatch-maintain-cc.md\"")
+}
+
+fn long_brief_fixture() -> RoadmapNode {
+  gunbc.roadmap_authority.ticket_row(id: "brief-overrun-fixture", done: false, t: TicketFields {
+    headline: "fixture",
+    brief: "w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w",
+    displaced_cost: "",
+    current_state: "",
+    first_slice: "",
+    red_control: "",
+    out_of_scope: "",
+    handback: "",
+    updates: [],
+    authored_on: "",
+    last_verified_on: "",
+  })
+}
+
+fn witness_ticket_brief_budget_holds_and_reds() -> Bool {
+  let planted = ticket_brief_violations(nodes: [long_brief_fixture()])
+  count(roadmap_ticket_brief_violations()) == 0
+    && count(planted) == 1
+    && all(planted, v => v.node == "brief-overrun-fixture" && v.words == 101)
+}
+
 test fn roadmap_page_keystone_holds() -> Bool {
   witness_authority_serializes_with_structure()
     && witness_empty_doc_is_minimal_shell()
@@ -191,6 +231,16 @@ test fn roadmap_page_keystone_holds() -> Bool {
     && witness_rogue_src_script_reds()
     && witness_signed_off_node_doc_has_no_button()
     && witness_superseded_node_marked_no_button()
+    && witness_style_child_combinator_unescaped()
+    && witness_raw_text_close_guard_refuses()
+    && witness_item_detail_disclosure_present()
+    && witness_ticket_rows_render_structured()
+    && witness_ticket_brief_budget_holds_and_reds()
+    && witness_status_chip_min_width()
+    && witness_dispatch_button_carries_accent()
+    && witness_page_containers_centered()
+    && witness_authority_leads_within_budget()
+    && witness_overlong_lead_reds()
 }
 
 fn witness_style_child_combinator_unescaped() -> Bool {
@@ -213,7 +263,7 @@ fn witness_raw_text_close_guard_refuses() -> Bool {
 
 fn witness_item_detail_disclosure_present() -> Bool {
   let h = authority_page_html()
-  string_contains(s: h, pattern: "<details class=\"item-detail\"><summary>brief</summary>")
+  string_contains(s: h, pattern: "<details class=\"item-detail\"><summary><span class=\"disclosure-mark\">›</span>brief</summary>")
     && string_contains(s: h, pattern: "class=\"item-body\"")
 }
 
@@ -224,10 +274,30 @@ fn witness_status_chip_min_width() -> Bool {
 fn witness_dispatch_button_carries_accent() -> Bool {
   let h = authority_page_html()
   string_contains(s: h, pattern: ".dispatch-btn")
-    && string_contains(s: h, pattern: "border-color: var(--figure)")
+    && string_contains(s: h, pattern: "border-color: var(--band-invite)")
 }
 
 fn witness_page_containers_centered() -> Bool {
   let h = authority_page_html()
   string_contains(s: h, pattern: ".roadmap { padding: var(--space-16) var(--space-24); max-width: var(--measure); margin-left: auto; margin-right: auto }")
+}
+
+fn witness_authority_leads_within_budget() -> Bool {
+  roadmap_authority_lead_budget_violations().length() == 0
+}
+
+fn overlong_lead_node() -> RoadmapNode {
+  let chunk = "a lead with no separator so the whole line stands "
+  gunbc.roadmap_authority.authored(
+    id: "overlong-lead",
+    done: false,
+    content: join([chunk, chunk, chunk, chunk, chunk, chunk, chunk], ""),
+  )
+}
+
+fn witness_overlong_lead_reds() -> Bool {
+  let v = lead_budget_violations(nodes: [overlong_lead_node()])
+  v.length() == 1
+    && all(v, x => x.node == "overlong-lead" && x.lead_chars > roadmap_lead_budget_chars())
+    && lead_budget_violations(nodes: [open_dispatch_node()]).length() == 0
 }

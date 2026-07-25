@@ -13,14 +13,19 @@ import extdeps.http.server {
   application_json_utf8,
   ServedStaticRoute,
 }
+import std.markup { MarkupNode }
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import gunbc.roadmap_authority { expected_roadmap_md, authored_merged_prs, roadmap_authority }
 import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
+import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority }
+import gunbc.roadmap_component { dispatch_client_js_source, roadmap_dispatch_asset_path }
 import gunbc.fleet_intent_network { fleet_intent_network }
 import extdeps.languages.json.emit {
   serialize_json,
   json_object,
   json_kv,
   json_string,
+  JsonKeyValue,
 }
 import extdeps.tools.curl { curl_localhost_bounded_get_argv_prefix }
 
@@ -58,6 +63,8 @@ type StaticSiteAllocation {
 data roadmap_site_health_path: NonEmptyStr = "/healthz"
 data roadmap_site_roadmap_url_path: NonEmptyStr = "/ROADMAP.md"
 data roadmap_site_dispatch_url_path: NonEmptyStr = "/target/roadmap-dispatch.json"
+data roadmap_site_daily_url_path: NonEmptyStr = "/"
+data roadmap_site_full_url_path: NonEmptyStr = "/roadmap"
 data roadmap_site_service_name: String = "gunbc-roadmap"
 
 data roadmap_site_readback_script_scaffold: Disposition = Scaffold {
@@ -71,6 +78,21 @@ data roadmap_site_readback_script_scaffold: Disposition = Scaffold {
 
 fn site_artifact_digest(body: String) -> ContentHash {
   content_hash_atom(value: body as NonEmptyStr)
+}
+
+data served_surface_digest_note: String = "healthz is the served surface's FINGERPRINT DOCUMENT, not just a liveness ping. It already published digests for the two text artifacts; it now covers the whole surface a browser can observe — both HTML pages and the modeled dispatch asset — because those are exactly the bodies that went stale. The motivating incident (2026-07-24): the live srv1 page served `.node-superseded &gt; .title` (the escaped selector that kills the strikethrough), `width` instead of `min-width` on the status chip, no `<details>` disclosure and no centering, while the tree carried all four fixes — and nothing anywhere could observe the gap, because `gunbc serve` binds its compiled graph ONCE at process start, so a served page lags the tree until the unit is restarted AND nothing compares the two. Publishing the digests makes the comparison a plain body equality against this same function evaluated on the deploying tree (roadmap_site_healthz_surface_current), so there is no second definition of the page to drift from: the digest is taken over the SAME body the route serves, via the shared served_page_body / page_render_refusal_body pair. Cost measured before it was adopted rather than assumed, because the readiness poll calls this repeatedly: a live srv1 render is ~18 ms for the 223 KB roadmap page and ~15 ms for the daily page, so the added per-probe cost is tens of milliseconds against a poll bound in the tens of seconds."
+
+data page_render_refusal_prefix: String = "page render refused: "
+
+fn page_render_refusal_body(reason: String) -> String {
+  join([page_render_refusal_prefix, reason, "\n"], "")
+}
+
+fn served_page_body(page: MarkupNode) -> String {
+  match try_serialize_html_source(node: page) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: r } => page_render_refusal_body(reason: r)
+  }
 }
 
 fn roadmap_site_roadmap_md_body() -> String {
@@ -141,6 +163,10 @@ fn roadmap_site_path_template(raw: String) -> PathTemplate {
   }
 }
 
+fn served_surface_digest_kv(url_path: NonEmptyStr, body: String) -> JsonKeyValue {
+  json_kv(key: url_path as String, value: json_string(s: site_artifact_digest(body: body) as String))
+}
+
 fn roadmap_site_healthz_body() -> String {
   let roadmap = roadmap_site_roadmap_md_artifact()
   let dispatch = roadmap_site_dispatch_json_artifact()
@@ -150,6 +176,18 @@ fn roadmap_site_healthz_body() -> String {
     json_kv(key: "artifacts", value: json_object(members: [
       json_kv(key: roadmap.url_path as String, value: json_string(s: roadmap.digest as String)),
       json_kv(key: dispatch.url_path as String, value: json_string(s: dispatch.digest as String)),
+      served_surface_digest_kv(
+        url_path: roadmap_site_daily_url_path,
+        body: served_page_body(page: roadmap_daily_workspace_page_for_authority()),
+      ),
+      served_surface_digest_kv(
+        url_path: roadmap_site_full_url_path,
+        body: served_page_body(page: roadmap_page_for_authority()),
+      ),
+      served_surface_digest_kv(
+        url_path: roadmap_dispatch_asset_path as NonEmptyStr,
+        body: dispatch_client_js_source(),
+      ),
     ])),
   ]))
 }
