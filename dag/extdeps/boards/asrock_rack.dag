@@ -2,6 +2,7 @@ module extdeps.boards.asrock_rack
 
 import extdeps.boards.types { BaseboardCatalogRow }
 import extdeps.vendor.asrock_rack { asrock_rack }
+import extdeps.bmc.webui.nbd_proxy { BmcwebNbdProxyEndpointVariant, VmSlotIndexEndpoint, NbdSlotEndpoint }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
