@@ -5117,7 +5117,9 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
 }
 
 fn return_type_is_unit(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  is_unit_like(n: n) && authored_name_at(source_indices: source_indices, node: n) == "Unit"
+  let authored = authored_name_at(source_indices: source_indices, node: n)
+  let name = if authored != "" { authored } else { n.name }
+  is_unit_like(n: n) && name == "Unit"
 }
 
 fn emit_rust_fn_body_expr(texpr: Node, return_is_unit: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
@@ -5162,15 +5164,23 @@ fn emit_rust_unit_discarding_stmt(texpr: Node, registry: Map<String, ItemInfo>, 
   let si = scope.type_env.source_indices
   match texpr.expr_data {
     ExprLet =>
-      let n = let_binding_name_at(texpr: texpr, source_indices: si)
       let v = let_value(texpr: texpr)
       let inner = let_body(texpr: texpr)
-      let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-      let let_line = emit_let_binding(name: n, value: val_str, target: Rust)
-      match inner {
-        Present { value: bd } =>
-          concat(let_line, "\n", emit_rust_unit_discarding_stmt(texpr: bd, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
-        Absent => let_line
+      if inferred_expr_is_optional(texpr: v) {
+        match inner {
+          Present { value: bd } =>
+            concat(emit_rust_unit_discarding_stmt(texpr: v, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info), "\n", emit_rust_unit_discarding_stmt(texpr: bd, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+          Absent => emit_rust_unit_discarding_stmt(texpr: v, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+        }
+      } else {
+        let n = let_binding_name_at(texpr: texpr, source_indices: si)
+        let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+        let let_line = emit_let_binding(name: n, value: val_str, target: Rust)
+        match inner {
+          Present { value: bd } =>
+            concat(let_line, "\n", emit_rust_unit_discarding_stmt(texpr: bd, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+          Absent => let_line
+        }
       }
     ExprBlock =>
       texpr.children

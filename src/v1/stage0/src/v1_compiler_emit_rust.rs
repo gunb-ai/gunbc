@@ -13566,8 +13566,7 @@ pub fn emit_fn_def(
                     }
                 } else {
                     {
-                        let return_is_unit =
-                            return_type_is_unit(inferred.clone(), si.clone());
+                        let return_is_unit = return_type_is_unit(inferred.clone(), si.clone());
                         emit_fn_def_non_tco(
                             name.clone(),
                             type_params_str.clone(),
@@ -13593,8 +13592,13 @@ pub fn return_type_is_unit(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (is_unit_like(n.clone())
-        && (authored_name_at(n.clone(), source_indices.clone()) == "Unit".to_string()))
+    let authored = authored_name_at(n.clone(), source_indices.clone());
+    let name = if (authored.clone() != "".to_string()) {
+        authored.clone()
+    } else {
+        n.name.clone()
+    };
+    (is_unit_like(n.clone()) && (name == "Unit".to_string()))
 }
 
 pub fn emit_rust_fn_body_expr(
@@ -13695,32 +13699,69 @@ pub fn emit_rust_unit_discarding_stmt(
         let si = scope.type_env.clone().source_indices.clone();
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprLet => {
-                let n = let_binding_name_at(texpr.clone(), si.clone());
                 let v = let_value(texpr.clone());
                 let inner = let_body(texpr.clone());
-                let val_str = emit_typed_expr(
-                    v.clone(),
-                    registry.clone(),
-                    scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                    1024,
-                );
-                let let_line = emit_let_binding(n.clone(), val_str.clone(), RenderTarget::Rust);
-                match inner.clone() {
-                    Some(bd) => v1_rt::concat(
-                        v1_rt::concat(let_line.clone(), "\n".to_string()),
-                        emit_rust_unit_discarding_stmt(
-                            bd.clone(),
+                if inferred_expr_is_optional(v.clone()) {
+                    match inner.clone() {
+                        Some(bd) => v1_rt::concat(
+                            v1_rt::concat(
+                                emit_rust_unit_discarding_stmt(
+                                    v.clone(),
+                                    registry.clone(),
+                                    scope.clone(),
+                                    depth.clone(),
+                                    shared_types.clone(),
+                                    emit_info.clone(),
+                                ),
+                                "\n".to_string(),
+                            ),
+                            emit_rust_unit_discarding_stmt(
+                                bd.clone(),
+                                registry.clone(),
+                                scope.clone(),
+                                depth.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                            ),
+                        ),
+                        None => emit_rust_unit_discarding_stmt(
+                            v.clone(),
                             registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
                             emit_info.clone(),
                         ),
-                    ),
-                    None => let_line.clone(),
+                    }
+                } else {
+                    {
+                        let n = let_binding_name_at(texpr.clone(), si.clone());
+                        let val_str = emit_typed_expr(
+                            v.clone(),
+                            registry.clone(),
+                            scope.clone(),
+                            depth.clone(),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                            1024,
+                        );
+                        let let_line =
+                            emit_let_binding(n.clone(), val_str.clone(), RenderTarget::Rust);
+                        match inner.clone() {
+                            Some(bd) => v1_rt::concat(
+                                v1_rt::concat(let_line.clone(), "\n".to_string()),
+                                emit_rust_unit_discarding_stmt(
+                                    bd.clone(),
+                                    registry.clone(),
+                                    scope.clone(),
+                                    depth.clone(),
+                                    shared_types.clone(),
+                                    emit_info.clone(),
+                                ),
+                            ),
+                            None => let_line.clone(),
+                        }
+                    }
                 }
             }
             ExprData::ExprBlock => Rc::new({
