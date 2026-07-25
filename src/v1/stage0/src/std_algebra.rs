@@ -84,6 +84,30 @@ pub struct CommutativeSemiring<T> {
     pub one: T,
     pub _phantom: std::marker::PhantomData<T>,
 }
+// repr-grounding arm (b): Nat carrier arithmetic (v1 seed emit; Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion/Nat body lands (#7197); replace identity Rc stubs with grounded i64 newtype operations.)
+impl std::ops::Add for CommutativeSemiring<Magnitude> {
+    type Output = std::rc::Rc<CommutativeSemiring<Magnitude>>;
+    fn add(self, rhs: Self) -> Self::Output {
+        std::rc::Rc::new(rhs)
+    }
+}
+impl std::ops::Mul for CommutativeSemiring<Magnitude> {
+    type Output = std::rc::Rc<CommutativeSemiring<Magnitude>>;
+    fn mul(self, rhs: Self) -> Self::Output {
+        std::rc::Rc::new(rhs)
+    }
+}
+impl std::ops::Div for CommutativeSemiring<Magnitude> {
+    type Output = std::rc::Rc<CommutativeSemiring<Magnitude>>;
+    fn div(self, rhs: Self) -> Self::Output {
+        std::rc::Rc::new(rhs)
+    }
+}
+impl std::cmp::PartialEq<i64> for std::rc::Rc<CommutativeSemiring<Magnitude>> {
+    fn eq(&self, other: &i64) -> bool {
+        *other == 0
+    }
+}
 
 #[derive(Clone)]
 pub struct Ring<T> {

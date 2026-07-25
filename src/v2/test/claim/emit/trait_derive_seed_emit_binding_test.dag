@@ -11,7 +11,11 @@ import std.trait_derive_shape {
   record_derive_traits_copy,
   repr_grounding_derive_completeness_predicate
 }
-import extdeps.languages.rust.emit { rust_trait_derive_attr_from_traits }
+import extdeps.languages.rust.emit {
+  rust_trait_derive_attr_from_traits,
+  rust_supplemental_impls_for_struct,
+  rust_supplemental_impls_for_enum
+}
 import v2.std.logic { Bool }
 
 data trait_derive_seed_emit_binding_note: String = "Layer-boundary mock: std.trait_derive_shape trait lists → extdeps.languages.rust.emit derive attr spellings consumed by v1.compiler.trait_derive_emit (same authority path as seed emitter)."
@@ -49,10 +53,24 @@ test fn payload_coproduct_predicate_satisfied() -> Bool {
   )
 }
 
+test fn commutative_semiring_supplemental_impl_present() -> Bool {
+  let supplemental = rust_supplemental_impls_for_struct(name: "CommutativeSemiring")
+  let absent = rust_supplemental_impls_for_struct(name: "Magma")
+  supplemental != "" && absent == ""
+}
+
+test fn bool_supplemental_impl_present() -> Bool {
+  let supplemental = rust_supplemental_impls_for_enum(name: "Bool")
+  let absent = rust_supplemental_impls_for_enum(name: "Quantity")
+  supplemental != "" && absent == ""
+}
+
 test fn trait_derive_seed_emit_binding_witness_holds() -> Bool {
   nullary_coproduct_predicate_satisfied()
     && payload_coproduct_predicate_satisfied()
     && record_heap_attr_contains_serde()
     && ord_carrier_shape_rejects_nullary_copy_traits()
     && ord_carrier_attr_differs_from_nullary()
+    && commutative_semiring_supplemental_impl_present()
+    && bool_supplemental_impl_present()
 }

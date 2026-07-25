@@ -25,7 +25,7 @@ pub fn trait_derive_shape_note() -> String {
 pub fn trait_derive_shape_grounding_lane_handoff() -> String {
     thread_local! {
         static CACHED: String = {
-            "Arm (b) deferred to GroupCompletion grounding lane: coproduct-native arithmetic + PartialOrd/PartialEq impl blocks for algebra carriers (GroupCompletion<Nat>, Vector, CommutativeSemiring<Magnitude>). This module's capability table + repr_grounding_derive_completeness_predicate remain the shared authority; the grounding lane emits impl { … } from shape rows, not #[derive]. v1.compiler.trait_derive_emit does not wire arm (b).".to_string()
+            "Root-4 arm (b): coproduct-native arithmetic + PartialOrd/PartialEq impl blocks for algebra carriers (GroupCompletion<Nat>, Vector, CommutativeSemiring<Magnitude>). Capability table + repr_grounding_derive_completeness_predicate remain the shared authority; v1.compiler.trait_derive_emit emits impl { … } from shape rows (not #[derive]) through the seed emitter. dissolve-on: GroupCompletion/FieldOfFractions body landing (#7197) replaces interim Magnitude-carrier stubs.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -378,6 +378,50 @@ pub fn payload_coproduct_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
         }))
         .clone();
         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDebug);
+        __cons_v
+    })
+}
+
+pub fn kernel_int_arithmetic_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
+    Rc::new({
+        let mut __cons_v = (*Rc::new({
+            let mut __cons_v = (*Rc::new({
+                let mut __cons_v = (*Rc::new({
+                    let mut __cons_v = (*Rc::new({
+                        let mut __cons_v = (*Rc::new({
+                            let mut __cons_v = (*Rc::new({
+                                let mut __cons_v = (*Rc::new({
+                                    let mut __cons_v = (*Rc::new(vec![])).clone();
+                                    __cons_v
+                                        .insert(0, ReprGroundingDeriveTrait::ReprDerivePartialOrd);
+                                    __cons_v
+                                }))
+                                .clone();
+                                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialEq);
+                                __cons_v
+                            }))
+                            .clone();
+                            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveNeg);
+                            __cons_v
+                        }))
+                        .clone();
+                        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveRem);
+                        __cons_v
+                    }))
+                    .clone();
+                    __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDiv);
+                    __cons_v
+                }))
+                .clone();
+                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveMul);
+                __cons_v
+            }))
+            .clone();
+            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveSub);
+            __cons_v
+        }))
+        .clone();
+        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveAdd);
         __cons_v
     })
 }
