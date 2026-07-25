@@ -2,7 +2,7 @@ module gunbc.ci_spec
 
 import gunbc.ci_gate {
   Gate,
-  EmitHostGate, CheapClaimPoolGate, LayeringImportsGate,
+  EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate

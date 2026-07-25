@@ -18,7 +18,7 @@ import gunbc.ci_spec {
 }
 import gunbc.falsifier_workflow { falsifier_plan_function }
 import gunbc.ci_gate {
-  Gate, EmitHostGate, CheapClaimPoolGate, LayeringImportsGate,
+  Gate, EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
@@ -84,12 +84,11 @@ data floor_self_host_realized_comparison_claims_entry: String = "src/v2/workflow
 
 data gunbc_ci_cheap_floor_gate_membership: List<Gate> = [
   CheapClaimPoolGate,
-  LayeringImportsGate,
   ExtdepsExternalAuthorityGate,
   GeneratedArtifactDriftGate,
 ]
 
-data gunbc_ci_cheap_floor_gate_membership_note: String = "Declared cheap-floor gate membership (operator ruling 2026-07-22, fail-fast lane): the three negligible-memory wet-declared gates (gate_profile_negligible_wet_declared) that scan imports, extdeps authority, and generated-artifact drift — seconds each, no whole-tree compile. They run in batch 0 BEFORE DagCompileCleanGate so a layering/drift/authority violation reds in seconds instead of after the ~4min compile-clean anchor. Membership is an explicit list, not inferred from profile fields, so enrollment changes are counted roster edits, never silent drift. Cheap gates are also floor_resource_anchor nodes: excluding them from discovery-flip corpus→gate serialization avoids a scheduler deadlock (cheap→compile data order requires cheap first; corpus→cheap resource order requires corpus first; compile→corpus data order closes the cycle). Dissolve-on: when per-gate cost attribution lands, derive from measurement."
+data gunbc_ci_cheap_floor_gate_membership_note: String = "Declared cheap-floor gate membership (operator ruling 2026-07-22, fail-fast lane): the negligible-memory wet-declared gates (gate_profile_negligible_wet_declared) that check extdeps authority and generated-artifact drift — seconds each, no whole-tree compile. (The layering-imports direction gate was a member until the direction rule's deletion, operator ruling 2026-07-24.) They run in batch 0 BEFORE DagCompileCleanGate so a drift/authority violation reds in seconds instead of after the ~4min compile-clean anchor. Membership is an explicit list, not inferred from profile fields, so enrollment changes are counted roster edits, never silent drift. Cheap gates are also floor_resource_anchor nodes: excluding them from discovery-flip corpus→gate serialization avoids a scheduler deadlock (cheap→compile data order requires cheap first; corpus→cheap resource order requires corpus first; compile→corpus data order closes the cycle). Dissolve-on: when per-gate cost attribution lands, derive from measurement."
 
 data gunbc_ci_cheap_floor_gate_membership_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -104,7 +103,6 @@ fn gate_in_cheap_floor_membership(g: Gate) -> Bool {
   fold(gunbc_ci_cheap_floor_gate_membership, init: false, f: fn(found, member) {
     match member {
       CheapClaimPoolGate => match g { CheapClaimPoolGate => true  _ => found }
-      LayeringImportsGate => match g { LayeringImportsGate => true  _ => found }
       ExtdepsExternalAuthorityGate => match g { ExtdepsExternalAuthorityGate => true  _ => found }
       GeneratedArtifactDriftGate => match g { GeneratedArtifactDriftGate => true  _ => found }
       _ => found
@@ -116,7 +114,6 @@ fn spec_enrolls_gate(spec: CiSpec, g: Gate) -> Bool {
   fold(spec.gates, init: false, f: fn(found, sg) {
     match sg {
       CheapClaimPoolGate => match g { CheapClaimPoolGate => true  _ => found }
-      LayeringImportsGate => match g { LayeringImportsGate => true  _ => found }
       ExtdepsExternalAuthorityGate => match g { ExtdepsExternalAuthorityGate => true  _ => found }
       GeneratedArtifactDriftGate => match g { GeneratedArtifactDriftGate => true  _ => found }
       DagCompileCleanGate => match g { DagCompileCleanGate => true  _ => found }
@@ -191,7 +188,6 @@ fn gate_node(g: Gate) -> Node {
   match g {
     EmitHostGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit } }, children: [], occurrence_id: SyntheticOccurrence }
     CheapClaimPoolGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_cheap_claim_pool } }, children: [], occurrence_id: SyntheticOccurrence }
-    LayeringImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_layering } }, children: [], occurrence_id: SyntheticOccurrence }
     ExtdepsExternalAuthorityGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_extdeps_external_authority } }, children: [], occurrence_id: SyntheticOccurrence }
     DagCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [], occurrence_id: SyntheticOccurrence }
     GeneratedArtifactDriftGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_generated_artifact } }, children: [], occurrence_id: SyntheticOccurrence }
@@ -264,13 +260,12 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
         execution_mode: Wet
       )
     CheapClaimPoolGate => gate_profile_negligible_wet_declared()
-    LayeringImportsGate => gate_profile_negligible_wet_declared()
     ExtdepsExternalAuthorityGate => gate_profile_negligible_wet_declared()
     GeneratedArtifactDriftGate => gate_profile_negligible_wet_declared()
   }
 }
 
-data gate_profile_wet_declaration_note: String = "Every floor GATE declares execution_mode: Wet explicitly — an honest declaration of pre-existing reality (the executor hardwired ExecutionMode::Wet at every witness-execution site until the profile field landed), kept while gates run effectful work (fmt/nextest, emit-host, regen, compile-clean shell receipts). The three negligible-memory gates (layering-imports scan, extdeps external-authority scan, generated-artifact drift) are wet-DECLARED via gate_profile_negligible_wet_declared; per-gate hermetic tightening is a follow-on, each flip proven by a green hermetic run of that gate entry. The DISCOVERY and FALSIFIER corpus batches flipped to Hermetic with the audit receipt (claim_batch default-hermetic census 2026-07-12: 1042 PASS / 105 FAIL before remediation; the mode-typed refusals zeroed by the Filesystem.Read checkout carve-out, the git.Core.Toplevel checkout-root mock case, and the six wet-integration offline rows in gunbc.ci_layer_roots — see wet_integration_offline_note). The fail-closed default (runnable_resource_profile_negligible = Hermetic, absent profile = Hermetic at the executor) applies to every NEW runnable: an undeclared live effect refuses with a typed, located diagnostic instead of dispatching."
+data gate_profile_wet_declaration_note: String = "Every floor GATE declares execution_mode: Wet explicitly — an honest declaration of pre-existing reality (the executor hardwired ExecutionMode::Wet at every witness-execution site until the profile field landed), kept while gates run effectful work (fmt/nextest, emit-host, regen, compile-clean shell receipts). The negligible-memory gates (extdeps external-authority scan, generated-artifact drift) are wet-DECLARED via gate_profile_negligible_wet_declared; per-gate hermetic tightening is a follow-on, each flip proven by a green hermetic run of that gate entry. The DISCOVERY and FALSIFIER corpus batches flipped to Hermetic with the audit receipt (claim_batch default-hermetic census 2026-07-12: 1042 PASS / 105 FAIL before remediation; the mode-typed refusals zeroed by the Filesystem.Read checkout carve-out, the git.Core.Toplevel checkout-root mock case, and the six wet-integration offline rows in gunbc.ci_layer_roots — see wet_integration_offline_note). The fail-closed default (runnable_resource_profile_negligible = Hermetic, absent profile = Hermetic at the executor) applies to every NEW runnable: an undeclared live effect refuses with a typed, located diagnostic instead of dispatching."
 
 fn gate_profile_negligible_wet_declared() -> RunnableResourceProfile {
   runnable_resource_profile(
@@ -286,7 +281,6 @@ fn gate_runnable(g: Gate) -> Runnable {
   match g {
     EmitHostGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_host_gate_passes", profile: profile }
     CheapClaimPoolGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "cheap_claim_pool_gate_passes", profile: profile }
-    LayeringImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "layering_imports_gate_passes", profile: profile }
     ExtdepsExternalAuthorityGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "extdeps_external_authority_gate_passes", profile: profile }
     DagCompileCleanGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "dag_compile_clean_gate_passes", profile: profile }
     GeneratedArtifactDriftGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "generated_artifact_drift_gate_passes", profile: profile }

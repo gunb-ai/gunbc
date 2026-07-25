@@ -2858,7 +2858,6 @@ mod tests {
         };
         let batches = vec![
             vec![
-                cheap("layering_imports_gate_passes"),
                 cheap("extdeps_external_authority_gate_passes"),
                 cheap("generated_artifact_drift_gate_passes"),
             ],

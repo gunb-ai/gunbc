@@ -2,7 +2,7 @@ module v2.lens.meta_exec_confinement
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
 
-import v2.lens.layering_imports {
+import v2.std.layer {
   LayerImportFact,
   layer_import_facts_live
 }
