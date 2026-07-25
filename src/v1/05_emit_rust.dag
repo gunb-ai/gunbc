@@ -7655,6 +7655,10 @@ fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summ
   is_fm && empty_fillable && cons_fillable
 }
 
+fn freemonoid_tail_let_from_fm(tail_bind: String) -> String {
+  if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect()); ") }
+}
+
 fn freemonoid_empty_branch_body(empty_arm: Node?, catchall: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match empty_arm {
     Present { value: ea } => emit_typed_expr(texpr: arm_body(n: ea), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -7674,7 +7678,7 @@ fn freemonoid_nonempty_branch_body(cons_arm: Node?, catchall: Node?, si: Map<Str
       let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
       let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
       let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
-      let tail_let = if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm)[1 as usize..].to_vec()); ") }
+      let tail_let = freemonoid_tail_let_from_fm(tail_bind: tail_bind)
       concat(head_let, tail_let, emit_typed_expr(texpr: arm_body(n: ca), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
     Absent => match catchall {
       Present { value: wa } =>
@@ -8533,7 +8537,7 @@ fn freemonoid_tco_nonempty_branch_body(cons_arm: Node?, catchall: Node?, si: Map
       let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
       let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
       let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
-      let tail_let = if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm)[1 as usize..].to_vec()); ") }
+      let tail_let = freemonoid_tail_let_from_fm(tail_bind: tail_bind)
       concat(head_let, tail_let, emit_typed_tco_expr(texpr: arm_body(n: ca), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
     Absent => match catchall {
       Present { value: wa } =>
