@@ -50,10 +50,6 @@ data nfr_reason_trait_derive_shape_table: String = "trait-shape→derive-trait c
 
 data nfr_dissolve_trait_derive_shape_table: String = "the #7174 v1 emit arms (clone bounds + serde/debug/ord derives on named types) wire through trait_derive_completeness.dag and the hand table migrates to derived rows (or a total match) — row deletes with that wiring; coproduct-native arithmetic impl emission is out of scope (GroupCompletion grounding lane)"
 
-data nfr_reason_repr_grounding_arm_b_stubs: String = "four fail-closed unimplemented! supplemental impl bodies for CommutativeSemiring<Magnitude> (Add/Mul/Div/PartialEq<i64>) landed with Root-4 arm (b) (#7224); MARKED scaffold with dissolve trigger extdeps.languages.rust.emit.rust_repr_grounding_arm_b_dissolve_on — owner eager-crane #7197"
-
-data nfr_dissolve_repr_grounding_arm_b_stubs: String = "GroupCompletion pair arithmetic bodies land (#7197, eager-crane numeric-tower lane): delete the four unimplemented! stubs and this row; do not fill PartialEq<i64> bridge body"
-
 data nfr_reason_native_agreement_octet: String = "RuntimeValue primitive-discriminant projection (RuntimePrimitive arm extracts byte[1]; off-variant wildcard Absent) landed with Lane B native-agreement loudness (#7111); surfaced by whole-corpus nfr receipt after affected-set predict-skipped corpus-read witness at landing"
 
 data nfr_dissolve_native_agreement_octet: String = "RuntimeValue model↔realization grounds each primitive variant and the wildcard arm migrates to a total match — or the receipt formatter derives from inhabitance and the row deletes"
@@ -653,11 +649,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     unit: "src/v2/workflow/ci_floor_plan.dag::spec_enrolls_gate",
     reason: nfr_reason_ci_floor_gate_membership,
     dissolve_on: nfr_dissolve_gate_membership
-  },
-  FrontierRow {
-    unit: "dag/extdeps/languages/rust/emit.dag::rust_supplemental_impls_commutative_semiring_magnitude",
-    reason: nfr_reason_repr_grounding_arm_b_stubs,
-    dissolve_on: nfr_dissolve_repr_grounding_arm_b_stubs
   }
 ]
 
