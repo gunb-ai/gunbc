@@ -5681,11 +5681,18 @@ fn box_bound_fields_for_pattern(pattern: MatchPattern, shared_types: Set<String>
       } else {
         fbs |> flat_map(fb =>
           let fb_name = field_binding_name_at(n: fb, source_indices: scope.type_env.source_indices)
+          let fb_pat = field_binding_pattern(n: fb)
           if fb_name == "0" {
             []
-          } else if rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: bare_n, field_name: fb_name) {
-            [fb_name]
-          } else { [] }
+          } else {
+            match fb_pat {
+              Wildcard => []
+              _ =>
+                if rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: bare_n, field_name: fb_name) {
+                  [fb_name]
+                } else { [] }
+            }
+          }
         )
       }
     _ => []
