@@ -30,7 +30,23 @@ import std.cache_interface {
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { NonEmptyStr, String, List }
-import extdeps.toolchain.types { ToolchainCapability, SharedHomeAcrossJobs, CtrlBuild }
+import extdeps.toolchain.types {
+  ToolchainCapability,
+  SharedHomeAcrossJobs,
+  CtrlBuild,
+  Architecture,
+  Aarch64,
+  X86_64,
+  X86,
+  Arm,
+  Armv7,
+  Mips,
+  Mipsel,
+  Mips64,
+  Mips64el,
+  Riscv64,
+  Wasm32,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -67,6 +83,10 @@ data sccache_toolchain_capability: ToolchainCapability = ToolchainCapability {
 
 data sccache_install_dissolution_trigger: String = "🟡 dissolve-on: sccache_install_script — the sccache binary install (curl release tarball + sha256sum -c verify + tar + mv to /usr/local/bin, cited to github.com/mozilla/sccache/releases with pinned v0.15.0 and per-arch sha256) is rendered as a POSIX shell provisioning sequence (medium-as-string); the SccacheBinaryRelease row is the typed authority for version and digests. DISSOLVES WHEN host_effect_apply binds a verified-download-plus-install effect (FetchAndVerify then InstallBinary) without the shell leaf."
 
+data sccache_installed_binary_path_note: String = "Single authority for WHERE the cited release lands on a host. sccache_install_script writes it and every downstream consumer (the host-standup P1b systemd unit ExecStart, the PATH-shadow read-back check) reads it — so 'which sccache is the modeled one' has exactly one answer. Before this row the P1b provisioning path hand-rolled `apt-get install -y sccache` and a unit with ExecStart=/usr/bin/sccache while this module installed the pinned v0.15.0 tarball to /usr/local/bin: a §3 fork of one concept across two authorities, disagreeing on source, version, digest verification AND path, both firing on the same host (P1:runner-deploy-slot then P1b:build-cache-provision)."
+
+data sccache_installed_binary_path: String = "/usr/local/bin/sccache"
+
 fn sccache_install_script(rel: SccacheBinaryRelease, arch: NonEmptyStr, digest: Digest) -> String {
   let dir = join(["sccache-", rel.version as String, "-", arch as String, "-unknown-linux-musl"], "")
   let url = join(["https://github.com/mozilla/sccache/releases/download/", rel.version as String, "/", dir, ".tar.gz"], "")
@@ -75,11 +95,45 @@ fn sccache_install_script(rel: SccacheBinaryRelease, arch: NonEmptyStr, digest: 
     join(["curl -fsSL '", url, "' -o /tmp/sccache.tar.gz"], ""),
     digest_shell_verify_line(digest: digest, file_path: "/tmp/sccache.tar.gz"),
     "tar -xzf /tmp/sccache.tar.gz -C /tmp",
-    join(["sudo mv '/tmp/", dir, "/sccache' /usr/local/bin/sccache"], ""),
-    "sudo chmod +x /usr/local/bin/sccache",
+    join(["sudo mv '/tmp/", dir, "/sccache' ", sccache_installed_binary_path], ""),
+    join(["sudo chmod +x ", sccache_installed_binary_path], ""),
     join(["rm -rf /tmp/sccache.tar.gz '/tmp/", dir, "'"], ""),
     "",
   ], "\n")
+}
+
+data sccache_release_arch_selection_note: String = "The release row carries per-arch digests as two named fields, so selecting one by hand is how a caller pins an arch (runner_host_sccache_provision_aarch64). These two selectors make the choice a total function of the modeled Architecture coproduct instead: every arch the cited release does NOT publish a musl tarball for returns Absent, so an unsupported host REFUSES rather than silently receiving an aarch64 binary. Fail-closed by construction (§5) — there is no default arm."
+
+fn sccache_release_arch_token(arch: Architecture) -> NonEmptyStr? {
+  match arch {
+    Aarch64 => Present { value: "aarch64" as NonEmptyStr }
+    X86_64 => Present { value: "x86_64" as NonEmptyStr }
+    X86 => none
+    Arm => none
+    Armv7 => none
+    Mips => none
+    Mipsel => none
+    Mips64 => none
+    Mips64el => none
+    Riscv64 => none
+    Wasm32 => none
+  }
+}
+
+fn sccache_release_digest(rel: SccacheBinaryRelease, arch: Architecture) -> Digest? {
+  match arch {
+    Aarch64 => Present { value: rel.digest_aarch64 }
+    X86_64 => Present { value: rel.digest_x86_64 }
+    X86 => none
+    Arm => none
+    Armv7 => none
+    Mips => none
+    Mipsel => none
+    Mips64 => none
+    Mips64el => none
+    Riscv64 => none
+    Wasm32 => none
+  }
 }
 
 data sccache_fatal_error_log_fragment: String = "sccache: encountered fatal error"
@@ -87,6 +141,14 @@ data sccache_fatal_error_log_fragment: String = "sccache: encountered fatal erro
 data sccache_rustc_wrapper_exit_254_log_fragment: String = "(exit status: 254)"
 
 data sccache_failed_to_execute_compile_log_fragment: String = "sccache: error: failed to execute compile"
+
+data sccache_misconfigured_log_fragments_note: String = "The cited roster of stdout/stderr fragments that mean 'the daemon answered, but it is misconfigured' — as a LIST, so a consumer classifying an observation folds over it. The three rows above were previously read one-by-one by a hand-unrolled if/elif chain in the host-standup provisioning emitter, which meant citing a fourth fragment here required an edit there too (the emitter naming a concept it does not own). Consumers iterate this roster; adding a row costs zero emitter edits."
+
+data sccache_misconfigured_log_fragments: List<String> = [
+  sccache_fatal_error_log_fragment,
+  sccache_rustc_wrapper_exit_254_log_fragment,
+  sccache_failed_to_execute_compile_log_fragment,
+]
 
 data sccache_local_facts: CacheInterfaceCatalogFacts = {
   identity: sccache_local_id
