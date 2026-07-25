@@ -1,6 +1,6 @@
 module gunbc.live_deploy.readiness
 
-import std.types { String, Bool, Int, NonEmptyStr }
+import std.types { String, Bool, Int, NonEmptyStr, List }
 import std.realization_reconcile {
   ShowEffectiveRead,
   ReadObserved,
@@ -28,7 +28,6 @@ import gunbc.live_deploy.service_ready {
   UnitDiagnosisCaptured,
 }
 import gunbc.live_deploy.intent {
-  live_deploy_health_probe_curl_command,
   live_deploy_health_url_for_port,
   live_deploy_unit_diagnosis_command,
 }
@@ -51,9 +50,23 @@ import gunbc.host_effect {
   HostEffectEvidence,
   ShellEffectApplied,
   ConvergePlanApplied,
+  LocalShell,
+  SshShell,
+  EmitArtifactThenThinRun,
 }
 import gunbc.host_effect_realize { host_effect_apply_gated }
+import gunbc.typed_argv_exec {
+  typed_argv_exec_over_ssh,
+  typed_argv_shell_safe_refusal_argv,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+}
+import extdeps.http.client
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+
+data http_client_get_path: String = "dag/extdeps/http/client.dag"
+data http_client_get_service: String = "http.Client"
+data http_client_get_operation: String = "Get"
 
 type ServiceReadyEvidence {
   body: String
@@ -76,10 +89,65 @@ fn service_ready_apply_effect() -> ServiceReadyApplyEffect {
   }
 }
 
-fn live_deploy_healthz_probe_script_for_port(port: Int) -> String {
-  live_deploy_health_probe_curl_command(
-    health_url: live_deploy_health_url_for_port(port: port)
+fn http_client_get_operation_argv(url: NonEmptyStr) -> List<String> {
+  shell_materialize_argv_for_operation(
+    http_client_get_path,
+    http_client_get_service,
+    http_client_get_operation,
+    "url",
+    url as String,
+    [],
+    ""
   )
+}
+
+fn healthz_effective_read_from_get(success: Bool, body: String, error: String) -> HealthzEffectiveRead {
+  if success {
+    HealthzEffectiveRead { body: body, probe_error: "" }
+  } else {
+    HealthzEffectiveRead { body: "", probe_error: error }
+  }
+}
+
+fn live_deploy_healthz_get_local(port: Int) -> HealthzEffectiveRead {
+  let url = live_deploy_health_url_for_port(port: port)
+  let got = http.Client.Get(url: url)
+  healthz_effective_read_from_get(
+    success: got.success,
+    body: got.body,
+    error: "http client GET failed"
+  )
+}
+
+fn live_deploy_healthz_get_ssh(port: Int, host: NonEmptyStr) -> HealthzEffectiveRead {
+  let url = live_deploy_health_url_for_port(port: port)
+  let argv = http_client_get_operation_argv(url: url)
+  match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    Present { value: why } => HealthzEffectiveRead { body: "", probe_error: why }
+    Absent =>
+      match typed_argv_exec_over_ssh(host: host, argv: argv) {
+        TypedArgvExecConverged { result: r } =>
+          healthz_effective_read_from_get(
+            success: r.success,
+            body: r.stdout,
+            error: "http client GET over ssh failed"
+          )
+        TypedArgvExecRefused { reason: why } =>
+          HealthzEffectiveRead { body: "", probe_error: why }
+      }
+  }
+}
+
+fn live_deploy_healthz_get_for_port(port: Int, transport: HostEffectTransport) -> HealthzEffectiveRead {
+  match transport {
+    LocalShell => live_deploy_healthz_get_local(port: port)
+    SshShell { ssh_host: h } => live_deploy_healthz_get_ssh(port: port, host: h)
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      HealthzEffectiveRead {
+        body: "",
+        probe_error: "health probe refused EmitArtifactThenThinRun transport",
+      }
+  }
 }
 
 fn healthz_body_groundable(body: String) -> Bool {
@@ -98,65 +166,18 @@ fn ground_service_ready_from_healthz(read: HealthzEffectiveRead) -> Grounding<Se
   }
 }
 
-fn healthz_read_from_shell_apply(
-  r: Reconciliation<HostEffectIntent, HostEffectEvidence>
-) -> ShowEffectiveRead<HealthzEffectiveRead> {
-  match r {
-    Converged { evidence: e, applied: _ } =>
-      match e {
-        ShellEffectApplied { stdout: out, exit_code: _ } =>
-          ReadObserved {
-            value: HealthzEffectiveRead {
-              body: out,
-              probe_error: "",
-            }
-          }
-        ConvergePlanApplied { stdout: _, exit_code: _ } =>
-          ReadAbsent {
-            reason: "health probe returned ConvergePlanApplied; typed mismatch",
-          }
-      }
-    NotConverged { reason: why, applied: _ } =>
-      ReadObserved {
-        value: HealthzEffectiveRead {
-          body: "",
-          probe_error: why,
-        }
-      }
-  }
-}
-
-fn live_deploy_service_ready_probe_apply(
-  spec: DeploymentSpec,
-  transport: HostEffectTransport,
-  access: DeployAccess,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  host_effect_apply_gated(
-    access: access,
-    target: HostOs { node: spec.target.host },
-    effect: ShellCommand {
-      script: live_deploy_healthz_probe_script_for_port(
-        port: deployment_plan_listen_port(spec: spec)
-      ),
-    },
-    evidence: host_effect_read_evidence,
-    transport: transport,
-    fixture_actor: Absent,
-  )
-}
-
 fn show_healthz_read_for_deploy(
   spec: DeploymentSpec,
   transport: HostEffectTransport,
   access: DeployAccess,
 ) -> ShowEffectiveRead<HealthzEffectiveRead> {
-  healthz_read_from_shell_apply(
-    r: live_deploy_service_ready_probe_apply(
-      spec: spec,
+  let _ = access
+  ReadObserved {
+    value: live_deploy_healthz_get_for_port(
+      port: deployment_plan_listen_port(spec: spec),
       transport: transport,
-      access: access,
     )
-  )
+  }
 }
 
 fn show_healthz_read_fixture_healthy() -> ShowEffectiveRead<HealthzEffectiveRead> {
