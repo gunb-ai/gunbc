@@ -662,13 +662,13 @@ fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> Map<Symbol, Node
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Present { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          Present { value: llvm_integer_bits_node(bits: facts.bits) }
+          v2.std.optional.Present { value: llvm_integer_bits_node(bits: facts.bits) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Present { value: llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer) }
+          v2.std.optional.Present { value: llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer) }
       } else {
-          Absent
+          v2.std.optional.Absent
       }
     }
   }
@@ -678,11 +678,11 @@ fn llvm_float_spec_facts(facts: LlvmFloatPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Present { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Present { value: llvm_float_kind_node(kind: facts.kind) }
+          v2.std.optional.Present { value: llvm_float_kind_node(kind: facts.kind) }
       } else {
-          Absent
+          v2.std.optional.Absent
       }
     }
   }
