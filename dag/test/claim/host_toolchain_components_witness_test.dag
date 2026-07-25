@@ -92,7 +92,32 @@ fn witness_component_names_match_rustup() -> Bool {
     && rustup_component_eq(a: Rustfmt, b: Rustfmt)
 }
 
+data witness_reachability_note: String = "The correction, pinned so it cannot quietly regress into the fused reading. Installing the component and the gate being able to FIND it are two conditions, and srv2 satisfies the first while the second is unobserved — the runner unit inherits a PATH with no cargo bin directory, and whether the gate's spawn sees that PATH or a login shell's is only answerable from inside a job. So the component cell is Converged, the combined 'will the gate find it' verdict is UnknownRefused, and they are DIFFERENT VALUES on the same host. A module that reported the first as the answer would be committing the error its own opening paragraph describes. The third conjunct is the RED direction: an observed-unreachable component is Absent even when the toolchain is complete, so a complete toolchain can never by itself produce a green combined verdict."
+
+fn witness_completeness_does_not_imply_the_gate_finds_it() -> Bool {
+  let completeness = host_toolchain_completeness_verdict(host: operator_host_srv2)
+  let combined = host_gate_finds_component_verdict(host: operator_host_srv2)
+  let unreachable_but_complete = gate_finds_component_verdict(
+    completeness: std.upsert_decision.Converged,
+    reachability: Present {
+      value: NotReachableOnSpawnPath {
+        inherited_path: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin",
+      },
+    },
+  )
+  let reachable_and_complete = gate_finds_component_verdict(
+    completeness: std.upsert_decision.Converged,
+    reachability: Present { value: ReachableOnSpawnPath { path_source: "job step probe" } },
+  )
+  observation_verdict_eq(a: completeness, b: std.upsert_decision.Converged)
+    && observation_verdict_eq(a: combined, b: std.upsert_decision.UnknownRefused)
+    && observation_verdict_eq(a: unreachable_but_complete, b: std.upsert_decision.Absent)
+    && observation_verdict_eq(a: reachable_and_complete, b: std.upsert_decision.Converged)
+}
+
 test fn host_toolchain_components_witnesses() -> Bool {
+  witness_completeness_does_not_imply_the_gate_finds_it()
+    &&
   witness_component_in_another_toolchain_does_not_satisfy()
     && witness_after_fix_converges()
     && witness_unobserved_hosts_are_unknown_not_converged()

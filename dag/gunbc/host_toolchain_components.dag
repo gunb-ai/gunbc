@@ -160,3 +160,36 @@ data toolchain_ensure_apply_scaffold: Disposition = Scaffold {
     field: WholeDeclaration,
   }
 }
+
+data spawn_reachability_is_a_second_condition_note: String = "A CORRECTION to this module, found by execution after the hand-install and before any of it was believed. Installing the component into the resolving toolchain is NECESSARY and is NOT SUFFICIENT, and the two conditions must not be fused into one cell. Read live on srv2 2026-07-25: the runner unit declares no PATH, so it inherits systemd's default (/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin), which does not contain /home/ghrunner/.cargo/bin at all. A child spawned with that environment cannot find rustfmt no matter which components are installed, and `spawn rustfmt: No such file or directory` is precisely a PATH-lookup failure rather than a component-missing failure — a component-missing shim produces a rustup diagnostic instead. A ghrunner LOGIN shell does resolve it, because the profile adds the cargo bin directory, so the observed outcome depends on which of those two environments the gate's spawn inherits. That is not observable from a host read at all; it is a property of the job step, and answering it needs a probe INSIDE a job. So the honest state is: the component condition is now Converged on srv2 and the reachability condition is UNOBSERVED, and 'will the gate find rustfmt' is therefore UnknownRefused. Recording this as a second axis rather than letting completeness stand in for it is the same discipline the module was built to enforce, applied to the module itself — a completeness cell reported as the answer would be a value green because the condition under which it MEANS the gate works was assumed, which is the exact error this file opens by describing."
+
+type ComponentSpawnReachability
+  = ReachableOnSpawnPath { path_source: NonEmptyStr }
+  | NotReachableOnSpawnPath { inherited_path: NonEmptyStr }
+
+fn gate_finds_component_verdict(
+  completeness: ObservationVerdict,
+  reachability: ComponentSpawnReachability?,
+) -> ObservationVerdict {
+  match reachability {
+    Absent => UnknownRefused
+    Present { value: r } =>
+      match r {
+        NotReachableOnSpawnPath { inherited_path: _ } => std.upsert_decision.Absent
+        ReachableOnSpawnPath { path_source: _ } => completeness
+      }
+  }
+}
+
+fn host_toolchain_spawn_reachability(host: HostIdentity) -> ComponentSpawnReachability? {
+  none
+}
+
+fn host_gate_finds_component_verdict(host: HostIdentity) -> ObservationVerdict {
+  gate_finds_component_verdict(
+    completeness: host_toolchain_completeness_verdict(host: host),
+    reachability: host_toolchain_spawn_reachability(host: host),
+  )
+}
+
+data spawn_reachability_probe_frontier_note: String = "No host on the fleet has a reachability observation, srv2 included, and the reason is structural rather than incidental: the question is what PATH the gate's spawn inherits, which only a probe running INSIDE a job step can answer. A host read cannot see it — I tried, and what a host read CAN show (the unit's inherited PATH, and that a login shell differs from it) is exactly enough to prove the question is open and not enough to close it. The probe is a step emitting its own resolved PATH and the resolution of each required component, and it is the same shape as the read-back independence criterion demands: it must observe, never repair. Until it exists, host_gate_finds_component_verdict answers UnknownRefused for every host, which is the honest reading of a fleet where the same failure has now recurred on two hosts in two days."
