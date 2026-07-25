@@ -10083,7 +10083,7 @@ mod budget_completion_tests {
         match wall_budget_completion_outcome(Some(600), ClaimOutcome::Pass, 601_000_000_000) {
             ClaimOutcome::RuntimeError { message } => {
                 assert!(
-                    message.contains("wet self-host receipt wall budget exceeded"),
+                    message.contains("witness receipt wall budget exceeded"),
                     "typed refusal expected; got {message}"
                 );
             }

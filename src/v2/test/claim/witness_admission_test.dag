@@ -23,24 +23,24 @@ import v2.std.text { String }
 data normalize_entry: String = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag"
 data normalize_fn: String = "self_host_03_normalize_behavioral_receipt_holds"
 
-data normalize_wet_revocation_admission_note: String = "2026-07-25: SelfEmitted wet bindings revoked (empty falsifier_self_host_wet_module_bindings) after cadence WitnessRed — green-only enrollment. While revoked, 03_normalize's consumer is OfflineLocalRecipe (exclusion frontier row), not FalsifierSelfHostWet, and it is absent from the explicit wet manifest. Re-arm these two conjuncts to FalsifierSelfHostWet + manifest-covers when the 03_normalize binding restores."
+data normalize_wet_known_red_admission_note: String = "2026-07-25 review #7199: SelfEmitted wet bindings that red on assemble are Wet expect_red quarantine (falsifier_self_host_wet_known_red_entries), not orphaned OfflineLocalRecipe. 03_normalize's consumer is QuarantineProbeExpectRed and the explicit known-red wet manifest covers it. Dissolve-on: local wet greens → known-red entry deletes → SelfHostWetReceiptBinding restores → FalsifierSelfHostWet when cadence active."
 
 data synthetic_orphan_entry: String = "dag/test/claim/synthetic_orphan_admission_witness_test.dag"
 data synthetic_orphan_fn: String = "synthetic_orphan_no_consumer_holds"
 
-fn witness_03_normalize_offline_while_wet_binding_revoked_holds() -> Bool {
+fn witness_03_normalize_wet_known_red_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: normalize_entry,
     function: normalize_fn,
     excluded_from_discovery: true
   ) {
-    OfflineLocalRecipe => true
+    QuarantineProbeExpectRed => true
     _ => false
   }
 }
 
-fn witness_03_normalize_manifest_absent_while_wet_binding_revoked_holds() -> Bool {
-  !witness_admission_manifest_covers_row(entry: normalize_entry, function: normalize_fn)
+fn witness_03_normalize_wet_known_red_manifest_covers_holds() -> Bool {
+  witness_admission_manifest_covers_row(entry: normalize_entry, function: normalize_fn)
 }
 
 fn witness_synthetic_orphan_has_no_consumer_holds() -> Bool {
@@ -157,8 +157,8 @@ fn witness_explicit_manifest_nonempty_holds() -> Bool {
 }
 
 test fn witness_admission_invariant_holds() -> Bool {
-  witness_03_normalize_offline_while_wet_binding_revoked_holds()
-    && witness_03_normalize_manifest_absent_while_wet_binding_revoked_holds()
+  witness_03_normalize_wet_known_red_consumer_holds()
+    && witness_03_normalize_wet_known_red_manifest_covers_holds()
     && witness_synthetic_orphan_has_no_consumer_holds()
     && witness_synthetic_orphan_admission_red_holds()
     && witness_known_red_probe_consumer_holds()

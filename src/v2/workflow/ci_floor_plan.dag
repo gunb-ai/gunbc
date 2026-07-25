@@ -1,11 +1,14 @@
 module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, known_red_probe_entries, falsifier_silent_pick_gate_entries, falsifier_rehomed_bin_wet_entries, falsifier_substrate_long_lane_entries }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, known_red_probe_entries, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_silent_pick_gate_roster, falsifier_rehomed_bin_wet_entries, falsifier_substrate_long_lane_entries }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
   falsifier_native_cache_cold_roster,
-  falsifier_self_host_wet_cadence_is_active
+  falsifier_self_host_wet_cadence_is_active,
+  falsifier_self_host_wet_known_red_entries,
+  falsifier_self_host_wet_known_red_batch_enrolled,
+  falsifier_self_host_wet_known_red_roster
 }
 import v2.compiler.self_host.native_routing_frontier { native_routed_rows, NativeRoutingFrontierRow }
 import gunbc.ci_spec {
@@ -443,7 +446,7 @@ fn witness_floor_batch_wall_budgets_all_positive() -> Bool {
   fold(gunbc_ci_floor_batch_wall_budgets_seconds(), init: true, f: fn(ok, b) { ok && (b > 0) })
 }
 
-data gunbc_falsifier_self_host_wet_receipt_budget_note: String = "Whole-receipt wall-time budget for the nightly falsifier Wet self-host lane (operator ruling 2026-07-15, Wave 2 CI substrate STEP 3; kill-at-deadline 2026-07-25): bounds emit+cargo total wall time per witness — the wet receipt IS each module's Definition-of-Done, and cargo dominates (std/logic template ~101s wall, 06_translate ~52s measured Refinement-1). claim_executor arms this budget ONLY for discovery batches whose explicit entries intersect falsifier_self_host_wet_entries — never for sibling Wet lanes (silent-pick gate, rehomed bin). Primary refusal is WitnessWallBudgetExceeded: shell waits kill the process group at the ceiling (Finding 1 kill-at-deadline); wall_budget_completion_outcome remains the completion-side backstop. Secondary gunbc_falsifier_self_host_wet_interp_eval_budget arms the cooperative CPU eval deadline for interpreter-wedge detection only (subprocess cargo I/O is wall-counted, not CPU-counted). Receipted ceilings: logic template 101s, 06_translate 52s — 600s per receipt leaves headroom for larger modules while keeping 11-module upper bound (~9.5min measured) far under the 270m falsifier step budget. A raise requires a dated re-basis note (same discipline as floor batch walls) — never to absorb a cache-cold host."
+data gunbc_falsifier_self_host_wet_receipt_budget_note: String = "Whole-receipt wall-time budget for the nightly falsifier Wet self-host lane (operator ruling 2026-07-15, Wave 2 CI substrate STEP 3; kill-at-deadline 2026-07-25): bounds emit+cargo total wall time per witness — the wet receipt IS each module's Definition-of-Done, and cargo dominates (std/logic template ~101s wall, 06_translate ~52s measured Refinement-1). claim_executor arms this budget for discovery batches whose explicit entries intersect falsifier_self_host_wet_entries OR falsifier_self_host_wet_known_red_entries — never for silent-pick (owns gunbc_falsifier_silent_pick_gate_receipt_wall_budget) or rehomed bin. Primary refusal is WitnessWallBudgetExceeded: shell waits kill the process group at the ceiling (Finding 1 kill-at-deadline); wall_budget_completion_outcome remains the completion-side backstop. Secondary gunbc_falsifier_self_host_wet_interp_eval_budget arms the cooperative CPU eval deadline for interpreter-wedge detection only (subprocess cargo I/O is wall-counted, not CPU-counted). Receipted ceilings: logic template 101s, 06_translate 52s — 600s per receipt leaves headroom for larger modules while keeping 11-module upper bound (~9.5min measured) far under the 270m falsifier step budget. A raise requires a dated re-basis note (same discipline as floor batch walls) — never to absorb a cache-cold host."
 
 data gunbc_falsifier_self_host_wet_receipt_wall_budget: Second = second(count: 600)
 
@@ -455,6 +458,14 @@ data gunbc_falsifier_self_host_wet_interp_eval_budget: Second = second(count: 12
 
 fn gunbc_falsifier_self_host_wet_interp_eval_budget_ms() -> v2.std.nat.Nat {
   second_count(s: gunbc_falsifier_self_host_wet_interp_eval_budget) * 1000
+}
+
+data gunbc_falsifier_silent_pick_gate_receipt_budget_note: String = "Whole-receipt wall-time budget for the nightly falsifier silent-pick gate (review #7199 2026-07-25): after the category-error fix removed the mis-scoped self-host 600s ceiling, this row must not go unbudgeted — it is the largest corpus-denominated computational witness on the falsifier and grows with the tree. Basis (two-tier: worst host + spread): run 30164623968 srv3-04 PASS at 717940ms; prior fail-under-mis-scope 30158767015 at 707687ms; main-class cold 30160229060 at 815018ms. Worst observed 815s + ~100s host spread → 900s dated ceiling. Kill-at-deadline applies (same WitnessWallBudgetExceeded arm). Raise requires an appended dated re-basis — never a silent widen."
+
+data gunbc_falsifier_silent_pick_gate_receipt_wall_budget: Second = second(count: 900)
+
+fn gunbc_falsifier_silent_pick_gate_receipt_wall_budget_ms() -> v2.std.nat.Nat {
+  second_count(s: gunbc_falsifier_silent_pick_gate_receipt_wall_budget) * 1000
 }
 
 fn corpus_runnable_for(spec: CiSpec) -> Runnable {
@@ -818,7 +829,7 @@ fn falsifier_known_red_probe_batch_enrolled() -> Bool {
   length(xs: known_red_probe_entries) > 0
 }
 
-data falsifier_silent_pick_gate_batch_note: String = "Nightly falsifier batch 4 (#6967 consumption — see falsifier_silent_pick_gate_note in gunbc.ci_layer_roots): the declared Wet bin-execution lane for the resolution-divergence-census silent-pick refusal. Runs SelectionApplied after the known-red probe batch; claim_executor halts this batch if an earlier one fails (fail-closed), matching the other three falsifier batches."
+data falsifier_silent_pick_gate_batch_note: String = "Nightly falsifier batch 4 (#6967 consumption — see falsifier_silent_pick_gate_note in gunbc.ci_layer_roots): the declared Wet bin-execution lane for the resolution-divergence-census silent-pick refusal. Runs SelectionApplied after the known-red probe batch; claim_executor halts this batch if an earlier one fails (fail-closed), matching the other three falsifier batches. Whole-receipt wall budget: gunbc_falsifier_silent_pick_gate_receipt_wall_budget (900s dated basis, review #7199)."
 
 fn falsifier_silent_pick_gate_batch_enrolled() -> Bool {
   length(xs: falsifier_silent_pick_gate_entries) > 0
@@ -834,6 +845,25 @@ fn gunbc_falsifier_silent_pick_gate_batch() -> Runnable {
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
+      spawns_host_compiler: true,
+      memory: runnable_memory_substantial(),
+      execution_mode: Wet
+    )
+  }
+}
+
+data falsifier_self_host_wet_known_red_batch_note: String = "Nightly falsifier Wet expect_red quarantine (review #7199 2026-07-25): SelfEmitted module behavioral receipts that red on assemble — see falsifier_self_host_wet_known_red_note. Runs SelectionApplied after the green wet batch (when enrolled) / before the hermetic known-red probe; claim_executor expect_red-inverts. Whole-receipt wall budget: gunbc_falsifier_self_host_wet_receipt_wall_budget (kill-at-deadline). Greening is a counted un-quarantine."
+
+fn gunbc_falsifier_self_host_wet_known_red_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: falsifier_self_host_wet_known_red_entries,
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
       spawns_host_compiler: true,
       memory: runnable_memory_substantial(),
       execution_mode: Wet
@@ -959,8 +989,13 @@ fn gunbc_falsifier_batches() -> List<List<Runnable>> {
     enrolled: falsifier_self_host_wet_batch_enrolled(),
     batch: gunbc_falsifier_self_host_wet_batch()
   )
-  let with_probe = falsifier_batches_append_if_enrolled(
+  let with_wet_known_red = falsifier_batches_append_if_enrolled(
     acc: with_wet,
+    enrolled: falsifier_self_host_wet_known_red_batch_enrolled(),
+    batch: gunbc_falsifier_self_host_wet_known_red_batch()
+  )
+  let with_probe = falsifier_batches_append_if_enrolled(
+    acc: with_wet_known_red,
     enrolled: falsifier_known_red_probe_batch_enrolled(),
     batch: gunbc_falsifier_known_red_probe_batch()
   )

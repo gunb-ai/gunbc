@@ -732,7 +732,7 @@ impl fmt::Display for InterpError {
             } => {
                 write!(
                     f,
-                    "wet self-host receipt wall budget exceeded: {}ms elapsed > {}ms whole-receipt budget (emit+cargo wall time; nightly falsifier Wet lane 2026-07-15)",
+                    "witness receipt wall budget exceeded: {}ms elapsed > {}ms whole-receipt budget (falsifier wet/silent-pick lane; kill-at-deadline)",
                     elapsed_ms, budget_ms
                 )
             }

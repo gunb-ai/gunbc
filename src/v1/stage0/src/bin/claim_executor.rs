@@ -27,18 +27,24 @@ use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
 };
 
-/// Whole-receipt wall/interp budgets for the falsifier Wet *self-host* lane only
-/// (`gunbc_falsifier_self_host_wet_receipt_wall_budget` / interp twin). Other Wet
-/// discovery batches (silent-pick gate, rehomed bin) must not inherit them — that
-/// mis-scope is what reds `resolution_divergence_silent_pick_gate` against the
-/// 600s self-host ceiling after the self-host cadence rehome.
+/// Whole-receipt wall/interp budgets for falsifier Wet lanes that own a dated
+/// ceiling. Self-host wet (green + known-red quarantine) share the 600s budget;
+/// silent-pick owns `gunbc_falsifier_silent_pick_gate_receipt_wall_budget` (900s).
+/// Rehomed-bin Wet must not inherit either — the prior mis-scope reds silent-pick
+/// against the 600s self-host ceiling after the self-host cadence rehome.
 #[derive(Clone, Default)]
 struct FalsifierSelfHostWetBudgets {
     wall_budget_ms: Option<u64>,
     interp_eval_budget_ms: Option<u64>,
-    /// Entry paths from `falsifier_self_host_wet_entries` — single authority for
-    /// which Wet discovery batches arm the whole-receipt wall budget.
+    /// Entry paths from `falsifier_self_host_wet_entries` (green wet roster).
     roster_entry_paths: Vec<String>,
+    /// Entry paths from `falsifier_self_host_wet_known_red_entries` — Wet expect_red
+    /// quarantine; arms the same self-host wall budget + expect_red invert.
+    known_red_entry_paths: Vec<String>,
+    /// Hermetic known-red probe paths (`known_red_probe_entries`) — expect_red only.
+    hermetic_known_red_entry_paths: Vec<String>,
+    silent_pick_wall_budget_ms: Option<u64>,
+    silent_pick_entry_paths: Vec<String>,
 }
 
 fn read_positive_budget_ms(
@@ -718,27 +724,42 @@ fn run_batch_unit(
             // The fast-lane eval budget (operator 5s rule) governs the HERMETIC per-PR
             // discovery corpus — witnesses whose own eval must stay cheap or move to a
             // long/ lane. Wet batches skip that budget (subprocess I/O is their job).
-            // The whole-receipt wall/interp budgets are narrower still: they arm ONLY
-            // for the falsifier Wet self-host roster (`falsifier_self_host_wet_entries`),
-            // never for every Wet discovery batch. Silent-pick / rehomed-bin Wet rows
-            // share the Wet envelope but not the self-host Definition-of-Done ceiling
-            // (receipt: silent-pick 707s red under a mis-scoped 600s self-host budget
-            // while batch walls stayed green — 2026-07-25).
+            // Whole-receipt wall budgets are roster-scoped: self-host wet (green OR
+            // known-red quarantine) → 600s; silent-pick → 900s dated ceiling; rehomed
+            // bin inherits neither (receipt: silent-pick 707s red under a mis-scoped
+            // 600s self-host budget while batch walls stayed green — 2026-07-25).
             let (effective_fast_lane, wet_wall_budget_ms, wet_interp_budget_ms) =
                 if execution_mode.is_hermetic() {
                     (fast_lane_eval_budget_ms, None, None)
-                } else if discovery_entries_are_self_host_wet(
+                } else if discovery_entries_intersect_roster(
                     &explicit_entries,
                     &falsifier_self_host_wet_budgets.roster_entry_paths,
+                ) || discovery_entries_intersect_roster(
+                    &explicit_entries,
+                    &falsifier_self_host_wet_budgets.known_red_entry_paths,
                 ) {
                     (
                         None,
                         falsifier_self_host_wet_budgets.wall_budget_ms,
                         falsifier_self_host_wet_budgets.interp_eval_budget_ms,
                     )
+                } else if discovery_entries_intersect_roster(
+                    &explicit_entries,
+                    &falsifier_self_host_wet_budgets.silent_pick_entry_paths,
+                ) {
+                    (
+                        None,
+                        falsifier_self_host_wet_budgets.silent_pick_wall_budget_ms,
+                        None,
+                    )
                 } else {
                     (None, None, None)
                 };
+            let expect_red = discovery_entries_are_expect_red(
+                &explicit_entries,
+                &falsifier_self_host_wet_budgets.hermetic_known_red_entry_paths,
+                &falsifier_self_host_wet_budgets.known_red_entry_paths,
+            );
             vec![run_discovery_batch_node(
                 roots,
                 scan_dirs,
@@ -751,6 +772,7 @@ fn run_batch_unit(
                 effective_fast_lane,
                 wet_wall_budget_ms,
                 wet_interp_budget_ms,
+                expect_red,
             )]
         }
         BatchUnit::SharedClaims {
@@ -1099,22 +1121,27 @@ fn emit_slowest_witness_attribution(source_roots: &[String], summary: &Discovery
     }
 }
 
-/// Known-red probe cadence (gunbc.ci_layer_roots known_red_probe_entries): the batch
-/// EXPECTS RED. Greening is the un-quarantine event — so inverted verdict here:
+/// Known-red probe cadence (gunbc.ci_layer_roots known_red_probe_entries) and
+/// Wet assemble-red quarantine (falsifier_self_host_wet_known_red_entries): the
+/// batch EXPECTS RED. Greening is the un-quarantine event — so inverted verdict:
 /// still-red (Bool(false) / resolve refuse) ⇒ PASS; unexpected green ⇒ FAIL.
-fn discovery_entries_are_known_red_probe(explicit_entries: &[(String, String)]) -> bool {
-    !explicit_entries.is_empty()
-        && explicit_entries.iter().all(|(entry, _)| {
-            entry.contains("logic_ground_truth_test.dag")
-                || entry.contains("english_emit_add_test.dag")
-                || entry.contains("compiler_closure_emit_from_ingest_test.dag")
-        })
+fn discovery_entries_are_expect_red(
+    explicit_entries: &[(String, String)],
+    hermetic_known_red_paths: &[String],
+    wet_known_red_paths: &[String],
+) -> bool {
+    if explicit_entries.is_empty() {
+        return false;
+    }
+    explicit_entries.iter().all(|(entry, _)| {
+        hermetic_known_red_paths.iter().any(|p| p == entry)
+            || wet_known_red_paths.iter().any(|p| p == entry)
+    })
 }
 
-/// True when this discovery batch's explicit entries intersect the Wet self-host
-/// roster (`falsifier_self_host_wet_entries`). Path equality is the gate — the
-/// roster is the single authority; substring heuristics would re-fork it.
-fn discovery_entries_are_self_host_wet(
+/// True when this discovery batch's explicit entries intersect `roster_entry_paths`.
+/// Path equality is the gate — substring heuristics would re-fork the roster.
+fn discovery_entries_intersect_roster(
     explicit_entries: &[(String, String)],
     roster_entry_paths: &[String],
 ) -> bool {
@@ -1126,8 +1153,11 @@ fn discovery_entries_are_self_host_wet(
         .any(|(entry, _)| roster_entry_paths.iter().any(|p| p == entry))
 }
 
-fn read_self_host_wet_roster_entry_paths(plan_ctx: &InterpContext) -> Result<Vec<String>, String> {
-    match run_value(plan_ctx, "falsifier_self_host_wet_entries") {
+fn read_schedule_witness_entry_paths(
+    plan_ctx: &InterpContext,
+    function: &str,
+) -> Result<Vec<String>, String> {
+    match run_value(plan_ctx, function) {
         Ok(v) => {
             let mut out = Vec::new();
             for elem in free_monoid_elems(&v, plan_ctx)? {
@@ -1136,22 +1166,17 @@ fn read_self_host_wet_roster_entry_paths(plan_ctx: &InterpContext) -> Result<Vec
                     Value::Variant { fields, .. } => fields,
                     other => {
                         return Err(format!(
-                            "claim_executor: falsifier_self_host_wet_entries element is {}, not a record (fail-closed)",
+                            "claim_executor: {function} element is {}, not a record (fail-closed)",
                             other.type_label_public()
                         ))
                     }
                 };
-                out.push(str_field(
-                    fields,
-                    "entry",
-                    "falsifier_self_host_wet_entries",
-                    plan_ctx,
-                )?);
+                out.push(str_field(fields, "entry", function, plan_ctx)?);
             }
             Ok(out)
         }
         Err(msg) => Err(format!(
-            "claim_executor: falsifier_self_host_wet_entries is unavailable (fail-closed): {msg}"
+            "claim_executor: {function} is unavailable (fail-closed): {msg}"
         )),
     }
 }
@@ -1169,9 +1194,9 @@ fn run_discovery_batch_node(
     fast_lane_eval_budget_ms: Option<u64>,
     wet_receipt_wall_budget_ms: Option<u64>,
     wet_receipt_interp_eval_budget_ms: Option<u64>,
+    expect_red: bool,
 ) -> ClaimResult {
     set_phase(FloorPhase::Discovery, "discovery-corpus");
-    let expect_red = discovery_entries_are_known_red_probe(&explicit_entries);
     let label = format!(
         "discovery-corpus[{} root(s)+{} explicit, adaptive width{}]",
         source_roots.len(),
@@ -1245,7 +1270,7 @@ fn run_discovery_batch_node(
                     function: label,
                     ok: false,
                     detail: format!(
-                        "expect_red probe unexpectedly green: {} witness(es) passed — un-quarantine (delete known_red_probe_entries rows) or restore the discriminating red",
+                        "expect_red probe unexpectedly green: {} witness(es) passed — un-quarantine (delete known_red_probe_entries / falsifier_self_host_wet_known_red_entries rows) or restore the discriminating red",
                         summary.total
                     ),
                     wall_nanos: 0,
@@ -2593,7 +2618,50 @@ fn run() -> Result<ExitCode, ExitCode> {
                     return Err(ExitCode::from(1));
                 }
             },
-            roster_entry_paths: match read_self_host_wet_roster_entry_paths(&plan_ctx) {
+            roster_entry_paths: match read_schedule_witness_entry_paths(
+                &plan_ctx,
+                "falsifier_self_host_wet_entries",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
+            known_red_entry_paths: match read_schedule_witness_entry_paths(
+                &plan_ctx,
+                "falsifier_self_host_wet_known_red_roster",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
+            hermetic_known_red_entry_paths: match read_schedule_witness_entry_paths(
+                &plan_ctx,
+                "known_red_probe_roster",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
+            silent_pick_wall_budget_ms: match read_positive_budget_ms(
+                &plan_ctx,
+                "gunbc_falsifier_silent_pick_gate_receipt_wall_budget_ms",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
+            silent_pick_entry_paths: match read_schedule_witness_entry_paths(
+                &plan_ctx,
+                "falsifier_silent_pick_gate_roster",
+            ) {
                 Ok(v) => v,
                 Err(msg) => {
                     eprintln!("{msg}");
@@ -2712,6 +2780,7 @@ fn run() -> Result<ExitCode, ExitCode> {
 fn falsifier_failure_mode(details: &[String]) -> &'static str {
     if details.iter().any(|d| {
         d.contains("BudgetExceeded{")
+            || d.contains("witness receipt wall budget exceeded")
             || d.contains("wet self-host receipt wall budget exceeded")
             || d.contains("eval budget exceeded")
     }) {
@@ -2811,15 +2880,39 @@ mod tests {
 
     #[test]
     fn known_red_probe_entry_paths_detect_expect_red_batch() {
-        assert!(discovery_entries_are_known_red_probe(&[(
+        let hermetic = vec![
             "src/v2/test/claim/emit/logic_ground_truth_test.dag".into(),
-            "logic_complement_truth_table".into()
-        )]));
-        assert!(!discovery_entries_are_known_red_probe(&[(
-            "dag/test/claim/design_register_lift_parity_witness_test.dag".into(),
-            "design_register_lift_parity_holds".into()
-        )]));
-        assert!(!discovery_entries_are_known_red_probe(&[]));
+            "src/v2/test/claim/manual/english_emit_add_test.dag".into(),
+            "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag".into(),
+        ];
+        let wet_known_red = vec![
+            "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag".into(),
+        ];
+        assert!(discovery_entries_are_expect_red(
+            &[(
+                "src/v2/test/claim/emit/logic_ground_truth_test.dag".into(),
+                "logic_complement_truth_table".into()
+            )],
+            &hermetic,
+            &[]
+        ));
+        assert!(discovery_entries_are_expect_red(
+            &[(
+                "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag".into(),
+                "self_host_03_normalize_behavioral_receipt_holds".into()
+            )],
+            &[],
+            &wet_known_red
+        ));
+        assert!(!discovery_entries_are_expect_red(
+            &[(
+                "dag/test/claim/design_register_lift_parity_witness_test.dag".into(),
+                "design_register_lift_parity_holds".into()
+            )],
+            &hermetic,
+            &wet_known_red
+        ));
+        assert!(!discovery_entries_are_expect_red(&[], &hermetic, &wet_known_red));
     }
 
     #[test]
@@ -2828,7 +2921,7 @@ mod tests {
             "dag/test/claim/self_host_logic_behavioral_witness_test.dag".into(),
             "dag/test/claim/namespace_import_closure_witness_test.dag".into(),
         ];
-        assert!(discovery_entries_are_self_host_wet(
+        assert!(discovery_entries_intersect_roster(
             &[(
                 "dag/test/claim/self_host_logic_behavioral_witness_test.dag".into(),
                 "self_host_logic_behavioral_receipt_holds".into()
@@ -2837,15 +2930,15 @@ mod tests {
         ));
         // Silent-pick is Wet but not on the self-host roster — must not inherit
         // the 600s whole-receipt ceiling (mis-scope receipt 2026-07-25).
-        assert!(!discovery_entries_are_self_host_wet(
+        assert!(!discovery_entries_intersect_roster(
             &[(
                 "dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag".into(),
                 "resolution_divergence_silent_pick_gate_keystone_holds".into()
             )],
             &roster
         ));
-        assert!(!discovery_entries_are_self_host_wet(&[], &roster));
-        assert!(!discovery_entries_are_self_host_wet(
+        assert!(!discovery_entries_intersect_roster(&[], &roster));
+        assert!(!discovery_entries_intersect_roster(
             &[(
                 "dag/test/claim/self_host_logic_behavioral_witness_test.dag".into(),
                 "self_host_logic_behavioral_receipt_holds".into()
@@ -2855,10 +2948,37 @@ mod tests {
     }
 
     #[test]
+    fn silent_pick_roster_intersection_scopes_own_wall_budget() {
+        let silent_pick = vec![
+            "dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag".into(),
+        ];
+        assert!(discovery_entries_intersect_roster(
+            &[(
+                "dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag".into(),
+                "resolution_divergence_silent_pick_gate_keystone_holds".into()
+            )],
+            &silent_pick
+        ));
+        assert!(!discovery_entries_intersect_roster(
+            &[(
+                "dag/test/claim/self_host_logic_behavioral_witness_test.dag".into(),
+                "self_host_logic_behavioral_receipt_holds".into()
+            )],
+            &silent_pick
+        ));
+    }
+
+    #[test]
     fn falsifier_failure_mode_classifies_three_arms() {
         assert_eq!(
             falsifier_failure_mode(&[
                 "batch=1 BudgetExceeded{wall_ms=900000,budget_ms=600000}".into()
+            ]),
+            "BudgetExceeded"
+        );
+        assert_eq!(
+            falsifier_failure_mode(&[
+                "batch=3 fn=resolution_divergence_silent_pick_gate_keystone_holds detail=witness receipt wall budget exceeded: 707687ms elapsed > 600000ms whole-receipt budget".into()
             ]),
             "BudgetExceeded"
         );
