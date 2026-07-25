@@ -1,7 +1,5 @@
 module v2.extdeps.languages.rust_test
 
-import v2.std.operation_argv { operation_argv_tokens_or_refusal_label }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
@@ -4053,7 +4051,7 @@ fn rust_filesystem_read_family_target_model_staging(fixture_content: String) -> 
   }
 }
 
-data rust_shell_exec_run_family_note: String = "shell_exec_run native family (neat-carp-312, Task 2): a SEPARATE family from filesystem_read (not folded in), because its host-effect is a process spawn (bottom transport), a genuinely different confinement class from a file read, and keeping them separate keeps the effect roster (Task 4) legible per-effect-kind rather than per-PR-lane. Unlike Task 1, this family has NO cwd/repo-path problem: the two argv literals baked into the generated Rust prelude are derived by calling shell_materialize_operation_argv against dag/extdeps/shell/exec.dag's shell.Exec.Run operation AT .dag CONSTRUCTION TIME, in the INTERPRETER's own process (whose relative-path resolution is the same workspace_root() convention Task 1's fixture read already uses) -- not inside the emitted native binary -- so no embedded-fixture trick is needed here. This is real single-authority derivation, not a hand-typed literal kept in sync by convention: if shell.Exec.Run's transport block ever changes argv, this family's emitted argv changes with it at .dag build time, with no Rust edit required. No bindings are passed because shell.Exec.Run's transport argv is the fixed literal [\"bash\", \"-s\"], which references no declared input at all -- and since the materializer now binds an operation's OWN declared inputs (v2.std.operation_argv), passing any name here would be refused as UndeclaredInputBound rather than silently ignored, which is why the empty binding list is the honest spelling."
+data rust_shell_exec_run_family_note: String = "shell_exec_run native family (neat-carp-312, Task 2): a SEPARATE family from filesystem_read (not folded in), because its host-effect is a process spawn (bottom transport), a genuinely different confinement class from a file read, and keeping them separate keeps the effect roster (Task 4) legible per-effect-kind rather than per-PR-lane. Unlike Task 1, this family has NO cwd/repo-path problem: the two argv literals baked into the generated Rust prelude are derived by calling shell_materialize_operation_argv against dag/extdeps/shell/exec.dag's shell.Exec.Run operation AT .dag CONSTRUCTION TIME, in the INTERPRETER's own process (whose relative-path resolution is the same workspace_root() convention Task 1's fixture read already uses) -- not inside the emitted native binary -- so no embedded-fixture trick is needed here. This is real single-authority derivation, not a hand-typed literal kept in sync by convention: if shell.Exec.Run's transport block ever changes argv, this family's emitted argv changes with it at .dag build time, with no Rust edit required. No bindings are passed because shell.Exec.Run's transport argv is the fixed literal [\"bash\", \"-s\"], which references no declared input at all -- and since the materializer now binds an operation's OWN declared inputs (v2.std.operation_argv), passing any name here would be refused as UndeclaredInputBound rather than silently ignored, which is why the empty binding list is the honest spelling. The refusal arm yields a single marker token rather than an empty argv: an empty list would be a fabricated plausible argv that emits a silently broken prelude, while the marker can never equal \"bash\", so the shell_exec_run_eval_argv_is_bash_dash_s witness reds instead (DESIGN 5). The arm is spelled inline rather than through v2.std.operation_argv's helper because this module declares no imports and resolves bare references from the assembled pool -- adding an import block here switches it to import-scoped resolution and breaks every other bare reference in the file, proven by execution."
 
 data rust_shell_exec_run_family_dag_path: String = "dag/extdeps/shell/exec.dag"
 
@@ -4061,15 +4059,18 @@ data rust_shell_exec_run_family_service: String = "shell.Exec"
 
 data rust_shell_exec_run_family_operation: String = "Run"
 
+data rust_shell_exec_run_family_refusal_marker: String = "shell.Exec.Run argv materialization refused"
+
 fn rust_shell_exec_run_family_argv() -> List<String> {
-  operation_argv_tokens_or_refusal_label(
-    m: shell_materialize_operation_argv(
-      rust_shell_exec_run_family_dag_path,
-      rust_shell_exec_run_family_service,
-      rust_shell_exec_run_family_operation,
-      []
-    )
-  )
+  match shell_materialize_operation_argv(
+    rust_shell_exec_run_family_dag_path,
+    rust_shell_exec_run_family_service,
+    rust_shell_exec_run_family_operation,
+    []
+  ) {
+    ArgvMaterialized { argv: argv } => argv
+    ArgvMaterializationRefused { at: _, cause: _ } => [rust_shell_exec_run_family_refusal_marker]
+  }
 }
 
 fn rust_shell_exec_run_family_argv_token(index: Int) -> String {
