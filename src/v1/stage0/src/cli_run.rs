@@ -23793,8 +23793,12 @@ pub(crate) fn non_fold_residue_units_from_module_source(
                 }
                 let value = crate::v1_std_core::field_init_node_value(field.clone());
                 match value.expr_data.as_ref() {
-                    ExprData::ExprRecordLit { parent_enum } => {
-                        if parent_enum.as_deref() != Some("PathSubject") {
+                    ExprData::ExprRecordLit { .. } => {
+                        let variant_name = crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            value.clone(),
+                        );
+                        if variant_name != "PathSubject" {
                             panic!(
                                 "nfr frontier reader: `subject` in a `{data_name}` row of \
                                  {module_rel_path} is not PathSubject {{ ... }}"
@@ -23813,9 +23817,7 @@ pub(crate) fn non_fold_residue_units_from_module_source(
                                 crate::v1_std_core::field_init_node_value(subfield.clone());
                             match path_value.expr_data.as_ref() {
                                 ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
-                                    LiteralValue::LitStr { value: s } => {
-                                        row_path = Some(s.clone())
-                                    }
+                                    LiteralValue::LitStr { value: s } => row_path = Some(s.clone()),
                                     _ => panic!(
                                         "nfr frontier reader: `path` in a `{data_name}` row \
                                          of {module_rel_path} is not a string literal"
