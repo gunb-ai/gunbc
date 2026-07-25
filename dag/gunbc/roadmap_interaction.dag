@@ -1,12 +1,19 @@
 module gunbc.roadmap_interaction
 
 import std.types { Int, String, Bool }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.design.material {
   TimingToken, respond_fast, reveal_deliberate, settle_spring,
   MotionTrigger, OnHover, OnActive, OnStateClass,
   BuildRule, StaticRule, ResponseRule, SelfResponse,
   CssDecl, decl,
   rest_scale_per_mille, press_scale_per_mille, hold_scale_per_mille,
+}
+import gunbc.design.state_response {
+  StateFamily, StateFamilyMember, StateBinding, RestBinding, StateClassBinding,
+  StateChannel, RestChannel, ResponseChannel, ChannelScope, PerStateFamily, ConstantByLaw,
+  StateVarRole, FillVar, InkVar, PressedVar,
+  family_response_rules,
 }
 import gunbc.design.interaction {
   InteractionVerb, Approach, Dispatch, Await, Accept, Enter,
@@ -22,7 +29,8 @@ import gunbc.design.interaction {
 }
 import gunbc.design.scale { travel_lift, travel_press, scale_var }
 import gunbc.roadmap_component {
-  dispatch_class_requested, dispatch_class_ok, sound_toggle_class,
+  dispatch_class_requested, dispatch_class_ok, dispatch_class_refused, dispatch_class_loud,
+  sound_toggle_class,
   disclosure_mark_class, disclosure_open_class,
 }
 import gunbc.site.moodboard {
@@ -135,36 +143,43 @@ fn dispatch_btn_brighten_rules(timing: TimingToken) -> List<BuildRule> {
     })
 }
 
-data dispatch_receipt_family_note: String = "The press receipt realizes PER STATE FAMILY (round-5 fix): the first cut was one constant on the base selector — the invite press fill for every state the button can wear — so pressing an orange fault pill flashed deep green. A press deepens the material it presses: each state class's :active targets ITS band's derived pressed var, and the family-preservation witness in the tactile suite holds a RED against any cross-family press returning."
+data dispatch_state_family_note: String = "The dispatch instrument's state family — the SINGLE authority for the state-class-to-band mapping (composition slice 1). Before this roster the mapping was spelled at three sites: the style's four per-state paint StaticRules, the receipt rules' four hand call sites, and the base rule's inline invite vars — the same fact three times, which is exactly the fork the round-5 flash grew in. The roster order is the emission order (rest first), pinned by the byte oracle. A presentation state the button can wear that is missing from this roster has no selector anywhere downstream — the realize folds and the census both walk this list, so joining the family IS the single edit."
 
-fn dispatch_state_receipt_rule(state_class: String, band_key: String, timing: TimingToken) -> BuildRule {
-  ResponseRule {
-    subject: RawSelector { text: join([".dispatch-btn.", state_class], "") },
-    shape: SelfResponse,
-    trigger: OnActive,
-    transition_props: "background-color",
-    timing: timing,
-    base_decls: [],
-    response_decls: [ decl(prop: Background, value: join(["var(--band-", band_key, "-pressed)"], "")) ],
-  }
+data dispatch_state_family: StateFamily = StateFamily {
+  component_class: "dispatch-btn",
+  var_prefix: "band-",
+  members: [
+    StateFamilyMember { binding: RestBinding, key: "invite" },
+    StateFamilyMember { binding: StateClassBinding { class_name: dispatch_class_requested }, key: "in-progress" },
+    StateFamilyMember { binding: StateClassBinding { class_name: dispatch_class_ok }, key: "ok" },
+    StateFamilyMember { binding: StateClassBinding { class_name: dispatch_class_refused }, key: "fail" },
+    StateFamilyMember { binding: StateClassBinding { class_name: dispatch_class_loud }, key: "loud" },
+  ],
 }
 
+data dispatch_sound_constant_ratchet_note: String = "RULING ROW (composition slice 1, the honesty boundary): the engage sound is constant across the state family — one tick spec whichever band the instrument wears — and that constancy is DECLARED here as a ratchet, never left in the undeclared middle and never silent. It is a ratchet, not a wall: the tick cannot route per band until SoundOccasion becomes its closed sum (gunbc.design.sound.sound_growth_trigger, the settle-tone / refusal-thud PR), at which point the sound channel flips to PerStateFamily in dispatch_stateful_channels and this row deletes. Until then the census counts the channel as a signed constant with this row as its ruling."
+
+data dispatch_stateful_channels_note: String = "The dispatch instrument's stateful-channel table (composition slice 1) — every channel through which state reaches the operator, each carrying its scope BY TYPE: PerStateFamily rows are realized by the state_response folds (rest paints into the base rule and the per-state blocks; the press response multiplied across the family), ConstantByLaw rows name the recorded ruling that signed their constancy — the approach ring's band-neutrality (dispatch_brighten_neutral_note, operator 2026-07-24) and the sound ratchet (dispatch_sound_constant_ratchet_note). A response row with neither scope is unwritable: the table's element type has no third arm. Channel order within the rest group is the base rule's authored decl order (ink, fill, border), pinned by the byte oracle."
+
+data dispatch_stateful_channels: List<ChannelScope> = [
+  PerStateFamily { channel: RestChannel { prop: Color, role: InkVar } },
+  PerStateFamily { channel: RestChannel { prop: Background, role: FillVar } },
+  PerStateFamily { channel: RestChannel { prop: BorderColor, role: FillVar } },
+  PerStateFamily { channel: ResponseChannel { trigger: OnActive, prop: Background, role: PressedVar, transition_props: "background-color" } },
+  ConstantByLaw {
+    channel_name: "approach-emphasis",
+    ruling: DeclarationRef { module_path: "gunbc.roadmap_interaction", decl_name: "dispatch_brighten_neutral_note", field: WholeDeclaration },
+  },
+  ConstantByLaw {
+    channel_name: "engage-sound",
+    ruling: DeclarationRef { module_path: "gunbc.roadmap_interaction", decl_name: "dispatch_sound_constant_ratchet_note", field: WholeDeclaration },
+  },
+]
+
+data dispatch_receipt_family_note: String = "The press receipt realizes PER STATE FAMILY (round-5 fix, re-derived through the state_response fold in composition slice 1): the first cut was one constant on the base selector — the invite press fill for every state the button can wear — so pressing an orange fault pill flashed deep green. A press deepens the material it presses: the press-fill channel is authored ONCE in dispatch_stateful_channels as a function of state, and family_response_rules multiplies it across the roster — each member's selector targets ITS band's derived pressed var, the rest member on the base selector. The four hand call sites this replaces were byte-identical under the fold (digest oracle), and the family-preservation witness in the tactile suite holds a RED against any cross-family press returning."
+
 fn dispatch_btn_receipt_rules(timing: TimingToken) -> List<BuildRule> {
-  [
-    ResponseRule {
-      subject: ClassSelector { name: "dispatch-btn" },
-      shape: SelfResponse,
-      trigger: OnActive,
-      transition_props: "background-color",
-      timing: timing,
-      base_decls: [],
-      response_decls: [ decl(prop: Background, value: "var(--band-invite-pressed)") ],
-    },
-    dispatch_state_receipt_rule(state_class: dispatch_class_requested, band_key: "in-progress", timing: timing),
-    dispatch_state_receipt_rule(state_class: dispatch_class_ok, band_key: "ok", timing: timing),
-    dispatch_state_receipt_rule(state_class: dispatch_class_refused, band_key: "fail", timing: timing),
-    dispatch_state_receipt_rule(state_class: dispatch_class_loud, band_key: "loud", timing: timing),
-  ]
+  family_response_rules(f: dispatch_state_family, channels: dispatch_stateful_channels, timing: timing)
 }
 
 data detent_realization_note: String = "Every transform rule is READ from the detent table, never restated beside it. That is the whole reason the table exists as data: a position written once in a table and again in a rule builder is the same fact in two places, and the copy that drifts is always the one nobody is looking at. So a position response (Lift, Depress, Settle) resolves its state in the table and emits whatever the table says; if the state is missing the realization yields NO rules, which surfaces through the existing unrealized-behaviour census as a counted row rather than as a silently absent transition.

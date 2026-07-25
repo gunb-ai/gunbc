@@ -1,0 +1,41 @@
+module test.claim.anomaly_evidence_witness
+
+import gunbc.roadmap_component { dispatch_client_js_source }
+import gunbc.roadmap_style { roadmap_css }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data anomaly_evidence_witness_note: String = "Composition slice 4: anomaly evidence is a SURFACE, not a tooltip. The loud band's located reason (step: detail, or the wire reason) renders as the first line of the row's disclosure — persistent and inspectable in the DOM — while the title attribute stays a convenience channel, never the only carrier. The predicate below defines what 'is a surface' means mechanically; the RED feeds it the title-only shape (yesterday's program) and it must refuse."
+
+data reason_surface_predicate_note: String = "A client program carries the reason surface exactly when it: upserts the .disclosure-reason element (query, create-if-absent, insert after the summary so it is the disclosure's first line), writes the computed why into its textContent, and falls closed to a true statement when the wire carried no located reason — never an empty line that reads as fine. The insertion is gated on the loud band, so routine answers never grow evidence chrome."
+
+fn reason_is_a_disclosure_surface(js: String) -> Bool {
+  string_contains(s: js, pattern: "band === 'loud' && dt")
+    && string_contains(s: js, pattern: "dt.querySelector('.disclosure-reason')")
+    && string_contains(s: js, pattern: "document.createElement('div')")
+    && string_contains(s: js, pattern: "rl.className = 'disclosure-reason'")
+    && string_contains(s: js, pattern: "sm.insertAdjacentElement('afterend', rl)")
+    && string_contains(s: js, pattern: "rl.textContent = why || 'belt fault — no located reason on the wire'")
+}
+
+test fn anomaly_reason_is_a_surface() -> Bool {
+  return reason_is_a_disclosure_surface(js: dispatch_client_js_source())
+}
+
+data title_only_red_note: String = "The planted RED: a loud fixture whose reason exists ONLY in the title channel — the exact fragment the live program also carries for the convenience channel, with no disclosure-reason machinery around it — must fail the surface predicate. The fixture is the real title assignment's shape, so the discrimination is the predicate refusing the tooltip-only world, not a strawman string."
+
+test fn anomaly_reason_red_on_title_only() -> Bool {
+  let title_only = "const why = j.step ? j.step + ': ' + d : j.reason || ''; b.title = why ? base + ' — ' + why : base;"
+  return !reason_is_a_disclosure_surface(js: title_only)
+}
+
+test fn anomaly_title_stays_a_convenience() -> Bool {
+  let js = dispatch_client_js_source()
+  return string_contains(s: js, pattern: "b.title = why ? base +")
+    && string_contains(s: js, pattern: "' — '")
+}
+
+test fn anomaly_reason_surface_is_styled() -> Bool {
+  return string_contains(s: roadmap_css(), pattern: ".disclosure-reason { font-size: var(--text-12); color: var(--text); border-left: var(--border-2) solid var(--band-loud); padding-left: var(--space-6); margin: var(--space-2) var(--space-0) var(--space-2) }")
+}
