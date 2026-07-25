@@ -17,7 +17,8 @@ import std.trait_derive_shape {
   record_derive_traits_copy,
   nullary_coproduct_derive_traits,
   symbol_wrapped_ord_carrier_derive_traits,
-  payload_coproduct_derive_traits
+  payload_coproduct_derive_traits,
+  fn_field_derive_traits
 }
 import extdeps.languages.rust.emit { rust_trait_derive_attr_from_traits }
 import std.types { is_container_type }

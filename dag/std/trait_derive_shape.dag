@@ -229,6 +229,10 @@ fn symbol_wrapped_ord_carrier_derive_traits() -> List<ReprGroundingDeriveTrait> 
   }
 }
 
+fn fn_field_derive_traits() -> List<ReprGroundingDeriveTrait> {
+  Cons { head: ReprDeriveClone, tail: Empty }
+}
+
 fn payload_coproduct_derive_traits() -> List<ReprGroundingDeriveTrait> {
   Cons {
     head: ReprDeriveDebug,
