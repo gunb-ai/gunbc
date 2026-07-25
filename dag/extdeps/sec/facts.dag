@@ -51,7 +51,7 @@ type FiledAmount
 type FiledMonetaryFact {
   element: NonEmptyStr
   amount: FiledAmount
-  citation: FiledFactCitation?
+  citation: FiledFactCitation
 }
 
 fn filed_amount(fact: FiledMonetaryFact) -> UsdWholeDollars? {
@@ -89,7 +89,7 @@ type FiledSignedAmount
 type FiledSignedMonetaryFact {
   element: NonEmptyStr
   amount: FiledSignedAmount
-  citation: FiledFactCitation?
+  citation: FiledFactCitation
 }
 
 fn filed_signed_value(fact: FiledSignedMonetaryFact) -> SignedUsdWholeDollars? {

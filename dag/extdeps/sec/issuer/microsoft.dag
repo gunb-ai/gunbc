@@ -1,0 +1,33 @@
+module extdeps.sec.issuer.microsoft
+
+import extdeps.sec.types {
+  Cik,
+  IssuerCatalogRow,
+  Nasdaq,
+  StockTicker,
+}
+import extdeps.vendor.microsoft { microsoft }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sec.gov/cgi-bin/browse-edgar?CIK=0000789019"
+  }
+}
+
+data microsoft_cik_digits: NonEmptyStr = "789019"
+
+data microsoft_cik: Cik = Cik { digits: microsoft_cik_digits }
+
+data microsoft_ticker: StockTicker = StockTicker { symbol: "MSFT" }
+
+data microsoft_issuer_catalog: IssuerCatalogRow = IssuerCatalogRow {
+  cik: microsoft_cik,
+  legal_name: "Microsoft Corporation",
+  primary_ticker: microsoft_ticker,
+  exchange: Nasdaq,
+  vendor: microsoft,
+}

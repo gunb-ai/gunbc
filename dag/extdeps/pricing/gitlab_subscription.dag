@@ -7,6 +7,9 @@ import std.measure {
   money_amount_micro,
 }
 import std.types { NonEmptyStr, List }
+import extdeps.securities { Securities }
+import extdeps.vendor { Vendor }
+import extdeps.vendor.gitlab { gitlab }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -17,6 +20,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "about.gitlab.com/pricing"
   }
 }
+
+data pricing_subject_edge_note: String = "Subject and source are ORTHOGONAL axes and a filename encodes neither (operator ruling 2026-07-25): this module's ExternalAuthority anchor above is the SOURCE (the vendor's own pricing page — unchanged), and the subject row below is the typed edge naming the ENTITY these prices are about. It is the same entity node extdeps.sec.issuer.gitlab_facts reaches through its IssuerCatalogRow, so the two fact families (filed financials from EDGAR, list prices from the vendor site) are correlated by an edge in the graph rather than by a shared filename prefix. KNOWN MISMATCH, filed not fixed: the subject row's type reads Vendor<Securities> because Vendor parameterizes the ENTITY by domain, and GitLab is the tree's first two-domain entity (SEC issuer and SaaS vendor) -- one company cannot inhabit two domains without forking the entity row. The edge is correct on identity and wrong on domain; the fix (domain moves onto the relationship rows, Vendor un-parameterized) is a ~14-file migration filed on the grounding-inventory lane with this module as its discriminating receipt. dissolve-on: that migration landing, after which this row's type names no domain."
+
+data gitlab_subscription_subject: Vendor<Securities> = gitlab
 
 data gitlab_subscription_pricing_provenance_note: String = "Tier list prices and usage meters live-fetched 2026-07-25 from the pricing page (anchor above; session gitlab-10k-scm-costs-baz90x). SaaS (gitlab.com) list pricing; self-managed uses the same tiers and Dedicated/enterprise terms are sales-negotiated. The 10-Ks describe the three-tier open-core model qualitatively but publish no dollar prices (FY2023 10-K: 'we recently announced a price increase in our Premium tier product offering'; FY2024 10-K: 'during fiscal year 2024 we implemented a price increase in our Premium tier'), so the pricing page and GitLab's own announcements are the price authorities, and extdeps.sec.issuer.gitlab_facts carries the filed financial consequences."
 
