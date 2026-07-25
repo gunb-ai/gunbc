@@ -6,7 +6,6 @@ import extdeps.dhcp.v4 {
   DhcpLeaseAssignment,
   DhcpLeaseStatus,
   MacAddress,
-  Ipv4Address,
   DynamicLease,
   StaticReservation,
   DynamicDhcpLease,
@@ -14,6 +13,7 @@ import extdeps.dhcp.v4 {
   Active,
   Inactive,
 }
+import extdeps.network.ipv4 { Ipv4Address }
 import extdeps.vendor.verizon { verizon }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }

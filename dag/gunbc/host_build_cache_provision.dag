@@ -37,11 +37,14 @@ data ci_sccache_opportunistic_detect_scaffold: Disposition = Scaffold {
     field: WholeDeclaration,
   }
 }
+data build_cache_path_authority_observation_note: String = "CI and ctrl-build sessions consume the cache as bare `sccache` on PATH (RUSTC_WRAPPER=sccache), so provisioning the modeled binary is NOT sufficient — the PATH-visible sccache must BE the modeled one. A second sccache earlier in PATH (a distro package, a stale copy) is precisely the two-authority state this lane exists to remove, and it is invisible to a read-back that probes the absolute path: that read-back greens on the binary we provisioned while the compiler calls a different one. DaemonPathShadowed carries BOTH paths so the refusal is located (which binary won, which one was expected) rather than merely typed. This judgement is modeled HERE, in the verdict fold (proven by design_witness_path_shadow_refuses_fail_closed against a synthetic DaemonPathShadowed observation), not decided by the provisioning shell. Its LIVE observation is STAGED, not emitted: per the shell→dag census this module's script side is an A5 `decompose` row that must not grow its emitted shell surface, so the `command -v sccache` resolve waits for the typed-argv dissolve-on (#5828) rather than landing as hand-shell now (review 42343). The model carries the state and its refusal today; only the live producer is deferred."
+
 type BuildCacheDaemonObservation
   = DaemonStatsOk { stats_line: String }
   | DaemonAbsent
   | DaemonUnresponsive { detail: NonEmptyStr }
   | DaemonMisconfigured { matched_fragment: String, detail: NonEmptyStr }
+  | DaemonPathShadowed { resolved: String, expected: String }
 
 type BuildCacheProvisionRefusal
   = RefusalDaemonAbsent
@@ -49,6 +52,7 @@ type BuildCacheProvisionRefusal
   | RefusalDaemonMisconfigured
   | RefusalPrivilegeDenied
   | RefusalCatalogUnknown
+  | RefusalPathShadowed
 
 type BuildCacheProvisionVerdict
   = ProvisionConverged { catalog_id: CacheInterfaceId, stats_line: String }
@@ -72,6 +76,11 @@ fn provision_build_cache_absorbing_fallback_widen_sketch(
       ProvisionRefused {
         cause: RefusalDaemonMisconfigured,
         reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as NonEmptyStr,
+      }
+    DaemonPathShadowed { resolved: r, expected: e } =>
+      ProvisionConverged {
+        catalog_id: catalog_id,
+        stats_line: concat("path-shadow-widen-sketch: ", concat(r, concat(" vs ", e))),
       }
   }
 }
@@ -103,6 +112,12 @@ fn build_cache_provision_gate_accepts(
         ProvisionConverged { catalog_id: _, stats_line: _ } => false
         ProvisionRefused { cause: _, reason: _ } => false
       }
+    DaemonPathShadowed { resolved: _, expected: _ } =>
+      match verdict {
+        ProvisionRefused { cause: RefusalPathShadowed, reason: _ } => true
+        ProvisionConverged { catalog_id: _, stats_line: _ } => false
+        ProvisionRefused { cause: _, reason: _ } => false
+      }
   }
 }
 
@@ -131,6 +146,17 @@ fn provision_build_cache_verdict(
           ProvisionRefused {
             cause: RefusalDaemonMisconfigured,
             reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as NonEmptyStr,
+          }
+        DaemonPathShadowed { resolved: r, expected: e } =>
+          ProvisionRefused {
+            cause: RefusalPathShadowed,
+            reason: concat(
+              concat("host_build_cache_provision: PATH resolves sccache to ", r),
+              concat(
+                concat(" but the modeled install authority is ", e),
+                "; the compiler would call a binary this lane never provisioned. Fail-closed, no local-build fallback.",
+              ),
+            ) as NonEmptyStr,
           }
       }
   }
