@@ -43,6 +43,8 @@ import v2.workflow.ci_floor_plan {
   falsifier_known_red_probe_batch_enrolled,
   falsifier_silent_pick_gate_batch_enrolled,
   falsifier_rehomed_bin_wet_batch_enrolled,
+  falsifier_cadence_witness_batch_enrolled,
+  falsifier_cadence_witness_entries,
   gunbc_ci_floor_schedule_lens_holds,
   witness_floor_batch_clamp_params_cover_schedule,
   witness_floor_batch_clamp_overhead_all_positive,
@@ -431,6 +433,24 @@ fn falsifier_self_host_wet_budget_declared_holds() -> Bool {
     && gunbc_ci_fast_lane_eval_budget_ms() == 5000
 }
 
+fn falsifier_cadence_witness_batch_holds(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
+      match mode {
+        SelectionApplied => true
+        SelectionPredictOnly => false
+        SelectionOff => false
+      }
+        && (length(xs: dirs) == 0)
+        && (length(xs: entries) == length(xs: falsifier_cadence_witness_entries()))
+        && discovery_batch_declares_wet(r: r)
+        && p.spawns_host_compiler
+        && (p.heavy_whole_tree_resolve == false)
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
+  }
+}
+
 fn falsifier_plan_structure_holds() -> Bool {
   let batches = gunbc_falsifier_batches()
   let predict_ok = (batches.first().length() == 1)
@@ -439,7 +459,8 @@ fn falsifier_plan_structure_holds() -> Bool {
   let probe_enrolled = falsifier_known_red_probe_batch_enrolled()
   let silent_pick_gate_enrolled = falsifier_silent_pick_gate_batch_enrolled()
   let rehomed_enrolled = falsifier_rehomed_bin_wet_batch_enrolled()
-  let expected_batches = 1 + (if wet_enrolled { 1 } else { 0 }) + (if probe_enrolled { 1 } else { 0 }) + (if silent_pick_gate_enrolled { 1 } else { 0 }) + (if rehomed_enrolled { 1 } else { 0 })
+  let cadence_enrolled = falsifier_cadence_witness_batch_enrolled()
+  let expected_batches = 1 + (if wet_enrolled { 1 } else { 0 }) + (if probe_enrolled { 1 } else { 0 }) + (if silent_pick_gate_enrolled { 1 } else { 0 }) + (if rehomed_enrolled { 1 } else { 0 }) + (if cadence_enrolled { 1 } else { 0 })
   let wet_ok = if wet_enrolled {
     let wet_batch = skip(xs: batches, n: 1).first()
     (wet_batch.length() == 1)
@@ -463,7 +484,15 @@ fn falsifier_plan_structure_holds() -> Bool {
   } else {
     true
   }
-  (length(xs: batches) == expected_batches) && predict_ok && wet_ok && probe_ok && silent_pick_gate_ok
+  let cadence_ok = if cadence_enrolled {
+    let cadence_offset = 1 + (if wet_enrolled { 1 } else { 0 }) + (if probe_enrolled { 1 } else { 0 }) + (if silent_pick_gate_enrolled { 1 } else { 0 }) + (if rehomed_enrolled { 1 } else { 0 })
+    let cadence_batch = skip(xs: batches, n: cadence_offset).first()
+    (cadence_batch.length() == 1)
+      && falsifier_cadence_witness_batch_holds(r: cadence_batch.first())
+  } else {
+    true
+  }
+  (length(xs: batches) == expected_batches) && predict_ok && wet_ok && probe_ok && silent_pick_gate_ok && cadence_ok
 }
 
 fn witness_cheap_gates_are_resource_anchors() -> Bool {
