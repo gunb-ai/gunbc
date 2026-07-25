@@ -124,8 +124,8 @@ import std.observation {
   DocsPolicy,
   Uncovered,
   NoDeclsTouched,
-  GeneratedArtifact,
   DepartedPath,
+  selection_noop_generated_artifact,
   observation_no_op_is_actually_a_widen,
   observation_no_op_attention,
   observation_no_op_symbol,
@@ -481,7 +481,7 @@ fn w_no_op_kinds_each_explain_themselves() -> Bool {
     DocsPolicy,
     Uncovered { declaration: "std.observation.observation_attention" as NonEmptyStr },
     NoDeclsTouched,
-    GeneratedArtifact { drift_gate_authority: "gunbc.ci_workflow" as NonEmptyStr },
+    selection_noop_generated_artifact(drift_gate_authority: "gunbc.ci_workflow" as NonEmptyStr),
     DepartedPath { cause: "src/v1/stage0/src/gone.rs" as NonEmptyStr }
   ]
   count(kinds) == 5 &&
@@ -505,7 +505,7 @@ fn w_departed_path_is_not_a_no_op() -> Bool {
   observation_no_op_is_actually_a_widen(n: DepartedPath { cause: "deleted module" as NonEmptyStr }) &&
   !observation_no_op_is_actually_a_widen(n: DocsPolicy) &&
   !observation_no_op_is_actually_a_widen(n: NoDeclsTouched) &&
-  !observation_no_op_is_actually_a_widen(n: GeneratedArtifact { drift_gate_authority: "x" as NonEmptyStr }) &&
+  !observation_no_op_is_actually_a_widen(n: selection_noop_generated_artifact(drift_gate_authority: "x" as NonEmptyStr)) &&
   !observation_no_op_is_actually_a_widen(n: Uncovered { declaration: "x" as NonEmptyStr }) &&
   observation_no_op_attention(n: DepartedPath { cause: "deleted module" as NonEmptyStr }) == Notable
 }
