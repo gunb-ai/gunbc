@@ -30,7 +30,18 @@ fn readback_probe_is_independent(p: ReadBackProbe) -> Bool {
 data readback_unknown_effect_is_not_inert_note: String = "An UNCLASSIFIED probe is treated exactly as a self-establishing one, and this is the fail-closed hinge. The tempting default is the other way — nobody has shown this probe has a side effect, so assume it does not — and that default is the absorbing fallback with the burden of proof reversed: it converts every un-audited transport into evidence, and the population of un-audited transports is the whole tree. Independence is a property that must be ESTABLISHED for a specific transport, so ProbeEffectUnknown carries a reason and yields the same correction as ProbeMayEstablish. The two stay distinct arms anyway, because their remedies differ: ProbeMayEstablish is a probe to REPLACE, ProbeEffectUnknown is a transport to AUDIT."
 
 fn readback_evidence_verdict(p: ReadBackProbe, observed: ObservationVerdict) -> ObservationVerdict {
-  observed
+  if readback_probe_is_independent(p: p) {
+    observed
+  } else {
+    match observed {
+      Converged => UnknownRefused
+      std.upsert_decision.Absent => std.upsert_decision.Absent
+      Drifted => Drifted
+      Conflict => Conflict
+      Inaccessible => Inaccessible
+      UnknownRefused => UnknownRefused
+    }
+  }
 }
 
 data readback_trusting_widen_red_control_note: String = "The forbidden arm as an executable declaration: trust the probe's own answer whatever the transport can do to the subject. It is the corpus's behaviour everywhere the criterion has not yet been applied, so the sketch is a description of today rather than a hypothetical, and the gate rejects it on exactly the inputs #7213 hit live."

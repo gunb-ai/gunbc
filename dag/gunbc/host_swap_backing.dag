@@ -70,7 +70,14 @@ fn swap_cap_verdict_qualified_by_backing(
   cap: ObservationVerdict,
   backing: ObservationVerdict,
 ) -> ObservationVerdict {
-  cap
+  match backing {
+    Converged => cap
+    std.upsert_decision.Absent => std.upsert_decision.Absent
+    Drifted => Drifted
+    Conflict => Conflict
+    Inaccessible => Inaccessible
+    UnknownRefused => UnknownRefused
+  }
 }
 
 data host_swap_cap_widen_red_control_note: String = "The forbidden arm, modeled as its own declaration so it can be executed against the gate rather than described in prose. Backing-blind qualification is what the corpus does TODAY — the cap verdict is reported as-is, with no backing term anywhere in the fold — so this sketch is not a hypothetical: it is the current behaviour written down and made falsifiable. The gate rejects it and accepts the authority on the same inputs, and the perturbation is independent of the property checked, so the pair cannot pass tautologically."
