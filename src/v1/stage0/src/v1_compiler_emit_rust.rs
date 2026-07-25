@@ -330,10 +330,11 @@ pub fn render_rust_type_without_applied_binding(
                     match n.children.clone().first().cloned() {
                         Some(key_child) => {
                             let key_node = child_type_node(key_child.clone());
-                            let val_node = match n.children.clone().get(1 as usize).cloned() {
-                                Some(val_child) => child_type_node(val_child.clone()),
-                                None => type_variable_node("map_value".to_string()),
-                            };
+                            let val_node =
+                                match n.children.clone().iter().cloned().skip(1 as usize).next() {
+                                    Some(val_child) => child_type_node(val_child.clone()),
+                                    None => type_variable_node("map_value".to_string()),
+                                };
                             let key_str = render_rust_type(
                                 key_node.clone(),
                                 shared_types.clone(),
@@ -1550,8 +1551,10 @@ pub fn render_rust_decl_type(
                                                         match arg_list.clone().first().cloned() {
                                                             Some(k) => match arg_list
                                                                 .clone()
-                                                                .get(1 as usize)
+                                                                .iter()
                                                                 .cloned()
+                                                                .skip(1 as usize)
+                                                                .next()
                                                             {
                                                                 Some(v) => emit_map_type(
                                                                     k.clone(),
@@ -9435,8 +9438,10 @@ pub fn rust_use_after_crate(line: String) -> String {
                     .map(|s| s.to_string())
                     .collect::<Vec<_>>(),
             )
-            .get(1 as usize)
+            .iter()
             .cloned()
+            .skip(1 as usize)
+            .next()
             {
                 Some(rest) => rest.clone(),
                 None => "".to_string(),
@@ -9582,8 +9587,10 @@ pub fn rust_pub_use_braced_names(line: String) -> Rc<Vec<String>> {
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         )
-        .get(1 as usize)
+        .iter()
         .cloned()
+        .skip(1 as usize)
+        .next()
         {
             Some(rest) => match Rc::new(
                 rest.clone()
@@ -9779,8 +9786,10 @@ pub fn rust_use_bound_symbol(entry: String) -> String {
             .map(|s| s.to_string())
             .collect::<Vec<_>>(),
     )
-    .get(1 as usize)
+    .iter()
     .cloned()
+    .skip(1 as usize)
+    .next()
     {
         Some(bound_name) => bound_name.clone(),
         None => entry.clone(),
@@ -13557,7 +13566,8 @@ pub fn emit_fn_def(
                     }
                 } else {
                     {
-                        let return_is_unit = is_unit_like(inferred.clone());
+                        let return_is_unit =
+                            return_type_is_unit(inferred.clone(), si.clone());
                         emit_fn_def_non_tco(
                             name.clone(),
                             type_params_str.clone(),
@@ -13577,6 +13587,14 @@ pub fn emit_fn_def(
             }
         }
     }
+}
+
+pub fn return_type_is_unit(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (is_unit_like(n.clone())
+        && (authored_name_at(n.clone(), source_indices.clone()) == "Unit".to_string()))
 }
 
 pub fn emit_rust_fn_body_expr(
@@ -13613,7 +13631,7 @@ pub fn emit_rust_fn_body_expr(
 pub fn inferred_expr_is_optional(texpr: Rc<Node>) -> bool {
     match texpr.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            rt.return_cardinality.clone() == Cardinality::CardOptional
+            (rt.return_cardinality.clone() == Cardinality::CardOptional)
         }
         _ => false,
     }
@@ -13636,11 +13654,9 @@ pub fn emit_rust_unit_discarding_optional_typed(
             ),
         },
         ExprData::ExprRecordLit { parent_enum: _, .. } => {
-            let field_count = texpr.children.clone().len() as i64;
-            if field_count == 0 {
-                "()".to_string()
-            } else if field_count == 1 {
-                match texpr.children.clone().first().cloned() {
+            match (texpr.children.clone().len() as i64) {
+                0 => "()".to_string(),
+                1 => match texpr.children.clone().first().cloned() {
                     Some(f) => emit_rust_unit_discarding_stmt(
                         field_init_node_value(f.clone()),
                         registry.clone(),
@@ -13653,12 +13669,11 @@ pub fn emit_rust_unit_discarding_optional_typed(
                         "unit-discard: optional record literal missing payload field".to_string(),
                         RenderTarget::Rust,
                     ),
-                }
-            } else {
-                emit_error_expr(
+                },
+                _ => emit_error_expr(
                     "unit-discard: optional record literal with unexpected field count".to_string(),
                     RenderTarget::Rust,
-                )
+                ),
             }
         }
         _ => emit_error_expr(
@@ -13848,7 +13863,9 @@ pub fn emit_rust_unit_discarding_stmt(
                     }
                 }
             }
-            ExprData::ExprVar { .. } => v1_rt::concat(
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => v1_rt::concat(
                 emit_typed_expr(
                     texpr.clone(),
                     registry.clone(),
@@ -14534,79 +14551,6 @@ pub fn emit_rust_param_type(
             variant_to_enum.clone(),
             env.clone(),
         )
-    }
-}
-
-pub fn lookup_callee_read_only_params(
-    func: String,
-    scope: Rc<InferScope>,
-    emit_info: Rc<EmitGraphInfo>,
-) -> Rc<BTreeSet<String>> {
-    {
-        let qualified = if v1_rt::string_contains(&func, ".".to_string()) {
-            func.clone()
-        } else {
-            v1_rt::concat(
-                v1_rt::concat(scope.module_name.clone(), ".".to_string()),
-                func.clone(),
-            )
-        };
-        match v1_rt::map_get(&emit_info.read_only_params_index.clone(), qualified.clone()) {
-            Some(m) => m.clone(),
-            None => match v1_rt::map_get(&emit_info.read_only_params_index.clone(), func.clone()) {
-                Some(m2) => m2.clone(),
-                None => v1_rt::rc_empty_set::<String>(),
-            },
-        }
-    }
-}
-
-pub fn build_callee_borrow_positions(
-    callee: Option<Rc<ItemInfo>>,
-    func: String,
-    filled_args: Rc<Vec<Rc<Node>>>,
-    scope: Rc<InferScope>,
-    emit_info: Rc<EmitGraphInfo>,
-) -> Rc<HashMap<String, bool>> {
-    {
-        let si = scope.type_env.clone().source_indices.clone();
-        let callee_read_only =
-            lookup_callee_read_only_params(func.clone(), scope.clone(), emit_info.clone());
-        match callee.clone() {
-            Some(info) => Rc::new(
-                filled_args
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .enumerate()
-                    .map(|(i, v)| (i as i64, v))
-                    .collect::<Vec<_>>(),
-            )
-            .iter()
-            .cloned()
-            .fold(
-                empty_string_bool_map(),
-                |acc: Rc<HashMap<String, bool>>, pair: (i64, Rc<Node>)| {
-                    let idx = pair.0.clone();
-                    let a = pair.1.clone();
-                    match info.params.clone().get(idx.clone() as usize).cloned() {
-                        Some(param) => {
-                            let pname = param_node_name_at(param.clone(), si.clone());
-                            if ((v1_rt::set_contains(&callee_read_only, pname.clone())
-                                && is_rust_string_like(resolved_type(param.clone()), si.clone()))
-                                && is_string_typed_expr(arg_value(a.clone()), si.clone()))
-                            {
-                                v1_rt::rc_map_insert(acc.clone(), (idx.clone()).to_string(), true)
-                            } else {
-                                acc.clone()
-                            }
-                        }
-                        None => acc.clone(),
-                    }
-                },
-            ),
-            None => empty_string_bool_map(),
-        }
     }
 }
 
@@ -17153,7 +17097,14 @@ pub fn rust_empty_map_value_type_str(
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    match map_type.children.clone().get(1 as usize).cloned() {
+    match map_type
+        .children
+        .clone()
+        .iter()
+        .cloned()
+        .skip(1 as usize)
+        .next()
+    {
         Some(value_child) => {
             let rendered = render_rust_type(
                 child_type_node(value_child.clone()),
@@ -18420,7 +18371,14 @@ pub fn rust_call_arg_fail_closed_unwrap(
     func: String,
 ) -> String {
     match callee.clone() {
-        Some(info) => match info.params.clone().get(idx.clone() as usize).cloned() {
+        Some(info) => match info
+            .params
+            .clone()
+            .iter()
+            .cloned()
+            .skip(idx.clone() as usize)
+            .next()
+        {
             Some(param) => {
                 let param_required = (param_node_type_expr(param.clone())
                     .return_cardinality
@@ -18454,7 +18412,7 @@ pub fn emit_typed_call(
             {
                 let get_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
                 let get_list = get_args.clone().first().cloned();
-                let get_idx = get_args.clone().get(1 as usize).cloned();
+                let get_idx = get_args.clone().iter().cloned().skip(1 as usize).next();
                 let get_result = match get_list.clone() {
                     Some(list_arg) => match get_idx.clone() {
                         Some(idx_arg) => {
@@ -18504,8 +18462,16 @@ pub fn emit_typed_call(
                 if ((with_args.clone().len() as i64) < 2) {
                     return "compile_error!(\"with call missing update record\")".to_string();
                 }
-                let update_arg =
-                    arg_value(with_args.clone().get(1 as usize).cloned().clone().unwrap());
+                let update_arg = arg_value(
+                    with_args
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .next()
+                        .clone()
+                        .unwrap(),
+                );
                 let base_str = emit_typed_expr(
                     base_arg.clone(),
                     registry.clone(),
@@ -18699,13 +18665,6 @@ pub fn emit_typed_call(
         );
         let is_rt = v1_rt::map_contains_key(&rt_functions(), func.clone());
         let is_rt_ref_map = v1_rt::map_contains_key(&rt_ref_map_functions(), func.clone());
-        let callee_borrow_positions = build_callee_borrow_positions(
-            callee.clone(),
-            func.clone(),
-            filled_args.clone(),
-            collection_scope.clone(),
-            emit_info.clone(),
-        );
         let arg_strs = Rc::new({
             let mut __result = Vec::new();
             for pair in Rc::new(
@@ -18736,44 +18695,22 @@ pub fn emit_typed_call(
                             v1_rt::concat("&".to_string(), base.clone())
                         }
                     } else {
-                        if v1_rt::map_contains_key(
-                            &callee_borrow_positions,
-                            (idx.clone()).to_string(),
-                        ) {
-                            {
-                                let base = emit_typed_expr_base(
-                                    arg_value(a.clone()),
-                                    registry.clone(),
-                                    collection_scope.clone(),
-                                    depth.clone(),
-                                    shared_types.clone(),
-                                    emit_info.clone(),
-                                );
-                                apply_type_template1(
-                                    sharing_for_target(RenderTarget::Rust)
-                                        .borrow_arg_template
-                                        .clone(),
-                                    base.clone(),
-                                )
-                            }
-                        } else {
-                            {
-                                let base = emit_cloned_arg(
-                                    arg_value(a.clone()),
-                                    registry.clone(),
-                                    collection_scope.clone(),
-                                    depth.clone(),
-                                    shared_types.clone(),
-                                    emit_info.clone(),
-                                );
-                                rust_call_arg_fail_closed_unwrap(
-                                    base.clone(),
-                                    arg_value(a.clone()),
-                                    callee.clone(),
-                                    idx.clone(),
-                                    func.clone(),
-                                )
-                            }
+                        {
+                            let base = emit_cloned_arg(
+                                arg_value(a.clone()),
+                                registry.clone(),
+                                collection_scope.clone(),
+                                depth.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                            );
+                            rust_call_arg_fail_closed_unwrap(
+                                base.clone(),
+                                arg_value(a.clone()),
+                                callee.clone(),
+                                idx.clone(),
+                                func.clone(),
+                            )
                         }
                     }
                 });
@@ -19305,7 +19242,13 @@ pub fn lambda_scope_from_children(
     .fold(scope.clone(), |acc: Rc<InferScope>, pair: (i64, String)| {
         let idx = pair.0.clone();
         let param_name = pair.1.clone();
-        let param_type = match param_nodes.clone().get(idx.clone() as usize).cloned() {
+        let param_type = match param_nodes
+            .clone()
+            .iter()
+            .cloned()
+            .skip(idx.clone() as usize)
+            .next()
+        {
             Some(pn) => match pn.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved {
                     node: resolved_type,
@@ -19355,7 +19298,13 @@ pub fn lambda_param_type_strs(
                 let inferred_type = if (fold_acc_uses_fallback.clone() && (idx.clone() == 0)) {
                     None
                 } else {
-                    match param_nodes.clone().get(idx.clone() as usize).cloned() {
+                    match param_nodes
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(idx.clone() as usize)
+                        .next()
+                    {
                         Some(pn) => match pn.inferred.clone().as_deref().cloned() {
                             Some(InferredNode::Resolved {
                                 node: param_type, ..
@@ -19396,7 +19345,12 @@ pub fn lambda_param_type_strs(
                         None => None,
                     }
                 };
-                let fallback_type = match fallback_types.clone().get(idx.clone() as usize).cloned()
+                let fallback_type = match fallback_types
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(idx.clone() as usize)
+                    .next()
                 {
                     Some(ty) => ty.clone(),
                     None => "_".to_string(),
@@ -19746,7 +19700,7 @@ pub fn emit_rust_fold_method_call(
             scope.type_env.clone().source_indices.clone(),
             acc_type_node.clone(),
         );
-        let fold_lambda_node = match args.clone().get(1 as usize).cloned() {
+        let fold_lambda_node = match args.clone().iter().cloned().skip(1 as usize).next() {
             Some(a) => arg_value(a.clone()),
             None => type_variable_node("".to_string()),
         };
@@ -20012,7 +19966,7 @@ pub fn emit_rust_fold_method_call(
             },
             None => "compile_error!(\"missing fold init argument\")".to_string(),
         };
-        let fold_fn = match args.clone().get(1 as usize).cloned() {
+        let fold_fn = match args.clone().iter().cloned().skip(1 as usize).next() {
             Some(a) => emit_typed_fold_lambda(
                 arg_value(a.clone()),
                 lambda_acc_type_str.clone(),
@@ -20026,7 +19980,7 @@ pub fn emit_rust_fold_method_call(
             None => "compile_error!(\"missing fold function argument\")".to_string(),
         };
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
-        let elem_unused = match args.clone().get(1 as usize).cloned() {
+        let elem_unused = match args.clone().iter().cloned().skip(1 as usize).next() {
             Some(a) => fold_lambda_element_unused(
                 arg_value(a.clone()),
                 scope.type_env.clone().source_indices.clone(),
@@ -20068,7 +20022,7 @@ pub fn fold_lambda_element_unused(
     match (*lambda_expr.expr_data.clone()).clone() {
         ExprData::ExprLambda => {
             let ps = lambda_param_names_at(lambda_expr.clone(), source_indices.clone());
-            match ps.clone().get(1 as usize).cloned() {
+            match ps.clone().iter().cloned().skip(1 as usize).next() {
                 Some(elem_name) => (elem_name.clone() == "_".to_string()),
                 None => false,
             }
@@ -25087,7 +25041,13 @@ pub fn emit_typed_tco_reassign(
             v1_rt::rc_empty_map::<String, bool>(),
             |m: Rc<HashMap<String, bool>>, pair: (i64, Rc<Node>)| {
                 let pname = param_node_name_at(pair.1.clone(), si.clone());
-                let av = match arg_values.clone().get(pair.0.clone() as usize).cloned() {
+                let av = match arg_values
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(pair.0.clone() as usize)
+                    .next()
+                {
                     Some(v) => v.clone(),
                     None => pair.1.clone(),
                 };
@@ -25130,7 +25090,13 @@ pub fn emit_typed_tco_reassign(
             .cloned()
             {
                 __result.push(
-                    match arg_values.clone().get(pair.0.clone() as usize).cloned() {
+                    match arg_values
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(pair.0.clone() as usize)
+                        .next()
+                    {
                         Some(v) => v.clone(),
                         None => pair.1.clone(),
                     },

@@ -5109,11 +5109,15 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", tco_params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1),body_str, "\n}")
   } else {
-    let return_is_unit = is_unit_like(n: inferred)
+    let return_is_unit = return_type_is_unit(n: inferred, source_indices: si)
     emit_fn_def_non_tco(name: name, type_params_str: type_params_str, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: body_emit_info, needs_stacker: needs_stacker, return_is_unit: return_is_unit)
   }
     }
   }
+}
+
+fn return_type_is_unit(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  is_unit_like(n: n) && authored_name_at(source_indices: source_indices, node: n) == "Unit"
 }
 
 fn emit_rust_fn_body_expr(texpr: Node, return_is_unit: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {

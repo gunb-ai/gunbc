@@ -188,7 +188,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
 }
 
 pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> RecursionContext {
-    RecursionContext {}
+    RecursionContext {};
 }
 
 pub fn module_ownership_proofs(m: Rc<TypedModule>) -> Rc<Vec<Rc<OwnershipProof>>> {
