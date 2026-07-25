@@ -1,14 +1,14 @@
 module std.content_hash
 
 
-fn content_hash_atom(value: NonEmptyStr) -> ContentHash {
+fn content_hash_atom(value: std.types.NonEmptyStr) -> std.types.ContentHash {
   atom_identity_hash(value)
 }
 
-fn content_hash_combine(left: ContentHash, right: ContentHash) -> ContentHash {
+fn content_hash_combine(left: std.types.ContentHash, right: std.types.ContentHash) -> std.types.ContentHash {
   hash_combine(left, right)
 }
 
-fn content_hash_tagged(tag: NonEmptyStr, payload: ContentHash) -> ContentHash {
+fn content_hash_tagged(tag: std.types.NonEmptyStr, payload: std.types.ContentHash) -> std.types.ContentHash {
   content_hash_combine(content_hash_atom(value: tag), payload)
 }
