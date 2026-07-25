@@ -87,7 +87,7 @@ import v1.compiler.infer {
 import v1.compiler.infer_emit_info {
   EmitGraphInfo, RustCorpusRepr, HostNative, FaithfulFreeMonoid, TypeSummary, StructRepr, EnumRepr,
   lookup_emit_type_summary, lookup_emit_type_decl, empty_emit_graph_info,
-  emit_info_with_fn_type_context,
+  emit_info_with_fn_type_context, emit_info_with_fn_return,
   is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum, variant_summary_key,
   collect_type_node_import_surface_names
@@ -491,6 +491,135 @@ fn rust_applied_type_base(name: String, corpus_repr: RustCorpusRepr) -> String {
 
 fn rust_normalize_witness_type_text(rendered: String) -> String {
   replace(rendered, "witness<", "v1_rt::Witness<")
+}
+
+fn rust_witness_parent_leaf(parent: String) -> Bool {
+  qualified_last_segment(name: parent) == "Witness"
+}
+
+data rust_witness_variant_arm_names_note: String = "Holds/Violates literals below are the two arms of std.witness.Witness<C> (dag/std/witness.dag) — not minted nicknames. Pattern position still routes v1_rt::Witness via variant_pattern_qualified_path; construction turbofish here keys type-arg resolution off the modeled arm names only."
+
+fn rust_peel_one_rc_type_node(type_node: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  if qualified_last_segment(name: type_node.name) != "Rc" {
+    type_node
+  } else {
+    match type_node.children |> first {
+      Present { value: inner } => inner
+      Absent =>
+        match find_property(props: type_node.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+          Present { value: applied } =>
+            match applied.children |> first {
+              Present { value: inner } => inner
+              Absent => type_node
+            }
+          Absent => type_node
+        }
+    }
+  }
+}
+
+fn rust_peel_all_rc_type_node(type_node: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  if qualified_last_segment(name: type_node.name) == "Rc" {
+    rust_peel_all_rc_type_node(type_node: rust_peel_one_rc_type_node(type_node: type_node, source_indices: source_indices), source_indices: source_indices)
+  } else {
+    type_node
+  }
+}
+
+fn rust_witness_type_arg_admit_rendered(rendered: String, emit_info: EmitGraphInfo) -> String? {
+  if rendered == "_" || rendered == "" { none }
+  else if string_length(s: rendered) == 1 && rust_is_uppercase_letter(c: rendered) && !type_var_in_fn_generic_scope(id: rendered, generic_param_names: emit_info.fn_generic_param_names) { none }
+  else if rust_fold_rendered_type_has_any_spurious_generic(type_str: rendered, generic_param_names: emit_info.fn_generic_param_names) { none }
+  else { Present { value: rendered } }
+}
+
+fn rust_witness_applied_type_arg_node(type_node: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match type_node.children |> first {
+    Present { value: child } => Present { value: child }
+    Absent =>
+      match find_property(props: type_node.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+        Present { value: applied } =>
+          match applied.children |> first {
+            Present { value: child } => Present { value: child }
+            Absent => none
+          }
+        Absent => none
+      }
+  }
+}
+
+fn rust_witness_carrier_from_type_node(type_node: Node, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+  if type_node_has_unbound_type_variable(n: type_node, generic_param_names: emit_info.fn_generic_param_names, source_indices: source_indices) { return none }
+  let peeled = rust_peel_all_rc_type_node(type_node: type_node, source_indices: source_indices)
+  if qualified_last_segment(name: peeled.name) == "Witness" {
+    match rust_witness_applied_type_arg_node(type_node: peeled, source_indices: source_indices) {
+      Present { value: arg_node } =>
+        rust_witness_type_arg_admit_rendered(
+          rendered: render_rust_type(n: arg_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices, emit_info: emit_info),
+          emit_info: emit_info
+        )
+      Absent => none
+    }
+  } else {
+    rust_witness_type_arg_admit_rendered(
+      rendered: render_rust_type(n: peeled, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices, emit_info: emit_info),
+      emit_info: emit_info
+    )
+  }
+}
+
+fn rust_witness_type_arg_render(type_node: Node, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+  rust_witness_carrier_from_type_node(type_node: type_node, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+}
+
+fn rust_witness_type_arg_from_holds_value_field(fields: List<Node>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+  match fields |> filter(f => field_init_node_name_at(n: f, source_indices: source_indices) == "value") |> first {
+    Present { value: f } =>
+      let val_rt = resolved_type(n: field_init_node_value(n: f))
+      match rust_witness_carrier_from_type_node(type_node: val_rt, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
+        Present { value: arg } => Present { value: arg }
+        Absent => rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
+      }
+    Absent => none
+  }
+}
+
+fn rust_witness_type_arg_from_fn_return(emit_info: EmitGraphInfo, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String? {
+  match emit_info.fn_return_type {
+    Present { value: rt } => rust_witness_carrier_from_type_node(type_node: rt, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+    Absent => none
+  }
+}
+
+fn rust_witness_type_arg_for_variant(variant_name: String, resolved_type: Node, fields: List<Node>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+  if variant_name == "Holds" {
+    match rust_witness_type_arg_from_holds_value_field(fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
+      Present { value: arg } => Present { value: arg }
+      Absent => rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
+    }
+  } else if variant_name == "Violates" {
+    match rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices) {
+      Present { value: arg } => Present { value: arg }
+      Absent => rust_witness_carrier_from_type_node(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+    }
+  } else {
+    rust_witness_carrier_from_type_node(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+  }
+}
+
+fn rust_witness_variant_ctor_path(variant_name: String, ctor_name: String, effective_parent: String?, resolved_type: Node, fields: List<Node>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+  match effective_parent {
+    Present { value: parent } =>
+      if !rust_witness_parent_leaf(parent: parent) {
+        concat(qualified_last_segment(name: parent), "::", variant_name)
+      } else {
+        match rust_witness_type_arg_for_variant(variant_name: variant_name, resolved_type: resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
+          Present { value: arg } => concat("Witness::<", arg, ">::", variant_name)
+          Absent => concat("compile_error!(\"witness carrier type arg unresolved for variant ", variant_name, "\")")
+        }
+      }
+    Absent => ctor_name
+  }
 }
 
 fn rust_normalize_partial_function_field_type_text(rendered: String) -> String {
@@ -1977,7 +2106,8 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     read_only_params: empty_set(),
     corpus_repr: base_info.corpus_repr,
     fn_generic_param_names: base_info.fn_generic_param_names,
-    fn_type_env: base_info.fn_type_env
+    fn_type_env: base_info.fn_type_env,
+    fn_return_type: none
   }
   let shared_types = emit_info.shared_types
   let registry = typed.item_registry
@@ -2129,7 +2259,8 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     read_only_params: empty_set(),
     corpus_repr: base_info.corpus_repr,
     fn_generic_param_names: base_info.fn_generic_param_names,
-    fn_type_env: base_info.fn_type_env
+    fn_type_env: base_info.fn_type_env,
+    fn_return_type: none
   }
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
@@ -4436,7 +4567,8 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       read_only_params: fn_read_only,
       corpus_repr: emit_info.corpus_repr,
       fn_generic_param_names: emit_info.fn_generic_param_names,
-      fn_type_env: emit_info.fn_type_env
+      fn_type_env: emit_info.fn_type_env,
+      fn_return_type: emit_info.fn_return_type
     }
 
     let is_effectful = match lookup_item(registry: registry, name: authored_name(env: env, node: item)) {
@@ -5078,7 +5210,10 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     return concat("compile_error!(\"type param name collides with a value param in fn '", name, "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n")
   }
   let generic_param_names = type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
-  let body_emit_info = emit_info_with_fn_type_context(emit_info: emit_info, generic_param_names: generic_param_names, env: scope.type_env)
+  let body_emit_info = emit_info_with_fn_return(
+    emit_info: emit_info_with_fn_type_context(emit_info: emit_info, generic_param_names: generic_param_names, env: scope.type_env),
+    fn_return_type: Present { value: inferred }
+  )
   let value_param_names = value_params |> map(p => p.name)
   let ret_name = authored_name_at(source_indices: si, node: inferred)
   let return_is_bare_generic = (generic_param_names |> filter(g => g == ret_name) |> count) > 0
@@ -5588,8 +5723,11 @@ fn variant_pattern_qualified_path(rust_name: String, resolved_parent: String?) -
   match resolved_parent {
     Present { value: parent } =>
       let parent_leaf = qualified_last_segment(name: parent)
-      if parent_leaf == "Witness" { concat("v1_rt::Witness::", rust_name) }
-      else { concat(parent_leaf, "::", rust_name) }
+      if parent_leaf == "Witness" {
+        concat("v1_rt::Witness::", rust_name)
+      } else {
+        concat(parent_leaf, "::", rust_name)
+      }
     Absent => rust_name
   }
 }
@@ -6700,7 +6838,7 @@ fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemIn
           } else {
             concat(ty_name, "::", child_text, " { .. }")
           }
-        concat("        ", pat, " => ", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", child_text, "\""), corpus_repr: emit_info.corpus_repr), ",")
+        concat("        ", pat, " => ", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", child_text, "\".to_string()"), corpus_repr: emit_info.corpus_repr), ",")
         )
 
         let scrut_ref = if set_contains(shared_types, ty_name) {
@@ -7187,7 +7325,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               read_only_params: emit_info.read_only_params,
               corpus_repr: emit_info.corpus_repr,
               fn_generic_param_names: emit_info.fn_generic_param_names,
-              fn_type_env: emit_info.fn_type_env
+              fn_type_env: emit_info.fn_type_env,
+              fn_return_type: emit_info.fn_return_type
             }
           Absent => emit_info
         }
@@ -7214,7 +7353,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               read_only_params: emit_info.read_only_params,
               corpus_repr: emit_info.corpus_repr,
               fn_generic_param_names: emit_info.fn_generic_param_names,
-              fn_type_env: emit_info.fn_type_env
+              fn_type_env: emit_info.fn_type_env,
+              fn_return_type: emit_info.fn_return_type
             }
           Absent => emit_info
         }
@@ -7655,6 +7795,10 @@ fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summ
   is_fm && empty_fillable && cons_fillable
 }
 
+fn freemonoid_tail_let_from_fm(tail_bind: String) -> String {
+  if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect()); ") }
+}
+
 fn freemonoid_empty_branch_body(empty_arm: Node?, catchall: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match empty_arm {
     Present { value: ea } => emit_typed_expr(texpr: arm_body(n: ea), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -7674,7 +7818,7 @@ fn freemonoid_nonempty_branch_body(cons_arm: Node?, catchall: Node?, si: Map<Str
       let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
       let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
       let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
-      let tail_let = if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ") }
+      let tail_let = freemonoid_tail_let_from_fm(tail_bind: tail_bind)
       concat(head_let, tail_let, emit_typed_expr(texpr: arm_body(n: ca), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
     Absent => match catchall {
       Present { value: wa } =>
@@ -8236,10 +8380,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
       } else { tn }
       let display_tn = if optional_variant { rust_tn }
         else {
-          match effective_parent {
-            Present { value: resolved_parent_enum } => concat(resolved_parent_enum, "::", rust_tn)
-            Absent => ctor_name
-          }
+          rust_witness_variant_ctor_path(variant_name: rust_tn, ctor_name: ctor_name, effective_parent: effective_parent, resolved_type: resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: si)
         }
       if optional_variant && is_some_like_variant_name(name: tn) && fields |> count == 1 {
         match fields |> first {
@@ -8533,7 +8674,7 @@ fn freemonoid_tco_nonempty_branch_body(cons_arm: Node?, catchall: Node?, si: Map
       let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
       let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
       let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
-      let tail_let = if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ") }
+      let tail_let = freemonoid_tail_let_from_fm(tail_bind: tail_bind)
       concat(head_let, tail_let, emit_typed_tco_expr(texpr: arm_body(n: ca), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
     Absent => match catchall {
       Present { value: wa } =>
