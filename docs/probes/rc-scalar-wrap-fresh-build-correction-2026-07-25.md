@@ -4,9 +4,10 @@ Doc-only receipt. **No emitter code changes in this PR** — the actual fix
 (`value_inferred_type_is_rc_wrapped` in `emit_data_def_body`,
 `src/v1/05_emit_rust.dag`) is already merged via #7190. This PR's earlier commit
 added temporary DEBUG instrumentation to verify that fix's effect; that
-instrumentation was reverted in `fd0f7b1481`, and `git diff origin/main...HEAD`
-is now empty except for this file — confirming there is no residual code delta
-to land here.
+instrumentation was reverted in `fd0f7b1481`. The full diff vs `main` is this
+file plus the `HandAuthoredDocBind` row registering it in
+`dag/gunbc/doc_graph_roots.dag` (required by the doc-reachability gate) —
+no emitter/hand-Rust/shell delta.
 
 ## 1. Corrected measurement: #7190 is NOT a no-op
 
