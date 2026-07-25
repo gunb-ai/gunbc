@@ -228,13 +228,100 @@ gates (`ci_floor_plan_witness_test.dag` checked); `runnable_excludes_corpus_co_r
 on `profile.memory`, orthogonal to this flag. Falsifiable claim pending: a real CI floor run
 must show batch-4 wall time drop from the ~18.7min baseline — not yet obtained at PR-open time.
 
-## 7. Provenance
+## 7. The measured root is the ASSEMBLY, not the loader (post-flip lane, 2026-07-25)
+
+The #7204 budget stopgap was dispatched as "#6848's once-per-entry bare-reference fixpoint".
+The `[resolve-split]` receipt the executor already prints refutes that reading and names the
+real row.
+
+### 7.1 The loader class is already dissolved
+
+| arm | run | witnesses | resolve wall | `load` | `reconcile_assembly` |
+|---|---|---:|---:|---:|---:|
+| PRE-flip (#7137) | `30081341899` | 2310 | 1,358,819ms | **0.6ms** | 1,307,224ms (96.2%) |
+| POST-flip (#7188) | `30142221249` | 2336 | 1,654,155ms | **1.0ms** | 1,583,620ms (95.7%) |
+
+`load` — `load_sources_for_entry_with_pool`, i.e. the both-closure fixpoint §2 names — is
+**1ms across a whole run**. #7056 (`BothClosureEdgeIndex`, per-process edge precompute) and
+#6999 (entry-closure memo) already took it to zero. The entire post-flip delta
+(+295s of resolve wall, ~+112ms/witness) lands in `reconcile_assembly`: the whole-closure
+`ResolvedGraph` view rebuilt per entry *even at 100% typed-cache hits*.
+
+### 7.2 Sub-row attribution (this PR's instrument)
+
+`reconcile_assembly` was one undifferentiated number covering ~96% of the wall — the same
+condition `ResolveStageNanos`'s own doc-comment was written to end one level up. This PR
+splits it into named rows (`schedule`, `probe`, `registry`, `services`, `rewire` — with the
+three `rewire_*` passes separated — and `emit_info`; `reconcile_assembly` keeps the residue)
+and prints them as `[assembly-split]` beside `[resolve-split]` in both `claim_executor`
+(discovery summary) and `claim_batch` (new `cli_run::resolve_stage_totals`, a per-worker
+cumulative fold — `claim_batch` has no per-entry receipt list to sum).
+
+Local receipt, 79 discovery entries (`dag/test/claim`, `claim_batch --entry/--function`):
+
+```
+[resolve-split]  load=36215.8 parse=3447.9 resolve=1165.0 normalize=430.4
+                 typecheck=71583.8 parent_envs=5.6 reconcile_assembly=38062.6 ownership=422.7
+[assembly-split] schedule=29.4 probe=56.2 registry=80.3 services=3305.9
+                 rewire=192867.4 (type_env=1395.9 import_str=191090.4 func_env=381.1)
+                 emit_info=3632.2 residue=38062.6
+```
+
+**One row is 58% of the entire resolve wall**: `rewire_type_env_import_str_binding_identity`,
+191.1s — 99% of all rewire time, 2.4s/entry, against 1.8s for the other two passes combined.
+
+### 7.3 The cost-shape defect
+
+`direct_import_exporter_count(m, name, …)` asked `module_exports_type_name(parent, name)`,
+which was a **linear scan**: `map_values` allocates a `Vec` of every binding in the parent's
+env, then filters by name. It ran once per **(consumer module × inherited key × direct
+import)**, so the pass was O(modules × keys × imports × |parent bindings|). The namespace-only
+flip widened the inherited-key sets, which is why the same pass grew ~20% at #7178 — the flip
+did not add a mechanism, it enlarged the input to one that was already quadratic.
+
+The set of type names a module exports is **one derived fact**, and it already existed twice
+in the same function: as the caller's per-module `local_names` fold, and as this rescan.
+Fix (`src/v1/04_infer.dag`, regen-emitted to `v1_compiler_infer.rs`): lift
+`module_exported_type_names` as the single authority, build a `module → Set<String>` index
+once per pass, hoist each consumer's direct-import name sets out of the per-key loop, and make
+`direct_import_exporter_count` a membership test — O(direct imports). The predicate is
+unchanged by construction; `module_exports_type_name` is deleted (no remaining consumer).
+
+### 7.4 Receipt (by execution)
+
+Same 79 entries, same binary path, after the fix:
+
+```
+[resolve-summary] 79 resolve(s) in 160418ms          (was 331923ms — −51.7%)
+[assembly-split]  rewire=18582.4 (type_env=1403.6 import_str=16804.3 func_env=374.5)
+                                                     (import_str was 191090.4 — −91.2%)
+```
+
+All 79 witness verdicts byte-identical before vs after (`PASS`/`FAIL` set diffed, empty).
+Corpus-scale before/after: the PR's own floor run against main's `[resolve-split]` line.
+
+### 7.5 Honest residue
+
+This does **not** close #6848's named class — it shows the class is no longer where the wall
+is. Post-fix, the remaining per-entry assembly is attributed by the same sub-rows: `residue`
+(the uninstrumented reconcile remainder — symbol-index build, variant surfaces, pass-2
+assembly), then `rewire`, `emit_info`, `services`. Those are the next lane's targets, and they
+are now *named and counted* rather than pooled in one number.
+
+**Dissolution trigger:** when a post-merge main floor run shows batch-3 back under the
+pre-flip 1680s basis, the #7204 stopgap row (`gunbc.ci_spec`, 2100s) re-tightens by ordinary
+receipt note — that re-tighten is this change's dissolution event.
+
+## 8. Provenance
 
 - Log-diff receipts: bright-seal-219 (this session), by execution on CI logs.
 - Post-landing validation §5: bright-seal-219, runs `29763408563` / `29819122813` / `29855080611` (2026-07-21).
 - Memory-side bisection: eager-pike-178 / #6953 (`c10f4b091`).
 - Parent coordination: sunny-wolf-225 mandate (msg_fdeee8c5); lane close validation (msg_1879f052).
 - §6 residual fix: proud-bear-438 (dashboard `adhoc-21c65e1a-2ff`), PR #7030.
+- §7 assembly attribution + import-identity rewire fix: lively-ferret-823 (dashboard
+  `adhoc-d4240652-b27`), PR #7205 — CI `[resolve-split]` diff (runs `30081341899` /
+  `30142221249`) and the local 79-entry before/after, both by execution.
 
 Related: [floor-memory-pool-parse-regression-diagnosis.md](floor-memory-pool-parse-regression-diagnosis.md) ·
 [namespace-resolution-design.md](namespace-resolution-design.md) §PR-5b ·
