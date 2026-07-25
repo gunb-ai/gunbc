@@ -13,6 +13,7 @@ import extdeps.os.cloud_init {
   cloud_init_is_disabled,
   cloud_init_generated_file_state,
   ubuntu_live_installer_disable_marker_text,
+  cloud_init_disabled_marker_path,
   cloud_init_generated_netplan_path,
 }
 import extdeps.os.netplan {
@@ -81,7 +82,7 @@ fn netplan_file_ownership(d: CloudInitDisposition) -> CloudInitGeneratedFileStat
 data srv4_incident_note: String = "The srv4 readings of 2026-07-25, kept as cited fixtures because they are the discriminating input for this whole module and because a synthetic pair could be made to satisfy the fold by accident. Observed live over the BMC serial console after the host dropped off the network: cloud-init disabled by the Ubuntu live installer's marker file; /etc/netplan/50-cloud-init.yaml present and correct, naming enP3p3s0f1 with dhcp4 true and critical true; enP3p3s0f1 administratively UP with qdisc mq and carrier 0; the machine's unused sibling ports at qdisc noop. The fault survived a graceful power-down, a twenty-second de-energised hold and a power-up, which is what rules out NIC firmware or driver state and leaves the cable, the switch port or the PHY."
 
 data srv4_cloud_init_disposition: CloudInitDisposition = CloudInitDisabledByMarkerFile {
-  path: "/etc/cloud/cloud-init.disabled",
+  path: cloud_init_disabled_marker_path,
   reason: ubuntu_live_installer_disable_marker_text,
 }
 
