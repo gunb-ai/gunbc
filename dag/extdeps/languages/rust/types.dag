@@ -111,14 +111,31 @@ data common_trait_bounds: List<String> = [
 data where_clause_template: String = "where\n    \{constraints\}"
 data trait_bound_template: String = "\{type\}: \{bound\}"
 
-data integer_types: List<String> = [
-  "i8", "i16", "i32", "i64", "i128", "isize",
-  "u8", "u16", "u32", "u64", "u128", "usize"
-]
+import extdeps.languages.rust.primitives { rust_grounding_primitives, RustPrimitive, IntegerPrimitive, NonIntegerPrimitive }
 
-data float_types: List<String> = ["f32", "f64"]
+data rust_types_name_catalog_dissolve_on: String = "dissolve-on: rust.types.integer_types/float_types — deleted bare String name lists; derive type-name catalogs from extdeps.languages.rust.primitives rust_grounding_primitives.target_name rows."
 
-data rust_cast_syntax: CastSyntax = {
+fn rust_integer_type_names() -> List<String> {
+  fold(
+    rust_grounding_primitives,
+    init: [],
+    f: (acc, row) => match row {
+      IntegerPrimitive { target_name: name, .. } => concat(acc, [name])
+      _ => acc
+    },
+  )
+}
+
+fn rust_float_type_names() -> List<String> {
+  fold(
+    rust_grounding_primitives,
+    init: [],
+    f: (acc, row) => match row {
+      NonIntegerPrimitive { target_name: name, algebra: ApproximateFieldAlgebra, .. } => concat(acc, [name])
+      _ => acc
+    },
+  )
+}
   template: "\{expr\} as \{type\}",
   cast_rules: [
 
