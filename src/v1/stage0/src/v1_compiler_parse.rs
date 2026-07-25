@@ -1800,7 +1800,7 @@ pub fn parser_progress_flag_var(
     }
 }
 
-pub fn parser_helper_identity(callee: &str) -> Option<ParserHelperIdentity> {
+pub fn parser_helper_identity(callee: String) -> Option<ParserHelperIdentity> {
     if (callee.clone() == "skip_newlines".to_string()) {
         Some(ParserHelperIdentity::ParserHelperSkipNewlines)
     } else {
@@ -1822,7 +1822,7 @@ pub fn parser_passthrough_state_expr(
 ) -> Option<Rc<Node>> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
-            match parser_helper_identity(&expr_call_func_at(expr.clone(), source_indices.clone())) {
+            match parser_helper_identity(expr_call_func_at(expr.clone(), source_indices.clone())) {
                 Some(ParserHelperIdentity::ParserHelperSkipNewlines) => {
                     parser_helper_state_arg_expr(expr.clone(), source_indices.clone())
                 }
@@ -1852,7 +1852,7 @@ pub fn parser_result_witness(
                 ref __s if __s == "advance" => Rc::new(ParserResultWitness::ParserWitnessAdvance),
                 ref __s if __s == "expect" => Rc::new(ParserResultWitness::ParserWitnessExpect),
                 ref __s if __s == "eat" => Rc::new(ParserResultWitness::ParserWitnessEat),
-                callee => match parser_helper_identity(&callee) {
+                callee => match parser_helper_identity(callee.clone()) {
                     Some(helper) => Rc::new(ParserResultWitness::ParserWitnessCall {
                         callee: Rc::new(ParserCallIdentity::ParserCallHelper {
                             helper: helper.clone(),
@@ -1870,7 +1870,7 @@ pub fn parser_result_witness(
     }
 }
 
-pub fn leaf_type_node(name: &str, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn leaf_type_node(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
         name: name.clone(),
         span: span.clone(),
@@ -1938,7 +1938,7 @@ pub fn parse_type_angle_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                 let r = parse_int_literal_value(tokens.clone());
                 if has_err(r.err.clone()) {
                     Rc::new(TypeResult {
-                        type_expr: leaf_type_node(&"".to_string(), span.clone()),
+                        type_expr: leaf_type_node("".to_string(), span.clone()),
                         tokens: r.tokens.clone(),
                         ctx: ctx.clone(),
                         err: r.err.clone(),
@@ -3191,7 +3191,7 @@ pub fn parse_type_after_kw(
                         parse_type_body_after_eq(
                             tokens.clone(),
                             ctx.clone(),
-                            &name,
+                            name.clone(),
                             name_span.clone(),
                             start_span.clone(),
                             type_params.clone(),
@@ -3206,7 +3206,7 @@ pub fn parse_type_after_kw(
                             connective: Connective::NoConnective,
                             params: type_params.clone(),
                             inferred: Some(Rc::new(InferredNode::Resolved {
-                                node: leaf_type_node(&name, name_span.clone()),
+                                node: leaf_type_node(name.clone(), name_span.clone()),
                             })),
                             return_cardinality: Cardinality::Required,
                             uses: Rc::new(vec![]),
@@ -3348,7 +3348,7 @@ pub fn parse_type_body_from_prefix(
                         parse_type_body_after_eq(
                             tokens.clone(),
                             ctx.clone(),
-                            &name,
+                            name.clone(),
                             name_span.clone(),
                             start_span.clone(),
                             type_params.clone(),
@@ -3363,7 +3363,7 @@ pub fn parse_type_body_from_prefix(
                             connective: Connective::NoConnective,
                             params: type_params.clone(),
                             inferred: Some(Rc::new(InferredNode::Resolved {
-                                node: leaf_type_node(&name, name_span.clone()),
+                                node: leaf_type_node(name.clone(), name_span.clone()),
                             })),
                             return_cardinality: Cardinality::Required,
                             uses: Rc::new(vec![]),
@@ -3393,7 +3393,7 @@ pub fn parse_type_body_from_prefix(
 pub fn parse_type_body_after_eq(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
-    name: &str,
+    name: String,
     name_span: Rc<SourceSpan>,
     start_span: Rc<SourceSpan>,
     type_params: Rc<Vec<Rc<Node>>>,
@@ -3437,7 +3437,7 @@ pub fn parse_type_body_after_eq(
                 let rv = parse_variant_fields(
                     tokens.clone(),
                     ctx.clone(),
-                    &first_name,
+                    first_name.clone(),
                     first_name_span.clone(),
                 );
                 if has_err(rv.err.clone()) {
@@ -3518,7 +3518,7 @@ pub fn parse_type_body_after_eq(
                                 let r = parse_variant_fields(
                                     tokens.clone(),
                                     ctx.clone(),
-                                    &first_name,
+                                    first_name.clone(),
                                     first_name_span.clone(),
                                 );
                                 if has_err(r.err.clone()) {
@@ -3586,7 +3586,7 @@ pub fn parse_type_body_after_eq(
                                 let r = finish_type_expr_from_name(
                                     tokens.clone(),
                                     ctx.clone(),
-                                    &first_name,
+                                    first_name.clone(),
                                     first_name_span.clone(),
                                 );
                                 if has_err(r.err.clone()) {
@@ -4351,7 +4351,7 @@ pub fn parse_positional_variant_type_fields(
 pub fn parse_variant_fields(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
-    vname: &str,
+    vname: String,
     vname_span: Rc<SourceSpan>,
 ) -> Rc<VariantResult> {
     {
@@ -4490,7 +4490,7 @@ pub fn parse_more_variants_acc(
                 let r2 = parse_variant_fields(
                     r.tokens.clone(),
                     ctx.clone(),
-                    &r.name.clone(),
+                    r.name.clone(),
                     r.span.clone(),
                 );
                 if has_err(r2.err.clone()) {
@@ -4540,7 +4540,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                 );
                 if has_err(r.err.clone()) {
                     return Rc::new(TypeResult {
-                        type_expr: leaf_type_node(&"".to_string(), span.clone()),
+                        type_expr: leaf_type_node("".to_string(), span.clone()),
                         tokens: r.tokens.clone(),
                         ctx: r.ctx.clone(),
                         err: r.err.clone(),
@@ -4550,7 +4550,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                 let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
                 if has_err(r2.err.clone()) {
                     return Rc::new(TypeResult {
-                        type_expr: leaf_type_node(&"".to_string(), span.clone()),
+                        type_expr: leaf_type_node("".to_string(), span.clone()),
                         tokens: r2.tokens.clone(),
                         ctx: r.ctx.clone(),
                         err: r2.err.clone(),
@@ -4599,7 +4599,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                     )
                 } else {
                     Rc::new(TypeResult {
-                        type_expr: leaf_type_node(&"".to_string(), span.clone()),
+                        type_expr: leaf_type_node("".to_string(), span.clone()),
                         tokens: tokens.clone(),
                         ctx: ctx.clone(),
                         err: Some(parse_error(
@@ -4613,7 +4613,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                 let r = parse_dotted_ident(tokens.clone());
                 if has_err(r.err.clone()) {
                     return Rc::new(TypeResult {
-                        type_expr: leaf_type_node(&"".to_string(), span.clone()),
+                        type_expr: leaf_type_node("".to_string(), span.clone()),
                         tokens: r.tokens.clone(),
                         ctx: ctx.clone(),
                         err: r.err.clone(),
@@ -4622,12 +4622,12 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                 finish_type_expr_from_name(
                     r.tokens.clone(),
                     ctx.clone(),
-                    &r.name.clone(),
+                    r.name.clone(),
                     r.span.clone(),
                 )
             }
             _ => Rc::new(TypeResult {
-                type_expr: leaf_type_node(&"".to_string(), span.clone()),
+                type_expr: leaf_type_node("".to_string(), span.clone()),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
                 err: Some(parse_error(
@@ -4645,7 +4645,7 @@ pub fn parse_callable_type_expr(
     start_span: Rc<SourceSpan>,
 ) -> Rc<TypeResult> {
     {
-        let dummy_te = leaf_type_node(&"".to_string(), start_span.clone());
+        let dummy_te = leaf_type_node("".to_string(), start_span.clone());
         let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
         if has_err(r.err.clone()) {
             return Rc::new(TypeResult {
@@ -4789,11 +4789,11 @@ pub fn parse_callable_param_types(
 pub fn finish_type_expr_from_name(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
-    type_name: &str,
+    type_name: String,
     start_span: Rc<SourceSpan>,
 ) -> Rc<TypeResult> {
     {
-        let dummy_te = leaf_type_node(&type_name, start_span.clone());
+        let dummy_te = leaf_type_node(type_name.clone(), start_span.clone());
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLt))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = parse_type_angle_arg(__ec.clone(), ctx.clone());
@@ -4851,7 +4851,7 @@ pub fn finish_type_expr_from_name(
                 )
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
-                let te = leaf_type_node(&type_name, start_span.clone());
+                let te = leaf_type_node(type_name.clone(), start_span.clone());
                 maybe_optional(tokens.clone(), ctx.clone(), te.clone(), start_span.clone())
             }
         }
@@ -4902,7 +4902,7 @@ pub fn collect_type_param_names(
             let span = r.span.clone();
             let param = make_param_node(
                 r.name.clone(),
-                leaf_type_node(&r.name.clone(), span.clone()),
+                leaf_type_node(r.name.clone(), span.clone()),
                 None,
                 span.clone(),
                 span.clone(),
@@ -5085,7 +5085,7 @@ pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldRe
         let start_span = token_span(token_stream_first(tokens.clone()));
         let dummy_field = make_field_node(
             "".to_string(),
-            leaf_type_node(&"".to_string(), start_span.clone()),
+            leaf_type_node("".to_string(), start_span.clone()),
             Cardinality::Required,
             None,
             None,
@@ -5924,7 +5924,7 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
         let start_span = token_span(token_stream_first(tokens.clone()));
         let dummy = make_resource_use_node(
             "".to_string(),
-            leaf_type_node(&"".to_string(), start_span.clone()),
+            leaf_type_node("".to_string(), start_span.clone()),
             start_span.clone(),
             start_span.clone(),
         );
@@ -9858,7 +9858,7 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
         let start_span = token_span(token_stream_first(tokens.clone()));
         let dummy_param = make_param_node(
             "".to_string(),
-            leaf_type_node(&"".to_string(), start_span.clone()),
+            leaf_type_node("".to_string(), start_span.clone()),
             None,
             start_span.clone(),
             start_span.clone(),
@@ -10956,7 +10956,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
                                                 {
                                                     let kw_name = tok_keyword_to_name(tok.clone());
                                                     match kw_name.clone() {
-    Some(n) => parse_ident_expr(tokens.clone(), ctx.clone(), &n),
+    Some(n) => parse_ident_expr(tokens.clone(), ctx.clone(), n.clone()),
     None => Rc::new(ExprResult {
     expr: parse_recovery_expr(span.clone(), format!("expected expression, found keyword '{}'", kw_text.clone())),
     tokens: tokens.clone(),
@@ -11048,7 +11048,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
             Some(TokenShape::ShCaret) => parse_caret_expr(tokens.clone(), ctx.clone()),
             Some(TokenShape::ShIdent) => {
                 let n = tok.clone().unwrap().text.clone();
-                parse_ident_expr(tokens.clone(), ctx.clone(), &n)
+                parse_ident_expr(tokens.clone(), ctx.clone(), n.clone())
             }
             Some(TokenShape::ShLParen) => parse_paren_expr(tokens.clone(), ctx.clone()),
             Some(TokenShape::ShLBracket) => parse_list_literal(tokens.clone(), ctx.clone()),
@@ -11161,7 +11161,7 @@ pub fn parse_lambda_stmts(
 pub fn parse_ident_expr(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
-    name: &str,
+    name: String,
 ) -> Rc<ExprResult> {
     {
         let span = token_span(token_stream_first(tokens.clone()));
@@ -11218,7 +11218,7 @@ pub fn is_uppercase_start(name: String) -> bool {
     }
 }
 
-pub fn is_variant_pattern_start(name: &str) -> bool {
+pub fn is_variant_pattern_start(name: String) -> bool {
     if v1_rt::contains(name.clone(), ".".to_string()) {
         true
     } else {
@@ -12657,7 +12657,7 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
                         err: None,
                     })
                 } else {
-                    if is_variant_pattern_start(&n) {
+                    if is_variant_pattern_start(n.clone()) {
                         parse_variant_pattern(r.tokens.clone(), ctx.clone(), n.clone())
                     } else {
                         Rc::new(PatternResult {

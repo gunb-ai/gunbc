@@ -561,7 +561,7 @@ pub fn escape_string_literal_body(s: String) -> String {
     }
 }
 
-pub fn has_mock_prefix(name: &str) -> bool {
+pub fn has_mock_prefix(name: String) -> bool {
     if (v1_rt::string_length(&name) < 5) {
         false
     } else {
@@ -597,7 +597,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                         if {
                                             let mut __found = false;
                                             for p in c.properties.clone().iter().cloned() {
-                                                if has_mock_prefix(&field_init_node_name_at(
+                                                if has_mock_prefix(field_init_node_name_at(
                                                     p.clone(),
                                                     tm.type_env.clone().source_indices.clone(),
                                                 )) {
@@ -633,7 +633,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                         mock_field_inits: Rc::new({
                                             let mut __result = Vec::new();
                                             for p in c.properties.clone().iter().cloned() {
-                                                if has_mock_prefix(&field_init_node_name_at(
+                                                if has_mock_prefix(field_init_node_name_at(
                                                     p.clone(),
                                                     tm.type_env.clone().source_indices.clone(),
                                                 )) {

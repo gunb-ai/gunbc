@@ -140,7 +140,7 @@ pub fn coerce_primitive_type_dotted_fallback_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn coerce_primitive_type(target: RenderTarget, dag_name: &str) -> String {
+pub fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
     match lookup_checkpoint(target.clone(), dag_name.clone()) {
         Some(cp) => cp.target_type.clone(),
         None => qualified_last_segment(dag_name.clone()),
@@ -384,8 +384,8 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
                     (*{
                         let inhs =
                             unique_inhabitants_for_template_tests(target_inhabitants(t.clone()));
-                        let int_target = coerce_primitive_type(t.clone(), &"Int".to_string());
-                        let str_target = coerce_primitive_type(t.clone(), &"String".to_string());
+                        let int_target = coerce_primitive_type(t.clone(), "Int".to_string());
+                        let str_target = coerce_primitive_type(t.clone(), "String".to_string());
                         Rc::new({
                             let mut __result = Vec::new();
                             for inh in inhs.clone().iter().cloned() {

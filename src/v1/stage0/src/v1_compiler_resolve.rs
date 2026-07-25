@@ -212,7 +212,7 @@ pub fn resolve_module_imports(
                 __result.push(resolve_import(
                     imp.clone(),
                     module_index.clone(),
-                    &authored_name_at(source_indices.clone(), module.clone()),
+                    authored_name_at(source_indices.clone(), module.clone()),
                     export_sets.clone(),
                     source_indices.clone(),
                 ));
@@ -262,7 +262,7 @@ pub struct ImportResolveResult {
 pub fn resolve_import(
     import: Rc<Node>,
     module_index: Rc<HashMap<String, Rc<Node>>>,
-    importing_module: &str,
+    importing_module: String,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ImportResolveResult> {
@@ -480,7 +480,7 @@ pub struct TopoResult {
 
 pub fn adjacency_add_edge(
     adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
-    from_module: &str,
+    from_module: String,
     to_module: String,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
@@ -559,7 +559,7 @@ pub fn topological_sort(
         let adjacency = explicit_edges.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             |acc: Rc<HashMap<String, Rc<Vec<String>>>>, edge: Rc<DepEdge>| {
-                adjacency_add_edge(acc, &edge.from_module.clone(), edge.to_module.clone())
+                adjacency_add_edge(acc, edge.from_module.clone(), edge.to_module.clone())
             },
         );
         let in_degree_map = modules.clone().iter().cloned().fold(

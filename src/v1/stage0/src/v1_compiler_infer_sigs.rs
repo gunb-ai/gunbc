@@ -190,7 +190,7 @@ pub fn lookup_resolved_sig_unique_across_parents(
 
 pub fn lookup_resolved_sig_with_telemetry(
     env: Rc<ResolvedFuncEnv>,
-    name: &str,
+    name: String,
 ) -> Option<Rc<ResolvedFuncSig>> {
     {
         let scan = env.parents.clone().iter().cloned().fold(
@@ -234,7 +234,7 @@ pub fn lookup_resolved_sig_with_telemetry(
     }
 }
 
-pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: &str) -> Rc<FuncSigLookup> {
+pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Rc<FuncSigLookup> {
     match v1_rt::map_get(&env.local.clone(), name.clone()) {
         Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() }),
         None => {
@@ -243,7 +243,7 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: &str) -> Rc<FuncSigLo
             } else {
                 {
                     let first_hit = if v1_rt::resolution_silent_pick_is_enabled() {
-                        lookup_resolved_sig_with_telemetry(env.clone(), &name)
+                        lookup_resolved_sig_with_telemetry(env.clone(), name.clone())
                     } else {
                         env.parents.clone().iter().cloned().fold(
                             none_resolved_sig(),
@@ -280,7 +280,7 @@ pub fn collect_func_call_edges(
             __result.extend(
                 (*if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
                     collect_calls_in_expr(
-                        &authored_name_at(source_indices.clone(), item.clone()),
+                        authored_name_at(source_indices.clone(), item.clone()),
                         item.body.clone().clone().unwrap(),
                         local_func_set.clone(),
                         source_indices.clone(),
@@ -297,7 +297,7 @@ pub fn collect_func_call_edges(
 }
 
 pub fn collect_calls_in_expr(
-    caller: &str,
+    caller: String,
     texpr: Rc<Node>,
     local_func_set: Rc<HashMap<String, bool>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -322,7 +322,7 @@ pub fn collect_calls_in_expr(
             for child in texpr.children.clone().iter().cloned() {
                 __result.extend(
                     (*collect_calls_in_expr(
-                        &caller,
+                        caller.clone(),
                         child.clone(),
                         local_func_set.clone(),
                         source_indices.clone(),
@@ -340,7 +340,7 @@ pub fn collect_calls_in_expr(
 
 pub fn func_reaches_self(
     root: String,
-    current: &str,
+    current: String,
     call_edges: Rc<Vec<Rc<CallEdge>>>,
     visited: Rc<HashMap<String, bool>>,
 ) -> bool {
@@ -376,7 +376,7 @@ pub fn func_reaches_self(
                         } else {
                             func_reaches_self(
                                 root.clone(),
-                                &c,
+                                c.clone(),
                                 call_edges.clone(),
                                 next_visited.clone(),
                             )
@@ -704,7 +704,7 @@ pub fn resolve_func_sigs(
             declared_sigs.clone(),
             call_edges.clone(),
             local_func_set.clone(),
-            &module_name,
+            module_name.clone(),
             Rc::new(vec![]),
             flatten_parent_envs(parent_envs.clone()),
             (local_func_names.clone().len() as i64),

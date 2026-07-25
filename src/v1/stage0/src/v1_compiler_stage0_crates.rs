@@ -300,7 +300,7 @@ pub enum Stage0CrateBoundaryEmitOutcome {
 }
 
 pub fn stage0_lookup_module_owner_package_name(
-    module_basename: &str,
+    module_basename: String,
 ) -> Rc<Stage0ModuleOwnerLookup> {
     {
         let matches = Rc::new({
@@ -351,7 +351,7 @@ pub fn stage0_lookup_module_owner_package_name(
     }
 }
 
-pub fn stage0_lookup_package_crate_dir(package_name: &str) -> Rc<Stage0PackageCrateDirLookup> {
+pub fn stage0_lookup_package_crate_dir(package_name: String) -> Rc<Stage0PackageCrateDirLookup> {
     {
         let matches = Rc::new({
             let mut __result = Vec::new();
@@ -530,7 +530,7 @@ pub fn stage0_reexport_path_dependencies_outcome(
                 },
             ),
             Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk { deps: deps, .. } => {
-                match (*stage0_lookup_package_crate_dir(&pkg)).clone() {
+                match (*stage0_lookup_package_crate_dir(pkg.clone())).clone() {
                     Stage0PackageCrateDirLookup::Stage0PackageCrateDirFound {
                         crate_dir: crate_dir,
                         ..
@@ -780,7 +780,7 @@ pub fn emit_stage0_crate_manifest(spec: Rc<Stage0CrateSpec>) -> Rc<TextFile> {
     }
 }
 
-pub fn stage0_crate_mod_include(module_basename: &str) -> String {
+pub fn stage0_crate_mod_include(module_basename: String) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -807,7 +807,7 @@ pub fn render_stage0_foundation_lib(spec: Rc<Stage0CrateSpec>) -> String {
         let includes = Rc::new({
             let mut __result = Vec::new();
             for m in spec.modules.clone().iter().cloned() {
-                __result.push(stage0_crate_mod_include(&m));
+                __result.push(stage0_crate_mod_include(m.clone()));
             }
             __result
         })
@@ -866,7 +866,7 @@ pub fn render_stage0_layered_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
         let includes = Rc::new({
             let mut __result = Vec::new();
             for m in spec.modules.clone().iter().cloned() {
-                __result.push(stage0_crate_mod_include(&m));
+                __result.push(stage0_crate_mod_include(m.clone()));
             }
             __result
         })
@@ -913,42 +913,46 @@ pub fn stage0_emit_shell_module_reexports_outcome(
             ),
             Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk {
                 lines: lines, ..
-            } => match (*stage0_lookup_module_owner_package_name(&module_basename)).clone() {
-                Stage0ModuleOwnerLookup::Stage0ModuleOwnerFound {
-                    package_name: owner,
-                    ..
-                } => Rc::new(
-                    Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk {
-                        lines: v1_rt::concat(
-                            lines.clone(),
-                            Rc::new(vec![v1_rt::concat(
-                                v1_rt::concat(
+            } => {
+                match (*stage0_lookup_module_owner_package_name(module_basename.clone())).clone() {
+                    Stage0ModuleOwnerLookup::Stage0ModuleOwnerFound {
+                        package_name: owner,
+                        ..
+                    } => Rc::new(
+                        Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk {
+                            lines: v1_rt::concat(
+                                lines.clone(),
+                                Rc::new(vec![v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
                                                 v1_rt::concat(
-                                                    "pub mod ".to_string(),
-                                                    module_basename.clone(),
+                                                    v1_rt::concat(
+                                                        "pub mod ".to_string(),
+                                                        module_basename.clone(),
+                                                    ),
+                                                    " {\n    pub use ".to_string(),
                                                 ),
-                                                " {\n    pub use ".to_string(),
+                                                stage0_package_name_to_rust_ident(owner.clone()),
                                             ),
-                                            stage0_package_name_to_rust_ident(owner.clone()),
+                                            "::".to_string(),
                                         ),
-                                        "::".to_string(),
+                                        module_basename.clone(),
                                     ),
-                                    module_basename.clone(),
-                                ),
-                                "::*;\n}".to_string(),
-                            )]),
-                        ),
-                    },
-                ),
-                Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused { cause: cause, .. } => Rc::new(
-                    Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused {
-                        cause: cause.clone(),
-                    },
-                ),
-            },
+                                    "::*;\n}".to_string(),
+                                )]),
+                            ),
+                        },
+                    ),
+                    Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused { cause: cause, .. } => {
+                        Rc::new(
+                            Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused {
+                                cause: cause.clone(),
+                            },
+                        )
+                    }
+                }
+            }
         },
     )
 }

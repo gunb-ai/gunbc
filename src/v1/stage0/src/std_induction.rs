@@ -670,7 +670,7 @@ pub fn cost_log(param: String) -> Rc<CostBound> {
     })
 }
 
-pub fn cost_nlogn(param: &str) -> Rc<CostBound> {
+pub fn cost_nlogn(param: String) -> Rc<CostBound> {
     Rc::new(CostBound::ProductBound {
         factors: Rc::new(vec![
             Rc::new(AtomicCost::PolyCost {

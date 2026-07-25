@@ -100,7 +100,7 @@ pub fn optional_evidence_meet(
 
 pub fn map_evidence_merge_at(
     base: Rc<HashMap<String, DescentEvidence>>,
-    key: &str,
+    key: String,
     new_val: DescentEvidence,
 ) -> Rc<HashMap<String, DescentEvidence>> {
     match v1_rt::map_get(&base, key.clone()) {

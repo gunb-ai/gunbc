@@ -129,7 +129,7 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                 let mut __result = Vec::new();
                 for tm in typed.modules.clone().iter().cloned() {
                     __result.push(emit_go_test_file(
-                        &authored_name_at(
+                        authored_name_at(
                             tm.type_env.clone().source_indices.clone(),
                             tm.module.clone(),
                         ),
@@ -300,7 +300,7 @@ pub fn go_test_signature_comment(projection: Rc<TestProjection>) -> String {
 }
 
 pub fn emit_go_test_file(
-    module_name: &str,
+    module_name: String,
     projections: Rc<Vec<Rc<TestProjection>>>,
 ) -> Rc<TextFile> {
     if ((projections.clone().len() as i64) == 0) {
@@ -726,7 +726,7 @@ pub fn emit_go_typed_item(
                     if is_function_item(item.clone()) {
                         if ((item.uses.clone().len() as i64) > 0) {
                             emit_go_func_def(
-                                &item_text,
+                                item_text.clone(),
                                 item.params.clone(),
                                 resolved_type(item.clone()),
                                 item.uses.clone(),
@@ -736,7 +736,7 @@ pub fn emit_go_typed_item(
                             )
                         } else {
                             emit_go_fn_def(
-                                &item_text,
+                                item_text.clone(),
                                 item.params.clone(),
                                 resolved_type(item.clone()),
                                 item.body.clone().clone().unwrap(),
@@ -793,7 +793,7 @@ pub fn emit_go_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> Str
         if is_product.clone() {
             emit_go_struct_from_children(item_text.clone(), item.children.clone(), env.clone())
         } else {
-            emit_go_sum_from_children(&item_text, item.children.clone(), env.clone())
+            emit_go_sum_from_children(item_text.clone(), item.children.clone(), env.clone())
         }
     }
 }
@@ -898,7 +898,7 @@ pub fn emit_go_struct_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> Str
 }
 
 pub fn emit_go_sum_from_children(
-    name: &str,
+    name: String,
     children: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
 ) -> String {
@@ -938,7 +938,11 @@ pub fn emit_go_sum_from_children(
                 let variant_structs = Rc::new({
                     let mut __result = Vec::new();
                     for child in children.clone().iter().cloned() {
-                        __result.push(emit_go_variant_struct(&name, child.clone(), env.clone()));
+                        __result.push(emit_go_variant_struct(
+                            name.clone(),
+                            child.clone(),
+                            env.clone(),
+                        ));
                     }
                     __result
                 });
@@ -1018,7 +1022,7 @@ pub fn emit_go_sum_from_children(
     }
 }
 
-pub fn emit_go_variant_struct(parent_name: &str, child: Rc<Node>, env: Rc<TypeEnv>) -> String {
+pub fn emit_go_variant_struct(parent_name: String, child: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let struct_name = v1_rt::concat(
             parent_name.clone(),
@@ -1145,7 +1149,7 @@ pub fn emit_go_type_alias(
 }
 
 pub fn emit_go_fn_def(
-    name: &str,
+    name: String,
     params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
     body: Rc<Node>,
@@ -1250,7 +1254,7 @@ pub fn emit_go_fn_def(
 }
 
 pub fn emit_go_func_def(
-    name: &str,
+    name: String,
     params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
     uses: Rc<Vec<Rc<Node>>>,

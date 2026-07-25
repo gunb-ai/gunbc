@@ -68,7 +68,7 @@ pub fn container_expected_arity(name: String) -> Option<i64> {
     v1_rt::map_get(&container_type_arity(), name.clone())
 }
 
-pub fn container_param_names_for(kind_name: &str) -> Rc<Vec<String>> {
+pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
     if (kind_name.clone() == "Witness".to_string()) {
         Rc::new(vec!["T".to_string()])
     } else {
@@ -81,7 +81,7 @@ pub fn container_param_names_for(kind_name: &str) -> Rc<Vec<String>> {
 
 pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
     {
-        let names = container_param_names_for(&kind_name);
+        let names = container_param_names_for(kind_name.clone());
         match Rc::new({
             let mut __result = Vec::new();
             for pair in Rc::new({
