@@ -31,19 +31,19 @@ the brief guessed — but the *event log* earns its place on the **append rate**
 
 ## 1. Population — three tiers, not one
 
-Measured over 2,530 `.dag` files. "Prose" = a String value ≥ 200 bytes; below that a String row
-is a tag, path, or name, not prose (8,681 such rows, 302.7 KiB, excluded).
+Measured over 2,532 `.dag` files. "Prose" = a String value ≥ 200 bytes; below that a String row
+is a tag, path, or name, not prose (8,690 such rows, 302.9 KiB, excluded).
 
 | tier | all rows | prose rows | prose bytes |
 |---|---|---|---|
-| `data <n>: String = "…"` | 2,355 (819.7 KiB) | 1,071 | **764.8 KiB** |
-| typed struct-field values | 7,111 (325.7 KiB) | 190 | **91.0 KiB** |
+| `data <n>: String = "…"` | 2,359 (820.1 KiB) | 1,072 | **765.2 KiB** |
+| typed struct-field values | 7,117 (325.9 KiB) | 190 | **91.0 KiB** |
 | `List<String>` elements | 498 (21.2 KiB) | 22 | **8.1 KiB** |
-| **total** | | **1,283** | **863.9 KiB** |
+| **total** | | **1,284** | **864.3 KiB** |
 
-Of the prose `data` rows, 820 (628.7 KiB) are `*note*`-named. The brief's "915 rows / ~718KB"
+Of the prose `data` rows, 821 (629.0 KiB) are `*note*`-named. The brief's "915 rows / ~718KB"
 was close on the note tier and, as it suspected, an undercount overall — the true figure is
-**863.9 KiB**, and the undercount has two sources the brief named plus one it did not:
+**864.3 KiB**, and the undercount has two sources the brief named plus one it did not:
 
 - **typed fields** (91.0 KiB) — as predicted. Concentrated in `reason` (47.4 KiB, 78 rows),
   `text` (22.2 KiB), `dissolve_on` (4.1 KiB).
@@ -64,12 +64,12 @@ the mass is and cover half the problem in ~80 files.
 ## 2. Six classes, not five
 
 Classified at **sentence** grain, because the note is the wrong unit — a note is a mixture, and
-the sentence is what becomes a row. 3,841 sentences.
+the sentence is what becomes a row. 3,843 sentences.
 
 | class | sentences | bytes | share | migrates to |
 |---|---|---|---|---|
 | **SPEC_NORM** | 1,429 | 341.3 KiB | **39.6%** | a type, or a lens |
-| XREF | 569 | 139.7 KiB | 16.2% | a citation edge |
+| XREF | 571 | 140.0 KiB | 16.2% | a citation edge |
 | EVENT | 426 | 106.6 KiB | 12.4% | an event-log row (ages out) |
 | RATIONALE | 346 | 88.7 KiB | 10.3% | *irreducible prose* |
 | RULING | 148 | 38.0 KiB | 4.4% | a ruling-register row |
@@ -93,7 +93,7 @@ history either, so neither is addressed by an event log.
 
 | distinct classes in one note | notes | bytes |
 |---|---|---|
-| 0–1 | 622 | 266.6 KiB |
+| 0–1 | 623 | 267.0 KiB |
 | 2 | 455 | 326.9 KiB |
 | 3 | 154 | 165.2 KiB |
 | 4+ | 52 | 105.2 KiB |
