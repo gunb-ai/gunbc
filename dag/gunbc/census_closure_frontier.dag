@@ -35,23 +35,11 @@ import extdeps.router.verizon_cr1000a {
 }
 import extdeps.tools.sha256sum { sha256_verify_native_transport_frontier_rows }
 
-data strip_repeated_use_symbols_scaffold_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "strip_repeated_use_symbols"),
-    reason: "post-hoc cross-line symbol dedup over rendered use lines (bounded scaffold replacing cssl_emit_artifact_sanitize_scaffold_debt); construction replacement is ONE symbol-to-provider ownership map before use-line render, or resolver step-2 typed refusal (nic_scaffold_dissolution_trigger)",
-    trigger: TriggerProse {
-      text: "import surface derives from ONE symbol-to-provider ownership map built before use-line render, or resolver step-2 typed refusal replaces reference-derived synthesis (nic_scaffold_dissolution_trigger)",
-    },
-  )
-]
-
-data census_closure_expected_row_count: Int = 22
-
 data census_closure_count_witness_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(
       module_path: "test.claim.annotation_carrier",
-      decl_name: "census_closure_frontier_rows_count_matches_expected",
+      decl_name: "census_closure_frontier_rows_count_is_twenty_one",
     ),
     reason: "Hand count beside structure is a conversion receipt (#7207 class-5); retires when roster assembly is registry-derived",
     trigger: TriggerProse {
@@ -83,7 +71,6 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     cr1000a_delegated_prefix_length_scalar_frontier_rows,
     cr1000a_expires_in_ui_text_frontier_rows,
     sha256_verify_native_transport_frontier_rows,
-    strip_repeated_use_symbols_scaffold_frontier_rows,
   ]
 }
 
