@@ -41,7 +41,7 @@ fn claim_canonical_grounding(
 
 fn claim_inferred_facts_witness(
   grounding: CanonicalGrounding,
-  descent: Witness<TerminationProof>
+  descent: Witness<v2.std.cardinality.TerminationProof>
 ) -> InferredFacts {
   InferredFacts {
     grounding: grounding,
@@ -52,7 +52,7 @@ fn claim_inferred_facts_witness(
 fn claim_inferred_facts_from_nodes(
   resolved: Node,
   algebra: Node,
-  descent: Witness<TerminationProof>
+  descent: Witness<v2.std.cardinality.TerminationProof>
 ) -> InferredFacts {
   claim_inferred_facts_witness(
     grounding: CanonicalGrounding {
@@ -83,9 +83,9 @@ fn claim_inferred_facts(
       algebra_symbol: algebra_symbol,
     ),
     descent: Holds {
-      value: TerminationProof {
+      value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
-        strict: RankingDimension { measured: descent_symbol }
+        strict: v2.std.cardinality.RankingDimension { measured: descent_symbol }
       }
     }
   )

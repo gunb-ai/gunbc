@@ -76,10 +76,10 @@ data runtime_run_node_b: Node = Node {
 data runtime_run_nodes: List<Node> = [runtime_run_node_a, runtime_run_node_b]
 data runtime_run_dependencies: List<DependencyView> = []
 
-fn runtime_run_termination_proof() -> TerminationProof {
-  TerminationProof {
+fn runtime_run_termination_proof() -> v2.std.cardinality.TerminationProof {
+  v2.std.cardinality.TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: ^runtime_run_descent_dimension }
+    strict: v2.std.cardinality.RankingDimension { measured: ^runtime_run_descent_dimension }
   }
 }
 
