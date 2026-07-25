@@ -1,7 +1,7 @@
 module test.claim.roadmap_tactile_witness
 
 import std.types { Int, String, Bool }
-import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
+import std.markup { Fragment, Element, FragmentText, RawNode, Attribute }
 import gunbc.design.material {
   TimingToken, timing_scale, respond_fast, reveal_deliberate, restore_gentle, settle_spring,
   BuildRule, StaticRule, ResponseRule, SelfResponse,
@@ -262,18 +262,20 @@ fn witness_button_morphs_into_the_session_chip() -> Bool {
   string_contains(s: js(), pattern: join(["ok ? '", dispatch_session_chip_prefix, "' + s"], ""))
 }
 
-fn header_has_sound_toggle(h: MarkupNode) -> Bool {
+fn header_has_sound_toggle(h: Fragment) -> Bool {
   match h {
-    ElementNode { tag, attrs: _, children } =>
+    Element { tag, attributes: _, children } =>
       tag == "header"
         && fold(children, init: false, f: (acc, c) => match c {
-          ElementNode { tag: t, attrs: a, children: _ } =>
+          Element { tag: t, attributes: a, children: _ } =>
             acc || (t == "button"
               && fold(a, init: false, f: (found, at) =>
                 found || (at.name == "class" && at.value == sound_toggle_class)))
-          TextNode { text: _ } => acc
+          FragmentText { content: _ } => acc
+          RawNode { content: _ } => acc
         })
-    TextNode { text: _ } => false
+    FragmentText { content: _ } => false
+    RawNode { content: _ } => false
   }
 }
 

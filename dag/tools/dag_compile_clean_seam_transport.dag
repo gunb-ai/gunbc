@@ -7,11 +7,12 @@ import extdeps.gunbc
 import std.types { String, Bool }
 import tools.dag_compile_clean_transport { dcc_gunbc_path, dcc_gunbc_ready }
 
-data cross_shard_seam_importer_entry_path: String = "dag/std/bit.dag"
-data cross_shard_seam_importee_entry_path: String = "dag/std/logic.dag"
-data cross_shard_seam_break_needle: String = "type Classical = True | False"
-data cross_shard_seam_break_replacement: String = "type ClassicalRenamedBug = True | False"
-data cross_shard_seam_class_marker: String = "Classical"
+data cross_shard_seam_fixture_note: String = "Dedicated fixture pair (2026-07-25 falsifier green): the prior live-corpus seam (dag/std/bit.dag importing Classical from dag/std/logic.dag) went stale when bit.dag stopped importing std.logic — importer shard passed after the Classical rename, so shard_x_reds_with_seam_attribution went false. Fixture is owned by this witness; dissolve-on when a live import edge is re-selected with a RED proving the importer actually depends on the broken symbol."
+data cross_shard_seam_importer_entry_path: String = "dag/test/fixture/cross_shard_seam/importer.dag"
+data cross_shard_seam_importee_entry_path: String = "dag/test/fixture/cross_shard_seam/importee.dag"
+data cross_shard_seam_break_needle: String = "type SeamMarker = SeamAlpha | SeamBeta"
+data cross_shard_seam_break_replacement: String = "type SeamMarkerRenamedBug = SeamAlpha | SeamBeta"
+data cross_shard_seam_class_marker: String = "SeamMarker"
 
 type CrossShardSeamProbeResult {
   probe_ran: Bool
@@ -47,7 +48,7 @@ fn cross_shard_seam_compile_args(stage: String, broken_dag: String, out_dir: Str
 }
 
 fn cross_shard_seam_break_module(broken_dag: String) -> Bool {
-  let target_path = concat(broken_dag, "/std/logic.dag")
+  let target_path = concat(broken_dag, "/test/fixture/cross_shard_seam/importee.dag")
   let original = Filesystem.Read(path: target_path)
   if original.success {
     let broken_content = replace(original.content, cross_shard_seam_break_needle, cross_shard_seam_break_replacement)
