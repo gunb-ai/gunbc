@@ -163,6 +163,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "test-decomposition-wcf-cut",
+    work: DeclarationRef { module_path: "gunbc.ci_spec", decl_name: "gunbc_ci_fast_lane_rule_note", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "every Class C row on the measured head lands fixture/cadence split (or reclassifies F with a named cost-shape owner); dark long/ files classify only at Gauntlet enrollment — then authority collapses into CiSpec placement rows + enrolled cadence rosters and this doc deletes" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "dag-note-prose-census",
     work: DeclarationRef { module_path: "v2.lens.enforcement.standing_intent", decl_name: "StandingIntent", field: WholeDeclaration },
     dissolution: HasTrigger { text: "the typed annotation carriers land (ruling rows on StandingIntent, an event log keyed to the declaration, citation edges) and the annotation-budget lens counts ROWS — at which point a lexical census over prose is superseded by a fold over typed rows, and the doc plus its instrument delete together" },
