@@ -7,6 +7,7 @@ import extdeps.git
 import extdeps.gunbc
 import gunbc.cli_services
 import gunbc.cli_invoke { source_root_transport_argv }
+import gunbc.output_policy { OutcomeIsData }
 import std.logic { Bool }
 
 data witness_invocation_doc: String = "Shared witness-binary invocation. A dag/tools transport states WHICH binaries must exist (WitnessBin: prereqs + the one to invoke) and its argv Strings; this module realizes that intent as TYPED service operations (shell.Test.IsExecutable, cargo.Build.Build, gunbc.WitnessBin.Run at the git.Core.Toplevel root) - no bash is serialized or executed on the run path, per the shell-emission-model rule that runtime-present sites are argv invocations wearing bash syntax and need no shell. The former ShellProgram builders (witness_bin_program, gunbc_claims_program) and ensure_bin_built_and_verified shell-stmt chain dissolved with the typed WitnessBin path (Phase D, 2026-07-14); toolchain_provision_shell_exec is the only surviving consumer of this module's shell path."
@@ -54,12 +55,14 @@ type WitnessBinReadiness
   = WitnessBinReady { path: String }
   | WitnessBinRefused { bin_name: String, path: String, reason: WitnessBinRefusalReason }
 
+data witness_bin_readiness_outcome_is_data_note: String = "The three probes below are annotated OutcomeIsData (operator ruling 2026-07-25). A non-zero exit from `test -f`/`-x`/`-s` here means SUBJECT ABSENT — an answer, not a fault — and it is ambient in BOTH of this helper's contexts: the production readiness path (witness_bin_run_if_ready, below) responds by building, and the build-artifact red controls respond by asserting the refusal arm. Because the arm is correct for every caller, it is annotatable HERE, once, with no expectation threaded through this production signature and no ambient frame left open. ADMISSIBILITY (the §5 guard in gunbc.output_policy outcome_is_data_note): this fn returns WitnessBinReadiness — a typed verdict whose arms ARE the adjudication — never unit, so the exit provably feeds a typed consumer. What stays anomalous is dispatch failure: if the probe itself cannot run, that is not an exit code and does not travel this arm."
+
 fn witness_bin_artifact_readiness(bin_name: String, path: String) -> WitnessBinReadiness {
-  let is_file = shell.Test.IsFile(path: path)
+  let is_file = shell.Test.IsFile(path: path, expect: OutcomeIsData)
   if is_file.is_file {
-    let exec = shell.Test.IsExecutable(path: path)
+    let exec = shell.Test.IsExecutable(path: path, expect: OutcomeIsData)
     if exec.executable {
-      let nonempty = shell.Test.IsNonEmpty(path: path)
+      let nonempty = shell.Test.IsNonEmpty(path: path, expect: OutcomeIsData)
       if nonempty.nonempty {
         WitnessBinReady { path: path }
       } else {
