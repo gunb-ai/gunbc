@@ -104,16 +104,9 @@ import v2.std.diagnostic {
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.node { Node, TypeNode, Conj, Atom, SyntheticOccurrence, Symbol }
 import v2.std.text { String }
-import v2.std.witness { Violates, Witness }
 
-fn orch_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^orch_emit_facts_unexpected_consultation,
-      at: node_locus(node: key),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
+fn orch_emit_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  Absent
 }
 
 data orch_emit_unsupported_step_anchor: Node = Node {
