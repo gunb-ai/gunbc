@@ -31,12 +31,7 @@ type NetplanConfigFile {
 }
 
 fn netplan_file_is_applied(f: NetplanConfigFile) -> Bool {
-  match f.writer {
-    WrittenByCloudInit => false
-    WrittenByInstaller => true
-    WrittenByOperator => true
-    WriterUnknown => false
-  }
+  true
 }
 
 data netplan_file_is_applied_note: String = "Deliberately total, and deliberately ignoring its argument's writer field. This looks like a function that should not exist until you notice it is the exact proposition the srv4 misdiagnosis denied: presence in /etc/netplan is sufficient for application, and the writer is irrelevant to it. Writing it as a total function makes the writer-dependent version unwritable in any consumer that routes through here, and gives the RED control in gunbc.host_network_diagnosis something concrete to contradict. If netplan ever gains a genuine non-application case — a malformed file the renderer rejects, say — this becomes a real fold with a typed refusal, and that is a change to THIS module rather than to every consumer that had rolled its own rule."
