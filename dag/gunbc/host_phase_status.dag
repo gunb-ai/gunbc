@@ -26,7 +26,7 @@ import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, oper
 import product.placement_supply { HostIdentity }
 import std.measure { millisecond }
 
-data host_phase_status_authority_note: String = "THE per-(host x phase) status axis for the host-standup spine. It exists because the spine could describe itself but not its RELATIONSHIP TO THE LIVE FLEET: every phase carried a PhaseDisposition (is there a modeled authority?) and nothing carried an observation (does this host actually agree with it?). Answering 'where does subsumption stand' therefore meant a session reconstruction — hand ssh probes, prose transcription — and the answer went stale the moment it was written. Two axes, kept ORTHOGONAL on purpose, because collapsing them is the state-space conflation this lane keeps paying for: the MODELED axis is PhaseDisposition, a property of the phase, the same for every host; the LIVE axis is std.upsert_decision.ObservationVerdict, a property of the (host, phase) CELL. A phase can be fully modeled AND Inaccessible on a given host — that is exactly srv1/srv2 for the build-cache phase today — and a single fused enum could not say it. Note what is NOT minted here: no Converged|Diverged|Unreachable|Unmodeled verdict of our own. ObservationVerdict already carries Converged/Absent/Drifted/Conflict/Inaccessible/UnknownRefused, which is STRICTLY FINER on the diverged and unreachable axes, and it is already consumed by twelve modules including host_standup itself; a parallel four-arm verdict beside it would be the §3 nickname, duplicated again in everything derived from it. 'Unmodeled' is likewise not an observation — a host cannot be observed to disagree with a model that does not exist — so it stays on PhaseDisposition and enters this type as the StatusUnmodeled arm, derived from the spine, never authored."
+data host_phase_status_authority_note: String = "THE per-(host x phase) status axis for the host-standup spine. It exists because the spine could describe itself but not its RELATIONSHIP TO THE LIVE FLEET: every phase carried a PhaseDisposition (is there a modeled authority?) and nothing carried an observation (does this host actually agree with it?). Answering 'where does subsumption stand' therefore meant a session reconstruction — hand ssh probes, prose transcription — and the answer went stale the moment it was written. Two axes, kept ORTHOGONAL on purpose, because collapsing them is the state-space conflation this lane keeps paying for: the MODELED axis is PhaseDisposition, a property of the phase, the same for every host; the LIVE axis is std.upsert_decision.ObservationVerdict, a property of the (host, phase) CELL. A phase can be fully modeled AND Inaccessible on a given host — that is exactly srv1/srv2 for the build-cache phase today — and a single fused enum could not say it. Note what is NOT minted here: no Converged|Diverged|Unreachable|Unmodeled verdict of our own. ObservationVerdict already carries Converged/Absent/Drifted/Conflict/Inaccessible/UnknownRefused, which is STRICTLY FINER on the diverged and unreachable axes, and it is already consumed by twelve modules including host_standup itself; a parallel four-arm verdict beside it would be the §3 nickname, duplicated again in everything derived from it. 'Unmodeled' is likewise not an observation and does not become a verdict arm — it stays on PhaseDisposition, carried on the cell beside the observation and derived from the spine, never authored. CORRECTION, found by execution 2026-07-25: the cell was FIRST written as a SUM (StatusUnmodeled | StatusObserved), which forced the two axes to be mutually exclusive and made the fold discard the observation on any DeclaredGap phase. The witness caught it immediately, because the single cell that HAS a live producer today is (srv3, prefix:os-install-actuated) — a DeclaredGap phase — so live-observation coverage computed as 0 while a real Converged verdict sat one branch away. The sum was the very conflation this note claims to avoid, written into the type by the same hand that wrote the warning. The cell is now a PRODUCT of both axes, which also gives the lane a state it could not previously say: observed Converged on an unmodeled phase means the host is in the desired condition by means the model cannot reproduce — true of srv3's OS install, and exactly the kind of fact that should never round to either 'modeled' or 'gap'."
 
 data host_phase_cell_grain_note: String = "The cell is keyed by (host, phase_label) and NOT by (host, phase) structurally, because phase_label is already the spine's own stable identity for a step (it is what the gap ledger keyed on, what the refusal strings name, and what an operator reads). Keying on the label keeps ONE identity for a phase across the spine, this matrix, and every refusal message, rather than introducing a second notion of phase identity that could disagree with the first. key_of returns identity, never content (membership_reconcile's R2 contract): a cell whose STATUS changes is Modified — the same cell re-derived — not Removed+Added, which would read as a host leaving and rejoining the fleet."
 
@@ -41,7 +41,7 @@ type HostPhaseCellStatus {
   observation: ObservationVerdict?
 }
 
-data host_phase_no_producer_is_unknown_not_converged_note: String = "THE fail-closed hinge of this module (DESIGN §5). When a modeled phase has NO live observation producer for a host, the derived verdict is UnknownRefused — never Converged, and never silently omitted from the matrix. The tempting arm is the absorbing fallback in its purest form: nothing is known to be wrong, so report converged; the matrix goes green, the coverage deficit's frequency drops to zero by construction, and the status read becomes a fabricated plausible output exactly like a stats probe that auto-starts the server it is measuring (the DaemonUnsupervised finding, #7213). It is also why UnknownRefused and Inaccessible must stay DISTINCT arms rather than one 'not converged': Inaccessible means we asked the host and could not reach it (remedy: fix reach — the A1 materialized-secret lane); UnknownRefused means we have no way to ask at all (remedy: build the producer). Different states, different owners, different work — and the count of each is the honest measure of how far subsumption actually is. host_phase_status_absorbing_fallback_widen_sketch models the forbidden arm as a RED control so the fold cannot drift back into it unnoticed."
+data host_phase_no_producer_is_unknown_not_converged_note: String = "THE fail-closed hinge of this module (DESIGN §5). When a modeled phase has NO live observation producer for a host, the derived verdict is UnknownRefused — never Converged, and never silently omitted from the matrix. The tempting arm is the absorbing fallback in its purest form: nothing is known to be wrong, so report converged; the matrix goes green, the coverage deficit's frequency drops to zero by construction, and the status read becomes a fabricated plausible output exactly like a stats probe that auto-starts the server it is measuring (the DaemonUnsupervised finding, #7213). It is also why UnknownRefused and Inaccessible must stay DISTINCT arms rather than one 'not converged': Inaccessible means we asked the host and could not reach it (remedy: fix reach — the A1 materialized-secret lane); UnknownRefused means we have no way to ask at all (remedy: build the producer). Different states, different owners, different work — and the count of each is the honest measure of how far subsumption actually is. host_phase_verdict_absorbing_fallback_widen_sketch models the forbidden arm as a RED control so the fold cannot drift back into it unnoticed. Note the separation this correction forced: 'has a live producer' is now read from the OBSERVATION being Present, not from the verdict being something other than UnknownRefused — a producer that runs and honestly refuses (an unreadable lease table) is coverage, while no producer at all is not, and the earlier version conflated the two."
 
 fn host_phase_verdict_from(observation: ObservationVerdict?) -> ObservationVerdict {
   match observation {
@@ -95,7 +95,7 @@ fn host_phase_cell_has_live_producer(c: HostPhaseCellStatus) -> Bool {
   }
 }
 
-data host_phase_observation_frontier_note: String = "The live-observation producer registry, and deliberately a TYPED, COUNTABLE FRONTIER rather than a table of hand-written facts (the self-host frontier shape, DESIGN §7: each cell is either produced or it is a declared absence, never a silent assumption). Exactly one cell has a real producer today — (srv3, prefix:os-install-actuated), which deduces its verdict from an observed DHCP lease table through gunbc.host_standup_assimilation_deduction; that deduction was ALREADY host-parameterized (deduce_os_install_actuation_verdict takes fleet_slot: HostIdentity), so generalizing it was reading the parameter it already had, not writing new machinery. Every other cell returns Absent, which host_phase_status_from renders UnknownRefused. What must NOT happen here is the shape this module exists to kill: hand-entering an observation because someone ssh'd a host once. A probe run by a person is not a modeled producer — encoding its result as a data row would rebuild the parallel ledger the gap-ledger dissolution just removed, and it would go stale in exactly the same way. A cell earns a row here when an effect produces its verdict by execution; until then UnknownRefused is the honest answer and host_phase_observation_coverage_count is the number that measures the debt."
+data host_phase_observation_frontier_note: String = "The live-observation producer registry, and deliberately a TYPED, COUNTABLE FRONTIER rather than a table of hand-written facts (the self-host frontier shape, DESIGN §7: each cell is either produced or it is a declared absence, never a silent assumption). Exactly one cell has a real producer today — (srv3, prefix:os-install-actuated), which deduces its verdict from an observed DHCP lease table through gunbc.host_standup_assimilation_deduction; that deduction was ALREADY host-parameterized (deduce_os_install_actuation_verdict takes fleet_slot: HostIdentity), so generalizing it was reading the parameter it already had, not writing new machinery. Every other cell returns Absent, which host_phase_verdict_from renders UnknownRefused. What must NOT happen here is the shape this module exists to kill: hand-entering an observation because someone ssh'd a host once. A probe run by a person is not a modeled producer — encoding its result as a data row would rebuild the parallel ledger the gap-ledger dissolution just removed, and it would go stale in exactly the same way. A cell earns a row here when an effect produces its verdict by execution; until then UnknownRefused is the honest answer and host_phase_observation_coverage_count is the number that measures the debt."
 
 fn host_phase_observation(host: HostIdentity, step: HostStandupStep) -> ObservationVerdict? {
   if (step.label as String) == "prefix:os-install-actuated" {
@@ -142,19 +142,13 @@ fn host_phase_cell_key_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn host_phase_status_eq(a: HostPhaseStatus, b: HostPhaseStatus) -> Bool {
-  match a {
-    StatusUnmodeled { refusal: _ } =>
-      match b {
-        StatusUnmodeled { refusal: _ } => true
-        StatusObserved { verdict: _ } => false
-      }
-    StatusObserved { verdict: va } =>
-      match b {
-        StatusUnmodeled { refusal: _ } => false
-        StatusObserved { verdict: vb } => observation_verdict_eq(a: va, b: vb)
-      }
-  }
+fn host_phase_status_eq(a: HostPhaseCellStatus, b: HostPhaseCellStatus) -> Bool {
+  let modeled_agrees = host_phase_cell_is_modeled(c: a) == host_phase_cell_is_modeled(c: b)
+  let verdict_agrees = observation_verdict_eq(
+    a: host_phase_cell_verdict(c: a),
+    b: host_phase_cell_verdict(c: b),
+  )
+  modeled_agrees && verdict_agrees
 }
 
 fn observation_verdict_eq(a: ObservationVerdict, b: ObservationVerdict) -> Bool {
@@ -173,21 +167,39 @@ fn observation_verdict_rank(v: ObservationVerdict) -> Int {
 }
 
 fn host_phase_cell_status_eq(a: HostPhaseCellStatus, b: HostPhaseCellStatus) -> Bool {
-  host_phase_cell_key(c: a) == host_phase_cell_key(c: b)
-    && host_phase_status_eq(a: a.status, b: b.status)
+  let same_cell = host_phase_cell_key(c: a) == host_phase_cell_key(c: b)
+  same_cell && host_phase_status_eq(a: a, b: b)
 }
 
 fn host_phase_cell_ownership(c: HostPhaseCellStatus) -> Ownership? {
   Present { value: Owned }
 }
 
-data host_phase_reconcile_instantiation_note: String = "The status matrix reconciled as a MEMBERSHIP DIFF — one more (key_of, key_eq, value_eq, ownership_of) bundle handed to the single generic gunbc.membership_reconcile.membership_reconcile, never a forked diff (a forked reconcile means the genericity bought nothing). Desired is every cell at StatusObserved{Converged}: that is the end state of the whole subsumption lane — every phase modeled AND every enrolled host converged on it — so a Modified hunk is precisely one unit of remaining work, and membership_upsert_count is the answer to 'how much is left' as a NUMBER rather than a prose reconstruction. Removed is a real arm, not a degenerate pole: a cell observed for a host no longer in fleet_intent is a host that left the fleet, and cells are Owned, so it tears down rather than refusing. The witness exercises that arm synthetically because the live fleet has no departed host today — an instantiation whose interesting hunks are all unreachable in practice is an instantiation nobody has actually tested."
+data host_phase_reconcile_instantiation_note: String = "The status matrix reconciled as a MEMBERSHIP DIFF — one more (key_of, key_eq, value_eq, ownership_of) bundle handed to the single generic gunbc.membership_reconcile.membership_reconcile, never a forked diff (a forked reconcile means the genericity bought nothing). Desired is every cell modeled AND observed Converged: that is the end state of the whole subsumption lane — every phase modeled AND every enrolled host converged on it — so a Modified hunk is precisely one unit of remaining work, and membership_upsert_count is the answer to 'how much is left' as a NUMBER rather than a prose reconstruction. Removed is a real arm, not a degenerate pole: a cell observed for a host no longer in fleet_intent is a host that left the fleet, and cells are Owned, so it tears down rather than refusing. The witness exercises that arm synthetically because the live fleet has no departed host today — an instantiation whose interesting hunks are all unreachable in practice is an instantiation nobody has actually tested."
 
 fn host_phase_desired(hosts: List<HostIdentity>) -> List<HostPhaseCellStatus> {
   map(
     host_fleet_phase_matrix(hosts: hosts),
-    c => HostPhaseCellStatus { cell: c.cell, status: StatusObserved { verdict: Converged } },
+    c => HostPhaseCellStatus {
+      cell: c.cell,
+      disposition: host_phase_desired_disposition(),
+      observation: Present { value: Converged },
+    },
   )
+}
+
+data host_phase_desired_disposition_note: String = "Desired pins BOTH axes to their end state, not just the verdict: a modeled authority AND an observed Converged. Pinning only the verdict would make a DeclaredGap phase whose host happens to be Converged compare equal to desired — which is exactly srv3 and prefix:os-install-actuated today, a host that IS installed while the actuation that installed it is not reproducible. That cell is real remaining work (the model cannot rebuild the host), so it must produce a hunk; a desired row that ignored the disposition would silently retire it."
+
+fn host_phase_desired_disposition() -> PhaseDisposition {
+  ModeledCompose {
+    authorities: [
+      DeclarationRef {
+        module_path: "gunbc.host_phase_status",
+        decl_name: "host_phase_desired_disposition",
+        field: WholeDeclaration,
+      },
+    ]
+  }
 }
 
 fn host_phase_reconcile(
@@ -215,37 +227,18 @@ fn host_phase_remaining_work_count(hosts: List<HostIdentity>) -> Int {
   membership_upsert_count(plan: host_phase_fleet_reconcile(hosts: hosts))
 }
 
-fn host_phase_cell_has_live_producer(c: HostPhaseCellStatus) -> Bool {
-  match c.status {
-    StatusUnmodeled { refusal: _ } => false
-    StatusObserved { verdict: v } =>
-      match v {
-        UnknownRefused => false
-        Converged => true
-        std.upsert_decision.Absent => true
-        Drifted => true
-        Conflict => true
-        Inaccessible => true
-      }
-  }
-}
-
 fn host_phase_observation_coverage_count(hosts: List<HostIdentity>) -> Int {
   filter(host_fleet_phase_matrix(hosts: hosts), c => host_phase_cell_has_live_producer(c: c)).length()
 }
 
 fn host_phase_cell_is_converged(c: HostPhaseCellStatus) -> Bool {
-  match c.status {
-    StatusUnmodeled { refusal: _ } => false
-    StatusObserved { verdict: v } =>
-      match v {
-        Converged => true
-        std.upsert_decision.Absent => false
-        Drifted => false
-        Conflict => false
-        Inaccessible => false
-        UnknownRefused => false
-      }
+  match host_phase_cell_verdict(c: c) {
+    Converged => true
+    std.upsert_decision.Absent => false
+    Drifted => false
+    Conflict => false
+    Inaccessible => false
+    UnknownRefused => false
   }
 }
 
@@ -253,12 +246,16 @@ fn host_phase_converged_cell_count(hosts: List<HostIdentity>) -> Int {
   filter(host_fleet_phase_matrix(hosts: hosts), c => host_phase_cell_is_converged(c: c)).length()
 }
 
+data host_phase_finished_note: String = "FINISHED is both axes at their end state — a modeled authority AND an observed Converged — and it is deliberately stricter than converged. A host that is in the desired condition by unmodeled means is not finished: nothing can rebuild it, so the next host repeats the toil, which is the entire cost this lane exists to remove. srv3's OS install is that cell today. Counting it as done would make the lane's own progress number flatter than the truth in exactly the direction that feels good."
+
+fn host_phase_cell_is_finished(c: HostPhaseCellStatus) -> Bool {
+  host_phase_cell_is_modeled(c: c) && host_phase_cell_is_converged(c: c)
+}
+
+fn host_phase_finished_cell_count(hosts: List<HostIdentity>) -> Int {
+  filter(host_fleet_phase_matrix(hosts: hosts), c => host_phase_cell_is_finished(c: c)).length()
+}
+
 fn host_phase_unmodeled_count(hosts: List<HostIdentity>) -> Int {
-  filter(
-    host_fleet_phase_matrix(hosts: hosts),
-    c => match c.status {
-      StatusUnmodeled { refusal: _ } => true
-      StatusObserved { verdict: _ } => false
-    },
-  ).length()
+  filter(host_fleet_phase_matrix(hosts: hosts), c => !host_phase_cell_is_modeled(c: c)).length()
 }
