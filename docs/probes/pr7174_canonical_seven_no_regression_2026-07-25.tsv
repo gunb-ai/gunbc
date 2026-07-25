@@ -1,0 +1,13 @@
+# classifier_stamp: rule1-first-error-plus-residual-histogram-v3
+# protocol: fresh gunbc+cssl_assemble per side; gunbc compile -> cssl_assemble -> cargo build --release --lib
+# BEFORE git_sha=bb4347da26 (origin/main, 2026-07-25) AFTER git_sha=14685dc76c (#7174 branch)
+# verdict bar: E0308/E0599/E0277/E0369 net-neutral-or-better per module (foundation, not metric advance)
+module	before_E0308	after_E0308	delta_E0308	before_E0599	after_E0599	delta_E0599	before_E0277	after_E0277	delta_E0277	before_E0369	after_E0369	delta_E0369	four_code_sum_before	four_code_sum_after	per_module_verdict
+src/v2/compiler/06_translate.dag	278	279	+1	107	106	-1	86	86	0	14	14	0	485	485	flat (E0308↔E0599 swap)
+src/v2/compiler/04_infer.dag	254	255	+1	102	101	-1	85	85	0	14	14	0	455	455	flat (E0308↔E0599 swap)
+src/v2/compiler/05_eval.dag	320	321	+1	105	104	-1	91	91	0	29	29	0	545	545	flat (E0308↔E0599 swap)
+src/v2/compiler/05_emit.dag	278	279	+1	107	106	-1	86	86	0	14	14	0	485	485	flat (E0308↔E0599 swap)
+src/v2/compiler/emit_host.dag	408	409	+1	112	111	-1	139	139	0	79	79	0	738	738	flat (E0308↔E0599 swap)
+src/v2/compiler/emit_module.dag	286	287	+1	107	106	-1	86	86	0	14	14	0	493	493	flat (E0308↔E0599 swap)
+src/v2/compiler/materialization_carriers.dag	87	87	0	82	82	0	100	100	0	60	60	0	329	329	flat
+TOTAL	1911	1917	+6	722	716	-6	673	673	0	224	224	0	3530	3530	flat aggregate

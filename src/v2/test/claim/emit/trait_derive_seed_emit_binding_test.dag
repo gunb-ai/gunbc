@@ -1,0 +1,58 @@
+module v2.test.emit.trait_derive_seed_emit_binding_test
+
+import std.trait_derive_shape {
+  ReprDeriveElemNullaryEnumCopy,
+  ReprDeriveElemPayloadCoproduct,
+  ReprDeriveElemSymbolWrappedOrdCarrier,
+  nullary_coproduct_derive_traits,
+  payload_coproduct_derive_traits,
+  symbol_wrapped_ord_carrier_derive_traits,
+  record_derive_traits_heap,
+  record_derive_traits_copy,
+  repr_grounding_derive_completeness_predicate
+}
+import extdeps.languages.rust.emit { rust_trait_derive_attr_from_traits }
+import v2.std.logic { Bool }
+
+data trait_derive_seed_emit_binding_note: String = "Layer-boundary mock: std.trait_derive_shape trait lists → extdeps.languages.rust.emit derive attr spellings consumed by v1.compiler.trait_derive_emit (same authority path as seed emitter)."
+
+test fn nullary_coproduct_predicate_satisfied() -> Bool {
+  repr_grounding_derive_completeness_predicate(
+    nullary_coproduct_derive_traits(),
+    ReprDeriveElemNullaryEnumCopy
+  )
+}
+
+test fn record_heap_attr_contains_serde() -> Bool {
+  let heap_attr = rust_trait_derive_attr_from_traits(record_derive_traits_heap())
+  let copy_attr = rust_trait_derive_attr_from_traits(record_derive_traits_copy())
+  heap_attr != "" && heap_attr != copy_attr
+}
+
+test fn ord_carrier_shape_rejects_nullary_copy_traits() -> Bool {
+  repr_grounding_derive_completeness_predicate(
+    nullary_coproduct_derive_traits(),
+    ReprDeriveElemSymbolWrappedOrdCarrier
+  ) == false
+}
+
+test fn ord_carrier_attr_differs_from_nullary() -> Bool {
+  let ord_attr = rust_trait_derive_attr_from_traits(symbol_wrapped_ord_carrier_derive_traits())
+  let nullary_attr = rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
+  ord_attr != "" && ord_attr != nullary_attr
+}
+
+test fn payload_coproduct_predicate_satisfied() -> Bool {
+  repr_grounding_derive_completeness_predicate(
+    payload_coproduct_derive_traits(),
+    ReprDeriveElemPayloadCoproduct
+  )
+}
+
+test fn trait_derive_seed_emit_binding_witness_holds() -> Bool {
+  nullary_coproduct_predicate_satisfied()
+    && payload_coproduct_predicate_satisfied()
+    && record_heap_attr_contains_serde()
+    && ord_carrier_shape_rejects_nullary_copy_traits()
+    && ord_carrier_attr_differs_from_nullary()
+}

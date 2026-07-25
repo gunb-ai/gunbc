@@ -28,7 +28,6 @@ fn gate_consumer_site(g: Gate) -> String {
   match g {
     EmitHostGate => "gate:EmitHostGate"
     CheapClaimPoolGate => "gate:CheapClaimPoolGate"
-    LayeringImportsGate => "gate:LayeringImportsGate"
     ExtdepsExternalAuthorityGate => "gate:ExtdepsExternalAuthorityGate"
     DagCompileCleanGate => "gate:DagCompileCleanGate"
     GeneratedArtifactDriftGate => "gate:GeneratedArtifactDriftGate"
