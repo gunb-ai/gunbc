@@ -388,6 +388,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: excl_substrate_long_lane_dissolve
   },
   WitnessExclusionRow {
+    pattern: "long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
+    classification: FalsifierSubstrateLongLane,
+    reason: excl_substrate_long_lane_reason,
+    dissolve_on: excl_substrate_long_lane_dissolve
+  },
+  WitnessExclusionRow {
     pattern: "synthetic_orphan_admission_witness_test.dag",
     classification: NoConsumer,
     reason: "deliberate no-consumer synthetic path: the admission RED control keys on this reserved (nonexistent) entry to prove enrolled-with-zero-consumers refuses (witness_admission_test, cli_run admission tests)",
@@ -722,7 +728,9 @@ data install_media_real_execution_wet_note: String = "The four srv3_install_medi
 
 data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/dag_collect_fingerprint_witness_test.dag", f: "dag_collect_fingerprint_witness_keystone_holds"),
-  bin_wet(entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag", f: "dag_compile_clean_perturb_receipts_holds"),
+  bin_wet(entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag", f: "perturb_optional_skew_fixture_red_holds"),
+  bin_wet(entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag", f: "perturb_unresolved_import_fixture_red_holds"),
+  bin_wet(entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag", f: "perturb_fixture_green_holds"),
   bin_wet(entry: "dag/test/claim/diagnostics_test.dag", f: "diagnostics_import_resolution_holds"),
   bin_wet(entry: "dag/test/claim/diagnostics_test.dag", f: "diagnostics_reexport_surface_holds"),
   bin_wet(entry: "dag/test/claim/diagnostics_test.dag", f: "diagnostics_type_and_arity_holds"),
@@ -776,7 +784,7 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
 
 data bin_witness_wet_per_row_wall_budget_seconds: Int = 60
 
-data bin_witness_wet_per_row_budget_note: String = "Short/quick-witness discipline for the per-PR wet batch (CI floor endgame D6, operator ruling 2026-07-23): per-PR CI is short/quick witnesses, and a bin-execution row's subprocess wall is invisible to the fast-lane 5-second EVAL deadline by construction (the deadline counts interpreter CPU; child-process wall is host-effect time), so the bin lane carries its own per-row wall budget — this datum. A row whose MEASURED wall exceeds it re-homes to the falsifier wet cadence as a typed frontier row (falsifier_rehomed_bin_wet_rows below, reason + dissolve_on per row), keeping the remaining rows as the per-PR smoke subset so plumbing-diff PRs retain a discriminating signal. Classification basis: run 30009199696's per-row cost table (the 54-row pool's 561s eval was 94 percent three rows: floor_skip_discovery 289s, cross_shard_seam live-tree 183s, dag_compile_clean_perturb 53s — the third is under budget and stays). Enforcement layering: this datum is the classification rule applied at review; the EXECUTABLE wall against silent regrowth is the batch-wall budget (gunbc.ci_spec gunbc_ci_floor_batch_wall_budget_seconds — a new heavy row blows the wet batch's budget and reds with a typed refusal), so an over-budget enrollment cannot ride silently even if review misses it."
+data bin_witness_wet_per_row_budget_note: String = "Short/quick-witness discipline for the per-PR wet batch (CI floor endgame D6, operator ruling 2026-07-23): per-PR CI is short/quick witnesses, and a bin-execution row's subprocess wall is invisible to the fast-lane 5-second EVAL deadline by construction (the deadline counts interpreter CPU; child-process wall is host-effect time), so the bin lane carries its own per-row wall budget — this datum. A row whose MEASURED wall exceeds it re-homes to the falsifier wet cadence as a typed frontier row (falsifier_rehomed_bin_wet_rows below, reason + dissolve_on per row), keeping the remaining rows as the per-PR smoke subset so plumbing-diff PRs retain a discriminating signal. Classification basis: run 30009199696's per-row cost table (the 54-row pool's 561s eval was 94 percent two rows: floor_skip_discovery 289s, cross_shard_seam live-tree 183s — both re-homed). Enforcement layering: this datum is the classification rule applied at review; the EXECUTABLE wall against silent regrowth is the batch-wall budget (gunbc.ci_spec gunbc_ci_floor_batch_wall_budget_seconds — a new heavy row blows the wet batch's budget and reds with a typed refusal), so an over-budget enrollment cannot ride silently even if review misses it."
 
 type RehomedBinWetRow {
   entry: String
@@ -797,6 +805,18 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
     function: "cross_shard_seam_preservation_holds_on_live_tree",
     reason: "183s measured on run 30009199696 (3x the per-row budget): the live-tree seam-preservation leg compiles real cross-shard closures per seam; its cheap algebra sibling (cross_shard_seam_algebra_holds) stays per-PR as the smoke row for the concern",
     dissolve_on: "seam preservation gains a scoped or receipt-consuming realization measured under the per-row budget; then re-enroll per-PR and delete this row"
+  },
+  RehomedBinWetRow {
+    entry: "dag/test/claim/long/dag_compile_clean_perturb_corpus_witness_test.dag",
+    function: "perturb_cross_tree_import_corpus_green_holds",
+    reason: "Corpus-grain leg: compiles against compile_clean_source_roots (live-tree pool); monolithic dag_compile_clean_perturb_receipts_holds was ~141s measured head (four serial full-corpus compiles per-PR) — mechanism RED arms decomposed to fixture closure per-PR",
+    dissolve_on: "cross_tree_import gains a scoped fixture realization under bin_witness_wet_per_row_wall_budget_seconds on a measured run; then re-enroll per-PR or keep on falsifier cadence consciously"
+  },
+  RehomedBinWetRow {
+    entry: "dag/test/claim/long/dag_compile_clean_perturb_corpus_witness_test.dag",
+    function: "perturb_dag_shell_primary_corpus_green_holds",
+    reason: "Corpus-grain leg: dag_shell_primary_precedence compiles extdeps.shell against the full compile-clean pool; decomposed off the per-PR row with cross_tree_import",
+    dissolve_on: "dag_shell_primary_precedence gains a scoped fixture realization under bin_witness_wet_per_row_wall_budget_seconds on a measured run; then re-enroll per-PR or keep on falsifier cadence consciously"
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag",
@@ -826,6 +846,12 @@ type SubstrateLongLaneRow {
 data falsifier_substrate_long_lane_note: String = "Nightly falsifier batch 6 (test-decomposition Class C, 2026-07-25): the declared Hermetic lane for SubstrateInputsOnly ingest/parse pipeline witnesses whose own eval exceeds the per-PR 5s fast-lane budget (gunbc_ci_fast_lane_rule_note) but are not wet integration — the live-grain half of the provenance-producer Class C split (fixture fail-closed walls stay per-PR via hand-built rows in affected_set_provenance_producer_test.dag and sg_claims_test.dag selectivity receipts). Runs SelectionApplied after the rehomed-bin-wet batch; claim_executor halts this batch if an earlier one fails (fail-closed). Local recipe until enrolled: claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>."
 
 data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
+    function: "wave1_gate1_d_census_subsumption_witness_holds",
+    reason: "134526ms measured witness wall on a cold run (27x a 5s fast-lane budget, test-decomposition-wcf-cut.md Class C, merry-ibex-306 2026-07-25): the fn builds 10 ingested_fixture_arrows fixtures through a real tokenize->parse_module->normalize->resolve pass each, across two aggregator checks (well-formedness, behavior-kind) — genuine corpus breadth, not a fixture-shaped defect. The mechanism-only sibling (self_host/wave1_gate1_d_mvp_subsumption_witness_test.dag table_fixture check_fns, measured eval_self=0.000ms) is already covered by the source-root *_test.dag discovery walk (gunbc.commit_workflow wave1_gate1_d_census_class_c_split_note) — no explicit per-PR roster row for it",
+    dissolve_on: "the census-ingest fixture pipeline's per-fixture pass drops under the per-PR fast-lane budget on a measured cold run (e.g. shared parse-table/resolve memoization for this closure) — then re-enroll wave1_gate1_d_census_subsumption_witness_holds per-PR and delete this row"
+  },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
     function: "lens_affected_set_provenance_producer_single_read_emits_row_holds",
