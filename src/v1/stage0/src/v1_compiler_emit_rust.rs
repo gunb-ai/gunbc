@@ -102,8 +102,8 @@ pub use crate::v1_compiler_ownership::{
 pub use crate::v1_compiler_resolve::get_exported_names;
 pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v2_std_witness::Witness;
+use crate::v2_std_witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
@@ -851,7 +851,7 @@ pub fn rust_normalize_witness_type_text(rendered: String) -> String {
     v1_rt::replace(
         rendered.clone(),
         "witness<".to_string(),
-        "v1_rt::Witness<".to_string(),
+        "Witness<".to_string(),
     )
 }
 
@@ -862,7 +862,7 @@ pub fn rust_witness_parent_leaf(parent: String) -> bool {
 pub fn rust_witness_variant_arm_names_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Holds/Violates literals below are the two arms of std.witness.Witness<C> (dag/std/witness.dag) — not minted nicknames. Pattern position still routes v1_rt::Witness via variant_pattern_qualified_path; construction turbofish here keys type-arg resolution off the modeled arm names only.".to_string()
+            "Holds/Violates literals below are the two arms of std.witness.Witness<C> (dag/std/witness.dag) — not minted nicknames. Pattern position routes via variant_pattern_qualified_path like any other modeled enum; construction turbofish here keys type-arg resolution off the modeled arm names only.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -11166,19 +11166,19 @@ pub fn emit_prelude(imported_names: Rc<Vec<String>>, local_type_names: Rc<Vec<St
         {
             "".to_string()
         } else {
-            "\nuse crate::v1_rt::Witness;".to_string()
+            "\nuse crate::v2_std_witness::Witness;".to_string()
         };
         let variant_line =
             if (witness_locally_defined.clone() || (has_holds.clone() && has_violates.clone())) {
                 "".to_string()
             } else {
                 if has_holds.clone() {
-                    "\nuse crate::v1_rt::Witness::Violates;".to_string()
+                    "\nuse crate::v2_std_witness::Violates;".to_string()
                 } else {
                     if has_violates.clone() {
-                        "\nuse crate::v1_rt::Witness::Holds;".to_string()
+                        "\nuse crate::v2_std_witness::Holds;".to_string()
                     } else {
-                        "\nuse crate::v1_rt::Witness::{Holds, Violates};".to_string()
+                        "\nuse crate::v2_std_witness::{Holds, Violates};".to_string()
                     }
                 }
             };
@@ -15424,14 +15424,10 @@ pub fn variant_pattern_qualified_path(
     match resolved_parent.clone() {
         Some(parent) => {
             let parent_leaf = qualified_last_segment(parent.clone());
-            if (parent_leaf.clone() == "Witness".to_string()) {
-                v1_rt::concat("v1_rt::Witness::".to_string(), rust_name.clone())
-            } else {
-                v1_rt::concat(
-                    v1_rt::concat(parent_leaf.clone(), "::".to_string()),
-                    rust_name.clone(),
-                )
-            }
+            v1_rt::concat(
+                v1_rt::concat(parent_leaf.clone(), "::".to_string()),
+                rust_name.clone(),
+            )
         }
         None => rust_name.clone(),
     }
