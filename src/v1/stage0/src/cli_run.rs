@@ -24682,6 +24682,14 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
             *self_block_refs.entry(name.clone()).or_insert(0) +=
                 inert_carrier_count_token(&block, &name);
             for v in inert_carrier_variant_names(&block) {
+                if v == name {
+                    // A single-variant coproduct whose variant name equals the type
+                    // name (`type X = X { .. }`) already had its occurrences tallied
+                    // above via `name`; tallying it again here as a "variant" double-
+                    // counts every reference and can zero out external consumption
+                    // even when the type has real callers.
+                    continue;
+                }
                 *self_block_refs.entry(v.clone()).or_insert(0) +=
                     inert_carrier_count_token(&block, &v);
                 type_variants.entry(name.clone()).or_default().push(v);

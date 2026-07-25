@@ -8,8 +8,6 @@ import v2.lens.inert_carrier {
   inert_carrier_live_declared_count,
   count_not_in_roster,
   count_stale_roster,
-  inert_carrier_live_unrostered_count,
-  inert_carrier_live_stale_roster_count,
   empty_inert_carrier_names
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -33,8 +31,4 @@ test fn count_not_in_roster_detects_unrostered() -> Bool {
 
 test fn count_stale_roster_detects_stale_entry() -> Bool {
   return count_stale_roster(roster: roster_one, inert_names: empty_inert_carrier_names) == 1
-}
-
-fn debug_counts() -> Int {
-  inert_carrier_live_unrostered_count() * 1000 + inert_carrier_live_stale_roster_count()
 }
