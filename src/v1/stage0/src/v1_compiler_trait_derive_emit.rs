@@ -4,8 +4,7 @@
 pub use crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits;
 pub use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape;
 use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
-    ReprDeriveElemKernelBool, ReprDeriveElemKernelInt, ReprDeriveElemKernelString,
-    ReprDeriveElemKernelUnit, ReprDeriveElemNullaryEnumCopy, ReprDeriveElemUnknown,
+    ReprDeriveElemNullaryEnumCopy, ReprDeriveElemUnknown,
 };
 pub use crate::std_trait_derive_shape::{
     nullary_coproduct_derive_traits, payload_coproduct_derive_traits, record_derive_traits_copy,
@@ -13,7 +12,7 @@ pub use crate::std_trait_derive_shape::{
 };
 pub use crate::std_types::is_container_type;
 pub use crate::v1_compiler_emit::to_pascal;
-pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type, is_unit_like};
+pub use crate::v1_compiler_infer_types::child_type_node;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -43,40 +42,6 @@ pub fn v1_coproduct_all_variants_nullary(children: Rc<Vec<Rc<Node>>>) -> bool {
             }
         }
         __all
-    }
-}
-
-pub fn v1_repr_grounding_derive_elem_shape_from_type_node(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> ReprGroundingDeriveElemShape {
-    if is_coproduct_type(n.clone()) {
-        if v1_coproduct_all_variants_nullary(n.children.clone()) {
-            ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy
-        } else {
-            ReprGroundingDeriveElemShape::ReprDeriveElemUnknown
-        }
-    } else {
-        {
-            let name = authored_name_at(source_indices.clone(), n.clone());
-            if ((name.clone() == "String".to_string()) || (name.clone() == "Symbol".to_string())) {
-                ReprGroundingDeriveElemShape::ReprDeriveElemKernelString
-            } else {
-                if ((name.clone() == "Int".to_string()) || (name.clone() == "Nat".to_string())) {
-                    ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt
-                } else {
-                    if (name.clone() == "Bool".to_string()) {
-                        ReprGroundingDeriveElemShape::ReprDeriveElemKernelBool
-                    } else {
-                        if ((name.clone() == "Unit".to_string()) || is_unit_like(n.clone())) {
-                            ReprGroundingDeriveElemShape::ReprDeriveElemKernelUnit
-                        } else {
-                            ReprGroundingDeriveElemShape::ReprDeriveElemUnknown
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
