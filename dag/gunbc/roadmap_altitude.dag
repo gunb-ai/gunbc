@@ -1,0 +1,114 @@
+module gunbc.roadmap_altitude
+
+import std.types { Int, String, Bool }
+
+data roadmap_altitude_note: String = "Page altitude from the attention law (composition slice 3): the workspace becomes the THIRD renderer of the observation model's 'routine collapses, anomaly expands' — sections render as bands with counts, anomaly rows auto-expand, routine folds — DERIVED from node status and band key, never hand-curated. No per-section flag and no per-node curation input exists in any signature here; the only inputs are the status and band vocabularies other authorities own, which is what makes hand-curation unwritable rather than merely discouraged."
+
+data altitude_convergence_note: String = "DECLARED CONVERGENCE ROW (the honest local stand-in): std.observation — AttentionLevel derived-never-chosen, PresentationDensity as the single authority with collapse/expand projected from it — lives on #7216's unmerged branch (supersedes #7162; the brief's original number), not on main, so this module carries the law as a LOCAL derivation in the same shape: attention derived from state, density derived from attention, renderers consume density. Dissolve-on: #7216 merges — RowAttention re-grounds on std.observation.AttentionLevel, RowDensity on PresentationDensity, and this module shrinks to the workspace's subject mapping (node status / band key -> observation event class), the workspace then being one more renderer of the one authority rather than the holder of a twin."
+
+type RowAttention
+  = RowRoutine
+  | RowWorking
+  | RowAnomaly
+
+data status_attention_note: String = "The node-status projection: done and superseded are finished work (routine — they fold); open and review are the working set (present, never expanded by the machine — expansion is the operator's gesture); an UNMODELED status is an anomaly by fail-closed arm — a status this law has never heard of must shout, never quietly fold (DESIGN section 5: a failure arm refuses, it does not widen into routine)."
+
+fn status_attention(status: String) -> RowAttention {
+  if status == "done" || status == "superseded" {
+    RowRoutine
+  } else if status == "open" || status == "review" {
+    RowWorking
+  } else {
+    RowAnomaly
+  }
+}
+
+type RowDensity
+  = RowCollapses
+  | RowHolds
+  | RowExpands
+
+data attention_density_note: String = "Density is DERIVED from attention — one projection, mirroring the observation module's density-single-authority lesson (its earlier shape carried two hand tables plus a witness that they agreed; the witness was validation where construction was available). Routine collapses; working holds its place without expanding; anomaly expands. There is no fourth arm and no per-consumer override."
+
+fn attention_density(a: RowAttention) -> RowDensity {
+  match a {
+    RowRoutine => RowCollapses
+    RowWorking => RowHolds
+    RowAnomaly => RowExpands
+  }
+}
+
+data band_attention_note: String = "The dispatch-band projection (the client grain of the same law): ok is the machine reporting routine success — it folds; invite and in-progress are the working set; fail and loud are anomalies — the answer the operator must see expands. An unmodeled band key is an anomaly by the same fail-closed arm as an unmodeled status."
+
+fn band_attention(band_key: String) -> RowAttention {
+  if band_key == "ok" {
+    RowRoutine
+  } else if band_key == "invite" || band_key == "in-progress" {
+    RowWorking
+  } else if band_key == "fail" || band_key == "loud" {
+    RowAnomaly
+  } else {
+    RowAnomaly
+  }
+}
+
+fn band_expands(band_key: String) -> Bool {
+  match attention_density(a: band_attention(band_key: band_key)) {
+    RowCollapses => false
+    RowHolds => false
+    RowExpands => true
+  }
+}
+
+type SectionCounts {
+  open_count: Int
+  review_count: Int
+  done_count: Int
+  superseded_count: Int
+  other_count: Int
+}
+
+fn section_counts(statuses: List<String>) -> SectionCounts {
+  fold(statuses, init: SectionCounts { open_count: 0, review_count: 0, done_count: 0, superseded_count: 0, other_count: 0 }, f: (acc, s) =>
+    if s == "open" {
+      SectionCounts { open_count: acc.open_count + 1, review_count: acc.review_count, done_count: acc.done_count, superseded_count: acc.superseded_count, other_count: acc.other_count }
+    } else if s == "review" {
+      SectionCounts { open_count: acc.open_count, review_count: acc.review_count + 1, done_count: acc.done_count, superseded_count: acc.superseded_count, other_count: acc.other_count }
+    } else if s == "done" {
+      SectionCounts { open_count: acc.open_count, review_count: acc.review_count, done_count: acc.done_count + 1, superseded_count: acc.superseded_count, other_count: acc.other_count }
+    } else if s == "superseded" {
+      SectionCounts { open_count: acc.open_count, review_count: acc.review_count, done_count: acc.done_count, superseded_count: acc.superseded_count + 1, other_count: acc.other_count }
+    } else {
+      SectionCounts { open_count: acc.open_count, review_count: acc.review_count, done_count: acc.done_count, superseded_count: acc.superseded_count, other_count: acc.other_count + 1 }
+    })
+}
+
+data section_counts_wire_note: String = "The band's count text: zero classes are OMITTED (a quiet band never says '0 review'), the classes render in working-first order (open, review, done, superseded), and the fail-closed other-bucket renders loudly as 'unknown' — an unmodeled status is never silently uncounted. An all-zero section renders an empty string; the caller decides whether such a section carries a band at all."
+
+fn count_phrase(n: Int, label: String) -> List<String> {
+  if n == 0 {
+    []
+  } else {
+    [join([to_string(n), " ", label], "")]
+  }
+}
+
+fn section_counts_wire(c: SectionCounts) -> String {
+  join(
+    concat(
+      concat(count_phrase(n: c.open_count, label: "open"), count_phrase(n: c.review_count, label: "review")),
+      concat(
+        concat(count_phrase(n: c.done_count, label: "done"), count_phrase(n: c.superseded_count, label: "superseded")),
+        count_phrase(n: c.other_count, label: "unknown"))),
+    " · ")
+}
+
+data statuses_all_routine_note: String = "The section fold predicate: a section folds when every node in it is routine — one anomalous or working member holds the whole section open, which is the law's altitude claim (the band summarizes; the anomaly refuses to be summarized). An empty status list is vacuously routine, and the section emitters do not wrap node-free sections at all, so the vacuous arm never decides a rendered fold."
+
+fn statuses_all_routine(statuses: List<String>) -> Bool {
+  all(statuses, s => match status_attention(status: s) {
+    RowRoutine => true
+    RowWorking => false
+    RowAnomaly => false
+  })
+}
