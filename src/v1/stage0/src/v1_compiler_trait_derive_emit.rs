@@ -4,7 +4,8 @@
 pub use crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits;
 pub use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape;
 use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
-    ReprDeriveElemNullaryEnumCopy, ReprDeriveElemSymbolWrappedOrdCarrier, ReprDeriveElemUnknown,
+    ReprDeriveElemNullaryEnumCopy, ReprDeriveElemPayloadCoproduct,
+    ReprDeriveElemSymbolWrappedOrdCarrier, ReprDeriveElemUnknown,
 };
 pub use crate::std_trait_derive_shape::{
     nullary_coproduct_derive_traits, payload_coproduct_derive_traits, record_derive_traits_copy,
@@ -62,7 +63,7 @@ pub fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
     if v1_coproduct_all_variants_nullary(children.clone()) {
         ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy
     } else {
-        ReprGroundingDeriveElemShape::ReprDeriveElemUnknown
+        ReprGroundingDeriveElemShape::ReprDeriveElemPayloadCoproduct
     }
 }
 
@@ -158,9 +159,22 @@ pub fn v1_emit_enum_derives(
                     )
                 }
             }
-            ReprGroundingDeriveElemShape::ReprDeriveElemUnknown => {
-                rust_trait_derive_attr_from_traits(payload_coproduct_derive_traits())
+            ReprGroundingDeriveElemShape::ReprDeriveElemPayloadCoproduct => {
+                if repr_grounding_derive_completeness_predicate(
+                    payload_coproduct_derive_traits(),
+                    shape.clone(),
+                ) {
+                    rust_trait_derive_attr_from_traits(payload_coproduct_derive_traits())
+                } else {
+                    v1_trait_derive_refuse(
+                        "trait_derive_emit: payload coproduct derive completeness refused"
+                            .to_string(),
+                    )
+                }
             }
+            ReprGroundingDeriveElemShape::ReprDeriveElemUnknown => v1_trait_derive_refuse(
+                "trait_derive_emit: unclassified elem shape refused".to_string(),
+            ),
             _ => v1_trait_derive_refuse(
                 "trait_derive_emit: coproduct elem shape unsupported for derive selection"
                     .to_string(),

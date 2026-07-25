@@ -73,6 +73,7 @@ pub enum ReprGroundingDeriveElemShape {
     ReprDeriveElemKernelUnit,
     ReprDeriveElemNullaryEnumCopy,
     ReprDeriveElemSymbolWrappedOrdCarrier,
+    ReprDeriveElemPayloadCoproduct,
     ReprDeriveElemUnknown,
 }
 
@@ -153,6 +154,16 @@ pub fn repr_grounding_derive_shape_has_trait(
                 ReprGroundingDeriveTrait::ReprDeriveEq => true,
                 ReprGroundingDeriveTrait::ReprDerivePartialOrd => true,
                 ReprGroundingDeriveTrait::ReprDeriveOrd => true,
+                ReprGroundingDeriveTrait::ReprDeriveSerialize => true,
+                ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
+                _ => false,
+            }
+        }
+        ReprGroundingDeriveElemShape::ReprDeriveElemPayloadCoproduct => {
+            match derive_trait.clone() {
+                ReprGroundingDeriveTrait::ReprDeriveDebug => true,
+                ReprGroundingDeriveTrait::ReprDeriveClone => true,
+                ReprGroundingDeriveTrait::ReprDerivePartialEq => true,
                 ReprGroundingDeriveTrait::ReprDeriveSerialize => true,
                 ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
                 _ => false,
@@ -405,5 +416,7 @@ pub struct ReprDeriveElemKernelUnit;
 pub struct ReprDeriveElemNullaryEnumCopy;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReprDeriveElemSymbolWrappedOrdCarrier;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ReprDeriveElemPayloadCoproduct;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReprDeriveElemUnknown;
