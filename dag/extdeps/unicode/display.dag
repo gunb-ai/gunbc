@@ -11,6 +11,16 @@ import std.unicode.types {
   Wide,
 }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.unicode.org/reports/tr11/"
+  }
+}
+
 fn char_display_width(c: Char) -> DisplayWidth {
   let cp = c
   let is_zero_width = contains(zero_width_codepoints, item: cp) || any(zero_width_blocks, predicate: b => in_block(cp: cp, block: b))
