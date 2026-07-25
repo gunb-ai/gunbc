@@ -924,7 +924,7 @@ fn gunbc_falsifier_rehomed_bin_wet_batch() -> Runnable {
   }
 }
 
-data falsifier_substrate_long_lane_batch_note: String = "Nightly falsifier batch 6 (test-decomposition Class C, 2026-07-25): the declared Hermetic lane for SubstrateInputsOnly ingest/parse pipeline witnesses whose own eval exceeds the per-PR 5s fast-lane budget (gunbc_ci_fast_lane_rule_note) — the live-grain half of the provenance-producer Class C split (falsifier_substrate_long_lane_entries in gunbc.ci_layer_roots). Runs SelectionApplied after the rehomed-bin-wet batch; claim_executor halts this batch if an earlier one fails (fail-closed)."
+data falsifier_substrate_long_lane_batch_note: String = "Nightly falsifier batch 6 (test-decomposition Class C, 2026-07-25): the declared Hermetic lane for SubstrateInputsOnly ingest/parse pipeline witnesses whose own eval exceeds the per-PR 5s fast-lane budget (gunbc_ci_fast_lane_rule_note) — the live-grain half of the provenance-producer Class C split, joined 2026-07-25 by the wave1_gate1_d_census row (falsifier_substrate_long_lane_entries in gunbc.ci_layer_roots). Runs SelectionApplied after the rehomed-bin-wet batch; claim_executor halts this batch if an earlier one fails (fail-closed)."
 
 fn falsifier_substrate_long_lane_batch_enrolled() -> Bool {
   length(xs: falsifier_substrate_long_lane_entries()) > 0

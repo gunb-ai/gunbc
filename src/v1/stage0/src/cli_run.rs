@@ -12023,12 +12023,13 @@ fn witness_admission_entry_function_keys_from_source(
             keys.push(key);
         }
     }
-    let heads: [(&str, &str); 5] = [
+    let heads: [(&str, &str); 6] = [
         ("bin_wet(", "entry: String"),
         ("probe_red(", "entry: String"),
         ("self_host_wet_entry(", "entry: String"),
         ("SelfHostWetReceiptBinding {", ""),
         ("RehomedBinWetRow {", ""),
+        ("SubstrateLongLaneRow {", ""),
     ];
     for (head, def_sig) in heads {
         let mut search_from = 0;
@@ -27162,6 +27163,29 @@ mod module_path_index_tests {
         assert!(
             keys.contains(&"dag/test/claim/x_test.dag::x_holds".to_string()),
             "a RehomedBinWetRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
+        );
+    }
+
+    #[test]
+    fn substrate_long_lane_rows_parse_as_explicit_consumer_keys() {
+        let synthetic = "module gunbc.ci_layer_roots\n\n\
+             type SubstrateLongLaneRow {\n\
+               entry: String\n\
+               function: String\n\
+             }\n\n\
+             data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [\n\
+               SubstrateLongLaneRow {\n\
+                 entry: \"dag/test/claim/y_test.dag\",\n\
+                 function: \"y_holds\",\n\
+                 reason: \"r\",\n\
+                 dissolve_on: \"d\"\n\
+               }\n\
+             ]\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.contains(&"dag/test/claim/y_test.dag::y_holds".to_string()),
+            "a SubstrateLongLaneRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
         );
     }
 
