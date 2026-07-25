@@ -457,7 +457,22 @@ fn task_sheet_lead_lane() -> RoadmapSection {
       section_group(
         label: "1 · Main to actual green (audit receipts, 2026-07-22)",
         nodes: [
-          authored(id: "ts-falsifier-nfr", done: true, content: "**falsifier dark since 2026-07-16 — roster burn-down** — every 4-hourly cold run red on `non_fold_residue_clean_holds` + `non_fold_residue_no_unrostered_or_stale`, logged as predicted=unaffected / actual=red divergences. Root-caused 2026-07-22 by local receipt (`nfr_roster_receipt`): 3 unrostered sites, 0 stale — `dag/gunbc/host_converge_slice1.dag::host_converge_slice1_host_result_all_valid` + `::host_converge_slice1_host_result_applied_count` (landed #7009) and `dag/gunbc/host_hygiene_reaper.dag::action_kills_build_cache_server` (landed #7026). LANDED with this sheet update: the 3 roster rows (reason + dissolution trigger each, the #6691 shape) are in `cli_run.rs`; receipt `nfr_roster_receipt` unrostered=0 stale=0 and the lens fn evaluates true by execution. The falsifier goes green on its next scheduled run and #7032 auto-closes — if it reds on anything else, that is a NEW find, not this one."),
+          ticket_row(id: "ts-falsifier-nfr", done: true, t: TicketFields {
+            headline: "falsifier dark since 2026-07-16 — roster burn-down",
+            brief: "Every 4-hourly cold run red on non_fold_residue_clean_holds + no_unrostered_or_stale, logged as predicted=unaffected / actual=red divergences.",
+            displaced_cost: "a dark falsifier — the cold control not controlling",
+            current_state: "LANDED: the 3 roster rows (reason + dissolution trigger each, the #6691 shape) in cli_run.rs; receipt nfr_roster_receipt unrostered=0 stale=0; the lens fn evaluates true by execution",
+            first_slice: "",
+            red_control: "if the next scheduled run reds on anything else, that is a NEW find, not this one",
+            out_of_scope: "",
+            handback: "",
+            updates: [
+              TicketUpdate { on: "2026-07-22", note: "root-caused by local receipt: 3 unrostered sites, 0 stale — host_converge_slice1 (landed #7009) and host_hygiene_reaper (landed #7026); the falsifier goes green on its next scheduled run and #7032 auto-closes" },
+              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 10)" },
+            ],
+            authored_on: "",
+            last_verified_on: "2026-07-22",
+          }),
           ticket_row(id: "ts-deploy-tail", done: true, t: TicketFields {
             headline: "srv1 deploy keeps breaking and reds main while the floor is green",
             brief: "13 of the day's 21 main-run failures were deploy_dashboard_srv1, not the floor. Two halves: converge the srv1 units, and decide whether the deploy verdict should share the ci run's conclusion — main-green must mean code-green. The deeper fix is §2's CD-transport node; gunbc-roadmap.service is also the dispatch surface, so this fix is its prerequisite.",
@@ -606,7 +621,21 @@ fn task_sheet_lead_lane() -> RoadmapSection {
           }),
           authored(id: "ts-lying-stamp", done: false, content: "**kill the recurrence class — corpus-scan witnesses predict-skipped** — 4th occurrence per the nfr roster's own dated blocks: hygiene witnesses stamped `SubstrateInputsOnly` while their counters walk the whole corpus, so per-PR selection skips them and only the falsifier reds, days later. Decide once: re-stamp `ReadsLiveTree` (never-predict-skip; sub-ms at floor scale) vs falsifier-red as a merge blocker. Census machinery landed #7070. 5TH OCCURRENCE (2026-07-23): #7088 landed gate_in_cheap_floor_membership + spec_enrolls_gate unrostered in ci_floor_plan.dag; caught by an unrelated dag-touching PR running the whole-corpus nfr receipt (#7104), backfilled per the roster precedent."),
           authored(id: "ts-merge-gate", done: false, content: "**CI is not a merge gate (re-evidence)** — 0–17-minute creation→merge latencies observed in the merge wave while a green run takes 60+ min, so verdicts land post-merge and main is the integration testbed; re-evidences §2's merge-admission HELD-state node — while it stays HELD and the falsifier is dark, the corpus has no pre-merge wall at all."),
-          authored(id: "ts-floor-memory", done: false, content: "**floor memory ceiling** — falsifier floor pinned at the 16 GiB cgroup memory.high with ~33 GB swap, sustained PSI stalls, and ~18 min of post-failure residual burn; #7000 (srv3 MemoryHigh/MemoryMax caps) landed 2026-07-22 — confirm the next falsifier runs reflect the caps; residual lineage #6848 → #7030."),
+          ticket_row(id: "ts-floor-memory", done: false, t: TicketFields {
+            headline: "floor memory ceiling",
+            brief: "Falsifier floor pinned at the 16 GiB cgroup memory.high with ~33 GB swap, sustained PSI stalls, and ~18 min of post-failure residual burn.",
+            displaced_cost: "",
+            current_state: "#7000 (srv3 MemoryHigh/MemoryMax caps) landed 2026-07-22; residual lineage #6848 → #7030",
+            first_slice: "confirm the next falsifier runs reflect the caps",
+            red_control: "",
+            out_of_scope: "",
+            handback: "",
+            updates: [
+              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 10)" },
+            ],
+            authored_on: "",
+            last_verified_on: "",
+          }),
           ticket_row(id: "ts-ci-claimed", done: false, t: TicketFields {
             headline: "already claimed in the roadmap — dispatch from these lanes, do not re-plan them",
             brief: "§0 ① compile wall + ③ affected-set live in CI; §2 floor-throughput group (serial compile-clean wall · shard A done / shard B · within-run double-resolve · resolve-cache default-on) targeting floor <1min; §2 workload-class admission + cap/admission de-conflation; §3 audit rows; the CI-onto-v2 native-routing lane (#7069, parity-gated). What the audit adds is only SEQUENCING: falsifier green first, then selection honesty, then speed — a fast CI that lies is worse than a slow one.",
@@ -734,7 +763,21 @@ fn task_sheet_lead_lane() -> RoadmapSection {
       section_group(
         label: "2b · Interpreter deletion endgame — Track B, decoupled from strong self-host (operator-ruled 2026-07-23; authority = gunbc.v1_deletion_plan)",
         nodes: [
-          authored(id: "ts-interp-endgame", done: false, content: "**Track B — delete the v1 interpreter; the three deletions named apart; these rows are a PROJECTION of gunbc.v1_deletion_plan, never a third plan** — delete-v1 conflated three finish lines: (a) COMPILER — the §1 gates program, whose plan authority is dag/gunbc/v1_deletion_plan.dag (three gates + GateDeletion, bricks with ConfidenceBasis and PlanDependency edges; its prereq_drift_ruling_2026_07_23 rules the three gates ARE the interpreter-deletion bar, so this lane's new conditions land INTO that carrier as bricks) — and Gate 1 there is GateEmitterFixedPoint, the emitter re-emits itself behaviorally 2-generation, NOT a nothing-needs-the-tree-walker gloss (regen already runs generated Rust; the tree-walker's emit-side residue is the compile-time-eval role plus the emit_host transport builtins); (b) INTERPRETER — this lane: the floor's eval + host-dispatch roles peeled onto emit-on-demand (2a is the flip mechanism; §0-④ execution-as-realization is the doctrine, with the three verbs kept DISTINCT — eval is semantic authority, realize picks which handler executes, materialize is the recompute-memoize-share policy; v2.std.materialize is analysis-side today and says so on its own note); (c) HOST-PHYSICS — a pinned v2-EMITTED kernel (seed census: compiler logic emitted, harness pinned, never hand-maintained). The roles carrier is dag/std/emit_on_demand.dag interpreter_surviving_roles — 3 declared roles under a ceiling of 8, not prose roles — and the wet-workflow surfaces (gunbc serve/belt · main_wet regen · gunbc ci · pre-push · probe bins) are live interpreter consumers with NO roster row today: enroll them as a counted fourth role so the delete bar counts every execution surface, never only the floor. v1_interpreter.rs (10,523 LOC) deletes when a+b+c hold; the counted routing frontier + the roles roster are the only progress metric."),
+          ticket_row(id: "ts-interp-endgame", done: false, t: TicketFields {
+            headline: "Track B — delete the v1 interpreter; the three deletions named apart",
+            brief: "These rows are a PROJECTION of gunbc.v1_deletion_plan, never a third plan. delete-v1 conflated three finish lines: (a) COMPILER — the §1 gates program, plan authority v1_deletion_plan.dag (Gate 1 is GateEmitterFixedPoint — the emitter re-emits itself behaviorally 2-generation, NOT a nothing-needs-the-tree-walker gloss); (b) INTERPRETER — this lane: the floor's eval + host-dispatch roles peeled onto emit-on-demand, the three verbs kept DISTINCT (eval is semantic authority, realize picks the handler, materialize is recompute-memoize-share); (c) HOST-PHYSICS — a pinned v2-EMITTED kernel, never hand-maintained.",
+            displaced_cost: "three finish lines conflated under one word",
+            current_state: "the roles carrier is dag/std/emit_on_demand.dag interpreter_surviving_roles — 3 declared roles under a ceiling of 8; the wet-workflow surfaces (gunbc serve/belt · main_wet regen · gunbc ci · pre-push · probe bins) are live interpreter consumers with NO roster row today",
+            first_slice: "enroll the wet surfaces as the counted fourth role so the delete bar counts every execution surface, never only the floor",
+            red_control: "",
+            out_of_scope: "",
+            handback: "",
+            updates: [
+              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 10); v1_interpreter.rs (10,523 LOC) deletes when a+b+c hold — the counted routing frontier + the roles roster are the only progress metric" },
+            ],
+            authored_on: "",
+            last_verified_on: "",
+          }),
           ticket_wi(id: "ts-authority-converge", done: false, t: TicketFields {
             headline: "authority convergence — extend v1_deletion_plan with the execution track (2b must project, not fork)",
             brief: "The carrier gains the interpreter-track structure as bricks, each with ConfidenceBasis: the observational-equivalence contract · divergence root cause · the materialization-provider interface · evaluator completeness · executor seam extraction · quarantine rehearsal · the wet-workflow roles-roster enrollment (the counted fourth role on interpreter_surviving_roles, ceiling 8 with 3 used — the delete-blocking obligation's owner is THIS node). The sheet rows reference bricks; they never restate them. Sized because it IS the sprint's entry point: the belt could never surface an unsized gate.",
@@ -766,8 +809,36 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             authored_on: "",
             last_verified_on: "",
           }),
-          authored(id: "ts-evaluator-complete", done: false, content: "**v2 evaluator completeness OR native-totality proof — one of the two, typed, before quarantine** — the default v2 evaluator (v2.extdeps.runtimes.v2_evaluator) still carries reject arms for loop stepping, calls, suspend, and match selection, and has no equivalents of v1's CPU deadline and call-depth guards. Either complete it with the resource bounds, or PROVE every admitted execution materializes natively so the evaluator is never on the executed path. An execution admitted to neither is a refusal, not a fallback to v1."),
-          authored(id: "ts-executor-seams", done: false, content: "**interpreter-facing seam extraction — the critical slice of cli_run, NOT full hollowing** — claim_executor imports InterpContext, Value, and run_in_context_with_args directly, and cli_run carries hundreds of interpreter references. Critical path: floor planning, witness execution, store consultation, and effect dispatch move behind a seam the native path can implement. Full hollowing (~28k lines and growing — a count literal here would be stale on arrival) and zero-hand Rust are separate terminal milestones — worthwhile, never delay-justifying."),
+          ticket_row(id: "ts-evaluator-complete", done: false, t: TicketFields {
+            headline: "v2 evaluator completeness OR native-totality proof — one of the two, typed, before quarantine",
+            brief: "The default v2 evaluator still carries reject arms for loop stepping, calls, suspend, and match selection, and has no equivalents of v1's CPU deadline and call-depth guards. Either complete it with the resource bounds, or PROVE every admitted execution materializes natively so the evaluator is never on the executed path. An execution admitted to neither is a refusal, not a fallback to v1.",
+            displaced_cost: "",
+            current_state: "",
+            first_slice: "",
+            red_control: "",
+            out_of_scope: "",
+            handback: "",
+            updates: [
+              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 10)" },
+            ],
+            authored_on: "",
+            last_verified_on: "",
+          }),
+          ticket_row(id: "ts-executor-seams", done: false, t: TicketFields {
+            headline: "interpreter-facing seam extraction — the critical slice of cli_run, NOT full hollowing",
+            brief: "claim_executor imports InterpContext, Value, and run_in_context_with_args directly, and cli_run carries hundreds of interpreter references. Critical path: floor planning, witness execution, store consultation, and effect dispatch move behind a seam the native path can implement.",
+            displaced_cost: "",
+            current_state: "",
+            first_slice: "",
+            red_control: "",
+            out_of_scope: "full hollowing (~28k lines and growing — a count literal here would be stale on arrival) and zero-hand Rust are separate terminal milestones — worthwhile, never delay-justifying",
+            handback: "",
+            updates: [
+              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 10)" },
+            ],
+            authored_on: "",
+            last_verified_on: "",
+          }),
           authored(id: "ts-zero-hand", done: false, content: "**operator ruling 2026-07-23: hand-MAINTAINED Rust goes to exactly zero — a TERMINAL milestone, pushed off the interpreter critical path** — the pinned kernel is emitted from cited models; hand-maintenance is a transitional frontier, never a terminus; the external trust residue stays cited, never owned (rustc, stdlib, OS). Consequences: HAND_MAINTAINED_STAGE0_FILES (25 files + module_path_index, currently GROWING — tracked on the section-7 Seed-interim row ts-seed-interim per cli-run-hollowing-plan.md sections 2/7) becomes a counted burn-down roster, and a NEW hand-Rust addition lands only with a named emitted-or-collapsed dissolution trigger — a review bar, same class as group-5a registry admission. kernel-D section 2's collapse-vs-pin either-or resolves to collapse-onto-the-materialization-kernel (one CacheLookupResult fold, §3 one authority; pin-as-emitted the fallback only if the fold proves unfeasible). Sequencing per review 2026-07-23: FULL zero-hand must never delay interpreter removal — it lands after quarantine, as its own finish line; the narrower ^hand_queue_drain brick (the src/v1 CLI/product files) rides the plan carrier BEFORE quarantine per prereq_drift_ruling_2026_07_23 (products-still-build is unwritable undrained). THIRD carrier contradiction (adversarial pass 2026-07-23): v1_deletion_plan ^hand_queue_drain still reads 7-files-plus-module_path_index against the live 25-file roster AND rules the host-physics pair pins-NOT-drain-targets — under this ruling that brick re-words to collapse-first with pin-as-EMITTED fallback; fix on that carrier with the other two."),
           ticket_row(id: "ts-effects-providers", done: false, t: TicketFields {
             headline: "effects are per-language library models — effect providers, emitted like everything else",
@@ -788,7 +859,21 @@ fn task_sheet_lead_lane() -> RoadmapSection {
           authored_wi(id: "ts-store-econ", done: false, content: "**the durable BUDGETED store gates the 2a bulk flip (the nine economic families) — the lane's critical-path head** — 9 of 11 InterpretedRetained families cite no_cached_no_evict_carrier (the frontier's own rows; complement + meet_join sit at agreement_red_on_main — the reverted pair, whose re-flip additionally needs its divergence root-caused, see the flip-revert row): the equals_eval legs are uncached, so routing them native would rebuild every PR run. State, precisely (review-corrected 2026-07-23): ci.yml pins GUNBC_NATIVE_CACHE_ROOT to the runner tool-cache (durable per-runner, R2 toolchain-keyed — why the revert receipt saw compile_skipped=true warm), but the tier is LifecycleByConvention, unbudgeted, and claim_executor consults NO store before choosing to interpret an entry — the consult lives inside the wet transport, never the executor's routing decision. Adjudicated against the tree (the two reviews split on this): Filesystem Delete/List EXIST (filesystem_io.dag operation Delete; artifact_fs_delete + artifact_fs_list in the fs transport) — the artifact_store_fs transport NOTE claiming otherwise is stale prose to fix; what remains is wiring COUNTED SpacePacked eviction to those ops plus the budget authority, not modeling them. Work, in order: (i) the persistent tier gets its real budget + root with counted eviction; (ii) claim_executor consults it at the routing decision — hit = cached native, miss = emit-build-store once per content hash (which also makes the interpreted emitter's slowness a one-time cost, decoupling this lane from strong self-host); (iii) equals_eval agreement receipts become per-PR-affordable warm. Provider shape: ONE contract (kernel-D's CacheLookupResult fold), N provider rows as siblings under it — the persistent store tier, resolved_graph_cache, recorded_fixture, #7129's in-process schedule-retention (merged bd5afd6bc3 2026-07-24; the post-merge review's three retention P1s + run_claims_in_process activation fixes are the PR-0 close-out, ci-two-tier-placement-redesign.md section 5), and the W3 typed-module store — one authority at the interface, never one merged store and never more one-off cache wiring. Accept (T2→T5): claim_executor consults the budgeted tier on a real PR run (hit = cached native with zero cargo; miss = emit-build-store once); an over-budget put triggers counted typed eviction, never unbounded growth. RED battery (review-hardened 2026-07-23): delete the store root → rebuild + restore with VERDICT-equality as the primary leg and byte-identity on the keyed artifact as the purity oracle (sound: C.2 #6576 made the seed emitter map_keys-free by construction); a same-key CORRUPTED artifact refuses on read, never runs (today's native cache declares content_verified_on_read: false — that flips here); concurrent same-key puts publish atomically (tmp+rename), never a torn artifact. BOTTLENECK, said out loud: THREE majors converge on this row — the 2a flip, lens M-L2, and the materialization kernel — the ForciblySerial narrow point of the whole graph; resource it as such, because a slip here stalls three lanes.", intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"),
           authored(id: "ts-material-ci", done: false, content: "**materialization running in CI — the kernel both substrates consume** — the realize/CacheLookupResult fold consumed by the v1 handlers AND v2 05_eval (kernel-D's named dissolution point for the pinned caches), the ComputationIdentity qualifier inside materialize (duplicate-work lane; analysis-side today per its own module note — runtime Share is realized by emit-on-demand artifacts, not by parallelizing the interpreter), and scheduling from derived space bounds (realize_pack landed but ADVISORY — it changes no scheduling yet; the executor cutover seam is priced in witness-realization P4). Sequencing note (review 2026-07-23, corrected): kernel-D's dissolution trigger is still written either-or (collapse OR pin) — the carrier fix is ts-authority-converge's deliverable (NOT the terminal zero-hand burn-down, which stays after the delete); this row dispatches only after converge lands collapse-first. Watch-flag, properly bounded: run 30027001708's PARTIAL-run receipt showed unkeyed demand at 0.6 percent of calls (8,985 of 1.48M) against the committed whole-run carrier of ~47.6 percent (ci_floor_redundancy_ledger TSV, run 29976989996) — different denominators, and the near-zero figure sits on NO carrier; land the fresh receipt with the first clean full run BEFORE repricing the identity lane."),
           authored(id: "ts-quarantine", done: false, content: "**quarantine rehearsal — the deletion dress rehearsal, at LINK grain** — CI and the served products run against binaries BUILT WITH v1_interpreter OMITTED (feature/cfg-gated out or a crate split): source-inaccessible proves nothing about a linked module — the omission must be in the artifact (review 2026-07-23). The floor on native routing plus the emitted evaluator only, cold AND warm, with a no-v1-consumer census over the tree. A green rehearsal with the census at zero IS the deletion receipt; the delete is then a formality. Parity evidence rides the 2a re-pricing throughout: one loud in-PR agreement receipt, falsifier cold control unchanged, a divergence fails the floor — never counted-and-continue."),
-          authored(id: "ts-interp-delete", done: false, content: "**the delete itself** — v1_interpreter.rs deletes when: the v1_deletion_plan three gates read done (Gate 1 = the emitter re-emits itself, the carrier's own definition) · the 2a flip is complete with the effect census native · the NON-FLOOR wet surfaces are routed or retired (gunbc serve/belt · main_wet regen · gunbc ci · pre-push · probe bins — the roles-roster enrollment from the anchor; a surface with no roster row blocks the delete by construction) · the materialization kernel is live in CI · the evaluator is complete-or-proven-total · and the quarantine rehearsal is green with the cold/warm proof and the no-v1-consumer census at zero. Encoded as edges below, not prose. NOTE (review 2026-07-23): the plan carrier has no interpreter-file-only milestone today — src/v1 deletes wholesale at ^v1_delete via ^ci_floor_cutover + ^v1_quarantine; if the interpreter file is meant to go FIRST, add its brick to v1_deletion_plan.dag explicitly. cli_run FULL hollowing and zero-hand Rust follow as their own terminal milestones — off this critical path by review ruling 2026-07-23."),
+          ticket_row(id: "ts-interp-delete", done: false, t: TicketFields {
+            headline: "the delete itself",
+            brief: "v1_interpreter.rs deletes when: the v1_deletion_plan three gates read done (Gate 1 = the emitter re-emits itself, the carrier's own definition) · the 2a flip is complete with the effect census native · the NON-FLOOR wet surfaces are routed or retired (a surface with no roster row blocks the delete by construction) · the materialization kernel is live in CI · the evaluator is complete-or-proven-total · the quarantine rehearsal is green with the cold/warm proof and the no-v1-consumer census at zero. Encoded as edges, not prose.",
+            displaced_cost: "",
+            current_state: "NOTE (review 2026-07-23): the plan carrier has no interpreter-file-only milestone today — src/v1 deletes wholesale at ^v1_delete; if the interpreter file is meant to go FIRST, add its brick to v1_deletion_plan.dag explicitly",
+            first_slice: "",
+            red_control: "",
+            out_of_scope: "cli_run FULL hollowing and zero-hand Rust — their own terminal milestones, off this critical path by review ruling 2026-07-23",
+            handback: "",
+            updates: [
+              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 10)" },
+            ],
+            authored_on: "",
+            last_verified_on: "",
+          }),
         ],
         edges: [
           RoadmapEdge { child: nid(s: "ts-observation-contract"), parent: nid(s: "ts-authority-converge") },
