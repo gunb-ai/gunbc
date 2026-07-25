@@ -130,7 +130,7 @@ use crate::v1_std_core::VarBindingKind::{
 };
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
-    binop_right, cast_expr, cast_target, empty_intern_table, error_type, expr_call_func_at,
+    binop_right, cast_expr, cast_target, empty_intern_table, expr_call_func_at,
     expr_has_non_tail_self_call, expr_has_self_call, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_binding_name_at, field_binding_pattern,
     field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
