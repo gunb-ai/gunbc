@@ -309,6 +309,8 @@ data host_standup_spine: List<HostStandupStep> = [
   ),
 ]
 
+data host_standup_gap_ledger_parallel_representation_note: String = "🟡 dissolve-on: this ledger is a PARALLEL REPRESENTATION of host_standup_spine and is declared as one rather than left ambient (DESIGN §3; an honestly-marked scaffold duplicating a canonical fact is still a violation). Twelve rows are hand-written beside the twelve spine steps, and `modeling` is a String carrying five values — modeled / modeled-new-authority / partial / gap / gap-shape-only — where PhaseDisposition has two arms. Nothing derives one from the other, so they are free to drift, and the drift is invisible: p0_gap_ledger_matches_spine_partial_authorities exists only because the ledger CAN disagree with the spine, which is validation standing where construction was available (§5). It was also the source consulted to answer 'where does subsumption stand', so a stale string became a status report. WHY IT CANNOT SIMPLY BE DERIVED TODAY, which is the real finding: PhaseDisposition is a SUM, so authorities and interim_realization are mutually exclusive — and two live phases need BOTH. P0:reach-secrets-network has modeled ACL authorities AND an unmodeled live upsert; P3:green-place-readiness has a landed gunbc authority AND a ctrl writer (green_place.dag, read-gunbc-pin.sh). Neither fact is representable, so it was pushed into this ledger's prose, which is precisely what the ledger is FOR. That is the same sum-where-a-product-belongs defect that gunbc.host_phase_status.HostPhaseCellStatus was first written with and corrected. DISSOLVES WHEN PhaseDisposition becomes a product — authorities: List<DeclarationRef> alongside interim: PhaseInterim? — at which point 'modeled' is authorities-nonempty-and-no-interim, 'partial' is both-present, 'gap' is interim-only, every row here becomes a projection of the spine, and this table is deleted. Deliberately NOT bundled into the status-axis change: it re-shapes fourteen spine rows in a load-bearing file, and the two changes should be reviewable apart."
+
 data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "prefix:bmc-credential-converge",
@@ -405,6 +407,10 @@ fn host_standup_step_is_effective_gap_at_actuation_verdict(
       !host_standup_p3_gunbc_pinned_tree_landed || host_standup_step_is_gap(step: step)
     Assimilation { phase: _ } => host_standup_step_is_gap(step: step)
   }
+}
+
+fn host_standup_gap_phase_count() -> Int {
+  filter(host_standup_spine, s => host_standup_step_is_gap(step: s)).length()
 }
 
 fn host_standup_gap_count_at_actuation_verdict(verdict: ObservationVerdict) -> Int {
