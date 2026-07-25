@@ -3,7 +3,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
@@ -6373,6 +6373,100 @@ fn index_record_schedule_module(
     }
 }
 
+/// Snapshot of the floor's active-batch progress, sampled by the detached
+/// floor-memory heartbeat thread. Armed only when `entry_total` is known and
+/// non-zero — never a fabricated 0-of-0 (observation law 2 / §5).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HeartbeatFeedSnapshot {
+    pub batch_index: u64,
+    pub batch_label: String,
+    pub entry_done: u64,
+    pub entry_total: u64,
+}
+
+struct HeartbeatFeedState {
+    batch_index: u64,
+    batch_label: String,
+    /// `None` while a discovery batch has entered but its roster entry-count is
+    /// not yet known — the heartbeat thread skips emit until this is `Some(n>0)`.
+    entry_total: Option<u64>,
+    entry_done: AtomicU64,
+}
+
+/// Process-wide feed the floor-memory heartbeat samples. Updated at batch-enter
+/// (label + total when known) and at each `index_schedule_entry_completed` (and
+/// SingleClaim completion) — the existing per-entry point, never a parallel counter.
+static HEARTBEAT_FEED: Mutex<Option<HeartbeatFeedState>> = Mutex::new(None);
+
+/// Enter a floor batch. `entry_total = Some(n)` arms the feed when `n > 0`;
+/// `None` leaves it pending (discovery: total filled once the roster is known).
+/// Resets `entry_done` to 0. A zero total is refused (§5: never fabricate 0-of-0).
+pub fn heartbeat_feed_enter_batch(batch_index: u64, label: &str, entry_total: Option<u64>) {
+    let total = match entry_total {
+        Some(0) => None,
+        other => other,
+    };
+    let mut g = HEARTBEAT_FEED
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    *g = Some(HeartbeatFeedState {
+        batch_index,
+        batch_label: label.to_string(),
+        entry_total: total,
+        entry_done: AtomicU64::new(0),
+    });
+}
+
+/// Fill the entry total once a discovery roster's entry-group count is known.
+/// No-op when `total == 0` (refuses to arm a 0-of-0). No-op when no batch is open.
+pub fn heartbeat_feed_set_entry_total(total: u64) {
+    if total == 0 {
+        return;
+    }
+    let mut g = HEARTBEAT_FEED
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    if let Some(state) = g.as_mut() {
+        state.entry_total = Some(total);
+    }
+}
+
+/// Record one completed entry (discovery source-file grain, or one SingleClaim).
+/// Caps at `entry_total` when known so a late double-complete cannot invent
+/// "entry N+1 of N".
+pub fn heartbeat_feed_entry_completed() {
+    let g = HEARTBEAT_FEED
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    if let Some(state) = g.as_ref() {
+        let prev = state.entry_done.fetch_add(1, Ordering::Relaxed);
+        if let Some(total) = state.entry_total {
+            if prev >= total {
+                // Undo the overshoot — saturating at total.
+                state.entry_done.store(total, Ordering::Relaxed);
+            }
+        }
+    }
+}
+
+/// The armed snapshot, or `None` when no batch is open / total still pending.
+/// The heartbeat thread skips emit on `None` rather than printing a fabricated
+/// progress line.
+pub fn heartbeat_feed_snapshot() -> Option<HeartbeatFeedSnapshot> {
+    let g = HEARTBEAT_FEED
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let state = g.as_ref()?;
+    let entry_total = state.entry_total?;
+    let entry_done = state.entry_done.load(Ordering::Relaxed).min(entry_total);
+    Some(HeartbeatFeedSnapshot {
+        batch_index: state.batch_index,
+        batch_label: state.batch_label.clone(),
+        entry_done,
+        entry_total,
+    })
+}
+
 /// Drive one entry-completion: decrement the entry's closure refcounts, drop the
 /// per-module state that reached zero from every per-module cache (typed, parse,
 /// normalize-diag, ownership-diag, source-hash), AND drop the entry's assembled
@@ -6391,9 +6485,15 @@ fn index_schedule_entry_completed(
         let mut slot = index.schedule_retention.borrow_mut();
         match slot.as_mut() {
             Some(sr) => (sr.entry_completed(entry)?, sr.evict_enabled()),
-            None => return Ok(()),
+            None => {
+                // Schedule unarmed — the drain still advanced an entry; feed the heartbeat.
+                heartbeat_feed_entry_completed();
+                return Ok(());
+            }
         }
     };
+    // The same per-entry point feeds the observation heartbeat — one counter, not a fork.
+    heartbeat_feed_entry_completed();
     if !batch.typed_keys.is_empty() {
         let mut cache = index.typed_module_cache.borrow_mut();
         for key in &batch.typed_keys {
@@ -6454,6 +6554,44 @@ fn index_schedule_entry_completed(
         index.resolved_graph_memo.borrow().len(),
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod heartbeat_feed_red_controls {
+    use super::{
+        heartbeat_feed_enter_batch, heartbeat_feed_entry_completed, heartbeat_feed_set_entry_total,
+        heartbeat_feed_snapshot,
+    };
+
+    #[test]
+    fn never_arms_a_fabricated_zero_of_zero() {
+        heartbeat_feed_enter_batch(0, "witness discovery", Some(0));
+        assert_eq!(
+            heartbeat_feed_snapshot(),
+            None,
+            "entry_total=0 must not arm the feed"
+        );
+        heartbeat_feed_enter_batch(0, "witness discovery", None);
+        assert_eq!(
+            heartbeat_feed_snapshot(),
+            None,
+            "pending total must not arm the feed"
+        );
+        heartbeat_feed_set_entry_total(0);
+        assert_eq!(
+            heartbeat_feed_snapshot(),
+            None,
+            "set_entry_total(0) must refuse to arm"
+        );
+        heartbeat_feed_set_entry_total(602);
+        let snap = heartbeat_feed_snapshot().expect("armed after real total");
+        assert_eq!(snap.batch_label, "witness discovery");
+        assert_eq!(snap.entry_done, 0);
+        assert_eq!(snap.entry_total, 602);
+        heartbeat_feed_entry_completed();
+        let snap = heartbeat_feed_snapshot().expect("still armed");
+        assert_eq!(snap.entry_done, 1);
+    }
 }
 
 #[cfg(test)]
@@ -14929,6 +15067,12 @@ fn run_discovery_corpus_with_options_inner(
     // per worker — and width is adaptive, so "n is small here" is not a fact that stays
     // true (§6). One build covers the run; workers only read the process-wide memo.
     prime_witness_execution_legs(&index, rows.iter().map(|row| row.entry.as_str()));
+
+    // Arm the observation heartbeat's entry total at the same grain the drain walks
+    // (entry-groups), now that the roster is known — never a fabricated 0-of-0, and
+    // never earlier (batch-enter only had the opaque DiscoveryBatch runnable).
+    let discovery_entry_total = entry_row_groups(&rows).len() as u64;
+    heartbeat_feed_set_entry_total(discovery_entry_total);
 
     let floor_color = floor_color_enabled();
     let floor_stream = floor_stream_enabled();

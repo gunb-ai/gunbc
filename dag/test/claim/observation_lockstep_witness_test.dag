@@ -69,7 +69,9 @@ fn w_heartbeat_period_matches_the_seed_cadence() -> Bool {
 }
 
 fn w_heartbeat_source_still_refuses_to_fabricate() -> Bool {
-  lockstep_has(path: executor_source_path, needle: "refusing to fabricate")
+  lockstep_has(path: executor_source_path, needle: "refusing to fabricate") &&
+  lockstep_has(path: executor_source_path, needle: "render_heartbeat_line_mirror") &&
+  lockstep_has(path: executor_source_path, needle: "heartbeat_feed_snapshot")
 }
 
 test fn observation_lockstep_witnesses() -> Bool {

@@ -12,6 +12,7 @@ use std::time::Instant;
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
     compute_histogram_data, compute_witness_timing_rows, enable_floor_compile_clean_lazy_install,
+    heartbeat_feed_enter_batch, heartbeat_feed_entry_completed, heartbeat_feed_snapshot,
     install_floor_compile_clean_receipt, make_eval_context, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
@@ -20,8 +21,8 @@ use v1_compiler::cli_run::{
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
-    leaf_cgroup_dir, mem_total_bytes, memory_events_field, memory_pressure_some_avg10,
-    read_cgroup_raw, read_cgroup_u64, AdmittedSlot, MemoryGovernor,
+    leaf_cgroup_dir, mem_total_bytes, memory_pressure_some_avg10, read_cgroup_raw, read_cgroup_u64,
+    AdmittedSlot, MemoryGovernor,
 };
 use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
@@ -1328,9 +1329,101 @@ fn peak_rss_bytes() -> Option<u64> {
     Some(kb.saturating_mul(1024))
 }
 
-fn heartbeat_field(v: Option<u64>) -> String {
-    v.map(|b| b.to_string())
-        .unwrap_or_else(|| "unreadable".into())
+/// Mirror of `gunbc.observation_ci_render.ci_minute_switch_seconds` — where the
+/// sentence form switches from seconds to minutes (display policy, not a unit).
+const CI_MINUTE_SWITCH_SECONDS: u64 = 90;
+
+/// Mirror of `gunbc.observation_seed_render.seed_heartbeat_unreadable_cause`.
+const SEED_HEARTBEAT_UNREADABLE_CAUSE: &str = "cgroup field unreadable";
+
+/// Pure Rust mirror of `gunbc.observation_seed_render.seed_heartbeat_line` —
+/// `ci_heartbeat_line ∘ ci_render_line` over the seed's real input space. The
+/// heartbeat thread cannot call the interpreter (would build a duplicate module
+/// index under the memory envelope it watches — DESIGN §2); this mirror is proven
+/// byte-equal to the `.dag` oracle by `render_heartbeat_line_mirror_matches_seed_oracle`.
+/// Subject is batch-grain only (parallel entries → no fabricated per-module detail).
+fn render_heartbeat_line_mirror(
+    elapsed_ms: u64,
+    batch_label: &str,
+    entry_index: u64,
+    entry_total: u64,
+    rss_bytes: Option<u64>,
+    swap_bytes: Option<u64>,
+    pressure_bp: Option<u64>,
+    emoji: bool,
+) -> String {
+    let glyph = if emoji { "🕐" } else { "◷" };
+    let duration = mirror_ci_human_duration(elapsed_ms);
+    let rss = mirror_ci_measured_bytes(rss_bytes);
+    let swap = mirror_ci_measured_bytes(swap_bytes);
+    let pressure = mirror_ci_measured_percent(pressure_bp);
+    format!(
+        "{glyph} {duration} in — still in {batch_label}: entry {entry_index} of {entry_total}. memory {rss}, swap {swap}, pressure {pressure}"
+    )
+}
+
+fn mirror_ci_human_duration(ms: u64) -> String {
+    if ms < 1_000 {
+        format!("{ms}ms")
+    } else if ms < CI_MINUTE_SWITCH_SECONDS * 1_000 {
+        format!("{} seconds", ms / 1_000)
+    } else {
+        format!("{} minutes", ms / 60_000)
+    }
+}
+
+fn mirror_ci_tenths_text(tenths: u64) -> String {
+    format!("{}.{}", tenths / 10, tenths % 10)
+}
+
+fn mirror_ci_human_bytes(bytes: u64) -> String {
+    // Mirror of ci_gibibyte_tenths: (bytes * 10) / gibibyte_scale_factor_bytes (2^30).
+    let tenths = (bytes.saturating_mul(10)) / 1_073_741_824;
+    format!("{} GiB", mirror_ci_tenths_text(tenths))
+}
+
+fn mirror_ci_human_percent(bp: u64) -> String {
+    // Mirror of ci_human_percent: tenths = bp / 10 → "9.0%".
+    format!("{}%", mirror_ci_tenths_text(bp / 10))
+}
+
+fn mirror_ci_measured_bytes(v: Option<u64>) -> String {
+    match v {
+        Some(b) => mirror_ci_human_bytes(b),
+        None => format!("unreadable ({SEED_HEARTBEAT_UNREADABLE_CAUSE})"),
+    }
+}
+
+fn mirror_ci_measured_percent(v: Option<u64>) -> String {
+    match v {
+        Some(bp) => mirror_ci_human_percent(bp),
+        None => format!("unreadable ({SEED_HEARTBEAT_UNREADABLE_CAUSE})"),
+    }
+}
+
+/// PSI `avg10` is a percent with one decimal (e.g. `"9.01"`). One basis point is
+/// 0.01 percentage points, so percent × 100 = bp (9.01 → 901) — the same scale
+/// `std.observation` carries for `PsiPressure.avg10`.
+fn psi_avg10_to_basis_points(avg10: &str) -> Option<u64> {
+    let pct: f64 = avg10.parse().ok()?;
+    if !pct.is_finite() || pct < 0.0 {
+        return None;
+    }
+    Some((pct * 100.0).round() as u64)
+}
+
+fn batch_heartbeat_label(batch: &[Runnable]) -> String {
+    if batch
+        .iter()
+        .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }))
+    {
+        // Canonical crawl-window subject — matches the seed oracle's batch label.
+        "witness discovery".to_string()
+    } else if let Some(Runnable::SingleClaim { function, .. }) = batch.first() {
+        function.clone()
+    } else {
+        "batch".to_string()
+    }
 }
 
 /// Floor memory heartbeat — FIDELITY ONLY (reads state, changes no behavior; §5 stopped-line
@@ -1338,13 +1431,13 @@ fn heartbeat_field(v: Option<u64>) -> String {
 /// invisible precisely here: `memory.high` throttles instead of killing, so the only log
 /// evidence was a post-hoc `memory.peak` pinned at `high + <1MiB` after a 30-49min silent
 /// tail. One synchronous regime-disclosure line at floor start (which limits bind, where),
-/// then one line per minute from a detached thread (dies with the process): `memory.current`,
-/// `memory.swap.current`, `memory.events` high-throttle count, PSI `some avg10`. The wedge
-/// signature becomes: current pinned at high, swap climbing, high-events exploding, PSI avg10
-/// double digits — attributable to a 60s window instead of a forensic reconstruction.
-/// Sampling denominator = the binding-high dir when set (the slot slice that throttles), else
-/// the binding-cap dir, else the leaf (whole-machine regimes); absence of all three refuses
-/// loudly and the floor proceeds unmonitored — never a fabricated zero.
+/// then one line per minute from a detached thread (dies with the process), projected
+/// through `render_heartbeat_line_mirror` — identity-first, human units, subject from the
+/// HeartbeatFeed. The raw floor-memory byte dump (minute counter + raw current/swap
+/// integers) is deleted (census negative example). Sampling denominator = the binding-high
+/// dir when set (the slot slice that throttles), else the binding-cap dir, else the leaf
+/// (whole-machine regimes); absence of all three refuses loudly and the floor proceeds
+/// unmonitored — never a fabricated zero.
 fn spawn_floor_memory_heartbeat() {
     let high_dir = binding_high_cgroup_dir();
     let cap_dir = binding_cap_cgroup_dir();
@@ -1368,24 +1461,36 @@ fn spawn_floor_memory_heartbeat() {
         );
         return;
     };
+    let emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
     let spawned = std::thread::Builder::new()
         .name("floor-memory-heartbeat".into())
         .spawn(move || {
-            let mut minute: u64 = 0;
+            let started = Instant::now();
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(60));
-                minute += 1;
-                let psi = read_cgroup_raw(&dir, "memory.pressure")
+                // Skip until a batch has armed the feed with a real entry_total —
+                // never a fabricated 0-of-0 during prelude / roster assembly.
+                let Some(feed) = heartbeat_feed_snapshot() else {
+                    continue;
+                };
+                let rss = read_cgroup_u64(&dir, "memory.current");
+                let swap = read_cgroup_u64(&dir, "memory.swap.current");
+                let pressure = read_cgroup_raw(&dir, "memory.pressure")
                     .and_then(|c| memory_pressure_some_avg10(&c))
-                    .unwrap_or_else(|| "unreadable".into());
-                let high_events = read_cgroup_raw(&dir, "memory.events")
-                    .and_then(|c| memory_events_field(&c, "high"));
-                eprintln!(
-                    "[floor-memory] t={minute}m current={} swap={} high_events={} psi_some_avg10={psi}",
-                    heartbeat_field(read_cgroup_u64(&dir, "memory.current")),
-                    heartbeat_field(read_cgroup_u64(&dir, "memory.swap.current")),
-                    heartbeat_field(high_events),
+                    .as_deref()
+                    .and_then(psi_avg10_to_basis_points);
+                let elapsed_ms = started.elapsed().as_millis() as u64;
+                let line = render_heartbeat_line_mirror(
+                    elapsed_ms,
+                    &feed.batch_label,
+                    feed.entry_done,
+                    feed.entry_total,
+                    rss,
+                    swap,
+                    pressure,
+                    emoji,
                 );
+                eprintln!("{line}");
             }
         });
     if let Err(e) = spawned {
@@ -1976,6 +2081,21 @@ fn run_walk(
     for (bi, batch) in batches.iter().enumerate() {
         batches_run = bi + 1;
         let units = group_batch_units(batch);
+        // Arm the observation heartbeat feed at batch-enter: discovery leaves
+        // entry_total pending (filled when the roster's entry-group count is known);
+        // SingleClaim arms immediately with the claim count. Never a fabricated 0-of-0.
+        let label = batch_heartbeat_label(batch);
+        let entry_total = if batch
+            .iter()
+            .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }))
+        {
+            None
+        } else if batch.is_empty() {
+            None
+        } else {
+            Some(batch.len() as u64)
+        };
+        heartbeat_feed_enter_batch(bi as u64, &label, entry_total);
         eprintln!(
             "claim_executor: batch {} — {} node(s) in {} resolve-group(s), governor target_width={}",
             bi + 1,
@@ -2074,6 +2194,15 @@ fn run_walk(
             v1_compiler::v1_interpreter::group_end();
         }
         for result in &batch_results {
+            // SingleClaim path: discovery advances the feed via
+            // `index_schedule_entry_completed`; gate batches have no schedule
+            // retention, so each claim result is the per-entry completed tick.
+            if !batch
+                .iter()
+                .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }))
+            {
+                heartbeat_feed_entry_completed();
+            }
             if result.ok {
                 println!(
                     "{}",
@@ -3073,8 +3202,9 @@ mod tests {
     // seed_heartbeat_line takes the primitives the heartbeat thread has (elapsed,
     // batch label, entry position, memory vitals) and projects them through the one
     // renderer — identity first, human units, no raw byte dump. These golden strings
-    // are the oracle the Rust mirror is proven byte-equal to in the next commit; the
-    // subject is batch-grain (parallel entries → no fabricated per-module detail).
+    // are the oracle the Rust mirror is proven byte-equal to
+    // (`render_heartbeat_line_mirror_matches_seed_oracle`); the subject is batch-grain
+    // (parallel entries → no fabricated per-module detail).
     #[test]
     fn seed_heartbeat_line_renders_identity_first_in_human_units() {
         let root = workspace_root();
@@ -3122,6 +3252,84 @@ mod tests {
             unreadable,
             "🕐 500ms in — still in self-host fixed-point: entry 0 of 2. memory unreadable (cgroup field unreadable), swap 0.0 GiB, pressure unreadable (cgroup field unreadable)"
         );
+    }
+
+    // Wiring flip 4b: the Rust mirror is proven byte-equal to the 4a seed oracle.
+    // The heartbeat thread cannot call the interpreter (duplicate module index under
+    // the memory envelope it watches); this pin is what keeps the mirror honest.
+    #[test]
+    fn render_heartbeat_line_mirror_matches_seed_oracle() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let crawl = run_seed_heartbeat_line(
+            &roots,
+            1_980_000,
+            "witness discovery",
+            214,
+            602,
+            Some(16_107_200_512),
+            Some(34_359_738_368),
+            Some(901),
+            true,
+        )
+        .expect("seed oracle");
+        let mirror = render_heartbeat_line_mirror(
+            1_980_000,
+            "witness discovery",
+            214,
+            602,
+            Some(16_107_200_512),
+            Some(34_359_738_368),
+            Some(901),
+            true,
+        );
+        assert_eq!(mirror, crawl, "mirror must be byte-equal to the seed oracle");
+        assert_eq!(
+            mirror,
+            "🕐 33 minutes in — still in witness discovery: entry 214 of 602. memory 15.0 GiB, swap 32.0 GiB, pressure 9.0%"
+        );
+
+        let unreadable_oracle = run_seed_heartbeat_line(
+            &roots,
+            500,
+            "self-host fixed-point",
+            0,
+            2,
+            None,
+            Some(0),
+            None,
+            true,
+        )
+        .expect("seed oracle");
+        let unreadable_mirror = render_heartbeat_line_mirror(
+            500,
+            "self-host fixed-point",
+            0,
+            2,
+            None,
+            Some(0),
+            None,
+            true,
+        );
+        assert_eq!(
+            unreadable_mirror, unreadable_oracle,
+            "unreadable fields must stay byte-equal"
+        );
+        assert!(
+            !mirror.contains("16107200512") && !unreadable_mirror.contains("[floor-memory]"),
+            "mirror must not carry the deleted byte-dump shape"
+        );
+    }
+
+    #[test]
+    fn psi_avg10_converts_to_basis_points_at_observation_scale() {
+        assert_eq!(psi_avg10_to_basis_points("9.01"), Some(901));
+        assert_eq!(psi_avg10_to_basis_points("37.5"), Some(3750));
+        assert_eq!(psi_avg10_to_basis_points("0.0"), Some(0));
+        assert_eq!(psi_avg10_to_basis_points("garbage"), None);
     }
 
     // The materialization-receipt chain by execution: a real entry resolves, a

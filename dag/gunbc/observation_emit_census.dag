@@ -7,7 +7,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data observation_emit_census_note: String = "P3 of the progress-and-observation lane: the census wall. Every place the floor emits a progress line today is either a PROJECTION of the observation event stream (migrated, P1/P2) or a COUNTED FRONTIER ROW carrying a reason and a dissolve-on — the same discipline the site subsumption lane uses for unthemed colours. This module is the census authority: the classification is a closed sum, so a site cannot be half-classified, and the roster below names the structured-tag emit families that exist in the seed today. The executable hygiene witness reads the live seed and reds when a rostered marker vanishes (a stale roster) or when a family the census claims is migrated still emits its raw form, so the census cannot rot into a lie."
 
-data observation_emit_census_sequencing_note: String = "Sequencing, per the operator ruling and design section 6b: the CI two-tier rework (PR-1 on #7162's line) rewrites the floor's emit sites, so the EXHAUSTIVE per-print wall over every raw eprintln in claim_executor is a declared frontier gated on that rebase — censusing sites about to be rewritten would be work churned twice, the migration class the operator ruled out. What lands now is the census MODEL, the roster of the structured-tag families that exist regardless of the rework, and the hygiene witness. The named negative example the operator called out — the [floor-memory] raw byte dump — is a rostered frontier row here, so the census already carries the thing it exists to kill."
+data observation_emit_census_sequencing_note: String = "Sequencing, per the operator ruling and design section 6b: the CI two-tier rework (PR-1 on #7162's line) rewrites the floor's emit sites, so the EXHAUSTIVE per-print wall over every raw eprintln in claim_executor is a declared frontier gated on that rebase — censusing sites about to be rewritten would be work churned twice, the migration class the operator ruled out. What lands now is the census MODEL, the roster of the structured-tag families that exist regardless of the rework, and the hygiene witness. The named negative example — the [floor-memory] raw byte dump — has MIGRATED (wiring flip 4b): identity-first heartbeat via ci_heartbeat_line / render_heartbeat_line_mirror; the regime-disclosure line keeps the marker so the roster cannot go stale."
 
 type EmitSiteDisposition
   = MigratedToObservation { via: NonEmptyStr }
@@ -24,9 +24,8 @@ type CensusedEmitSite {
 data floor_memory_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[floor-memory]" as NonEmptyStr,
   source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
-  disposition: CountedFrontierSite {
-    reason: "the named negative example — a raw byte dump (current=16106717184) with no subject, sixty-plus context-free lines an hour, the exact shape the operator watched for ten minutes during the crawl window that priced this lane" as NonEmptyStr,
-    dissolve_on: "the observation CI heartbeat projection (gunbc.observation_ci_render.ci_heartbeat_line) replaces it — identity-first, human units, subject named — when the P1 renderer wiring lands after the CI two-tier rework PR" as NonEmptyStr
+  disposition: MigratedToObservation {
+    via: "gunbc.observation_ci_render.ci_heartbeat_line (seed mirror render_heartbeat_line_mirror; HeartbeatFeed subject)" as NonEmptyStr
   }
 }
 
@@ -83,7 +82,7 @@ data observation_emit_roster_completeness_disposition: Disposition = Scaffold {
   }
 }
 
-data observation_emit_roster_completeness_note: String = "The roster covers the STRUCTURED-TAG emit families that exist in the seed regardless of the rework. It does NOT yet cover the ~75 unmarked raw eprintln sites in claim_executor: those are exactly the sites the CI two-tier rework rewrites, so their per-print classification is the declared frontier that dissolves when this PR rebases over that rework and re-censuses. Until then the honest count is stated, never zero: five tag families migrated-pending, the raw-print residue counted but unclassified, and the witness holds the roster against the seed so it cannot go stale in the meantime. The end state — a live wall that reds any new bare print outside the projection — is reached when the post-rework sites are enumerated, per the design section 5 P3."
+data observation_emit_roster_completeness_note: String = "The roster covers the STRUCTURED-TAG emit families that exist in the seed regardless of the rework. It does NOT yet cover the ~75 unmarked raw eprintln sites in claim_executor: those are exactly the sites the CI two-tier rework rewrites, so their per-print classification is the declared frontier that dissolves when this PR rebases over that rework and re-censuses. Until then the honest count is stated, never zero: four tag families still frontier, one migrated (floor-memory), the raw-print residue counted but unclassified, and the witness holds the roster against the seed so it cannot go stale in the meantime. The end state — a live wall that reds any new bare print outside the projection — is reached when the post-rework sites are enumerated, per the design section 5 P3."
 
 fn emit_site_is_frontier(site: CensusedEmitSite) -> Bool {
   match site.disposition {

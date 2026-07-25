@@ -18,7 +18,7 @@ import gunbc.observation_emit_census {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data witness_note: String = "P3 census hygiene, executable against the live seed (docs/plans/progress-observation-design.md section 5). A census that is not checked against the code it censuses is coverage-by-illusion — an inert lens is itself a lie. So every rostered marker is held against the seed file it names: a marker that has vanished reds (the roster went stale, the site was renamed or deleted without re-census), and a frontier row must carry a real, non-empty dissolve-on so the debt stays prioritizable rather than open-ended. The [floor-memory] negative example is checked positively — it must still be in the seed and still be classified as a frontier — so the census cannot quietly drop the very site it exists to kill."
+data witness_note: String = "P3 census hygiene, executable against the live seed (docs/plans/progress-observation-design.md section 5). A census that is not checked against the code it censuses is coverage-by-illusion — an inert lens is itself a lie. So every rostered marker is held against the seed file it names: a marker that has vanished reds (the roster went stale, the site was renamed or deleted without re-census), and a frontier row must carry a real, non-empty dissolve-on so the debt stays prioritizable rather than open-ended. The [floor-memory] named negative example has migrated: the raw byte dump is gone, the site is MigratedToObservation via ci_heartbeat_line, and the regime-disclosure line keeps the marker so the roster cannot go stale — the dump shape itself is asserted absent."
 
 fn census_source(path: String) -> String {
   let r = filesystem_read(path: path)
@@ -55,28 +55,30 @@ fn w_every_frontier_row_carries_a_real_dissolve_on() -> Bool {
     })
 }
 
-fn w_the_named_negative_example_is_present_and_classified_frontier() -> Bool {
+fn w_the_named_negative_example_has_migrated() -> Bool {
   census_marker_present(site: floor_memory_site) &&
-  emit_site_is_frontier(site: floor_memory_site) &&
-  string_contains(s: floor_memory_site.marker, pattern: "floor-memory")
+  !emit_site_is_frontier(site: floor_memory_site) &&
+  string_contains(s: floor_memory_site.marker, pattern: "floor-memory") &&
+  string_contains(s: emit_site_dissolve_on(site: floor_memory_site), pattern: "ci_heartbeat_line")
 }
 
 fn w_the_census_states_a_nonzero_frontier_count_never_a_hidden_zero() -> Bool {
-  observation_emit_frontier_count() == 5 &&
+  observation_emit_frontier_count() == 4 &&
   count(observation_emit_roster) == 5
 }
 
-fn w_the_raw_byte_dump_shape_is_still_in_the_seed_to_be_killed() -> Bool {
+fn w_the_raw_byte_dump_shape_is_gone_from_the_seed() -> Bool {
   let executor = census_source(path: "src/v1/stage0/src/bin/claim_executor.rs")
-  string_contains(s: executor, pattern: "[floor-memory] t=") &&
-  string_contains(s: executor, pattern: "current=")
+  !string_contains(s: executor, pattern: "[floor-memory] t=") &&
+  !string_contains(s: executor, pattern: "current={}") &&
+  string_contains(s: executor, pattern: "render_heartbeat_line_mirror")
 }
 
 test fn observation_emit_census_witnesses() -> Bool {
   w_every_rostered_marker_still_exists_in_the_seed() &&
   w_roster_staleness_check_discriminates() &&
   w_every_frontier_row_carries_a_real_dissolve_on() &&
-  w_the_named_negative_example_is_present_and_classified_frontier() &&
+  w_the_named_negative_example_has_migrated() &&
   w_the_census_states_a_nonzero_frontier_count_never_a_hidden_zero() &&
-  w_the_raw_byte_dump_shape_is_still_in_the_seed_to_be_killed()
+  w_the_raw_byte_dump_shape_is_gone_from_the_seed()
 }
