@@ -2,7 +2,7 @@ module gunbc.roadmap_sandbox
 
 import std.types { Int, String, Bool, List }
 import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
-import gunbc.site.markup { txt, el, el_class, el_attributes }
+import gunbc.site.markup { txt, el, el_class, el_attrs }
 import gunbc.roadmap_page { roadmap_header }
 import gunbc.roadmap_style { roadmap_css }
 import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl, serialize_rules, Material, paint }
