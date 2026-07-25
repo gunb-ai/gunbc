@@ -7,6 +7,8 @@ import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import extdeps.cache.sccache { SccacheBinaryRelease, sccache_release_0_15_0, sccache_install_script }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_packages, docker_ce_repo_install_script }
+import gunbc.fleet_intent { fleet_intent_known_hosts }
+import product.placement_supply { HostIdentity }
 
 data runner_host_deploy_citation: String = "§3 cite-upstream, do-not-re-coin: GitHub Actions runner host provisioning is realized by the ctrl installer at ctrl:scripts/session-dashboard/host/ (deploy-runner-hosts.sh and install-actions-runner.sh) — the single battle-tested rotation point (GitHub App key distribution, jit-runner.sh ephemeral wrapper, actions-runner service template, ghrunner de-priv job user plus rootless docker for public-PR isolation, per-slot cgroup caps). RunnerHostDeploy models the typed INTERFACE (which host, label, runner user, de-priv job user, App-key secret, slot count); the installer is the bound realization HANDLER, one of N transports, NOT re-implemented in .dag. DISSOLVES WHEN host_effect_apply binds RunnerHostDeploy through a transport handler that invokes the cited installer plus per-slot provisioning without a hand-run shell step."
 
@@ -70,7 +72,39 @@ fn runner_host_sccache_provision_aarch64() -> String {
   )
 }
 
-fn runner_host_installer_command(deploy: RunnerHostDeploy, installer_path: NonEmptyStr, pem_src_path: NonEmptyStr) -> ArgvCommand {
+data runner_host_enrollment_wall_note: String = "THE ENROLLMENT WALL, and it is CONSTRUCTION rather than a check (DESIGN §5). A host takes no fleet work until it is a row in gunbc.fleet_intent.fleet_intent_known_hosts. This is the standing rule the srv4 host-convergence OOM priced (gunbc.plans.fleet_subsumption_manual_gaps section C): converge emitted against an unenrolled host derives NOTHING for it — or worse, stamps template drop-ins carrying ANOTHER host's widths — and the enrolled intent row is exactly where runner_deployment_plan's conservation wall gets the host RAM it needs to check whether N runners at the declared caps even fit, refusing PlanUnsound if not. The incident is prevented by arithmetic, and the arithmetic has no inputs until the host is enrolled. Why construction and not a validating predicate: a fleet_intent_admits_host(deploy) check returning Bool concedes that the unenrolled command IS constructible and merely asks callers to look first — one forgotten call site and the incident class is back. Instead there is NO function in this module that takes a bare RunnerHostDeploy and yields an ArgvCommand: the command builders consume a RunnerHostAdmission, and the refusal arm carries no command at all, so 'run the installer on an unenrolled host' is unrepresentable rather than discouraged (the EffectsOrRefusal shape already blessed in gunbc.membership_reconcile). HONEST RESIDUAL, stated rather than papered over: .dag has no visibility modifiers yet, so a caller CAN hand-write RunnerHostEnrolled { deploy } for an unenrolled host. That is now an explicit lie in the source rather than an accident of a forgotten check — the strongest wall this substrate currently supports. It closes fully when node/subtree visibility grants land (DESIGN open thread: 'node/subtree visibility grants'), at which point the Enrolled constructor becomes private to this module and the evidence is unforgeable."
+
+type RunnerHostAdmission
+  = RunnerHostEnrolled { deploy: RunnerHostDeploy }
+  | RunnerHostUnenrolled { host_label: NonEmptyStr, reason: NonEmptyStr }
+
+type RunnerCommandOrRefusal
+  = RunnerCommandReady { command: ArgvCommand }
+  | RunnerCommandRefused { host_label: NonEmptyStr, reason: NonEmptyStr }
+
+fn fleet_intent_enrolls_host_label(label: NonEmptyStr) -> Bool {
+  fold(
+    fleet_intent_known_hosts,
+    init: false,
+    f: (acc, h) => acc || (h.identity as String) == (label as String),
+  )
+}
+
+fn admit_runner_host(deploy: RunnerHostDeploy) -> RunnerHostAdmission {
+  if fleet_intent_enrolls_host_label(label: deploy.host_label) {
+    RunnerHostEnrolled { deploy: deploy }
+  } else {
+    RunnerHostUnenrolled {
+      host_label: deploy.host_label,
+      reason: concat(
+        concat("runner_host_deploy: host '", deploy.host_label as String),
+        "' is absent from gunbc.fleet_intent.fleet_intent_known_hosts; it takes no fleet work until it is an intent row with a converge receipt. Enrolling it is what gives runner_deployment_plan the host RAM to check the slot caps against. Fail-closed, no unenrolled install.",
+      ) as NonEmptyStr,
+    }
+  }
+}
+
+fn runner_host_installer_command_argv(deploy: RunnerHostDeploy, installer_path: NonEmptyStr, pem_src_path: NonEmptyStr) -> ArgvCommand {
   ArgvCommand {
     argv: [
       "env",
@@ -80,6 +114,25 @@ fn runner_host_installer_command(deploy: RunnerHostDeploy, installer_path: NonEm
       join(["CTRL_RUNNER_APP_PEM_SRC=", pem_src_path as String], ""),
       "sudo", "-E", "bash", installer_path as String,
     ],
+  }
+}
+
+fn runner_host_installer_command(
+  admission: RunnerHostAdmission,
+  installer_path: NonEmptyStr,
+  pem_src_path: NonEmptyStr,
+) -> RunnerCommandOrRefusal {
+  match admission {
+    RunnerHostEnrolled { deploy: d } =>
+      RunnerCommandReady {
+        command: runner_host_installer_command_argv(
+          deploy: d,
+          installer_path: installer_path,
+          pem_src_path: pem_src_path,
+        )
+      }
+    RunnerHostUnenrolled { host_label: l, reason: r } =>
+      RunnerCommandRefused { host_label: l, reason: r }
   }
 }
 
@@ -100,11 +153,43 @@ fn runner_instance_names(deploy: RunnerHostDeploy) -> List<String> {
   map(runner_index_seq(n: deploy.runner_count), i => runner_instance_name(deploy: deploy, index: i))
 }
 
-fn runner_enable_command(deploy: RunnerHostDeploy) -> ArgvCommand {
+fn runner_enable_command_argv(deploy: RunnerHostDeploy) -> ArgvCommand {
   ArgvCommand {
     argv: append(
       ["sudo", "systemctl", "enable", "--now"],
       items: map(runner_instance_names(deploy: deploy), n => join(["actions-runner@", n, ".service"], "")),
     ),
+  }
+}
+
+fn runner_enable_command(admission: RunnerHostAdmission) -> RunnerCommandOrRefusal {
+  match admission {
+    RunnerHostEnrolled { deploy: d } =>
+      RunnerCommandReady { command: runner_enable_command_argv(deploy: d) }
+    RunnerHostUnenrolled { host_label: l, reason: r } =>
+      RunnerCommandRefused { host_label: l, reason: r }
+  }
+}
+
+data runner_host_unenrolled_widen_sketch_note: String = "RED-control fixture modeling the forbidden arm: an admission-blind builder that hands back a runnable command for a host the fleet never enrolled. This is what the module looked like before the wall, and it is what the srv4 incident ran through. It must never ship as the authority; runner_host_admission_gate_accepts rejects it."
+
+fn runner_command_admission_blind_widen_sketch(
+  deploy: RunnerHostDeploy,
+  admission: RunnerHostAdmission,
+) -> RunnerCommandOrRefusal {
+  RunnerCommandReady { command: runner_enable_command_argv(deploy: deploy) }
+}
+
+fn runner_host_admission_gate_accepts(
+  outcome: RunnerCommandOrRefusal,
+  admission: RunnerHostAdmission,
+) -> Bool {
+  match admission {
+    RunnerHostEnrolled { deploy: _ } => true
+    RunnerHostUnenrolled { host_label: _, reason: _ } =>
+      match outcome {
+        RunnerCommandReady { command: _ } => false
+        RunnerCommandRefused { host_label: _, reason: _ } => true
+      }
   }
 }
