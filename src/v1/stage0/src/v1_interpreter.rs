@@ -5109,14 +5109,10 @@ fn realize_clock_unix_secs_transport() -> Result<u64, crate::recorded_fixture::F
         .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)
 }
 
-/// Native read of THIS process's own environment. Was a `printenv` subprocess: a modeled
-/// operation realized by spawning a shell tool to ask for a value the process already holds
-/// (§3(b) — the interface shape is name → value?; the shell argv is ONE handler, and the
-/// wrong one when the target is the reading process itself). Semantics preserved exactly:
-/// unset → None (printenv exited 1), empty → None (printenv exited 0 with empty stdout),
-/// value trimmed. The `shell.Env.Get` service declaration remains valid as the REMOTE
-/// handler; routing the corpus's local env reads onto a native transport is the named
-/// follow-on (a new `transport env` kind — parser + core predicate + dispatch arm).
+/// Native read of THIS process's own environment. Semantics match the former
+/// `printenv` subprocess exactly: unset → None, empty → None, value trimmed.
+/// `dispatch_service_wet` routes `shell.Env.Get` here for OnTarget locality
+/// (shell-to-dag residual census §0b); the shell argv remains the remote handler.
 fn wet_env_var(name: &str) -> Option<String> {
     let s = std::env::var(name).ok()?.trim().to_string();
     if s.is_empty() {
@@ -5337,6 +5333,16 @@ fn dispatch_service_wet(
     ctx: &InterpContext,
     intent: &str,
 ) -> InterpResult<Value> {
+    // Local Env.Get: reading THIS process's own environment is not a host effect
+    // (shell-to-dag residual census §0b / DESIGN §3(b)). `printenv` was the wrong
+    // single hardwired transport — unset vars exited 1 and, under ExpectSuccess,
+    // every optional floor_diff_observe injection (GUNBC_CI_DIFF_*) painted Anomaly
+    // Failed lines (operator live-log 2026-07-25). Native handler; shell printenv
+    // remains the remote-target realization.
+    if intent == "shell.Env.Get" {
+        return dispatch_env_get_native(op_node, param_env, ctx);
+    }
+
     if is_shell_transport(transport.clone()) {
         let result = dispatch_shell(transport, param_env, ctx, intent)?;
         return map_shell_outputs(&result, op_node, ctx);
@@ -5348,6 +5354,37 @@ fn dispatch_service_wet(
     }
 
     dispatch_rest(service_node, op_node, transport, param_env, ctx)
+}
+
+/// Native realization of `shell.Env.Get` for OnTarget locality — same Absent/Present
+/// semantics as printenv (unset/empty → Null optional; value trimmed), with no
+/// ObservationEvent and no child process.
+fn dispatch_env_get_native(
+    op_node: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let name = match param_env.lookup(ctx.sym("name")) {
+        Some(Value::Str(s)) => s.clone(),
+        Some(other) => {
+            return Err(InterpError::TypeError {
+                msg: format!("shell.Env.Get name must be String, got {other}"),
+            });
+        }
+        None => {
+            return Err(InterpError::TypeError {
+                msg: "shell.Env.Get missing name parameter".to_string(),
+            });
+        }
+    };
+    let value = match wet_env_var(&name) {
+        Some(s) => Value::Str(s),
+        None => Value::Null,
+    };
+    Ok(Value::Record {
+        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+        fields: Rc::new(vec![(ctx.sym("value"), value)]),
+    })
 }
 
 fn build_service_param_env(
