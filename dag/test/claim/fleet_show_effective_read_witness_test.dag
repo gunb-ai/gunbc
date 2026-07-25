@@ -205,8 +205,8 @@ fn witness_show_property_local_read_holds() -> Bool {
     unit: "actions-runner@srv1-01.service" as NonEmptyStr,
     property: MemoryMax,
   ) {
-    Present { value: v } => v == "8589934592"
-    Absent => false
+    SystemdPropertyCaptured { value: v } => v == "8589934592"
+    SystemdPropertyCaptureRefused { reason: _ } => false
   }
 }
 

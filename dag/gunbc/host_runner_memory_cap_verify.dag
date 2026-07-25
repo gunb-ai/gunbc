@@ -20,7 +20,11 @@ import gunbc.host_runner_memory_provision {
   runner_memory_cap_readback_verdict,
 }
 import extdeps.systemd { MemoryMax, MemorySwapMax, MemoryHigh }
-import gunbc.systemctl_show_read { systemctl_show_property_read_local }
+import gunbc.systemctl_show_read {
+  systemctl_show_property_read_local,
+  SystemdPropertyCaptured,
+  SystemdPropertyCaptureRefused,
+}
 import gunbc.runner_unit_live_read {
   RunnerUnitMemoryLiveRead,
   RunnerUnitLiveReadRow,
@@ -159,11 +163,11 @@ fn runner_memory_cap_live_read(host: HostIdentity) -> RunnerUnitMemoryLiveRead? 
   match runner_memory_cap_verify_probed_at() {
     Present { value: probed_at } =>
       match systemctl_show_property_read_local(unit: unit, property: MemoryMax) {
-        Present { value: memory_max_raw } =>
+        SystemdPropertyCaptured { value: memory_max_raw } =>
           match systemctl_show_property_read_local(unit: unit, property: MemorySwapMax) {
-            Present { value: memory_swap_max_raw } =>
+            SystemdPropertyCaptured { value: memory_swap_max_raw } =>
               match systemctl_show_property_read_local(unit: unit, property: MemoryHigh) {
-                Present { value: memory_high_raw } =>
+                SystemdPropertyCaptured { value: memory_high_raw } =>
                   Present {
                     value: runner_unit_live_read_typed(
                       row: RunnerUnitLiveReadRow {

@@ -132,11 +132,15 @@ import extdeps.provisioning.ubuntu_seeded_install_media_remaster {
   InstallMediaRemasterRemastered,
   InstallMediaRemasterRefused,
 }
-import gunbc.hostname_read { hostname_short_read }
+import gunbc.hostname_read {
+  hostname_short_read,
+  HostnameShortCaptured,
+  HostnameShortCaptureRefused,
+}
 import gunbc.hostname_set {
   hostname_set_cas,
   HostnameSetCasApplied,
-  HostnameSetCasReadAbsent,
+  HostnameSetCasReadRefused,
   HostnameSetCasBaseMismatch,
   HostnameSetCasApplyFailed,
 }
@@ -1488,9 +1492,9 @@ fn realize_set_hostname_cas_on_host(
         },
         intent: intent,
       )
-    HostnameSetCasReadAbsent =>
+    HostnameSetCasReadRefused { reason: why } =>
       NotConverged {
-        reason: "host_effect: SetHostnameCas hostname read absent; fail-closed",
+        reason: concat("host_effect: SetHostnameCas hostname read refused; fail-closed: ", why),
         applied: intent,
       }
     HostnameSetCasBaseMismatch { observed: o, base: b } =>
@@ -1514,18 +1518,18 @@ fn realize_hostname_read_on_host(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match hostname_short_read(transport: transport) {
-    Present { value: name } =>
+    HostnameShortCaptured { value: name } =>
       reconcile_shell_exec_observed(
         observed: ShellExecObserved { exit_code: 0, success: true, stdout: name, stderr: "" },
         intent: intent,
       )
-    Absent =>
+    HostnameShortCaptureRefused { reason: why } =>
       reconcile_shell_exec_observed(
         observed: ShellExecObserved {
           exit_code: 1,
           success: false,
           stdout: "",
-          stderr: "host_effect_apply: HostIdentityShortHostnameRead hostname -s read failed; fail-closed",
+          stderr: concat("host_effect_apply: HostIdentityShortHostnameRead hostname -s read refused; fail-closed: ", why),
         },
         intent: intent,
       )
