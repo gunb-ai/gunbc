@@ -15,19 +15,19 @@ type SourceSpecReadFact
   | NoFact
   | NotATypeCarrier
 
-fn named_fact_count(children: List<Edge>) -> Nat {
-  fold(children, init: Zero, f: fn(acc, e) {
+fn named_fact_count(children: List<Edge>) -> v2.std.nat.Nat {
+  fold(children, init: v2.std.nat.Zero, f: fn(acc, e) {
     match e.label {
-      Named { name: _ } => Succ { prev: acc }
+      Named { name: _ } => v2.std.nat.Succ { prev: acc }
       Positional => acc
     }
   })
 }
 
-fn density_fact(named_facts: Nat) -> SourceSpecReadFact {
+fn density_fact(named_facts: v2.std.nat.Nat) -> SourceSpecReadFact {
   match named_facts {
-    Zero => NoFact
-    Succ { prev: p } => NamedFieldFacts { density: NonZeroNat { prev: p } }
+    v2.std.nat.Zero => NoFact
+    v2.std.nat.Succ { prev: p } => NamedFieldFacts { density: NonZeroNat { prev: p } }
   }
 }
 
@@ -38,7 +38,7 @@ fn connective_is_kernel_ambient_atom(c: Connective) -> Bool {
   }
 }
 
-fn connective_spec_fact(c: Connective, named_facts: Nat) -> SourceSpecReadFact {
+fn connective_spec_fact(c: Connective, named_facts: v2.std.nat.Nat) -> SourceSpecReadFact {
   if connective_is_kernel_ambient_atom(c: c) {
     KernelAmbientAtom
   } else {

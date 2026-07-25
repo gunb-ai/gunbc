@@ -1,0 +1,75 @@
+module extdeps.network.reach
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.network.endpoint { NetworkHost }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "man.openbsd.org/ssh_config#ProxyJump",
+  }
+}
+
+data reach_proxycommand_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "man.openbsd.org/ssh_config#ProxyCommand",
+  }
+}
+
+data reach_note: String = "How packets get to a host — a network-reach fact, DELIBERATELY INDEPENDENT of the shell/execution transport (operator rule 2026-07-24: 'the network transport should be independent of the shell transport'). This module names NO shell mechanism; a Reach says only how the host is reachable, and the same Reach can carry any interpreter. Three grounded arms, cited to OpenSSH ssh_config: DirectLan (the host is directly on the segment); ProxyJump (reach the target THROUGH one or more jump hosts — the real, documented `-J` / ProxyJump feature, ProxyCommand being its general form); FabricTunnel (the intended long-term reach over the network fabric). FabricTunnel does not work yet (operator: 'none of that actually works'), so it is modeled but REFUSES realization — reach_realizability returns ReachRefused{FabricTunnelNotOperational}, a typed/located/counted refusal, never a silent fall-through (§5). The operator-sanctioned interim for a fabric-only target (e.g. srv3) is a ProxyJump through something actually reachable (srv2) that stands in for the fabric — a NAMED interim with a dissolution trigger, not a hidden hack: the ProxyJump reach dissolves to FabricTunnel when tunneling is operational. The srv-specific reach ROWS live in the gunbc layer (a fleet host is not an extdeps concept); this module owns only the cited Reach model + its realizability gate."
+
+type Reach =
+    DirectLan { host: NetworkHost }
+  | ProxyJump { jumps: List<NetworkHost>, target: NetworkHost }
+  | FabricTunnel { target: NetworkHost }
+
+type ReachRefusalCause =
+    FabricTunnelNotOperational
+  | ProxyJumpChainEmpty
+
+type ReachRealizability =
+    ReachRealizable
+  | ReachRefused { cause: ReachRefusalCause }
+
+fn direct_lan(host: NetworkHost) -> Reach {
+  DirectLan { host: host }
+}
+
+fn proxy_jump(jumps: List<NetworkHost>, target: NetworkHost) -> Reach {
+  ProxyJump { jumps: jumps, target: target }
+}
+
+fn fabric_tunnel(target: NetworkHost) -> Reach {
+  FabricTunnel { target: target }
+}
+
+fn reach_target(reach: Reach) -> NetworkHost {
+  match reach {
+    DirectLan { host: h } => h
+    ProxyJump { jumps: _, target: t } => t
+    FabricTunnel { target: t } => t
+  }
+}
+
+fn reach_realizability(reach: Reach) -> ReachRealizability {
+  match reach {
+    DirectLan { host: _ } => ReachRealizable
+    ProxyJump { jumps: js, target: _ } =>
+      if list_length(items: js) == 0 {
+        ReachRefused { cause: ProxyJumpChainEmpty }
+      } else {
+        ReachRealizable
+      }
+    FabricTunnel { target: _ } => ReachRefused { cause: FabricTunnelNotOperational }
+  }
+}
+
+fn reach_is_realizable(reach: Reach) -> Bool {
+  match reach_realizability(reach: reach) {
+    ReachRealizable => true
+    ReachRefused { cause: _ } => false
+  }
+}

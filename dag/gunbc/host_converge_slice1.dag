@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.shell
-import extdeps.shell.exec { transport_script_from_body }
+import gunbc.retained_shell_script { retained_runtime }
 import product.placement_supply { HostIdentity }
 import extdeps.os.systemd {
   systemd_memory_max_property,
@@ -130,7 +130,7 @@ fn host_converge_slice1_srv1_per_slot_memory_max_knob() -> ConvergeKnob? {
 data host_converge_slice1_probed_at_refusal_reason: String = "host_converge_slice1: probed_at read failed (date -Iseconds); fail-closed"
 
 fn host_converge_slice1_probed_at() -> NonEmptyStr? {
-  let result = shell.Exec.Run(script: transport_script_from_body(body: "date -Iseconds"))
+  let result = shell.Exec.Run(script: retained_runtime(body: "date -Iseconds", reason: "host_converge_slice1 probed_at read via date -Iseconds"))
   if result.success {
     let line = trim(result.stdout)
     if line == "" {
@@ -223,7 +223,7 @@ fn host_converge_slice1_fixture_receipt() -> HostConvergeSlice1MemoryCapReceipt?
 }
 
 fn host_converge_slice1_apply_memory_max(unit: NonEmptyStr, bytes_value: String) -> Bool {
-  let result = shell.Exec.Run(script: transport_script_from_body(body: host_converge_slice1_memory_max_set_script(unit: unit, bytes_value: bytes_value)))
+  let result = shell.Exec.Run(script: retained_runtime(body: host_converge_slice1_memory_max_set_script(unit: unit, bytes_value: bytes_value), reason: "host_converge_slice1 systemctl set-property MemoryMax on runner unit"))
   result.success
 }
 
@@ -316,7 +316,7 @@ fn host_converge_slice1_enumerate_unit_line_as_unit(line: String) -> NonEmptyStr
 }
 
 fn host_converge_slice1_enumerate_units(instance_glob: String) -> List<NonEmptyStr>? {
-  let result = shell.Exec.Run(script: transport_script_from_body(body: host_converge_slice1_enumerate_units_script(instance_glob: instance_glob)))
+  let result = shell.Exec.Run(script: retained_runtime(body: host_converge_slice1_enumerate_units_script(instance_glob: instance_glob), reason: "host_converge_slice1 systemctl list-units enumerate active runner units"))
   if result.success {
     let trimmed = trim(result.stdout)
     if trimmed == "" {

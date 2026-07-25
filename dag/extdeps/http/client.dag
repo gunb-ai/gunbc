@@ -1,8 +1,13 @@
 module extdeps.http.client
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String, Bool, List }
+import std.measure { second_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.tools.curl {
+  curl_localhost_connect_timeout,
+  curl_localhost_max_time,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -12,6 +17,26 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data http_client_handler_layering_note: String = "§3 shape/transport split: this module is the agnostic HTTP *client* interface (the client half of extdeps.http; extdeps.http.server is the serving half). The shell/curl argv rows below are ONE bound transport handler of the shape (the tool authority is extdeps.tools.curl); the declarative `transport rest` machinery (config modeled in extdeps.transports.rest) is the peer handler - N handlers, one shape, dispatch peripheral. REST itself is a behavioral refinement of HTTP (method semantics honored: GET safe/readonly, PUT idempotent; stateless requests over URI-named resources), not a different client - `transport rest` today carries nothing REST-specific and is honestly the native HTTP-client transport."
+
+fn http_client_localhost_connect_timeout_flag() -> String {
+  to_string(second_count(s: curl_localhost_connect_timeout))
+}
+
+fn http_client_localhost_max_time_flag() -> String {
+  to_string(second_count(s: curl_localhost_max_time))
+}
+
+fn http_client_get_argv(url: NonEmptyStr) -> List<String> {
+  [
+    "curl",
+    "-fsS",
+    "--connect-timeout",
+    http_client_localhost_connect_timeout_flag(),
+    "--max-time",
+    http_client_localhost_max_time_flag(),
+    url as String,
+  ]
+}
 
 service http.Client {
   operation Get {
@@ -24,6 +49,30 @@ service http.Client {
     exit {
       0 => Unit
       nonzero => String "http client GET failed"
+    }
+  }
+
+  operation GetLocalhostBounded {
+    input { url: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: [
+        "curl",
+        "-fsS",
+        "--connect-timeout",
+        http_client_localhost_connect_timeout_flag(),
+        "--max-time",
+        http_client_localhost_max_time_flag(),
+        "{url}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "http client bounded localhost GET failed"
+    }
+    mock_response {
+      0 => { body: "", success: false } "hermetic: no live HTTP endpoint; readiness probe refuses rather than fabricate a body"
     }
   }
 

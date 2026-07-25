@@ -19,18 +19,10 @@ type Elf64Phdr {
   align: Int
 }
 
-type PhdrDecodeReason
-  = PhdrTruncated { required_bytes: Int, available_bytes: Int }
-  | UnsupportedPhdrType { raw: Int }
-
-type PhdrDecodeOutcome<T>
-  = PhdrDecoded { value: T }
-  | PhdrRejected { reason: PhdrDecodeReason }
-
-fn decode_elf_segment_type(raw: Int) -> PhdrDecodeOutcome<ElfSegmentType> {
-  if raw == pt_load { PhdrDecoded { value: PtLoad } }
-  else if raw == pt_null { PhdrDecoded { value: PtNull } }
-  else { PhdrRejected { reason: UnsupportedPhdrType { raw: raw } } }
+fn decode_elf_segment_type(raw: Int) -> ElfDecodeOutcome<ElfSegmentType> {
+  if raw == pt_load { ElfDecoded { value: PtLoad } }
+  else if raw == pt_null { ElfDecoded { value: PtNull } }
+  else { ElfRejected { reason: UnsupportedElfSegmentType { raw: raw } } }
 }
 
 fn decode_segment_permissions(flags: Int) -> SegmentPermission {
@@ -41,17 +33,17 @@ fn decode_segment_permissions(flags: Int) -> SegmentPermission {
   }
 }
 
-fn decode_elf64_phdr(bytes: List<Int>, offset: Int) -> PhdrDecodeOutcome<Elf64Phdr> {
+fn decode_elf64_phdr(bytes: List<Int>, offset: Int) -> ElfDecodeOutcome<Elf64Phdr> {
   if count(bytes) < offset + elf64_phdr_size {
-    PhdrRejected {
-      reason: PhdrTruncated {
+    ElfRejected {
+      reason: Truncated {
         required_bytes: offset + elf64_phdr_size,
         available_bytes: count(bytes),
       },
     }
   } else {
     match decode_elf_segment_type(read_u32_le_in_bounds(bytes, offset)) {
-      PhdrDecoded { value: segment_type } => PhdrDecoded {
+      ElfDecoded { value: segment_type } => ElfDecoded {
         value: Elf64Phdr {
           segment_type: segment_type,
           flags: read_u32_le_in_bounds(bytes, offset + 4),
@@ -63,7 +55,7 @@ fn decode_elf64_phdr(bytes: List<Int>, offset: Int) -> PhdrDecodeOutcome<Elf64Ph
           align: read_u64_le_in_bounds(bytes, offset + 48),
         },
       }
-      PhdrRejected { reason: r } => PhdrRejected { reason: r }
+      ElfRejected { reason: r } => ElfRejected { reason: r }
     }
   }
 }

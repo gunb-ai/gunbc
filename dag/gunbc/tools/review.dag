@@ -1,5 +1,7 @@
 module gunbc.tools.review
 
+import extdeps.git
+import std.types { GitRef, FilePath }
 
 data default_model: String = "claude-sonnet-4-6-20250929"
 data cron_schedule: CronSchedule = CronSchedule {
@@ -15,8 +17,47 @@ data review_messages: List<AnthropicChatMessage> = [
   }
 ]
 
+type GitShowAtRef =
+    GitShowRead { content: String }
+  | GitShowRefused { reason: String }
+
+type ReviewContextRead =
+    ReviewContextReady { design: String, algebra_ref: String }
+  | ReviewContextRefused { reason: String }
+
 fn has_review_at_sha(reviews: List<PullReview>, sha: CommitSha) -> Bool {
   any(reviews, r => r.commit_id == sha && contains(r.body, "Review"))
+}
+
+fn git_show_file_at_ref(ref: GitRef, path: FilePath) -> GitShowAtRef {
+  let result = git.Core.Show(ref: ref, path: path)
+  if result.success {
+    GitShowRead { content: result.content }
+  } else {
+    GitShowRefused {
+      reason: concat(
+        concat("git.Core.Show failed for ", path as String),
+        concat(": ", result.stderr)
+      )
+    }
+  }
+}
+
+fn review_context_read(ref: GitRef) -> ReviewContextRead {
+  match git_show_file_at_ref(ref: ref, path: "DESIGN.md" as FilePath) {
+    GitShowRefused { reason: why } => ReviewContextRefused { reason: why }
+    GitShowRead { content: design } =>
+      match git_show_file_at_ref(ref: ref, path: "dag/std/algebra.dag" as FilePath) {
+        GitShowRefused { reason: why } => ReviewContextRefused { reason: why }
+        GitShowRead { content: algebra_ref } =>
+          ReviewContextReady { design: design, algebra_ref: algebra_ref }
+      }
+  }
+}
+
+fn fetch_pr_head_ref(ref: String) -> Bool {
+  let fetched = git.Core.FetchNoTags(remote: "origin", ref: ref)
+  fetched.success
 }
 
 fn build_system_prompt(
@@ -65,44 +106,45 @@ func review_pr(
     repo: repo,
     pull_number: pr_number
   )
-  design = shell.Exec.Run(
-    script: transport_script_from_body(body: "cd ~/gunbc && git fetch origin {pr.pr.head.ref} 2>/dev/null; git show origin/{pr.pr.head.ref}:DESIGN.md 2>/dev/null || echo '(not found)'")
-  )
-  algebra_ref = shell.Exec.Run(
-    script: transport_script_from_body(body: "cd ~/gunbc && git show origin/{pr.pr.head.ref}:dag/std/algebra.dag 2>/dev/null || echo '(not found)'")
-  )
+  let _ = fetch_pr_head_ref(ref: pr.pr.head.ref)
+  let origin_ref = concat("origin/", pr.pr.head.ref) as GitRef
+  match review_context_read(ref: origin_ref) {
+    ReviewContextRefused { reason: why } =>
+      return { reviewed: false, comment_url: concat("review refused: ", why) }
+    ReviewContextReady { design: design, algebra_ref: algebra_ref } => {
+      system_prompt = build_system_prompt(
+        design: design,
+        algebra_ref: algebra_ref
+      )
+      user_msg = build_user_message(
+        pr_title: pr.pr.title,
+        pr_number: pr_number,
+        branch: pr.pr.head.ref,
+        base_ref: pr.pr.base.ref,
+        diff: diff.diff
+      )
+      llm_response = llm.Anthropic.Messages(
+        api_key: "",
+        model: model,
+        messages: review_messages,
+        max_tokens: 8192,
+        temperature: none,
+        system: "{system_prompt}\n\n{user_msg}"
+      )
 
-  system_prompt = build_system_prompt(
-    design: design.stdout,
-    algebra_ref: algebra_ref.stdout
-  )
-  user_msg = build_user_message(
-    pr_title: pr.pr.title,
-    pr_number: pr_number,
-    branch: pr.pr.head.ref,
-    base_ref: pr.pr.base.ref,
-    diff: diff.diff
-  )
-  llm_response = llm.Anthropic.Messages(
-    api_key: "",
-    model: model,
-    messages: review_messages,
-    max_tokens: 8192,
-    temperature: none,
-    system: "{system_prompt}\n\n{user_msg}"
-  )
+      posted = github.Pulls.CreateReview(
+        auth_token: "",
+        owner: owner,
+        repo: repo,
+        pull_number: pr_number,
+        commit_id: pr.pr.head.sha,
+        body: llm_response.content,
+        comments: "[]"
+      )
 
-  posted = github.Pulls.CreateReview(
-    auth_token: "",
-    owner: owner,
-    repo: repo,
-    pull_number: pr_number,
-    commit_id: pr.pr.head.sha,
-    body: llm_response.content,
-    comments: "[]"
-  )
-
-  return { reviewed: true, comment_url: posted.html_url }
+      return { reviewed: true, comment_url: posted.html_url }
+    }
+  }
 }
 
 func review_cycle(
