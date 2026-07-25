@@ -5672,6 +5672,40 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: S
   }
 }
 
+fn box_bound_fields_for_pattern(pattern: MatchPattern, shared_types: Set<String>, emit_info: EmitGraphInfo, scope: InferScope) -> List<String> {
+  match pattern {
+    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
+      let bare_n = qualified_last_segment(name: n)
+      if is_optional_variant_name(name: bare_n) && is_optional_parent(parent_enum: parent_enum) {
+        []
+      } else {
+        fbs |> flat_map(fb =>
+          let fb_name = field_binding_name_at(n: fb, source_indices: scope.type_env.source_indices)
+          if fb_name == "0" {
+            []
+          } else if rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: bare_n, field_name: fb_name) {
+            [fb_name]
+          } else { [] }
+        )
+      }
+    _ => []
+  }
+}
+
+fn rc_pattern_analysis_with_box_fields(rc_analysis: RcPatternAnalysis, arm_pat: MatchPattern, shared_types: Set<String>, emit_info: EmitGraphInfo, scope: InferScope) -> RcPatternAnalysis {
+  let box_fields = box_bound_fields_for_pattern(pattern: arm_pat, shared_types: shared_types, emit_info: emit_info, scope: scope)
+  if box_fields |> count == 0 {
+    rc_analysis
+  } else {
+    RcPatternAnalysis {
+      matches_rc_variant: rc_analysis.matches_rc_variant,
+      matches_option_rc_variant: rc_analysis.matches_option_rc_variant,
+      needs_rc_pattern: true,
+      ref_bound_fields: concat(rc_analysis.ref_bound_fields, box_fields)
+    }
+  }
+}
+
 fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> RcMatchAnalysis {
   let arm_analyses = arms |> map(arm =>
     analyze_rc_pattern(pattern: arm_pattern(n: arm), scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
@@ -5828,6 +5862,14 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
   }
 }
 
+fn match_pattern_is_irrefutable(pattern: MatchPattern) -> Bool {
+  match pattern {
+    Bind { name: _ } => true
+    Wildcard => true
+    _ => false
+  }
+}
+
 fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match pattern {
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
@@ -5852,7 +5894,14 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, sh
             let inner_preludes = rc_pattern_preludes(pattern: field_binding_pattern(n: fb), rc_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
             if inner_preludes == "" { [] } else { [inner_preludes] }
           } else if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
-            [concat("let ", emit_pattern(pattern: field_binding_pattern(n: fb), path_prefix: list_push(list_push([], bare_n), fb_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info), " = ", emit_ident(name: fb_name, target: Rust), ".as_ref() else { unreachable!() };")]
+            let fb_pat_here = field_binding_pattern(n: fb)
+            let bound_str = emit_pattern(pattern: fb_pat_here, path_prefix: list_push(list_push([], bare_n), fb_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+            let tail = if match_pattern_is_irrefutable(pattern: fb_pat_here) {
+              ";"
+            } else {
+              " else { unreachable!() };"
+            }
+            [concat("let ", bound_str, " = ", emit_ident(name: fb_name, target: Rust), ".as_ref()", tail)]
           } else { [] }
         )
         preludes |> join(separator: " ")
@@ -7590,7 +7639,8 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
   let arm_g = arm_guard(n: arm)
   let arm_b = arm_body(n: arm)
   let si = scope.type_env.source_indices
-  let rc_analysis = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: si)
+  let rc_analysis_raw = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: si)
+  let rc_analysis = rc_pattern_analysis_with_box_fields(rc_analysis: rc_analysis_raw, arm_pat: arm_pat, shared_types: shared_types, emit_info: emit_info, scope: scope)
   let pat_str = if string_from_mode {
     match arm_pat {
       LitPattern { value: v } => match v {
@@ -8503,7 +8553,8 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
   let arm_g = arm_guard(n: arm)
   let arm_b = arm_body(n: arm)
   let si = scope.type_env.source_indices
-  let rc_analysis = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: si)
+  let rc_analysis_raw = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: si)
+  let rc_analysis = rc_pattern_analysis_with_box_fields(rc_analysis: rc_analysis_raw, arm_pat: arm_pat, shared_types: shared_types, emit_info: emit_info, scope: scope)
   let pat_str = if rc_analysis.needs_rc_pattern {
     emit_pattern_rc_aware(pattern: arm_pat, path_prefix: [], rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
   } else {
