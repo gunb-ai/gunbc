@@ -14,23 +14,16 @@ import v2.std.diagnostic {
   port_locus
 }
 import v2.std.node { Symbol }
-import v2.std.witness { Holds, Violates, Witness }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present,
+  optional_prefer_first_present
+}
+import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 
-type Optional<T>
-  = Absent
-  | Present { value: T }
-fn optional_absent<T>() -> Optional<T> {
-  Absent
-}
-fn optional_present<T>(value: T) -> Optional<T> {
-  Present { value: value }
-}
-fn optional_prefer_first_present<T>(left: Optional<T>, right: Optional<T>) -> Optional<T> {
-  match left {
-    Present { value: _ } => left
-    Absent => right
-  }
-}
 fn optional_absent_unwrap_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^optional_absent_unwrap,
@@ -40,10 +33,7 @@ fn optional_absent_unwrap_diagnostic() -> Diagnostic {
 }
 
 fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
-  match opt {
-    Present { value: v } => Holds { value: v }
-    Absent => Violates { diagnostic: optional_absent_unwrap_diagnostic() }
-  }
+  witness_from_optional(opt: opt, absent: optional_absent_unwrap_diagnostic())
 }
 
 type List<T> = std.algebra.FreeMonoid<T>
