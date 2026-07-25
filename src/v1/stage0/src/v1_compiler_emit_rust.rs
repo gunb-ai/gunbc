@@ -27896,6 +27896,24 @@ pub fn rust_nominal_identity_data_expr(
     }
 }
 
+pub fn value_inferred_type_is_rc_wrapped(
+    value: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    match value.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => rust_type_is_rc_wrapped(render_rust_type(
+            rt.clone(),
+            shared_types.clone(),
+            emit_info.corpus_repr.clone(),
+            scope.type_env.clone().source_indices.clone(),
+            emit_info.clone(),
+        )),
+        _ => false,
+    }
+}
+
 pub fn emit_data_def_body(
     type_node: Rc<Node>,
     value: Rc<Node>,
@@ -28185,10 +28203,20 @@ pub fn emit_data_def_body(
                                             shared_types.clone(),
                                             emit_info.corpus_repr.clone(),
                                         ),
-                                        None => false,
+                                        None => value_inferred_type_is_rc_wrapped(
+                                            value.clone(),
+                                            shared_types.clone(),
+                                            scope.clone(),
+                                            emit_info.clone(),
+                                        ),
                                     }
                                 }
-                                _ => false,
+                                _ => value_inferred_type_is_rc_wrapped(
+                                    value.clone(),
+                                    shared_types.clone(),
+                                    scope.clone(),
+                                    emit_info.clone(),
+                                ),
                             };
                             let wrap_start = if (needs_rc.clone() && !is_already_wrapped.clone()) {
                                 "Rc::new(".to_string()
