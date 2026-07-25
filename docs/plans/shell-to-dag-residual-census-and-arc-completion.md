@@ -234,6 +234,22 @@ These are correct as shell (a GHA runner / cron / git / pre-runtime host only un
 
 `live_deploy/emit.dag:448,452` `expected_*_script` (drift-gate oracles), `*_test.dag` fixtures. These are test expectations, not runtime construction; they follow their subject's dissolution.
 
+### Ledger true-up @ 2026-07-25 (bucket A, calm-pike-837) — read this before the 07-22 snapshot below
+
+The 07-22 snapshot is ~7 merges stale. What has landed since, keyed to the rows it discharges:
+
+| PR | what | census effect |
+| --- | --- | --- |
+| #7184 | the **transport-script construction wall** (§5.E keystone) | §5.B per-op migration UNPAUSED — relocation is now a type error, so the §4 tables are again the live punch-list |
+| #7192 / #7193 | **D2 / D3** — `systemd.Systemctl.ShowProperty` consumers + `systemctl` op cluster | 4.A1 `fleet_show_effective_read`, `host_converge_slice1` memory-property reads |
+| #7194 | **D1** — `os.Hostname.ReadShort` + `os.Hostname.Set` on `dag/extdeps/tools/hostname.dag` | 4.A2 rows for `HostIdentityShortHostnameRead` **and** `SetHostnameCas` — both now DONE (see §4.A) |
+| #7215 | census doc pass | — |
+| #7231 | **extdeps positioning restructure** | import paths repointed: `extdeps.os.systemctl` → `extdeps.systemd`, `extdeps.os.hostname` → `extdeps.tools.hostname`, `extdeps.os.exec_arg_limit` → `extdeps.exec`, `os.os` → `extdeps.os` hub-loose. Older rows in §4/§5 still spell the pre-restructure paths; read them through this mapping. |
+| #7233 | srv3 `Record` | 4.A5 srv\* cluster (still deferred) |
+| **this PR** | **bucket A** — the last `date -Iseconds` in `host_runner_memory_cap_verify.dag` onto `Clock.Now`; `meta_exec_confinement_exception_roster` **3 → 0** | 4.C `date -Iseconds` and `hostname -s` rows DONE; the meta-exec roster is now empty, so §4.F's wall has no exceptions left to grant |
+
+**Meta-exec roster: 3 → 0, and the dark lane that hid it.** Two of the three rows (`dag/gunbc/tools/review.dag`, `dag/gunbc/ci_deploy_target_host.dag`) were **stale** — their sites had stopped importing `extdeps.shell.exec` merges earlier and nobody noticed, because `meta_exec_roster_sound_live` existed in the lens but ran on **no** per-PR cadence; the only enrolled roster RED was synthetic (hand-written fact rows, blind to the live roster). Measured this PR: the live receipt costs **13.5s cold** against a 5s fast-lane budget, so it cannot be enrolled per-PR as-is. The per-PR enforcement is instead a **construction wall** — `stale_count` is bounded above by roster length, so the empty roster proves soundness with no scan, and any re-added row reds `meta_exec_roster_shrunk_to_empty_holds` in the same PR that adds it. The live receipt stays as a backstop in `src/v2/test/claim/long/meta_exec_confinement_clean_tree_test.dag` (with a non-degeneracy control, since a clean tree makes a live scan vacuously true if the walk reads nothing). **Named residue:** that long lane is still dark (not roster-enrolled); its dissolve-on is a falsifier batch admitting live-tree lens receipts.
+
 ### Wind-down PR ledger — snapshot @ 2026-07-22 (calm-ferret-849 subtree)
 
 The state of every PR in this arc, so nothing is missed if work pauses here. **A task's real state is its branch/PR** (ROADMAP.md rule); this is that ledger.
@@ -261,9 +277,9 @@ The state of every PR in this arc, so nothing is missed if work pauses here. **A
 
 **Not started — the remaining arc (bounded, fully specified in §5; safe to pause):**
 
-- **§5.A** — the ~4 remaining new ops: `extdeps.os.hostname` (Read/Set), `systemd.Systemctl.ListUnits`, `systemd.Systemctl.Status`, `extdeps.os.id`. (`ssh.Session.ExecArgv` already landed via C5.)
-- **§5.B** — ~40 call-the-op migrations (mechanical once the exemplar #7064 lands).
-- **§5.E** — the **transport-script construction wall** — the keystone that makes relocation a type error and "exhaustive" true by construction. **RULING (operator, 2026-07-24): wall-first, one PR — §5.A/§5.B per-op migration is PAUSED until the wall lands.** Built as a `RetainedShellScript` RECORD edge + free-minter deletion + counted bridges + lens activation + compile-fail REDs (see §5.E ruling block; "brand `TransportScript`" was found non-walling because the brand is transparent). §5.B resumes on top of the wall.
+- **§5.A** — **COMPLETE.** All four ops landed on #7194 and are verified in tree at their post-#7231 homes: `os.Hostname.ReadShort`/`Set` (`dag/extdeps/tools/hostname.dag`), `systemd.Systemctl.ListUnits` and `.Status` (`dag/extdeps/systemd/systemctl.dag:185,219`), `os.Id.Uid` (`dag/extdeps/tools/id.dag:26`). (`ssh.Session.ExecArgv` landed via C5; `Clock.Now` in `dag/extdeps/clock/clock.dag` already existed and is now the single authority for every `date -Iseconds` site.) **The finite new-op list this whole arc needed is closed** — everything remaining in §5.B is calling ops that now exist.
+- **§5.B** — the call-the-op migrations, **UNPAUSED** (the wall landed, #7184). D1/D2/D3 (#7192/#7193/#7194) and this PR's bucket A discharged the hostname, systemctl-read and clock clusters; the srv\* cluster (4.A5) and `live_deploy` (4.A4) remain.
+- **§5.E** — the **transport-script construction wall** — **LANDED #7184.** Built as a `RetainedShellScript` RECORD edge + free-minter deletion + counted bridges + lens activation + compile-fail REDs (see §5.E ruling block; "brand `TransportScript`" was found non-walling because the brand is transparent). The 2026-07-24 wall-first ruling that paused §5.A/§5.B is therefore discharged.
 
 **⚠ Do-not-miss for wind-down:**
 
