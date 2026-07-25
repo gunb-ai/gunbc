@@ -632,7 +632,7 @@ pub fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
 pub fn rust_repr_grounding_arm_b_dissolve_on() -> String {
     thread_local! {
         static CACHED: String = {
-            "Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion/Nat body lands (#7197); replace fail-closed unimplemented! stubs with grounded i64 newtype operations.".to_string()
+            "Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion/Nat body lands (#7197); replace fail-closed unimplemented! stubs with grounded i64 newtype operations. Do not retain PartialEq<i64> cross-representation bridge — numeric-tower grounding replaces the straddle.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

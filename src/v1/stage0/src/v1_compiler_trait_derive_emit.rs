@@ -343,7 +343,12 @@ pub fn v1_emit_struct_supplemental_impls(module_path: String, name: String) -> S
 }
 
 pub fn v1_emit_enum_supplemental_impls(module_path: String, name: String) -> String {
-    if repr_grounding_supplemental_bool_host_bridge_target(module_path.clone(), name.clone()) {
+    if (repr_grounding_supplemental_bool_host_bridge_target(module_path.clone(), name.clone())
+        && repr_grounding_derive_completeness_predicate(
+            nullary_coproduct_derive_traits(),
+            ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy,
+        ))
+    {
         rust_supplemental_impls_bool_coproduct()
     } else {
         "".to_string()

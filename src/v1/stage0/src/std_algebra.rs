@@ -84,7 +84,7 @@ pub struct CommutativeSemiring<T> {
     pub one: T,
     pub _phantom: std::marker::PhantomData<T>,
 }
-// repr-grounding arm (b): Nat carrier arithmetic (v1 seed emit; Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion/Nat body lands (#7197); replace fail-closed unimplemented! stubs with grounded i64 newtype operations.)
+// repr-grounding arm (b): Nat carrier arithmetic (v1 seed emit; Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion/Nat body lands (#7197); replace fail-closed unimplemented! stubs with grounded i64 newtype operations. Do not retain PartialEq<i64> cross-representation bridge — numeric-tower grounding replaces the straddle.)
 impl std::ops::Add for CommutativeSemiring<crate::std_magnitude::Magnitude> {
     type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;
     fn add(self, _rhs: Self) -> Self::Output {
