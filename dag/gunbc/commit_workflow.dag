@@ -468,6 +468,19 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/meta_exec_confinement/roster_soundness_test.dag",
+      check_fns: [
+        "meta_exec_roster_live_scan_non_degenerate_holds",
+        "meta_exec_roster_sound_live_holds",
+        "meta_exec_roster_live_planted_stale_red_holds"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: "dag/test/claim/orchestration_if_emit_test.dag",
       check_fns: ["orch_if_band_holds"],
       kind: CorpusWitnessKind,

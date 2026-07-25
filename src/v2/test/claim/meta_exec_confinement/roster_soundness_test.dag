@@ -1,0 +1,45 @@
+module v2.test.meta_exec_confinement.roster_soundness
+
+import v2.lens.meta_exec_confinement {
+  meta_exec_confinement_exception_paths,
+  meta_exec_consumer_scan_roots,
+  meta_exec_live_leak_candidate_paths,
+  meta_exec_roster_sound,
+  meta_exec_roster_sound_live,
+  meta_exec_roster_stale_count_live
+}
+import v2.std.layer { LayerImportFact, layer_import_facts_live }
+import v2.std.algebra { is_empty, list_append }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data roster_soundness_dark_lane_note: String = "THE dark-lane fix. meta_exec_roster_sound_live already existed but ran nowhere on the per-PR cadence — the only enrolled roster RED was the SYNTHETIC roster_stale_entry_red_holds in lens_unit/discriminators_test.dag, which feeds hand-written fact rows and so cannot see the live roster at all. That is how two stale rows (dag/gunbc/tools/review.dag, dag/gunbc/ci_deploy_target_host.dag) survived several merges after their sites stopped importing extdeps.shell.exec: nothing per-PR ever compared the roster against the tree. This file closes it — the receipt reads the LIVE corpus over meta_exec_consumer_scan_roots, so a row that outlives its leak reds within one PR instead of within one memory. Shrink-only becomes enforced by execution, not by diligence."
+
+data planted_stale_roster_entry: String = "dag/gunbc/_perturb_stale_meta_exec_roster.dag"
+
+data roster_soundness_non_degeneracy_note: String = "meta_exec_roster_sound_live_holds is TRUE for two very different reasons: no roster row is stale (the claim), or the live scan read nothing at all and every predicate over an empty fact set is vacuous (a fail-open — DESIGN section 5's absorbing fallback, ⊤-as-answer conflated with ⊤-as-ignorance). The tree is clean, so meta_exec_live_leak_candidate_paths is legitimately EMPTY and cannot serve as the liveness signal. The non-degeneracy control therefore asserts on the underlying fact set instead: layer_import_facts_live over the same scan roots must be non-empty, which is only true if the walk actually reached the corpus."
+
+test fn meta_exec_roster_live_scan_non_degenerate_holds() -> Bool {
+  is_empty(
+    xs: layer_import_facts_live(std_roots: meta_exec_consumer_scan_roots, extdeps_roots: [])
+  ) == false
+}
+
+test fn meta_exec_roster_sound_live_holds() -> Bool {
+  meta_exec_roster_sound_live(scan_roots: meta_exec_consumer_scan_roots)
+    && meta_exec_roster_stale_count_live(scan_roots: meta_exec_consumer_scan_roots) == 0
+}
+
+test fn meta_exec_roster_live_planted_stale_red_holds() -> Bool {
+  meta_exec_roster_sound(
+    roster: list_append(
+      left: meta_exec_confinement_exception_paths(),
+      right: [planted_stale_roster_entry]
+    ),
+    live_leak_paths: meta_exec_live_leak_candidate_paths(scan_roots: meta_exec_consumer_scan_roots)
+  ) == false
+}
