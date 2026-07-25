@@ -7,8 +7,8 @@ pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_emit_model::SimpleMethodSpec;
 pub use crate::std_trait_derive_shape::ReprGroundingDeriveTrait;
 use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::{
-    ReprDeriveAdd, ReprDeriveClone, ReprDeriveCopy, ReprDeriveDeserialize, ReprDeriveDiv,
-    ReprDeriveEq, ReprDeriveMul, ReprDeriveNeg, ReprDeriveOrd, ReprDerivePartialEq,
+    ReprDeriveAdd, ReprDeriveClone, ReprDeriveCopy, ReprDeriveDebug, ReprDeriveDeserialize,
+    ReprDeriveDiv, ReprDeriveEq, ReprDeriveMul, ReprDeriveNeg, ReprDeriveOrd, ReprDerivePartialEq,
     ReprDerivePartialOrd, ReprDeriveRem, ReprDeriveSerialize, ReprDeriveSub,
 };
 use crate::v1_rt;
@@ -173,6 +173,7 @@ pub fn rust_enum_derives_copy() -> String {
 
 pub fn rust_trait_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> String {
     match derive_trait.clone() {
+        ReprGroundingDeriveTrait::ReprDeriveDebug => "Debug".to_string(),
         ReprGroundingDeriveTrait::ReprDeriveClone => "Clone".to_string(),
         ReprGroundingDeriveTrait::ReprDeriveCopy => "Copy".to_string(),
         ReprGroundingDeriveTrait::ReprDerivePartialEq => "PartialEq".to_string(),
@@ -193,7 +194,7 @@ pub fn rust_trait_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> Str
 pub fn rust_trait_derive_attr_from_traits(traits: Rc<Vec<ReprGroundingDeriveTrait>>) -> String {
     v1_rt::concat(
         v1_rt::concat(
-            "#[derive(Debug, ".to_string(),
+            "#[derive(".to_string(),
             Rc::new({
                 let mut __result = Vec::new();
                 for t in traits.clone().iter().cloned() {

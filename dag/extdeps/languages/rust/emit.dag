@@ -3,6 +3,7 @@ module extdeps.languages.rust.emit
 import std.emit_model { SimpleMethodSpec }
 import std.trait_derive_shape {
   ReprGroundingDeriveTrait,
+  ReprDeriveDebug,
   ReprDeriveClone,
   ReprDeriveCopy,
   ReprDerivePartialEq,
@@ -88,6 +89,7 @@ data rust_enum_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq, s
 
 fn rust_trait_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> String {
   match derive_trait {
+    ReprDeriveDebug => "Debug"
     ReprDeriveClone => "Clone"
     ReprDeriveCopy => "Copy"
     ReprDerivePartialEq => "PartialEq"
@@ -107,7 +109,7 @@ fn rust_trait_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> String 
 
 fn rust_trait_derive_attr_from_traits(traits: List<ReprGroundingDeriveTrait>) -> String {
   concat(
-    "#[derive(Debug, ",
+    "#[derive(",
     traits |> map(t => rust_trait_derive_spelling(t)) |> join(separator: ", "),
     ")]"
   )

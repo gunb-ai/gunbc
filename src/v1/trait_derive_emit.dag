@@ -21,7 +21,7 @@ import std.trait_derive_shape {
 import extdeps.languages.rust.emit { rust_trait_derive_attr_from_traits }
 import std.types { is_container_type }
 
-data trait_derive_emit_scope_note: String = "#7174 narrowed scope (operator 2026-07-25): (a) clone bounds; (c) serde/Debug/Ord derive attrs on named structs/enums. Arm (b) coproduct-native arithmetic impls deferred to GroupCompletion grounding lane."
+data trait_derive_emit_scope_note: String = "#7174 narrowed scope (operator 2026-07-25): (a) clone bounds on all qualifying generic params (return-bare-generic and collection-element — widened from legacy single-param pick); (c) serde/Debug/Ord derive attrs on named structs/enums. Arm (b) coproduct-native arithmetic impls deferred to GroupCompletion grounding lane."
 
 fn v1_trait_derive_refuse(message: String) -> String {
   concat("compile_error!(\"", message, "\");")

@@ -5075,7 +5075,6 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let ret_name = authored_name_at(source_indices: si, node: inferred)
   let return_is_bare_generic = (generic_param_names |> filter(g => g == ret_name) |> count) > 0
   let body_is_param_ref = (value_param_names |> filter(n => n == body.name) |> count) > 0
-  let return_based_clone = return_is_bare_generic && !body_is_param_ref
   let clone_param_names = v1_generic_params_needing_clone_bound(
     generic_param_names: generic_param_names,
     value_params: value_params,

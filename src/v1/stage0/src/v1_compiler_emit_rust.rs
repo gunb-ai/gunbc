@@ -13391,8 +13391,6 @@ pub fn emit_fn_def(
                 })
                 .len() as i64)
                     > 0);
-                let return_based_clone =
-                    (return_is_bare_generic.clone() && !body_is_param_ref.clone());
                 let clone_param_names = v1_generic_params_needing_clone_bound(
                     generic_param_names.clone(),
                     value_params.clone(),

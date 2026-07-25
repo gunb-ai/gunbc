@@ -26,6 +26,15 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
+pub fn trait_derive_emit_scope_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "#7174 narrowed scope (operator 2026-07-25): (a) clone bounds on all qualifying generic params (return-bare-generic and collection-element — widened from legacy single-param pick); (c) serde/Debug/Ord derive attrs on named structs/enums. Arm (b) coproduct-native arithmetic impls deferred to GroupCompletion grounding lane.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn v1_trait_derive_refuse(message: String) -> String {
     v1_rt::concat(
         v1_rt::concat("compile_error!(\"".to_string(), message.clone()),

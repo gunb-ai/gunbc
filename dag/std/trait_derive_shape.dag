@@ -6,8 +6,11 @@ data trait_derive_shape_note: String = "Target-agnostic authority for ReprGround
 
 data trait_derive_shape_grounding_lane_handoff: String = "Arm (b) deferred to GroupCompletion grounding lane: coproduct-native arithmetic + PartialOrd/PartialEq impl blocks for algebra carriers (GroupCompletion<Nat>, Vector, CommutativeSemiring<Magnitude>). This module's capability table + repr_grounding_derive_completeness_predicate remain the shared authority; the grounding lane emits impl { … } from shape rows, not #[derive]. v1.compiler.trait_derive_emit does not wire arm (b)."
 
+data trait_derive_shape_dissolve_on: String = "ReprGroundingDeriveTrait members that name Rust-specific authorities (ReprDeriveSerialize, ReprDeriveAdd, …) migrate beside each target's spelling table when a second consumer exists; until then capability roles stay in std/ with spellings in extdeps.languages.rust.emit."
+
 type ReprGroundingDeriveTrait
-  = ReprDeriveClone
+  = ReprDeriveDebug
+  | ReprDeriveClone
   | ReprDeriveCopy
   | ReprDerivePartialEq
   | ReprDeriveEq
@@ -38,6 +41,7 @@ fn repr_grounding_derive_shape_has_trait(
   match shape {
     ReprDeriveElemKernelString =>
       match derive_trait {
+        ReprDeriveDebug => true
         ReprDeriveClone => true
         ReprDerivePartialEq => true
         ReprDeriveEq => true
@@ -49,6 +53,7 @@ fn repr_grounding_derive_shape_has_trait(
       }
     ReprDeriveElemKernelInt =>
       match derive_trait {
+        ReprDeriveDebug => true
         ReprDeriveClone => true
         ReprDeriveCopy => true
         ReprDerivePartialEq => true
@@ -66,6 +71,7 @@ fn repr_grounding_derive_shape_has_trait(
       }
     ReprDeriveElemKernelBool =>
       match derive_trait {
+        ReprDeriveDebug => true
         ReprDeriveClone => true
         ReprDeriveCopy => true
         ReprDerivePartialEq => true
@@ -78,6 +84,7 @@ fn repr_grounding_derive_shape_has_trait(
       }
     ReprDeriveElemKernelUnit =>
       match derive_trait {
+        ReprDeriveDebug => true
         ReprDeriveClone => true
         ReprDeriveCopy => true
         ReprDerivePartialEq => true
@@ -90,6 +97,7 @@ fn repr_grounding_derive_shape_has_trait(
       }
     ReprDeriveElemNullaryEnumCopy =>
       match derive_trait {
+        ReprDeriveDebug => true
         ReprDeriveClone => true
         ReprDeriveCopy => true
         ReprDerivePartialEq => true
@@ -102,6 +110,7 @@ fn repr_grounding_derive_shape_has_trait(
       }
     ReprDeriveElemSymbolWrappedOrdCarrier =>
       match derive_trait {
+        ReprDeriveDebug => true
         ReprDeriveClone => true
         ReprDerivePartialEq => true
         ReprDeriveEq => true
@@ -124,22 +133,9 @@ fn repr_grounding_derive_completeness_predicate(
 
 fn record_derive_traits_heap() -> List<ReprGroundingDeriveTrait> {
   Cons {
-    head: ReprDeriveClone,
+    head: ReprDeriveDebug,
     tail: Cons {
-      head: ReprDerivePartialEq,
-      tail: Cons {
-        head: ReprDeriveSerialize,
-        tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
-      }
-    }
-  }
-}
-
-fn record_derive_traits_copy() -> List<ReprGroundingDeriveTrait> {
-  Cons {
-    head: ReprDeriveClone,
-    tail: Cons {
-      head: ReprDeriveCopy,
+      head: ReprDeriveClone,
       tail: Cons {
         head: ReprDerivePartialEq,
         tail: Cons {
@@ -151,11 +147,58 @@ fn record_derive_traits_copy() -> List<ReprGroundingDeriveTrait> {
   }
 }
 
+fn record_derive_traits_copy() -> List<ReprGroundingDeriveTrait> {
+  Cons {
+    head: ReprDeriveDebug,
+    tail: Cons {
+      head: ReprDeriveClone,
+      tail: Cons {
+        head: ReprDeriveCopy,
+        tail: Cons {
+          head: ReprDerivePartialEq,
+          tail: Cons {
+            head: ReprDeriveSerialize,
+            tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
+          }
+        }
+      }
+    }
+  }
+}
+
 fn nullary_coproduct_derive_traits() -> List<ReprGroundingDeriveTrait> {
   Cons {
-    head: ReprDeriveClone,
+    head: ReprDeriveDebug,
     tail: Cons {
-      head: ReprDeriveCopy,
+      head: ReprDeriveClone,
+      tail: Cons {
+        head: ReprDeriveCopy,
+        tail: Cons {
+          head: ReprDerivePartialEq,
+          tail: Cons {
+            head: ReprDeriveEq,
+            tail: Cons {
+              head: ReprDerivePartialOrd,
+              tail: Cons {
+                head: ReprDeriveOrd,
+                tail: Cons {
+                  head: ReprDeriveSerialize,
+                  tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn symbol_wrapped_ord_carrier_derive_traits() -> List<ReprGroundingDeriveTrait> {
+  Cons {
+    head: ReprDeriveDebug,
+    tail: Cons {
+      head: ReprDeriveClone,
       tail: Cons {
         head: ReprDerivePartialEq,
         tail: Cons {
@@ -176,36 +219,17 @@ fn nullary_coproduct_derive_traits() -> List<ReprGroundingDeriveTrait> {
   }
 }
 
-fn symbol_wrapped_ord_carrier_derive_traits() -> List<ReprGroundingDeriveTrait> {
-  Cons {
-    head: ReprDeriveClone,
-    tail: Cons {
-      head: ReprDerivePartialEq,
-      tail: Cons {
-        head: ReprDeriveEq,
-        tail: Cons {
-          head: ReprDerivePartialOrd,
-          tail: Cons {
-            head: ReprDeriveOrd,
-            tail: Cons {
-              head: ReprDeriveSerialize,
-              tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
 fn payload_coproduct_derive_traits() -> List<ReprGroundingDeriveTrait> {
   Cons {
-    head: ReprDeriveClone,
+    head: ReprDeriveDebug,
     tail: Cons {
-      head: ReprDerivePartialEq,
+      head: ReprDeriveClone,
       tail: Cons {
-        head: ReprDeriveSerialize,
-        tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
+        head: ReprDerivePartialEq,
+        tail: Cons {
+          head: ReprDeriveSerialize,
+          tail: Cons { head: ReprDeriveDeserialize, tail: Empty }
+        }
       }
     }
   }
