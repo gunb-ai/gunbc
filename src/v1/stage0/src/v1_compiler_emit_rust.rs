@@ -13610,7 +13610,16 @@ pub fn emit_rust_fn_body_expr(
     }
 }
 
-pub fn emit_rust_unit_discarding_optional_record(
+pub fn inferred_expr_is_optional(texpr: Rc<Node>) -> bool {
+    match texpr.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            rt.return_cardinality.clone() == Cardinality::CardOptional
+        }
+        _ => false,
+    }
+}
+
+pub fn emit_rust_unit_discarding_optional_typed(
     texpr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
@@ -13618,42 +13627,45 @@ pub fn emit_rust_unit_discarding_optional_record(
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
-    {
-        let si = scope.type_env.clone().source_indices.clone();
-        let tn = match record_lit_type_name_at(texpr.clone(), si.clone()) {
-            Some(n) => n.clone(),
-            None => "".to_string(),
-        };
-        if is_some_like_variant_name(tn.clone()) {
-            match texpr.children.clone().first().cloned() {
-                Some(f) => emit_rust_unit_discarding_stmt(
-                    field_init_node_value(f.clone()),
-                    registry.clone(),
-                    scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                ),
-                None => "()".to_string(),
-            }
-        } else {
-            if is_optional_variant_name(tn.clone()) {
+    match (*texpr.expr_data.clone()).clone() {
+        ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
+            LiteralValue::LitNull => "()".to_string(),
+            _ => emit_error_expr(
+                "unit-discard: optional literal with unexpected value shape".to_string(),
+                RenderTarget::Rust,
+            ),
+        },
+        ExprData::ExprRecordLit { parent_enum: _, .. } => {
+            let field_count = texpr.children.clone().len() as i64;
+            if field_count == 0 {
                 "()".to_string()
-            } else {
-                v1_rt::concat(
-                    emit_typed_expr(
-                        texpr.clone(),
+            } else if field_count == 1 {
+                match texpr.children.clone().first().cloned() {
+                    Some(f) => emit_rust_unit_discarding_stmt(
+                        field_init_node_value(f.clone()),
                         registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
                         emit_info.clone(),
-                        1024,
                     ),
-                    ";".to_string(),
+                    None => emit_error_expr(
+                        "unit-discard: optional record literal missing payload field".to_string(),
+                        RenderTarget::Rust,
+                    ),
+                }
+            } else {
+                emit_error_expr(
+                    "unit-discard: optional record literal with unexpected field count"
+                        .to_string(),
+                    RenderTarget::Rust,
                 )
             }
         }
+        _ => emit_error_expr(
+            "unit-discard: unsupported optional expression form for Unit return".to_string(),
+            RenderTarget::Rust,
+        ),
     }
 }
 
@@ -13785,47 +13797,44 @@ pub fn emit_rust_unit_discarding_stmt(
                 }
             }
             ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                emit_rust_unit_discarding_optional_record(
-                    texpr.clone(),
-                    registry.clone(),
-                    scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                )
-            }
-            ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
-                LiteralValue::LitNull => "()".to_string(),
-                _ => v1_rt::concat(
-                    emit_typed_expr(
+                if inferred_expr_is_optional(texpr.clone()) {
+                    emit_rust_unit_discarding_optional_typed(
                         texpr.clone(),
                         registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
                         emit_info.clone(),
-                        1024,
-                    ),
-                    ";".to_string(),
-                ),
-            },
-            ExprData::ExprVar {
-                binding_kind: binding_kind,
-                ..
-            } => {
-                let n = expr_var_name_at(texpr.clone(), si.clone());
-                let leaf = value_ref_qualified_leaf(n.clone());
-                if (((leaf.clone() == "none".to_string()) || (leaf.clone() == "None".to_string()))
-                    || (leaf.clone() == "Absent".to_string()))
-                {
-                    "()".to_string()
+                    )
                 } else {
-                    if (is_optional_variant_name(leaf.clone())
-                        && (is_some_like_variant_name(leaf.clone()) == false))
-                    {
-                        "()".to_string()
-                    } else {
-                        v1_rt::concat(
+                    v1_rt::concat(
+                        emit_typed_expr(
+                            texpr.clone(),
+                            registry.clone(),
+                            scope.clone(),
+                            depth.clone(),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                            1024,
+                        ),
+                        ";".to_string(),
+                    )
+                }
+            }
+            ExprData::ExprLiteral { value: v, .. } => {
+                if inferred_expr_is_optional(texpr.clone()) {
+                    emit_rust_unit_discarding_optional_typed(
+                        texpr.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                    )
+                } else {
+                    match (*v.clone()).clone() {
+                        LiteralValue::LitNull => "()".to_string(),
+                        _ => v1_rt::concat(
                             emit_typed_expr(
                                 texpr.clone(),
                                 registry.clone(),
@@ -13836,10 +13845,22 @@ pub fn emit_rust_unit_discarding_stmt(
                                 1024,
                             ),
                             ";".to_string(),
-                        )
+                        ),
                     }
                 }
             }
+            ExprData::ExprVar { .. } => v1_rt::concat(
+                emit_typed_expr(
+                    texpr.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                    1024,
+                ),
+                ";".to_string(),
+            ),
             _ => v1_rt::concat(
                 emit_typed_expr(
                     texpr.clone(),
@@ -20664,7 +20685,7 @@ pub fn emit_rust_first_method_call(
                             v1_rt::concat(recv_str.clone(), ".iter().cloned().skip(".to_string()),
                             n_str.clone(),
                         ),
-                        " as usize).next().cloned()".to_string(),
+                        " as usize).next()".to_string(),
                     )
                 }
             } else {
