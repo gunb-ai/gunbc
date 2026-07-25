@@ -30,6 +30,7 @@ mod coverage_completeness_lens_test;
 mod cross_representation_equality_test;
 #[cfg(test)]
 mod dag_comment_wall_test;
+mod e0308_mechanical_trio_probe_test;
 #[cfg(test)]
 mod data_cache_scoping_test;
 #[cfg(test)]
