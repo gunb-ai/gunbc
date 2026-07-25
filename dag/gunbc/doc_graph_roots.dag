@@ -155,6 +155,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     work: DeclarationRef { module_path: "gunbc.ci_spec", decl_name: "gunbc_ci_spec", field: WholeDeclaration },
     dissolution: HasTrigger { text: "D3 lands the placement axis (PrTier | Gauntlet) on CiSpec rows with the measured 5s-rule roster — the spec rows become the authority; the D4 audit-step deletion and D0/D1 preconditions are tracked on their carriers" },
   },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "dag-note-prose-census",
+    work: DeclarationRef { module_path: "v2.lens.enforcement.standing_intent", decl_name: "StandingIntent", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the typed annotation carriers land (ruling rows on StandingIntent, an event log keyed to the declaration, citation edges) and the annotation-budget lens counts ROWS — at which point a lexical census over prose is superseded by a fold over typed rows, and the doc plus its instrument delete together" },
+  },
 ]
 
 fn hand_authored_doc_graph_roots() -> List<String> {
