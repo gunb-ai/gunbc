@@ -51,11 +51,11 @@ fn string_length_call_borrows_string_arg() {
 }
 
 #[test]
-fn callee_borrow_passes_str_ref_to_concat() {
-    let source = "module strsig.fixture\n\nfn echo_twice(a: String, b: String) -> String {\n  concat(a, b, a)\n}\n";
-    let body = fn_body(&emit(source), "echo_twice");
+fn callee_borrow_passes_str_ref_to_readonly_callee() {
+    let source = "module strsig.fixture\n\nfn readonly_sink(x: String, y: String) -> Unit {\n  let a = x\n  let b = x\n}\n\nfn caller(a: String, b: String) -> Unit {\n  readonly_sink(a, b)\n}\n";
+    let body = fn_body(&emit(source), "caller");
     assert!(
-        body.contains("concat(&a") || body.contains("concat(& a"),
+        body.contains("readonly_sink(&a") || body.contains("readonly_sink(& a"),
         "read-only String args at call sites must borrow, got:\n{body}"
     );
 }
