@@ -40,7 +40,7 @@ fn witness_no_fabricated_state() -> Bool {
 
 fn witness_terminal_role_split_follows_ok_set() -> Bool {
   all(component_terminal_states(c: dispatch_button_component()), s =>
-    state_kind_ok(k: s.kind) == any(belt_dispatch_ok_status_labels, l => l == state_kind_key(k: s.kind)))
+    state_kind_ok(k: s.kind) == any(belt_dispatch_ok_status_labels(), l => l == state_kind_key(k: s.kind)))
 }
 
 test fn component_dispatch_button_keystone_holds() -> Bool {

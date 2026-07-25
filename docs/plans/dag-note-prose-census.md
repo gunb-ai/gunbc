@@ -267,6 +267,15 @@ an upper bound. Nothing here is a proof; it is a measurement with its error name
    real one.
 5. **Then the concentration head** (§1): 82 files hold half the mass.
 
+### Sibling census
+
+The [std-side modeling census](extdeps-std-grounding-inventory.md#std-side-modeling-census)
+(2026-07-25, #7207) prices 53 rows across five **structural** modeling defect classes inside
+`dag/std/` (uncited unit constants, foreign-domain literals, parallel mini-frameworks, basisless
+internal constants, hand counts beside structure). This doc prices the **prose annotation** layer —
+864 KiB across 1,284 String-bearing rows classified by semantic intent. The sweeps are
+complementary, not overlapping.
+
 ### Explicitly not claimed
 
 - That any note *should* be deleted — §3 is a proposal list; the two false positives are why.

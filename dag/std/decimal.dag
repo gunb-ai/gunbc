@@ -1,0 +1,42 @@
+module std.decimal
+
+import std.types { String, Int, Bool }
+import std.render_repeat_string_bootstrap { repeat_string }
+
+data decimal_note: String = "Positional decimal notation for a FIXED-POINT magnitude: an integer paired with the power of ten it is scaled by. It exists because two unrelated boundaries needed the identical projection and neither is the right owner of it — WebAudio's gain and time arguments are decimal seconds and a linear amplitude in [0, 1], and CSS transform scale factors are decimal ratios. Each carried its magnitude integrally upstream (a fractional literal in a .dag row would be a second representation of the same number), so each needed to divide exactly once, at its own wire. Giving each boundary its own formatter would have put the same numeral logic in two places for no reason other than that the two consumers are far apart in the layer graph, which is the horizontal redundancy DESIGN section 2 names — the concept is one, so it is modeled once and both uses derive.
+
+Trailing zeros are NOT stripped. Both consumers accept them (CSS `scale(0.970)` and JS `0.005000` are exactly the values `scale(0.97)` and `0.005`), so trimming would buy cosmetics in a generated artifact at the cost of another recursive string pass and its own edge cases around an all-zero fraction.
+
+DOMAIN, stated because it is not enforced by the type: value must be non-negative and decimals must be non-negative. A negative value would render its sign inside the whole part and then a positive-looking fraction, which is wrong rather than merely ugly. There is no refusal arm because every caller in the corpus passes a `data` literal, so the domain is checkable where the literals live — and it is checked there, by witness, rather than being asserted here about inputs this function cannot see."
+
+fn decimal_pow10(exponent: Int) -> Int {
+  if exponent <= 0 {
+    1
+  } else {
+    10 * decimal_pow10(exponent: exponent - 1)
+  }
+}
+
+fn zero_pad_left(digits: String, width: Int) -> String {
+  let have = digits.length()
+  if have >= width {
+    digits
+  } else {
+    join([repeat_string(s: "0", n: width - have), digits], "")
+  }
+}
+
+fn fixed_point_wire(value: Int, decimals: Int) -> String {
+  let unit = decimal_pow10(exponent: decimals)
+  let whole = value / unit
+  let frac = value - (whole * unit)
+  if frac == 0 {
+    to_string(whole)
+  } else {
+    join([to_string(whole), ".", zero_pad_left(digits: to_string(frac), width: decimals)], "")
+  }
+}
+
+fn fixed_point_domain_ok(value: Int, decimals: Int) -> Bool {
+  value >= 0 && decimals >= 0
+}

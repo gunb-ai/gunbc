@@ -1,0 +1,237 @@
+module v2.test.claim.trait_derive_completeness_predicate
+
+import v2.compiler.trait_derive_completeness {
+  TraitDeriveCompletenessIncomplete,
+  TraitDeriveCompletenessSatisfied,
+  repr_grounding_derive_completeness_predicate_for_elem,
+  repr_grounding_derive_elem_shape,
+  repr_grounding_derive_trait_satisfied,
+  trait_derive_completeness_gate_for_collection_witness,
+  trait_derive_int_kernel_type_node
+}
+import std.trait_derive_shape {
+  ReprDeriveAdd,
+  ReprDeriveClone,
+  ReprDeriveElemKernelString,
+  ReprDeriveElemNullaryEnumCopy,
+  ReprDeriveElemPayloadCoproduct,
+  ReprDeriveElemUnknown,
+  ReprDeriveOrd,
+  ReprDeriveSerialize,
+  payload_coproduct_derive_traits,
+  repr_grounding_derive_completeness_predicate
+}
+import v2.extdeps.languages.rust {
+  rust_trait_derive_surface_binding_for_coproduct,
+  rust_trait_derive_surface_binding_for_record
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.compilers.target_model {
+  RequiredTraitWitness,
+  TargetCollectionWitnessOrd,
+  symbol_kernel_type_node
+}
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List, Symbol }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Disj,
+  Edge,
+  Node,
+  Positional,
+  SyntheticOccurrence,
+  TypeNode
+}
+
+data trait_derive_completeness_predicate_note: String = "Derisk witnesses for Gate-1 sub-wall #2: trait_derive_completeness.dag is the agnostic predicate authority; rust.dag owns surface-binding rows. RED: Int kernel must satisfy Add but not vice versa for String; unknown atom refuses Ord; nullary enum selects copy derive binding."
+
+fn tdc_nullary_enum_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn tdc_payload_enum_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Positional,
+              target: Node {
+                kind: TypeNode { connective: Atom { identity: ^tdc_payload_field } },
+                children: [],
+                occurrence_id: SyntheticOccurrence
+              }
+            }
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn tdc_unknown_atom_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^tdc_unknown_carrier } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn tdc_elem_shape_is_payload_coproduct(elem: Node) -> Bool {
+  match repr_grounding_derive_elem_shape(elem: elem) {
+    ReprDeriveElemPayloadCoproduct => true
+    _ => false
+  }
+}
+
+fn tdc_elem_shape_is_unknown(elem: Node) -> Bool {
+  match repr_grounding_derive_elem_shape(elem: elem) {
+    ReprDeriveElemUnknown => true
+    _ => false
+  }
+}
+
+fn tdc_elem_shape_is_nullary_enum_copy(elem: Node) -> Bool {
+  match repr_grounding_derive_elem_shape(elem: elem) {
+    ReprDeriveElemNullaryEnumCopy => true
+    _ => false
+  }
+}
+
+fn tdc_elem_shape_is_kernel_string(elem: Node) -> Bool {
+  match repr_grounding_derive_elem_shape(elem: elem) {
+    ReprDeriveElemKernelString => true
+    _ => false
+  }
+}
+
+fn tdc_collection_witness_gate_is_incomplete(
+  witness: RequiredTraitWitness,
+  elem: Node
+) -> Bool {
+  match trait_derive_completeness_gate_for_collection_witness(witness: witness, elem: elem) {
+    TraitDeriveCompletenessIncomplete => true
+    TraitDeriveCompletenessSatisfied => false
+  }
+}
+
+fn tdc_binding_is(binding: Symbol, expected: Symbol) -> Bool {
+  binding == expected
+}
+
+fn tdc_coproduct_binding_accepted(coproduct: Node) -> Symbol {
+  match rust_trait_derive_surface_binding_for_coproduct(coproduct: coproduct) {
+    Accepted { value: binding, diagnostics: _ } => binding
+    Rejected { diagnostics: _ } => ^tdc_impossible_coproduct_binding
+  }
+}
+
+fn tdc_coproduct_binding_rejected(coproduct: Node) -> Bool {
+  match rust_trait_derive_surface_binding_for_coproduct(coproduct: coproduct) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn tdc_string_kernel_satisfies_clone_ord_serde_not_add() -> Bool {
+  repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveClone, elem: symbol_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveOrd, elem: symbol_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveSerialize, elem: symbol_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveAdd, elem: symbol_kernel_type_node()) == false
+}
+
+test fn tdc_int_kernel_satisfies_arith_and_ord() -> Bool {
+  repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveAdd, elem: trait_derive_int_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveOrd, elem: trait_derive_int_kernel_type_node())
+    && repr_grounding_derive_completeness_predicate_for_elem(
+      required: Cons {
+        head: ReprDeriveAdd,
+        tail: Cons { head: ReprDeriveClone, tail: Cons { head: ReprDeriveSerialize, tail: Empty } }
+      },
+      elem: trait_derive_int_kernel_type_node()
+    )
+}
+
+test fn tdc_unknown_atom_refuses_ord_completeness() -> Bool {
+  repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveOrd, elem: tdc_unknown_atom_node()) == false
+    && tdc_elem_shape_is_unknown(elem: tdc_unknown_atom_node())
+    && tdc_collection_witness_gate_is_incomplete(
+      witness: TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t },
+      elem: tdc_unknown_atom_node()
+    )
+}
+
+test fn tdc_payload_coproduct_shape_and_predicate() -> Bool {
+  tdc_elem_shape_is_payload_coproduct(elem: tdc_payload_enum_node())
+    && repr_grounding_derive_completeness_predicate(
+      payload_coproduct_derive_traits(),
+      ReprDeriveElemPayloadCoproduct
+    )
+    && tdc_binding_is(
+      binding: tdc_coproduct_binding_accepted(coproduct: tdc_payload_enum_node()),
+      expected: ^rust_decl_derive_enum_binding
+    )
+    && tdc_coproduct_binding_rejected(coproduct: tdc_unknown_atom_node())
+}
+
+test fn tdc_nullary_enum_copy_shape_and_binding() -> Bool {
+  tdc_elem_shape_is_nullary_enum_copy(elem: tdc_nullary_enum_node())
+    && tdc_binding_is(
+      binding: tdc_coproduct_binding_accepted(coproduct: tdc_nullary_enum_node()),
+      expected: ^rust_decl_derive_enum_copy_binding
+    )
+}
+
+test fn tdc_symbol_kernel_string_shape() -> Bool {
+  tdc_elem_shape_is_kernel_string(elem: symbol_kernel_type_node())
+}
+
+test fn tdc_record_surface_binding_heap_vs_copy() -> Bool {
+  tdc_binding_is(
+    binding: rust_trait_derive_surface_binding_for_record(heap_allocated: true),
+    expected: ^rust_decl_derive_struct_binding
+  )
+    && tdc_binding_is(
+      binding: rust_trait_derive_surface_binding_for_record(heap_allocated: false),
+      expected: ^rust_decl_derive_struct_copy_binding
+    )
+}
+
+test fn tdc_trait_derive_completeness_predicate_witness_holds() -> Bool {
+  tdc_string_kernel_satisfies_clone_ord_serde_not_add()
+    && tdc_int_kernel_satisfies_arith_and_ord()
+    && tdc_unknown_atom_refuses_ord_completeness()
+    && tdc_payload_coproduct_shape_and_predicate()
+    && tdc_nullary_enum_copy_shape_and_binding()
+    && tdc_symbol_kernel_string_shape()
+    && tdc_record_surface_binding_heap_vs_copy()
+}

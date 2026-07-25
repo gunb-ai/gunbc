@@ -135,3 +135,26 @@ fn set_text_capable(s: SwatchSet) -> Bool {
   fold(graded_pairings(s: s), init: false, f: (acc, p) =>
     acc || grade_rank(g: p.grade) >= grade_rank(g: TextAa))
 }
+
+data swatch_set_for_use_note: String = "Role completion at the consuming layer (operator ruling 2026-07-24, roadmap-workspace-remodel-plan W1b): a base SwatchSet stays provenance-pure — island-pastel has no danger hue BY DESIGN, and serving a UI's need never edits the base. A use that needs a hue class the base cannot serve declares a SwatchSetForUse: the base plus completion members, each completion carrying its own provenance in its member kind or the use_note (the loam-from-camel precedent generalized — derivation-at-need, homed where the need lives). Admissibility composes: the base admissible, at least one completion (an empty completion list IS the base — use the base directly), and the combined membership still admissible, so a completion shadowing a base name is unwritable."
+
+type SwatchSetForUse {
+  name: String
+  base: SwatchSet
+  completions: List<SwatchMember>
+  use_note: String
+}
+
+fn for_use_combined_set(u: SwatchSetForUse) -> SwatchSet {
+  SwatchSet { name: u.name, provenance: u.base.provenance, members: concat(u.base.members, u.completions) }
+}
+
+fn swatches_for_use(u: SwatchSetForUse) -> List<Swatch> {
+  swatches_of(s: for_use_combined_set(u: u))
+}
+
+fn swatch_set_for_use_admissible(u: SwatchSetForUse) -> Bool {
+  swatch_set_admissible(s: u.base)
+    && u.completions.length() > 0
+    && swatch_set_admissible(s: for_use_combined_set(u: u))
+}

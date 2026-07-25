@@ -39,3 +39,13 @@ data us_gaap_cost_of_goods_and_services_sold: NonEmptyStr = "CostOfGoodsAndServi
 data us_gaap_cost_of_goods_and_service_excluding_depreciation_depletion_and_amortization: NonEmptyStr = "CostOfGoodsAndServiceExcludingDepreciationDepletionAndAmortization"
 
 data us_gaap_selling_general_and_administrative_expense: NonEmptyStr = "SellingGeneralAndAdministrativeExpense"
+
+data us_gaap_operating_expenses: NonEmptyStr = "OperatingExpenses"
+
+data us_gaap_net_income_loss: NonEmptyStr = "NetIncomeLoss"
+
+data us_gaap_purchase_obligation: NonEmptyStr = "PurchaseObligation"
+
+data us_gaap_purchase_obligation_due_in_next_twelve_months: NonEmptyStr = "PurchaseObligationDueInNextTwelveMonths"
+
+data us_gaap_long_term_purchase_commitment_amount: NonEmptyStr = "LongTermPurchaseCommitmentAmount"

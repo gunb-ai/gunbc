@@ -76,6 +76,8 @@ fn themed_props_of(decls: List<CssDecl>) -> List<String> {
     })
 }
 
+data state_class_census_reach_note: String = "Both censuses reach state-class responses with no new arm, and that is the payoff of landing the still-until-touched amendment as a TRIGGER variant rather than a second rule shape. A new BuildRule variant would have left these two readers with their old arms while the emitter grew a shape — the wall silently ceasing to cover part of the surface it claims to cover, coverage by illusion in the one mechanism whose whole job is coverage. Because a detent is an ordinary ResponseRule carrying a different suffix, an unthemed colour or a raw pixel in a state's declarations is censused exactly as it is anywhere else, and rule_selector keeps reporting the base selector because that is the subject a census locates a violation ON."
+
 fn rule_selector(rule: BuildRule) -> String {
   match rule {
     StaticRule { selector, decls: _ } => selector_subject_wire(s: selector)

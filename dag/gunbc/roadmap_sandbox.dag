@@ -21,7 +21,8 @@ import gunbc.roadmap_component {
   dispatch_button_component, dispatch_button_terminal_states,
   dispatch_idle_state, dispatch_requested_state,
   dispatch_state_class, dispatch_state_display_text,
-  sandbox_live_class, sandbox_asset_path,
+  dispatch_caption_idle,
+  sandbox_live_class, sandbox_asset_path, swatch_toggle_class,
 }
 import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
 
@@ -71,6 +72,30 @@ fn sandbox_rules() -> List<BuildRule> {
       decl(prop: Gap, value: scale_var(t: space_8)),
       decl(prop: FlexWrap, value: "wrap"),
       decl(prop: AlignItems, value: "baseline"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "gallery-cell" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_2)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "gallery-arm" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "auditioner-bar" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Margin, value: scale_triple(a: space_3, b: space_0, c: space_3)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "band-chip" }, decls: [
+      decl(prop: Display, value: "inline-block"),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
     ] },
   ]
 }
@@ -133,18 +158,40 @@ fn gallery_states() -> List<ComponentState> {
   concat([dispatch_idle_state, dispatch_requested_state], dispatch_button_terminal_states())
 }
 
+data gallery_arm_sublabel_note: String = "The caption collapse (W1d) makes band phrases the button text, so two refusal arms wear the same caption — CORRECT for the operator, ambiguous for a specimen sheet. The gallery is the diagnostic surface, so each cell carries the ARM identity as a sublabel under the instance (state.key, which for terminals IS the wire label — the same authority the coverage witness reads), and the live cells mirror it. The caption channel stays operator-vocabulary everywhere; the wire vocabulary survives only in the sublabel and title channels, where diagnosis lives."
+
+data band_chip_note: String = "The auditioner's live preview (W1f visibility fix, operator report 2026-07-24: 'the swatches button doesn't seem to do anything' — the toggle worked, proven by execution in a DOM-stub harness, but nothing NEAR it consumed the band vars; the roles section beside it paints theme literals by design). Five chips filled from var(--band-*) sit beside the control, so a set flip repaints the strip in the same glance that clicked it. Keys derive from workspace_band_paints — the chip strip cannot drift from the band vocabulary."
+
+fn band_chip(key: String) -> MarkupNode {
+  ElementNode {
+    tag: "span",
+    attrs: [
+      MarkupAttr { name: "class", value: "band-chip" },
+      MarkupAttr { name: "style", value: join(["background: var(--band-", key, "); color: var(--band-", key, "-ink)"], "") },
+    ],
+    children: [ txt(key) ],
+  }
+}
+
+fn gallery_cell(button: MarkupNode, arm: String) -> MarkupNode {
+  el_class("div", "gallery-cell", [ button, el_class("span", "gallery-arm", [ txt(arm) ]) ])
+}
+
 fn gallery_instance(state: ComponentState) -> MarkupNode {
   let cls = dispatch_state_class(state: state)
   let full = if cls == "" { "dispatch-btn" } else { join(["dispatch-btn ", cls], "") }
-  ElementNode {
-    tag: "button",
-    attrs: [
-      MarkupAttr { name: "class", value: full },
-      MarkupAttr { name: "type", value: "button" },
-      MarkupAttr { name: "disabled", value: "" },
-    ],
-    children: [ txt(dispatch_state_display_text(state: state)) ],
-  }
+  gallery_cell(
+    button: ElementNode {
+      tag: "button",
+      attrs: [
+        MarkupAttr { name: "class", value: full },
+        MarkupAttr { name: "type", value: "button" },
+        MarkupAttr { name: "disabled", value: "" },
+      ],
+      children: [ txt(dispatch_state_display_text(state: state)) ],
+    },
+    arm: state.key,
+  )
 }
 
 fn gallery_section() -> MarkupNode {
@@ -155,15 +202,18 @@ fn gallery_section() -> MarkupNode {
 }
 
 fn live_instance(wire_label: String) -> MarkupNode {
-  ElementNode {
-    tag: "button",
-    attrs: [
-      MarkupAttr { name: "class", value: join(["dispatch-btn ", sandbox_live_class], "") },
-      MarkupAttr { name: "type", value: "button" },
-      MarkupAttr { name: "data-status", value: wire_label },
-    ],
-    children: [ txt(wire_label) ],
-  }
+  gallery_cell(
+    button: ElementNode {
+      tag: "button",
+      attrs: [
+        MarkupAttr { name: "class", value: join(["dispatch-btn ", sandbox_live_class], "") },
+        MarkupAttr { name: "type", value: "button" },
+        MarkupAttr { name: "data-status", value: wire_label },
+      ],
+      children: [ txt(dispatch_caption_idle) ],
+    },
+    arm: wire_label,
+  )
 }
 
 fn live_section() -> MarkupNode {
@@ -185,6 +235,16 @@ fn sandbox_page() -> MarkupNode {
       ]),
       el("body", [
         roadmap_header(title: "gunbc — sandbox"),
+        el_class("div", "auditioner-bar", concat(
+          [ ElementNode {
+              tag: "button",
+              attrs: [
+                MarkupAttr { name: "class", value: swatch_toggle_class },
+                MarkupAttr { name: "type", value: "button" },
+              ],
+              children: [],
+            } ],
+          map(workspace_band_paints(), p => band_chip(key: p.key)))),
         el_class("main", "sandbox", [
           roles_section(),
           scales_section(),
@@ -205,5 +265,5 @@ fn sandbox_page() -> MarkupNode {
 }
 
 fn sandbox_gallery_terminal_labels() -> List<String> {
-  map(component_terminal_states(c: dispatch_button_component()), s => dispatch_state_display_text(state: s))
+  map(component_terminal_states(c: dispatch_button_component()), s => s.key)
 }
