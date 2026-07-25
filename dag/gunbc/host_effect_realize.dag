@@ -135,8 +135,14 @@ import extdeps.os.ubuntu_seeded_install_media_remaster {
   InstallMediaRemasterRemastered,
   InstallMediaRemasterRefused,
 }
-import gunbc.host_effect_hostname_script { host_effect_set_hostname_cas_script }
 import gunbc.hostname_read { hostname_short_read }
+import gunbc.hostname_set {
+  hostname_set_cas,
+  HostnameSetCasApplied,
+  HostnameSetCasReadAbsent,
+  HostnameSetCasBaseMismatch,
+  HostnameSetCasApplyFailed,
+}
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
 import extdeps.access.posix_effective_principal_read_op {
   posix_effective_principal_read_argv,
@@ -1413,14 +1419,36 @@ fn realize_set_hostname_cas_on_host(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  realize_shell_on_host(
-    script: retained_srvn(
-      body: host_effect_set_hostname_cas_script(hostnamectl_path: hostnamectl_path, base: base, desired: desired),
-      reason: "SetHostnameCas hostnamectl write (CAS-guarded hostname mutation)",
-    ),
-    transport: transport,
-    intent: intent,
-  )
+  match hostname_set_cas(transport: transport, base: base, desired: desired) {
+    HostnameSetCasApplied =>
+      reconcile_shell_exec_observed(
+        observed: ShellExecObserved {
+          exit_code: 0,
+          success: true,
+          stdout: desired as String,
+          stderr: "",
+        },
+        intent: intent,
+      )
+    HostnameSetCasReadAbsent =>
+      NotConverged {
+        reason: "host_effect: SetHostnameCas hostname read absent; fail-closed",
+        applied: intent,
+      }
+    HostnameSetCasBaseMismatch { observed: o, base: b } =>
+      NotConverged {
+        reason: concat(
+          concat("host_effect: SetHostnameCas CAS refused — observed ", o),
+          concat(" != base ", b as String),
+        ),
+        applied: intent,
+      }
+    HostnameSetCasApplyFailed { stderr: e } =>
+      NotConverged {
+        reason: concat("host_effect: SetHostnameCas hostnamectl set-hostname failed: ", e),
+        applied: intent,
+      }
+  }
 }
 
 fn realize_hostname_read_on_host(

@@ -26,6 +26,37 @@ fn witness_hostname_read_resolves_typed_cell_not_shell_script() -> Bool {
   }
 }
 
+fn witness_hostname_set_argv_is_typed_not_concat() -> Bool {
+  hostname_set_operation_argv_matches_authority(desired: "srv9" as DnsLabel)
+    && join(hostname_set_operation_argv(desired: "srv9" as DnsLabel), " ") == "hostnamectl set-hostname srv9"
+}
+
+fn witness_hostname_set_resolves_typed_cell_not_shell_script() -> Bool {
+  match resolve_host_effect_cell(
+    target: srv1_os_target(),
+    effect: SetHostnameCas {
+      hostnamectl_path: host_identity_hostnamectl_path,
+      base: "localhost" as DnsLabel,
+      desired: "srv9" as DnsLabel,
+    },
+  ) {
+    HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => true
+    _ => false
+  }
+}
+
+fn witness_hostname_set_cas_refuses_base_mismatch() -> Bool {
+  match hostname_set_cas(
+    transport: LocalShell,
+    base: "altrad8ud-1l2t-1" as DnsLabel,
+    desired: operator_host_srv1 as DnsLabel,
+  ) {
+    HostnameSetCasBaseMismatch { observed: o, base: b } =>
+      o == "localhost" && b == "altrad8ud-1l2t-1" as DnsLabel
+    _ => false
+  }
+}
+
 fn witness_fixture_observation_types_srv1_observed_hostname() -> Bool {
   let obs = fixture_host_identity_observation()
   obs.short_hostname == "altrad8ud-1l2t-1"
@@ -326,6 +357,9 @@ fn witness_invalid_desired_hostname_unwritable() -> Bool {
 test fn host_identity_observation_holds() -> Bool {
   witness_hostname_read_argv_is_typed_not_concat()
     && witness_hostname_read_resolves_typed_cell_not_shell_script()
+    && witness_hostname_set_argv_is_typed_not_concat()
+    && witness_hostname_set_resolves_typed_cell_not_shell_script()
+    && witness_hostname_set_cas_refuses_base_mismatch()
     && witness_fixture_observation_types_srv1_observed_hostname()
     && witness_fixture_observation_types_srv2_observed_hostname()
     && witness_empty_stdout_is_absent()
