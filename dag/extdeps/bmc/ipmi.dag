@@ -1,4 +1,4 @@
-module extdeps.diagnostic.ipmi
+module extdeps.bmc.ipmi
 
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

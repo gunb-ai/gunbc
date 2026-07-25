@@ -1,4 +1,4 @@
-module extdeps.os.exec_arg_limit
+module extdeps.exec.exec_arg_limit
 
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.nat { Nat }

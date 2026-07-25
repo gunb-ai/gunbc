@@ -1,4 +1,4 @@
-module extdeps.os.systemd_contracts
+module extdeps.systemd.systemd_contracts
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -13,6 +13,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data systemd_unit_active_state_wire_contract: CoproductWireContract = {
-  coproduct: DeclarationRef { module_path: "extdeps.os.systemd", decl_name: "SystemdUnitActiveState", field: WholeDeclaration },
+  coproduct: DeclarationRef { module_path: "extdeps.systemd", decl_name: "SystemdUnitActiveState", field: WholeDeclaration },
   encoding: StringVariant { naming: SnakeCase }
 }

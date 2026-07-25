@@ -1,4 +1,4 @@
-module extdeps.diffutils
+module extdeps.tools.diffutils
 
 import std.types { FilePath }
 import extdeps.external_authority { ExternalAuthority }

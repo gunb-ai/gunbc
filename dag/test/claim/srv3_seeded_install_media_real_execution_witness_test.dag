@@ -3,7 +3,7 @@ module test.claim.srv3_seeded_install_media_real_execution
 import std.logic { Bool }
 import std.types { String, NonEmptyStr }
 import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_artifact }
-import extdeps.os.ubuntu_seeded_install_media_remaster { install_media_remaster_ensure_grub_cmdline }
+import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_ensure_grub_cmdline }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

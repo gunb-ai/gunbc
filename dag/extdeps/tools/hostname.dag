@@ -1,4 +1,4 @@
-module extdeps.os.hostname
+module extdeps.tools.hostname
 
 import std.types { String, List, Bool }
 import extdeps.external_authority { ExternalAuthority }

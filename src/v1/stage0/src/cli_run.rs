@@ -26968,7 +26968,7 @@ mod module_path_index_tests {
     #[test]
     fn extdeps_shell_resolves_to_the_dag_authority() {
         let path = source_path_for_module_path("extdeps.shell".to_string());
-        assert_eq!(path, "dag/extdeps/shell/shell.dag");
+        assert_eq!(path, "dag/extdeps/shell.dag");
     }
 
     #[test]

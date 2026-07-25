@@ -43,7 +43,7 @@ import gunbc.retained_shell_script {
   retained_shell_script_to_transport,
   retained_srvn,
 }
-import extdeps.diagnostic.ssh { ssh_session_exec, ssh_session_exec_script }
+import extdeps.ssh.session { ssh_session_exec, ssh_session_exec_script }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
   TypedArgvExecOutcome,
@@ -120,13 +120,13 @@ import extdeps.filesystem.filesystem_io
 import std.measure { second_count }
 import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
 import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_artifact }
-import extdeps.os.ubuntu_install_media_fetch {
+import extdeps.provisioning.ubuntu_install_media_fetch {
   install_media_fetch_reconcile,
   InstallMediaFetchAlreadyPresent,
   InstallMediaFetchFetched,
   InstallMediaFetchRefused,
 }
-import extdeps.os.ubuntu_seeded_install_media_remaster {
+import extdeps.provisioning.ubuntu_seeded_install_media_remaster {
   install_media_remaster_reconcile,
   InstallMediaRemasterAlreadyPresent,
   InstallMediaRemasterRemastered,

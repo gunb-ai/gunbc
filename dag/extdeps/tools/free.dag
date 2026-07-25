@@ -1,4 +1,4 @@
-module extdeps.os.free
+module extdeps.tools.free
 
 import std.measure { ByteSize }
 import extdeps.external_authority { ExternalAuthority }

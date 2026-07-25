@@ -1,7 +1,7 @@
 module gunbc.srv3_seeded_install_media_artifact
 
-import extdeps.os.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
-import extdeps.os.ubuntu_seeded_install_media {
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
+import extdeps.provisioning.ubuntu_seeded_install_media {
   UbuntuSeededInstallMediaArtifactRow,
   ubuntu_seeded_install_media_default_nocloud_dir,
   ubuntu_seeded_install_media_grub_kernel_cmdline,

@@ -1,8 +1,8 @@
-module extdeps.os.ubuntu_seeded_install_media
+module extdeps.provisioning.ubuntu_seeded_install_media
 
 import std.types { NonEmptyStr, String, ContentHash }
 import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
-import extdeps.os.ubuntu_install_media {
+import extdeps.provisioning.ubuntu_install_media {
   UbuntuInstallMediaArtifactRow,
   ubuntu_install_media_artifacts_dir,
 }

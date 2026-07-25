@@ -1,4 +1,4 @@
-module extdeps.os.ubuntu_install_media_fetch
+module extdeps.provisioning.ubuntu_install_media_fetch
 
 import std.disposition { Disposition, Terminal }
 
@@ -8,7 +8,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.shell
 import extdeps.http.client
 import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }
-import extdeps.os.ubuntu_install_media {
+import extdeps.provisioning.ubuntu_install_media {
   UbuntuInstallMediaArtifactRow,
   ubuntu_install_media_install_path,
   ubuntu_install_media_part_path,

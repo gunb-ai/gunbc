@@ -1,4 +1,4 @@
-module extdeps.diagnostic.ssh
+module extdeps.ssh.session
 
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

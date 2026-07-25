@@ -1,4 +1,4 @@
-module extdeps.os.oomd
+module extdeps.systemd.oomd
 
 import std.types { NonEmptyStr, String, FilePath, Bool }
 import std.measure { Second, second, Percent, percent, percent_count }
