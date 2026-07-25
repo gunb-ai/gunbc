@@ -166,7 +166,7 @@ pub fn source_scan_to_eol(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
     }
 }
 
-pub fn tokenize(source: String, file: String) -> Rc<Vec<Rc<Token>>> {
+pub fn tokenize(source: &str, file: String) -> Rc<Vec<Rc<Token>>> {
     {
         let c = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
         let src = Rc::new(SourceRef {
@@ -537,7 +537,7 @@ pub fn scan_ident(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
     {
         let end = source_scan_while(source.clone(), pos.pos.clone(), is_ident_char);
         let text = source_substring(source.clone(), pos.pos.clone(), end.clone());
-        let shape = if is_reserved_emit_sentinel(text.clone()) {
+        let shape = if is_reserved_emit_sentinel(&text) {
             TokenShape::ShUnknown
         } else {
             if is_keyword_text(text.clone()) {
@@ -831,7 +831,7 @@ pub fn should_start_interpolation(source: Rc<SourceRef>, pos: i64) -> bool {
 }
 
 pub fn process_escapes(raw: String) -> String {
-    process_escapes_loop(raw.clone(), 0, Rc::new(vec![]))
+    process_escapes_loop(&raw, 0, Rc::new(vec![]))
 }
 
 pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Rc<Vec<String>>) -> String {
@@ -1016,7 +1016,7 @@ pub fn sentinel_suffix_matches(
     }
 }
 
-pub fn is_reserved_emit_sentinel(text: String) -> bool {
+pub fn is_reserved_emit_sentinel(text: &str) -> bool {
     {
         let rule = canonical_emoji_char_escape();
         let pfx = rule.prefix.clone();
@@ -1027,23 +1027,19 @@ pub fn is_reserved_emit_sentinel(text: String) -> bool {
         if (n.clone() < ((pfx_len.clone() + sfx_len.clone()) + 1)) {
             false
         } else {
-            if !sentinel_prefix_matches(text.clone(), pfx.clone(), 0, pfx_len.clone()) {
+            if !sentinel_prefix_matches(&text, &pfx, 0, pfx_len.clone()) {
                 false
             } else {
                 if !sentinel_suffix_matches(
-                    text.clone(),
-                    sfx.clone(),
+                    &text,
+                    &sfx,
                     0,
                     sfx_len.clone(),
                     (n.clone() - sfx_len.clone()),
                 ) {
                     false
                 } else {
-                    all_hex_upper_in_range(
-                        text.clone(),
-                        pfx_len.clone(),
-                        (n.clone() - sfx_len.clone()),
-                    )
+                    all_hex_upper_in_range(&text, pfx_len.clone(), (n.clone() - sfx_len.clone()))
                 }
             }
         }

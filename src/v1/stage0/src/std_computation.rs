@@ -235,7 +235,7 @@ pub fn algebra_profile_to_dimension(profile: AlgebraProfile) -> Option<Iteration
     }
 }
 
-pub fn type_iteration_dimension(type_name: String) -> Option<IterationDimension> {
+pub fn type_iteration_dimension(type_name: &str) -> Option<IterationDimension> {
     if (type_name.clone() == "Node".to_string()) {
         Some(IterationDimension::TreeDescent)
     } else {

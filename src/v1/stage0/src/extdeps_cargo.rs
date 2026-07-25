@@ -165,7 +165,7 @@ pub fn cargo_target_source_path(
     }
 }
 
-pub fn rust_module_candidate_paths(stem: String) -> Rc<Vec<Rc<FilePathParts>>> {
+pub fn rust_module_candidate_paths(stem: &str) -> Rc<Vec<Rc<FilePathParts>>> {
     Rc::new(vec![
         Rc::new(FilePathParts {
             segments: Rc::new(vec![

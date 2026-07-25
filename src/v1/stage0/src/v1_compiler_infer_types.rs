@@ -109,7 +109,15 @@ pub fn is_type_expr_annotation(n: Rc<Node>) -> bool {
 }
 
 pub fn child_type_at(n: Rc<Node>, index: i64) -> Option<Rc<Node>> {
-    match n.children.clone().get(index.clone() as usize).cloned() {
+    match n
+        .children
+        .clone()
+        .iter()
+        .cloned()
+        .skip(index.clone() as usize)
+        .next()
+        .cloned()
+    {
         Some(ch) => Some(child_type_node(ch.clone())),
         None => None,
     }
@@ -516,7 +524,7 @@ pub struct KernelTypeBuild {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTypeBuild> {
+pub fn make_container_type(kind_name: &str, element: Rc<Node>) -> Rc<KernelTypeBuild> {
     match container_param_name(kind_name.clone(), 0) {
         Some(param_name) => Rc::new(KernelTypeBuild {
             ty: Rc::new(Node {
@@ -747,7 +755,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     })
 }
 
-pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
+pub fn algebra_value_field(name: &str, type_node: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: name.clone(),
         span: kernel_span(name.clone()),
@@ -773,7 +781,7 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn algebra_method_field(
-    name: String,
+    name: &str,
     param_types: Rc<Vec<Rc<Node>>>,
     return_type: Rc<Node>,
 ) -> Rc<Node> {
@@ -845,10 +853,10 @@ pub fn enrich_base_with_fields(
 }
 
 pub fn placeholder_type_node(name: String) -> Rc<Node> {
-    nominal_type_ref(name.clone())
+    nominal_type_ref(&name)
 }
 
-pub fn nominal_type_ref(name: String) -> Rc<Node> {
+pub fn nominal_type_ref(name: &str) -> Rc<Node> {
     leaf_node_with_span(name.clone(), kernel_span(name.clone()))
 }
 
@@ -921,7 +929,7 @@ pub fn instantiate_algebra_type(
                 diagnostics: Rc::new(vec![]),
             }),
             AlgebraTypeTemplate::NamedTemplate { name: n, .. } => Rc::new(KernelTypeBuild {
-                ty: nominal_type_ref(n.clone()),
+                ty: nominal_type_ref(&n),
                 diagnostics: Rc::new(vec![]),
             }),
             AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => {
@@ -944,7 +952,7 @@ pub fn instantiate_algebra_type(
                 };
                 let inner_b =
                     instantiate_algebra_type(inner.clone(), base.clone(), source_indices.clone());
-                let built = make_container_type(kind_name.clone(), inner_b.ty.clone());
+                let built = make_container_type(&kind_name, inner_b.ty.clone());
                 Rc::new(KernelTypeBuild {
                     ty: built.ty.clone(),
                     diagnostics: v1_rt::concat(
@@ -964,7 +972,7 @@ pub fn instantiate_algebra_type(
             AlgebraTypeTemplate::WitnessOf { inner: inner, .. } => {
                 let ib =
                     instantiate_algebra_type(inner.clone(), base.clone(), source_indices.clone());
-                let built = make_container_type("Witness".to_string(), ib.ty.clone());
+                let built = make_container_type(&"Witness".to_string(), ib.ty.clone());
                 Rc::new(KernelTypeBuild {
                     ty: built.ty.clone(),
                     diagnostics: v1_rt::concat(ib.diagnostics.clone(), built.diagnostics.clone()),
@@ -1058,12 +1066,12 @@ pub fn instantiate_algebra_field(
         );
         let field_ty = if ((param_types.clone().len() as i64) > 0) {
             algebra_method_field(
-                template.name.clone(),
+                &template.name.clone(),
                 param_types.clone(),
                 return_b.ty.clone(),
             )
         } else {
-            algebra_value_field(template.name.clone(), return_b.ty.clone())
+            algebra_value_field(&template.name.clone(), return_b.ty.clone())
         };
         Rc::new(KernelTypeBuild {
             ty: field_ty.clone(),
@@ -1073,7 +1081,7 @@ pub fn instantiate_algebra_field(
 }
 
 pub fn enrich_kernel_type(
-    name: String,
+    name: &str,
     base: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KernelTypeBuild> {
@@ -1150,7 +1158,15 @@ pub fn unify_template(
                     }
                     None => subst.clone(),
                 };
-                match concrete.children.clone().get(1 as usize).cloned() {
+                match concrete
+                    .children
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .next()
+                    .cloned()
+                {
                     Some(v) => {
                         if (v1_rt::map_get(&s1, "__value__".to_string()) != None) {
                             s1.clone()
@@ -1255,7 +1271,15 @@ pub fn unify_template(
                     ),
                     None => subst.clone(),
                 };
-                match concrete.children.clone().get(1 as usize).cloned() {
+                match concrete
+                    .children
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .next()
+                    .cloned()
+                {
                     Some(c) => unify_template(
                         st.clone(),
                         child_type_node(c.clone()),
@@ -1440,7 +1464,7 @@ pub fn apply_type_substitution(
                             if (arity.clone() == Some(1)) {
                                 match v1_rt::map_get(&subst, "__element__".to_string()) {
                                     Some(elem) => make_container_type(
-                                        container_kind_canonical(receiver_name_str.clone()),
+                                        &container_kind_canonical(receiver_name_str.clone()),
                                         elem.clone(),
                                     ),
                                     None => Rc::new(KernelTypeBuild {
@@ -1525,40 +1549,46 @@ pub fn apply_type_substitution(
                     }
                 },
             },
-            AlgebraTypeTemplate::ReceiverValue => {
-                match receiver.children.clone().get(1 as usize).cloned() {
-                    Some(child) => Rc::new(KernelTypeBuild {
-                        ty: child_type_node(child.clone()),
+            AlgebraTypeTemplate::ReceiverValue => match receiver
+                .children
+                .clone()
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .next()
+                .cloned()
+            {
+                Some(child) => Rc::new(KernelTypeBuild {
+                    ty: child_type_node(child.clone()),
+                    diagnostics: Rc::new(vec![]),
+                }),
+                None => match v1_rt::map_get(&subst, "__value__".to_string()) {
+                    Some(val) => Rc::new(KernelTypeBuild {
+                        ty: val.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
-                    None => match v1_rt::map_get(&subst, "__value__".to_string()) {
-                        Some(val) => Rc::new(KernelTypeBuild {
-                            ty: val.clone(),
-                            diagnostics: Rc::new(vec![]),
-                        }),
-                        None => {
-                            let rname = container_kind_canonical(authored_name_at(
-                                source_indices.clone(),
-                                receiver.clone(),
-                            ));
-                            match container_param_name(rname.clone(), 1) {
-                                Some(n) => Rc::new(KernelTypeBuild {
-                                    ty: type_variable_node(n.clone()),
-                                    diagnostics: Rc::new(vec![]),
-                                }),
-                                None => Rc::new(KernelTypeBuild {
-                                    ty: missing_kernel_container_profile_type(rname.clone()),
-                                    diagnostics: Rc::new(vec![
-                                        kernel_container_profile_miss_diagnostic(rname.clone()),
-                                    ]),
-                                }),
-                            }
+                    None => {
+                        let rname = container_kind_canonical(authored_name_at(
+                            source_indices.clone(),
+                            receiver.clone(),
+                        ));
+                        match container_param_name(rname.clone(), 1) {
+                            Some(n) => Rc::new(KernelTypeBuild {
+                                ty: type_variable_node(n.clone()),
+                                diagnostics: Rc::new(vec![]),
+                            }),
+                            None => Rc::new(KernelTypeBuild {
+                                ty: missing_kernel_container_profile_type(rname.clone()),
+                                diagnostics: Rc::new(vec![
+                                    kernel_container_profile_miss_diagnostic(rname.clone()),
+                                ]),
+                            }),
                         }
-                    },
-                }
-            }
+                    }
+                },
+            },
             AlgebraTypeTemplate::NamedTemplate { name: n, .. } => Rc::new(KernelTypeBuild {
-                ty: nominal_type_ref(n.clone()),
+                ty: nominal_type_ref(&n),
                 diagnostics: Rc::new(vec![]),
             }),
             AlgebraTypeTemplate::ContainerOf {
@@ -1579,7 +1609,7 @@ pub fn apply_type_substitution(
                     receiver.clone(),
                     source_indices.clone(),
                 );
-                let built = make_container_type(kind_name.clone(), inner_applied.ty.clone());
+                let built = make_container_type(&kind_name, inner_applied.ty.clone());
                 Rc::new(KernelTypeBuild {
                     ty: built.ty.clone(),
                     diagnostics: v1_rt::concat(
@@ -1607,7 +1637,7 @@ pub fn apply_type_substitution(
                     receiver.clone(),
                     source_indices.clone(),
                 );
-                let built = make_container_type("Witness".to_string(), ib.ty.clone());
+                let built = make_container_type(&"Witness".to_string(), ib.ty.clone());
                 Rc::new(KernelTypeBuild {
                     ty: built.ty.clone(),
                     diagnostics: v1_rt::concat(ib.diagnostics.clone(), built.diagnostics.clone()),
@@ -2306,7 +2336,10 @@ pub fn node_type_equals_core(
                                     if !(match right
                                         .children
                                         .clone()
-                                        .get(pair.0.clone() as usize)
+                                        .iter()
+                                        .cloned()
+                                        .skip(pair.0.clone() as usize)
+                                        .next()
                                         .cloned()
                                     {
                                         Some(right_child) => node_type_equals(
@@ -2374,13 +2407,19 @@ pub fn node_type_equals_core(
                                                         Some(right_first) => match left
                                                             .children
                                                             .clone()
-                                                            .get(1 as usize)
+                                                            .iter()
+                                                            .cloned()
+                                                            .skip(1 as usize)
+                                                            .next()
                                                             .cloned()
                                                         {
                                                             Some(left_second) => match right
                                                                 .children
                                                                 .clone()
-                                                                .get(1 as usize)
+                                                                .iter()
+                                                                .cloned()
+                                                                .skip(1 as usize)
+                                                                .next()
                                                                 .cloned()
                                                             {
                                                                 Some(right_second) => {
@@ -2441,7 +2480,10 @@ pub fn node_type_equals_core(
                                                             if !(match right
                                                                 .params
                                                                 .clone()
-                                                                .get(pair.0.clone() as usize)
+                                                                .iter()
+                                                                .cloned()
+                                                                .skip(pair.0.clone() as usize)
+                                                                .next()
                                                                 .cloned()
                                                             {
                                                                 Some(right_param) => {
@@ -2640,7 +2682,15 @@ pub fn method_receiver_element_node(
     {
         let normed = normalize_access_type_node(receiver_type.clone());
         let maybe_element = if node_is_keyed_collection(normed.clone(), source_indices.clone()) {
-            match normed.children.clone().get(1 as usize).cloned() {
+            match normed
+                .children
+                .clone()
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .next()
+                .cloned()
+            {
                 Some(ch) => Some(child_type_node(ch.clone())),
                 None => None,
             }

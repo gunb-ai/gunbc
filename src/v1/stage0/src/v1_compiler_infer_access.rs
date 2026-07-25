@@ -83,7 +83,15 @@ pub fn keyed_collection_parts(
         && ((n.children.clone().len() as i64) >= 2))
     {
         match n.children.clone().first().cloned() {
-            Some(key_child) => match n.children.clone().get(1 as usize).cloned() {
+            Some(key_child) => match n
+                .children
+                .clone()
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .next()
+                .cloned()
+            {
                 Some(value_child) => Some(Rc::new(KeyedCollectionParts {
                     key_type: resolved_type(key_child.clone()),
                     value_type: resolved_type(value_child.clone()),
@@ -207,7 +215,7 @@ pub fn check_slice_access_node(
     start_type: Rc<Node>,
     end_type: Rc<Node>,
     span: Rc<SourceSpan>,
-    module_name: String,
+    module_name: &str,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<AccessCheckResultNode> {
     {

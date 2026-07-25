@@ -740,7 +740,7 @@ pub fn build_type_summary(
 }
 
 pub fn type_summary_reaches_fn(
-    name: String,
+    name: &str,
     summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     visited: Rc<BTreeSet<String>>,
 ) -> bool {
@@ -761,11 +761,7 @@ pub fn type_summary_reaches_fn(
                                     .iter()
                                     .cloned()
                                 {
-                                    if type_summary_reaches_fn(
-                                        ft.clone(),
-                                        summaries.clone(),
-                                        v2.clone(),
-                                    ) {
+                                    if type_summary_reaches_fn(&ft, summaries.clone(), v2.clone()) {
                                         __found = true;
                                         break;
                                     }
@@ -793,7 +789,7 @@ pub fn close_fn_fields(
             Some(s) => {
                 if (!s.has_fn_fields.clone()
                     && type_summary_reaches_fn(
-                        name.clone(),
+                        &name,
                         summaries.clone(),
                         v1_rt::rc_empty_set::<String>(),
                     ))
