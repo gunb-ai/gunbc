@@ -526,8 +526,8 @@ fn mark_excluded(frontier: ReExecFrontier, key: ExclusionKey, proof: Propagation
     ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
 
       match map_get(decisions, key) {
-        v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } => match opt {
-          v2.std.collection.Present { value: decision } =>
+        Accepted { value: opt, diagnostics: _ } => match opt {
+          Present { value: decision } =>
             match decision {
               Rerun =>
                 ChangedSubgraphFrontier {
@@ -540,14 +540,14 @@ fn mark_excluded(frontier: ReExecFrontier, key: ExclusionKey, proof: Propagation
                   decisions: map_insert(decisions, key, Excluded { first: first, rest: list_snoc_item(xs: rest, item: proof) })
                 }
             }
-          v2.std.collection.Absent =>
+          Absent =>
             ChangedSubgraphFrontier {
               boundary_exclusions: boundary_exclusions,
               decisions: map_insert(decisions, key, Excluded { first: proof, rest: [] })
             }
         }
 
-        v2.std.diagnostic.Rejected { diagnostics: d } => mark_whole_dag_diagnostics(diagnostics: d)
+        Rejected { diagnostics: d } => mark_whole_dag_diagnostics(diagnostics: d)
       }
   }
 }
@@ -664,7 +664,7 @@ fn seed_edit_fold_acc_live(
       }
     BoundaryExpands =>
       match post_edit_dag(acc.dag, edit).outcome {
-        v2.std.diagnostic.Accepted { value: next_dag, diagnostics: ad } =>
+        Accepted { value: next_dag, diagnostics: ad } =>
           AffectedFoldAcc {
             dag: next_dag,
             frontier: expand_changed_dimensions(
@@ -676,7 +676,7 @@ fn seed_edit_fold_acc_live(
             ),
             pending: fold_pending(acc: acc, next: ad)
           }
-        v2.std.diagnostic.Rejected { diagnostics: nds } =>
+        Rejected { diagnostics: nds } =>
           AffectedFoldAcc {
             dag: acc.dag,
             frontier: mark_whole_dag_diagnostics(diagnostics: nds),
@@ -685,13 +685,13 @@ fn seed_edit_fold_acc_live(
       }
     BoundaryUnknown { reason: boundary_reason } =>
       match post_edit_dag(acc.dag, edit).outcome {
-        v2.std.diagnostic.Accepted { value: next_dag, diagnostics: ad } =>
+        Accepted { value: next_dag, diagnostics: ad } =>
           AffectedFoldAcc {
             dag: next_dag,
             frontier: mark_whole_dag(reason: boundary_reason),
             pending: fold_pending(acc: acc, next: ad)
           }
-        v2.std.diagnostic.Rejected { diagnostics: nds } =>
+        Rejected { diagnostics: nds } =>
           AffectedFoldAcc {
             dag: acc.dag,
             frontier: mark_whole_dag_diagnostics(diagnostics: nds),
@@ -853,7 +853,7 @@ fn seed_affected_set_fold_acc_live(
         }
         BoundaryExpands =>
           match post_edit_dag(active_dag, edit).outcome {
-            v2.std.diagnostic.Accepted { value: next_dag, diagnostics: ad } =>
+            Accepted { value: next_dag, diagnostics: ad } =>
               match ad {
                 Some { diagnostics: nds } =>
                   fail_affected_set_with_diagnostics(
@@ -879,7 +879,7 @@ fn seed_affected_set_fold_acc_live(
                     edit: edit
                   )
               }
-            v2.std.diagnostic.Rejected { diagnostics: nds } =>
+            Rejected { diagnostics: nds } =>
               fail_affected_set_with_diagnostics(
                 acc: AffectedSetActive {
                   dag: active_dag,
@@ -946,7 +946,7 @@ fn re_exec_frontier_from_diff(
 
 fn canonical_boundary_exclusion_receipt(node: Node, h: Hash) -> BoundaryReceipt {
   match find_child_by_name(root: node, name: ^affected_set_boundary_pure_receipt_edge) {
-    v2.std.diagnostic.Accepted { value: receipt, diagnostics: _ } =>
+    Accepted { value: receipt, diagnostics: _ } =>
       if receipt == affected_set_boundary_pure_receipt_node() {
         BoundaryPruned {
           proof: UnchangedPureBoundary {
@@ -956,14 +956,14 @@ fn canonical_boundary_exclusion_receipt(node: Node, h: Hash) -> BoundaryReceipt 
       } else {
         BoundaryUnknown { reason: ^affected_set_reason_boundary_purity_unproven }
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       BoundaryUnknown { reason: ^affected_set_reason_boundary_purity_unproven }
   }
 }
 
 fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> HashReceipt {
   match subterm_at(root: dag, path: path) {
-    v2.std.diagnostic.Accepted { value: current, diagnostics: _ } =>
+    Accepted { value: current, diagnostics: _ } =>
       if content_hash(n: current) == content_hash(n: replacement) {
         match canonical_boundary_exclusion_receipt(node: current, h: content_hash(n: current)) {
           BoundaryPruned { proof: UnchangedPureBoundary { content_hash: h } } =>
@@ -976,7 +976,7 @@ fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> H
       } else {
         HashChanged
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       HashUnknown { reason: ^affected_set_reason_boundary_path_unresolved }
   }
 }
@@ -1032,14 +1032,14 @@ fn union_dimension_lists(left: List<AffectedDimension>, right: List<AffectedDime
 
 fn list_to_changed_dimension_receipt(dims: List<AffectedDimension>) -> ChangedDimensionReceipt {
   match list_at_optional(xs: dims, index: 0) {
-    v2.std.collection.Present { value: first } =>
+    Present { value: first } =>
       match list_tail(xs: dims) {
         TailFound { tail: rest } =>
           ChangedDimensions { first: first, rest: rest }
         TailAbsent =>
           ChangedDimensions { first: first, rest: [] }
       }
-    v2.std.collection.Absent =>
+    Absent =>
       ChangedDimensionsUnknown { reason: ^affected_set_reason_changed_dimension_unresolved }
   }
 }
@@ -1059,16 +1059,16 @@ fn changed_dimension_families_union(before: Node, after: Node) -> ChangedDimensi
 
 fn canonical_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimensionReceipt {
   match subterm_at(root: dag, path: edit.at) {
-    v2.std.diagnostic.Accepted { value: current, diagnostics: _ } =>
+    Accepted { value: current, diagnostics: _ } =>
       changed_dimension_families_union(before: current, after: edit.replacement)
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       ChangedDimensionsUnknown { reason: ^affected_set_reason_changed_dimension_unresolved }
   }
 }
 
 fn canonical_ancestor_frame_dependencies(frame: AncestorFrame) -> FrontierReceipt {
   match find_child_by_name(root: frame.ancestor, name: frame.step) {
-    v2.std.diagnostic.Accepted { value: child, diagnostics: _ } =>
+    Accepted { value: child, diagnostics: _ } =>
       FrontierProduced {
         dependencies: [
           FrontierDependency {
@@ -1082,7 +1082,7 @@ fn canonical_ancestor_frame_dependencies(frame: AncestorFrame) -> FrontierReceip
           }
         ]
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       FrontierUnknown { reason: ^affected_set_reason_frontier_ancestor_unresolved }
   }
 }
@@ -1151,9 +1151,9 @@ fn canonical_region_dependencies(dag: Dag, walk: AncestorWalk) -> FrontierReceip
 
 fn canonical_transitive_frontier(dag: Dag, edit_dimension: EditDimension) -> FrontierReceipt {
   match collect_ancestor_frames(root: dag, steps: edit_dimension.edit.at.steps) {
-    v2.std.diagnostic.Accepted { value: walk, diagnostics: _ } =>
+    Accepted { value: walk, diagnostics: _ } =>
       canonical_region_dependencies(dag: dag, walk: walk)
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       FrontierUnknown { reason: ^affected_set_reason_frontier_path_unresolved }
   }
 }
@@ -1167,7 +1167,7 @@ fn canonical_propagation_receipt(
     Propagates
   } else {
     match find_child_by_name(root: dependency.usage_site, name: ^affected_set_dimension_not_read_receipt_edge) {
-      v2.std.diagnostic.Accepted { value: receipt, diagnostics: _ } =>
+      Accepted { value: receipt, diagnostics: _ } =>
         if receipt == affected_set_dimension_not_read_receipt_node(dimension: edit_dimension.dimension) {
           DoesNotPropagate {
             proof: DimensionNotRead {
@@ -1178,7 +1178,7 @@ fn canonical_propagation_receipt(
         } else {
           Propagates
         }
-      v2.std.diagnostic.Rejected { diagnostics: _ } =>
+      Rejected { diagnostics: _ } =>
       Propagates
     }
   }
