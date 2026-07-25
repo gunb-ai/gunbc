@@ -1,0 +1,164 @@
+module gunbc.host_network_diagnosis
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
+import extdeps.os.cloud_init {
+  CloudInitDisposition,
+  CloudInitEnabled,
+  CloudInitDisabledByMarkerFile,
+  CloudInitDisabledByKernelCmdline,
+  CloudInitGeneratedFileState,
+  RegeneratedEachBoot,
+  FrozenAtLastRun,
+  cloud_init_is_disabled,
+  cloud_init_generated_file_state,
+  ubuntu_live_installer_disable_marker_text,
+  cloud_init_generated_netplan_path,
+}
+import extdeps.os.netplan {
+  NetplanConfigFile,
+  NetplanConfigWriter,
+  WrittenByCloudInit,
+  WrittenByInstaller,
+  WrittenByOperator,
+  WriterUnknown,
+  InterfaceObservation,
+  InterfaceAdminState,
+  AdminUpConfigured,
+  AdminDownUnconfigured,
+  InterfaceCarrier,
+  CarrierPresent,
+  CarrierAbsent,
+  CarrierUnobserved,
+  netplan_file_is_applied,
+  interface_is_configured,
+  interface_has_link,
+}
+
+data host_network_diagnosis_authority_note: String = "The fold that turns three independently-observable facts — is a netplan config present, is the interface configured, does it have carrier — into a located diagnosis naming the LAYER at fault. It exists because those three were collapsed by hand during the srv4 outage of 2026-07-25 and the collapse produced a confident wrong answer: cloud-init was found disabled, that was read as the config never being applied, and a whole causal story was built on it while the machine's netplan was in fact present, correct and applied, and the real fault was a dead physical link. The generator's state is not an input to this fold AT ALL, and that is the point — it cannot be, because it does not bear on whether the config is in effect (extdeps.os.netplan netplan_file_is_applied). What the generator's state DOES determine is who owns the file going forward, which is a separate question this module answers separately."
+
+type HostNetworkDiagnosis
+  = NetworkConfigAbsent { detail: NonEmptyStr }
+  | ConfiguredLinkAbsent { interface: NonEmptyStr, mac: NonEmptyStr }
+  | ConfiguredLinkPresent { interface: NonEmptyStr }
+  | LinkStateUnobserved { interface: NonEmptyStr }
+
+data diagnosis_layer_note: String = "Four outcomes because each names a different layer and therefore a different owner. NetworkConfigAbsent is a MODELLING failure — the subsumption workflow did not give this host a network configuration, which is the gap the fleet plan now tracks. ConfiguredLinkAbsent is a PHYSICAL failure — the model did its job and the cable, switch port or PHY did not; nothing in software will fix it, and saying so precisely is what stops hours being spent on config. ConfiguredLinkPresent is healthy. LinkStateUnobserved refuses rather than guessing, because carrier is only knowable from the host and a fleet-level reader that could not reach the host must not report either of the decisive answers."
+
+fn diagnose_host_network(
+  config: NetplanConfigFile?,
+  observed: InterfaceObservation,
+) -> HostNetworkDiagnosis {
+  match config {
+    Absent =>
+      NetworkConfigAbsent {
+        detail: "no netplan configuration present for this host",
+      }
+    Present { value: f } =>
+      if !netplan_file_is_applied(f: f) {
+        NetworkConfigAbsent { detail: f.path }
+      } else {
+        if !interface_is_configured(o: observed) {
+          NetworkConfigAbsent { detail: observed.name }
+        } else {
+          match observed.carrier {
+            CarrierUnobserved => LinkStateUnobserved { interface: observed.name }
+            CarrierAbsent =>
+              ConfiguredLinkAbsent { interface: observed.name, mac: observed.mac }
+            CarrierPresent => ConfiguredLinkPresent { interface: observed.name }
+          }
+        }
+      }
+  }
+}
+
+data generator_state_answers_ownership_not_effect_note: String = "The generator's disposition answers exactly one question, and it is not whether the network works. It decides whether the netplan file is regenerated each boot or FROZEN — i.e. whether a hand edit survives. On an ISO-installed Ubuntu host the installer always disables cloud-init, so the file is always frozen and always hand-authoritative, which is useful to know before editing it and irrelevant to why an interface has no carrier. Keeping this on its own function rather than as a branch inside diagnose_host_network is the structural form of that separation."
+
+fn netplan_file_ownership(d: CloudInitDisposition) -> CloudInitGeneratedFileState {
+  cloud_init_generated_file_state(d: d)
+}
+
+data srv4_incident_note: String = "The srv4 readings of 2026-07-25, kept as cited fixtures because they are the discriminating input for this whole module and because a synthetic pair could be made to satisfy the fold by accident. Observed live over the BMC serial console after the host dropped off the network: cloud-init disabled by the Ubuntu live installer's marker file; /etc/netplan/50-cloud-init.yaml present and correct, naming enP3p3s0f1 with dhcp4 true and critical true; enP3p3s0f1 administratively UP with qdisc mq and carrier 0; the machine's unused sibling ports at qdisc noop. The fault survived a graceful power-down, a twenty-second de-energised hold and a power-up, which is what rules out NIC firmware or driver state and leaves the cable, the switch port or the PHY."
+
+data srv4_cloud_init_disposition: CloudInitDisposition = CloudInitDisabledByMarkerFile {
+  path: "/etc/cloud/cloud-init.disabled",
+  reason: ubuntu_live_installer_disable_marker_text,
+}
+
+data srv4_netplan_config: NetplanConfigFile = NetplanConfigFile {
+  path: cloud_init_generated_netplan_path,
+  writer: WrittenByCloudInit,
+}
+
+data srv4_lan_interface: InterfaceObservation = InterfaceObservation {
+  name: "enP3p3s0f1",
+  mac: "48:21:0b:87:2d:64",
+  admin: AdminUpConfigured,
+  carrier: CarrierAbsent,
+}
+
+data srv4_unused_port: InterfaceObservation = InterfaceObservation {
+  name: "enP3p3s0f0",
+  mac: "48:21:0b:87:2d:63",
+  admin: AdminDownUnconfigured,
+  carrier: CarrierUnobserved,
+}
+
+data disabled_generator_widen_red_control_note: String = "THE forbidden inference, written as an executable declaration rather than a warning: if the generator is disabled, report the configuration as absent. This is not a strawman — it is the reasoning actually performed during the srv4 outage, and it is seductive because it is nearly right in a neighbouring case (a generator disabled BEFORE it ever ran does leave no config). The gate rejects it on srv4's own inputs and accepts the authority on the same inputs, so the separation is proven to be a decision rather than a coincidence."
+
+fn diagnose_via_generator_state_widen_sketch(
+  generator: CloudInitDisposition,
+  config: NetplanConfigFile?,
+  observed: InterfaceObservation,
+) -> HostNetworkDiagnosis {
+  if cloud_init_is_disabled(d: generator) {
+    NetworkConfigAbsent { detail: "generator disabled" }
+  } else {
+    diagnose_host_network(config: config, observed: observed)
+  }
+}
+
+fn diagnosis_blames_configuration(d: HostNetworkDiagnosis) -> Bool {
+  match d {
+    NetworkConfigAbsent { detail: _ } => true
+    ConfiguredLinkAbsent { interface: _, mac: _ } => false
+    ConfiguredLinkPresent { interface: _ } => false
+    LinkStateUnobserved { interface: _ } => false
+  }
+}
+
+fn diagnosis_blames_physical_layer(d: HostNetworkDiagnosis) -> Bool {
+  match d {
+    ConfiguredLinkAbsent { interface: _, mac: _ } => true
+    NetworkConfigAbsent { detail: _ } => false
+    ConfiguredLinkPresent { interface: _ } => false
+    LinkStateUnobserved { interface: _ } => false
+  }
+}
+
+fn diagnosis_gate_accepts(d: HostNetworkDiagnosis, observed: InterfaceObservation) -> Bool {
+  if interface_is_configured(o: observed) {
+    !diagnosis_blames_configuration(d: d)
+  } else {
+    true
+  }
+}
+
+data subsumption_persistence_bar_note: String = "The acceptance bar this feeds, stated so the modelling has a consumer rather than being a description of a past incident. A host is not subsumed because its network works NOW; it is subsumed when its network configuration is present, applied, and PROVEN to survive a power cycle — the configuration is a file the applier reads at boot, so the only honest proof is a boot. That is a dry-provable property here (config present and applied implies the same diagnosis after a restart, since no input to the fold is runtime state) and a wet one on a live host. Note what this bar would NOT have caught: srv4's fault was physical, so a persistence proof would have passed on it right up until the link died. The two mechanisms are complementary and neither substitutes for the other — persistence catches applied-but-not-persisted, a liveness cell catches works-then-stops."
+
+fn diagnosis_is_reboot_stable(config: NetplanConfigFile?, observed: InterfaceObservation) -> Bool {
+  let before = diagnose_host_network(config: config, observed: observed)
+  let after = diagnose_host_network(config: config, observed: observed)
+  match before {
+    ConfiguredLinkPresent { interface: a } =>
+      match after {
+        ConfiguredLinkPresent { interface: b } => (a as String) == (b as String)
+        NetworkConfigAbsent { detail: _ } => false
+        ConfiguredLinkAbsent { interface: _, mac: _ } => false
+        LinkStateUnobserved { interface: _ } => false
+      }
+    NetworkConfigAbsent { detail: _ } => false
+    ConfiguredLinkAbsent { interface: _, mac: _ } => false
+    LinkStateUnobserved { interface: _ } => false
+  }
+}
