@@ -205,10 +205,14 @@ fn runner_memory_cap_verify_result_from_live_read(
 }
 
 fn runner_memory_cap_verify_run(host: HostIdentity) -> RunnerMemoryCapVerifyRunResult {
-  runner_memory_cap_verify_result_from_live_read(
-    host: host,
-    read: runner_memory_cap_live_read(host: host),
-  )
+  match runner_memory_host_converge(host: host) {
+    Present { value: _ } =>
+      runner_memory_cap_verify_result_from_live_read(
+        host: host,
+        read: runner_memory_cap_live_read(host: host),
+      )
+    Absent => runner_memory_cap_verify_result_from_live_read(host: host, read: none)
+  }
 }
 
 fn runner_memory_cap_verify_receipt_converged(receipt: RunnerMemoryCapVerifyReceipt) -> Bool {
