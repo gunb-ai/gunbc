@@ -4,23 +4,25 @@ import std.trait_derive_shape {
   ReprDeriveElemNullaryEnumCopy,
   ReprDeriveElemPayloadCoproduct,
   ReprDeriveElemSymbolWrappedOrdCarrier,
+  ReprDeriveElemKernelInt,
   nullary_coproduct_derive_traits,
   payload_coproduct_derive_traits,
   symbol_wrapped_ord_carrier_derive_traits,
   record_derive_traits_heap,
   record_derive_traits_copy,
-  repr_grounding_derive_completeness_predicate
+  repr_grounding_derive_completeness_predicate,
+  repr_grounding_supplemental_commutative_semiring_target,
+  repr_grounding_supplemental_bool_host_bridge_target,
+  kernel_int_arithmetic_traits
 }
 import extdeps.languages.rust.emit {
-  rust_trait_derive_attr_from_traits
-}
-import v1.compiler.trait_derive_emit {
-  v1_emit_struct_supplemental_impls,
-  v1_emit_enum_supplemental_impls
+  rust_trait_derive_attr_from_traits,
+  rust_supplemental_impls_commutative_semiring_magnitude,
+  rust_supplemental_impls_bool_coproduct
 }
 import v2.std.logic { Bool }
 
-data trait_derive_seed_emit_binding_note: String = "Layer-boundary mock: std.trait_derive_shape trait lists → extdeps.languages.rust.emit derive attr spellings consumed by v1.compiler.trait_derive_emit (same authority path as seed emitter)."
+data trait_derive_seed_emit_binding_note: String = "Layer-boundary mock: std.trait_derive_shape trait lists + supplemental target predicates → extdeps.languages.rust.emit spellings (same authorities v1.compiler.trait_derive_emit composes for seed emit; v1 module not importable from v2 claim closure)."
 
 test fn nullary_coproduct_predicate_satisfied() -> Bool {
   repr_grounding_derive_completeness_predicate(
@@ -56,38 +58,46 @@ test fn payload_coproduct_predicate_satisfied() -> Bool {
 }
 
 test fn commutative_semiring_supplemental_impl_present() -> Bool {
-  let supplemental = v1_emit_struct_supplemental_impls(
+  let supplemental = rust_supplemental_impls_commutative_semiring_magnitude()
+  let target_ok = repr_grounding_supplemental_commutative_semiring_target(
     module_path: "std.algebra",
     name: "CommutativeSemiring"
   )
-  let wrong_module = v1_emit_struct_supplemental_impls(
+  let predicate_ok = repr_grounding_derive_completeness_predicate(
+    kernel_int_arithmetic_traits(),
+    ReprDeriveElemKernelInt
+  )
+  let wrong_module = repr_grounding_supplemental_commutative_semiring_target(
     module_path: "std.magma",
     name: "CommutativeSemiring"
   )
-  let wrong_name = v1_emit_struct_supplemental_impls(
+  let wrong_name = repr_grounding_supplemental_commutative_semiring_target(
     module_path: "std.algebra",
     name: "Magma"
   )
-  supplemental != ""
+  target_ok
+    && predicate_ok
+    && supplemental != ""
     && supplemental.contains("unimplemented!")
-    && wrong_module == ""
-    && wrong_name == ""
+    && wrong_module == false
+    && wrong_name == false
 }
 
 test fn bool_supplemental_impl_present() -> Bool {
-  let supplemental = v1_emit_enum_supplemental_impls(
+  let supplemental = rust_supplemental_impls_bool_coproduct()
+  let target_ok = repr_grounding_supplemental_bool_host_bridge_target(
     module_path: "std.types",
     name: "Bool"
   )
-  let wrong_module = v1_emit_enum_supplemental_impls(
+  let wrong_module = repr_grounding_supplemental_bool_host_bridge_target(
     module_path: "std.logic",
     name: "Bool"
   )
-  let wrong_name = v1_emit_enum_supplemental_impls(
+  let wrong_name = repr_grounding_supplemental_bool_host_bridge_target(
     module_path: "std.types",
     name: "Quantity"
   )
-  supplemental != "" && wrong_module == "" && wrong_name == ""
+  target_ok && supplemental != "" && wrong_module == false && wrong_name == false
 }
 
 test fn trait_derive_seed_emit_binding_witness_holds() -> Bool {
