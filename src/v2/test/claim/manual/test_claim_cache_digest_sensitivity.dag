@@ -74,10 +74,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
-<<<<<<< HEAD
-=======
 
->>>>>>> origin/session/tidy-boar-444
 fn tcc_cache_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^tcc_cache_pass_sym } },
@@ -106,17 +103,6 @@ fn tcc_cache_eval_node_b() -> Node {
   claim_atom_node(s: ^tcc_cache_eval_b_sym)
 }
 
-<<<<<<< HEAD
-fn tcc_cache_tree_facts_violates(reason: Symbol) -> InferredTree {
-  InferredTree {
-    root: claim_atom_node(s: reason),
-    facts: Map {
-      lookup: fn(_) {
-        Absent
-      }
-    }
-  }
-=======
 fn tcc_cache_tree_facts_for_reason(reason: Symbol) -> InferredTree {
   claim_inferred_tree(
     root: tcc_cache_root(),
@@ -126,7 +112,6 @@ fn tcc_cache_tree_facts_for_reason(reason: Symbol) -> InferredTree {
       descent_symbol: ^tcc_cache_facts_descent_sym,
     )
   )
->>>>>>> origin/session/tidy-boar-444
 }
 
 fn tcc_cache_eval_context() -> EvalContext {
