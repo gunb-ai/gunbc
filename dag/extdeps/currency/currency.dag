@@ -1,0 +1,24 @@
+module extdeps.currency.currency
+
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iso.org/iso-4217-currency-codes.html"
+  }
+}
+
+data iso_4217_version_note: String = "ISO 4217:2015 authority for std.currency.CurrencyCode and currency_minor_unit_exponent."
+
+data iso_4217_cited_rows_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.currency",
+    decl_name: "currency_minor_unit_exponent",
+    field: WholeDeclaration
+  }
+}
