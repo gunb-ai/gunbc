@@ -11,6 +11,17 @@ import gunbc.runner_host_deploy {
   runner_enable_command,
   runner_host_docker_provision_script,
   runner_host_sccache_provision_script,
+  RunnerHostDeploy,
+  RunnerHostAdmission,
+  RunnerHostEnrolled,
+  RunnerHostUnenrolled,
+  RunnerCommandOrRefusal,
+  RunnerCommandReady,
+  RunnerCommandRefused,
+  admit_runner_host,
+  fleet_intent_enrolls_host_label,
+  runner_command_admission_blind_widen_sketch,
+  runner_host_admission_gate_accepts,
 }
 import gunbc.fleet_intent { fleet_intent_execution_surface }
 import extdeps.toolchain.types { ToolchainCapability }
@@ -35,11 +46,15 @@ test fn fleet_surface_no_longer_lies_declares_sccache() -> Bool {
 }
 
 test fn srv4_runner_installer_command_cites_installer_with_env() -> Bool {
-  let c = shell_command_render(command: runner_host_installer_command(
-    deploy: srv4_runner_host_deploy,
+  let outcome = runner_host_installer_command(
+    admission: admit_runner_host(deploy: srv4_runner_host_deploy),
     installer_path: "/tmp/install-actions-runner.sh",
     pem_src_path: "/tmp/app.pem",
-  ))
+  )
+  let c = match outcome {
+    RunnerCommandReady { command: cmd } => shell_command_render(command: cmd)
+    RunnerCommandRefused { host_label: _, reason: _ } => ""
+  }
   string_contains(s: c, pattern: "'CTRL_RUNNER_HOST_LABEL=srv4'")
     && string_contains(s: c, pattern: "'CTRL_RUNNER_JOB_USER=ghrunner'")
     && string_contains(s: c, pattern: "'CTRL_RUNNER_APP_PEM_SRC=/tmp/app.pem'")
@@ -53,10 +68,68 @@ test fn srv4_runner_app_from_secret_manager() -> Bool {
 
 test fn srv4_enables_five_named_runner_instances() -> Bool {
   let names = runner_instance_names(deploy: srv4_runner_host_deploy)
-  let enable = shell_command_render(command: runner_enable_command(deploy: srv4_runner_host_deploy))
+  let enable = match runner_enable_command(admission: admit_runner_host(deploy: srv4_runner_host_deploy)) {
+    RunnerCommandReady { command: cmd } => shell_command_render(command: cmd)
+    RunnerCommandRefused { host_label: _, reason: _ } => ""
+  }
   list_length(items: names) == 5
     && string_contains(s: enable, pattern: "'actions-runner@srv4-01.service'")
     && string_contains(s: enable, pattern: "'actions-runner@srv4-05.service'")
     && (string_contains(s: enable, pattern: "srv4-06") == false)
     && string_contains(s: enable, pattern: "'sudo' 'systemctl' 'enable' '--now'")
+}
+
+data unenrolled_host_fixture: RunnerHostDeploy = RunnerHostDeploy {
+  host_label: "srv9",
+  ssh_target: "briansrls@192.168.1.250",
+  runner_user: "briansrls",
+  job_user: "ghrunner",
+  app: gunbc_ci_github_app,
+  runner_count: 5,
+}
+
+data witness_enrollment_wall_note: String = "The srv4 host-convergence OOM class, made unwritable. A host absent from fleet_intent_known_hosts yields an admission whose refusal arm carries NO command, so neither builder can hand back something runnable. The fixture is srv9 — a plausible next fleet host that nobody has enrolled — which is exactly the shape the incident took: real hardware, real ssh target, no intent row, and therefore no RAM figure for the conservation wall to check slot caps against."
+
+test fn unenrolled_host_cannot_produce_an_installer_command() -> Bool {
+  match runner_host_installer_command(
+    admission: admit_runner_host(deploy: unenrolled_host_fixture),
+    installer_path: "/tmp/install-actions-runner.sh",
+    pem_src_path: "/tmp/app.pem",
+  ) {
+    RunnerCommandRefused { host_label: l, reason: r } =>
+      (l as String) == "srv9"
+        && string_contains(s: r as String, pattern: "fleet_intent_known_hosts")
+        && string_contains(s: r as String, pattern: "Fail-closed")
+    RunnerCommandReady { command: _ } => false
+  }
+}
+
+test fn unenrolled_host_cannot_enable_runner_units() -> Bool {
+  match runner_enable_command(admission: admit_runner_host(deploy: unenrolled_host_fixture)) {
+    RunnerCommandRefused { host_label: _, reason: _ } => true
+    RunnerCommandReady { command: _ } => false
+  }
+}
+
+test fn enrolled_host_still_admits() -> Bool {
+  fleet_intent_enrolls_host_label(label: "srv4")
+    && !fleet_intent_enrolls_host_label(label: "srv9")
+    && match admit_runner_host(deploy: srv4_runner_host_deploy) {
+        RunnerHostEnrolled { deploy: _ } => true
+        RunnerHostUnenrolled { host_label: _, reason: _ } => false
+      }
+}
+
+data witness_admission_red_control_note: String = "Discriminating RED control on the PATH-shadow precedent: the admission-blind sketch (what this module was before the wall) DOES hand back a runnable command for the unenrolled host, the gate rejects it, and the authority's refusal passes the same gate. The perturbation is independent of the property checked, so the conjunct cannot pass tautologically."
+
+test fn red_control_admission_blind_builder_rejected_by_gate() -> Bool {
+  let adm = admit_runner_host(deploy: unenrolled_host_fixture)
+  let widened = runner_command_admission_blind_widen_sketch(deploy: unenrolled_host_fixture, admission: adm)
+  let authority = runner_enable_command(admission: adm)
+  match widened {
+    RunnerCommandReady { command: _ } => true
+    RunnerCommandRefused { host_label: _, reason: _ } => false
+  }
+    && !runner_host_admission_gate_accepts(outcome: widened, admission: adm)
+    && runner_host_admission_gate_accepts(outcome: authority, admission: adm)
 }
