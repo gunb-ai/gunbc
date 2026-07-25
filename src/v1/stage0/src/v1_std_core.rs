@@ -38,8 +38,6 @@ pub use crate::std_types::{
 };
 pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -1601,24 +1599,15 @@ pub fn node_field_roles() -> Rc<HashMap<String, NodeFieldRole>> {
 
 pub fn is_children_list_field(field_name: String) -> bool {
     match v1_rt::lookup(&node_field_roles(), field_name.clone()) {
-        v1_rt::Witness::Holds {
-            value: NodeFieldRole::ChildrenListField,
-            ..
-        } => true,
+        Some(NodeFieldRole::ChildrenListField) => true,
         _ => false,
     }
 }
 
 pub fn is_sub_value_field(field_name: String) -> bool {
     match v1_rt::lookup(&node_field_roles(), field_name.clone()) {
-        v1_rt::Witness::Holds {
-            value: NodeFieldRole::SubValueField,
-            ..
-        } => true,
-        v1_rt::Witness::Holds {
-            value: NodeFieldRole::ChildrenListField,
-            ..
-        } => true,
+        Some(NodeFieldRole::SubValueField) => true,
+        Some(NodeFieldRole::ChildrenListField) => true,
         _ => false,
     }
 }
@@ -1663,32 +1652,32 @@ pub fn function_size_effects() -> Rc<HashMap<String, Rc<FunctionSizeEffect>>> {
 
 pub fn is_tree_size_preserving(func_name: String) -> bool {
     match v1_rt::lookup(&function_size_effects(), func_name.clone()) {
-        v1_rt::Witness::Holds { value: effect, .. } => match (*effect.clone()).clone() {
+        Some(effect) => match (*effect.clone()).clone() {
             FunctionSizeEffect::TreeSizePreserving => true,
             FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
             _ => false,
         },
-        v1_rt::Witness::Violates { diagnostic: _, .. } => false,
+        None => false,
     }
 }
 
 pub fn is_tree_size_reducing(func_name: String) -> bool {
     match v1_rt::lookup(&function_size_effects(), func_name.clone()) {
-        v1_rt::Witness::Holds { value: effect, .. } => match (*effect.clone()).clone() {
+        Some(effect) => match (*effect.clone()).clone() {
             FunctionSizeEffect::TreeSizeReducing => true,
             _ => false,
         },
-        v1_rt::Witness::Violates { diagnostic: _, .. } => false,
+        None => false,
     }
 }
 
 pub fn is_property_contraction(func_name: String) -> bool {
     match v1_rt::lookup(&function_size_effects(), func_name.clone()) {
-        v1_rt::Witness::Holds { value: effect, .. } => match (*effect.clone()).clone() {
+        Some(effect) => match (*effect.clone()).clone() {
             FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
             _ => false,
         },
-        v1_rt::Witness::Violates { diagnostic: _, .. } => false,
+        None => false,
     }
 }
 
