@@ -220,7 +220,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "dated budget-raise receipt (prose-embedded)",
     membership: DeclaredFrontier {
       reason: "CENSUS-CLASS DEBT, registered not rewritten (census 2026-07-25): the operator-signed raise discipline requires appending a dated receipt naming the run id and the enrollment that grew the batch, so the note has accreted a genuine SEQUENCE OF CHANGE EVENTS — batch 3 alone reads 1320 -> 1440 -> 1680 -> 2100 across three signed raises — held as prose inside a 10KB String literal beside the seven-int list it documents. Because the receipts are narrated rather than rowed, the discipline is enforced by author diligence instead of construction: nothing can count the raises, order them, attribute one to its enrollment, or gate a raise that lands without its receipt, and the note's own text records the tell (one raise's ENROLLMENT THAT GREW THE BATCH field reads 'none, and that mismatch with this discipline's template IS the receipt')",
-      dissolve_on: ""
+      dissolve_on: "raise receipts become typed rows (date, run id, batch identity, prior value, new value, signer, attributed cause) so the signed-raise discipline is checkable by construction rather than narrated; rides the carrier's own follow-up (b) identity-keyed budgets on the ComputationIdentity lane, and retires entirely when #7216's derived clamps replace the literal ceilings with a re-signed rate"
     }
   },
   RosterRegistration {
