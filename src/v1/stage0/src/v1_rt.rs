@@ -333,8 +333,19 @@ pub fn clamp(val: i64, min_val: i64, max_val: i64) -> i64 {
     val.clamp(min_val, max_val)
 }
 
-pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Option<V> {
-    table.get(&key).cloned()
+#[derive(Clone, Debug, PartialEq)]
+pub enum Witness<V> {
+    Holds { value: V },
+    Violates { diagnostic: String },
+}
+
+pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Witness<V> {
+    match table.get(&key).cloned() {
+        Some(value) => Witness::Holds { value },
+        None => Witness::Violates {
+            diagnostic: format!("lookup miss for key {}", key),
+        },
+    }
 }
 
 pub fn index_by<V: Clone, F: Fn(&V) -> String>(list: Vec<V>, key_fn: F) -> HashMap<String, V> {
