@@ -1,13 +1,11 @@
 module extdeps.pricing.object_storage
 
 import std.currency { CurrencyCode, Usd }
-import std.measure {
+import std.measure { money_amount_micro, money_rate_micros }
+import extdeps.pricing.billing_units {
   MoneyPerMillionRequests,
   MoneyPerStoredUnitMonth,
   MoneyPerTransferredUnit,
-  money_amount_micro,
-  money_per_stored_unit_month_micros,
-  money_per_transferred_unit_micros,
 }
 import std.nat { Nat }
 import std.types { NonEmptyStr, List }
@@ -371,7 +369,7 @@ fn object_storage_egress_catalog() -> List<ObjectStorageEgressRow> {
 fn storage_rate_micros(row: ObjectStorageClassRow) -> Nat? {
   match row.storage_rate {
     RateCited { rate: r, quoted_unit_label: _, byte_basis: _ } =>
-      Present { value: money_per_stored_unit_month_micros(q: r) }
+      Present { value: money_rate_micros(q: r) }
     RateUnavailable { cause: _ } => none
   }
 }
@@ -379,7 +377,7 @@ fn storage_rate_micros(row: ObjectStorageClassRow) -> Nat? {
 fn egress_rate_micros(row: ObjectStorageEgressRow) -> Nat? {
   match row.egress_rate {
     TransferCited { rate: r, quoted_unit_label: _, byte_basis: _ } =>
-      Present { value: money_per_transferred_unit_micros(q: r) }
+      Present { value: money_rate_micros(q: r) }
     TransferIncludedAtNoCharge { terms: _ } => Present { value: 0 }
     TransferUnavailable { cause: _ } => none
   }

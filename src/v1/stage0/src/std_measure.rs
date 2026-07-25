@@ -362,42 +362,6 @@ pub struct PerMonth(pub std::marker::PhantomData<()>);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Once(pub std::marker::PhantomData<()>);
 
-pub fn storage_billing_unit_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Object-storage vendors bill on three axes that are NOT reducible to a time period: capacity held over time (per stored unit-month), bytes moved (per transferred unit), and operation counts (per million requests). They join MoneyRate<P>'s billing-unit axis as three more phantom markers rather than a parallel record family (the money_rate_carrier_representation_note move). The BYTE BASIS is deliberately absent from these markers: vendors quote incompatible bases for the same word (AWS S3 quotes 'GB-Mo', Google Cloud Storage quotes '1 gibibyte hour'), so the basis is a per-row declared fact in extdeps.pricing.object_storage, never baked into the unit type here — a rate carrier that silently fixed one basis would make a cross-vendor comparison off by 7.4 percent and unwritable-as-honest.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct PerStoredUnitMonth(pub std::marker::PhantomData<()>);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct PerTransferredUnit(pub std::marker::PhantomData<()>);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct PerMillionRequests(pub std::marker::PhantomData<()>);
-
-pub type MoneyPerStoredUnitMonth = Rc<MoneyRate<PerStoredUnitMonth>>;
-
-pub type MoneyPerTransferredUnit = Rc<MoneyRate<PerTransferredUnit>>;
-
-pub type MoneyPerMillionRequests = Rc<MoneyRate<PerMillionRequests>>;
-
-pub fn money_per_stored_unit_month_micros(q: MoneyPerStoredUnitMonth) -> Nat {
-    money_rate_micros(q.clone())
-}
-
-pub fn money_per_transferred_unit_micros(q: MoneyPerTransferredUnit) -> Nat {
-    money_rate_micros(q.clone())
-}
-
-pub fn money_per_million_requests_micros(q: MoneyPerMillionRequests) -> Nat {
-    money_rate_micros(q.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MoneyRate<P> {
     pub amount: MoneyAmountMicro,

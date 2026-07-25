@@ -16,7 +16,7 @@ import std.measure {
   ByteSize,
   byte_size,
   byte_size_count,
-  money_per_million_requests_micros,
+  money_rate_micros,
 }
 import std.nat { Nat, nat_max, nat_min }
 import std.types { Bool, List, NonEmptyStr, list_length }
@@ -151,7 +151,7 @@ fn derive_scm_usage(
 }
 
 fn requests_cost_micros(count: Nat, row: ObjectStorageRequestRow) -> Nat {
-  (count * money_per_million_requests_micros(q: row.per_million)) / 1000000
+  (count * money_rate_micros(q: row.per_million)) / 1000000
 }
 
 fn derive_scm_monthly_cost(

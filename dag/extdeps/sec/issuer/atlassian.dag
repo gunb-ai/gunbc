@@ -26,7 +26,7 @@ data atlassian_ticker: StockTicker = StockTicker { symbol: "TEAM" }
 
 data atlassian_issuer_catalog: IssuerCatalogRow = IssuerCatalogRow {
   cik: atlassian_cik,
-  legal_name: "Atlassian Corporation",
+  registrant_name: "Atlassian Corp",
   primary_ticker: atlassian_ticker,
   exchange: Nasdaq,
   vendor: atlassian,

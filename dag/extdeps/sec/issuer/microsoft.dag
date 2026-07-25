@@ -26,7 +26,7 @@ data microsoft_ticker: StockTicker = StockTicker { symbol: "MSFT" }
 
 data microsoft_issuer_catalog: IssuerCatalogRow = IssuerCatalogRow {
   cik: microsoft_cik,
-  legal_name: "Microsoft Corporation",
+  registrant_name: "MICROSOFT CORP",
   primary_ticker: microsoft_ticker,
   exchange: Nasdaq,
   vendor: microsoft,

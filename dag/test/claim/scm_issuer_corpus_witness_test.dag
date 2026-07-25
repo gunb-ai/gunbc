@@ -387,7 +387,7 @@ fn w_serving_cost_ordering_pure_play_above_platform() -> Bool {
 fn w_gitlab_fact_families_share_one_entity() -> Bool {
   (gitlab_facts_subject.vendor.legal_name == gitlab_subscription_subject.legal_name)
     && (cik_padded_digits(cik: gitlab_facts_subject.cik) == "0001653482")
-    && (gitlab_facts_subject.legal_name == "GitLab Inc.")
+    && (gitlab_facts_subject.registrant_name == "Gitlab Inc.")
 }
 
 fn w_issuer_subjects_are_distinct_entities() -> Bool {
