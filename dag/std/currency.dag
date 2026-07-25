@@ -1,8 +1,14 @@
 module std.currency
 
-import extdeps.currency.currency {
-  CurrencyCode,
-  Eur,
-  Usd,
-  currency_minor_unit_exponent,
+import std.types { Int }
+
+type CurrencyCode =
+    Eur
+  | Usd
+
+fn currency_minor_unit_exponent(c: CurrencyCode) -> Int {
+  match c {
+    Eur => 2
+    Usd => 2
+  }
 }

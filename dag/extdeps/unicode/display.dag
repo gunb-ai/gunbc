@@ -1,0 +1,30 @@
+module extdeps.unicode.display
+
+import extdeps.unicode.blocks { zero_width_blocks, zero_width_codepoints, wide_blocks }
+import std.unicode.types {
+  DisplayWidth,
+  UnicodeBlock,
+  display_width_columns,
+  in_block,
+  ZeroWidth,
+  Narrow,
+  Wide,
+}
+
+fn char_display_width(c: Char) -> DisplayWidth {
+  let cp = c
+  let is_zero_width = contains(zero_width_codepoints, item: cp) || any(zero_width_blocks, predicate: b => in_block(cp: cp, block: b))
+  if is_zero_width { return ZeroWidth }
+  if any(wide_blocks, predicate: b => in_block(cp: cp, block: b)) { return Wide }
+  return Narrow
+}
+
+fn char_width(c: Char) -> Int {
+  display_width_columns(w: char_display_width(c: c))
+}
+
+fn string_display_width(s: String) -> Int {
+  let char_list = chars(s)
+  let widths = char_list |> map(c => char_width(c: c))
+  widths |> fold(init: 0, f: fn(acc, w) { acc + w })
+}

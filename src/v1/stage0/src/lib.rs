@@ -19,7 +19,6 @@ pub mod cli_run;
 pub mod coproduct_reflection;
 pub mod extdeps_cargo;
 pub mod extdeps_cargo_version;
-pub mod extdeps_currency_currency;
 pub mod extdeps_external_authority;
 pub mod extdeps_languages_dag_emit;
 pub mod extdeps_languages_dag_syntax;

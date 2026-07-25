@@ -1,55 +1,14 @@
 module std.unicode
 
-import extdeps.unicode.blocks { zero_width_blocks, zero_width_codepoints, wide_blocks }
 import std.unicode.types {
   CharClass,
   DisplayWidth,
   UnicodeBlock,
+  char_in_class,
+  code_point,
   display_width_columns,
+  in_block,
   ZeroWidth,
   Narrow,
   Wide,
-}
-
-fn char_in_class(c: Char, class: CharClass) -> Bool =
-  match class {
-
-    Whitespace =>
-      code_point(c) == 9 || code_point(c) == 10 || code_point(c) == 12
-      || code_point(c) == 13 || code_point(c) == 32
-    Digit => code_point(c) >= 48 && code_point(c) <= 57
-    IdentStart =>
-      code_point(c) >= 65 && code_point(c) <= 90
-      || code_point(c) >= 97 && code_point(c) <= 122
-      || code_point(c) == 95
-
-    IdentContinue =>
-      code_point(c) >= 48 && code_point(c) <= 57
-      || code_point(c) >= 65 && code_point(c) <= 90
-      || code_point(c) >= 97 && code_point(c) <= 122
-      || code_point(c) == 95
-  }
-
-fn code_point(c: Char) -> Int = c + 0
-
-fn in_block(cp: Int, block: UnicodeBlock) -> Bool {
-  cp >= block.start && cp <= block.end_inclusive
-}
-
-fn char_display_width(c: Char) -> DisplayWidth {
-  let cp = c
-  let is_zero_width = contains(zero_width_codepoints, item: cp) || any(zero_width_blocks, predicate: b => in_block(cp: cp, block: b))
-  if is_zero_width { return ZeroWidth }
-  if any(wide_blocks, predicate: b => in_block(cp: cp, block: b)) { return Wide }
-  return Narrow
-}
-
-fn char_width(c: Char) -> Int {
-  display_width_columns(w: char_display_width(c: c))
-}
-
-fn string_display_width(s: String) -> Int {
-  let char_list = chars(s)
-  let widths = char_list |> map(c => char_width(c: c))
-  widths |> fold(init: 0, f: fn(acc, w) { acc + w })
 }

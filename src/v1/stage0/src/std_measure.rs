@@ -3,7 +3,7 @@
 
 use self::Quantity::*;
 use self::Scale::*;
-pub use crate::extdeps_currency_currency::CurrencyCode;
+pub use crate::std_currency::CurrencyCode;
 use crate::std_currency::CurrencyCode::*;
 pub use crate::std_nat::Nat;
 use crate::v1_rt;

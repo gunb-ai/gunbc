@@ -1,6 +1,6 @@
 module extdeps.boards.types
 
-import std.bmc { BmcFirmwareFamily }
+import std.baseboard { BaseboardManufacturer, BaseboardModel, BaseboardCatalogRow, baseboard_manufacturer }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -12,12 +12,4 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-type BaseboardManufacturer = | AsrockRack
-
-type BaseboardModel = | AsrockRackAltrad8ud1l2t
-
-fn baseboard_manufacturer(model: BaseboardModel) -> BaseboardManufacturer {
-  match model {
-    AsrockRackAltrad8ud1l2t => AsrockRack
-  }
-}
+data asrock_rack_altrad8ud_board_authority: ExternalAuthority = extdeps_external_authority_anchor

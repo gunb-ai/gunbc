@@ -1,5 +1,6 @@
 module extdeps.currency.currency
 
+import std.currency { CurrencyCode, Eur, Usd, currency_minor_unit_exponent }
 import std.types { Int }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -14,13 +15,16 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data iso_4217_version_note: String = "ISO 4217:2015 alphabetic codes and minor-unit exponents for the modeled currency rows (Eur, Usd)."
 
-type CurrencyCode =
-    Eur
-  | Usd
+data iso_4217_minor_unit_exponent_rows: List<Iso4217MinorUnitExponentRow> = [
+  Iso4217MinorUnitExponentRow { code: Eur, minor_unit_exponent: 2 },
+  Iso4217MinorUnitExponentRow { code: Usd, minor_unit_exponent: 2 },
+]
 
-fn currency_minor_unit_exponent(c: CurrencyCode) -> Int {
-  match c {
-    Eur => 2
-    Usd => 2
-  }
+type Iso4217MinorUnitExponentRow {
+  code: CurrencyCode
+  minor_unit_exponent: Int
+}
+
+fn cited_currency_minor_unit_exponent(c: CurrencyCode) -> Int {
+  currency_minor_unit_exponent(c: c)
 }

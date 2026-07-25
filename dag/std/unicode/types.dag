@@ -20,3 +20,28 @@ type UnicodeBlock {
   end_inclusive: Int
   default_width: DisplayWidth
 }
+
+fn char_in_class(c: Char, class: CharClass) -> Bool =
+  match class {
+
+    Whitespace =>
+      code_point(c) == 9 || code_point(c) == 10 || code_point(c) == 12
+      || code_point(c) == 13 || code_point(c) == 32
+    Digit => code_point(c) >= 48 && code_point(c) <= 57
+    IdentStart =>
+      code_point(c) >= 65 && code_point(c) <= 90
+      || code_point(c) >= 97 && code_point(c) <= 122
+      || code_point(c) == 95
+
+    IdentContinue =>
+      code_point(c) >= 48 && code_point(c) <= 57
+      || code_point(c) >= 65 && code_point(c) <= 90
+      || code_point(c) >= 97 && code_point(c) <= 122
+      || code_point(c) == 95
+  }
+
+fn code_point(c: Char) -> Int = c + 0
+
+fn in_block(cp: Int, block: UnicodeBlock) -> Bool {
+  cp >= block.start && cp <= block.end_inclusive
+}
