@@ -1,0 +1,162 @@
+module gunbc.host_toolchain_components
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.rustup { RustupComponent, Rustfmt, Clippy, rustup_component_name, rustup_component_eq }
+import gunbc.readback_independence {
+  ReadBackProbe,
+  ProbeInert,
+  ProbeMayEstablish,
+  readback_evidence_verdict,
+  readback_probe_is_independent,
+}
+import gunbc.host_phase_status { observation_verdict_eq, host_phase_verdict_from, fleet_subsumption_hosts }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import product.placement_supply { HostIdentity }
+
+data toolchain_completeness_authority_note: String = "B3's toolchain-completeness axis, and it is keyed on a RESOLVED TOOLCHAIN rather than on a host, because the host-shaped question is the one that produces a true-sounding wrong answer. The incident that grounds it, read live on srv2 2026-07-25: floor gates died with `spawn rustfmt: No such file or directory` across two hosts in two days, and the natural reading — rustfmt is missing from the machine — was wrong. rustfmt WAS on srv2. The job principal ghrunner carried two rustup toolchains, 1.93.0 with rustfmt and stable WITHOUT it, ~/.cargo/bin/rustfmt was a shim, and ghrunner's default was stable. So a completeness check keyed on 'is rustfmt installed on this host' answers yes, converges green, and the gate keeps failing — the same presupposition failure gunbc.host_swap_backing found in a MemorySwapMax over absent swap, and gunbc.auth.materialized_secret found in an SmEnabled version upstream had revoked. Three incidents, one shape: a value reported green because the condition under which it would MEAN something was assumed instead of observed. The cell therefore names the toolchain it resolved and the component set THAT toolchain carries, and a requirement is satisfied only by the components of the ACTIVE toolchain."
+
+data toolchain_requirement_derivation_note: String = "The requirement is derived from the gate that needs it, carried as a DeclarationRef rather than a label, so a component nothing requires cannot accumulate here and the reason a component is required stays pointable. Today there is exactly one row: the self-host realized-comparison gate emits Rust and formats it, so it needs rustfmt. Clippy is deliberately NOT a row — it was removed from CI 2026-07-08 as zero-signal under a crate-wide allow, and adding it here because it is a familiar component would be requiring something no consumer needs."
+
+type ToolchainComponentRequirement {
+  component: RustupComponent
+  required_by: DeclarationRef
+}
+
+data floor_gate_component_requirements: List<ToolchainComponentRequirement> = [
+  ToolchainComponentRequirement {
+    component: Rustfmt,
+    required_by: DeclarationRef {
+      module_path: "v2.workflow.ci_floor_plan",
+      decl_name: "floor_self_host_realized_comparison_gate_entry",
+      field: WholeDeclaration,
+    },
+  },
+]
+
+data resolved_toolchain_note: String = "What a probe can honestly report: WHICH toolchain the job principal's shim resolves to, and which components THAT toolchain carries. The principal is named on the row because it is not the same account that owns the runner unit — srv2's unit runs as root while workflow steps deprivilege to ghrunner via CTRL_RUNNER_JOB_USER — and a completeness reading taken as the wrong user is a reading of the wrong toolchain. This is the field an earlier draft of this module would have omitted, and omitting it is how the host-shaped question sneaks back in."
+
+type ResolvedToolchain {
+  principal: NonEmptyStr
+  toolchain: NonEmptyStr
+  components: List<RustupComponent>
+}
+
+fn resolved_toolchain_has(t: ResolvedToolchain, c: RustupComponent) -> Bool {
+  fold(t.components, init: false, f: (acc, x) => acc || rustup_component_eq(a: x, b: c))
+}
+
+fn resolved_toolchain_missing(
+  t: ResolvedToolchain,
+  reqs: List<ToolchainComponentRequirement>,
+) -> List<ToolchainComponentRequirement> {
+  filter(reqs, r => !resolved_toolchain_has(t: t, c: r.component))
+}
+
+data toolchain_completeness_verdict_note: String = "The fail-closed fold, with the arms separated by the work each names. No observation at all is UnknownRefused — nothing has asked this host's job principal what its toolchain resolves, and the remedy is to build the probe. A resolved toolchain missing a required component is Absent — the question was asked and the answer is that the component the gate needs is not in the toolchain the shim will reach, and the remedy is to add it to THAT toolchain. A complete resolution is Converged. There is deliberately no arm for 'the component exists in some other toolchain on the box': that state is exactly the srv2 incident, and it is not a partial success — under it the gate fails every time, so it must not read as anything other than Absent."
+
+fn toolchain_completeness_verdict(
+  reqs: List<ToolchainComponentRequirement>,
+  resolved: ResolvedToolchain?,
+) -> ObservationVerdict {
+  match resolved {
+    Absent => UnknownRefused
+    Present { value: t } =>
+      if resolved_toolchain_missing(t: t, reqs: reqs).length() == 0 {
+        Converged
+      } else {
+        std.upsert_decision.Absent
+      }
+  }
+}
+
+data toolchain_probe_note: String = "The probe, classified. Listing a toolchain's components reads a directory and installs nothing, so it is ProbeInert and its Converged survives. The sketch beside it is the shape an ensure lane reaches for by reflex and must not: a check that runs `rustup component add` when the component is missing reports success it caused, so it can never witness the deficit it exists to find — and the deficit's frequency would drop to zero by construction, which is the absorbing fallback in its purest form. That matters here beyond principle: the two-hosts-in-two-days recurrence is only visible BECAUSE the checks so far have refused rather than repaired."
+
+data rustup_component_list_probe: ReadBackProbe = ReadBackProbe {
+  label: "rustup component list --installed, as the job principal, on the active toolchain",
+  subject: "the components carried by the toolchain the job principal's shim resolves",
+  effect_on_subject: ProbeInert,
+}
+
+data rustup_component_add_on_miss_probe_sketch: ReadBackProbe = ReadBackProbe {
+  label: "list components, adding any missing one before reporting",
+  subject: "the components carried by the toolchain the job principal's shim resolves",
+  effect_on_subject: ProbeMayEstablish {
+    mechanism: "the repair arm installs the component it is checking for, so a Converged result may report the component the probe itself just added — and the deficit can then never be counted",
+  },
+}
+
+fn toolchain_completeness_observed_verdict(
+  probe: ReadBackProbe,
+  reqs: List<ToolchainComponentRequirement>,
+  resolved: ResolvedToolchain?,
+) -> ObservationVerdict {
+  if !readback_probe_is_independent(p: probe) {
+    UnknownRefused
+  } else {
+    readback_evidence_verdict(
+      p: probe,
+      observed: toolchain_completeness_verdict(reqs: reqs, resolved: resolved),
+    )
+  }
+}
+
+data srv2_live_reading_note: String = "A CITED LIVE READING, not a fixture, and the distinction is the whole reason this row is allowed to exist. Taken over an ssh hop to srv2 on 2026-07-25 as part of diagnosing the recurring floor failure: ghrunner's default toolchain is stable-aarch64-unknown-linux-gnu, and BEFORE the operator-directed hand-install that toolchain carried cargo/rustc/rustdoc and the rust-gdb and rust-lldb wrappers, with NO rustfmt — while 1.93.0-aarch64-unknown-linux-gnu carried rustfmt the whole time. The hand-install then added rustfmt to stable, verified by execution through the shim on the job's PATH shape (rustfmt 1.9.0-stable). Both readings are recorded because the BEFORE row is what makes the axis discriminating — a module that only ever saw the fixed state could not show that its verdict would have caught the incident. The reading covers srv2's nine slots at once, since they share one ghrunner principal and therefore one toolchain. srv1, srv3 and srv4 have no reading: srv1 refuses every credential available to this session, and no probe runs anywhere in the tree, so their honest verdict is UnknownRefused and this module does not invent one."
+
+data srv2_ghrunner_toolchain_before_fix: ResolvedToolchain = ResolvedToolchain {
+  principal: "ghrunner",
+  toolchain: "stable-aarch64-unknown-linux-gnu",
+  components: [],
+}
+
+data srv2_ghrunner_toolchain_after_fix: ResolvedToolchain = ResolvedToolchain {
+  principal: "ghrunner",
+  toolchain: "stable-aarch64-unknown-linux-gnu",
+  components: [Rustfmt],
+}
+
+data srv2_ghrunner_pinned_toolchain_has_rustfmt: ResolvedToolchain = ResolvedToolchain {
+  principal: "ghrunner",
+  toolchain: "1.93.0-aarch64-unknown-linux-gnu",
+  components: [Rustfmt],
+}
+
+fn host_toolchain_completeness_observation(host: HostIdentity) -> ResolvedToolchain? {
+  if (host as String) == (operator_host_srv2 as String) {
+    Present { value: srv2_ghrunner_toolchain_after_fix }
+  } else {
+    none
+  }
+}
+
+fn host_toolchain_completeness_verdict(host: HostIdentity) -> ObservationVerdict {
+  toolchain_completeness_observed_verdict(
+    probe: rustup_component_list_probe,
+    reqs: floor_gate_component_requirements,
+    resolved: host_toolchain_completeness_observation(host: host),
+  )
+}
+
+fn toolchain_completeness_unobserved_count(hosts: List<HostIdentity>) -> Int {
+  filter(
+    hosts,
+    h => observation_verdict_eq(a: host_toolchain_completeness_verdict(host: h), b: UnknownRefused),
+  ).length()
+}
+
+fn toolchain_completeness_fleet_unobserved_count() -> Int {
+  toolchain_completeness_unobserved_count(hosts: fleet_subsumption_hosts)
+}
+
+data toolchain_ensure_frontier_note: String = "What is NOT here, named rather than half-built. The operator's routing puts the component on the modeled toolchain ensure (B3), which means a HostToolchainKind variant for the runner floor toolchain and a HostEffect arm that applies `rustup component add` to the RESOLVED toolchain of the job principal. That effect cannot be realized today: it hits the argv materializer's hardcoded five-parameter vocabulary, the same blocker gunbc.host_swap_backing and gunbc.auth.materialized_secret both name, now dispatched as its own work item. Landing the variant before the materializer is generic would put an unreachable arm into gunbc.host_effect — a load-bearing type with six match sites and no exhaustiveness checking in the seed, so a variant nothing can apply would fall through silently rather than refuse. The requirement rows, the resolution shape, the verdict and its probe classification are all live now and are what the ensure will consume; the apply arm lands when the materializer child unblocks it. srv2's components were brought into the desired state BY HAND on operator instruction in the meantime, and that hand action is exactly what this axis makes visible and counted rather than invisible."
+
+data toolchain_ensure_apply_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_toolchain_ensure",
+    decl_name: "host_toolchain_ensure_effect",
+    field: WholeDeclaration,
+  }
+}

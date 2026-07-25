@@ -1,6 +1,6 @@
 module extdeps.rustup
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String, Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -18,3 +18,26 @@ data rustup_install_url: NonEmptyStr = "https://rustup.rs"
 data default_channel: RustChannel = Stable
 
 data rustup_docs: NonEmptyStr = "https://rust-lang.github.io/rustup/"
+
+data rustup_component_authority_note: NonEmptyStr = "Components, cited to the rustup book's Components concept page rather than minted here. The load-bearing fact this vocabulary exists to carry is that a component is a property of a TOOLCHAIN, not of a machine: rustup installs each component into one toolchain directory, and the ~/.cargo/bin entries are shims that dispatch to whichever toolchain is active. So 'is rustfmt installed on this host' is not a well-formed question — two toolchains on one host routinely disagree, and the shim resolves through exactly one of them. Any consumer that asks the host-shaped question gets a true-sounding answer to a question it did not mean."
+
+type RustupComponent
+  = Rustfmt
+  | Clippy
+  | RustSrc
+  | RustAnalyzer
+  | RustDocs
+
+fn rustup_component_name(c: RustupComponent) -> NonEmptyStr {
+  match c {
+    Rustfmt => "rustfmt"
+    Clippy => "clippy"
+    RustSrc => "rust-src"
+    RustAnalyzer => "rust-analyzer"
+    RustDocs => "rust-docs"
+  }
+}
+
+fn rustup_component_eq(a: RustupComponent, b: RustupComponent) -> Bool {
+  (rustup_component_name(c: a) as String) == (rustup_component_name(c: b) as String)
+}

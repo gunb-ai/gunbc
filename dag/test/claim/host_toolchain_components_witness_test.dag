@@ -1,0 +1,102 @@
+module test.claim.host_toolchain_components
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_incident_hinge_note: String = "THE conjunct this module exists for, and it is the srv2 floor failure replayed on the toolchain state read live from the host. The pinned toolchain 1.93.0 carried rustfmt the entire time, so any check keyed on 'does this host have rustfmt' answered yes throughout. The toolchain the shim actually resolved — ghrunner's default, stable — did not, and the gate failed every run. The verdict on the resolving toolchain must be Absent, and the presence of rustfmt in the OTHER toolchain must not soften it: under that state the gate fails every time, so it is not a partial success."
+
+fn witness_component_in_another_toolchain_does_not_satisfy() -> Bool {
+  let resolved_missing = toolchain_completeness_verdict(
+    reqs: floor_gate_component_requirements,
+    resolved: Present { value: srv2_ghrunner_toolchain_before_fix },
+  )
+  let other_toolchain_has_it = resolved_toolchain_has(
+    t: srv2_ghrunner_pinned_toolchain_has_rustfmt,
+    c: Rustfmt,
+  )
+  observation_verdict_eq(a: resolved_missing, b: std.upsert_decision.Absent)
+    && other_toolchain_has_it
+    && !resolved_toolchain_has(t: srv2_ghrunner_toolchain_before_fix, c: Rustfmt)
+}
+
+data witness_fix_note: String = "The other direction, and the receipt for the operator-directed hand-install: the same principal and the same toolchain, with rustfmt added, converges. Without this the module would satisfy every other conjunct while being a verdict that never says yes."
+
+fn witness_after_fix_converges() -> Bool {
+  observation_verdict_eq(
+    a: toolchain_completeness_verdict(
+      reqs: floor_gate_component_requirements,
+      resolved: Present { value: srv2_ghrunner_toolchain_after_fix },
+    ),
+    b: std.upsert_decision.Converged,
+  )
+    && observation_verdict_eq(
+      a: host_toolchain_completeness_verdict(host: operator_host_srv2),
+      b: std.upsert_decision.Converged,
+    )
+}
+
+data witness_no_probe_note: String = "No probe, no verdict. srv1, srv3 and srv4 have no toolchain reading — srv1 refuses every credential this session holds, and no component-listing producer runs anywhere in the tree — so their verdict is UnknownRefused and the module does not invent one. The count is pinned so that landing a probe, or fabricating a fixture to make the matrix look greener, both show up as a change to this witness."
+
+fn witness_unobserved_hosts_are_unknown_not_converged() -> Bool {
+  let unobserved = toolchain_completeness_fleet_unobserved_count()
+  observation_verdict_eq(
+    a: host_toolchain_completeness_verdict(host: operator_host_srv1),
+    b: std.upsert_decision.UnknownRefused,
+  )
+    && unobserved == fleet_subsumption_hosts.length() - 1
+    && unobserved > 0
+}
+
+data witness_missing_set_note: String = "The refusal must be able to say WHICH component is missing and which gate wanted it, or the remedy is a search. The missing set is computed against the requirement rows, so it carries the DeclarationRef of the gate that required it rather than a bare label."
+
+fn witness_missing_set_names_the_requiring_gate() -> Bool {
+  let missing = resolved_toolchain_missing(
+    t: srv2_ghrunner_toolchain_before_fix,
+    reqs: floor_gate_component_requirements,
+  )
+  let named_gate = match missing.first() {
+    Present { value: r } => (r.required_by.decl_name as String)
+    Absent => ""
+  }
+  let names_rustfmt = match missing.first() {
+    Present { value: r } => rustup_component_eq(a: r.component, b: Rustfmt)
+    Absent => false
+  }
+  missing.length() == 1
+    && names_rustfmt
+    && named_gate == "floor_self_host_realized_comparison_gate_entry"
+}
+
+data witness_red_control_note: String = "The discriminating RED control: a probe that installs the missing component before reporting. It is the shape an ensure lane reaches for by reflex — the check and the repair in one step — and it is exactly what the operator's hand-install did, which is why automating it as a PROBE would be wrong even though performing it as an ACT was right. The authority refuses on the classification, so a self-repairing probe can never certify completeness, and its Converged is not reachable. Asserted in both directions: the inert probe on the same inputs does yield Converged, so this is not a fold that refuses everything."
+
+fn witness_red_control_self_repairing_probe_cannot_certify() -> Bool {
+  let repairing = toolchain_completeness_observed_verdict(
+    probe: rustup_component_add_on_miss_probe_sketch,
+    reqs: floor_gate_component_requirements,
+    resolved: Present { value: srv2_ghrunner_toolchain_after_fix },
+  )
+  let inert = toolchain_completeness_observed_verdict(
+    probe: rustup_component_list_probe,
+    reqs: floor_gate_component_requirements,
+    resolved: Present { value: srv2_ghrunner_toolchain_after_fix },
+  )
+  observation_verdict_eq(a: repairing, b: std.upsert_decision.UnknownRefused)
+    && observation_verdict_eq(a: inert, b: std.upsert_decision.Converged)
+}
+
+data witness_component_naming_note: String = "The component vocabulary is cited to rustup and projects to the names rustup itself accepts, so a requirement row cannot drift from the string an ensure would pass to `rustup component add`."
+
+fn witness_component_names_match_rustup() -> Bool {
+  (rustup_component_name(c: Rustfmt) as String) == "rustfmt"
+    && (rustup_component_name(c: Clippy) as String) == "clippy"
+    && !rustup_component_eq(a: Rustfmt, b: Clippy)
+    && rustup_component_eq(a: Rustfmt, b: Rustfmt)
+}
+
+test fn host_toolchain_components_witnesses() -> Bool {
+  witness_component_in_another_toolchain_does_not_satisfy()
+    && witness_after_fix_converges()
+    && witness_unobserved_hosts_are_unknown_not_converged()
+    && witness_missing_set_names_the_requiring_gate()
+    && witness_red_control_self_repairing_probe_cannot_certify()
+    && witness_component_names_match_rustup()
+}
