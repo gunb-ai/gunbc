@@ -394,3 +394,44 @@ fn quote_total_micros(result: ProviderMonthlyQuoteResult) -> Nat? {
     ProviderQuoteRefused { cause: _ } => none
   }
 }
+
+data agentic_request_amplification_note: String = "The read/write counts in a human-authored profile are the wrong order of magnitude for agent-driven development, and the axis they load is the one that looks negligible at human rates: operations. A human developer reads a few hundred objects a month; an agent working continuously reads thousands an HOUR, and it writes far more often because it commits intermediate states a human would never bother to save. Multiply that by the node grain a .dag-native SCM actually wants -- where a read is a NODE, not a file -- and the object count amplifies again. Operations are ~0.4 percent of a request-metered bill at human rates and can exceed 99 percent at agent rates, which means the vendor ranking computed on a human profile does not survive contact with the workload this SCM is being built for."
+
+data packing_policy_note: String = "The mitigation, and the load-bearing design decision it exposes: per-request billing punishes fine granularity, so a node-grain store that maps one node to one object pays a request fee per node. Packing many nodes into one stored object (git's own packfile move, and the reason git does not store one file per blob on the wire) divides the operation count by the packing factor while leaving the byte count alone. The policy is modeled rather than assumed because it is a real architectural choice with a real cost consequence, and because UnpackedNodeGrain is the shape a naive content-addressed store falls into by default -- the expensive default is exactly the one worth making visible."
+
+type PackingPolicy
+  = UnpackedNodeGrain
+  | PackedObjects { nodes_per_object: Nat }
+
+fn packed_object_count(logical_node_ops: Nat, policy: PackingPolicy) -> Nat {
+  match policy {
+    UnpackedNodeGrain => logical_node_ops
+    PackedObjects { nodes_per_object: n } =>
+      if n <= 0 { logical_node_ops } else { ((logical_node_ops + n) - 1) / n }
+  }
+}
+
+data agentic_profile_construction_note: String = "Builds a priced profile from LOGICAL node operations plus a packing policy, so the workload is stated in the terms the SCM actually thinks in (nodes touched) and the billing consequence is derived rather than hand-entered. Storage and egress pass through unchanged: packing changes how many OBJECTS carry the bytes, not how many bytes there are."
+
+fn profile_with_packed_ops(
+  base: ScmWorkloadProfile,
+  logical_node_reads_per_user: Nat,
+  logical_node_writes_per_user: Nat,
+  policy: PackingPolicy,
+) -> ScmWorkloadProfile {
+  ScmWorkloadProfile {
+    user_count: base.user_count,
+    stored_bytes_per_user_after_dedup: base.stored_bytes_per_user_after_dedup,
+    monthly_egress_bytes_per_user: base.monthly_egress_bytes_per_user,
+    monthly_object_reads_per_user: packed_object_count(logical_node_ops: logical_node_reads_per_user, policy: policy),
+    monthly_object_writes_per_user: packed_object_count(logical_node_ops: logical_node_writes_per_user, policy: policy),
+  }
+}
+
+fn quote_operations_micros(result: ProviderMonthlyQuoteResult) -> Nat? {
+  match result {
+    ProviderQuoted { storage_micros: _, egress_micros: _, operations_micros: o, total_micros: _ } =>
+      Present { value: o }
+    ProviderQuoteRefused { cause: _ } => none
+  }
+}
