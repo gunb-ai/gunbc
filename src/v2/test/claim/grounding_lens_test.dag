@@ -154,7 +154,6 @@ fn witness_role_word_flows_to_judge() -> Bool {
 fn witness_meta_self_coincidence_excluded() -> Bool {
   compute_layer_excluded(
     field: "field",
-    enclosing_qn: "v2.std.FieldRef",
     matched: qc(qn: "v2.std.Field", nm: "Field", fs: [])
   )
 }
@@ -163,16 +162,12 @@ fn witness_layer_excludes_meta_field() -> Bool {
   !has_candidate(cands: candidates_over_decls(decls: fixture_decls()), enclosing: "FieldRef", field: "field")
 }
 
-fn witness_layer_excludes_inversion() -> Bool {
-  !has_candidate(
+fn witness_layer_inversion_now_included() -> Bool {
+  has_candidate(
     cands: candidates_over_decls(decls: layer_inversion_fixture_decls()),
     enclosing: "Foo",
     field: "url"
   )
-}
-
-fn witness_layer_inversion_predicate() -> Bool {
-  is_layer_inversion(enclosing_qn: "v2.std.Foo", matched_qn: "extdeps.http.Url")
 }
 
 fn production_layer_inversion_fixture_decls() -> List<ConceptDecl> {
@@ -190,16 +185,12 @@ fn production_layer_inversion_fixture_decls() -> List<ConceptDecl> {
   ]
 }
 
-fn witness_production_layer_excludes_inversion() -> Bool {
-  !has_candidate(
+fn witness_production_layer_inversion_now_included() -> Bool {
+  has_candidate(
     cands: candidates_over_decls(decls: production_layer_inversion_fixture_decls()),
     enclosing: "Foo",
     field: "url"
   )
-}
-
-fn witness_stripped_qn_layer_inversion_predicate() -> Bool {
-  is_layer_inversion(enclosing_qn: "std.Foo", matched_qn: "lens.grounding.Url")
 }
 
 fn product_namespace_fixture_decls() -> List<ConceptDecl> {
@@ -222,13 +213,6 @@ fn witness_product_namespace_not_layer_excluded() -> Bool {
     cands: candidates_over_decls(decls: product_namespace_fixture_decls()),
     enclosing: "Endpoint",
     field: "base_url"
-  )
-}
-
-fn witness_product_namespace_layer_direction_holds() -> Bool {
-  !is_layer_inversion(
-    enclosing_qn: "product.compute_fabric.Endpoint",
-    matched_qn: "product.network_topology.Url"
   )
 }
 
@@ -260,12 +244,9 @@ test fn grounding_lens_fixture_witnesses() -> Bool {
     && witness_role_word_flows_to_judge()
     && witness_meta_self_coincidence_excluded()
     && witness_layer_excludes_meta_field()
-    && witness_layer_excludes_inversion()
-    && witness_layer_inversion_predicate()
-    && witness_production_layer_excludes_inversion()
-    && witness_stripped_qn_layer_inversion_predicate()
+    && witness_layer_inversion_now_included()
+    && witness_production_layer_inversion_now_included()
     && witness_product_namespace_not_layer_excluded()
-    && witness_product_namespace_layer_direction_holds()
     && witness_enrich_target_structure()
     && witness_coincides_with_qualified_name()
 }

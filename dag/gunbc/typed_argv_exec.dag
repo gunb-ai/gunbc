@@ -2,7 +2,7 @@ module gunbc.typed_argv_exec
 
 import std.types { String, List, NonEmptyStr }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
-import extdeps.diagnostic.ssh { ssh_session_exec_argv, SshSessionExecResult }
+import extdeps.ssh.session { ssh_session_exec_argv, SshSessionExecResult }
 
 data typed_argv_exec_note: String = "Realization-edge typed argv dispatch over SSH: one argv shape per op (from extdeps authorities), ssh.Session.ExecArgv transport, portable-argv allowlist before spawn (fail-closed — ssh remote argv is shell-reinterpreted). Wave C5 / bash-emit #5828 slice."
 

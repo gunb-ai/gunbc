@@ -1,0 +1,303 @@
+module test.claim.scm_provider_matrix_witness
+
+import extdeps.pricing.object_storage {
+  AwsS3,
+  AzureBlobStorage,
+  CloudflareR2,
+  DurabilityNines,
+  FailsRequirement,
+  MeetsRequirement,
+  MultiFacilityOneRegion,
+  MultiRegion,
+  RedundancyUnstated,
+  ReliabilityRequirement,
+  RequirementUnknown,
+  Storj,
+  Wasabi,
+  azure_egress_first_10tb,
+  azure_egress_next_100tb,
+  azure_egress_next_40tb,
+  azure_egress_over_150tb,
+  azure_hot_gzrs_tier0,
+  azure_hot_gzrs_tier_50tb,
+  azure_hot_gzrs_tier_500tb,
+  azure_hot_gzrs_write_operations,
+  azure_hot_lrs_tier0,
+  azure_hot_lrs_tier_50tb,
+  azure_hot_lrs_tier_500tb,
+  azure_hot_lrs_write_operations,
+  azure_hot_read_operations,
+  evaluate_reliability,
+  r2_class_a_operations,
+  r2_class_b_operations,
+  r2_egress_free,
+  r2_standard,
+  s3_egress_first_10tb,
+  s3_egress_next_100tb,
+  s3_egress_next_40tb,
+  s3_egress_over_150tb,
+  s3_standard_first_50tb,
+  s3_standard_next_450tb,
+  s3_standard_over_500tb,
+  s3_tier1_requests,
+  s3_tier2_requests,
+  storj_egress,
+  storj_standard_storage,
+  wasabi_egress_free,
+  wasabi_hot_storage,
+}
+import gunbc.econ.scm_serving_model {
+  BasisAssumed,
+  ProviderQuote,
+  ProviderQuoteRefused,
+  ProviderQuoted,
+  RequestsBilled,
+  RequestsIncludedAtNoCharge,
+  ScmWorkloadProfile,
+  profile_at_user_count,
+  progressive_cost,
+  quote_provider_monthly,
+  quote_total_micros,
+  RateTier,
+}
+import extdeps.pricing.object_storage { ByteBasisUnstated, DecimalGigabyte }
+import std.measure { byte_size }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data matrix_note: String = "The provider x magnitude matrix. One profile (100 MB stored, 500 MB egress, 200 reads, 20 writes per user-month) scaled to 10k / 100k / 1M users against every provider whose storage AND egress AND request pricing is cited, with progressive tier application so the crossings are real: at 1M users the workload holds 100 TB (past the 50 TB storage step) and moves 500 TB a month (past all three egress steps)."
+
+data matrix_basis_assumption: ByteBasisAssumption = BasisAssumed {
+  basis: DecimalGigabyte,
+  rationale: "Declared for the vendors that do not state a basis (AWS, Azure, Cloudflare, Wasabi, Storj). Google states gibibyte and is therefore priced on its own stated basis regardless of this assumption.",
+}
+
+data matrix_profile: ScmWorkloadProfile = ScmWorkloadProfile {
+  user_count: 10000,
+  stored_bytes_per_user_after_dedup: byte_size(count: 100000000),
+  monthly_egress_bytes_per_user: byte_size(count: 500000000),
+  monthly_object_reads_per_user: 200,
+  monthly_object_writes_per_user: 20,
+}
+
+data aws_quote: ProviderQuote = ProviderQuote {
+  vendor: AwsS3,
+  quote_label: "AWS S3 Standard, us-east-1",
+  storage_rows: [s3_standard_first_50tb, s3_standard_next_450tb, s3_standard_over_500tb],
+  egress_rows: [s3_egress_first_10tb, s3_egress_next_40tb, s3_egress_next_100tb, s3_egress_over_150tb],
+  requests: RequestsBilled { read_row: s3_tier2_requests, write_row: s3_tier1_requests },
+  quoted_basis: ByteBasisUnstated,
+}
+
+data azure_lrs_quote: ProviderQuote = ProviderQuote {
+  vendor: AzureBlobStorage,
+  quote_label: "Azure Blob Hot LRS (locally redundant), eastus",
+  storage_rows: [azure_hot_lrs_tier0, azure_hot_lrs_tier_50tb, azure_hot_lrs_tier_500tb],
+  egress_rows: [azure_egress_first_10tb, azure_egress_next_40tb, azure_egress_next_100tb, azure_egress_over_150tb],
+  requests: RequestsBilled { read_row: azure_hot_read_operations, write_row: azure_hot_lrs_write_operations },
+  quoted_basis: ByteBasisUnstated,
+}
+
+data azure_gzrs_quote: ProviderQuote = ProviderQuote {
+  vendor: AzureBlobStorage,
+  quote_label: "Azure Blob Hot GZRS (geo-zone redundant), eastus",
+  storage_rows: [azure_hot_gzrs_tier0, azure_hot_gzrs_tier_50tb, azure_hot_gzrs_tier_500tb],
+  egress_rows: [azure_egress_first_10tb, azure_egress_next_40tb, azure_egress_next_100tb, azure_egress_over_150tb],
+  requests: RequestsBilled { read_row: azure_hot_read_operations, write_row: azure_hot_gzrs_write_operations },
+  quoted_basis: ByteBasisUnstated,
+}
+
+data r2_quote: ProviderQuote = ProviderQuote {
+  vendor: CloudflareR2,
+  quote_label: "Cloudflare R2 Standard",
+  storage_rows: [r2_standard],
+  egress_rows: [r2_egress_free],
+  requests: RequestsBilled { read_row: r2_class_b_operations, write_row: r2_class_a_operations },
+  quoted_basis: ByteBasisUnstated,
+}
+
+data wasabi_quote: ProviderQuote = ProviderQuote {
+  vendor: Wasabi,
+  quote_label: "Wasabi Hot Cloud Storage (pay as you go)",
+  storage_rows: [wasabi_hot_storage],
+  egress_rows: [wasabi_egress_free],
+  requests: RequestsIncludedAtNoCharge { terms: "No fees for egress or API requests." },
+  quoted_basis: ByteBasisUnstated,
+}
+
+data storj_quote: ProviderQuote = ProviderQuote {
+  vendor: Storj,
+  quote_label: "Storj Standard (distributed)",
+  storage_rows: [storj_standard_storage],
+  egress_rows: [storj_egress],
+  requests: RequestsIncludedAtNoCharge { terms: "No API fees." },
+  quoted_basis: ByteBasisUnstated,
+}
+
+fn total_at(quote: ProviderQuote, users: Nat) -> Nat? {
+  quote_total_micros(
+    result: quote_provider_monthly(
+      profile: profile_at_user_count(profile: matrix_profile, user_count: users),
+      quote: quote,
+      assumption: matrix_basis_assumption,
+    )
+  )
+}
+
+fn w_total_equals(quote: ProviderQuote, users: Nat, expected_micros: Nat) -> Bool {
+  match total_at(quote: quote, users: users) {
+    Present { value: t } => t == expected_micros
+    _ => false
+  }
+}
+
+fn w_progressive_fold_applies_each_band_to_its_own_slice() -> Bool {
+  let ladder = [
+    RateTier { lower_bound_units: 0, rate_micros: 100 },
+    RateTier { lower_bound_units: 10, rate_micros: 50 },
+    RateTier { lower_bound_units: 20, rate_micros: 10 },
+  ]
+  (progressive_cost(units: 5, tiers: ladder) == 500)
+    && (progressive_cost(units: 10, tiers: ladder) == 1000)
+    && (progressive_cost(units: 15, tiers: ladder) == 1250)
+    && (progressive_cost(units: 25, tiers: ladder) == 1550)
+}
+
+fn w_red_flat_rate_would_overstate_at_the_top_band() -> Bool {
+  let ladder = [
+    RateTier { lower_bound_units: 0, rate_micros: 100 },
+    RateTier { lower_bound_units: 10, rate_micros: 50 },
+  ]
+  !(progressive_cost(units: 20, tiers: ladder) == (20 * 100))
+    && (progressive_cost(units: 20, tiers: ladder) == 1500)
+}
+
+fn w_matrix_10k_users() -> Bool {
+  w_total_equals(quote: aws_quote, users: 10000, expected_micros: 474800000)
+    && w_total_equals(quote: azure_lrs_quote, users: 10000, expected_micros: 448900000)
+    && w_total_equals(quote: r2_quote, users: 10000, expected_micros: 16620000)
+    && w_total_equals(quote: wasabi_quote, users: 10000, expected_micros: 7990000)
+    && w_total_equals(quote: storj_quote, users: 10000, expected_micros: 42000000)
+}
+
+fn w_matrix_100k_users() -> Bool {
+  w_total_equals(quote: aws_quote, users: 100000, expected_micros: 4549200000)
+    && w_total_equals(quote: r2_quote, users: 100000, expected_micros: 166200000)
+    && w_total_equals(quote: wasabi_quote, users: 100000, expected_micros: 79900000)
+    && w_total_equals(quote: storj_quote, users: 100000, expected_micros: 420000000)
+}
+
+fn w_matrix_1m_users_crosses_tier_boundaries() -> Bool {
+  w_total_equals(quote: aws_quote, users: 1000000, expected_micros: 31322400000)
+    && w_total_equals(quote: r2_quote, users: 1000000, expected_micros: 1662000000)
+    && w_total_equals(quote: wasabi_quote, users: 1000000, expected_micros: 799000000)
+    && w_total_equals(quote: storj_quote, users: 1000000, expected_micros: 4200000000)
+}
+
+fn w_tiering_makes_aws_sublinear_across_magnitudes() -> Bool {
+  match total_at(quote: aws_quote, users: 100000) {
+    Present { value: at_100k } =>
+      match total_at(quote: aws_quote, users: 1000000) {
+        Present { value: at_1m } =>
+          (at_1m < (at_100k * 10)) && (at_1m > (at_100k * 6))
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_flat_rate_vendors_stay_exactly_linear() -> Bool {
+  match total_at(quote: wasabi_quote, users: 100000) {
+    Present { value: at_100k } =>
+      match total_at(quote: wasabi_quote, users: 1000000) {
+        Present { value: at_1m } => at_1m == (at_100k * 10)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_redundancy_ladder_is_priced_within_one_vendor() -> Bool {
+  match total_at(quote: azure_lrs_quote, users: 1000000) {
+    Present { value: lrs } =>
+      match total_at(quote: azure_gzrs_quote, users: 1000000) {
+        Present { value: gzrs } => (gzrs > lrs) && (gzrs < (lrs * 2))
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_geo_redundancy_requirement_admits_azure_gzrs() -> Bool {
+  match evaluate_reliability(
+    row: azure_hot_gzrs_tier0,
+    req: ReliabilityRequirement { min_durability_nines: 0, min_redundancy: MultiRegion },
+  ) {
+    MeetsRequirement => true
+    _ => false
+  }
+}
+
+fn w_geo_redundancy_requirement_fails_locally_redundant() -> Bool {
+  match evaluate_reliability(
+    row: azure_hot_lrs_tier0,
+    req: ReliabilityRequirement { min_durability_nines: 0, min_redundancy: MultiRegion },
+  ) {
+    FailsRequirement { axis: a } => a == "redundancy"
+    _ => false
+  }
+}
+
+fn w_unstated_redundancy_is_unknown_never_a_pass() -> Bool {
+  match evaluate_reliability(
+    row: r2_standard,
+    req: ReliabilityRequirement { min_durability_nines: 0, min_redundancy: MultiFacilityOneRegion },
+  ) {
+    RequirementUnknown { unstated_axis: a } => a == "redundancy"
+    _ => false
+  }
+}
+
+fn w_eleven_nines_requirement_is_met_by_s3_and_unknown_for_wasabi() -> Bool {
+  match evaluate_reliability(
+    row: s3_standard_first_50tb,
+    req: ReliabilityRequirement { min_durability_nines: 11, min_redundancy: RedundancyUnstated },
+  ) {
+    MeetsRequirement =>
+      match evaluate_reliability(
+        row: wasabi_hot_storage,
+        req: ReliabilityRequirement { min_durability_nines: 11, min_redundancy: RedundancyUnstated },
+      ) {
+        RequirementUnknown { unstated_axis: a } => a == "durability"
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_red_twelve_nines_fails_an_eleven_nines_row() -> Bool {
+  match evaluate_reliability(
+    row: s3_standard_first_50tb,
+    req: ReliabilityRequirement { min_durability_nines: 12, min_redundancy: RedundancyUnstated },
+  ) {
+    FailsRequirement { axis: a } => a == "durability"
+    _ => false
+  }
+}
+
+test fn scm_provider_matrix_witness() -> Bool {
+  w_progressive_fold_applies_each_band_to_its_own_slice()
+    && w_red_flat_rate_would_overstate_at_the_top_band()
+    && w_matrix_10k_users()
+    && w_matrix_100k_users()
+    && w_matrix_1m_users_crosses_tier_boundaries()
+    && w_tiering_makes_aws_sublinear_across_magnitudes()
+    && w_flat_rate_vendors_stay_exactly_linear()
+    && w_redundancy_ladder_is_priced_within_one_vendor()
+    && w_geo_redundancy_requirement_admits_azure_gzrs()
+    && w_geo_redundancy_requirement_fails_locally_redundant()
+    && w_unstated_redundancy_is_unknown_never_a_pass()
+    && w_eleven_nines_requirement_is_met_by_s3_and_unknown_for_wasabi()
+    && w_red_twelve_nines_fails_an_eleven_nines_row()
+}

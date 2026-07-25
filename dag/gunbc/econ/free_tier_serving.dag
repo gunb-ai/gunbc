@@ -1,0 +1,114 @@
+module gunbc.econ.free_tier_serving
+
+import extdeps.pricing.hetzner_dedicated { HetznerDedicatedServerPriceRow }
+import extdeps.sec.facts {
+  FiledMonetaryFact,
+  filed_amount,
+  usd_whole_dollars_count,
+}
+import extdeps.sec.operating_metrics { RegisteredUserCountRow }
+import std.measure {
+  ByteSize,
+  MoneyPerMonth,
+  byte_size_count,
+  money_amount_micro,
+  money_per_month_micros,
+}
+import std.nat { Nat, nat_max }
+
+data free_tier_serving_derive_not_store_note: String = "Both reads here are DERIVED at read time from cited rows (DESIGN section 2): the bottom-up floor prices a declared per-user resource envelope against a cited infrastructure price row, and the top-down glean divides a filed cost-of-revenue fact by a filed registered-user floor. Nothing about serving cost is stored as a fact of its own."
+
+data free_tier_floor_semantics_note: String = "The bottom-up result is deliberately a FLOOR: box rent for storage capacity (times replica count), with egress admitted against a DECLARED per-box monthly allowance. It excludes operations labor, offsite backup, support, and abuse handling. The egress allowance is an assumption rather than a row fact because the cited Hetzner rows do not yet carry a traffic-allowance field; dissolve-on: citing Hetzner traffic terms into extdeps.pricing.hetzner_dedicated, at which point the allowance argument collapses onto the row. Compute is not a constraint at free-SCM envelopes (git-shaped operations are millisecond-scale against 12-32 hardware threads per box); the moment a CI product is bundled, metered compute becomes the dominant axis -- the cited receipt is GitLab's own free-tier fence (400 compute minutes per month, and a pricing-page FAQ attributing card-verification to cryptomining abuse of free minutes)."
+
+type FreeTierUserEnvelope {
+  storage_bytes_per_user: ByteSize
+  monthly_egress_bytes_per_user: ByteSize
+}
+
+type FreeTierServingAssumptions {
+  user_count: Nat
+  replica_count: Nat
+  per_box_monthly_egress_allowance: ByteSize
+}
+
+type FreeTierServingAssumptionsInput
+  = FreeTierAssumptionsDeclared { envelope: FreeTierUserEnvelope, assumptions: FreeTierServingAssumptions }
+  | FreeTierAssumptionsUnknown
+
+type FreeTierServingRefusalCause
+  = ServingAssumptionsUnknown
+  | UserCountZero
+  | StoragePerUserZero
+  | ReplicaCountZero
+  | EgressAllowanceZero
+  | BoxStorageZero
+
+type FreeTierServingFloor {
+  box_count: Nat
+  monthly_floor: MoneyPerMonth
+}
+
+type FreeTierServingFloorResult
+  = FreeTierFloorComputed { floor: FreeTierServingFloor }
+  | FreeTierFloorRefused { cause: FreeTierServingRefusalCause }
+
+fn derive_free_tier_serving_floor(
+  box_row: HetznerDedicatedServerPriceRow,
+  assumptions_input: FreeTierServingAssumptionsInput
+) -> FreeTierServingFloorResult {
+  match assumptions_input {
+    FreeTierAssumptionsUnknown => FreeTierFloorRefused { cause: ServingAssumptionsUnknown }
+    FreeTierAssumptionsDeclared { envelope: env, assumptions: a } => {
+      let per_user_storage = byte_size_count(b: env.storage_bytes_per_user)
+      let per_user_egress = byte_size_count(b: env.monthly_egress_bytes_per_user)
+      let box_storage = byte_size_count(b: box_row.storage_bytes)
+      let egress_allowance = byte_size_count(b: a.per_box_monthly_egress_allowance)
+      if a.user_count <= 0 {
+        FreeTierFloorRefused { cause: UserCountZero }
+      } else if per_user_storage <= 0 {
+        FreeTierFloorRefused { cause: StoragePerUserZero }
+      } else if a.replica_count <= 0 {
+        FreeTierFloorRefused { cause: ReplicaCountZero }
+      } else if egress_allowance <= 0 {
+        FreeTierFloorRefused { cause: EgressAllowanceZero }
+      } else if box_storage <= 0 {
+        FreeTierFloorRefused { cause: BoxStorageZero }
+      } else {
+        let stored_total = (a.user_count * per_user_storage) * a.replica_count
+        let egress_total = a.user_count * per_user_egress
+        let storage_boxes = ((stored_total + box_storage) - 1) / box_storage
+        let egress_boxes = ((egress_total + egress_allowance) - 1) / egress_allowance
+        let box_count = nat_max(a: nat_max(a: storage_boxes, b: egress_boxes), b: a.replica_count)
+        FreeTierFloorComputed {
+          floor: FreeTierServingFloor {
+            box_count: box_count,
+            monthly_floor: MoneyPerMonth {
+              amount: money_amount_micro(count: box_count * money_per_month_micros(q: box_row.monthly)),
+              currency: box_row.monthly.currency,
+            },
+          }
+        }
+      }
+    }
+  }
+}
+
+data registered_user_glean_note: String = "Top-down glean: annual cost of revenue divided by the filed registered-user FLOOR ('more than N million registered users', Item 1) is an UPPER BOUND on average serving cost per registered user -- actual users >= floor, so cost/floor >= cost/actual -- and the average itself is inflated by enterprise SaaS compute and support personnel inside cost of revenue. The marginal free git user sits far below it."
+
+fn average_serving_cost_per_registered_user_year_micros_upper_bound(
+  annual_cost_of_revenue: FiledMonetaryFact,
+  registered_users: RegisteredUserCountRow
+) -> Nat? {
+  match filed_amount(fact: annual_cost_of_revenue) {
+    Present { value: c } => {
+      let cost_whole_usd = usd_whole_dollars_count(m: c)
+      let user_floor = registered_users.registered_user_count_floor
+      if user_floor <= 0 {
+        none
+      } else {
+        Present { value: (((cost_whole_usd * 1000000) + user_floor) - 1) / user_floor }
+      }
+    }
+    _ => none
+  }
+}

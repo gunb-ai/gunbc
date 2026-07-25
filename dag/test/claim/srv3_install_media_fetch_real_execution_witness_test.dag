@@ -2,7 +2,7 @@ module test.claim.srv3_install_media_fetch_real_execution
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr }
-import extdeps.os.ubuntu_install_media_fetch {
+import extdeps.provisioning.ubuntu_install_media_fetch {
   observe_install_media_fetch,
   InstallMediaFetchAbsent,
   InstallMediaFetchVerified,

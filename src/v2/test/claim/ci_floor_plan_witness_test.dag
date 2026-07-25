@@ -43,13 +43,14 @@ import v2.workflow.ci_floor_plan {
   falsifier_known_red_probe_batch_enrolled,
   falsifier_silent_pick_gate_batch_enrolled,
   falsifier_rehomed_bin_wet_batch_enrolled,
+  falsifier_substrate_long_lane_batch_enrolled,
   gunbc_ci_floor_schedule_lens_holds,
   witness_floor_batch_wall_budgets_cover_schedule,
   witness_floor_batch_wall_budgets_all_positive,
 }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, known_red_probe_entries, falsifier_silent_pick_gate_entries }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, known_red_probe_entries, falsifier_silent_pick_gate_entries, falsifier_substrate_long_lane_entries }
 import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries }
-import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, LayeringImportsGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, DagCompileCleanGate, RegenVerifyGate }
+import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, DagCompileCleanGate, RegenVerifyGate }
 import std.realization_schedule {
   Runnable, RunnableSingleClaim,
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
@@ -180,9 +181,8 @@ fn witness_cheap_gates_precede_compile_root() -> Bool {
 }
 
 fn witness_cheap_gate_membership_declared() -> Bool {
-  (length(xs: gunbc_ci_cheap_floor_gate_membership) == 4)
+  (length(xs: gunbc_ci_cheap_floor_gate_membership) == 3)
     && gate_in_cheap_floor_membership(g: CheapClaimPoolGate)
-    && gate_in_cheap_floor_membership(g: LayeringImportsGate)
     && gate_in_cheap_floor_membership(g: ExtdepsExternalAuthorityGate)
     && gate_in_cheap_floor_membership(g: GeneratedArtifactDriftGate)
     && !gate_in_cheap_floor_membership(g: DagCompileCleanGate)
@@ -340,7 +340,7 @@ fn witness_emit_host_profile_forbids_corpus_co_residence() -> Bool {
 }
 
 fn witness_light_gate_profile_allows_corpus_co_residence() -> Bool {
-  !runnable_forbids_corpus_co_residence(r: gate_runnable(g: LayeringImportsGate))
+  !runnable_forbids_corpus_co_residence(r: gate_runnable(g: ExtdepsExternalAuthorityGate))
 }
 
 
@@ -425,6 +425,23 @@ fn falsifier_silent_pick_gate_batch_holds(r: Runnable) -> Bool {
   }
 }
 
+fn falsifier_substrate_long_lane_batch_holds(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
+      match mode {
+        SelectionApplied => true
+        SelectionPredictOnly => false
+        SelectionOff => false
+      }
+        && (length(xs: dirs) == 0)
+        && (length(xs: entries) == length(xs: falsifier_substrate_long_lane_entries()))
+        && discovery_batch_declares_hermetic(r: r)
+        && (p.spawns_host_compiler == false)
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
+  }
+}
+
 fn falsifier_self_host_wet_budget_declared_holds() -> Bool {
   gunbc_falsifier_self_host_wet_receipt_wall_budget_ms() == 600000
     && gunbc_falsifier_self_host_wet_interp_eval_budget_ms() == 120000
@@ -439,7 +456,8 @@ fn falsifier_plan_structure_holds() -> Bool {
   let probe_enrolled = falsifier_known_red_probe_batch_enrolled()
   let silent_pick_gate_enrolled = falsifier_silent_pick_gate_batch_enrolled()
   let rehomed_enrolled = falsifier_rehomed_bin_wet_batch_enrolled()
-  let expected_batches = 1 + (if wet_enrolled { 1 } else { 0 }) + (if probe_enrolled { 1 } else { 0 }) + (if silent_pick_gate_enrolled { 1 } else { 0 }) + (if rehomed_enrolled { 1 } else { 0 })
+  let substrate_long_enrolled = falsifier_substrate_long_lane_batch_enrolled()
+  let expected_batches = 1 + (if wet_enrolled { 1 } else { 0 }) + (if probe_enrolled { 1 } else { 0 }) + (if silent_pick_gate_enrolled { 1 } else { 0 }) + (if rehomed_enrolled { 1 } else { 0 }) + (if substrate_long_enrolled { 1 } else { 0 })
   let wet_ok = if wet_enrolled {
     let wet_batch = skip(xs: batches, n: 1).first()
     (wet_batch.length() == 1)
@@ -463,12 +481,27 @@ fn falsifier_plan_structure_holds() -> Bool {
   } else {
     true
   }
-  (length(xs: batches) == expected_batches) && predict_ok && wet_ok && probe_ok && silent_pick_gate_ok
+  let rehomed_ok = if rehomed_enrolled {
+    let rehomed_offset = 1 + (if wet_enrolled { 1 } else { 0 }) + (if probe_enrolled { 1 } else { 0 }) + (if silent_pick_gate_enrolled { 1 } else { 0 })
+    let rehomed_batch = skip(xs: batches, n: rehomed_offset).first()
+    (rehomed_batch.length() == 1)
+  } else {
+    true
+  }
+  let substrate_long_ok = if substrate_long_enrolled {
+    let substrate_long_offset = 1 + (if wet_enrolled { 1 } else { 0 }) + (if probe_enrolled { 1 } else { 0 }) + (if silent_pick_gate_enrolled { 1 } else { 0 }) + (if rehomed_enrolled { 1 } else { 0 })
+    let substrate_long_batch = skip(xs: batches, n: substrate_long_offset).first()
+    (substrate_long_batch.length() == 1)
+      && falsifier_substrate_long_lane_batch_holds(r: substrate_long_batch.first())
+  } else {
+    true
+  }
+  (length(xs: batches) == expected_batches) && predict_ok && wet_ok && probe_ok && silent_pick_gate_ok && rehomed_ok && substrate_long_ok
 }
 
 fn witness_cheap_gates_are_resource_anchors() -> Bool {
-  gate_in_cheap_floor_membership(g: LayeringImportsGate)
-    && floor_resource_anchor_node(node: gate_node(g: LayeringImportsGate))
+  gate_in_cheap_floor_membership(g: ExtdepsExternalAuthorityGate)
+    && floor_resource_anchor_node(node: gate_node(g: ExtdepsExternalAuthorityGate))
 }
 
 test fn ci_floor_plan_witnesses() -> Bool {
@@ -496,6 +529,7 @@ test fn ci_floor_plan_witnesses() -> Bool {
     && witness_floor_batch_wall_budgets_cover_schedule()
     && witness_floor_batch_wall_budgets_all_positive()
     && falsifier_rehomed_bin_wet_batch_enrolled()
+    && falsifier_substrate_long_lane_batch_enrolled()
 }
 
 test fn ci_floor_optin_roster_witnesses() -> Bool {

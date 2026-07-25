@@ -458,10 +458,6 @@ fn stack_parses_strict() {
     assert_parses_strict("dag/std/stack.dag");
 }
 
-fn unicode_parses_strict() {
-    assert_parses_strict("dag/std/unicode.dag");
-}
-
 fn core_parses_strict() {
     assert_parses_strict("src/v1/00_core.dag");
 }
@@ -961,7 +957,6 @@ fn floor_suite() -> Vec<WitnessCase> {
             type_param_spans_point_at_identifiers_not_delimiters,
         ),
         ("stack_parses_strict", stack_parses_strict),
-        ("unicode_parses_strict", unicode_parses_strict),
         ("core_parses_strict", core_parses_strict),
         ("tokenize_parses_strict", tokenize_parses_strict),
         ("parse_parses_strict", parse_parses_strict),

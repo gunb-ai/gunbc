@@ -1150,6 +1150,16 @@ fn run_discovery_batch_node(
                     .total_resolve_nanos
                     .saturating_sub(st.attributed_total())),
             );
+            eprintln!(
+                "[assembly-split] schedule={:.1}ms probe={:.1}ms registry={:.1}ms services={:.1}ms rewire={:.1}ms emit_info={:.1}ms residue={:.1}ms",
+                ms(st.assembly_schedule),
+                ms(st.assembly_probe),
+                ms(st.assembly_registry),
+                ms(st.assembly_services),
+                ms(st.assembly_rewire),
+                ms(st.assembly_emit_info),
+                ms(st.reconcile_assembly),
+            );
             match compute_histogram_data(&summary) {
                 Ok(data) => match render_timing_histogram(&source_roots, &data) {
                     Ok(histogram) => eprintln!("{histogram}"),
@@ -2668,7 +2678,6 @@ mod tests {
         };
         let batches = vec![
             vec![
-                cheap("layering_imports_gate_passes"),
                 cheap("extdeps_external_authority_gate_passes"),
                 cheap("generated_artifact_drift_gate_passes"),
             ],

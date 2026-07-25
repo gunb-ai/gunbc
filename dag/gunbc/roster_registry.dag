@@ -63,6 +63,14 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
+    roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "falsifier_substrate_long_lane_rows"),
+    unit_kind: "schedule witness entry (entry file x function)",
+    membership: DeclaredFrontier {
+      reason: "SubstrateInputsOnly ingest/parse pipeline rows re-homed off per-PR discovery because their own eval exceeds the 5s fast-lane budget (test-decomposition Class C); per-row reason and dissolve_on in falsifier_substrate_long_lane_note",
+      dissolve_on: "per row: eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery (or deletes as duplicate); roster-wide, the enforcement-intent registry absorbs the frontier"
+    }
+  },
+  RosterRegistration {
     roster: roster_decl(module_path: "tools.cheap_gate_pool", decl_name: "cheap_claim_pool_claims"),
     unit_kind: "claim run (entry file x function)",
     membership: ByDerivation {

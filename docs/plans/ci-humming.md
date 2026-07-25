@@ -42,7 +42,7 @@ Proper allocation (slice cap + per-slot caps ≤ physical − overhead, **verifi
 ## 4. The carrier (mechanism for T5 + all host config)
 
 - **C1 — std reconcile / verify-ground carrier** (signed signature; home = std): `reconcile_grounded(apply_effect, show_read, grounding) → Converged{evidence} | NotConverged{reason}`, with the §5 type-level invariant that the evidence carrier is constructible only via the grounding over a real read — "verify the realization, not the declaration" promoted to a constructor restriction. valiant-pike-233. (Renamed `reconcile → reconcile_grounded` in PR2 #5720: grounding the fleet oomd evidence newly *executed* this fn inside a closure holding two other `reconcile` fns — `std.realization.reconcile(steps)` and `budget_tree.reconcile` — a latent flat-namespace collision the prior literal had masked; the flat fn namespace itself is the substrate root, operator-steered.)
-- **C2 — `extdeps/os/systemd` unit-mgmt + apt install-effect**: re-homed under `extdeps/os/`, reusing the existing `extdeps.os.systemd` state. valiant-pike-233.
+- **C2 — `extdeps/os/systemd` unit-mgmt + apt install-effect**: re-homed under `extdeps/os/`, reusing the existing `extdeps.systemd` state. valiant-pike-233.
 - **C3 — oomd model + install Realization** (now defense-in-depth, off the critical path): valiant-pike-233 (#5677).
 - **C4 — PXE/autoinstall + GCP keyless token**: neat-boar-71 (+ children).
 - **One emit-from-fleet-model Realization** (§2 regime-2 projection fold): `ci.yml` + `fleet-runner-deploy.manifest` + Ubuntu user-data + `dnsmasq.conf` + the oomd drop-in are all the same projection.

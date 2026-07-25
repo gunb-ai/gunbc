@@ -85,7 +85,7 @@ fn inert_layer_lens_body() -> List<MarkdownBlock> {
         row(cells: [cell(text: "transitive reachability BFS"), cell(text: "`inert_lens_modules`"), cell(text: "`cli_run.rs:2558-2606`")]),
         row(cells: [cell(text: "enumerate all declared concepts"), cell(text: "`concept_index.enumerate_concepts()`"), cell(text: "`concept_index.dag:130`")]),
         row(cells: [cell(text: "use vs structural edge classification"), cell(text: "`unused_parameters` `UseRelation` (`BindsTo` = the use authority)"), cell(text: "`unused_parameters.dag:22`")]),
-        row(cells: [cell(text: "import/reference edge-walk"), cell(text: "`layering_imports` projection"), cell(text: "`layering_imports.dag` + `cli_run.rs:layer_import_facts`")]),
+        row(cells: [cell(text: "import/reference edge-walk"), cell(text: "`v2.std.layer` `LayerImportFact` projection"), cell(text: "`layer.dag` + `cli_run.rs:layer_import_facts`")]),
         row(cells: [cell(text: "run-roots"), cell(text: "floor gates + corpus + pipeline/emit entries"), cell(text: "`ci_floor_plan.dag:83`, `cli_run.rs:run_discovery_corpus`")]),
       ],
     },

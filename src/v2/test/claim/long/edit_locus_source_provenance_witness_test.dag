@@ -10,7 +10,7 @@ import v2.test.lens_affected_set.edit_locus_resolver {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data edit_locus_source_provenance_long_note: String = "Edit-locus source provenance ingest witnesses exceed the per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note)."
+data edit_locus_source_provenance_long_note: String = "Class C live-grain half (test-decomposition-wcf-cut, 2026-07-25): edit-locus source provenance ingest/parse pipeline witnesses exceed the per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note). Enrolled on falsifier_substrate_long_lane_entries (nightly falsifier batch 6). Per-PR fixture-wall coverage: affected_set_provenance_producer_test.dag + sg_claims_test.dag selectivity receipts."
 
 test fn edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
   edit_locus_source_provenance_affected_set_wire_holds()
