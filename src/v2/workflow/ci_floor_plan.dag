@@ -2,7 +2,11 @@ module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, known_red_probe_entries, falsifier_silent_pick_gate_entries, falsifier_rehomed_bin_wet_entries }
-import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries, falsifier_native_cache_cold_roster }
+import v2.compiler.self_host.wet_receipt_enrollment {
+  falsifier_self_host_wet_entries,
+  falsifier_native_cache_cold_roster,
+  falsifier_self_host_wet_cadence_is_active
+}
 import v2.compiler.self_host.native_routing_frontier { native_routed_rows, NativeRoutingFrontierRow }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
@@ -807,10 +811,11 @@ fn gunbc_falsifier_predict_only_batch() -> Runnable {
   }
 }
 
-data falsifier_self_host_wet_batch_note: String = "Nightly falsifier batch 2 (Wave 2 CI substrate): the declared Wet lane for emit->compile->run->equals-seed self-host behavioral receipts (v2.compiler.self_host.wet_receipt_enrollment falsifier_self_host_wet_entries — template + frontier-flipped SelfEmitted bindings only; see falsifier_self_host_wet_note in gunbc.ci_layer_roots). Gate-4 std/logic is the inaugural green template; compiler modules enroll when frontier rows flip SelfEmitted with a declared binding — never known-red. Whole-receipt wall budget: gunbc_falsifier_self_host_wet_receipt_wall_budget. Runs SelectionApplied after the hermetic predict-only affected-set sweep; claim_executor halts batch 2 if batch 1 fails (fail-closed)."
+data falsifier_self_host_wet_batch_note: String = "Nightly falsifier batch 2 (Wave 2 CI substrate): the declared Wet lane for emit->compile->run->equals-seed self-host behavioral receipts (v2.compiler.self_host.wet_receipt_enrollment falsifier_self_host_wet_entries — template + frontier-flipped SelfEmitted bindings only; see falsifier_self_host_wet_note in gunbc.ci_layer_roots). Gate-4 std/logic is the inaugural green template; compiler modules enroll when frontier rows flip SelfEmitted with a declared binding — never known-red. Whole-receipt wall budget: gunbc_falsifier_self_host_wet_receipt_wall_budget. Runs SelectionApplied after the hermetic predict-only affected-set sweep; claim_executor halts batch 2 if batch 1 fails (fail-closed). REHOME 2026-07-25: enrollment gated on falsifier_self_host_wet_cadence_is_active (currently false — see falsifier_self_host_wet_cadence_rehome_note); roster retained for local recipe."
 
 fn falsifier_self_host_wet_batch_enrolled() -> Bool {
-  length(xs: falsifier_self_host_wet_entries()) > 0
+  falsifier_self_host_wet_cadence_is_active()
+    && (length(xs: falsifier_self_host_wet_entries()) > 0)
 }
 
 data falsifier_known_red_probe_batch_note: String = "Nightly falsifier batch 3 (Phase 0(b) admission invariant): the declared Hermetic probe lane for known-red quarantined witnesses (gunbc.ci_layer_roots known_red_probe_entries — see known_red_probe_note). Runs SelectionApplied after the wet self-host batch; EXPECT RED on main so greening is a counted un-quarantine event, never a hand discovery. Distinct from falsifier_self_host_wet (green-only SelfEmitted receipts)."

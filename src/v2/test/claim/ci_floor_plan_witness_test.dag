@@ -40,6 +40,7 @@ import v2.workflow.ci_floor_plan {
   gunbc_falsifier_self_host_wet_receipt_wall_budget_ms,
   gunbc_falsifier_self_host_wet_interp_eval_budget_ms,
   gunbc_ci_fast_lane_eval_budget_ms,
+  falsifier_self_host_wet_batch_enrolled,
   falsifier_known_red_probe_batch_enrolled,
   falsifier_silent_pick_gate_batch_enrolled,
   falsifier_rehomed_bin_wet_batch_enrolled,
@@ -435,7 +436,7 @@ fn falsifier_plan_structure_holds() -> Bool {
   let batches = gunbc_falsifier_batches()
   let predict_ok = (batches.first().length() == 1)
     && falsifier_predict_only_batch_holds(r: batches.first().first())
-  let wet_enrolled = length(xs: falsifier_self_host_wet_entries()) > 0
+  let wet_enrolled = falsifier_self_host_wet_batch_enrolled()
   let probe_enrolled = falsifier_known_red_probe_batch_enrolled()
   let silent_pick_gate_enrolled = falsifier_silent_pick_gate_batch_enrolled()
   let rehomed_enrolled = falsifier_rehomed_bin_wet_batch_enrolled()

@@ -240,9 +240,9 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   },
   WitnessExclusionRow {
     pattern: "namespace_import_closure_witness_test.dag",
-    classification: FalsifierSelfHostWet,
-    reason: "runs on the falsifier nightly Wet cadence via wet_receipt_enrollment explicit rows (falsifier_self_host_wet_note)",
-    dissolve_on: "the receipt proves cheap enough for per-PR admission (falsifier_self_host_wet_note); row deletes"
+    classification: OfflineLocalRecipe,
+    reason: "REHOME 2026-07-25: was FalsifierSelfHostWet on the affected-set falsifier wet cadence; cadence inactive (falsifier_self_host_wet_cadence_rehome_note) — local recipe claim_batch --wet until a separate build-verification cadence owns it",
+    dissolve_on: "falsifier_self_host_wet_cadence_active flips true (or a dedicated wet workflow enrolls this row); classification returns to FalsifierSelfHostWet"
   },
   WitnessExclusionRow {
     pattern: "self_host_parse_engine_hooks_behavioral_witness_test.dag",

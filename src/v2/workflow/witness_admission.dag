@@ -19,7 +19,11 @@ import gunbc.ci_layer_roots {
   falsifier_silent_pick_gate_entries,
   falsifier_rehomed_bin_wet_entries
 }
-import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries, falsifier_native_cache_cold_roster }
+import v2.compiler.self_host.wet_receipt_enrollment {
+  falsifier_self_host_wet_entries,
+  falsifier_native_cache_cold_roster,
+  falsifier_self_host_wet_cadence_is_active
+}
 import std.realization_schedule {
   ScheduleWitnessEntry,
   schedule_witness_entry_eq,
@@ -77,7 +81,11 @@ fn consumer_for_explicit_rosters(entry: String, function: String) -> WitnessCons
     entry: entry,
     function: function
   ) {
-    FalsifierSelfHostWet
+    if falsifier_self_host_wet_cadence_is_active() {
+      FalsifierSelfHostWet
+    } else {
+      OfflineLocalRecipe
+    }
   } else if schedule_contains_entry(
     xs: falsifier_native_cache_cold_roster(),
     entry: entry,
@@ -264,16 +272,20 @@ fn witness_exclusion_explicit_roster_rows_consistent_holds() -> Bool {
 }
 
 fn witness_exclusion_falsifier_rows_consistent_holds() -> Bool {
-  !any(
-    xs: witness_exclusion_frontier,
-    predicate: fn(row) {
-      witness_exclusion_row_is_falsifier_wet(row: row)
-        && !schedule_entries_cover_pattern(
-          xs: falsifier_self_host_wet_entries(),
-          pattern: row.pattern
-        )
-    }
-  )
+  if !falsifier_self_host_wet_cadence_is_active() {
+    true
+  } else {
+    !any(
+      xs: witness_exclusion_frontier,
+      predicate: fn(row) {
+        witness_exclusion_row_is_falsifier_wet(row: row)
+          && !schedule_entries_cover_pattern(
+            xs: falsifier_self_host_wet_entries(),
+            pattern: row.pattern
+          )
+      }
+    )
+  }
 }
 
 fn witness_whole_tree_resolve_exclusion_concat_authority_holds() -> Bool {

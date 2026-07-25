@@ -9,7 +9,6 @@ import v2.workflow.witness_admission {
 import std.witness_admission {
   FalsifierRehomedBinWet,
   WitnessConsumerCadence,
-  FalsifierSelfHostWet,
   BinWitnessWet,
   QuarantineProbeExpectRed,
   OfflineLocalRecipe,
@@ -78,7 +77,7 @@ fn witness_field_access_wet_falsifier_consumer_holds() -> Bool {
     function: "emit_on_demand_field_access_family_witnesses",
     excluded_from_discovery: true
   ) {
-    FalsifierSelfHostWet => true
+    OfflineLocalRecipe => true
     _ => false
   }
 }
@@ -89,7 +88,7 @@ fn witness_complement_wet_falsifier_consumer_holds() -> Bool {
     function: "emit_on_demand_complement_family_witnesses",
     excluded_from_discovery: true
   ) {
-    FalsifierSelfHostWet => true
+    OfflineLocalRecipe => true
     _ => false
   }
 }

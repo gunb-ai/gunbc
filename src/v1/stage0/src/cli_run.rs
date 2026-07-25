@@ -9676,8 +9676,12 @@ fn failure_receipt_companion(function: &str) -> Option<String> {
 }
 
 /// Run a witness companion that returns `String` divergence detail (Lane B agreement loudness).
-/// Empty string = no divergence detail (clean companion). Non-empty refusal sentinel on
-/// interpreter error or wrong type — never silent None (review 41847, §5).
+/// Empty string = no divergence detail (clean companion **or** companion not declared).
+/// Non-empty refusal sentinel on wrong type / non-missing interpreter error — never silent
+/// None when a companion *is* declared (review 41847, §5). A missing companion
+/// (`NoSuchFunction` / `NoMainFunction` from the `_holds` → `_failure_receipt` naming
+/// convention) is "not declared", not a refused receipt — the auto-derived name must not
+/// invent a required loudness hook for every Bool(false) witness.
 pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: &str) -> String {
     match v1_interpreter::run_in_context(ctx, function, false) {
         Ok(v1_interpreter::Value::Str(s)) => s,
@@ -9685,6 +9689,8 @@ pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: 
             "failure_receipt_refused: {function} returned {}, expected String",
             ctx.format_value(&other)
         ),
+        Err(v1_interpreter::InterpError::NoSuchFunction { .. })
+        | Err(v1_interpreter::InterpError::NoMainFunction) => String::new(),
         Err(e) => format!("failure_receipt_refused: {function}: {e}"),
     }
 }
