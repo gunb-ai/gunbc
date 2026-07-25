@@ -1,0 +1,228 @@
+module gunbc.econ.scm_serving_model
+
+import extdeps.pricing.object_storage {
+  BinaryGibibyte,
+  ByteBasis,
+  ByteBasisUnstated,
+  DecimalGigabyte,
+  ObjectStorageClassRow,
+  ObjectStorageEgressRow,
+  ObjectStorageRequestRow,
+  egress_rate_micros,
+  storage_rate_micros,
+  storage_vendor_eq,
+}
+import std.measure {
+  ByteSize,
+  byte_size,
+  byte_size_count,
+  money_per_million_requests_micros,
+}
+import std.nat { Nat }
+import std.types { NonEmptyStr }
+
+data scm_serving_model_note: String = "How to compute an SCM's serving bill from workload primitives instead of guessing at a monthly number. Four axes, each derived from the profile and each priced by its own cited vendor row (extdeps.pricing.object_storage): CAPACITY held (stored bytes after dedup, times a billing month), NETWORK moved (egress bytes -- clones and fetches leaving the network), OPERATIONS counted (object reads and writes, the axis most models forget entirely), and COMPUTE, which is deliberately NOT modeled here because it already has carriers: gunbc.econ.knowable_wedge prices CI minutes against cited runner rows and gunbc.econ.free_tier_serving prices self-managed boxes. Storing a second compute model here would be the dual representation DESIGN section 3 forbids."
+
+data replication_double_count_note: String = "The replica-count multiplication that gunbc.econ.free_tier_serving applies to Hetzner DEDICATED boxes must NOT be applied to these object-storage rates. A cited object-storage GB-month already buys eleven-nines durability (extdeps.pricing.object_storage durability_standard_note), i.e. the vendor's own erasure-coded redundancy across facilities; multiplying it by a replica count charges twice for redundancy already purchased. Self-managed block storage is the opposite case -- one box is one copy, so replicas are the modeler's responsibility. Two storage realizations, two different cost shapes, one reason: who owns the durability."
+
+type ScmWorkloadProfile {
+  user_count: Nat
+  stored_bytes_per_user_after_dedup: ByteSize
+  monthly_egress_bytes_per_user: ByteSize
+  monthly_object_reads_per_user: Nat
+  monthly_object_writes_per_user: Nat
+}
+
+type ByteBasisAssumption
+  = BasisAssumed { basis: ByteBasis, rationale: NonEmptyStr }
+  | BasisUnknown
+
+type ScmUsageRefusalCause
+  = UserCountZero
+  | StoredBytesPerUserZero
+  | BasisAssumptionUnknown
+  | BasisAssumptionUnstated
+  | BasisContradictsCitedRow
+  | StorageRateUnavailable
+  | EgressRateUnavailable
+  | VendorMismatchAcrossRows
+
+type ScmUsage {
+  stored_billing_units: Nat
+  egress_billing_units: Nat
+  object_reads: Nat
+  object_writes: Nat
+}
+
+type ScmUsageResult
+  = ScmUsageDerived { usage: ScmUsage }
+  | ScmUsageRefused { cause: ScmUsageRefusalCause }
+
+type ScmMonthlyCostResult
+  = ScmMonthlyCostDerived {
+      storage_micros: Nat,
+      egress_micros: Nat,
+      operations_micros: Nat,
+      total_micros: Nat,
+    }
+  | ScmMonthlyCostRefused { cause: ScmUsageRefusalCause }
+
+fn decimal_gigabyte_bytes() -> Nat {
+  1000000000
+}
+
+fn binary_gibibyte_bytes() -> Nat {
+  1073741824
+}
+
+data billing_unit_rounding_note: String = "Vendors round a partial billing unit UP (Cloudflare states it outright: 'Cloudflare rounds up your usage to the next billing unit'), so bytes convert to billing units by ceiling division, never truncation. Truncating would under-state every bill by up to one unit per axis -- small at these sizes, wrong at every size."
+
+fn bytes_to_billing_units(bytes: Nat, basis: ByteBasis) -> Nat? {
+  match basis {
+    DecimalGigabyte => {
+      let d = decimal_gigabyte_bytes()
+      Present { value: ((bytes + d) - 1) / d }
+    }
+    BinaryGibibyte => {
+      let d = binary_gibibyte_bytes()
+      Present { value: ((bytes + d) - 1) / d }
+    }
+    ByteBasisUnstated => none
+  }
+}
+
+fn assumed_basis(assumption: ByteBasisAssumption) -> ByteBasis? {
+  match assumption {
+    BasisAssumed { basis: b, rationale: _ } =>
+      match b {
+        ByteBasisUnstated => none
+        _ => Present { value: b }
+      }
+    BasisUnknown => none
+  }
+}
+
+data basis_reconciliation_note: String = "A cited row that DOES state its byte basis (Google's replication row states GiB) outranks the caller's assumption: if they disagree the derivation refuses with BasisContradictsCitedRow rather than silently preferring either. A row whose basis is ByteBasisUnstated -- every storage row in the catalogue today -- accepts the declared assumption, because that is exactly the knowable-wedge shape: proceed on a declared assumption, refuse on an absent one."
+
+fn basis_compatible_with_row(row_basis: ByteBasis, assumed: ByteBasis) -> Bool {
+  match row_basis {
+    ByteBasisUnstated => true
+    DecimalGigabyte => match assumed { DecimalGigabyte => true  _ => false }
+    BinaryGibibyte => match assumed { BinaryGibibyte => true  _ => false }
+  }
+}
+
+fn derive_scm_usage(
+  profile: ScmWorkloadProfile,
+  assumption: ByteBasisAssumption,
+) -> ScmUsageResult {
+  match assumed_basis(assumption: assumption) {
+    Present { value: basis } => {
+      let per_user_stored = byte_size_count(b: profile.stored_bytes_per_user_after_dedup)
+      let per_user_egress = byte_size_count(b: profile.monthly_egress_bytes_per_user)
+      if profile.user_count <= 0 {
+        ScmUsageRefused { cause: UserCountZero }
+      } else if per_user_stored <= 0 {
+        ScmUsageRefused { cause: StoredBytesPerUserZero }
+      } else {
+        let stored_bytes = profile.user_count * per_user_stored
+        let egress_bytes = profile.user_count * per_user_egress
+        match bytes_to_billing_units(bytes: stored_bytes, basis: basis) {
+          Present { value: stored_units } =>
+            match bytes_to_billing_units(bytes: egress_bytes, basis: basis) {
+              Present { value: egress_units } =>
+                ScmUsageDerived {
+                  usage: ScmUsage {
+                    stored_billing_units: stored_units,
+                    egress_billing_units: egress_units,
+                    object_reads: profile.user_count * profile.monthly_object_reads_per_user,
+                    object_writes: profile.user_count * profile.monthly_object_writes_per_user,
+                  }
+                }
+              _ => ScmUsageRefused { cause: BasisAssumptionUnstated }
+            }
+          _ => ScmUsageRefused { cause: BasisAssumptionUnstated }
+        }
+      }
+    }
+    _ => ScmUsageRefused { cause: BasisAssumptionUnknown }
+  }
+}
+
+fn requests_cost_micros(count: Nat, row: ObjectStorageRequestRow) -> Nat {
+  (count * money_per_million_requests_micros(q: row.per_million)) / 1000000
+}
+
+fn derive_scm_monthly_cost(
+  profile: ScmWorkloadProfile,
+  storage_row: ObjectStorageClassRow,
+  egress_row: ObjectStorageEgressRow,
+  read_row: ObjectStorageRequestRow,
+  write_row: ObjectStorageRequestRow,
+  assumption: ByteBasisAssumption,
+) -> ScmMonthlyCostResult {
+  match assumed_basis(assumption: assumption) {
+    Present { value: basis } =>
+      if !all_rows_same_vendor(storage_row: storage_row, egress_row: egress_row, read_row: read_row, write_row: write_row) {
+        ScmMonthlyCostRefused { cause: VendorMismatchAcrossRows }
+      } else if !basis_compatible_with_row(row_basis: cited_storage_basis(row: storage_row), assumed: basis) {
+        ScmMonthlyCostRefused { cause: BasisContradictsCitedRow }
+      } else if !basis_compatible_with_row(row_basis: cited_egress_basis(row: egress_row), assumed: basis) {
+        ScmMonthlyCostRefused { cause: BasisContradictsCitedRow }
+      } else {
+        match storage_rate_micros(row: storage_row) {
+          Present { value: storage_rate } =>
+            match egress_rate_micros(row: egress_row) {
+              Present { value: egress_rate } =>
+                match derive_scm_usage(profile: profile, assumption: assumption) {
+                  ScmUsageDerived { usage: u } => {
+                    let storage_micros = u.stored_billing_units * storage_rate
+                    let egress_micros = u.egress_billing_units * egress_rate
+                    let operations_micros = requests_cost_micros(count: u.object_reads, row: read_row) + requests_cost_micros(count: u.object_writes, row: write_row)
+                    ScmMonthlyCostDerived {
+                      storage_micros: storage_micros,
+                      egress_micros: egress_micros,
+                      operations_micros: operations_micros,
+                      total_micros: (storage_micros + egress_micros) + operations_micros,
+                    }
+                  }
+                  ScmUsageRefused { cause: c } => ScmMonthlyCostRefused { cause: c }
+                }
+              _ => ScmMonthlyCostRefused { cause: EgressRateUnavailable }
+            }
+          _ => ScmMonthlyCostRefused { cause: StorageRateUnavailable }
+        }
+      }
+    _ => ScmMonthlyCostRefused { cause: BasisAssumptionUnknown }
+  }
+}
+
+data vendor_mismatch_guard_note: String = "A bill assembled from one vendor's storage rate and another's egress rate is the cheapest-looking and most wrong number in this whole area -- it is how 'S3 with free egress' gets into a spreadsheet. The four rows must name ONE vendor or the derivation refuses, so that blend is unwritable rather than merely discouraged (DESIGN section 5, construction over validation)."
+
+fn all_rows_same_vendor(
+  storage_row: ObjectStorageClassRow,
+  egress_row: ObjectStorageEgressRow,
+  read_row: ObjectStorageRequestRow,
+  write_row: ObjectStorageRequestRow,
+) -> Bool {
+  storage_vendor_eq(a: storage_row.vendor, b: egress_row.vendor)
+    && storage_vendor_eq(a: storage_row.vendor, b: read_row.vendor)
+    && storage_vendor_eq(a: storage_row.vendor, b: write_row.vendor)
+}
+
+fn cited_storage_basis(row: ObjectStorageClassRow) -> ByteBasis {
+  match row.storage_rate {
+    RateCited { rate: _, quoted_unit_label: _, byte_basis: b } => b
+    RateUnavailable { cause: _ } => ByteBasisUnstated
+  }
+}
+
+fn cited_egress_basis(row: ObjectStorageEgressRow) -> ByteBasis {
+  match row.egress_rate {
+    TransferCited { rate: _, quoted_unit_label: _, byte_basis: b } => b
+    TransferIncludedAtNoCharge { terms: _ } => ByteBasisUnstated
+    TransferUnavailable { cause: _ } => ByteBasisUnstated
+  }
+}
+
+data egress_dominance_note: String = "The reason this model separates network from capacity rather than quoting one blended number: for an SCM they diverge by more than an order of magnitude. A git host's read traffic is clones and fetches -- bytes LEAVING the network -- so egress scales with developer activity while stored bytes scale only with distinct content, and content-addressed dedup deliberately flattens the second. On a metered-egress vendor the network term therefore dominates the bill; on a zero-egress vendor it vanishes and capacity dominates. The witness sizes both against the SAME profile, so the spread is a derived fact rather than a claim."
