@@ -1,5 +1,9 @@
 module v1.compiler.trait_derive_emit
 
+// #7174 scope (operator 2026-07-25): (a) clone bounds on generic params; (c) serde/Debug/Ord
+// #[derive] on named structs/enums via std.trait_derive_shape. Arm (b) coproduct-native
+// arithmetic impl blocks — GroupCompletion grounding lane; not wired here.
+
 import v1.compiler.infer_types { child_type_node }
 import v1.std.core {
   Node, NewlineIndex, authored_name_at, generic_param_name_at, param_node_type_expr,
