@@ -40,6 +40,13 @@ data go_algebra_inhabitants: List<InhabitantDecl> = [
     import_path: none,
     is_copy: none },
 
+  { algebra: "PointwisePower",
+    template: "map[\{0\}]struct{}",
+    arity: 1,
+    identity_expr: "nil",
+    import_path: none,
+    is_copy: none },
+
   { algebra: "PartialFunction",
     template: "map[\{0\}]\{1\}",
     arity: 2,

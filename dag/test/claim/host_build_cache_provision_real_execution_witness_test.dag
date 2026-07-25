@@ -2,10 +2,12 @@ module test.claim.host_build_cache_provision_real_execution
 
 import std.logic { Bool }
 import extdeps.shell
-import extdeps.shell.exec { transport_script_from_body }
+import gunbc.retained_shell_script { retained_runtime }
 import extdeps.filesystem.filesystem_io
 import gunbc.shell_bash_runner { shell_exec_via_bash }
-import gunbc.host_build_cache_provision_script { build_cache_read_back_body }
+import gunbc.host_build_cache_provision_script {
+  build_cache_read_back_body,
+}
 import gunbc.host_effect_realize {
   provision_build_cache_reconcile_shell_observed,
   ShellExecObserved,
@@ -15,38 +17,60 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data real_execution_home_doc: String = "Wet execution witness for ProvisionBuildCache read-back fail-closed: runs build_cache_read_back_body under set -euo pipefail with a PATH-prepended fake sccache that always exits 1, then asserts provision_build_cache_reconcile_shell_observed returns NotConverged (not Converged/ExitSuccess). Excluded from hermetic discovery and enrolled in bin_witness_wet_entries — shell.Mktemp.Dir / Filesystem.Write / shell.Exec.Run have no mock_response. RED control: a regressing script that implicit-exit-0 on failed read-back would reconcile Converged and fail this witness."
+data real_execution_home_doc: String = "Wet execution witness for ProvisionBuildCache fail-closed behaviour: it runs a real bash body against a real fake-sccache on disk. read-back — the modeled binary answers non-zero, so the reconcile must be NotConverged, never Converged/ExitSuccess; the fake lives at an explicit OFF-PATH path passed as the read-back body's `binary` argument, so this witness exercises the read-back arm on the binary this lane provisioned. The earlier PATH-shadow shell witnesses were withdrawn 2026-07-24 (review 42343): the PATH-shadow judgement is proven at the MODEL grain (host_build_cache_provision_design_witness_test.design_witness_path_shadow_refuses_fail_closed) and its live observation is staged on the typed-argv dissolve-on (#5828), not emitted as hand-shell. Excluded from hermetic discovery and enrolled in bin_witness_wet_entries — shell.Mktemp.Dir / Filesystem.Write / shell.Exec.Run have no mock_response. Transport scripts mint through the counted retained_runtime bridge (shell-to-dag section 5.E construction wall, #7184), never the deleted free-minter."
 
-test fn provision_read_back_failure_not_converged_by_real_execution() -> Bool {
-  let dir = shell.Mktemp.Dir()
-  let fake_sccache_path = concat(dir.path as String, "/sccache")
-  let wrote = Filesystem.Write(path: fake_sccache_path, content: "#!/bin/sh\nexit 1\n")
-  let chmod = shell.Exec.Run(script: transport_script_from_body(body: concat("chmod +x ", fake_sccache_path)))
-  let body = concat(
-    "set -euo pipefail\n",
-    concat(
-      concat("export PATH=\"", dir.path as String),
-      concat(":$PATH\"\n", build_cache_read_back_body()),
+fn write_fake_sccache(dir_path: String, exit_code: String) -> Bool {
+  let path = concat(dir_path, "/sccache")
+  let wrote = Filesystem.Write(
+    path: path,
+    content: concat("#!/bin/sh\nexit ", concat(exit_code, "\n")),
+  )
+  let chmod = shell.Exec.Run(
+    script: retained_runtime(
+      body: concat("chmod +x ", path),
+      reason: "build-cache provision witness chmod +x fake sccache stub" as NonEmptyStr,
     ),
   )
-  let script = shell_exec_via_bash(body: body)
-  let result = shell.Exec.Run(script: transport_script_from_body(body: script))
-  let observed = ShellExecObserved {
+  wrote.success && chmod.success
+}
+
+fn run_body(prelude: String, body: String) -> ShellExecObserved {
+  let full = concat("set -euo pipefail\n", concat(prelude, body))
+  let result = shell.Exec.Run(
+    script: retained_runtime(
+      body: shell_exec_via_bash(body: full),
+      reason: "build-cache provision witness body under fake failing sccache" as NonEmptyStr,
+    ),
+  )
+  ShellExecObserved {
     exit_code: result.exit_code,
     success: result.success,
     stdout: result.stdout,
     stderr: result.stderr,
   }
+}
+
+test fn provision_read_back_failure_not_converged_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let fake_sccache_path = concat(dir.path as String, "/sccache")
+  let seeded = write_fake_sccache(dir_path: dir.path as String, exit_code: "1")
+  let observed = run_body(
+    prelude: "",
+    body: build_cache_read_back_body(binary: fake_sccache_path),
+  )
   let reconciled = provision_build_cache_reconcile_shell_observed(observed: observed)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success
-    && wrote.success
-    && chmod.success
-    && !result.success
+    && seeded
+    && !observed.success
+    && string_contains(s: observed.stdout, pattern: "read_back=FAILED")
     && cleaned.success
     && match reconciled {
       NotConverged { reason: why, applied: _ } =>
         string_contains(s: why, pattern: "fail-closed")
+          && string_contains(s: why, pattern: "ProvisionBuildCache")
       Converged { evidence: _, applied: _ } => false
     }
 }
+
+data path_authority_observation_staged_note: String = "The two live PATH-shadow shell witnesses that lived here (refuses-healthy-shadowing / passes-when-no-sccache) were removed 2026-07-24 (review 42343): the shell observation they exercised grew the A5 census scaffold's emitted surface, so it was withdrawn and the PATH-shadow judgement is now proven at the MODEL grain only (host_build_cache_provision_design_witness_test.design_witness_path_shadow_refuses_fail_closed, a synthetic DaemonPathShadowed -> RefusalPathShadowed fold). The live observation is staged on the typed-argv dissolve-on (#5828); its real-execution witness returns when the observation is a typed op (shell.Which.Check), not hand-shell."

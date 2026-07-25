@@ -24,8 +24,8 @@ filename is the final segment.
    Example: `module v2.test.lens_cost.atom_zero` →
    `src/v2/test/claim/lens_cost/atom_zero.dag`
 
-   Example (deeper): `module v2.test.layering_imports.scanner.std_v4_prefix` →
-   `src/v2/test/claim/layering_imports/scanner/std_v4_prefix.dag`
+   Example (deeper): `module v2.test.host_language_transport_script.corpus.migrated_transports_clean` →
+   `src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean.dag`
 
 4. **Layer roots** (`std`, `extdeps`, `compiler`, `lens`, `workflow`, …) hold
    implementation authority. Bool-witness / TestClaim corpus lives under

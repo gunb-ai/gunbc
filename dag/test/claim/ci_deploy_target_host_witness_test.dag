@@ -112,6 +112,10 @@ fn witness_access_host_is_srv1() -> Bool {
     }
 }
 
+fn witness_observed_hostname_reads_typed_op_hermetic() -> Bool {
+  deploy_target_host_observed_hostname() == "localhost"
+}
+
 test fn ci_deploy_target_host_witnesses() -> Bool {
   witness_srv1_hostname_proves_target()
     && witness_srv2_hostname_refused_for_srv1_deploy()
@@ -125,4 +129,5 @@ test fn ci_deploy_target_host_witnesses() -> Bool {
     && witness_ci_yml_deploy_job_pins_srv1_runner()
     && witness_local_proof_requires_host_identity()
     && witness_access_host_is_srv1()
+    && witness_observed_hostname_reads_typed_op_hermetic()
 }

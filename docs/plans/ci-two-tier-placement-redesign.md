@@ -82,8 +82,10 @@ regen cold control, divergence counting. A red is loud and blocks/reverts on mai
 
 ## 5. Dependency graph (exact)
 
-(Logical dependencies only — **delivery is compressed to one redesign PR**, §8; D0 is routed
-to the #7129 worker as its own close-out PR and sequenced first.)
+(Logical dependencies only — **delivery is compressed to one redesign PR**, §8. The earlier
+routing of D0's close-out to the #7129 worker as its own "PR-0" is DISSOLVED by the §8
+delivery restructure: #7162 carries D0's fixes along with everything else; every "PR-0"
+mention below is a historical reference to that dissolved split.)
 
 ```
 D0 #7129 — MERGED (bd5afd6bc3), NOT closed: whole-schedule arming hoist
@@ -106,8 +108,13 @@ D1 child-spawn dissolution — LANDED on main (#7122 one-child-per-call,
 D1b (deferred — §9.6) in-process claims: run_claims_in_process landed
     with #7129 (cli_run.rs:9580), INACTIVE; activation gated on D0
     close-out + its three fixes. NOT in PR-1.
-D4 selection-control step deletion — PRECONDITION: the falsifier cadence
-    must be green first (today it is red 5/5 by crawl-timeout, §10 row 2)
+D4 selection-control step deletion — precondition NORMALIZED per §8's
+    restructure: a main-cadence green is impossible pre-merge by
+    construction (the falsifier's fix, D0, is inside #7162), so the
+    deletion receipt is a BRANCH falsifier run post-D0 (add
+    workflow_dispatch to falsifier.yml if absent); D4 rides #7162 iff
+    that green run exists at landing. The per-PR audit stays the working
+    control until #7162 merges.
 D5 DiffBaseline fix — independent; unblocks stacked-PR selection
 ```
 
@@ -250,7 +257,13 @@ one PR.** Structure:
   quarantine roster (each row reason + dissolve-on — the §7 frontier shape, not a silent
   skip). **D4 rides in-PR with the branch-falsifier receipt** (see the delivery restructure
   above — a main-cadence green is impossible pre-merge by construction). D1 needs nothing
-  here (landed); D1b stays excluded (§9.6). Each piece carries its own witness battery so review is per-piece, but the landing
+  here (landed); D1b stays excluded (§9.6). **Integration ruling (operator, 2026-07-24): the
+  observation stack (P0–P3, the #7168 branch) merges INTO this PR** — the #7162 worker
+  performs the merge and wires the five rostered emit families to stream projections now
+  (the raw-eprintln residue stays a counted frontier until the remaining floor pieces land),
+  so the emit sites are rewritten once and every subsequent run demos the new log format
+  upfront — including clamp refusals rendering with their derived arithmetic. #7168 closes
+  as absorbed. Each piece carries its own witness battery so review is per-piece, but the landing
   is atomic — and so is the revert: one `git revert` restores today's process wholesale. The
   concentration is deliberate and operator-chosen.
   **Two stage collapses (operator-blessed 2026-07-24 — "too many stages" review):** (a) the
@@ -325,8 +338,9 @@ widen a budget to absorb it** (§5; the absorbing-fallback rule applied to our o
    inherits cross-owner `cli_run.rs` surgery — the drag the single-PR directive exists to
    avoid. (Weight shifted 2026-07-24 by the implementer's read: D1b absorbs only 2 of the 6
    residual children and does not remove their per-entry resolves — §5.)
-7. **D4 delivery shape** — resolved per review finding 5: fast-follow micro-PR after the
-   first green falsifier cadence post-PR-0; PR-1 does not wait on it (§8).
+7. **D4 delivery shape** — SUPERSEDED by §8's delivery restructure (this row's fast-follow
+   micro-PR shape predates it): D4 rides #7162 iff a green branch-falsifier run exists at
+   landing; no separate micro-PR, no PR-0. Kept as the record of the earlier resolution.
 8. **Batch-3 budget × hub-file selection — PR-1 will hit this wall; decide the raise now.**
    Live receipt (run 30063529282, 2026-07-24, srv4-05): a one-token edit to `ci_spec.dag` +
    `design_document.dag` selected the full corpus — 2,315 witnesses, **all PASS**, RSS 8.9 GB
@@ -349,47 +363,66 @@ widen a budget to absorb it** (§5; the absorbing-fallback rule applied to our o
    `budget = fixed_overhead + selected_units × per_unit_rate[host_class]`, with the per-unit
    rate the operator-signed constant (it is the regression dial the humans already compute by
    hand in every one of these triages) and the 55-min step timeout staying the absolute
-   backstop. **Operator ruling (2026-07-24): no interim raise — the clamp model lands with
-   PR-1 atomically.** The signed shape is TWO constants per unit class, with different jobs:
+   backstop. **Tree reconciliation (post-merge review, 2026-07-24): the stopgap raise LANDED
+   independently via #7137** — `gunbc_ci_floor_batch_wall_budget_seconds[2]` went 1320 → 1440
+   → 1680, both raises operator-signed on the carrier's note with run ids (operator's word on
+   the second: "we're redoing it completely anyway"). The "no interim raise" ruling recorded
+   here is therefore normalized to what it means against the tree: **no further raises** —
+   the clamp model lands with PR-1 atomically and the hand-set rows delete then. The signed
+   shape is TWO constants per unit class, with different jobs:
    a **hard max per unit** (witness: 5s — the existing fast-lane authority, unchanged, typed
    refusal per witness) and an **expected average** as the aggregate coefficient (witness:
    1s). Batch clamp = overhead + units × average (full corpus ≈ 300s + 2,316 × 1s ≈ 44 min,
    under the 55-min cap, ~1.6× the honest healthy wall — catches runaway quickly, never
    refuses legitimate work); the per-unit max protects the tail the average can't see.
+   **Constant basis — record it on the signed row (review addition, 2026-07-24):** the 1s
+   average is denominated in effective WALL per unit at the floor's current worker width on
+   fleet-class hosts (observed full-corpus rate ~0.58–0.70 s/witness) — host speed AND
+   parallel width are folded into the constant; the earlier `rate[host_class]` axis was
+   dropped silently when the two-constant shape was signed. Fine under today's ~1.6×
+   headroom, but a width or fleet change re-prices the constant, so the signed row must name
+   its basis (host class × width) and a change on either axis is a deliberate re-sign, never
+   a rediscovered fleet-wide-red episode. **Creep has no durable home yet, give it one:**
+   the clamp catches runaway (≥ ~1.6×); the regression dial (s/unit) renders in the
+   observation heartbeat and grounds AttentionLevel — visible only while a human watches.
+   The gauntlet cadence therefore appends a per-run s/unit rate receipt row (host, units,
+   wall) so cost creep is counted and trendable — a Notable that recurs across cadence
+   windows becomes a filed row, not a memory.
    Changing either constant requires an appended operator-signed line (the existing
    `budget_note` discipline re-pointed at these constants; the unit count needs no signature —
    the schedule computes it). The hand-set `gunbc_ci_floor_batch_wall_budget_seconds` rows
    delete. These clamps are declared interim mechanics: the structural wall is the complexity
    lens (§8 — every clamp is `cost ≤ a + b·n`, the linearity assertion the lens makes
    structurally at compile time), and the clamp demotes to host-pathology backstop when the
-   lens goes Blocking.
+   lens goes Blocking — demotes, never deletes: the lens asserts structural linearity, not
+   constants or host pathology, so the clamp stays the permanent backstop.
 
 Sign-offs recorded here with name + date once reviewed.
 
 ## 10. Issue-closure checklist (operator-requested 2026-07-24; worked through by execution before review)
 
 Every issue from the 2026-07-23/24 CI discussions, keyed to its closing mechanism and the
-verification actually performed. Statuses are honest: LANDED (verified), PLANNED (in PR-0/PR-1),
-BLOCKED (named precondition), OUT-OF-SCOPE (named owner elsewhere — listed so nothing silently
-drops).
+verification actually performed. Statuses are honest: LANDED (verified), PLANNED (in #7162 —
+the dissolved PR-0/PR-1 split's single successor, §8), BLOCKED (named precondition),
+OUT-OF-SCOPE (named owner elsewhere — listed so nothing silently drops).
 
 | # | Issue | Mechanism | Status · verified how (2026-07-24) |
 |---|---|---|---|
 | 1 | 26 cold child processes (~23 min, 47.5% of floor) | #7122 one-child-per-call + #7128 `cheap_gate_pool` union (K-chunked, cap 16/child) | **LANDED** — 6 pooled children counted in run 30052571652's ci log (readiness-probe quadruples at 6 distinct timestamps); floor 48.4m → 37m58s. Residue 6 = 1 union + 4 ingest-overlay (by construction, W3-only) + 1 reads-class (D1b-absorbable; D1b removes spawns, not per-entry resolves) |
-| 2 | Selection-control audit (4m08s every run) | D4 deletion; falsifier cadence = surviving control | **BLOCKED — do not delete yet**: falsifier is red 5/5 scheduled runs (latest 30044928186: crawl regime, cgroup pinned 16.1G, swap 32G saturated, one module typecheck 3,171s, killed at the 170m cap). Today the per-PR audit is the only WORKING selection control; deleting it now would be the §5 fail-open. Expected unblock: #7129 eviction + PR-0's P1 fixes let the cold walk finish; D4 ships as a fast-follow micro-PR citing the first green cadence run (§9.7) |
-| 3 | Retention truth (compile-clean graph pinned · all-hit keys unregistered · arming≠loader closure) | PR-0, #7129 worker | **PLANNED/ROUTED** — empty-list fail-open + missing arming CONFIRMED by direct read of `run_claims_in_process` (cli_run.rs:9580); blocker 1 is also the falsifier-crawl mechanism (row 2) and part of the 9.2GB floor |
-| 4 | `run_claims_in_process` fail-open (empty→true) | D1b activation fixes, #7129 worker | **PLANNED/ROUTED** — must NOT activate in PR-1 (§9.6) |
+| 2 | Selection-control audit (4m08s every run) | D4 deletion; falsifier cadence = surviving control | **PLANNED IN #7162** (normalized 2026-07-24 per §8; this row's earlier BLOCKED/fast-follow shape is superseded): falsifier red 5/5 (latest 30044928186: crawl regime, cgroup pinned 16.1G, swap saturated, one module typecheck 3,171s, killed at the 170m cap) is exactly WHY a main-cadence green is impossible pre-merge — its fix (D0) is inside #7162. Deletion receipt = a green BRANCH falsifier run post-D0; the per-PR audit stays the only working selection control until #7162 merges, so it is not deleted before then |
+| 3 | Retention truth (compile-clean graph pinned · all-hit keys unregistered · arming≠loader closure) | **#7162** (the PR-0/#7129-worker routing dissolved by §8's restructure) | **PLANNED/ROUTED** — empty-list fail-open + missing arming CONFIRMED by direct read of `run_claims_in_process` (cli_run.rs:9580); blocker 1 is also the falsifier-crawl mechanism (row 2) and part of the 9.2GB floor |
+| 4 | `run_claims_in_process` fail-open (empty→true) | D1b activation fixes — deferred (§9.6), activation only after #7162 lands D0's fixes | **PLANNED/ROUTED** — must NOT activate in #7162 (§9.6) |
 | 5 | Discovery ~643s resolve (eval 18.4s) | D2 fresh attribution → store-econ class | **OPEN, probe-owned** — stale "fixpoint" lever retired; no fix dispatched before attribution |
 | 6 | Store teardown ~2.5m (paid-twice Drop) | D2 ledger row; store-econ / ROADMAP ① | **OUT-OF-SCOPE for PR-1**, named owner |
 | 7 | Whole-tree startup index every process (#6848 census heads) | census re-grounding on SymbolIndex (namespace lane) | **OUT-OF-SCOPE**, mitigated: 27→7 payments/run via pooling |
-| 8 | DiffBaseline `origin/main` hardcode (stacked-PR mis-selection) | D5 in PR-1 | **PLANNED** — brief already delivered |
+| 8 | DiffBaseline `origin/main` hardcode (stacked-PR mis-selection) | D5 — superseded by #7146's `gunbc.diff_baseline` (§11) | **LANDED (#7146, on main)** — typed `CiDiffEvent` resolver with AFFECTED-SET REFUSAL, 11 witnesses; #7162 carries only the parked miscite fix + the `Env.Get` mock as D5's named second part (§8) |
 | 9 | Trivial-diff floor tax | rows 1+2 combined | **PARTIALLY LANDED** — children pooled; audit minutes pend row 2; sheet re-anchors Before at probe time |
-| 10 | 9.2GB resident floor | PR-0 blocker-1 (compile-clean unpin) + census (row 7) + walk_memo (named follow-on) | **SPLIT** — largest slice PLANNED (PR-0); residuals named, owned elsewhere |
-| 11 | 2,652 `UnlistedImportUse` fork (CLI vs floor compile-clean policy) | needs an owner — namespace-lane promotion staging vs fail-open fork, undetermined | **UNOWNED — flagged to operator** (not this plan's scope; recorded so it cannot drop) |
+| 10 | 9.2GB resident floor | D0 blocker-1 (compile-clean unpin, in #7162) + census (row 7) + walk_memo (named follow-on) | **SPLIT** — largest slice PLANNED (#7162); residuals named, owned elsewhere |
+| 11 | 2,652 `UnlistedImportUse` fork (CLI vs floor compile-clean policy) | needs an owner — namespace-lane promotion staging vs fail-open fork, undetermined | **UNOWNED — flagged to operator** (not this plan's scope; recorded so it cannot drop; **re-flagged by the 2026-07-24 post-merge review — still unowned**) |
 | 12 | `.rs`-diff whole-tree widening | deliberate policy (§3.3, §9.5) | **UNCHANGED BY DESIGN** |
 | 13 | Serial chain ~10m (build 2.4 + regen 5.3 + deploy 2.2) | regen scoping exists; further work unpriced | **OUT-OF-SCOPE**, named residual |
 | 14 | 5s rule needs a crisp definition | already modeled: the fast-lane law (thread-CPU, typed over-budget refusal) | **EXISTS** — §9.1 reuses the threshold + refusal shape; the per-GATE quantity is the probe's to define (§9.1 caveat) |
-| 15 | Batch-3 budget under the honest full-corpus wall — fleet-wide, most PR runs red | §9.8 — interim: one signed raise to ~1680s on main; durable: re-denominated budget (overhead + units × rate[host]) in PR-1 | **OPEN, escalated** — 7 walls (1344–1629s) on 5 branches, all witnesses passing, main 12/12 green: no regression, mis-denominated budget |
+| 15 | Batch-3 budget under the honest full-corpus wall — fleet-wide, most PR runs red | §9.8 — stopgap raise + durable re-denominated clamp model in #7162 | **INTERIM LANDED (#7137)** — batch-3 row raised 1320 → 1440 → 1680, both raises operator-signed on the carrier note with run ids; the diagnosis stands (7 walls 1344–1629s on 5 branches, all witnesses passing: no regression, mis-denominated budget); durable clamp model rides #7162, hand-set rows delete then |
 
 ## 11. D5 — the DiffBaseline brief (in-tree copy) — **SUPERSEDED 2026-07-24**
 

@@ -263,7 +263,7 @@ The state of every PR in this arc, so nothing is missed if work pauses here. **A
 
 - **§5.A** — the ~4 remaining new ops: `extdeps.os.hostname` (Read/Set), `systemd.Systemctl.ListUnits`, `systemd.Systemctl.Status`, `extdeps.os.id`. (`ssh.Session.ExecArgv` already landed via C5.)
 - **§5.B** — ~40 call-the-op migrations (mechanical once the exemplar #7064 lands).
-- **§5.E** — the **`TransportScript` construction wall** — the keystone that makes relocation a type error and "exhaustive" true by construction. **Awaiting operator decision: wall-first vs migrate-now.**
+- **§5.E** — the **transport-script construction wall** — the keystone that makes relocation a type error and "exhaustive" true by construction. **RULING (operator, 2026-07-24): wall-first, one PR — §5.A/§5.B per-op migration is PAUSED until the wall lands.** Built as a `RetainedShellScript` RECORD edge + free-minter deletion + counted bridges + lens activation + compile-fail REDs (see §5.E ruling block; "brand `TransportScript`" was found non-walling because the brand is transparent). §5.B resumes on top of the wall.
 
 **⚠ Do-not-miss for wind-down:**
 
@@ -310,7 +310,7 @@ This punch-list folds into the **`host_language_transport_script` lens going liv
 
 | new op | home file | covers verb | consumers |
 | --- | --- | --- | --- |
-| `extdeps.os.hostname` · `Read` + `Set` | **new** `dag/extdeps/os/hostname.dag` | `hostname -s`, `hostnamectl set-hostname` | `host_identity_observation` (`HostIdentityShortHostnameRead`), `ci_deploy_target_host`, `host_effect_hostname` (`SetHostnameCas`) |
+| `extdeps.os.hostname` · ~~`Read`~~ **LANDED** + `Set` | `dag/extdeps/os/hostname.dag` (created) | ~~`hostname -s`~~ **done**; `hostnamectl set-hostname` remains | **Read done** — `os.Hostname.ReadShort` realized via typed cell `HostnameReadOnHost` + `gunbc.hostname_read` (LocalShell → op, SshShell → typed argv); both read consumers dissolved: `host_identity_observation` (`HostIdentityShortHostnameRead`, the `host_identity_short_hostname_script` concat DELETED) and `ci_deploy_target_host` (runtime-present read; the GHA preflight *block* stays E-emit). **Set** (`host_effect_hostname` `SetHostnameCas`, its own `host_effect_set_hostname_cas_script` concat) still pending — reuses this op file with a `SetHostname` op. |
 | `systemd.Systemctl.ListUnits` | **add to** `dag/extdeps/os/systemctl.dag` | `systemctl list-units --state=active` | `host_converge_slice1` (`_enumerate_units_script`), `fleet_show_effective_read` (`fleet_runner_width_count_read_script`) |
 | `extdeps.os.id` · `Read` (uid/gid/user) | **new** `dag/extdeps/os/id.dag` | `id -u`, `id -g`, `id <user>` | `host_effect_realize` (ssh probes), `fleet_posix_accounts` (`probe_command`) |
 | `ssh.Session.ExecArgv` | **add to** `dag/extdeps/diagnostic/ssh.dag` | typed argv over ssh (`ssh host -- argv`) | `host_effect_realize` ssh probes — **IN FLIGHT, C5 #6946** |
@@ -355,8 +355,16 @@ Bash-as-target lives in one isolated backend: `src/v2/extdeps/languages/bash*` +
 | bucket | sites | trigger to un-defer |
 | --- | --- | --- |
 | C5 access probes | `host_effect_deploy_access_probe_script` | C5 #6946 merges |
-| srv* cluster | `srv3_host_effect_script`, `srv3_install_diagnostic_observe_script`, `host_build_cache_provision_script`, `host_hygiene_*` | operator un-defers srv* |
+| srv* cluster | `srv3_host_effect_script`, `srv3_install_diagnostic_observe_script`, `host_build_cache_provision_script`, `host_hygiene_*` | operator un-defers srv* — **see the srv3-retirement roadmap item below (audit-confirmed dead, 2026-07-24)** |
 | nbd backgrounding | `host_effect_nbd_proxy_serve` `RawLine` (`&`/trap/`$!`) | typed systemd transient-unit effect + `Filesystem.Read` token + typed argv (dissolution trigger already in-file; operator ruled no trap/&/$! vocab) |
+
+#### Roadmap item — srv3 install/reconcile subgraph retirement (operator-authorized in principle 2026-07-24; gated on load-bearing coproduct surgery)
+
+**Finding (liveness audit, snappy-moth-330 @ the §5.E wall):** the srv3 install/reconcile cluster is **dead** — `srv3_os_install_reconcile_apply` is reached from *no* `gunbc` subcommand, CLI, or CI path (verified: zero hits in `dag/tools/`, `src/v1/`, `cli_run.rs`); `fleet_converge_cli`'s only reference is a `Srv3InstallDiagnosticObserve => fallback` match arm; srv3 is already installed and the srv* cluster is wound down. The three concrete carriers: `dag/gunbc/srv3_host_effect_script.dag` (whole file), `dag/gunbc/srv3_install_diagnostic_checklist.dag` (whole file), and the `Srv3InstallDiagnosticObserve` realization arm in `host_effect_realize.dag`, plus the `srv3_os_install_reconcile_{,_dry_run,_record_approval,_apply}.dag` scaffold subgraph.
+
+**Why it is NOT an "easy" delete (the gate):** the effects these produce scripts for — `Srv3InstallReconcileObserve`, `DurableApprovalGrantRecord`, `Srv3SolConsoleCapture`, `Srv3InstallDiagnosticObserve` — are **`HostEffect` coproduct variants**. Removing them ripples through *every* total `match` on `HostEffect` (`host_effect.dag`, `host_effect_realize`, `live_deploy/host_effect_script`, `fleet_converge_cli`, `ci_deploy_access_observe`) and the srv3 witness tests. `host_effect.dag` is a **DESIGN-named load-bearing file** (escalate-first). So this is a coordinated coproduct-surgery pass, not a quick `rm`, and it is kept out of the §5.E wall PR deliberately (a different concern; the wall's `retained_*` wraps correctly *count* these dead arms in the interim).
+
+**Acceptance (its own scoped PR):** the srv3 install/reconcile subgraph + its now-orphaned `HostEffect` variants deleted together; every total `match` updated; the `retained_srvn` wraps on those arms removed with them; srv3 witness tests deleted or repointed; green by execution; and the `retained_srvn_takeover_ref` dissolve-count for the srv3 arms drops to zero. Operator authorized the deletion in principle (2026-07-24) but asked it be tracked here and land apart from the wall.
 
 ### 5.E — THE ENABLER THAT MUST COME FIRST (close the string sink, or every row above can be faked)
 
@@ -365,6 +373,46 @@ Every §5.A/§5.B row can be **faked by joining argv back into a string** and fe
 - Brand `TransportScript` so it is produced ONLY by `emit(intent, Bash)`/`serialize_bash` (today `transport_script_from_body(body: String)` accepts any string — the porous boundary).
 - Make `ShellOnHost{script}` / the runtime-present realization edge take **typed argv (`List<String>`), not `String`** — a hand-join becomes a type error.
 - Activate the `host_language_transport_script` lens (inert today, `fail_closed_lockdown.dag`).
+
+> **RULING — wall-first, one PR (operator, 2026-07-24). STOP per-op migration.** The §5.A/§5.B per-op
+> migration PRs are paused. Build §5.E's construction wall first, in ONE PR (large PRs fine); §5.B
+> resumes on top of it as the *only* writable path. Recorded here so the sequencing is a durable fact,
+> not re-litigated per conversation.
+>
+> **Design correction found by execution while building the wall (snappy-moth-330):** "brand
+> `TransportScript`" (bullet 1 above) is **not** a `.dag`-level wall. `TransportScript = String where
+> brand("TransportScript")` is a **transparent** brand — `peel_nominal_alias_identity` peels it to its
+> base, so a bare `String` (or a computed concat) flows into a `TransportScript` position with **no
+> cast**, and `x as TransportScript` is always allowed. Branding alone cannot make a hand-join a type
+> error. The genuine compile-wall is a **record**: a `String` cannot fill a record-typed field. So the
+> wall is built as:
+>
+> - **`gunbc.retained_shell_script.RetainedShellScript`** — a RECORD `{ body: String; reason: NonEmptyStr;
+>   dissolves_to: DeclarationRef }` — is the retype target of the host-effect realization SCRIPT edge
+>   (`host_effect_realize.ShellOnHost.script`, and the `run_shell_transport`/`realize_shell_on_host`
+>   seams). A hand-assembled `String` at that edge no longer typechecks. (This is the *retained-script*
+>   path; the typed-argv `List<String>` path of bullet 2 stays §5.A/§5.B's job — the two are distinct
+>   sinks, not one.)
+> - **The free minter `extdeps.shell.exec.transport_script_from_body(body: String)` is DELETED.** The
+>   ~23 foreign/runtime `shell.Exec.Run(script:)` sites route through counted bridges
+>   (`retained_foreign` / `retained_runtime` / `retained_srvn`), each authoring a `reason` + a
+>   `dissolves_to` ref — a new bridge call is a conspicuous, counted review event, with two dissolve
+>   buckets (srvN-takeover typed effects vs. the `v2.workflow.bash_emit` foreign roster).
+> - **The `host_language_transport_script` lens is activated** as a per-PR `ReadsLiveTree` witness
+>   consumer over the `shell.Exec.Run` anchor sites (`wall_residue_live_test.dag`) — the backstop for a
+>   *raw literal* at a Run position (the lens deliberately stays green on `ComputedApplication`, i.e. the
+>   counted bridge calls; construction, not the lens, closes the computed-join class).
+> - **REDs prove the wall by execution:** the two documented fakes (#7064's
+>   `transport_script_from_body(argv_join(...) + " 2>/dev/null || true")` and the vivid-wolf string-into-edge
+>   near-miss), reconstructed as inline sources through `compile_dag_rust_emit_check`, **fail to compile**
+>   (`transport_script_wall_compile_red_test.dag`) — not fail review.
+> - **Surviving residue (filed, not closed here):** `x as TransportScript` (transparent-brand cast-mint)
+>   remains writable anywhere — the wall funnels the sanctioned mint through one
+>   `retained_shell_script_to_transport` body, but nothing *prevents* a stray cast in a fresh module. That
+>   is not closable by a record; it needs the **`Reference` verb** to govern who may form a base→brand cast
+>   edge. Filed as a named row on the node/subtree visibility-grants lane
+>   ([node-subtree-visibility-grants.md](node-subtree-visibility-grants.md) §3.1), the first brand with a
+>   concrete displaced cost — NOT an ad-hoc seed feature.
 
 ### Sequence
 

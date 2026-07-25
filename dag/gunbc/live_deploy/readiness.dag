@@ -1,6 +1,6 @@
 module gunbc.live_deploy.readiness
 
-import std.types { String, Bool, Int, NonEmptyStr }
+import std.types { String, Bool, Int, NonEmptyStr, List }
 import std.realization_reconcile {
   ShowEffectiveRead,
   ReadObserved,
@@ -28,9 +28,7 @@ import gunbc.live_deploy.service_ready {
   UnitDiagnosisCaptured,
 }
 import gunbc.live_deploy.intent {
-  live_deploy_health_probe_curl_command,
   live_deploy_health_url_for_port,
-  live_deploy_unit_diagnosis_command,
 }
 import gunbc.roadmap_site_healthz_validate {
   roadmap_site_healthz_json_string_parses,
@@ -45,18 +43,24 @@ import gunbc.live_deploy.spec {
 import gunbc.ci_deploy_access {
   DeployAccess,
   ci_deploy_srv1_access,
+  deploy_access_decision_reason,
 }
 import gunbc.host_effect {
-  ShellCommand,
-  HostOs,
-  host_effect_read_evidence,
   HostEffectTransport,
-  HostEffectIntent,
-  HostEffectEvidence,
-  ShellEffectApplied,
-  ConvergePlanApplied,
+  LocalShell,
+  SshShell,
+  EmitArtifactThenThinRun,
 }
-import gunbc.host_effect_realize { host_effect_apply_gated }
+import gunbc.host_effect_realize { host_effect_privilege_verdict }
+import gunbc.systemctl_status_read { systemctl_status_read, unit_status_capture_text }
+import std.access { Deny, Permit }
+import gunbc.typed_argv_exec {
+  typed_argv_exec_over_ssh,
+  typed_argv_shell_safe_refusal_argv,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+}
+import extdeps.http.client
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 
 type ServiceReadyEvidence {
@@ -80,10 +84,53 @@ fn service_ready_apply_effect() -> ServiceReadyApplyEffect {
   }
 }
 
-fn live_deploy_healthz_probe_script_for_port(port: Int) -> String {
-  live_deploy_health_probe_curl_command(
-    health_url: live_deploy_health_url_for_port(port: port)
+fn healthz_effective_read_from_get(success: Bool, body: String, error: String) -> HealthzEffectiveRead {
+  if success {
+    HealthzEffectiveRead { body: body, probe_error: "" }
+  } else {
+    HealthzEffectiveRead { body: "", probe_error: error }
+  }
+}
+
+fn live_deploy_healthz_get_local(port: Int) -> HealthzEffectiveRead {
+  let url = live_deploy_health_url_for_port(port: port)
+  let got = http.Client.GetLocalhostBounded(url: url)
+  healthz_effective_read_from_get(
+    success: got.success,
+    body: got.body,
+    error: "http client GET failed"
   )
+}
+
+fn live_deploy_healthz_get_ssh(port: Int, host: NonEmptyStr) -> HealthzEffectiveRead {
+  let url = live_deploy_health_url_for_port(port: port)
+  let argv = http_client_get_argv(url: url)
+  match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    Present { value: why } => HealthzEffectiveRead { body: "", probe_error: why }
+    Absent =>
+      match typed_argv_exec_over_ssh(host: host, argv: argv) {
+        TypedArgvExecConverged { result: r } =>
+          healthz_effective_read_from_get(
+            success: r.success,
+            body: r.stdout,
+            error: "http client GET over ssh failed"
+          )
+        TypedArgvExecRefused { reason: why } =>
+          HealthzEffectiveRead { body: "", probe_error: why }
+      }
+  }
+}
+
+fn live_deploy_healthz_get_for_port(port: Int, transport: HostEffectTransport) -> HealthzEffectiveRead {
+  match transport {
+    LocalShell => live_deploy_healthz_get_local(port: port)
+    SshShell { ssh_host: h } => live_deploy_healthz_get_ssh(port: port, host: h)
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      HealthzEffectiveRead {
+        body: "",
+        probe_error: "health probe refused EmitArtifactThenThinRun transport",
+      }
+  }
 }
 
 fn healthz_body_groundable(body: String) -> Bool {
@@ -128,65 +175,28 @@ fn ground_service_ready_from_healthz(read: HealthzEffectiveRead) -> Grounding<Se
   }
 }
 
-fn healthz_read_from_shell_apply(
-  r: Reconciliation<HostEffectIntent, HostEffectEvidence>
-) -> ShowEffectiveRead<HealthzEffectiveRead> {
-  match r {
-    Converged { evidence: e, applied: _ } =>
-      match e {
-        ShellEffectApplied { stdout: out, exit_code: _ } =>
-          ReadObserved {
-            value: HealthzEffectiveRead {
-              body: out,
-              probe_error: "",
-            }
-          }
-        ConvergePlanApplied { stdout: _, exit_code: _ } =>
-          ReadAbsent {
-            reason: "health probe returned ConvergePlanApplied; typed mismatch",
-          }
-      }
-    NotConverged { reason: why, applied: _ } =>
-      ReadObserved {
-        value: HealthzEffectiveRead {
-          body: "",
-          probe_error: why,
-        }
-      }
-  }
-}
-
-fn live_deploy_service_ready_probe_apply(
-  spec: DeploymentSpec,
-  transport: HostEffectTransport,
-  access: DeployAccess,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  host_effect_apply_gated(
-    access: access,
-    target: HostOs { node: spec.target.host },
-    effect: ShellCommand {
-      script: live_deploy_healthz_probe_script_for_port(
-        port: deployment_plan_listen_port(spec: spec)
-      ),
-    },
-    evidence: host_effect_read_evidence,
-    transport: transport,
-    fixture_actor: Absent,
-  )
-}
-
 fn show_healthz_read_for_deploy(
   spec: DeploymentSpec,
   transport: HostEffectTransport,
   access: DeployAccess,
 ) -> ShowEffectiveRead<HealthzEffectiveRead> {
-  healthz_read_from_shell_apply(
-    r: live_deploy_service_ready_probe_apply(
-      spec: spec,
-      transport: transport,
-      access: access,
-    )
-  )
+  let verdict = host_effect_privilege_verdict(access: access, fixture_actor: Absent)
+  match verdict {
+    Deny { reason: _ } =>
+      ReadObserved {
+        value: HealthzEffectiveRead {
+          body: "",
+          probe_error: deploy_access_decision_reason(d: verdict),
+        }
+      }
+    Permit =>
+      ReadObserved {
+        value: live_deploy_healthz_get_for_port(
+          port: deployment_plan_listen_port(spec: spec),
+          transport: transport,
+        )
+      }
+  }
 }
 
 data healthz_healthy_fixture_note: String = "The healthy fixture is the REAL healthz body, not a hand-spelled {\"status\":\"ok\"}. Once readiness means 'answering AND serving this tree', a fixture that merely parses is no longer a healthy read — it is precisely the stale-surface case — so a stand-in body would have made the converges-on-healthy witnesses assert the opposite of the contract. Its counterpart witness_stale_surface_read_does_not_ground keeps the hand-spelled body as the discriminating RED."
@@ -237,40 +247,22 @@ fn live_deploy_service_ready_once() -> Reconciliation<ServiceReadyApplyEffect, S
   reconcile_service_ready_read(read: show_healthz_read_fixture_healthy())
 }
 
-fn unit_diagnosis_from_shell_apply(
-  r: Reconciliation<HostEffectIntent, HostEffectEvidence>
-) -> String {
-  match r {
-    Converged { evidence: e, applied: _ } =>
-      match e {
-        ShellEffectApplied { stdout: out, exit_code: _ } => out
-        ConvergePlanApplied { stdout: _, exit_code: _ } =>
-          "unit diagnosis capture returned ConvergePlanApplied; typed mismatch"
-      }
-    NotConverged { reason: why, applied: _ } =>
-      concat("unit diagnosis capture failed: ", why)
-  }
-}
-
 fn capture_unit_diagnosis(
-  spec: DeploymentSpec,
   transport: HostEffectTransport,
   access: DeployAccess,
 ) -> String {
-  unit_diagnosis_from_shell_apply(
-    r: host_effect_apply_gated(
-      access: access,
-      target: HostOs { node: spec.target.host },
-      effect: ShellCommand {
-        script: live_deploy_unit_diagnosis_command(
-          unit: live_deploy_service_ready_unit_authority
-        ),
-      },
-      evidence: host_effect_read_evidence,
-      transport: transport,
-      fixture_actor: Absent,
-    )
-  )
+  let verdict = host_effect_privilege_verdict(access: access, fixture_actor: Absent)
+  match verdict {
+    Deny { reason: _ } =>
+      concat("unit diagnosis capture failed: ", deploy_access_decision_reason(d: verdict))
+    Permit =>
+      unit_status_capture_text(
+        capture: systemctl_status_read(
+          transport: transport,
+          unit: live_deploy_service_ready_unit_authority,
+        )
+      )
+  }
 }
 
 type ServiceReadyPollOutcome =
@@ -377,7 +369,6 @@ fn live_deploy_poll_until_service_ready_for_deploy(
         refusal: service_not_ready_with_captured_diagnosis(
           refusal: refusal,
           text: capture_unit_diagnosis(
-            spec: spec,
             transport: transport,
             access: access,
           )

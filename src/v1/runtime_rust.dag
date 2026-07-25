@@ -349,6 +349,30 @@ fn rt_unicode_ops() -> String {
     "}\n\n")
 }
 
+fn rt_freemonoid_host_ops() -> String {
+  concat(
+    "// FreeMonoid host bridge (String = FreeMonoid<Char>) — relocated from v2_std_algebra\n",
+    "// so the Char authority (i64 / std.types.Char) is not pinned to v2_std_nat::Nat.\n",
+    "pub fn freemonoid_empty<T: Clone>() -> Rc<Vec<T>> {\n",
+    "    Rc::new(Vec::new())\n",
+    "}\n\n",
+    "pub fn list_snoc_item<T: Clone>(xs: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {\n",
+    "    let mut out = xs.as_ref().clone();\n",
+    "    out.push_back(item);\n",
+    "    Rc::new(out)\n",
+    "}\n\n",
+    "pub fn fold_list<T: Clone, A, F>(xs: Rc<Vec<T>>, init: A, f: F) -> A\n",
+    "where\n",
+    "    F: Fn(A, T) -> A,\n",
+    "{\n",
+    "    let mut acc = init;\n",
+    "    for item in xs.iter() {\n",
+    "        acc = f(acc, item.clone());\n",
+    "    }\n",
+    "    acc\n",
+    "}\n\n")
+}
+
 fn rt_rc_container_ops() -> String {
   concat(
     "// -- Rc-wrapped container operations (FF-8) ---------------------------------\n",
@@ -573,13 +597,13 @@ fn rt_resolution_silent_pick_telemetry() -> String {
     "        });\n",
     "    });\n",
     "}\n\n",
-    "// NameResolutionPolicy gate (namespace-resolution-design.md 13, 8 step 1): default\n",
-    "// false = ImportScoped (today's resolver, byte-for-byte). True = NamespaceOnlyY —\n",
-    "// strict unique-on-chain in the type/value path and exactly-one across the fn\n",
-    "// parent closure, with typed Ambiguous refusals. Host-side setter only; no .dag\n",
-    "// surface can flip it (no escape hatch — a flip is an explicit host decision).\n",
+    "// NameResolutionPolicy gate (namespace-resolution-design.md 13, 8 step 4): default\n",
+    "// true = NamespaceOnlyY — strict unique-on-chain in the type/value path and\n",
+    "// exactly-one across the fn parent closure, with typed Ambiguous refusals.\n",
+    "// false = ImportScoped (legacy resolver, byte-for-byte). Host-side setter only;\n",
+    "// no .dag surface can flip it (no escape hatch — a flip is an explicit host decision).\n",
     "thread_local! {\n",
-    "    static NAME_RESOLUTION_POLICY_NAMESPACE_ONLY: Cell<bool> = const { Cell::new(false) };\n",
+    "    static NAME_RESOLUTION_POLICY_NAMESPACE_ONLY: Cell<bool> = const { Cell::new(true) };\n",
     "}\n\n",
     "pub fn name_resolution_policy_set_namespace_only(enabled: bool) {\n",
     "    NAME_RESOLUTION_POLICY_NAMESPACE_ONLY.with(|e| e.set(enabled));\n",
@@ -619,6 +643,7 @@ fn rust_runtime_source() -> String {
     rt_rc_container_ops(),
     rt_scanner_ops(),
     rt_unicode_ops(),
+    rt_freemonoid_host_ops(),
     rt_hash_ops(),
     rt_filesystem(),
     rt_accelerator_demo_kernel())

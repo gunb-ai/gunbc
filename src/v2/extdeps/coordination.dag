@@ -29,11 +29,11 @@ type Endpoint {
 }
 
 type SettleBound {
-  steps: Nat
+  steps: v2.std.nat.Nat
 }
 
 type ConvergeBound {
-  steps: Nat
+  steps: v2.std.nat.Nat
 }
 
 type RequiredSettleBound {}

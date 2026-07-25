@@ -47,10 +47,16 @@ One event vocabulary, emitted by the process, consumed by every renderer:
 - **`AttentionLevel` is derived, never chosen per site:** `Ambient | Notable (threshold
   crossing) | Anomaly (refusal, divergence, orphaned begin)`. Event-class → presentation is a
   **total assignment** — censused and walled like unthemed colors.
-- **One glyph/material authority:** status → glyph (`⟳ ✓ ✗ ⛔ ⏳ ⏭` + the reward-animal rows
-  for `Final`) → register color role, as data rows. Terminal ANSI materials are the register's
-  roles realized for one more surface; the reward pattern (random animal on terminal success)
-  lands as rows in this table, not a hardcoded function.
+- **One glyph/material authority, TIERED:** status → glyph → register color role, as data
+  rows, where each row carries three realizations — an **emoji tier** (✅ ❌ 🚫 ⏳ ⏭️ 🕐, the
+  §6b tone ruling's set), a **unicode tier** (`✓ ✗ ⛔ ◷ ⊘`), and an **ascii tier** (textual
+  tags) — so color and emoji are never the only channel and pipes degrade losslessly. (The
+  earlier draft listed the unicode set here and the emoji set in §6b as if they competed;
+  they are two tiers of the ONE authority — the landed shape in
+  `dag/extdeps/render/glyphs.dag`.) Terminal ANSI materials are the register's roles
+  realized for one more surface; the reward pattern (animal on terminal success) lands as
+  rows in this table, not a hardcoded function — selection is deterministic from the run's
+  identity so the stream stays replayable.
 
 ### The five laws (data rows, operator-signed 2026-07-23)
 
@@ -59,7 +65,8 @@ One event vocabulary, emitted by the process, consumed by every renderer:
    converts quiet-past-budget into a typed line (this also closes the batch-wall hang gap —
    a batch that never completes currently rides silently to the step cap).
 2. **The heartbeat carries identity, not just vitals.** The per-minute telemetry line gains
-   the current activity: `phase= entry= module= k/n`. No phase may exceed T seconds without a
+   the current activity — phase, entry, module, k-of-n — rendered per the §6b tone contract
+   (a plain sentence, identity first, vitals suffix). No phase may exceed T seconds without a
    line naming its current subject.
 3. **Attention escalates by dwell time, recursively.** A subject quiet past T surfaces its
    current child; past 2T the grandchild; recursively to the leaf. Same tree, same events —
@@ -84,25 +91,35 @@ Append-only; no repaint. The reference implementation's biggest gap is here (its
 has no heartbeat, no escalation, no contention — the quiet-window problem verbatim), so this
 renderer is where every law must be first-class.
 
+(Trace normalized 2026-07-24 to the §6b rulings it predated — plain sentences, emoji-tier
+glyphs, 🕐 pulse, clamp arithmetic on the refusal, and the refusal rendered OUTSIDE the
+group per the placement law; the earlier draft's trace violated its own RED by putting the
+⛔ line inside `::group::`.)
+
 ```
-::group::batch 3 — discovery (602 entries)
-→ batch 3: discovery begin (602 entries, 2314 witnesses)
-✓ entry effect_reach_test.dag (14 witnesses, 230ms)
+::group::batch 3 — witness discovery (602 entries, 2,314 witness units)
+→ batch 3: witness discovery begins — 602 entries, 2,314 witness units selected by this diff
+✅ entry effect_reach_test.dag — 14 witnesses, 230ms
 … [collapsed: 213 green entries]
-♥ t=29m phase=discovery entry=214/602 (emit/rust_binop_emit_test.dag) module=34/61 | rss=16.0G swap=32G(sat) high_events=+90k/min
-⏱ entry 214 quiet 120s → typecheck v2.compiler.normalized_tree (34/61)          [T: child surfaced]
-⏱ normalized_tree quiet 240s → blocked: memory.high reclaim (psi 9.0)           [2T: cause surfaced]
-⛔ REFUSED batch 3: FLOOR-BATCH-OVER-BUDGET wall_ms=… budget_ms=… (budget row: …)
+🕐 still in witness discovery: entry 214 of 602 (emit/rust_binop_emit_test.dag), module 34 of 61 — 823 of 2,314 units done, pace 1.07s per unit (signed average 1s) · rss 16.0 GiB, swap saturated
+⏱ entry 214 has been quiet 120s — now inside: typecheck of v2.compiler.normalized_tree (module 34 of 61)   [T: child surfaced]
+⏱ normalized_tree quiet 240s — blocked on memory.high reclaim (psi 9.0)                                    [2T: cause surfaced]
 ::endgroup::
-✗ batch 3 — discovery: refused (1 refusal, 213/602 entries complete, 41m12s)
+🚫 REFUSED batch 3 — wall 45m03s over its derived clamp 43m34s = 300s overhead + 2,314 units × 1s signed average (implied 1.04 s/unit vs the signed 1s; budget row + both constants named)
+❌ batch 3 — witness discovery: refused (1 refusal, 213 of 602 entries complete, 45m03s)
 ```
 
 Contract: every `Begin` at entry grain+ has a matched outcome line **with duration**; heartbeat
-per minute with identity; dwell escalation *appends* deeper-subject lines at T/2T/4T; anomalies
-always render immediately and are never inside a collapsed group; a final summary table (the
-reference's binary-cache table pattern) plus failed/refused boxes re-rendered at the end so
-they survive log truncation; concurrency is attributed (every line carries its subject path or
-lives inside its subject's `::group::`).
+per minute with identity (plain sentence, identity first, human units — §6b tone); dwell
+escalation *appends* deeper-subject lines at T/2T/4T; anomalies always render immediately and
+are never inside a collapsed group — on an anomaly the renderer **closes the enclosing group
+before emitting the line** (in the landed renderer this is construction, not discipline:
+placement derives from attention, so an anomaly inside a collapsed group is unwritable);
+derived-clamp refusals render WITH their arithmetic (§6b — units, coefficient, overhead,
+actual wall, implied s/unit), so budget triage stops being a hand computation; a final summary
+table (the reference's binary-cache table pattern) plus failed/refused boxes re-rendered at
+the end so they survive log truncation; concurrency is attributed (every line carries its
+subject path or lives inside its subject's `::group::`).
 
 ### 3b. Interactive TTY (`gunbc` CLI local runs)
 
@@ -122,7 +139,12 @@ formats do not change** (they have consumers); they become derived views, dissol
 their own triggers.
 
 ### 3d. Dashboard (belt B) — later consumer, same stream; out of scope here, must not be
-precluded (the event schema is the wire contract).
+precluded (the event schema is the wire contract). One boundary named so it never blurs:
+the dashboard composes TWO legitimate sources — the belt's supervisor view (tmux session
+liveness, the P2a sessions surface) and this stream's self-report — which can disagree
+(belt: running; stream: quiet 120s). Different subjects, not a fork; the composition rule
+is a row on the dashboard lane (the workspace UX plan §P2c carries it), never an ad hoc
+merge in a renderer.
 
 ### 3e. Non-TTY local pipe — the CI contract minus workflow grouping markers.
 
@@ -189,9 +211,23 @@ the CI renderer's contract (§3a) and the sequencing:
   Ambient; the long quiet runs live in the gauntlet/falsifier context (whole-corpus, cold) —
   that context is the escalation law's primary home, and the flagship crawl-window replay is
   exactly a gauntlet-profile run, so P1's acceptance is unchanged.
-- **Sequencing + delivery (operator ruling 2026-07-24, REAFFIRMED against the P0-carve-out
-  argument): ONE atomic PR** — P0 through P3 land together, entirely, after the atomic CI
-  rework PR. The controlling rationale is **completeness as the merge bar**: the operator
+- **Sequencing + delivery (operator ruling 2026-07-24, third revision — INTEGRATE): the
+  observation stack merges INTO #7162.** P0–P3 are complete on the observation branch;
+  instead of landing after the CI rework, the branch merges into #7162 so the emit sites
+  are rewritten ONCE, in their final post-rework shape, and the new log format is visible
+  in #7162's own CI runs upfront. Ownership protocol: the #7162 worker owns the branch and
+  performs the merge + the emit-family wiring (they own the emit sites); the observation
+  worker reviews against their own REDs. Wiring order: the five rostered structured
+  families flip to stream projections NOW (visible immediately). **Cleanup ruling (operator,
+  2026-07-24): the OLD display machinery is deleted IN this PR — that is what atomic
+  means.** The integration dissolved the double-churn rationale that justified deferring
+  the eprintln/echo residue, so its dissolve-on is now: at merge, the census holds ZERO
+  frontier rows for in-repo display emit sites — every site Projection, its old print call
+  deleted (removed, never suppressed dead code). The census wall survives as the guard
+  against NEW bare prints. Exempt, deliberately: receipt FILES (floor-drain,
+  materialization, warm-cost TSV — data with consumers, §3c) and `gunbc.output_policy`'s
+  suppression tiers for legitimate instrumentation. #7168 closes as absorbed; commit
+  authorship preserves the record. Prior text (lands-after sequencing) superseded: The controlling rationale is **completeness as the merge bar**: the operator
   merges only finished work — a landed P0 with no renderer is vocabulary nobody can see,
   exactly the consumed-by-nothing state the consumption rule forbids. The shared-emit-site
   rationale is secondary (real for P1–P3, not P0) and is not the load-bearing reason; #7168
@@ -268,8 +304,6 @@ Same house, different organs — related by shared authority, not by overlap:
 - **gunb.ai's `tools/terminal` Go module** is declined as a dependency and named a future
   renderer of the shared schema — cross-repo UX consistency by shared authority, not
   imitation.
-
-## 7. Non-goals
 
 ## 7. Non-goals
 

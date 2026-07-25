@@ -9,13 +9,11 @@ import tools.cheap_gate_pool {
   claim_in_pool,
   cheap_gate_pool_max_claims_per_child
 }
-import tools.layering_imports_transport { layering_imports_claims }
 import tools.extdeps_external_authority_transport { extdeps_external_authority_claims }
 import std.logic { Bool }
 
 test fn cheap_pool_chunk_totality_holds() -> Bool {
-  claims_covered_by_cheap_pool_chunks(claims: layering_imports_claims())
-    && claims_covered_by_cheap_pool_chunks(claims: extdeps_external_authority_claims())
+  claims_covered_by_cheap_pool_chunks(claims: extdeps_external_authority_claims())
 }
 
 test fn cheap_pool_chunking_preserves_count() -> Bool {

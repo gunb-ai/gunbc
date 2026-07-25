@@ -1,0 +1,208 @@
+module test.claim.srv3_subsumption
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data srv3_subsumption_witness_home_note: String = "Consolidated green-by-execution proofs for the gunbc-layer srv3 subsumption facts — the reach row, the authorized-keys reconcile, and the toolchain target/access pairing. These three were separate witness files (fleet_reach / host_authorized_keys_reconcile / host_toolchain_reach_pairing) until 2026-07-25; each paid a full whole-tree closure resolve in the floor as its own entry, and three gunbc-closure resolves pushed batch 3 over its wall budget. They share one closure, so they are one floor entry here — a §6 cost-shape fix (fewer entry resolves, zero coverage lost), not a merge of unrelated concerns: all three are the srv3 subsumption lane. The three original witness notes are preserved verbatim below."
+
+data fleet_reach_witness_note: String = "Green-by-execution proof for the CONCRETE gunbc srv3 reach row (gunbc.fleet_reach.srv3_reach), distinct from the extdeps model mechanics that test.claim.network_grounding already proves. These pin the FLEET fact: srv3_reach is the ProxyJump-through-srv2 interim (exactly one hop), its network reach is realizable (grounded live 2026-07-25 — a Permission-denied handshake from srv2 proves packets reach srv3), and its target renders to srv3's grounded address 192.168.1.221 (consuming extdeps.network.ipv4, one of the sites the fleet_intent_network bare-string residual dissolves onto). The load-bearing §5 control is srv3_fabric_intended_refuses: the dissolution TARGET (srv3_reach_fabric_intended, the FabricTunnel srv3_reach retires to when the fabric works) is a real value that HONESTLY refuses realization today, so the dissolution trigger is not just prose — a model that let the intended fabric reach fall through as realizable would red this."
+
+test fn srv3_reach_is_single_hop_proxy_jump() -> Bool {
+  match srv3_reach {
+    ProxyJump { jumps: js, target: _ } => list_length(items: js) == 1
+    DirectLan { host: _ } => false
+    FabricTunnel { target: _ } => false
+  }
+}
+
+test fn srv3_reach_network_is_realizable() -> Bool {
+  srv3_reach_is_realizable()
+}
+
+test fn srv3_reach_target_is_srv3_address() -> Bool {
+  let got = render_network_host(host: srv3_reach_target())
+  let want = render_network_host(host: srv3_lan_reach_host)
+  got == want
+}
+
+test fn srv3_reach_jump_is_srv2() -> Bool {
+  match srv3_reach {
+    ProxyJump { jumps: js, target: _ } =>
+      fold(
+        js,
+        init: true,
+        f: (acc, h) =>
+          acc && (render_network_host(host: h) == render_network_host(host: srv2_lan_reach_host)),
+      )
+    DirectLan { host: _ } => false
+    FabricTunnel { target: _ } => false
+  }
+}
+
+test fn srv3_fabric_intended_refuses_realization() -> Bool {
+  match reach_realizability(reach: srv3_reach_fabric_intended) {
+    ReachRealizable => false
+    ReachRefused { cause: FabricTunnelNotOperational } => true
+    ReachRefused { cause: ProxyJumpChainEmpty } => false
+  }
+}
+
+data host_authorized_keys_reconcile_witness_note: String = "Green-by-execution proof of the SSH-authorized-keys reconcile on REAL observed data (operator macbook reads of srv3/srv4, 2026-07-24). The load-bearing discriminations: srv3 (installed pre-#7027, missing the fleet key) yields exactly ONE upsert — the fleet-automation key, named specifically, not just a count — and TWO refusals, both the out-of-band keys the fleet does not own, REFUSED (not torn down). srv4 (installed with the fleet key in the seed) yields the empty converged plan — the negative control that proves the reconcile does not fabricate work. The R5-wall RED control (reconcile_would_teardown_only_if_ownership_claimed_it) reconstructs the wall's hinge: feed a ownership fn that lies 'Owned' about the foreign keys and the SAME spine WOULD emit teardowns — so the refusal is caused by ownership_of returning Absent, not by the spine being unable to teardown. That makes the wall discriminating rather than asserted."
+
+fn srv3_plan() -> MembershipPlan<SshPublicKey> {
+  host_authorized_keys_reconcile(observed: srv3_observed_authorized_keys)
+}
+
+fn srv4_plan() -> MembershipPlan<SshPublicKey> {
+  host_authorized_keys_reconcile(observed: srv4_observed_authorized_keys)
+}
+
+test fn srv3_reconcile_adds_exactly_the_missing_fleet_key() -> Bool {
+  let plan = srv3_plan()
+  let upsert_materials = flat_map(plan.actions, a =>
+    match a {
+      MemberUpsert { member: m } => [m.material as String]
+      MemberTeardown { member: _ } => []
+      MemberTeardownRefused { member: _, cause: _ } => []
+    }
+  )
+  count(upsert_materials) == 1
+    && any(upsert_materials, m => m == fleet_automation_ssh_key.material as String)
+}
+
+test fn srv3_reconcile_refuses_both_unowned_keys_never_teardown() -> Bool {
+  let plan = srv3_plan()
+  let tally = membership_tally(plan: plan)
+  let refused_materials = flat_map(plan.actions, a =>
+    match a {
+      MemberTeardownRefused { member: m, cause: OwnershipUnknown } => [m.material as String]
+      MemberTeardownRefused { member: _, cause: MemberNotOwned } => []
+      MemberUpsert { member: _ } => []
+      MemberTeardown { member: _ } => []
+    }
+  )
+  tally.upserts == 1
+    && tally.teardowns == 0
+    && tally.refusals == 2
+    && any(refused_materials, m => m == srv3_observed_node_orch_srv2_key.material as String)
+    && any(refused_materials, m => m == srv3_observed_briansrls_srv1_key.material as String)
+}
+
+test fn srv4_reconcile_is_converged_empty_plan() -> Bool {
+  let tally = membership_tally(plan: srv4_plan())
+  tally.upserts == 0 && tally.teardowns == 0 && tally.refusals == 0
+}
+
+test fn srv3_and_srv4_disagree_on_convergence() -> Bool {
+  let srv3 = membership_tally(plan: srv3_plan())
+  let srv4 = membership_tally(plan: srv4_plan())
+  (srv3.upserts + srv3.refusals) > 0
+    && (srv4.upserts + srv4.teardowns + srv4.refusals) == 0
+}
+
+fn ownership_lies_owned(k: SshPublicKey) -> Ownership? {
+  authorized_key_ownership(k: operator_macbook_ssh_key)
+}
+
+test fn reconcile_would_teardown_only_if_ownership_claimed_it() -> Bool {
+  let honest = membership_tally(plan: srv3_plan())
+  let lying = membership_tally(plan: membership_reconcile(
+    desired: fleet_authorized_keys,
+    observed: srv3_observed_authorized_keys,
+    key_of: authorized_key_identity,
+    key_eq: authorized_key_identity_eq,
+    value_eq: authorized_key_value_eq,
+    ownership_of: ownership_lies_owned,
+  ))
+  honest.refusals == 2
+    && honest.teardowns == 0
+    && lying.refusals == 0
+    && lying.teardowns == 2
+}
+
+test fn comment_only_drift_is_reupsert_not_remove_add() -> Bool {
+  let renamed_macbook = SshPublicKey {
+    algorithm: operator_macbook_ssh_key.algorithm,
+    material: operator_macbook_ssh_key.material,
+    comment: "macbook-m4-renamed",
+  }
+  let observed = [renamed_macbook, fleet_automation_ssh_key]
+  let tally = membership_tally(plan: host_authorized_keys_reconcile(observed: observed))
+  tally.upserts == 1 && tally.teardowns == 0 && tally.refusals == 0
+}
+
+data host_toolchain_reach_pairing_witness_note: String = "Discriminating witnesses for the 2026-07-24 target/access pairing in gunbc.host_toolchain_ensure. The defect being walled: access used to be looked up from the REQUESTED host while the target was resolved kind-aware, so a BuildCache request for srv3 targeted srv3 and authenticated to srv1 — the effect lands on the wrong machine and reports success. A test that merely asserts the reach resolves would pass under the old code too, so the load-bearing row here is reach_access_host_is_the_target_host, which compares the two sides of the pair and is red exactly when they disagree. Its negative control is reach_wrong_machine_pairing_is_unwritable: the old behaviour is reconstructed by hand and shown to violate the same predicate, so the predicate is proven to discriminate rather than assumed to."
+
+fn reach_or_absent(kind: HostToolchainKind, host: HostIdentity) -> HostToolchainReach? {
+  match host_toolchain_ensure_reach(kind: kind, host: host) {
+    ReachResolved { reach: reach } => Present { value: reach }
+    ReachTargetAbsent => none
+    ReachAccessAbsent { target_identity: _ } => none
+  }
+}
+
+fn reach_pair_agrees(kind: HostToolchainKind, host: HostIdentity) -> Bool {
+  match reach_or_absent(kind: kind, host: host) {
+    Present { value: reach } => reach.access.host.identity == reach.target.identity
+    Absent => false
+  }
+}
+
+test fn reach_access_host_is_the_target_host() -> Bool {
+  reach_pair_agrees(kind: BuildCache, host: operator_host_srv1)
+    && reach_pair_agrees(kind: BuildCache, host: operator_host_srv2)
+    && reach_pair_agrees(kind: BuildCache, host: operator_host_srv3)
+    && reach_pair_agrees(kind: BuildCache, host: operator_host_srv4)
+    && reach_pair_agrees(kind: OsInstallActuator, host: operator_host_srv3)
+}
+
+test fn reach_build_cache_on_srv3_targets_srv3_not_the_actuator() -> Bool {
+  match reach_or_absent(kind: BuildCache, host: operator_host_srv3) {
+    Present { value: reach } =>
+      reach.target.identity == operator_host_srv3
+        && reach.access.host.identity == operator_host_srv3
+    Absent => false
+  }
+}
+
+test fn reach_os_install_actuator_on_srv3_runs_from_the_actuator_host() -> Bool {
+  match reach_or_absent(kind: OsInstallActuator, host: operator_host_srv3) {
+    Present { value: reach } =>
+      reach.target.identity == srv3_os_install_actuator_host.identity
+        && reach.access.host.identity == srv3_os_install_actuator_host.identity
+    Absent => false
+  }
+}
+
+fn reach_pair_agrees_for(reach: HostToolchainReach) -> Bool {
+  reach.access.host.identity == reach.target.identity
+}
+
+test fn reach_wrong_machine_pairing_is_unwritable() -> Bool {
+  let old_shape = HostToolchainReach {
+    target: srv3_host,
+    access: host_identity_srv1_access,
+  }
+  let old_disagrees = reach_pair_agrees_for(reach: old_shape) == false
+  let honest_agrees = match reach_or_absent(kind: BuildCache, host: operator_host_srv3) {
+    Present { value: reach } => reach_pair_agrees_for(reach: reach)
+    Absent => false
+  }
+  old_disagrees && honest_agrees
+}
+
+test fn host_toolchain_srv1_access_rows_are_one_concept() -> Bool {
+  let a = host_identity_srv1_access
+  let b = ci_deploy_srv1_operator_access
+  a.host.identity == b.host.identity
+    && a.transport == b.transport
+    && a.principal == b.principal
+    && a.privileged_commands == b.privileged_commands
+}
+
+test fn direct_access_covers_every_modeled_fleet_host() -> Bool {
+  match host_toolchain_direct_access(host: operator_host_srv3) {
+    Present { value: a } => a.host.identity == operator_host_srv3
+    Absent => false
+  }
+}

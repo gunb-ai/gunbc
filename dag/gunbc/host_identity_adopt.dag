@@ -18,13 +18,8 @@ data gunbc_host_identity_adopt_scope_disposition: Disposition = std.disposition.
 
 data gunbc_host_identity_adopt_model_marker: NonEmptyStr = "gunbc.host_identity_adopt.v0"
 
-data host_identity_observed_probed_at_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.live_deploy.emit",
-    decl_name: "live_deploy_emit_shell_dissolution_trigger",
-    field: WholeDeclaration,
-  }
+fn host_identity_observed_probed_at() -> NonEmptyStr {
+  clock_now_probed_at_or_unknown()
 }
 
 fn srv1_host_identity_ssh_transport() -> HostEffectTransport {
@@ -53,16 +48,6 @@ fn host_identity_transport_label(transport: HostEffectTransport) -> String {
 
 fn host_identity_adopt_model_hash() -> ContentHash {
   content_hash_atom(value: gunbc_host_identity_adopt_model_marker)
-}
-
-fn host_identity_observed_probed_at() -> NonEmptyStr {
-  let result = shell.Exec.Run(script: transport_script_from_body(body: "date -Iseconds"))
-  if result.success {
-    let line = trim(result.stdout)
-    if line == "" { "unknown" as NonEmptyStr } else { line as NonEmptyStr }
-  } else {
-    "unknown" as NonEmptyStr
-  }
 }
 
 fn host_identity_adopt_receipt(
@@ -145,9 +130,20 @@ fn host_identity_adopt_receipt_message(receipt: HostIdentityAdoptReceipt) -> Str
   )
 }
 
+fn host_identity_receipt_emit(message: String) -> Bool {
+  reconciliation_converged(
+    r: host_effect_apply(
+      target: HostOs { node: srv1_host },
+      effect: Srv3ReceiptEmit { lines: [message] },
+      evidence: host_effect_identity_evidence,
+      transport: LocalShell,
+    )
+  )
+}
+
 fn host_identity_adopt_exit(receipt: HostIdentityAdoptReceipt) -> ProcessExit {
   if host_identity_adopt_receipt_is_valid(receipt: receipt) {
-    let announced = shell.Exec.Run(script: transport_script_from_body(body: concat("echo ", host_identity_adopt_receipt_message(receipt: receipt))))
+    let _announced = host_identity_receipt_emit(message: host_identity_adopt_receipt_message(receipt: receipt))
     ExitSuccess
   } else {
     exit_failure(

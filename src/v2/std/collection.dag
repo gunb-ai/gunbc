@@ -2,7 +2,8 @@ module v2.std.collection
 
 import std.algebra { FreeMonoid }
 import std.primitives { empty_map_contract, map_insert_contract, PrimitiveContract }
-import v2.std.algebra { PointwisePower, fold_list, is_empty }
+import v2.std.algebra { fold_list, is_empty }
+import std.types { Set, Map }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -46,14 +47,9 @@ fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
 }
 
 type List<T> = std.algebra.FreeMonoid<T>
-type Set<T> = PointwisePower<T>
 
 data empty_map_host_binding: PrimitiveContract = empty_map_contract
 data map_insert_host_binding: PrimitiveContract = map_insert_contract
-
-type Map<K, V> {
-  lookup: fn(K) -> Witness<V>
-}
 
 type IndexedLookup<T> {
   index: Int

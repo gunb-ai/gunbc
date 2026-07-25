@@ -860,9 +860,9 @@ fn add_arrow_eval_loop_admitted_tree(root: Node) -> InferredTree {
                 resolved: key,
                 algebra: add_arrow_eval_i64_node(),
                 descent: Holds {
-                  value: TerminationProof {
+                  value: v2.std.cardinality.TerminationProof {
                     non_increasing: [],
-                    strict: RankingDimension {
+                    strict: v2.std.cardinality.RankingDimension {
                       measured: ^add_arrow_eval_loop_measure_literal
                     }
                   }

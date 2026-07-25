@@ -34,7 +34,7 @@ import extdeps.realization.reconcile_in_process {
   typed_module_cache_id,
 }
 import extdeps.realization.resolved_graph { resolved_graph_cache_facts, resolved_graph_cache_id }
-import std.cache_identity { CacheInterfaceId, CacheInterfaceProduct }
+import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   ArtifactIdentity,
   ProducerReceipt,
@@ -49,18 +49,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/cache"
-  }
-}
-
-fn cited_cache_interface_facts(product: CacheInterfaceProduct) -> CacheInterfaceCatalogFacts {
-  match product {
-    GhaActionsCache => gha_actions_cache_facts
-    SccacheLocal => sccache_local_facts
-    BuildbuddyCas => buildbuddy_cas_facts
-    CargoTargetDir => cargo_target_dir_facts
-    RustupToolchainStore => rustup_toolchain_store_facts
-    ResolvedGraphCache => resolved_graph_cache_facts
-    ParseTableMemo => parse_table_memo_facts
   }
 }
 
@@ -134,13 +122,13 @@ fn cache_verified_hit_receipt<T>(
   }
 }
 
-data gha_actions_cache: CacheInterfaceCatalogFacts = cited_cache_interface_facts(GhaActionsCache)
-data sccache_local: CacheInterfaceCatalogFacts = cited_cache_interface_facts(SccacheLocal)
-data buildbuddy_cas: CacheInterfaceCatalogFacts = cited_cache_interface_facts(BuildbuddyCas)
-data cargo_target_dir: CacheInterfaceCatalogFacts = cited_cache_interface_facts(CargoTargetDir)
-data rustup_toolchain_store: CacheInterfaceCatalogFacts = cited_cache_interface_facts(RustupToolchainStore)
-data resolved_graph_cache: CacheInterfaceCatalogFacts = cited_cache_interface_facts(ResolvedGraphCache)
-data parse_table_memo: CacheInterfaceCatalogFacts = cited_cache_interface_facts(ParseTableMemo)
+data gha_actions_cache: CacheInterfaceCatalogFacts = gha_actions_cache_facts
+data sccache_local: CacheInterfaceCatalogFacts = sccache_local_facts
+data buildbuddy_cas: CacheInterfaceCatalogFacts = buildbuddy_cas_facts
+data cargo_target_dir: CacheInterfaceCatalogFacts = cargo_target_dir_facts
+data rustup_toolchain_store: CacheInterfaceCatalogFacts = rustup_toolchain_store_facts
+data resolved_graph_cache: CacheInterfaceCatalogFacts = resolved_graph_cache_facts
+data parse_table_memo: CacheInterfaceCatalogFacts = parse_table_memo_facts
 data compile_stage_memo: CacheInterfaceCatalogFacts = compile_stage_memo_facts
 
 data cache_catalog: List<CacheInterfaceCatalogFacts> = [

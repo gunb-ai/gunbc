@@ -1,5 +1,9 @@
 module v2.std.compilers.semantic_decl_emission
 
+import v2.std.compilers.coproduct_variant_shape {
+  coproduct_all_variants_nullary,
+  coproduct_variant_edge_has_payload
+}
 import v2.std.compilers.lexing {
   CharClassPattern,
   IdentContinueChar,
@@ -1752,24 +1756,7 @@ fn target_semantic_decl_surface_generic_params(params: List<Symbol>) -> Node {
   )
 }
 
-data target_semantic_decl_shape_predicate_dissolution_note: String = "🟡 dissolve-on: target_semantic_decl_variant_edge_has_payload and target_semantic_decl_coproduct_has_shape_rule are interim Node-tree shape predicates for coproduct decoration selection; dissolve when decoration rules key on typed surface facts from the bundle authority, not Conj-child presence heuristics."
-
-fn target_semantic_decl_variant_edge_has_payload(edge: Edge) -> Bool {
-  match edge.target.kind {
-    TypeNode { connective: Conj } => !is_empty(xs: edge.target.children)
-    _ => false
-  }
-}
-
-fn target_semantic_decl_coproduct_all_variants_nullary(edges: List<Edge>) -> Bool {
-  fold_list(
-    xs: edges,
-    empty: true,
-    cons: fn(acc, edge) {
-      acc && !target_semantic_decl_variant_edge_has_payload(edge: edge)
-    }
-  )
-}
+data target_semantic_decl_shape_predicate_dissolution_note: String = "DISSOLVED 2026-07-24 (silent-badger-23): nullary/payload coproduct variant walk consolidated onto v2.std.compilers.coproduct_variant_shape (single authority). Remaining dissolve-on: decoration rules key on typed surface facts from the bundle authority, not ad-hoc Conj-child heuristics at call sites."
 
 fn semantic_decl_coproduct_shape_key_unsupported_connective_diagnostic(
   coproduct: Node
@@ -1784,7 +1771,7 @@ fn semantic_decl_coproduct_shape_key_unsupported_connective_diagnostic(
 fn target_semantic_decl_coproduct_shape_key(coproduct: Node) -> Outcome<Symbol> {
   match coproduct.kind {
     TypeNode { connective: Disj } =>
-      if target_semantic_decl_coproduct_all_variants_nullary(edges: coproduct.children) {
+      if coproduct_all_variants_nullary(edges: coproduct.children) {
         outcome_accepted(value: ^semantic_decl_coproduct_shape_all_variants_nullary)
       } else {
         outcome_accepted(value: ^semantic_decl_coproduct_shape_default)
@@ -1922,7 +1909,7 @@ fn target_semantic_decl_tagged_union_variant_surface_from_edge(
 ) -> Outcome<Node> {
   match edge.label {
     Named { name: vname } =>
-      if target_semantic_decl_variant_edge_has_payload(edge: edge) {
+      if coproduct_variant_edge_has_payload(edge: edge) {
         bind_outcome(
           o: target_semantic_decl_field_surfaces(
             edges: edge.target.children,
@@ -1981,7 +1968,7 @@ fn target_semantic_decl_variant_surface_from_edge(
 ) -> Outcome<Node> {
   match edge.label {
     Named { name: vname } =>
-      if target_semantic_decl_variant_edge_has_payload(edge: edge) {
+      if coproduct_variant_edge_has_payload(edge: edge) {
         bind_outcome(
           o: target_semantic_decl_field_surfaces(
             edges: edge.target.children,
@@ -2045,7 +2032,7 @@ fn target_semantic_decl_variant_surfaces_for_coproduct(
   coproduct: Node
 ) -> Outcome<List<Node>> {
   if target_semantic_decl_coproduct_uses_tagged_union_layout(layout: projection.coproduct_layout)
-    && !target_semantic_decl_coproduct_all_variants_nullary(edges: coproduct.children)
+    && !coproduct_all_variants_nullary(edges: coproduct.children)
   {
     target_semantic_decl_tagged_union_variant_surfaces(
       edges: coproduct.children,
@@ -2082,7 +2069,7 @@ fn target_semantic_enum_surface_from_coproduct(
               if target_semantic_decl_coproduct_uses_tagged_union_layout(
                     layout: projection.coproduct_layout
                   )
-                && !target_semantic_decl_coproduct_all_variants_nullary(edges: coproduct.children)
+                && !coproduct_all_variants_nullary(edges: coproduct.children)
               {
                 if is_empty(xs: params) {
                   outcome_accepted(

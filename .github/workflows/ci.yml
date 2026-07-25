@@ -39,6 +39,9 @@ jobs:
           if sccache --show-stats >/dev/null 2>&1; then
             echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
             echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+            printf '%s\n' "CiSccacheProviderReceipt: provider=bound catalog=sccache_local"
+          else
+            printf '%s\n' "CiSccacheProviderReceipt: provider=SKIPPED catalog=sccache_local host=$(hostname) cause=daemon-unavailable; the release build runs UNCACHED — a counted degradation, not a supported mode (host_build_cache_provision P1b should have converged this host)"
           fi
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
@@ -284,12 +287,6 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.head_ref || github.ref_name }}
-      - name: Setup Rust (floor gate toolchain — batch-4 emit_host/self_host gates need cargo/rustfmt; no isolated rustup)
-        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
-        with:
-          components: rustfmt
-          cache: false
-          rustflags: ''
       - name: Download release-bins artifact
         uses: actions/download-artifact@v4
         with:

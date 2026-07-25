@@ -85,6 +85,18 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
+    slug: "gate1_repr_mismatch_e0308_diagnosis_2026-07-24",
+    work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "render_rust_diagnostics_carrier_applied", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "emit_representation_mismatch brick's 4 named sub-walls (DIAGNOSTICS carrier, trait-derive-completeness, WITNESS<T> propagation, RC_WRAP/OWNERSHIP #6776 coverage gap) each land or the doc migrates into a registered gunbc.plan.Plan row" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
+    slug: "rc-scalar-wrap-fresh-build-correction-2026-07-25",
+    work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "value_inferred_type_is_rc_wrapped", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the residual generic function return-type substitution RC_SCALAR_WRAP sub-class (materialization_carriers, flat at 15) lands via the shared Root-4 lane" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
     slug: "srv2-05-native-agreement-divergence-diagnosis",
     work: DeclarationRef { module_path: "v2.compiler.self_host.witness_entry_eligibility_census", decl_name: "witness_entry_eligibility_census_note", field: WholeDeclaration },
     dissolution: HasTrigger { text: "native re-flip greens on >=2 runner hosts with loud divergence receipts; diagnosis absorbed into frontier carrier" },
@@ -145,9 +157,27 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "roadmap-workspace-remodel-plan",
+    work: DeclarationRef { module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_dispatch_result_band", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the composition-session slices land on their carriers — the StateResponse rule kind and ResponseScope in gunbc.design.*, the RoadmapRow archetype grid, page altitude from the attention law, anomaly evidence in the row disclosure — and the plan registers as a gunbc.plan.Plan row (extends roadmap-workspace-ux-plan, whose row dissolves on its own trigger)" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "ci-two-tier-placement-redesign",
     work: DeclarationRef { module_path: "gunbc.ci_spec", decl_name: "gunbc_ci_spec", field: WholeDeclaration },
     dissolution: HasTrigger { text: "D3 lands the placement axis (PrTier | Gauntlet) on CiSpec rows with the measured 5s-rule roster — the spec rows become the authority; the D4 audit-step deletion and D0/D1 preconditions are tracked on their carriers" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "dag-note-prose-census",
+    work: DeclarationRef { module_path: "v2.lens.enforcement.standing_intent", decl_name: "StandingIntent", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the typed annotation carriers land (ruling rows on StandingIntent, an event log keyed to the declaration, citation edges) and the annotation-budget lens counts ROWS — at which point a lexical census over prose is superseded by a fold over typed rows, and the doc plus its instrument delete together" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "extdeps-positioning-restructure",
+    work: DeclarationRef { module_path: "v2.lens.extdeps_shape_transport_policy", decl_name: "extdeps_shape_transport_policy_clean_holds", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the extdeps positioning restructure PR (pure git mv + import repoint: os/ de-grab-bag + findings 1-4 hub-loose, all under the §3 extdeps discipline this lens enforces) lands and the extdeps directories are §3-congruent — the brief's scope is discharged; delete this row and the doc together" },
   },
 ]
 

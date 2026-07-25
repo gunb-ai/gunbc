@@ -657,6 +657,22 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn resolved_graph_cache_compile_clean_diag_union_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER,
+            "resolved_graph_cache_compile_clean_diagnostic_union_disk_hit_refusal"
+        );
+    }
+
+    #[test]
+    fn compile_clean_unlisted_import_census_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER,
+            "cli_run_compile_clean_unlisted_import_census"
+        );
+    }
+
+    #[test]
     fn effect_reach_inference_bridge_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_EFFECT_REACH_INFERENCE_BRIDGE_SCAFFOLD_MARKER,
@@ -2022,17 +2038,139 @@ fn compile_clean_resolve_has_hard_errors(
     compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
 }
 
-// Single authority (DESIGN.md §3/§7): whether a diagnostic blocks is decided by
-// `00_core.dag`, never restated here. `is_interpreter_blocking_diagnostic` is the
-// {ComplexityUnknown, UnlistedImportUse} tolerance this gate has always intended;
-// the prior hand-rolled `!matches!(ComplexityUnknown)` predated UnlistedImportUse's
-// demotion to advisory and silently reded the namespace import strip.
-fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
-    crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+const COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY: &str = "dag/gunbc/compile_clean_diagnostic_policy.dag";
+
+/// Whether `UnlistedImportUse` blocks compile-clean per the single policy row
+/// (`compile_clean_unlisted_import_use_enforcement` in `gunbc.compile_clean_diagnostic_policy`).
+/// Both the floor receipt path and the CLI transport must read this — never restate the predicate.
+pub fn compile_clean_unlisted_import_use_blocks_from_policy() -> Result<bool, String> {
+    let roots = default_source_roots();
+    let entry = resolve_entry_file_under_roots(&roots, COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY)
+        .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
+    let (graph, indices) = resolve_entry_graph_shared(&roots, &entry)
+        .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+    match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "compile_clean_unlisted_import_use_blocks",
+        &[],
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
+        Ok(other) => Err(format!(
+            "compile_clean_unlisted_import_use_blocks returned `{}`, expected Bool",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("compile_clean_unlisted_import_use_blocks: {e}")),
+    }
+}
+
+fn compile_clean_unlisted_import_use_blocks_cached() -> Result<bool, String> {
+    thread_local! {
+        static CACHED: RefCell<Option<Result<bool, String>>> = const { RefCell::new(None) };
+        static LOGGED_REFUSAL: Cell<bool> = const { Cell::new(false) };
+    }
+    CACHED.with(|c| {
+        if let Some(v) = c.borrow().clone() {
+            return v;
+        }
+        let v = compile_clean_unlisted_import_use_blocks_from_policy();
+        if let Err(ref e) = v {
+            LOGGED_REFUSAL.with(|logged| {
+                if !logged.get() {
+                    eprintln!(
+                        "compile-clean policy: refused to read disposition row ({e}); failing gate"
+                    );
+                    logged.set(true);
+                }
+            });
+        }
+        *c.borrow_mut() = Some(v.clone());
+        v
+    })
+}
+
+fn compile_clean_policy_read_refuses_gate() -> bool {
+    compile_clean_unlisted_import_use_blocks_cached().is_err()
+}
+
+/// Single authority (DESIGN.md §3/§7): whether a diagnostic blocks compile-clean.
+/// `UnlistedImportUse` is governed by `gunbc.compile_clean_diagnostic_policy` (issue 11);
+/// all other classes delegate to `00_core.dag` `is_interpreter_blocking_diagnostic`.
+pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
+    use crate::v1_std_core::CompilerDiagnostic;
+    match d.diagnostic.as_ref() {
+        CompilerDiagnostic::UnlistedImportUse { .. } => {
+            match compile_clean_unlisted_import_use_blocks_cached() {
+                Ok(blocks) => blocks,
+                Err(_) => true,
+            }
+        }
+        _ => crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()),
+    }
+}
+
+/// Advisory (non-blocking per current policy) diagnostics for compile-clean — the
+/// complement of `compile_clean_diagnostic_is_hard` used by the CLI transport so it
+/// does not print advisories as hard errors when the policy row says FloorNotYet.
+pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
+    !compile_clean_diagnostic_is_hard(d)
+        && matches!(
+            d.diagnostic.as_ref(),
+            crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }
+                | crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
+        )
 }
 
 pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
+    if compile_clean_policy_read_refuses_gate() {
+        return true;
+    }
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
+}
+
+/// `PipelineResult` adapter for the compile CLI transport.
+pub fn compile_clean_vec_has_hard_errors(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> bool {
+    if compile_clean_policy_read_refuses_gate() {
+        return true;
+    }
+    diagnostics.iter().any(compile_clean_diagnostic_is_hard)
+}
+
+/// `ResolvedPipelineResult` / `im::Vector` adapter for compile-clean checks.
+pub fn compile_clean_im_vector_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
+    if compile_clean_policy_read_refuses_gate() {
+        return true;
+    }
+    diagnostics.iter().any(compile_clean_diagnostic_is_hard)
+}
+
+pub fn compile_clean_im_vector_hard_error_count(diagnostics: &im::Vector<Rc<ErrorNode>>) -> usize {
+    diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .count()
+}
+
+pub fn compile_clean_im_vector_advisory_count(diagnostics: &im::Vector<Rc<ErrorNode>>) -> usize {
+    diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_advisory(d))
+        .count()
+}
+
+pub fn compile_clean_vec_hard_error_count(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> usize {
+    diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .count()
+}
+
+pub fn compile_clean_vec_advisory_count(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> usize {
+    diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_advisory(d))
+        .count()
 }
 
 fn eprint_compile_clean_hard_diagnostics(diagnostics: &im::Vector<Rc<ErrorNode>>) {
@@ -2831,7 +2969,7 @@ fn floor_compile_clean_emit_ok_via_index(
     use crate::v1_compiler_artifact::RenderTarget;
     use crate::v1_compiler_complexity::empty_complexity_report;
     let index = process_shared_index(index_roots);
-    let (graph, si) = match resolved_graph_from_sources_with_index(
+    let (graph, si, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
         sources,
         ResolveTypecheckGate::Strict,
@@ -2843,6 +2981,10 @@ fn floor_compile_clean_emit_ok_via_index(
             return false;
         }
     };
+    if compile_clean_pipeline_has_hard_errors(compile_clean_diags.as_ref()) {
+        eprint_compile_clean_hard_diagnostics(compile_clean_diags.as_ref());
+        return false;
+    }
     let newline_indices: Rc<im::Vector<Rc<NewlineIndex>>> =
         Rc::new(si.values().cloned().collect::<im::Vector<_>>());
     let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
@@ -2986,6 +3128,13 @@ fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt
 pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_diagnostic_histogram";
 
+/// INTERIM hand-Rust scaffold (issue 11 / extdeps.realization.resolved_graph
+/// `resolved_graph_cache_compile_clean_diagnostic_union_scaffold`): cross-process
+/// resolved-graph cache hits are refused until the disk artifact carries the
+/// compile-clean diagnostic union. Receipt: `rg resolved_graph_cache_compile_clean_diagnostic_union_disk_hit_refusal src/v1/stage0` == 1 until dissolution.
+pub(crate) const CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER: &str =
+    "resolved_graph_cache_compile_clean_diagnostic_union_disk_hit_refusal";
+
 /// Whole-tree `--target dag` compile-clean (witness_layer_roots closure).
 /// Instrument path for diagnostic histogram — not for cargo tests.
 ///
@@ -3007,6 +3156,191 @@ pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im::Vector<Rc<Error
         .filter(|d| compile_clean_diagnostic_is_hard(d))
         .cloned()
         .collect())
+}
+
+// DELETE WHEN dissolved: `compile_clean_unlisted_import_census` bin,
+// `UnlistedImportBindingSource`, `classify_unlisted_import_binding_source`,
+// `compile_clean_unlisted_import_census`, and related census helpers (~150 LOC).
+// Receipt: `rg cli_run_compile_clean_unlisted_import_census src/v1/stage0` == 1 until deletion;
+// namespace-only lane (docs/plans/namespace-resolution-design.md).
+pub(crate) const CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER: &str =
+    "cli_run_compile_clean_unlisted_import_census";
+
+// INTERIM hand-Rust scaffold (issue 11 / §7): dispatch input for the namespace flip.
+// DISSOLVES WHEN import grammar deleted and binding-source modeled in substrate.
+
+/// Binding-source attribution for the UnlistedImportUse census (issue 11).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum UnlistedImportBindingSource {
+    ListedImport,
+    PoolCoincidence,
+    DefinerResolvable,
+}
+
+impl UnlistedImportBindingSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ListedImport => "listed-import",
+            Self::PoolCoincidence => "pool-coincidence",
+            Self::DefinerResolvable => "definer-resolvable",
+        }
+    }
+}
+
+/// One attributed row of the UnlistedImportUse census.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnlistedImportCensusRow {
+    pub file: String,
+    pub referenced_name: String,
+    pub referencing_module: String,
+    pub definer_module: Option<String>,
+    pub binding_source: UnlistedImportBindingSource,
+}
+
+fn compile_clean_whole_tree_resolved(
+) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
+    let plan = CompileCleanScopePlan::WholeTree;
+    let sources = match witness_layer_roots_compile_clean_sources_for_plan(&plan)? {
+        None => return Err("compile-clean whole-tree: no sources (unexpected skip)".to_string()),
+        Some(s) => s,
+    };
+    Ok(v1_compiler_compile::compile_to_resolved(Rc::new(
+        sources.into(),
+    )))
+}
+
+fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String> {
+    use crate::v1_std_core::module_imports;
+    module_imports(tm.module.clone())
+        .iter()
+        .map(|imp: &Rc<Node>| imp.name.clone())
+        .collect()
+}
+
+fn definer_module_for_name(graph: &ResolvedGraph, name: &str) -> Option<String> {
+    if let Some(info) = graph.item_registry.get(name) {
+        return Some(info.module_name.clone());
+    }
+    if name.contains('.') {
+        let base = name.rsplit('.').next().unwrap_or(name);
+        if let Some(info) = graph.item_registry.get(base) {
+            return Some(info.module_name.clone());
+        }
+    }
+    None
+}
+
+/// Classify how a single `UnlistedImportUse` site obtained its binding.
+pub fn classify_unlisted_import_binding_source(
+    graph: &ResolvedGraph,
+    referencing_module: &str,
+    referenced_name: &str,
+) -> (UnlistedImportBindingSource, Option<String>) {
+    let definer = definer_module_for_name(graph, referenced_name);
+    let tm = graph
+        .modules
+        .iter()
+        .find(|m| m.type_env.module_path == referencing_module);
+    let imports: HashSet<String> = tm
+        .map(import_module_paths_for_typed_module)
+        .unwrap_or_default();
+    if let Some(ref def_mod) = definer {
+        if imports.contains(def_mod) {
+            return (UnlistedImportBindingSource::ListedImport, definer);
+        }
+    }
+    if referenced_name.contains('.') {
+        return (UnlistedImportBindingSource::DefinerResolvable, definer);
+    }
+    (UnlistedImportBindingSource::PoolCoincidence, definer)
+}
+
+fn diagnostic_decl_file_for_census(d: &Rc<ErrorNode>) -> String {
+    let raw = diagnostic_to_span(d.diagnostic.clone()).file.clone();
+    normalize_repo_relative_path_for_census(&raw)
+}
+
+fn normalize_repo_relative_path_for_census(path: &str) -> String {
+    let p = path.replace('\\', "/");
+    if let Ok(root) = workspace_root().canonicalize() {
+        if let Ok(abs) = std::path::Path::new(&p).canonicalize() {
+            if let Ok(rel) = abs.strip_prefix(&root) {
+                return rel.to_string_lossy().replace('\\', "/");
+            }
+        }
+    }
+    p
+}
+
+/// Whole-tree UnlistedImportUse census with binding-source attribution (issue 11).
+pub fn compile_clean_unlisted_import_census() -> Result<Vec<UnlistedImportCensusRow>, String> {
+    use crate::v1_std_core::CompilerDiagnostic;
+    let result = compile_clean_whole_tree_resolved()?;
+    let graph = result
+        .graph
+        .clone()
+        .ok_or_else(|| "compile-clean census: compilation produced no graph".to_string())?;
+    let mut rows = Vec::new();
+    for d in result.diagnostics.iter() {
+        let CompilerDiagnostic::UnlistedImportUse { name, .. } = d.diagnostic.as_ref() else {
+            continue;
+        };
+        let (binding_source, definer_module) =
+            classify_unlisted_import_binding_source(&graph, &d.module_name, name);
+        rows.push(UnlistedImportCensusRow {
+            file: diagnostic_decl_file_for_census(d),
+            referenced_name: name.clone(),
+            referencing_module: d.module_name.clone(),
+            definer_module,
+            binding_source,
+        });
+    }
+    rows.sort_by(|a, b| {
+        a.file
+            .cmp(&b.file)
+            .then_with(|| a.referenced_name.cmp(&b.referenced_name))
+            .then_with(|| a.referencing_module.cmp(&b.referencing_module))
+    });
+    Ok(rows)
+}
+
+/// Floor compile-clean verdict over the whole-tree closure (shared-index receipt semantics).
+pub fn compile_clean_floor_verdict_whole_tree() -> Result<bool, String> {
+    let roots = default_source_roots();
+    let sources = match witness_layer_roots_compile_clean_sources_for_plan(
+        &CompileCleanScopePlan::WholeTree,
+    )? {
+        None => return Ok(true),
+        Some(s) => s,
+    };
+    Ok(floor_compile_clean_emit_ok_via_index(sources, &roots))
+}
+
+/// CLI compile-clean verdict: same source closure and diagnostic policy as the floor,
+/// without the shared-index receipt shortcut (the standalone `gunbc compile` transport).
+pub fn compile_clean_cli_verdict_whole_tree() -> Result<bool, String> {
+    let result = compile_clean_whole_tree_resolved()?;
+    let graph_ok = result.graph.is_some();
+    let hard = compile_clean_im_vector_has_hard_errors(result.diagnostics.as_ref());
+    Ok(graph_ok && !hard)
+}
+
+/// Both realizations must agree modulo the single policy row.
+pub fn compile_clean_cli_floor_verdicts_agree() -> Result<bool, String> {
+    let floor = compile_clean_floor_verdict_whole_tree()?;
+    let cli = compile_clean_cli_verdict_whole_tree()?;
+    Ok(floor == cli)
+}
+
+/// Host-callable witness entry (errors → false, located stderr).
+pub fn witness_compile_clean_cli_floor_verdicts_agree() -> bool {
+    match compile_clean_cli_floor_verdicts_agree() {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("witness_compile_clean_cli_floor_verdicts_agree: {e}");
+            false
+        }
+    }
 }
 
 /// `(class, name)` key for histogram aggregation over hard diagnostics.
@@ -5537,6 +5871,7 @@ pub struct MultiEntryIndex {
             (
                 Rc<v1_compiler_compile::ResolvedGraph>,
                 Rc<HashMap<String, Rc<NewlineIndex>>>,
+                Rc<im::Vector<Rc<ErrorNode>>>,
             ),
         >,
     >,
@@ -7117,12 +7452,39 @@ pub struct ResolveStageNanos {
     pub typecheck_compute: u128,
     /// `collect_parent_envs` calls inside reconcile (every module, cache hit or miss).
     pub parent_envs: u128,
-    /// Reconcile total minus the two rows above: variant surfaces, registry merge,
-    /// transitive-service expansion, the three rewire passes, emit-graph info — the
-    /// whole-closure assembly residue that reruns per entry even at 100% cache hits.
+    /// Reconcile total minus the rows above and the assembly sub-rows below: the
+    /// unattributed whole-closure assembly residue that reruns per entry even at
+    /// 100% cache hits.
     pub reconcile_assembly: u128,
     /// `extract_ownership_proofs` + its diagnostics walk.
     pub ownership: u128,
+    // Assembly sub-rows (floor batch-3 lane, 2026-07-25). `reconcile_assembly` was one
+    // undifferentiated number covering ~96% of the discovery-corpus resolve wall — the same
+    // condition this struct's own doc-comment was written to end one level up, so the split
+    // is the same move applied to its own residue. These rows located
+    // `rewire_type_env_import_str_binding_identity` as 58% of the wall (see
+    // docs/plans/floor-time-namespace-walk-regression-diagnosis.md §7). Same dissolution
+    // trigger as `[gantt]` / `phase_profile`: a `.dag` `PerformanceReceipt` per-stage carrier
+    // (realization_measurement_loop Phase 0) consumed by a floor witness makes this the
+    // model's own attribution rather than a host-side stderr projection.
+    /// `module_schedule_batches` — antichain schedule build over the closure.
+    pub assembly_schedule: u128,
+    /// `try_reconcile_all_cache_hits` pass 1: per-module content key + store probe.
+    pub assembly_probe: u128,
+    /// `item_registry` merge fold across the closure's typed modules.
+    pub assembly_registry: u128,
+    /// `expand_transitive_services` (bounded 5-pass fixpoint over every bodied item).
+    pub assembly_services: u128,
+    /// The three `rewire_*` passes (type-env parents, import-str identity, func-env parents).
+    pub assembly_rewire: u128,
+    /// `rewire_type_env_parent_links` alone.
+    pub assembly_rewire_type_env: u128,
+    /// `rewire_type_env_import_str_binding_identity` alone.
+    pub assembly_rewire_import_str: u128,
+    /// `rewire_func_env_parent_links` alone.
+    pub assembly_rewire_func_env: u128,
+    /// `corpus_has_v1_seed_source_indices` + `build_emit_graph_info`.
+    pub assembly_emit_info: u128,
 }
 
 impl ResolveStageNanos {
@@ -7135,6 +7497,15 @@ impl ResolveStageNanos {
         self.parent_envs += other.parent_envs;
         self.reconcile_assembly += other.reconcile_assembly;
         self.ownership += other.ownership;
+        self.assembly_schedule += other.assembly_schedule;
+        self.assembly_probe += other.assembly_probe;
+        self.assembly_registry += other.assembly_registry;
+        self.assembly_services += other.assembly_services;
+        self.assembly_rewire += other.assembly_rewire;
+        self.assembly_rewire_type_env += other.assembly_rewire_type_env;
+        self.assembly_rewire_import_str += other.assembly_rewire_import_str;
+        self.assembly_rewire_func_env += other.assembly_rewire_func_env;
+        self.assembly_emit_info += other.assembly_emit_info;
     }
 
     /// Sum of the attributed stages; the caller's lump minus this is the
@@ -7148,6 +7519,12 @@ impl ResolveStageNanos {
             + self.parent_envs
             + self.reconcile_assembly
             + self.ownership
+            + self.assembly_schedule
+            + self.assembly_probe
+            + self.assembly_registry
+            + self.assembly_services
+            + self.assembly_rewire
+            + self.assembly_emit_info
     }
 }
 
@@ -7162,10 +7539,36 @@ thread_local! {
             parent_envs: 0,
             reconcile_assembly: 0,
             ownership: 0,
+            assembly_schedule: 0,
+            assembly_probe: 0,
+            assembly_registry: 0,
+            assembly_services: 0,
+            assembly_rewire: 0,
+            assembly_rewire_type_env: 0,
+            assembly_rewire_import_str: 0,
+            assembly_rewire_func_env: 0,
+            assembly_emit_info: 0,
         }) };
 }
 
+thread_local! {
+    static RESOLVE_STAGE_TOTAL: std::cell::RefCell<ResolveStageNanos> =
+        std::cell::RefCell::new(ResolveStageNanos::default());
+}
+
+/// Cumulative per-worker stage attribution across every entry resolve this thread
+/// has run (the per-entry slot folded in at each reset, plus the live slot). Read by
+/// `claim_batch`'s `[assembly-split]` receipt, which — unlike `claim_executor`'s
+/// discovery summary — has no per-entry receipt list to sum.
+pub fn resolve_stage_totals() -> ResolveStageNanos {
+    let mut total = RESOLVE_STAGE_TOTAL.with(|t| *t.borrow());
+    total.accumulate(&resolve_stage_slot_snapshot());
+    total
+}
+
 fn resolve_stage_slot_reset() {
+    let carried = resolve_stage_slot_snapshot();
+    RESOLVE_STAGE_TOTAL.with(|t| t.borrow_mut().accumulate(&carried));
     RESOLVE_STAGE_SLOT.with(|s| s.set(ResolveStageNanos::default()));
 }
 
@@ -7198,6 +7601,25 @@ fn resolve_entry_with_parse_cache(
     let sources = load_sources_for_entry_with_pool(index, entry_file)?;
     resolve_stage_slot_add(|s| s.load += load_started.elapsed().as_nanos());
     resolved_graph_from_sources_with_index(index, sources, typecheck_gate, entry_file)
+        .map(|(graph, si, _compile_clean_diags)| (graph, si))
+}
+
+fn compile_clean_diags_from_resolved_stages(
+    resolve_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
+    norm_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
+    typed: &Rc<v1_compiler_compile::ResolvedGraph>,
+    ownership_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
+) -> Rc<im::Vector<Rc<ErrorNode>>> {
+    let mut acc = im::Vector::new();
+    for d in resolve_diags.iter() {
+        acc.push_back(d.clone());
+    }
+    acc.extend(norm_diags.iter().cloned());
+    for d in typed.diagnostics.iter() {
+        acc.push_back(d.clone());
+    }
+    acc.extend(ownership_diags.iter().cloned());
+    Rc::new(acc)
 }
 
 /// The sources-taking core of `resolve_entry_with_parse_cache`: parse → resolve →
@@ -7228,6 +7650,7 @@ fn resolved_graph_from_sources_with_index(
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
         Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Rc<im::Vector<Rc<ErrorNode>>>,
     ),
     String,
 > {
@@ -7237,22 +7660,23 @@ fn resolved_graph_from_sources_with_index(
     // front of the opt-in cross-process store. A subject this process has already
     // assembled is served by reference, eliminating the per-entry reconcile assembly
     // residue on re-resolve (Track A denomination receipt, resolve-split #6535).
-    if let Some((graph, si)) = index.resolved_graph_memo.borrow().get(&subject) {
-        return Ok((graph.clone(), si.clone()));
+    if let Some((graph, si, compile_clean_diags)) = index.resolved_graph_memo.borrow().get(&subject)
+    {
+        return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
     }
     // Cross-process store tier: opt-in via GUNBC_RESOLVED_GRAPH_CACHE_DIR; installs into
     // the share above on hit so later same-subject demands never re-decode.
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         match cross_process_lookup(&cache_root, &subject) {
-            CacheLookupResult::Hit(hit) => {
+            CacheLookupResult::Hit(_) => {
+                // SCAFFOLD (§7 — CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER;
+                // dissolve trigger: extdeps.realization.resolved_graph
+                // resolved_graph_cache_compile_clean_diagnostic_union_dissolve_trigger):
+                // v1 disk artifacts carry only the typed graph — refuse hit, cold resolve.
                 eprintln!(
-                    "[resolved-graph-cache] decode subject={subject} (installed into process share)"
+                    "[resolved-graph-cache] refusing hit subject={subject}: compile-clean diagnostic union absent from disk artifact; cold resolve ({})",
+                    CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER
                 );
-                index
-                    .resolved_graph_memo
-                    .borrow_mut()
-                    .insert(subject, (hit.graph.clone(), hit.source_indices.clone()));
-                return Ok((hit.graph, hit.source_indices));
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
         }
@@ -7374,7 +7798,16 @@ fn resolved_graph_from_sources_with_index(
     // accumulated into the slot during this call (typecheck computes + parent envs).
     let reconcile_total = reconcile_started.elapsed().as_nanos();
     resolve_stage_slot_add(|s| {
-        s.reconcile_assembly += reconcile_total.saturating_sub(s.typecheck_compute + s.parent_envs);
+        s.reconcile_assembly += reconcile_total.saturating_sub(
+            s.typecheck_compute
+                + s.parent_envs
+                + s.assembly_schedule
+                + s.assembly_probe
+                + s.assembly_registry
+                + s.assembly_services
+                + s.assembly_rewire
+                + s.assembly_emit_info,
+        );
     });
 
     let has_type_errors = typed
@@ -7427,11 +7860,22 @@ fn resolved_graph_from_sources_with_index(
     }
     resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
+    let compile_clean_diags = compile_clean_diags_from_resolved_stages(
+        &graph.diagnostics,
+        &norm_diags,
+        &typed,
+        &ownership_diags,
+    );
+
     // Install into the in-process share so same-subject re-resolves skip assembly.
-    index
-        .resolved_graph_memo
-        .borrow_mut()
-        .insert(subject.clone(), (typed.clone(), source_indices.clone()));
+    index.resolved_graph_memo.borrow_mut().insert(
+        subject.clone(),
+        (
+            typed.clone(),
+            source_indices.clone(),
+            compile_clean_diags.clone(),
+        ),
+    );
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         // A failed store write is a disclosed refusal, never a silent shrug —
         // the swallowed error hid that big closures never landed on disk (only
@@ -7443,7 +7887,7 @@ fn resolved_graph_from_sources_with_index(
         }
     }
 
-    Ok((typed, source_indices))
+    Ok((typed, source_indices, compile_clean_diags))
 }
 
 /// Collision-honesty check for the shared typed-module cache (union-resolve receipt §6.3,
@@ -7652,11 +8096,15 @@ fn finish_resolved_graph_assembly(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let (same_tree_fork_count, cross_tree_fork_count) = binding_fork_counts;
+    let registry_started = std::time::Instant::now();
     let item_registry = modules.iter().fold(v1_rt::rc_empty_map(), |acc, typed| {
         v1_rt::rc_map_merge(acc, typed.item_registry.clone())
     });
+    resolve_stage_slot_add(|s| s.assembly_registry += registry_started.elapsed().as_nanos());
+    let services_started = std::time::Instant::now();
     let expanded_registry =
         v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
+    resolve_stage_slot_add(|s| s.assembly_services += services_started.elapsed().as_nanos());
     let diagnostics: Rc<im::Vector<Rc<ErrorNode>>> = Rc::new({
         let mut acc = im::Vector::new();
         for chunk in &diag_chunks {
@@ -7670,16 +8118,27 @@ fn finish_resolved_graph_assembly(
             "[binding-fork-ledger] same_tree={same_tree_fork_count} cross_tree={cross_tree_fork_count} total={total_fork_count}"
         );
     }
+    let rewire_started = std::time::Instant::now();
     let modules =
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
+    resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
+    let rewire2_started = std::time::Instant::now();
     let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
         modules.clone(),
         source_indices.clone(),
     );
+    resolve_stage_slot_add(|s| {
+        s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos()
+    });
+    let rewire3_started = std::time::Instant::now();
     let modules =
         v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
+    resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
+    resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
+    let emit_info_started = std::time::Instant::now();
     let has_v1_seed = v1_compiler_infer::corpus_has_v1_seed_source_indices(modules.clone());
     let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone(), has_v1_seed);
+    resolve_stage_slot_add(|s| s.assembly_emit_info += emit_info_started.elapsed().as_nanos());
     Ok(Rc::new(ResolvedGraph {
         modules,
         item_registry: expanded_registry,
@@ -7725,6 +8184,7 @@ fn try_reconcile_all_cache_hits(
         closure_path_to_authored_name_map(closure_modules, closure_names);
     let mut results: Vec<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>> =
         vec![None; closure_modules.len()];
+    let probe_started = std::time::Instant::now();
     let mut pending: Vec<usize> = schedule.iter().flatten().copied().collect();
     let mut defer_pass = 0usize;
     while !pending.is_empty() {
@@ -7752,6 +8212,7 @@ fn try_reconcile_all_cache_hits(
                 Err(e) => return Err(e),
             };
             let Some(tc_result) = index_get_typed(index, &typed_key)? else {
+                resolve_stage_slot_add(|s| s.assembly_probe += probe_started.elapsed().as_nanos());
                 return Ok(None);
             };
             note_interface_hash(&mut interface_hash_by_name, mod_name, &tc_result);
@@ -7778,6 +8239,8 @@ fn try_reconcile_all_cache_hits(
             pending = next_pending;
         }
     }
+
+    resolve_stage_slot_add(|s| s.assembly_probe += probe_started.elapsed().as_nanos());
 
     // Pass 2 — resolver's ORIGINAL order, assembling the `ResolvedGraph` byte-identically to
     // the legacy serial fold (module order is an output-shape invariant, not just a schedule
@@ -8161,8 +8624,10 @@ fn reconcile_with_typed_cache(
         .iter()
         .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
         .collect();
+    let schedule_started = std::time::Instant::now();
     let (schedule, cycle_residue_slots) =
         module_schedule_batches(&closure_modules, &closure_names, index);
+    resolve_stage_slot_add(|s| s.assembly_schedule += schedule_started.elapsed().as_nanos());
     if let Some(assembled) = try_reconcile_all_cache_hits(
         &closure_modules,
         &closure_names,
@@ -19471,7 +19936,7 @@ fn project_layer_import_syntax_facts(
     }
 }
 
-/// Layer-scoped dependency edges for `v2.lens.layering_imports` and sibling consumers.
+/// Layer-scoped dependency edges for `v2.std.layer` (`LayerImportFact`) and sibling consumers.
 ///
 /// Transitional producer (namespace terminal step, docs/plans/layering-imports-reference-repoint-design.md §3.1):
 /// import-syntax facts for import-bearing files, plus `reference_edges_as_import_facts(..., strict=true)`

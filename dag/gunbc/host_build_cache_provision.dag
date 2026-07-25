@@ -37,11 +37,17 @@ data ci_sccache_opportunistic_detect_scaffold: Disposition = Scaffold {
     field: WholeDeclaration,
   }
 }
+data build_cache_path_authority_observation_note: String = "CI and ctrl-build sessions consume the cache as bare `sccache` on PATH (RUSTC_WRAPPER=sccache), so provisioning the modeled binary is NOT sufficient — the PATH-visible sccache must BE the modeled one. A second sccache earlier in PATH (a distro package, a stale copy) is precisely the two-authority state this lane exists to remove, and it is invisible to a read-back that probes the absolute path: that read-back greens on the binary we provisioned while the compiler calls a different one. DaemonPathShadowed carries BOTH paths so the refusal is located (which binary won, which one was expected) rather than merely typed. This judgement is modeled HERE, in the verdict fold (proven by design_witness_path_shadow_refuses_fail_closed against a synthetic DaemonPathShadowed observation), not decided by the provisioning shell. Its LIVE observation is STAGED, not emitted: per the shell→dag census this module's script side is an A5 `decompose` row that must not grow its emitted shell surface, so the `command -v sccache` resolve waits for the typed-argv dissolve-on (#5828) rather than landing as hand-shell now (review 42343). The model carries the state and its refusal today; only the live producer is deferred."
+
+data build_cache_supervision_observation_note: String = "A stats read-back CANNOT see whether the daemon it just talked to is supervised — and this is not a gap in the probe, it is the probe's semantics: any sccache invocation AUTO-STARTS a server if none is listening, so `--show-stats` manufactures the very evidence it reports. On srv3 2026-07-25 it printed a full stats table while the modeled unit had been `inactive (dead)` for six hours and no sccache process existed beforehand. Read through the verdict fold as it stood, that host observed DaemonStatsOk and therefore converged: the provisioning act would have reported success over a host with NO durable cache — a fabricated plausible output (§5), and the same shape as DaemonPathShadowed (a read-back that greens on evidence it produced rather than on the state the lane exists to establish). DaemonUnsupervised splits that conflation: 'a daemon answered' and 'the modeled supervisor is running it' are different states with different remedies, so they get different names rather than one Ok. The LIVE observation is STAGED exactly as the PATH-shadow one is — the supervisor read (`systemctl --user is-active`) is not emitted as hand-shell here, because this module's script side is an A5 `decompose` census row that may shrink but must not grow (review 42343); it lands with the typed-argv dissolve-on (#5828). The model carries the state and its refusal today; only the live producer is deferred. Construction covers the case this observation would catch on a host provisioned BY THIS LANE — build_cache_unit_daemon_runs_until_stopped makes the self-exiting unit unwritable — so the observation's standing job is the residue construction cannot reach: a host whose unit was stopped, masked, or replaced out of band."
+
 type BuildCacheDaemonObservation
   = DaemonStatsOk { stats_line: String }
   | DaemonAbsent
   | DaemonUnresponsive { detail: NonEmptyStr }
   | DaemonMisconfigured { matched_fragment: String, detail: NonEmptyStr }
+  | DaemonPathShadowed { resolved: String, expected: String }
+  | DaemonUnsupervised { unit: String, unit_state: String }
 
 type BuildCacheProvisionRefusal
   = RefusalDaemonAbsent
@@ -49,6 +55,8 @@ type BuildCacheProvisionRefusal
   | RefusalDaemonMisconfigured
   | RefusalPrivilegeDenied
   | RefusalCatalogUnknown
+  | RefusalPathShadowed
+  | RefusalDaemonUnsupervised
 
 type BuildCacheProvisionVerdict
   = ProvisionConverged { catalog_id: CacheInterfaceId, stats_line: String }
@@ -72,6 +80,16 @@ fn provision_build_cache_absorbing_fallback_widen_sketch(
       ProvisionRefused {
         cause: RefusalDaemonMisconfigured,
         reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as NonEmptyStr,
+      }
+    DaemonPathShadowed { resolved: r, expected: e } =>
+      ProvisionConverged {
+        catalog_id: catalog_id,
+        stats_line: concat("path-shadow-widen-sketch: ", concat(r, concat(" vs ", e))),
+      }
+    DaemonUnsupervised { unit: u, unit_state: s } =>
+      ProvisionConverged {
+        catalog_id: catalog_id,
+        stats_line: concat("unsupervised-widen-sketch: ", concat(u, concat(" is ", s))),
       }
   }
 }
@@ -103,6 +121,18 @@ fn build_cache_provision_gate_accepts(
         ProvisionConverged { catalog_id: _, stats_line: _ } => false
         ProvisionRefused { cause: _, reason: _ } => false
       }
+    DaemonPathShadowed { resolved: _, expected: _ } =>
+      match verdict {
+        ProvisionRefused { cause: RefusalPathShadowed, reason: _ } => true
+        ProvisionConverged { catalog_id: _, stats_line: _ } => false
+        ProvisionRefused { cause: _, reason: _ } => false
+      }
+    DaemonUnsupervised { unit: _, unit_state: _ } =>
+      match verdict {
+        ProvisionRefused { cause: RefusalDaemonUnsupervised, reason: _ } => true
+        ProvisionConverged { catalog_id: _, stats_line: _ } => false
+        ProvisionRefused { cause: _, reason: _ } => false
+      }
   }
 }
 
@@ -131,6 +161,28 @@ fn provision_build_cache_verdict(
           ProvisionRefused {
             cause: RefusalDaemonMisconfigured,
             reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as NonEmptyStr,
+          }
+        DaemonPathShadowed { resolved: r, expected: e } =>
+          ProvisionRefused {
+            cause: RefusalPathShadowed,
+            reason: concat(
+              concat("host_build_cache_provision: PATH resolves sccache to ", r),
+              concat(
+                concat(" but the modeled install authority is ", e),
+                "; the compiler would call a binary this lane never provisioned. Fail-closed, no local-build fallback.",
+              ),
+            ) as NonEmptyStr,
+          }
+        DaemonUnsupervised { unit: u, unit_state: s } =>
+          ProvisionRefused {
+            cause: RefusalDaemonUnsupervised,
+            reason: concat(
+              concat("host_build_cache_provision: sccache answers but its supervisor unit ", u),
+              concat(
+                concat(" is ", s),
+                "; the daemon is only alive because an invocation auto-started it, so it exits on its own idle timeout and nothing restarts it. Fail-closed, no local-build fallback.",
+              ),
+            ) as NonEmptyStr,
           }
       }
   }

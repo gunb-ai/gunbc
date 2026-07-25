@@ -71,7 +71,7 @@ type UriHost {
 }
 
 type UriPort {
-  value: Nat,
+  value: v2.std.nat.Nat,
   grammar: Rfc3986AbnfProduction,
 }
 

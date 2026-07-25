@@ -1,0 +1,169 @@
+module v2.compiler.trait_derive_completeness
+
+import std.trait_derive_shape {
+  ReprDeriveClone,
+  ReprDerivePartialEq,
+  ReprDeriveEq,
+  ReprDerivePartialOrd,
+  ReprDeriveOrd,
+  ReprGroundingDeriveTrait,
+  ReprGroundingDeriveElemShape,
+  ReprDeriveElemKernelInt,
+  ReprDeriveElemKernelString,
+  ReprDeriveElemKernelBool,
+  ReprDeriveElemKernelUnit,
+  ReprDeriveElemNullaryEnumCopy,
+  ReprDeriveElemPayloadCoproduct,
+  ReprDeriveElemUnknown,
+  repr_grounding_derive_shape_has_trait,
+  repr_grounding_derive_completeness_predicate
+}
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Disj,
+  Edge,
+  Node,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.compilers.coproduct_variant_shape { coproduct_all_variants_nullary }
+import v2.std.compilers.target_model {
+  RequiredTraitWitness,
+  TargetCollectionWitnessEq,
+  TargetCollectionWitnessHash,
+  TargetCollectionWitnessOrd
+}
+
+data trait_derive_completeness_note: String = "Gate-1 sub-wall #2 (#7174 narrowed 2026-07-25): v2 Node elem-shape classifier + collection-witness gate over std.trait_derive_shape. v1 emit wires (a) clone bounds on generic params and (c) serde/Debug/Ord #[derive] on named structs/enums; arm (b) coproduct-native arithmetic impls deferred to GroupCompletion grounding lane (see std.trait_derive_shape.trait_derive_shape_grounding_lane_handoff). Fail-closed: unknown shapes refuse. Dissolve-on: those two v1 emit arms + layer-boundary mock test wire through this module."
+
+type TraitDeriveCompletenessGate
+  = TraitDeriveCompletenessSatisfied
+  | TraitDeriveCompletenessIncomplete
+
+fn trait_derive_int_kernel_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^int_kernel_type_atom } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn trait_derive_unit_kernel_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^unit_kernel_type_atom } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn repr_grounding_derive_elem_shape(elem: Node) -> ReprGroundingDeriveElemShape {
+  match elem.kind {
+    TypeNode { connective: Disj } =>
+      if coproduct_all_variants_nullary(edges: elem.children) {
+        ReprDeriveElemNullaryEnumCopy
+      } else {
+        ReprDeriveElemPayloadCoproduct
+      }
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^target_collection_kernel_string || id == ^symbol_kernel_type_atom {
+        ReprDeriveElemKernelString
+      } else {
+        if id == ^target_collection_kernel_int || id == ^int_kernel_type_atom {
+          ReprDeriveElemKernelInt
+        } else {
+          if id == ^target_collection_kernel_bool || id == ^bool_node_symbol {
+            ReprDeriveElemKernelBool
+          } else {
+            if id == ^target_collection_kernel_unit || id == ^unit_kernel_type_atom {
+              ReprDeriveElemKernelUnit
+            } else {
+              ReprDeriveElemUnknown
+            }
+          }
+        }
+      }
+    _ => ReprDeriveElemUnknown
+  }
+}
+
+fn repr_grounding_derive_trait_satisfied(
+  derive_trait: ReprGroundingDeriveTrait,
+  elem: Node
+) -> Bool {
+  repr_grounding_derive_shape_has_trait(
+    shape: repr_grounding_derive_elem_shape(elem: elem),
+    derive_trait: derive_trait
+  )
+}
+
+fn repr_grounding_derive_completeness_predicate_for_elem(
+  required: List<ReprGroundingDeriveTrait>,
+  elem: Node
+) -> Bool {
+  repr_grounding_derive_completeness_predicate(
+    required: required,
+    shape: repr_grounding_derive_elem_shape(elem: elem)
+  )
+}
+
+fn repr_grounding_derive_traits_for_collection_witness(
+  witness: RequiredTraitWitness
+) -> List<ReprGroundingDeriveTrait> {
+  match witness {
+    TargetCollectionWitnessOrd { type_param: _ } =>
+      Cons {
+        head: ReprDeriveOrd,
+        tail: Cons {
+          head: ReprDerivePartialOrd,
+          tail: Cons {
+            head: ReprDeriveEq,
+            tail: Cons {
+              head: ReprDerivePartialEq,
+              tail: Cons { head: ReprDeriveClone, tail: Empty }
+            }
+          }
+        }
+      }
+    TargetCollectionWitnessHash { type_param: _ } =>
+      Cons {
+        head: ReprDeriveEq,
+        tail: Cons {
+          head: ReprDerivePartialEq,
+          tail: Cons { head: ReprDeriveClone, tail: Empty }
+        }
+      }
+    TargetCollectionWitnessEq { type_param: _ } =>
+      Cons {
+        head: ReprDeriveEq,
+        tail: Cons {
+          head: ReprDerivePartialEq,
+          tail: Cons { head: ReprDeriveClone, tail: Empty }
+        }
+      }
+  }
+}
+
+fn trait_derive_completeness_gate(
+  required: List<ReprGroundingDeriveTrait>,
+  elem: Node
+) -> TraitDeriveCompletenessGate {
+  if repr_grounding_derive_completeness_predicate_for_elem(required: required, elem: elem) {
+    TraitDeriveCompletenessSatisfied
+  } else {
+    TraitDeriveCompletenessIncomplete
+  }
+}
+
+fn trait_derive_completeness_gate_for_collection_witness(
+  witness: RequiredTraitWitness,
+  elem: Node
+) -> TraitDeriveCompletenessGate {
+  trait_derive_completeness_gate(
+    required: repr_grounding_derive_traits_for_collection_witness(witness: witness),
+    elem: elem
+  )
+}

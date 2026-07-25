@@ -974,7 +974,7 @@ pub fn global_bare_nearest_ancestor(
 pub fn unique_on_chain_policy_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1: under NameResolutionPolicy = NamespaceOnlyY (name_resolution_policy_is_namespace_only, thread-local host gate, default OFF = ImportScoped byte-for-byte), a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; zero or two-plus REFUSES (Absent from lookup + global_bare_is_ambiguous true, surfaced as the typed AmbiguousReference diagnostic at the reference site) — no nearest-wins, no fallback chain: adding a nearer homonym must loudly break a reference, never silently rebind it (the 13 edit-stability invariant). The zero-on-chain whole-pool-homonym case is Ambiguous, not Unresolved, mirroring the census containment walk (cli_run.rs containment_resolve_fn_v1: lexical Unbound + GlobalBareAmbiguousBinding => Ambiguous).".to_string()
+            "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1: under NameResolutionPolicy = NamespaceOnlyY (name_resolution_policy_is_namespace_only, thread-local host gate, default ON = NamespaceOnlyY (8 step 4 flip); host bracket false = ImportScoped byte-for-byte), a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; zero or two-plus REFUSES (Absent from lookup + global_bare_is_ambiguous true, surfaced as the typed AmbiguousReference diagnostic at the reference site) — no nearest-wins, no fallback chain: adding a nearer homonym must loudly break a reference, never silently rebind it (the 13 edit-stability invariant). The zero-on-chain whole-pool-homonym case is Ambiguous, not Unresolved, mirroring the census containment walk (cli_run.rs containment_resolve_fn_v1: lexical Unbound + GlobalBareAmbiguousBinding => Ambiguous).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1377,22 +1377,20 @@ pub fn record_global_bare_ambiguous_silent_pick(
     name: String,
     cands: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> () {
-    {
-        let cand_count = (cands.clone().len() as i64);
-        match global_bare_nearest_ancestor_candidate(env_module_path.clone(), cands.clone()) {
-            Some(cand) => v1_rt::resolution_silent_pick_record_global_bare_lcp_pick(
-                env_module_path.clone(),
-                name.clone(),
-                cand_count.clone(),
-                cand.module_path.clone(),
-            ),
-            None => v1_rt::resolution_silent_pick_record_global_bare_lcp_tie(
-                env_module_path.clone(),
-                name.clone(),
-                cand_count.clone(),
-            ),
-        }
-    }
+    let cand_count = (cands.clone().len() as i64);
+    match global_bare_nearest_ancestor_candidate(env_module_path.clone(), cands.clone()) {
+        Some(cand) => v1_rt::resolution_silent_pick_record_global_bare_lcp_pick(
+            env_module_path.clone(),
+            name.clone(),
+            cand_count.clone(),
+            cand.module_path.clone(),
+        ),
+        None => v1_rt::resolution_silent_pick_record_global_bare_lcp_tie(
+            env_module_path.clone(),
+            name.clone(),
+            cand_count.clone(),
+        ),
+    };
 }
 
 pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {

@@ -40,7 +40,12 @@ import std.realization_reconcile {
 }
 import v2.std.algebra { fold_list }
 import extdeps.shell
-import extdeps.shell.exec { transport_script_from_body }
+import extdeps.shell.exec
+import gunbc.retained_shell_script {
+  RetainedShellScript,
+  retained_shell_script_to_transport,
+  retained_srvn,
+}
 import extdeps.diagnostic.ssh { ssh_session_exec, ssh_session_exec_script }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
@@ -49,7 +54,8 @@ import gunbc.typed_argv_exec {
   TypedArgvExecRefused,
 }
 import extdeps.bmc.types { RedfishSystemAction }
-import gunbc.fleet_intent { ComputeHost, srv1_host }
+import gunbc.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu }
+import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.host_converge { HostConverge, FreshStandup, ExistingHostQuiescentReload, gunbc_apply_mode_for_host }
 import gunbc.host_converge_realize {
   interpret_host_converge,
@@ -96,14 +102,25 @@ import gunbc.ci_deploy_access {
   deploy_access_sudo_probe_effect,
 }
 import gunbc.srv3_host_effect_script { srv3_host_effect_script_for }
-import gunbc.live_deploy.host_effect_script { live_deploy_host_effect_script_for }
+import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
+import gunbc.live_deploy.emit {
+  live_deploy_apply_script_for,
+  live_deploy_retract_script_for,
+  deployment_ensure_dependency_script,
+}
+import gunbc.roadmap_static_site { roadmap_site_digest_readback_script }
 import gunbc.host_build_cache_provision_script { build_cache_provision_shell_script }
 import gunbc.host_build_cache_catalog_gate {
   provision_build_cache_catalog_gate_verdict,
   ProvisionBuildCacheCatalogRealizable,
   ProvisionBuildCacheCatalogRefused,
 }
-import extdeps.cache.sccache { sccache_local_id }
+import extdeps.cache.sccache {
+  sccache_local_id,
+  sccache_release_0_15_0,
+  sccache_release_arch_token,
+  sccache_release_digest,
+}
 import gunbc.srv3_os_install_reconcile_types {
   srv3_boot_once_approval_grant_path,
   srv3_boot_once_apply_read_back_sleep,
@@ -124,8 +141,14 @@ import extdeps.os.ubuntu_seeded_install_media_remaster {
   InstallMediaRemasterRemastered,
   InstallMediaRemasterRefused,
 }
-import gunbc.host_effect_hostname_script { host_effect_set_hostname_cas_script }
-import gunbc.host_identity_observation_script { host_identity_short_hostname_script }
+import gunbc.hostname_read { hostname_short_read }
+import gunbc.hostname_set {
+  hostname_set_cas,
+  HostnameSetCasApplied,
+  HostnameSetCasReadAbsent,
+  HostnameSetCasBaseMismatch,
+  HostnameSetCasApplyFailed,
+}
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
 import extdeps.access.posix_effective_principal_read_op {
   posix_effective_principal_read_argv,
@@ -143,12 +166,12 @@ import extdeps.bmc.webui.nbd_proxy_serve {
   NbdProxyServeTransportIntent,
   bmcweb_session_login_curl_args,
 }
-import std.types { String, NonEmptyStr, List, Bool }
+import std.types { String, NonEmptyStr, List, Bool, Int }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
 type ResolvedHostEffectCell =
-    ShellOnHost { node: ComputeHost, script: String }
+    ShellOnHost { node: ComputeHost, script: RetainedShellScript }
   | RedfishOnBmc { node: ComputeHost, action: RedfishSystemAction }
   | ConvergeOnHost { node: ComputeHost, host_converge: HostConverge }
   | TypedReconcileOnHost { node: ComputeHost, kind: TypedReconcileKind }
@@ -156,6 +179,7 @@ type ResolvedHostEffectCell =
   | OsInstallActuatorToolchainOnHost { node: ComputeHost }
   | ProvisionBuildCacheOnHost { node: ComputeHost, catalog_id: String }
   | HostnameOnHost { node: ComputeHost, hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
+  | HostnameReadOnHost { node: ComputeHost }
   | NbdProxySessionOnHost {
       node: ComputeHost,
       intent: NbdProxyServeTransportIntent,
@@ -169,6 +193,10 @@ type ResolvedHostEffectCell =
   | BmcwebTokenExtractOnHost { node: ComputeHost }
   | EffectivePrincipalReadOnHost { node: ComputeHost, read: EffectivePosixPrincipalRead }
   | SudoNopasswdProbeOnHost { node: ComputeHost, probe: SudoNopasswdExecuteProbeShape }
+  | LiveDeployApplyOnHost { node: ComputeHost, spec: DeploymentSpec }
+  | LiveDeployRetractOnHost { node: ComputeHost, spec: DeploymentSpec }
+  | LiveDeployEnsureDependencyOnHost { node: ComputeHost, dep: DeploymentDependencyStep }
+  | LiveDeployDigestReadbackOnHost { node: ComputeHost, port: Int }
   | IncompatibleCell { reason: String }
 
 fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverge) -> String {
@@ -213,15 +241,24 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           BmcwebSessionLoginOnHost { node: n }
         Srv3BmcwebTokenExtract =>
           BmcwebTokenExtractOnHost { node: n }
+        LiveDeployApply { spec: s } =>
+          LiveDeployApplyOnHost { node: n, spec: s }
+        LiveDeployRetract { spec: s } =>
+          LiveDeployRetractOnHost { node: n, spec: s }
+        LiveDeployEnsureDependency { dep: d } =>
+          LiveDeployEnsureDependencyOnHost { node: n, dep: d }
+        LiveDeployDigestReadback { port: p } =>
+          LiveDeployDigestReadbackOnHost { node: n, port: p }
         _ =>
           match srv3_host_effect_script_for(effect: effect) {
             Present { value: script } => ShellOnHost { node: n, script: script }
             Absent =>
-              match live_deploy_host_effect_script_for(effect: effect) {
-                Present { value: script } => ShellOnHost { node: n, script: script }
-                Absent =>
               match effect {
-                ShellCommand { script: s } => ShellOnHost { node: n, script: s }
+                ShellCommand { script: s } =>
+                  ShellOnHost {
+                    node: n,
+                    script: retained_srvn(body: s, reason: "host_effect ShellCommand raw-script leaf (anemic String terminal, DESIGN section 5)"),
+                  }
                 RedfishAction { action: _ } =>
                   IncompatibleCell { reason: "host_effect: RedfishAction is out-of-band (Redfish) and cannot target HostOs (in-band shell/systemd); target BmcController instead. Typed mismatch via total fold, DESIGN section 5." }
                 ConvergePlan { policy: p } =>
@@ -262,20 +299,19 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                 Srv3NbdProxyServe { intent: i, lease_key: k } =>
                   NbdProxySessionOnHost { node: n, intent: i, lease_key: k }
                 HostIdentityShortHostnameRead =>
-                  ShellOnHost { node: n, script: host_identity_short_hostname_script }
+                  HostnameReadOnHost { node: n }
+                LiveDeployApply { spec: s } =>
+                  LiveDeployApplyOnHost { node: n, spec: s }
+                LiveDeployRetract { spec: s } =>
+                  LiveDeployRetractOnHost { node: n, spec: s }
+                LiveDeployEnsureDependency { dep: d } =>
+                  LiveDeployEnsureDependencyOnHost { node: n, dep: d }
+                LiveDeployDigestReadback { port: p } =>
+                  LiveDeployDigestReadbackOnHost { node: n, port: p }
                 DeployAccessPreflight {} =>
                   IncompatibleCell {
                     reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot be applied; typed mismatch, DESIGN section 5.",
                   }
-                LiveDeployApply { spec: _ } =>
-                  srv3_host_effect_script_resolution_failed_cell()
-                LiveDeployRetract { spec: _ } =>
-                  srv3_host_effect_script_resolution_failed_cell()
-                LiveDeployEnsureDependency { dep: _ } =>
-                  srv3_host_effect_script_resolution_failed_cell()
-                LiveDeployDigestReadback { port: _ } =>
-                  srv3_host_effect_script_resolution_failed_cell()
-              }
               }
           }
       }
@@ -294,10 +330,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
             Present { value: _ } =>
               IncompatibleCell { reason: "host_effect: srv3 shell effects are in-band (actuator host LocalShell) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             Absent =>
-              match live_deploy_host_effect_script_for(effect: effect) {
-                Present { value: _ } =>
-                  IncompatibleCell { reason: "host_effect: live_deploy shell effects are in-band (actuator host LocalShell) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-                Absent =>
               match effect {
                 ShellCommand { script: _ } =>
                   IncompatibleCell { reason: "host_effect: ShellCommand is in-band (shell/systemd) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -348,7 +380,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   IncompatibleCell { reason: "host_effect: LiveDeployDigestReadback is in-band (actuator host shell readback) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 DeployAccessPreflight {} =>
                   IncompatibleCell { reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot target BmcController; typed mismatch, DESIGN section 5." }
-              }
               }
           }
       }
@@ -697,9 +728,12 @@ fn realize_bmcweb_token_extract_on_host(
   }
 }
 
-fn srv3_toolchain_ensure_reconcile(
+data toolchain_ensure_reconcile_located_note: String = "The refusal names the effect that produced it. This fold was written for OsInstallActuatorToolchainEnsure and hardcoded that effect in its failure header; when ProvisionBuildCache started reusing it (P1b:build-cache-provision), every build-cache refusal reported itself as an OS-install-actuator failure — a located diagnostic pointing at the wrong location, which is the §5 'typed, located' bar failing at the second half. The header is now a parameter supplied by each realize arm."
+
+fn toolchain_ensure_reconcile(
   observed: ShellExecObserved,
   intent: HostEffectIntent,
+  effect_label: String,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let grounding = if observed.success {
       Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout } }
@@ -707,7 +741,14 @@ fn srv3_toolchain_ensure_reconcile(
       DoesNotGround {
         reason: shell_exec_failure_reason_headered(
           observed: observed,
-          header: "host_effect_apply: OsInstallActuatorToolchainEnsure synthesized receipt from typed per-tool ensure results; fail-closed",
+          header: join(
+            [
+              "host_effect_apply: ",
+              effect_label,
+              " synthesized receipt from typed per-tool ensure results; fail-closed",
+            ],
+            "",
+          ),
         ),
       }
     }
@@ -715,6 +756,28 @@ fn srv3_toolchain_ensure_reconcile(
     apply_effect: intent,
     show_read: ReadObserved { value: observed },
     grounding: grounding
+  )
+}
+
+fn srv3_toolchain_ensure_reconcile(
+  observed: ShellExecObserved,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  toolchain_ensure_reconcile(
+    observed: observed,
+    intent: intent,
+    effect_label: "OsInstallActuatorToolchainEnsure",
+  )
+}
+
+fn provision_build_cache_reconcile(
+  observed: ShellExecObserved,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  toolchain_ensure_reconcile(
+    observed: observed,
+    intent: intent,
+    effect_label: "ProvisionBuildCache",
   )
 }
 
@@ -734,7 +797,10 @@ fn realize_srv3_install_diagnostic_observe(
     intent_content_hash: intent_content_hash,
     sol_log: srv3_sol_console_log_path as String,
   )
-  let observed = run_shell_transport(script: shell_exec_via_bash(body: script), transport: transport)
+  let observed = run_shell_transport(
+    script: retained_srvn(body: shell_exec_via_bash(body: script), reason: "srv3 install diagnostic observe"),
+    transport: transport,
+  )
   srv3_shell_reconcile(observed: observed, intent: effect_intent)
 }
 
@@ -1050,15 +1116,72 @@ fn realize_os_install_actuator_toolchain_ensure(
   }
 }
 
+data provision_build_cache_arch_derivation_note: String = "The provisioning script is a function of the TARGET HOST's architecture, not a constant: the cited release publishes one musl tarball plus one sha256 per arch, so emitting a script at all requires knowing which. Arch comes from the effect target's own ComputeHost (compute_host_primary_cpu -> CpuFacts.architecture) and the token/digest selectors in extdeps.cache.sccache are partial over the Architecture coproduct — a host whose CPU is unreadable, or whose arch the release does not publish, yields NO script and a typed NotConverged. There is no default arch: shipping an aarch64 binary to an unlisted host is precisely the fabricated-plausible-output §5 forbids."
+
+fn provision_build_cache_host_arch(effect_intent: HostEffectIntent) -> Architecture? {
+  match effect_intent.target {
+    HostOs { node: host } =>
+      match compute_host_primary_cpu(host: host) {
+        Present { value: cpu } => Present { value: cpu.catalog.architecture }
+        Absent => none
+      }
+    BmcController { node: _ } => none
+  }
+}
+
 fn realize_provision_build_cache_body(
   transport: HostEffectTransport,
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let observed = run_shell_transport(
-    script: build_cache_provision_shell_script(),
-    transport: transport,
-  )
-  srv3_toolchain_ensure_reconcile(observed: observed, intent: effect_intent)
+  match provision_build_cache_host_arch(effect_intent: effect_intent) {
+    Absent =>
+      NotConverged {
+        reason: "host_effect_apply: ProvisionBuildCache cannot derive a target architecture from the effect target (no primary CPU on the ComputeHost, or the target is not HostOs); fail-closed, no default arch.",
+        applied: effect_intent,
+      }
+    Present { value: arch } =>
+      match sccache_release_arch_token(arch: arch) {
+        Absent =>
+          NotConverged {
+            reason: join(
+              [
+                "host_effect_apply: ProvisionBuildCache refused — the cited sccache release ",
+                sccache_release_0_15_0.version as String,
+                " publishes no musl tarball for architecture ",
+                architecture_diagnostic_name(arch: arch) as String,
+                "; fail-closed, no default arch.",
+              ],
+              "",
+            ),
+            applied: effect_intent,
+          }
+        Present { value: token } =>
+          match sccache_release_digest(rel: sccache_release_0_15_0, arch: arch) {
+            Absent =>
+              NotConverged {
+                reason: join(
+                  [
+                    "host_effect_apply: ProvisionBuildCache refused — no pinned sha256 in the cited release row for architecture ",
+                    architecture_diagnostic_name(arch: arch) as String,
+                    "; fail-closed, never install unverified.",
+                  ],
+                  "",
+                ),
+                applied: effect_intent,
+              }
+            Present { value: digest } => {
+              let observed = run_shell_transport(
+                script: retained_srvn(
+                  body: build_cache_provision_shell_script(arch_token: token, digest: digest),
+                  reason: "srvN build-cache provisioning (sccache daemon ensure)",
+                ),
+                transport: transport,
+              )
+              provision_build_cache_reconcile(observed: observed, intent: effect_intent)
+            }
+          }
+      }
+  }
 }
 
 fn realize_provision_build_cache(
@@ -1106,19 +1229,42 @@ fn provision_build_cache_witness_intent() -> HostEffectIntent {
   }
 }
 
+data provision_build_cache_arch_unknown_fixture_note: String = "A host the fleet knows by identity but whose processor inventory is empty — the shape a freshly-racked srvN has before its BMC read lands (srv4 carried exactly this deferral for memory). Realization must REFUSE it, because 'which binary do I install' has no answer. The fixture deliberately does NOT fabricate a CPU catalog row for an arch the cited release omits: minting a machine that does not exist to test a refusal would be its own §3 violation, so the not-published arm is witnessed at the selector (sccache_release_arch_token over Riscv64/Wasm32) instead."
+
+fn provision_build_cache_arch_unknown_host_fixture() -> ComputeHost {
+  ComputeHost {
+    identity: srv1_host.identity,
+    baseboard: none,
+    processors: [],
+    memory: [],
+    storage: [],
+    network_interfaces: [],
+  }
+}
+
+fn provision_build_cache_arch_unknown_intent_fixture() -> HostEffectIntent {
+  HostEffectIntent {
+    target: HostOs { node: provision_build_cache_arch_unknown_host_fixture() },
+    effect: ProvisionBuildCache { catalog_id: sccache_local_id },
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell,
+    privilege_denial: none,
+  }
+}
+
 fn provision_build_cache_reconcile_shell_observed(
   observed: ShellExecObserved,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  srv3_toolchain_ensure_reconcile(
+  provision_build_cache_reconcile(
     observed: observed,
     intent: provision_build_cache_witness_intent(),
   )
 }
 
-fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellExecObserved {
+fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTransport) -> ShellExecObserved {
   match transport {
     LocalShell => {
-      let result = shell.Exec.Run(script: transport_script_from_body(body: script))
+      let result = shell.Exec.Run(script: retained_shell_script_to_transport(rss: script))
       ShellExecObserved {
         exit_code: result.exit_code,
         success: result.success,
@@ -1127,7 +1273,7 @@ fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellE
       }
     }
     SshShell { ssh_host: h } => {
-      if script == "" {
+      if script.body == "" {
         ShellExecObserved {
           exit_code: 1,
           success: false,
@@ -1135,7 +1281,7 @@ fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellE
           stderr: "",
         }
       } else {
-        let result = ssh_session_exec_script(host: h, script: script)
+        let result = ssh_session_exec_script(host: h, script: script.body)
         ShellExecObserved {
           exit_code: result.exit_code,
           success: result.success,
@@ -1162,7 +1308,7 @@ fn realize_converge_in_process(host_converge: HostConverge, intent: HostEffectIn
       if n == 0 {
         NotConverged { reason: converge_host_no_knobs_reason, applied: intent }
       } else {
-        let observed = run_shell_transport(script: out, transport: LocalShell)
+        let observed = run_shell_transport(script: retained_srvn(body: out, reason: "host converge in-process apply (interpreted knob script)"), transport: LocalShell)
         if observed.success {
           reconcile_grounded(
             apply_effect: intent,
@@ -1379,7 +1525,7 @@ fn realize_sudo_nopasswd_probe_on_host(
   }
 }
 
-fn realize_shell_on_host(script: String, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn realize_shell_on_host(script: RetainedShellScript, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let result = run_shell_transport(script: script, transport: transport)
   reconcile_shell_exec_observed(observed: result, intent: intent)
 }
@@ -1391,11 +1537,64 @@ fn realize_set_hostname_cas_on_host(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  realize_shell_on_host(
-    script: host_effect_set_hostname_cas_script(hostnamectl_path: hostnamectl_path, base: base, desired: desired),
+  match hostname_set_cas(
+    hostnamectl_path: hostnamectl_path,
     transport: transport,
-    intent: intent,
-  )
+    base: base,
+    desired: desired,
+  ) {
+    HostnameSetCasApplied =>
+      reconcile_shell_exec_observed(
+        observed: ShellExecObserved {
+          exit_code: 0,
+          success: true,
+          stdout: desired as String,
+          stderr: "",
+        },
+        intent: intent,
+      )
+    HostnameSetCasReadAbsent =>
+      NotConverged {
+        reason: "host_effect: SetHostnameCas hostname read absent; fail-closed",
+        applied: intent,
+      }
+    HostnameSetCasBaseMismatch { observed: o, base: b } =>
+      NotConverged {
+        reason: concat(
+          concat("host_effect: SetHostnameCas CAS refused — observed ", o),
+          concat(" != base ", b as String),
+        ),
+        applied: intent,
+      }
+    HostnameSetCasApplyFailed { stderr: e } =>
+      NotConverged {
+        reason: concat("host_effect: SetHostnameCas hostnamectl set-hostname failed: ", e),
+        applied: intent,
+      }
+  }
+}
+
+fn realize_hostname_read_on_host(
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match hostname_short_read(transport: transport) {
+    Present { value: name } =>
+      reconcile_shell_exec_observed(
+        observed: ShellExecObserved { exit_code: 0, success: true, stdout: name, stderr: "" },
+        intent: intent,
+      )
+    Absent =>
+      reconcile_shell_exec_observed(
+        observed: ShellExecObserved {
+          exit_code: 1,
+          success: false,
+          stdout: "",
+          stderr: "host_effect_apply: HostIdentityShortHostnameRead hostname -s read failed; fail-closed",
+        },
+        intent: intent,
+      )
+  }
 }
 
 fn realize_nbd_proxy_session_on_host(
@@ -1426,6 +1625,66 @@ fn realize_nbd_proxy_session_on_host(
   }
 }
 
+fn realize_live_deploy_apply_on_host(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  realize_shell_on_host(
+    script: retained_srvn(
+      body: live_deploy_apply_script_for(spec: spec),
+      reason: "live_deploy apply (unit install + start)",
+    ),
+    transport: transport,
+    intent: intent,
+  )
+}
+
+fn realize_live_deploy_retract_on_host(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  realize_shell_on_host(
+    script: retained_srvn(
+      body: live_deploy_retract_script_for(spec: spec),
+      reason: "live_deploy retract (unit teardown)",
+    ),
+    transport: transport,
+    intent: intent,
+  )
+}
+
+fn realize_live_deploy_ensure_dependency_on_host(
+  dep: DeploymentDependencyStep,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  realize_shell_on_host(
+    script: retained_srvn(
+      body: deployment_ensure_dependency_script(dep: dep),
+      reason: "live_deploy ensure dependency",
+    ),
+    transport: transport,
+    intent: intent,
+  )
+}
+
+fn realize_live_deploy_digest_readback_on_host(
+  port: Int,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  realize_shell_on_host(
+    script: retained_srvn(
+      body: roadmap_site_digest_readback_script(port: port),
+      reason: "live_deploy digest readback probe",
+    ),
+    transport: transport,
+    intent: intent,
+  )
+}
+
 fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: IdempotencyEvidence, transport: HostEffectTransport) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let intent = HostEffectIntent {
     target: target,
@@ -1454,6 +1713,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_provision_build_cache(effect_intent: intent)
     HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
       realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
+    HostnameReadOnHost { node: _ } =>
+      realize_hostname_read_on_host(transport: transport, intent: intent)
     NbdProxySessionOnHost { node: _, intent: i, lease_key: k } =>
       realize_nbd_proxy_session_on_host(intent: i, lease_key: k, transport: transport, intent_record: intent)
     ReceiptEmitOnHost { node: _, lines: lines } =>
@@ -1472,6 +1733,14 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_effective_principal_read_on_host(read: r, transport: transport, intent: intent)
     SudoNopasswdProbeOnHost { node: _, probe: p } =>
       realize_sudo_nopasswd_probe_on_host(probe: p, transport: transport, intent: intent)
+    LiveDeployApplyOnHost { node: _, spec: s } =>
+      realize_live_deploy_apply_on_host(spec: s, transport: transport, intent: intent)
+    LiveDeployRetractOnHost { node: _, spec: s } =>
+      realize_live_deploy_retract_on_host(spec: s, transport: transport, intent: intent)
+    LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>
+      realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
+    LiveDeployDigestReadbackOnHost { node: _, port: p } =>
+      realize_live_deploy_digest_readback_on_host(port: p, transport: transport, intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
       NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
     IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -1610,6 +1879,8 @@ fn host_effect_apply_gated(
           realize_provision_build_cache(effect_intent: intent)
         HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
           realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
+        HostnameReadOnHost { node: _ } =>
+          realize_hostname_read_on_host(transport: transport, intent: intent)
         NbdProxySessionOnHost { node: _, intent: i, lease_key: k } =>
           realize_nbd_proxy_session_on_host(intent: i, lease_key: k, transport: transport, intent_record: intent)
         ReceiptEmitOnHost { node: _, lines: lines } =>
@@ -1628,6 +1899,14 @@ fn host_effect_apply_gated(
           realize_effective_principal_read_on_host(read: r, transport: transport, intent: intent)
         SudoNopasswdProbeOnHost { node: _, probe: p } =>
           realize_sudo_nopasswd_probe_on_host(probe: p, transport: transport, intent: intent)
+        LiveDeployApplyOnHost { node: _, spec: s } =>
+          realize_live_deploy_apply_on_host(spec: s, transport: transport, intent: intent)
+        LiveDeployRetractOnHost { node: _, spec: s } =>
+          realize_live_deploy_retract_on_host(spec: s, transport: transport, intent: intent)
+        LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>
+          realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
+        LiveDeployDigestReadbackOnHost { node: _, port: p } =>
+          realize_live_deploy_digest_readback_on_host(port: p, transport: transport, intent: intent)
         RedfishOnBmc { node: _, action: _ } =>
           NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
         IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -1672,6 +1951,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             OsInstallActuatorToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ProvisionBuildCacheOnHost { node: _, catalog_id: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            HostnameReadOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             NbdProxySessionOnHost { node: _, intent: _, lease_key: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ReceiptEmitOnHost { node: _, lines: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BootOnceReadBackSleepOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
@@ -1681,6 +1961,10 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             BmcwebTokenExtractOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EffectivePrincipalReadOnHost { node: _, read: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             SudoNopasswdProbeOnHost { node: _, probe: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            LiveDeployApplyOnHost { node: _, spec: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            LiveDeployRetractOnHost { node: _, spec: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            LiveDeployEnsureDependencyOnHost { node: _, dep: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            LiveDeployDigestReadbackOnHost { node: _, port: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
           }
       }
