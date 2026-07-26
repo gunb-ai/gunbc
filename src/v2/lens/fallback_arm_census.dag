@@ -6,9 +6,11 @@ import v2.lens.common.construction_justification {
 }
 import std.disposition { RealizationDispatch }
 import std.algebra { Empty }
-import v2.std.algebra { fold_list, list_tail, TailFound, TailAbsent }
+import v2.std.algebra { fold_list, list_snoc_item, list_tail, length, TailFound, TailAbsent }
 import v2.std.collection { Absent, List, Optional, Present }
 import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import v2.std.text { String }
 import v2.std.node {
   ComputationNode,
   Match,
@@ -122,14 +124,14 @@ fn classify_planted_arm(
   interim_declared: Bool
 ) -> FallbackArmClass {
   match find_named_child(root: arm, name: match_arm_pattern) {
-    Accepted { value: pattern, diagnostics: _ } =>
+    Accepted { value: pat_node, diagnostics: _ } =>
       match find_named_child(root: arm, name: match_arm_body) {
-        Accepted { value: body, diagnostics: _ } =>
+        Accepted { value: body_node, diagnostics: _ } =>
           classify_fallback_arm(
             input: FallbackArmClassifyInput {
-              pattern_is_wildcard: pattern_node_is_planted_wildcard(pattern: pattern),
-              body_refuses: body_node_marks_refuses(body: body),
-              body_answers: body_node_marks_answers(body: body),
+              pattern_is_wildcard: pattern_node_is_planted_wildcard(pattern: pat_node),
+              body_refuses: body_node_marks_refuses(body: body_node),
+              body_answers: body_node_marks_answers(body: body_node),
               scrutinee_closed_total: scrutinee_closed_total,
               interim_declared: interim_declared
             }
@@ -224,6 +226,120 @@ fn fallback_arm_class_eq(a: FallbackArmClass, b: FallbackArmClass) -> Bool {
       AnswersOnOpen => false
     }
   }
+}
+
+type FallbackArmCensusFact {
+  site: String
+  fn_name: String
+  rel_path: String
+  class: String
+  owning_lane: String
+  closed_coproduct_scrutinee: Bool
+}
+
+fn fallback_arm_census_facts_live() -> List<FallbackArmCensusFact> {
+  fallback_arm_census_facts()
+}
+
+fn fallback_arm_census_total_live() -> Int {
+  fallback_arm_census_total()
+}
+
+fn fallback_arm_census_class_count_live(class: String) -> Int {
+  fallback_arm_census_class_count(class: class)
+}
+
+fn fallback_arm_census_reconciliation_holds_live() -> Bool {
+  fallback_arm_census_reconciliation_holds()
+}
+
+fn fallback_arm_census_defect_facts_live() -> List<FallbackArmCensusFact> {
+  fold_list(
+    xs: fallback_arm_census_facts_live(),
+    empty: Empty,
+    cons: fn(acc, f) {
+      if f.class == "answers_on_open" {
+        list_snoc_item(xs: acc, item: f)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn fallback_arm_census_unknown_facts_live() -> List<FallbackArmCensusFact> {
+  fold_list(
+    xs: fallback_arm_census_facts_live(),
+    empty: Empty,
+    cons: fn(acc, f) {
+      if f.class == "unknown" {
+        list_snoc_item(xs: acc, item: f)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+type SeedCompiledFallbackDisposition
+  = DeleteOnWall { wall: String }
+  | ParityWitnessed { precedent: String }
+  | LegitimateConstant { reason: String }
+
+type SeedCompiledFallbackInventoryRow {
+  path: String
+  disposition: SeedCompiledFallbackDisposition
+}
+
+data fallback_arm_seed_inventory_note: String = "Seed compiled-fallback-table inventory (W2 deliverable 3, measured 2026-07-25): 24 .rs files under src/v1/stage0/src matching fallback|catch_all|default_arm|wildcard_arm (~198 mention sites). Inventory only — one disposition each. Delete-on-wall when a construction wall supersedes the table; parity-witnessed when a .dag mirror owns the fact (effect_stream precedent); legitimate-constant when the seed string is a true host constant with no .dag twin yet."
+
+data fallback_arm_seed_compiled_fallback_inventory: List<SeedCompiledFallbackInventoryRow> = [
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/cli_run.rs", disposition: ParityWitnessed { precedent: "complexity_linearity_wildcard_facts / fallback_arm_census_facts host seam" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_interpreter.rs", disposition: DeleteOnWall { wall: "v1-deletion / method dispatch totalization" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_rt.rs", disposition: DeleteOnWall { wall: "v1-deletion" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_compiler_emit_rust.rs", disposition: DeleteOnWall { wall: "Gate-1 / wrap-decision Instantiation coverage" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_compiler_emit.rs", disposition: DeleteOnWall { wall: "Gate-1 emitter self-host" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_compiler_emit_go.rs", disposition: DeleteOnWall { wall: "Gate-1 emitter self-host" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_compiler_emit_python.rs", disposition: DeleteOnWall { wall: "Gate-1 emitter self-host" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_compiler_coercion.rs", disposition: ParityWitnessed { precedent: "coerce_primitive_type_dotted_fallback_note / qualified_last_segment" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_compiler_infer.rs", disposition: DeleteOnWall { wall: "namespace-only / infer totalization" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_compiler_infer_env.rs", disposition: DeleteOnWall { wall: "type-env single authority" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_compiler_infer_access.rs", disposition: DeleteOnWall { wall: "type-env single authority" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_compiler_infer_lookup.rs", disposition: DeleteOnWall { wall: "type-env single authority" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_compiler_infer_patterns.rs", disposition: DeleteOnWall { wall: "infer match totalization" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_compiler_infer_sigs.rs", disposition: DeleteOnWall { wall: "infer totalization" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_compiler_infer_emit_info.rs", disposition: DeleteOnWall { wall: "emit_info totalization" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_compiler_infer_method.rs", disposition: DeleteOnWall { wall: "method-env totalization" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_compiler_runtime_rust.rs", disposition: LegitimateConstant { reason: "runtime host glue; no .dag twin yet" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/std_effects.rs", disposition: ParityWitnessed { precedent: "effect_stream mirror" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/memory_governor.rs", disposition: LegitimateConstant { reason: "host memory policy constants" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/bin/claim_batch.rs", disposition: LegitimateConstant { reason: "CLI argv surface" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/bin/claim_executor.rs", disposition: LegitimateConstant { reason: "CLI argv surface" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/bin/regen_stage0.rs", disposition: LegitimateConstant { reason: "regen host tool" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/bin/floor_skip_discovery_witness.rs", disposition: LegitimateConstant { reason: "witness binary" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/bin/auth_declared_but_unwired_witness.rs", disposition: LegitimateConstant { reason: "witness binary; env-var fallback RED controls" } }
+]
+
+fn fallback_arm_seed_inventory_count() -> Int {
+  length(xs: fallback_arm_seed_compiled_fallback_inventory)
+}
+
+fn fallback_arm_seed_inventory_count_is_24_holds() -> Bool {
+  fallback_arm_seed_inventory_count() == 24
+}
+
+fn fallback_arm_census_lens_path_has_no_answers_on_open() -> Bool {
+  fold_list(
+    xs: fallback_arm_census_facts_live(),
+    empty: true,
+    cons: fn(acc, f) {
+      if f.rel_path == "src/v2/lens/fallback_arm_census.dag" && f.class == "answers_on_open" {
+        false
+      } else {
+        acc
+      }
+    }
+  )
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {

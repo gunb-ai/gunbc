@@ -1,6 +1,6 @@
 # Fallback-arm census — catch-all-that-answers lens (W2)
 
-**Status:** AUTHORITY for W2 · session `bright-newt-31` · 2026-07-25  
+**Status:** LANDED (census + enrollment) · session `bright-newt-31` · PR #7260 · 2026-07-25  
 **Charter row:** enforcement-intent / DESIGN §5 absorbing-fallback program (W2).  
 **Exemplar defect:** wrap-decision bypass (`docs/probes/gate1_repr_mismatch_e0308_diagnosis_2026-07-24.md` — `_ => outcome_accepted(projected)` on open `Instantiation` wire).  
 **End state (not this PR):** W3 promotes the lens to a compile refusal once zero-false-positive corpus-wide.
@@ -25,10 +25,10 @@ The classifier itself must not contain an answering `_`: every match over the cl
 
 ## Deliverables (this PR)
 
-1. Lens + planted fixtures (per-PR fast lane).
-2. Corpus census register (✗ + Unknown rows, routed by owning lane) — **zero production behavior change**.
-3. Seed compiled-fallback-table inventory (`.rs` self-named mentions) — disposition list only.
-4. Enrollment: fixtures per-PR; corpus receipt on `falsifier_substrate_long_lane`.
+1. Lens + planted fixtures (per-PR fast lane) — `src/v2/lens/fallback_arm_census.dag` + `fallback_arm_census_planted_test.dag`.
+2. Corpus census register (✗ + Unknown rows, routed by owning lane) — host builtins `fallback_arm_census_*`; long witness on `falsifier_substrate_long_lane`.
+3. Seed compiled-fallback-table inventory (24 `.rs` files / ~198 mention sites) — disposition list only.
+4. Enrollment: fixtures per-PR; corpus receipt on `falsifier_substrate_long_lane`; lens registered (`FallbackArmCensus`).
 
 ## Out of scope
 

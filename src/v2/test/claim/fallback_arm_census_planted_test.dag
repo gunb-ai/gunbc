@@ -85,3 +85,15 @@ test fn classifier_input_not_wildcard_is_unknown_holds() -> Bool {
   )
   fallback_arm_class_is_unknown(c: c)
 }
+
+test fn classifier_class_eq_covers_all_variants_self_applies_holds() -> Bool {
+  fallback_arm_class_eq(a: Refuses, b: Refuses)
+    && fallback_arm_class_eq(a: CompletesClosedTotal, b: CompletesClosedTotal)
+    && fallback_arm_class_eq(a: DeclaredInterim, b: DeclaredInterim)
+    && fallback_arm_class_eq(a: AnswersOnOpen, b: AnswersOnOpen)
+    && fallback_arm_class_eq(
+      a: ClassifierUnknown { cause: fallback_unknown_undecidable_body },
+      b: ClassifierUnknown { cause: fallback_unknown_undecidable_body }
+    )
+    && !fallback_arm_class_eq(a: AnswersOnOpen, b: Refuses)
+}
