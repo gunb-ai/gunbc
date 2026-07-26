@@ -42,13 +42,13 @@ fn ci_deploy_runner_principal_name() -> String {
   grounded_posix_principal_name(p: ci_deploy_srv1_access.principal) as String
 }
 
-fn witness_deploy_stage_targets_live_deploy_wet() -> Bool {
+test fn witness_deploy_stage_targets_live_deploy_wet() -> Bool {
   gunbc_ci_deploy_srv1_stage.entry == live_deploy_apply_entry
     && gunbc_ci_deploy_srv1_stage.function == live_deploy_apply_srv1_wet_function
     && gunbc_ci_deploy_srv1_stage.needs == ["ci"]
 }
 
-fn witness_deploy_access_uses_local_apply_on_srv1() -> Bool {
+test fn witness_deploy_access_uses_local_apply_on_srv1() -> Bool {
   let access = ci_deploy_srv1_access
   access.host == srv1_host
     && grounded_posix_principal_name(p: access.principal) == "ghrunner"
@@ -59,7 +59,7 @@ fn witness_deploy_access_uses_local_apply_on_srv1() -> Bool {
     }
 }
 
-fn witness_deploy_access_sudo_miss_surfaces_sudoers_hint() -> Bool {
+test fn witness_deploy_access_sudo_miss_surfaces_sudoers_hint() -> Bool {
   let actor = DeployAccessActor {
     observed_name: fleet_posix_principal(key: FleetAccountCiRunner).posix.name,
     sudo_granted: false,
@@ -79,7 +79,7 @@ fn witness_deploy_access_sudo_miss_surfaces_sudoers_hint() -> Bool {
   }
 }
 
-fn witness_deploy_access_sudoers_line_authority() -> Bool {
+test fn witness_deploy_access_sudoers_line_authority() -> Bool {
   string_contains(
     s: deploy_access_sudoers_line(
       access: ci_deploy_srv1_access,
@@ -89,11 +89,11 @@ fn witness_deploy_access_sudoers_line_authority() -> Bool {
   )
 }
 
-fn witness_ci_spec_carries_deploy_stages() -> Bool {
+test fn witness_ci_spec_carries_deploy_stages() -> Bool {
   gunbc_ci_spec.deploy_stages == gunbc_ci_deploy_stages
 }
 
-fn witness_deploy_invoke_runs_gunbc_wet() -> Bool {
+test fn witness_deploy_invoke_runs_gunbc_wet() -> Bool {
   let script = gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage)
   string_contains(s: script, pattern: live_deploy_apply_entry)
     && string_contains(s: script, pattern: live_deploy_apply_srv1_wet_function)
@@ -101,7 +101,7 @@ fn witness_deploy_invoke_runs_gunbc_wet() -> Bool {
     && string_contains(s: script, pattern: "--source-root \"$ROOT/dag\"")
 }
 
-fn witness_deploy_invoke_does_not_rebuild_release_bins() -> Bool {
+test fn witness_deploy_invoke_does_not_rebuild_release_bins() -> Bool {
   let script = gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage)
   !string_contains(s: script, pattern: ci_release_build_line())
     && !string_contains(s: script, pattern: ci_release_build_script())
@@ -110,7 +110,7 @@ fn witness_deploy_invoke_does_not_rebuild_release_bins() -> Bool {
     && !string_contains(s: script, pattern: "CARGO_BUILD_JOBS=1")
 }
 
-fn witness_ci_yml_deploy_job_consumes_release_bins_artifact() -> Bool {
+test fn witness_ci_yml_deploy_job_consumes_release_bins_artifact() -> Bool {
   let yaml = expected_ci_yml()
   string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:")
     && string_contains(s: yaml, pattern: "      - name: Download release-bins artifact")
@@ -121,12 +121,12 @@ fn witness_ci_yml_deploy_job_consumes_release_bins_artifact() -> Bool {
     && !string_contains(s: yaml, pattern: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)\n        run: |\n          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)\n          \"$CARGO_BIN\" build")
 }
 
-fn witness_workflow_deploy_job_matches_enrollment() -> Bool {
+test fn witness_workflow_deploy_job_matches_enrollment() -> Bool {
   let deploy_jobs = filter(ci_workflow.jobs, j => j.id == "deploy_dashboard_srv1")
   length(deploy_jobs) == length(gunbc_ci_deploy_stages)
 }
 
-fn witness_ci_yml_deploy_job_matches_enrollment() -> Bool {
+test fn witness_ci_yml_deploy_job_matches_enrollment() -> Bool {
   let yaml = expected_ci_yml()
   let enrolled = length(gunbc_ci_deploy_stages) > 0
   string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:") == enrolled
@@ -134,15 +134,3 @@ fn witness_ci_yml_deploy_job_matches_enrollment() -> Bool {
     && string_contains(s: yaml, pattern: live_deploy_apply_srv1_wet_function) == enrolled
 }
 
-test fn ci_deploy_witnesses() -> Bool {
-  witness_deploy_stage_targets_live_deploy_wet()
-    && witness_deploy_access_uses_local_apply_on_srv1()
-    && witness_deploy_access_sudo_miss_surfaces_sudoers_hint()
-    && witness_deploy_access_sudoers_line_authority()
-    && witness_ci_spec_carries_deploy_stages()
-    && witness_deploy_invoke_runs_gunbc_wet()
-    && witness_deploy_invoke_does_not_rebuild_release_bins()
-    && witness_ci_yml_deploy_job_consumes_release_bins_artifact()
-    && witness_workflow_deploy_job_matches_enrollment()
-    && witness_ci_yml_deploy_job_matches_enrollment()
-}

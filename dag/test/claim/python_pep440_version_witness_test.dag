@@ -1,6 +1,5 @@
 module test.claim.python_pep440_version_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn release_1() -> Pep440ReleaseSegments {
@@ -102,36 +101,36 @@ fn v_local_1_0_abc_5() -> Pep440Version {
   }
 }
 
-fn w_final_release_label() -> Bool {
+test fn w_final_release_label() -> Bool {
   pep440_version_label(v: v_final_1_0()) == "1.0"
 }
 
-fn w_alpha_pre_release_label() -> Bool {
+test fn w_alpha_pre_release_label() -> Bool {
   pep440_version_label(v: v_alpha_1_0a1()) == "1.0a1"
 }
 
-fn w_epoch_prefix_label() -> Bool {
+test fn w_epoch_prefix_label() -> Bool {
   pep440_version_label(v: v_epoch_1_2_0()) == "1!2.0"
 }
 
-fn w_post_release_label() -> Bool {
+test fn w_post_release_label() -> Bool {
   pep440_version_label(v: v_post_1_0_post1()) == "1.0.post1"
 }
 
-fn w_dev_release_label() -> Bool {
+test fn w_dev_release_label() -> Bool {
   pep440_version_label(v: v_dev_1_0_dev456()) == "1.0.dev456"
 }
 
-fn w_local_version_label() -> Bool {
+test fn w_local_version_label() -> Bool {
   pep440_version_label(v: v_local_1_0_abc_5()) == "1.0+abc.5"
 }
 
-fn w_spec_citation_present() -> Bool {
+test fn w_spec_citation_present() -> Bool {
   string_contains(s: pep440_spec_url, pattern: "packaging.python.org")
     && string_contains(s: pep440_spec_label, pattern: "PEP 440")
 }
 
-fn w_version_specifier_clause_label() -> Bool {
+test fn w_version_specifier_clause_label() -> Bool {
   pep440_version_specifier_label(spec: [
     {
       op: Pep440CompatibleRelease,
@@ -156,7 +155,7 @@ fn w_version_specifier_clause_label() -> Bool {
   ]) == "~= 2.2, >= 1.0"
 }
 
-fn w_discriminates_pre_release_numbers() -> Bool {
+test fn w_discriminates_pre_release_numbers() -> Bool {
   let a1 = pep440_version_label(v: v_alpha_1_0a1())
   let a2 = pep440_version_label(v: Pep440Version {
     public: Pep440PublicVersion {
@@ -173,11 +172,11 @@ fn w_discriminates_pre_release_numbers() -> Bool {
   a1 == "1.0a1" && a2 == "1.0a2" && a1 != a2
 }
 
-fn w_version_identity_projection() -> Bool {
+test fn w_version_identity_projection() -> Bool {
   pep440_version_identity(v: v_final_1_0()) == "1.0"
 }
 
-fn w_version_specifier_constraint_projection() -> Bool {
+test fn w_version_specifier_constraint_projection() -> Bool {
   pep440_version_specifier_constraint(spec: [
     {
       op: Pep440InclusiveAtLeast,
@@ -192,7 +191,7 @@ fn w_version_specifier_constraint_projection() -> Bool {
   ]) == ">= 1.0"
 }
 
-fn w_release_segments_zero_pad_equal() -> Bool {
+test fn w_release_segments_zero_pad_equal() -> Bool {
   pep440_compare_public(
     a: Pep440PublicVersion {
       epoch: 0,
@@ -211,14 +210,14 @@ fn w_release_segments_zero_pad_equal() -> Bool {
   ) == Equal
 }
 
-fn w_structural_alpha_before_final() -> Bool {
+test fn w_structural_alpha_before_final() -> Bool {
   pep440_compare_public(
     a: v_alpha_1_0a1().public,
     b: v_final_1_0().public
   ) == Less
 }
 
-fn w_a2_dev1_greater_than_a1() -> Bool {
+test fn w_a2_dev1_greater_than_a1() -> Bool {
   pep440_compare_public(
     a: Pep440PublicVersion {
       epoch: 0,
@@ -233,14 +232,14 @@ fn w_a2_dev1_greater_than_a1() -> Bool {
   ) == Greater
 }
 
-fn w_bare_dev_before_alpha() -> Bool {
+test fn w_bare_dev_before_alpha() -> Bool {
   pep440_compare_public(
     a: v_dev_1_0_dev456().public,
     b: v_alpha_1_0a1().public
   ) == Less
 }
 
-fn w_dev_on_pre_before_same_pre() -> Bool {
+test fn w_dev_on_pre_before_same_pre() -> Bool {
   pep440_compare_public(
     a: Pep440PublicVersion {
       epoch: 0,
@@ -255,26 +254,7 @@ fn w_dev_on_pre_before_same_pre() -> Bool {
   ) == Less
 }
 
-fn w_min_python_interpreter_grounded() -> Bool {
+test fn w_min_python_interpreter_grounded() -> Bool {
   min_python_interpreter == ">= 3.11"
 }
 
-test fn python_pep440_version_witnesses() -> Bool {
-  w_final_release_label()
-    && w_alpha_pre_release_label()
-    && w_epoch_prefix_label()
-    && w_post_release_label()
-    && w_dev_release_label()
-    && w_local_version_label()
-    && w_spec_citation_present()
-    && w_version_specifier_clause_label()
-    && w_discriminates_pre_release_numbers()
-    && w_version_identity_projection()
-    && w_version_specifier_constraint_projection()
-    && w_release_segments_zero_pad_equal()
-    && w_structural_alpha_before_final()
-    && w_a2_dev1_greater_than_a1()
-    && w_bare_dev_before_alpha()
-    && w_dev_on_pre_before_same_pre()
-    && w_min_python_interpreter_grounded()
-}

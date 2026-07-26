@@ -69,7 +69,7 @@ fn tty_basis() -> AttentionBasis {
   AttentionBasis { average: millisecond(count: 1000), maximum: millisecond(count: 5000) }
 }
 
-fn w_preamble_names_what_why_and_how_much() -> Bool {
+test fn w_preamble_names_what_why_and_how_much() -> Bool {
   let line = tty_preamble_line(fields: PreambleFields {
     run_id: "30044816605" as NonEmptyStr,
     trigger: "pull_request" as NonEmptyStr,
@@ -82,18 +82,18 @@ fn w_preamble_names_what_why_and_how_much() -> Bool {
   string_contains(s: line.text, pattern: "602 entries")
 }
 
-fn w_routine_repaints_in_place_but_anomaly_scrolls() -> Bool {
+test fn w_routine_repaints_in_place_but_anomaly_scrolls() -> Bool {
   tty_cursor_action(attention: Ambient, cap: tty_cap()) == Overwrite &&
   tty_cursor_action(attention: Notable, cap: tty_cap()) == Append &&
   tty_cursor_action(attention: Anomaly, cap: tty_cap()) == Append
 }
 
-fn w_non_addressable_terminal_always_appends() -> Bool {
+test fn w_non_addressable_terminal_always_appends() -> Bool {
   tty_cursor_action(attention: Ambient, cap: pipe_cap()) == Append &&
   tty_cursor_action(attention: Anomaly, cap: pipe_cap()) == Append
 }
 
-fn w_refusal_never_repaints_away() -> Bool {
+test fn w_refusal_never_repaints_away() -> Bool {
   let refusal = ObservationEvent {
     subject: tty_entry_subject(),
     transition: Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as NonEmptyStr } },
@@ -105,7 +105,7 @@ fn w_refusal_never_repaints_away() -> Bool {
   emission.cursor == Append
 }
 
-fn w_same_event_drives_both_surfaces() -> Bool {
+test fn w_same_event_drives_both_surfaces() -> Bool {
   let event = ObservationEvent {
     subject: tty_entry_subject(),
     transition: Concluded { outcome: Done },
@@ -116,14 +116,14 @@ fn w_same_event_drives_both_surfaces() -> Bool {
   string_contains(s: tty_render_emission(emission: emission, tier: Emoji), pattern: "in 230ms")
 }
 
-fn w_group_line_names_the_current_entry() -> Bool {
+test fn w_group_line_names_the_current_entry() -> Bool {
   let line = tty_group_line(active: tty_entry_subject(), k: 214, n: 602, spinner: Spinner0)
   string_contains(s: line.text, pattern: "214 of 602") &&
   string_contains(s: line.text, pattern: "v2.compiler.normalized_tree") &&
   line.attention == Ambient
 }
 
-fn w_blocked_line_carries_holder_and_bounded_remaining() -> Bool {
+test fn w_blocked_line_carries_holder_and_bounded_remaining() -> Bool {
   let bounded = tty_blocked_line(blocked: BlockedOn {
     resource: MemoryBudget,
     holders: [tty_entry_subject()],
@@ -134,7 +134,7 @@ fn w_blocked_line_carries_holder_and_bounded_remaining() -> Bool {
   bounded.attention == Anomaly
 }
 
-fn w_blocked_line_names_why_remaining_is_unknown() -> Bool {
+test fn w_blocked_line_names_why_remaining_is_unknown() -> Bool {
   let unknown = tty_blocked_line(blocked: BlockedOn {
     resource: MemoryBudget,
     holders: [tty_entry_subject()],
@@ -144,7 +144,7 @@ fn w_blocked_line_names_why_remaining_is_unknown() -> Bool {
   !string_contains(s: unknown.text, pattern: "remaining")
 }
 
-fn w_reward_animal_is_deterministic_and_degrades_to_a_word() -> Bool {
+test fn w_reward_animal_is_deterministic_and_degrades_to_a_word() -> Bool {
   let emoji_clean = tty_final_line(shown_failures: 0, run_index: 3, tier: Emoji)
   let emoji_again = tty_final_line(shown_failures: 0, run_index: 3, tier: Emoji)
   let ascii_clean = tty_final_line(shown_failures: 0, run_index: 3, tier: Ascii)
@@ -154,21 +154,9 @@ fn w_reward_animal_is_deterministic_and_degrades_to_a_word() -> Bool {
   !string_contains(s: ascii_clean.text, pattern: "🦦")
 }
 
-fn w_final_with_failures_names_them_and_is_anomaly() -> Bool {
+test fn w_final_with_failures_names_them_and_is_anomaly() -> Bool {
   let line = tty_final_line(shown_failures: 3, run_index: 3, tier: Emoji)
   string_contains(s: line.text, pattern: "3 problems shown") &&
   line.attention == Anomaly
 }
 
-test fn observation_tty_render_witnesses() -> Bool {
-  w_preamble_names_what_why_and_how_much() &&
-  w_routine_repaints_in_place_but_anomaly_scrolls() &&
-  w_non_addressable_terminal_always_appends() &&
-  w_refusal_never_repaints_away() &&
-  w_same_event_drives_both_surfaces() &&
-  w_group_line_names_the_current_entry() &&
-  w_blocked_line_carries_holder_and_bounded_remaining() &&
-  w_blocked_line_names_why_remaining_is_unknown() &&
-  w_reward_animal_is_deterministic_and_degrades_to_a_word() &&
-  w_final_with_failures_names_them_and_is_anomaly()
-}

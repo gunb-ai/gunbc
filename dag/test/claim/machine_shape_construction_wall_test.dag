@@ -93,6 +93,3 @@ test fn gate_green_synthetic_shape_from_catalog_call() -> Bool {
   gate_accepts(o: machine_shape_compile_gate(node: shape_from_catalog_call_fixture()))
 }
 
-test fn machine_shape_construction_wall_witnesses() -> Bool {
-  gate_red_synthetic_machine_shape_call() && gate_green_synthetic_shape_from_catalog_call()
-}

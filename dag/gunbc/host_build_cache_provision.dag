@@ -32,7 +32,7 @@ data host_build_cache_provision_realize_scaffold: Disposition = Scaffold {
 data ci_sccache_opportunistic_detect_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "gunbc.ci_materialization",
+    module_path: "v2.workflow.ci_materialization_emit",
     decl_name: "ci_sccache_provider_shell_injection",
     field: WholeDeclaration,
   }

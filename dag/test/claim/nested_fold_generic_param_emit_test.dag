@@ -7,12 +7,12 @@ import std.realization_measurement {
   schedule_critical_path_time,
 }
 
-fn witness_flat_fold_resolves_generic_scale() -> Bool {
+test fn witness_flat_fold_resolves_generic_scale() -> Bool {
   let batch = [time_measure(count: 10)]
   measure_count(m: schedule_batch_critical_path(batch_times: batch)) == 10
 }
 
-fn witness_nested_fold_resolves_generic_scale() -> Bool {
+test fn witness_nested_fold_resolves_generic_scale() -> Bool {
   let batches = [
     [time_measure(count: 40), time_measure(count: 5)],
     [time_measure(count: 20)],
@@ -20,7 +20,3 @@ fn witness_nested_fold_resolves_generic_scale() -> Bool {
   measure_count(m: schedule_critical_path_time(batch_times: batches)) == 60
 }
 
-test fn nested_fold_generic_param_emit_test() -> Bool {
-  witness_flat_fold_resolves_generic_scale()
-    && witness_nested_fold_resolves_generic_scale()
-}

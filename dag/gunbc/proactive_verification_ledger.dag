@@ -6,7 +6,7 @@ import std.types { String, Int, List }
 import v2.std.algebra { any, filter, fold_list, length }
 import v2.std.node { Symbol }
 
-data proactive_verification_ledger_law: String = "The PROACTIVE VERIFICATION LEDGER (operator no-soak ruling 2026-07-20; v1_deletion_plan ^v1_delete): enumerated executed receipts that gate v1_delete — never calendar soak, never elapsed-time claims. Each row is ONE deliberate run with a typed execution shape, a disposition (ExecutableNow | KnownRedPendingUnquarantine | BlockedOnCiFloorCutover), and an execution outcome (OutcomeGreen | OutcomePending | OutcomeRed) recorded only after a real run — never fabricated. Spine rows carry hand-declared disposition (BlockedOnCiFloorCutover until cutover). Family disposition is DERIVED by projecting gunbc.ci_layer_roots known_red_probe_entries — never hand-declared (§3 single authority). Spine: (1) whole-corpus cold v1-vs-v2 witness parity — falsifier predict-only cadence, zero unexplained divergence; (2) compile-clean parity; (3) regen behavioral fixed point. Families: nine witness-realization equals_eval receipts (#6879 partition). Dissolve-on: ci_floor_cutover + ledger all OutcomeGreen."
+data proactive_verification_ledger_law: String = "The PROACTIVE VERIFICATION LEDGER (operator no-soak ruling 2026-07-20; v1_deletion_plan ^v1_delete): enumerated executed receipts that gate v1_delete — never calendar soak, never elapsed-time claims. Each row is ONE deliberate run with a typed execution shape, a disposition (ExecutableNow | KnownRedPendingUnquarantine | BlockedOnCiFloorCutover), and an execution outcome (OutcomeGreen | OutcomePending | OutcomeRed) recorded only after a real run — never fabricated. Spine rows carry hand-declared disposition (BlockedOnCiFloorCutover until cutover). Family disposition is DERIVED by projecting gunbc.ci_layer_roots known_red_probe_entries — never hand-declared (§3 single authority). Spine: (1) whole-corpus cold v1-vs-v2 witness parity — falsifier predict-only cadence, zero unexplained divergence; (2) compile-clean parity; (3) regen behavioral fixed point. Families: nine #6879 partition families as equals_eval receipts (meet_join contributes meet + join peer primaries — review 43336). Dissolve-on: ci_floor_cutover + ledger all OutcomeGreen."
 
 type VerificationReceiptKind
   = WholeCorpusWitnessParityCold
@@ -86,7 +86,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
     title: "emit_host_add family equals_eval agreement",
     execution: ClaimWitness {
       entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
-      function: "emit_host_add_equals_eval_all_holds"
+      function: "emit_host_add_equals_eval_holds"
     },
     dissolve_trigger: "ledger all-green at v1_delete"
   },
@@ -95,7 +95,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
     title: "emit_host_match family equals_eval agreement",
     execution: ClaimWitness {
       entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
-      function: "emit_host_match_equals_eval_all_holds"
+      function: "emit_host_match_equals_eval_holds"
     },
     dissolve_trigger: "ledger all-green at v1_delete"
   },
@@ -104,7 +104,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
     title: "emit_host_loop family equals_eval agreement",
     execution: ClaimWitness {
       entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval_test.dag",
-      function: "emit_host_loop_equals_eval_all_holds"
+      function: "emit_host_loop_equals_eval_holds"
     },
     dissolve_trigger: "ledger all-green at v1_delete"
   },
@@ -122,7 +122,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
     title: "emit_host_field_access family equals_eval agreement",
     execution: ClaimWitness {
       entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
-      function: "emit_host_field_access_equals_eval_all_holds"
+      function: "emit_host_field_access_equals_eval_holds"
     },
     dissolve_trigger: "known_red_probe_entries row deletes on green (swift-stag-662)"
   },
@@ -131,16 +131,25 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
     title: "emit_host_complement family equals_eval agreement",
     execution: ClaimWitness {
       entry: "src/v2/test/claim/execution/emit_host_complement_equals_eval_test.dag",
-      function: "emit_host_complement_equals_eval_all_holds"
+      function: "emit_host_complement_equals_eval_holds"
     },
     dissolve_trigger: "known_red_probe_entries row deletes on green (swift-stag-662)"
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_meet_join,
-    title: "emit_host_meet_join family equals_eval agreement",
+    title: "emit_host_meet equals_eval agreement (meet_join family)",
     execution: ClaimWitness {
       entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval_test.dag",
-      function: "emit_host_meet_join_equals_eval_all_holds"
+      function: "emit_host_meet_equals_eval_holds"
+    },
+    dissolve_trigger: "ledger all-green at v1_delete"
+  },
+  FamilyVerificationLedgerRow {
+    id: ^family_equals_join,
+    title: "emit_host_join equals_eval agreement (meet_join family)",
+    execution: ClaimWitness {
+      entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval_test.dag",
+      function: "emit_host_join_equals_eval_holds"
     },
     dissolve_trigger: "ledger all-green at v1_delete"
   },
@@ -149,7 +158,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
     title: "emit_host_variant_construct family equals_eval agreement",
     execution: ClaimWitness {
       entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
-      function: "emit_host_variant_construct_equals_eval_all_holds"
+      function: "emit_host_variant_construct_equals_eval_holds"
     },
     dissolve_trigger: "ledger all-green at v1_delete"
   },
@@ -158,7 +167,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
     title: "emit_host_fold_closure family equals_eval agreement",
     execution: ClaimWitness {
       entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag",
-      function: "emit_host_fold_closure_equals_eval_all_holds"
+      function: "emit_host_fold_closure_equals_eval_holds"
     },
     dissolve_trigger: "known_red_probe_entries row deletes on green (jolly-dove-581)"
   }

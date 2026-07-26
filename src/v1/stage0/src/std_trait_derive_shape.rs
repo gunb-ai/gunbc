@@ -7,6 +7,11 @@ use self::PairCompletionOperand::*;
 use self::ReprGroundingDeriveElemShape::*;
 use self::ReprGroundingDeriveTrait::*;
 pub use crate::std_algebra::FreeMonoid;
+use crate::std_decl_ref::DeclField::WholeDeclaration;
+pub use crate::std_decl_ref::{DeclField, DeclarationRef};
+use crate::std_disposition::ConstructionMechanism::SingleAuthority;
+use crate::std_disposition::Disposition::Scaffold;
+pub use crate::std_disposition::{ConstructionMechanism, Disposition};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -698,12 +703,52 @@ pub fn pair_completion_body_uses_rhs(body: Rc<PairCompletionBody>) -> bool {
     }
 }
 
-pub fn repr_grounding_supplemental_group_completion_target(
-    module_path: String,
-    name: String,
-) -> bool {
+pub fn repr_grounding_group_completion_carrier_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Interim carrier identity for capability-table selection of GroupCompletion pair-completion bodies (#7272 A1 / #7286 handoff). The struct trait surface is selected once via v1_emit_struct_from_capability_table (#[derive] attrs + KernelInt arithmetic impl bodies); the old v1_emit_struct_supplemental_impls door is deleted. The rename from supplemental_*_target is NOT the fix while selection is still name-match (module_path == \"std.algebra\" && name == \"GroupCompletion\") — see dissolve-on.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn repr_grounding_group_completion_carrier_trigger() -> Rc<Disposition> {
+    thread_local! {
+            static CACHED: Rc<Disposition> = {
+                Rc::new(Disposition::Scaffold {
+        dissolves_to: ConstructionMechanism::SingleAuthority,
+        bind: Rc::new(DeclarationRef {
+        module_path: "std.algebra".to_string(),
+        decl_name: "Ring".to_string(),
+        field: Rc::new(DeclField::WholeDeclaration),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<Disposition>| c.clone())
+}
+
+pub fn repr_grounding_group_completion_carrier_dissolve_on() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "dissolve-on: repr_grounding_group_completion_carrier — name-match module_path/name selection. Dissolves when capability selection for GroupCompletion pair-completion is derived from std.algebra Ring/AbelianGroup inhabitance witnesses (same terminal as pair_completion_shape_dissolve_on / numeric-tower grounding), so the carrier is identified by inhabitance rather than string equality. Terminal trigger binds Ring as that inhabitance authority (repr_grounding_group_completion_carrier_trigger).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn repr_grounding_group_completion_carrier(module_path: String, name: String) -> bool {
     ((module_path.clone() == "std.algebra".to_string())
         && (name.clone() == "GroupCompletion".to_string()))
+}
+
+pub fn repr_grounding_bool_host_bridge_dissolve_on() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "dissolve-on: repr_grounding_supplemental_bool_host_bridge_target / v1_emit_enum_supplemental_impls — Bool↔host-bool bridge door. Dissolves with the Value::Null-split / Bool True|False ↔ Value::Bool grounding lane (DESIGN open thread; gunbc.plans.value_null_split). Kept as the remaining half of the old supplemental door; do not ground the bridge in an emitter cleanup (§3).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn repr_grounding_supplemental_bool_host_bridge_target(

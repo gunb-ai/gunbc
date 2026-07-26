@@ -23,20 +23,23 @@ data rust_pair_completion_spelling_scaffold_trigger: Disposition = Scaffold {
 data rust_bool_host_bridge_scaffold_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "std.trait_derive_shape",
-    decl_name: "ReprGroundingDeriveElemShape",
+    module_path: "gunbc.plans.value_null_split",
+    decl_name: "value_null_split_plan",
     field: WholeDeclaration
   }
 }
 
 data rust_dry_run_mode_scaffold_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "v1.compiler.emit",
-    decl_name: "BackendCapability",
+    module_path: "std.execution_mode",
+    decl_name: "ExecutionMode",
     field: WholeDeclaration
   }
 }
+
+data rust_dry_run_mode_scaffold_dissolve_on: String = "dissolve-on: emit_dry_run_module DryRunMode(bool) blob. BackendCapability/BackendInfo deleted as dead vocabulary (#7272 A2) — wiring five Cap* markers to satisfy a census ratchet was refused. Dissolves when dry-run is modeled on the ExecutionMode / effect-grant axis (Hermetic/Replay plan-only) rather than a hand-emitted bool wrapper; failing a substrate model, the next language-source scaffold sweep deletes the blob if no executing consumer remains."
+
 
 data rust_pair_completion_spelling_scaffold_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "extdeps.languages.rust.emit",
@@ -304,6 +307,11 @@ data ct_row_ct_type_size_test: LanguageSourceScaffoldRow = LanguageSourceScaffol
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
 }
 
+data ct_row_ct_render_rust_applied_type_qualified_base_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_render_rust_applied_type_qualified_base_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
 data ct_row_ct_diagnostics_carrier_grounding_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_diagnostics_carrier_grounding_test",
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
@@ -385,6 +393,7 @@ data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
   ct_row_ct_self_compile_test,
   ct_row_ct_self_compile_cargo_check_test,
   ct_row_ct_type_size_test,
+  ct_row_ct_render_rust_applied_type_qualified_base_test,
   ct_row_ct_diagnostics_carrier_grounding_test,
   ct_row_ct_render_rust_applied_type_qualified_base_test,
   ct_row_ct_rust_btree_set_ord_eligibility_test,
