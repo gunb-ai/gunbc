@@ -28,7 +28,9 @@ import v2.std.orchestration {
   Pipeline,
   Do,
   Run,
-  FailFast
+  FailFast,
+  DiscardAll,
+  TeeTo
 }
 import std.algebra { FreeMonoid }
 import v2.std.algebra { list_head, HeadFound, HeadAbsent }
@@ -503,5 +505,138 @@ test fn orch_retry_3level_emit_has_teeth_holds() -> Bool {
     Accepted { value: source, diagnostics: _ } =>
       source.carried != orch_retry_3level_golden()
     Rejected { diagnostics: _ } => false
+  }
+}
+
+fn orch_retry_probe_escalation(source: String) -> EscalationLevel {
+  EscalationLevel {
+    detect: LogMatches { source: source, pattern: "PAT" },
+    warning: EmitDirective {
+      severity: SeverityWarning,
+      message: "probe"
+    },
+    env: []
+  }
+}
+
+fn orch_retry_probe_exhausted() -> Pipeline {
+  Pipeline {
+    steps: [
+      Do {
+        run: Run {
+          command: "exit 1",
+          env: [],
+          redirect: Absent,
+          capture: Absent
+        }
+      }
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn orch_retry_probe_with_body(steps: FreeMonoid<PipelineStep>, source: String) -> PipelineStep {
+  Retry {
+    body: Pipeline {
+      steps: steps,
+      on_failure: FailFast
+    },
+    escalations: [orch_retry_probe_escalation(source: source)],
+    on_exhausted: orch_retry_probe_exhausted()
+  }
+}
+
+fn orch_retry_probe_single_do(r: Run, source: String) -> PipelineStep {
+  orch_retry_probe_with_body(
+    steps: [Do { run: r }],
+    source: source
+  )
+}
+
+test fn orch_retry_body_multi_step_refused_holds() -> Bool {
+  match orch_emit_step(
+    s: orch_retry_probe_with_body(
+      steps: [
+        Do {
+          run: Run {
+            command: "true",
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        },
+        Do {
+          run: Run {
+            command: "false",
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      source: "BUILD_LOG"
+    ),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^orch_emit_retry_body_multi_step
+  }
+}
+
+test fn orch_retry_body_redirect_present_refused_holds() -> Bool {
+  match orch_emit_step(
+    s: orch_retry_probe_single_do(
+      r: Run {
+        command: "true",
+        env: [],
+        redirect: Present { value: DiscardAll },
+        capture: Absent
+      },
+      source: "BUILD_LOG"
+    ),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^orch_emit_retry_redirect_present
+  }
+}
+
+test fn orch_retry_body_capture_present_refused_holds() -> Bool {
+  match orch_emit_step(
+    s: orch_retry_probe_single_do(
+      r: Run {
+        command: "true",
+        env: [],
+        redirect: Absent,
+        capture: Present { value: TeeTo { log: "BUILD_LOG" } }
+      },
+      source: "BUILD_LOG"
+    ),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^orch_emit_retry_capture_present
+  }
+}
+
+test fn orch_retry_changed_log_source_refused_holds() -> Bool {
+  match orch_emit_step(
+    s: orch_retry_probe_single_do(
+      r: Run {
+        command: "true",
+        env: [],
+        redirect: Absent,
+        capture: Absent
+      },
+      source: "OTHER_LOG"
+    ),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^orch_emit_retry_log_source_mismatch
   }
 }
