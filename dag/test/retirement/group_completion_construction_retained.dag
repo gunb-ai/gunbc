@@ -1,0 +1,9 @@
+module test.retirement.group_completion_construction_retained
+
+
+data group_completion_construction_retention: TestModuleRetirement = TestModuleRetirement {
+  module: "group_completion_construction_test.rs",
+  disposition: RetainedNonMigratable {
+    reason: "This witness guards the eval_record_lit construction-side collapse for GroupCompletion \{ pos, neg \} (PR #7197): a plain-record construction with native Value::Int fields must reduce directly to Value::Int(pos - neg), mirroring #5428's Succ\{prev\} collapse, rather than allocating a boxed Value::Record. The assertions pattern-match on the host interpreter's internal Value enum (Value::Int vs Value::Record) to catch a regression to the boxed representation even when the arithmetic result stays numerically correct — that representation-strategy distinction has no observable surface from within a .dag program (the language has no reflection over Value's native-vs-boxed shape), so it cannot migrate to an exact-stem test dag floor witness. Retained until src/v1 deletes at v2 self-host; not migration debt and not a delete candidate."
+  }
+}
