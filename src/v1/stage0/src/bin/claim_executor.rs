@@ -586,6 +586,8 @@ struct ClaimResult {
     corpus_eval_nanos: u128,
     /// Number of discovery witnesses (non-zero only for discovery batch nodes).
     corpus_witnesses: usize,
+    /// Per-witness eval+resolve identity preserved from discovery (empty for gate/single-claim rows).
+    witness_row_costs: Vec<WitnessTimingRow>,
 }
 
 /// A batch is partitioned into resolve-groups before scheduling. SingleClaims that share one
@@ -706,6 +708,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
         },
         ClaimOutcome::Fail => ClaimResult {
             function,
@@ -716,6 +719,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
         },
         ClaimOutcome::NotBool { got } => ClaimResult {
             function,
@@ -726,6 +730,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
         },
         ClaimOutcome::RuntimeError { message } => ClaimResult {
             function,
@@ -736,6 +741,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
         },
     }
 }
@@ -758,6 +764,7 @@ fn run_batch_unit(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
         }],
         BatchUnit::Discovery {
             source_roots: roots,
@@ -837,6 +844,7 @@ fn run_shared_entry_claims(
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    witness_row_costs: Vec::new(),
                 })
                 .collect();
         }
@@ -895,6 +903,7 @@ fn run_memo_shared_claims(
                         corpus_resolve_nanos: 0,
                         corpus_eval_nanos: 0,
                         corpus_witnesses: 0,
+                        witness_row_costs: Vec::new(),
                     })
                     .collect();
             }
@@ -1286,6 +1295,54 @@ fn read_schedule_witness_entry_paths(
     }
 }
 
+fn discovery_claim_result(
+    function: String,
+    ok: bool,
+    detail: String,
+    summary: &DiscoverySummary,
+) -> ClaimResult {
+    // Per-row identity is load-bearing for the receipt spine: a compute failure OR an
+    // incomplete row set must refuse the discovery claim (typed/located), never silently
+    // emit a partial receipt as complete (§5 / review 43261 + review 43274).
+    // `compute_witness_timing_rows` itself refuses on missing entry-resolve coverage.
+    match compute_witness_timing_rows(summary) {
+        Ok(witness_row_costs) => ClaimResult {
+            function,
+            ok,
+            detail,
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: summary.total_resolve_nanos,
+            corpus_eval_nanos: summary.total_measured_nanos,
+            corpus_witnesses: summary.total,
+            witness_row_costs,
+        },
+        Err(msg) => {
+            eprintln!("[witness-row-cost] refused: {msg}");
+            // Preserve the caller's failure context (e.g. "N of M discovery witness(es)
+            // failed: …") — receipt refusal is an additional located cause, never a
+            // replacement that erases the discovery diagnostic (DESIGN §5 / review 43284).
+            let receipt = format!("witness row-cost receipt refused: {msg}");
+            let detail = if detail.is_empty() {
+                receipt
+            } else {
+                format!("{detail}; {receipt}")
+            };
+            ClaimResult {
+                function,
+                ok: false,
+                detail,
+                wall_nanos: 0,
+                resolve_nanos: 0,
+                corpus_resolve_nanos: summary.total_resolve_nanos,
+                corpus_eval_nanos: summary.total_measured_nanos,
+                corpus_witnesses: summary.total,
+                witness_row_costs: Vec::new(),
+            }
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_discovery_batch_node(
     source_roots: Vec<String>,
@@ -1371,30 +1428,22 @@ fn run_discovery_batch_node(
             emit_slowest_witness_attribution(&source_roots, &summary);
             if expect_red && summary.total > 0 {
                 // All green on an expect-red probe = stale quarantine (dissolve-on fired).
-                ClaimResult {
-                    function: label,
-                    ok: false,
-                    detail: format!(
+                discovery_claim_result(
+                    label,
+                    false,
+                    format!(
                         "expect_red probe unexpectedly green: {} witness(es) passed — un-quarantine (delete known_red_probe_entries / falsifier_self_host_wet_known_red_entries rows) or restore the discriminating red",
                         summary.total
                     ),
-                    wall_nanos: 0,
-                    resolve_nanos: 0,
-                    corpus_resolve_nanos: summary.total_resolve_nanos,
-                    corpus_eval_nanos: summary.total_measured_nanos,
-                    corpus_witnesses: summary.total,
-                }
+                    &summary,
+                )
             } else {
-                ClaimResult {
-                    function: format!("{label} ({} witnesses)", summary.total),
-                    ok: true,
-                    detail: String::new(),
-                    wall_nanos: 0,
-                    resolve_nanos: 0,
-                    corpus_resolve_nanos: summary.total_resolve_nanos,
-                    corpus_eval_nanos: summary.total_measured_nanos,
-                    corpus_witnesses: summary.total,
-                }
+                discovery_claim_result(
+                    format!("{label} ({} witnesses)", summary.total),
+                    true,
+                    String::new(),
+                    &summary,
+                )
             }
         }
         Ok(summary) => {
@@ -1404,32 +1453,24 @@ fn run_discovery_batch_node(
                     summary.failures.len(),
                     summary.total
                 );
-                ClaimResult {
-                    function: format!("{label} (expect_red still-red OK)"),
-                    ok: true,
-                    detail: String::new(),
-                    wall_nanos: 0,
-                    resolve_nanos: 0,
-                    corpus_resolve_nanos: summary.total_resolve_nanos,
-                    corpus_eval_nanos: summary.total_measured_nanos,
-                    corpus_witnesses: summary.total,
-                }
+                discovery_claim_result(
+                    format!("{label} (expect_red still-red OK)"),
+                    true,
+                    String::new(),
+                    &summary,
+                )
             } else {
-                ClaimResult {
-                    function: label,
-                    ok: false,
-                    detail: format!(
+                discovery_claim_result(
+                    label,
+                    false,
+                    format!(
                         "{} of {} discovery witness(es) failed: {}",
                         summary.failures.len(),
                         summary.total,
                         summary.failures.join("; ")
                     ),
-                    wall_nanos: 0,
-                    resolve_nanos: 0,
-                    corpus_resolve_nanos: summary.total_resolve_nanos,
-                    corpus_eval_nanos: summary.total_measured_nanos,
-                    corpus_witnesses: summary.total,
-                }
+                    &summary,
+                )
             }
         }
         Err(msg) => {
@@ -1448,6 +1489,7 @@ fn run_discovery_batch_node(
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    witness_row_costs: Vec::new(),
                 }
             } else {
                 ClaimResult {
@@ -1459,6 +1501,7 @@ fn run_discovery_batch_node(
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    witness_row_costs: Vec::new(),
                 }
             }
         }
@@ -2075,6 +2118,255 @@ fn write_gate_warm_cost_receipt_at(base: &std::path::Path, batch_records: &[Batc
     true
 }
 
+/// Per-witness cost receipt (Piece #5 spine): one row per discovery witness preserving
+/// `(entry, function, eval_ms, resolve_ms)` identity — the grain falsifier_cadence_surface_note
+/// requires before per-row placement is admissible. The complete machine-readable record is
+/// the TSV file; rendered streams may project a subset later (W2 ruling: one record, two
+/// projections). Fail-closed on write error.
+fn write_witness_row_cost_receipt(batch_records: &[BatchRecord]) -> bool {
+    write_witness_row_cost_receipt_at(std::path::Path::new("target"), batch_records)
+}
+
+fn write_witness_row_cost_receipt_at(
+    base: &std::path::Path,
+    batch_records: &[BatchRecord],
+) -> bool {
+    let mut body = String::from("batch\tentry\tfunction\teval_ms\tresolve_ms\twarm_ms\n");
+    let mut row_count = 0usize;
+    for rec in batch_records {
+        let n = rec.batch_index + 1;
+        for result in &rec.results {
+            for row in &result.witness_row_costs {
+                let eval_ms = row.eval_nanos / 1_000_000;
+                let resolve_ms = row.resolve_nanos / 1_000_000;
+                let warm_ms = row.total_nanos / 1_000_000;
+                body.push_str(&format!(
+                    "{n}\t{}\t{}\t{eval_ms}\t{resolve_ms}\t{warm_ms}\n",
+                    row.entry, row.function
+                ));
+                row_count += 1;
+            }
+        }
+    }
+    for line in body.lines() {
+        eprintln!("[witness-row-cost] {line}");
+    }
+    let path = base.join("floor-witness-row-cost-receipt.tsv");
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write witness row-cost receipt {}: {e} — walk fails closed here",
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] floor witness row-cost: {row_count} row(s) (TSV receipt: {})",
+        path.display()
+    );
+    true
+}
+
+/// Required `host_class` on every signed basis row (`witness_row_cost_basis_host_class_note`).
+const WITNESS_ROW_COST_BASIS_HOST_CLASS: &str = "srv_fleet_arm64";
+
+#[derive(Debug)]
+struct WitnessRowCostBasisRow {
+    eval_ms_basis: u128,
+    run_ref: String,
+}
+
+/// Parse one TSV body line from `witness_row_cost_basis.tsv`.
+/// Returns `Ok(None)` for blank/comment lines; `Err` for malformed or wrong-host-class rows
+/// (caller must not insert them — a wrong host class would poison the 2× comparator).
+fn parse_witness_row_cost_basis_line(
+    line: &str,
+) -> Result<Option<((String, String), WitnessRowCostBasisRow)>, String> {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return Ok(None);
+    }
+    let parts: Vec<&str> = line.split('\t').collect();
+    if parts.len() < 5 {
+        return Err(format!(
+            "malformed witness-row-cost basis line (need 5 cols: entry function eval_ms_basis run_ref host_class): {line}"
+        ));
+    }
+    let host_class = parts[4];
+    if host_class != WITNESS_ROW_COST_BASIS_HOST_CLASS {
+        return Err(format!(
+            "witness-row-cost basis row host_class={host_class:?} refused (required {WITNESS_ROW_COST_BASIS_HOST_CLASS}; wrong host class poisons the 2× comparator): {line}"
+        ));
+    }
+    let eval_ms_basis = parts[2].parse::<u128>().unwrap_or(0);
+    if eval_ms_basis == 0 {
+        return Err(format!(
+            "witness-row-cost basis row has zero eval_ms_basis (refused as basis): {line}"
+        ));
+    }
+    Ok(Some((
+        (parts[0].to_string(), parts[1].to_string()),
+        WitnessRowCostBasisRow {
+            eval_ms_basis,
+            run_ref: parts[3].to_string(),
+        },
+    )))
+}
+
+fn millisecond_value(ctx: &InterpContext, count_ms: u128) -> Result<Value, String> {
+    let count = i64::try_from(count_ms).map_err(|_| {
+        format!("witness-row-cost: millisecond count {count_ms} exceeds i64 (fail-closed)")
+    })?;
+    match run_in_context_with_args(
+        ctx,
+        "millisecond",
+        &[(Some("count".to_string()), Value::Int(count))],
+        false,
+    ) {
+        Ok(v) => Ok(v),
+        Err(e) => Err(format!("millisecond({count}): {e}")),
+    }
+}
+
+/// Single-authority projection: evaluate `gunbc.witness_row_cost.witness_row_cost_exceeds_basis`
+/// rather than re-implementing `observed > basis * 2` in the seed (review 43261).
+fn witness_row_cost_exceeds_basis_via_authority(
+    ctx: &InterpContext,
+    observed_ms: u128,
+    basis_ms: u128,
+) -> Result<bool, String> {
+    let observed = millisecond_value(ctx, observed_ms)?;
+    let basis = millisecond_value(ctx, basis_ms)?;
+    match run_in_context_with_args(
+        ctx,
+        "witness_row_cost_exceeds_basis",
+        &[
+            (Some("observed".to_string()), observed),
+            (Some("basis".to_string()), basis),
+        ],
+        false,
+    ) {
+        Ok(Value::Bool(b)) => Ok(b),
+        Ok(other) => Err(format!(
+            "witness_row_cost_exceeds_basis returned {other}, expected Bool (fail-closed)"
+        )),
+        Err(e) => Err(format!("witness_row_cost_exceeds_basis: {e}")),
+    }
+}
+
+/// Drift comparison on the falsifier cadence only (margin ruling: row grew >2× against its
+/// dated basis = counted drift receipt, never merge-refusing). A row with no dated basis is
+/// BasisAbsent — typed, located, counted; never assume fine. Comparator authority is
+/// `dag/gunbc/witness_row_cost.dag` (resolved once; per-row exceeds_basis calls).
+fn write_witness_row_cost_drift_receipt_at(
+    base: &std::path::Path,
+    batch_records: &[BatchRecord],
+    basis_path: &std::path::Path,
+    source_roots: &[String],
+) -> bool {
+    let entry = "dag/gunbc/witness_row_cost.dag";
+    let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
+        Ok(v) => v,
+        Err(m) => {
+            eprintln!(
+                "claim_executor: failed to resolve {entry} for drift comparator (fail-closed):\n{m}"
+            );
+            return false;
+        }
+    };
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+
+    let mut basis: std::collections::HashMap<(String, String), WitnessRowCostBasisRow> =
+        std::collections::HashMap::new();
+    if let Ok(text) = std::fs::read_to_string(basis_path) {
+        for line in text.lines().skip(1) {
+            match parse_witness_row_cost_basis_line(line) {
+                Ok(None) => {}
+                Ok(Some((key, row))) => {
+                    basis.insert(key, row);
+                }
+                Err(msg) => {
+                    // Skip — never insert a wrong-host / malformed / zero-eval row
+                    // (would poison the 2× comparator; review 43284). Loud + counted via log.
+                    eprintln!("claim_executor: {msg}");
+                }
+            }
+        }
+    } else {
+        eprintln!(
+            "claim_executor: witness-row-cost basis file missing at {} — every row records BasisAbsent",
+            basis_path.display()
+        );
+    }
+
+    let mut body =
+        String::from("batch\tentry\tfunction\tobserved_eval_ms\tbasis_eval_ms\tverdict\trun_ref\n");
+    let mut drift_count = 0usize;
+    let mut basis_absent_count = 0usize;
+    for rec in batch_records {
+        let n = rec.batch_index + 1;
+        for result in &rec.results {
+            for row in &result.witness_row_costs {
+                let observed = row.eval_nanos / 1_000_000;
+                let key = (row.entry.clone(), row.function.clone());
+                match basis.get(&key) {
+                    None => {
+                        basis_absent_count += 1;
+                        body.push_str(&format!(
+                            "{n}\t{}\t{}\t{observed}\t\tBasisAbsent\t\n",
+                            row.entry, row.function
+                        ));
+                    }
+                    Some(b) => {
+                        let exceeds = match witness_row_cost_exceeds_basis_via_authority(
+                            &ctx,
+                            observed,
+                            b.eval_ms_basis,
+                        ) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                eprintln!(
+                                    "claim_executor: drift comparator refused for {}::{}: {e} — walk fails closed here",
+                                    row.entry, row.function
+                                );
+                                return false;
+                            }
+                        };
+                        let verdict = if exceeds {
+                            drift_count += 1;
+                            "DriftExceeded"
+                        } else {
+                            "WithinBasis"
+                        };
+                        body.push_str(&format!(
+                            "{n}\t{}\t{}\t{observed}\t{}\t{verdict}\t{}\n",
+                            row.entry, row.function, b.eval_ms_basis, b.run_ref
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    eprintln!(
+        "[witness-row-cost-drift] basis_absent={basis_absent_count} drift_exceeded={drift_count}"
+    );
+    for line in body.lines() {
+        eprintln!("[witness-row-cost-drift] {line}");
+    }
+    let path = base.join("floor-witness-row-cost-drift-receipt.tsv");
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write witness row-cost drift receipt {}: {e} — walk fails closed here",
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] floor witness row-cost drift: basis_absent={basis_absent_count} drift_exceeded={drift_count} (TSV: {})",
+        path.display()
+    );
+    true
+}
+
 fn write_resolve_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
     let mut resolves_total: u64 = 0;
     let mut resolve_ms_total: u128 = 0;
@@ -2319,6 +2611,8 @@ fn run_walk(
     stop_policy: FloorBatchStopPolicy,
     batch_clamp_params: Option<&[(u128, u128)]>,
     budget_tighten_ms: Option<u128>,
+    emit_witness_row_cost_drift: bool,
+    witness_row_cost_basis_path: &Path,
 ) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
@@ -2570,6 +2864,17 @@ fn run_walk(
     let resolve_receipt_ok = write_resolve_receipt(&batch_records);
     let batch_wall_receipt_ok = write_batch_wall_receipt(&batch_records);
     let gate_warm_cost_receipt_ok = write_gate_warm_cost_receipt(&batch_records);
+    let witness_row_cost_receipt_ok = write_witness_row_cost_receipt(&batch_records);
+    let witness_row_cost_drift_receipt_ok = if emit_witness_row_cost_drift {
+        write_witness_row_cost_drift_receipt_at(
+            std::path::Path::new("target"),
+            &batch_records,
+            witness_row_cost_basis_path,
+            source_roots,
+        )
+    } else {
+        true
+    };
     // Memo contexts absorb their ledger totals into the process accumulator on
     // Drop, so they must die before the materialization receipt is written.
     drop(walk_memo);
@@ -2579,6 +2884,8 @@ fn run_walk(
             || !resolve_receipt_ok
             || !batch_wall_receipt_ok
             || !gate_warm_cost_receipt_ok
+            || !witness_row_cost_receipt_ok
+            || !witness_row_cost_drift_receipt_ok
             || !materialization_receipt_ok,
         batches_run,
         failure_details,
@@ -2784,6 +3091,8 @@ fn run_perturb_check(
         FloorBatchStopPolicy::StopBeforeDependents,
         None,
         None,
+        false,
+        Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
     );
     let _ = fs::remove_dir_all(&tmp);
 
@@ -3198,6 +3507,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         batch_stop_policy,
         batch_clamp_params.as_deref(),
         budget_tighten_ms,
+        plan_function == "gunbc_falsifier_batches",
+        Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
     );
     // Floor receipts block — data, not outcomes. One named group; pulse glyphs only
     // (operator live-log 2026-07-25: outcome glyphs for outcomes only).
@@ -4851,6 +5162,82 @@ mod tests {
         assert_eq!(
             second[0].resolve_nanos, 0,
             "second call must cache-hit — resolve_entry_graph must NOT fire again"
+        );
+    }
+
+    #[test]
+    fn parse_witness_row_cost_basis_line_requires_srv_fleet_arm64() {
+        // RED control for review 43284: wrong/missing host_class must refuse, never load.
+        let ok = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64")
+            .expect("parse")
+            .expect("row");
+        assert_eq!(ok.0, ("e.dag".to_string(), "f".to_string()));
+        assert_eq!(ok.1.eval_ms_basis, 10);
+        assert_eq!(ok.1.run_ref, "run-1");
+
+        assert!(parse_witness_row_cost_basis_line("# comment")
+            .unwrap()
+            .is_none());
+        assert!(parse_witness_row_cost_basis_line("").unwrap().is_none());
+
+        let wrong = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tlocal_x86")
+            .expect_err("wrong host_class must refuse");
+        assert!(
+            wrong.contains("host_class") && wrong.contains("srv_fleet_arm64"),
+            "expected host_class refusal, got: {wrong}"
+        );
+
+        let short =
+            parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1").expect_err("need 5 cols");
+        assert!(short.contains("need 5 cols"), "got: {short}");
+
+        let zero = parse_witness_row_cost_basis_line("e.dag\tf\t0\trun-1\tsrv_fleet_arm64")
+            .expect_err("zero eval must refuse");
+        assert!(zero.contains("zero eval_ms_basis"), "got: {zero}");
+    }
+
+    #[test]
+    fn discovery_claim_result_preserves_caller_detail_on_receipt_refuse() {
+        // RED control for review 43284: receipt refusal must append, never overwrite
+        // the discovery failure diagnostic.
+        use v1_compiler::cli_run::{
+            ClaimOutcome, DiscoverySummary, DiscoveryWitnessOutcome, EntryResolveReceipt,
+            ResolveStageNanos,
+        };
+        let summary = DiscoverySummary {
+            total: 1,
+            passed: 0,
+            skipped: 0,
+            deferred_rows: Vec::new(),
+            predicted_unaffected: Vec::new(),
+            divergences: Vec::new(),
+            failures: vec!["e.dag::f failed".into()],
+            witness_outcomes: vec![DiscoveryWitnessOutcome {
+                entry: "e.dag".into(),
+                function: "f".into(),
+                outcome: ClaimOutcome::Fail,
+                execution_leg: "InterpretedLeg".into(),
+            }],
+            // Empty entry_resolve_receipts → compute_witness_timing_rows refuses.
+            entry_resolve_receipts: Vec::<EntryResolveReceipt>::new(),
+            total_resolve_nanos: 0,
+            total_stage_nanos: ResolveStageNanos::default(),
+            performance_receipts: Vec::new(),
+            total_measured_nanos: 0,
+            roster_closure_nodes: 0,
+        };
+        let prior = "1 of 1 discovery witness(es) failed: e.dag::f failed";
+        let result = discovery_claim_result("probe".into(), false, prior.to_string(), &summary);
+        assert!(!result.ok);
+        assert!(
+            result.detail.contains(prior),
+            "caller discovery failure must be preserved, got: {}",
+            result.detail
+        );
+        assert!(
+            result.detail.contains("witness row-cost receipt refused"),
+            "receipt refusal must also be present, got: {}",
+            result.detail
         );
     }
 }
