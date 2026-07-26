@@ -68,6 +68,10 @@ enum Commands {
         /// TestClaim / witness run: Bool false → exit 1; requires --entry
         #[arg(long)]
         claim_run: bool,
+        /// Named argument for the entry function, repeatable: `--arg name=value`.
+        /// Values enter as String; a missing `=` refuses rather than guessing.
+        #[arg(long = "arg")]
+        args: Vec<String>,
     },
 
     /// Apply a host's typed converge policy in-process
@@ -630,8 +634,16 @@ fn main() {
             function,
             entry,
             claim_run,
+            args,
         } => {
-            cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run);
+            cli_run::handle_run_with_options(
+                source_roots,
+                function,
+                entry,
+                cli.dry_run,
+                claim_run,
+                args,
+            );
         }
 
         Commands::Converge { host } => {

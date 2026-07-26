@@ -29883,6 +29883,15 @@ pub fn emit_subcommand_enum(
             "#[arg(long)]\n".to_string(),
             make_indent((depth.clone() + 2)),
             "claim_run: bool,\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "/// Named argument for the entry function, repeatable: `--arg name=value`.\n"
+                .to_string(),
+            make_indent((depth.clone() + 2)),
+            "/// Values enter as String; a missing `=` refuses rather than guessing.\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "#[arg(long = \"arg\")]\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "args: Vec<String>,\n".to_string(),
             make_indent((depth.clone() + 1)),
             "},".to_string(),
         ]);
@@ -30168,7 +30177,7 @@ pub fn emit_compile_match_arm(crate_name: String) -> String {
 }
 
 pub fn emit_run_match_arm(crate_name: String) -> String {
-    v1_rt::concat(v1_rt::concat("\n        Commands::Run { source_roots, function, entry, claim_run } => {\n".to_string(), "            cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run);\n".to_string()), "        },".to_string())
+    v1_rt::concat(v1_rt::concat("\n        Commands::Run { source_roots, function, entry, claim_run, args } => {\n".to_string(), "            cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run, args);\n".to_string()), "        },".to_string())
 }
 
 pub fn emit_main_pipeline_fns(crate_name: String) -> String {

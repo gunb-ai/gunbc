@@ -832,6 +832,53 @@ pub fn process_escapes(raw: String) -> String {
     process_escapes_loop(raw.clone(), 0, Rc::new(vec![]))
 }
 
+pub fn hex_escape_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "\\xNN decodes to the byte NN names. Before this arm every \\x fell through to the unknown-escape branch below, which preserves the backslash literally — so every ANSI code authored in .dag (extdeps.render.ansi.csi_esc, extdeps.render.terminal's reset, gunbc.ci_render's red/reset) emitted the six characters backslash-x-1-b instead of ESC, and no colour this repo authored had ever rendered. The witness that was supposed to catch it compared one undecoded literal against another, so it agreed with itself and could not fail (DESIGN §5 — a check satisfied by editing the declaration while the realization lies).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn unknown_escape_passthrough_frontier() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟡 dissolve-on: tokenizer_unknown_escape_strict_close (opened 2026-07-25) — the else-arm below resolves an UNRECOGNIZED escape to concat(backslash, next), so \\s silently means backslash-s and is indistinguishable from a typo'd escape. That is a closed-vocabulary violation (DESIGN §4: the vocabulary is closed; §5: a failure arm refuses, never widens) and it is knowingly RETAINED, not accepted: refusing today would red 142 occurrences across 38 files (textual census 2026-07-25 — grep over .dag, so an upper bound, and DESIGN's own caution about grep census applies), overwhelmingly regex fragments (\\' 28, \\. 19, \\| 13, \\/ 12, \\B 10) that intend the backslash to survive. NOT the four sites a \\x-only count suggests. DISSOLVES WHEN a raw-string form lands to carry regex fragments, the 142 occurrences migrate onto it, and this arm becomes a typed located parse refusal (the Rust rule: unknown escape is an error, a literal backslash is spelled \\\\). Because that is a PARSE-SEMANTICS change over a tokenizer every lane's probes compile through, the strict close lands with a corpus-wide compile receipt, never the site migration alone.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn hex_digit_value(ch: String) -> Option<i64> {
+    {
+        let cp = v1_rt::code_point(ch.clone());
+        if ((cp.clone() >= 48) && (cp.clone() <= 57)) {
+            Some((cp.clone() - 48))
+        } else {
+            if ((cp.clone() >= 97) && (cp.clone() <= 102)) {
+                Some((cp.clone() - 87))
+            } else {
+                if ((cp.clone() >= 65) && (cp.clone() <= 70)) {
+                    Some((cp.clone() - 55))
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
+pub fn hex_escape_char(hi: String, lo: String) -> Option<String> {
+    match hex_digit_value(hi.clone()) {
+        Some(h) => match hex_digit_value(lo.clone()) {
+            Some(l) => Some(v1_rt::from_code_point(((h.clone() * 16) + l.clone()))),
+            None => None,
+        },
+        None => None,
+    }
+}
+
 pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Rc<Vec<String>>) -> String {
     loop {
         if (pos.clone() >= v1_rt::string_length(&source)) {
@@ -842,37 +889,64 @@ pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Rc<Vec<St
                 && ((pos.clone() + 1) < v1_rt::string_length(&source)))
             {
                 let next = v1_rt::char_at(&source, (pos.clone() + 1));
-                let resolved = if (next.clone() == "\"".to_string()) {
-                    "\"".to_string()
+                if ((next.clone() == "x".to_string())
+                    && ((pos.clone() + 3) < v1_rt::string_length(&source)))
+                {
+                    match hex_escape_char(
+                        v1_rt::char_at(&source, (pos.clone() + 2)),
+                        v1_rt::char_at(&source, (pos.clone() + 3)),
+                    ) {
+                        Some(decoded) => {
+                            let __tco_0 = (pos + 4);
+                            let __tco_1 = v1_rt::rc_list_push(acc, decoded.clone());
+                            pos = __tco_0;
+                            acc = __tco_1;
+                            continue;
+                        }
+                        None => {
+                            let __tco_0 = (pos + 2);
+                            let __tco_1 = v1_rt::rc_list_push(
+                                acc,
+                                v1_rt::concat("\\".to_string(), next.clone()),
+                            );
+                            pos = __tco_0;
+                            acc = __tco_1;
+                            continue;
+                        }
+                    }
                 } else {
-                    if (next.clone() == "\\".to_string()) {
-                        "\\".to_string()
+                    let resolved = if (next.clone() == "\"".to_string()) {
+                        "\"".to_string()
                     } else {
-                        if (next.clone() == "n".to_string()) {
-                            "\n".to_string()
+                        if (next.clone() == "\\".to_string()) {
+                            "\\".to_string()
                         } else {
-                            if (next.clone() == "t".to_string()) {
-                                "\t".to_string()
+                            if (next.clone() == "n".to_string()) {
+                                "\n".to_string()
                             } else {
-                                if (next.clone() == "{".to_string()) {
-                                    "{".to_string()
+                                if (next.clone() == "t".to_string()) {
+                                    "\t".to_string()
                                 } else {
-                                    if (next.clone() == "}".to_string()) {
-                                        "}".to_string()
+                                    if (next.clone() == "{".to_string()) {
+                                        "{".to_string()
                                     } else {
-                                        v1_rt::concat("\\".to_string(), next.clone())
+                                        if (next.clone() == "}".to_string()) {
+                                            "}".to_string()
+                                        } else {
+                                            v1_rt::concat("\\".to_string(), next.clone())
+                                        }
                                     }
                                 }
                             }
                         }
+                    };
+                    {
+                        let __tco_0 = (pos + 2);
+                        let __tco_1 = v1_rt::rc_list_push(acc, resolved.clone());
+                        pos = __tco_0;
+                        acc = __tco_1;
+                        continue;
                     }
-                };
-                {
-                    let __tco_0 = (pos + 2);
-                    let __tco_1 = v1_rt::rc_list_push(acc, resolved.clone());
-                    pos = __tco_0;
-                    acc = __tco_1;
-                    continue;
                 }
             } else {
                 {
