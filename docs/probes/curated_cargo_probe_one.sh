@@ -8,6 +8,7 @@
 #
 # INVOCATION CONTRACT (2026-07-19, calm-boar-697 — durable; do not re-learn expensively):
 #   CSSL_STD_SEED_LINK=1  — required for std-seed-link closure assembly via cssl_assemble.
+#   PROBE_KEEP_LOG_DIR=<dir> — persist emitted crate + cargo.log for per-error census (e0599_census_extract.sh).
 #   shim_lib_rel (arg 2)  — ONLY the lane's own lib.rs from dag/tools/self_host_<lane>_shims/
 #                           when that lane provides one (see behavioral_transport shim_lib_rel).
 #   Empty = raw cssl-assembled lib.rs (correct default when no lane shim).
