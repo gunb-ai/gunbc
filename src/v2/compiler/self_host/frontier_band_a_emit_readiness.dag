@@ -18,8 +18,6 @@ type BandAEmitReadinessRow {
 
 data compiler_frontier_band_a_emit_readiness_note: String = "Band A Wave-1-pre-flip recon: FlippableNow = no dependency on Wave 1 gates 1-3 (general body producer ingest, namespace SymbolIndex, FLAG D). Program policy sequences Band A after Wave 1 gate 4 (weak self-host behavioral receipt). BodyProducerGated count must remain 0 on this roster. OtherGate cites the matching compiler_frontier_row_* migration_trigger. Gate-4 follow-up (swift-lynx-212): pure-decl modules are NOT flippable before gate 4 — Rust Track A6 data_decl emit is absent (rust.dag has no data_decl rows; parse_engine_hooks is 100% data Symbol=^atom), frontier_probe_emit_from_ingest is unstaged (#6464), and no per-module SeedRetained->SelfEmitted receipt path exists today. Wave 2 use_site_verdict pilot follow-up: wrap_decision_gate landed (#6776) and 06_translate routes through it (#6775); UseSiteVerdict enrolled in rust_sg_rc_use_site_ownership_catalog (owned-at-all-sites). Remaining FlippableNow rows (parse_engine_hooks, discovery_enumeration) still gated on rustc-green behavioral receipts and Track B body emit — not the ownership gate alone."
 
-data compiler_frontier_band_a_emit_readiness_count_expected: Int = 6
-
 data compiler_frontier_band_a_row_parse_engine_hooks: BandAEmitReadinessRow = BandAEmitReadinessRow {
   module_path: "src/v2/compiler/parse_engine_hooks.dag",
   gate: FlippableNow
@@ -99,11 +97,12 @@ fn compiler_frontier_band_a_other_gate_count() -> Int {
 }
 
 fn compiler_frontier_band_a_emit_readiness_core_holds() -> Bool {
-  (length(xs: compiler_frontier_band_a_emit_readiness_roster) == compiler_frontier_band_a_emit_readiness_count_expected)
-    && compiler_frontier_band_a_paths_unique_holds()
+  let gate_total = compiler_frontier_band_a_flippable_now_count() + compiler_frontier_band_a_other_gate_count() + compiler_frontier_band_a_body_producer_gated_count()
+  compiler_frontier_band_a_paths_unique_holds()
     && (compiler_frontier_band_a_body_producer_gated_count() == 0)
     && (compiler_frontier_band_a_flippable_now_count() == 4)
     && (compiler_frontier_band_a_other_gate_count() == 2)
+    && (gate_total == length(xs: compiler_frontier_band_a_emit_readiness_roster))
 }
 
 fn count_band_a_emit_readiness_rows_with_path(

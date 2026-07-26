@@ -5,7 +5,11 @@ import std.access { AccessDecision, Permit, Deny }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.shell
-import gunbc.hostname_read { hostname_short_read_local }
+import gunbc.hostname_read {
+  hostname_short_read_local,
+  HostnameShortCaptured,
+  HostnameShortCaptureRefused,
+}
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.ci_fleet { srv1_offer, ComputeOffer }
@@ -30,8 +34,8 @@ type DeployTargetHostObservation {
 
 fn deploy_target_host_observed_hostname() -> String {
   match hostname_short_read_local() {
-    Present { value: name } => name
-    Absent => ""
+    HostnameShortCaptured { value: name } => name
+    HostnameShortCaptureRefused { reason: _ } => ""
   }
 }
 

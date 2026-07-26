@@ -8,7 +8,13 @@ import v2.workflow.floor_naming_hygiene {
   floor_wire_contract_sidecar_suffix
 }
 import std.types { String, Bool, List }
-import v2.std.collection { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
 
 type FloorDiscoveryRow {
   label: String

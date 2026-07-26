@@ -22,8 +22,6 @@ pub use crate::std_types::is_container_type;
 pub use crate::v1_compiler_emit::to_pascal;
 pub use crate::v1_compiler_infer_types::child_type_node;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::NoConnective;
 pub use crate::v1_std_core::{authored_name_at, generic_param_name_at, param_node_type_expr};

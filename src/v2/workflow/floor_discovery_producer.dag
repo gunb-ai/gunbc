@@ -20,7 +20,13 @@ import v2.workflow.floor_naming_hygiene {
   floor_wire_contract_sidecar_suffix
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
-import v2.std.collection { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v2.std.algebra { any, length, fold_list }
 import v2.std.logic { Bool }
 import std.types { String, Int, List }

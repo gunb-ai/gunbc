@@ -1,5 +1,6 @@
 module v2.lens.languages_consumer_census
 
+data languages_consumer_census_ratchet_note: String = "Class-5 carve-out: these baselines are point-in-time RATCHET CEILINGS over live host scans (languages_consumer_census_*_count builtins), not counts beside a committed roster. Deriving baseline from the same live scan would tautologize live_count <= baseline. Authority split: baseline = ceiling snapshot; live scan = independent representation checked by ratchet_holds."
 
 data languages_consumer_census_data_decl_baseline: Int = 73
 data languages_consumer_census_per_language_row_baseline: Int = 66

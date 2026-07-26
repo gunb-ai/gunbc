@@ -54,6 +54,8 @@ data nfr_reason_native_agreement_octet: String = "RuntimeValue primitive-discrim
 
 data nfr_dissolve_native_agreement_octet: String = "RuntimeValue model↔realization grounds each primitive variant and the wildcard arm migrates to a total match — or the receipt formatter derives from inhabitance and the row deletes"
 
+data nfr_reason_observation_hold_cause: String = "the CI-log renderer names the two memory-pressure holds (PsiPressure, CurrentHighWater — the crawl-window narrative) with a specific cause and gives the other five SchedulerHold variants a generic 'blocked on scheduler admission'; landed with the progress-and-observation stack (session/sleek-ibex-634, #7168) and surfaced by the whole-corpus nfr receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at merge time (the masking class); declared so the ratchet re-arms"
+
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/local_tidy_spec.dag::local_tidy_path_matches_trigger" },
@@ -649,6 +651,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "src/v2/workflow/ci_floor_plan.dag::spec_enrolls_gate" },
     reason: nfr_reason_ci_floor_gate_membership,
     trigger: TriggerProse { text: nfr_dissolve_gate_membership },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/observation_ci_render.dag::ci_hold_cause_text" },
+    reason: nfr_reason_observation_hold_cause,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
   },
 ]
 

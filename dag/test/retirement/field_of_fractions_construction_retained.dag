@@ -1,0 +1,9 @@
+module test.retirement.field_of_fractions_construction_retained
+
+
+data field_of_fractions_construction_retention: TestModuleRetirement = TestModuleRetirement {
+  module: "field_of_fractions_construction_test.rs",
+  disposition: RetainedNonMigratable {
+    reason: "This witness guards the eval_record_lit construction-side NON-collapse for FieldOfFractions \{ num, denom \} (§7.2 model grounding): a plain-record construction with native Value::Int fields must stay a boxed Value::Record carrying both fields untouched — the deliberate negative-space counterpart to GroupCompletion's collapse (#7197), since FieldOfFractions has no native Rust scalar checkpoint to collapse into (an f64 collapse would be lossy/dishonest; Real/ApproximateField already exists for that). The assertions pattern-match on the host interpreter's internal Value enum (Value::Record vs any native scalar) to catch a regression that special-cases FieldOfFractions into a native collapse — that representation-strategy distinction has no observable surface from within a .dag program (the language has no reflection over Value's native-vs-boxed shape), so it cannot migrate to an exact-stem test dag floor witness. Retained until src/v1 deletes at v2 self-host; not migration debt and not a delete candidate."
+  }
+}

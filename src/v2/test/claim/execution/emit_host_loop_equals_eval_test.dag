@@ -25,7 +25,18 @@ import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
 import v2.extdeps.languages.rust_test { rust_loop_target_model_staging }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { List, Map, list_at_optional }
+import v2.std.collection {
+  List,
+  Map,
+  list_at_optional
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -90,8 +101,8 @@ fn emit_loop_eval_generic_facts(node: Node) -> InferredFacts {
   )
 }
 
-fn emit_loop_eval_composed_facts(key: Node) -> Witness<InferredFacts> {
-  Holds { value: emit_loop_eval_generic_facts(node: key) }
+fn emit_loop_eval_composed_facts(key: Node) -> Optional<InferredFacts> {
+  optional_present(value: emit_loop_eval_generic_facts(node: key))
 }
 
 fn emit_loop_eval_producer_tree() -> Outcome<InferredTree> {

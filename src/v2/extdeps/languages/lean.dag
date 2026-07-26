@@ -35,7 +35,7 @@ import v2.std.compilers.lexing {
   TokenRule,
   lex_rule_set_token_class_member
 }
-import v2.std.collection { List, Map, Set }
+import v2.std.collection { Absent, List, Map, Present, Set }
 import v2.std.logic { Bool, bool_boolean_algebra }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { BooleanAlgebra, boolean_algebra_type_node, commutative_ring_type_node, fold_list, list_map }
@@ -49,10 +49,8 @@ import v2.std.model_core {
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSignedness,
   ModelCoreFactAxisSurfaceSpelling,
-  primitive_fact_axis_unbound_diagnostic,
   ModelCoreFactAxisWidth
 }
-import v2.std.witness { Holds, Violates }
 import v2.std.node {
   Atom,
   Conj,
@@ -370,17 +368,15 @@ fn lean_int_spec_facts(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: Lean
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: lean_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          Holds { value: lean_int_width_node(width: width) }
+          v2.std.optional.Present { value: lean_int_width_node(width: width) }
       } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          Holds { value: lean_int_kind_node(kind: kind) }
+          v2.std.optional.Present { value: lean_int_kind_node(kind: kind) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: lean_inhabitant_atom(id: facts.representation) }
+          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          v2.std.optional.Absent
       }
     }
   }
@@ -390,13 +386,11 @@ fn lean_bool_spec_facts(facts: LeanPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: lean_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: lean_inhabitant_atom(id: facts.representation) }
+          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          v2.std.optional.Absent
       }
     }
   }

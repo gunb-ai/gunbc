@@ -1,4 +1,6 @@
 module v2.test.lens_structural_resolution.facts_lookup_miss
+import v2.std.collection { Map, optional_absent, optional_present }
+import v2.std.optional { Optional, Absent, Present }
 
 
 data sr_lookup_claim_hash: Hash = sr_lookup_claim_hash
@@ -36,10 +38,8 @@ fn sr_lookup_resolved_facts() -> InferredFacts {
   )
 }
 
-fn sr_lookup_usage_site_witness() -> Witness<InferredFacts> {
-  Violates {
-    diagnostic: infer_facts_lookup_miss_diagnostic(key: sr_lookup_use)
-  }
+fn sr_lookup_usage_site_witness() -> Optional<InferredFacts> {
+  optional_absent()
 }
 
 fn sr_lookup_claim_fact_map() -> Map<Node, InferredFacts> {
@@ -47,9 +47,9 @@ fn sr_lookup_claim_fact_map() -> Map<Node, InferredFacts> {
   Map {
     lookup: fn(key) {
       if key == sr_lookup_use {
-        sr_lookup_usage_site_witness()
+        optional_absent()
       } else {
-        Holds { value: resolved }
+        optional_present(value: resolved)
       }
     }
   }

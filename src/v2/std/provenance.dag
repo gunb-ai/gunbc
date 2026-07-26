@@ -13,7 +13,8 @@ import v2.std.diagnostic {
   port_locus
 }
 import v2.std.node { Node, OccurrenceId, Symbol }
-import v2.std.witness { Holds, Violates, Witness }
+import v2.std.optional { Absent, Present }
+import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 
 type OriginEvent
   = FromSource { locus: Locus }
@@ -47,11 +48,7 @@ fn span_index_occurrence_absent_diagnostic() -> Diagnostic {
 }
 
 fn span_index_lookup(index: SpanIndex, id: OccurrenceId) -> Witness<OriginEvent> {
-  match index.entries.lookup(id) {
-    Holds { value: event } => Holds { value: event }
-    Violates { diagnostic: _ } =>
-      Violates { diagnostic: span_index_occurrence_absent_diagnostic() }
-  }
+  witness_from_optional(opt: index.entries.lookup(id), absent: span_index_occurrence_absent_diagnostic())
 }
 
 fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
@@ -61,11 +58,11 @@ fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
       empty: base.entries,
       cons: fn(acc, id) {
         match acc.lookup(id) {
-          Holds { value: _ } => acc
-          Violates { diagnostic: _ } =>
+          Present { value: _ } => acc
+          Absent =>
             match incoming.entries.lookup(id) {
-              Holds { value: event } => map_insert(m: acc, key: id, value: event)
-              Violates { diagnostic: _ } => acc
+              Present { value: event } => map_insert(m: acc, key: id, value: event)
+              Absent => acc
             }
         }
       }

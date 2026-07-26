@@ -205,8 +205,8 @@ fn witness_show_property_local_read_holds() -> Bool {
     unit: "actions-runner@srv1-01.service" as NonEmptyStr,
     property: MemoryMax,
   ) {
-    Present { value: v } => v == "8589934592"
-    Absent => false
+    SystemdPropertyCaptured { value: v } => v == "8589934592"
+    SystemdPropertyCaptureRefused { reason: _ } => false
   }
 }
 
@@ -220,14 +220,16 @@ fn witness_transport_reads_use_show_property_authority() -> Bool {
 }
 
 fn witness_show_property_injection_metachar_refused() -> Bool {
-  match typed_argv_shell_safe_refusal_argv(
-    argv: systemctl_show_property_operation_argv(
-      unit: "foo\"; rm -rf /" as NonEmptyStr,
-      property: MemoryMax,
-    )
+  match systemctl_show_property_operation_argv(
+    unit: "foo\"; rm -rf /" as NonEmptyStr,
+    property: MemoryMax,
   ) {
-    Present { value: why } => string_contains(s: why, pattern: "allowlist")
-    Absent => false
+    ArgvMaterialized { argv: argv } =>
+      match typed_argv_shell_safe_refusal_argv(argv: argv) {
+        Present { value: why } => string_contains(s: why, pattern: "allowlist")
+        Absent => false
+      }
+    ArgvMaterializationRefused { at: _, cause: _ } => false
   }
 }
 

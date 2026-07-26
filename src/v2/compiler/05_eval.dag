@@ -4,6 +4,7 @@ import v2.compiler.infer {
   InferredFacts,
   InferredTree,
   canonical_grounding_admits_infer_facts,
+  infer_facts_lookup_miss_diagnostic,
   inferred_facts_descent,
   inferred_facts_resolved_type
 }
@@ -11,13 +12,15 @@ import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, length }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection {
-  Absent,
   List,
   Map,
+  list_at_optional,
+  list_nth
+}
+import v2.std.optional {
+  Absent,
   Optional,
   Present,
-  list_at_optional,
-  list_nth,
   optional_absent,
   optional_present
 }
@@ -151,7 +154,7 @@ import v2.std.verification {
   test_claim_evaluation_nodes,
   test_claim_input
 }
-import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
 import v2.extdeps.languages.dag { dag_round_trip_authorities_ready }
 import v2.extdeps.runtimes.v2_effect_io_pure {
   EffectIoFixtureStore,
@@ -945,13 +948,8 @@ fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   }
 }
 
-fn runtime_binding_lookup_miss(key: EnvironmentBindingKey) -> Witness<RuntimeValue> {
-  Violates {
-    diagnostic: eval_diagnostic(
-      reason: ^eval_rejected_runtime_binding_lookup_miss,
-      node: symbol_atom_node(sym: key.identity)
-    )
-  }
+fn runtime_binding_lookup_miss(key: EnvironmentBindingKey) -> Optional<RuntimeValue> {
+  optional_absent()
 }
 
 fn empty_runtime_bindings() -> Map<EnvironmentBindingKey, RuntimeValue> {
@@ -975,7 +973,7 @@ fn eval_default_interpretation() -> InterpretationAlgebra {
 }
 
 fn inferred_facts_witness_for_eval(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
-  tree.facts.lookup(node)
+  witness_from_optional(opt: tree.facts.lookup(node), absent: infer_facts_lookup_miss_diagnostic(key: node))
 }
 
 fn inferred_facts_for_eval(tree: InferredTree, node: Node) -> Outcome<InferredFacts> {
@@ -1203,7 +1201,13 @@ fn eval_runtime_binding_lookup(node: Node, environment: EvaluationEnvironment) -
     o: eval_environment_binding_key_from_node(declaration: node),
     f: fn(key) {
       eval_witness_outcome(
-        witness: environment.bindings.lookup(key)
+        witness: witness_from_optional(
+          opt: environment.bindings.lookup(key),
+          absent: eval_diagnostic(
+            reason: ^eval_rejected_runtime_binding_lookup_miss,
+            node: symbol_atom_node(sym: key.identity)
+          )
+        )
       )
     }
   )

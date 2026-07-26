@@ -170,7 +170,7 @@ fn idempotent_operation_inferred_tree(root: Node) -> InferredTree {
     root: root,
     facts: Map {
       lookup: fn(_) {
-        Holds { value: facts }
+        Present { value: facts }
       }
     }
   }

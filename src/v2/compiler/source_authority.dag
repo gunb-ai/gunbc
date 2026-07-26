@@ -42,7 +42,13 @@ import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
-import v2.std.collection { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet }
 import v2.std.cross_tree.resolution { source_root_set_insert }
 import v2.std.provenance { SpanIndex }
