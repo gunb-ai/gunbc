@@ -404,15 +404,8 @@ fn pair_completion_op_rows() -> List<PairCompletionOpRow> {
   ]
 }
 
-fn pair_completion_factor_is_rhs(factor: PairCompletionFactor) -> Bool {
-  match factor.operand {
-    PairCompletionRhs => true
-    PairCompletionSelf => false
-  }
-}
-
 fn pair_completion_arm_uses_rhs(arm: PairCompletionArm) -> Bool {
-  arm.terms |> any(term => term.factors |> any(f => pair_completion_factor_is_rhs(f)))
+  arm.terms |> any(term => term.factors |> any(f => match f.operand { PairCompletionRhs => true  PairCompletionSelf => false }))
 }
 
 fn pair_completion_body_uses_rhs(body: PairCompletionBody) -> Bool {

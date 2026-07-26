@@ -32,8 +32,11 @@ test fn scaffold_binding_nothing_is_refused() -> Bool {
 }
 
 test fn reasoned_terminal_is_accepted() -> Bool {
-  language_source_scaffold_row_is_dispositioned(row: legitimate_terminal_control_row)
-    && language_source_scaffold_row_is_scaffold(row: legitimate_terminal_control_row) == false
+  let is_scaffold = match legitimate_terminal_control_row.disposition {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
+  language_source_scaffold_row_is_dispositioned(row: legitimate_terminal_control_row) && is_scaffold == false
 }
 
 test fn pair_completion_spelling_binds_the_derivation_authority() -> Bool {

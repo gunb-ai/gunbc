@@ -1,7 +1,9 @@
 module gunbc.language_source_scaffold_index
 
 
-data language_source_scaffold_index_note: String = "B2 inventory for hand-authored target-language semantics in language files. Every remaining blob of hand-written target source carries a row here whose disposition is a std.disposition Scaffold naming the construction that subsumes it. Typed on purpose: because Disposition has no prose arm, a mark WITHOUT a trigger is unwritable rather than merely counted, so this index needs no string-content classifier over the marks (which would be undecidable, and is fenced out)."
+data language_source_scaffold_index_note: String = "B2 inventory for hand-authored target-language semantics in language files. Every blob of hand-written target source carries a row here whose disposition is a std.disposition Scaffold naming the construction that subsumes it, or a Terminal stating why it is irreducible. No string-content classifier is involved: the mark is a typed value, not prose to be parsed."
+
+data language_source_scaffold_enforcement_boundary: String = "What is actually enforced, stated precisely because the earlier wording overstated it (review 43129). CONSTRUCTION (real): Disposition has no prose and no absent arm, so a row cannot carry an unmarked or free-text disposition — Terminal-with-reason or Scaffold-with-bind are the only inhabitants, and 'unmarked' is genuinely unwritable. NOT CONSTRUCTION (validated here instead): DeclarationRef.module_path and decl_name are declared NonEmptyStr (String where non_empty) but that refinement is NOT enforced at construction — proven by execution, since the empty-bind control row in the witness typechecks and evaluates. So a Scaffold binding the empty string IS writable today, and language_source_scaffold_row_is_dispositioned is the only thing that catches it. That check is therefore load-bearing, not a second representation; it dissolves the day refinement predicates are construction-enforced, at which point the control row stops typechecking and the check can be deleted."
 
 type LanguageSourceScaffoldRow {
   carrier_module: String
@@ -402,25 +404,18 @@ fn language_source_scaffold_roster_all_dispositioned() -> Bool {
   all(language_source_scaffold_roster, row => language_source_scaffold_row_is_dispositioned(row: row))
 }
 
-fn language_source_scaffold_row_is_scaffold(row: LanguageSourceScaffoldRow) -> Bool {
-  match row.disposition {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
-  }
-}
-
 fn language_source_scaffold_roster_size() -> Int {
   language_source_scaffold_roster |> count
 }
 
 fn language_source_scaffold_pending_count() -> Int {
   language_source_scaffold_roster
-    |> filter(row => language_source_scaffold_row_is_scaffold(row: row))
+    |> filter(row => match row.disposition { Scaffold { dissolves_to: _, bind: _ } => true  Terminal { reason: _ } => false })
     |> count
 }
 
 fn language_source_scaffold_terminal_count() -> Int {
   language_source_scaffold_roster
-    |> filter(row => language_source_scaffold_row_is_scaffold(row: row) == false)
+    |> filter(row => match row.disposition { Scaffold { dissolves_to: _, bind: _ } => false  Terminal { reason: _ } => true })
     |> count
 }
