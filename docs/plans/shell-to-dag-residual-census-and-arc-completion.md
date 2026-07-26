@@ -74,9 +74,15 @@ The srv3 dissolution triggers are unanimous: `srv3_install_diagnostic_checklist_
 
 ### E. Replacement machinery + detectors — not dissolution targets
 
-`bash_program_emit.dag` + `bash_command_fold.dag` (the v2 compositional emitter that *is* the replacement); the lenses `realization_vocabulary_containment` / `medium_structure_containment` / `duplicate_computation` (detectors); `program.dag` (the sidecar — the deletion target).
+`bash_command_fold.dag` + `bash_build` (the v2 compositional emitter that *is* the replacement); the lenses `realization_vocabulary_containment` / `medium_structure_containment` / `duplicate_computation` (detectors).
 
-**Ratchet:** `bash_program_importer_count_baseline = 19`. The genuine live emitters that must clear before `program.dag` deletes: the two ubuntu-media files, `nbd_proxy_serve`, `floor_diff_observe`, `build_step`(+transport), `bash_command_fold`(replacement). Categories D-fully-migrated and the detectors don't emit; they can drop their import or are the replacement itself.
+**Corrected 2026-07-26 (`review 43477`).** This block previously named `program.dag` as "the sidecar — the deletion target" and carried a **`bash_program_importer_count_baseline = 19` ratchet** gating that deletion. Both are gone:
+
+- `dag/extdeps/languages/bash/program.dag` was **deleted** (#6831, Phase 0). It is not a target; it does not exist.
+- The ratchet was **pruned with it** — `plans/shell_emission_model.dag:50` records it as *"the vacuous bash-program importer-count ratchet is pruned with it (resolve fails before the ratchet could fire)"*. Verified: the identifier `bash_program_importer_count` now appears **nowhere in the repository except this document**, so the "baseline = 19" figure was measuring a mechanism that no longer exists.
+- `bash_program_emit.dag`, also named here, does not exist either.
+
+The live replacement is `src/v2/extdeps/languages/bash_command_fold.dag` (see §4.G).
 
 ---
 
@@ -109,15 +115,17 @@ The srv3 dissolution triggers are unanimous: `srv3_install_diagnostic_checklist_
 
 ---
 
-## 3. The remainder of the ShellProgram→DAG arc (to `program.dag` deletion)
+## 3. The remainder of the ShellProgram→DAG arc
 
-Two tracks run in parallel; deletion is the join.
+> **Retitled and re-anchored 2026-07-26 (`review 43477`).** This section was framed *"to `program.dag` deletion"*, with deletion as the join the two tracks converge on. **That deletion already happened** — #6831, Phase 0 — so the goal it pointed at is not pending, it is history. The tracks below are still the live work; only the terminus was stale. Do not dispatch anyone to "delete `program.dag`".
+
+Two tracks run in parallel.
 
 ### Track 1 — legitimate shell onto the v2 bash rows (bounded)
 
 - **P1 (ready now, no sign-off):** the `ci_workflow` concat-built floor-peak/cgroup runners → `emit(intent, Bash)` via the landed If-band + word support (they carry `…_shell_emit_dissolution_trigger` rows). Foreign-executor, so they *emit*; no `apply()`.
 - **P2:** the Procedure/Let emit band for the 3 fresh-standup frontier rows — the one genuinely new *emitter* vocabulary the arc still needs, scoped by the bootstrap census, fail-closed where a construct isn't modeled. *(Tier-2 band LANDED #6566; the consumer slice — route the fresh-standup fragment through `emit(intent,Bash)`, byte-oracle vs `.github/fleet-converge.sh` — LANDED #6573. The former "ubuntu-media files need `for`/heredoc" clause is superseded by the FLAG B1 working default above: ubuntu-media dissolves to typed argv/`Filesystem.Write`, so the for/heredoc band is never built.)*
-- **P3:** `local_tidy_spec` pre-push hook + cron lines stay `serialize_bash`/foreign-executor **permanently** (roster entries, category (a)). These never dissolve — they're the honest residue.
+- **P3:** `local_tidy_spec` pre-push hook + cron lines stay **shell** permanently (foreign-executor roster entries, category (a)). These never dissolve — they're the honest residue. *(Corrected 2026-07-26: this row said they stay `serialize_bash`. They cannot — `serialize_bash` no longer exists. What is permanent is that these sites **stay shell**; the shell they get is emitted through the v2 bash rows like every other foreign-executor site. "Permanently shell" ≠ "permanently on the deleted sidecar".)*
 
 ### Track 2 — runtime-present shell onto `host_effect_apply` (the §2 keystone cascade)
 
