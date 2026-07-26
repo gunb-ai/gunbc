@@ -89,18 +89,6 @@ import v2.std.orchestration {
   Comment,
   EnvBinding
 }
-import v2.std.text {
-  CharAbsent,
-  CharFound,
-  string_head,
-  string_tail
-}
-import v2.std.algebra { TailAbsent, TailFound }
-import std.unicode.types {
-  IdentStart,
-  IdentContinue,
-  char_in_class
-}
 import std.algebra { FreeMonoid }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, is_empty, length }
 import v2.std.collection {
@@ -225,33 +213,42 @@ fn orch_emit_run_with_redir(stmt: String, redir: RedirectSpec) -> Outcome<String
   )
 }
 
-fn orch_shell_ident_continue_ok(rest: String) -> Bool {
-  match string_head(s: rest) {
-    CharAbsent => true
-    CharFound { value: c } =>
-      if !char_in_class(c: c, class: IdentContinue) {
-        false
-      } else {
-        match string_tail(s: rest) {
-          TailFound { tail: t } => orch_shell_ident_continue_ok(rest: t)
-          TailAbsent => true
-        }
-      }
+data orch_shell_ident_start_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
+
+data orch_shell_ident_continue_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_0123456789"
+
+fn orch_shell_ident_start_char_ok(ch: String) -> Bool {
+  string_length(s: ch) == 1 && string_contains(s: orch_shell_ident_start_alphabet, pattern: ch)
+}
+
+fn orch_shell_ident_continue_char_ok(ch: String) -> Bool {
+  string_length(s: ch) == 1 && string_contains(s: orch_shell_ident_continue_alphabet, pattern: ch)
+}
+
+fn orch_shell_ident_ok_at(binder: String, i: Int, n: Int) -> Bool {
+  if i >= n {
+    true
+  } else {
+    let ch = char_at(s: binder, pos: i)
+    let ok = if i == 0 {
+      orch_shell_ident_start_char_ok(ch: ch)
+    } else {
+      orch_shell_ident_continue_char_ok(ch: ch)
+    }
+    if !ok {
+      false
+    } else {
+      orch_shell_ident_ok_at(binder: binder, i: i + 1, n: n)
+    }
   }
 }
 
 fn orch_shell_ident_ok(binder: String) -> Bool {
-  match string_head(s: binder) {
-    CharAbsent => false
-    CharFound { value: c } =>
-      if !char_in_class(c: c, class: IdentStart) {
-        false
-      } else {
-        match string_tail(s: binder) {
-          TailFound { tail: t } => orch_shell_ident_continue_ok(rest: t)
-          TailAbsent => true
-        }
-      }
+  let n = string_length(s: binder)
+  if n == 0 {
+    false
+  } else {
+    orch_shell_ident_ok_at(binder: binder, i: 0, n: n)
   }
 }
 
