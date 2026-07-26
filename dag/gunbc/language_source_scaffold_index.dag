@@ -1,0 +1,76 @@
+module gunbc.language_source_scaffold_index
+
+
+data language_source_scaffold_index_note: String = "B2 inventory for hand-authored target-language semantics in language files. Every remaining blob of hand-written target source carries a row here whose disposition is a std.disposition Scaffold naming the construction that subsumes it. Typed on purpose: because Disposition has no prose arm, a mark WITHOUT a trigger is unwritable rather than merely counted, so this index needs no string-content classifier over the marks (which would be undecidable, and is fenced out)."
+
+type LanguageSourceScaffoldRow {
+  carrier_module: String
+  blob_decl: String
+  disposition: Disposition
+}
+
+data rust_pair_completion_spelling_scaffold_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.trait_derive_shape",
+    decl_name: "pair_completion_op_rows",
+    field: WholeDeclaration
+  }
+}
+
+data rust_bool_host_bridge_scaffold_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "std.trait_derive_shape",
+    decl_name: "ReprGroundingDeriveElemShape",
+    field: WholeDeclaration
+  }
+}
+
+data rust_dry_run_mode_scaffold_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v1.compiler.emit",
+    decl_name: "BackendCapability",
+    field: WholeDeclaration
+  }
+}
+
+data rust_pair_completion_spelling_scaffold_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "extdeps.languages.rust.emit",
+  blob_decl: "rust_pair_completion_spellings",
+  disposition: rust_pair_completion_spelling_scaffold_trigger
+}
+
+data rust_bool_host_bridge_scaffold_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "extdeps.languages.rust.emit",
+  blob_decl: "rust_supplemental_impls_bool_coproduct",
+  disposition: rust_bool_host_bridge_scaffold_trigger
+}
+
+data rust_dry_run_mode_scaffold_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.emit_rust",
+  blob_decl: "emit_dry_run_module",
+  disposition: rust_dry_run_mode_scaffold_trigger
+}
+
+data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
+  rust_pair_completion_spelling_scaffold_row,
+  rust_bool_host_bridge_scaffold_row,
+  rust_dry_run_mode_scaffold_row
+]
+
+fn language_source_scaffold_row_has_trigger(row: LanguageSourceScaffoldRow) -> Bool {
+  match row.disposition {
+    Scaffold { dissolves_to: _, bind: bind } => bind.decl_name != ""
+    Terminal { reason: _ } => false
+  }
+}
+
+fn language_source_scaffold_roster_all_triggered() -> Bool {
+  all(language_source_scaffold_roster, row => language_source_scaffold_row_has_trigger(row: row))
+}
+
+fn language_source_scaffold_roster_size() -> Int {
+  language_source_scaffold_roster |> count
+}
