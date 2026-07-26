@@ -149,14 +149,15 @@ fn merge_admission_v1_tool_source_flags() -> String {
   " --source-root dag"
 }
 
-fn merge_admission_stamp_invoke() -> String {
+fn merge_admission_stamp_command() -> String {
   concat(
-    concat(
-      concat(gunbc_run_bin_shell(), merge_admission_v1_tool_source_flags()),
-      " --entry dag/tools/merge_admission_stamp.dag --function main"
-    ),
-    "\n"
+    concat(gunbc_run_bin_shell(), merge_admission_v1_tool_source_flags()),
+    " --entry dag/tools/merge_admission_stamp.dag --function main"
   )
+}
+
+fn merge_admission_stamp_invoke() -> String {
+  concat(merge_admission_stamp_command(), "\n")
 }
 
 fn merge_admission_gate_invoke() -> String {
