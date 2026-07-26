@@ -923,7 +923,7 @@ pub fn rust_pair_completion_impl_render(row: Rc<PairCompletionOpRow>) -> String 
 }
 
 pub fn rust_supplemental_impls_group_completion() -> String {
-    v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the\n".to_string(), "// pair-completion rows in std.trait_derive_shape (arithmetic is row data, not free text).\n".to_string()), Rc::new({ let mut __result = Vec::new(); for row in pair_completion_op_rows().iter().cloned() { __result.push(rust_pair_completion_impl_render(row.clone())); } __result }).join(&"".to_string()))
+    v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the\n".to_string(), "// pair-completion rows in std.trait_derive_shape (Add/Mul/Neg are row data; Sub/Div bodies\n".to_string()), "// remain keyed literals — see rust_pair_completion_nonpolynomial_body_dissolve_on).\n".to_string()), Rc::new({ let mut __result = Vec::new(); for row in pair_completion_op_rows().iter().cloned() { __result.push(rust_pair_completion_impl_render(row.clone())); } __result }).join(&"".to_string()))
 }
 
 pub fn rust_supplemental_impls_bool_coproduct() -> String {

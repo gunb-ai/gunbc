@@ -11,7 +11,7 @@ import std.trait_derive_shape {
   record_derive_traits_heap,
   record_derive_traits_copy,
   repr_grounding_derive_completeness_predicate,
-  repr_grounding_supplemental_group_completion_target,
+  repr_grounding_group_completion_carrier,
   repr_grounding_supplemental_bool_host_bridge_target,
   kernel_int_arithmetic_traits
 }
@@ -59,7 +59,7 @@ test fn payload_coproduct_predicate_satisfied() -> Bool {
 
 test fn group_completion_supplemental_impl_present() -> Bool {
   let supplemental = rust_supplemental_impls_group_completion()
-  let target_ok = repr_grounding_supplemental_group_completion_target(
+  let target_ok = repr_grounding_group_completion_carrier(
     module_path: "std.algebra",
     name: "GroupCompletion"
   )
@@ -67,11 +67,11 @@ test fn group_completion_supplemental_impl_present() -> Bool {
     kernel_int_arithmetic_traits(),
     ReprDeriveElemKernelInt
   )
-  let wrong_module = repr_grounding_supplemental_group_completion_target(
+  let wrong_module = repr_grounding_group_completion_carrier(
     module_path: "std.magma",
     name: "GroupCompletion"
   )
-  let wrong_name = repr_grounding_supplemental_group_completion_target(
+  let wrong_name = repr_grounding_group_completion_carrier(
     module_path: "std.algebra",
     name: "Magma"
   )
