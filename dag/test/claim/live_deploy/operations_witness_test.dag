@@ -21,6 +21,7 @@ import gunbc.live_deploy.operations {
 }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_refusal_label }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -37,81 +38,88 @@ fn argv_join(argv: List<String>) -> String {
 
 fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
   let helper = dpkg_status_argv(package: package_tailscale)
-  let transport = shell_materialize_argv_for_operation(
-    "dag/extdeps/package_managers/dpkg.dag",
-    "dpkg.Package",
-    "Status",
-    package_tailscale as String,
-    "",
-    []
+  let transport = operation_argv_tokens_or_refusal_label(
+    m: shell_materialize_operation_argv(
+      "dag/extdeps/package_managers/dpkg.dag",
+      "dpkg.Package",
+      "Status",
+      [
+        operation_argv_bind_text(name: "package", text: package_tailscale as String)
+      ]
+    )
   )
   argv_join(argv: helper) == argv_join(argv: transport)
 }
 
 fn witness_apt_install_argv_matches_transport_row() -> Bool {
   let helper = apt_install_argv(package: package_nodejs)
-  let transport = shell_materialize_argv_for_operation(
-    apt_install_path,
-    apt_install_service,
-    apt_install_operation,
-    package_nodejs as String,
-    "",
-    []
+  let transport = operation_argv_tokens_or_refusal_label(
+    m: shell_materialize_operation_argv(
+      apt_install_path,
+      apt_install_service,
+      apt_install_operation,
+      [
+        operation_argv_bind_text(name: "package", text: package_nodejs as String)
+      ]
+    )
   )
   argv_join(argv: helper) == argv_join(argv: transport)
 }
 
 fn witness_systemctl_restart_argv_matches_transport_row() -> Bool {
   let helper = systemctl_restart_argv(unit: gunbc_roadmap_unit_name)
-  let transport = shell_materialize_argv_for_operation(
-    systemctl_path,
-    systemctl_service,
-    "Restart",
-    "",
-    "",
-    [],
-    gunbc_roadmap_unit_name as String
+  let transport = operation_argv_tokens_or_refusal_label(
+    m: shell_materialize_operation_argv(
+      systemctl_path,
+      systemctl_service,
+      "Restart",
+      [
+        operation_argv_bind_text(name: "unit", text: gunbc_roadmap_unit_name as String)
+      ]
+    )
   )
   argv_join(argv: helper) == argv_join(argv: transport)
 }
 
 fn witness_systemctl_disable_now_argv_matches_transport_row() -> Bool {
   let helper = systemctl_disable_now_argv(unit: gunbc_roadmap_unit_name)
-  let transport = shell_materialize_argv_for_operation(
-    systemctl_path,
-    systemctl_service,
-    "DisableNow",
-    "",
-    "",
-    [],
-    gunbc_roadmap_unit_name as String
+  let transport = operation_argv_tokens_or_refusal_label(
+    m: shell_materialize_operation_argv(
+      systemctl_path,
+      systemctl_service,
+      "DisableNow",
+      [
+        operation_argv_bind_text(name: "unit", text: gunbc_roadmap_unit_name as String)
+      ]
+    )
   )
   argv_join(argv: helper) == argv_join(argv: transport)
 }
 
 fn witness_systemctl_daemon_reload_argv_matches_transport_row() -> Bool {
   let helper = systemctl_daemon_reload_argv()
-  let transport = shell_materialize_argv_for_operation(
-    systemctl_path,
-    systemctl_service,
-    "DaemonReload",
-    "",
-    "",
-    []
+  let transport = operation_argv_tokens_or_refusal_label(
+    m: shell_materialize_operation_argv(
+      systemctl_path,
+      systemctl_service,
+      "DaemonReload",
+      []
+    )
   )
   argv_join(argv: helper) == argv_join(argv: transport)
 }
 
 fn witness_systemctl_enable_argv_matches_transport_row() -> Bool {
   let helper = systemctl_enable_argv(unit: gunbc_roadmap_unit_name)
-  let transport = shell_materialize_argv_for_operation(
-    systemctl_path,
-    systemctl_service,
-    "Enable",
-    "",
-    "",
-    [],
-    gunbc_roadmap_unit_name as String
+  let transport = operation_argv_tokens_or_refusal_label(
+    m: shell_materialize_operation_argv(
+      systemctl_path,
+      systemctl_service,
+      "Enable",
+      [
+        operation_argv_bind_text(name: "unit", text: gunbc_roadmap_unit_name as String)
+      ]
+    )
   )
   argv_join(argv: helper) == argv_join(argv: transport)
 }

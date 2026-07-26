@@ -27948,6 +27948,28 @@ pub struct ExtdepsShapeTransportPolicyModuleFacts {
     pub gist_create_files_keyed_by_filename: bool,
 }
 
+type ExtdepsParsedModule = (
+    Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
+    Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+);
+
+thread_local! {
+    /// Content-keyed memo for `parse_extdeps_module_items`. Keyed on the file's own
+    /// bytes (hashed), never on the path alone, so a mutated file re-parses and the
+    /// memo cannot serve a stale tree — the cache-purity rule DESIGN names (key on
+    /// declared-input content). The corpus argv census folds every operation row
+    /// through this reader, which without the memo re-parses one module per row.
+    static EXTDEPS_PARSE_MEMO: std::cell::RefCell<HashMap<String, (u64, ExtdepsParsedModule)>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+fn extdeps_source_content_hash(content: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    content.hash(&mut hasher);
+    hasher.finish()
+}
+
 pub fn parse_extdeps_module_items(
     path: &str,
 ) -> (
@@ -27971,6 +27993,16 @@ pub fn parse_extdeps_module_items(
     let path_str = resolved.to_string_lossy();
     let content = std::fs::read_to_string(&resolved)
         .unwrap_or_else(|e| panic!("parse_extdeps_module_items: failed to read {path_str}: {e}"));
+    let memo_key = resolved.to_string_lossy().to_string();
+    let content_hash = extdeps_source_content_hash(&content);
+    if let Some(hit) = EXTDEPS_PARSE_MEMO.with(|memo| {
+        memo.borrow()
+            .get(&memo_key)
+            .filter(|(hash, _)| *hash == content_hash)
+            .map(|(_, parsed)| parsed.clone())
+    }) {
+        return hit;
+    }
     let filename = resolved
         .file_name()
         .and_then(|s| s.to_str())
@@ -27991,18 +28023,50 @@ pub fn parse_extdeps_module_items(
         .module
         .as_ref()
         .expect("parse_extdeps_module_items: missing module");
-    (module.children.clone(), source_indices)
+    let parsed: ExtdepsParsedModule = (module.children.clone(), source_indices);
+    EXTDEPS_PARSE_MEMO.with(|memo| {
+        memo.borrow_mut()
+            .insert(memo_key, (content_hash, parsed.clone()));
+    });
+    parsed
 }
 
-pub fn shell_argv_nodes_for_operation(
-    path: String,
-    service: String,
-    operation: String,
-) -> (
-    Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
-    Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-) {
-    let (items, source_indices) = parse_extdeps_module_items(&path);
+/// One shell-transport operation's *declaration*: the argv expression nodes and the
+/// inputs the operation itself declares (name + optional default expression).
+///
+/// This is the single authority the generic argv materializer binds against
+/// (`v2.std.operation_argv`): the binding vocabulary is the operation's own
+/// `input { .. }` block, never a fixed list the seed happens to know.
+pub struct OperationArgvDeclaration {
+    pub argv: Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
+    pub declared_inputs: Vec<(String, Option<Rc<crate::v1_std_core::Node>>)>,
+    pub source_indices: Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+}
+
+fn operation_declared_inputs(
+    op: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Vec<(String, Option<Rc<crate::v1_std_core::Node>>)> {
+    op.params
+        .iter()
+        .map(|p| {
+            let name = crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone());
+            // `make_param_node` lays children out as [type_expr] or [type_expr, default].
+            let default = p.children.get(1).cloned();
+            (name, default)
+        })
+        .collect()
+}
+
+/// The declaration of `service.operation` in `path`, when it carries a shell transport.
+/// `None` when the module, service, operation, or shell transport is absent — the
+/// caller turns that into a typed refusal rather than a panic.
+pub fn shell_transport_operation_declaration(
+    path: &str,
+    service: &str,
+    operation: &str,
+) -> Option<OperationArgvDeclaration> {
+    let (items, source_indices) = parse_extdeps_module_items(path);
     for item in items.iter() {
         if item.name != service {
             continue;
@@ -28020,10 +28084,143 @@ pub fn shell_argv_nodes_for_operation(
                 op.clone(),
                 fallback_transport.clone(),
             );
-            return (eff.children.clone(), source_indices);
+            if !crate::v1_std_core::is_shell_transport(eff.clone()) {
+                return None;
+            }
+            return Some(OperationArgvDeclaration {
+                argv: eff.children.clone(),
+                declared_inputs: operation_declared_inputs(op, &source_indices),
+                source_indices,
+            });
         }
     }
-    panic!("shell_argv_nodes_for_operation: operation {service}.{operation} not found in {path}");
+    None
+}
+
+/// One row of the corpus's shell-transport operation census, derived from the
+/// declarations themselves. The witness corpus folds over these rows rather than a
+/// hand-authored roster, so a newly authored operation enrolls by existing and
+/// coverage is a corpus fact rather than a claim (DESIGN §3, §6).
+pub struct ShellTransportOperationCensusRow {
+    pub path: String,
+    pub service: String,
+    pub operation: String,
+    pub declared_inputs: Vec<String>,
+    pub argv_input_refs: Vec<String>,
+}
+
+fn collect_argv_input_refs(
+    node: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    out: &mut Vec<String>,
+) {
+    use crate::v1_std_core::{expr_var_name_at, ExprData, StringPart};
+    match node.expr_data.as_ref() {
+        ExprData::ExprVar { .. } => {
+            let name = expr_var_name_at(node.clone(), source_indices.clone());
+            if !name.is_empty() && !out.contains(&name) {
+                out.push(name);
+            }
+        }
+        ExprData::ExprStringInterp => {
+            for part in crate::v1_compiler_emit::extract_string_interp_parts(node.clone()).iter() {
+                if let StringPart::Interpolation { expr } = part.as_ref() {
+                    collect_argv_input_refs(expr, source_indices, out);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn dag_source_files_under(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    let mut paths: Vec<std::path::PathBuf> = entries.flatten().map(|e| e.path()).collect();
+    paths.sort();
+    for p in paths {
+        if p.is_dir() {
+            dag_source_files_under(&p, out);
+        } else if p.extension().and_then(|s| s.to_str()) == Some("dag") {
+            out.push(p);
+        }
+    }
+}
+
+/// Whether a source *could* declare a shell transport: the literal keyword `transport`
+/// followed, on the SAME line, by `shell`.
+///
+/// This is a sound necessary condition rather than a heuristic, and it is read off the
+/// parser rather than guessed: `parse_transport_binding` inspects the token
+/// immediately after `transport` with no `skip_newlines`, so the kind keyword cannot be
+/// on a following line. Horizontal whitespace between the two is admitted because the
+/// tokenizer skips it. A string literal mentioning the phrase makes this a superset,
+/// which costs one parse and misses nothing.
+fn source_may_declare_shell_transport(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut at = 0usize;
+    while let Some(found) = text[at..].find("transport") {
+        let mut i = at + found + "transport".len();
+        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+            i += 1;
+        }
+        if text[i..].starts_with("shell") {
+            return true;
+        }
+        at = at + found + "transport".len();
+    }
+    false
+}
+
+/// Every shell-transport operation declared under the corpus source roots.
+pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow> {
+    let root = workspace_root();
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    for sub in ["dag", "src/v2"] {
+        dag_source_files_under(&root.join(sub), &mut files);
+    }
+    let mut rows: Vec<ShellTransportOperationCensusRow> = Vec::new();
+    for file in files.iter() {
+        let Ok(text) = std::fs::read_to_string(file) else {
+            continue;
+        };
+        if !source_may_declare_shell_transport(&text) {
+            continue;
+        }
+        let Ok(rel) = file.strip_prefix(&root) else {
+            continue;
+        };
+        let rel = rel.to_string_lossy().to_string();
+        let (items, source_indices) = parse_extdeps_module_items(&rel);
+        for item in items.iter() {
+            for op in item.children.iter() {
+                let Some(transport) = op
+                    .transport
+                    .clone()
+                    .or_else(|| item.transport.clone())
+                    .filter(|t| crate::v1_std_core::is_shell_transport(t.clone()))
+                else {
+                    continue;
+                };
+                let mut argv_input_refs: Vec<String> = Vec::new();
+                for argv_node in transport.children.iter() {
+                    collect_argv_input_refs(argv_node, &source_indices, &mut argv_input_refs);
+                }
+                rows.push(ShellTransportOperationCensusRow {
+                    path: rel.clone(),
+                    service: item.name.clone(),
+                    operation: op.name.clone(),
+                    declared_inputs: operation_declared_inputs(op, &source_indices)
+                        .into_iter()
+                        .map(|(name, _)| name)
+                        .collect(),
+                    argv_input_refs,
+                });
+            }
+        }
+    }
+    rows
 }
 
 pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter::Value) -> bool {

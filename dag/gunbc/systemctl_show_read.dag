@@ -4,6 +4,13 @@ import std.types { String, NonEmptyStr, List }
 import extdeps.systemd.systemctl
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
+import v2.std.operation_argv {
+  ArgvMaterialization,
+  ArgvMaterialized,
+  ArgvMaterializationRefused,
+  operation_argv_bind_text,
+  operation_argv_cause_label,
+}
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
   typed_argv_shell_safe_refusal_argv,
@@ -11,54 +18,68 @@ import gunbc.typed_argv_exec {
   TypedArgvExecRefused,
 }
 
+data systemctl_show_property_capture_note: String = "The read answers a two-armed capture, never a bare String?: an argv materialization that REFUSES is a typed, located fact about the declaration, and collapsing it into the same `none` that means empty stdout, a failed exec, or an unsupported transport is the state-space conflation DESIGN 5 names (review 42946). Every non-value arm carries WHY, mirroring gunbc.systemctl_status_read's UnitStatusCapture."
+
+type SystemdPropertyCapture =
+    SystemdPropertyCaptured { value: String }
+  | SystemdPropertyCaptureRefused { reason: String }
+
 data systemctl_show_property_path: String = "dag/extdeps/systemd/systemctl.dag"
 data systemctl_show_property_service: String = "systemd.Systemctl"
 data systemctl_show_property_operation: String = "ShowProperty"
 
-fn systemctl_show_property_operation_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> List<String> {
-  shell_materialize_argv_for_operation(
+fn systemctl_show_property_operation_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> ArgvMaterialization {
+  shell_materialize_operation_argv(
     systemctl_show_property_path,
     systemctl_show_property_service,
     systemctl_show_property_operation,
-    "",
-    systemd_unit_property_wire(property: property) as String,
-    [],
-    unit as String
+    [
+      operation_argv_bind_text(name: "unit", text: unit as String),
+      operation_argv_bind_text(name: "property", text: systemd_unit_property_wire(property: property) as String)
+    ]
   )
 }
 
-fn systemctl_show_property_value_from_stdout(success: Bool, stdout: String) -> String? {
+fn systemctl_show_property_value_from_stdout(success: Bool, stdout: String) -> SystemdPropertyCapture {
   if success {
     let trimmed = trim(stdout)
     if trimmed == "" {
-      none
+      SystemdPropertyCaptureRefused { reason: "systemctl show returned empty stdout" }
     } else {
-      Present { value: trimmed }
+      SystemdPropertyCaptured { value: trimmed }
     }
   } else {
-    none
+    SystemdPropertyCaptureRefused { reason: "systemctl show exited unsuccessfully" }
   }
 }
 
-fn systemctl_show_property_read_local(unit: NonEmptyStr, property: SystemdUnitProperty) -> String? {
+fn systemctl_show_property_read_local(unit: NonEmptyStr, property: SystemdUnitProperty) -> SystemdPropertyCapture {
   let result = systemd.Systemctl.ShowProperty(unit: unit, property: property)
   systemctl_show_property_value_from_stdout(success: result.success, stdout: result.value)
+}
+
+fn systemctl_show_property_read_ssh_argv(host: NonEmptyStr, argv: List<String>) -> SystemdPropertyCapture {
+  match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    Present { value: why } => SystemdPropertyCaptureRefused { reason: why }
+    Absent =>
+      match typed_argv_exec_over_ssh(host: host, argv: argv) {
+        TypedArgvExecConverged { result: r } =>
+          systemctl_show_property_value_from_stdout(success: r.success, stdout: r.stdout)
+        TypedArgvExecRefused { reason: why } => SystemdPropertyCaptureRefused { reason: why }
+      }
+  }
 }
 
 fn systemctl_show_property_read_ssh(
   host: NonEmptyStr,
   unit: NonEmptyStr,
   property: SystemdUnitProperty,
-) -> String? {
-  let argv = systemctl_show_property_operation_argv(unit: unit, property: property)
-  match typed_argv_shell_safe_refusal_argv(argv: argv) {
-    Present { value: _ } => none
-    Absent =>
-      match typed_argv_exec_over_ssh(host: host, argv: argv) {
-        TypedArgvExecConverged { result: r } =>
-          systemctl_show_property_value_from_stdout(success: r.success, stdout: r.stdout)
-        TypedArgvExecRefused { reason: _ } => none
-      }
+) -> SystemdPropertyCapture {
+  match systemctl_show_property_operation_argv(unit: unit, property: property) {
+    ArgvMaterialized { argv: argv } =>
+      systemctl_show_property_read_ssh_argv(host: host, argv: argv)
+    ArgvMaterializationRefused { at: _, cause: c } =>
+      SystemdPropertyCaptureRefused { reason: operation_argv_cause_label(cause: c) }
   }
 }
 
@@ -66,11 +87,14 @@ fn systemctl_show_property_read(
   transport: HostEffectTransport,
   unit: NonEmptyStr,
   property: SystemdUnitProperty,
-) -> String? {
+) -> SystemdPropertyCapture {
   match transport {
     LocalShell => systemctl_show_property_read_local(unit: unit, property: property)
     SshShell { ssh_host: h } => systemctl_show_property_read_ssh(host: h, unit: unit, property: property)
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => none
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      SystemdPropertyCaptureRefused {
+        reason: "systemctl show refused EmitArtifactThenThinRun transport",
+      }
   }
 }
 
@@ -78,7 +102,9 @@ fn systemctl_show_property_operation_argv_matches_transport(
   unit: NonEmptyStr,
   property: SystemdUnitProperty,
 ) -> Bool {
-  let materialized = systemctl_show_property_operation_argv(unit: unit, property: property)
   let authority = systemctl_show_property_argv(unit: unit, property: property)
-  join(materialized, " ") == join(authority, " ")
+  match systemctl_show_property_operation_argv(unit: unit, property: property) {
+    ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  }
 }
