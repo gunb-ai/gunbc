@@ -50,6 +50,18 @@ fn deploy_access_emit_principal_read_script(read: EffectivePosixPrincipalRead) -
   "whoami"
 }
 
+fn deploy_access_emit_sudo_execute_probe_script(probe: SudoNopasswdExecuteProbeShape) -> String {
+  concat(
+    concat(concat("sudo -n ", probe.command_path as String), " "),
+    probe.check_argv as String
+  )
+}
+
+fn deploy_access_emit_sudo_grant_list_probe_script(command_path: NonEmptyStr) -> String {
+  let _authority = sudo_nopasswd_grant_list_probe_note
+  concat("sudo -n -l ", command_path as String)
+}
+
 fn deploy_access_emit_principal_probe_shell(access: DeployAccess) -> String {
   let expected = grounded_posix_principal_name(p: access.principal) as String
   let read_script = deploy_access_emit_principal_read_script(read: EffectivePosixPrincipalRead {})
@@ -64,21 +76,16 @@ fn deploy_access_emit_principal_probe_shell(access: DeployAccess) -> String {
 
 fn deploy_access_emit_sudo_execute_probe_shell(cmd: PrivilegedCommand) -> String {
   let probe = SudoNopasswdExecuteProbeShape { command_path: cmd.path, check_argv: cmd.check }
-  let probe_command = concat(
-    concat(concat("sudo -n ", probe.command_path as String), " "),
-    probe.check_argv as String
-  )
   concat(
-    concat(probe_command, " >/dev/null"),
+    concat(deploy_access_emit_sudo_execute_probe_script(probe: probe), " >/dev/null"),
     concat(" || { echo \"", concat(deploy_access_refusal_prefix, deploy_access_emit_exec_probe_refusal_suffix), "\"; exit 1; }")
   )
 }
 
 fn deploy_access_emit_sudo_grant_list_probe_shell(cmd: PrivilegedCommand) -> String {
-  let _authority = sudo_nopasswd_grant_list_probe_note
-  let probe_command = concat("sudo -n -l ", cmd.path as String)
+  let list_script = deploy_access_emit_sudo_grant_list_probe_script(command_path: cmd.path)
   concat(
-    concat(probe_command, " >/dev/null 2>&1"),
+    concat(list_script, " >/dev/null 2>&1"),
     concat(" || { echo \"", concat(deploy_access_refusal_prefix, deploy_access_emit_grant_list_probe_refusal_suffix), "\"; exit 1; }")
   )
 }
