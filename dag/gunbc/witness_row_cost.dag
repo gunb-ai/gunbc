@@ -74,7 +74,8 @@ data witness_timing_row_seed_view_note: String = "WitnessTimingRow in cli_run.rs
 
 data witness_cost_transition_extract_note: String = "ObservationTransition is read only through witness_cost_concluded_outcome (Optional extract). reusable Begin|Step|Concluded-to-Bool predicates are dissolved (review 43351). Event role (entry resolve parent vs declaration witness) is witness_cost_event_role — a typed Optional<WitnessCostEventRole> extract, not is_* Bool nicknames (review 43409 dissolves the review 43383/43399 Bool-filter Scaffold). Subject segment fields are read through std.observation observation_subject_entry_path / observation_subject_declaration / observation_subject_phase_name / observation_subject_module_path (canonical accessors; review 43361/43409) — no local ObservationSegment walkers."
 
-data witness_cost_event_role_note: String = "WitnessCostEventRole is the single classification authority for the N+1 join (review 43409). EntryResolveParent requires entry-level subject shape: EntrySegment present, ModuleSegment Absent, DeclarationSegment Absent, PhaseSegment name=resolve, Concluded — so a declaration- or module-nested resolve phase cannot corrupt the parent count. DeclarationWitness requires DeclarationGrain + Concluded. Folds match the Optional role extract directly."
+data witness_cost_event_role_note: String = "WitnessCostEventRole is the single classification authority for the N+1 join (review 43409). EntryResolveParent requires entry-level subject shape: EntrySegment present, ModuleSegment Absent, DeclarationSegment Absent, PhaseSegment name=resolve, Concluded — so a declaration- or module-nested resolve phase cannot corrupt the parent count. DeclarationWitness requires DeclarationGrain + Concluded. project_witness_cost_receipt matches the Optional role extract into WitnessCostProjection arms (review 43429 — no has_*/is_* Bool walker over the role; duplicate parents refuse via witness_cost_check_unique_resolve_parent → WitnessCostProjectionRefused)."
+
 
 type WitnessRowCostDatedBasis {
   eval: Millisecond
@@ -316,43 +317,49 @@ fn witness_cost_append_projection(
   }
 }
 
-fn witness_cost_any_entry_has_multiple_resolves(events: List<ObservationEvent>) -> Bool {
-  fold(events, init: false, f: (acc, event) =>
-    if acc {
-      true
-    } else {
-      match witness_cost_event_role(event: event) {
-        Present { value: EntryResolveParent } =>
-          match witness_cost_subject_entry(subject: event.subject) {
-            Present { value: entry } =>
-              witness_cost_count_resolve_for_entry(events: events, entry: entry) > 1
-            Absent => true
+fn witness_cost_check_unique_resolve_parent(
+  events: List<ObservationEvent>,
+  event: ObservationEvent,
+) -> WitnessCostProjection {
+  match witness_cost_subject_entry(subject: event.subject) {
+    Absent =>
+      WitnessCostProjectionRefused {
+        cause: "entry resolve parent missing EntrySegment" as NonEmptyStr
+      }
+    Present { value: entry } => {
+      let n = witness_cost_count_resolve_for_entry(events: events, entry: entry)
+      match n == 1 {
+        true => WitnessCostProjectionComplete { rows: [] }
+        false =>
+          WitnessCostProjectionRefused {
+            cause: "multiple parent resolve-phase events for an entry (refuse; never silently pick)" as NonEmptyStr
           }
-        Present { value: DeclarationWitness } => false
-        Absent => false
       }
     }
-  )
+  }
 }
 
 fn project_witness_cost_receipt(events: List<ObservationEvent>) -> WitnessCostProjection {
-  if witness_cost_any_entry_has_multiple_resolves(events: events) {
-    WitnessCostProjectionRefused {
-      cause: "multiple parent resolve-phase events for an entry (refuse; never silently pick)" as NonEmptyStr
+  fold(events, init: WitnessCostProjectionComplete { rows: [] }, f: (acc, event) =>
+    match acc {
+      WitnessCostProjectionRefused { cause: c } =>
+        WitnessCostProjectionRefused { cause: c }
+      WitnessCostProjectionComplete { rows: _ } =>
+        match witness_cost_event_role(event: event) {
+          Present { value: DeclarationWitness } =>
+            witness_cost_append_projection(
+              left: acc,
+              right: witness_cost_project_one_witness(events: events, event: event)
+            )
+          Present { value: EntryResolveParent } =>
+            witness_cost_append_projection(
+              left: acc,
+              right: witness_cost_check_unique_resolve_parent(events: events, event: event)
+            )
+          Absent => acc
+        }
     }
-  } else {
-    fold(events, init: WitnessCostProjectionComplete { rows: [] }, f: (acc, event) =>
-      match witness_cost_event_role(event: event) {
-        Present { value: DeclarationWitness } =>
-          witness_cost_append_projection(
-            left: acc,
-            right: witness_cost_project_one_witness(events: events, event: event)
-          )
-        Present { value: EntryResolveParent } => acc
-        Absent => acc
-      }
-    )
-  }
+  )
 }
 
 fn witness_cost_rss_unavailable_cause() -> NonEmptyStr {
