@@ -122,34 +122,6 @@ test fn bisect_grammar_validate_terminates() -> Bool {
   }
 }
 
-fn bisect_through_parse_production() -> Outcome<ParseTree> {
-  let lm = dag_language_model()
-  bind_outcome(
-    o: tokenize(
-      text: bisect_empty_source.carried,
-      file: ^compile_ingest_staging_source_file,
-      rules: lm.lex
-    ),
-    f: fn(token_stream) {
-      bind_outcome(
-        o: bisect_through_grammar_validate(),
-        f: fn(validated) {
-          match lm.grammar {
-            ModeledGrammar { root: root } =>
-              parse_production_tree(
-                tokens: token_stream_remaining(stream: token_stream),
-                validated: validated,
-                production_name: root.start
-              )
-            _ =>
-              Rejected { diagnostics: None }
-          }
-        }
-      )
-    }
-  )
-}
-
 fn bisect_parse_module_add_parse_accepts() -> Bool {
   let lm = dag_language_model()
   match tokenize(
