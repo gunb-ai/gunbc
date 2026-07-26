@@ -1,0 +1,62 @@
+module v2.test.manual.value_null_split_witness
+
+import v2.std.collection {
+  Absent,
+  Present,
+  empty_map,
+  map_insert,
+  optional_absent,
+  optional_present
+}
+import v2.std.witness { Holds, Violates }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data value_null_split_phase_a_note: String = "Phase A witnesses (keen-ferret-250): pin Optional/Witness construction carriers vs the overloaded Value::Null sentinel. optional_absent_differs_from_none_literal and raw_get_miss_differs_from_optional_absent document the live straddle until Phase D/E of gunbc.plans.value_null_split dissolve it."
+
+test fn optional_absent_matches_absent_pattern() -> Bool {
+  match optional_absent() {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn optional_present_matches_present_pattern() -> Bool {
+  match optional_present(value: 42) {
+    Present { value: v } => v == 42
+    Absent => false
+  }
+}
+
+test fn map_get_miss_is_absent_not_present() -> Bool {
+  match v2.std.collection.map_get(empty_map(), "missing") {
+    Accepted { value: Absent, diagnostics: _ } => true
+    Accepted { value: Present { value: _ }, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn map_get_hit_is_present() -> Bool {
+  let m = empty_map() |> map_insert("k", 7)
+  match v2.std.collection.map_get(m, "k") {
+    Accepted { value: Present { value: v }, diagnostics: _ } => v == 7
+    Accepted { value: Absent, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn optional_absent_differs_from_none_literal() -> Bool {
+  optional_absent() != None
+}
+
+test fn raw_get_miss_differs_from_optional_absent() -> Bool {
+  let m = empty_map()
+  (m |> get("missing")) != optional_absent()
+}
+
+test fn witness_holds_matches_holds_pattern() -> Bool {
+  match Holds { value: 1 } {
+    Holds { value: v } => v == 1
+    Violates { diagnostic: _ } => false
+  }
+}
