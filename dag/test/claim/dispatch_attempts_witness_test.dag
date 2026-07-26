@@ -3,10 +3,12 @@ module test.claim.dispatch_attempts_witness
 import gunbc.roadmap_belt_actuate {
   BeltAttempts, AttemptsObserved, AttemptsRefused,
   belt_attempts_json_value, belt_attempts_observed_json, belt_attempts_http_status,
+  belt_spawn_session_uuid,
 }
 import gunbc.roadmap_dispatch_actuator {
   DispatchAttemptRef, parse_dispatch_attempt_branch, dispatch_attempt_refs,
   git_for_each_ref_dispatch_argv, dispatch_attempt_key, dispatch_branch_name,
+  dispatch_worktree_path,
 }
 import gunbc.roadmap_component { dispatch_client_js_source }
 import gunbc.roadmap_style { roadmap_css }
@@ -89,4 +91,20 @@ test fn attempts_argv_is_typed_and_scoped() -> Bool {
   return cmd.program == "git"
     && any(cmd.args, a => a == "refs/heads/dispatch/")
     && !any(cmd.args, a => a == "-rf")
+}
+
+data attempt_grain_note: String = "U1's own REDs: redispatch works exactly when a NEW attempt yields a NEW branch/worktree/uuid while the tmux name — the observe/reconcile key — stays node-grain. Fresh where debris collides, stable where identity reconciles. Homed beside U3's parse witnesses because the two are the same authority read in both directions: this row proves the MINT varies per attempt, attempts_parse_roundtrips_the_minted_branch proves the READ recovers exactly what was minted."
+
+test fn belt_attempt_grain_holds() -> Bool {
+  let n = "5-regen-cutover"
+  let t1 = "2026-07-25T20:00:00Z"
+  let t2 = "2026-07-25T21:30:00Z"
+  let k1 = dispatch_attempt_key(node_id: n, probed_at: t1)
+  let k2 = dispatch_attempt_key(node_id: n, probed_at: t2)
+  return k1 != k2
+    && k1 == dispatch_attempt_key(node_id: n, probed_at: t1)
+    && dispatch_branch_name(node_id: n, attempt_key: k1) != dispatch_branch_name(node_id: n, attempt_key: k2)
+    && dispatch_worktree_path(node_id: n, attempt_key: k1) != dispatch_worktree_path(node_id: n, attempt_key: k2)
+    && belt_spawn_session_uuid(node_id: n, probed_at: t1) != belt_spawn_session_uuid(node_id: n, probed_at: t2)
+    && string_contains(s: dispatch_branch_name(node_id: n, attempt_key: k1), pattern: "dispatch/5-regen-cutover-a")
 }
