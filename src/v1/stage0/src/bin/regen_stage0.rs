@@ -639,82 +639,6 @@ fn assert_bootstrap_emit_core_support(src_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Resolve an absolute rustfmt binary for standalone spawn.
-///
-/// `cargo fmt` can succeed while bare `Command::new("rustfmt")` fails with ENOENT: CI hosts
-/// often put a cargo shim on PATH (`/usr/local/ctrl-build-shims/cargo`) without also putting
-/// `$CARGO_HOME/bin` on PATH, so the rustup proxy named `rustfmt` is invisible. Prefer
-/// `rustup which rustfmt` (absolute toolchain path) over PATH lookup. Receipt: CI #7290 regen
-/// on srv3-03 (`spawn rustfmt: No such file or directory`) after srv2-05 green on the same tip.
-fn rustup_bin_candidates() -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    if let Ok(output) = Command::new("sh")
-        .args(["-lc", "command -v rustup"])
-        .output()
-    {
-        if output.status.success() {
-            let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !p.is_empty() {
-                out.push(PathBuf::from(p));
-            }
-        }
-    }
-    if let Ok(cargo_home) = env::var("CARGO_HOME") {
-        out.push(PathBuf::from(cargo_home).join("bin").join("rustup"));
-    }
-    out.push(PathBuf::from("/opt/cargo/bin/rustup"));
-    if let Ok(home) = env::var("HOME") {
-        out.push(
-            PathBuf::from(home)
-                .join(".cargo")
-                .join("bin")
-                .join("rustup"),
-        );
-    }
-    out
-}
-
-fn resolve_rustfmt_bin() -> Result<PathBuf, String> {
-    static RUSTFMT: OnceLock<Result<PathBuf, String>> = OnceLock::new();
-    RUSTFMT
-        .get_or_init(|| {
-            for rustup in rustup_bin_candidates() {
-                if !rustup.is_file() && rustup.symlink_metadata().is_err() {
-                    continue;
-                }
-                let output = match Command::new(&rustup).args(["which", "rustfmt"]).output() {
-                    Ok(o) => o,
-                    Err(_) => continue,
-                };
-                if !output.status.success() {
-                    continue;
-                }
-                let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !p.is_empty() && Path::new(&p).is_file() {
-                    return Ok(PathBuf::from(p));
-                }
-            }
-            if let Ok(output) = Command::new("sh")
-                .args(["-lc", "command -v rustfmt"])
-                .output()
-            {
-                if output.status.success() {
-                    let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    if !p.is_empty() && Path::new(&p).is_file() {
-                        return Ok(PathBuf::from(p));
-                    }
-                }
-            }
-            Err(
-                "rustfmt not found via `rustup which rustfmt` or PATH (cargo fmt may still work \
-                 through a PATH cargo shim while standalone rustfmt is absent — receipt CI #7290 \
-                 srv3-03)"
-                    .to_string(),
-            )
-        })
-        .clone()
-}
-
 /// Normalize one emitted source file's TEXT through standalone rustfmt via stdin, returning the
 /// canonically-formatted content. Reading from stdin (not a file path) means rustfmt formats
 /// exactly this content with no path-header line and no module-tree recursion — a pure per-file
@@ -724,22 +648,19 @@ fn resolve_rustfmt_bin() -> Result<PathBuf, String> {
 // SCAFFOLD — dissolve-on: emit-fresh regen can race concurrent rustfmt spawn (ETXTBSY on
 // srv1); remove when spawn is serialized or the gate no longer shares the outfile. Bounded
 // retry below still fails closed after exhaustion (receipt: CI #7195 @ 8bfc9a2, 2026-07-25).
-// PATH anemia (cargo shim without CARGO_HOME/bin) is handled by resolve_rustfmt_bin — not a
-// transient retry class.
 fn is_rustfmt_transient_spawn_error(err: &str) -> bool {
     err.contains("Text file busy")
 }
 
 fn normalize_generated_source_attempt(content: &str) -> Result<String, String> {
-    let rustfmt = resolve_rustfmt_bin()?;
-    let mut child = Command::new(&rustfmt)
+    let mut child = Command::new("rustfmt")
         .arg("--edition")
         .arg("2021")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("spawn rustfmt ({}): {e}", rustfmt.display()))?;
+        .map_err(|e| format!("spawn rustfmt: {e}"))?;
     let mut stdin = child
         .stdin
         .take()
@@ -847,21 +768,14 @@ fn rustfmt_normalize(content: &str, work_dir: &Path, tag: &str) -> Result<String
     fs::create_dir_all(work_dir).map_err(|e| format!("create {}: {e}", work_dir.display()))?;
     let path = work_dir.join(format!("{tag}.rs"));
     fs::write(&path, content).map_err(|e| format!("write {}: {e}", path.display()))?;
-    let rustfmt = resolve_rustfmt_bin()?;
-    let output = Command::new(&rustfmt)
+    let output = Command::new("rustfmt")
         .arg("--edition")
         .arg("2021")
         .arg("--emit")
         .arg("stdout")
         .arg(&path)
         .output()
-        .map_err(|e| {
-            format!(
-                "spawn rustfmt for {} ({}): {e}",
-                path.display(),
-                rustfmt.display()
-            )
-        })?;
+        .map_err(|e| format!("spawn rustfmt for {}: {e}", path.display()))?;
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     } else {
