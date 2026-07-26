@@ -29,8 +29,7 @@ fn witness_row_cost_drift_ratio_numerator() -> Nat {
 }
 
 fn witness_row_cost_exceeds_basis(observed: Millisecond, basis: Millisecond) -> Bool {
-  millisecond_count(m: observed)
-    > millisecond_count(m: basis) * witness_row_cost_drift_ratio_numerator()
+  millisecond_count(m: observed) > millisecond_count(m: basis) * witness_row_cost_drift_ratio_numerator()
 }
 
 fn witness_row_cost_verdict(
