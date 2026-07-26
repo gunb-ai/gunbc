@@ -339,7 +339,10 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/execution/emit_host_native_only_verdict_test.dag",
-      check_fns: ["emit_host_native_only_verdict_mock_all_holds"],
+      check_fns: [
+        "emit_host_native_only_verdict_stdout_match_mock_holds",
+        "emit_host_native_only_verdict_stdout_mismatch_mock_holds"
+      ],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
@@ -348,7 +351,12 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
-      check_fns: ["ingested_classical_not_emit_mock_shape_all_holds"],
+      check_fns: [
+        "ingested_classical_not_resolves_holds",
+        "ingested_classical_not_arrow_has_match_holds",
+        "ingested_classical_not_emit_octet_bridge_shape_holds",
+        "ingested_classical_not_emit_source_arm_shape_holds"
+      ],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
