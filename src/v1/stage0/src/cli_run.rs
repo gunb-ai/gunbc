@@ -12565,8 +12565,14 @@ fn witness_admission_manifest_key(entry: &str, function: &str) -> String {
 // `witness_admission_manifest_key`, the file-grain expand arm, and the unit tests that pin it
 // (`file_grain_bin_wet_expands_admission_consumer_keys` and sibling form parsers) — host then
 // reads emitted manifest rows (file-grain expansion lives in the `.dag` authority, not here).
-// Receipt: `rg cli_run_witness_admission_source_scan src/v1/stage0/src/cli_run.rs` == 1 until
-// deletion; not a compiler_frontier `.dag` row (seed-Rust, counted here not in module census).
+// Receipt (declaration grain; bare token `cli_run_witness_admission_source_scan` is multi-hit
+// by design — scaffold header / string literal / unit test). Executable pin that does NOT
+// self-match this comment (IDENT and TYPE_ANN are on separate lines here; contiguous only
+// on the declaration):
+//   IDENT=CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER
+//   TYPE_ANN=: &str =
+//   rg -F "${IDENT}${TYPE_ANN}" src/v1/stage0/src/cli_run.rs   # == 1 until deletion
+// Not a compiler_frontier `.dag` row (seed-Rust, counted here not in module census).
 pub(crate) const CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER: &str =
     "cli_run_witness_admission_source_scan";
 
