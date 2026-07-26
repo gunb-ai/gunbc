@@ -1834,18 +1834,21 @@ pub fn render_rust_decl_type(
                                                 let arg_list = Rc::new({
                                                     let mut __result = Vec::new();
                                                     for arg in n.children.clone().iter().cloned() {
-                                                        __result.push(if peel.clone() {
-                                            render_rust_phantom_opaque_applied_decl_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), corpus_repr.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone())
-                                        } else {
-                                            if rust_type_arg_renders_as_unit(arg.clone(), generic_param_names.clone(), variant_to_enum.clone(), source_indices.clone()) {
-                                                "()".to_string()
+                                                        __result.push({
+                                            let typed_arg = render_rust_decl_type_container_arg(arg.clone(), source_indices.clone(), env.clone());
+if peel.clone() {
+                                                render_rust_phantom_opaque_applied_decl_arg(typed_arg.clone(), generic_param_names.clone(), shared_types.clone(), corpus_repr.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone())
                                             } else {
-                                                match rust_render_checkpoint_scalar_bare(arg.clone(), corpus_repr.clone(), source_indices.clone(), shared_types.clone()) {
+                                                if rust_type_arg_renders_as_unit(typed_arg.clone(), generic_param_names.clone(), variant_to_enum.clone(), source_indices.clone()) {
+                                                    "()".to_string()
+                                                } else {
+                                                    match rust_render_checkpoint_scalar_bare(typed_arg.clone(), corpus_repr.clone(), source_indices.clone(), shared_types.clone()) {
     Some(scalar) => scalar.clone(),
-    None => render_rust_decl_type(arg.clone(), generic_param_names.clone(), shared_types.clone(), corpus_repr.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone()),
+    None => render_rust_decl_type(typed_arg.clone(), generic_param_names.clone(), shared_types.clone(), corpus_repr.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone()),
 }
+                                                }
                                             }
-                                        });
+});
                                                     }
                                                     __result
                                                 });
@@ -2189,6 +2192,52 @@ pub fn render_rust_fn_sig_type_applied_binding(
             corpus_repr.clone(),
             source_indices.clone(),
         ),
+    }
+}
+
+pub fn rust_decl_type_container_arg_needs_resolved_overlay(
+    arg: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    if ((arg.connective.clone() != Connective::NoConnective)
+        || ((arg.children.clone().len() as i64) != 0))
+    {
+        false
+    } else {
+        if rust_fn_sig_peel_closed_alias(env.clone(), arg.clone()) {
+            false
+        } else {
+            match find_property(
+                arg.properties.clone(),
+                "__applied_type_args".to_string(),
+                source_indices.clone(),
+            ) {
+                Some(applied) => ((applied.children.clone().len() as i64) > 0),
+                None => match arg.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => {
+                        ((rt.children.clone().len() as i64) > 0)
+                    }
+                    _ => false,
+                },
+            }
+        }
+    }
+}
+
+pub fn render_rust_decl_type_container_arg(
+    arg: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> Rc<Node> {
+    if rust_decl_type_container_arg_needs_resolved_overlay(
+        arg.clone(),
+        source_indices.clone(),
+        env.clone(),
+    ) {
+        child_type_node(arg.clone())
+    } else {
+        arg.clone()
     }
 }
 
