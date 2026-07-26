@@ -167,20 +167,6 @@ fn per_slot_memory_cap_verdict_from_unit_read(
   converge_target_live_verdict(read: read, target: target)
 }
 
-fn fleet_runner_width_count_read_script(instance_glob: NonEmptyStr) -> String {
-  concat(
-    concat("systemctl list-units --type=service --state=active --no-legend \"", instance_glob),
-    "\" 2>/dev/null | wc -l | tr -d ' '"
-  )
-}
-
-fn fleet_runner_unit_memory_props_read_script(unit: NonEmptyStr) -> String {
-  concat(
-    concat("systemctl show -p MemoryMax -p MemorySwapMax -p MemoryHigh --value \"", unit),
-    "\" 2>/dev/null"
-  )
-}
-
 data gunbc_srv1_runner_slice_cap_fixture_row: RunnerSliceCapLiveReadRow = RunnerSliceCapLiveReadRow {
   slice_unit: "system-actions-runner.slice",
   memory_max_raw: "infinity",
