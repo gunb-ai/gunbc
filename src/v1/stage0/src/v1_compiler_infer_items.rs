@@ -71,7 +71,7 @@ pub fn typed_module_interface_body_dual_field_dissolution_trigger() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedModule {
-    pub module: Box<Rc<Node>>,
+    pub module: Rc<Node>,
     pub items: Rc<Vec<Rc<Node>>>,
     pub type_env: Rc<TypeEnv>,
     pub type_env_cache: Rc<TypeEnvCache>,
@@ -96,16 +96,16 @@ pub struct ResolvedGraph {
 }
 
 pub fn inferred_to_outputs(
-    inferred: Option<InferredNode>,
+    inferred: Option<Rc<InferredNode>>,
     span: Rc<SourceSpan>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     if (inferred.clone() == None) {
-        vec![]
+        Rc::new(vec![])
     } else {
         match (*inferred.clone().unwrap()).clone() {
-            InferredNode::CompilerError { .. } => vec![],
-            InferredNode::TypeVariable { id: _, .. } => vec![],
+            InferredNode::CompilerError { .. } => Rc::new(vec![]),
+            InferredNode::TypeVariable { id: _, .. } => Rc::new(vec![]),
             InferredNode::Resolved { node: rt, .. } => {
                 let has_structure = (rt.connective.clone() != Connective::NoConnective);
                 if has_structure.clone() {
@@ -135,7 +135,7 @@ pub fn inferred_to_outputs(
                                     __result
                                 })
                             } else {
-                                vec![make_field_node(
+                                Rc::new(vec![make_field_node(
                                     "value".to_string(),
                                     rt.clone(),
                                     Cardinality::Required,
@@ -143,10 +143,10 @@ pub fn inferred_to_outputs(
                                     None,
                                     span.clone(),
                                     no_span(),
-                                )]
+                                )])
                             }
                         } else {
-                            vec![make_field_node(
+                            Rc::new(vec![make_field_node(
                                 "value".to_string(),
                                 rt.clone(),
                                 Cardinality::Required,
@@ -154,16 +154,16 @@ pub fn inferred_to_outputs(
                                 None,
                                 span.clone(),
                                 no_span(),
-                            )]
+                            )])
                         }
                     }
                 } else {
                     if ((rt.connective.clone() == Connective::Conj)
                         && ((rt.children.clone().len() as i64) == 0))
                     {
-                        vec![]
+                        Rc::new(vec![])
                     } else {
-                        vec![make_field_node(
+                        Rc::new(vec![make_field_node(
                             "value".to_string(),
                             rt.clone(),
                             Cardinality::Required,
@@ -171,7 +171,7 @@ pub fn inferred_to_outputs(
                             None,
                             span.clone(),
                             no_span(),
-                        )]
+                        )])
                     }
                 }
             }
@@ -179,7 +179,7 @@ pub fn inferred_to_outputs(
     }
 }
 
-pub fn item_kind(item: Node) -> ItemKind {
+pub fn item_kind(item: Rc<Node>) -> ItemKind {
     {
         let kind = if ((item.connective.clone() != Connective::NoConnective)
             && (item.transport.clone() == None))

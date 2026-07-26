@@ -23,8 +23,8 @@ pub struct CallGraph {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallGraphAdjacencyViews {
-    pub forward: Rc<HashMap<String, Vec<String>>>,
-    pub reverse: Rc<HashMap<String, Vec<String>>>,
+    pub forward: Rc<HashMap<String, Rc<Vec<String>>>>,
+    pub reverse: Rc<HashMap<String, Rc<Vec<String>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -45,11 +45,11 @@ pub struct SccCycleAcc {
     pub has_cycle: bool,
 }
 
-pub fn seed_adjacency_map(names: Rc<Vec<String>>) -> Rc<HashMap<String, Vec<String>>> {
+pub fn seed_adjacency_map(names: Rc<Vec<String>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     names.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Vec<String>>(),
-        |acc: HashMap<String, Vec<String>>, name: String| {
-            v1_rt::rc_map_insert(acc, name.clone(), vec![])
+        v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| {
+            v1_rt::rc_map_insert(acc, name.clone(), Rc::new(vec![]))
         },
     )
 }
@@ -58,7 +58,7 @@ pub fn build_call_graph_from_proof_edges(
     names: Rc<Vec<String>>,
     edges: Rc<Vec<Rc<ProofEdge>>>,
 ) -> Rc<CallGraph> {
-    CallGraph {
+    Rc::new(CallGraph {
         edges: Rc::new({
             let mut __result = Vec::new();
             for e in Rc::new({
@@ -73,14 +73,14 @@ pub fn build_call_graph_from_proof_edges(
             .iter()
             .cloned()
             {
-                __result.push(GraphEdge {
+                __result.push(Rc::new(GraphEdge {
                     caller: e.caller.clone(),
                     callee: e.callee.clone(),
-                });
+                }));
             }
             __result
         }),
-    }
+    })
 }
 
 pub fn build_adjacency_views(
@@ -91,22 +91,22 @@ pub fn build_adjacency_views(
         let initial_forward = seed_adjacency_map(names.clone());
         let initial_reverse = seed_adjacency_map(names.clone());
         graph.edges.clone().iter().cloned().fold(
-            CallGraphAdjacencyViews {
+            Rc::new(CallGraphAdjacencyViews {
                 forward: initial_forward.clone(),
                 reverse: initial_reverse.clone(),
-            },
+            }),
             |acc: Rc<CallGraphAdjacencyViews>, edge: Rc<GraphEdge>| {
                 let forward_neighbors =
                     match v1_rt::map_get(&acc.forward.clone(), edge.caller.clone()) {
-                        Some(ns) => v1_rt::concat(ns.clone(), vec![edge.callee.clone()]),
-                        None => vec![edge.callee.clone()],
+                        Some(ns) => v1_rt::concat(ns.clone(), Rc::new(vec![edge.callee.clone()])),
+                        None => Rc::new(vec![edge.callee.clone()]),
                     };
                 let reverse_neighbors =
                     match v1_rt::map_get(&acc.reverse.clone(), edge.callee.clone()) {
-                        Some(ns) => v1_rt::concat(ns.clone(), vec![edge.caller.clone()]),
-                        None => vec![edge.caller.clone()],
+                        Some(ns) => v1_rt::concat(ns.clone(), Rc::new(vec![edge.caller.clone()])),
+                        None => Rc::new(vec![edge.caller.clone()]),
                     };
-                CallGraphAdjacencyViews {
+                Rc::new(CallGraphAdjacencyViews {
                     forward: v1_rt::rc_map_insert(
                         acc.forward.clone(),
                         edge.caller.clone(),
@@ -117,7 +117,7 @@ pub fn build_adjacency_views(
                         edge.callee.clone(),
                         reverse_neighbors.clone(),
                     ),
-                }
+                })
             },
         )
     }
@@ -126,7 +126,7 @@ pub fn build_adjacency_views(
 pub fn forward_adjacency(
     names: Rc<Vec<String>>,
     graph: Rc<CallGraph>,
-) -> Rc<HashMap<String, Vec<String>>> {
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     build_adjacency_views(names.clone(), graph.clone())
         .forward
         .clone()
@@ -135,7 +135,7 @@ pub fn forward_adjacency(
 pub fn reverse_adjacency(
     names: Rc<Vec<String>>,
     graph: Rc<CallGraph>,
-) -> Rc<HashMap<String, Vec<String>>> {
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     build_adjacency_views(names.clone(), graph.clone())
         .reverse
         .clone()
@@ -143,7 +143,7 @@ pub fn reverse_adjacency(
 
 pub fn dfs_finish_order(
     node: String,
-    adjacency: Rc<HashMap<String, Vec<String>>>,
+    adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
     acc: Rc<DfsFinishAcc>,
 ) -> Rc<DfsFinishAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -154,21 +154,21 @@ pub fn dfs_finish_order(
                 let next_visited = v1_rt::rc_set_insert(acc.visited.clone(), node.clone());
                 let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
                     Some(ns) => ns.clone(),
-                    None => vec![],
+                    None => Rc::new(vec![]),
                 };
                 let explored = neighbors.clone().iter().cloned().fold(
-                    DfsFinishAcc {
+                    Rc::new(DfsFinishAcc {
                         visited: next_visited.clone(),
                         order: acc.order.clone(),
-                    },
+                    }),
                     |inner: Rc<DfsFinishAcc>, neighbor: String| {
                         dfs_finish_order(neighbor.clone(), adjacency.clone(), inner)
                     },
                 );
-                DfsFinishAcc {
+                Rc::new(DfsFinishAcc {
                     visited: explored.visited.clone(),
                     order: v1_rt::rc_list_push(explored.order.clone(), node.clone()),
-                }
+                })
             }
         }
     })
@@ -176,7 +176,7 @@ pub fn dfs_finish_order(
 
 pub fn dfs_collect_component(
     node: String,
-    adjacency: Rc<HashMap<String, Vec<String>>>,
+    adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
     acc: Rc<SccComponentAcc>,
 ) -> Rc<SccComponentAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -188,13 +188,13 @@ pub fn dfs_collect_component(
                 let next_members = v1_rt::rc_list_push(acc.members.clone(), node.clone());
                 let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
                     Some(ns) => ns.clone(),
-                    None => vec![],
+                    None => Rc::new(vec![]),
                 };
                 neighbors.clone().iter().cloned().fold(
-                    SccComponentAcc {
+                    Rc::new(SccComponentAcc {
                         visited: next_visited.clone(),
                         members: next_members.clone(),
-                    },
+                    }),
                     |inner: Rc<SccComponentAcc>, neighbor: String| {
                         dfs_collect_component(neighbor.clone(), adjacency.clone(), inner)
                     },
@@ -208,19 +208,19 @@ pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) ->
     {
         let adjacency = build_adjacency_views(names.clone(), graph.clone());
         let finish = names.clone().iter().cloned().fold(
-            DfsFinishAcc {
+            Rc::new(DfsFinishAcc {
                 visited: v1_rt::rc_empty_set::<String>(),
-                order: vec![],
-            },
+                order: Rc::new(vec![]),
+            }),
             |acc: Rc<DfsFinishAcc>, name: String| {
                 dfs_finish_order(name.clone(), adjacency.forward.clone(), acc)
             },
         );
         let result = v1_rt::reverse(finish.order.clone()).iter().cloned().fold(
-            SccCycleAcc {
+            Rc::new(SccCycleAcc {
                 visited: v1_rt::rc_empty_set::<String>(),
                 has_cycle: false,
-            },
+            }),
             |acc: Rc<SccCycleAcc>, name: String| {
                 if (acc.has_cycle.clone()
                     || v1_rt::set_contains(&acc.visited.clone(), name.clone()))
@@ -231,15 +231,15 @@ pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) ->
                         let component = dfs_collect_component(
                             name.clone(),
                             adjacency.reverse.clone(),
-                            SccComponentAcc {
+                            Rc::new(SccComponentAcc {
                                 visited: acc.visited.clone(),
-                                members: vec![],
-                            },
+                                members: Rc::new(vec![]),
+                            }),
                         );
-                        SccCycleAcc {
+                        Rc::new(SccCycleAcc {
                             visited: component.visited.clone(),
                             has_cycle: ((component.members.clone().len() as i64) > 1),
-                        }
+                        })
                     }
                 }
             },
@@ -308,8 +308,11 @@ pub fn is_valid_proof(proof: Rc<TerminationProof>, edges: Rc<Vec<Rc<ProofEdge>>>
                 let members = Rc::new({
                     let mut __result = Vec::new();
                     for e in edges.clone().iter().cloned() {
-                        __result
-                            .extend((*vec![e.caller.clone(), e.callee.clone()]).iter().cloned());
+                        __result.extend(
+                            (*Rc::new(vec![e.caller.clone(), e.callee.clone()]))
+                                .iter()
+                                .cloned(),
+                        );
                     }
                     __result
                 });

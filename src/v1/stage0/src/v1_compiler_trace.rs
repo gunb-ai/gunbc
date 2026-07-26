@@ -67,36 +67,36 @@ pub struct Trace {
 }
 
 pub fn empty_trace() -> Rc<Trace> {
-    Trace {
-        events: vec![],
-        stack: vec![],
-    }
+    Rc::new(Trace {
+        events: Rc::new(vec![]),
+        stack: Rc::new(vec![]),
+    })
 }
 
 pub fn trace_push_event(trace: Rc<Trace>, event: Rc<TraceEvent>) -> Rc<Trace> {
-    Trace {
+    Rc::new(Trace {
         events: v1_rt::rc_list_push(trace.events.clone(), event.clone()),
         stack: trace.stack.clone(),
-    }
+    })
 }
 
 pub fn trace_push_frame(trace: Rc<Trace>, frame: Rc<TraceFrame>) -> Rc<Trace> {
-    Trace {
+    Rc::new(Trace {
         events: trace.events.clone(),
         stack: v1_rt::rc_list_push(trace.stack.clone(), frame.clone()),
-    }
+    })
 }
 
 pub fn trace_pop_frame(trace: Rc<Trace>) -> Rc<Trace> {
     {
         let n = (trace.stack.clone().len() as i64);
         if (n.clone() <= 1) {
-            Trace {
+            Rc::new(Trace {
                 events: trace.events.clone(),
-                stack: vec![],
-            }
+                stack: Rc::new(vec![]),
+            })
         } else {
-            Trace {
+            Rc::new(Trace {
                 events: trace.events.clone(),
                 stack: Rc::new(
                     trace
@@ -107,7 +107,7 @@ pub fn trace_pop_frame(trace: Rc<Trace>) -> Rc<Trace> {
                         .take((n.clone() - 1) as usize)
                         .collect::<Vec<_>>(),
                 ),
-            }
+            })
         }
     }
 }
@@ -270,12 +270,12 @@ pub fn capture_repro(
     inputs: Rc<HashMap<String, String>>,
     trace: Rc<Trace>,
 ) -> Rc<ReproCase> {
-    ReproCase {
+    Rc::new(ReproCase {
         func_name: func_name.clone(),
         inputs: inputs.clone(),
         expected_output: None,
         trace: Some(trace.clone()),
-    }
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

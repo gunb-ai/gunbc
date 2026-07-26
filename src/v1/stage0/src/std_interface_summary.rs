@@ -72,11 +72,11 @@ pub fn interface_summary_v0_dissolution_trigger() -> Rc<Disposition> {
             static CACHED: Rc<Disposition> = {
                 Rc::new(Disposition::Scaffold {
         dissolves_to: ConstructionMechanism::SingleAuthority,
-        bind: DeclarationRef {
+        bind: Rc::new(DeclarationRef {
         module_path: "std.interface_summary".to_string(),
         decl_name: "export_entry_fingerprint".to_string(),
-        field: DeclField::WholeDeclaration,
-    },
+        field: Rc::new(DeclField::WholeDeclaration),
+    }),
     })
             };
         }
@@ -84,13 +84,13 @@ pub fn interface_summary_v0_dissolution_trigger() -> Rc<Disposition> {
 }
 
 pub fn signature_contract(signature: ContentHash) -> Rc<InterfaceContract> {
-    InterfaceContract::SignatureContract {
+    Rc::new(InterfaceContract::SignatureContract {
         signature: signature.clone(),
-    }
+    })
 }
 
 pub fn contract_absent() -> Rc<InterfaceContract> {
-    InterfaceContract::ContractAbsent
+    Rc::new(InterfaceContract::ContractAbsent)
 }
 
 pub fn export_kind_tag(kind: ExportKind) -> String {
