@@ -9,8 +9,8 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_method_wraps_result, rust_serde_rename_all_screaming_snake_case,
     rust_serde_rename_all_snake_case,
 };
-pub use crate::extdeps_languages_rust_wrap_catalog::rust_sg_rc_wrap_layer_lookup;
 use crate::extdeps_languages_rust_wrap_catalog::rust_sg_rc_carrier_enrolled_but_row_missing;
+pub use crate::extdeps_languages_rust_wrap_catalog::rust_sg_rc_wrap_layer_lookup;
 use crate::extdeps_languages_rust_wrap_catalog::OwnershipReferenceLayer::{
     ReferenceLayerBox, ReferenceLayerOwned, ReferenceLayerRc,
 };
@@ -1692,25 +1692,17 @@ pub fn rust_seed_legacy_container_blanket_rc(rendered: String) -> bool {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SeedWrapOutcome {
-    SeedWrapDecided {
-        layer: OwnershipReferenceLayer,
-    },
-    SeedWrapRefused {
-        reason: String,
-    },
+    SeedWrapDecided { layer: OwnershipReferenceLayer },
+    SeedWrapRefused { reason: String },
 }
 
 pub fn rust_seed_wrap_use_site_label(use_site: OwnershipWrapUseSite) -> String {
     match use_site {
         OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent => "Absent".to_string(),
         OwnershipWrapUseSite::OwnershipAtFunctionReturn => "FunctionReturn".to_string(),
-        OwnershipWrapUseSite::OwnershipAtFunctionParameter => {
-            "FunctionParameter".to_string()
-        }
+        OwnershipWrapUseSite::OwnershipAtFunctionParameter => "FunctionParameter".to_string(),
         OwnershipWrapUseSite::OwnershipAtStructField => "StructField".to_string(),
-        OwnershipWrapUseSite::OwnershipAtBindingProjection => {
-            "BindingProjection".to_string()
-        }
+        OwnershipWrapUseSite::OwnershipAtBindingProjection => "BindingProjection".to_string(),
     }
 }
 
@@ -1779,9 +1771,7 @@ pub fn apply_seed_wrap_decision(
                 )
             }
         }
-        SeedWrapOutcome::SeedWrapRefused { reason } => {
-            emit_error_expr(reason, RenderTarget::Rust)
-        }
+        SeedWrapOutcome::SeedWrapRefused { reason } => emit_error_expr(reason, RenderTarget::Rust),
     }
 }
 
@@ -1820,9 +1810,7 @@ pub fn rust_seed_wrap_value_at_use_site(
                 )
             }
         }
-        SeedWrapOutcome::SeedWrapRefused { reason } => {
-            emit_error_expr(reason, RenderTarget::Rust)
-        }
+        SeedWrapOutcome::SeedWrapRefused { reason } => emit_error_expr(reason, RenderTarget::Rust),
     }
 }
 
@@ -23207,14 +23195,12 @@ pub fn rust_record_field_wrap_value_at_use_site(
                         raw.clone()
                     }
                 }
-                SeedWrapOutcome::SeedWrapDecided { layer: _ } => {
-                    rust_seed_wrap_value_at_use_site(
-                        raw.clone(),
-                        leaf.clone(),
-                        rendered.clone(),
-                        OwnershipWrapUseSite::OwnershipAtStructField,
-                    )
-                }
+                SeedWrapOutcome::SeedWrapDecided { layer: _ } => rust_seed_wrap_value_at_use_site(
+                    raw.clone(),
+                    leaf.clone(),
+                    rendered.clone(),
+                    OwnershipWrapUseSite::OwnershipAtStructField,
+                ),
             }
         }
         None => raw.clone(),

@@ -272,12 +272,10 @@ pub fn rust_sg_rc_carrier_enrolled_but_row_missing(
     match use_site {
         OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent => false,
         _ => match rust_sg_rc_wrap_carrier_from_type_name(type_name) {
-            Some(carrier) => {
-                match rust_sg_rc_wrap_row_lookup_for_carrier(carrier, use_site) {
-                    Some(_) => false,
-                    None => true,
-                }
-            }
+            Some(carrier) => match rust_sg_rc_wrap_row_lookup_for_carrier(carrier, use_site) {
+                Some(_) => false,
+                None => true,
+            },
             None => false,
         },
     }
@@ -290,9 +288,7 @@ pub fn rust_sg_rc_wrap_layer_lookup(
     match use_site {
         OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent => None,
         _ => match rust_sg_rc_wrap_carrier_from_type_name(type_name) {
-            Some(carrier) => {
-                rust_sg_rc_wrap_row_lookup_for_carrier(carrier, use_site)
-            }
+            Some(carrier) => rust_sg_rc_wrap_row_lookup_for_carrier(carrier, use_site),
             None => None,
         },
     }
