@@ -306,7 +306,7 @@ These are correct as shell (GHA `run:`, cron, git hooks, pre-runtime bootstrap �
 | `host_language_transport_script` lens | **inert, and deliberately so.** Its own RED control records why: a computed concat is `ComputedApplication` and the lens is *green* on it by design — it never caught the #7064 fake. Only construction closed the class | **do not "activate once the brand lands"** — that action was predicated on a brand that does not work. The lens is a residue reader, not the wall |
 | meta-exec module `extdeps.shell.exec` | not walled | module-isolate / symbol-visibility confinement (meta-exec-confinement lane) *(still open — the genuinely remaining Phase-3 item)* |
 
-### 4.G — bash-AST emit vocab (emit-internal — NOT fraud, already confined)
+### 4.G — bash-AST emit vocab (emit-internal — **EXTINCT**, not merely confined)
 
 **Corrected @ 2026-07-26 (snappy-moth-330), in two passes — read the method note below before trusting or editing this section.** The original row read *"in 11 files … + the two ubuntu-media files + `nbd_proxy_serve`"*, which overstated the live surface and cost an audit a wrong prerequisite (see the trap note). The first correction pass narrowed it but still listed seven files as live `ShellProgram`/`serialize_bash` construction sites — **also wrong**, caught in review (`review 43441`), and wrong the same way: every one of those hits is prose. The second pass fixed that but scoped the occurrence count to `.dag` files, missing the frozen `.diff` fixtures (`review 43455`). Re-censused hit-by-hit, unscoped, over `origin/main`:
 
@@ -343,7 +343,9 @@ Re-censused §4.A, §4.B and §4.D against `origin/main` @ `efe67794cd` by execu
 3. **§4.A1 is DONE, but left two dead concat builders behind** — deleted in this true-up, with the witness that was pinning one of them as contract. See the A1 dead-scaffold note in §4.A; the pattern (a file note claiming "no concat shell strings" while two sat below it, plus a tautological witness conjunct asserting the bypass still had the right shape) is the reusable finding.
 4. **One uncensused consumer added** — `fleet_converge_cli.dag:57`'s `ShellCommand` **match arm**, so the terminal type delete has a complete consumer list.
 
-**Net:** with bucket D (§4.E/§4.I) in flight, the non-deferred remainder of this arc is **§4.F wall-green only** (the `host_language_transport_script` lens promotion + meta-exec confinement) — and that is coupled to the node/subtree visibility-grants lane, not independently schedulable here. Everything else open is operator-deferred srv\*.
+**Net:** with bucket D (§4.E/§4.I) in flight, the non-deferred remainder of this arc is **meta-exec confinement only** — coupled to the node/subtree visibility-grants lane, not independently schedulable here. Everything else open is operator-deferred srv\*.
+
+*(Corrected 2026-07-26, `review 43494`: this "Net" dispatched **`host_language_transport_script` lens promotion** as remaining §4.F work. §4.F now says explicitly **do not** promote that lens — the construction wall landed (#7184) and the lens is inert *by design*, deliberately green on the computed concats that were the actual fake. Same document, opposite dispatch; the wall half of "§4.F wall-green" is discharged, leaving only meta-exec confinement.)*
 
 ### Ledger true-up @ 2026-07-25 (bucket A, calm-pike-837) — read this before the 07-22 snapshot below
 
@@ -505,7 +507,11 @@ The governing rule for the rest of the sweep, so "all other instances" stays dec
 
 ### Dissolution trigger for §4
 
-This punch-list folds into the **`host_language_transport_script` lens going live** (4.F): once a compile gate reds any raw-string `shell.Exec.Run` / hand-built transport, new instances are unwritable by construction (§5) and a prose punch-list is redundant. Until then, every row here is discharged by *deletion of the concat*, verified green-by-execution + an injection-RED — never by relocation.
+**The construction wall this trigger waited on has LANDED (#7184, 2026-07-24)** — a raw-string `shell.Exec.Run` / hand-built transport is already unwritable, enforced by the `RetainedShellScript` record edge with compile-fail REDs (§4.F, §5.E). So *new* instances of this class can no longer be authored, and to that extent the punch-list is closed at the top.
+
+What the trigger does **not** discharge is the **existing** rows: the wall stops new concats, it does not dissolve the ones already written. Each remaining row is still discharged the same way — *deletion of the concat*, verified green-by-execution + an injection-RED, never by relocation. This section retires when that list empties, not on any further wall work.
+
+*(Corrected 2026-07-26, `review 43494`: this trigger read "folds into the `host_language_transport_script` lens **going live**". That prescribed superseded Phase-3 work — the lens is inert by design and was never what closed the class; construction was. Note the two are not interchangeable: a lens going live would have been *validation*, the record edge is *construction*, and §5 prefers the second precisely because it makes the state unwritable rather than merely flagged.)*
 
 ---
 
