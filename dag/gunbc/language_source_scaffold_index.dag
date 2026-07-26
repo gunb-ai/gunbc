@@ -357,6 +357,11 @@ data ct_row_ct_profile_reconcile_test: LanguageSourceScaffoldRow = LanguageSourc
   disposition: compiler_tests_profile_trigger
 }
 
+data ct_row_ct_render_rust_applied_type_qualified_base_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_render_rust_applied_type_qualified_base_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
 data compiler_tests_coercion_hybrid_trigger: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -398,6 +403,7 @@ data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
   ct_row_ct_profile_self_compile_test,
   ct_row_ct_profile_full_pipeline_test,
   ct_row_ct_profile_reconcile_test,
+  ct_row_ct_render_rust_applied_type_qualified_base_test,
   runtime_rust_header_row,
   runtime_rust_work_counter_row,
   runtime_rust_concat_trait_row,

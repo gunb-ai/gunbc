@@ -12236,12 +12236,17 @@ pub fn compute_witness_timing_rows(
     }
 
     let mut rows: Vec<WitnessTimingRow> = Vec::new();
+    let mut missing_entry_resolve: Vec<String> = Vec::new();
     for (perf, outcome) in summary
         .performance_receipts
         .iter()
         .zip(summary.witness_outcomes.iter())
     {
         let Some(resolve_nanos) = entry_resolve_map.get(&outcome.entry).copied() else {
+            // Fail-closed for receipt consumers: silent skip would ship an incomplete
+            // per-witness record as complete (gunbc.witness_row_cost spine note;
+            // review 43274). Histogram path still counts this case separately.
+            missing_entry_resolve.push(format!("{}::{}", outcome.entry, outcome.function));
             continue;
         };
         let eval_nanos = perf.wall_nanos;
@@ -12252,6 +12257,21 @@ pub fn compute_witness_timing_rows(
             resolve_nanos,
             total_nanos: resolve_nanos + eval_nanos,
         });
+    }
+    if !missing_entry_resolve.is_empty() {
+        return Err(format!(
+            "[witness-row-cost] REFUSED: {} of {} witness(es) missing entry resolve receipt — incomplete row set is unwritable (fail-closed): {}",
+            missing_entry_resolve.len(),
+            summary.witness_outcomes.len(),
+            missing_entry_resolve.join("; ")
+        ));
+    }
+    if rows.len() != summary.witness_outcomes.len() {
+        return Err(format!(
+            "[witness-row-cost] REFUSED: row count {} != witness_outcomes {} — incomplete receipt is unwritable (fail-closed)",
+            rows.len(),
+            summary.witness_outcomes.len()
+        ));
     }
     Ok(rows)
 }
@@ -20312,6 +20332,21 @@ mod witness_timing_attribution_tests {
         assert_eq!(rows[0].eval_nanos, 1_000);
         assert_eq!(rows[0].resolve_nanos, 100);
         assert_eq!(rows[0].total_nanos, 1_100);
+    }
+
+    #[test]
+    fn witness_timing_rows_refuse_missing_entry_resolve() {
+        // RED control for review 43274: a missing entry_resolve receipt must refuse,
+        // never return a partial Ok row set that looks complete.
+        let mut summary = sample_summary();
+        summary
+            .entry_resolve_receipts
+            .retain(|r| r.entry != "b.dag");
+        let err = compute_witness_timing_rows(&summary).expect_err("must refuse");
+        assert!(
+            err.contains("REFUSED") && err.contains("b.dag::slow"),
+            "expected typed incomplete-coverage refusal, got: {err}"
+        );
     }
 
     #[test]

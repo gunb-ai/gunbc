@@ -16759,6 +16759,60 @@ pub fn emit_freemonoid_empty_variant_body() -> String {
     "vec![]".to_string()
 }
 
+pub fn effective_variant_parent_from_enum_lookup(
+    leaf_name: String,
+    rt: Rc<Node>,
+    binding_kind: Option<Rc<VarBindingKind>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    {
+        let rt_name = authored_name_at(source_indices.clone(), rt.clone());
+        if (((rt.ident_span.clone() != None) && (rt_name.clone() != leaf_name.clone()))
+            && variant_belongs_to_enum(
+                emit_info.type_summaries.clone(),
+                leaf_name.clone(),
+                rt_name.clone(),
+            ))
+        {
+            Some(rt_name.clone())
+        } else {
+            variant_parent_from_binding_kind(binding_kind.clone())
+        }
+    }
+}
+
+pub fn effective_variant_parent_from_resolved(
+    leaf_name: String,
+    rt: Rc<Node>,
+    binding_kind: Option<Rc<VarBindingKind>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match rt.return_cardinality.clone() {
+        Cardinality::CardOptional => {
+            if is_optional_variant_name(leaf_name.clone()) {
+                Some("Optional".to_string())
+            } else {
+                effective_variant_parent_from_enum_lookup(
+                    leaf_name.clone(),
+                    rt.clone(),
+                    binding_kind.clone(),
+                    emit_info.clone(),
+                    source_indices.clone(),
+                )
+            }
+        }
+        _ => effective_variant_parent_from_enum_lookup(
+            leaf_name.clone(),
+            rt.clone(),
+            binding_kind.clone(),
+            emit_info.clone(),
+            source_indices.clone(),
+        ),
+    }
+}
+
 pub fn effective_variant_parent(
     name: String,
     binding_kind: Option<Rc<VarBindingKind>>,
@@ -16782,18 +16836,13 @@ pub fn effective_variant_parent(
             Some(parent) => Some(parent.clone()),
             None => match resolved_type.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: rt, .. }) => {
-                    let rt_name = authored_name_at(source_indices.clone(), rt.clone());
-                    if (((rt.ident_span.clone() != None) && (rt_name.clone() != leaf_name.clone()))
-                        && variant_belongs_to_enum(
-                            emit_info.type_summaries.clone(),
-                            leaf_name.clone(),
-                            rt_name.clone(),
-                        ))
-                    {
-                        Some(rt_name.clone())
-                    } else {
-                        variant_parent_from_binding_kind(binding_kind.clone())
-                    }
+                    effective_variant_parent_from_resolved(
+                        leaf_name.clone(),
+                        rt.clone(),
+                        binding_kind.clone(),
+                        emit_info.clone(),
+                        source_indices.clone(),
+                    )
                 }
                 _ => variant_parent_from_binding_kind(binding_kind.clone()),
             },
@@ -18429,6 +18478,57 @@ pub fn is_enum_type_name(
     is_enum_in_summaries(type_summaries.clone(), type_name.clone())
 }
 
+pub fn contextual_variant_parent_from_type_name(
+    variant_name: String,
+    resolved_type: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    {
+        let rt_name = authored_name_at(source_indices.clone(), resolved_type.clone());
+        if (((resolved_type.ident_span.clone() != None)
+            && (rt_name.clone() != variant_name.clone()))
+            && variant_belongs_to_enum(
+                emit_info.type_summaries.clone(),
+                variant_name.clone(),
+                rt_name.clone(),
+            ))
+        {
+            Some(rt_name.clone())
+        } else {
+            None
+        }
+    }
+}
+
+pub fn contextual_variant_parent_absent(
+    variant_name: String,
+    resolved_type: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match resolved_type.return_cardinality.clone() {
+        Cardinality::CardOptional => {
+            if is_optional_variant_name(variant_name.clone()) {
+                Some("Optional".to_string())
+            } else {
+                contextual_variant_parent_from_type_name(
+                    variant_name.clone(),
+                    resolved_type.clone(),
+                    emit_info.clone(),
+                    source_indices.clone(),
+                )
+            }
+        }
+        _ => contextual_variant_parent_from_type_name(
+            variant_name.clone(),
+            resolved_type.clone(),
+            emit_info.clone(),
+            source_indices.clone(),
+        ),
+    }
+}
+
 pub fn contextual_variant_parent(
     variant_name: String,
     parent_enum: Option<String>,
@@ -18448,21 +18548,12 @@ pub fn contextual_variant_parent(
                 None
             }
         }
-        None => {
-            let rt_name = authored_name_at(source_indices.clone(), resolved_type.clone());
-            if (((resolved_type.ident_span.clone() != None)
-                && (rt_name.clone() != variant_name.clone()))
-                && variant_belongs_to_enum(
-                    emit_info.type_summaries.clone(),
-                    variant_name.clone(),
-                    rt_name.clone(),
-                ))
-            {
-                Some(rt_name.clone())
-            } else {
-                None
-            }
-        }
+        None => contextual_variant_parent_absent(
+            variant_name.clone(),
+            resolved_type.clone(),
+            emit_info.clone(),
+            source_indices.clone(),
+        ),
     }
 }
 
@@ -23537,8 +23628,10 @@ pub fn emit_typed_record_lit(
                     }
                 }
                 let optional_variant = (is_optional_variant_name(tn.clone())
-                    && (is_optional_parent(bare_parent_enum.clone())
-                        || is_optional_parent(effective_parent.clone())));
+                    && ((is_optional_parent(bare_parent_enum.clone())
+                        || is_optional_parent(effective_parent.clone()))
+                        || (resolved_type.return_cardinality.clone()
+                            == Cardinality::CardOptional)));
                 let rust_tn = if optional_variant.clone() {
                     if is_some_like_variant_name(tn.clone()) {
                         "Some".to_string()
