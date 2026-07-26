@@ -1,0 +1,3 @@
+entry	function	eval_ms_basis	run_ref	host_class
+# Basis rows cite arm64 srv-fleet run receipts only (witness_row_cost_basis_host_class_note).
+# First fleet observation establishes a row here; absence at compare time is BasisAbsent.

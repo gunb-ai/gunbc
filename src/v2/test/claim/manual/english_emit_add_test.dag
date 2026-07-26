@@ -236,8 +236,10 @@ fn english_emit_add_parse_identity_matches(root: Node, expected: Node) -> Bool {
   )
 }
 
-fn english_emit_add_ingest_round_trip_holds() -> Bool {
-  match english_emit_add_receipt {
+test fn english_emit_add_ingest_round_trip_holds() -> Bool {
+  let serialize_ok = english_emit_add_matches_serialize_holds()
+  let grammar_ok = english_emit_add_grammar_inverse_holds()
+  let ingest_ok = match english_emit_add_receipt {
     Rejected { diagnostics: _ } => false
     Accepted { value: source, diagnostics: _ } =>
       match english_emit_add_ingest_parse(source: source) {
@@ -249,11 +251,5 @@ fn english_emit_add_ingest_round_trip_holds() -> Bool {
         Rejected { diagnostics: _ } => false
       }
   }
-}
-
-test fn english_emit_add_emit_ingest_round_trip_holds() -> Bool {
-  english_emit_add_prose_holds()
-    && english_emit_add_matches_serialize_holds()
-    && english_emit_add_grammar_inverse_holds()
-    && english_emit_add_ingest_round_trip_holds()
+  serialize_ok && grammar_ok && ingest_ok
 }

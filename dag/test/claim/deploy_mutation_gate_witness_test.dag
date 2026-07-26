@@ -1,6 +1,5 @@
 module test.claim.deploy_mutation_gate_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data mutation_gate_marker: String = "deploy-mutation-gate-marker-c4e2"
@@ -19,7 +18,7 @@ fn srv2_host_observation() -> DeployTargetHostObservation {
   )
 }
 
-fn witness_decision_meet_preserves_left_denial_reason() -> Bool {
+test fn witness_decision_meet_preserves_left_denial_reason() -> Bool {
   let left = std.access.Deny { reason: Present { value: "host-deny-reason" } }
   let right = std.access.Deny { reason: Present { value: "access-deny-reason" } }
   match decision_meet(a: left, b: right) {
@@ -32,7 +31,7 @@ fn witness_decision_meet_preserves_left_denial_reason() -> Bool {
   }
 }
 
-fn witness_wrong_host_unprivileged_both_deny_surfaces_host_reason_only() -> Bool {
+test fn witness_wrong_host_unprivileged_both_deny_surfaces_host_reason_only() -> Bool {
   let gate = deploy_mutation_gate(
     access: ci_deploy_srv1_access,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() },
@@ -47,7 +46,7 @@ fn witness_wrong_host_unprivileged_both_deny_surfaces_host_reason_only() -> Bool
   }
 }
 
-fn witness_wrong_host_unprivileged_both_deny_refused_before_shell() -> Bool {
+test fn witness_wrong_host_unprivileged_both_deny_refused_before_shell() -> Bool {
   match live_deploy_fold(
     spec: deployment_spec_srv1(),
     effect: ShellCommand { script: concat("echo ", mutation_gate_marker, " && exit 99") },
@@ -67,7 +66,7 @@ fn witness_wrong_host_unprivileged_both_deny_refused_before_shell() -> Bool {
   }
 }
 
-fn witness_wrong_host_privileged_gate_denies() -> Bool {
+test fn witness_wrong_host_privileged_gate_denies() -> Bool {
   let gate = deploy_mutation_gate(
     access: ci_deploy_srv1_access,
     fixture_actor: Present {
@@ -85,7 +84,7 @@ fn witness_wrong_host_privileged_gate_denies() -> Bool {
   }
 }
 
-fn witness_right_host_unprivileged_gate_denies() -> Bool {
+test fn witness_right_host_unprivileged_gate_denies() -> Bool {
   match deploy_mutation_gate(
     access: ci_deploy_srv1_access,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() },
@@ -96,7 +95,7 @@ fn witness_right_host_unprivileged_gate_denies() -> Bool {
   }
 }
 
-fn witness_right_host_privileged_gate_permits() -> Bool {
+test fn witness_right_host_privileged_gate_permits() -> Bool {
   match deploy_mutation_gate(
     access: ci_deploy_srv1_access,
     fixture_actor: Present {
@@ -109,7 +108,7 @@ fn witness_right_host_privileged_gate_permits() -> Bool {
   }
 }
 
-fn witness_wrong_host_privileged_refused_before_shell() -> Bool {
+test fn witness_wrong_host_privileged_refused_before_shell() -> Bool {
   match live_deploy_fold(
     spec: deployment_spec_srv1(),
     effect: ShellCommand { script: concat("echo ", mutation_gate_marker, " && exit 99") },
@@ -130,7 +129,7 @@ fn witness_wrong_host_privileged_refused_before_shell() -> Bool {
   }
 }
 
-fn witness_right_host_unprivileged_refused_before_shell() -> Bool {
+test fn witness_right_host_unprivileged_refused_before_shell() -> Bool {
   match live_deploy_fold(
     spec: deployment_spec_srv1(),
     effect: ShellCommand { script: concat("echo ", mutation_gate_marker, " && exit 99") },
@@ -149,7 +148,7 @@ fn witness_right_host_unprivileged_refused_before_shell() -> Bool {
   }
 }
 
-fn witness_right_host_privileged_may_apply() -> Bool {
+test fn witness_right_host_privileged_may_apply() -> Bool {
   reconciliation_converged(r: live_deploy_fold(
     spec: deployment_spec_srv1(),
     effect: ShellCommand { script: "true" },
@@ -162,14 +161,3 @@ fn witness_right_host_privileged_may_apply() -> Bool {
   ))
 }
 
-test fn deploy_mutation_gate_witnesses() -> Bool {
-  witness_decision_meet_preserves_left_denial_reason()
-    && witness_wrong_host_unprivileged_both_deny_surfaces_host_reason_only()
-    && witness_wrong_host_privileged_gate_denies()
-    && witness_right_host_unprivileged_gate_denies()
-    && witness_right_host_privileged_gate_permits()
-    && witness_wrong_host_privileged_refused_before_shell()
-    && witness_wrong_host_unprivileged_both_deny_refused_before_shell()
-    && witness_right_host_unprivileged_refused_before_shell()
-    && witness_right_host_privileged_may_apply()
-}

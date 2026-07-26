@@ -67,7 +67,7 @@ fn w_premium_equals(baseline: RegionalComputeRow, region: RegionalComputeRow, ex
   }
 }
 
-fn w_no_aws_region_is_cheaper_than_us_east() -> Bool {
+test fn w_no_aws_region_is_cheaper_than_us_east() -> Bool {
   w_premium_at_least(baseline: aws_us_east_1, region: aws_ap_south_1, floor_bp: 1)
     && w_premium_at_least(baseline: aws_us_east_1, region: aws_eu_central_1, floor_bp: 1)
     && w_premium_at_least(baseline: aws_us_east_1, region: aws_me_central_1, floor_bp: 1)
@@ -79,7 +79,7 @@ fn w_no_aws_region_is_cheaper_than_us_east() -> Bool {
     && w_premium_at_least(baseline: aws_us_east_1, region: aws_sa_east_1, floor_bp: 1)
 }
 
-fn w_no_azure_region_is_cheaper_than_east_us() -> Bool {
+test fn w_no_azure_region_is_cheaper_than_east_us() -> Bool {
   w_premium_at_least(baseline: azure_eastus, region: azure_centralindia, floor_bp: 1)
     && w_premium_at_least(baseline: azure_eastus, region: azure_southindia, floor_bp: 1)
     && w_premium_at_least(baseline: azure_eastus, region: azure_uaenorth, floor_bp: 1)
@@ -87,7 +87,7 @@ fn w_no_azure_region_is_cheaper_than_east_us() -> Bool {
     && w_premium_at_least(baseline: azure_eastus, region: azure_brazilsouth, floor_bp: 1)
 }
 
-fn w_brazil_premium_agrees_across_two_independent_providers() -> Bool {
+test fn w_brazil_premium_agrees_across_two_independent_providers() -> Bool {
   match premium_bp_of(baseline: aws_us_east_1, region: aws_sa_east_1) {
     Present { value: aws_bp } =>
       match premium_bp_of(baseline: azure_eastus, region: azure_brazilsouth) {
@@ -99,7 +99,7 @@ fn w_brazil_premium_agrees_across_two_independent_providers() -> Bool {
   }
 }
 
-fn w_india_is_the_smallest_premium_and_south_america_the_largest() -> Bool {
+test fn w_india_is_the_smallest_premium_and_south_america_the_largest() -> Bool {
   match premium_bp_of(baseline: aws_us_east_1, region: aws_ap_south_1) {
     Present { value: mumbai } =>
       match premium_bp_of(baseline: aws_us_east_1, region: aws_sa_east_1) {
@@ -115,7 +115,7 @@ fn w_india_is_the_smallest_premium_and_south_america_the_largest() -> Bool {
   }
 }
 
-fn w_geography_axis_is_populated_across_all_requested_regions() -> Bool {
+test fn w_geography_axis_is_populated_across_all_requested_regions() -> Bool {
   geography_eq(a: aws_ap_south_1.geography, b: SouthAsia)
     && geography_eq(a: aws_af_south_1.geography, b: Africa)
     && geography_eq(a: aws_sa_east_1.geography, b: SouthAmerica)
@@ -124,7 +124,7 @@ fn w_geography_axis_is_populated_across_all_requested_regions() -> Bool {
     && geography_eq(a: azure_brazilsouth.geography, b: SouthAmerica)
 }
 
-fn w_per_vcpu_month_is_derived_within_one_currency() -> Bool {
+test fn w_per_vcpu_month_is_derived_within_one_currency() -> Bool {
   match per_vcpu_month_micros(row: aws_us_east_1) {
     Present { value: virginia } =>
       match per_vcpu_month_micros(row: aws_sa_east_1) {
@@ -136,14 +136,14 @@ fn w_per_vcpu_month_is_derived_within_one_currency() -> Bool {
   }
 }
 
-fn w_red_cross_provider_premium_refuses() -> Bool {
+test fn w_red_cross_provider_premium_refuses() -> Bool {
   match derive_regional_premium(baseline: aws_us_east_1, region: azure_brazilsouth) {
     RegionalPremiumRefused { cause: ProviderMismatch } => true
     _ => false
   }
 }
 
-fn w_red_unreadable_local_provider_rates_refuse() -> Bool {
+test fn w_red_unreadable_local_provider_rates_refuse() -> Bool {
   match hourly_micros(row: e2e_networks_india) {
     Present { value: _ } => false
     _ =>
@@ -166,7 +166,7 @@ fn w_red_unreadable_local_provider_rates_refuse() -> Bool {
   }
 }
 
-fn w_red_unrepresentable_currency_refuses_distinctly() -> Bool {
+test fn w_red_unrepresentable_currency_refuses_distinctly() -> Bool {
   match hourly_micros(row: sakura_japan_vps) {
     Present { value: _ } => false
     _ =>
@@ -177,7 +177,7 @@ fn w_red_unrepresentable_currency_refuses_distinctly() -> Bool {
   }
 }
 
-fn w_red_premium_against_an_unpriced_region_refuses() -> Bool {
+test fn w_red_premium_against_an_unpriced_region_refuses() -> Bool {
   match derive_regional_premium(baseline: aws_us_east_1, region: aws_us_east_1) {
     RegionalPremiumDerived { premium_bp: bp } =>
       (basis_point_count(bp: bp) == 0)
@@ -189,15 +189,3 @@ fn w_red_premium_against_an_unpriced_region_refuses() -> Bool {
   }
 }
 
-test fn regional_compute_witness() -> Bool {
-  w_no_aws_region_is_cheaper_than_us_east()
-    && w_no_azure_region_is_cheaper_than_east_us()
-    && w_brazil_premium_agrees_across_two_independent_providers()
-    && w_india_is_the_smallest_premium_and_south_america_the_largest()
-    && w_geography_axis_is_populated_across_all_requested_regions()
-    && w_per_vcpu_month_is_derived_within_one_currency()
-    && w_red_cross_provider_premium_refuses()
-    && w_red_unreadable_local_provider_rates_refuse()
-    && w_red_unrepresentable_currency_refuses_distinctly()
-    && w_red_premium_against_an_unpriced_region_refuses()
-}

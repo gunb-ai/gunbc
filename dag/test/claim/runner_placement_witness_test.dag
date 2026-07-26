@@ -1,13 +1,12 @@
 module test.claim.runner_placement_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn live_plan() -> RunnerDeploymentPlan {
   runner_deployment_plan()
 }
 
-fn witness_live_plan_is_conservation_sound() -> Bool {
+test fn witness_live_plan_is_conservation_sound() -> Bool {
   match live_plan() {
     PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
       hosts.length() == fleet_intent_offers.length()
@@ -22,7 +21,7 @@ fn witness_live_plan_is_conservation_sound() -> Bool {
   }
 }
 
-fn witness_per_runner_cap_within_runner_pool() -> Bool {
+test fn witness_per_runner_cap_within_runner_pool() -> Bool {
   match live_plan() {
     PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
       hosts.length() > 0
@@ -33,21 +32,21 @@ fn witness_per_runner_cap_within_runner_pool() -> Bool {
   }
 }
 
-fn witness_live_session_plan_fail_closed() -> Bool {
+test fn witness_live_session_plan_fail_closed() -> Bool {
   match session_reservation_plan() {
     SessionReservationUnsound { reason: _ } => true
     SessionReservationDerived { hosts: _, fleet_concurrent_sessions: _, per_session_reservation: _, coverage_count: _, sample_count: _ } => false
   }
 }
 
-fn witness_live_effective_runners_derives_declared_count() -> Bool {
+test fn witness_live_effective_runners_derives_declared_count() -> Bool {
   match effective_runners_per_host() {
     RunnersPerHostDerived { count: c } => c == declared_runner_count()
     RunnersPerHostUnsound { reason: _ } => false
   }
 }
 
-fn witness_sound_manifest_line_is_populated() -> Bool {
+test fn witness_sound_manifest_line_is_populated() -> Bool {
   match live_plan() {
     PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
       hosts.length() > 0
@@ -59,7 +58,7 @@ fn witness_sound_manifest_line_is_populated() -> Bool {
   }
 }
 
-fn witness_regime1_resolves_worst_case_slice() -> Bool {
+test fn witness_regime1_resolves_worst_case_slice() -> Bool {
   match resolve_session_slice(mode: Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: byte_size(10000000000), session_concurrency: 4 } }, oomd: OomdEnforced) {
     SessionSliceResolved { bytes: b, per_session_cap: c, concurrency: n } =>
       byte_size_count(b: b) == 40000000000 && byte_size_count(b: c) == 10000000000 && n == 4
@@ -67,14 +66,14 @@ fn witness_regime1_resolves_worst_case_slice() -> Bool {
   }
 }
 
-fn witness_mode_unset_is_unresolved() -> Bool {
+test fn witness_mode_unset_is_unresolved() -> Bool {
   match resolve_session_slice(mode: SessionReservationModeUnset, oomd: OomdEnforced) {
     SessionSliceUnresolved { reason: _ } => true
     SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
   }
 }
 
-fn witness_regime2_oomd_unverified_is_unresolved() -> Bool {
+test fn witness_regime2_oomd_unverified_is_unresolved() -> Bool {
   match resolve_session_slice(mode: Regime2AggregateOomd {
     oomd_eviction_ceiling: byte_size(8000000000),
     session_concurrency: 16,
@@ -85,7 +84,7 @@ fn witness_regime2_oomd_unverified_is_unresolved() -> Bool {
   }
 }
 
-fn witness_regime2_aggregate_unmeasured_is_unresolved() -> Bool {
+test fn witness_regime2_aggregate_unmeasured_is_unresolved() -> Bool {
   match resolve_session_slice(mode: Regime2AggregateOomd {
     oomd_eviction_ceiling: byte_size(8000000000),
     session_concurrency: 16,
@@ -96,7 +95,7 @@ fn witness_regime2_aggregate_unmeasured_is_unresolved() -> Bool {
   }
 }
 
-fn witness_regime2_reserves_aggregate_not_product() -> Bool {
+test fn witness_regime2_reserves_aggregate_not_product() -> Bool {
   match resolve_session_slice(mode: Regime2AggregateOomd {
     oomd_eviction_ceiling: byte_size(8000000000),
     session_concurrency: 16,
@@ -108,33 +107,33 @@ fn witness_regime2_reserves_aggregate_not_product() -> Bool {
   }
 }
 
-fn witness_coverage_is_distribution_grounded() -> Bool {
+test fn witness_coverage_is_distribution_grounded() -> Bool {
   samples_covered(cap: byte_size(0)) == 0
     && samples_covered(cap: byte_size(2211908157)) == 6
     && samples_covered(cap: byte_size(8879844884)) == 13
 }
 
-fn witness_curve_coverage_monotone_in_cap() -> Bool {
+test fn witness_curve_coverage_monotone_in_cap() -> Bool {
   let lo = evaluate_operating_point(cap: byte_size(2000000000), n: 6)
   let hi = evaluate_operating_point(cap: byte_size(8000000000), n: 6)
   hi.coverage_count >= lo.coverage_count
     && byte_size_count(b: hi.sessions_slice) >= byte_size_count(b: lo.sessions_slice)
 }
 
-fn witness_curve_has_full_coverage_option() -> Bool {
+test fn witness_curve_has_full_coverage_option() -> Bool {
   any(operating_curve(), r => r.coverage_count == r.sample_count)
 }
 
-fn witness_manifest_drift_red_receipt() -> Bool {
+test fn witness_manifest_drift_red_receipt() -> Bool {
   !runner_deploy_drifted(committed: expected_runner_deploy_manifest())
     && runner_deploy_drifted(committed: concat(expected_runner_deploy_manifest(), "x"))
 }
 
-fn witness_session_cpu_weight_exceeds_runner_cpu_weight() -> Bool {
+test fn witness_session_cpu_weight_exceeds_runner_cpu_weight() -> Bool {
   workload_class_cpu_weight(wc: InteractiveLatencySensitive) > workload_class_cpu_weight(wc: BatchLatencyTolerant)
 }
 
-fn witness_runner_manifest_line_contains_cpu_weight() -> Bool {
+test fn witness_runner_manifest_line_contains_cpu_weight() -> Bool {
   match live_plan() {
     PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
       hosts.length() > 0
@@ -143,11 +142,11 @@ fn witness_runner_manifest_line_contains_cpu_weight() -> Bool {
   }
 }
 
-fn witness_runner_and_session_cpu_weights_are_distinct() -> Bool {
+test fn witness_runner_and_session_cpu_weights_are_distinct() -> Bool {
   workload_class_cpu_weight(wc: BatchLatencyTolerant) != workload_class_cpu_weight(wc: InteractiveLatencySensitive)
 }
 
-fn witness_session_slice_line_emits_cpu_weight() -> Bool {
+test fn witness_session_slice_line_emits_cpu_weight() -> Bool {
   let rendered = expected_runner_deploy_manifest()
   string_contains(s: rendered, pattern: "session-slice host=")
     && string_contains(s: rendered, pattern: " cpu_weight=1000")
@@ -157,7 +156,7 @@ fn witness_session_slice_line_emits_cpu_weight() -> Bool {
     && string_contains(s: rendered, pattern: " oom_pressure_limit_pct=60")
 }
 
-fn witness_session_reservation_line_has_no_cpu_weight() -> Bool {
+test fn witness_session_reservation_line_has_no_cpu_weight() -> Bool {
   let fixture = SessionHostReservation {
     identity: "fixture-host",
     session_count: 4,
@@ -167,7 +166,7 @@ fn witness_session_reservation_line_has_no_cpu_weight() -> Bool {
   !(string_contains(s: render(doc: session_host_doc(h: fixture), proto: runner_deploy_protocol), pattern: "cpu_weight"))
 }
 
-fn witness_real_manifest_fields_drive_both_formats() -> Bool {
+test fn witness_real_manifest_fields_drive_both_formats() -> Bool {
   match runner_deployment_plan() {
     PlanUnsound { reason: _ } => false
     PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
@@ -182,33 +181,10 @@ fn witness_real_manifest_fields_drive_both_formats() -> Bool {
   }
 }
 
-fn witness_manifest_json_entry_point_produces_json_format() -> Bool {
+test fn witness_manifest_json_entry_point_produces_json_format() -> Bool {
   let full = expected_runner_deploy_manifest_json()
   string_contains(s: full, pattern: "runner-deploy {") &&
     string_contains(s: full, pattern: "\"host\": \"") &&
     string_contains(s: full, pattern: "\"cpu_weight\": \"")
 }
 
-test fn runner_placement_holds() -> Bool {
-  witness_live_plan_is_conservation_sound()
-    && witness_per_runner_cap_within_runner_pool()
-    && witness_live_session_plan_fail_closed()
-    && witness_live_effective_runners_derives_declared_count()
-    && witness_sound_manifest_line_is_populated()
-    && witness_regime1_resolves_worst_case_slice()
-    && witness_mode_unset_is_unresolved()
-    && witness_regime2_oomd_unverified_is_unresolved()
-    && witness_regime2_aggregate_unmeasured_is_unresolved()
-    && witness_regime2_reserves_aggregate_not_product()
-    && witness_coverage_is_distribution_grounded()
-    && witness_curve_coverage_monotone_in_cap()
-    && witness_curve_has_full_coverage_option()
-    && witness_manifest_drift_red_receipt()
-    && witness_session_cpu_weight_exceeds_runner_cpu_weight()
-    && witness_runner_manifest_line_contains_cpu_weight()
-    && witness_runner_and_session_cpu_weights_are_distinct()
-    && witness_session_slice_line_emits_cpu_weight()
-    && witness_session_reservation_line_has_no_cpu_weight()
-    && witness_real_manifest_fields_drive_both_formats()
-    && witness_manifest_json_entry_point_produces_json_format()
-}

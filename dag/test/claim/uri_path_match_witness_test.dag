@@ -32,49 +32,39 @@ fn param_value(m: PathTemplateMatch, name: String) -> String {
   }
 }
 
-fn witness_literal_hit() -> Bool {
+test fn witness_literal_hit() -> Bool {
   matched(m: match_path_template(template: tpl(raw: "/roadmap"), path: "/roadmap"))
 }
 
-fn witness_param_binds_segment() -> Bool {
+test fn witness_param_binds_segment() -> Bool {
   let m = match_path_template(template: tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch/2-dispatch-actuator")
   matched(m: m) && param_value(m: m, name: "node_id") == "2-dispatch-actuator"
 }
 
-fn witness_root_template_matches_only_root() -> Bool {
+test fn witness_root_template_matches_only_root() -> Bool {
   matched(m: match_path_template(template: tpl(raw: "/"), path: "/"))
     && !matched(m: match_path_template(template: tpl(raw: "/"), path: "/roadmap"))
 }
 
-fn witness_literal_miss_refuses() -> Bool {
+test fn witness_literal_miss_refuses() -> Bool {
   !matched(m: match_path_template(template: tpl(raw: "/roadmap"), path: "/healthz"))
 }
 
-fn witness_segment_count_miss_refuses() -> Bool {
+test fn witness_segment_count_miss_refuses() -> Bool {
   !matched(m: match_path_template(template: tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch"))
     && !matched(m: match_path_template(template: tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch/a/b"))
 }
 
-fn witness_trailing_slash_refuses_regex_parity() -> Bool {
+test fn witness_trailing_slash_refuses_regex_parity() -> Bool {
   !matched(m: match_path_template(template: tpl(raw: "/roadmap"), path: "/roadmap/"))
 }
 
-fn witness_empty_segment_never_binds_regex_parity() -> Bool {
+test fn witness_empty_segment_never_binds_regex_parity() -> Bool {
   !matched(m: match_path_template(template: tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch//x"))
 }
 
-fn witness_query_string_stripped() -> Bool {
+test fn witness_query_string_stripped() -> Bool {
   let m = match_path_template(template: tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch/abc?force=1")
   matched(m: m) && param_value(m: m, name: "node_id") == "abc"
 }
 
-test fn uri_path_match_witnesses() -> Bool {
-  witness_literal_hit()
-    && witness_param_binds_segment()
-    && witness_root_template_matches_only_root()
-    && witness_literal_miss_refuses()
-    && witness_segment_count_miss_refuses()
-    && witness_trailing_slash_refuses_regex_parity()
-    && witness_empty_segment_never_binds_regex_parity()
-    && witness_query_string_stripped()
-}

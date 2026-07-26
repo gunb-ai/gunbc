@@ -1,6 +1,5 @@
 module test.claim.compile_source_model_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn role_is_entry(r: SourceRootRole) -> Bool {
@@ -11,7 +10,7 @@ fn role_is_pool(r: SourceRootRole) -> Bool {
   match r { EntrySourceRoot => false, DependencyPoolRoot => true }
 }
 
-fn w_flags_parse() -> Bool {
+test fn w_flags_parse() -> Bool {
   match dependency_pool_index_from_flag(flag: "strict") {
     Present { value: StrictPoolIndex } => true
     _ => false
@@ -26,23 +25,23 @@ fn w_flags_parse() -> Bool {
   }
 }
 
-fn w_primary_precedence_roles() -> Bool {
+test fn w_primary_precedence_roles() -> Bool {
   role_is_entry(r: source_root_role(root_index: 0, pool_index: PrimaryPrecedencePoolIndex)) &&
   role_is_pool(r: source_root_role(root_index: 1, pool_index: PrimaryPrecedencePoolIndex))
 }
 
-fn w_strict_roles_all_entry() -> Bool {
+test fn w_strict_roles_all_entry() -> Bool {
   role_is_entry(r: source_root_role(root_index: 0, pool_index: StrictPoolIndex)) &&
   role_is_entry(r: source_root_role(root_index: 1, pool_index: StrictPoolIndex))
 }
 
-fn w_pool_fill_only_policy() -> Bool {
+test fn w_pool_fill_only_policy() -> Bool {
   !pool_fill_only_for_role(role: EntrySourceRoot, pool_index: PrimaryPrecedencePoolIndex) &&
   pool_fill_only_for_role(role: DependencyPoolRoot, pool_index: PrimaryPrecedencePoolIndex) &&
   !pool_fill_only_for_role(role: DependencyPoolRoot, pool_index: StrictPoolIndex)
 }
 
-fn w_indexing_branch_table() -> Bool {
+test fn w_indexing_branch_table() -> Bool {
   skip_pool_module_when_indexed(module_already_indexed: true, pool_fill_only: true) &&
   !skip_pool_module_when_indexed(module_already_indexed: true, pool_fill_only: false) &&
   duplicate_module_path_across_index_is_error(module_already_indexed: true, pool_fill_only: false) &&
@@ -50,15 +49,7 @@ fn w_indexing_branch_table() -> Bool {
   duplicate_module_path_within_root_scan_is_error()
 }
 
-fn w_compile_entry_root_index() -> Bool {
+test fn w_compile_entry_root_index() -> Bool {
   compile_entry_source_root_index() == 0
 }
 
-test fn compile_source_model_witnesses() -> Bool {
-  w_flags_parse() &&
-  w_primary_precedence_roles() &&
-  w_strict_roles_all_entry() &&
-  w_pool_fill_only_policy() &&
-  w_indexing_branch_table() &&
-  w_compile_entry_root_index()
-}

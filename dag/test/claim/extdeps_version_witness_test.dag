@@ -1,6 +1,5 @@
 module test.claim.extdeps_version_base
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn identity_1_0_0() -> VersionIdentity { "1.0.0" }
@@ -9,23 +8,23 @@ fn constraint_ge_1() -> VersionConstraint { ">= 1.0.0" }
 
 fn mk_equal() -> std.algebra.Ordering { std.algebra.Equal }
 
-fn w_identity_label_preserved() -> Bool {
+test fn w_identity_label_preserved() -> Bool {
   identity_1_0_0() == "1.0.0"
 }
 
-fn w_distinct_identities_not_equal() -> Bool {
+test fn w_distinct_identities_not_equal() -> Bool {
   identity_1_0_0() != identity_2_0_0()
 }
 
-fn w_constraint_label_preserved() -> Bool {
+test fn w_constraint_label_preserved() -> Bool {
   constraint_ge_1() == ">= 1.0.0"
 }
 
-fn w_coreutils_constraint_grounded() -> Bool {
+test fn w_coreutils_constraint_grounded() -> Bool {
   min_coreutils_version == ">= 8.0"
 }
 
-fn w_ordering_exhaustive_match() -> Bool {
+test fn w_ordering_exhaustive_match() -> Bool {
   match mk_equal() {
     Less => false
     Equal => true
@@ -33,10 +32,3 @@ fn w_ordering_exhaustive_match() -> Bool {
   }
 }
 
-test fn extdeps_version_base_witnesses() -> Bool {
-  w_identity_label_preserved()
-    && w_distinct_identities_not_equal()
-    && w_constraint_label_preserved()
-    && w_coreutils_constraint_grounded()
-    && w_ordering_exhaustive_match()
-}

@@ -31,7 +31,7 @@ fn cell_fixture(
 
 data witness_no_producer_is_unknown_note: String = "THE fail-closed conjunct. A phase with no live observation producer must derive UnknownRefused — the arm that says 'we have no way to ask this host'. If it ever derives Converged, the status matrix reports a subsumption that was never observed, and every count built on it (remaining work, coverage) silently becomes fiction. This is the same defect class as a stats probe that auto-starts the server it is measuring (#7213 Finding 2): evidence manufactured by the act of looking."
 
-fn witness_no_producer_derives_unknown_not_converged() -> Bool {
+test fn witness_no_producer_derives_unknown_not_converged() -> Bool {
   match host_phase_verdict_from(observation: none) {
     UnknownRefused => true
     Converged => false
@@ -44,7 +44,7 @@ fn witness_no_producer_derives_unknown_not_converged() -> Bool {
 
 data witness_orthogonality_note: String = "The two axes must stay independent, and this is the conjunct that CAUGHT them being fused. The cell type was first written as a sum (StatusUnmodeled | StatusObserved), so a DeclaredGap phase discarded its observation — and the one cell with a live producer today, (srv3, prefix:os-install-actuated), is a DeclaredGap phase, so coverage computed as zero with a real Converged verdict one branch away. Four combinations must all be representable and distinct: modeled+converged (done), modeled+inaccessible (srv1/srv2 build-cache — a finished model the host refuses to answer for), unmodeled+unknown (ordinary remaining work), and unmodeled+converged (the host is in the desired condition by means the model cannot reproduce — srv3's OS install). A fused enum has to round the middle two to something false."
 
-fn witness_modeled_and_observed_axes_are_independent() -> Bool {
+test fn witness_modeled_and_observed_axes_are_independent() -> Bool {
   let modeled_inaccessible = cell_fixture(
     label: "P1b:build-cache-provision",
     disposition: modeled_phase_fixture,
@@ -73,7 +73,7 @@ fn witness_modeled_and_observed_axes_are_independent() -> Bool {
 
 data witness_producer_refusal_is_coverage_note: String = "A producer that RAN and honestly refused is coverage; no producer at all is not. The distinction is load-bearing because the two have different owners — a refusing producer is a reach or observation defect to fix, an absent producer is a model to build — and the first version of this module conflated them by reading coverage off the verdict instead of off the observation's presence."
 
-fn witness_refusing_producer_still_counts_as_coverage() -> Bool {
+test fn witness_refusing_producer_still_counts_as_coverage() -> Bool {
   let refused = cell_fixture(
     label: "prefix:os-install-actuated",
     disposition: unmodeled_phase_fixture,
@@ -88,14 +88,14 @@ fn witness_refusing_producer_still_counts_as_coverage() -> Bool {
     && !host_phase_cell_has_live_producer(c: absent)
 }
 
-fn witness_unreachable_and_unknown_stay_distinct() -> Bool {
+test fn witness_unreachable_and_unknown_stay_distinct() -> Bool {
   !observation_verdict_eq(a: std.upsert_decision.Inaccessible, b: std.upsert_decision.UnknownRefused)
     && observation_verdict_eq(a: std.upsert_decision.Inaccessible, b: std.upsert_decision.Inaccessible)
 }
 
 data witness_widen_red_control_note: String = "The discriminating RED control, built on the PATH-shadow / DaemonUnsupervised precedent: the forbidden absorbing fallback is modeled as its own sketch (host_phase_verdict_absorbing_fallback_widen_sketch fabricates Converged when no observation exists), the gate REJECTS the sketch's output, and the authority's output PASSES the same gate. The perturbation is independent of the property checked, so this cannot pass tautologically — an authority that quietly acquired the widen arm would be rejected by the gate it currently satisfies."
 
-fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
+test fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
   let widened = host_phase_verdict_absorbing_fallback_widen_sketch(observation: none)
   let authority = host_phase_verdict_from(observation: none)
   observation_verdict_eq(a: widened, b: std.upsert_decision.Converged)
@@ -107,7 +107,7 @@ data departed_host_fixture: HostIdentity = "srv-departed" as HostIdentity
 
 data witness_reconcile_non_vacuous_note: String = "The membership instantiation must be exercised on a NON-DEGENERATE diff, or it is an instantiation nobody has tested. The live fleet produces only Modified and Unchanged hunks today (no host has left), so the Removed arm — a cell observed for a host absent from fleet_intent — is supplied synthetically here. All three outcomes are asserted in one reconcile: a departed host's cell tears down (cells are Owned, so R5 permits it rather than refusing), an unconverged cell upserts, and a cell already at the desired state produces no hunk at all."
 
-fn witness_reconcile_covers_upsert_teardown_and_noop() -> Bool {
+test fn witness_reconcile_covers_upsert_teardown_and_noop() -> Bool {
   let at_desired = cell_fixture(
     label: "P3:green-place-readiness",
     disposition: modeled_phase_fixture,
@@ -140,17 +140,17 @@ fn witness_reconcile_covers_upsert_teardown_and_noop() -> Bool {
 
 data witness_matrix_shape_note: String = "Shape assertions over the derived matrix, pinned to the spine and the enrolled fleet rather than to hand-copied numbers: the matrix is exactly (hosts x spine steps), so it cannot silently drop a phase or a host. The coverage count is the honest measure of the live-observation frontier — one cell has a real producer today, (srv3, prefix:os-install-actuated) — and that number is what items 2 and 3 of the lane exist to raise. Pinning it means adding a producer is a VISIBLE, counted event that must update this witness, never a silent improvement nobody can point at."
 
-fn witness_matrix_is_hosts_times_spine() -> Bool {
+test fn witness_matrix_is_hosts_times_spine() -> Bool {
   let cells = host_fleet_phase_matrix(hosts: fleet_subsumption_hosts).length()
   let expected = fleet_subsumption_hosts.length() * host_standup_spine.length()
   cells == expected
 }
 
-fn witness_live_observation_frontier_is_one_cell() -> Bool {
+test fn witness_live_observation_frontier_is_one_cell() -> Bool {
   host_phase_observation_coverage_count(hosts: fleet_subsumption_hosts) == 1
 }
 
-fn witness_unmodeled_cells_track_spine_gaps() -> Bool {
+test fn witness_unmodeled_cells_track_spine_gaps() -> Bool {
   let unmodeled = host_phase_unmodeled_count(hosts: fleet_subsumption_hosts)
   let expected = fleet_subsumption_hosts.length() * host_standup_gap_phase_count()
   unmodeled == expected
@@ -158,22 +158,10 @@ fn witness_unmodeled_cells_track_spine_gaps() -> Bool {
 
 data witness_remaining_work_note: String = "Remaining work is the reconcile's own upsert count, and it must equal every cell that is not already at the FULL desired state — modeled AND converged. Asserting it against an independently computed count is what stops the reconcile from silently retiring cells: if desired ever weakened to 'converged, disposition ignored', srv3's installed-but-unmodeled OS cell would drop out of the count and the lane would look one item closer to done than it is."
 
-fn witness_remaining_work_counts_every_unfinished_cell() -> Bool {
+test fn witness_remaining_work_counts_every_unfinished_cell() -> Bool {
   let remaining = host_phase_remaining_work_count(hosts: fleet_subsumption_hosts)
   let total = host_fleet_phase_matrix(hosts: fleet_subsumption_hosts).length()
   let finished = host_phase_finished_cell_count(hosts: fleet_subsumption_hosts)
   remaining == total - finished
 }
 
-test fn host_phase_status_witnesses() -> Bool {
-  witness_no_producer_derives_unknown_not_converged()
-    && witness_modeled_and_observed_axes_are_independent()
-    && witness_refusing_producer_still_counts_as_coverage()
-    && witness_unreachable_and_unknown_stay_distinct()
-    && witness_red_control_widen_on_absent_rejected_by_gate()
-    && witness_reconcile_covers_upsert_teardown_and_noop()
-    && witness_matrix_is_hosts_times_spine()
-    && witness_live_observation_frontier_is_one_cell()
-    && witness_unmodeled_cells_track_spine_gaps()
-    && witness_remaining_work_counts_every_unfinished_cell()
-}

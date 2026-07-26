@@ -1,6 +1,5 @@
 module test.claim.deploy_access_privilege_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data privilege_mutation_marker: String = "host-mutation-privilege-marker-7f3a"
@@ -9,7 +8,7 @@ fn host_os_target() -> NodeControlPlane {
   HostOs { node: srv1_host }
 }
 
-fn witness_modeled_unprivileged_fixture_is_denied() -> Bool {
+test fn witness_modeled_unprivileged_fixture_is_denied() -> Bool {
   let d = deploy_access_check(
     access: ci_deploy_srv1_access,
     actor: deploy_access_unprivileged_fixture_actor()
@@ -24,7 +23,7 @@ fn witness_modeled_unprivileged_fixture_is_denied() -> Bool {
   }
 }
 
-fn witness_unprivileged_mutation_refused_before_shell() -> Bool {
+test fn witness_unprivileged_mutation_refused_before_shell() -> Bool {
   match host_effect_apply_gated(
     access: ci_deploy_srv1_access,
     target: host_os_target(),
@@ -49,7 +48,7 @@ fn witness_unprivileged_mutation_refused_before_shell() -> Bool {
   }
 }
 
-fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool {
+test fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool {
   let r = host_effect_apply_gated(
     access: ci_deploy_srv1_access,
     target: host_os_target(),
@@ -72,7 +71,7 @@ fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool {
   }
 }
 
-fn witness_privileged_fixture_mutation_applies() -> Bool {
+test fn witness_privileged_fixture_mutation_applies() -> Bool {
   reconciliation_converged(r: host_effect_apply_gated(
     access: ci_deploy_srv1_access,
     target: host_os_target(),
@@ -85,7 +84,7 @@ fn witness_privileged_fixture_mutation_applies() -> Bool {
   ))
 }
 
-fn witness_privileged_fixture_surfaces_stdout() -> Bool {
+test fn witness_privileged_fixture_surfaces_stdout() -> Bool {
   match host_effect_apply_gated(
     access: ci_deploy_srv1_access,
     target: host_os_target(),
@@ -104,10 +103,3 @@ fn witness_privileged_fixture_surfaces_stdout() -> Bool {
   }
 }
 
-test fn deploy_access_privilege_witnesses() -> Bool {
-  witness_modeled_unprivileged_fixture_is_denied()
-    && witness_unprivileged_mutation_refused_before_shell()
-    && witness_unprivileged_mutation_directive_is_refused_terminal()
-    && witness_privileged_fixture_mutation_applies()
-    && witness_privileged_fixture_surfaces_stdout()
-}

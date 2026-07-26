@@ -1,20 +1,19 @@
 module test.claim.ci_yaml_serializer_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn witness_fetch_depth_is_int_not_string() -> Bool {
+test fn witness_fetch_depth_is_int_not_string() -> Bool {
   let with_block = yaml_mapping(entries: [kv(key: "fetch-depth", value: yaml_int(n: 0))])
   let out = serialize_yaml(v: with_block)
   (out == "fetch-depth: 0\n") && (out != "fetch-depth: \"0\"\n")
 }
 
-fn witness_rustflags_empty_string_quoted() -> Bool {
+test fn witness_rustflags_empty_string_quoted() -> Bool {
   let with_block = yaml_mapping(entries: [kv(key: "rustflags", value: yaml_string(s: ""))])
   serialize_yaml(v: with_block) == "rustflags: ''\n"
 }
 
-fn witness_steps_sequence_elements_are_yaml_values() -> Bool {
+test fn witness_steps_sequence_elements_are_yaml_values() -> Bool {
   let job = ci_workflow.jobs.first()
   match steps_yaml(steps: job.steps) {
     YamlSequence { elements: els } => (els.length() == job.steps.length()) && (els.length() > 0)
@@ -61,22 +60,22 @@ fn witness_jobs_yaml_serializes() -> Bool {
   ])) != ""
 }
 
-fn witness_project_workflow_serializes() -> Bool {
+test fn witness_project_workflow_serializes() -> Bool {
   serialize_yaml(v: project_workflow_to_yaml(workflow: ci_workflow)) != ""
 }
 
-fn witness_ci_yaml_gate_red_on_perturbed_bytes() -> Bool {
+test fn witness_ci_yaml_gate_red_on_perturbed_bytes() -> Bool {
   let expected = expected_ci_yml()
   ci_yml_drifted(committed: concat(expected, "\n# perturb")) &&
     !ci_yml_drifted(committed: expected)
 }
 
-fn witness_ci_yaml_gate_red_on_wrong_fetch_depth_type() -> Bool {
+test fn witness_ci_yaml_gate_red_on_wrong_fetch_depth_type() -> Bool {
   let expected = expected_ci_yml()
   ci_yml_drifted(committed: concat("fetch-depth: \"0\"\n", expected))
 }
 
-fn witness_cache_path_block_scalar() -> Bool {
+test fn witness_cache_path_block_scalar() -> Bool {
   let yaml = expected_ci_yml()
   string_contains(
     s: yaml,
@@ -94,7 +93,7 @@ fn witness_cache_path_block_scalar() -> Bool {
     )
 }
 
-fn witness_restore_keys_block_scalar_indent() -> Bool {
+test fn witness_restore_keys_block_scalar_indent() -> Bool {
   let yaml = expected_ci_yml()
   string_contains(
     s: yaml,
@@ -103,7 +102,7 @@ fn witness_restore_keys_block_scalar_indent() -> Bool {
     !string_contains(s: yaml, pattern: "          restore-keys: |\n          cargo-ci-")
 }
 
-fn witness_rustup_run_block_scalar_not_quoted() -> Bool {
+test fn witness_rustup_run_block_scalar_not_quoted() -> Bool {
   let yaml = expected_ci_yml()
   let rustup_line = concat(
     "          rustup default \"$(rustup show active-toolchain | awk '",
@@ -113,13 +112,13 @@ fn witness_rustup_run_block_scalar_not_quoted() -> Bool {
     !string_contains(s: yaml, pattern: "run: \"rustup default")
 }
 
-fn witness_cache_key_plain_not_quoted() -> Bool {
+test fn witness_cache_key_plain_not_quoted() -> Bool {
   let yaml = expected_ci_yml()
   string_contains(s: yaml, pattern: "          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles") &&
     !string_contains(s: yaml, pattern: "key: \"cargo-ci")
 }
 
-fn witness_multiline_without_block_scalar_is_invalid() -> Bool {
+test fn witness_multiline_without_block_scalar_is_invalid() -> Bool {
   let broken = concat(
     concat(
       "          path: ${{ runner.temp }}/cargo/registry/index/\n",
@@ -130,7 +129,7 @@ fn witness_multiline_without_block_scalar_is_invalid() -> Bool {
   !string_contains(s: expected_ci_yml(), pattern: broken)
 }
 
-fn witness_cache_path_not_flat_multiline_sibling() -> Bool {
+test fn witness_cache_path_not_flat_multiline_sibling() -> Bool {
   !string_contains(
     s: expected_ci_yml(),
     pattern: concat(
@@ -140,14 +139,14 @@ fn witness_cache_path_not_flat_multiline_sibling() -> Bool {
   )
 }
 
-fn witness_restore_keys_content_deeper_than_key() -> Bool {
+test fn witness_restore_keys_content_deeper_than_key() -> Bool {
   !string_contains(
     s: expected_ci_yml(),
     pattern: "          restore-keys: |\n          cargo-ci-"
   )
 }
 
-fn witness_sccache_wired_when_fleet_daemon_up() -> Bool {
+test fn witness_sccache_wired_when_fleet_daemon_up() -> Bool {
   let yaml = expected_ci_yml()
   string_contains(s: yaml, pattern: "if sccache --show-stats >/dev/null 2>&1; then") &&
     string_contains(s: yaml, pattern: "RUSTC_WRAPPER=sccache") &&
@@ -157,7 +156,7 @@ fn witness_sccache_wired_when_fleet_daemon_up() -> Bool {
     !string_contains(s: yaml, pattern: "SCCACHE_DIR=$RUNNER_TEMP/sccache")
 }
 
-fn witness_cargo_jobs_derived_and_jobserver_decoupled() -> Bool {
+test fn witness_cargo_jobs_derived_and_jobserver_decoupled() -> Bool {
   let yaml = expected_ci_yml()
   let n = ci_cargo_build_jobs_count()
   string_contains(s: yaml, pattern: "echo \"MAKEFLAGS=\" >> \"$GITHUB_ENV\"") &&
@@ -167,7 +166,7 @@ fn witness_cargo_jobs_derived_and_jobserver_decoupled() -> Bool {
     n >= 2
 }
 
-fn witness_gunbc_ci_step_projects_run_script_markers() -> Bool {
+test fn witness_gunbc_ci_step_projects_run_script_markers() -> Bool {
   let yaml = expected_ci_yml()
   let floor_script = gunbc_ci_floor_run(spec: gunbc_ci_spec)
   let build_script = ci_release_build_script()
@@ -179,12 +178,12 @@ fn witness_gunbc_ci_step_projects_run_script_markers() -> Bool {
     string_contains(s: floor_script, pattern: "$ROOT/target/release/claim_executor")
 }
 
-fn witness_cache_uses_runner_context_not_env() -> Bool {
+test fn witness_cache_uses_runner_context_not_env() -> Bool {
   template_uses_context(template: ci_cache_path_template, target: Runner) &&
     !template_uses_context(template: ci_cache_path_template, target: Env)
 }
 
-fn witness_cache_runner_env_scope_red_control() -> Bool {
+test fn witness_cache_runner_env_scope_red_control() -> Bool {
 
   let bad = ExpressionTemplate { segments: [
     Interpolation { expression: ContextAccess { context: extdeps.github.expressions.Env, path: ["CARGO_HOME"] } },
@@ -194,11 +193,11 @@ fn witness_cache_runner_env_scope_red_control() -> Bool {
     !template_uses_context(template: bad, target: Env))
 }
 
-fn witness_no_runner_vars_accessed_via_env_context() -> Bool {
+test fn witness_no_runner_vars_accessed_via_env_context() -> Bool {
   !any_template_accesses_runner_var_via_env(templates: ci_workflow_expression_templates)
 }
 
-fn witness_no_runner_env_context_red_control() -> Bool {
+test fn witness_no_runner_env_context_red_control() -> Bool {
 
   let bad = concat(ci_workflow_expression_templates, [
     ExpressionTemplate { segments: [
@@ -208,25 +207,3 @@ fn witness_no_runner_env_context_red_control() -> Bool {
   any_template_accesses_runner_var_via_env(templates: bad)
 }
 
-test fn ci_yaml_serializer_keystone_holds() -> Bool {
-  witness_fetch_depth_is_int_not_string() &&
-    witness_rustflags_empty_string_quoted() &&
-    witness_steps_sequence_elements_are_yaml_values() &&
-    witness_project_workflow_serializes() &&
-    witness_ci_yaml_gate_red_on_perturbed_bytes() &&
-    witness_ci_yaml_gate_red_on_wrong_fetch_depth_type() &&
-    witness_cache_path_block_scalar() &&
-    witness_restore_keys_block_scalar_indent() &&
-    witness_rustup_run_block_scalar_not_quoted() &&
-    witness_cache_key_plain_not_quoted() &&
-    witness_multiline_without_block_scalar_is_invalid() &&
-    witness_cache_path_not_flat_multiline_sibling() &&
-    witness_restore_keys_content_deeper_than_key() &&
-    witness_sccache_wired_when_fleet_daemon_up() &&
-    witness_cargo_jobs_derived_and_jobserver_decoupled() &&
-    witness_gunbc_ci_step_projects_run_script_markers() &&
-    witness_cache_uses_runner_context_not_env() &&
-    witness_cache_runner_env_scope_red_control() &&
-    witness_no_runner_vars_accessed_via_env_context() &&
-    witness_no_runner_env_context_red_control()
-}

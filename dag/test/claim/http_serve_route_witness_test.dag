@@ -67,11 +67,11 @@ fn selection_param(sel: RouteSelection<ProbeHandler>, name: String) -> String {
   }
 }
 
-fn witness_root_selects_page_handler() -> Bool {
+test fn witness_root_selects_page_handler() -> Bool {
   selected_dynamic_is(sel: serve_select_route(table: probe_table(), method: GET, path: "/"), want_dispatch: false)
 }
 
-fn witness_static_row_selects_static() -> Bool {
+test fn witness_static_row_selects_static() -> Bool {
   match serve_select_route(table: probe_table(), method: GET, path: "/healthz") {
     SelectedStatic { route: r } => r.body == "ok" && r.status_on_hit == 200
     SelectedDynamic { handler: _, params: _ } => false
@@ -80,13 +80,13 @@ fn witness_static_row_selects_static() -> Bool {
   }
 }
 
-fn witness_dispatch_post_binds_param() -> Bool {
+test fn witness_dispatch_post_binds_param() -> Bool {
   let sel = serve_select_route(table: probe_table(), method: POST, path: "/dispatch/2-cd-transport")
   selected_dynamic_is(sel: sel, want_dispatch: true)
     && selection_param(sel: sel, name: "node_id") == "2-cd-transport"
 }
 
-fn witness_wrong_method_folds_405_with_allowed() -> Bool {
+test fn witness_wrong_method_folds_405_with_allowed() -> Bool {
   match serve_select_route(table: probe_table(), method: GET, path: "/dispatch/x") {
     MethodNotAllowed { allowed: ms } =>
       count(ms) == 1 && any(ms, m => m == POST)
@@ -96,7 +96,7 @@ fn witness_wrong_method_folds_405_with_allowed() -> Bool {
   }
 }
 
-fn witness_unknown_path_folds_404() -> Bool {
+test fn witness_unknown_path_folds_404() -> Bool {
   match serve_select_route(table: probe_table(), method: GET, path: "/nope") {
     NoRouteMatched => true
     SelectedStatic { route: _ } => false
@@ -105,7 +105,7 @@ fn witness_unknown_path_folds_404() -> Bool {
   }
 }
 
-fn witness_first_match_wins_on_overlap() -> Bool {
+test fn witness_first_match_wins_on_overlap() -> Bool {
   let overlap = ServedRouteTable {
     routes: [
       DynamicRoute { method: GET, path_pattern: tpl(raw: "/a/\{x\}"), handler: ProbePage },
@@ -212,19 +212,10 @@ fn parity_on_template(raw: String) -> Bool {
   )
 }
 
-fn witness_forward_backward_agreement() -> Bool {
+test fn witness_forward_backward_agreement() -> Bool {
   parity_on_template(raw: "/")
     && parity_on_template(raw: "/roadmap")
     && parity_on_template(raw: "/healthz")
     && parity_on_template(raw: "/dispatch/\{node_id\}")
 }
 
-test fn http_serve_route_witnesses() -> Bool {
-  witness_root_selects_page_handler()
-    && witness_static_row_selects_static()
-    && witness_dispatch_post_binds_param()
-    && witness_wrong_method_folds_405_with_allowed()
-    && witness_unknown_path_folds_404()
-    && witness_first_match_wins_on_overlap()
-    && witness_forward_backward_agreement()
-}

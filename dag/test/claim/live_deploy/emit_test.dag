@@ -52,22 +52,22 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn witness_spec_targets_srv1() -> Bool {
+test fn witness_spec_targets_srv1() -> Bool {
   deployment_plan_host_identity(spec: deployment_spec_srv1()) == "srv1"
 }
 
-fn witness_spec_uses_apt_package_manager() -> Bool {
+test fn witness_spec_uses_apt_package_manager() -> Bool {
   match deployment_spec_srv1().target.os_package_manager {
     Apt => true
     _ => false
   }
 }
 
-fn witness_spec_listen_port_is_8080() -> Bool {
+test fn witness_spec_listen_port_is_8080() -> Bool {
   deployment_plan_listen_port(spec: deployment_spec_srv1()) == 8080
 }
 
-fn witness_owned_vs_ensured_typed() -> Bool {
+test fn witness_owned_vs_ensured_typed() -> Bool {
   let spec = deployment_spec_srv1()
   let has_owned = fold(spec.steps, init: false, f: (acc, s) =>
     match s {
@@ -84,25 +84,25 @@ fn witness_owned_vs_ensured_typed() -> Bool {
   has_owned && has_ensured
 }
 
-fn witness_retract_owned_only() -> Bool {
+test fn witness_retract_owned_only() -> Bool {
   count(deployment_owned_steps_retract_order()) == 5
 }
 
-fn witness_tailnet_domain_propagates_optional() -> Bool {
+test fn witness_tailnet_domain_propagates_optional() -> Bool {
   match deployment_spec_srv1().target.tailnet_domain {
     Present { value: d } => d == "tailecbe08.ts.net"
     Absent => false
   }
 }
 
-fn witness_tailnet_url_absent_not_fabricated() -> Bool {
+test fn witness_tailnet_url_absent_not_fabricated() -> Bool {
   match deployment_tailnet_url(spec: deployment_spec_srv1()) {
     Present { value: url } => string_contains(s: url, pattern: "https://srv1.tailecbe08.ts.net")
     Absent => false
   }
 }
 
-fn witness_dependency_ensure_is_idempotent() -> Bool {
+test fn witness_dependency_ensure_is_idempotent() -> Bool {
   let tailscale = deployment_ensure_dependency_script(
     dep: DeploymentDependencyStep { kind: TailscalePackage, package: package_tailscale }
   )
@@ -115,7 +115,7 @@ fn witness_dependency_ensure_is_idempotent() -> Bool {
     && string_contains(s: tmux, pattern: "apt-get install --yes tmux")
 }
 
-fn witness_apply_script_contains_preflight_and_sudoers() -> Bool {
+test fn witness_apply_script_contains_preflight_and_sudoers() -> Bool {
   let sh = expected_live_deploy_apply_script()
   string_contains(s: sh, pattern: "deploy-access-bootstrap-preflight")
     && string_contains(s: sh, pattern: "whoami")
@@ -129,13 +129,13 @@ fn witness_apply_script_contains_preflight_and_sudoers() -> Bool {
     && !string_contains(s: sh, pattern: "gunbc-deploy-privileged")
 }
 
-fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
+test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
   let sh = expected_live_deploy_retract_script()
   string_contains(s: sh, pattern: "first retract-after-flip may be the dropin install")
     && string_contains(s: sh, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
 }
 
-fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
+test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
   let sh = expected_live_deploy_apply_script()
   !string_contains(s: sh, pattern: "sudo bash")
     && string_contains(s: sh, pattern: "sudo -n install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/gunbc")
@@ -155,7 +155,7 @@ fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
 
 data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. The tree sync must instead ride the service-user oneshot unit (both rsync directions live INSIDE gunbc-tree-sync.service, principal User=briansrls), and every mutation outside it must be one of the five granted sudo -n commands. Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (emit_deploy_principal_note)."
 
-fn witness_scripts_stay_within_ci_runner_grants() -> Bool {
+test fn witness_scripts_stay_within_ci_runner_grants() -> Bool {
   let apply = expected_live_deploy_apply_script()
   let retract = expected_live_deploy_retract_script()
   let unit = live_deploy_tree_sync_unit_for(spec: deployment_spec_srv1())
@@ -179,12 +179,12 @@ fn witness_scripts_stay_within_ci_runner_grants() -> Bool {
 
 data tree_sync_restart_diagnosis_witness_note: String = "Discriminating RED for #7011/receipt 29928424523: the tree-sync restart is synchronous and precedes the poll-based unit_diagnosis capture, so a bare restart failure carries no WHY. The apply script must fall through to the same unit-status-tail authority the roadmap-unit diagnosis already uses (never a second format), append it to stderr, and still fail the step — never proceed as if the restart had succeeded."
 
-fn witness_tree_sync_restart_diagnoses_on_failure() -> Bool {
+test fn witness_tree_sync_restart_diagnoses_on_failure() -> Bool {
   let sh = expected_live_deploy_apply_script()
   string_contains(s: sh, pattern: "sudo -n systemctl restart gunbc-tree-sync.service || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; systemctl status --no-pager --full gunbc-tree-sync.service 2>&1 | tail -n 40 >&2; exit 1; }")
 }
 
-fn witness_retract_script_owned_only() -> Bool {
+test fn witness_retract_script_owned_only() -> Bool {
   let sh = expected_live_deploy_retract_script()
   !string_contains(s: sh, pattern: "sudo bash")
     && string_contains(s: sh, pattern: "sudo -n tailscale serve reset")
@@ -202,20 +202,20 @@ fn witness_retract_script_owned_only() -> Bool {
 
 data apply_no_frozen_page_note: String = "The belt-B section-3 fix made executable: the apply script ships NO emitted node server and NO deploy-frozen page snapshot — the service renders the live roadmap per request. These two witnesses red if either ever creeps back into the apply script."
 
-fn witness_apply_script_has_no_node_server() -> Bool {
+test fn witness_apply_script_has_no_node_server() -> Bool {
   let sh = expected_live_deploy_apply_script()
   !string_contains(s: sh, pattern: "require('http').createServer")
     && !string_contains(s: sh, pattern: "server.js")
     && string_contains(s: sh, pattern: "gunbc serve")
 }
 
-fn witness_apply_script_has_no_frozen_page() -> Bool {
+test fn witness_apply_script_has_no_frozen_page() -> Bool {
   let sh = expected_live_deploy_apply_script()
   !string_contains(s: sh, pattern: "roadmap-section")
     && !string_contains(s: sh, pattern: "<html")
 }
 
-fn witness_apply_script_excludes_readback_curls() -> Bool {
+test fn witness_apply_script_excludes_readback_curls() -> Bool {
   let sh = expected_live_deploy_apply_script()
   !string_contains(s: sh, pattern: "roadmap-site-readback")
     && !string_contains(s: sh, pattern: "roadmap-site-receipt")
@@ -224,7 +224,7 @@ fn witness_apply_script_excludes_readback_curls() -> Bool {
     && !string_contains(s: sh, pattern: "--connect-timeout")
 }
 
-fn witness_retract_owned_process_removes_serve_service() -> Bool {
+test fn witness_retract_owned_process_removes_serve_service() -> Bool {
   let sh = expected_live_deploy_retract_script()
   string_contains(s: sh, pattern: "/opt/gunbc/bin/gunbc")
     && string_contains(s: sh, pattern: gunbc_roadmap_unit_name)
@@ -234,7 +234,7 @@ fn witness_retract_owned_process_removes_serve_service() -> Bool {
     && !string_contains(s: sh, pattern: "roadmap-site-readback")
 }
 
-fn witness_systemd_unit_emitted() -> Bool {
+test fn witness_systemd_unit_emitted() -> Bool {
   let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1())
   string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap_serve.dag --function roadmap_serve_handle --host 0.0.0.0 --port 8080")
     && string_contains(s: unit, pattern: "User=briansrls")
@@ -243,7 +243,7 @@ fn witness_systemd_unit_emitted() -> Bool {
     && !string_contains(s: unit, pattern: "node")
 }
 
-fn witness_remote_mutation_service_op_realization_binds_emit_shell_phase_b_axis() -> Bool {
+test fn witness_remote_mutation_service_op_realization_binds_emit_shell_phase_b_axis() -> Bool {
   match live_deploy_remote_mutation_service_op_realization_dissolution_trigger {
     Scaffold {
       dissolves_to: RealizationDispatch,
@@ -255,14 +255,14 @@ fn witness_remote_mutation_service_op_realization_binds_emit_shell_phase_b_axis(
   }
 }
 
-fn witness_emit_shell_dissolution_trigger_is_scaffold() -> Bool {
+test fn witness_emit_shell_dissolution_trigger_is_scaffold() -> Bool {
   match live_deploy_emit_shell_dissolution_trigger {
     Scaffold { dissolves_to: _, bind: _ } => true
     Terminal { reason: _ } => false
   }
 }
 
-fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Bool {
+test fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Bool {
   match live_deploy_intent_dependency_graph_emit_dissolution_trigger {
     Scaffold {
       dissolves_to: RealizationDispatch,
@@ -273,7 +273,7 @@ fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Bool {
   }
 }
 
-fn witness_apply_script_matches_committed_golden() -> Bool {
+test fn witness_apply_script_matches_committed_golden() -> Bool {
   let r = Filesystem.Read(path: artifact_path(a: LiveDeployApplyScriptArtifact))
   let expected = expected_live_deploy_apply_script()
   r.success
@@ -281,7 +281,7 @@ fn witness_apply_script_matches_committed_golden() -> Bool {
     && !(concat(r.content, "x") == expected)
 }
 
-fn witness_retract_script_matches_committed_golden() -> Bool {
+test fn witness_retract_script_matches_committed_golden() -> Bool {
   let r = Filesystem.Read(path: artifact_path(a: LiveDeployRetractScriptArtifact))
   let expected = expected_live_deploy_retract_script()
   r.success
@@ -291,7 +291,7 @@ fn witness_retract_script_matches_committed_golden() -> Bool {
 
 data emit_poison_backstop_witness_note: String = "GOLDEN-INDEPENDENT backstop (calm-ferret pass-2 flag 2): the emit-level poison markers (teardown-dependency-unreachable, wholesale-refused) are the defense-in-depth backstop to the PRIMARY typed refusal (the EffectsOrRefusal SUM, proven golden-independent by w_effects_refuses_wholesale_on_any_refusal in the spine test). But the poison backstops are golden-DEPENDENT — a regen while a refusal was buggily active could commit a poisoned golden and the drift gate would then pass. These two witnesses call the refusal producers directly and assert the marker is present, golden-INDEPENDENT, so a golden-absorption can never hide that the arm still refuses loudly."
 
-fn witness_teardown_dependency_arm_refuses_golden_independent() -> Bool {
+test fn witness_teardown_dependency_arm_refuses_golden_independent() -> Bool {
   let steps = emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep { kind: TmuxPackage, package: package_tmux })
   count(steps) == 1
     && any(steps, s => match s {
@@ -300,13 +300,13 @@ fn witness_teardown_dependency_arm_refuses_golden_independent() -> Bool {
        })
 }
 
-fn witness_wholesale_refused_poison_carries_marker() -> Bool {
+test fn witness_wholesale_refused_poison_carries_marker() -> Bool {
   let poison = live_deploy_wholesale_refused_poison(refusals: [], fold_label: "APPLY")
   string_contains(s: poison, pattern: "__GUNBC_DEPLOY_REFUSED__")
     && string_contains(s: poison, pattern: "APPLY refused-member-count=0")
 }
 
-fn witness_deploy_access_job_principal_refused_poison_golden_independent() -> Bool {
+test fn witness_deploy_access_job_principal_refused_poison_golden_independent() -> Bool {
   let poison = deploy_access_job_principal_refused_emit_poison(
     refusal: DeployAccessJobPrincipalRefusal {
       job_user: "runner" as NonEmptyStr,
@@ -317,38 +317,8 @@ fn witness_deploy_access_job_principal_refused_poison_golden_independent() -> Bo
     && string_contains(s: poison, pattern: "job_user=runner")
 }
 
-fn witness_apply_script_access_ready_not_deploy_access_poison() -> Bool {
+test fn witness_apply_script_access_ready_not_deploy_access_poison() -> Bool {
   let sh = expected_live_deploy_apply_script()
   !string_contains(s: sh, pattern: "__GUNBC_DEPLOY_ACCESS_REFUSED__")
 }
 
-test fn live_deploy_emit_holds() -> Bool {
-  witness_spec_targets_srv1()
-    && witness_spec_uses_apt_package_manager()
-    && witness_spec_listen_port_is_8080()
-    && witness_owned_vs_ensured_typed()
-    && witness_retract_owned_only()
-    && witness_tailnet_domain_propagates_optional()
-    && witness_tailnet_url_absent_not_fabricated()
-    && witness_dependency_ensure_is_idempotent()
-    && witness_apply_script_contains_preflight_and_sudoers()
-    && witness_retract_preamble_acknowledges_shared_sudoers_install()
-    && witness_apply_script_contains_systemd_and_tailscale()
-    && witness_scripts_stay_within_ci_runner_grants()
-    && witness_tree_sync_restart_diagnoses_on_failure()
-    && witness_retract_script_owned_only()
-    && witness_apply_script_has_no_node_server()
-    && witness_apply_script_has_no_frozen_page()
-    && witness_apply_script_excludes_readback_curls()
-    && witness_retract_owned_process_removes_serve_service()
-    && witness_systemd_unit_emitted()
-    && witness_apply_script_matches_committed_golden()
-    && witness_retract_script_matches_committed_golden()
-    && witness_remote_mutation_service_op_realization_binds_emit_shell_phase_b_axis()
-    && witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline()
-    && witness_emit_shell_dissolution_trigger_is_scaffold()
-    && witness_teardown_dependency_arm_refuses_golden_independent()
-    && witness_wholesale_refused_poison_carries_marker()
-    && witness_deploy_access_job_principal_refused_poison_golden_independent()
-    && witness_apply_script_access_ready_not_deploy_access_poison()
-}
