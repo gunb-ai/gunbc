@@ -59,3 +59,6 @@ pub mod extdeps_languages_rust_syntax;
 #[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_languages_rust_types.rs"]
 pub mod extdeps_languages_rust_types;
+#[rustfmt::skip]
+#[path = "../../stage0/src/extdeps_languages_rust_wrap_catalog.rs"]
+pub mod extdeps_languages_rust_wrap_catalog;

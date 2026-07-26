@@ -158,8 +158,8 @@ data rust_lambda_template: String = "|{0}| {1}"
 
 data rust_error_expr_template: String = "panic!({0})"
 
-data rust_list_literal_empty: String = "Rc::new(vec![])"
-data rust_list_literal_template: String = "Rc::new(vec![{0}])"
+data rust_list_literal_empty: String = "vec![]"
+data rust_list_literal_template: String = "vec![{0}]"
 
 data rust_null_coalesce_template: String = "{0}.unwrap_or_else(|| {1})"
 

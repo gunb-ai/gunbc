@@ -9,6 +9,19 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_method_wraps_result, rust_serde_rename_all_screaming_snake_case,
     rust_serde_rename_all_snake_case,
 };
+use crate::extdeps_languages_rust_wrap_catalog::OwnershipReferenceLayer::{
+    ReferenceLayerBox, ReferenceLayerOwned, ReferenceLayerRc,
+};
+use crate::extdeps_languages_rust_wrap_catalog::OwnershipWrapUseSite::{
+    OwnershipAtBindingProjection, OwnershipAtFunctionParameter, OwnershipAtFunctionReturn,
+    OwnershipAtStructField, OwnershipWrapUseSiteAbsent,
+};
+pub use crate::extdeps_languages_rust_wrap_catalog::{
+    rust_sg_rc_wrap_carrier_key, rust_sg_rc_wrap_layer_lookup,
+};
+pub use crate::extdeps_languages_rust_wrap_catalog::{
+    OwnershipReferenceLayer, OwnershipWrapUseSite,
+};
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
@@ -178,6 +191,7 @@ pub fn render_rust_applied_via_emit_info(
         source_indices.clone(),
         emit_info.variant_to_enum.clone(),
         emit_info.fn_type_env.clone(),
+        OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent,
     )
 }
 
@@ -201,10 +215,13 @@ pub fn render_rust_type(
                 source_indices.clone(),
                 emit_info.variant_to_enum.clone(),
                 emit_info.fn_type_env.clone(),
+                OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent,
             );
         }
         if is_host_diagnostics_carrier_type(n.clone(), source_indices.clone()) {
-            return render_rust_diagnostics_carrier_applied(shared_types.clone());
+            return render_rust_diagnostics_carrier_applied(
+                OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent,
+            );
         }
         match n.inferred.clone().as_deref().cloned() {
             Some(InferredNode::TypeVariable { id: tv, .. }) => {
@@ -273,10 +290,13 @@ pub fn render_rust_type_without_applied_binding(
                 source_indices.clone(),
                 emit_info.variant_to_enum.clone(),
                 emit_info.fn_type_env.clone(),
+                OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent,
             );
         }
         if is_host_diagnostics_carrier_type(n.clone(), source_indices.clone()) {
-            return render_rust_diagnostics_carrier_applied(shared_types.clone());
+            return render_rust_diagnostics_carrier_applied(
+                OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent,
+            );
         }
         if (((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) > 0))
@@ -361,7 +381,7 @@ pub fn render_rust_type_without_applied_binding(
                                 n.clone(),
                                 tn.clone(),
                                 base.clone(),
-                                shared_types.clone(),
+                                OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent,
                             )
                         }
                         None => render_node_type(
@@ -393,7 +413,7 @@ pub fn render_rust_type_without_applied_binding(
                                     n.clone(),
                                     tn.clone(),
                                     base.clone(),
-                                    shared_types.clone(),
+                                    OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent,
                                 )
                             }
                             None => render_node_type(
@@ -420,7 +440,9 @@ pub fn render_rust_type_without_applied_binding(
                                 ) {
                                     rust_carrier_optional_wrap(
                                         n.clone(),
-                                        render_rust_text_carrier(shared_types.clone()),
+                                        render_rust_text_carrier(
+                                            OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent,
+                                        ),
                                     )
                                 } else {
                                     render_node_type(
@@ -446,6 +468,11 @@ pub fn empty_string_bool_map() -> Rc<HashMap<String, bool>> {
 pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
     ((v1_rt::string_length(&type_name) >= 3)
         && (v1_rt::substring(&type_name, 0, 3) == "Rc<".to_string()))
+}
+
+pub fn rust_type_is_box_wrapped(type_name: String) -> bool {
+    ((v1_rt::string_length(&type_name) >= 4)
+        && (v1_rt::substring(&type_name, 0, 4) == "Box<".to_string()))
 }
 
 pub fn corpus_repr_is_faithful(corpus_repr: RustCorpusRepr) -> bool {
@@ -494,14 +521,14 @@ pub fn is_host_diagnostics_carrier_type(
     (authored_name_at(source_indices.clone(), n.clone()) == "Diagnostics".to_string())
 }
 
-pub fn render_rust_diagnostics_carrier_applied(shared_types: Rc<BTreeSet<String>>) -> String {
+pub fn render_rust_diagnostics_carrier_applied(use_site: OwnershipWrapUseSite) -> String {
     v1_rt::concat(
         v1_rt::concat(
             "Option<".to_string(),
             render_rust_shared_type_if_needed(
                 "NonEmptyDiagnostics".to_string(),
                 "NonEmptyDiagnostics".to_string(),
-                shared_types.clone(),
+                use_site.clone(),
             ),
         ),
         ">".to_string(),
@@ -516,6 +543,7 @@ pub fn render_rust_optional_carrier_inner(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
+    use_site: OwnershipWrapUseSite,
 ) -> String {
     match n.children.clone().first().cloned() {
         Some(elem) => render_rust_applied_type_arg(
@@ -526,6 +554,7 @@ pub fn render_rust_optional_carrier_inner(
             source_indices.clone(),
             variant_to_enum.clone(),
             env.clone(),
+            use_site.clone(),
         ),
         None => "()".to_string(),
     }
@@ -539,6 +568,7 @@ pub fn render_rust_optional_carrier_applied(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
+    use_site: OwnershipWrapUseSite,
 ) -> String {
     v1_rt::concat(
         v1_rt::concat(
@@ -551,18 +581,15 @@ pub fn render_rust_optional_carrier_applied(
                 source_indices.clone(),
                 variant_to_enum.clone(),
                 env.clone(),
+                use_site.clone(),
             ),
         ),
         ">".to_string(),
     )
 }
 
-pub fn render_rust_text_carrier(shared_types: Rc<BTreeSet<String>>) -> String {
-    render_rust_shared_type_if_needed(
-        "String".to_string(),
-        "String".to_string(),
-        shared_types.clone(),
-    )
+pub fn render_rust_text_carrier(use_site: OwnershipWrapUseSite) -> String {
+    render_rust_shared_type_if_needed("String".to_string(), "String".to_string(), use_site.clone())
 }
 
 pub fn rust_string_grounded_type_alias_decl_line() -> String {
@@ -758,7 +785,7 @@ pub fn rust_render_checkpoint_scalar_bare(
     n: Rc<Node>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    use_site: OwnershipWrapUseSite,
 ) -> Option<String> {
     if ((n.children.clone().len() as i64) == 0) {
         None
@@ -766,15 +793,11 @@ pub fn rust_render_checkpoint_scalar_bare(
         {
             let leaf = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
             match rust_scalar_checkpoint_render_base(leaf.clone(), corpus_repr.clone()) {
-                Some(scalar) => {
-                    if (v1_rt::set_contains(&shared_types, leaf.clone())
-                        && !rust_type_is_rc_wrapped(scalar.clone()))
-                    {
-                        Some(wrap_shared_type(RenderTarget::Rust, scalar.clone()))
-                    } else {
-                        Some(scalar.clone())
-                    }
-                }
+                Some(scalar) => Some(apply_seed_wrap_decision(
+                    leaf.clone(),
+                    scalar.clone(),
+                    use_site.clone(),
+                )),
                 None => None,
             }
         }
@@ -1427,6 +1450,7 @@ pub fn render_rust_phantom_opaque_applied_decl_arg(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
+    use_site: OwnershipWrapUseSite,
 ) -> String {
     if rust_type_arg_renders_as_unit(
         n.clone(),
@@ -1444,6 +1468,7 @@ pub fn render_rust_phantom_opaque_applied_decl_arg(
             source_indices.clone(),
             variant_to_enum.clone(),
             env.clone(),
+            use_site.clone(),
         )
     }
 }
@@ -1456,6 +1481,7 @@ pub fn render_rust_applied_type_arg(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
+    use_site: OwnershipWrapUseSite,
 ) -> String {
     if rust_type_arg_renders_as_unit(
         n.clone(),
@@ -1484,7 +1510,7 @@ pub fn render_rust_applied_type_arg(
                     n.clone(),
                     corpus_repr.clone(),
                     source_indices.clone(),
-                    shared_types.clone(),
+                    use_site.clone(),
                 ) {
                     Some(scalar) => scalar.clone(),
                     None => render_rust_decl_type(
@@ -1495,6 +1521,7 @@ pub fn render_rust_applied_type_arg(
                         source_indices.clone(),
                         variant_to_enum.clone(),
                         env.clone(),
+                        use_site.clone(),
                     ),
                 },
             }
@@ -1510,6 +1537,7 @@ pub fn render_rust_applied_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
+    use_site: OwnershipWrapUseSite,
 ) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
@@ -1524,10 +1552,11 @@ pub fn render_rust_applied_type(
                 source_indices.clone(),
                 variant_to_enum.clone(),
                 env.clone(),
+                use_site.clone(),
             );
         }
         if is_host_diagnostics_carrier_type(n.clone(), source_indices.clone()) {
-            return render_rust_diagnostics_carrier_applied(shared_types.clone());
+            return render_rust_diagnostics_carrier_applied(use_site.clone());
         }
         let base_name = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
         if ((n.children.clone().len() as i64) == 0) {
@@ -1553,7 +1582,7 @@ pub fn render_rust_applied_type(
                             render_rust_shared_type_if_needed(
                                 base_name.clone(),
                                 bare.clone(),
-                                shared_types.clone(),
+                                use_site.clone(),
                             )
                         }
                     } else {
@@ -1581,6 +1610,7 @@ pub fn render_rust_applied_type(
                                             source_indices.clone(),
                                             variant_to_enum.clone(),
                                             env.clone(),
+                                            use_site.clone(),
                                         )
                                     } else {
                                         render_rust_applied_type_arg(
@@ -1591,6 +1621,7 @@ pub fn render_rust_applied_type(
                                             source_indices.clone(),
                                             variant_to_enum.clone(),
                                             env.clone(),
+                                            use_site.clone(),
                                         )
                                     });
                                 }
@@ -1612,17 +1643,92 @@ pub fn render_rust_applied_type(
     }
 }
 
+pub fn rust_seed_wrap_decision_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Construction wall replacing shared_types blanket Rc wrap (rc-ownership-wrap-decision-design.md). Per-use-site wrapping is keyed only on rust_sg_rc_ownership_wrap_catalog_rows; types in shared_types but absent from the catalog (e.g. DecimalDigitsStep) emit bare. OwnershipWrapUseSiteAbsent refuses catalog lookup at expression/alias positions.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_seed_legacy_container_blanket_rc(rendered: String) -> bool {
+    if rust_type_is_rc_wrapped(rendered.clone()) {
+        false
+    } else if ((v1_rt::string_length(&rendered) > 4)
+        && (v1_rt::substring(&rendered, 0, 4) == "Vec<".to_string()))
+    {
+        true
+    } else if ((v1_rt::string_length(&rendered) > 8)
+        && (v1_rt::substring(&rendered, 0, 8) == "HashMap<".to_string()))
+    {
+        true
+    } else if ((v1_rt::string_length(&rendered) > 9)
+        && (v1_rt::substring(&rendered, 0, 9) == "BTreeMap<".to_string()))
+    {
+        true
+    } else {
+        false
+    }
+}
+
+pub fn apply_seed_wrap_decision(
+    type_name: String,
+    rendered: String,
+    use_site: OwnershipWrapUseSite,
+) -> String {
+    {
+        let carrier = rust_sg_rc_wrap_carrier_key(type_name.clone());
+        match rust_sg_rc_wrap_layer_lookup(carrier.clone(), use_site.clone()) {
+            Some(OwnershipReferenceLayer::ReferenceLayerOwned) => rendered.clone(),
+            Some(OwnershipReferenceLayer::ReferenceLayerRc) => {
+                if rust_type_is_rc_wrapped(rendered.clone()) {
+                    rendered.clone()
+                } else {
+                    wrap_shared_type(RenderTarget::Rust, rendered.clone())
+                }
+            }
+            Some(OwnershipReferenceLayer::ReferenceLayerBox) => {
+                if rust_type_is_box_wrapped(rendered.clone()) {
+                    rendered.clone()
+                } else {
+                    v1_rt::concat(
+                        v1_rt::concat("Box<".to_string(), rendered.clone()),
+                        ">".to_string(),
+                    )
+                }
+            }
+            None => {
+                if use_site != OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent
+                    && rust_seed_legacy_container_blanket_rc(rendered.clone())
+                {
+                    wrap_shared_type(RenderTarget::Rust, rendered.clone())
+                } else {
+                    rendered.clone()
+                }
+            }
+        }
+    }
+}
+
 pub fn render_rust_shared_type_if_needed(
     type_name: String,
     rendered: String,
-    shared_types: Rc<BTreeSet<String>>,
+    use_site: OwnershipWrapUseSite,
 ) -> String {
-    if (v1_rt::set_contains(&shared_types, type_name.clone())
-        && !rust_type_is_rc_wrapped(rendered.clone()))
-    {
-        wrap_shared_type(RenderTarget::Rust, rendered.clone())
-    } else {
-        rendered.clone()
+    apply_seed_wrap_decision(type_name.clone(), rendered.clone(), use_site.clone())
+}
+
+pub fn rust_seed_catalog_wraps_rc_at_use_site(
+    type_name: String,
+    use_site: OwnershipWrapUseSite,
+) -> bool {
+    match rust_sg_rc_wrap_layer_lookup(
+        rust_sg_rc_wrap_carrier_key(type_name.clone()),
+        use_site.clone(),
+    ) {
+        Some(OwnershipReferenceLayer::ReferenceLayerRc) => true,
+        _ => false,
     }
 }
 
@@ -1630,15 +1736,11 @@ pub fn render_rust_shared_type_with_optional(
     n: Rc<Node>,
     type_name: String,
     rendered: String,
-    shared_types: Rc<BTreeSet<String>>,
+    use_site: OwnershipWrapUseSite,
 ) -> String {
     rust_carrier_optional_wrap(
         n.clone(),
-        render_rust_shared_type_if_needed(
-            type_name.clone(),
-            rendered.clone(),
-            shared_types.clone(),
-        ),
+        render_rust_shared_type_if_needed(type_name.clone(), rendered.clone(), use_site.clone()),
     )
 }
 
@@ -1650,6 +1752,7 @@ pub fn render_rust_applied_type_shared(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
+    use_site: OwnershipWrapUseSite,
 ) -> String {
     {
         let rendered = render_rust_applied_type(
@@ -1660,13 +1763,14 @@ pub fn render_rust_applied_type_shared(
             source_indices.clone(),
             variant_to_enum.clone(),
             env.clone(),
+            use_site.clone(),
         );
         let type_name = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
         render_rust_shared_type_with_optional(
             n.clone(),
             type_name.clone(),
             rendered.clone(),
-            shared_types.clone(),
+            use_site.clone(),
         )
     }
 }
@@ -1679,6 +1783,7 @@ pub fn render_rust_decl_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
+    use_site: OwnershipWrapUseSite,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
@@ -1693,10 +1798,11 @@ pub fn render_rust_decl_type(
                 source_indices.clone(),
                 variant_to_enum.clone(),
                 env.clone(),
+                use_site.clone(),
             );
         }
         if is_host_diagnostics_carrier_type(n.clone(), source_indices.clone()) {
-            return render_rust_diagnostics_carrier_applied(shared_types.clone());
+            return render_rust_diagnostics_carrier_applied(use_site.clone());
         }
         let applied_prop = find_property(
             n.properties.clone(),
@@ -1731,7 +1837,7 @@ pub fn render_rust_decl_type(
                         n.clone(),
                         outer_name.clone(),
                         outer_name.clone(),
-                        shared_types.clone(),
+                        use_site.clone(),
                     )
                 } else {
                     render_rust_applied_type_shared(
@@ -1742,6 +1848,7 @@ pub fn render_rust_decl_type(
                         source_indices.clone(),
                         variant_to_enum.clone(),
                         env.clone(),
+                        use_site.clone(),
                     )
                 }
             }
@@ -1773,7 +1880,7 @@ pub fn render_rust_decl_type(
                     {
                         rust_carrier_optional_wrap(
                             n.clone(),
-                            render_rust_text_carrier(shared_types.clone()),
+                            render_rust_text_carrier(use_site.clone()),
                         )
                     } else {
                         if ((((n.connective.clone() == Connective::NoConnective)
@@ -1790,7 +1897,7 @@ pub fn render_rust_decl_type(
                                     n.clone(),
                                     name.clone(),
                                     rendered.clone(),
-                                    shared_types.clone(),
+                                    use_site.clone(),
                                 )
                             }
                         } else {
@@ -1801,13 +1908,13 @@ pub fn render_rust_decl_type(
                                     n.clone(),
                                     corpus_repr.clone(),
                                     source_indices.clone(),
-                                    shared_types.clone(),
+                                    use_site.clone(),
                                 ) {
                                     Some(scalar) => render_rust_shared_type_with_optional(
                                         n.clone(),
                                         rust_fn_sig_leaf_name(source_indices.clone(), n.clone()),
                                         scalar.clone(),
-                                        shared_types.clone(),
+                                        use_site.clone(),
                                     ),
                                     None => {
                                         if (!is_container_type(name.clone())
@@ -1820,7 +1927,7 @@ pub fn render_rust_decl_type(
                                                 n.clone(),
                                                 name.clone(),
                                                 name.clone(),
-                                                shared_types.clone(),
+                                                use_site.clone(),
                                             )
                                         } else {
                                             {
@@ -1836,14 +1943,14 @@ pub fn render_rust_decl_type(
                                                     let mut __result = Vec::new();
                                                     for arg in n.children.clone().iter().cloned() {
                                                         __result.push(if peel.clone() {
-                                            render_rust_phantom_opaque_applied_decl_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), corpus_repr.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone())
+                                            render_rust_phantom_opaque_applied_decl_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), corpus_repr.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone(), use_site.clone())
                                         } else {
                                             if rust_type_arg_renders_as_unit(arg.clone(), generic_param_names.clone(), variant_to_enum.clone(), source_indices.clone()) {
                                                 "()".to_string()
                                             } else {
-                                                match rust_render_checkpoint_scalar_bare(arg.clone(), corpus_repr.clone(), source_indices.clone(), shared_types.clone()) {
+                                                match rust_render_checkpoint_scalar_bare(arg.clone(), corpus_repr.clone(), source_indices.clone(), use_site.clone()) {
     Some(scalar) => scalar.clone(),
-    None => render_rust_decl_type(arg.clone(), generic_param_names.clone(), shared_types.clone(), corpus_repr.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone()),
+    None => render_rust_decl_type(arg.clone(), generic_param_names.clone(), shared_types.clone(), corpus_repr.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone(), use_site.clone()),
 }
                                             }
                                         });
@@ -1948,7 +2055,7 @@ pub fn render_rust_decl_type(
                                                     n.clone(),
                                                     name.clone(),
                                                     applied_ty.clone(),
-                                                    shared_types.clone(),
+                                                    use_site.clone(),
                                                 )
                                             }
                                         }
@@ -1967,6 +2074,7 @@ pub fn render_rust_decl_type(
                                         shared_types.clone(),
                                         corpus_repr.clone(),
                                         source_indices.clone(),
+                                        use_site.clone(),
                                     )
                                 }
                             }
@@ -2039,6 +2147,7 @@ pub fn render_rust_fn_sig_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
+    use_site: OwnershipWrapUseSite,
 ) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
@@ -2053,10 +2162,11 @@ pub fn render_rust_fn_sig_type(
                 source_indices.clone(),
                 variant_to_enum.clone(),
                 env.clone(),
+                use_site.clone(),
             );
         }
         if is_host_diagnostics_carrier_type(n.clone(), source_indices.clone()) {
-            return render_rust_diagnostics_carrier_applied(shared_types.clone());
+            return render_rust_diagnostics_carrier_applied(use_site.clone());
         }
         if type_node_has_value_variant_arg(
             n.clone(),
@@ -2072,6 +2182,7 @@ pub fn render_rust_fn_sig_type(
                 source_indices.clone(),
                 variant_to_enum.clone(),
                 env.clone(),
+                use_site.clone(),
             );
         }
         let name = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
@@ -2079,7 +2190,7 @@ pub fn render_rust_fn_sig_type(
             && ((n.children.clone().len() as i64) == 0))
             && is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()))
         {
-            rust_carrier_optional_wrap(n.clone(), render_rust_text_carrier(shared_types.clone()))
+            rust_carrier_optional_wrap(n.clone(), render_rust_text_carrier(use_site.clone()))
         } else {
             if (((((((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.clone().len() as i64) == 0))
@@ -2093,7 +2204,7 @@ pub fn render_rust_fn_sig_type(
                     n.clone(),
                     name.clone(),
                     name.clone(),
-                    shared_types.clone(),
+                    use_site.clone(),
                 )
             } else {
                 if ((((n.connective.clone() == Connective::NoConnective)
@@ -2105,7 +2216,7 @@ pub fn render_rust_fn_sig_type(
                         n.clone(),
                         name.clone(),
                         name.clone(),
-                        shared_types.clone(),
+                        use_site.clone(),
                     )
                 } else {
                     if ((generic_param_names.clone().len() as i64) > 0) {
@@ -2117,6 +2228,7 @@ pub fn render_rust_fn_sig_type(
                             source_indices.clone(),
                             variant_to_enum.clone(),
                             env.clone(),
+                            use_site.clone(),
                         )
                     } else {
                         render_rust_fn_sig_type_applied_binding(
@@ -2125,6 +2237,7 @@ pub fn render_rust_fn_sig_type(
                             corpus_repr.clone(),
                             source_indices.clone(),
                             env.clone(),
+                            use_site.clone(),
                         )
                     }
                 }
@@ -2139,6 +2252,7 @@ pub fn render_rust_fn_sig_type_applied_binding(
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
+    use_site: OwnershipWrapUseSite,
 ) -> String {
     match find_property(
         n.properties.clone(),
@@ -2164,7 +2278,7 @@ pub fn render_rust_fn_sig_type_applied_binding(
                             n.clone(),
                             outer_name.clone(),
                             outer_name.clone(),
-                            shared_types.clone(),
+                            use_site.clone(),
                         )
                     } else {
                         render_rust_type_with_applied_binding(
@@ -2172,6 +2286,7 @@ pub fn render_rust_fn_sig_type_applied_binding(
                             shared_types.clone(),
                             corpus_repr.clone(),
                             source_indices.clone(),
+                            use_site.clone(),
                         )
                     }
                 }
@@ -2181,6 +2296,7 @@ pub fn render_rust_fn_sig_type_applied_binding(
                     shared_types.clone(),
                     corpus_repr.clone(),
                     source_indices.clone(),
+                    use_site.clone(),
                 )
             }
         }
@@ -2189,6 +2305,7 @@ pub fn render_rust_fn_sig_type_applied_binding(
             shared_types.clone(),
             corpus_repr.clone(),
             source_indices.clone(),
+            use_site.clone(),
         ),
     }
 }
@@ -2322,7 +2439,7 @@ pub fn render_rust_alias_rhs_type(
                             render_rust_shared_type_if_needed(
                                 name.clone(),
                                 rendered.clone(),
-                                shared_types.clone(),
+                                OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent,
                             )
                         }
                     },
@@ -2388,13 +2505,11 @@ pub fn render_rust_alias_rhs_type(
                                     module_index.clone(),
                                 ));
                         if base_is_zero_param.clone() {
-                            return if (v1_rt::set_contains(&shared_types, leaf.clone())
-                                && !rust_type_is_rc_wrapped(base.clone()))
-                            {
-                                wrap_shared_type(RenderTarget::Rust, base.clone())
-                            } else {
-                                base.clone()
-                            };
+                            return apply_seed_wrap_decision(
+                                leaf.clone(),
+                                base.clone(),
+                                OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent,
+                            );
                         }
                         let peel = is_parametric_opaque_type_base(
                             leaf.clone(),
@@ -2453,13 +2568,11 @@ pub fn render_rust_alias_rhs_type(
                             ),
                             ">".to_string(),
                         );
-                        if (v1_rt::set_contains(&shared_types, leaf.clone())
-                            && !rust_type_is_rc_wrapped(applied_ty.clone()))
-                        {
-                            wrap_shared_type(RenderTarget::Rust, applied_ty.clone())
-                        } else {
-                            applied_ty.clone()
-                        }
+                        apply_seed_wrap_decision(
+                            leaf.clone(),
+                            applied_ty.clone(),
+                            OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent,
+                        )
                     }
                 } else {
                     render_rust_type(
@@ -11073,7 +11186,10 @@ pub fn emit_faithful_text_carrier_import_lines(
     }
 }
 
-pub fn emit_prelude(imported_names: Rc<Vec<String>>, local_type_names: Rc<Vec<String>>) -> String {
+pub fn emit_prelude(
+    imported_names: Rc<Vec<String>>,
+    local_type_names: Rc<Vec<String>>,
+) -> String {
     {
         let base = v1_rt::concat(
             v1_rt::concat(
@@ -11779,7 +11895,9 @@ pub fn emit_type_def_from_connective(
                                     ),
                                     " = ".to_string(),
                                 ),
-                                render_rust_diagnostics_carrier_applied(shared_types.clone()),
+                                render_rust_diagnostics_carrier_applied(
+                                    OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent,
+                                ),
                             ),
                             ";".to_string(),
                         )
@@ -12106,6 +12224,7 @@ pub fn render_rust_type_with_applied_binding(
     shared_types: Rc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    use_site: OwnershipWrapUseSite,
 ) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
@@ -12131,7 +12250,7 @@ pub fn render_rust_type_with_applied_binding(
                                     n.clone(),
                                     outer_name.clone(),
                                     outer_name.clone(),
-                                    shared_types.clone(),
+                                    use_site.clone(),
                                 )
                             } else {
                                 render_rust_applied_type_shared(
@@ -12164,6 +12283,7 @@ pub fn render_rust_type_with_applied_binding(
                                         source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
                                         symbol_index: empty_symbol_index(),
                                     }),
+                                    use_site.clone(),
                                 )
                             }
                         } else {
@@ -12194,26 +12314,39 @@ pub fn render_rust_type_with_applied_binding(
                                     source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
                                     symbol_index: empty_symbol_index(),
                                 }),
+                                use_site.clone(),
                             )
                         }
                     }
                 } else {
-                    render_rust_type(
+                    let rendered = render_rust_type(
                         n.clone(),
                         shared_types.clone(),
                         corpus_repr.clone(),
                         source_indices.clone(),
                         empty_emit_graph_info(),
+                    );
+                    apply_seed_wrap_decision(
+                        rust_fn_sig_leaf_name(source_indices.clone(), n.clone()),
+                        rendered.clone(),
+                        use_site.clone(),
                     )
                 }
             }
-            None => render_rust_type(
-                n.clone(),
-                shared_types.clone(),
-                corpus_repr.clone(),
-                source_indices.clone(),
-                empty_emit_graph_info(),
-            ),
+            None => {
+                let rendered = render_rust_type(
+                    n.clone(),
+                    shared_types.clone(),
+                    corpus_repr.clone(),
+                    source_indices.clone(),
+                    empty_emit_graph_info(),
+                );
+                apply_seed_wrap_decision(
+                    rust_fn_sig_leaf_name(source_indices.clone(), n.clone()),
+                    rendered.clone(),
+                    use_site.clone(),
+                )
+            }
         }
     }
 }
@@ -12238,6 +12371,7 @@ pub fn render_rust_field_type_with_applied_binding(
                 source_indices.clone(),
                 variant_to_enum.clone(),
                 env.clone(),
+                OwnershipWrapUseSite::OwnershipAtStructField,
             )
         } else {
             if (find_property(
@@ -12251,6 +12385,7 @@ pub fn render_rust_field_type_with_applied_binding(
                     shared_types.clone(),
                     corpus_repr.clone(),
                     source_indices.clone(),
+                    OwnershipWrapUseSite::OwnershipAtStructField,
                 )
             } else {
                 if (find_property(
@@ -12264,17 +12399,21 @@ pub fn render_rust_field_type_with_applied_binding(
                         shared_types.clone(),
                         corpus_repr.clone(),
                         source_indices.clone(),
+                        OwnershipWrapUseSite::OwnershipAtStructField,
                     )
                 } else {
                     if ((authored_type.connective.clone() == Connective::NoConnective)
                         && ((authored_type.children.clone().len() as i64) > 0))
                     {
-                        render_rust_type(
+                        render_rust_decl_type(
                             authored_type.clone(),
+                            Rc::new(vec![]),
                             shared_types.clone(),
                             corpus_repr.clone(),
                             source_indices.clone(),
-                            empty_emit_graph_info(),
+                            variant_to_enum.clone(),
+                            env.clone(),
+                            OwnershipWrapUseSite::OwnershipAtStructField,
                         )
                     } else {
                         render_rust_type_with_applied_binding(
@@ -12282,6 +12421,7 @@ pub fn render_rust_field_type_with_applied_binding(
                             shared_types.clone(),
                             corpus_repr.clone(),
                             source_indices.clone(),
+                            OwnershipWrapUseSite::OwnershipAtStructField,
                         )
                     }
                 }
@@ -12311,6 +12451,7 @@ pub fn emit_struct_field_from_child(
                 env.source_indices.clone(),
                 emit_info.variant_to_enum.clone(),
                 env.clone(),
+                OwnershipWrapUseSite::OwnershipAtStructField,
             )
         } else {
             if (find_property(
@@ -12324,6 +12465,7 @@ pub fn emit_struct_field_from_child(
                     shared_types.clone(),
                     emit_info.corpus_repr.clone(),
                     env.source_indices.clone(),
+                    OwnershipWrapUseSite::OwnershipAtStructField,
                 )
             } else {
                 if (find_property(
@@ -12337,6 +12479,7 @@ pub fn emit_struct_field_from_child(
                         shared_types.clone(),
                         emit_info.corpus_repr.clone(),
                         env.source_indices.clone(),
+                        OwnershipWrapUseSite::OwnershipAtStructField,
                     )
                 } else {
                     if (find_property(
@@ -12350,6 +12493,7 @@ pub fn emit_struct_field_from_child(
                             shared_types.clone(),
                             emit_info.corpus_repr.clone(),
                             env.source_indices.clone(),
+                            OwnershipWrapUseSite::OwnershipAtStructField,
                         )
                     } else {
                         if ((is_product_type(rt_child.clone())
@@ -12393,7 +12537,7 @@ pub fn emit_struct_field_from_child(
                                                 render_rust_shared_type_if_needed(
                                                     rt_child_name.clone(),
                                                     with_params.clone(),
-                                                    shared_types.clone(),
+                                                    OwnershipWrapUseSite::OwnershipAtStructField,
                                                 )
                                             }
                                         } else {
@@ -12446,17 +12590,11 @@ pub fn emit_struct_field_from_child(
                 ">".to_string(),
             )
         } else {
-            if (((rt_child.return_cardinality.clone() != Cardinality::CardOptional)
-                && v1_rt::set_contains(
-                    &shared_types,
-                    authored_name_at(env.source_indices.clone(), rt_child.clone()),
-                ))
-                && !rust_type_is_rc_wrapped(generic_ty.clone()))
-            {
-                wrap_shared_type(RenderTarget::Rust, generic_ty.clone())
-            } else {
-                generic_ty.clone()
-            }
+            apply_seed_wrap_decision(
+                rust_fn_sig_leaf_name(env.source_indices.clone(), rt_child.clone()),
+                generic_ty.clone(),
+                OwnershipWrapUseSite::OwnershipAtStructField,
+            )
         };
         let needs_serde = struct_needs_serde(struct_name.clone(), emit_info.clone());
         let rename_attr = if !needs_serde.clone() {
@@ -13395,6 +13533,7 @@ pub fn emit_variant_from_child(
                                         shared_types.clone(),
                                         emit_info.corpus_repr.clone(),
                                         env.source_indices.clone(),
+                                        OwnershipWrapUseSite::OwnershipAtStructField,
                                     )
                                 } else {
                                     raw_ty.clone()
@@ -14711,6 +14850,7 @@ pub fn render_rust_param_sig_type(
             source_indices.clone(),
             variant_to_enum.clone(),
             env.clone(),
+            OwnershipWrapUseSite::OwnershipAtFunctionParameter,
         )
     }
 }
@@ -14737,6 +14877,7 @@ pub fn emit_rust_param_type(
                         source_indices.clone(),
                         variant_to_enum.clone(),
                         env.clone(),
+                        OwnershipWrapUseSite::OwnershipAtFunctionParameter,
                     ));
                 }
                 __result
@@ -14751,6 +14892,7 @@ pub fn emit_rust_param_type(
                     source_indices.clone(),
                     variant_to_enum.clone(),
                     env.clone(),
+                    OwnershipWrapUseSite::OwnershipAtFunctionReturn,
                 ),
                 _ => "()".to_string(),
             };
@@ -14774,6 +14916,7 @@ pub fn emit_rust_param_type(
             source_indices.clone(),
             variant_to_enum.clone(),
             env.clone(),
+            OwnershipWrapUseSite::OwnershipAtFunctionParameter,
         )
     }
 }
@@ -14841,6 +14984,7 @@ pub fn emit_inferred(
             source_indices.clone(),
             variant_to_enum.clone(),
             env.clone(),
+            OwnershipWrapUseSite::OwnershipAtFunctionReturn,
         ),
     )
 }
@@ -15287,10 +15431,17 @@ pub fn variant_pattern_qualified_path(
     resolved_parent: Option<String>,
 ) -> String {
     match resolved_parent.clone() {
-        Some(parent) => v1_rt::concat(
-            v1_rt::concat(qualified_last_segment(parent.clone()), "::".to_string()),
-            rust_name.clone(),
-        ),
+        Some(parent) => {
+            let parent_leaf = qualified_last_segment(parent.clone());
+            if (parent_leaf.clone() == "Witness".to_string()) {
+                v1_rt::concat("Witness::".to_string(), rust_name.clone())
+            } else {
+                v1_rt::concat(
+                    v1_rt::concat(parent_leaf.clone(), "::".to_string()),
+                    rust_name.clone(),
+                )
+            }
+        }
         None => rust_name.clone(),
     }
 }
@@ -28309,6 +28460,7 @@ pub fn emit_data_def(
                     shared_types.clone(),
                     emit_info.corpus_repr.clone(),
                     scope.type_env.clone().source_indices.clone(),
+                    OwnershipWrapUseSite::OwnershipAtFunctionReturn,
                 )
             }
         };
@@ -28350,18 +28502,19 @@ pub fn emit_data_def(
             raw_ty_str.clone()
         };
         let fn_name = to_snake(name.clone());
-        let needs_rc = v1_rt::set_contains(
-            &shared_types,
-            authored_name_at(
-                scope.type_env.clone().source_indices.clone(),
-                type_node.clone(),
-            ),
+        let carrier_name = authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            type_node.clone(),
         );
-        let ty_str = if (needs_rc.clone() && !rust_type_is_rc_wrapped(ty_str.clone())) {
-            wrap_shared_type(RenderTarget::Rust, ty_str.clone())
-        } else {
-            ty_str.clone()
-        };
+        let ty_str = apply_seed_wrap_decision(
+            carrier_name.clone(),
+            ty_str.clone(),
+            OwnershipWrapUseSite::OwnershipAtFunctionReturn,
+        );
+        let needs_rc = rust_seed_catalog_wraps_rc_at_use_site(
+            carrier_name.clone(),
+            OwnershipWrapUseSite::OwnershipAtFunctionReturn,
+        );
         if (is_simple_type_node(
             type_node.clone(),
             scope.type_env.clone().source_indices.clone(),

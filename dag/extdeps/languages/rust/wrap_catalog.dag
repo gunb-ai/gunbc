@@ -1,0 +1,112 @@
+module extdeps.languages.rust.wrap_catalog
+
+data rust_sg_rc_wrap_catalog_note: String = "Single authority for rust_sg_rc_use_site_ownership_catalog rows (v1 seed emitter + v2.extdeps.languages.rust). Carrier is a closed enum (not a string tag); NonEmptyDiagnostics aliases Diagnostics at the lookup boundary."
+
+type OwnershipWrapUseSite
+  = OwnershipWrapUseSiteAbsent
+  | OwnershipAtFunctionReturn
+  | OwnershipAtFunctionParameter
+  | OwnershipAtStructField
+  | OwnershipAtBindingProjection
+
+type OwnershipReferenceLayer
+  = ReferenceLayerOwned
+  | ReferenceLayerRc
+  | ReferenceLayerBox
+
+type OwnershipWrapSourceProjection
+  = UseSiteOwnershipExactCarrier
+  | UseSiteOwnershipInstantiationHeadCarrier
+
+type OwnershipWrapCarrier
+  = WrapCarrierDiagnostics
+  | WrapCarrierNode
+  | WrapCarrierTestClaim
+  | WrapCarrierFreeMonoid
+  | WrapCarrierOutcome
+  | WrapCarrierModelCore
+  | WrapCarrierAlgebraInhabitanceDecl
+  | WrapCarrierProbeHeap
+  | WrapCarrierUseSiteVerdict
+
+type RustSgRcOwnershipWrapCatalogRow {
+  carrier: OwnershipWrapCarrier
+  source_projection: OwnershipWrapSourceProjection
+  use_site: OwnershipWrapUseSite
+  reference_layer: OwnershipReferenceLayer
+}
+
+fn rust_sg_rc_wrap_carrier_key(type_name: String) -> String {
+  if type_name == "NonEmptyDiagnostics" {
+    "Diagnostics"
+  } else {
+    type_name
+  }
+}
+
+fn rust_sg_rc_wrap_carrier_from_type_name(type_name: String) -> OwnershipWrapCarrier? {
+  match rust_sg_rc_wrap_carrier_key(type_name: type_name) {
+    "Diagnostics" => Present { value: WrapCarrierDiagnostics }
+    "Node" => Present { value: WrapCarrierNode }
+    "TestClaim" => Present { value: WrapCarrierTestClaim }
+    "FreeMonoid" => Present { value: WrapCarrierFreeMonoid }
+    "Outcome" => Present { value: WrapCarrierOutcome }
+    "ModelCore" => Present { value: WrapCarrierModelCore }
+    "AlgebraInhabitanceDecl" => Present { value: WrapCarrierAlgebraInhabitanceDecl }
+    "ProbeHeap" => Present { value: WrapCarrierProbeHeap }
+    "UseSiteVerdict" => Present { value: WrapCarrierUseSiteVerdict }
+    _ => none
+  }
+}
+
+fn rust_sg_rc_ownership_wrap_catalog_rows() -> List<RustSgRcOwnershipWrapCatalogRow> {
+  [
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierDiagnostics, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtFunctionReturn, reference_layer: ReferenceLayerRc },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierDiagnostics, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtFunctionParameter, reference_layer: ReferenceLayerOwned },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierDiagnostics, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtBindingProjection, reference_layer: ReferenceLayerRc },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierNode, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtFunctionReturn, reference_layer: ReferenceLayerRc },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierNode, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtFunctionParameter, reference_layer: ReferenceLayerOwned },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierNode, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtStructField, reference_layer: ReferenceLayerBox },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierNode, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtBindingProjection, reference_layer: ReferenceLayerRc },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierTestClaim, source_projection: UseSiteOwnershipInstantiationHeadCarrier, use_site: OwnershipAtFunctionReturn, reference_layer: ReferenceLayerRc },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierTestClaim, source_projection: UseSiteOwnershipInstantiationHeadCarrier, use_site: OwnershipAtBindingProjection, reference_layer: ReferenceLayerRc },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierFreeMonoid, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtFunctionReturn, reference_layer: ReferenceLayerRc },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierFreeMonoid, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtBindingProjection, reference_layer: ReferenceLayerRc },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierOutcome, source_projection: UseSiteOwnershipInstantiationHeadCarrier, use_site: OwnershipAtFunctionReturn, reference_layer: ReferenceLayerRc },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierOutcome, source_projection: UseSiteOwnershipInstantiationHeadCarrier, use_site: OwnershipAtBindingProjection, reference_layer: ReferenceLayerRc },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierModelCore, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtFunctionReturn, reference_layer: ReferenceLayerRc },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierModelCore, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtBindingProjection, reference_layer: ReferenceLayerRc },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierAlgebraInhabitanceDecl, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtFunctionReturn, reference_layer: ReferenceLayerRc },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierAlgebraInhabitanceDecl, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtBindingProjection, reference_layer: ReferenceLayerRc },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierProbeHeap, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtFunctionReturn, reference_layer: ReferenceLayerRc },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierProbeHeap, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtBindingProjection, reference_layer: ReferenceLayerRc },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierUseSiteVerdict, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtFunctionReturn, reference_layer: ReferenceLayerOwned },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierUseSiteVerdict, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtFunctionParameter, reference_layer: ReferenceLayerOwned },
+    RustSgRcOwnershipWrapCatalogRow { carrier: WrapCarrierUseSiteVerdict, source_projection: UseSiteOwnershipExactCarrier, use_site: OwnershipAtBindingProjection, reference_layer: ReferenceLayerOwned }
+  ]
+}
+
+fn rust_sg_rc_wrap_layer_lookup(type_name: String, use_site: OwnershipWrapUseSite) -> OwnershipReferenceLayer? {
+  match use_site {
+    OwnershipWrapUseSiteAbsent => none
+    _ =>
+      match rust_sg_rc_wrap_carrier_from_type_name(type_name: type_name) {
+        Present { value: carrier } =>
+          rust_sg_rc_ownership_wrap_catalog_rows()
+            |> fold(
+              init: none,
+              f: (acc, row) =>
+                match acc {
+                  Present { value: _ } => acc
+                  Absent =>
+                    if row.carrier == carrier && row.use_site == use_site {
+                      Present { value: row.reference_layer }
+                    } else {
+                      none
+                    }
+                }
+            )
+        Absent => none
+      }
+  }
+}

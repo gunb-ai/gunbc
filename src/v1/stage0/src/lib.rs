@@ -32,6 +32,7 @@ pub mod extdeps_languages_python_types;
 pub mod extdeps_languages_rust_emit;
 pub mod extdeps_languages_rust_syntax;
 pub mod extdeps_languages_rust_types;
+pub mod extdeps_languages_rust_wrap_catalog;
 pub mod extdeps_units_dimensionless;
 pub mod extdeps_units_iec_80000_13;
 pub mod extdeps_units_iso8601;

@@ -75,7 +75,7 @@ pub fn generated_partition_crate_rows() -> Rc<Vec<Rc<GeneratedPartitionCrateRow>
         package_name: "v1-stage0-extdeps-languages".to_string(),
         crate_dir: "src/v1/stage0_extdeps_languages".to_string(),
         kind: GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate,
-        modules: Rc::new(vec!["extdeps_languages_dag_emit".to_string(), "extdeps_languages_dag_syntax".to_string(), "extdeps_languages_dag_types".to_string(), "extdeps_languages_go_emit".to_string(), "extdeps_languages_go_syntax".to_string(), "extdeps_languages_go_types".to_string(), "extdeps_languages_python_emit".to_string(), "extdeps_languages_python_syntax".to_string(), "extdeps_languages_python_types".to_string(), "extdeps_languages_rust_emit".to_string(), "extdeps_languages_rust_syntax".to_string(), "extdeps_languages_rust_types".to_string()]),
+        modules: Rc::new(vec!["extdeps_languages_dag_emit".to_string(), "extdeps_languages_dag_syntax".to_string(), "extdeps_languages_dag_types".to_string(), "extdeps_languages_go_emit".to_string(), "extdeps_languages_go_syntax".to_string(), "extdeps_languages_go_types".to_string(), "extdeps_languages_python_emit".to_string(), "extdeps_languages_python_syntax".to_string(), "extdeps_languages_python_types".to_string(), "extdeps_languages_rust_emit".to_string(), "extdeps_languages_rust_syntax".to_string(), "extdeps_languages_rust_types".to_string(), "extdeps_languages_rust_wrap_catalog".to_string()]),
         reexport_packages: Rc::new(vec!["v1-stage0-runtime".to_string(), "v1-stage0-std-core".to_string(), "v1-stage0-std-surface".to_string(), "v1-stage0-extdeps-base".to_string()]),
         carries_non_empty_wrappers: false,
     }), Rc::new(GeneratedPartitionCrateRow {

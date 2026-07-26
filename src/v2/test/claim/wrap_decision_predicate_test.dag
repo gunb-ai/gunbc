@@ -6,7 +6,9 @@ import v2.extdeps.languages.rust {
   rust_named_edge,
   rust_sg2_type_expr_target_model,
   rust_sg_rc_use_site_ownership_catalog,
-  rust_type_expression_projection
+  rust_type_expression_projection,
+  rust_sg_rc_wrap_catalog_projection_complete,
+  rust_sg_rc_wrap_catalog_unknown_carrier_rejects
 }
 import v2.std.compilers.target_model {
   TargetModel,
@@ -254,6 +256,8 @@ test fn wrap_decision_predicate_witness_holds() -> Bool {
     && wrap_decision_use_site_verdict_param_is_owned()
     && wrap_decision_use_site_verdict_return_is_owned()
     && wrap_decision_node_struct_field_is_box()
+    && rust_sg_rc_wrap_catalog_projection_complete()
+    && rust_sg_rc_wrap_catalog_unknown_carrier_rejects()
 }
 
 data wrap_decision_composite_note: String = "Discriminates the wrap_decision_predicate caller-side bypass (v1_deletion_plan.dag ^wrap_decision_predicate, RE-OPENED 2026-07-24): translate_apply_use_site_ownership_to_projected_boundary must recurse ownership-wrap into TargetTypeExprInstantiation-kind wires (Option<T>/Rc<T>/List<T> shapes) instead of returning the composite unwrapped via the _ => outcome_accepted(projected) arm."

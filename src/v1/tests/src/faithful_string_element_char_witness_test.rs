@@ -1,6 +1,4 @@
-use im::OrdSet as BTreeSet;
-use std::rc::Rc;
-
+use v1_compiler::extdeps_languages_rust_wrap_catalog::OwnershipWrapUseSite;
 use v1_compiler::v1_compiler_emit_rust::{
     render_rust_text_carrier, rust_applied_type_base, rust_named_type_base,
     rust_string_grounded_type_alias_decl_line,
@@ -35,7 +33,7 @@ fn faithful_string_leaf_base_grounds_to_native_string() {
 
 #[test]
 fn faithful_string_text_carrier_grounds_to_native_string() {
-    let carrier = render_rust_text_carrier(Rc::new(BTreeSet::new()));
+    let carrier = render_rust_text_carrier(OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent);
     assert_eq!(carrier, "String");
     assert_ne!(carrier, "FreeMonoid<Char>");
 }

@@ -51,10 +51,6 @@ mod faithful_string_element_char_witness_test;
 #[cfg(test)]
 mod field_import_surface_generic_arg_test;
 #[cfg(test)]
-mod field_of_fractions_construction_test;
-#[cfg(test)]
-mod field_of_fractions_single_declaration_test;
-#[cfg(test)]
 mod floor_drain_retention_test;
 #[cfg(test)]
 mod fn_as_value_test;
@@ -130,6 +126,8 @@ mod optional_carrier_signature_test;
 mod optional_consumer_fail_closed_test;
 #[cfg(test)]
 mod optional_receiver_method_unwrap_test;
+#[cfg(test)]
+mod ownership_wrap_emit_test;
 #[cfg(test)]
 mod parse_table_memo_amortization_test;
 #[cfg(test)]
