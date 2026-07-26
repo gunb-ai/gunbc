@@ -3,7 +3,7 @@
 **Session:** swift-bee-52 · **Status:** re-chartered by loyal-boar-481 (msg_7b6ac246) — **no code until authorized**  
 **Prerequisite receipts:** #7283 merged (`docs/probes/e0599_diagnosis_2026-07-26.md`, `docs/probes/e0599_canonical_seven_census_2026-07-26.tsv`); loyal-raven-94 E0277 census (`docs/probes/e0277_trait_bound_census_2026-07-26.md`); gate1 Root-4 taxonomy (`docs/probes/gate1_repr_mismatch_e0308_diagnosis_2026-07-24.md` §Root 4).
 
-**Management boundary:** Phase 0 forbids broad emitter edits until this consumer graph is accepted. **First implementation boundary after authorization:** Root-4 clean salvage (`v1.compiler.trait_derive_emit` / `std.trait_derive_shape`), not a blanket Slice-A fn-body PR.
+**Management boundary:** Phase 0 forbids broad emitter edits until this consumer graph is accepted. **First implementation boundary after authorization:** per loyal-boar-481 (msg_8b979124) — #7289 Measure/missing-generics structural container-arg overlay salvage in `05_emit_rust.dag` (generated seed + three fixtures + identical parent/child probes), not P-fn/P-derive landing in this PR.
 
 ---
 
@@ -47,21 +47,39 @@
 
 **Critical distinction (loyal-raven review 43338):** Family 1 is **not** fixed by adding `T: Clone` to the struct's own generic parameter list. `im::Vector<A>` needs `Clone` only in specific **impl** bound lists (`Debug`, `Serialize`, `Deserialize`). Correct shape: per-derive-target bounds (`#[serde(bound(...))]` overrides; hand `Debug` impl or per-impl bound emission).
 
-### 2.3 Root-4 lane (management first boundary)
+### 2.3 Trait-derive lane (Gate-1 #7174 — not first implementation boundary)
 
-`src/v1/trait_derive_emit.dag` + `dag/std/trait_derive_shape.dag` already name three arms:
+`src/v1/trait_derive_emit.dag` + `dag/std/trait_derive_shape.dag` + `v2.compiler.trait_derive_completeness` name three arms (canonical surfaces in §3.0):
 
 | Arm | Scope | Current reach | Clean-salvage target |
 |---|---|---|---|
-| **(a)** clone bounds on generic params | fn signatures | `v1_generic_params_needing_clone_bound` → `emit_fn_def` only (`05_emit_rust.dag:5172`) | Extend `RequiredTraitWitness` / `trait_derive_completeness` rows from **modeled** fn generic usage; emit consumes witness list — **never** scan emitted Rust |
-| **(b)** supplemental `impl` blocks for coproduct-native arithmetic | `GroupCompletion`, kernel int carriers | `repr_grounding_derive_completeness_predicate` + `rust_supplemental_impls_group_completion` | E0369 / coproduct operator surface (gate1 Root 4 sub-wall 2) |
-| **(c)** serde/Debug/Ord `#[derive]` on named structs/enums | struct/enum declarations | capability table → `rust_trait_derive_attr_from_traits` | E0277 F3 (+ F1 serde/Debug limbs) with **per-derive-target** bounds |
+| **(a)** clone bounds on generic params | fn signatures | `v1_generic_params_needing_clone_bound` → `emit_fn_def` only (`05_emit_rust.dag:5172`) — **scaffold** | Replace with `required_trait_witnesses_for_fn_decl` fold/query (§3.0); emit consumes witness list only |
+| **(b)** supplemental `impl` blocks for coproduct-native arithmetic | `GroupCompletion`, kernel int carriers | `trait_derive_completeness_gate` + `repr_grounding_derive_traits_for_collection_witness` | E0369 coproduct ops (consume gate, not new predicate walks) |
+| **(c)** serde/Debug/Ord `#[derive]` on named structs/enums | struct/enum declarations | capability table → `v1_emit_struct_from_capability_table` | E0277 F3 (+ F1 limbs) via P-derive bound rows |
 
-**Root-4 clean salvage** = land (b)+(c) completeness and the **derive-site** half of (a) with fail-closed predicates, without opening the fenced `05_emit_rust.dag` ownership consolidation (#7296 / witty-wolf-289).
+**Trait-derive clean salvage (deferred)** = land (b)+(c) via gate + capability table; P-fn accessor after #7289 boundary — without opening the fenced `05_emit_rust.dag` ownership consolidation (#7296 / witty-wolf-289).
 
 ---
 
 ## 3. Proposed predicates (separate — do not merge)
+
+### §3.0 Canonical surfaces (predicate/walker dissolution)
+
+DESIGN requires facts-flow-forward **and** that Node-shape classification not accumulate hand-matched predicates. Implementation must **consume** one of:
+
+| Surface | Authority | Precedent |
+|---|---|---|
+| **Named query accessor** | `target_collection_witness_from_node` (`target_model.dag`) — reads structured witness fields from a `Node`, returns `Outcome<RequiredTraitWitness>` | Ord/Hash/Eq collection witnesses |
+| **Completeness gate** | `trait_derive_completeness_gate` / `trait_derive_completeness_gate_for_collection_witness` (`trait_derive_completeness.dag`) — calls `repr_grounding_derive_completeness_predicate` **only inside** the gate; emit consumes the gate verdict | Gate-1 sub-wall #2 (#7174) |
+| **Capability table lookup** | `repr_grounding_derive_shape_has_trait(shape, trait)` + `record_derive_traits_*` list builders (`trait_derive_shape.dag`) — no per-site shape walk in emit | struct `#[derive]` attr selection today |
+
+**Prohibited in new work:** extending hand-matched substrate walks (including growing `v1_type_param_needs_clone_bound` or ad-hoc `repr_grounding_derive_completeness_predicate` call sites). **Bounded interim disposition** for any surviving v1 call path until the query lands:
+
+| Field | Value |
+|---|---|
+| **Owner** | `v2.compiler.trait_derive_completeness` + `std.trait_derive_shape` |
+| **Lane** | Gate-1 trait-derive-completeness (#7174); v1 `trait_derive_emit` is realization-only |
+| **Dissolve trigger** | `required_trait_witnesses_for_fn_decl` (or extended `target_collection_witness_from_node`) ships in `target_model`; v1 deletes `v1_generic_params_needing_clone_bound` body-classification; emit reads witness list only |
 
 ### Predicate P-fn: `generic_fn_modeled_clone_witness` (E0599 R1–R3 candidate)
 
@@ -71,25 +89,27 @@
 
 | Field | Value |
 |---|---|
-| **Modeled home (proposed)** | Extend `v2.std.compilers.target_model.RequiredTraitWitness` (or sibling row beside `TargetCollectionWitnessOrd`/`Hash`/`Eq`) with a `Clone` witness variant; classify generic-param sites in `v2.compiler.trait_derive_completeness` over substrate `Node`s (same forward read as existing `v1_type_param_needs_clone_bound`, but complete + v2-authoritative) |
-| **Production consumers** | `v1.compiler.trait_derive_emit` arm (a) → `v1_generic_params_needing_clone_bound` / `v1_emit_type_params_with_clone_bounds` → `emit_fn_def` (`05_emit_rust.dag:5172`) |
-| **Does NOT consume** | Emitted Rust text; `emit_type_def_from_connective` struct/enum derive path (that is P-derive) |
+| **Modeled home (proposed)** | Add `TargetCollectionWitnessClone { type_param: Symbol }` to `RequiredTraitWitness`; implement **`required_trait_witnesses_for_fn_decl(fn_node: Node) -> List<RequiredTraitWitness>`** as a `fold_node` query over the fn's modeled signature/body substrate (new `TraitBoundWitnessFold` algebra in `target_model` — same dissolution class as `target_collection_witness_from_node`, not a Rust-text scan). v1 arm (a) **imports and calls only this accessor** |
+| **Production consumers** | `v1.compiler.trait_derive_emit` arm (a) → `v1_emit_type_params_with_clone_bounds` (rewired to witness list) → `emit_fn_def` (`05_emit_rust.dag:5172`) |
+| **Does NOT add** | New Node-shape predicates in v1; extensions to `v1_type_param_needs_clone_bound`; emitted-Rust body scans |
 | **Predicted effect** | E0599 −590 (R1+R2+R3); per-module clone/is_empty/iter histogram → 0 |
 | **E0277 collateral** | **Unknown — do not claim** until stamped binary proves Family 1 is not the dominant remaining E0277 mass |
 | **RED (green direction)** | Canonical-seven probe: R1+R2+R3 rows absent from `e0599_canonical_seven_census_*.tsv` |
 | **RED (refusal direction)** | Fixture: modeled fn declares generic `T` with **no** `Clone` witness in source → emit refuses to fabricate `T: Clone` on the signature |
-| **Rollback boundary** | Revert witness rows + trait_derive_emit arm (a) extension; census TSV must match pre-fix receipt byte-for-key totals |
+| **Rollback boundary** | Revert witness fold algebra + `RequiredTraitWitness` row; census TSV must match pre-fix receipt byte-for-key totals |
+
+**Interim disposition (until fold lands):** v1 may keep `v1_generic_params_needing_clone_bound` only as a **counted, named scaffold** — owner/lane/trigger per §3.0; no expansion of its structural rules; delete on accessor landing.
 
 **Fence:** `src/v1/05_emit_rust.dag` owned by witty-wolf-289 — P-fn wiring must route through existing `trait_derive_emit` imports or wait for operator sequencing.
 
-### Predicate P-derive: `per_derive_target_bound_completeness` (E0277 F1/F3 + Root-4 arm c)
+### Predicate P-derive: `per_derive_target_bound_completeness` (E0277 F1/F3 + derive arm c)
 
 **Intent:** For each `ReprGroundingDeriveTrait` × elem shape row, emit the **minimal bound list each derived impl actually needs** (e.g. `T: Clone + Serialize` for serde on `Vector<T>` fields), never a blanket struct-level `T: Clone`.
 
 | Field | Value |
 |---|---|
-| **Modeled home (proposed)** | Extend `std.trait_derive_shape` capability table + `repr_grounding_derive_completeness_predicate`; realization in `trait_derive_emit` arm (c) + serde bound override emission |
-| **Production consumers** | `emit_type_def_from_connective` derive attr path; `record_derive_traits_*` builders; `rust_trait_derive_attr_from_traits` |
+| **Modeled home (proposed)** | Add per-trait **bound-requirement rows** to `std.trait_derive_shape` capability table (`repr_grounding_derive_shape_has_trait` + serde-bound override metadata on `ReprGroundingDeriveTrait` rows). **Query surface:** `trait_derive_completeness_gate(required, elem)` and `repr_grounding_derive_traits_for_collection_witness` — emit consumes gate verdict + trait list; does **not** extend `repr_grounding_derive_completeness_predicate` call sites or add parallel shape classifiers |
+| **Production consumers** | `v1_emit_struct_from_capability_table` → `record_derive_traits_*` builders → `rust_trait_derive_attr_from_traits` (+ serde `bound(...)` override emission) |
 | **Predicted effect** | E0277 Family 1 + F3 serde/Debug rows; **not** E0599 R1–R3 unless those errors also appear at derive sites (census says they do not) |
 | **RED (green)** | `e0277_trait_bound_census` Family 1 `T: Clone` rows burn; serde 3:1 ratio rows on `*Interpreter` absent |
 | **RED (refusal)** | Struct with field type whose impl needs `Clone` but source `.dag` explicitly marks param non-cloneable → typed refusal, no blanket struct bound |
@@ -113,13 +133,14 @@
 
 ```
 Phase 0 (now)     → this document + management acceptance of consumer graph
-Phase 1 (first)   → Root-4 clean salvage: P-derive (+ arm b arithmetic completeness)
-Phase 2           → P-fn modeled Clone witness on fn signatures (separate PR, separate receipt)
-Phase 3           → P-optional (R4) when namespace lane ready
-Phase 4           → tails R5/R6 if still above noise floor
+Phase 1 (first)   → #7289 Measure/missing-generics overlay salvage (loyal-boar-481)
+Phase 2           → P-derive via trait_derive_completeness_gate + capability bound rows
+Phase 3           → P-fn via required_trait_witnesses_for_fn_decl fold/query accessor
+Phase 4           → P-optional (R4) when namespace lane ready
+Phase 5           → tails R5/R6 if still above noise floor
 ```
 
-**Do not start Phase 2 before Phase 1 acceptance** — avoids repeating the "one root" overclaim and respects the `05_emit_rust.dag` fence (P-derive routes through `trait_derive_emit.dag`, not seed emit bulk edits).
+**Do not start Phase 2–3 before Phase 1 acceptance** — respects deletion-lane sequence and the `05_emit_rust.dag` fence (P-derive/P-fn route through `trait_derive_emit.dag`, not seed emit bulk edits).
 
 ---
 
@@ -141,7 +162,7 @@ Each landed predicate carries its **own** receipt, not a shared joint gate unles
 |---|---|
 | Close work item | **No** — diagnosis complete, zero roots closed |
 | Rename / re-charter | **Yes** → "E0599 Root-4 + per-family implementation" |
-| Next authorized artifact | Management sign-off on this consumer graph, then Root-4 clean salvage PR scoped to **P-derive** (+ arm b), not Slice-A fn-body blast |
+| Next authorized artifact | Management sign-off on this consumer graph, then #7289 overlay salvage per loyal-boar-481 — not P-derive/P-fn until fold/query surfaces land |
 
 ---
 
