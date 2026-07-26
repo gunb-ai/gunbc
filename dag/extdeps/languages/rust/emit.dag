@@ -368,8 +368,7 @@ fn rust_pair_completion_factor_render(
   later_sources: List<String>
 ) -> String {
   let src = rust_pair_completion_factor_source(factor)
-  let repeats_in_term =
-    term.factors |> filter(f => rust_pair_completion_factor_source(f) == src) |> count
+  let repeats_in_term = term.factors |> filter(f => rust_pair_completion_factor_source(f) == src) |> count
   if repeats_in_term > 1 || (later_sources |> any(s => s == src)) {
     concat(src, ".clone()")
   } else {

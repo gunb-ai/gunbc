@@ -84,6 +84,29 @@ test fn group_completion_supplemental_impl_present() -> Bool {
     && wrong_name == false
 }
 
+data group_completion_arithmetic_discrimination_note: String = "Discriminating control for the pair-completion derivation (B1). These assert the Grothendieck formulas that std.trait_derive_shape pair_completion_op_rows declares, so perturbing a row — swapping the mul cross-terms into the wrong arm, making add cross instead of componentwise, or dropping the neg swap — reds here. The clone placement is asserted too: a component used in both arms clones on its first use and moves on its last, which is derived from the rows, not spelled."
+
+test fn group_completion_mul_arms_are_grothendieck() -> Bool {
+  let supplemental = rust_supplemental_impls_group_completion()
+  supplemental.contains("pos: self.pos.clone() * rhs.pos.clone() + self.neg.clone() * rhs.neg.clone()")
+    && supplemental.contains("neg: self.pos * rhs.neg + self.neg * rhs.pos")
+    && supplemental.contains("pos: self.pos.clone() * rhs.neg.clone()") == false
+    && supplemental.contains("neg: self.pos * rhs.pos") == false
+}
+
+test fn group_completion_add_is_componentwise() -> Bool {
+  let supplemental = rust_supplemental_impls_group_completion()
+  supplemental.contains("pos: self.pos + rhs.pos")
+    && supplemental.contains("neg: self.neg + rhs.neg")
+    && supplemental.contains("pos: self.pos + rhs.neg") == false
+}
+
+test fn group_completion_neg_swaps_components() -> Bool {
+  let supplemental = rust_supplemental_impls_group_completion()
+  supplemental.contains("pos: self.neg,")
+    && supplemental.contains("neg: self.pos,")
+}
+
 test fn bool_supplemental_impl_present() -> Bool {
   let supplemental = rust_supplemental_impls_bool_coproduct()
   let target_ok = repr_grounding_supplemental_bool_host_bridge_target(
