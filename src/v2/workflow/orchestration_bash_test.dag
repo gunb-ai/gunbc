@@ -12,6 +12,8 @@ import v2.extdeps.languages.bash {
   bash_stmt_env_unset_target_model,
   bash_stmt_if_emitted,
   bash_stmt_if_target_model,
+  bash_stmt_if_block_emitted,
+  bash_stmt_if_block_target_model,
   bash_stmt_andor_emitted,
   bash_stmt_andor_target_model,
   bash_stmt_assign_emitted
@@ -22,7 +24,9 @@ import v2.extdeps.languages.bash_orch_if {
   bash_test_str_nonempty_emitted,
   bash_test_str_nonempty_target_model,
   bash_log_matches_grep_emitted,
-  bash_log_matches_grep_target_model
+  bash_log_matches_grep_target_model,
+  bash_stmt_if_else_block_emitted,
+  bash_stmt_if_else_block_target_model
 }
 import v2.extdeps.languages.bash_orch_tier2 {
   orch_cmdsubst_assign_target_model
@@ -171,6 +175,41 @@ test fn orch_bash_stmt_if_row_holds() -> Bool {
       match orch_emit_bash(root: bash_stmt_if_emitted, target: target) {
         Accepted { value: source, diagnostics: dg } =>
           (source.carried == "if [ -z \"$1\" ]; then verdict=absent; fi") && (dg == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_bash_stmt_if_block_row_holds() -> Bool {
+  match bash_stmt_if_block_target_model(
+    cond: "[ -z \"$1\" ]",
+    body: "verdict=absent\necho \"$verdict\""
+  ) {
+    Accepted { value: target, diagnostics: _ } =>
+      match orch_emit_bash(root: bash_stmt_if_block_emitted, target: target) {
+        Accepted { value: source, diagnostics: dg } =>
+          (source.carried
+            == "if [ -z \"$1\" ]; then\nverdict=absent\necho \"$verdict\"\nfi")
+            && (dg == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_bash_stmt_if_else_block_row_holds() -> Bool {
+  match bash_stmt_if_else_block_target_model(
+    cond: "[ -z \"$1\" ]",
+    then_body: "verdict=absent\necho \"$verdict\"",
+    else_body: "verdict=present\necho \"$verdict\""
+  ) {
+    Accepted { value: target, diagnostics: _ } =>
+      match orch_emit_bash(root: bash_stmt_if_else_block_emitted, target: target) {
+        Accepted { value: source, diagnostics: dg } =>
+          (source.carried
+            == "if [ -z \"$1\" ]; then\nverdict=absent\necho \"$verdict\"\nelse\nverdict=present\necho \"$verdict\"\nfi")
+            && (dg == None)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
