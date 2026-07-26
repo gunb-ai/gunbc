@@ -36,7 +36,13 @@ data roadmap_css_repin_anomaly_evidence_note: String = "Re-pinned for compositio
 
 data roadmap_css_repin_gutter_split_note: String = "Re-pinned for the operator's pass flips (2026-07-25, signed at the pass on #7234's live page): the row's column gutter splits from the badge-flow gutter — the node-head grid gap moves to space-8 (roadmap_row_column_gutter) while node-mid's flow keeps space-4. One decl's value changes; the row witness's expected head block moved with it (it reds on this change by design). Derived by execution; this digest only pins bytes."
 
-data roadmap_css_lift_parity_digest: String = "93b584dfe4efeb0f"
+data roadmap_css_repin_sessions_note: String = "Re-pinned for U2 (sessions panel v0): one new rule — .observe-refused, the client-inserted loud banner for a refused session observation (loud's own hue as the edge mark, mono, tokened lengths — the disclosure-reason family). Derived by execution on the merged tree; this digest only pins bytes."
+
+data roadmap_css_repin_attempts_note: String = "Re-pinned for U3 (result surfacing v0): one new rule — .dispatch-attempts, the mono dim attempts line in the row disclosure. Derived by execution; this digest only pins bytes."
+
+data roadmap_css_repin_stop_note: String = "Re-pinned for U4 (stop from the UI): one new rule — .stop-chip, the toggle-chip-family action control beside a live session pill. Derived by execution; this digest only pins bytes."
+
+data roadmap_css_lift_parity_digest: String = "28c06723684117e4"
 data moodboard_thesis_themes_lift_parity_digest: String = "69e68066c49667f9"
 
 fn emission_content_digest(s: String) -> String {

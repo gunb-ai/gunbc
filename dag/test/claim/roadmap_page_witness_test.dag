@@ -1,5 +1,7 @@
 module test.claim.roadmap_page_witness
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 import std.markup { Fragment, Element, FragmentText, attr }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import gunbc.roadmap_page {
