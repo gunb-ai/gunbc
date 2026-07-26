@@ -18,7 +18,7 @@ import v2.std.orchestration {
   RedirectSpec,
   DiscardAll
 }
-import v2.std.collection { Absent }
+import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, None, Some }
 
 data ci_materialization_emit_authority_note: String = "Foreign-executor shell emission for gunbc.ci_materialization script surfaces (bucket D). Intent stays out of dag/gunbc/ci_materialization; bash medium binding lives here per shell→intent routing."
