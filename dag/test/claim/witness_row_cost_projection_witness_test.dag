@@ -26,7 +26,7 @@ import gunbc.witness_row_cost {
 }
 import std.logic { Bool }
 import std.nat { Nat }
-import std.types { NonEmptyStr, List, Int, String }
+import std.types { NonEmptyStr, List, Int }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.measure { millisecond, millisecond_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
