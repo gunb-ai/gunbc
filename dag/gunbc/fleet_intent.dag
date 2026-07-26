@@ -209,6 +209,22 @@ data srv4_baseboard: ServerBaseboard = ServerBaseboard {
   bmc: BmcEndpoint { host: "192.168.1.195", protocol: Redfish },
 }
 
+type FanHeaderRole = CpuCoolerFan | FrontChassisFan | UnpopulatedFanHeader
+
+data fleet_fan_intent_note: String = "Operator fan-population intent (directed 2026-07-26, during the srv4 cooling incident): every fleet host carries FOUR single-rotor fans on board headers FAN1..FAN4 — FAN1 the CPU-cooler fan, FAN2/FAN3/FAN4 the three front chassis fans — and FAN5 stays unpopulated. srv3 and srv4 share the same case model (three front chassis-fan positions). Because the ALTRAD8UD-1L2T headers are 6-pin dual-tach (altrad8ud_fan_header_note, cited to the board manual), every FANx_1 second-rotor sensor reads absent BY DESIGN under this single-rotor population — a diagnosis fold must treat FANx_1 absence and FAN5 absence as conforming, never as faults. The list below is indexed by header 1..5 and is the intent for ALL fleet hosts."
+
+data fleet_fan_header_intent: List<FanHeaderRole> = [
+  CpuCoolerFan,
+  FrontChassisFan,
+  FrontChassisFan,
+  FrontChassisFan,
+  UnpopulatedFanHeader,
+]
+
+data srv3_fan_observation_note: String = "srv3 BMC sensor observation 2026-07-26 (BMC 2.07.00, host FW 2.06 — no WebUI Fan Control page on 2.x): FAN1 4845 RPM, FAN3 842, FAN4 836, FAN5 831, FAN2 absent. DIVERGENCE from fleet_fan_header_intent: the third chassis fan is wired to FAN5, not FAN2 — functionally three chassis fans are spinning, the wiring position deviates; rewire to FAN2 at next hands-on maintenance or amend the intent, operator's call. TEMP_X550 76.25C at idle against an 80C warning is this build's chronic tight margin; TEMP_TR1 reads -61.25C (junk sensor, expected-absent class)."
+
+data srv4_fan_observation_note: String = "srv4 cooling incident observations 2026-07-25/26 (BMC 3.22.00, host FW 3.10 — operator recalls upgrading this BMC; the version skew vs srv3's 2.07.00 explains the Fan Control page and the extra sensor set): SEL 23:16 UTC shows FAN3/FAN4 tach flapping 0-to-~800-1025 RPM every few seconds (critical-low assert/deassert pairs) with the failsafe roaring FAN1 at ~6100; after operator reseat + power-on 23:53, FAN1 ~6100, FAN3 ~1030, FAN4 ~985, FAN2 AND FAN5 absent. Against fleet_fan_header_intent this is only TWO of three intended chassis fans reporting — the missing FAN2 chassis fan is the airflow deficit consistent with TEMP_X550 78.25C at idle pre-reseat. UPDATE 2026-07-26: operator moved the non-reporting chassis fan to the FAN5 header — still no reading — so the FAN itself is presumed dead (replacement ordered; definitive cross-check = suspect fan on a proven header FAN3/FAN4, and a known-good fan on FAN5 to certify that header). FAN3/4 flap recurrence window pending; post-reseat idle readings 2026-07-26 (FAN3 1024, FAN4 983, X550 72C) show no recurrence yet. The 3.22-only PSU sensors (PSU1..4_AC_LOST reading 1, total_power reading 0 W beside ~65 W of live VR rail draw) are firmware-exposed sensors with no PMBus wiring in this build — junk-by-construction, expected-absent class, never alarm on them."
+
 data srv1_nvme0: StorageDevice = nvme_storage_device(
   catalog: wd_black_sn850x_2tb_catalog,
   persistence: Persistent,

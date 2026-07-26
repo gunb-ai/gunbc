@@ -3,6 +3,7 @@ module extdeps.boards.asrock_rack
 import extdeps.boards.types { BaseboardCatalogRow }
 import extdeps.vendor.asrock_rack { asrock_rack }
 import extdeps.bmc.webui.nbd_proxy { BmcwebNbdProxyEndpointVariant, VmSlotIndexEndpoint, NbdSlotEndpoint }
+import extdeps.bmc.capability { BmcFirmwareCapabilityRow, BmcFirmwareVersion }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -41,6 +42,12 @@ data asrock_altrad8ud_1l2t_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
 
 data asrock_altrad8ud_redfish_system_id: NonEmptyStr = "system"
 data asrock_altrad8ud_redfish_chassis_id: NonEmptyStr = "ALTRAD8UD_1L2T"
+
+data altrad8ud_fan_header_note: String = "Fan subsystem facts cited to the board manual (extdeps_external_authority_anchor; layout p.6/p.13 Nos.17-21, pinout p.37, LEDs p.16, hardware monitor p.10): FIVE 6-pin System Fan Connectors FAN1..FAN5, each carrying TWO tach inputs (FAN_SPEED_SENSOR1 + FAN_SPEED_SENSOR2 — dual-rotor support; a single-rotor fan drives SENSOR1 only, so the BMC's FANx_1 sensors read absent by design under single-rotor population), one FAN_SPEED_CONTROL line, FAN_VOLTAGE and GND. Per-header red fan-fail LEDs LED_FAN1..LED_FAN5 on the board. Fan control model: per-header initial duty plus chassis-fan auto-adjust driven by CPU temperature ('CPU Quiet Fan'); the BMC WebUI Fan Control page (initial duty settings) is a 3.x BMC firmware feature, absent on 2.07."
+
+data altrad8ud_fan_header_count: Int = 5
+
+data altrad8ud_fan_tach_inputs_per_header: Int = 2
 
 data altrad8ud_openbmc_base_capabilities: List<BmcCapability> = [
   CapabilityPowerControl,
