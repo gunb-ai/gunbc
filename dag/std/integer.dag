@@ -41,6 +41,6 @@ fn uint8_channel_inclusive_max_value_derived() -> Int? {
 fn uint8_channel_inclusive_max_value() -> Int {
   match uint8_channel_inclusive_max_value_derived() {
     Present { value: maxv } => maxv
-    Absent => 0 - 1
+    Absent => 1 / 0
   }
 }

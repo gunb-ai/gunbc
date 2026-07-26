@@ -202,6 +202,7 @@ fn witness_base16_digit_refuses_out_of_range() -> Bool {
 fn witness_uint8_channel_inclusive_max_value_present() -> Bool {
   match uint8_channel_inclusive_max_value_derived() {
     Present { value: derived } => derived == uint8_channel_inclusive_max_value()
+      && derived == 255
     Absent => false
   }
 }
