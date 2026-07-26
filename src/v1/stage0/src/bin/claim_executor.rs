@@ -27,11 +27,14 @@ use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
 };
 
-/// Whole-receipt wall/interp budgets for falsifier Wet lanes that own a dated
-/// ceiling. Self-host wet (green + known-red quarantine) share the 600s budget;
-/// silent-pick owns `gunbc_falsifier_silent_pick_gate_receipt_wall_budget` (900s).
-/// Rehomed-bin Wet must not inherit either — the prior mis-scope reds silent-pick
-/// against the 600s self-host ceiling after the self-host cadence rehome.
+/// Per-LANE budgets for the falsifier's rostered batches, each keyed by the lane's own
+/// roster so a batch draws exactly the ceiling its lane declares. Self-host wet (green +
+/// known-red quarantine) share the 600s wall budget; silent-pick owns
+/// `gunbc_falsifier_silent_pick_gate_receipt_wall_budget` (900s); the Hermetic substrate
+/// long lane owns `gunbc_falsifier_substrate_long_lane_witness_eval_budget`. No lane
+/// inherits another's ceiling — the prior mis-scopes reddened silent-pick against the
+/// 600s self-host wall (2026-07-25) and the substrate long lane against the 5s per-PR
+/// fast-lane eval budget (run 30176416535, 7 of 10 rows killed at ~5001ms).
 #[derive(Clone, Default)]
 struct FalsifierSelfHostWetBudgets {
     wall_budget_ms: Option<u64>,
@@ -45,6 +48,11 @@ struct FalsifierSelfHostWetBudgets {
     hermetic_known_red_entry_paths: Vec<String>,
     silent_pick_wall_budget_ms: Option<u64>,
     silent_pick_entry_paths: Vec<String>,
+    /// Hermetic substrate long-lane paths (`falsifier_substrate_long_lane_entries`) —
+    /// rows deliberately excluded from per-PR discovery precisely because their eval
+    /// exceeds the fast-lane budget, so they arm their own dated eval ceiling instead.
+    substrate_long_lane_entry_paths: Vec<String>,
+    substrate_long_lane_eval_budget_ms: Option<u64>,
 }
 
 fn read_positive_budget_ms(
@@ -721,16 +729,36 @@ fn run_batch_unit(
             discovery_scope_dirs,
             execution_mode,
         } => {
-            // The fast-lane eval budget (operator 5s rule) governs the HERMETIC per-PR
-            // discovery corpus — witnesses whose own eval must stay cheap or move to a
-            // long/ lane. Wet batches skip that budget (subprocess I/O is their job).
-            // Whole-receipt wall budgets are roster-scoped: self-host wet (green OR
-            // known-red quarantine) → 600s; silent-pick → 900s dated ceiling; rehomed
+            // Budgets are scoped by LANE, never by witness kind. The fast-lane eval
+            // budget (operator 5s rule) governs the per-PR discovery corpus and its cold
+            // replays — witnesses whose own eval must stay cheap or move to a long/ lane.
+            // A Hermetic batch that carries its own lane roster draws that lane's dated
+            // ceiling instead: scoping the fast lane by `is_hermetic()` armed the 5s
+            // per-PR budget on the substrate long lane, whose entire purpose is hosting
+            // rows over that budget (run 30176416535 — 7 of 10 rows killed at ~5001ms by
+            // a refusal whose own text says the row belongs on its dedicated lane).
+            // The residual (Hermetic, no lane roster) keeps the fast lane, so a new lane
+            // that forgets to declare a ceiling reds loudly at 5s rather than running
+            // unbounded — the failure arm narrows, never widens (DESIGN §5).
+            // Wet batches skip the eval budget (subprocess I/O is their job) and take
+            // whole-receipt wall budgets the same roster-scoped way: self-host wet (green
+            // OR known-red quarantine) → 600s; silent-pick → 900s dated ceiling; rehomed
             // bin inherits neither (receipt: silent-pick 707s red under a mis-scoped
             // 600s self-host budget while batch walls stayed green — 2026-07-25).
             let (effective_fast_lane, wet_wall_budget_ms, wet_interp_budget_ms) =
                 if execution_mode.is_hermetic() {
-                    (fast_lane_eval_budget_ms, None, None)
+                    if discovery_entries_intersect_roster(
+                        &explicit_entries,
+                        &falsifier_self_host_wet_budgets.substrate_long_lane_entry_paths,
+                    ) {
+                        (
+                            falsifier_self_host_wet_budgets.substrate_long_lane_eval_budget_ms,
+                            None,
+                            None,
+                        )
+                    } else {
+                        (fast_lane_eval_budget_ms, None, None)
+                    }
                 } else if discovery_entries_intersect_roster(
                     &explicit_entries,
                     &falsifier_self_host_wet_budgets.roster_entry_paths,
@@ -2668,6 +2696,26 @@ fn run() -> Result<ExitCode, ExitCode> {
                     return Err(ExitCode::from(1));
                 }
             },
+            substrate_long_lane_entry_paths: match read_schedule_witness_entry_paths(
+                &plan_ctx,
+                "falsifier_substrate_long_lane_entries",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
+            substrate_long_lane_eval_budget_ms: match read_positive_budget_ms(
+                &plan_ctx,
+                "gunbc_falsifier_substrate_long_lane_eval_budget_ms",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
         }
     } else {
         FalsifierSelfHostWetBudgets::default()
@@ -2809,11 +2857,21 @@ fn emit_falsifier_failure_class(details: &[String]) {
             eprintln!("[falsifier-failure-class] {d}");
         }
     }
-    // Natural fit into gunbc.ci_failure_class vocabulary: BudgetExceeded/WitnessRed → Structural;
-    // Infra signatures stay Infra (OOM-reclassification consumer stays on its own design doc).
+    // Projection into the gunbc.ci_failure_class vocabulary. `Structural` is
+    // `Structural { reason: String }`, so an arm printed WITHOUT its reason is a lossy
+    // rendering of the typed value, not the value: it collapses BudgetExceeded and
+    // WitnessRed — which have different remedies (re-basis the lane's dated ceiling vs.
+    // fix the witness) — into one indistinguishable string, and it silently discarded the
+    // `mode` computed one line above (receipt: run 30176416535 printed mode=BudgetExceeded
+    // beside arm=FloorFailed{class:Structural}). Both non-Infra modes stay Structural —
+    // an over-budget witness is a real, non-retryable failure that blocks merge — but the
+    // reason rides along. Enumerated, not defaulted, so a new mode cannot fall through
+    // into an unlabelled Structural (OOM-reclassification consumer stays on its own doc).
     let ci_arm = match mode {
-        "Infra" => "FloorFailed{class:Infra}",
-        _ => "FloorFailed{class:Structural}",
+        "Infra" => "FloorFailed{class:Infra}".to_string(),
+        "BudgetExceeded" => "FloorFailed{class:Structural{reason:BudgetExceeded}}".to_string(),
+        "WitnessRed" => "FloorFailed{class:Structural{reason:WitnessRed}}".to_string(),
+        other => format!("FloorFailed{{class:Structural{{reason:{other}}}}}"),
     };
     eprintln!(
         "[falsifier-failure-class] ci_failure_class_arm={ci_arm} reason_preview={}",
