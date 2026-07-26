@@ -1343,7 +1343,6 @@ pub fn compile_dag_dag_fixture_witness_check(
 /// (shell→intent Phase 3 · cli-run-hollowing §2 · ROADMAP ts-seed-interim).
 ///
 /// Scaffold residues (each has its own dissolution trigger in `hand_import_gate.dag`):
-/// - `hand_import_parse_multiline_dissolution_trigger` — multi-line braced imports invisible.
 /// - `hand_import_allowed_prefixes_mirror_dissolution_trigger` — roster below mirrors
 ///   `hand_import_allowed_path_prefixes` until the gate reads it on-carrier.
 pub fn hand_import_gate_passes(base_ref: &str) -> bool {
@@ -1420,22 +1419,50 @@ fn hand_import_git_show(rel_path: &str, rev: &str) -> Option<String> {
         .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
 }
 
-/// hand_import_parse_multiline_dissolution_trigger: multi-line braced imports are invisible.
+/// Parses import rows: single-line braced, bare `import mod`, and multi-line braced blocks.
 fn hand_import_parse_imports(text: &str) -> HashMap<String, std::collections::BTreeSet<String>> {
     let mut out: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+    let mut open_module: Option<String> = None;
+    let mut open_syms: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+
+    fn ingest_symbols(symbols: &str, syms: &mut std::collections::BTreeSet<String>) {
+        for s in symbols.split(',') {
+            let s = s.trim();
+            if !s.is_empty() {
+                syms.insert(s.to_string());
+            }
+        }
+    }
+
     for line in text.lines() {
         let trimmed = line.trim();
+        if open_module.is_some() {
+            let closed = trimmed.contains('}');
+            let body = if closed {
+                trimmed.split_once('}').map(|(a, _)| a).unwrap_or(trimmed)
+            } else {
+                trimmed
+            };
+            ingest_symbols(body, &mut open_syms);
+            if closed {
+                let module = open_module.take().unwrap();
+                out.insert(module, open_syms.clone());
+                open_syms.clear();
+            }
+            continue;
+        }
         if let Some(rest) = trimmed.strip_prefix("import ") {
             if let Some((module, symbols)) = rest.split_once('{') {
                 let module = module.trim();
-                let symbols = symbols.trim_end_matches('}');
-                let syms: std::collections::BTreeSet<String> = symbols
-                    .split(',')
-                    .map(|s| s.trim())
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string())
-                    .collect();
-                out.insert(module.to_string(), syms);
+                if symbols.contains('}') {
+                    let symbols = symbols.split_once('}').map(|(a, _)| a).unwrap_or(symbols);
+                    let mut syms = std::collections::BTreeSet::new();
+                    ingest_symbols(symbols, &mut syms);
+                    out.insert(module.to_string(), syms);
+                } else {
+                    open_module = Some(module.to_string());
+                    ingest_symbols(symbols, &mut open_syms);
+                }
             } else {
                 let module = rest.trim();
                 if !module.is_empty() {
@@ -1443,6 +1470,9 @@ fn hand_import_parse_imports(text: &str) -> HashMap<String, std::collections::BT
                 }
             }
         }
+    }
+    if let Some(module) = open_module {
+        out.insert(module, open_syms);
     }
     out
 }
