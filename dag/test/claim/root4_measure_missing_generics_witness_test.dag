@@ -4,13 +4,13 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data root4_measure_missing_generics_witness_note: String = "Root-4 measure_missing_generics family: function-generic List<Measure<Time, S, Nat>> parameters must preserve applied arguments through render_rust_decl_type container-argument overlay resolution. The decision is structural (__applied_type_args or resolved-type children), never a Measure name check. Positive control: w_measure_list_param_preserves_applied_generics. RED controls: w_zero_param_alias_list_param_unchanged preserves the existing closed-alias realization; w_homonym_measure_zero_param_list_unchanged proves an unrelated zero-parameter Measure does not gain arguments."
+data root4_measure_missing_generics_witness_note: String = "Root-4 measure_missing_generics family: a function-generic List<Measure<Time, S, Nat>> parameter must preserve applied arguments through render_rust_decl_type container-argument overlay resolution. The positive fixture declares all four types locally so the executable witness is isolated from the independent std.measure UnlistedImportUse advisory wall; the canonical std.measure closure is covered by the stamped canonical-seven receipt. The decision is structural (__applied_type_args or resolved-type children), never a Measure name check. RED controls: w_zero_param_alias_list_param_unchanged preserves the existing closed-alias realization; w_homonym_measure_zero_param_list_unchanged proves an unrelated zero-parameter Measure does not gain arguments."
 
 fn w_measure_list_param_preserves_applied_generics() -> Bool {
   compile_dag_rust_emit_check(
-    "module root4_measure_list\nimport std.measure { Measure, Time }\nimport std.nat { Nat }\n\nfn witness<S>(times: List<Measure<Time, S, Nat>>) -> List<Measure<Time, S, Nat>> {\n  times\n}\n",
+    "module root4_measure_list\n\ntype Time { value: Int }\ntype Nat { value: Int }\ntype Measure<Q, S, M> { quantity: Q, scale: S, magnitude: M }\n\nfn witness<S>(times: List<Measure<Time, S, Nat>>) -> List<Measure<Time, S, Nat>> {\n  times\n}\n",
     "src/root4_measure_list.rs",
-    ["Vec<Rc<Measure<(), S, Nat>>"],
+    ["Vec<Rc<Measure<Time, S, Nat>>"],
     ["Vec<Rc<Measure>>", "Rc<Measure>>"]
   )
 }
