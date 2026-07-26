@@ -4138,10 +4138,28 @@ fn rust_sg_rc_wrap_catalog_row_display_name(key: OwnershipWrapCatalogRowKey) -> 
 
 fn rust_sg_rc_wrap_catalog_row_target_use_site_from_key(key: OwnershipWrapCatalogRowKey) -> TargetOwnershipUseSite {
   match key {
-    WrapRowDiagnosticsReturn | WrapRowNodeReturn | WrapRowTestClaimReturn | WrapRowFreeMonoidReturn | WrapRowOutcomeReturn | WrapRowModelCoreReturn | WrapRowAlgebraInhabitanceReturn | WrapRowProbeHeapReturn | WrapRowUseSiteVerdictReturn => OwnershipAtFunctionReturn
-    WrapRowDiagnosticsParam | WrapRowNodeParam | WrapRowUseSiteVerdictParam => OwnershipAtFunctionParameter
+    WrapRowDiagnosticsReturn => OwnershipAtFunctionReturn
+    WrapRowNodeReturn => OwnershipAtFunctionReturn
+    WrapRowTestClaimReturn => OwnershipAtFunctionReturn
+    WrapRowFreeMonoidReturn => OwnershipAtFunctionReturn
+    WrapRowOutcomeReturn => OwnershipAtFunctionReturn
+    WrapRowModelCoreReturn => OwnershipAtFunctionReturn
+    WrapRowAlgebraInhabitanceReturn => OwnershipAtFunctionReturn
+    WrapRowProbeHeapReturn => OwnershipAtFunctionReturn
+    WrapRowUseSiteVerdictReturn => OwnershipAtFunctionReturn
+    WrapRowDiagnosticsParam => OwnershipAtFunctionParameter
+    WrapRowNodeParam => OwnershipAtFunctionParameter
+    WrapRowUseSiteVerdictParam => OwnershipAtFunctionParameter
     WrapRowNodeStructField => OwnershipAtStructField
-    WrapRowDiagnosticsBinding | WrapRowNodeBinding | WrapRowTestClaimBinding | WrapRowFreeMonoidBinding | WrapRowOutcomeBinding | WrapRowModelCoreBinding | WrapRowAlgebraInhabitanceBinding | WrapRowProbeHeapBinding | WrapRowUseSiteVerdictBinding => OwnershipAtBindingProjection
+    WrapRowDiagnosticsBinding => OwnershipAtBindingProjection
+    WrapRowNodeBinding => OwnershipAtBindingProjection
+    WrapRowTestClaimBinding => OwnershipAtBindingProjection
+    WrapRowFreeMonoidBinding => OwnershipAtBindingProjection
+    WrapRowOutcomeBinding => OwnershipAtBindingProjection
+    WrapRowModelCoreBinding => OwnershipAtBindingProjection
+    WrapRowAlgebraInhabitanceBinding => OwnershipAtBindingProjection
+    WrapRowProbeHeapBinding => OwnershipAtBindingProjection
+    WrapRowUseSiteVerdictBinding => OwnershipAtBindingProjection
   }
 }
 
