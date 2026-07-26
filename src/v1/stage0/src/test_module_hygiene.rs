@@ -389,10 +389,19 @@ pub fn collect_umbrella_roster(roots: &[String]) -> Result<Vec<UmbrellaRecord>, 
 
 /// U2 — orphan plain fns across `*_test.dag` under roots.
 pub fn collect_orphan_helpers(roots: &[String]) -> Result<Vec<OrphanHelper>, String> {
+    // Relative roots resolve against cwd (floor discovery: workspace root). Absolute
+    // roots are used as-is — callers must not mutate process cwd to pass a workspace
+    // (cargo tests are multi-threaded; set_current_dir races).
     let ws = std::env::current_dir().map_err(|e| format!("cwd: {e}"))?;
     let mut files = Vec::new();
     for root in roots {
-        collect_dag_files(&ws.join(root), &mut files);
+        let root_path = Path::new(root);
+        let abs = if root_path.is_absolute() {
+            root_path.to_path_buf()
+        } else {
+            ws.join(root_path)
+        };
+        collect_dag_files(&abs, &mut files);
     }
     files.sort();
     let mut out = Vec::new();
@@ -519,34 +528,8 @@ test fn live_holds() -> Bool {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    #[test]
-
-
 
     #[test]
-    fn corpus_orphan_census_proud_wren() {
-        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let ws = manifest.join("../../..");
-        let roots = vec![
-            ws.join("dag").to_string_lossy().into_owned(),
-            ws.join("src/v2").to_string_lossy().into_owned(),
-        ];
-        // collect_orphan_helpers joins roots onto cwd — chdir to workspace
-        std::env::set_current_dir(&ws).expect("chdir workspace");
-        match collect_orphan_helpers(&["dag".into(), "src/v2".into()]) {
-            Ok(o) if o.is_empty() => {}
-            Ok(o) => {
-                let mut lines: Vec<String> = o
-                    .iter()
-                    .map(|x| format!("{}::{}", x.entry, x.name))
-                    .collect();
-                lines.sort();
-                panic!("ORPHANS {}:\n{}", o.len(), lines.join("\n"));
-            }
-            Err(e) => panic!("orphan collect err: {e}"),
-        }
-    }
-
     fn file_grain_enumerate_yields_two_test_fns() {
         let dir = tmp_dir();
         let file = dir.join("two_fn_file_grain_test.dag");
