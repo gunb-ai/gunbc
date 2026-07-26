@@ -844,7 +844,7 @@ fn run_shared_entry_claims(
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
-            witness_row_costs: Vec::new(),
+                    witness_row_costs: Vec::new(),
                 })
                 .collect();
         }
@@ -903,7 +903,7 @@ fn run_memo_shared_claims(
                         corpus_resolve_nanos: 0,
                         corpus_eval_nanos: 0,
                         corpus_witnesses: 0,
-            witness_row_costs: Vec::new(),
+                        witness_row_costs: Vec::new(),
                     })
                     .collect();
             }
@@ -1471,7 +1471,7 @@ fn run_discovery_batch_node(
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
-            witness_row_costs: Vec::new(),
+                    witness_row_costs: Vec::new(),
                 }
             } else {
                 ClaimResult {
@@ -1483,7 +1483,7 @@ fn run_discovery_batch_node(
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
-            witness_row_costs: Vec::new(),
+                    witness_row_costs: Vec::new(),
                 }
             }
         }
@@ -2109,7 +2109,10 @@ fn write_witness_row_cost_receipt(batch_records: &[BatchRecord]) -> bool {
     write_witness_row_cost_receipt_at(std::path::Path::new("target"), batch_records)
 }
 
-fn write_witness_row_cost_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
+fn write_witness_row_cost_receipt_at(
+    base: &std::path::Path,
+    batch_records: &[BatchRecord],
+) -> bool {
     let mut body = String::from("batch\tentry\tfunction\teval_ms\tresolve_ms\twarm_ms\n");
     let mut row_count = 0usize;
     for rec in batch_records {
@@ -2195,9 +2198,8 @@ fn write_witness_row_cost_drift_receipt_at(
         );
     }
 
-    let mut body = String::from(
-        "batch\tentry\tfunction\tobserved_eval_ms\tbasis_eval_ms\tverdict\trun_ref\n",
-    );
+    let mut body =
+        String::from("batch\tentry\tfunction\tobserved_eval_ms\tbasis_eval_ms\tverdict\trun_ref\n");
     let mut drift_count = 0usize;
     let mut basis_absent_count = 0usize;
     for rec in batch_records {
