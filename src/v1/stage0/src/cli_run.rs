@@ -698,6 +698,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn witness_admission_source_scan_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER,
+            "cli_run_witness_admission_source_scan"
+        );
+    }
+
+    #[test]
     fn declared_source_ref_selection_bridge_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_DECLARED_SOURCE_REF_SELECTION_BRIDGE_MARKER,
@@ -12542,14 +12550,33 @@ fn witness_admission_manifest_key(entry: &str, function: &str) -> String {
     format!("{entry}::{function}")
 }
 
-// 🟡 dissolve-on: witness_admission_explicit_consumer_manifest — replace this hand-rolled
-// per-form scan with the `.dag`-authoritative manifest from v2.workflow.witness_admission
-// (the module-binding supply-carrier pattern: host consumes emitted manifest rows; tracked in
-// the Phase 1 (b) lane). Until then the scan is fail-closed in BOTH directions (§5): every
-// occurrence of a recognized row head either parses to a key, is a verified definition or
-// non-literal pass-through site, or PANICS with its location — a mis-parse stops the line and
-// never silently excuses an orphan; and a consumer expressed in an unrecognized form yields
-// NO key, so its deferred row surfaces as a loud orphan rather than being absorbed.
+// SCAFFOLD (§7 HAND-RUST — `cli_run_witness_admission_source_scan`):
+// ROADMAP lane `5-dissolve-patches` / module-identity-storage-binding Phase 1 (b)
+// (gunbc.roadmap_authority / ROADMAP.md; docs/plans/module-identity-storage-binding-design.md).
+// The host Phase 0(b) admission key set is a hand-rolled text scan over enrollment forms
+// until the host consumes the `.dag`-authoritative
+// `v2.workflow.witness_admission.witness_admission_explicit_consumer_manifest` (module-binding
+// supply-carrier pattern). #7273's U3 file-grain arm (~21 LOC + one unit RED) is NOT a new
+// seed surface — it closes a false-refuse gap under this same interim so empty `f: ""` expands
+// to leaf keys the way `expand_explicit_entries` already does for execution.
+// Not a census shrink: HAND_MAINTAINED `cli_run.rs` LOC grows by the file-grain arm until
+// Phase 1 (b) deletes the scan; the dissolution is counted interim debt, not permanent surface.
+// DELETE WHEN dissolved: `witness_admission_entry_function_keys_from_source`,
+// `witness_admission_manifest_key`, the file-grain expand arm, and the unit tests that pin it
+// (`file_grain_bin_wet_expands_admission_consumer_keys` and sibling form parsers) — host then
+// reads emitted manifest rows (file-grain expansion lives in the `.dag` authority, not here).
+// Receipt: `rg cli_run_witness_admission_source_scan src/v1/stage0/src/cli_run.rs` == 1 until
+// deletion; not a compiler_frontier `.dag` row (seed-Rust, counted here not in module census).
+pub(crate) const CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER: &str =
+    "cli_run_witness_admission_source_scan";
+
+/// INTERIM hand-Rust scaffold (`CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER` / §7).
+///
+/// Fail-closed in BOTH directions (§5): every occurrence of a recognized row head either
+/// parses to a key, is a verified definition or non-literal pass-through site, or PANICS with
+/// its location — a mis-parse stops the line and never silently excuses an orphan; and a
+/// consumer expressed in an unrecognized form yields NO key, so its deferred row surfaces as
+/// a loud orphan rather than being absorbed.
 fn witness_admission_entry_function_keys_from_source(
     source_label: &str,
     content: &str,
