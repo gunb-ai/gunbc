@@ -37,7 +37,15 @@ import v2.workflow.floor_naming_hygiene {
 }
 import v2.std.algebra { length, list_head, HeadFound, HeadAbsent }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import v2.std.collection { Absent, List, Optional, Present, fold_list }
+import v2.std.collection {
+  List,
+  fold_list
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present
+}
 import std.types { Bool, String }
 import std.disposition { Scaffold, SingleAuthority }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

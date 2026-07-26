@@ -5,6 +5,7 @@ import std.types { String, List }
 import extdeps.dpkg { dpkg_status_argv }
 import extdeps.apt { package_tailscale }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_refusal_label }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -18,13 +19,13 @@ fn argv_join(argv: List<String>) -> String {
 
 fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
   let helper = dpkg_status_argv(package: package_tailscale)
-  let transport = shell_materialize_argv_for_operation(
-    dpkg_status_path,
-    dpkg_status_service,
-    dpkg_status_operation,
-    package_tailscale as String,
-    "",
-    []
+  let transport = operation_argv_tokens_or_refusal_label(
+    m: shell_materialize_operation_argv(
+      dpkg_status_path,
+      dpkg_status_service,
+      dpkg_status_operation,
+      [operation_argv_bind_text(name: "package", text: package_tailscale as String)]
+    )
   )
   argv_join(argv: helper) == argv_join(argv: transport)
 }

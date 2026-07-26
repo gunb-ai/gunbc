@@ -1,7 +1,11 @@
 module v2.compiler.self_host.native_agreement_support
 
 import v2.compiler.eval { TestClaimRun }
-import v2.std.collection { Optional, Present, Absent }
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent
+}
 import v2.std.diagnostic { Accepted }
 import v2.std.native_agreement {
   NativeAgreementDivergence,

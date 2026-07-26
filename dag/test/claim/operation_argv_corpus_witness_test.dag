@@ -1,0 +1,164 @@
+module test.claim.operation_argv_corpus_witness
+
+import std.types { String, List, Bool, Int }
+import v2.std.algebra { fold_list, any, length, list_head, HeadFound, HeadAbsent }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.operation_argv {
+  ArgvMaterialization,
+  ArgvMaterialized,
+  ArgvMaterializationRefused,
+  ArgvRowClassification,
+  ArgvRowMaterialized,
+  ArgvRowExpressionResidue,
+  ArgvRowExecutablePositionRefused,
+  ArgvRowOtherRefusal,
+  ShellTransportOperationRow,
+  operation_argv_bind_text,
+  operation_argv_classify,
+  operation_argv_refusal_label,
+  operation_argv_row_bindings,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data operation_argv_corpus_note: String = "The RED corpus for argv materializer route (b), DERIVED rather than rostered: shell_transport_operation_rows() enumerates every shell-transport operation declared under dag/ and src/v2/ from the declarations themselves, so a newly authored operation enrolls by existing and coverage is a corpus fact rather than a claim (DESIGN 3 and 6 -- a hand roster would be the parallel-ledger form of exactly this fact). Each row is bound GENERICALLY: every input the operation declares, and nothing else. Measured at authoring time by execution: 141 rows (139 corpus operations plus the 2 executable-position fixture operations), of which 133 materialize, 96 reference at least one input outside the seed's prior five-name vocabulary (package, bin, args, unit, property) and so could not be materialized AT ALL before this change, and 92 of those 96 now materialize -- the remaining 4 are in the counted expression residue below."
+
+data operation_argv_expression_residue_note: String = "The residue is a DEFICIT HELD CONSTANT, not a regression: 7 operations carry an argv element that is a call or a field access, which materialization does not evaluate. Established by execution against the OLD builtin before this change -- all 7 refused there too (4 with `unsupported expr`, 3 with `unbound param` reached first), so no operation that materialized before refuses now. What changed is the shape of the refusal: an untyped host error string became a typed, located, counted ArgvExpressionUnsupported. The count is pinned so the deficit can only shrink deliberately; the operations are git.Core.DiffUnified0, git.Core.DiffNameStatus, http.Client.GetLocalhostBounded, sudo.NopasswdExecuteProbe.Check, gunbc.Cli.Run, claim_executor.Executor.RunPlan and claim_executor.Executor.VerifyBuildArtifacts. Dissolves when argv element evaluation lands, which is a separate lane."
+
+data operation_argv_legacy_vocabulary: List<String> = ["package", "bin", "args", "unit", "property"]
+
+data operation_argv_fixture_path: String = "dag/test/fixture/argv_executable_position_probe.dag"
+
+type ArgvCorpusTally {
+  rows: Int
+  materialized: Int
+  expression_residue: Int
+  executable_position: Int
+  executable_position_outside_fixture: Int
+  unexplained: Int
+  outside_legacy: Int
+  outside_legacy_materialized: Int
+}
+
+data operation_argv_empty_tally: ArgvCorpusTally = ArgvCorpusTally {
+  rows: 0,
+  materialized: 0,
+  expression_residue: 0,
+  executable_position: 0,
+  executable_position_outside_fixture: 0,
+  unexplained: 0,
+  outside_legacy: 0,
+  outside_legacy_materialized: 0
+}
+
+fn operation_argv_flag(b: Bool) -> Int {
+  if b { 1 } else { 0 }
+}
+
+fn operation_argv_name_is_legacy_vocabulary(name: String) -> Bool {
+  any(xs: operation_argv_legacy_vocabulary, predicate: fn(v) { v == name })
+}
+
+fn operation_argv_row_is_outside_legacy_vocabulary(row: ShellTransportOperationRow) -> Bool {
+  any(
+    xs: row.argv_input_refs,
+    predicate: fn(n) { !operation_argv_name_is_legacy_vocabulary(name: n) }
+  )
+}
+
+fn operation_argv_row_materialization(row: ShellTransportOperationRow) -> ArgvMaterialization {
+  shell_materialize_operation_argv(
+    row.at.path,
+    row.at.service,
+    row.at.operation,
+    operation_argv_row_bindings(row: row)
+  )
+}
+
+fn operation_argv_tally_row(acc: ArgvCorpusTally, row: ShellTransportOperationRow) -> ArgvCorpusTally {
+  let classification = operation_argv_classify(m: operation_argv_row_materialization(row: row))
+  let materialized = match classification { ArgvRowMaterialized => true, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => false, ArgvRowOtherRefusal => false }
+  let residue = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => true, ArgvRowExecutablePositionRefused => false, ArgvRowOtherRefusal => false }
+  let exec_position = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => true, ArgvRowOtherRefusal => false }
+  let unexplained = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => false, ArgvRowOtherRefusal => true }
+  let outside = operation_argv_row_is_outside_legacy_vocabulary(row: row)
+  let exec_outside_fixture = exec_position && (row.at.path != operation_argv_fixture_path)
+  ArgvCorpusTally {
+    rows: acc.rows + 1,
+    materialized: acc.materialized + operation_argv_flag(b: materialized),
+    expression_residue: acc.expression_residue + operation_argv_flag(b: residue),
+    executable_position: acc.executable_position + operation_argv_flag(b: exec_position),
+    executable_position_outside_fixture: acc.executable_position_outside_fixture + operation_argv_flag(b: exec_outside_fixture),
+    unexplained: acc.unexplained + operation_argv_flag(b: unexplained),
+    outside_legacy: acc.outside_legacy + operation_argv_flag(b: outside),
+    outside_legacy_materialized: acc.outside_legacy_materialized + operation_argv_flag(b: outside && materialized)
+  }
+}
+
+fn operation_argv_corpus_tally() -> ArgvCorpusTally {
+  fold_list(
+    xs: shell_transport_operation_rows(),
+    empty: operation_argv_empty_tally,
+    cons: fn(acc, row) { operation_argv_tally_row(acc: acc, row: row) }
+  )
+}
+
+test fn operation_argv_corpus_is_non_vacuous() -> Bool {
+  operation_argv_corpus_tally().rows >= 139
+}
+
+test fn operation_argv_corpus_every_row_is_materialized_or_counted() -> Bool {
+  operation_argv_corpus_tally().unexplained == 0
+}
+
+test fn operation_argv_corpus_tally_is_total() -> Bool {
+  let t = operation_argv_corpus_tally()
+  (t.materialized + t.expression_residue + t.executable_position) == t.rows
+}
+
+test fn operation_argv_corpus_expression_residue_is_pinned() -> Bool {
+  operation_argv_corpus_tally().expression_residue == 7
+}
+
+test fn operation_argv_corpus_executable_position_wall_fires_on_the_fixture_only() -> Bool {
+  let t = operation_argv_corpus_tally()
+  t.executable_position == 1 && t.executable_position_outside_fixture == 0
+}
+
+test fn operation_argv_corpus_outside_legacy_vocabulary_now_materializes() -> Bool {
+  operation_argv_corpus_tally().outside_legacy_materialized >= 92
+}
+
+test fn operation_argv_corpus_outside_legacy_vocabulary_is_the_majority() -> Bool {
+  let t = operation_argv_corpus_tally()
+  t.outside_legacy >= 96 && (t.outside_legacy + t.outside_legacy) > t.rows
+}
+
+test fn operation_argv_corpus_RED_smuggled_executable_is_refused_and_located() -> Bool {
+  let label = operation_argv_refusal_label(
+    m: shell_materialize_operation_argv(
+      operation_argv_fixture_path,
+      "ArgvExecutablePositionProbe",
+      "SmuggleExecutable",
+      [operation_argv_bind_text(name: "bin", text: "/usr/bin/curl")]
+    )
+  )
+  string_contains(label, "ExecutablePositionNotLiteral") && string_contains(label, "ArgvExecutablePositionProbe.SmuggleExecutable")
+}
+
+test fn operation_argv_corpus_RED_literal_executable_control_materializes() -> Bool {
+  match shell_materialize_operation_argv(
+    operation_argv_fixture_path,
+    "ArgvExecutablePositionProbe",
+    "LiteralExecutable",
+    [operation_argv_bind_text(name: "flag", text: "--version")]
+  ) {
+    ArgvMaterialized { argv: argv } =>
+      length(xs: argv) == 2
+        && match list_head(xs: argv) {
+          HeadFound { value: head } => head == "true"
+          HeadAbsent => false
+        }
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  }
+}

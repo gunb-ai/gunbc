@@ -1,8 +1,13 @@
 module v2.test.execution.self_host_compiler_closure_emit
 
+import v2.test.fixture.compiler_closure_scope_receipt {
+  scoped_closure_excluded_module_path_holds,
+  compiler_closure_scope_receipt_frontier_row_holds
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn scoped_closure_excludes_lens_module_holds() -> Bool {
-  scoped_closure_scope_scalar_receipt_holds()
+  scoped_closure_excluded_module_path_holds() && compiler_closure_scope_receipt_frontier_row_holds()
 }

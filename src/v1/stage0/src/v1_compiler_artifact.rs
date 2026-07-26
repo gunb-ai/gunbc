@@ -8,8 +8,6 @@ use self::PartitionRule::*;
 use self::RenderTarget::*;
 pub use crate::std_types::SourceSpan;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::TextFile;
 use crate::NonEmptyBTreeSet;

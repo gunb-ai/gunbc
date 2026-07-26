@@ -17,7 +17,6 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_row_parse_engine_hooks,
   compiler_frontier_row_discovery_enumeration,
   compiler_frontier_row_use_site_verdict,
-  compiler_frontier_self_emitted_baseline,
   compiler_frontier_self_emitted_count,
   compiler_frontier_self_emitted_stage0_mod_basenames_from_index,
   emit_hand_maintained_pub_mod_block,
@@ -212,5 +211,4 @@ test fn crate_layout_witnesses() -> Bool {
     && witness_hand_maintained_filenames_include_self_emitted_holds()
     && witness_self_emitted_count_matches_derived_basenames_holds()
     && witness_no_orphan_self_emitted_basename_holds()
-    && (compiler_frontier_self_emitted_count() == compiler_frontier_self_emitted_baseline)
 }

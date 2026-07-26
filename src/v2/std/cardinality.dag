@@ -9,7 +9,14 @@ import std.termination {
   descent_evidence_lattice_meet,
   evidence_rank
 }
-import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.collection {
+  List
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present
+}
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,

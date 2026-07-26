@@ -108,8 +108,6 @@ pub use crate::v1_compiler_trait_derive_emit::{
     v1_generic_params_needing_clone_bound,
 };
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
@@ -857,7 +855,7 @@ pub fn rust_normalize_witness_type_text(rendered: String) -> String {
     v1_rt::replace(
         rendered.clone(),
         "witness<".to_string(),
-        "v1_rt::Witness<".to_string(),
+        "Witness<".to_string(),
     )
 }
 
@@ -868,7 +866,7 @@ pub fn rust_witness_parent_leaf(parent: String) -> bool {
 pub fn rust_witness_variant_arm_names_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Holds/Violates literals below are the two arms of std.witness.Witness<C> (dag/std/witness.dag) — not minted nicknames. Pattern position still routes v1_rt::Witness via variant_pattern_qualified_path; construction turbofish here keys type-arg resolution off the modeled arm names only.".to_string()
+            "Holds/Violates literals below are the two arms of std.witness.Witness<C> (dag/std/witness.dag) — not minted nicknames. Pattern position routes via variant_pattern_qualified_path like any other modeled enum; construction turbofish here keys type-arg resolution off the modeled arm names only.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -11088,71 +11086,8 @@ pub fn emit_prelude(imported_names: Rc<Vec<String>>, local_type_names: Rc<Vec<St
             ),
             "use crate::v1_rt;".to_string(),
         );
-        let witness_locally_defined = rust_import_name_already_resolved(
-            imported_names.clone(),
-            local_type_names.clone(),
-            "Witness".to_string(),
-        );
-        let has_witness = {
-            let mut __found = false;
-            for n in imported_names.clone().iter().cloned() {
-                if (n.clone() == "Witness".to_string()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
-        let has_holds = {
-            let mut __found = false;
-            for n in imported_names.clone().iter().cloned() {
-                if (n.clone() == "Holds".to_string()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
-        let has_violates = {
-            let mut __found = false;
-            for n in imported_names.clone().iter().cloned() {
-                if (n.clone() == "Violates".to_string()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
-        let witness_line = if (((witness_locally_defined.clone() || has_witness.clone())
-            || has_holds.clone())
-            || has_violates.clone())
-        {
-            "".to_string()
-        } else {
-            "\nuse crate::v1_rt::Witness;".to_string()
-        };
-        let variant_line =
-            if (witness_locally_defined.clone() || (has_holds.clone() && has_violates.clone())) {
-                "".to_string()
-            } else {
-                if has_holds.clone() {
-                    "\nuse crate::v1_rt::Witness::Violates;".to_string()
-                } else {
-                    if has_violates.clone() {
-                        "\nuse crate::v1_rt::Witness::Holds;".to_string()
-                    } else {
-                        "\nuse crate::v1_rt::Witness::{Holds, Violates};".to_string()
-                    }
-                }
-            };
         let wrapper_use = "\nuse crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;".to_string();
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(base.clone(), witness_line.clone()),
-                variant_line.clone(),
-            ),
-            wrapper_use.clone(),
-        )
+        v1_rt::concat(base.clone(), wrapper_use.clone())
     }
 }
 
@@ -11225,7 +11160,7 @@ pub fn emit_typed_item(
                                     env.source_indices.clone(),
                                 )
                             } else {
-                                match rust_seed_host_numeric_alias(
+                                match rust_scalar_checkpoint_render_base(
                                     item_text.clone(),
                                     emit_info.corpus_repr.clone(),
                                 ) {
@@ -15352,17 +15287,10 @@ pub fn variant_pattern_qualified_path(
     resolved_parent: Option<String>,
 ) -> String {
     match resolved_parent.clone() {
-        Some(parent) => {
-            let parent_leaf = qualified_last_segment(parent.clone());
-            if (parent_leaf.clone() == "Witness".to_string()) {
-                v1_rt::concat("v1_rt::Witness::".to_string(), rust_name.clone())
-            } else {
-                v1_rt::concat(
-                    v1_rt::concat(parent_leaf.clone(), "::".to_string()),
-                    rust_name.clone(),
-                )
-            }
-        }
+        Some(parent) => v1_rt::concat(
+            v1_rt::concat(qualified_last_segment(parent.clone()), "::".to_string()),
+            rust_name.clone(),
+        ),
         None => rust_name.clone(),
     }
 }
@@ -29955,6 +29883,15 @@ pub fn emit_subcommand_enum(
             "#[arg(long)]\n".to_string(),
             make_indent((depth.clone() + 2)),
             "claim_run: bool,\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "/// Named argument for the entry function, repeatable: `--arg name=value`.\n"
+                .to_string(),
+            make_indent((depth.clone() + 2)),
+            "/// Values enter as String; a missing `=` refuses rather than guessing.\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "#[arg(long = \"arg\")]\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "args: Vec<String>,\n".to_string(),
             make_indent((depth.clone() + 1)),
             "},".to_string(),
         ]);
@@ -30240,7 +30177,7 @@ pub fn emit_compile_match_arm(crate_name: String) -> String {
 }
 
 pub fn emit_run_match_arm(crate_name: String) -> String {
-    v1_rt::concat(v1_rt::concat("\n        Commands::Run { source_roots, function, entry, claim_run } => {\n".to_string(), "            cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run);\n".to_string()), "        },".to_string())
+    v1_rt::concat(v1_rt::concat("\n        Commands::Run { source_roots, function, entry, claim_run, args } => {\n".to_string(), "            cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run, args);\n".to_string()), "        },".to_string())
 }
 
 pub fn emit_main_pipeline_fns(crate_name: String) -> String {

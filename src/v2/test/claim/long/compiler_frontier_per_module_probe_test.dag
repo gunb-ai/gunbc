@@ -1,9 +1,9 @@
 module v2.test.long.compiler_frontier_per_module_probe
 
 import v2.compiler.self_host.frontier {
-  compiler_frontier_module_count_expected,
   compiler_frontier_roster,
   compiler_frontier_roster_all_classified_holds,
+  compiler_frontier_roster_count,
   compiler_frontier_roster_located_reason_not_class_projection_holds,
   compiler_frontier_row_for_path_matches_probe,
   compiler_frontier_roster_matches_survey_holds
@@ -38,8 +38,8 @@ data compiler_frontier_wave2_self_emit_ready_zero_note: String = "ready_count ==
 
 test fn compiler_frontier_per_module_probe_survey_holds() -> Bool {
   compiler_frontier_roster_matches_survey_holds(survey: host_frontier_probe_survey)
-    && (host_frontier_probe_survey_module_count == compiler_frontier_module_count_expected)
-    && (length(xs: host_frontier_probe_survey) == compiler_frontier_module_count_expected)
+    && (host_frontier_probe_survey_module_count == compiler_frontier_roster_count())
+    && (length(xs: host_frontier_probe_survey) == compiler_frontier_roster_count())
     && !frontier_probe_survey_has_unclassified(xs: host_frontier_probe_survey)
     && compiler_frontier_roster_all_classified_holds()
     && compiler_frontier_roster_located_reason_not_class_projection_holds()

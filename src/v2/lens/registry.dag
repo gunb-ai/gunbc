@@ -23,6 +23,7 @@ type LensIdV0
   | DuplicateComputation
   | EffectReach
   | EmittedBinaryEffectConfinement
+  | FallbackArmCensus
   | MandatoryTag
   | ExtdepsShapeTransportPolicy
   | FactCardinality
@@ -135,6 +136,11 @@ data lens_registry_v0_complexity_accumulator_copy: LensRegistryEntryV0 = {
 data lens_registry_v0_complexity_linearity_audit: LensRegistryEntryV0 = {
   lens_id: ComplexityLinearityAudit
   module_path: Bound { path: "v2.lens.complexity_linearity_audit" }
+}
+
+data lens_registry_v0_fallback_arm_census: LensRegistryEntryV0 = {
+  lens_id: FallbackArmCensus
+  module_path: Bound { path: "v2.lens.fallback_arm_census" }
 }
 
 data lens_registry_v0_complexity_lowering: LensRegistryEntryV0 = {
@@ -360,6 +366,7 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_determinism,
   lens_registry_v0_complexity_accumulator_copy,
   lens_registry_v0_complexity_linearity_audit,
+  lens_registry_v0_fallback_arm_census,
   lens_registry_v0_complexity_lowering,
   lens_registry_v0_coverage,
   lens_registry_v0_dependency_fidelity,
@@ -452,6 +459,10 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
     }
     ComplexityLinearityAudit => match right {
       ComplexityLinearityAudit => true
+      _ => false
+    }
+    FallbackArmCensus => match right {
+      FallbackArmCensus => true
       _ => false
     }
     ComplexityLowering => match right {

@@ -10,8 +10,6 @@ pub use crate::extdeps_uri::{Uri, UriScheme};
 use crate::std_http_path::UrlPathToken::{LiteralToken, ParamToken};
 pub use crate::std_http_path::{PathParamBinding, PathTemplate, UrlPathToken};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

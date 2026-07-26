@@ -3,7 +3,11 @@ module gunbc.hostname_set
 import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.dns.domain_name { DnsLabel }
 import extdeps.tools.hostname
-import gunbc.hostname_read { hostname_short_read }
+import gunbc.hostname_read {
+  hostname_short_read,
+  HostnameShortCaptured,
+  HostnameShortCaptureRefused,
+}
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
@@ -14,7 +18,7 @@ import gunbc.typed_argv_exec {
 
 type HostnameSetCasOutcome
   = HostnameSetCasApplied
-  | HostnameSetCasReadAbsent
+  | HostnameSetCasReadRefused { reason: String }
   | HostnameSetCasBaseMismatch { observed: String, base: DnsLabel }
   | HostnameSetCasApplyFailed { stderr: String }
 
@@ -98,12 +102,12 @@ fn hostname_set_cas(
   desired: DnsLabel,
 ) -> HostnameSetCasOutcome {
   match hostname_short_read(transport: transport) {
-    Present { value: observed } =>
+    HostnameShortCaptured { value: observed } =>
       if observed == (base as String) {
         hostname_set_apply(hostnamectl_path: hostnamectl_path, transport: transport, desired: desired)
       } else {
         HostnameSetCasBaseMismatch { observed: observed, base: base }
       }
-    Absent => HostnameSetCasReadAbsent
+    HostnameShortCaptureRefused { reason: why } => HostnameSetCasReadRefused { reason: why }
   }
 }

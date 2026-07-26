@@ -109,13 +109,7 @@ fn effect_io_pure_empty_environment() -> EvaluationEnvironment {
   EvaluationEnvironment {
     bindings: Map {
       lookup: fn(_) {
-        Violates {
-          diagnostic: Diagnostic {
-            reason: ^effect_io_pure_binding_miss,
-            at: node_locus(node: effect_io_pure_unit_type_node()),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          }
-        }
+        Absent
       }
     }
   }
