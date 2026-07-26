@@ -1,0 +1,80 @@
+module test.claim.ci_release_bins_witness
+
+import gunbc.ci_release_bins {
+  ci_floor_invoked_bins,
+  witness_declared_release_bins,
+  ci_floor_required_artifact_names,
+  release_bin_is_enrolled,
+  release_bin_list_contains
+}
+import gunbc.ci_spec { ci_release_build_line }
+import tools.host_prelude {
+  witness_bin,
+  witness_bin_ensure_built_typed,
+  WitnessBinReady,
+  WitnessBinRefused,
+  WitnessBinNotEnrolled
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ci_release_bins_witness_note: String = "Authority: gunbc.ci_release_bins. Pack membership is derived (floor ∪ witness-declared). Positives: measured gap bins cssl_assemble / frontier_probe_survey are enrolled and appear on the build line. RED: no_such_witness_bin_zzz is NOT enrolled, and ensure_built refuses WitnessBinNotEnrolled without cargo (construction wall)."
+
+fn w_pack_includes_every_floor_invoked() -> Bool {
+  fold(
+    ci_floor_invoked_bins,
+    init: true,
+    f: (ok, name) => ok && release_bin_list_contains(xs: ci_floor_required_artifact_names(), needle: name)
+  )
+}
+
+fn w_pack_includes_every_witness_declared() -> Bool {
+  fold(
+    witness_declared_release_bins,
+    init: true,
+    f: (ok, name) => ok && release_bin_list_contains(xs: ci_floor_required_artifact_names(), needle: name)
+  )
+}
+
+fn w_measured_gap_bins_enrolled() -> Bool {
+  release_bin_is_enrolled(bin_name: "cssl_assemble")
+    && release_bin_is_enrolled(bin_name: "frontier_probe_survey")
+}
+
+fn w_build_line_carries_gap_bins() -> Bool {
+  let line = ci_release_build_line()
+  string_contains(s: line, pattern: "--bin cssl_assemble")
+    && string_contains(s: line, pattern: "--bin frontier_probe_survey")
+    && string_contains(s: line, pattern: "--bin claim_executor")
+}
+
+fn w_negative_control_not_enrolled() -> Bool {
+  !release_bin_is_enrolled(bin_name: "no_such_witness_bin_zzz")
+}
+
+fn w_unenrolled_ensure_built_refuses_not_enrolled() -> Bool {
+  let readiness = witness_bin_ensure_built_typed(
+    root: "/tmp",
+    bin: witness_bin(var_name: "NO_SUCH", bin_name: "no_such_witness_bin_zzz")
+  )
+  match readiness {
+    WitnessBinReady { path: _ } => false
+    WitnessBinRefused { bin_name: name, path: _, reason: reason } =>
+      name == "no_such_witness_bin_zzz" && reason == WitnessBinNotEnrolled
+  }
+}
+
+fn w_pack_count_floor() -> Bool {
+  ci_floor_required_artifact_names().length() >= 20
+}
+
+test fn ci_release_bins_derivation_holds() -> Bool {
+  w_pack_includes_every_floor_invoked()
+    && w_pack_includes_every_witness_declared()
+    && w_measured_gap_bins_enrolled()
+    && w_build_line_carries_gap_bins()
+    && w_negative_control_not_enrolled()
+    && w_unenrolled_ensure_built_refuses_not_enrolled()
+    && w_pack_count_floor()
+}

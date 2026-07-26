@@ -1,9 +1,8 @@
 module gunbc.ci_release_bins
 
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { SingleAuthority }
 
-data ci_release_bins_authority_note: String = "Single authority for the CI release-bins pack membership (the dissolve target named on gunbc.roster_registry for ci_floor_required_artifact_names). TWO inputs, one derived pack:
+data ci_release_bins_authority_note: String = "Single authority for the CI release-bins pack membership (the dissolve target named on gunbc.roster_registry for the former ci_floor_required_artifact_names hand list). TWO inputs, one derived pack:
 
 (1) ci_floor_invoked_bins — bins the floor / CI shell invokes by path without going through tools.host_prelude.WitnessBin (claim_executor, gunbc, the floor-skip witnesses). Policy seed; small.
 
@@ -41,12 +40,8 @@ data witness_declared_release_bins: List<String> = [
   "frontier_probe_survey"
 ]
 
-fn release_bin_name_eq(a: String, b: String) -> Bool {
-  a == b
-}
-
 fn release_bin_list_contains(xs: List<String>, needle: String) -> Bool {
-  any(xs, x => release_bin_name_eq(a: x, b: needle))
+  any(xs, x => x == needle)
 }
 
 fn release_bin_list_snoc_unique(acc: List<String>, name: String) -> List<String> {
@@ -70,10 +65,5 @@ fn release_bin_is_enrolled(bin_name: String) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  subject: DeclarationRef {
-    module_path: "gunbc.ci_release_bins",
-    decl_name: "ci_floor_required_artifact_names",
-    field: WholeDeclaration
-  }
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
