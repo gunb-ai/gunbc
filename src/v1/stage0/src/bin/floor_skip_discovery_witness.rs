@@ -33,7 +33,7 @@ fn floor_skip_test_roster() -> (Vec<String>, Vec<(String, String)>) {
         .join("src/v2/workflow/affected_set_floor_runner_test.dag")
         .to_string_lossy()
         .into_owned();
-    let function = "floor_runner_node_frontier_policy_holds".to_string();
+    let function = "floor_test_untouched_skips_assumed_green_holds".to_string();
     (floor_skip_source_roots(), vec![(entry, function)])
 }
 
@@ -545,7 +545,7 @@ fn entry_file_helper_fn_edit_scopes_runs_to_touched_entry_only() {
         ),
         (
             runner_entry,
-            "floor_runner_node_frontier_policy_holds".to_string(),
+            "floor_test_untouched_skips_assumed_green_holds".to_string(),
         ),
     ];
 
@@ -585,7 +585,7 @@ fn import_closure_helper_fn_edit_runs_importer_entry_only() {
         (disc_entry, "floor_disc_witness_a_only_holds".to_string()),
         (
             runner_entry,
-            "floor_runner_node_frontier_policy_holds".to_string(),
+            "floor_test_untouched_skips_assumed_green_holds".to_string(),
         ),
     ];
 

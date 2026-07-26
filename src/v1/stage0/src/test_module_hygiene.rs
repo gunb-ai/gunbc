@@ -266,6 +266,16 @@ fn umbrellas_in_module(entry: &str, module: &ModuleFns) -> Vec<UmbrellaRecord> {
 }
 
 fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
+    // U2 enroll-or-refuse is for test modules: plain helpers beside live `test fn`s.
+    // A `*_test.dag` with zero `test fn`s is a fixture/example library (e.g.
+    // `extdeps/languages/rust_test.dag` — cross-module consumers, module-local
+    // reachability cannot see them). Skip rather than false-red every export.
+    // Dissolve-on: rename fixture libraries off the `_test.dag` suffix, or lift
+    // reachability to the import graph.
+    let has_test_fn = module.fns.values().any(|(is_test, _, _)| *is_test);
+    if !has_test_fn {
+        return Vec::new();
+    }
     let plain: HashSet<String> = module
         .fns
         .iter()
@@ -379,10 +389,19 @@ pub fn collect_umbrella_roster(roots: &[String]) -> Result<Vec<UmbrellaRecord>, 
 
 /// U2 — orphan plain fns across `*_test.dag` under roots.
 pub fn collect_orphan_helpers(roots: &[String]) -> Result<Vec<OrphanHelper>, String> {
+    // Relative roots resolve against cwd (floor discovery: workspace root). Absolute
+    // roots are used as-is — callers must not mutate process cwd to pass a workspace
+    // (cargo tests are multi-threaded; set_current_dir races).
     let ws = std::env::current_dir().map_err(|e| format!("cwd: {e}"))?;
     let mut files = Vec::new();
     for root in roots {
-        collect_dag_files(&ws.join(root), &mut files);
+        let root_path = Path::new(root);
+        let abs = if root_path.is_absolute() {
+            root_path.to_path_buf()
+        } else {
+            ws.join(root_path)
+        };
+        collect_dag_files(&abs, &mut files);
     }
     files.sort();
     let mut out = Vec::new();

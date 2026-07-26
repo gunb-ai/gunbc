@@ -545,11 +545,3 @@ test fn emit_on_demand_match_loop_fold_schedule_refuses_unreadable_budget_holds(
   }
 }
 
-test fn emit_on_demand_match_loop_fold_family_witnesses() -> Bool {
-  emit_on_demand_match_loop_fold_grain_keys_differ_holds()
-    && emit_on_demand_match_loop_fold_materialize_recompute_on_miss_holds()
-    && emit_on_demand_match_loop_fold_interpreter_roles_bounded_holds()
-    && emit_on_demand_match_loop_fold_schedule_refuses_unreadable_budget_holds()
-    && emit_on_demand_match_loop_fold_family_one_build_holds()
-    && emit_on_demand_match_loop_fold_materialize_share_on_hit_holds()
-}

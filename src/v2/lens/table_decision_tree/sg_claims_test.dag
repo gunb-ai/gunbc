@@ -1,6 +1,5 @@
 module v2.test.lens_table_decision_tree.sg_claims
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data tdt_witness_fn_node: Node = claim_atom_node(s: ^tdt_witness_fn_node_symbol)
@@ -13,7 +12,7 @@ fn tdt_verdict_is_unrealized(verdict: LensVerdict) -> Bool {
   }
 }
 
-fn witness_tdt_unrealized_green_on_fact() -> Bool {
+test fn witness_tdt_unrealized_green_on_fact() -> Bool {
   tdt_verdict_is_unrealized(
     verdict: table_decision_tree_fact_for_fn(fn_node: tdt_witness_fn_node).verdict
   )
@@ -23,14 +22,14 @@ fn tdt_sample_holds() -> LensVerdict {
   Holds
 }
 
-fn witness_tdt_unrealized_red_on_holds() -> Bool {
+test fn witness_tdt_unrealized_red_on_holds() -> Bool {
   match tdt_sample_holds() {
     Unrealized { diagnostic: _ } => false
     _ => true
   }
 }
 
-fn witness_tdt_locus_green_on_fact() -> Bool {
+test fn witness_tdt_locus_green_on_fact() -> Bool {
   match table_decision_tree_fact_for_fn(fn_node: tdt_witness_fn_node).verdict {
     Unrealized { diagnostic: d } =>
       lens_verdict_diagnostic_locus_module(d: d) == tdt_witness_module
@@ -38,7 +37,7 @@ fn witness_tdt_locus_green_on_fact() -> Bool {
   }
 }
 
-fn witness_tdt_locus_red_on_perturbed_module() -> Bool {
+test fn witness_tdt_locus_red_on_perturbed_module() -> Bool {
   let perturbed = lens_verdict_module_unrealized(
     reason: ^table_decision_tree_perturbed,
     module_name: "v2.lens.table_decision_tree_wrong_module"
@@ -50,9 +49,3 @@ fn witness_tdt_locus_red_on_perturbed_module() -> Bool {
   }
 }
 
-test fn lens_table_decision_tree_unrealized_scaffold_holds() -> Bool {
-  witness_tdt_unrealized_green_on_fact()
-    && witness_tdt_unrealized_red_on_holds()
-    && witness_tdt_locus_green_on_fact()
-    && witness_tdt_locus_red_on_perturbed_module()
-}

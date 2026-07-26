@@ -70,11 +70,6 @@ test fn emit_host_native_only_classical_not_swapped_mismatch_detected_holds() ->
   native_only_matches_expected(source: ingested_classical_not_swapped_source, expected_octet: 0) == false
 }
 
-test fn emit_host_native_only_verdict_all_holds() -> Bool {
-  emit_host_native_only_classical_not_holds()
-    && emit_host_native_only_classical_not_swapped_mismatch_detected_holds()
-}
-
 test fn emit_host_native_only_verdict_stdout_match_mock_holds() -> Bool {
   native_only_stdout_matches(
     stdout: HostRunStdout { bytes: emit_host_octets_byte_string(octets: [0, 0, 0, 0, 0]) },
@@ -89,7 +84,3 @@ test fn emit_host_native_only_verdict_stdout_mismatch_mock_holds() -> Bool {
   ) == false
 }
 
-test fn emit_host_native_only_verdict_mock_all_holds() -> Bool {
-  emit_host_native_only_verdict_stdout_match_mock_holds()
-    && emit_host_native_only_verdict_stdout_mismatch_mock_holds()
-}

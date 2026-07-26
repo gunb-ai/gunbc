@@ -315,14 +315,14 @@ fn add_arrow_eval_tokenize_source() -> Outcome<TokenStream> {
   tokenize(text: ingested_add_module_source, file: ^add_arrow_eval_source_file, rules: lm.lex)
 }
 
-fn add_arrow_eval_tokenize_holds() -> Bool {
+test fn add_arrow_eval_tokenize_holds() -> Bool {
   match add_arrow_eval_tokenize_source() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn add_arrow_eval_parse_holds() -> Bool {
+test fn add_arrow_eval_parse_holds() -> Bool {
   match add_arrow_eval_tokenize_source() {
     Accepted { value: tokens, diagnostics: _ } =>
       match add_arrow_eval_parse_tokens(tokens: tokens) {
@@ -333,7 +333,7 @@ fn add_arrow_eval_parse_holds() -> Bool {
   }
 }
 
-fn add_arrow_eval_normalize_holds() -> Bool {
+test fn add_arrow_eval_normalize_holds() -> Bool {
   match add_arrow_eval_tokenize_source() {
     Accepted { value: tokens, diagnostics: _ } =>
       match add_arrow_eval_parse_tokens(tokens: tokens) {
@@ -348,7 +348,7 @@ fn add_arrow_eval_normalize_holds() -> Bool {
   }
 }
 
-fn add_arrow_eval_resolve_holds() -> Bool {
+test fn add_arrow_eval_resolve_holds() -> Bool {
   let lm = dag_language_model()
   match add_arrow_eval_tokenize_source() {
     Accepted { value: tokens, diagnostics: _ } =>
@@ -629,14 +629,14 @@ fn add_arrow_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> 
   }
 }
 
-fn add_arrow_eval_source_pipeline_admits_add_holds() -> Bool {
+test fn add_arrow_eval_source_pipeline_admits_add_holds() -> Bool {
   match add_arrow_source_ingested_add_infers() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn add_arrow_eval_canonical_tree_infers_holds() -> Bool {
+test fn add_arrow_eval_canonical_tree_infers_holds() -> Bool {
   match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match add_arrow_eval_inferred_run_tree(
@@ -656,7 +656,7 @@ fn add_arrow_eval_runtime_value_is_n(value: RuntimeValue, n: Int) -> Bool {
   add_arrow_eval_runtime_int_equals(value: value, n: n)
 }
 
-fn add_arrow_eval_direct_runtime_holds() -> Bool {
+test fn add_arrow_eval_direct_runtime_holds() -> Bool {
   match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match add_arrow_eval_add_call_optional(callee: arrow, left_lex: "2", right_lex: "3") {
@@ -685,7 +685,7 @@ fn add_arrow_eval_direct_runtime_holds() -> Bool {
   }
 }
 
-fn add_arrow_eval_source_driven_add_executes_holds() -> Bool {
+test fn add_arrow_eval_source_driven_add_executes_holds() -> Bool {
   match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_arrow_eval_run_passes(
@@ -700,7 +700,7 @@ fn add_arrow_eval_source_driven_add_executes_holds() -> Bool {
   }
 }
 
-fn add_arrow_eval_produced_add_body_executes_holds() -> Bool {
+test fn add_arrow_eval_produced_add_body_executes_holds() -> Bool {
   match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_arrow_eval_run_passes(
@@ -715,7 +715,7 @@ fn add_arrow_eval_produced_add_body_executes_holds() -> Bool {
   }
 }
 
-fn add_arrow_eval_generality_executes_holds() -> Bool {
+test fn add_arrow_eval_generality_executes_holds() -> Bool {
   match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_arrow_eval_run_passes(
@@ -730,7 +730,7 @@ fn add_arrow_eval_generality_executes_holds() -> Bool {
   }
 }
 
-fn add_arrow_eval_swapped_operands_red_holds() -> Bool {
+test fn add_arrow_eval_swapped_operands_red_holds() -> Bool {
   add_arrow_eval_swapped_operands_claim_passes() == false
 }
 
@@ -745,7 +745,7 @@ fn add_arrow_eval_swapped_operands_claim_passes() -> Bool {
   )
 }
 
-fn add_arrow_eval_wrong_value_red_holds() -> Bool {
+test fn add_arrow_eval_wrong_value_red_holds() -> Bool {
   match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_arrow_eval_run_passes(
@@ -760,7 +760,7 @@ fn add_arrow_eval_wrong_value_red_holds() -> Bool {
   }
 }
 
-fn add_arrow_excess_signature_red_holds() -> Bool {
+test fn add_arrow_excess_signature_red_holds() -> Bool {
   add_arrow_eval_run_passes(
     run: add_arrow_eval_run(
       callee: add_arrow_excess_signature_arrow(),
@@ -771,7 +771,7 @@ fn add_arrow_excess_signature_red_holds() -> Bool {
   ) == false
 }
 
-fn add_arrow_excess_body_red_holds() -> Bool {
+test fn add_arrow_excess_body_red_holds() -> Bool {
   add_arrow_eval_run_passes(
     run: add_arrow_eval_run(
       callee: add_arrow_excess_body_arrow(),
@@ -811,11 +811,11 @@ fn add_arrow_excess_actual_executes_to_five() -> Bool {
   }
 }
 
-fn add_arrow_excess_actual_red_holds() -> Bool {
+test fn add_arrow_excess_actual_red_holds() -> Bool {
   add_arrow_excess_actual_executes_to_five() == false
 }
 
-fn add_arrow_eval_lazy_arm_branch_suppression_holds() -> Bool {
+test fn add_arrow_eval_lazy_arm_branch_suppression_holds() -> Bool {
   let branch = add_arrow_eval_lazy_arm_branch_node()
   let tree = add_arrow_eval_admitted_tree(root: branch)
   match eval(
@@ -887,7 +887,7 @@ fn add_arrow_eval_loop_admitted_tree(root: Node) -> InferredTree {
   }
 }
 
-fn add_arrow_eval_lazy_arm_loop_suppression_holds() -> Bool {
+test fn add_arrow_eval_lazy_arm_loop_suppression_holds() -> Bool {
   let loop_node = add_arrow_eval_lazy_arm_loop_node()
   let tree = add_arrow_eval_loop_admitted_tree(root: loop_node)
   match eval(
@@ -901,19 +901,3 @@ fn add_arrow_eval_lazy_arm_loop_suppression_holds() -> Bool {
   }
 }
 
-test fn add_arrow_eval_by_execution_keystone_holds() -> Bool {
-  add_arrow_eval_source_driven_add_executes_holds()
-    && add_arrow_eval_direct_runtime_holds()
-    && add_arrow_eval_source_pipeline_admits_add_holds()
-    && add_arrow_eval_generality_executes_holds()
-    && add_arrow_eval_swapped_operands_red_holds()
-    && add_arrow_eval_wrong_value_red_holds()
-
-    && add_arrow_excess_signature_red_holds()
-    && add_arrow_excess_body_red_holds()
-    && add_arrow_excess_actual_red_holds()
-
-    && add_arrow_eval_lazy_arm_branch_suppression_holds()
-
-    && add_arrow_eval_lazy_arm_loop_suppression_holds()
-}

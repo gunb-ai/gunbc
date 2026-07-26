@@ -76,7 +76,7 @@ fn emit_ingest_canonical_emitted() -> Node {
   dag_fixture_emitted_add_fn
 }
 
-fn emit_backward_selects_canonical_row_holds() -> Bool {
+test fn emit_backward_selects_canonical_row_holds() -> Bool {
   match grammar_relation_row_for_emitted(
     rules: emit_ingest_shared_rules(),
     emitted: emit_ingest_canonical_emitted()
@@ -87,7 +87,7 @@ fn emit_backward_selects_canonical_row_holds() -> Bool {
   }
 }
 
-fn ingest_forward_selects_canonical_emitted_holds() -> Bool {
+test fn ingest_forward_selects_canonical_emitted_holds() -> Bool {
   match grammar_relation_row_token_spine_classes(row: emit_ingest_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(
@@ -102,7 +102,7 @@ fn ingest_forward_selects_canonical_emitted_holds() -> Bool {
   }
 }
 
-fn emit_then_ingest_selector_identity_holds() -> Bool {
+test fn emit_then_ingest_selector_identity_holds() -> Bool {
   match grammar_relation_row_for_emitted(
     rules: emit_ingest_shared_rules(),
     emitted: emit_ingest_canonical_emitted()
@@ -124,7 +124,7 @@ fn emit_then_ingest_selector_identity_holds() -> Bool {
   }
 }
 
-fn ingest_then_emit_selector_identity_holds() -> Bool {
+test fn ingest_then_emit_selector_identity_holds() -> Bool {
   match grammar_relation_row_token_spine_classes(row: emit_ingest_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(
@@ -165,7 +165,7 @@ fn emit_ingest_parsed_add_tree() -> Outcome<ParseTree> {
   )
 }
 
-fn same_grammar_parse_ingest_bridge_holds() -> Bool {
+test fn same_grammar_parse_ingest_bridge_holds() -> Bool {
   match emit_ingest_parsed_add_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
@@ -180,10 +180,3 @@ fn same_grammar_parse_ingest_bridge_holds() -> Bool {
   }
 }
 
-test fn emit_ingest_grammar_relation_round_trip_holds() -> Bool {
-  emit_backward_selects_canonical_row_holds()
-    && ingest_forward_selects_canonical_emitted_holds()
-    && emit_then_ingest_selector_identity_holds()
-    && ingest_then_emit_selector_identity_holds()
-    && same_grammar_parse_ingest_bridge_holds()
-}
