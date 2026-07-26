@@ -49,12 +49,12 @@ pub fn target_callable(target: RenderTarget) -> Rc<CallableRepr> {
         RenderTarget::Rust => rust_callable(),
         RenderTarget::Python => python_callable(),
         RenderTarget::Go => go_callable(),
-        RenderTarget::Dag => Rc::new(CallableRepr {
+        RenderTarget::Dag => CallableRepr {
             template: "fn({params}) -> {return}".to_string(),
             param_separator: ", ".to_string(),
             return_separator: " -> ".to_string(),
             import_path: None,
-        }),
+        },
     }
 }
 
@@ -98,10 +98,10 @@ pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> 
     {
         let syntax = match target_cast_syntax(target.clone()) {
             Some(s) => s.clone(),
-            None => Rc::new(CastSyntax {
+            None => CastSyntax {
                 template: "{expr}".to_string(),
                 cast_rules: Rc::new(vec![]),
-            }),
+            },
         };
         v1_rt::replace(
             v1_rt::replace(
@@ -245,7 +245,7 @@ pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
         if ((cps.clone().len() as i64) == 0) {
             Rc::new(vec![])
         } else {
-            Rc::new(vec![Rc::new(CoercionTestEntry {
+            Rc::new(vec![CoercionTestEntry {
                 test_name: v1_rt::concat(
                     v1_rt::concat("coercion_".to_string(), label.clone()),
                     "_checkpoint_resolves_primitives".to_string(),
@@ -253,15 +253,15 @@ pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
                 assertions: Rc::new({
                     let mut __result = Vec::new();
                     for cp in cps.clone().iter().cloned() {
-                        __result.push(Rc::new(CoercionAssertion::CheckpointAssertion {
+                        __result.push(CoercionAssertion::CheckpointAssertion {
                             target: target.clone(),
                             dag_name: cp.dag_name.clone(),
                             expected_type: cp.target_type.clone(),
-                        }));
+                        });
                     }
                     __result
                 }),
-            })])
+            }])
         }
     }
 }
@@ -281,13 +281,11 @@ pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
             for name in inhabitant_test_names().iter().cloned() {
                 __result.extend(
                     (*match coerce_container_template(target.clone(), name.clone()) {
-                        Some(tmpl) => {
-                            Rc::new(vec![Rc::new(CoercionAssertion::ContainerAssertion {
-                                target: target.clone(),
-                                container_name: name.clone(),
-                                expected_template: tmpl.clone(),
-                            })])
-                        }
+                        Some(tmpl) => Rc::new(vec![CoercionAssertion::ContainerAssertion {
+                            target: target.clone(),
+                            container_name: name.clone(),
+                            expected_template: tmpl.clone(),
+                        }]),
                         None => Rc::new(vec![]),
                     })
                     .iter()
@@ -299,13 +297,13 @@ pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
         if ((assertions.clone().len() as i64) == 0) {
             Rc::new(vec![])
         } else {
-            Rc::new(vec![Rc::new(CoercionTestEntry {
+            Rc::new(vec![CoercionTestEntry {
                 test_name: v1_rt::concat(
                     v1_rt::concat("coercion_".to_string(), label.clone()),
                     "_inhabitant_resolves_containers".to_string(),
                 ),
                 assertions: assertions.clone(),
-            })])
+            }])
         }
     }
 }
@@ -318,11 +316,11 @@ pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
             for cp in cps.clone().iter().cloned() {
                 __result.extend(
                     (*match cp.is_copy.clone() {
-                        Some(v) => Rc::new(vec![Rc::new(CoercionAssertion::CopyAssertion {
+                        Some(v) => Rc::new(vec![CoercionAssertion::CopyAssertion {
                             target: RenderTarget::Rust,
                             dag_name: cp.dag_name.clone(),
                             expected_copy: v.clone(),
-                        })]),
+                        }]),
                         None => Rc::new(vec![]),
                     })
                     .iter()
@@ -334,10 +332,10 @@ pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
         if ((copy_assertions.clone().len() as i64) == 0) {
             Rc::new(vec![])
         } else {
-            Rc::new(vec![Rc::new(CoercionTestEntry {
+            Rc::new(vec![CoercionTestEntry {
                 test_name: "coercion_is_copy_from_checkpoint".to_string(),
                 assertions: copy_assertions.clone(),
-            })])
+            }])
         }
     }
 }
@@ -347,7 +345,7 @@ pub fn unique_inhabitants_for_template_tests(
 ) -> Rc<Vec<Rc<InhabitantDecl>>> {
     inhs.clone().iter().cloned().fold(
         Rc::new(vec![]),
-        |acc: Rc<Vec<Rc<InhabitantDecl>>>, inh: Rc<InhabitantDecl>| {
+        |acc: Vec<Rc<InhabitantDecl>>, inh: Rc<InhabitantDecl>| {
             if {
                 let mut __found = false;
                 for prev in acc.clone().iter().cloned() {
@@ -394,13 +392,11 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
                                                 inh.template.clone(),
                                                 int_target.clone(),
                                             );
-                                            Rc::new(vec![Rc::new(
-                                                CoercionAssertion::TemplateAssertion {
-                                                    template: inh.template.clone(),
-                                                    args: Rc::new(vec![int_target.clone()]),
-                                                    expected: expected.clone(),
-                                                },
-                                            )])
+                                            Rc::new(vec![CoercionAssertion::TemplateAssertion {
+                                                template: inh.template.clone(),
+                                                args: Rc::new(vec![int_target.clone()]),
+                                                expected: expected.clone(),
+                                            }])
                                         }
                                     } else {
                                         if (inh.arity.clone() == 2) {
@@ -410,7 +406,7 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
                                                     str_target.clone(),
                                                     int_target.clone(),
                                                 );
-                                                Rc::new(vec![Rc::new(
+                                                Rc::new(vec![
                                                     CoercionAssertion::TemplateAssertion {
                                                         template: inh.template.clone(),
                                                         args: Rc::new(vec![
@@ -419,7 +415,7 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
                                                         ]),
                                                         expected: expected.clone(),
                                                     },
-                                                )])
+                                                ])
                                             }
                                         } else {
                                             Rc::new(vec![])
@@ -441,10 +437,10 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
         if ((assertions.clone().len() as i64) == 0) {
             Rc::new(vec![])
         } else {
-            Rc::new(vec![Rc::new(CoercionTestEntry {
+            Rc::new(vec![CoercionTestEntry {
                 test_name: "coercion_template_application".to_string(),
                 assertions: assertions.clone(),
-            })])
+            }])
         }
     }
 }

@@ -30,7 +30,7 @@ pub struct TestProjection {
     pub module_name: String,
     pub service_name: String,
     pub operation_name: String,
-    pub inferred: Rc<Node>,
+    pub inferred: Box<Rc<Node>>,
     pub params: Rc<Vec<Rc<Node>>>,
     pub mock_field_inits: Rc<Vec<Rc<Node>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -87,18 +87,18 @@ pub fn make_indent(level: i64) -> String {
 pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
         let result = items.clone().iter().cloned().fold(
-            Rc::new(UniqueAccum {
+            UniqueAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
-            }),
+            },
             |acc: Rc<UniqueAccum>, item: String| {
                 if emit_map_has(acc.seen.clone(), item.clone()) {
                     acc.clone()
                 } else {
-                    Rc::new(UniqueAccum {
+                    UniqueAccum {
                         seen: v1_rt::rc_map_insert(acc.seen.clone(), item.clone(), true),
                         result: v1_rt::rc_list_push(acc.result.clone(), item.clone()),
-                    })
+                    }
                 }
             },
         );
@@ -613,7 +613,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                 .iter()
                                 .cloned()
                                 {
-                                    __result.push(Rc::new(TestProjection {
+                                    __result.push(TestProjection {
                                         module_name: authored_name_at(
                                             tm.type_env.clone().source_indices.clone(),
                                             tm.module.clone(),
@@ -641,7 +641,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                             __result
                                         }),
                                         source_indices: tm.type_env.clone().source_indices.clone(),
-                                    }));
+                                    });
                                 }
                                 __result
                             }))
@@ -660,21 +660,21 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
 }
 
 pub fn is_type_alias_return_node(
-    n: Rc<Node>,
+    n: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (authored_name_at(source_indices.clone(), n.clone()) != "Unit".to_string())
 }
 
-pub fn is_service_item(item: Rc<Node>) -> bool {
+pub fn is_service_item(item: Node) -> bool {
     ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0))
 }
 
-pub fn is_type_def_item(item: Rc<Node>) -> bool {
+pub fn is_type_def_item(item: Node) -> bool {
     ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None))
 }
 
-pub fn is_bare_leaf_item(item: Rc<Node>) -> bool {
+pub fn is_bare_leaf_item(item: Node) -> bool {
     (((((item.connective.clone() == Connective::NoConnective) && (item.body.clone() == None))
         && ((item.params.clone().len() as i64) == 0))
         && (item.transport.clone() == None))
@@ -682,7 +682,7 @@ pub fn is_bare_leaf_item(item: Rc<Node>) -> bool {
 }
 
 pub fn is_type_alias_item(
-    item: Rc<Node>,
+    item: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (is_bare_leaf_item(item.clone())
@@ -690,7 +690,7 @@ pub fn is_type_alias_item(
 }
 
 pub fn is_type_decl_item(
-    item: Rc<Node>,
+    item: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((is_bare_leaf_item(item.clone())
@@ -700,19 +700,19 @@ pub fn is_type_decl_item(
             && ((item.children.clone().len() as i64) == 0)))
 }
 
-pub fn is_function_item(item: Rc<Node>) -> bool {
+pub fn is_function_item(item: Node) -> bool {
     ((item.body.clone() != None) && (item.type_annotation.clone() == None))
 }
 
-pub fn is_data_def_item(item: Rc<Node>) -> bool {
+pub fn is_data_def_item(item: Node) -> bool {
     ((item.body.clone() != None) && (item.type_annotation.clone() != None))
 }
 
-pub fn is_service_def_item(item: Rc<Node>) -> bool {
+pub fn is_service_def_item(item: Node) -> bool {
     ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0))
 }
 
-pub fn is_resource_def_item(item: Rc<Node>) -> bool {
+pub fn is_resource_def_item(item: Node) -> bool {
     (((item.transport.clone() == None) && ((item.children.clone().len() as i64) > 0))
         || ((((item.transport.clone() == None) && ((item.children.clone().len() as i64) == 0))
             && ((item.properties.clone().len() as i64) > 0))
