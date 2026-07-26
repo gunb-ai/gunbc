@@ -18,7 +18,7 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
                 Rc::new(ExternalAuthority {
         uri: Rc::new(Uri {
         scheme: UriScheme::Https,
-        locator: "www.investopedia.com/terms/b/basispoint.asp".to_string(),
+        locator: "www.iso.org/standard/31887.html".to_string(),
     }),
     })
             };
@@ -29,7 +29,7 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
 pub fn basis_point_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Basis point / permyriad unity: one part per ten thousand (1 bp = 0.01 percentage points = 1/10000 of unity). Financial reporting convention; permyriad (parts per 10000) is the same scale.".to_string()
+            "Permyriad / basis-point unity: one part per ten thousand (1 bp = 0.01 percentage points = 1/10000 of unity). ISO 80000-1 quantity 'factor, unitless' applied to the ten-thousandth submultiple (permyriad, ‱); financial reporting convention names the same scale 'basis point'.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
