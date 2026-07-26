@@ -1,8 +1,14 @@
 module extdeps.languages.rust.wrap_catalog
 
+data ownership_wrap_catalog_scaffold_note: String = "SCAFFOLD (OWNERSHIP-68 / sharp-bee-290): zero production consumers as of this PR — deliberately, so each consumer flip is attributable on its own. Slice is not finished work until flips land. Dissolve-on: first PR that routes a 05_emit_rust.dag decider through rust_seed_effective_reference_layer (or a successor). Witness ownership_wrap_catalog_inert_authority_witness_holds executes the authority — not inert in the DESIGN §6 sense."
+
+data ownership_reference_layer_sharing_strategy_note: String = "Orthogonal to v1.languages.SharingStrategy (src/v1/languages.dag:104): SharingStrategy is target-parameterized HOW-to-render (wrap_template, deref_clone, clone_value, field_clone, iter_owned, clone_suffix, borrow_param_template, borrow_arg_template, needs_sharing). OwnershipReferenceLayer is WHICH layer a type at a given use-site is in. Not a §3 violation. Convergence (not this PR): SharingStrategy indexed BY OwnershipReferenceLayer — one rendering row per (layer, target) instead of flat sibling String fields; needs_sharing: Bool may conflate target-supports-sharing with value-is-shared — same convergence."
+
+data ownership_wrap_catalog_placement_note: String = "Layer catalog + use-site decision live in dag/extdeps/languages/rust/ (extdeps Rust surface). SharingStrategy lives in src/v1/languages.dag (pre-existing split). This PR places the catalog here because rows cite Rust carrier shapes and enroll v1 seed emitter carriers; SharingStrategy is render-template authority. Whether the layer DECISION function ultimately belongs in extdeps vs v1/compiler is unresolved — operator call."
+
 data rust_sg_rc_wrap_catalog_note: String = "Single authority for rust_sg_rc_use_site_ownership_catalog rows (v1 seed emitter + v2.extdeps.languages.rust). Carrier is a closed enum (not a string tag). NonEmptyDiagnostics aliases Diagnostics at the lookup boundary only — dissolve-on: modeled alias row in the catalog when NonEmptyDiagnostics itself dissolves (§3 nickname; do not grow rust_sg_rc_wrap_carrier_key string branches)."
 
-data rust_seed_effective_reference_layer_note: String = "INERT-FIRST (OWNERSHIP-68 / sharp-bee-290): total v1 seed wrap authority — catalog lookup, use-site arm, legacy container fallback folded inside. Zero consumers until follow-up PRs flip type/value/deref deciders pairwise. Dissolve-on: every 05_emit_rust.dag set_contains(shared_types, …) decider routes through this function."
+data rust_seed_effective_reference_layer_note: String = "INERT-FIRST (OWNERSHIP-68 / sharp-bee-290): total v1 seed wrap authority — catalog lookup, use-site arm, legacy container fallback folded inside. Zero consumers until follow-up PRs flip type/value/deref deciders pairwise. Dissolve-on: first consumer-flip PR (see ownership_wrap_catalog_scaffold_note)."
 
 data rust_seed_legacy_container_blanket_dissolve_on: String = "wrap_catalog legacy container carriers covered — List/HashMap/BTreeMap rows land in rust_sg_rc_ownership_wrap_catalog_rows and rust_seed_legacy_container_blanket_rc deletes"
 
