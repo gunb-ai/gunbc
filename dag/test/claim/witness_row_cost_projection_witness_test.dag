@@ -9,10 +9,18 @@ import gunbc.witness_row_cost {
   witness_cost_declaration_event,
   witness_cost_warm,
   witness_cost_rss_unavailable_cause,
+  witness_timing_row_seed_view_disposition,
+  witness_timing_row_seed_view_dissolve_trigger,
+  witness_timing_row_hand_rust_receipt_plan_anchor,
+  witness_timing_row_hand_rust_deferral,
+  witness_timing_row_hand_rust_scaffold_deletion,
+  witness_timing_row_hand_rust_loc_delta_net,
+  witness_timing_row_hand_rust_test_discriminator,
 }
 import std.logic { Bool }
 import std.nat { Nat }
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr, List, Int, String }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.measure { millisecond, millisecond_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.observation {
@@ -231,6 +239,28 @@ fn rss_unavailable_carries_cause_on_modeled_events_holds() -> Bool {
   }
 }
 
+fn hand_rust_scaffold_receipts_are_checkable_holds() -> Bool {
+  match witness_timing_row_seed_view_disposition {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  } &&
+  string_contains(s: witness_timing_row_seed_view_dissolve_trigger, pattern: "WitnessTimingRow") &&
+  string_contains(s: witness_timing_row_seed_view_dissolve_trigger, pattern: "5-dissolve-patches") &&
+  string_contains(s: witness_timing_row_hand_rust_deferral, pattern: "EXPLICIT DEFERRAL") &&
+  string_contains(s: witness_timing_row_hand_rust_deferral, pattern: "placement-workstream-#5") &&
+  string_contains(s: witness_timing_row_hand_rust_deferral, pattern: "5-dissolve-patches") &&
+  string_contains(s: witness_timing_row_hand_rust_scaffold_deletion, pattern: "Deleted-scaffold path") &&
+  string_contains(
+    s: witness_timing_row_hand_rust_receipt_plan_anchor,
+    pattern: "progress-observation-design.md#interim-witness-timing-row-scaffold"
+  ) &&
+  witness_timing_row_hand_rust_loc_delta_net > 0 &&
+  string_contains(
+    s: witness_timing_row_hand_rust_test_discriminator,
+    pattern: "witness_timing_rows_refuse_duplicate_entry_resolve"
+  )
+}
+
 test fn witness_row_cost_projection_holds() -> Bool {
   two_events_project_one_exact_tsv_row_holds() &&
   missing_parent_resolve_refuses_holds() &&
@@ -238,5 +268,6 @@ test fn witness_row_cost_projection_holds() -> Bool {
   resolve_wall_is_shared_not_divided_holds() &&
   refused_outcome_distinct_from_failed_in_projection_holds() &&
   w2_ambient_suppress_retains_complete_receipt_row_holds() &&
-  rss_unavailable_carries_cause_on_modeled_events_holds()
+  rss_unavailable_carries_cause_on_modeled_events_holds() &&
+  hand_rust_scaffold_receipts_are_checkable_holds()
 }

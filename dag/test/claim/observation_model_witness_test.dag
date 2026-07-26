@@ -42,6 +42,9 @@ import std.observation {
   observation_grain_of_segment,
   observation_grain_depth,
   observation_subject_grain,
+  observation_subject_entry_path,
+  observation_subject_declaration,
+  observation_subject_phase_name,
   observation_grain_at_or_above_entry,
   observation_subject_contains,
   observation_subject_path,
@@ -426,6 +429,18 @@ test fn w_declaration_segment_key_and_grain_totality_holds() -> Bool {
   observation_grain_depth(g: ModuleGrain) < observation_grain_depth(g: DeclarationGrain) &&
   observation_grain_depth(g: DeclarationGrain) < observation_grain_depth(g: PhaseGrain) &&
   observation_subject_grain(subject: decl_subject) == DeclarationGrain &&
+  match observation_subject_entry_path(subject: decl_subject) {
+    Present { value: p } => p == ("dag/test/claim/observation_model_witness_test.dag" as NonEmptyStr)
+    Absent => false
+  } &&
+  match observation_subject_declaration(subject: decl_subject) {
+    Present { value: d } => d == whole
+    Absent => false
+  } &&
+  match observation_subject_phase_name(subject: decl_subject) {
+    Present { value: _ } => false
+    Absent => true
+  } &&
   observation_segment_key(seg: whole_seg) == observation_declaration_key(d: whole) &&
   observation_segment_key(seg: field_seg) == observation_declaration_key(d: fielded) &&
   observation_segment_key(seg: whole_seg) != observation_segment_key(seg: field_seg) &&

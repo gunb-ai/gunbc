@@ -2,7 +2,7 @@ module gunbc.witness_row_cost
 
 import std.logic { Bool }
 import std.nat { Nat }
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr, List, Int }
 import std.measure { Millisecond, millisecond, millisecond_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -19,6 +19,9 @@ import std.observation {
   ObservationGrain,
   DeclarationGrain,
   observation_subject_grain,
+  observation_subject_entry_path,
+  observation_subject_declaration,
+  observation_subject_phase_name,
   Measured,
   MeasuredValue,
   MeasuredUnavailable,
@@ -49,9 +52,21 @@ data witness_timing_row_seed_view_disposition: Disposition = Scaffold {
   }
 }
 
-data witness_timing_row_seed_view_note: String = "WitnessTimingRow in cli_run.rs is a seed MATERIALIZED VIEW of the ObservationEvent join projection only (Scaffold bound above) — not a lockstep authority type and not the #5 record. total_nanos is derived. Dissolve-on: seed produces the N+1 ObservationEvent values (or host bridge equivalent); receipt writer and drift path consume the complete projection; WitnessTimingRow is deleted. Nanos may remain internal seed units; Millisecond conversion is at the event boundary."
+data witness_timing_row_seed_view_dissolve_trigger: String = "🟡 dissolve-on: WitnessTimingRow + compute_witness_timing_rows + entry_resolve_nanos_by_entry in src/v1/stage0/src/cli_run.rs (HAND-Rust materialized view of project_witness_cost_receipt). DISSOLVES WHEN seed emits N+1 ObservationEvent values per entry (or host bridge equivalent) and receipt/drift consume project_witness_cost_receipt as sole authority — then those Rust decls DELETE. Lane=placement-workstream-#5-per-row-cost; ROADMAP row=5-dissolve-patches."
 
-data witness_cost_transition_extract_note: String = "ObservationTransition is read only through witness_cost_concluded_outcome (Optional extract). reusable Begin|Step|Concluded-to-Bool predicates are dissolved (review 43351); is_entry_resolve / is_declaration_witness compose subject facts with that extract and never match the transition coproduct."
+data witness_timing_row_hand_rust_receipt_plan_anchor: String = "docs/plans/progress-observation-design.md#interim-witness-timing-row-scaffold"
+
+data witness_timing_row_hand_rust_deferral: String = "EXPLICIT DEFERRAL (hand-Rust gate / review 43361): lane=placement-workstream-#5-per-row-cost; ROADMAP row=5-dissolve-patches. Seed retains WitnessTimingRow/compute_witness_timing_rows/entry_resolve_nanos_by_entry until ObservationEvent production lands in the seed; not a census shrink. Deleted-scaffold path: those three decls delete when dissolve_trigger fires."
+
+data witness_timing_row_hand_rust_scaffold_deletion: String = "Deleted-scaffold path: WitnessTimingRow struct + compute_witness_timing_rows + entry_resolve_nanos_by_entry (+ witness_timing_rows_refuse_duplicate_entry_resolve unit) delete when dissolve_trigger fires; rg WitnessTimingRow src/v1/stage0 == 0 is the deletion receipt."
+
+data witness_timing_row_hand_rust_loc_delta_net: Int = 42
+
+data witness_timing_row_hand_rust_test_discriminator: String = "witness_timing_rows_refuse_duplicate_entry_resolve"
+
+data witness_timing_row_seed_view_note: String = "WitnessTimingRow in cli_run.rs is a seed MATERIALIZED VIEW of the ObservationEvent join projection only (Scaffold bound above) — not a lockstep authority type and not the #5 record. total_nanos is derived. Hand-Rust receipts: dissolve_trigger, deferral (lane + ROADMAP 5-dissolve-patches), scaffold_deletion, loc_delta_net, test_discriminator, plan_anchor — see progress-observation-design.md#interim-witness-timing-row-scaffold. Nanos may remain internal seed units; Millisecond conversion is at the event boundary."
+
+data witness_cost_transition_extract_note: String = "ObservationTransition is read only through witness_cost_concluded_outcome (Optional extract). reusable Begin|Step|Concluded-to-Bool predicates are dissolved (review 43351); is_entry_resolve / is_declaration_witness compose subject facts with that extract and never match the transition coproduct. Subject segment fields are read through std.observation observation_subject_entry_path / observation_subject_declaration / observation_subject_phase_name (canonical accessors; review 43361) — no local ObservationSegment walkers."
 
 type WitnessRowCostDatedBasis {
   eval: Millisecond
@@ -91,42 +106,18 @@ fn witness_cost_warm(eval: Millisecond, resolve: Millisecond) -> Millisecond {
 }
 
 fn witness_cost_subject_entry(subject: ObservationSubject) -> Optional<NonEmptyStr> {
-  fold(subject.segments, init: Absent, f: (acc, seg) =>
-    match seg {
-      EntrySegment { source_path: p } => Present { value: p }
-      RunSegment { id: _ } => acc
-      BatchSegment { index: _, label: _ } => acc
-      ModuleSegment { module_path: _ } => acc
-      DeclarationSegment { declaration: _ } => acc
-      PhaseSegment { name: _ } => acc
-    }
-  )
+  observation_subject_entry_path(subject: subject)
 }
 
 fn witness_cost_subject_declaration(subject: ObservationSubject) -> Optional<DeclarationRef> {
-  fold(subject.segments, init: Absent, f: (acc, seg) =>
-    match seg {
-      DeclarationSegment { declaration: d } => Present { value: d }
-      RunSegment { id: _ } => acc
-      BatchSegment { index: _, label: _ } => acc
-      EntrySegment { source_path: _ } => acc
-      ModuleSegment { module_path: _ } => acc
-      PhaseSegment { name: _ } => acc
-    }
-  )
+  observation_subject_declaration(subject: subject)
 }
 
 fn witness_cost_subject_has_resolve_phase(subject: ObservationSubject) -> Bool {
-  fold(subject.segments, init: false, f: (acc, seg) =>
-    match seg {
-      PhaseSegment { name: n } => acc || n == ("resolve" as NonEmptyStr)
-      RunSegment { id: _ } => acc
-      BatchSegment { index: _, label: _ } => acc
-      EntrySegment { source_path: _ } => acc
-      ModuleSegment { module_path: _ } => acc
-      DeclarationSegment { declaration: _ } => acc
-    }
-  )
+  match observation_subject_phase_name(subject: subject) {
+    Present { value: n } => n == ("resolve" as NonEmptyStr)
+    Absent => false
+  }
 }
 
 fn witness_cost_measured_wall(wall: Measured<Millisecond>) -> Optional<Millisecond> {

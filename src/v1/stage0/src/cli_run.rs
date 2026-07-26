@@ -12219,10 +12219,15 @@ pub struct HistogramData {
 ///
 /// SCAFFOLD materialized view of `std.observation.ObservationEvent` join projection
 /// (`gunbc.witness_row_cost.witness_timing_row_seed_view_disposition`) — NOT the #5
-/// authority and NOT a lockstep type. `total_nanos` is derived. Dissolve-on: seed
-/// produces N+1 ObservationEvent values; receipt/drift consume
-/// `project_witness_cost_receipt`; this struct is deleted. Nanos stay internal seed
-/// units; Millisecond conversion is at the event boundary.
+/// authority and NOT a lockstep type. `total_nanos` is derived.
+/// Hand-Rust gate receipts (review 43361): dissolve_trigger, explicit deferral
+/// (lane=placement-workstream-#5-per-row-cost; ROADMAP `5-dissolve-patches`),
+/// scaffold_deletion, loc_delta_net, test_discriminator, plan_anchor —
+/// `docs/plans/progress-observation-design.md#interim-witness-timing-row-scaffold`.
+/// Dissolve-on: seed produces N+1 ObservationEvent values; receipt/drift consume
+/// `project_witness_cost_receipt`; this struct + `compute_witness_timing_rows` +
+/// `entry_resolve_nanos_by_entry` are deleted. Nanos stay internal seed units;
+/// Millisecond conversion is at the event boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WitnessTimingRow {
     pub entry: String,
