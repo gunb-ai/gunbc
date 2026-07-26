@@ -3,7 +3,7 @@ module gunbc.ci_deploy_access_emit
 import std.types { String, NonEmptyStr, List, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.algebra { fold_list, any }
+import v2.std.algebra { fold_list, any, list_map, list_flat_map }
 import gunbc.fleet_posix_accounts { grounded_posix_principal_name }
 import gunbc.ci_deploy_access {
   DeployAccess,
@@ -18,10 +18,28 @@ import extdeps.access.posix_effective_principal {
   EffectivePosixPrincipalRead,
   posix_effective_principal_read_note,
 }
+import v2.std.orchestration {
+  Pipeline,
+  PipelineStep,
+  Do,
+  If,
+  Let,
+  Run,
+  Predicate,
+  Not,
+  StrEq,
+  ExitZero,
+  Expr,
+  ExprCmdSubst,
+  FailFast,
+  DiscardAll,
+  DiscardOut,
+}
+import v2.std.collection { Absent, Present }
 
-data deploy_access_emit_preflight_note: String = "Wave C envelope-only on #7011 realization: deploy-access preflight + roster-emitted sudoers dropin run in-script before the first mutation (apply and retract share deploy_apply_preamble_shell; retract may install the dropin on first retract-after-flip — idempotent). Bootstrap order (review 40903): principal + roster grants first, then sudoers install — no blessed-helper grant (#7011 owns tree-sync/ownership/teardown realization). Package-managed grant paths (tailscale) use sudo -l grant-list probes so a missing binary cannot masquerade as a sudoers miss (review 41039). Typed refusal prefixes match deploy_access_refusal_prefix; no absorbing fallback."
+data deploy_access_emit_preflight_note: String = "Wave C envelope-only on #7011 realization: deploy-access preflight + roster-emitted sudoers dropin run in-script before the first mutation (apply and retract share deploy_apply_preamble_steps; retract may install the dropin on first retract-after-flip — idempotent). Bootstrap order (review 40903): principal + roster grants first, then sudoers install — no blessed-helper grant (#7011 owns tree-sync/ownership/teardown realization). Package-managed grant paths (tailscale) use sudo -l grant-list probes so a missing binary cannot masquerade as a sudoers miss (review 41039). Typed refusal prefixes match deploy_access_refusal_prefix; no absorbing fallback."
 
-data deploy_access_emit_preflight_dissolution_trigger: String = "🟡 dissolve-on: gunbc.ci_deploy_access_emit — concat-built deploy-access preflight shell (principal probe + sudo -n grant probes); DISSOLVES WHEN extdeps access/sudo typed-argv op transport and live_deploy_emit_shell_dissolution_trigger retire (bash-emit #5828 / shell-intent Phase 2 realizes preflight through typed effect-plan emit without medium-as-string concat)."
+data deploy_access_emit_preflight_dissolution_trigger: String = "🟡 dissolve-on: gunbc.ci_deploy_access_emit — deploy-access preflight modeled as v2.std.orchestration Pipeline/PipelineStep (principal probe + sudo -n grant probes); DISSOLVES WHEN extdeps access/sudo typed-argv op transport and live_deploy_emit_shell_dissolution_trigger retire (bash-emit #5828 / shell-intent Phase 2 realizes preflight through typed effect-plan emit without medium-as-string concat)."
 
 data deploy_access_emit_preflight_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -62,61 +80,130 @@ fn deploy_access_emit_sudo_grant_list_probe_script(command_path: NonEmptyStr) ->
   concat("sudo -n -l ", command_path as String)
 }
 
-fn deploy_access_emit_principal_probe_shell(access: DeployAccess) -> String {
-  let expected = grounded_posix_principal_name(p: access.principal) as String
-  let read_script = deploy_access_emit_principal_read_script(read: EffectivePosixPrincipalRead {})
-  join([
-    "_gunbc_principal=\"$(", read_script, ")\"\n",
-    "if [ \"$_gunbc_principal\" != \"", expected, "\" ]; then\n",
-    "  echo \"", deploy_access_refusal_prefix, " — principal mismatch expected=", expected, " actual=$_gunbc_principal\"\n",
-    "  exit 1\n",
-    "fi\n",
-  ], "")
-}
-
-fn deploy_access_emit_sudo_execute_probe_shell(cmd: PrivilegedCommand) -> String {
-  let probe = SudoNopasswdExecuteProbeShape { command_path: cmd.path, check_argv: cmd.check }
-  concat(
-    concat(deploy_access_emit_sudo_execute_probe_script(probe: probe), " >/dev/null"),
-    concat(" || { echo \"", concat(deploy_access_refusal_prefix, deploy_access_emit_exec_probe_refusal_suffix), "\"; exit 1; }")
-  )
-}
-
-fn deploy_access_emit_sudo_grant_list_probe_shell(cmd: PrivilegedCommand) -> String {
-  let list_script = deploy_access_emit_sudo_grant_list_probe_script(command_path: cmd.path)
-  concat(
-    concat(list_script, " >/dev/null 2>&1"),
-    concat(" || { echo \"", concat(deploy_access_refusal_prefix, deploy_access_emit_grant_list_probe_refusal_suffix), "\"; exit 1; }")
-  )
-}
-
-fn deploy_access_emit_sudo_probe_shell(cmd: PrivilegedCommand) -> String {
-  if privileged_command_uses_grant_list_probe(cmd: cmd) {
-    deploy_access_emit_sudo_grant_list_probe_shell(cmd: cmd)
-  } else {
-    deploy_access_emit_sudo_execute_probe_shell(cmd: cmd)
+fn deploy_access_emit_refusal_echo_step(message: String) -> PipelineStep {
+  Do {
+    run: Run {
+      command: join(["echo \"", message, "\""], ""),
+      env: [],
+      redirect: Absent,
+      capture: Absent
+    }
   }
 }
 
-fn deploy_access_emit_bootstrap_probes_shell(access: DeployAccess) -> String {
-  fold_list(
-    xs: access.privileged_commands,
-    empty: "",
-    cons: (acc, cmd) =>
-      if acc == "" {
-        deploy_access_emit_sudo_probe_shell(cmd: cmd)
-      } else {
-        concat(acc, concat("\n", deploy_access_emit_sudo_probe_shell(cmd: cmd)))
-      }
-  )
+fn deploy_access_emit_exit_1_step() -> PipelineStep {
+  Do {
+    run: Run { command: "exit 1", env: [], redirect: Absent, capture: Absent }
+  }
 }
 
-fn deploy_access_emit_bootstrap_preflight_block(access: DeployAccess) -> String {
+fn deploy_access_emit_principal_probe_steps(access: DeployAccess) -> List<PipelineStep> {
+  let expected = grounded_posix_principal_name(p: access.principal) as String
+  let read_script = deploy_access_emit_principal_read_script(read: EffectivePosixPrincipalRead {})
+  [
+    Let {
+      name: "_gunbc_principal",
+      value: ExprCmdSubst { callee: read_script, args: [] }
+    },
+    If {
+      cond: Not {
+        inner: StrEq {
+          lhs: "\"$_gunbc_principal\"",
+          rhs: join(["\"", expected, "\""], "")
+        }
+      },
+      then_: Pipeline {
+        steps: [
+          deploy_access_emit_refusal_echo_step(
+            message: join([deploy_access_refusal_prefix, " — principal mismatch expected=", expected, " actual=$_gunbc_principal"], "")
+          ),
+          deploy_access_emit_exit_1_step()
+        ],
+        on_failure: FailFast
+      },
+      else_: Absent
+    }
+  ]
+}
+
+fn deploy_access_emit_sudo_execute_probe_step(cmd: PrivilegedCommand) -> PipelineStep {
+  let probe = SudoNopasswdExecuteProbeShape { command_path: cmd.path, check_argv: cmd.check }
+  If {
+    cond: Not {
+      inner: ExitZero {
+        run: Run {
+          command: deploy_access_emit_sudo_execute_probe_script(probe: probe),
+          env: [],
+          redirect: Present { value: DiscardOut },
+          capture: Absent
+        }
+      }
+    },
+    then_: Pipeline {
+      steps: [
+        deploy_access_emit_refusal_echo_step(
+          message: concat(deploy_access_refusal_prefix, deploy_access_emit_exec_probe_refusal_suffix)
+        ),
+        deploy_access_emit_exit_1_step()
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
+fn deploy_access_emit_sudo_grant_list_probe_step(cmd: PrivilegedCommand) -> PipelineStep {
+  If {
+    cond: Not {
+      inner: ExitZero {
+        run: Run {
+          command: deploy_access_emit_sudo_grant_list_probe_script(command_path: cmd.path),
+          env: [],
+          redirect: Present { value: DiscardAll },
+          capture: Absent
+        }
+      }
+    },
+    then_: Pipeline {
+      steps: [
+        deploy_access_emit_refusal_echo_step(
+          message: concat(deploy_access_refusal_prefix, deploy_access_emit_grant_list_probe_refusal_suffix)
+        ),
+        deploy_access_emit_exit_1_step()
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
+fn deploy_access_emit_sudo_probe_step(cmd: PrivilegedCommand) -> PipelineStep {
+  if privileged_command_uses_grant_list_probe(cmd: cmd) {
+    deploy_access_emit_sudo_grant_list_probe_step(cmd: cmd)
+  } else {
+    deploy_access_emit_sudo_execute_probe_step(cmd: cmd)
+  }
+}
+
+fn deploy_access_emit_bootstrap_probes_steps(access: DeployAccess) -> List<PipelineStep> {
+  list_map(access.privileged_commands, cmd => deploy_access_emit_sudo_probe_step(cmd: cmd))
+}
+
+fn deploy_access_emit_bootstrap_preflight_steps(access: DeployAccess) -> List<PipelineStep> {
   concat(
+    [
+      Do {
+        run: Run {
+          command: "# deploy-access-bootstrap-preflight (principal + roster grants)",
+          env: [],
+          redirect: Absent,
+          capture: Absent
+        }
+      }
+    ],
     concat(
-      concat("# deploy-access-bootstrap-preflight (principal + roster grants)\n", deploy_access_emit_principal_probe_shell(access: access)),
-      deploy_access_emit_bootstrap_probes_shell(access: access)
-    ),
-    ""
+      deploy_access_emit_principal_probe_steps(access: access),
+      deploy_access_emit_bootstrap_probes_steps(access: access)
+    )
   )
 }
