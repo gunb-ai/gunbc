@@ -99,6 +99,10 @@ type CompilerModuleFrontierRow {
   tractability_rank: Int
 }
 
+data compiler_frontier_self_emitted_baseline_ratchet_note: String = "Class-5 carve-out: this baseline is a progress ratchet on SelfEmitted disposition count, not a duplicate of roster length. compiler_frontier_self_emitted_count() filters the roster by disposition; the baseline is an independent floor that reds when modules silently regress SelfEmitted -> SeedRetained. Deriving it from the same filter would tautologize the check (same rule as languages_consumer_census and test_migration_debt ratchets)."
+
+data compiler_frontier_self_emitted_baseline: Int = 6
+
 data compiler_frontier_binding_hand_rows_note: String = "THE SECOND AUTHORITY, still live for ONE consumer and gated because of it. These 27 rows no longer serve the witness path — that projects off the derived ModuleStorageIndex — but they still feed the crate-layout EMITTER, which cannot be handed a host index without polluting an unrelated 18-variant dispatch (frontier_emitter_hand_row_debt_note has the full reasoning and the count).
 
 So two representations of the path⇄module fact are live at once, which §3 forbids in general. What makes this an honest interim rather than a fork is that they are PARITY-GATED: transition_parity_host_index_agrees_with_hand_rows is a STANDING witness on the wet cadence (promoted from one-time transition receipt, parent ruling 2026-07-19) asserting that the derived index and these rows answer identically for every path the rows name. If they ever drift, that witness REDS.
@@ -609,6 +613,10 @@ fn count_seed_retained_frontier_rows(xs: List<CompilerModuleFrontierRow>) -> Int
 
 fn compiler_frontier_self_emitted_count() -> Int {
   count_self_emitted_frontier_rows(xs: compiler_frontier_roster)
+}
+
+fn compiler_frontier_self_emitted_baseline_holds() -> Bool {
+  compiler_frontier_self_emitted_count() == compiler_frontier_self_emitted_baseline
 }
 
 fn compiler_frontier_seed_retained_count() -> Int {
@@ -1215,6 +1223,7 @@ fn compiler_frontier_crate_layout_holds(index: ModuleStorageIndex) -> Bool {
 
 fn compiler_frontier_census_holds() -> Bool {
   compiler_frontier_roster_paths_unique_holds()
+    && compiler_frontier_self_emitted_baseline_holds()
     && compiler_frontier_execution_measured_attribution_holds()
     && compiler_frontier_blocker_class_distribution_knowledge_attributed_holds()
     && compiler_frontier_gap_clustering_knowledge_attributed_holds()
