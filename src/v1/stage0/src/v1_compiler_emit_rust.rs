@@ -1787,7 +1787,6 @@ pub fn rust_seed_catalog_wraps_rc_at_use_site(
 pub fn rust_seed_value_needs_rc_wrap(
     type_name: String,
     rendered: String,
-    _shared_types: Rc<BTreeSet<String>>,
     use_site: OwnershipWrapUseSite,
 ) -> bool {
     match use_site {
@@ -17203,7 +17202,6 @@ pub fn variant_ref_self_wraps(
         rust_seed_value_needs_rc_wrap(
             enum_name.clone(),
             enum_name,
-            shared_types,
             OwnershipWrapUseSite::OwnershipAtBindingProjection,
         )
     }
@@ -17450,7 +17448,6 @@ pub fn emit_typed_expr_base(
                                         if rust_seed_value_needs_rc_wrap(
                                             enum_name.clone(),
                                             enum_name.clone(),
-                                            shared_types.clone(),
                                             OwnershipWrapUseSite::OwnershipAtBindingProjection,
                                         ) {
                                             v1_rt::concat(
@@ -18950,7 +18947,6 @@ pub fn emit_discriminant_call_lowering(
                         let scrut_ref = if rust_seed_value_needs_rc_wrap(
                             ty_name.clone(),
                             ty_name.clone(),
-                            shared_types.clone(),
                             OwnershipWrapUseSite::OwnershipAtBindingProjection,
                         ) {
                             v1_rt::concat(
@@ -23388,7 +23384,6 @@ pub fn emit_field_value_with_context(
                         && rust_seed_value_needs_rc_wrap(
                             rc_name.clone(),
                             rc_name.clone(),
-                            shared_types.clone(),
                             OwnershipWrapUseSite::OwnershipAtStructField,
                         ))
                     {
@@ -23670,7 +23665,6 @@ pub fn emit_typed_record_lit(
                                                 if rust_seed_value_needs_rc_wrap(
                                                     r_sn.clone(),
                                                     r_sn.clone(),
-                                                    shared_types.clone(),
                                                     OwnershipWrapUseSite::OwnershipAtBindingProjection,
                                                 ) {
                                                     v1_rt::concat(
@@ -23784,7 +23778,6 @@ pub fn emit_typed_record_lit(
                                     if rust_seed_value_needs_rc_wrap(
                                         resolved_sn.clone(),
                                         resolved_sn.clone(),
-                                        shared_types.clone(),
                                         OwnershipWrapUseSite::OwnershipAtBindingProjection,
                                     ) {
                                         v1_rt::concat(
@@ -24321,7 +24314,6 @@ Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_s
                                         && rust_seed_value_needs_rc_wrap(
                                             ctor_name.clone(),
                                             ctor_name.clone(),
-                                            shared_types.clone(),
                                             OwnershipWrapUseSite::OwnershipAtBindingProjection,
                                         ))
                                     {
