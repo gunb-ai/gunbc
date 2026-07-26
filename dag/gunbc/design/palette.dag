@@ -115,30 +115,33 @@ type GradedPairing {
   grade: PairingGrade
 }
 
+fn grade_pairing_for_max(figure: Swatch, ground: Swatch, maxv: Int) -> GradedPairing {
+  let r = srgb8_contrast_ratio_x100_for_max(a: figure.color, b: ground.color, maxv: maxv)
+  GradedPairing {
+    figure: figure,
+    ground: ground,
+    contrast_x100: r,
+    grade: grade_of_contrast(contrast_x100: r),
+  }
+}
+
 fn grade_pairing(figure: Swatch, ground: Swatch) -> GradedPairing? {
-  match srgb8_contrast_ratio_x100(a: figure.color, b: ground.color) {
-    Present { value: r } => Present {
-      value: GradedPairing {
-        figure: figure,
-        ground: ground,
-        contrast_x100: r,
-        grade: grade_of_contrast(contrast_x100: r),
-      }
-    }
+  match uint8_channel_inclusive_max_value_derived() {
+    Present { value: maxv } => Present { value: grade_pairing_for_max(figure: figure, ground: ground, maxv: maxv) }
     Absent => none
   }
 }
 
 fn graded_pairings(s: SwatchSet) -> List<GradedPairing> {
-  let swatches = swatches_of(s: s)
-  fold(swatches, init: [], f: (acc, f) =>
-    concat(acc, fold(swatches, init: [], f: (acc2, g) =>
-      if f.name == g.name { acc2 } else {
-        match grade_pairing(figure: f, ground: g) {
-          Present { value: p } => concat(acc2, [p])
-          Absent => acc2
-        }
-      })))
+  match uint8_channel_inclusive_max_value_derived() {
+    Absent => []
+    Present { value: maxv } => {
+      let swatches = swatches_of(s: s)
+      fold(swatches, init: [], f: (acc, f) =>
+        concat(acc, fold(swatches, init: [], f: (acc2, g) =>
+          if f.name == g.name { acc2 } else { concat(acc2, [grade_pairing_for_max(figure: f, ground: g, maxv: maxv)]) })))
+    }
+  }
 }
 
 fn pairings_at_least(s: SwatchSet, min_rank: Int) -> List<GradedPairing> {
