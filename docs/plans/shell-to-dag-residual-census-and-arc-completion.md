@@ -35,7 +35,7 @@ Five categories. "Genuine emitter" = emits bash that actually runs; "oracle/scaf
 | site | what | invoked by |
 | --- | --- | --- |
 | `ci_workflow.dag` | 8 GHA `RunStep.run:` bodies + concat-built floor-peak/cgroup runners (`ci_cgroup_peak_locate_shell`, `ci_floor_peak_{pre,post}_script`) | GitHub Actions (byte-consumes `run:`) |
-| `local_tidy_spec.dag` | git pre-push hook via `serialize_bash` (`githooks_pre_push_emit_scaffold`) | git (foreign executor) |
+| `local_tidy_spec.dag` | git pre-push hook, **built by `concat`** in `githooks_pre_push_emit.dag` (`:19-31`) — *not* by a serializer | git (foreign executor). *Corrected 2026-07-26 (`review 43501`): this said "via `serialize_bash`", which is doubly wrong — the sidecar is deleted, and this hook never routed through one. It is a live concat-built foreign-executor site, i.e. a genuine §4 punch-list row: stays shell permanently, but should be **emitted** via `emit(intent, Bash)` rather than concat-assembled.* |
 | cron entry lines | (per lane D census) | cron |
 
 These are correct as shell — the executor only understands shell text. Target end-state: emitted through v2 bash rows (the concat-built `ci_workflow` runners carry `…_shell_emit_dissolution_trigger` rows to the `emit(intent,Bash)` path), **not** dissolved to a typed transport. The floor-peak runners are the near-term win (they cite `floor_diff_observe.dag` as their pattern, but they're foreign-executor so they emit rather than `apply()`).
@@ -68,7 +68,7 @@ The srv3 dissolution triggers are unanimous: `srv3_install_diagnostic_checklist_
 | --- | --- |
 | `dag_compile_clean_transport.dag` | **fully migrated** — `serialize_bash` not even imported; scaffolds dissolved ✓ |
 | `emit_determinism_transport.dag` | **fully migrated** — same; pairing now via `duplicate_computation` lens ✓ |
-| `host_prelude.dag` | run path typed (`WitnessBin.Run`/`cargo.Build`); residual typed `ShellStmt` builders are scaffold-only for the emit_determinism lane ✓ |
+| `host_prelude.dag` | **fully migrated** — run path typed (`WitnessBin.Run`/`cargo.Build`). *Corrected 2026-07-26 (`review 43501`): this claimed "residual typed `ShellStmt` builders … for the emit_determinism lane". Verified: `ShellStmt` occurs **zero** times in this file, and the file's own `witness_invocation_doc` records the former builders (`witness_bin_program`, `gunbc_claims_program`) as dissolved with the typed `WitnessBin` path (Phase D, 2026-07-14). Only `toolchain_provision_shell_exec` still uses the module's shell path.* ✓ |
 | `build_step_transport.dag` | **dissolved (#6565, 2026-07-14)** — corruption-probe harness reshaped onto typed `shell.Mktemp.Dir`/`Filesystem.Write`/`gunbc.WitnessBin.Run`/`shell.Remove.RecursiveForce`; no `serialize_bash`/`verifications_script` import remains (see `bst_typed_transport_doc` in the file). |
 | `build_step.dag` | **corrected 2026-07-26** — not a `ShellStmt` AST library; `ShellStmt` no longer exists anywhere in the tree. It imports `v2.extdeps.languages.bash_build` and constructs plain `Node`, with serialization delegated to `v2.workflow.build_step_emit` via `bash_command_fold_serialize` (its own `build_step_serialize_dissolution_note` says so). Consumed by the above |
 
@@ -515,7 +515,7 @@ The governing rule for the rest of the sweep, so "all other instances" stays dec
 
 What the trigger does **not** discharge is the **existing** rows: the wall stops new concats, it does not dissolve the ones already written. Each remaining row is still discharged the same way — *deletion of the concat*, verified green-by-execution + an injection-RED, never by relocation. This section retires when that list empties, not on any further wall work.
 
-*(Corrected 2026-07-26, `review 43494`: this trigger read "folds into the `host_language_transport_script` lens **going live**". That prescribed superseded Phase-3 work — the lens is inert by design and was never what closed the class; construction was. Note the two are not interchangeable: a lens going live would have been *validation*, the record edge is *construction*, and §5 prefers the second precisely because it makes the state unwritable rather than merely flagged.)*
+*(Corrected 2026-07-26, `review 43494` then `43501`: this trigger read "folds into the `host_language_transport_script` lens **going live**". Superseded on both counts — the lens **was already activated** by #7184 (§4.F), so the event it waited on has happened; and it was never what closed this class anyway. It is **live but deliberately green** on `ComputedApplication`, redding only a raw literal at an enrolled `Run` position, so it backstops literal blobs while **construction** closes the computed-join class. My first correction here said the lens "is inert by design" — that was itself wrong, and contradicted §4.F in the same edit pass. The two mechanisms are not interchangeable: a lens is *validation*, the `RetainedShellScript` record edge is *construction*, and §5 prefers the second because it makes the state unwritable rather than merely flagged.)*
 
 ---
 
