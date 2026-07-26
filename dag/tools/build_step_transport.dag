@@ -7,6 +7,7 @@ import extdeps.git
 import extdeps.gunbc
 import gunbc.cli_invoke { claim_executor_bin_name }
 import gunbc.cli_services
+import gunbc.output_policy { ExpectSuccess, OutcomeIsData }
 import std.logic { Bool }
 import tools.host_prelude {
   WitnessBinArtifactAbsent,
@@ -47,7 +48,12 @@ fn claim_executor_path(root: String) -> String {
 }
 
 fn make_probe_executable(path: String) -> Bool {
-  let chmod = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/chmod", args: ["+x", path])
+  let chmod = gunbc.WitnessBin.Run(
+    workdir: "/",
+    bin_path: "/bin/chmod",
+    args: ["+x", path],
+    expect: ExpectSuccess,
+  )
   chmod.success
 }
 
@@ -55,7 +61,8 @@ fn verify_artifacts_typed(root: String, paths: List<String>) -> Bool {
   let result = claim_executor.Executor.VerifyBuildArtifacts(
     workdir: root,
     bin_path: claim_executor_path(root: root),
-    artifact_paths: paths
+    artifact_paths: paths,
+    expect: OutcomeIsData,
   )
   result.success
 }

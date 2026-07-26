@@ -1,6 +1,7 @@
 module test.claim.host_build_cache_provision_real_execution
 
 import std.logic { Bool }
+import gunbc.output_policy { ExpectSuccess, OutcomeIsData }
 import extdeps.shell
 import gunbc.retained_shell_script { retained_runtime }
 import extdeps.filesystem.filesystem_io
@@ -30,6 +31,7 @@ fn write_fake_sccache(dir_path: String, exit_code: String) -> Bool {
       body: concat("chmod +x ", path),
       reason: "build-cache provision witness chmod +x fake sccache stub" as NonEmptyStr,
     ),
+    expect: ExpectSuccess,
   )
   wrote.success && chmod.success
 }
@@ -41,6 +43,7 @@ fn run_body(prelude: String, body: String) -> ShellExecObserved {
       body: shell_exec_via_bash(body: full),
       reason: "build-cache provision witness body under fake failing sccache" as NonEmptyStr,
     ),
+    expect: OutcomeIsData,
   )
   ShellExecObserved {
     exit_code: result.exit_code,

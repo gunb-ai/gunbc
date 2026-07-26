@@ -468,6 +468,16 @@ fn orch_pipeline_needs_block_body(then_: Pipeline, else_: Optional<Pipeline>) ->
   }
 }
 
+data orch_if_empty_arm_note: String = "A Pipeline arm with zero steps emits \"\" (orch_emit_pipeline's HeadAbsent case); threaded raw into the if-body token slot that produces invalid bash (\"if COND; then ; fi\" -- then requires >=1 command before the closing separator). orch_if_arm_body_or_noop substitutes the bash no-op \":\" for an empty arm's body, uniformly across the inline and block dispatch and regardless of whether the OTHER arm is also empty -- see pipeline_steps_empty_arm_note (v2.std.orchestration) for why both-empty is real intent, not refused."
+
+fn orch_if_arm_body_or_noop(carried: String) -> String {
+  if carried == "" {
+    ":"
+  } else {
+    carried
+  }
+}
+
 fn orch_emit_if_step(
   cond: Predicate,
   then_: Pipeline,
@@ -481,13 +491,14 @@ fn orch_emit_if_step(
       bind_outcome(
         o: orch_emit_pipeline(p: then_, medium: medium),
         f: fn(then_medium) {
+          let then_body = orch_if_arm_body_or_noop(carried: then_medium.carried)
           match else_ {
             Absent =>
               bind_outcome(
                 o: if block_body {
-                  medium.realize_if_block(cond_spelling, then_medium.carried)
+                  medium.realize_if_block(cond_spelling, then_body)
                 } else {
-                  medium.realize_if(cond_spelling, then_medium.carried)
+                  medium.realize_if(cond_spelling, then_body)
                 },
                 f: fn(target) {
                   orch_emit_from_registry(
@@ -501,18 +512,19 @@ fn orch_emit_if_step(
               bind_outcome(
                 o: orch_emit_pipeline(p: else_pipeline, medium: medium),
                 f: fn(else_medium) {
+                  let else_body = orch_if_arm_body_or_noop(carried: else_medium.carried)
                   bind_outcome(
                     o: if block_body {
                       medium.realize_if_else_block(
                         cond_spelling,
-                        then_medium.carried,
-                        else_medium.carried
+                        then_body,
+                        else_body
                       )
                     } else {
                       medium.realize_if_else(
                         cond_spelling,
-                        then_medium.carried,
-                        else_medium.carried
+                        then_body,
+                        else_body
                       )
                     },
                     f: fn(target) {
