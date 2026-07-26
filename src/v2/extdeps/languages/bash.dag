@@ -2277,6 +2277,62 @@ fn bash_stmt_if_target_model(cond: String, body: String) -> Outcome<TargetModel>
   )
 }
 
+data bash_stmt_if_block_note: String = "Same If semantics as bash_stmt_if_tokens, spelled with real newlines around the then-body instead of the single-line \"; then \"/\"; fi\" join. Selected by orch_emit_if_step (05_emit_orchestration.dag) when the then_ Pipeline carries more than one step: the single-line row is bash-valid even then (newline is an ordinary statement separator, verified — this is not a correctness fix), but a newline-joined multi-statement body glued into the single-line row byte-diverges from a human's block-formatted expectation. Reusing bash_stmt_if_cond/bash_stmt_if_body as binding keys — same fields, a formatting realization, not a second fact."
+
+fn bash_stmt_if_block_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_if_kw },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_cond },
+    FixedToken { token_class: ^bash_token_if_then_block },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_body },
+    FixedToken { token_class: ^bash_token_if_fi_block }
+  ]
+}
+
+data bash_stmt_if_block_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_if_block_tokens()
+)
+
+fn bash_stmt_if_block_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "if ", class: ^bash_token_if_kw),
+    span(text: "; then\n", class: ^bash_token_if_then_block),
+    span(text: "\nfi", class: ^bash_token_if_fi_block)
+  ]))
+}
+
+fn bash_stmt_if_block_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_if_block,
+    lhs: ^bash_production_stmt_if_block,
+    tokens: bash_stmt_if_block_tokens(),
+    emitted: bash_stmt_if_block_emitted
+  )
+}
+
+fn bash_stmt_if_block_target_model(cond: String, body: String) -> Outcome<TargetModel> {
+  bind_outcome(
+    o: bound_tokens_source_text(
+      tokens: bash_stmt_if_block_tokens(),
+      lex: bash_stmt_if_block_lex(),
+      binding_spellings: bash_stmt_if_binding_spellings(cond: cond, body: body)
+    ),
+    f: fn(source_text) {
+      outcome_accepted(
+        bash_make_bound_tokens_target_model(
+          rules: bash_stmt_if_block_translation_rules_node(),
+          source_literal: ^bash_stmt_if_block_source_literal,
+          production_name: ^bash_production_stmt_if_block,
+          tokens: bash_stmt_if_block_tokens(),
+          source_text: render_target_text(t: source_text),
+          lex: bash_stmt_if_block_lex(),
+          binding_spellings: bash_stmt_if_binding_spellings(cond: cond, body: body)
+        )
+      )
+    }
+  )
+}
+
 fn bash_stmt_heredoc_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_heredoc_kw },

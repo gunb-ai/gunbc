@@ -1,0 +1,57 @@
+module test.claim.expectation_frontier_witness
+
+import extdeps.git
+import extdeps.gunbc
+import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.output_policy { ExpectSuccess }
+import std.logic { Bool }
+import std.types { String }
+import tools.host_prelude { ClaimRun, claim_batch_claims_argv, witness_bin_release_path }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data expectation_frontier_note: String = "EXECUTING CONSUMER for the expectation frontier (v1_interpreter ExpectationDeclaration). The boundary no longer manufactures an expectation when a call site declares none — absence is the value UntracedDefault, which still resolves to ExpectSuccess (no behaviour change, and no floor-time refusal per the operator guardrail) but is COUNTED at its located service.op and emitted as [expectation-frontier]. That receipt is the entire difference between a declared interim frontier and the fail-open it replaced: an absorbed default that is tallied can be prioritised and shrunk, one that is not has frequency zero by construction and never ranks for fixing (DESIGN §5). A COUNTER THAT IS NEVER READ IS THE SAME LIE AS NO COUNTER, so this witness reads it from a real child run rather than trusting the mechanism. THE PAIR IS THE PROOF: an entry whose effects are undeclared MUST emit the line, and an entry whose effects all declare their arm MUST NOT. Either claim alone is satisfiable by a broken counter — one that always fires passes the first, one that never fires passes the second — so neither is dropped even when it looks redundant."
+
+data subject_source_roots_note: String = "witness_layer_roots (dag + src/v2), NOT compile_clean_source_roots. The difference is load-bearing and was found by execution: compile_clean_source_roots appends src/v1, which puts v1.std.core.Node and v2.std.node.Node in one pool, and any subject whose closure reaches the compiler modules then dies on ~100 `ambiguous reference Node` errors before running a single effect. A child that fails to RESOLVE dispatches nothing, emits no receipt, and reds this witness for a reason that has nothing to do with the mechanism under test — a false red that would read as a real one. The subject needs the roots it actually imports, so it gets them."
+
+data frontier_marker: String = "[expectation-frontier]"
+
+fn claim_batch_path() -> String {
+  let root = git.Core.Toplevel()
+  witness_bin_release_path(root: root.path, bin_name: "claim_batch")
+}
+
+fn run_entry_capturing_stderr(entry: String, function: String) -> String {
+  let root = git.Core.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: root.path,
+    bin_path: claim_batch_path(),
+    args: claim_batch_claims_argv(
+      source_roots: witness_layer_roots,
+      claims: [ClaimRun { entry: entry, function: function }]
+    ),
+    expect: ExpectSuccess
+  )
+  result.stderr
+}
+
+data undeclared_subject_note: String = "generated_artifact_drift_test reaches Filesystem.Read from .dag call sites that carry no `expect:` — measured 67 undeclared dispatches at the time of writing. The COUNT is deliberately not pinned: it tracks how many artifacts the registry holds and would turn an unrelated registry edit into a red here, which is the brittle-pin failure this corpus already knows. The claim is the receipt's PRESENCE, which is the property the mechanism actually owns."
+
+test fn undeclared_effects_emit_the_frontier_receipt_holds() -> Bool {
+  let stderr = run_entry_capturing_stderr(
+    entry: "dag/test/claim/generated_artifact_drift_test.dag",
+    function: "generated_artifact_drift_witnesses"
+  )
+  string_contains(s: stderr, pattern: frontier_marker)
+}
+
+data declared_subject_note: String = "roadmap_belt_actuate's three probes (belt_program_available, belt_exec, belt_observe) all carry `expect: OutcomeIsData`, so a correct counter stays silent on this entry. NOTE THE COUPLING, because it is load-bearing exactly as the no-fake-anomalies wall's is: if those annotations are ever removed, this control goes red — which is the correct outcome and should be read as the control working, not as this witness being wrong. If the entry stops exercising effects entirely the control passes VACUOUSLY; re-point it at another fully-annotated effect entry rather than deleting it."
+
+test fn fully_declared_effects_emit_no_frontier_receipt_holds() -> Bool {
+  let stderr = run_entry_capturing_stderr(
+    entry: "dag/test/claim/roadmap_belt_actuate_witness_test.dag",
+    function: "roadmap_belt_actuate_witnesses"
+  )
+  !string_contains(s: stderr, pattern: frontier_marker)
+}

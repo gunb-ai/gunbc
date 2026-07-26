@@ -742,7 +742,7 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
   if is_host_diagnostics_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_diagnostics_carrier_applied(shared_types: shared_types)
   }
-  let base_name = authored_name_at(source_indices: source_indices, node: n)
+  let base_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
   if n.children |> count == 0 {
 
     match rust_seed_host_container_base(name: base_name, corpus_repr: corpus_repr) {

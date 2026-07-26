@@ -1,6 +1,7 @@
 module gunbc.roadmap_dispatch_actuator
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
+import std.content_hash { content_hash_atom }
 import std.upsert_decision {
   ObservationVerdict,
   Converged,
@@ -41,6 +42,7 @@ import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_ls_argv,
   shape_tmux_kill_session_argv,
+  shape_tmux_list_panes_argv,
 }
 import extdeps.llm.cli { shape_claude_invoke_argv }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -48,13 +50,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.host_layout { srv1_dispatch_worktree_root }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 
-data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.roadmap_dispatch_actuator",
-    decl_name: "classify_dispatch_lease_upsert",
-    field: WholeDeclaration
-  }
+data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Terminal {
+  reason: "DISSOLVED (U4, 2026-07-25): the pane-fingerprint observation landed — tmux list-panes with the cited format variables feeds tmux_session_observation_with_panes, so SessionObserved carries pane_current_command and the lease classification's Converged/Conflict arms are reachable by observation, not only by fixture. The R5 owned-only teardown gate (dispatch_stop_gate) is its first live consumer." as NonEmptyStr
 }
 
 data dispatch_repo: String = "gunbc"
@@ -64,6 +61,8 @@ data dispatch_worktree_root_note: String = "PROJECTION of gunbc.host_layout.srv1
 data dispatch_worktree_root: String = srv1_dispatch_worktree_root as String
 data dispatch_git_remote_ref: String = gunbc_merge_target_ref as String
 data dispatch_tmux_session_prefix: String = "gunbc-dispatch-"
+data dispatch_claude_fingerprint_finding_note: String = "NAMED FINDING (U4 live drive, macOS, 2026-07-25): pane_current_command is the kernel process name (p_comm) — symlinks resolve and exec -a cannot fake it, which is exactly the anti-spoof property R5 wants — BUT a REAL running claude CLI on this macOS reported its VERSION STRING (2.1.220) as p_comm, not claude (node process.title). So the Converged green path may not fire on real workers until the fingerprint a real srv1 spawned session reports is READ, not guessed. The refuse arms are unaffected (they are the safety half and were proven live four ways). DECIDE-BY-RECEIPT: run tmux list-panes on srv1 beside a live dispatch session; if it reports claude this row stands; if it reports a version-or-node name, this row becomes the observed value (or an accepted set) — a data edit, never a code change."
+
 data dispatch_claude_process_fingerprint: NonEmptyStr = "claude" as NonEmptyStr
 data claude_skip_permission_settings_json: String = "{\"skipDangerousModePermissionPrompt\":true}"
 data dispatch_claude_start_prompt: String = "Begin working on the assigned node."
@@ -171,12 +170,18 @@ fn dispatch_tmux_session_name(node_id: RoadmapNodeId) -> String {
   concat(dispatch_tmux_session_prefix, node_id)
 }
 
-fn dispatch_worktree_path(node_id: RoadmapNodeId) -> String {
-  concat(concat(dispatch_worktree_root, "/"), node_id)
+data dispatch_attempt_note: String = "Dispatch is ATTEMPT-grain (U1, the redispatch fix, 2026-07-25; the operator's accidental spawn was the live receipt): branch, worktree, and claude session-id carry an attempt key derived from (node_id x the spawn's clock observation) through std.content_hash — so a stopped attempt's debris never collides with the next spawn, and NOTHING is deleted to make way (a stopped attempt's worktree may hold uncommitted work, and the rework discipline carries prior diffs forward; cleanup is separate explicit work, never an absorbing arm on spawn). The tmux session name deliberately STAYS node-grain: it is what observe/reconcile key on, so already-live detection, kill, and tick idempotency are untouched — the invariant remains one live session per node. Same-instant duplicate spawns for one node collide on the attempt key and refuse at the git step, typed — fail-closed, and honestly: a same-second double-press IS a refusal-worthy event. A clock refusal refuses the spawn (step attempt-clock), never an unknown-stamped attempt that would collide later."
+
+fn dispatch_attempt_key(node_id: RoadmapNodeId, probed_at: String) -> String {
+  content_hash_atom(value: join([node_id as String, "\n", probed_at], "") as NonEmptyStr) as String
 }
 
-fn dispatch_branch_name(node_id: RoadmapNodeId) -> String {
-  concat("dispatch/", node_id)
+fn dispatch_worktree_path(node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join([dispatch_worktree_root, "/", node_id as String, "-a", attempt_key], "")
+}
+
+fn dispatch_branch_name(node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join(["dispatch/", node_id as String, "-a", attempt_key], "")
 }
 
 fn dispatch_tmux_session_scope(node_id: RoadmapNodeId) -> TmuxSessionScope {
@@ -348,7 +353,7 @@ type DispatchSpawnCommands {
   tmux_spawn: HostExecArgv
 }
 
-fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String) -> DispatchSpawnCommands {
+fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key: String) -> DispatchSpawnCommands {
   let fields = dispatch_brief_fields(node: node)
   let brief = fill_dispatch_brief(template: dispatch_brief_template, fields: fields)
   let effort = match node.sizing {
@@ -356,8 +361,8 @@ fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String) -> DispatchS
     Unsized => "medium"
   }
   let session_name = dispatch_tmux_session_name(node_id: node.node)
-  let worktree_path = dispatch_worktree_path(node_id: node.node)
-  let branch_name = dispatch_branch_name(node_id: node.node)
+  let worktree_path = dispatch_worktree_path(node_id: node.node, attempt_key: attempt_key)
+  let branch_name = dispatch_branch_name(node_id: node.node, attempt_key: attempt_key)
   let worktree = git_worktree_add_argv(
     worktree_path: worktree_path,
     branch_name: branch_name,
@@ -527,7 +532,7 @@ fn node_repo_supported(node: RoadmapNode) -> Bool {
   }
 }
 
-fn dispatch_permitted_for_node(node: RoadmapNode) -> DispatchRequestGate {
+fn dispatch_permitted_for_node(node: RoadmapNode, attempt_key: String) -> DispatchRequestGate {
   let brief = filled_dispatch_brief_for_node(node: node)
   let effort = match node.sizing {
     Sized { intricacy, volume: _, repo: _, acceptance: _ } =>
@@ -536,8 +541,8 @@ fn dispatch_permitted_for_node(node: RoadmapNode) -> DispatchRequestGate {
   }
   DispatchPermitted {
     session_name: dispatch_tmux_session_name(node_id: node.node),
-    worktree_path: dispatch_worktree_path(node_id: node.node),
-    branch_name: dispatch_branch_name(node_id: node.node),
+    worktree_path: dispatch_worktree_path(node_id: node.node, attempt_key: attempt_key),
+    branch_name: dispatch_branch_name(node_id: node.node, attempt_key: attempt_key),
     brief: brief,
     claude_effort: effort,
   }
@@ -547,6 +552,7 @@ fn classify_dispatch_request(
   node: RoadmapNode,
   ready: List<RoadmapNode>,
   tmux_entries: List<TmuxLsEntry>,
+  attempt_key: String,
 ) -> DispatchRequestGate {
   if !node_in_ready(node_id: node.node, ready: ready) {
     DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
@@ -562,7 +568,7 @@ fn classify_dispatch_request(
         UpsertClassification { verdict: _, decision: Noop } =>
           DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
         UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
-          dispatch_permitted_for_node(node: node)
+          dispatch_permitted_for_node(node: node, attempt_key: attempt_key)
       }
     }
   }
@@ -604,7 +610,131 @@ fn dispatch_live_sessions(tmux_ls_output: String) -> List<DispatchLiveSession> {
   entries |> map(e => dispatch_live_session_for_entry(entry: e))
 }
 
+data dispatch_attempt_refs_note: String = "U3 (result surfacing): the attempt branches ARE the results ledger — every spawn mints dispatch/<node>-a<key> (U1), so listing refs/heads/dispatch/ observes every attempt ever made, including pre-attempt-grain LEGACY branches (attempt_key empty — the operator's accidental ts-authority-converge spawn is one), which are real attempts and render as such, never filtered as noise. Parse discriminates by the LAST -a segment being exactly 16 chars (the content-hash key width); a node id that itself ends in -a<16 chars> would misparse — accepted and named, not papered over: node ids are roadmap-authored and none has that shape. v0 renders branch NAMES (copyable, true), never tree links that would be dead until a push — a dead link is a fabricated result; the PR half lands when push/PR state is observed, not guessed."
+
+type DispatchAttemptRef {
+  node_id: String
+  branch: String
+  attempt_key: String
+}
+
+fn parse_dispatch_attempt_branch(line: String) -> DispatchAttemptRef? {
+  if string_contains(s: line, pattern: "dispatch/") {
+    let rest = substring(s: line, start: 9, end: string_length(s: line))
+    if rest == "" {
+      none
+    } else {
+      let segs = split(s: rest, delimiter: "-a")
+      let last = segs |> fold(init: "", f: (acc, x) => x)
+      if count(segs) >= 2 && string_length(s: last) == 16 {
+        Present { value: DispatchAttemptRef {
+          node_id: substring(s: rest, start: 0, end: string_length(s: rest) - 18),
+          branch: line,
+          attempt_key: last,
+        } }
+      } else {
+        Present { value: DispatchAttemptRef { node_id: rest, branch: line, attempt_key: "" } }
+      }
+    }
+  } else {
+    none
+  }
+}
+
+fn dispatch_attempt_refs(git_output: String) -> List<DispatchAttemptRef> {
+  fold(
+    split(s: git_output, delimiter: "\n"),
+    init: [],
+    f: (acc, line) => match parse_dispatch_attempt_branch(line: line) {
+      Present { value: r } => append(acc, [r])
+      Absent => acc
+    },
+  )
+}
+
+fn git_for_each_ref_dispatch_argv() -> HostExecArgv {
+  host_exec_argv(program: "git", args: ["for-each-ref", "--format=%(refname:short)", "refs/heads/dispatch/"])
+}
+
 data dispatch_session_ownership_note: String = "R5 owned-only teardown, session grain: a live dispatch session is teardown-eligible (OUR process) ONLY when its lease verdict is Converged (running with our expected process fingerprint) or Drifted (our fingerprint, stale lease — reap-able stale-ours, matching decision_for_dispatch_lease_verdict's DrainStale). Conflict (foreign process), Inaccessible, UnknownRefused, Absent are NOT owned. Name-only tmux-ls observation yields UnknownRefused/Inaccessible only, so teardown FAIL-CLOSED-REFUSES until the observation carries a process fingerprint — correct R5 (no ownership proof, no reap). This owned-ness judgment lives HERE (the actuator owns lease/ownership classification, §3) as a Bool; gunbc.roadmap_belt lifts the Bool into gunbc.ownership.Ownership for the reconcile teardown gate, so the belt never imports ObservationVerdict."
+
+data tmux_pane_fingerprint_note: String = "U4 (stop from the UI): the pane read is the scaffold's declared dissolution — tmux list-panes -a with the cited format variables yields (session_name, pane_current_command) per pane, and pane_current_command IS the process-fingerprint evidence the lease classification was built to consume. The observation upgrade is total over its inputs: a session whose pane row is found observes as SessionObserved (fingerprint in hand — Converged for claude, Conflict for anything else wearing the name, e.g. a hand-made sleep); a session visible in ls but absent from the pane read stays SessionNameObserved (honest partial — UnknownRefused downstream, still no reap). The stop gate is the R5 table as a typed decision: owned stops; everything else refuses with the verdict's own reason, and refusing to kill what we cannot prove ours is the point, not a limitation."
+
+type TmuxPaneEntry {
+  session_name: String
+  command: String
+}
+
+fn parse_tmux_pane_line(line: String) -> TmuxPaneEntry? {
+  let segs = split(s: line, delimiter: " ")
+  if count(segs) >= 2 && segs.first() != "" {
+    let name = segs.first()
+    Present { value: TmuxPaneEntry {
+      session_name: name,
+      command: substring(s: line, start: string_length(s: name) + 1, end: string_length(s: line)),
+    } }
+  } else {
+    none
+  }
+}
+
+fn parse_tmux_panes_output(output: String) -> List<TmuxPaneEntry> {
+  fold(
+    split(s: output, delimiter: "\n"),
+    init: [],
+    f: (acc, line) => match parse_tmux_pane_line(line: line) {
+      Present { value: e } => append(acc, [e])
+      Absent => acc
+    },
+  )
+}
+
+fn tmux_list_panes_argv() -> HostExecArgv {
+  host_exec_argv(program: "tmux", args: shape_tmux_list_panes_argv())
+}
+
+fn pane_command_for_session(panes: List<TmuxPaneEntry>, session_name: String) -> String {
+  fold(panes, init: "", f: (acc, p) =>
+    if acc == "" && p.session_name == session_name { p.command } else { acc })
+}
+
+fn tmux_session_observation_with_panes(
+  scope: TmuxSessionScope,
+  entries: List<TmuxLsEntry>,
+  panes: List<TmuxPaneEntry>,
+) -> TmuxSessionObservation {
+  match tmux_session_observation_for_scope(scope: scope, entries: entries) {
+    SessionNameObserved { session_name: name, windows: w } => {
+      let cmd = pane_command_for_session(panes: panes, session_name: name as String)
+      if cmd == "" {
+        SessionNameObserved { session_name: name, windows: w }
+      } else {
+        SessionObserved { session_name: name, windows: w, process_fingerprint: cmd as NonEmptyStr }
+      }
+    }
+    SessionAbsent => SessionAbsent
+    SessionObserved { session_name: n2, windows: w2, process_fingerprint: f2 } =>
+      SessionObserved { session_name: n2, windows: w2, process_fingerprint: f2 }
+    SessionObservedStaleExpected { session_name: n3, windows: w3, process_fingerprint: f3, stale_reason: r3 } =>
+      SessionObservedStaleExpected { session_name: n3, windows: w3, process_fingerprint: f3, stale_reason: r3 }
+    SessionInaccessible => SessionInaccessible
+  }
+}
+
+type DispatchStopGate
+  = StopPermitted { session_name: String }
+  | StopRefused { reason: String }
+
+fn dispatch_stop_gate(scope: TmuxSessionScope, obs: TmuxSessionObservation) -> DispatchStopGate {
+  match classify_tmux_session(scope: scope, obs: obs) {
+    Converged => StopPermitted { session_name: scope.session_name as String }
+    Drifted => StopPermitted { session_name: scope.session_name as String }
+    Absent => StopRefused { reason: "no live session for this node" }
+    Conflict => StopRefused { reason: "a foreign process wears the dispatch session name — refusing to kill what we cannot prove ours" }
+    Inaccessible => StopRefused { reason: "tmux session inaccessible" }
+    UnknownRefused => StopRefused { reason: "process fingerprint unobserved — no ownership proof, no reap" }
+  }
+}
 
 fn dispatch_session_is_owned(session: DispatchLiveSession) -> Bool {
   match session.lease_verdict {
@@ -634,8 +764,8 @@ fn argv_contains_token(argv: List<String>, token: String) -> Bool {
 }
 
 fn hostile_node_id_stays_single_argv_token(node_id: String) -> Bool {
-  let worktree_path = concat(concat(dispatch_worktree_root, "/"), node_id)
-  let branch_name = concat("dispatch/", node_id)
+  let worktree_path = dispatch_worktree_path(node_id: node_id, attempt_key: "feedfacefeedface")
+  let branch_name = dispatch_branch_name(node_id: node_id, attempt_key: "feedfacefeedface")
   let worktree = git_worktree_add_argv(
     worktree_path: worktree_path,
     branch_name: branch_name,

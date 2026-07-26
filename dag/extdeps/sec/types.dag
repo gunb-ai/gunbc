@@ -1,6 +1,7 @@
 module extdeps.sec.types
 
 import std.types { Int, NonEmptyStr, String, List }
+import std.nat { Nat }
 import extdeps.vendor { Vendor }
 import extdeps.securities { Securities }
 
@@ -14,7 +15,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data cik_digit_width: Int = 10
+data edgar_cik_zero_pad_digit_count_note: String = "SEC EDGAR CIK display width: ten decimal digits with leading zeros in browse-edgar URLs, submissions API paths, and XBRL companyfacts endpoints (e.g. CIK0001653482). Grounded on the module's EDGAR API authority anchor."
+
+fn edgar_cik_zero_pad_digit_count() -> Nat {
+  10
+}
+
+fn cik_digit_width() -> Int {
+  edgar_cik_zero_pad_digit_count()
+}
 
 type Cik {
   digits: NonEmptyStr

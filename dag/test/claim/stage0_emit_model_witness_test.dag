@@ -15,6 +15,9 @@ fn w_generated_files_classified_generated() -> Bool {
   is_generated_stage0_file(basename: "std_execution_mode.rs") &&
   is_generated_stage0_file(basename: "v1_compiler_closure_stub_v2_std_integer_rust.rs") &&
   is_generated_stage0_file(basename: "v1_compiler_closure_stub_v2_std_text_rust.rs") &&
+  is_generated_stage0_file(basename: "extdeps_units_dimensionless.rs") &&
+  is_generated_stage0_file(basename: "extdeps_units_iec_80000_13.rs") &&
+  is_generated_stage0_file(basename: "extdeps_units_iso8601.rs") &&
   is_generated_stage0_file(basename: "lib.rs") &&
   is_generated_stage0_file(basename: "std_algebra.rs")
 }

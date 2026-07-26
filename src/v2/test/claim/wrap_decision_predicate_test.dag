@@ -1,15 +1,19 @@
 module v2.test.claim.wrap_decision_predicate
 
+import v2.compiler.translate { translate_apply_use_site_ownership_to_projected_boundary }
 import v2.compiler.wrap_decision { wrap_decision_gate }
 import v2.extdeps.languages.rust {
   rust_named_edge,
   rust_sg2_type_expr_target_model,
-  rust_sg_rc_use_site_ownership_catalog
+  rust_sg_rc_use_site_ownership_catalog,
+  rust_type_expression_projection
 }
 import v2.std.compilers.target_model {
   TargetModel,
   TargetOwnershipUseSite,
   TargetReferenceLayer,
+  TargetTypeExprAtom,
+  TargetTypeExprInstantiation,
   OwnershipAtFunctionParameter,
   OwnershipAtFunctionReturn,
   OwnershipAtStructField,
@@ -23,6 +27,9 @@ import v2.std.compilers.target_model {
   target_carrier_node_node,
   target_carrier_probe_heap_node,
   target_carrier_use_site_verdict_node,
+  target_type_expr_atom_emitted,
+  target_type_expr_instantiation_emitted,
+  target_type_expr_emitted_wire_decode,
   target_use_site_ownership_catalog_node
 }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -33,6 +40,9 @@ import v2.std.node {
   SyntheticOccurrence,
   TypeNode
 }
+import v2.std.collection { list_at_optional }
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 
 data wrap_decision_predicate_note: String = "Derisk witnesses for rc-ownership-wrap-decision-design.md: wrap_decision_gate is the single authority for Rc/Box/owned type wrapping at emit sites. UseSiteVerdict enrolled (owned-at-all-sites). RED: omit Diagnostics param row -> param witness rejects; add silent default wrap on WrapGateInapplicable -> bundle_absent witness fails."
@@ -244,4 +254,68 @@ test fn wrap_decision_predicate_witness_holds() -> Bool {
     && wrap_decision_use_site_verdict_param_is_owned()
     && wrap_decision_use_site_verdict_return_is_owned()
     && wrap_decision_node_struct_field_is_box()
+}
+
+data wrap_decision_composite_note: String = "Discriminates the wrap_decision_predicate caller-side bypass (v1_deletion_plan.dag ^wrap_decision_predicate, RE-OPENED 2026-07-24): translate_apply_use_site_ownership_to_projected_boundary must recurse ownership-wrap into TargetTypeExprInstantiation-kind wires (Option<T>/Rc<T>/List<T> shapes) instead of returning the composite unwrapped via the _ => outcome_accepted(projected) arm."
+
+fn wrap_decision_composite_projected_arg() -> Node {
+  target_type_expr_atom_emitted(
+    form: rust_type_expression_projection().atom_form,
+    identity: ^wrap_decision_composite_leaf_binding
+  )
+}
+
+fn wrap_decision_composite_projected() -> Node {
+  target_type_expr_instantiation_emitted(
+    form: rust_type_expression_projection().instantiation_form,
+    head: target_type_expr_atom_emitted(
+      form: rust_type_expression_projection().atom_form,
+      identity: ^wrap_decision_composite_outer_binding
+    ),
+    args: [wrap_decision_composite_projected_arg()]
+  )
+}
+
+fn wrap_decision_composite_source() -> Node {
+  target_type_expr_instantiation_emitted(
+    form: rust_type_expression_projection().instantiation_form,
+    head: target_type_expr_atom_emitted(
+      form: rust_type_expression_projection().atom_form,
+      identity: ^wrap_decision_composite_outer_binding
+    ),
+    args: [target_carrier_node_node()]
+  )
+}
+
+fn wrap_decision_composite_boundary_result() -> Node {
+  match translate_apply_use_site_ownership_to_projected_boundary(
+    projected: wrap_decision_composite_projected(),
+    source_for_binding: wrap_decision_composite_source(),
+    target: wrap_decision_sg_rc_target(),
+    projection: rust_type_expression_projection(),
+    use_site: OwnershipAtStructField
+  ) {
+    Accepted { value: node, diagnostics: _ } => node
+    Rejected { diagnostics: _ } => wrap_decision_composite_projected()
+  }
+}
+
+fn wrap_decision_composite_result_arg() -> Node {
+  match list_at_optional(
+    xs: node_positional_child_targets(node: wrap_decision_composite_boundary_result()),
+    index: 1
+  ) {
+    Present { value: arg } => arg
+    Absent => wrap_decision_composite_projected_arg()
+  }
+}
+
+test fn wrap_decision_instantiation_arg_is_wrapped() -> Bool {
+  match target_type_expr_emitted_wire_decode(
+    node: wrap_decision_composite_result_arg(),
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: wire, diagnostics: _ } => wire.kind == TargetTypeExprInstantiation
+    Rejected { diagnostics: _ } => false
+  }
 }
