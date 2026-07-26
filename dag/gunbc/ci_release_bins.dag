@@ -1,6 +1,10 @@
 module gunbc.ci_release_bins
 
 import std.disposition { SingleAuthority }
+import v2.lens.common.construction_justification {
+  ConstructionJustification,
+  WallAfterGrounding
+}
 
 data ci_release_bins_authority_note: String = "Single authority for the CI release-bins pack membership (the dissolve target named on gunbc.roster_registry for the former ci_floor_required_artifact_names hand list). TWO inputs, one derived pack:
 
