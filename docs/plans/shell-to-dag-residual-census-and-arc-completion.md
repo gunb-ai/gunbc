@@ -535,6 +535,8 @@ What the trigger does **not** discharge is the **existing** rows: the wall stops
 
 **End state:** no user-space `.dag` constructs a shell string. Every "this `.dag` wants to call a bash script" instance resolves to exactly one of four paths below. The `realization_vocabulary_containment` lens (#6854, LIVE) already forbids bash-AST vocab (`ShellProgram`/`ShellStmt`/`serialize_bash`) in user space — the remaining hole is the `shell.Exec.Run(script: TransportScript)` / `ShellOnHost{script: String}` sink (§5.E), which is what makes relocation possible.
 
+> **⚠ The sentence immediately above is superseded — COMPLETED, not still open (`review 43537`).** That sink is no longer a hole: **#7184 retyped the edge to the `RetainedShellScript` record** (`host_effect_realize.dag:167`, `retained_shell_script.dag:9-10`), so a hand-assembled `String` there does not typecheck, and the free minter `transport_script_from_body` is deleted. Kept rather than rewritten because the four-path end state below is still the live plan and only its stated blocker changed. What remains is not *silent* faking but a **conspicuous** one: authoring a counted `RetainedShellScript` row with a hand-built body is still possible **by design** — it is the reviewed escape, carrying a `reason` and a `dissolves_to`, and that visibility is the whole mechanism.
+
 **The headline (verified by op inventory @ `78f43c38`):** the arc needs only **~4 new typed ops**. Almost every site calls an op that already exists.
 
 ### 5.A — the FINITE new-op list (the ONLY new modeling the whole arc needs)
@@ -597,9 +599,11 @@ Bash-as-target lives in one isolated backend: `src/v2/extdeps/languages/bash*` +
 
 **Acceptance (its own scoped PR):** the srv3 install/reconcile subgraph + its now-orphaned `HostEffect` variants deleted together; every total `match` updated; the `retained_srvn` wraps on those arms removed with them; srv3 witness tests deleted or repointed; green by execution; and the `retained_srvn_takeover_ref` dissolve-count for the srv3 arms drops to zero. Operator authorized the deletion in principle (2026-07-24) but asked it be tracked here and land apart from the wall.
 
-### 5.E — THE ENABLER THAT MUST COME FIRST (close the string sink, or every row above can be faked)
+### 5.E — the enabler that had to come first — **LANDED #7184** (close the string sink)
 
-Every §5.A/§5.B row can be **faked by joining argv back into a string** and feeding `shell.Exec.Run(script)` / `ShellOnHost{script}` — sleek-crab #7064 did exactly this (`argv_join(...) + " 2>/dev/null || true"`). As long as that sink is reachable from intent, relocation is the path of least resistance and a brief alone won't stop it. So the wall is **not cleanup-after** — it's the enabler:
+*(Heading and premise trued up 2026-07-26, `review 43537`. This read "THE ENABLER THAT **MUST COME** FIRST" in the imperative, and the paragraph below was written in the present tense — "can be faked" — as though the sink were still open. It is closed; both are now past tense. The §5.A/§5.B rows it gates are the work that remains, not this.)*
+
+Every §5.A/§5.B row **could be** faked by joining argv back into a string and feeding `shell.Exec.Run(script)` / `ShellOnHost{script}` — sleek-crab #7064 did exactly this (`argv_join(...) + " 2>/dev/null || true"`). While that sink was reachable from intent, relocation was the path of least resistance and a brief alone could not stop it. So the wall was **not cleanup-after** — it was the enabler, and it is now built. The original plan follows, with each bullet's actual fate marked:
 
 > ⚠ **The three bullets immediately below are the ORIGINAL plan, superseded by the ruling + design-correction block that follows.** Kept because the correction is only legible against them. **Each bullet failed differently, and the difference decides what a reader should do with it** — a *refuted* plan must never be retried; a *completed* one simply already happened; a *partially superseded* one still has live residue. Do not action them as written; read on. *(Flagged `review 43486`; classifications corrected `review 43522` — the earlier version lumped bullets 1 and 3 together as "refuted by execution", which was wrong for bullet 3 and is exactly the conflation §4.G's method note warns about.)*
 
