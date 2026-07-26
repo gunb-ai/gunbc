@@ -131,6 +131,12 @@ The prefix stays inside the reserved width the button already derives from the l
 
 data dispatch_session_chip_prefix: String = "session · "
 
+data sessions_route_path: String = "/sessions.json"
+
+data dispatch_caption_live_word_note: String = "U2: the observation word for a session the BELT reports live at page load — type-distinct from the wire status words (spawned/already_live are answers to MY click; live is an observed fact about the world). It renders through the same session-chip morph, so the caption stays a projection of what was observed, never a phrase the page invented."
+
+data dispatch_caption_live_word: String = "live"
+
 data dispatch_class_requested: String = "dispatch-requested"
 data dispatch_class_ok: String = "dispatch-ok"
 data dispatch_class_refused: String = "dispatch-refused"
@@ -1027,6 +1033,93 @@ fn swatch_toggle_bind_statements() -> List<TsStmt> {
   ]
 }
 
+data sessions_panel_note: String = "U2 (sessions panel v0): on load the client fetches the belt observation and marks each LIVE node's actuator — ok band + the session-chip morph with the observation word + the tmux session name in the title channel — so a refresh no longer forgets what the belt knows. The refusal arm is LOUD: observe_refused (or a failed fetch) inserts an .observe-refused banner as main's first line naming the reason — an unknowable session set never renders as an empty panel (the altitude law: anomaly expands). The banner is client-inserted so the page render stays pure and the healthz digest law holds."
+
+fn sessions_mark_live_stmts() -> List<TsStmt> {
+  [
+    ts_const(name: "sb", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
+      args: [ts_binop(
+        left: ts_binop(left: ts_lit_str(value: "[data-node=\""), op: "+", right: ts_member(object: ts_ident(name: "sess"), property: "node_id")),
+        op: "+",
+        right: ts_lit_str(value: "\"]"))])),
+    ts_if(
+      cond: ts_ident(name: "sb"),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "sb"), property: "textContent"),
+          op: "=",
+          right: ts_lit_str(value: concat(dispatch_session_chip_prefix, dispatch_caption_live_word)))),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_member(object: ts_ident(name: "sb"), property: "classList"), property: "add"),
+          args: [ts_lit_str(value: dispatch_class_ok)])),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "sb"), property: "title"),
+          op: "=",
+          right: ts_member(object: ts_ident(name: "sess"), property: "session_name"))),
+      ]),
+      else_stmt: none,
+    ),
+  ]
+}
+
+fn sessions_refused_banner_stmts() -> List<TsStmt> {
+  [
+    ts_const(name: "bn", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+      args: [ts_lit_str(value: "div")])),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: ts_ident(name: "bn"), property: "className"),
+      op: "=",
+      right: ts_lit_str(value: "observe-refused"))),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: ts_ident(name: "bn"), property: "textContent"),
+      op: "=",
+      right: ts_binop(left: ts_lit_str(value: "session observation refused: "), op: "+", right: ts_ident(name: "why")))),
+    ts_const(name: "mn", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
+      args: [ts_lit_str(value: "main")])),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_ident(name: "mn"),
+      op: "&&",
+      right: ts_call(
+        callee: ts_member(object: ts_ident(name: "mn"), property: "prepend"),
+        args: [ts_ident(name: "bn")]))),
+  ]
+}
+
+fn sessions_fetch_statements() -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_member(
+            object: ts_call(
+              callee: ts_member(
+                object: ts_call(callee: ts_ident(name: "fetch"), args: [ts_lit_str(value: sessions_route_path)]),
+                property: "then"),
+              args: [ts_arrow(params: ["r"], body: ts_block(stmts: [ts_return(expr: ts_call(callee: ts_member(object: ts_ident(name: "r"), property: "json"), args: []))]))]),
+            property: "then"),
+          args: [ts_arrow(params: ["sj"], body: ts_block(stmts: [
+            ts_if(
+              cond: ts_member(object: ts_ident(name: "sj"), property: "observe_refused"),
+              then: ts_block(stmts: concat(
+                [ts_const(name: "why", value: ts_binop(left: ts_member(object: ts_ident(name: "sj"), property: "reason"), op: "||", right: ts_lit_str(value: "no reason on the wire")))],
+                sessions_refused_banner_stmts())),
+              else_stmt: Present { value: ts_block(stmts: [
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_member(object: ts_member(object: ts_ident(name: "sj"), property: "sessions"), property: "forEach"),
+                  args: [ts_arrow(params: ["sess"], body: ts_block(stmts: sessions_mark_live_stmts()))])),
+              ]) },
+            ),
+          ]))]),
+        property: "catch"),
+      args: [ts_arrow(params: ["e"], body: ts_block(stmts: concat(
+        [ts_const(name: "why", value: ts_binop(left: ts_ident(name: "e"), op: "+", right: ts_lit_str(value: "")))],
+        sessions_refused_banner_stmts())))])),
+  ]
+}
+
 fn dispatch_client_program_for(selector: String, url_expr: TsExpr, header: List<String>) -> TsProgram {
   TsProgram {
     ts_nocheck: false,
@@ -1043,7 +1136,9 @@ fn dispatch_client_program_for(selector: String, url_expr: TsExpr, header: List<
               theme_toggle_bind_statements(),
               concat(
                 disclosure_bind_statements(),
-                swatch_toggle_bind_statements())))))),
+                concat(
+                  swatch_toggle_bind_statements(),
+                  sessions_fetch_statements()))))))),
   }
 }
 

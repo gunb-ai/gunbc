@@ -122,7 +122,7 @@ fn witness_dispatch_status_total() -> Bool {
 
 fn witness_live_table_builds_ready_ten_routes() -> Bool {
   match roadmap_serve_route_table_build() {
-    RoadmapServeTable { table: t } => count(t.routes) == 10
+    RoadmapServeTable { table: t } => count(t.routes) == 11
     RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => false
   }
 }

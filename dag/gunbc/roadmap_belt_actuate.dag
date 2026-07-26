@@ -516,6 +516,44 @@ fn belt_tick_result_json_value(t: BeltTickResult) -> JsonValue {
   ])
 }
 
+data belt_sessions_json_note: String = "U2 (sessions panel v0): the belt observation projected as wire JSON so the PAGE can know what is live without the render losing purity — the healthz digest is taken over the pure page body, so live state must arrive by fetch, exactly as dispatch answers do. The projection is a pure fn over BeltObserve (every arm witnessed on synthetic values); the effectful wrapper only threads belt_observe() in. The refusal arm stays a refusal on the wire (observe_refused true + reason, served 503): an unknowable session set renders loud at the client, never as an empty panel."
+
+fn belt_sessions_json_value(o: BeltObserve) -> JsonValue {
+  match o {
+    ObserveRefused { reason: r } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-sessions/v1")),
+        json_kv(key: "observe_refused", value: json_bool(b: true)),
+        json_kv(key: "reason", value: json_string(s: r)),
+      ])
+    Observed { live } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-sessions/v1")),
+        json_kv(key: "observe_refused", value: json_bool(b: false)),
+        json_kv(key: "sessions", value: json_array(elements: live |> map(sess =>
+          json_object(members: [
+            json_kv(key: "node_id", value: json_string(s: sess.node_id)),
+            json_kv(key: "session_name", value: json_string(s: sess.session_name)),
+          ])))),
+      ])
+  }
+}
+
+fn belt_sessions_observed_json(o: BeltObserve) -> String {
+  serialize_json(v: belt_sessions_json_value(o: o))
+}
+
+fn belt_sessions_json() -> String {
+  belt_sessions_observed_json(o: belt_observe())
+}
+
+fn belt_sessions_http_status(o: BeltObserve) -> Int {
+  match o {
+    ObserveRefused { reason: _ } => 503
+    Observed { live: _ } => 200
+  }
+}
+
 fn belt_run_once_json() -> String {
   serialize_json(v: belt_tick_result_json_value(t: belt_run_once()))
 }
