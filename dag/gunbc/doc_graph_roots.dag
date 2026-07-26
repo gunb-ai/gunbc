@@ -49,12 +49,6 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
-    slug: "commit-workflow",
-    work: DeclarationRef { module_path: "gunbc.plans.commit_workflow", decl_name: "commit_workflow_plan", field: WholeDeclaration },
-    dissolution: HasTrigger { text: "commit_workflow_plan registers in gunbc.plan_registry (its deferred checkpoint 1); the registration becomes the binding" },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
     slug: "effect-namespace-grants",
     work: DeclarationRef { module_path: "gunbc.plans.host_effect_orchestration", decl_name: "host_effect_orchestration_plan", field: WholeDeclaration },
     dissolution: HasTrigger { text: "the grant/envelope model lands (the doc's FLAG-A §6 interim is its only near-term consumer)" },
