@@ -729,23 +729,16 @@ fn orch_emit_step(s: PipelineStep, medium: OrchestrationEmitMedium) -> Outcome<e
   }
 }
 
-fn orch_retry_run_redirect_capture_admitted(r: Run) -> Bool {
-  match r.redirect {
-    Absent =>
-      match r.capture {
-        Absent => true
-        Present { value: _ } => false
-      }
-    Present { value: _ } => false
-  }
-}
-
 fn orch_retry_step_command(s: PipelineStep) -> Optional<String> {
   match s {
     Do { run: r } =>
-      match orch_retry_run_redirect_capture_admitted(r: r) {
-        true => Present { value: r.command }
-        false => Absent
+      match r.redirect {
+        Absent =>
+          match r.capture {
+            Absent => Present { value: r.command }
+            Present { value: _ } => Absent
+          }
+        Present { value: _ } => Absent
       }
     Comment { text: _ } => Absent
     If { cond: _, then_: _, else_: _ } => Absent
