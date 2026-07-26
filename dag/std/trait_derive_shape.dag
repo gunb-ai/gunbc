@@ -419,9 +419,13 @@ fn pair_completion_body_uses_rhs(body: PairCompletionBody) -> Bool {
   }
 }
 
-fn repr_grounding_supplemental_group_completion_target(module_path: String, name: String) -> Bool {
+data repr_grounding_group_completion_carrier_note: String = "Carrier identity for capability-table selection of GroupCompletion pair-completion bodies (#7272 A1). Not a supplemental special-case door — the struct trait surface is selected once via v1_emit_struct_from_capability_table (#[derive] attrs + KernelInt arithmetic impl bodies). The old v1_emit_struct_supplemental_impls door and its supplemental_*_target guard are deleted."
+
+fn repr_grounding_group_completion_carrier(module_path: String, name: String) -> Bool {
   module_path == "std.algebra" && name == "GroupCompletion"
 }
+
+data repr_grounding_bool_host_bridge_dissolve_on: String = "dissolve-on: repr_grounding_supplemental_bool_host_bridge_target / v1_emit_enum_supplemental_impls — Bool↔host-bool bridge door. Dissolves with the Value::Null-split / Bool True|False ↔ Value::Bool grounding lane (DESIGN open thread; gunbc.plans.value_null_split). Kept as the remaining half of the old supplemental door; do not ground the bridge in an emitter cleanup (§3)."
 
 fn repr_grounding_supplemental_bool_host_bridge_target(module_path: String, name: String) -> Bool {
   module_path == "std.types" && name == "Bool"

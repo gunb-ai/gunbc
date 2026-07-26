@@ -56,7 +56,7 @@ import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_sour
 import v1.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint }
 import v1.compiler.trait_derive_emit {
   v1_emit_struct_derives, v1_emit_enum_derives,
-  v1_emit_struct_supplemental_impls, v1_emit_enum_supplemental_impls,
+  v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls,
   v1_generic_params_needing_clone_bound, v1_emit_type_params_with_clone_bounds,
   rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible
 }
@@ -4701,7 +4701,8 @@ fn struct_needs_serde(name: String, emit_info: EmitGraphInfo) -> Bool {
 
 fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
-  let derives = v1_emit_struct_derives(
+  let surface = v1_emit_struct_from_capability_table(
+    module_path: env.module_path,
     name: name,
     children: children,
     shared_types: shared_types,
@@ -4709,7 +4710,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
     source_indices: env.source_indices
   )
   if children |> count == 0 {
-    concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, ";")
+    concat(surface.derive_attr, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, ";")
   } else {
     let field_lines = children |> map(child => emit_struct_field_from_child(struct_name: name, child: child, generic_param_names: generic_param_names, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info))
 
@@ -4718,9 +4719,8 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
       concat(field_lines, [concat("    ", rust_visibility_prefix(), rust_phantom_field_name(), ": std::marker::PhantomData<", rust_phantom_marker_inner(unused: unused_params), ">,")])
     } else { field_lines }
     let fields_str = all_field_lines |> join(separator: "\n")
-    let struct_def = concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, " {\n", fields_str, "\n}")
-    let supplemental = v1_emit_struct_supplemental_impls(module_path: env.module_path, name: name)
-    if supplemental == "" { struct_def } else { concat(struct_def, supplemental) }
+    let struct_def = concat(surface.derive_attr, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, " {\n", fields_str, "\n}")
+    if surface.impl_bodies == "" { struct_def } else { concat(struct_def, surface.impl_bodies) }
   }
 }
 
