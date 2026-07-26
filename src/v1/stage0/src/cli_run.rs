@@ -20339,7 +20339,9 @@ mod witness_timing_attribution_tests {
         // RED control for review 43274: a missing entry_resolve receipt must refuse,
         // never return a partial Ok row set that looks complete.
         let mut summary = sample_summary();
-        summary.entry_resolve_receipts.retain(|r| r.entry != "b.dag");
+        summary
+            .entry_resolve_receipts
+            .retain(|r| r.entry != "b.dag");
         let err = compute_witness_timing_rows(&summary).expect_err("must refuse");
         assert!(
             err.contains("REFUSED") && err.contains("b.dag::slow"),
