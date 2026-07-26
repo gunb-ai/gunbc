@@ -131,7 +131,7 @@ fn observation_subject_grain(subject: ObservationSubject) -> ObservationGrain {
 }
 
 fn observation_subject_entry_path(subject: ObservationSubject) -> NonEmptyStr? {
-  fold(subject.segments, init: none, f: (acc, seg) =>
+  fold(subject.segments, init: Absent, f: (acc, seg) =>
     match seg {
       EntrySegment { source_path: p } => Present { value: p }
       RunSegment { id: _ } => acc
@@ -144,7 +144,7 @@ fn observation_subject_entry_path(subject: ObservationSubject) -> NonEmptyStr? {
 }
 
 fn observation_subject_declaration(subject: ObservationSubject) -> DeclarationRef? {
-  fold(subject.segments, init: none, f: (acc, seg) =>
+  fold(subject.segments, init: Absent, f: (acc, seg) =>
     match seg {
       DeclarationSegment { declaration: d } => Present { value: d }
       RunSegment { id: _ } => acc
@@ -157,7 +157,7 @@ fn observation_subject_declaration(subject: ObservationSubject) -> DeclarationRe
 }
 
 fn observation_subject_phase_name(subject: ObservationSubject) -> NonEmptyStr? {
-  fold(subject.segments, init: none, f: (acc, seg) =>
+  fold(subject.segments, init: Absent, f: (acc, seg) =>
     match seg {
       PhaseSegment { name: n } => Present { value: n }
       RunSegment { id: _ } => acc
