@@ -10,6 +10,7 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_serde_rename_all_snake_case,
 };
 pub use crate::extdeps_languages_rust_wrap_catalog::rust_sg_rc_wrap_layer_lookup;
+use crate::extdeps_languages_rust_wrap_catalog::rust_sg_rc_carrier_enrolled_but_row_missing;
 use crate::extdeps_languages_rust_wrap_catalog::OwnershipReferenceLayer::{
     ReferenceLayerBox, ReferenceLayerOwned, ReferenceLayerRc,
 };
@@ -1644,7 +1645,7 @@ pub fn render_rust_applied_type(
 pub fn rust_seed_wrap_decision_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Construction wall replacing shared_types blanket Rc wrap (rc-ownership-wrap-decision-design.md). Single authority: rust_seed_effective_reference_layer — both type render and value wrap read the same effective OwnershipReferenceLayer. Catalog MISS is not conflated with Owned: legacy container fallback lives inside the decision as a named scaffold until catalog coverage is complete.".to_string()
+            "Construction wall replacing shared_types blanket Rc wrap (rc-ownership-wrap-decision-design.md). Single authority: rust_seed_resolve_wrap_outcome — type render and value wrap read the same SeedWrapOutcome. Enrolled carrier with no row at an explicit use site refuses (fail-closed). Unenrolled module-local types default Owned (partition-derived interim). Legacy container prefix scan remains a named scaffold until catalog rows land.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1689,23 +1690,59 @@ pub fn rust_seed_legacy_container_blanket_rc(rendered: String) -> bool {
     }
 }
 
-pub fn rust_seed_effective_reference_layer(
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SeedWrapOutcome {
+    SeedWrapDecided {
+        layer: OwnershipReferenceLayer,
+    },
+    SeedWrapRefused {
+        reason: String,
+    },
+}
+
+pub fn rust_seed_wrap_use_site_label(use_site: OwnershipWrapUseSite) -> String {
+    match use_site {
+        OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent => "Absent".to_string(),
+        OwnershipWrapUseSite::OwnershipAtFunctionReturn => "FunctionReturn".to_string(),
+        OwnershipWrapUseSite::OwnershipAtFunctionParameter => {
+            "FunctionParameter".to_string()
+        }
+        OwnershipWrapUseSite::OwnershipAtStructField => "StructField".to_string(),
+        OwnershipWrapUseSite::OwnershipAtBindingProjection => {
+            "BindingProjection".to_string()
+        }
+    }
+}
+
+pub fn rust_seed_resolve_wrap_outcome(
     type_name: String,
     rendered: String,
     use_site: OwnershipWrapUseSite,
-) -> OwnershipReferenceLayer {
+) -> SeedWrapOutcome {
     match use_site {
-        OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent => {
-            OwnershipReferenceLayer::ReferenceLayerOwned
-        }
+        OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent => SeedWrapOutcome::SeedWrapDecided {
+            layer: OwnershipReferenceLayer::ReferenceLayerOwned,
+        },
         _ => match rust_sg_rc_wrap_layer_lookup(type_name.clone(), use_site.clone()) {
-            Some(layer) => layer,
+            Some(layer) => SeedWrapOutcome::SeedWrapDecided { layer },
             None => {
-                // SCAFFOLD — dissolve-on: rust_seed_legacy_container_blanket_dissolve_on
-                if rust_seed_legacy_container_blanket_rc(rendered.clone()) {
-                    OwnershipReferenceLayer::ReferenceLayerRc
+                if rust_sg_rc_carrier_enrolled_but_row_missing(type_name.clone(), use_site.clone())
+                {
+                    SeedWrapOutcome::SeedWrapRefused {
+                        reason: format!(
+                            "wrap-decision: enrolled carrier missing catalog row at use site {}",
+                            rust_seed_wrap_use_site_label(use_site)
+                        ),
+                    }
+                } else if rust_seed_legacy_container_blanket_rc(rendered.clone()) {
+                    // SCAFFOLD — dissolve-on: rust_seed_legacy_container_blanket_dissolve_on
+                    SeedWrapOutcome::SeedWrapDecided {
+                        layer: OwnershipReferenceLayer::ReferenceLayerRc,
+                    }
                 } else {
-                    OwnershipReferenceLayer::ReferenceLayerOwned
+                    SeedWrapOutcome::SeedWrapDecided {
+                        layer: OwnershipReferenceLayer::ReferenceLayerOwned,
+                    }
                 }
             }
         },
@@ -1717,17 +1754,22 @@ pub fn apply_seed_wrap_decision(
     rendered: String,
     use_site: OwnershipWrapUseSite,
 ) -> String {
-    match rust_seed_effective_reference_layer(type_name.clone(), rendered.clone(), use_site.clone())
-    {
-        OwnershipReferenceLayer::ReferenceLayerOwned => rendered.clone(),
-        OwnershipReferenceLayer::ReferenceLayerRc => {
+    match rust_seed_resolve_wrap_outcome(type_name.clone(), rendered.clone(), use_site.clone()) {
+        SeedWrapOutcome::SeedWrapDecided {
+            layer: OwnershipReferenceLayer::ReferenceLayerOwned,
+        } => rendered.clone(),
+        SeedWrapOutcome::SeedWrapDecided {
+            layer: OwnershipReferenceLayer::ReferenceLayerRc,
+        } => {
             if rust_type_is_rc_wrapped(rendered.clone()) {
                 rendered.clone()
             } else {
                 wrap_shared_type(RenderTarget::Rust, rendered.clone())
             }
         }
-        OwnershipReferenceLayer::ReferenceLayerBox => {
+        SeedWrapOutcome::SeedWrapDecided {
+            layer: OwnershipReferenceLayer::ReferenceLayerBox,
+        } => {
             if rust_type_is_box_wrapped(rendered.clone()) {
                 rendered.clone()
             } else {
@@ -1736,6 +1778,9 @@ pub fn apply_seed_wrap_decision(
                     ">".to_string(),
                 )
             }
+        }
+        SeedWrapOutcome::SeedWrapRefused { reason } => {
+            emit_error_expr(reason, RenderTarget::Rust)
         }
     }
 }
@@ -1754,13 +1799,16 @@ pub fn rust_seed_wrap_value_at_use_site(
     rendered: String,
     use_site: OwnershipWrapUseSite,
 ) -> String {
-    match rust_seed_effective_reference_layer(type_name.clone(), rendered.clone(), use_site.clone())
-    {
-        OwnershipReferenceLayer::ReferenceLayerOwned => emitted.clone(),
-        OwnershipReferenceLayer::ReferenceLayerRc => {
-            rust_seed_align_expr_rc_wrap(emitted.clone(), true)
-        }
-        OwnershipReferenceLayer::ReferenceLayerBox => {
+    match rust_seed_resolve_wrap_outcome(type_name.clone(), rendered.clone(), use_site.clone()) {
+        SeedWrapOutcome::SeedWrapDecided {
+            layer: OwnershipReferenceLayer::ReferenceLayerOwned,
+        } => emitted.clone(),
+        SeedWrapOutcome::SeedWrapDecided {
+            layer: OwnershipReferenceLayer::ReferenceLayerRc,
+        } => rust_seed_align_expr_rc_wrap(emitted.clone(), true),
+        SeedWrapOutcome::SeedWrapDecided {
+            layer: OwnershipReferenceLayer::ReferenceLayerBox,
+        } => {
             if emitted.len() > 10 && emitted.starts_with("Box::new(") {
                 emitted.clone()
             } else if rust_type_is_box_wrapped(emitted.clone()) {
@@ -1772,6 +1820,9 @@ pub fn rust_seed_wrap_value_at_use_site(
                 )
             }
         }
+        SeedWrapOutcome::SeedWrapRefused { reason } => {
+            emit_error_expr(reason, RenderTarget::Rust)
+        }
     }
 }
 
@@ -1780,8 +1831,12 @@ pub fn rust_seed_catalog_wraps_rc_at_use_site(
     rendered: String,
     use_site: OwnershipWrapUseSite,
 ) -> bool {
-    rust_seed_effective_reference_layer(type_name.clone(), rendered.clone(), use_site.clone())
-        == OwnershipReferenceLayer::ReferenceLayerRc
+    matches!(
+        rust_seed_resolve_wrap_outcome(type_name.clone(), rendered.clone(), use_site.clone()),
+        SeedWrapOutcome::SeedWrapDecided {
+            layer: OwnershipReferenceLayer::ReferenceLayerRc,
+        }
+    )
 }
 
 pub fn rust_seed_value_needs_rc_wrap(
@@ -23127,30 +23182,39 @@ pub fn rust_record_field_wrap_value_at_use_site(
                 scope.type_env.clone().source_indices.clone(),
                 OwnershipWrapUseSite::OwnershipAtStructField,
             );
-            let layer = rust_seed_effective_reference_layer(
+            match rust_seed_resolve_wrap_outcome(
                 leaf.clone(),
                 rendered.clone(),
                 OwnershipWrapUseSite::OwnershipAtStructField,
-            );
-            if layer == OwnershipReferenceLayer::ReferenceLayerOwned
-                && needs_box_wrapping(
-                    field_type.clone(),
-                    emit_info.recursive_type_set.clone(),
-                    shared_types.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                )
-            {
-                v1_rt::concat(
-                    v1_rt::concat("Box::new(".to_string(), raw.clone()),
-                    ")".to_string(),
-                )
-            } else {
-                rust_seed_wrap_value_at_use_site(
-                    raw.clone(),
-                    leaf.clone(),
-                    rendered.clone(),
-                    OwnershipWrapUseSite::OwnershipAtStructField,
-                )
+            ) {
+                SeedWrapOutcome::SeedWrapRefused { reason } => {
+                    emit_error_expr(reason, RenderTarget::Rust)
+                }
+                SeedWrapOutcome::SeedWrapDecided {
+                    layer: OwnershipReferenceLayer::ReferenceLayerOwned,
+                } => {
+                    if needs_box_wrapping(
+                        field_type.clone(),
+                        emit_info.recursive_type_set.clone(),
+                        shared_types.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ) {
+                        v1_rt::concat(
+                            v1_rt::concat("Box::new(".to_string(), raw.clone()),
+                            ")".to_string(),
+                        )
+                    } else {
+                        raw.clone()
+                    }
+                }
+                SeedWrapOutcome::SeedWrapDecided { layer: _ } => {
+                    rust_seed_wrap_value_at_use_site(
+                        raw.clone(),
+                        leaf.clone(),
+                        rendered.clone(),
+                        OwnershipWrapUseSite::OwnershipAtStructField,
+                    )
+                }
             }
         }
         None => raw.clone(),

@@ -859,21 +859,28 @@ fn render_rust_shared_type_if_needed(type_name: String, rendered: String, use_si
 }
 
 fn rust_seed_catalog_wraps_rc_at_use_site(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> Bool {
-  rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, use_site: use_site) == ReferenceLayerRc
+  match rust_seed_resolve_wrap_outcome(type_name: type_name, rendered: rendered, use_site: use_site) {
+    SeedWrapDecided { layer: ReferenceLayerRc } => true
+    _ => false
+  }
 }
 
 fn rust_seed_catalog_wraps_box_at_use_site(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> Bool {
-  rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, use_site: use_site) == ReferenceLayerBox
+  match rust_seed_resolve_wrap_outcome(type_name: type_name, rendered: rendered, use_site: use_site) {
+    SeedWrapDecided { layer: ReferenceLayerBox } => true
+    _ => false
+  }
 }
 
 fn rust_seed_wrap_value_at_use_site(emitted: String, type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> String {
-  match rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, use_site: use_site) {
-    ReferenceLayerOwned => emitted
-    ReferenceLayerRc => rust_seed_align_expr_rc_wrap(emitted: emitted, needs_rc: true)
-    ReferenceLayerBox =>
+  match rust_seed_resolve_wrap_outcome(type_name: type_name, rendered: rendered, use_site: use_site) {
+    SeedWrapDecided { layer: ReferenceLayerOwned } => emitted
+    SeedWrapDecided { layer: ReferenceLayerRc } => rust_seed_align_expr_rc_wrap(emitted: emitted, needs_rc: true)
+    SeedWrapDecided { layer: ReferenceLayerBox } =>
       if string_length(s: emitted) > 10 && substring(s: emitted, start: 0, end: 10) == "Box::new(" { emitted }
       else if rust_type_is_box_wrapped(type_name: emitted) { emitted }
       else { concat("Box::new(", emitted, ")") }
+    SeedWrapRefused { reason } => emit_error_expr(message: reason, target: Rust)
   }
 }
 
@@ -8284,11 +8291,16 @@ fn rust_record_field_wrap_value_at_use_site(raw: String, scope: InferScope, emit
     Present { value: field_type } =>
       let leaf = rust_fn_sig_leaf_name(source_indices: scope.type_env.source_indices, n: field_type)
       let rendered = render_rust_type_with_applied_binding(n: field_type, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, use_site: OwnershipAtStructField)
-      let layer = rust_seed_effective_reference_layer(type_name: leaf, rendered: rendered, use_site: OwnershipAtStructField)
-      if layer == ReferenceLayerOwned && needs_box_wrapping(n: field_type, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices) {
-        concat("Box::new(", raw, ")")
-      } else {
-        rust_seed_wrap_value_at_use_site(emitted: raw, type_name: leaf, rendered: rendered, use_site: OwnershipAtStructField)
+      match rust_seed_resolve_wrap_outcome(type_name: leaf, rendered: rendered, use_site: OwnershipAtStructField) {
+        SeedWrapRefused { reason } => emit_error_expr(message: reason, target: Rust)
+        SeedWrapDecided { layer: ReferenceLayerOwned } =>
+          if needs_box_wrapping(n: field_type, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices) {
+            concat("Box::new(", raw, ")")
+          } else {
+            raw
+          }
+        SeedWrapDecided { layer: _ } =>
+          rust_seed_wrap_value_at_use_site(emitted: raw, type_name: leaf, rendered: rendered, use_site: OwnershipAtStructField)
       }
     Absent => raw
   }

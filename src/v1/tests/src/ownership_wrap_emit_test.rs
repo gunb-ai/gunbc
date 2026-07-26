@@ -162,6 +162,16 @@ fn non_catalog_variant_value_no_blanket_rc_new() {
 }
 
 #[test]
+fn catalog_enrolled_carrier_missing_row_refuses() {
+    let source = "module ownwrap.fixture\n\ntype ProbeHeap { value: Int }\n\nfn pass_probe_heap(p: ProbeHeap) -> ProbeHeap {\n  p\n}\n";
+    let emitted = emit(source);
+    assert!(
+        emitted.contains("panic!") && emitted.contains("wrap-decision"),
+        "enrolled carrier with no param catalog row must refuse at FunctionParameter, got:\n{emitted}"
+    );
+}
+
+#[test]
 fn catalog_node_variant_value_wraps_rc_new() {
     let source = "module ownwrap.fixture\n\ntype Node { child: Node? }\n\ntype Color = Red | Green\n\nfn leaf() -> Node {\n  Node { child: none }\n}\n";
     let emitted = emit(source);

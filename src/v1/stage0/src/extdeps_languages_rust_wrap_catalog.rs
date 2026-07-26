@@ -246,6 +246,43 @@ pub fn rust_sg_rc_ownership_wrap_catalog_rows() -> Rc<Vec<Rc<RustSgRcOwnershipWr
     ])
 }
 
+pub fn rust_sg_rc_wrap_row_lookup_for_carrier(
+    carrier: OwnershipWrapCarrier,
+    use_site: OwnershipWrapUseSite,
+) -> Option<OwnershipReferenceLayer> {
+    rust_sg_rc_ownership_wrap_catalog_rows()
+        .iter()
+        .cloned()
+        .fold(None, |acc, row| match acc {
+            Some(_) => acc,
+            None => {
+                if row.carrier == carrier && row.use_site == use_site {
+                    Some(row.reference_layer)
+                } else {
+                    acc
+                }
+            }
+        })
+}
+
+pub fn rust_sg_rc_carrier_enrolled_but_row_missing(
+    type_name: String,
+    use_site: OwnershipWrapUseSite,
+) -> bool {
+    match use_site {
+        OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent => false,
+        _ => match rust_sg_rc_wrap_carrier_from_type_name(type_name) {
+            Some(carrier) => {
+                match rust_sg_rc_wrap_row_lookup_for_carrier(carrier, use_site) {
+                    Some(_) => false,
+                    None => true,
+                }
+            }
+            None => false,
+        },
+    }
+}
+
 pub fn rust_sg_rc_wrap_layer_lookup(
     type_name: String,
     use_site: OwnershipWrapUseSite,
@@ -253,19 +290,9 @@ pub fn rust_sg_rc_wrap_layer_lookup(
     match use_site {
         OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent => None,
         _ => match rust_sg_rc_wrap_carrier_from_type_name(type_name) {
-            Some(carrier) => rust_sg_rc_ownership_wrap_catalog_rows()
-                .iter()
-                .cloned()
-                .fold(None, |acc, row| match acc {
-                    Some(_) => acc,
-                    None => {
-                        if row.carrier == carrier && row.use_site == use_site {
-                            Some(row.reference_layer)
-                        } else {
-                            acc
-                        }
-                    }
-                }),
+            Some(carrier) => {
+                rust_sg_rc_wrap_row_lookup_for_carrier(carrier, use_site)
+            }
             None => None,
         },
     }
@@ -287,4 +314,11 @@ pub fn rust_sg_rc_wrap_layer_lookup_witness_holds() -> bool {
         }
         _ => false,
     }
+}
+
+pub fn rust_sg_rc_carrier_enrolled_but_row_missing_witness_holds() -> bool {
+    rust_sg_rc_carrier_enrolled_but_row_missing(
+        "ProbeHeap".to_string(),
+        OwnershipWrapUseSite::OwnershipAtFunctionParameter,
+    )
 }
