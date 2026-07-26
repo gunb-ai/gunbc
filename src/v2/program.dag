@@ -21,11 +21,16 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
 }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection {
-  Absent,
   List,
   Map,
-  Present,
   list_at_optional
+}
+import v2.std.optional {
+  Optional,
+  Absent,
+  Present,
+  optional_present,
+  optional_absent
 }
 import v2.std.diagnostic {
   Accepted,
@@ -336,23 +341,21 @@ fn program_facts_for(node: Node) -> InferredFacts {
   )
 }
 
-fn program_facts_lookup(node: Node) -> Witness<InferredFacts> {
+fn program_facts_lookup(node: Node) -> Optional<InferredFacts> {
   if node == program_pick_if_branch_with_effect_io {
-    Holds { value: program_facts_for(node: program_pick_if_branch_with_effect_io) }
+    optional_present(value: program_facts_for(node: program_pick_if_branch_with_effect_io))
   } else if node == program_effect_io_roundtrip {
-    Holds { value: program_facts_for(node: program_effect_io_roundtrip) }
+    optional_present(value: program_facts_for(node: program_effect_io_roundtrip))
   } else if node == program_locator_literal {
-    Holds { value: program_facts_for(node: program_locator_literal) }
+    optional_present(value: program_facts_for(node: program_locator_literal))
   } else if node == program_payload_literal {
-    Holds { value: program_facts_for(node: program_payload_literal) }
+    optional_present(value: program_facts_for(node: program_payload_literal))
   } else if node == program_kw_true() {
-    Holds { value: program_facts_for(node: program_kw_true()) }
+    optional_present(value: program_facts_for(node: program_kw_true()))
   } else if node == program_literal_two() {
-    Holds { value: program_facts_for(node: program_literal_two()) }
+    optional_present(value: program_facts_for(node: program_literal_two()))
   } else {
-    Violates {
-      diagnostic: eval_diagnostic(reason: ^program_facts_miss, node: node)
-    }
+    optional_absent()
   }
 }
 
@@ -386,14 +389,12 @@ fn program_pick_if_call(callee: Node) -> Node {
   }
 }
 
-fn program_pick_if_arrow_facts_lookup(node: Node) -> Witness<InferredFacts> {
-  Holds {
-    value: claim_inferred_facts_from_nodes(
+fn program_pick_if_arrow_facts_lookup(node: Node) -> Optional<InferredFacts> {
+  optional_present(value: claim_inferred_facts_from_nodes(
       resolved: node,
       algebra: program_i64_type(),
       descent: Holds { value: program_termination_proof() }
-    )
-  }
+    ))
 }
 
 fn program_pick_if_arrow_tree(callee: Node) -> InferredTree {

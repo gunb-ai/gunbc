@@ -34,7 +34,16 @@ import v2.extdeps.languages.rust_test {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional }
+import v2.std.collection {
+  List,
+  Map,
+  list_at_optional
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present
+}
 import v2.std.compilers.target_model { match_arm_body }
 import v2.std.diagnostic {
   Accepted,
@@ -163,9 +172,9 @@ fn ingested_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
               facts: Map {
                 lookup: fn(key) {
                   match inferred.facts.lookup(key: key) {
-                    Holds { value: _ } => inferred.facts.lookup(key: key)
-                    Violates { diagnostic: _ } =>
-                      ingested_classical_not_composed_facts(key: key)
+                    Present { value: f } => Present { value: f }
+                    Absent =>
+                      Present { value: ingested_classical_not_composed_facts(key: key) }
                   }
                 }
               }
@@ -248,8 +257,8 @@ fn ingested_classical_not_generic_facts(node: Node) -> InferredFacts {
   )
 }
 
-fn ingested_classical_not_composed_facts(key: Node) -> Witness<InferredFacts> {
-  Holds { value: ingested_classical_not_generic_facts(node: key) }
+fn ingested_classical_not_composed_facts(key: Node) -> InferredFacts {
+  ingested_classical_not_generic_facts(node: key)
 }
 
 fn ingested_classical_not_octet_value(n: Int) -> RuntimeValue {

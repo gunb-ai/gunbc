@@ -43,7 +43,18 @@ import v2.std.compilers.lexing {
   TokenRule,
   lex_rule_set_token_class_member
 }
-import v2.std.collection { List, Map, Set, empty_map, map_insert, Optional }
+import v2.std.collection {
+  List,
+  Map,
+  Set,
+  empty_map,
+  map_insert
+}
+import v2.std.optional {
+  Absent,
+  Present,
+  Optional
+}
 import v2.std.model_core {
   AlgebraInhabitanceDecl,
   AlgebraLawObligation,
@@ -59,10 +70,8 @@ import v2.std.model_core {
   ModelCoreFactAxisOverflowDisposition,
   ModelCoreFactAxisSignedness,
   ModelCoreFactAxisSurfaceSpelling,
-  primitive_fact_axis_unbound_diagnostic,
   ModelCoreFactAxisWidth
 }
-import v2.std.witness { Holds, Violates }
 import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.node {
@@ -1594,17 +1603,15 @@ fn java_integer_spec_facts(facts: JavaIntegerPrimitiveFacts) -> Map<Symbol, Node
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: java_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: java_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          Holds { value: java_int_width_node(width: facts.width) }
+          v2.std.optional.Present { value: java_int_width_node(width: facts.width) }
       } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          Holds { value: java_int_kind_node(kind: facts.signedness) }
+          v2.std.optional.Present { value: java_int_kind_node(kind: facts.signedness) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: java_integer_encoding_fact(facts: facts) }
+          v2.std.optional.Present { value: java_integer_encoding_fact(facts: facts) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          v2.std.optional.Absent
       }
     }
   }
@@ -1614,15 +1621,13 @@ fn java_float_spec_facts(facts: JavaFloatPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: java_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: java_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          Holds { value: java_float_width_node(width: facts.width) }
+          v2.std.optional.Present { value: java_float_width_node(width: facts.width) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: java_inhabitant_atom(id: facts.ieee754_binary) }
+          v2.std.optional.Present { value: java_inhabitant_atom(id: facts.ieee754_binary) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          v2.std.optional.Absent
       }
     }
   }
@@ -1632,13 +1637,11 @@ fn java_noninteger_spec_facts(facts: JavaNonIntegerPrimitiveFacts) -> Map<Symbol
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: java_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: java_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: java_inhabitant_atom(id: facts.representation) }
+          v2.std.optional.Present { value: java_inhabitant_atom(id: facts.representation) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          v2.std.optional.Absent
       }
     }
   }

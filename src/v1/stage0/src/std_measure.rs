@@ -7,8 +7,6 @@ pub use crate::std_currency::CurrencyCode;
 use crate::std_currency::CurrencyCode::*;
 pub use crate::std_nat::Nat;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -97,6 +95,10 @@ pub fn gibibyte_scale_factor_bytes() -> Nat {
 
 pub fn kibi_factor() -> Nat {
     1024
+}
+
+pub fn milliseconds_per_second() -> Nat {
+    1000
 }
 
 pub fn seconds_per_minute() -> Nat {

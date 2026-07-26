@@ -4,7 +4,17 @@ import std.algebra { Empty }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import v2.std.algebra { fold_list, length, list_snoc_item, skip }
-import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
+import v2.std.collection {
+  List,
+  list_at_optional
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Node, Symbol, SyntheticOccurrence, TypeNode }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }

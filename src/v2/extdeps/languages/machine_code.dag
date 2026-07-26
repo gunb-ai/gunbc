@@ -18,7 +18,7 @@ import v2.std.compilers.lexing {
 }
 import std.algebra { Empty }
 import v2.std.algebra { list_map }
-import v2.std.collection { List, Map }
+import v2.std.collection { Absent, List, Map, Present }
 import v2.std.machine { Byte }
 import v2.std.text { String }
 import v2.std.model_core {
@@ -30,10 +30,8 @@ import v2.std.model_core {
   ModelCoreFactAxisOverflowDisposition,
   ModelCoreFactAxisSignedness,
   ModelCoreFactAxisSurfaceSpelling,
-  primitive_fact_axis_unbound_diagnostic,
   ModelCoreFactAxisWidth
 }
-import v2.std.witness { Holds, Violates }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 
 type Isa
@@ -377,19 +375,17 @@ fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> Map<Symbol, Nod
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: mc_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: mc_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          Holds { value: mc_int_width_node(width: facts.width) }
+          v2.std.optional.Present { value: mc_int_width_node(width: facts.width) }
       } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          Holds { value: mc_int_kind_node(kind: facts.kind) }
+          v2.std.optional.Present { value: mc_int_kind_node(kind: facts.kind) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: mc_inhabitant_atom(id: ^mc_repr_twos_complement) }
+          v2.std.optional.Present { value: mc_inhabitant_atom(id: ^mc_repr_twos_complement) }
       } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
-          Holds { value: mc_overflow_node(overflow: facts.overflow_release) }
+          v2.std.optional.Present { value: mc_overflow_node(overflow: facts.overflow_release) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          v2.std.optional.Absent
       }
     }
   }

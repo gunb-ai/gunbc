@@ -19,12 +19,17 @@ import v2.compiler.eval {
 import v2.compiler.infer { InferredFacts, InferredTree }
 import std.algebra { Empty }
 import v2.std.collection {
-  Absent,
   List,
   Map,
-  Present,
   list_at_optional,
   map_insert
+}
+import v2.std.optional {
+  Optional,
+  Absent,
+  Present,
+  optional_present,
+  optional_absent
 }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
@@ -351,14 +356,12 @@ fn branch_tree_root(call: Node, expected: Node) -> Node {
   }
 }
 
-fn branch_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  Holds {
-    value: claim_inferred_facts_from_nodes(
+fn branch_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  optional_present(value: claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: branch_i64_node(),
       descent: termination_proof_witness_for_node(n: key)
-    )
-  }
+    ))
 }
 
 fn branch_admitted_tree(root: Node) -> InferredTree {

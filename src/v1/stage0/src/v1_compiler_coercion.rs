@@ -19,8 +19,6 @@ pub use crate::std_types::{canonical_container_names, container_template_algebra
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::qualified_last_segment;
 use crate::NonEmptyBTreeSet;

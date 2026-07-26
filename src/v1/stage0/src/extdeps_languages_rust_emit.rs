@@ -16,8 +16,6 @@ pub use crate::std_trait_derive_shape::{
     record_derive_traits_heap,
 };
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -632,7 +630,16 @@ pub fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
 pub fn rust_repr_grounding_arm_b_dissolve_on() -> String {
     thread_local! {
         static CACHED: String = {
-            "Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion/Nat body lands (#7197); replace fail-closed unimplemented! stubs with grounded i64 newtype operations. Do not retain PartialEq<i64> cross-representation bridge — numeric-tower grounding replaces the straddle.".to_string()
+            "Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion pair arithmetic bodies land (#7197, eager-crane numeric-tower lane — NOT silent-badger-23); replace fail-closed unimplemented! stubs with grounded operations. Do not retain PartialEq<i64> cross-representation bridge — numeric-tower grounding replaces the straddle.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_repr_grounding_arm_b_stub_inventory() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "MARKED scaffold (§6): four fail-closed unimplemented! bodies emitted into src/v1/stage0/src/std_algebra.rs from this authority — Add:91, Mul:97, Div:103, PartialEq<i64>:108 (line refs stable post-regen; probe via grep 'interim CommutativeSemiring'). Dissolve owner: #7197 eager-crane. std_types.rs From<Bool> (real match body, not a stub) is out of scope for this inventory.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

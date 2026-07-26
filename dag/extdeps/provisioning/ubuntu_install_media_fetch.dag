@@ -5,6 +5,7 @@ import std.disposition { Disposition, Terminal }
 import std.types { NonEmptyStr, List, String, Bool, FilePath }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
 import extdeps.http.client
 import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }
@@ -51,8 +52,10 @@ type MirrorFoldAcc = MirrorFoldAcc { terminal: InstallMediaFetchReconcileOutcome
 
 data mirror_fold_refusal_doc: String = "DESIGN §5 fix (cursor review, PR #6596): install_media_fetch_try_mirror previously returned `none` for BOTH an unreachable mirror (transport miss, keep trying) AND a Sha256Mismatch (a genuine digest failure), so a run where every mirror downloaded but none verified fell through the fold to 'all mirrors unreachable' - a state-space conflation between reachability and digest correctness. MirrorAttempt now names the three outcomes distinctly, and the fold tracks saw_mismatch so the final refusal reads 'digest verification failed' when that's what actually happened."
 
+data observe_install_media_fetch_outcome_is_data_note: String = "The presence probe is OutcomeIsData: a non-zero `test -f` here means the media is ABSENT, which is one of this fn's four declared answers (InstallMediaFetchAbsent), not a fault. The type already draws the distinction the arm formalises — InstallMediaFetchVerifyInfraFailure is the separate 'the probe itself broke' arm — so subject-state and probe-breakage were never conflated here; only the effect layer's glyph conflated them. Admissible under the §5 guard: this fn returns InstallMediaFetchObservation, a typed observation whose arms ARE the adjudication, and the exit selects among them."
+
 fn observe_install_media_fetch(path: NonEmptyStr, expected_hash: NonEmptyStr) -> InstallMediaFetchObservation {
-  let present = shell.Test.IsFile(path: path as FilePath)
+  let present = shell.Test.IsFile(path: path as FilePath, expect: OutcomeIsData)
   if present.is_file == false {
     InstallMediaFetchAbsent
   } else {

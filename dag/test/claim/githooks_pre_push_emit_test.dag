@@ -15,39 +15,54 @@ fn witness_generated_header() -> Bool {
     && has(s: sh, p: "set -euo pipefail")
 }
 
-fn witness_thin_shim_exec() -> Bool {
+fn witness_fmt_is_the_body() -> Bool {
   let sh = expected_githooks_pre_push_sh()
-  has(s: sh, p: "ensure_bins")
-    && has(s: sh, p: "exec \"$CLAIM_BATCH\" --pre-push")
-    && !has(s: sh, p: "while IFS=' ' read -r")
-    && !has(s: sh, p: "declare -a PUSH_CHANGED")
-    && !has(s: sh, p: "fresh_doc_path")
+  has(s: sh, p: "cargo fmt --all --check")
+    && has(s: sh, p: "rustfmt drift")
+    && has(s: sh, p: "exit 1")
 }
 
-fn witness_claim_batch_wired() -> Bool {
+fn witness_no_claim_batch_dependency() -> Bool {
   let sh = expected_githooks_pre_push_sh()
-  has(s: sh, p: "claim_batch") && has(s: sh, p: "--pre-push")
+  !has(s: sh, p: "claim_batch")
+    && !has(s: sh, p: "--pre-push")
+    && !has(s: sh, p: "ensure_bins")
+    && !has(s: sh, p: "CLAIM_BATCH")
 }
 
-fn witness_no_inline_gate_logic() -> Bool {
+fn witness_no_in_hook_build() -> Bool {
   let sh = expected_githooks_pre_push_sh()
-  !has(s: sh, p: "run_generated_artifact_drift_gate_body")
-    && !has(s: sh, p: "cargo fmt --all --check")
+  !has(s: sh, p: "cargo build")
+    && !has(s: sh, p: "CTRL_BUILD_WRAP_CARGO")
+}
+
+fn witness_no_corpus_or_witness_run() -> Bool {
+  let sh = expected_githooks_pre_push_sh()
+  !has(s: sh, p: "gunbc_ci_witness_corpus_only_batches")
     && !has(s: sh, p: "doc_graph_has_no_orphan_docs")
-    && !has(s: sh, p: "gunbc_ci_witness_corpus_only_batches")
-    && !has(s: sh, p: "chore: apply cargo fmt")
+    && !has(s: sh, p: "--claim-run")
+    && !has(s: sh, p: "run_generated_artifact_drift_gate_body")
+}
+
+fn witness_no_tree_mutation() -> Bool {
+  let sh = expected_githooks_pre_push_sh()
+  !has(s: sh, p: "chore: apply cargo fmt")
     && !has(s: sh, p: "chore: regenerate committed projections")
+    && !has(s: sh, p: "git add")
+    && !has(s: sh, p: "git commit")
 }
 
 fn witness_line_budget() -> Bool {
   let sh = expected_githooks_pre_push_sh()
-  length(sh) < 2000
+  length(sh) < 700
 }
 
 test fn githooks_pre_push_emit_witnesses() -> Bool {
   witness_generated_header()
-    && witness_thin_shim_exec()
-    && witness_claim_batch_wired()
-    && witness_no_inline_gate_logic()
+    && witness_fmt_is_the_body()
+    && witness_no_claim_batch_dependency()
+    && witness_no_in_hook_build()
+    && witness_no_corpus_or_witness_run()
+    && witness_no_tree_mutation()
     && witness_line_budget()
 }

@@ -25,7 +25,15 @@ import v2.compiler.translate {
   target_serialize_source_from_model,
   translate_emitted_node
 }
-import v2.std.collection { Map, list_at_optional }
+import v2.std.collection {
+  Map,
+  list_at_optional
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent
+}
 import v2.std.diagnostic {
   Accepted,
   None,
@@ -50,7 +58,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn branch_if_then_else_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
+fn branch_if_then_else_emit_facts_lookup(key: Node) -> Optional<InferredFacts> {
   branch_if_then_else_inferred_facts_for(node: key)
 }
 

@@ -1,0 +1,9 @@
+module test.retirement.field_of_fractions_single_declaration_retained
+
+
+data field_of_fractions_single_declaration_retention: TestModuleRetirement = TestModuleRetirement {
+  module: "field_of_fractions_single_declaration_test.rs",
+  disposition: RetainedNonMigratable {
+    reason: "This witness guards the §7.2 FieldOfFractions de-fork non-regression: a corpus-wide filesystem walk over dag/ and src/v2/ must find exactly one top-level `type FieldOfFractions` declaration, at dag/std/algebra.dag — a second declaration anywhere else is a §3 fork that desynchronizes from the single authority. The scan reads host filesystem shape (per-file declaration heads), not an interpreter-observable .dag surface, so it cannot migrate to an exact-stem test dag floor witness. Retained until src/v1 deletes at v2 self-host; not migration debt and not a delete candidate."
+  }
+}

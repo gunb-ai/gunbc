@@ -1,5 +1,6 @@
 module test.claim.typed_witness_invocation
 
+import gunbc.output_policy { ExpectFailure }
 import extdeps.shell
 import extdeps.git
 import extdeps.gunbc
@@ -20,7 +21,7 @@ test fn typed_is_executable_positive_holds() -> Bool {
 }
 
 test fn typed_is_executable_negative_red_control_holds() -> Bool {
-  let result = shell.Test.IsExecutable(path: "/nonexistent/no/such/binary")
+  let result = shell.Test.IsExecutable(path: "/nonexistent/no/such/binary", expect: ExpectFailure)
   result.executable == false
 }
 
@@ -30,7 +31,7 @@ test fn typed_witness_bin_run_argv_holds() -> Bool {
 }
 
 test fn typed_witness_bin_run_nonzero_red_control_holds() -> Bool {
-  let result = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/false")
+  let result = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/false", expect: ExpectFailure)
   result.success == false
 }
 
@@ -60,7 +61,7 @@ test fn typed_is_nonempty_positive_holds() -> Bool {
 }
 
 test fn typed_is_nonempty_zero_byte_red_control_holds() -> Bool {
-  let result = shell.Test.IsNonEmpty(path: "/dev/null")
+  let result = shell.Test.IsNonEmpty(path: "/dev/null", expect: ExpectFailure)
   result.nonempty == false
 }
 
@@ -93,7 +94,7 @@ test fn typed_claim_batch_pooled_argv_shape_holds() -> Bool {
 }
 
 test fn typed_claim_batch_pooled_run_red_control_holds() -> Bool {
-  let result = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/false", args: ["--entry", "x.dag"])
+  let result = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/false", args: ["--entry", "x.dag"], expect: ExpectFailure)
   result.success == false
 }
 
@@ -101,7 +102,8 @@ test fn typed_claim_executor_verify_build_artifacts_red_control_holds() -> Bool 
   let result = claim_executor.Executor.VerifyBuildArtifacts(
     workdir: "/",
     bin_path: "/bin/false",
-    artifact_paths: ["/bin/sh"]
+    artifact_paths: ["/bin/sh"],
+    expect: ExpectFailure
   )
   result.success == false
 }
