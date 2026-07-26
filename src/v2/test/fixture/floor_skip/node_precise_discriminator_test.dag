@@ -51,7 +51,7 @@ data floor_disc_helper_conj: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn floor_disc_helper_fn() -> Bool {
+test fn floor_disc_helper_fn() -> Bool {
   floor_disc_shared_helper()
 }
 

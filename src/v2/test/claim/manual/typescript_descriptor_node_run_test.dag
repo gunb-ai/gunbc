@@ -65,7 +65,7 @@ fn typescript_descriptor_node_host_run_i32(target: TargetModel, source: Medium<S
   }
 }
 
-fn typescript_descriptor_node_ts_node_run_add_holds() -> Bool {
+test fn typescript_descriptor_node_ts_node_run_add_holds() -> Bool {
   match add_body_ts_emit_from_producer_tree(target: ts_target_model()) {
     Accepted { value: source, diagnostics: None } =>
       match typescript_descriptor_node_host_run_i32(target: ts_target_model(), source: source) {
@@ -76,7 +76,7 @@ fn typescript_descriptor_node_ts_node_run_add_holds() -> Bool {
   }
 }
 
-fn typescript_descriptor_node_ts_node_run_catalog_minus_discriminates() -> Bool {
+test fn typescript_descriptor_node_ts_node_run_catalog_minus_discriminates() -> Bool {
   match add_body_ts_emit_from_producer_tree(target: add_body_ts_target_model_minus_catalog()) {
     Accepted { value: source, diagnostics: None } =>
       match typescript_descriptor_node_host_run_i32(

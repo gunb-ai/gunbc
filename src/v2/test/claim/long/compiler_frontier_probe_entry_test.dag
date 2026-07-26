@@ -31,7 +31,7 @@ fn frontier_probe_entry_receipt() -> FrontierProbeReceipt {
   )
 }
 
-fn frontier_probe_entry_blocker_is_emit_surface() -> Bool {
+test fn frontier_probe_entry_blocker_is_emit_surface() -> Bool {
   match frontier_probe_entry_receipt().blocker_class {
     EmitSurfaceGap => true
     _ => false

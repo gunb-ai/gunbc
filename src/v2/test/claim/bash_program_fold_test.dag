@@ -411,7 +411,7 @@ test fn bash_program_serialize_concat_matches_golden_holds() -> Bool {
 
 data bash_program_real_program_probe_note: String = "Real-program golden probes (witness_bin + gunbc_claims shapes) stay manual fns, not enrolled test fns: depth-7 node programs are expensive through bash_emit_program (bash_program_emit_cost_wall_note) and the floor prices witnesses by wall-clock. Goldens remain the oracle; run bash_program_real_witness_matches_golden_holds / bash_program_real_claims_matches_golden_holds locally or via gunbc run --claim-run."
 
-fn bash_program_real_witness_matches_golden_holds() -> Bool {
+test fn bash_program_real_witness_matches_golden_holds() -> Bool {
   bash_emit_program_matches_golden(
     statements: bash_program_fixture_witness_bin_specials(
       var_name: "V1_DAG_PARSE",
@@ -423,7 +423,7 @@ fn bash_program_real_witness_matches_golden_holds() -> Bool {
   )
 }
 
-fn bash_program_real_claims_matches_golden_holds() -> Bool {
+test fn bash_program_real_claims_matches_golden_holds() -> Bool {
   bash_emit_program_matches_golden(
     statements: bash_program_fixture_gunbc_claims_specials(),
     set_e: true,
