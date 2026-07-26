@@ -473,10 +473,10 @@ pub struct EmojiCharEscape {
 }
 
 pub fn canonical_emoji_char_escape() -> Rc<EmojiCharEscape> {
-    Rc::new(EmojiCharEscape {
+    EmojiCharEscape {
         prefix: "_Eu".to_string(),
         suffix: "_".to_string(),
-    })
+    }
 }
 
 #[derive(
@@ -489,21 +489,21 @@ pub enum CharSanitization {
 }
 
 pub fn rust_spec() -> Rc<LanguageSpec> {
-    Rc::new(LanguageSpec {
+    LanguageSpec {
         target_name: "rust".to_string(),
-        reserved_words: Rc::new(ReservedWords {
+        reserved_words: ReservedWords {
             keywords: rust_reserved(),
-            strategy: Rc::new(ReservedWordStrategy::SuffixEscape {
+            strategy: ReservedWordStrategy::SuffixEscape {
                 suffix: rust_reserved_escape_suffix(),
-            }),
-        }),
-        scaffold: Rc::new(ProjectScaffold {
+            },
+        },
+        scaffold: ProjectScaffold {
             manifest_file: Some("Cargo.toml".to_string()),
             module_init_file: None,
             source_file_extension: rust_source_extension(),
             source_dir: Some(rust_source_dir()),
-        }),
-        serialization: Rc::new(SerializationSpec {
+        },
+        serialization: SerializationSpec {
             struct_derives: Some(rust_struct_derives()),
             struct_derives_copy: Some(rust_struct_derives_copy()),
             enum_derives: Some(rust_enum_derives()),
@@ -512,19 +512,19 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             rename_attribute_template: Some(rust_serde_rename_template()),
             derive_attribute: None,
             default_value: None,
-        }),
-        test_conventions: Rc::new(TestConventions {
+        },
+        test_conventions: TestConventions {
             file_prefix: "".to_string(),
             file_suffix: "_test".to_string(),
             file_dir: Some("tests/".to_string()),
             function_prefix: "test_".to_string(),
             name_style: TestNameStyle::SnakeCaseTestNames,
             async_decorator: Some("#[tokio::test]".to_string()),
-        }),
-        visibility: Rc::new(VisibilitySpec::KeywordVisibility {
+        },
+        visibility: VisibilitySpec::KeywordVisibility {
             prefix: rust_visibility(),
-        }),
-        sharing: Rc::new(SharingStrategy {
+        },
+        sharing: SharingStrategy {
             needs_sharing: true,
             wrap_template: "Rc<{0}>".to_string(),
             clone_value: "{0}.clone()".to_string(),
@@ -534,21 +534,21 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             clone_suffix: ".cloned()".to_string(),
             borrow_param_template: "&{0}".to_string(),
             borrow_arg_template: "&{0}".to_string(),
-        }),
-        indexing: Rc::new(IndexingSemantics {
+        },
+        indexing: IndexingSemantics {
             list_index: "{0}[({1}) as usize].clone()".to_string(),
             map_index: "({0}).get(&{1}).cloned()".to_string(),
             string_index: "v1_rt::char_at(&{0}, {1})".to_string(),
             list_slice: Some("Rc::new((*{0})[{1} as usize..{2} as usize].to_vec())".to_string()),
             string_slice: Some("v1_rt::substring(&{0}, {1}, {2})".to_string()),
-        }),
-        annotations: Rc::new(AnnotationRequirements {
+        },
+        annotations: AnnotationRequirements {
             let_binding_inferred: "let {0} = {1};".to_string(),
             let_binding_annotated: "let {0}: {1} = {2};".to_string(),
             lambda_param_typed: "{0}: {1}".to_string(),
             lambda_param_untyped: "{0}".to_string(),
-        }),
-        service_fields: Rc::new(ServiceFieldTemplates {
+        },
+        service_fields: ServiceFieldTemplates {
             rest_decl: "    pub base_url: String,\n".to_string(),
             auth_decl: "    pub auth_token: String,\n".to_string(),
             shell_decl: "    pub working_dir: Option<String>,\n".to_string(),
@@ -557,8 +557,8 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             auth_ctor: "        auth_token: String::new(),\n".to_string(),
             shell_ctor: "        working_dir: None,\n".to_string(),
             file_ctor: "        base_path: \".\".to_string(),\n".to_string(),
-        }),
-        block_syntax: Rc::new(BlockSyntax {
+        },
+        block_syntax: BlockSyntax {
             block_open: " {\n".to_string(),
             block_close: "}".to_string(),
             else_clause: "} else {\n".to_string(),
@@ -567,20 +567,20 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             arm_separator: ",".to_string(),
             stmt_terminator: ";".to_string(),
             significant_whitespace: false,
-        }),
-        for_each_syntax: Rc::new(ForEachSyntax {
+        },
+        for_each_syntax: ForEachSyntax {
             prefix: "for ".to_string(),
             separator: " in ".to_string(),
-        }),
-        tco: Rc::new(TcoSyntax {
+        },
+        tco: TcoSyntax {
             loop_keyword: "loop".to_string(),
             break_return: "break".to_string(),
             continue_str: "continue;".to_string(),
             temp_var_prefix: "__tco_".to_string(),
             temp_decl_prefix: "let ".to_string(),
             temp_assign_op: " = ".to_string(),
-        }),
-        items: Rc::new(ItemKeywords {
+        },
+        items: ItemKeywords {
             func_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::FuncForm),
             async_prefix: rust_async_prefix(),
             struct_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::StructForm),
@@ -595,22 +595,22 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             module_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::ModuleForm),
             import_keyword: rust_import_keyword(),
             import_from_keyword: rust_import_from_keyword(),
-        }),
-        expression_semantics: Rc::new(ExpressionSemantics {
+        },
+        expression_semantics: ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
             match_value_form: MatchValueForm::MatchExpression,
             wildcard_case: None,
-            variant_pattern: Some(Rc::new(VariantPatternSyntax {
+            variant_pattern: Some(VariantPatternSyntax {
                 open: " { ".to_string(),
                 close: " }".to_string(),
                 binding_sep: ": ".to_string(),
                 empty_suffix: "".to_string(),
-            })),
+            }),
             guard_prefix: Some(" if ".to_string()),
             empty_return_value: "()".to_string(),
             return_suffix: "".to_string(),
             suppress_unit_return: false,
-        }),
+        },
         lambda_template: rust_lambda_template(),
         error_expr_template: rust_error_expr_template(),
         list_literal_empty: rust_list_literal_empty(),
@@ -620,38 +620,38 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
         type_arg_open: rust_type_arg_open(),
         type_arg_close: rust_type_arg_close(),
         void_type: rust_void_type(),
-        tuple_syntax: Rc::new(TupleSyntax {
+        tuple_syntax: TupleSyntax {
             empty: rust_tuple_empty(),
             pair_template: rust_tuple_pair_template(),
             multi_template: rust_tuple_multi_template(),
             separator: rust_tuple_separator(),
             first_accessor: ".0".to_string(),
             second_accessor: ".1".to_string(),
-        }),
-        string_interp: Rc::new(StringInterpSyntax {
-            style: Rc::new(InterpStyle::FormatArgs {
+        },
+        string_interp: StringInterpSyntax {
+            style: InterpStyle::FormatArgs {
                 placeholder: "{}".to_string(),
-            }),
+            },
             format_template: "format!(\"{0}\", {1})".to_string(),
             plain_template: "\"{0}\".to_string()".to_string(),
             escape_pairs: Rc::new(vec![
-                Rc::new(EscapePair {
+                EscapePair {
                     from: "{".to_string(),
                     to: "{{".to_string(),
-                }),
-                Rc::new(EscapePair {
+                },
+                EscapePair {
                     from: "}".to_string(),
                     to: "}}".to_string(),
-                }),
+                },
             ]),
-        }),
+        },
         callable_type_template: Some("Rc<dyn Fn({params}) -> {return}>".to_string()),
         naming_case: NamingCase::SnakeCase,
         async_call_prefix: "".to_string(),
         bridge_method_prefix: "".to_string(),
         bridge_method_case: NamingCase::SnakeCase,
         bridge_method_overrides: v1_rt::rc_empty_map::<String, String>(),
-        record_lit: Rc::new(RecordLitSyntax {
+        record_lit: RecordLitSyntax {
             named_open: " {".to_string(),
             named_close: "}".to_string(),
             named_empty: " {}".to_string(),
@@ -661,31 +661,31 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             anon_prefix: "{\n".to_string(),
             anon_suffix: "}".to_string(),
             anon_field_indent: "    ".to_string(),
-        }),
-        service_method: Rc::new(ServiceMethodStrategy::SelfInParams {
+        },
+        service_method: ServiceMethodStrategy::SelfInParams {
             self_param: "&self".to_string(),
-        }),
-        service_return: Rc::new(ServiceReturnStrategy::ArrowReturn),
+        },
+        service_return: ServiceReturnStrategy::ArrowReturn,
         char_sanitization: CharSanitization::EmojiEscape,
-    })
+    }
 }
 
 pub fn python_spec() -> Rc<LanguageSpec> {
-    Rc::new(LanguageSpec {
+    LanguageSpec {
         target_name: "python".to_string(),
-        reserved_words: Rc::new(ReservedWords {
+        reserved_words: ReservedWords {
             keywords: python_reserved(),
-            strategy: Rc::new(ReservedWordStrategy::SuffixEscape {
+            strategy: ReservedWordStrategy::SuffixEscape {
                 suffix: python_reserved_escape_suffix(),
-            }),
-        }),
-        scaffold: Rc::new(ProjectScaffold {
+            },
+        },
+        scaffold: ProjectScaffold {
             manifest_file: Some("requirements.txt".to_string()),
             module_init_file: Some(python_module_init()),
             source_file_extension: python_source_extension(),
             source_dir: None,
-        }),
-        serialization: Rc::new(SerializationSpec {
+        },
+        serialization: SerializationSpec {
             struct_derives: None,
             struct_derives_copy: None,
             enum_derives: None,
@@ -694,19 +694,19 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             rename_attribute_template: None,
             derive_attribute: Some(python_derive_attribute()),
             default_value: Some(python_default_value()),
-        }),
-        test_conventions: Rc::new(TestConventions {
+        },
+        test_conventions: TestConventions {
             file_prefix: "test_".to_string(),
             file_suffix: "".to_string(),
             file_dir: Some("tests/".to_string()),
             function_prefix: "test_".to_string(),
             name_style: TestNameStyle::SnakeCaseTestNames,
             async_decorator: None,
-        }),
-        visibility: Rc::new(VisibilitySpec::KeywordVisibility {
+        },
+        visibility: VisibilitySpec::KeywordVisibility {
             prefix: "".to_string(),
-        }),
-        sharing: Rc::new(SharingStrategy {
+        },
+        sharing: SharingStrategy {
             needs_sharing: false,
             wrap_template: "{0}".to_string(),
             clone_value: "{0}".to_string(),
@@ -716,21 +716,21 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             clone_suffix: "".to_string(),
             borrow_param_template: "{0}".to_string(),
             borrow_arg_template: "{0}".to_string(),
-        }),
-        indexing: Rc::new(IndexingSemantics {
+        },
+        indexing: IndexingSemantics {
             list_index: "{0}[{1}]".to_string(),
             map_index: "{0}[{1}]".to_string(),
             string_index: "{0}[{1}]".to_string(),
             list_slice: Some("{0}[{1}:{2}]".to_string()),
             string_slice: Some("{0}[{1}:{2}]".to_string()),
-        }),
-        annotations: Rc::new(AnnotationRequirements {
+        },
+        annotations: AnnotationRequirements {
             let_binding_inferred: "{0} = {1}".to_string(),
             let_binding_annotated: "{0}: {1} = {2}".to_string(),
             lambda_param_typed: "{0}: {1}".to_string(),
             lambda_param_untyped: "{0}".to_string(),
-        }),
-        service_fields: Rc::new(ServiceFieldTemplates {
+        },
+        service_fields: ServiceFieldTemplates {
             rest_decl: "base_url: str".to_string(),
             auth_decl: "auth_token: str".to_string(),
             shell_decl: "working_dir: str | None = None".to_string(),
@@ -739,8 +739,8 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             auth_ctor: "self.auth_token = auth_token".to_string(),
             shell_ctor: "self.working_dir = working_dir".to_string(),
             file_ctor: "self.base_path = base_path".to_string(),
-        }),
-        block_syntax: Rc::new(BlockSyntax {
+        },
+        block_syntax: BlockSyntax {
             block_open: ":\n".to_string(),
             block_close: "".to_string(),
             else_clause: "else:\n".to_string(),
@@ -749,20 +749,20 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             arm_separator: "\n".to_string(),
             stmt_terminator: "\n".to_string(),
             significant_whitespace: true,
-        }),
-        for_each_syntax: Rc::new(ForEachSyntax {
+        },
+        for_each_syntax: ForEachSyntax {
             prefix: "for ".to_string(),
             separator: " in ".to_string(),
-        }),
-        tco: Rc::new(TcoSyntax {
+        },
+        tco: TcoSyntax {
             loop_keyword: "while True".to_string(),
             break_return: "return".to_string(),
             continue_str: "continue\n".to_string(),
             temp_var_prefix: "__tco_".to_string(),
             temp_decl_prefix: "".to_string(),
             temp_assign_op: " = ".to_string(),
-        }),
-        items: Rc::new(ItemKeywords {
+        },
+        items: ItemKeywords {
             func_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::FuncForm),
             async_prefix: python_async_prefix(),
             struct_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::StructForm),
@@ -777,22 +777,22 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             module_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::ModuleForm),
             import_keyword: python_import_keyword(),
             import_from_keyword: python_import_from_keyword(),
-        }),
-        expression_semantics: Rc::new(ExpressionSemantics {
+        },
+        expression_semantics: ExpressionSemantics {
             if_value_form: IfValueForm::ConditionalTernary,
             match_value_form: MatchValueForm::MatchStatementArmReturn,
             wildcard_case: None,
-            variant_pattern: Some(Rc::new(VariantPatternSyntax {
+            variant_pattern: Some(VariantPatternSyntax {
                 open: "(".to_string(),
                 close: ")".to_string(),
                 binding_sep: "=".to_string(),
                 empty_suffix: "()".to_string(),
-            })),
+            }),
             guard_prefix: Some(" if ".to_string()),
             empty_return_value: "None".to_string(),
             return_suffix: "".to_string(),
             suppress_unit_return: false,
-        }),
+        },
         lambda_template: python_lambda_template(),
         error_expr_template: python_error_expr_template(),
         list_literal_empty: python_list_literal_empty(),
@@ -802,29 +802,29 @@ pub fn python_spec() -> Rc<LanguageSpec> {
         type_arg_open: python_type_arg_open(),
         type_arg_close: python_type_arg_close(),
         void_type: python_void_type(),
-        tuple_syntax: Rc::new(TupleSyntax {
+        tuple_syntax: TupleSyntax {
             empty: python_tuple_empty(),
             pair_template: python_tuple_pair_template(),
             multi_template: python_tuple_multi_template(),
             separator: python_tuple_separator(),
             first_accessor: "[0]".to_string(),
             second_accessor: "[1]".to_string(),
-        }),
-        string_interp: Rc::new(StringInterpSyntax {
-            style: Rc::new(InterpStyle::InlineExpr),
+        },
+        string_interp: StringInterpSyntax {
+            style: InterpStyle::InlineExpr,
             format_template: "f\"{0}\"".to_string(),
             plain_template: "f\"{0}\"".to_string(),
             escape_pairs: Rc::new(vec![
-                Rc::new(EscapePair {
+                EscapePair {
                     from: "{".to_string(),
                     to: "{{".to_string(),
-                }),
-                Rc::new(EscapePair {
+                },
+                EscapePair {
                     from: "}".to_string(),
                     to: "}}".to_string(),
-                }),
+                },
             ]),
-        }),
+        },
         callable_type_template: None,
         naming_case: NamingCase::SnakeCase,
         async_call_prefix: "await ".to_string(),
@@ -835,7 +835,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             "with".to_string(),
             "with_update".to_string(),
         ),
-        record_lit: Rc::new(RecordLitSyntax {
+        record_lit: RecordLitSyntax {
             named_open: "(".to_string(),
             named_close: ")".to_string(),
             named_empty: "()".to_string(),
@@ -845,31 +845,31 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             anon_prefix: "{\n".to_string(),
             anon_suffix: "}".to_string(),
             anon_field_indent: "    ".to_string(),
-        }),
-        service_method: Rc::new(ServiceMethodStrategy::SelfInParams {
+        },
+        service_method: ServiceMethodStrategy::SelfInParams {
             self_param: "self".to_string(),
-        }),
-        service_return: Rc::new(ServiceReturnStrategy::ArrowReturn),
+        },
+        service_return: ServiceReturnStrategy::ArrowReturn,
         char_sanitization: CharSanitization::EmojiEscape,
-    })
+    }
 }
 
 pub fn go_spec() -> Rc<LanguageSpec> {
-    Rc::new(LanguageSpec {
+    LanguageSpec {
         target_name: "go".to_string(),
-        reserved_words: Rc::new(ReservedWords {
+        reserved_words: ReservedWords {
             keywords: go_reserved(),
-            strategy: Rc::new(ReservedWordStrategy::SuffixEscape {
+            strategy: ReservedWordStrategy::SuffixEscape {
                 suffix: go_reserved_escape_suffix(),
-            }),
-        }),
-        scaffold: Rc::new(ProjectScaffold {
+            },
+        },
+        scaffold: ProjectScaffold {
             manifest_file: Some("go.mod".to_string()),
             module_init_file: None,
             source_file_extension: ".go".to_string(),
             source_dir: None,
-        }),
-        serialization: Rc::new(SerializationSpec {
+        },
+        serialization: SerializationSpec {
             struct_derives: None,
             struct_derives_copy: None,
             enum_derives: None,
@@ -878,19 +878,19 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             rename_attribute_template: None,
             derive_attribute: None,
             default_value: None,
-        }),
-        test_conventions: Rc::new(TestConventions {
+        },
+        test_conventions: TestConventions {
             file_prefix: "".to_string(),
             file_suffix: "_test".to_string(),
             file_dir: None,
             function_prefix: "Test".to_string(),
             name_style: TestNameStyle::PascalCaseTestNames,
             async_decorator: None,
-        }),
-        visibility: Rc::new(VisibilitySpec::CaseVisibility {
+        },
+        visibility: VisibilitySpec::CaseVisibility {
             export_case: NamingCase::PascalCase,
-        }),
-        sharing: Rc::new(SharingStrategy {
+        },
+        sharing: SharingStrategy {
             needs_sharing: false,
             wrap_template: "{0}".to_string(),
             clone_value: "{0}".to_string(),
@@ -900,21 +900,21 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             clone_suffix: "".to_string(),
             borrow_param_template: "{0}".to_string(),
             borrow_arg_template: "{0}".to_string(),
-        }),
-        indexing: Rc::new(IndexingSemantics {
+        },
+        indexing: IndexingSemantics {
             list_index: "{0}[{1}]".to_string(),
             map_index: "{0}[{1}]".to_string(),
             string_index: "{0}[{1}]".to_string(),
             list_slice: Some("{0}[{1}:{2}]".to_string()),
             string_slice: Some("{0}[{1}:{2}]".to_string()),
-        }),
-        annotations: Rc::new(AnnotationRequirements {
+        },
+        annotations: AnnotationRequirements {
             let_binding_inferred: "{0} := {1}".to_string(),
             let_binding_annotated: "var {0} {1} = {2}".to_string(),
             lambda_param_typed: "{0} {1}".to_string(),
             lambda_param_untyped: "{0} interface{}".to_string(),
-        }),
-        service_fields: Rc::new(ServiceFieldTemplates {
+        },
+        service_fields: ServiceFieldTemplates {
             rest_decl: "\tBaseURL string".to_string(),
             auth_decl: "\tAuthToken string".to_string(),
             shell_decl: "\tWorkingDir string".to_string(),
@@ -923,8 +923,8 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             auth_ctor: "".to_string(),
             shell_ctor: "".to_string(),
             file_ctor: "".to_string(),
-        }),
-        block_syntax: Rc::new(BlockSyntax {
+        },
+        block_syntax: BlockSyntax {
             block_open: " {\n".to_string(),
             block_close: "}".to_string(),
             else_clause: "} else {\n".to_string(),
@@ -933,20 +933,20 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             arm_separator: "\n".to_string(),
             stmt_terminator: "".to_string(),
             significant_whitespace: false,
-        }),
-        for_each_syntax: Rc::new(ForEachSyntax {
+        },
+        for_each_syntax: ForEachSyntax {
             prefix: "for _, ".to_string(),
             separator: " := range ".to_string(),
-        }),
-        tco: Rc::new(TcoSyntax {
+        },
+        tco: TcoSyntax {
             loop_keyword: "for".to_string(),
             break_return: "return".to_string(),
             continue_str: "continue".to_string(),
             temp_var_prefix: "tco".to_string(),
             temp_decl_prefix: "".to_string(),
             temp_assign_op: " := ".to_string(),
-        }),
-        items: Rc::new(ItemKeywords {
+        },
+        items: ItemKeywords {
             func_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::FuncForm),
             async_prefix: go_async_prefix(),
             struct_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::StructForm),
@@ -958,8 +958,8 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             module_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::ModuleForm),
             import_keyword: go_import_keyword(),
             import_from_keyword: go_import_from_keyword(),
-        }),
-        expression_semantics: Rc::new(ExpressionSemantics {
+        },
+        expression_semantics: ExpressionSemantics {
             if_value_form: IfValueForm::IfStatement,
             match_value_form: MatchValueForm::MatchStatementArmReturn,
             wildcard_case: Some("default".to_string()),
@@ -968,7 +968,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             empty_return_value: "struct{}{}, nil".to_string(),
             return_suffix: ", nil".to_string(),
             suppress_unit_return: true,
-        }),
+        },
         lambda_template: go_lambda_template(),
         error_expr_template: go_error_expr_template(),
         list_literal_empty: go_list_literal_empty(),
@@ -978,32 +978,32 @@ pub fn go_spec() -> Rc<LanguageSpec> {
         type_arg_open: go_type_arg_open(),
         type_arg_close: go_type_arg_close(),
         void_type: go_void_type(),
-        tuple_syntax: Rc::new(TupleSyntax {
+        tuple_syntax: TupleSyntax {
             empty: go_tuple_empty(),
             pair_template: go_tuple_pair_template(),
             multi_template: go_tuple_multi_template(),
             separator: go_tuple_separator(),
             first_accessor: ".First".to_string(),
             second_accessor: ".Second".to_string(),
-        }),
-        string_interp: Rc::new(StringInterpSyntax {
-            style: Rc::new(InterpStyle::FormatArgs {
+        },
+        string_interp: StringInterpSyntax {
+            style: InterpStyle::FormatArgs {
                 placeholder: "%v".to_string(),
-            }),
+            },
             format_template: "fmt.Sprintf(\"{0}\", {1})".to_string(),
             plain_template: "\"{0}\"".to_string(),
-            escape_pairs: Rc::new(vec![Rc::new(EscapePair {
+            escape_pairs: Rc::new(vec![EscapePair {
                 from: "%".to_string(),
                 to: "%%".to_string(),
-            })]),
-        }),
+            }]),
+        },
         callable_type_template: None,
         naming_case: NamingCase::CamelCase,
         async_call_prefix: "".to_string(),
         bridge_method_prefix: "v2rt.".to_string(),
         bridge_method_case: NamingCase::PascalCase,
         bridge_method_overrides: v1_rt::rc_empty_map::<String, String>(),
-        record_lit: Rc::new(RecordLitSyntax {
+        record_lit: RecordLitSyntax {
             named_open: "{".to_string(),
             named_close: "}".to_string(),
             named_empty: "{}".to_string(),
@@ -1013,31 +1013,31 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             anon_prefix: "map[string]interface{}{\n".to_string(),
             anon_suffix: "}".to_string(),
             anon_field_indent: "\t".to_string(),
-        }),
-        service_method: Rc::new(ServiceMethodStrategy::ExternalReceiver {
+        },
+        service_method: ServiceMethodStrategy::ExternalReceiver {
             var_name: "c".to_string(),
-        }),
-        service_return: Rc::new(ServiceReturnStrategy::ErrorTupleReturn {
+        },
+        service_return: ServiceReturnStrategy::ErrorTupleReturn {
             error_type: "error".to_string(),
-        }),
+        },
         char_sanitization: CharSanitization::EmojiEscape,
-    })
+    }
 }
 
 pub fn dag_spec() -> Rc<LanguageSpec> {
-    Rc::new(LanguageSpec {
+    LanguageSpec {
         target_name: "dag".to_string(),
-        reserved_words: Rc::new(ReservedWords {
+        reserved_words: ReservedWords {
             keywords: dag_reserved(),
-            strategy: Rc::new(ReservedWordStrategy::NoEscape),
-        }),
-        scaffold: Rc::new(ProjectScaffold {
+            strategy: ReservedWordStrategy::NoEscape,
+        },
+        scaffold: ProjectScaffold {
             manifest_file: None,
             module_init_file: None,
             source_file_extension: dag_source_extension(),
             source_dir: None,
-        }),
-        serialization: Rc::new(SerializationSpec {
+        },
+        serialization: SerializationSpec {
             struct_derives: None,
             struct_derives_copy: None,
             enum_derives: None,
@@ -1046,19 +1046,19 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             rename_attribute_template: None,
             derive_attribute: None,
             default_value: None,
-        }),
-        test_conventions: Rc::new(TestConventions {
+        },
+        test_conventions: TestConventions {
             file_prefix: "test_".to_string(),
             file_suffix: "".to_string(),
             file_dir: Some("tests/".to_string()),
             function_prefix: "test_".to_string(),
             name_style: TestNameStyle::SnakeCaseTestNames,
             async_decorator: None,
-        }),
-        visibility: Rc::new(VisibilitySpec::KeywordVisibility {
+        },
+        visibility: VisibilitySpec::KeywordVisibility {
             prefix: "".to_string(),
-        }),
-        sharing: Rc::new(SharingStrategy {
+        },
+        sharing: SharingStrategy {
             needs_sharing: true,
             wrap_template: "Rc<{0}>".to_string(),
             clone_value: "{0}.clone()".to_string(),
@@ -1068,21 +1068,21 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             clone_suffix: ".cloned()".to_string(),
             borrow_param_template: "&{0}".to_string(),
             borrow_arg_template: "&{0}".to_string(),
-        }),
-        indexing: Rc::new(IndexingSemantics {
+        },
+        indexing: IndexingSemantics {
             list_index: "{0}[({1}) as usize].clone()".to_string(),
             map_index: "({0}).get(&{1}).cloned()".to_string(),
             string_index: "v1_rt::char_at(&{0}, {1})".to_string(),
             list_slice: Some("Rc::new((*{0})[{1} as usize..{2} as usize].to_vec())".to_string()),
             string_slice: Some("v1_rt::substring(&{0}, {1}, {2})".to_string()),
-        }),
-        annotations: Rc::new(AnnotationRequirements {
+        },
+        annotations: AnnotationRequirements {
             let_binding_inferred: "let {0} = {1}".to_string(),
             let_binding_annotated: "let {0}: {1} = {2}".to_string(),
             lambda_param_typed: "{0}: {1}".to_string(),
             lambda_param_untyped: "{0}".to_string(),
-        }),
-        service_fields: Rc::new(ServiceFieldTemplates {
+        },
+        service_fields: ServiceFieldTemplates {
             rest_decl: "    pub base_url: String,\n".to_string(),
             auth_decl: "    pub auth_token: String,\n".to_string(),
             shell_decl: "    pub working_dir: Option<String>,\n".to_string(),
@@ -1091,8 +1091,8 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             auth_ctor: "        auth_token: String::new(),\n".to_string(),
             shell_ctor: "        working_dir: None,\n".to_string(),
             file_ctor: "        base_path: \".\".to_string(),\n".to_string(),
-        }),
-        block_syntax: Rc::new(BlockSyntax {
+        },
+        block_syntax: BlockSyntax {
             block_open: " {\n".to_string(),
             block_close: "}".to_string(),
             else_clause: "} else {\n".to_string(),
@@ -1101,20 +1101,20 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             arm_separator: ",".to_string(),
             stmt_terminator: ";".to_string(),
             significant_whitespace: false,
-        }),
-        for_each_syntax: Rc::new(ForEachSyntax {
+        },
+        for_each_syntax: ForEachSyntax {
             prefix: "for ".to_string(),
             separator: " in ".to_string(),
-        }),
-        tco: Rc::new(TcoSyntax {
+        },
+        tco: TcoSyntax {
             loop_keyword: "loop".to_string(),
             break_return: "break".to_string(),
             continue_str: "continue;".to_string(),
             temp_var_prefix: "__tco_".to_string(),
             temp_decl_prefix: "let ".to_string(),
             temp_assign_op: " = ".to_string(),
-        }),
-        items: Rc::new(ItemKeywords {
+        },
+        items: ItemKeywords {
             func_keyword: dag_func_keyword(),
             async_prefix: dag_async_prefix(),
             struct_keyword: dag_struct_keyword(),
@@ -1126,22 +1126,22 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             module_keyword: dag_module_keyword(),
             import_keyword: dag_import_keyword(),
             import_from_keyword: dag_import_from_keyword(),
-        }),
-        expression_semantics: Rc::new(ExpressionSemantics {
+        },
+        expression_semantics: ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
             match_value_form: MatchValueForm::MatchExpression,
             wildcard_case: None,
-            variant_pattern: Some(Rc::new(VariantPatternSyntax {
+            variant_pattern: Some(VariantPatternSyntax {
                 open: " { ".to_string(),
                 close: " }".to_string(),
                 binding_sep: ": ".to_string(),
                 empty_suffix: "".to_string(),
-            })),
+            }),
             guard_prefix: Some(" if ".to_string()),
             empty_return_value: "()".to_string(),
             return_suffix: "".to_string(),
             suppress_unit_return: false,
-        }),
+        },
         lambda_template: dag_lambda_template(),
         error_expr_template: dag_error_expr_template(),
         list_literal_empty: dag_list_literal_empty(),
@@ -1151,36 +1151,36 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
         type_arg_open: dag_type_arg_open(),
         type_arg_close: dag_type_arg_close(),
         void_type: dag_void_type(),
-        tuple_syntax: Rc::new(TupleSyntax {
+        tuple_syntax: TupleSyntax {
             empty: dag_tuple_empty(),
             pair_template: dag_tuple_pair_template(),
             multi_template: dag_tuple_multi_template(),
             separator: dag_tuple_separator(),
             first_accessor: ".0".to_string(),
             second_accessor: ".1".to_string(),
-        }),
-        string_interp: Rc::new(StringInterpSyntax {
-            style: Rc::new(InterpStyle::InlineExpr),
+        },
+        string_interp: StringInterpSyntax {
+            style: InterpStyle::InlineExpr,
             format_template: "\"{0}\"".to_string(),
             plain_template: "\"{0}\"".to_string(),
             escape_pairs: Rc::new(vec![
-                Rc::new(EscapePair {
+                EscapePair {
                     from: "{".to_string(),
                     to: "\\{".to_string(),
-                }),
-                Rc::new(EscapePair {
+                },
+                EscapePair {
                     from: "}".to_string(),
                     to: "\\}".to_string(),
-                }),
+                },
             ]),
-        }),
+        },
         callable_type_template: None,
         naming_case: NamingCase::AsAuthored,
         async_call_prefix: "".to_string(),
         bridge_method_prefix: "".to_string(),
         bridge_method_case: NamingCase::SnakeCase,
         bridge_method_overrides: v1_rt::rc_empty_map::<String, String>(),
-        record_lit: Rc::new(RecordLitSyntax {
+        record_lit: RecordLitSyntax {
             named_open: " {".to_string(),
             named_close: "}".to_string(),
             named_empty: " {}".to_string(),
@@ -1190,13 +1190,13 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             anon_prefix: "{\n".to_string(),
             anon_suffix: "}".to_string(),
             anon_field_indent: "    ".to_string(),
-        }),
-        service_method: Rc::new(ServiceMethodStrategy::SelfInParams {
+        },
+        service_method: ServiceMethodStrategy::SelfInParams {
             self_param: "".to_string(),
-        }),
-        service_return: Rc::new(ServiceReturnStrategy::ArrowReturn),
+        },
+        service_return: ServiceReturnStrategy::ArrowReturn,
         char_sanitization: CharSanitization::NoCharSanitization,
-    })
+    }
 }
 
 pub fn language_spec_for_target(target: RenderTarget) -> Rc<LanguageSpec> {
