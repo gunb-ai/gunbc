@@ -131,7 +131,8 @@ fn data_def_non_catalog_shared_type_stays_bare() {
 
 #[test]
 fn non_catalog_variant_value_no_blanket_rc_new() {
-    let source = "module ownwrap.fixture\n\ntype Color = Red | Green\n\nfn red() -> Color {\n  Red\n}\n";
+    let source =
+        "module ownwrap.fixture\n\ntype Color = Red | Green\n\nfn red() -> Color {\n  Red\n}\n";
     let emitted = emit(source);
     assert!(
         !emitted.contains("Rc::new(Red)") && !emitted.contains("Rc::new(Color::"),

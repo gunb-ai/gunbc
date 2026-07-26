@@ -11197,10 +11197,7 @@ pub fn emit_faithful_text_carrier_import_lines(
     }
 }
 
-pub fn emit_prelude(
-    imported_names: Rc<Vec<String>>,
-    local_type_names: Rc<Vec<String>>,
-) -> String {
+pub fn emit_prelude(imported_names: Rc<Vec<String>>, local_type_names: Rc<Vec<String>>) -> String {
     {
         let base = v1_rt::concat(
             v1_rt::concat(
