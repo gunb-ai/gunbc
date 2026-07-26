@@ -77,33 +77,33 @@ fn emit(merged: List<Int>) -> String {
   serialize_markdown_source(doc: project_roadmap_to_markdown(doc: authority(), merged: merged))
 }
 
-fn witness_preamble_first() -> Bool {
+test fn witness_preamble_first() -> Bool {
   let out = emit(merged: [5491])
   string_contains(s: out, pattern: "# ROADMAP")
     && string_contains(s: out, pattern: "Generated from .dag authority")
 }
 
-fn witness_both_sections() -> Bool {
+test fn witness_both_sections() -> Bool {
   let out = emit(merged: [5491])
   string_contains(s: out, pattern: "## 0. Fail-closed lock-down")
     && string_contains(s: out, pattern: "## 6. Expansion")
 }
 
-fn witness_authored_evidence_awaiting_signoff() -> Bool {
+test fn witness_authored_evidence_awaiting_signoff() -> Bool {
   let out = emit(merged: [5491])
   string_contains(s: out, pattern: "[ ] **fail-open audit**")
     && string_contains(s: out, pattern: "[plan](docs/plans/fail-closed-lockdown.md)")
     && string_contains(s: out, pattern: "⏳ awaiting sign-off")
 }
 
-fn witness_derived_merged_awaiting_signoff() -> Bool {
+test fn witness_derived_merged_awaiting_signoff() -> Bool {
   let out = emit(merged: [5491])
   string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
     && string_contains(s: out, pattern: "⏳ awaiting sign-off")
     && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
 }
 
-fn witness_derived_unchecked_when_unmerged() -> Bool {
+test fn witness_derived_unchecked_when_unmerged() -> Bool {
   let out = emit(merged: [])
   string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
     && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
@@ -126,21 +126,12 @@ fn expected_roadmap() -> String {
   ], "")
 }
 
-fn witness_exact_bytes() -> Bool {
+test fn witness_exact_bytes() -> Bool {
   emit(merged: [5491]) == expected_roadmap()
 }
 
-fn witness_drift_receipt() -> Bool {
+test fn witness_drift_receipt() -> Bool {
   emit(merged: [5491]) == expected_roadmap()
     && !(emit(merged: []) == expected_roadmap())
 }
 
-test fn roadmap_document_witnesses() -> Bool {
-  witness_preamble_first()
-    && witness_both_sections()
-    && witness_authored_evidence_awaiting_signoff()
-    && witness_derived_merged_awaiting_signoff()
-    && witness_derived_unchecked_when_unmerged()
-    && witness_exact_bytes()
-    && witness_drift_receipt()
-}

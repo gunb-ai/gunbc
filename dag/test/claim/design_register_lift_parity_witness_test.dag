@@ -55,30 +55,22 @@ fn roadmap_css_derived_digest() -> String {
   emission_content_digest(s: roadmap_css())
 }
 
-fn witness_moodboard_css_digest_pinned() -> Bool {
+test fn witness_moodboard_css_digest_pinned() -> Bool {
   emission_content_digest(s: moodboard_css()) == moodboard_css_lift_parity_digest
 }
 
-fn witness_moodboard_html_digest_pinned() -> Bool {
+test fn witness_moodboard_html_digest_pinned() -> Bool {
   emission_content_digest(s: moodboard_html()) == moodboard_html_lift_parity_digest
 }
 
-fn witness_accent_study_html_digest_pinned() -> Bool {
+test fn witness_accent_study_html_digest_pinned() -> Bool {
   emission_content_digest(s: accent_study_html()) == accent_study_html_lift_parity_digest
 }
 
-fn witness_roadmap_css_digest_pinned() -> Bool {
+test fn witness_roadmap_css_digest_pinned() -> Bool {
   roadmap_css_derived_digest() == roadmap_css_lift_parity_digest
 }
 
-fn witness_moodboard_thesis_themes_digest_pinned() -> Bool {
+test fn witness_moodboard_thesis_themes_digest_pinned() -> Bool {
   moodboard_digest() == moodboard_thesis_themes_lift_parity_digest
-}
-
-test fn design_register_lift_parity_holds() -> Bool {
-  witness_moodboard_css_digest_pinned()
-    && witness_moodboard_html_digest_pinned()
-    && witness_accent_study_html_digest_pinned()
-    && witness_roadmap_css_digest_pinned()
-    && witness_moodboard_thesis_themes_digest_pinned()
 }

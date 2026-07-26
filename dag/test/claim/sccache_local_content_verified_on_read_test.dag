@@ -1,19 +1,18 @@
 module test.claim.sccache_local_content_verified_on_read
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data sccache_content_verified_on_read_doc: String = "sccache's local-disk backend (src/cache/disk.rs DiskCache::get/get_raw) reads whatever bytes sit under the key's path and returns them as a Cache::Hit with no hash/checksum/size check against the key or a stored digest; WriteThenRename atomicity covers only the write path. The prior declared row said content_verified_on_read: true, which CI falsified directly: runs 29855292758 et al served a zero-byte artifact on a reported sccache cache hit. This witness is discriminating on that declared fact — perturbing extdeps.cache.sccache.sccache_local_facts.key_derivation.content_verified_on_read back to true turns witness_sccache_local_not_content_verified_on_read RED; the corpus-level, application-side catch for the resulting corruption (build_artifact_corruption_probe_holds, tools/build_step.dag) is a SEPARATE mechanism this witness does not duplicate — it targets only the declared-vs-effective gap in the catalog row itself."
 
-fn witness_sccache_local_not_content_verified_on_read() -> Bool {
+test fn witness_sccache_local_not_content_verified_on_read() -> Bool {
   !sccache_local_facts.key_derivation.content_verified_on_read
 }
 
-fn witness_sccache_local_projected_not_content_verified_on_read() -> Bool {
+test fn witness_sccache_local_projected_not_content_verified_on_read() -> Bool {
   !sccache_local_projected.key_derivation.content_verified_on_read
 }
 
-fn witness_sccache_local_cites_disk_rs_read_path_evidence() -> Bool {
+test fn witness_sccache_local_cites_disk_rs_read_path_evidence() -> Bool {
   sccache_local_facts.evidence
     |> any(row => (row.field == "content_verified_on_read") && evidence_url_contains(row: row, fragment: "disk.rs"))
 }
@@ -25,13 +24,7 @@ fn evidence_url_contains(row: CacheEvidence, fragment: String) -> Bool {
   }
 }
 
-fn witness_sccache_local_disk_sibling_is_content_verified() -> Bool {
+test fn witness_sccache_local_disk_sibling_is_content_verified() -> Bool {
   resolved_graph_cache_facts.key_derivation.content_verified_on_read
 }
 
-test fn sccache_local_content_verified_on_read_witnesses() -> Bool {
-  witness_sccache_local_not_content_verified_on_read()
-    && witness_sccache_local_projected_not_content_verified_on_read()
-    && witness_sccache_local_cites_disk_rs_read_path_evidence()
-    && witness_sccache_local_disk_sibling_is_content_verified()
-}

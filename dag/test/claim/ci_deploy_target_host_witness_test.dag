@@ -1,9 +1,8 @@
 module test.claim.ci_deploy_target_host_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn witness_srv1_hostname_proves_target() -> Bool {
+test fn witness_srv1_hostname_proves_target() -> Bool {
   let proof = deploy_target_proof_from_access(access: ci_deploy_srv1_access)
   deploy_target_host_apply_permitted(
     proof: proof,
@@ -12,7 +11,7 @@ fn witness_srv1_hostname_proves_target() -> Bool {
   )
 }
 
-fn witness_srv2_hostname_refused_for_srv1_deploy() -> Bool {
+test fn witness_srv2_hostname_refused_for_srv1_deploy() -> Bool {
   deploy_local_apply_refused_for_observed_host(
     host: ci_deploy_srv1_access.host.identity,
     transport: ci_deploy_srv1_access.transport,
@@ -21,7 +20,7 @@ fn witness_srv2_hostname_refused_for_srv1_deploy() -> Bool {
   )
 }
 
-fn witness_srv12_runner_name_refused_for_srv1_deploy() -> Bool {
+test fn witness_srv12_runner_name_refused_for_srv1_deploy() -> Bool {
   deploy_local_apply_refused_for_observed_host(
     host: ci_deploy_srv1_access.host.identity,
     transport: ci_deploy_srv1_access.transport,
@@ -30,7 +29,7 @@ fn witness_srv12_runner_name_refused_for_srv1_deploy() -> Bool {
   )
 }
 
-fn witness_ubicloud_runner_name_refused_for_local_apply() -> Bool {
+test fn witness_ubicloud_runner_name_refused_for_local_apply() -> Bool {
   deploy_local_apply_refused_for_observed_host(
     host: ci_deploy_srv1_access.host.identity,
     transport: ci_deploy_srv1_access.transport,
@@ -39,7 +38,7 @@ fn witness_ubicloud_runner_name_refused_for_local_apply() -> Bool {
   )
 }
 
-fn witness_ssh_transport_structural_proof_holds() -> Bool {
+test fn witness_ssh_transport_structural_proof_holds() -> Bool {
   let ssh_access = deploy_access_with_ssh_transport(
     access: ci_deploy_srv1_access,
     ssh_host: operator_host_srv1
@@ -49,7 +48,7 @@ fn witness_ssh_transport_structural_proof_holds() -> Bool {
   )
 }
 
-fn witness_ssh_transport_mismatch_refused() -> Bool {
+test fn witness_ssh_transport_mismatch_refused() -> Bool {
   let ssh_access = deploy_access_with_ssh_transport(
     access: ci_deploy_srv1_access,
     ssh_host: operator_host_srv2
@@ -63,7 +62,7 @@ fn label_list_contains(labels: List<String>, needle: String) -> Bool {
   fold(labels, init: false, f: (acc, l) => acc || (l == needle))
 }
 
-fn witness_deploy_stage_pins_srv1_runner_label() -> Bool {
+test fn witness_deploy_stage_pins_srv1_runner_label() -> Bool {
   gunbc_ci_deploy_srv1_stage.runner == gunbc_ci_deploy_srv1_runner_spec()
     && match gunbc_ci_deploy_srv1_stage.runner {
       SelfHosted { labels: labels } =>
@@ -73,7 +72,7 @@ fn witness_deploy_stage_pins_srv1_runner_label() -> Bool {
     }
 }
 
-fn witness_deploy_job_not_on_ubicloud_runner() -> Bool {
+test fn witness_deploy_job_not_on_ubicloud_runner() -> Bool {
   match gunbc_ci_deploy_srv1_stage.runner {
     RunsOnExpression { expression: _ } => false
     SelfHosted { labels: _ } => true
@@ -81,7 +80,7 @@ fn witness_deploy_job_not_on_ubicloud_runner() -> Bool {
   }
 }
 
-fn witness_preflight_script_checks_target_host() -> Bool {
+test fn witness_preflight_script_checks_target_host() -> Bool {
   let script = deploy_target_host_preflight_script(access: ci_deploy_srv1_access)
   string_contains(s: script, pattern: "deploy-target-host: PASS host=srv1")
     && string_contains(s: script, pattern: deploy_target_host_refusal_local)
@@ -89,7 +88,7 @@ fn witness_preflight_script_checks_target_host() -> Bool {
     && string_contains(s: script, pattern: "printenv RUNNER_NAME")
 }
 
-fn witness_ci_yml_deploy_job_pins_srv1_runner() -> Bool {
+test fn witness_ci_yml_deploy_job_pins_srv1_runner() -> Bool {
   let yaml = expected_ci_yml()
   let enrolled = length(gunbc_ci_deploy_stages) > 0
   string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:") == enrolled
@@ -97,14 +96,14 @@ fn witness_ci_yml_deploy_job_pins_srv1_runner() -> Bool {
     && !string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:\n    runs-on: ubicloud-standard-16-arm")
 }
 
-fn witness_local_proof_requires_host_identity() -> Bool {
+test fn witness_local_proof_requires_host_identity() -> Bool {
   match deploy_target_proof_from_access(access: ci_deploy_srv1_access) {
     RunnerIdentityOnHost { host: id } => id == operator_host_srv1
     _ => false
   }
 }
 
-fn witness_access_host_is_srv1() -> Bool {
+test fn witness_access_host_is_srv1() -> Bool {
   ci_deploy_srv1_access.host == srv1_host
     && match ci_deploy_srv1_access.transport {
       LocalShell => true
@@ -112,22 +111,7 @@ fn witness_access_host_is_srv1() -> Bool {
     }
 }
 
-fn witness_observed_hostname_reads_typed_op_hermetic() -> Bool {
+test fn witness_observed_hostname_reads_typed_op_hermetic() -> Bool {
   deploy_target_host_observed_hostname() == "localhost"
 }
 
-test fn ci_deploy_target_host_witnesses() -> Bool {
-  witness_srv1_hostname_proves_target()
-    && witness_srv2_hostname_refused_for_srv1_deploy()
-    && witness_srv12_runner_name_refused_for_srv1_deploy()
-    && witness_ubicloud_runner_name_refused_for_local_apply()
-    && witness_ssh_transport_structural_proof_holds()
-    && witness_ssh_transport_mismatch_refused()
-    && witness_deploy_stage_pins_srv1_runner_label()
-    && witness_deploy_job_not_on_ubicloud_runner()
-    && witness_preflight_script_checks_target_host()
-    && witness_ci_yml_deploy_job_pins_srv1_runner()
-    && witness_local_proof_requires_host_identity()
-    && witness_access_host_is_srv1()
-    && witness_observed_hostname_reads_typed_op_hermetic()
-}
