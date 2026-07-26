@@ -13,10 +13,10 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn probe_source() -> Rc<SourceFile> {
-    Rc::new(SourceFile {
+    SourceFile {
         path: "src/v1/probe_add.dag".to_string(),
         content: "module v1.probe.add\nfn add(x: Int, y: Int) -> Int {\n  x + y\n}\n".to_string(),
-    })
+    }
 }
 
 pub fn probe_emitted() -> String {

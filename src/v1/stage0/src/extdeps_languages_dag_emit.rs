@@ -14,12 +14,12 @@ use std::rc::Rc;
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+                ExternalAuthority {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/languages/dag".to_string(),
-    }),
-    })
+    },
+    }
             };
         }
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
@@ -64,7 +64,7 @@ pub fn dag_container_templates() -> Rc<HashMap<String, String>> {
 pub fn dag_reserved() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec![])
+            vec![]
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
@@ -73,7 +73,7 @@ pub fn dag_reserved() -> Rc<Vec<String>> {
 pub fn dag_string_types() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["String".to_string(), "Secret".to_string()])
+            vec!["String".to_string(), "Secret".to_string()]
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
