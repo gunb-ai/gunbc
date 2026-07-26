@@ -52,9 +52,7 @@ import v2.std.orchestration {
   Pipeline,
   PipelineStep,
   Retry,
-  Run,
-  StdoutAndStderr,
-  TeeTo
+  Run
 }
 import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { EmitDirective, SeverityWarning }
@@ -224,8 +222,8 @@ fn ci_retry_body_run(command: String) -> Run {
   Run {
     command: command,
     env: [],
-    redirect: Present { value: StdoutAndStderr },
-    capture: Present { value: TeeTo { log: "BUILD_LOG" } }
+    redirect: Absent,
+    capture: Absent
   }
 }
 

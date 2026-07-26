@@ -23,6 +23,7 @@ import v2.std.orchestration {
   PipelineStep,
   Retry,
   Run,
+  TeeTo,
   ToFile
 }
 import v2.std.collection { Absent, Present }
@@ -356,6 +357,23 @@ test fn orch_retry_body_exit_status_refused_holds() -> Bool {
         env: [],
         redirect: Absent,
         capture: Present { value: ExitStatus { binder: "STAMP_EXIT" } }
+      }
+    ),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn orch_retry_body_tee_to_refused_holds() -> Bool {
+  match orch_emit_step(
+    s: orch_retry_with_body_run(
+      r: Run {
+        command: "true",
+        env: [],
+        redirect: Absent,
+        capture: Present { value: TeeTo { log: "BUILD_LOG" } }
       }
     ),
     medium: bash_orchestration_emit_medium()

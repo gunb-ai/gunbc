@@ -734,22 +734,9 @@ fn orch_retry_run_redirect_capture_admitted(r: Run) -> Bool {
     Absent =>
       match r.capture {
         Absent => true
-        Present { value: TeeTo { log: _ } } => true
-        Present { value: CmdSubst } => false
-        Present { value: IgnoreFail } => false
-        Present { value: ExitStatus { binder: _ } } => false
+        Present { value: _ } => false
       }
-    Present { value: StdoutAndStderr } =>
-      match r.capture {
-        Absent => true
-        Present { value: TeeTo { log: _ } } => true
-        Present { value: CmdSubst } => false
-        Present { value: IgnoreFail } => false
-        Present { value: ExitStatus { binder: _ } } => false
-      }
-    Present { value: DiscardAll } => false
-    Present { value: DiscardErr } => false
-    Present { value: ToFile { path: _ } } => false
+    Present { value: _ } => false
   }
 }
 
