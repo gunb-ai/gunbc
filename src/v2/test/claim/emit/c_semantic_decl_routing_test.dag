@@ -177,14 +177,3 @@ test fn c_stage1_type_decl_frontier_deferred_count_holds() -> Bool {
   c_stage1_type_decl_frontier_deferred_count() == 3
 }
 
-test fn c_semantic_decl_routing_all_holds() -> Bool {
-  c_stage1_type_decl_frontier_deferred_count_holds()
-    && c_semantic_point_record_routes_to_struct_emit()
-    && c_semantic_bool_coproduct_routes_to_enum_emit()
-    && c_semantic_answer_coproduct_routes_to_tagged_union_emit()
-    && c_semantic_non_int_field_refuses()
-    && c_semantic_int_field_still_emits()
-    && c_semantic_generic_struct_refuses()
-    && c_semantic_generic_tagged_union_refuses()
-    && c_semantic_unsupported_shape_refuses()
-}

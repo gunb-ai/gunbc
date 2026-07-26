@@ -6,7 +6,6 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::rc::Rc;
-use std::sync::OnceLock;
 use std::time::Instant;
 
 use v1_compiler::v1_compiler_artifact::RenderTarget;
@@ -25,29 +24,114 @@ const BOOTSTRAP_TIMING_RECEIPT_ENV: &str = "GUNBC_BOOTSTRAP_TIMING_RECEIPT";
 const DEFAULT_BOOTSTRAP_TIMING_RECEIPT: &str =
     "target/bootstrap_timing/v1_regen_stage0_receipt.json";
 
-// Single authority: gunbc.stage0_emit_model.generated_stage0_files
-// (dag/gunbc/stage0_emit_model.dag). Hand-maintained registry authority:
-// gunbc.stage0_crate_layout_generated (frontier-derived; regen via
-// generated_artifact_gate main_wet). Witness: stage0_emit_model_witness_test.dag
-// + stage0_crate_layout_witness_test.dag + self_host/crate_layout_witness_test.dag.
-// Construction close (#7258 follow-up): the Rust GENERATED_STAGE0_FILES const is
-// deleted; regen reads the .dag list through lens_string_list_data so a second
-// hand copy cannot drift.
-const STAGE0_EMIT_MODEL_AUTHORITY_REL: &str = "dag/gunbc/stage0_emit_model.dag";
-const GENERATED_STAGE0_FILES_DATA_NAME: &str = "generated_stage0_files";
-
-fn generated_stage0_files() -> &'static [String] {
-    static FILES: OnceLock<Vec<String>> = OnceLock::new();
-    FILES
-        .get_or_init(|| {
-            v1_compiler::cli_run::lens_string_list_data(
-                STAGE0_EMIT_MODEL_AUTHORITY_REL,
-                GENERATED_STAGE0_FILES_DATA_NAME,
-                false,
-            )
-        })
-        .as_slice()
-}
+// Registry authority: gunbc.stage0_emit_model.generated_stage0_files.
+// Hand-maintained registry authority: gunbc.stage0_crate_layout_generated
+// (frontier-derived; regen via generated_artifact_gate main_wet).
+// Witness: stage0_crate_layout_witness_test.dag + self_host/crate_layout_witness_test.dag.
+// Dissolve-on: regen_stage0 reads emitted gunbc_stage0_emit_model.rs roster.
+const GENERATED_STAGE0_FILES: &[&str] = &[
+    "compiler_tests.rs",
+    "extdeps_cargo.rs",
+    "extdeps_cargo_version.rs",
+    "extdeps_external_authority.rs",
+    "extdeps_languages_dag_emit.rs",
+    "extdeps_languages_dag_syntax.rs",
+    "extdeps_languages_dag_types.rs",
+    "extdeps_languages_go_emit.rs",
+    "extdeps_languages_go_syntax.rs",
+    "extdeps_languages_go_types.rs",
+    "extdeps_languages_python_emit.rs",
+    "extdeps_languages_python_syntax.rs",
+    "extdeps_languages_python_types.rs",
+    "extdeps_languages_rust_emit.rs",
+    "extdeps_languages_rust_syntax.rs",
+    "extdeps_languages_rust_types.rs",
+    "extdeps_uri.rs",
+    "extdeps_uri_path.rs",
+    "extdeps_version.rs",
+    "extdeps_version_semver.rs",
+    "gunbc_stage0_crate_layout_generated.rs",
+    "gunbc_stage0_crate_partition_generated.rs",
+    "lib.rs",
+    "std_algebra.rs",
+    "std_coercion.rs",
+    "std_computation.rs",
+    "std_constructors.rs",
+    "std_content_hash.rs",
+    "std_currency.rs",
+    "std_decl_ref.rs",
+    "std_disposition.rs",
+    "std_effects.rs",
+    "std_emit_model.rs",
+    "std_error_primitives.rs",
+    "std_execution_mode.rs",
+    "std_graph.rs",
+    "std_http_path.rs",
+    "std_induction.rs",
+    "std_integer.rs",
+    "std_interface_summary.rs",
+    "std_iteration.rs",
+    "std_logic.rs",
+    "std_machine_constraints.rs",
+    "std_magnitude.rs",
+    "std_measure.rs",
+    "std_nat.rs",
+    "std_node.rs",
+    "std_pareto.rs",
+    "std_realization_schedule.rs",
+    "std_serialization.rs",
+    "std_syntax.rs",
+    "std_termination.rs",
+    "std_trait_derive_shape.rs",
+    "std_types.rs",
+    "v1_compiler_artifact.rs",
+    "v1_compiler_coercion.rs",
+    "v1_compiler_closure_stub_v2_std_integer_rust.rs",
+    "v1_compiler_closure_stub_v2_std_text_rust.rs",
+    "v1_compiler_compile.rs",
+    "v1_compiler_compiler_tests_rust.rs",
+    "v1_compiler_complexity.rs",
+    "v1_compiler_dag_collect.rs",
+    "v1_compiler_dag_collect_support.rs",
+    "v1_compiler_effect_derivation.rs",
+    "v1_compiler_emit.rs",
+    "v1_compiler_emit_core_support.rs",
+    "v1_compiler_emit_go.rs",
+    "v1_compiler_emit_python.rs",
+    "v1_compiler_emit_rust.rs",
+    "v1_compiler_infer.rs",
+    "v1_compiler_infer_access.rs",
+    "v1_compiler_infer_cycle.rs",
+    "v1_compiler_infer_emit_info.rs",
+    "v1_compiler_infer_env.rs",
+    "v1_compiler_infer_items.rs",
+    "v1_compiler_infer_lookup.rs",
+    "v1_compiler_infer_method.rs",
+    "v1_compiler_infer_patterns.rs",
+    "v1_compiler_infer_resolve.rs",
+    "v1_compiler_infer_service.rs",
+    "v1_compiler_infer_sigs.rs",
+    "v1_compiler_infer_types.rs",
+    "v1_compiler_languages.rs",
+    "v1_compiler_normalize.rs",
+    "v1_compiler_ownership.rs",
+    "v1_compiler_parse.rs",
+    "v1_compiler_resolve.rs",
+    "v1_compiler_runtime_go.rs",
+    "v1_compiler_runtime_rust.rs",
+    "v1_compiler_stage0_crates.rs",
+    "v1_compiler_tokenize.rs",
+    "v1_compiler_trace.rs",
+    "v1_compiler_trait_derive_emit.rs",
+    "v1_compiler_workspace_members.rs",
+    "v1_probe_emit_interp.rs",
+    "v1_rt.rs",
+    "v1_std_core.rs",
+    "v1_test_non_ascii_perf_fixture.rs",
+    "wt_a.rs",
+    "wt_b.rs",
+    "wt_common.rs",
+];
 
 fn main() -> ExitCode {
     match run() {
@@ -222,7 +306,7 @@ fn run() -> Result<(), String> {
                      Usage: regen_stage0 [--verify | --emit-fresh <dir> [--write-manifest <path>] [--verify]]\n\
                      Omit flags to write stage0; pass `--verify` to check without writing;\n\
                      pass `--emit-fresh <dir>` to assemble the faithful emitted crate into <dir> and stop;\n\
-                     add `--write-manifest <path>` to also write the generated_stage0_files roster there;\n\
+                     add `--write-manifest <path>` to also write the GENERATED_STAGE0_FILES roster there;\n\
                      combine `--emit-fresh` with `--verify` to leave the assembled crate in place after checking."
                 ));
             }
@@ -278,12 +362,12 @@ fn run() -> Result<(), String> {
 
     if emit_fresh.is_some() {
         if let Some(manifest_path) = &write_manifest {
-            let content = generated_stage0_files().join("\n");
+            let content = GENERATED_STAGE0_FILES.join("\n");
             fs::write(manifest_path, content)
                 .map_err(|e| format!("write roster manifest {}: {e}", manifest_path.display()))?;
             println!(
                 "regen_stage0 --write-manifest: wrote {} file entries to {}",
-                generated_stage0_files().len(),
+                GENERATED_STAGE0_FILES.len(),
                 manifest_path.display()
             );
         }
@@ -295,7 +379,7 @@ fn run() -> Result<(), String> {
                 stage0_src: &stage0_src,
                 fresh_dir: &fresh_dir,
                 verify_only,
-                generated_file_count: generated_stage0_files().len(),
+                generated_file_count: GENERATED_STAGE0_FILES.len(),
                 emitted_file_count: emitted.len(),
                 phases: &mut phases,
                 run_started,
@@ -308,7 +392,7 @@ fn run() -> Result<(), String> {
             manifest_dir: &manifest_dir,
             verify_only,
             status: "completed_emit_fresh",
-            generated_file_count: generated_stage0_files().len(),
+            generated_file_count: GENERATED_STAGE0_FILES.len(),
             emitted_file_count: emitted.len(),
             phases,
             elapsed_ms: elapsed_ms(run_started),
@@ -329,7 +413,7 @@ fn run() -> Result<(), String> {
             stage0_src: &stage0_src,
             fresh_dir: &fresh_dir,
             verify_only,
-            generated_file_count: generated_stage0_files().len(),
+            generated_file_count: GENERATED_STAGE0_FILES.len(),
             emitted_file_count: emitted.len(),
             phases: &mut phases,
             run_started,
@@ -356,7 +440,7 @@ fn run() -> Result<(), String> {
         manifest_dir: &manifest_dir,
         verify_only,
         status: "completed",
-        generated_file_count: generated_stage0_files().len(),
+        generated_file_count: GENERATED_STAGE0_FILES.len(),
         emitted_file_count: emitted.len(),
         phases,
         elapsed_ms: elapsed_ms(run_started),
@@ -365,7 +449,7 @@ fn run() -> Result<(), String> {
     let _ = fs::remove_dir_all(&fresh_dir);
     println!(
         "regen_stage0: wrote {} generated stage0 files.",
-        generated_stage0_files().len()
+        GENERATED_STAGE0_FILES.len()
     );
     Ok(())
 }
@@ -518,8 +602,8 @@ fn temp_dir(name: &str) -> PathBuf {
 }
 
 fn assert_registry_is_partitioned() -> Result<(), String> {
-    for generated in generated_stage0_files() {
-        if HAND_MAINTAINED_STAGE0_FILES.contains(&generated.as_str()) {
+    for generated in GENERATED_STAGE0_FILES {
+        if HAND_MAINTAINED_STAGE0_FILES.contains(generated) {
             return Err(format!(
                 "`{generated}` appears in both generated and hand-maintained stage0 registries"
             ));
@@ -720,7 +804,7 @@ fn rustfmt_generated_crate(dir: &Path) -> Result<(), String> {
     // standalone rustfmt so the emitted ARTIFACT is canonically formatted for EVERY comparer — one
     // normalization authority at production, not a re-normalization patched into each comparer.
     let src = dir.join("src");
-    for file_name in generated_stage0_files() {
+    for file_name in GENERATED_STAGE0_FILES {
         let path = src.join(file_name);
         let raw = fs::read_to_string(&path)
             .map_err(|e| format!("read emitted {}: {e}", path.display()))?;
@@ -741,7 +825,7 @@ fn rustfmt_generated_crate(dir: &Path) -> Result<(), String> {
 struct HandVerifyReport {
     /// Emitter produces a candidate byte-identical (after identical rustfmt normalization)
     /// to the committed hand file: the HAND entry is now a dead scaffold and the file
-    /// should be flipped into gunbc.stage0_emit_model.generated_stage0_files.
+    /// should be flipped into GENERATED_STAGE0_FILES.
     matches: Vec<String>,
     /// Emitter produces a candidate that differs from committed: either the known emitter
     /// gap that justifies hand-maintenance, or an unintended hand-edit. Inspect the diff.
@@ -849,7 +933,7 @@ fn print_hand_verify_report(report: &HandVerifyReport) {
     );
     if !report.matches.is_empty() {
         println!(
-            "  MATCH (emitter reproduces these -- flip to gunbc.stage0_emit_model.generated_stage0_files): {}",
+            "  MATCH (emitter reproduces these -- flip to GENERATED_STAGE0_FILES): {}",
             report.matches.join(", ")
         );
     }
@@ -1018,10 +1102,7 @@ fn assert_output_set_matches_registry(
     committed_src: &Path,
     fresh_src: &Path,
 ) -> Result<(), String> {
-    let registered: BTreeSet<&str> = generated_stage0_files()
-        .iter()
-        .map(|s| s.as_str())
-        .collect();
+    let registered: BTreeSet<&str> = GENERATED_STAGE0_FILES.iter().copied().collect();
     let hand_maintained: BTreeSet<&str> = HAND_MAINTAINED_STAGE0_FILES.iter().copied().collect();
     let fresh_files = direct_rs_file_names(fresh_src)?;
 
@@ -1035,7 +1116,7 @@ fn assert_output_set_matches_registry(
     if !unregistered_fresh.is_empty() {
         return Err(format!(
             "fresh self-compile emitted unregistered stage0 file(s): {}\n\
-             Add generated files to gunbc.stage0_emit_model.generated_stage0_files or mark hand-maintained files explicitly.",
+             Add generated files to GENERATED_STAGE0_FILES or mark hand-maintained files explicitly.",
             unregistered_fresh.join(", ")
         ));
     }
@@ -1047,7 +1128,7 @@ fn assert_output_set_matches_registry(
         .collect();
     if !missing_fresh.is_empty() {
         return Err(format!(
-            "generated_stage0_files contains file(s) missing from fresh self-compile: {}",
+            "GENERATED_STAGE0_FILES contains file(s) missing from fresh self-compile: {}",
             missing_fresh.join(", ")
         ));
     }
@@ -1070,7 +1151,7 @@ fn assert_output_set_matches_registry(
     if !unregistered_committed_generated.is_empty() {
         return Err(format!(
             "committed generated stage0 file(s) are not registered: {}\n\
-             Add them to gunbc.stage0_emit_model.generated_stage0_files or remove the stale committed outputs.",
+             Add them to GENERATED_STAGE0_FILES or remove the stale committed outputs.",
             unregistered_committed_generated.join(", ")
         ));
     }
@@ -1100,7 +1181,7 @@ fn direct_rs_file_names(dir: &Path) -> Result<BTreeSet<String>, String> {
 
 fn verify_stage0_matches(committed_src: &Path, fresh_src: &Path) -> Result<(), String> {
     let mut mismatches = Vec::new();
-    for file_name in generated_stage0_files() {
+    for file_name in GENERATED_STAGE0_FILES {
         let committed = committed_src.join(file_name);
         let fresh = fresh_src.join(file_name);
         let committed_text = fs::read_to_string(&committed)
@@ -1111,7 +1192,7 @@ fn verify_stage0_matches(committed_src: &Path, fresh_src: &Path) -> Result<(), S
         // `rustfmt_generated_crate` (production-side single authority, matching the committed
         // seed's own fmt normalization), so any surviving difference is genuine content drift.
         if committed_text != fresh_text {
-            mismatches.push(file_name.clone());
+            mismatches.push((*file_name).to_string());
         }
     }
     // Structured divergence-count contract for the regen_divergence ratchet (#6352, two-job split):
@@ -1168,7 +1249,7 @@ fn changed_registered_outputs(
     committed_src: &Path,
 ) -> Result<Vec<String>, String> {
     let mut changed = Vec::new();
-    for file_name in generated_stage0_files() {
+    for file_name in GENERATED_STAGE0_FILES {
         let fresh = fresh_src.join(file_name);
         let committed = committed_src.join(file_name);
         let fresh_text = fs::read_to_string(&fresh)
@@ -1176,7 +1257,7 @@ fn changed_registered_outputs(
         let committed_text = match fs::read_to_string(&committed) {
             Ok(text) => text,
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                changed.push(file_name.clone());
+                changed.push((*file_name).to_string());
                 continue;
             }
             Err(e) => return Err(format!("read committed {}: {e}", committed.display())),
@@ -1184,14 +1265,14 @@ fn changed_registered_outputs(
         // Plain byte compare: the emitted fresh crate is already per-file normalized at production
         // (`rustfmt_generated_crate`), so the changed list carries genuine content drift only.
         if fresh_text != committed_text {
-            changed.push(file_name.clone());
+            changed.push((*file_name).to_string());
         }
     }
     Ok(changed)
 }
 
 fn write_registered_outputs(fresh_src: &Path, committed_src: &Path) -> Result<(), String> {
-    for file_name in generated_stage0_files() {
+    for file_name in GENERATED_STAGE0_FILES {
         let fresh = fresh_src.join(file_name);
         let committed = committed_src.join(file_name);
         fs::copy(&fresh, &committed)
@@ -1210,46 +1291,8 @@ mod tests {
         assert_registry_is_partitioned().expect("stage0 registry partition");
         for file_name in HAND_MAINTAINED_STAGE0_FILES {
             assert!(
-                !generated_stage0_files().iter().any(|f| f == file_name),
+                !GENERATED_STAGE0_FILES.contains(file_name),
                 "{file_name} must not be touched by regen_stage0"
-            );
-        }
-    }
-
-    /// Construction close of the #7258 dual-copy fork: regen must read
-    /// `gunbc.stage0_emit_model.generated_stage0_files` and must not carry a second
-    /// hand list const. RED: re-introduce the deleted roster const → this fails;
-    /// drop a known generated basename from the .dag list → the positives fail.
-    #[test]
-    fn generated_stage0_files_read_from_dag_authority_not_rust_const() {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/bin/regen_stage0.rs");
-        let source = fs::read_to_string(&path).expect("read regen_stage0.rs");
-        // Needle assembled so this assertion's own source text is not a false positive.
-        let banned_const = format!("const {}{}{}", "GENERATED_STAGE0_FILES", ": ", "&[&str]");
-        assert!(
-            !source.contains(&banned_const),
-            "hand-copied generated_stage0_files Rust const must stay deleted — dual-copy fork is unwritable"
-        );
-        assert!(
-            source.contains("lens_string_list_data"),
-            "regen_stage0 must read generated_stage0_files via the host .dag list reader"
-        );
-        let files = generated_stage0_files();
-        assert!(
-            files.len() >= 101,
-            "authority list too short ({}); expected the post-#7258 generated set",
-            files.len()
-        );
-        for required in [
-            "std_execution_mode.rs",
-            "v1_compiler_closure_stub_v2_std_integer_rust.rs",
-            "v1_compiler_closure_stub_v2_std_text_rust.rs",
-            "lib.rs",
-            "std_algebra.rs",
-        ] {
-            assert!(
-                files.iter().any(|f| f == required),
-                "dag authority missing generated file {required}"
             );
         }
     }
@@ -1301,18 +1344,12 @@ mod tests {
         // Plain byte compare: only the file whose content genuinely changed is listed.
         seed_registered_files(&committed, "fn same() {}\n");
         seed_registered_files(&fresh, "fn same() {}\n");
-        fs::write(
-            fresh.join(generated_stage0_files()[0].as_str()),
-            "fn changed() {}\n",
-        )
-        .expect("write changed generated file");
+        fs::write(fresh.join(GENERATED_STAGE0_FILES[0]), "fn changed() {}\n")
+            .expect("write changed generated file");
 
         let changed =
             changed_registered_outputs(&fresh, &committed).expect("changed output receipt");
-        assert_eq!(
-            changed,
-            vec![generated_stage0_files()[0].as_str().to_string()]
-        );
+        assert_eq!(changed, vec![GENERATED_STAGE0_FILES[0].to_string()]);
 
         let _ = fs::remove_dir_all(committed);
         let _ = fs::remove_dir_all(fresh);
@@ -1434,7 +1471,7 @@ mod tests {
 
     fn seed_registered_files(dir: &Path, contents: &str) {
         fs::create_dir_all(dir).expect("create temp stage0 dir");
-        for file_name in generated_stage0_files() {
+        for file_name in GENERATED_STAGE0_FILES {
             fs::write(dir.join(file_name), contents).expect("write registered generated file");
         }
     }

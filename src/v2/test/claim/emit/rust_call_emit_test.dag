@@ -267,6 +267,3 @@ test fn rust_call_helper_emit_holds() -> Bool {
   )
 }
 
-test fn rust_call_fold_closure_emit_keystone_holds() -> Bool {
-  rust_call_fold_closure_emit_holds() && rust_call_fold_closure_swap_discriminates()
-}

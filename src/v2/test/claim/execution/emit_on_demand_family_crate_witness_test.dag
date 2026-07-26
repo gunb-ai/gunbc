@@ -494,14 +494,6 @@ test fn family_crate_member_change_cold_rebuild_holds() -> Bool {
   }
 }
 
-test fn emit_on_demand_family_crate_witnesses() -> Bool {
-  family_crate_digest_differs_from_member_digests_holds()
-    && family_crate_member_change_key_sensitivity_holds()
-    && family_crate_member_order_key_sensitivity_holds()
-    && family_crate_one_build_members_warm_holds()
-    && family_crate_member_change_cold_rebuild_holds()
-}
-
 data family_crate_pr_native_note: String = "Per-PR native carrier (routing frontier, 2026-07-22): the NO-EVICT agreement leg — same one-build workspace derivation as the receipts above but under the fixed pr_native test_id and never evicted, so the first CI run on a runner cold-builds once and every later PR run is warm (compile_skipped observed via the cached transport receipts). Assertions are agreement-only (interpreted == native per member), skip-state-agnostic by design: cold and warm runs both green, which is what a per-PR gate needs. Hermetic-clean: no evict intrinsic (which refuses hermetic), and the cached transport runs on the Admitted verdict in every mode."
 
 test fn emit_on_demand_family_crate_pr_native_agreement_holds() -> Bool {

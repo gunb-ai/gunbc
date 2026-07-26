@@ -1,6 +1,5 @@
 module v2.test.long.parse_table_memo_governed_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data parse_table_memo_governed_witness_note: String = "Governed memo door receipts: Memoize verdict consumed at parse_table_lookup/insert (non-Memoize refuses store); warm==cold content-hash purity on the bisect fixture; RED on bypass insert (Recompute carrier with hand-populated entries). Door fns parse_table_memo_lookup_refuses_store / parse_table_memo_insert_refused are the direct oracle — witnesses call them, not map shape alone. parse_table_memo_door_order_independent composes insert-then-lookup and lookup-then-insert (Case A: seed ParseTableMemo must not serve/populate on non-Memoize — v1_interpreter.rs gated). reconcile-as-lookup-path is the next increment."
@@ -47,15 +46,15 @@ fn parse_table_memoize_fixture() -> ParseTable {
   }
 }
 
-fn witness_materialization_gate_recompute_denies_store() -> Bool {
+test fn witness_materialization_gate_recompute_denies_store() -> Bool {
   !materialization_allows_memo_store(m: Recompute)
 }
 
-fn witness_recompute_fixture_carries_recompute_verdict() -> Bool {
+test fn witness_recompute_fixture_carries_recompute_verdict() -> Bool {
   !materialization_allows_memo_store(m: parse_table_recompute_fixture().materialization)
 }
 
-fn witness_door_insert_refused_for_recompute_table() -> Bool {
+test fn witness_door_insert_refused_for_recompute_table() -> Bool {
   parse_table_memo_insert_refused(
     table: parse_table_recompute_fixture(),
     key: governed_witness_probe_key(),
@@ -63,7 +62,7 @@ fn witness_door_insert_refused_for_recompute_table() -> Bool {
   )
 }
 
-fn witness_door_lookup_refused_for_recompute_table() -> Bool {
+test fn witness_door_lookup_refused_for_recompute_table() -> Bool {
   parse_table_memo_lookup_refuses_store(
     table: parse_table_recompute_fixture(),
     key: governed_witness_probe_key()
@@ -123,7 +122,7 @@ fn witness_bypass_store_reds_non_memoize_carrier() -> Bool {
   !parse_table_memo_store_well_formed_at(table: bypass, key: key)
 }
 
-fn witness_memoize_carrier_allows_store() -> Bool {
+test fn witness_memoize_carrier_allows_store() -> Bool {
   let table = parse_table_memoize_fixture()
   let key = governed_witness_probe_key()
   let after = parse_table_insert(
@@ -134,19 +133,12 @@ fn witness_memoize_carrier_allows_store() -> Bool {
   parse_table_entries_contain_key(table: after, key: key)
 }
 
-fn witness_content_key_subject_stable() -> Bool {
+test fn witness_content_key_subject_stable() -> Bool {
   let table = parse_table_memoize_fixture()
   let key = governed_witness_probe_key()
   let a = parse_table_subject(table: table, key: key)
   let b = parse_table_subject(table: table, key: key)
   a == b
-}
-
-test fn parse_table_memo_governed_store_refused_when_recompute() -> Bool {
-  witness_materialization_gate_recompute_denies_store()
-    && witness_recompute_fixture_carries_recompute_verdict()
-    && witness_door_insert_refused_for_recompute_table()
-    && witness_door_lookup_refused_for_recompute_table()
 }
 
 test fn parse_table_memo_door_order_independent() -> Bool {
@@ -155,11 +147,6 @@ test fn parse_table_memo_door_order_independent() -> Bool {
 
 test fn parse_table_memo_bypass_store_reds() -> Bool {
   witness_bypass_store_reds_non_memoize_carrier()
-}
-
-test fn parse_table_memo_governed_memoize_allows_store() -> Bool {
-  witness_memoize_carrier_allows_store()
-    && witness_content_key_subject_stable()
 }
 
 test fn parse_table_memo_warm_equals_cold_content_hash() -> Bool {

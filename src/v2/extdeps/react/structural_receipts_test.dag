@@ -133,47 +133,6 @@ fn react_probe_hook_use_callback() -> ReactHookSite {
   }
 }
 
-fn react_probe_hook_use_deferred_value() -> ReactHookSite {
-  UseDeferredValue {
-    value_ref: react_probe_cross_decl_ref,
-    initial_value: ValueAbsent
-  }
-}
-
-fn react_probe_hook_use_sync_external_store() -> ReactHookSite {
-  UseSyncExternalStore {
-    subscribe_ref: react_probe_cross_decl_ref,
-    get_snapshot_ref: react_probe_cross_decl_ref,
-    get_server_snapshot: ValueAbsent
-  }
-}
-
-fn react_probe_hook_use_debug_value() -> ReactHookSite {
-  UseDebugValue {
-    value_ref: react_probe_cross_decl_ref,
-    format: ValueAbsent
-  }
-}
-
-fn react_probe_hook_use_action_state() -> ReactHookSite {
-  UseActionState {
-    action_ref: react_probe_cross_decl_ref,
-    initial_state_ref: react_probe_cross_decl_ref,
-    permalink: ValueAbsent
-  }
-}
-
-fn react_probe_hook_use_optimistic() -> ReactHookSite {
-  UseOptimistic {
-    value_ref: react_probe_cross_decl_ref,
-    reducer: ValueAbsent
-  }
-}
-
-fn react_probe_hook_custom_hook() -> ReactHookSite {
-  CustomHook { implementation_ref: react_probe_cross_decl_ref }
-}
-
 fn react_probe_host_element() -> ReactHostElement {
   ReactHostElement {
     tag_ref: react_probe_cross_decl_ref,
@@ -196,10 +155,6 @@ fn react_probe_composite_element() -> ReactCompositeElement {
 
 fn react_probe_react_element_host() -> ReactElement {
   Host { host: react_probe_host_element() }
-}
-
-fn react_probe_react_element_composite() -> ReactElement {
-  Composite { composite: react_probe_composite_element() }
 }
 
 fn react_probe_react_element_fragment() -> ReactElement {

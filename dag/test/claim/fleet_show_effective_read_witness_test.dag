@@ -215,6 +215,7 @@ test fn witness_transport_reads_use_show_property_authority() -> Bool {
     property: MemoryMax,
   )
     && witness_show_property_local_read_holds()
+    && string_contains(s: fleet_runner_width_count_read_script(instance_glob: "actions-runner@srv1-*.service"), pattern: "list-units")
 }
 
 test fn witness_show_property_injection_metachar_refused() -> Bool {

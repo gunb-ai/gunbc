@@ -255,7 +255,7 @@ test fn decoded_lex_live_bindings_match_live_target() -> Bool {
 
 data semantic_decl_serialize_parity_note: String = "Row-decoded serialize profiles round-trip bundle spellings through concat/from_code_point native String grounding at decode; aggregate golden emit matches live path."
 
-fn decoded_row_profile_matches_golden() -> Bool {
+test fn decoded_row_profile_matches_golden() -> Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {
     Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_profile_lex_rules(profile: emission.enum_serialize_profile) {
@@ -276,7 +276,7 @@ fn decoded_row_profile_matches_golden() -> Bool {
   }
 }
 
-fn live_rebuilt_target_matches_golden() -> Bool {
+test fn live_rebuilt_target_matches_golden() -> Bool {
   match bool_text_with_target(
     target: bool_serialize_target(
       lex: rust_decl_general_lex(),
@@ -288,14 +288,14 @@ fn live_rebuilt_target_matches_golden() -> Bool {
   }
 }
 
-fn live_via_bool_serialize_target_matches_golden() -> Bool {
+test fn live_via_bool_serialize_target_matches_golden() -> Bool {
   match bool_text_with_target(target: rust_enum_general_decl_structural_target_model()) {
     Accepted { value: t, diagnostics: _ } => t == bool_golden
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn generic_row_profile_matches_golden() -> Bool {
+test fn generic_row_profile_matches_golden() -> Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {
     Accepted { value: emission, diagnostics: _ } =>
       match target_semantic_enum_surface_from_coproduct(
@@ -326,9 +326,3 @@ fn generic_row_profile_matches_golden() -> Bool {
   }
 }
 
-test fn semantic_decl_serialize_parity_all_holds() -> Bool {
-  decoded_row_profile_matches_golden()
-    && live_rebuilt_target_matches_golden()
-    && live_via_bool_serialize_target_matches_golden()
-    && generic_row_profile_matches_golden()
-}
