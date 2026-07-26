@@ -72,6 +72,58 @@ test fn orch_to_file_redirect_emit_red_when_path_wrong_holds() -> Bool {
   }
 }
 
+test fn orch_to_file_path_newline_refused_holds() -> Bool {
+  match orch_emit_step(
+    s: Do {
+      run: Run {
+        command: ci_floor_disposition_stamp_echo_command,
+        env: [],
+        redirect: Present { value: ToFile { path: "target/x.txt\nrm -rf /" } },
+        capture: Absent
+      }
+    },
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn orch_to_file_path_metachar_refused_holds() -> Bool {
+  match orch_emit_step(
+    s: Do {
+      run: Run {
+        command: ci_floor_disposition_stamp_echo_command,
+        env: [],
+        redirect: Present { value: ToFile { path: "target/x;echo injected" } },
+        capture: Absent
+      }
+    },
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn orch_to_file_path_space_refused_holds() -> Bool {
+  match orch_emit_step(
+    s: Do {
+      run: Run {
+        command: ci_floor_disposition_stamp_echo_command,
+        env: [],
+        redirect: Present { value: ToFile { path: "target/has space.txt" } },
+        capture: Absent
+      }
+    },
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } =>
+      orch_to_file_redirect_emit() == orch_to_file_redirect_golden
+  }
+}
+
 data orch_comment_step_golden: String = "# carrier-comment-body"
 
 fn orch_comment_step_emit() -> String {

@@ -178,12 +178,45 @@ fn orch_emit_node_spelling(emitted_root: Node, target: TargetModel) -> Outcome<S
   )
 }
 
-fn orch_emit_redir_suffix(r: RedirectSpec) -> String {
+data orch_shell_unquoted_path_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-@"
+
+fn orch_shell_unquoted_path_char_ok(ch: String) -> Bool {
+  string_length(s: ch) == 1 && string_contains(s: orch_shell_unquoted_path_alphabet, pattern: ch)
+}
+
+fn orch_shell_unquoted_path_ok_at(path: String, i: Int, n: Int) -> Bool {
+  if i >= n {
+    true
+  } else {
+    let ch = char_at(s: path, pos: i)
+    if !orch_shell_unquoted_path_char_ok(ch: ch) {
+      false
+    } else {
+      orch_shell_unquoted_path_ok_at(path: path, i: i + 1, n: n)
+    }
+  }
+}
+
+fn orch_shell_unquoted_path_ok(path: String) -> Bool {
+  let n = string_length(s: path)
+  if n == 0 {
+    false
+  } else {
+    orch_shell_unquoted_path_ok_at(path: path, i: 0, n: n)
+  }
+}
+
+fn orch_emit_redir_suffix(r: RedirectSpec) -> Outcome<String> {
   match r {
-    DiscardAll => bash_redir_stdout_and_stderr_null_source_text
-    DiscardErr => bash_redir_stderr_null_source_text
-    StdoutAndStderr => bash_redir_stdout_to_stderr_source_text
-    ToFile { path: p } => bash_redir_to_file_source_text(path: p)
+    DiscardAll => outcome_accepted(bash_redir_stdout_and_stderr_null_source_text)
+    DiscardErr => outcome_accepted(bash_redir_stderr_null_source_text)
+    StdoutAndStderr => outcome_accepted(bash_redir_stdout_to_stderr_source_text)
+    ToFile { path: p } =>
+      if !orch_shell_unquoted_path_ok(path: p) {
+        outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_to_file_path_invalid))
+      } else {
+        outcome_accepted(bash_redir_to_file_source_text(path: p))
+      }
   }
 }
 
@@ -207,9 +240,14 @@ fn orch_emit_run_core(r: Run, medium: OrchestrationEmitMedium) -> Outcome<String
 }
 
 fn orch_emit_run_with_redir(stmt: String, redir: RedirectSpec) -> Outcome<String> {
-  orch_emit_node_spelling(
-    emitted_root: bash_stmt_with_redir_emitted,
-    target: bash_stmt_with_redir_target_model(stmt: stmt, redir: orch_emit_redir_suffix(r: redir))
+  bind_outcome(
+    o: orch_emit_redir_suffix(r: redir),
+    f: fn(suffix) {
+      orch_emit_node_spelling(
+        emitted_root: bash_stmt_with_redir_emitted,
+        target: bash_stmt_with_redir_target_model(stmt: stmt, redir: suffix)
+      )
+    }
   )
 }
 
