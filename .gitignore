@@ -112,6 +112,7 @@ out.txt
 # Python is used only for local dev tooling; never committed to the .dag/.rs substrate
 *.py
 !docs/plans/witness-subject-execution-audit.py
+!docs/probes/e0599_census_extract.py
 
 # --- CPython bytecode cache (PEP 3147) [cited: python.org/peps/pep-3147] ---
 __pycache__/
