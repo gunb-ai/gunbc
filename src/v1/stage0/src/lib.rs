@@ -17,6 +17,7 @@ use im::{OrdSet as BTreeSet, Vector as Vec};
 
 pub mod cli_run;
 pub mod coproduct_reflection;
+pub mod test_module_hygiene;
 pub mod extdeps_cargo;
 pub mod extdeps_cargo_version;
 pub mod extdeps_external_authority;
