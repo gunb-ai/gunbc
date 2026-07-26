@@ -264,6 +264,15 @@ test fn ingest_cross_language_compile_holds() -> Bool {
   }
 }
 
+fn ingest_bridge_realized() -> Bool {
+  ingest_recovers_emitted_holds()
+    && ingest_bridge_to_canonical_holds()
+    && ingest_fails_closed_off_frontier_holds()
+    && ingest_fails_closed_ambiguous_holds()
+    && ingest_fails_closed_on_unstamped_holds()
+    && ingest_cross_language_compile_holds()
+}
+
 fn ingest_bridge_realized_input(ok: Bool) -> Symbol {
   if ok { ^ingest_bridge_realized } else { ^ingest_bridge_not_realized }
 }
