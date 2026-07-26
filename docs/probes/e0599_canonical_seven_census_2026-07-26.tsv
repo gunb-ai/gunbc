@@ -3,7 +3,7 @@ baseline_authority	docs/probes/refresh_canonical_seven_2026-07-26.tsv
 git_sha	29e87dff82155e78e4953a31bfa8548aa88cf8ae
 gunbc_sha	2901267968f5b02c496a97db96d350d336aa1dc6ff2939062fa1eec294e3942a
 gunbc_mtime	2026-07-26T12:58:34Z
-classifier	e0599_census_extract.sh
+classifier	dag/tools/e0599_probe_census.dag (realization: e0599_census_extract.sh)
 protocol	CSSL_STD_SEED_LINK=1; gunbc compile -> cssl_assemble -> cargo build --release --lib; CTRL_BUILD_WRAP_CARGO=0
 handoff	loyal-raven-94 partial 2/7 census corroborated on 06_translate+04_infer before E0277 reassignment
 

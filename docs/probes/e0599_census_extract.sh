@@ -3,8 +3,11 @@
 # (+ generic std-seed-link follow-up) retires this hand-shell log classifier; until then it
 # projects per-error E0599 census from PROBE_KEEP_LOG_DIR/*.cargo.log (probe-only).
 # dissolve-on alt: modeled cssl_probe transport in .dag (same spine as curated_cargo_probe_one.sh).
-# Authority: docs/probes/e0599_canonical_seven_census_2026-07-26.tsv (classifier receipt); input
-# logs from docs/probes/curated_cargo_probe_one.sh PROBE_KEEP_LOG_DIR hook.
+# Authority: dag/tools/e0599_probe_census.dag (e0599_message_pattern_rows + e0599_root_family_for).
+# Realization MUST keep regex patterns in sync with e0599_message_pattern_rows — witness:
+# dag/test/claim/e0599_probe_census_witness_test.dag. Frozen output receipt (not authority):
+# docs/probes/e0599_canonical_seven_census_2026-07-26.tsv. Input logs from
+# docs/probes/curated_cargo_probe_one.sh PROBE_KEEP_LOG_DIR hook.
 # Inline python avoids a committed .py file (gitignore_authority models *.py as local-dev-only).
 set -euo pipefail
 
@@ -20,6 +23,7 @@ if [[ "${1:-}" == "--aggregate" ]]; then
 fi
 
 python3 - "$AGGREGATE" "$@" <<'PY'
+# Patterns below mirror tools.e0599_probe_census e0599_message_pattern_rows (ordinal 1-5).
 import collections, pathlib, re, sys
 
 aggregate = sys.argv[1] == "1"

@@ -1,0 +1,139 @@
+module tools.e0599_probe_census
+
+import std.types { Bool, Int, String }
+
+type E0599FailureShape
+  = MissingMethod
+  | BoundsUnsatisfied
+  | NoVariant
+  | NoAssocFn
+  | Other
+
+type E0599RootFamily
+  = R1CloneBoundOnTypeParam
+  | R2VectorMethodBounds
+  | R3ContainerCloneBounds
+  | R4OptionalCoproductGrounding
+  | R5AsDerefUnit
+  | R6Other
+
+type E0599MessagePatternRow {
+  shape: E0599FailureShape,
+  pattern: String,
+  ordinal: Int,
+}
+
+type E0599RootFamilyRow {
+  family: E0599RootFamily,
+  description: String,
+}
+
+data e0599_probe_census_note: String = "Single authority for canonical-seven E0599 per-error census: failure-shape patterns (rustc message text), root-family rollup (three mechanistic roots + tails), and module roster. Realization: docs/probes/e0599_census_extract.sh (SCAFFOLD) applies e0599_message_pattern_rows to PROBE_KEEP_LOG_DIR/*.cargo.log; frozen receipt docs/probes/e0599_canonical_seven_census_2026-07-26.tsv is output, not authority. dissolve-on: modeled cssl_probe transport (#5828) or self_host_curated_seed_linked_harness probe classifier row."
+
+data e0599_baseline_receipt: String = "docs/probes/refresh_canonical_seven_2026-07-26.tsv"
+
+data e0599_canonical_seven_modules: List<String> = [
+  "src/v2/compiler/06_translate.dag",
+  "src/v2/compiler/04_infer.dag",
+  "src/v2/compiler/05_eval.dag",
+  "src/v2/compiler/05_emit.dag",
+  "src/v2/compiler/emit_host.dag",
+  "src/v2/compiler/emit_module.dag",
+  "src/v2/compiler/materialization_carriers.dag",
+]
+
+data e0599_message_pattern_rows: List<E0599MessagePatternRow> = [
+  E0599MessagePatternRow {
+    shape: MissingMethod,
+    pattern: "error\\[E0599\\]: no method named `([^`]+)` found for (.+?) in the current scope",
+    ordinal: 1,
+  },
+  E0599MessagePatternRow {
+    shape: BoundsUnsatisfied,
+    pattern: "error\\[E0599\\]: the method `([^`]+)` exists for (.+?), but its trait bounds were not satisfied",
+    ordinal: 2,
+  },
+  E0599MessagePatternRow {
+    shape: NoVariant,
+    pattern: "error\\[E0599\\]: no variant(?:, associated function, or constant)? named `([^`]+)` found for (.+?)(?: in the current scope)?$",
+    ordinal: 3,
+  },
+  E0599MessagePatternRow {
+    shape: NoAssocFn,
+    pattern: "error\\[E0599\\]: no function or associated item named `([^`]+)` found for (.+?)(?: in the current scope)?$",
+    ordinal: 4,
+  },
+  E0599MessagePatternRow {
+    shape: Other,
+    pattern: "error\\[E0599\\]: (.+)",
+    ordinal: 5,
+  },
+]
+
+data e0599_root_family_rows: List<E0599RootFamilyRow> = [
+  E0599RootFamilyRow {
+    family: R1CloneBoundOnTypeParam,
+    description: "missing_method clone on type parameter T/A/U/B/R — emitted body calls .clone() without where-clause",
+  },
+  E0599RootFamilyRow {
+    family: R2VectorMethodBounds,
+    description: "bounds_unsatisfied is_empty/iter on im::Vector/Rc<im::Vector> carriers",
+  },
+  E0599RootFamilyRow {
+    family: R3ContainerCloneBounds,
+    description: "bounds_unsatisfied clone on Outcome/Option/im::Vector containers",
+  },
+  E0599RootFamilyRow {
+    family: R4OptionalCoproductGrounding,
+    description: "GlobalBareUnique/GlobalBareAmbiguous matched on std::option::Option instead of modeled Optional",
+  },
+  E0599RootFamilyRow {
+    family: R5AsDerefUnit,
+    description: "as_deref called on unit type ()",
+  },
+  E0599RootFamilyRow {
+    family: R6Other,
+    description: "misc cache/verdict clone bounds",
+  },
+]
+
+fn e0599_root_family_for(shape: E0599FailureShape, method: String, receiver: String) -> E0599RootFamily {
+  match shape {
+    MissingMethod => {
+      if method == "clone" && string_contains(s: receiver, pattern: "type parameter") {
+        R1CloneBoundOnTypeParam
+      } else if method == "as_deref" {
+        R5AsDerefUnit
+      } else if string_contains(s: receiver, pattern: "GlobalBare") || string_contains(s: method, pattern: "GlobalBare") {
+        R4OptionalCoproductGrounding
+      } else {
+        R6Other
+      }
+    }
+    BoundsUnsatisfied => {
+      if (method == "is_empty" || method == "iter") && string_contains(s: receiver, pattern: "im::Vector") {
+        R2VectorMethodBounds
+      } else if method == "clone" && (string_contains(s: receiver, pattern: "Outcome") || string_contains(s: receiver, pattern: "Option") || string_contains(s: receiver, pattern: "im::Vector")) {
+        R3ContainerCloneBounds
+      } else {
+        R6Other
+      }
+    }
+    NoVariant | NoAssocFn => {
+      if string_contains(s: receiver, pattern: "GlobalBare") || string_contains(s: method, pattern: "GlobalBare") {
+        R4OptionalCoproductGrounding
+      } else {
+        R6Other
+      }
+    }
+    Other => R6Other
+  }
+}
+
+fn e0599_canonical_seven_module_count() -> Int {
+  e0599_canonical_seven_modules.count()
+}
+
+fn e0599_message_pattern_row_count() -> Int {
+  e0599_message_pattern_rows.count()
+}
