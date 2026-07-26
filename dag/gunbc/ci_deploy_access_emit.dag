@@ -194,6 +194,14 @@ fn deploy_access_emit_bootstrap_preflight_steps(access: DeployAccess) -> List<Pi
     [
       Do {
         run: Run {
+          command: concat("# ", deploy_access_emit_preflight_dissolution_trigger),
+          env: [],
+          redirect: Absent,
+          capture: Absent
+        }
+      },
+      Do {
+        run: Run {
           command: "# deploy-access-bootstrap-preflight (principal + roster grants)",
           env: [],
           redirect: Absent,
