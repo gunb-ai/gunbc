@@ -1,0 +1,66 @@
+module gunbc.plans.value_null_split
+
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, p, li, ol, cell, row, task, tasks, Unchecked }
+
+fn value_null_split_body() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status:** lane opened (keen-ferret-250) · **Parent:** model↔realization fork §3.2 · **DESIGN.md open thread** · Linked from [model-realization-fork.md](model-realization-fork.md) and [fail-closed-lockdown.md](fail-closed-lockdown.md) §4 tier-1."),
+    p(text: "**Verified against the live tree 2026-07-26.** Census counts are receipts; re-check before acting."),
+    h2(text: "0. Problem — one native carrier, four meanings"),
+    p(text: "`Value::Null` overloads four distinct semantics today: (1) the `None`/`none` literal and `LitNull`, (2) `Optional::Absent` (bridged in `match_pattern` at `v1_interpreter.rs:2830`), (3) `Witness::Violates` on map miss (bridged at `:2808` with a fabricated diagnostic), (4) untyped lookup miss (`raw_map_lookup`, `list_get_at_or_null`, `get` on map/list). A blanket `CrossRepresentationEquality` guard cannot close the Optional/Witness straddle — `present == None → false` is *legitimate* at ~218 corpus sites — so the fix is **splitting**, not grounding onto one sentinel."),
+    h2(text: "1. Target carriers (construction authority)"),
+    TableBlock {
+      header: row(cells: [cell(text: "meaning"), cell(text: "modeled form"), cell(text: "target native"), cell(text: "construction site"), cell(text: "status")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "Optional absent"), cell(text: "`Absent` (`collection.dag`)"), cell(text: "`Value::Variant { Optional, Absent }`"), cell(text: "`optional_absent()` `:420`"), cell(text: "LANDED at construction; still bridged from `Null` in `match_pattern`")]),
+        row(cells: [cell(text: "Optional present"), cell(text: "`Present { value }`"), cell(text: "`Value::Variant { Optional, Present, .. }` or raw payload + Present bridge"), cell(text: "`optional_present()` `:412`; `map_lookup_as_optional` `:428`"), cell(text: "partial — `map_get` uses bridge; raw `get` on map still returns `Null` on miss")]),
+        row(cells: [cell(text: "Witness holds"), cell(text: "`Holds { value }`"), cell(text: "`Value::Variant { Witness, Holds, .. }`"), cell(text: "`witness_holds()` `:3333`"), cell(text: "LANDED")]),
+        row(cells: [cell(text: "Witness violates"), cell(text: "`Violates { diagnostic }`"), cell(text: "`Value::Variant { Witness, Violates, .. }`"), cell(text: "`witness_violates()` `:3341`; `raw_map_lookup_witness` `:9903`"), cell(text: "LANDED at construction; `Null` still bridged to `Violates` in `match_pattern`")]),
+        row(cells: [cell(text: "Lookup miss (untyped)"), cell(text: "(no coproduct — host sentinel)"), cell(text: "`Value::Null` narrowed to this role only"), cell(text: "`raw_map_lookup` `:9927`; `list_get_at_or_null` `:9877`"), cell(text: "OPEN — still shared with `None` literal")]),
+        row(cells: [cell(text: "`None` literal / `none` var"), cell(text: "context-dependent (Optional sugar vs host null)"), cell(text: "dissolve into `Absent` variant OR keep as alias of lookup-miss per type context"), cell(text: "`eval_literal LitNull` `:2041`; `eval_var none` `:2067`"), cell(text: "OPEN — needs type-directed resolution")]),
+      ],
+    },
+    h2(text: "2. Emitter rows (v2 self-host lane — write down before emitting)"),
+    p(text: "Grounded Rust realization targets (cited in `extdeps.languages.rust.types` + `witness_option_bridge_test.rs`; v2 `target_model` rows must match):"),
+    TableBlock {
+      header: row(cells: [cell(text: "modeled"), cell(text: "Rust emission"), cell(text: "authority")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "`Optional<T>::Absent`"), cell(text: "`None`"), cell(text: "`rust_none_expr` / `emit_variant_pattern` when parent is `Optional`")]),
+        row(cells: [cell(text: "`Optional<T>::Present { value }`"), cell(text: "`Some({value})`"), cell(text: "`rust_some_template`")]),
+        row(cells: [cell(text: "`Witness<C>::Holds { value }`"), cell(text: "`v1_rt::Witness::Holds(value)`"), cell(text: "`rust_type_checkpoints` Witness row")]),
+        row(cells: [cell(text: "`Witness<C>::Violates { diagnostic }`"), cell(text: "`v1_rt::Witness::Violates(diagnostic)`"), cell(text: "same")]),
+        row(cells: [cell(text: "lookup miss (untyped `get`)"), cell(text: "`Option::None` only when return type is `Optional<T>`; else refuse until typed"), cell(text: "dissolve with Phase 3 API split")]),
+      ],
+    },
+    h2(text: "3. Census (2026-07-26)"),
+    ol(items: [
+      li(text: "`Value::Null` in `v1_interpreter.rs`: **53** textual sites (hash/eq/display/match bridges/production — receipt: `rg -c Value::Null src/v1/stage0/src/v1_interpreter.rs`)."),
+      li(text: "`== None` / `!= None` in `dag/` + `src/v2/`: **218** comparison sites across **66** files."),
+      li(text: "`optional_absent()` call sites in v2: construction already uses modeled `Absent` variant (not `Null`)."),
+      li(text: "Existing witnesses: `witness_option_bridge_test.dag` (map_get → Present/Absent at model layer); `cross_representation_equality.dag` roster includes `Optional` × `native_value_null` straddle (target: remove when grounded)."),
+    ]),
+    h2(text: "4. Phased landing (construction-first)"),
+    tasks(items: [
+      task(state: Unchecked, text: "**Phase A (this lane):** plan + discriminating witnesses pinning carrier invariants (`value_null_split_witness_test.dag`); emitter row table above is authority for S2 emit."),
+      task(state: Unchecked, text: "**Phase B:** stop *producing* `Null` where the return type is `Optional<T>` — route `map_get`/`get`+Optional context through `map_lookup_as_optional` (keep raw `get` returning bare value + `Null` miss for `map_lookup_dual_dispatch` until typed overload lands)."),
+      task(state: Unchecked, text: "**Phase C:** delete `match_pattern` `Null` bridges (`:2808–2834`) once no producer emits `Null` for Optional/Witness arms."),
+      task(state: Unchecked, text: "**Phase D:** type-directed `None` literal → `optional_absent()` where inhabiting `Optional<_>`; migrate `== None` sites (~218) to `match Absent` or `optional_is_absent` helper."),
+      task(state: Unchecked, text: "**Phase E:** cross-representation equality — ground `Optional` so `Absent` variant reconciles with narrowed `Null` *only* at the lookup-miss boundary; remove `Optional`×`native_value_null` from testgen roster; bundle `CrossRepresentationEquality` guard removal with this phase (fenced in model-realization-fork §3.1)."),
+    ]),
+    h2(text: "5. Review bar"),
+    p(text: "No absorbing fallback: a miss must not widen to `Null` when the type is `Optional` or `Witness`. No new per-site `if matches!(v, Value::Null)` bridges without a counted dissolution trigger. Every phase ships with a discriminating witness that goes RED when the carrier regresses."),
+  ]
+}
+
+data value_null_split_plan: Plan = Plan {
+  slug: "value-null-split",
+  title: "Plan — Value::Null split (Optional / Witness / lookup-miss carriers)",
+  body: value_null_split_body(),
+  dissolution: HasTrigger {
+    text: "Delete when `Value::Null` means only untyped lookup-miss, `Optional::Absent` and `Witness::Violates` are construction-reached only as their `Value::Variant` forms (no `match_pattern` Null bridges), the testgen `Optional`×`native_value_null` straddle row is removed, and `CrossRepresentationEquality` backstop for numerics is the only remaining guard."
+  }
+}
