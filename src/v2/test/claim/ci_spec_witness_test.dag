@@ -195,6 +195,18 @@ fn witness_release_build_verifies_nonempty_artifacts() -> Bool {
     !string_contains(s: script, pattern: "-newer")
 }
 
+fn witness_release_build_shell_emit_dissolve_on_named() -> Bool {
+  string_contains(
+    s: ci_release_build_shell_emit_dissolution_trigger,
+    pattern: "dissolve-on: ci_release_build_script"
+  )
+}
+
+fn witness_release_build_emits_dissolve_on_in_runner() -> Bool {
+  let marker = concat("# ", ci_release_build_shell_emit_dissolution_trigger)
+  string_contains(s: ci_release_build_script(), pattern: marker)
+}
+
 fn witness_floor_build_verify_script_matches_pack() -> Bool {
   let script = ci_floor_build_verify_script()
   script == claim_executor_verify_artifacts_shell(
@@ -300,6 +312,8 @@ test fn ci_spec_witnesses() -> Bool {
     witness_release_build_eagain_cold_retry() &&
     witness_release_build_eagain_tiers_wrap_build_command() &&
     witness_release_build_verifies_nonempty_artifacts() &&
+    witness_release_build_shell_emit_dissolve_on_named() &&
+    witness_release_build_emits_dissolve_on_in_runner() &&
     witness_floor_build_verify_script_matches_pack() &&
     witness_scheduler_uses_release_binary() &&
     witness_workflow_run_is_floor_only_script() &&
