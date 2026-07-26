@@ -29,52 +29,52 @@ pub struct AccessCheckResultNode {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KeyedCollectionParts {
-    pub key_type: Box<Rc<Node>>,
-    pub value_type: Box<Rc<Node>>,
+    pub key_type: Rc<Node>,
+    pub value_type: Rc<Node>,
 }
 
 pub fn access_error(message: String, span: Rc<SourceSpan>, module_name: String) -> Rc<ErrorNode> {
     make_error_node(
-        CompilerDiagnostic::InternalError {
+        Rc::new(CompilerDiagnostic::InternalError {
             message: message.clone(),
             span: span.clone(),
-        },
+        }),
         module_name.clone(),
     )
 }
 
 pub fn access_result(
-    inferred: Node,
+    inferred: Rc<Node>,
     diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     span: Rc<SourceSpan>,
     fallback_message: String,
 ) -> Rc<AccessCheckResultNode> {
     if ((diagnostics.clone().len() as i64) == 0) {
-        AccessCheckResultNode {
-            inferred: Some(InferredNode::Resolved {
-                node: Box::new(inferred.clone()),
-            }),
+        Rc::new(AccessCheckResultNode {
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: inferred.clone(),
+            })),
             diagnostics: diagnostics.clone(),
-        }
+        })
     } else {
         {
             let message = match diagnostics.clone().first().cloned() {
                 Some(diag) => diagnostic_to_message(diag.diagnostic.clone()),
                 None => fallback_message.clone(),
             };
-            AccessCheckResultNode {
-                inferred: Some(InferredNode::CompilerError {
+            Rc::new(AccessCheckResultNode {
+                inferred: Some(Rc::new(InferredNode::CompilerError {
                     message: message.clone(),
                     span: span.clone(),
-                }),
+                })),
                 diagnostics: diagnostics.clone(),
-            }
+            })
         }
     }
 }
 
 pub fn keyed_collection_parts(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<KeyedCollectionParts>> {
     if (node_is_keyed_collection(n.clone(), source_indices.clone())
@@ -82,10 +82,10 @@ pub fn keyed_collection_parts(
     {
         match n.children.clone().first().cloned() {
             Some(key_child) => match n.children.clone().iter().cloned().skip(1 as usize).next() {
-                Some(value_child) => Some(KeyedCollectionParts {
-                    key_type: Box::new(resolved_type(key_child.clone())),
-                    value_type: Box::new(resolved_type(value_child.clone())),
-                }),
+                Some(value_child) => Some(Rc::new(KeyedCollectionParts {
+                    key_type: resolved_type(key_child.clone()),
+                    value_type: resolved_type(value_child.clone()),
+                })),
                 None => None,
             },
             None => None,
@@ -96,8 +96,8 @@ pub fn keyed_collection_parts(
 }
 
 pub fn check_index_access_node(
-    base_type: Node,
-    index_type: Node,
+    base_type: Rc<Node>,
+    index_type: Rc<Node>,
     span: Rc<SourceSpan>,
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -201,9 +201,9 @@ pub fn check_index_access_node(
 }
 
 pub fn check_slice_access_node(
-    base_type: Node,
-    start_type: Node,
-    end_type: Node,
+    base_type: Rc<Node>,
+    start_type: Rc<Node>,
+    end_type: Rc<Node>,
     span: Rc<SourceSpan>,
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,

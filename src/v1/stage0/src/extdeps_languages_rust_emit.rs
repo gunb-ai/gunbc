@@ -36,10 +36,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "doc.rust-lang.org/reference/".to_string(),
-    },
+    }),
     })
             };
         }
@@ -94,7 +94,7 @@ pub fn rust_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
     rust_simple_method_specs().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: HashMap<String, String>, spec: _| {
+        |acc: Rc<HashMap<String, String>>, spec: _| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )
@@ -114,7 +114,7 @@ pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
     .cloned()
     .fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: HashMap<String, bool>, spec: _| {
+        |acc: Rc<HashMap<String, bool>>, spec: _| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), true)
         },
     )
@@ -376,7 +376,7 @@ pub fn rust_error_expr_template() -> String {
 pub fn rust_list_literal_empty() -> String {
     thread_local! {
         static CACHED: String = {
-            "vec![]".to_string()
+            "Rc::new(vec![])".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -385,7 +385,7 @@ pub fn rust_list_literal_empty() -> String {
 pub fn rust_list_literal_template() -> String {
     thread_local! {
         static CACHED: String = {
-            "vec![{0}]".to_string()
+            "Rc::new(vec![{0}])".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -520,7 +520,7 @@ pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
 pub fn rt_functions() -> Rc<HashMap<String, bool>> {
     rt_function_registry().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: HashMap<String, bool>, entry: Rc<RuntimeFunction>| {
+        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), true)
         },
     )
@@ -540,7 +540,7 @@ pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
     .cloned()
     .fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: HashMap<String, bool>, entry: Rc<RuntimeFunction>| {
+        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), true)
         },
     )
@@ -560,7 +560,7 @@ pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
     .cloned()
     .fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: HashMap<String, bool>, entry: Rc<RuntimeFunction>| {
+        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), true)
         },
     )
@@ -580,7 +580,7 @@ pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
     .cloned()
     .fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: HashMap<String, String>, entry: Rc<RuntimeFunction>| {
+        |acc: Rc<HashMap<String, String>>, entry: Rc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), entry.bridge_name.clone())
         },
     )
@@ -751,7 +751,7 @@ pub fn rust_pair_completion_factor_source(factor: Rc<PairCompletionFactor>) -> S
     )
 }
 
-pub fn rust_pair_completion_arm_sources(arm: PairCompletionArm) -> Rc<Vec<String>> {
+pub fn rust_pair_completion_arm_sources(arm: Rc<PairCompletionArm>) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for term in arm.terms.clone().iter().cloned() {
@@ -824,7 +824,7 @@ pub fn rust_pair_completion_term_render(
 }
 
 pub fn rust_pair_completion_arm_render(
-    arm: PairCompletionArm,
+    arm: Rc<PairCompletionArm>,
     later_sources: Rc<Vec<String>>,
 ) -> String {
     Rc::new({
@@ -844,7 +844,7 @@ pub fn rust_pair_completion_no_later_sources() -> Rc<Vec<String>> {
     Rc::new(vec![])
 }
 
-pub fn rust_pair_completion_body_render(body: PairCompletionBody) -> String {
+pub fn rust_pair_completion_body_render(body: Rc<PairCompletionBody>) -> String {
     match (*body.clone()).clone() {
         PairCompletionBody::PairCompletionSumOfProducts { pos, neg, .. } => v1_rt::concat(
             v1_rt::concat(
@@ -907,7 +907,7 @@ pub fn rust_pair_completion_body_render(body: PairCompletionBody) -> String {
     }
 }
 
-pub fn rust_pair_completion_impl_render(row: PairCompletionOpRow) -> String {
+pub fn rust_pair_completion_impl_render(row: Rc<PairCompletionOpRow>) -> String {
     match rust_pair_completion_spelling_for(row.op.clone()) {
     Some(spelling) => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("impl<M> ".to_string(), spelling.trait_path.clone()), " for ".to_string()), rust_pair_completion_carrier()), "<M>".to_string()), if (spelling.where_bounds.clone() == "".to_string()) {
         " {\n".to_string()

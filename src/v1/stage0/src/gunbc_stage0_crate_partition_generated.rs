@@ -43,63 +43,63 @@ pub fn generated_stage0_crate_partition_note() -> String {
 pub fn generated_partition_crate_rows() -> Rc<Vec<Rc<GeneratedPartitionCrateRow>>> {
     thread_local! {
             static CACHED: Rc<Vec<Rc<GeneratedPartitionCrateRow>>> = {
-                Rc::new(vec![GeneratedPartitionCrateRow {
+                Rc::new(vec![Rc::new(GeneratedPartitionCrateRow {
         package_name: "v1-stage0-runtime".to_string(),
         crate_dir: "src/v1/stage0_runtime".to_string(),
         kind: GeneratedPartitionCrateKind::GeneratedFoundationCrate,
         modules: Rc::new(vec!["v1_rt".to_string()]),
         reexport_packages: Rc::new(vec![]),
         carries_non_empty_wrappers: true,
-    }, GeneratedPartitionCrateRow {
+    }), Rc::new(GeneratedPartitionCrateRow {
         package_name: "v1-stage0-std-core".to_string(),
         crate_dir: "src/v1/stage0_std_core".to_string(),
         kind: GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate,
         modules: Rc::new(vec!["std_content_hash".to_string(), "std_coercion".to_string(), "std_currency".to_string(), "std_decl_ref".to_string(), "std_disposition".to_string(), "std_error_primitives".to_string(), "std_http_path".to_string(), "std_emit_model".to_string(), "std_magnitude".to_string(), "std_measure".to_string(), "std_types".to_string(), "std_lens_verdict".to_string(), "std_algebra".to_string(), "std_nat".to_string(), "std_node".to_string(), "std_syntax".to_string(), "std_computation".to_string(), "std_termination".to_string(), "std_induction".to_string(), "std_iteration".to_string(), "std_graph".to_string(), "v1_std_core".to_string()]),
         reexport_packages: Rc::new(vec!["v1-stage0-runtime".to_string()]),
         carries_non_empty_wrappers: false,
-    }, GeneratedPartitionCrateRow {
+    }), Rc::new(GeneratedPartitionCrateRow {
         package_name: "v1-stage0-std-surface".to_string(),
         crate_dir: "src/v1/stage0_std_surface".to_string(),
         kind: GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate,
         modules: Rc::new(vec!["std_effects".to_string(), "std_execution_mode".to_string(), "std_interface_summary".to_string(), "std_pareto".to_string(), "std_realization_schedule".to_string()]),
         reexport_packages: Rc::new(vec!["v1-stage0-runtime".to_string(), "v1-stage0-std-core".to_string()]),
         carries_non_empty_wrappers: false,
-    }, GeneratedPartitionCrateRow {
+    }), Rc::new(GeneratedPartitionCrateRow {
         package_name: "v1-stage0-extdeps-base".to_string(),
         crate_dir: "src/v1/stage0_extdeps_base".to_string(),
         kind: GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate,
         modules: Rc::new(vec!["extdeps_external_authority".to_string(), "extdeps_uri".to_string()]),
         reexport_packages: Rc::new(vec!["v1-stage0-runtime".to_string(), "v1-stage0-std-core".to_string(), "v1-stage0-std-surface".to_string()]),
         carries_non_empty_wrappers: false,
-    }, GeneratedPartitionCrateRow {
+    }), Rc::new(GeneratedPartitionCrateRow {
         package_name: "v1-stage0-extdeps-languages".to_string(),
         crate_dir: "src/v1/stage0_extdeps_languages".to_string(),
         kind: GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate,
-        modules: Rc::new(vec!["extdeps_languages_dag_emit".to_string(), "extdeps_languages_dag_syntax".to_string(), "extdeps_languages_dag_types".to_string(), "extdeps_languages_go_emit".to_string(), "extdeps_languages_go_syntax".to_string(), "extdeps_languages_go_types".to_string(), "extdeps_languages_python_emit".to_string(), "extdeps_languages_python_syntax".to_string(), "extdeps_languages_python_types".to_string(), "extdeps_languages_rust_emit".to_string(), "extdeps_languages_rust_syntax".to_string(), "extdeps_languages_rust_types".to_string()]),
+        modules: Rc::new(vec!["extdeps_languages_dag_emit".to_string(), "extdeps_languages_dag_syntax".to_string(), "extdeps_languages_dag_types".to_string(), "extdeps_languages_go_emit".to_string(), "extdeps_languages_go_syntax".to_string(), "extdeps_languages_go_types".to_string(), "extdeps_languages_python_emit".to_string(), "extdeps_languages_python_syntax".to_string(), "extdeps_languages_python_types".to_string(), "extdeps_languages_rust_emit".to_string(), "extdeps_languages_rust_syntax".to_string(), "extdeps_languages_rust_types".to_string(), "extdeps_languages_rust_wrap_catalog".to_string()]),
         reexport_packages: Rc::new(vec!["v1-stage0-runtime".to_string(), "v1-stage0-std-core".to_string(), "v1-stage0-std-surface".to_string(), "v1-stage0-extdeps-base".to_string()]),
         carries_non_empty_wrappers: false,
-    }, GeneratedPartitionCrateRow {
+    }), Rc::new(GeneratedPartitionCrateRow {
         package_name: "v1-stage0-v1-infer".to_string(),
         crate_dir: "src/v1/stage0_v1_infer".to_string(),
         kind: GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate,
         modules: Rc::new(vec!["v1_compiler_infer_emit_info".to_string(), "v1_compiler_infer_env".to_string(), "v1_compiler_infer_items".to_string(), "v1_compiler_infer_service".to_string(), "v1_compiler_infer_sigs".to_string(), "v1_compiler_infer_types".to_string()]),
         reexport_packages: Rc::new(vec!["v1-stage0-runtime".to_string(), "v1-stage0-std-core".to_string(), "v1-stage0-std-surface".to_string(), "v1-stage0-extdeps-base".to_string(), "v1-stage0-extdeps-languages".to_string()]),
         carries_non_empty_wrappers: false,
-    }, GeneratedPartitionCrateRow {
+    }), Rc::new(GeneratedPartitionCrateRow {
         package_name: "v1-stage0-v1-artifact".to_string(),
         crate_dir: "src/v1/stage0_v1_artifact".to_string(),
         kind: GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate,
         modules: Rc::new(vec!["v1_compiler_artifact".to_string(), "v1_compiler_languages".to_string()]),
         reexport_packages: Rc::new(vec!["v1-stage0-runtime".to_string(), "v1-stage0-std-core".to_string(), "v1-stage0-std-surface".to_string(), "v1-stage0-extdeps-base".to_string(), "v1-stage0-extdeps-languages".to_string(), "v1-stage0-v1-infer".to_string()]),
         carries_non_empty_wrappers: false,
-    }, GeneratedPartitionCrateRow {
+    }), Rc::new(GeneratedPartitionCrateRow {
         package_name: "v1-stage0-emit-core".to_string(),
         crate_dir: "src/v1/stage0_emit_core".to_string(),
         kind: GeneratedPartitionCrateKind::GeneratedEmitCoreCrate,
         modules: Rc::new(vec!["v1_compiler_artifact".to_string(), "v1_compiler_infer_items".to_string(), "v1_compiler_infer_service".to_string(), "v1_compiler_infer_types".to_string(), "v1_compiler_languages".to_string(), "v1_rt".to_string(), "v1_std_core".to_string()]),
         reexport_packages: Rc::new(vec![]),
         carries_non_empty_wrappers: false,
-    }])
+    })])
             };
         }
     CACHED.with(|c: &Rc<Vec<Rc<GeneratedPartitionCrateRow>>>| c.clone())
