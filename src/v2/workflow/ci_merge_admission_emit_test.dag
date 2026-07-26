@@ -13,18 +13,26 @@ import v2.workflow.orchestration_bash_emit_support {
 import v2.compiler.emit_orchestration { orch_emit_step }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import v2.std.orchestration {
+  BoundedPoll,
+  Call,
   Comment,
   Do,
   EscalationLevel,
+  Exit,
   ExitStatus,
   FailFast,
+  For,
+  If,
+  IntNe,
+  Let,
   LogMatches,
   Pipeline,
   PipelineStep,
   Retry,
   Run,
   TeeTo,
-  ToFile
+  ToFile,
+  While
 }
 import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { Accepted, EmitDirective, Rejected, SeverityWarning }
@@ -185,7 +193,15 @@ test fn orch_comment_multiline_refused_is_not_executable_second_line_holds() -> 
 test fn orch_bash_comment_line_is_comment_step_holds() -> Bool {
   match orch_bash_comment_line(text: "x") {
     Comment { text: t } => t == "x"
-    _ => false
+    Do { run: _ } => false
+    Exit { status: _ } => false
+    If { cond: _, then_: _, else_: _ } => false
+    For { binder: _, over: _, body: _ } => false
+    While { cond: _, body: _ } => false
+    BoundedPoll { max_attempts: _, body: _, success: _ } => false
+    Retry { body: _, escalations: _, on_exhausted: _ } => false
+    Let { name: _, value: _ } => false
+    Call { callee: _, args: _ } => false
   }
 }
 
@@ -376,6 +392,61 @@ test fn orch_retry_body_tee_to_refused_holds() -> Bool {
         capture: Present { value: TeeTo { log: "BUILD_LOG" } }
       }
     ),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn orch_retry_body_exit_step_refused_holds() -> Bool {
+  match orch_emit_step(
+    s: Retry {
+      body: Pipeline {
+        steps: [Exit { status: "\"$STAMP_EXIT\"" }],
+        on_failure: FailFast
+      },
+      escalations: [orch_retry_body_carrier_probe_escalation()],
+      on_exhausted: Pipeline {
+        steps: [Do { run: Run { command: "exit 1", env: [], redirect: Absent, capture: Absent } }],
+        on_failure: FailFast
+      }
+    },
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn orch_int_ne_then_exit_emit_matches_inline_holds() -> Bool {
+  match orch_emit_step(
+    s: If {
+      cond: IntNe { lhs: "\"$FLOOR_EXIT\"", rhs: "0" },
+      then_: Pipeline {
+        steps: [Exit { status: "\"$FLOOR_EXIT\"" }],
+        on_failure: FailFast
+      },
+      else_: Absent
+    },
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried == "if [ \"$FLOOR_EXIT\" -ne 0 ]; then exit \"$FLOOR_EXIT\"; fi"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_exit_step_emit_matches_golden_holds() -> Bool {
+  match orch_emit_step(s: Exit { status: "\"$STAMP_EXIT\"" }, medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: _ } => source.carried == "exit \"$STAMP_EXIT\""
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_exit_step_metachar_refused_holds() -> Bool {
+  match orch_emit_step(
+    s: Exit { status: "1; rm -rf /" },
     medium: bash_orchestration_emit_medium()
   ) {
     Accepted { value: _, diagnostics: _ } => false

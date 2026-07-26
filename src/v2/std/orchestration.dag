@@ -52,11 +52,14 @@ type Predicate
   | StrEq { lhs: String, rhs: String }
   | StrEmpty { operand: String }
   | StrNonempty { operand: String }
+  | IntNe { lhs: String, rhs: String }
   | Not { inner: Predicate }
   | And { lhs: Predicate, rhs: Predicate }
   | Or { lhs: Predicate, rhs: Predicate }
 
 data predicate_string_test_note: String = "StrEq is binary [ lhs = rhs ]. Unary empty/nonempty tests are StrEmpty (-z) and StrNonempty (-n); do not encode them as StrEq with a literal \"\" operand."
+
+data predicate_int_ne_note: String = "IntNe \{ lhs, rhs \} is the integer inequality test ([ lhs -ne rhs ]). Live consumer: ci_floor_stamp_merge_admission_intent floor-exit propagate If (bucket D PR2a expansion). Emitted via bash_test_int_ne_* grammar rows (sibling of StrEq)."
 
 type EscalationLevel {
   detect: Predicate
@@ -79,6 +82,7 @@ type Procedure {
 type PipelineStep
   = Do { run: Run }
   | Comment { text: String }
+  | Exit { status: String }
   | If { cond: Predicate, then_: Pipeline, else_: Optional<Pipeline> }
   | For { binder: Symbol, over: ValueSource, body: Pipeline }
   | While { cond: Predicate, body: Pipeline }
@@ -96,6 +100,8 @@ type PipelineStep
   | Call { callee: String, args: List<String> }
 
 data pipeline_step_comment_note: String = "Comment \{ text \} is a non-command PipelineStep (comment body WITHOUT the leading \"# \"). Emission reuses the existing orch_construct_run_rawline / realize_run_rawline path (bash_fold_raw_line_target_model) — no new grammar row (operator PR2a ruling). Multiline text is REFUSED (^orch_emit_comment_multiline_refused): a newline would start an executable shell line after the \"# \" prefix, so the non-command invariant holds by construction (fail-closed), not by hoping authors stay single-line. 🟡 dissolve-on: shared with redirect_spec_to_file_note — typed single-line comment-body carrier makes the emit-time newline refuse unwritable-by-construction."
+
+data pipeline_step_exit_note: String = "Exit \{ status \} emits exit <status> via bash_stmt_exit_* grammar rows (not opaque Run.command). status is the operand spelling (live consumers pass quoted expansions like \"\\$FLOOR_EXIT\"). Refuse empty / newline / shell metacharacters (^orch_emit_exit_status_operand_invalid). Live consumer: ci_floor_stamp_merge_admission_intent (propagate + final stamp exit). Retry body with Exit → Absent → ^orch_emit_retry_body_not_run (no silent drop)."
 
 type Pipeline {
   steps: FreeMonoid<PipelineStep>

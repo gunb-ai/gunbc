@@ -16,8 +16,11 @@ import v2.workflow.orchestration_bash_emit_support {
 import v2.std.orchestration {
   Do,
   EnvSet,
+  Exit,
   ExitStatus,
   FailFast,
+  If,
+  IntNe,
   Pipeline,
   PipelineStep,
   Run,
@@ -25,7 +28,7 @@ import v2.std.orchestration {
 }
 import v2.std.collection { Absent, Present }
 
-data ci_merge_admission_emit_authority_note: String = "Foreign-executor shell emission for gunbc.merge_admission_produce script surfaces (bucket D). Intent stays out of dag/gunbc/merge_admission_produce; bash medium binding lives here per shell→intent routing. PR2a carriers: ToFile (stamp), Comment (comment lines), ExitStatus (STAMP_EXIT). PR2b: FileExists + Exit + IntNe for remaining concat surfaces."
+data ci_merge_admission_emit_authority_note: String = "Foreign-executor shell emission for gunbc.merge_admission_produce script surfaces (bucket D). Intent stays out of dag/gunbc/merge_admission_produce; bash medium binding lives here per shell→intent routing. PR2a carriers: ToFile (stamp), Comment (comment lines), ExitStatus (STAMP_EXIT), IntNe + Exit (floor_stamp propagate/final). PR2b residue: FileExists + batch-A surfaces 1/3. Sibling #7298 adds RedirectSpec.DiscardOut to the same orchestration/emit files — this PR lands first; #7298 must merge origin/main after and re-run goldens."
 
 data ci_merge_admission_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ merge-admission run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
 
@@ -67,11 +70,18 @@ data ci_floor_stamp_ambient_exit_command: String = "FLOOR_EXIT=$?"
 
 data ci_floor_stamp_root_command: String = concat("ROOT=", ci_repo_root_shell())
 
-data ci_floor_stamp_propagate_floor_exit_command: String = "if [ \"$FLOOR_EXIT\" -ne 0 ]; then exit \"$FLOOR_EXIT\"; fi"
+data ci_floor_stamp_pr2b_residue_note: String = "DECLARED SCAFFOLD remaining after PR2a IntNe/Exit expansion: ambient FLOOR_EXIT=$? stays constant opaque Run.command (prior-command capture outside this Pipeline — not CaptureSpec-on-Run). FileExists Predicate + batch-A surfaces (ci_documentation_only_gate_skip_prefix / gate) stay PR2b. 🟡 dissolve-on: typed ambient-prior-exit carrier and FileExists + batch-A emit."
 
-data ci_floor_stamp_exit_stamp_command: String = "exit \"$STAMP_EXIT\""
-
-data ci_floor_stamp_pr2b_residue_note: String = "DECLARED SCAFFOLD (not unmarked medium-as-string): lines ci_floor_stamp_propagate_floor_exit_command / ci_floor_stamp_exit_stamp_command (and ambient FLOOR_EXIT=$?) remain constant opaque Run.command under orch_bash_do. Decision rule for this PR: PR2a lands ToFile + Comment + ExitStatus (STAMP_EXIT live on the stamp invoke); IntNe / Exit / FileExists carriers + rewriting those concat lines land in PR2b — inventing them mid-PR2a is the scope-creep twin of leaving them unmarked. 🟡 dissolve-on: Predicate IntNe (or equivalent) + PipelineStep.Exit (and FileExists for batch-A surfaces) make the if/-ne/exit spellings unwritable as Run.command; until then these constants are counted residue, not authority. FLOOR_EXIT=$? is ambient prior-command capture outside this Pipeline (not CaptureSpec-on-Run)."
+fn ci_floor_stamp_propagate_floor_exit_step() -> PipelineStep {
+  If {
+    cond: IntNe { lhs: "\"$FLOOR_EXIT\"", rhs: "0" },
+    then_: Pipeline {
+      steps: [Exit { status: "\"$FLOOR_EXIT\"" }],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
 
 fn ci_floor_stamp_merge_admission_intent() -> Pipeline {
   let _note = ci_floor_stamp_pr2b_residue_note
@@ -87,8 +97,8 @@ fn ci_floor_stamp_merge_admission_intent() -> Pipeline {
           capture: Present { value: ExitStatus { binder: "STAMP_EXIT" } }
         }
       },
-      orch_bash_do(command: ci_floor_stamp_propagate_floor_exit_command),
-      orch_bash_do(command: ci_floor_stamp_exit_stamp_command)
+      ci_floor_stamp_propagate_floor_exit_step(),
+      Exit { status: "\"$STAMP_EXIT\"" }
     ],
     on_failure: FailFast
   }
