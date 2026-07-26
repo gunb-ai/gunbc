@@ -33,6 +33,8 @@ import v2.extdeps.languages.bash {
   bash_stmt_andor_target_model,
   bash_stmt_with_redir_emitted,
   bash_stmt_with_redir_target_model,
+  bash_stmt_exit_emitted,
+  bash_stmt_exit_target_model,
   bash_redir_stdout_and_stderr_null_source_text,
   bash_redir_stderr_null_source_text,
   bash_redir_stdout_to_stderr_source_text,
@@ -50,8 +52,6 @@ import v2.extdeps.languages.bash_orch_if {
   bash_test_str_nonempty_target_model,
   bash_test_int_ne_emitted,
   bash_test_int_ne_target_model,
-  bash_stmt_exit_emitted,
-  bash_stmt_exit_target_model,
   bash_log_matches_grep_emitted,
   bash_log_matches_grep_target_model,
   bash_stmt_or_ignore_fail_emitted,
@@ -748,16 +748,11 @@ fn orch_emit_exit_step(status: String) -> Outcome<extdeps.communication.medium.M
     outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_exit_status_operand_invalid))
   } else {
     bind_outcome(
-      o: bash_stmt_exit_target_model(status: status),
-      f: fn(target) {
-        bind_outcome(
-          o: orch_emit_node_spelling(
-            emitted_root: bash_stmt_exit_emitted,
-            target: target
-          ),
-          f: fn(spelling) { outcome_accepted(lossless_source(text: spelling)) }
-        )
-      }
+      o: orch_emit_node_spelling(
+        emitted_root: bash_stmt_exit_emitted,
+        target: bash_stmt_exit_target_model(code: status)
+      ),
+      f: fn(spelling) { outcome_accepted(lossless_source(text: spelling)) }
     )
   }
 }
