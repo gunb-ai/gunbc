@@ -1355,8 +1355,6 @@ pub fn hand_import_gate_passes(base_ref: &str) -> bool {
         "dag/tools/hand_import_gate.dag",
         "dag/tools/type_resolution_pool_coincidence_transport.dag",
         "dag/std/os/invocation.dag",
-        "dag/gunbc/hand_import_gate_scaffold.dag",
-        "dag/gunbc/type_resolution_pool_coincidence_scaffold.dag",
     ];
     let output = std::process::Command::new("git")
         .args(["diff", "--name-only", base_ref, "HEAD", "--", "dag"])
