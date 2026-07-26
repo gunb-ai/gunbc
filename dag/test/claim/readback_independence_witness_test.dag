@@ -106,8 +106,10 @@ test fn witness_swap_axis_consumes_the_criterion() -> Bool {
     )
 }
 
+data witness_roster_ratchet_note: String = "The roster length is pinned on purpose: adding a probe must be a VISIBLE edit to this witness rather than something that slides in with a green run, because the roster's whole value is being an honest inventory of what this lane has actually reasoned about. It moved 4 → 5 when ip_link_carrier_read_probe was added for the network axis (reading a link's carrier cannot bring the link up, so it classifies Inert). The load-bearing conjunct is the other one — exactly one probe in the roster is non-independent, still sccache_show_stats, the cited instance the module exists for — and it is the conjunct that would red if a newly added probe were quietly classified to make a consumer green."
+
 test fn witness_roster_names_the_cited_incident() -> Bool {
   readback_non_independent_probe_count() == 1
-    && readback_probe_roster.length() == 4
+    && readback_probe_roster.length() == 5
 }
 

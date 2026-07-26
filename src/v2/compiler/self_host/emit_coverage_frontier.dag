@@ -234,7 +234,12 @@ fn coverage_frontier_row_for_subject(subject: DeclarationRef) -> List<EmitCovera
 }
 
 fn schedule_entry_matches(entry: ScheduleWitnessEntry, backing_entry: String, backing_function: String) -> Bool {
-  (entry.entry == backing_entry) && (entry.function == backing_function)
+  // U3 file-grain enrollment uses function: "" to mean every test decl in the entry —
+  // the same sentinel admission expands. Exact-name match alone would refuse a backed
+  // SelfEmittedNative row whose wet roster flipped to file-grain (#7273).
+  (entry.entry == backing_entry) && (
+    (entry.function == backing_function) || (entry.function == "")
+  )
 }
 
 data emit_coverage_backing_check_note: String = "Construction, not a vibe check (DESIGN section 5): a SelfEmittedNative claim is only as good as its citation. coverage_row_backing_is_enrolled cross-references the row's backing_entry/backing_function against falsifier_self_host_wet_template_entries — the SAME enrolled-offline-witness roster wet_receipt_enrollment.dag already gates. A row claiming SelfEmittedNative whose backing citation is not enrolled there is unbacked and the check returns false; this is the discriminating oracle behind the RED probe in emit_coverage_frontier_test.dag."
