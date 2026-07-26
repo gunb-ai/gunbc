@@ -2,7 +2,14 @@ module gunbc.design.material
 
 import std.types { Milliseconds }
 import std.decimal { fixed_point_wire }
-import extdeps.color.srgb { Srgb8, srgb8_to_hsl_projection, hsl_projection_s_pct, hsl_projection_l_pct }
+import std.integer { uint8_channel_inclusive_max_value_derived }
+import std.measure { basis_point_unity_count }
+import extdeps.color.srgb {
+  Srgb8,
+  srgb8_to_hsl_projection_for_max,
+  hsl_projection_s_pct,
+  hsl_projection_l_pct,
+}
 import extdeps.languages.css.properties { CssPropertyName, Transition, css_property_wire }
 import extdeps.languages.css.selectors { SelectorSubject, selector_subject_wire }
 data tokens_note: String = "Layer 2 of the site stack: materials, themes, scales. Register laws living here as CONSTRUCTION. ChromaByArea: a Material carries its AreaClass; saturation ceilings are per-area. GlareEnvelope (operator seventh pass, 2026-07-20: the bright saturated cyan read as low-taste gamer blue): a material may be bright OR chromatic, never both — quiet_envelope refuses sat>45 AND light>68 together, so the gamer register is inadmissible by row. DataVizArea (review finding 4 on PR 6927, pre-modeled seam): status-dense product surfaces (node-level CI views, dashboards) need mutually distinguishable categorical series at exactly the chroma-and-brightness the quiet envelope forbids — so the envelope is AREA-SCOPED by construction: DataVizArea is the one declared exemption lane, its own admission law (distinguishability + CVD separation, cited categorical palettes) lands with its first consumer (the Dashboard archetype study), and today NO theme role projects it — the witness pins that its introduction is a conscious event, never a leak. ThemeCoherence: a Theme is a TOTAL assignment of roles to materials (theme_gaps countable, mirrors interaction coverage), each material's area class must equal the role's declared area class, and every color the page uses routes through a role var — one rule set, N themes; prefers-color-scheme selects, never forks. ContrastLaw (review finding 1, hardened 2026-07-21): theme contrast is computed WCAG relative-luminance contrast via extdeps.accessibility.wcag_contrast — the earlier HSL-lightness-gap check was a non-perceptual proxy that could green while legibility failed; text roles must clear AA normal text (4.5:1), figure/focus roles AA graphical (3:1), against BOTH canvas and surface. StillUntilTouched: MotionTrigger has no ambient variant; no animation/keyframes constructor exists."
@@ -51,8 +58,16 @@ fn quiet_envelope(m: Material) -> Bool {
 }
 
 fn quiet_envelope_srgb8(c: Srgb8) -> Bool {
-  let proj = srgb8_to_hsl_projection(c: c)
-  quiet_envelope_hsl_pct(sat_pct: hsl_projection_s_pct(p: proj), light_pct: hsl_projection_l_pct(p: proj))
+  match uint8_channel_inclusive_max_value_derived() {
+    Absent => false
+    Present { value: maxv } => {
+      let proj = srgb8_to_hsl_projection_for_max(c: c, maxv: maxv, denom: basis_point_unity_count())
+      quiet_envelope_hsl_pct(
+        sat_pct: hsl_projection_s_pct(p: proj),
+        light_pct: hsl_projection_l_pct(p: proj),
+      )
+    }
+  }
 }
 
 fn area_exempt_from_quiet_envelope(area: AreaClass) -> Bool {

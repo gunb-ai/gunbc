@@ -1,10 +1,11 @@
 module gunbc.design.palette
 
 import std.types { Int, String, Bool }
+import std.integer { uint8_channel_inclusive_max_value_derived }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.color.srgb { Srgb8, srgb8_admissible, srgb8_hex }
 import extdeps.accessibility.wcag_contrast {
-  srgb8_contrast_ratio_x100,
+  srgb8_contrast_ratio_x100_for_max,
   wcag_aa_normal_text_hundredths,
   wcag_aa_large_text_and_graphics_hundredths,
   wcag_aaa_normal_text_hundredths,
@@ -114,16 +115,33 @@ type GradedPairing {
   grade: PairingGrade
 }
 
-fn grade_pairing(figure: Swatch, ground: Swatch) -> GradedPairing {
-  let r = srgb8_contrast_ratio_x100(a: figure.color, b: ground.color)
-  GradedPairing { figure: figure, ground: ground, contrast_x100: r, grade: grade_of_contrast(contrast_x100: r) }
+fn grade_pairing_for_max(figure: Swatch, ground: Swatch, maxv: Int) -> GradedPairing {
+  let r = srgb8_contrast_ratio_x100_for_max(a: figure.color, b: ground.color, maxv: maxv)
+  GradedPairing {
+    figure: figure,
+    ground: ground,
+    contrast_x100: r,
+    grade: grade_of_contrast(contrast_x100: r),
+  }
+}
+
+fn grade_pairing(figure: Swatch, ground: Swatch) -> GradedPairing? {
+  match uint8_channel_inclusive_max_value_derived() {
+    Present { value: maxv } => Present { value: grade_pairing_for_max(figure: figure, ground: ground, maxv: maxv) }
+    Absent => none
+  }
 }
 
 fn graded_pairings(s: SwatchSet) -> List<GradedPairing> {
-  let swatches = swatches_of(s: s)
-  fold(swatches, init: [], f: (acc, f) =>
-    concat(acc, fold(swatches, init: [], f: (acc2, g) =>
-      if f.name == g.name { acc2 } else { concat(acc2, [grade_pairing(figure: f, ground: g)]) })))
+  match uint8_channel_inclusive_max_value_derived() {
+    Absent => []
+    Present { value: maxv } => {
+      let swatches = swatches_of(s: s)
+      fold(swatches, init: [], f: (acc, f) =>
+        concat(acc, fold(swatches, init: [], f: (acc2, g) =>
+          if f.name == g.name { acc2 } else { concat(acc2, [grade_pairing_for_max(figure: f, ground: g, maxv: maxv)]) })))
+    }
+  }
 }
 
 fn pairings_at_least(s: SwatchSet, min_rank: Int) -> List<GradedPairing> {

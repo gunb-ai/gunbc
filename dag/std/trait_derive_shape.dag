@@ -274,6 +274,151 @@ fn kernel_int_arithmetic_traits() -> List<ReprGroundingDeriveTrait> {
   }
 }
 
+data pair_completion_shape_note: String = "Target-agnostic authority for the Grothendieck pair-completion operator BODIES on GroupCompletion<M> (std.algebra). Each output component is a polynomial over the four operand components self.pos, self.neg, rhs.pos, rhs.neg: an arm is a sum of terms, a term is a product of factors, a factor names one operand component. Selection (which traits apply) stays in the capability table above; SPELLING (trait paths, where-clauses, field syntax) lives per target in extdeps.languages.rust.emit. Reuses ReprGroundingDeriveTrait as the op key rather than minting a parallel operator enum."
+
+data pair_completion_shape_dissolve_on: String = "Dissolves when v2 derives these rows from the std.algebra Ring/AbelianGroup inhabitance witnesses directly, so the Grothendieck construction is read off the algebra rather than tabulated here; tracked by the numeric-tower grounding lane."
+
+type PairCompletionOperand
+  = PairCompletionSelf
+  | PairCompletionRhs
+
+type PairCompletionComponent
+  = PairCompletionPos
+  | PairCompletionNeg
+
+type PairCompletionFactor {
+  operand: PairCompletionOperand
+  component: PairCompletionComponent
+}
+
+type PairCompletionTerm {
+  factors: List<PairCompletionFactor>
+}
+
+type PairCompletionArm {
+  terms: List<PairCompletionTerm>
+}
+
+type PairCompletionBody
+  = PairCompletionSumOfProducts { pos: PairCompletionArm, neg: PairCompletionArm }
+  | PairCompletionNegatedAddend
+  | PairCompletionCanonicalQuotient
+
+type PairCompletionOpRow {
+  op: ReprGroundingDeriveTrait
+  body: PairCompletionBody
+}
+
+fn pair_completion_factor(
+  operand: PairCompletionOperand,
+  component: PairCompletionComponent
+) -> PairCompletionFactor {
+  PairCompletionFactor { operand: operand, component: component }
+}
+
+fn pair_completion_op_rows() -> List<PairCompletionOpRow> {
+  [
+    PairCompletionOpRow {
+      op: ReprDeriveNeg,
+      body: PairCompletionSumOfProducts {
+        pos: PairCompletionArm {
+          terms: [
+            PairCompletionTerm {
+              factors: [pair_completion_factor(PairCompletionSelf, PairCompletionNeg)]
+            }
+          ]
+        },
+        neg: PairCompletionArm {
+          terms: [
+            PairCompletionTerm {
+              factors: [pair_completion_factor(PairCompletionSelf, PairCompletionPos)]
+            }
+          ]
+        }
+      }
+    },
+    PairCompletionOpRow {
+      op: ReprDeriveAdd,
+      body: PairCompletionSumOfProducts {
+        pos: PairCompletionArm {
+          terms: [
+            PairCompletionTerm {
+              factors: [pair_completion_factor(PairCompletionSelf, PairCompletionPos)]
+            },
+            PairCompletionTerm {
+              factors: [pair_completion_factor(PairCompletionRhs, PairCompletionPos)]
+            }
+          ]
+        },
+        neg: PairCompletionArm {
+          terms: [
+            PairCompletionTerm {
+              factors: [pair_completion_factor(PairCompletionSelf, PairCompletionNeg)]
+            },
+            PairCompletionTerm {
+              factors: [pair_completion_factor(PairCompletionRhs, PairCompletionNeg)]
+            }
+          ]
+        }
+      }
+    },
+    PairCompletionOpRow { op: ReprDeriveSub, body: PairCompletionNegatedAddend },
+    PairCompletionOpRow {
+      op: ReprDeriveMul,
+      body: PairCompletionSumOfProducts {
+        pos: PairCompletionArm {
+          terms: [
+            PairCompletionTerm {
+              factors: [
+                pair_completion_factor(PairCompletionSelf, PairCompletionPos),
+                pair_completion_factor(PairCompletionRhs, PairCompletionPos)
+              ]
+            },
+            PairCompletionTerm {
+              factors: [
+                pair_completion_factor(PairCompletionSelf, PairCompletionNeg),
+                pair_completion_factor(PairCompletionRhs, PairCompletionNeg)
+              ]
+            }
+          ]
+        },
+        neg: PairCompletionArm {
+          terms: [
+            PairCompletionTerm {
+              factors: [
+                pair_completion_factor(PairCompletionSelf, PairCompletionPos),
+                pair_completion_factor(PairCompletionRhs, PairCompletionNeg)
+              ]
+            },
+            PairCompletionTerm {
+              factors: [
+                pair_completion_factor(PairCompletionSelf, PairCompletionNeg),
+                pair_completion_factor(PairCompletionRhs, PairCompletionPos)
+              ]
+            }
+          ]
+        }
+      }
+    },
+    PairCompletionOpRow { op: ReprDeriveDiv, body: PairCompletionCanonicalQuotient }
+  ]
+}
+
+data pair_completion_uses_rhs_dissolve_on: String = "dissolve-on: std.trait_derive_shape.pair_completion_arm_uses_rhs / pair_completion_body_uses_rhs — variant-discriminating Bool predicates over PairCompletionOperand / PairCompletionBody, retained only because operand arity is DERIVED from the formula rather than stored (storing an arity field would be a second representation of what the arms already say). They dissolve into an arity projection carried on PairCompletionOpRow at construction the moment a second consumer needs arity, or the moment refinement predicates become construction-enforced so the projection can be made total by construction; until then the derivation is the single authority and these are its only readers."
+
+fn pair_completion_arm_uses_rhs(arm: PairCompletionArm) -> Bool {
+  arm.terms |> any(term => term.factors |> any(f => match f.operand { PairCompletionRhs => true  PairCompletionSelf => false }))
+}
+
+fn pair_completion_body_uses_rhs(body: PairCompletionBody) -> Bool {
+  match body {
+    PairCompletionSumOfProducts { pos: pos, neg: neg } =>
+      pair_completion_arm_uses_rhs(pos) || pair_completion_arm_uses_rhs(neg)
+    PairCompletionNegatedAddend => true
+    PairCompletionCanonicalQuotient => true
+  }
+}
+
 fn repr_grounding_supplemental_group_completion_target(module_path: String, name: String) -> Bool {
   module_path == "std.algebra" && name == "GroupCompletion"
 }
