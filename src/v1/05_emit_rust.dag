@@ -810,7 +810,6 @@ fn rust_seed_effective_reference_layer(type_name: String, rendered: String, use_
       match rust_sg_rc_wrap_layer_lookup(carrier: rust_sg_rc_wrap_carrier_key(type_name: type_name), use_site: use_site) {
         Present { value: layer } => layer
         Absent =>
-          // SCAFFOLD — dissolve-on: rust_seed_legacy_container_blanket_dissolve_on
           if rust_seed_legacy_container_blanket_rc(rendered: rendered) {
             ReferenceLayerRc
           } else {

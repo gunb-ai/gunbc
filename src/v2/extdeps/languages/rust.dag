@@ -255,10 +255,12 @@ import v2.std.algebra {
   fold_list_right,
   length,
   list_append,
+  list_map,
   list_snoc_item,
   ordered_ring_node,
   ordered_ring_type_node
 }
+import std.bytes { pure_dag_seam_unreachable }
 import v2.std.cardinality { Never }
 import v2.std.host_transport {
   EmitHostRuntimeRow,
@@ -4260,16 +4262,32 @@ fn rust_sg_rc_wrap_catalog_unknown_carrier_rejects() -> Bool {
   }
 }
 
+fn rust_sg_rc_wrap_catalog_row_to_realization_required(
+  row: RustSgRcOwnershipWrapCatalogRow
+) -> TargetUseSiteOwnershipRealization {
+  match rust_sg_rc_wrap_catalog_row_to_realization(row: row) {
+    Present { value: realization } => realization
+    Absent => rust_sg_rc_wrap_catalog_row_to_realization_refused(row: row)
+  }
+}
+
+fn rust_sg_rc_wrap_catalog_row_to_realization_refused(
+  row: RustSgRcOwnershipWrapCatalogRow
+) -> TargetUseSiteOwnershipRealization {
+  match rust_sg_rc_wrap_catalog_row_to_realization(row: row) {
+    Present { value: realization } => realization
+    Absent =>
+      match pure_dag_seam_unreachable() {
+        _ => rust_sg_rc_wrap_catalog_row_to_realization_refused(row: row)
+      }
+  }
+}
+
 fn rust_sg_rc_use_site_ownership_catalog() -> List<TargetUseSiteOwnershipRealization> {
-  rust_sg_rc_ownership_wrap_catalog_rows()
-    |> fold_list(
-      init: [],
-      f: (acc, row) =>
-        match rust_sg_rc_wrap_catalog_row_to_realization(row: row) {
-          Present { value: realization } => list_snoc_item(xs: acc, item: realization)
-          Absent => acc
-        }
-    )
+  list_map(
+    xs: rust_sg_rc_ownership_wrap_catalog_rows(),
+    f: rust_sg_rc_wrap_catalog_row_to_realization_required
+  )
 }
 
 fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
