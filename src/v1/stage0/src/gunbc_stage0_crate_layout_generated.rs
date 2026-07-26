@@ -30,7 +30,7 @@ pub fn generated_pub_mod_block() -> String {
 pub fn generated_pub_mod_basenames() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["v1_interpreter".to_string(), "cli_run".to_string(), "test_module_hygiene".to_string(), "coproduct_reflection".to_string(), "resolved_graph_cache".to_string(), "shared_typecheck_store".to_string(), "recorded_fixture".to_string(), "memory_governor".to_string(), "module_path_index".to_string(), "usv_pilot_v2_std_algebra".to_string(), "usv_pilot_v2_std_collection".to_string(), "usv_pilot_v2_std_node".to_string(), "v2_compiler_resolve".to_string(), "v2_compiler_program_partition".to_string(), "v2_compiler_tokenize".to_string(), "v2_compiler_infer".to_string(), "v2_compiler_body_producer".to_string(), "v2_compiler_normalize".to_string(), "v2_compiler_target_carriers".to_string(), "v2_compiler_discovery_enumeration".to_string(), "v2_compiler_parse_engine_hooks".to_string(), "v2_compiler_use_site_verdict".to_string()])
+            vec!["v1_interpreter".to_string(), "cli_run".to_string(), "test_module_hygiene".to_string(), "coproduct_reflection".to_string(), "resolved_graph_cache".to_string(), "shared_typecheck_store".to_string(), "recorded_fixture".to_string(), "memory_governor".to_string(), "module_path_index".to_string(), "usv_pilot_v2_std_algebra".to_string(), "usv_pilot_v2_std_collection".to_string(), "usv_pilot_v2_std_node".to_string(), "v2_compiler_resolve".to_string(), "v2_compiler_program_partition".to_string(), "v2_compiler_tokenize".to_string(), "v2_compiler_infer".to_string(), "v2_compiler_body_producer".to_string(), "v2_compiler_normalize".to_string(), "v2_compiler_target_carriers".to_string(), "v2_compiler_discovery_enumeration".to_string(), "v2_compiler_parse_engine_hooks".to_string(), "v2_compiler_use_site_verdict".to_string()]
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
@@ -39,7 +39,7 @@ pub fn generated_pub_mod_basenames() -> Rc<Vec<String>> {
 pub fn generated_stage0_filenames() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["v1_interpreter.rs".to_string(), "cli_run.rs".to_string(), "test_module_hygiene.rs".to_string(), "coproduct_reflection.rs".to_string(), "resolved_graph_cache.rs".to_string(), "shared_typecheck_store.rs".to_string(), "recorded_fixture.rs".to_string(), "main.rs".to_string(), "phase_profile.rs".to_string(), "pre_push.rs".to_string(), "census_exclude_derive.rs".to_string(), "memory_governor.rs".to_string(), "std_lens_verdict.rs".to_string(), "usv_pilot_v2_std_algebra.rs".to_string(), "usv_pilot_v2_std_collection.rs".to_string(), "usv_pilot_v2_std_node.rs".to_string(), "v2_compiler_resolve.rs".to_string(), "v2_compiler_program_partition.rs".to_string(), "v2_compiler_tokenize.rs".to_string(), "v2_compiler_infer.rs".to_string(), "v2_compiler_body_producer.rs".to_string(), "v2_compiler_normalize.rs".to_string(), "v2_compiler_target_carriers.rs".to_string(), "v2_compiler_discovery_enumeration.rs".to_string(), "v2_compiler_parse_engine_hooks.rs".to_string(), "v2_compiler_use_site_verdict.rs".to_string()])
+            vec!["v1_interpreter.rs".to_string(), "cli_run.rs".to_string(), "test_module_hygiene.rs".to_string(), "coproduct_reflection.rs".to_string(), "resolved_graph_cache.rs".to_string(), "shared_typecheck_store.rs".to_string(), "recorded_fixture.rs".to_string(), "main.rs".to_string(), "phase_profile.rs".to_string(), "pre_push.rs".to_string(), "census_exclude_derive.rs".to_string(), "memory_governor.rs".to_string(), "std_lens_verdict.rs".to_string(), "usv_pilot_v2_std_algebra.rs".to_string(), "usv_pilot_v2_std_collection.rs".to_string(), "usv_pilot_v2_std_node.rs".to_string(), "v2_compiler_resolve.rs".to_string(), "v2_compiler_program_partition.rs".to_string(), "v2_compiler_tokenize.rs".to_string(), "v2_compiler_infer.rs".to_string(), "v2_compiler_body_producer.rs".to_string(), "v2_compiler_normalize.rs".to_string(), "v2_compiler_target_carriers.rs".to_string(), "v2_compiler_discovery_enumeration.rs".to_string(), "v2_compiler_parse_engine_hooks.rs".to_string(), "v2_compiler_use_site_verdict.rs".to_string()]
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
@@ -48,7 +48,7 @@ pub fn generated_stage0_filenames() -> Rc<Vec<String>> {
 pub fn generated_stage0_dirs() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["module_path_index".to_string()])
+            vec!["module_path_index".to_string()]
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())

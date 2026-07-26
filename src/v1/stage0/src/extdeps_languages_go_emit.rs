@@ -15,12 +15,12 @@ use std::rc::Rc;
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+                ExternalAuthority {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "go.dev/ref/spec".to_string(),
-    }),
-    })
+    },
+    }
             };
         }
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
@@ -64,7 +64,7 @@ pub fn go_container_templates() -> Rc<HashMap<String, String>> {
 pub fn go_reserved() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["break".to_string(), "case".to_string(), "chan".to_string(), "const".to_string(), "continue".to_string(), "default".to_string(), "defer".to_string(), "else".to_string(), "fallthrough".to_string(), "for".to_string(), "func".to_string(), "go".to_string(), "goto".to_string(), "if".to_string(), "import".to_string(), "interface".to_string(), "map".to_string(), "package".to_string(), "range".to_string(), "return".to_string(), "select".to_string(), "struct".to_string(), "switch".to_string(), "type".to_string(), "var".to_string(), "bool".to_string(), "byte".to_string(), "complex64".to_string(), "complex128".to_string(), "error".to_string(), "float32".to_string(), "float64".to_string(), "int".to_string(), "int8".to_string(), "int16".to_string(), "int32".to_string(), "int64".to_string(), "rune".to_string(), "string".to_string(), "uint".to_string(), "uint8".to_string(), "uint16".to_string(), "uint32".to_string(), "uint64".to_string(), "uintptr".to_string(), "true".to_string(), "false".to_string(), "iota".to_string(), "nil".to_string(), "append".to_string(), "cap".to_string(), "close".to_string(), "complex".to_string(), "copy".to_string(), "delete".to_string(), "imag".to_string(), "len".to_string(), "make".to_string(), "new".to_string(), "panic".to_string(), "print".to_string(), "println".to_string(), "real".to_string(), "recover".to_string()])
+            vec!["break".to_string(), "case".to_string(), "chan".to_string(), "const".to_string(), "continue".to_string(), "default".to_string(), "defer".to_string(), "else".to_string(), "fallthrough".to_string(), "for".to_string(), "func".to_string(), "go".to_string(), "goto".to_string(), "if".to_string(), "import".to_string(), "interface".to_string(), "map".to_string(), "package".to_string(), "range".to_string(), "return".to_string(), "select".to_string(), "struct".to_string(), "switch".to_string(), "type".to_string(), "var".to_string(), "bool".to_string(), "byte".to_string(), "complex64".to_string(), "complex128".to_string(), "error".to_string(), "float32".to_string(), "float64".to_string(), "int".to_string(), "int8".to_string(), "int16".to_string(), "int32".to_string(), "int64".to_string(), "rune".to_string(), "string".to_string(), "uint".to_string(), "uint8".to_string(), "uint16".to_string(), "uint32".to_string(), "uint64".to_string(), "uintptr".to_string(), "true".to_string(), "false".to_string(), "iota".to_string(), "nil".to_string(), "append".to_string(), "cap".to_string(), "close".to_string(), "complex".to_string(), "copy".to_string(), "delete".to_string(), "imag".to_string(), "len".to_string(), "make".to_string(), "new".to_string(), "panic".to_string(), "print".to_string(), "println".to_string(), "real".to_string(), "recover".to_string()]
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
@@ -199,7 +199,7 @@ pub fn go_source_extension() -> String {
 pub fn go_string_types() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["String".to_string(), "Secret".to_string()])
+            vec!["String".to_string(), "Secret".to_string()]
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
@@ -218,7 +218,7 @@ pub fn go_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 pub fn go_method_templates_flat() -> Rc<HashMap<String, String>> {
     go_simple_method_specs().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, spec: _| {
+        |acc: HashMap<String, String>, spec: _| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )

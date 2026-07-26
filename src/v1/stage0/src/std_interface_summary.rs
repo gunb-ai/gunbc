@@ -70,27 +70,27 @@ pub struct InterfaceSummary {
 pub fn interface_summary_v0_dissolution_trigger() -> Rc<Disposition> {
     thread_local! {
             static CACHED: Rc<Disposition> = {
-                Rc::new(Disposition::Scaffold {
+                Disposition::Scaffold {
         dissolves_to: ConstructionMechanism::SingleAuthority,
-        bind: Rc::new(DeclarationRef {
+        bind: DeclarationRef {
         module_path: "std.interface_summary".to_string(),
         decl_name: "export_entry_fingerprint".to_string(),
-        field: Rc::new(DeclField::WholeDeclaration),
-    }),
-    })
+        field: DeclField::WholeDeclaration,
+    },
+    }
             };
         }
     CACHED.with(|c: &Rc<Disposition>| c.clone())
 }
 
 pub fn signature_contract(signature: ContentHash) -> Rc<InterfaceContract> {
-    Rc::new(InterfaceContract::SignatureContract {
+    InterfaceContract::SignatureContract {
         signature: signature.clone(),
-    })
+    }
 }
 
 pub fn contract_absent() -> Rc<InterfaceContract> {
-    Rc::new(InterfaceContract::ContractAbsent)
+    InterfaceContract::ContractAbsent
 }
 
 pub fn export_kind_tag(kind: ExportKind) -> String {

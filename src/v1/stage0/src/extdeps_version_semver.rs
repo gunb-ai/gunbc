@@ -21,12 +21,12 @@ use std::rc::Rc;
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+                ExternalAuthority {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "semver.org/".to_string(),
-    }),
-    })
+    },
+    }
             };
         }
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
@@ -222,9 +222,9 @@ pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Ordering {
 pub fn semver_scheme() -> Rc<VersionScheme> {
     thread_local! {
             static CACHED: Rc<VersionScheme> = {
-                Rc::new(VersionScheme {
+                VersionScheme {
         compare: Rc::new(semver_identity_compare),
-    })
+    }
             };
         }
     CACHED.with(|c: &Rc<VersionScheme>| c.clone())

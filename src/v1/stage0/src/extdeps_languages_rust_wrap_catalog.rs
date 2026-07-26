@@ -2,6 +2,7 @@
 // Source module: extdeps.languages.rust.wrap_catalog
 
 use self::OwnershipReferenceLayer::*;
+use self::OwnershipWrapCarrier::*;
 use self::OwnershipWrapSourceProjection::*;
 use self::OwnershipWrapUseSite::*;
 pub use crate::std_types::List;
@@ -15,7 +16,7 @@ use std::rc::Rc;
 pub fn rust_sg_rc_wrap_catalog_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Single authority for rust_sg_rc_use_site_ownership_catalog rows (v1 seed emitter + v2.extdeps.languages.rust). Carrier names are Rust spellings at the emit boundary; NonEmptyDiagnostics aliases Diagnostics.".to_string()
+            "Single authority for rust_sg_rc_use_site_ownership_catalog rows (v1 seed emitter + v2.extdeps.languages.rust). Carrier is a closed enum (not a string tag). NonEmptyDiagnostics aliases Diagnostics at the lookup boundary only — dissolve-on: modeled alias row in the catalog when NonEmptyDiagnostics itself dissolves (§3 nickname; do not grow rust_sg_rc_wrap_carrier_key string branches).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -52,9 +53,25 @@ pub enum OwnershipWrapSourceProjection {
     UseSiteOwnershipInstantiationHeadCarrier,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum OwnershipWrapCarrier {
+    WrapCarrierDiagnostics,
+    WrapCarrierNode,
+    WrapCarrierTestClaim,
+    WrapCarrierFreeMonoid,
+    WrapCarrierOutcome,
+    WrapCarrierModelCore,
+    WrapCarrierAlgebraInhabitanceDecl,
+    WrapCarrierProbeHeap,
+    WrapCarrierUseSiteVerdict,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RustSgRcOwnershipWrapCatalogRow {
-    pub carrier: String,
+    pub carrier: OwnershipWrapCarrier,
     pub source_projection: OwnershipWrapSourceProjection,
     pub use_site: OwnershipWrapUseSite,
     pub reference_layer: OwnershipReferenceLayer,
@@ -68,156 +85,170 @@ pub fn rust_sg_rc_wrap_carrier_key(type_name: String) -> String {
     }
 }
 
+pub fn rust_sg_rc_wrap_carrier_from_type_name(type_name: String) -> Option<OwnershipWrapCarrier> {
+    match rust_sg_rc_wrap_carrier_key(type_name.clone()).as_str() {
+        "Diagnostics" => Some(OwnershipWrapCarrier::WrapCarrierDiagnostics),
+        "Node" => Some(OwnershipWrapCarrier::WrapCarrierNode),
+        "TestClaim" => Some(OwnershipWrapCarrier::WrapCarrierTestClaim),
+        "FreeMonoid" => Some(OwnershipWrapCarrier::WrapCarrierFreeMonoid),
+        "Outcome" => Some(OwnershipWrapCarrier::WrapCarrierOutcome),
+        "ModelCore" => Some(OwnershipWrapCarrier::WrapCarrierModelCore),
+        "AlgebraInhabitanceDecl" => Some(OwnershipWrapCarrier::WrapCarrierAlgebraInhabitanceDecl),
+        "ProbeHeap" => Some(OwnershipWrapCarrier::WrapCarrierProbeHeap),
+        "UseSiteVerdict" => Some(OwnershipWrapCarrier::WrapCarrierUseSiteVerdict),
+        _ => None,
+    }
+}
+
 pub fn rust_sg_rc_ownership_wrap_catalog_rows() -> Rc<Vec<Rc<RustSgRcOwnershipWrapCatalogRow>>> {
     Rc::new(vec![
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "Diagnostics".to_string(),
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierDiagnostics,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionReturn,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "Diagnostics".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierDiagnostics,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionParameter,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerOwned,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "Diagnostics".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierDiagnostics,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtBindingProjection,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "Node".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierNode,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionReturn,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "Node".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierNode,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionParameter,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerOwned,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "Node".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierNode,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtStructField,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerBox,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "Node".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierNode,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtBindingProjection,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "TestClaim".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierTestClaim,
             source_projection:
                 OwnershipWrapSourceProjection::UseSiteOwnershipInstantiationHeadCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionReturn,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "TestClaim".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierTestClaim,
             source_projection:
                 OwnershipWrapSourceProjection::UseSiteOwnershipInstantiationHeadCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtBindingProjection,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "FreeMonoid".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierFreeMonoid,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionReturn,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "FreeMonoid".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierFreeMonoid,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtBindingProjection,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "Outcome".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierOutcome,
             source_projection:
                 OwnershipWrapSourceProjection::UseSiteOwnershipInstantiationHeadCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionReturn,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "Outcome".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierOutcome,
             source_projection:
                 OwnershipWrapSourceProjection::UseSiteOwnershipInstantiationHeadCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtBindingProjection,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "ModelCore".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierModelCore,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionReturn,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "ModelCore".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierModelCore,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtBindingProjection,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "AlgebraInhabitanceDecl".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierAlgebraInhabitanceDecl,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionReturn,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "AlgebraInhabitanceDecl".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierAlgebraInhabitanceDecl,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtBindingProjection,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "ProbeHeap".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierProbeHeap,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionReturn,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "ProbeHeap".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierProbeHeap,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtBindingProjection,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "UseSiteVerdict".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierUseSiteVerdict,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionReturn,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerOwned,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "UseSiteVerdict".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierUseSiteVerdict,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionParameter,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerOwned,
-        }),
-        Rc::new(RustSgRcOwnershipWrapCatalogRow {
-            carrier: "UseSiteVerdict".to_string(),
+        },
+        RustSgRcOwnershipWrapCatalogRow {
+            carrier: OwnershipWrapCarrier::WrapCarrierUseSiteVerdict,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtBindingProjection,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerOwned,
-        }),
+        },
     ])
 }
 
 pub fn rust_sg_rc_wrap_layer_lookup(
-    carrier: String,
+    type_name: String,
     use_site: OwnershipWrapUseSite,
 ) -> Option<OwnershipReferenceLayer> {
     match use_site.clone() {
         OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent => None,
-        _ => {
-            let key = rust_sg_rc_wrap_carrier_key(carrier.clone());
-            rust_sg_rc_ownership_wrap_catalog_rows()
+        _ => match rust_sg_rc_wrap_carrier_from_type_name(type_name.clone()) {
+            Some(carrier) => rust_sg_rc_ownership_wrap_catalog_rows()
                 .iter()
                 .cloned()
                 .fold(
@@ -225,7 +256,7 @@ pub fn rust_sg_rc_wrap_layer_lookup(
                     |acc: _, row: Rc<RustSgRcOwnershipWrapCatalogRow>| match acc.clone() {
                         Some(_) => acc.clone(),
                         None => {
-                            if ((row.carrier.clone() == key.clone())
+                            if ((row.carrier.clone() == carrier.clone())
                                 && (row.use_site.clone() == use_site.clone()))
                             {
                                 Some(row.reference_layer.clone())
@@ -234,8 +265,9 @@ pub fn rust_sg_rc_wrap_layer_lookup(
                             }
                         }
                     },
-                )
-        }
+                ),
+            None => None,
+        },
     }
 }
 
@@ -259,3 +291,21 @@ pub struct ReferenceLayerBox;
 pub struct UseSiteOwnershipExactCarrier;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UseSiteOwnershipInstantiationHeadCarrier;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WrapCarrierDiagnostics;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WrapCarrierNode;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WrapCarrierTestClaim;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WrapCarrierFreeMonoid;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WrapCarrierOutcome;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WrapCarrierModelCore;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WrapCarrierAlgebraInhabitanceDecl;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WrapCarrierProbeHeap;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WrapCarrierUseSiteVerdict;
