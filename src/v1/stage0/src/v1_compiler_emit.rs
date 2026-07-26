@@ -120,7 +120,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
+pub fn is_type_variable(inferred: InferredNode) -> bool {
     match (*inferred.clone()).clone() {
         InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
@@ -135,7 +135,7 @@ pub struct BlockEmitState {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TcoFrame {
-    pub expr: Rc<Node>,
+    pub expr: Box<Rc<Node>>,
     pub scope: Rc<InferScope>,
     pub depth: i64,
 }
@@ -257,7 +257,7 @@ pub fn collect_type_names_from_items(
 }
 
 pub fn collect_type_names_from_node(
-    n: Rc<Node>,
+    n: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -288,7 +288,7 @@ pub struct InterpPart {
 }
 
 pub fn emit_simple_expr(
-    expr: Rc<Node>,
+    expr: Node,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -365,13 +365,13 @@ pub fn emit_simple_expr(
                                 else {
                                     unreachable!()
                                 };
-                                Rc::new(StringPart::Text {
+                                StringPart::Text {
                                     value: text.clone(),
-                                })
+                                }
                             }
-                            _ => Rc::new(StringPart::Interpolation {
+                            _ => StringPart::Interpolation {
                                 expr: arg_value(child.clone()),
-                            }),
+                            },
                         });
                     }
                     __result
@@ -477,19 +477,19 @@ pub fn emit_simple_string_interp(
                                 } else {
                                     base.clone()
                                 };
-                                Rc::new(InterpPart {
+                                InterpPart {
                                     format_segment: escaped.clone(),
                                     arg_expr: "".to_string(),
-                                })
+                                }
                             }
-                            StringPart::Interpolation { expr: e, .. } => Rc::new(InterpPart {
+                            StringPart::Interpolation { expr: e, .. } => InterpPart {
                                 format_segment: ph.clone(),
                                 arg_expr: emit_simple_expr(
                                     e.clone(),
                                     target.clone(),
                                     source_indices.clone(),
                                 ),
-                            }),
+                            },
                         });
                     }
                     __result
@@ -571,8 +571,8 @@ pub fn emit_simple_string_interp(
 }
 
 pub fn empty_emit_scope() -> Rc<InferScope> {
-    Rc::new(InferScope {
-        type_env: Rc::new(TypeEnv {
+    InferScope {
+        type_env: TypeEnv {
             module_path: "".to_string(),
             bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
             str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
@@ -580,29 +580,29 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
-            inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
+            inductive_fields: v1_rt::rc_empty_map::<String, Vec<Rc<InductiveField>>>(),
             source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             intern_table: empty_intern_table(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: empty_symbol_index(),
-        }),
-        func_env: Rc::new(ResolvedFuncEnv {
+        },
+        func_env: ResolvedFuncEnv {
             name: "".to_string(),
             local: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
             parents: Rc::new(vec![]),
-        }),
+        },
         locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         body_locals: v1_rt::rc_empty_map::<String, bool>(),
         match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
         module_name: "".to_string(),
-        service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
+        service_registry: v1_rt::rc_empty_map::<String, Vec<Rc<OpEntry>>>(),
         item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
         lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
-    })
+    }
 }
 
 pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
-    Rc::new(InferScope {
+    InferScope {
         type_env: typed_module.type_env.clone(),
         func_env: typed_module.func_env.clone(),
         locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
@@ -612,13 +612,13 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
             typed_module.type_env.clone().source_indices.clone(),
             typed_module.module.clone(),
         ),
-        service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
+        service_registry: v1_rt::rc_empty_map::<String, Vec<Rc<OpEntry>>>(),
         item_registry: typed_module.item_registry.clone(),
         lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
-    })
+    }
 }
 
-pub fn scope_after_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferScope> {
+pub fn scope_after_expr(texpr: Node, scope: Rc<InferScope>) -> Rc<InferScope> {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprLet => {
             let ch = texpr.children.clone();
@@ -633,7 +633,7 @@ pub fn scope_after_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferScope
                             scope.type_env.clone().source_indices.clone(),
                         ),
                         resolved_type(value.clone()),
-                        Rc::new(SubValueRelation::SubValueUnknown),
+                        SubValueRelation::SubValueUnknown,
                     )
                 }
             } else {
@@ -663,7 +663,7 @@ pub fn lookup_func_sig_in_scope(
 }
 
 pub fn typed_named_arg_matches(
-    arg: Rc<Node>,
+    arg: Node,
     name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -702,7 +702,7 @@ pub fn order_typed_call_args(
                 Some(sig) => {
                     let arg_map = args.clone().iter().cloned().fold(
                         v1_rt::rc_empty_map::<String, Rc<Node>>(),
-                        |acc: Rc<HashMap<String, Rc<Node>>>, arg: Rc<Node>| {
+                        |acc: HashMap<String, Rc<Node>>, arg: Rc<Node>| {
                             let n = arg_name_at(
                                 arg.clone(),
                                 scope.type_env.clone().source_indices.clone(),
@@ -716,7 +716,7 @@ pub fn order_typed_call_args(
                     );
                     let param_name_set = sig.params.clone().iter().cloned().fold(
                         v1_rt::rc_empty_map::<String, bool>(),
-                        |acc: Rc<HashMap<String, bool>>, param: Rc<Node>| {
+                        |acc: HashMap<String, bool>, param: Rc<Node>| {
                             v1_rt::rc_map_insert(
                                 acc,
                                 param_node_name_at(
@@ -775,7 +775,7 @@ pub fn order_typed_call_args(
 }
 
 pub fn has_nested_records_node(
-    mut n: Rc<Node>,
+    mut n: Node,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
@@ -830,7 +830,7 @@ pub fn has_nested_records_node(
 }
 
 pub fn emit_data_value_json(
-    value: Rc<Node>,
+    value: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -1249,7 +1249,7 @@ pub fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -
 }
 
 pub fn emit_node_type(
-    n: Rc<Node>,
+    n: Node,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -1261,7 +1261,7 @@ pub fn emit_node_type(
     )
 }
 
-pub fn named_type_vars_in_inferred(inferred: Option<Rc<InferredNode>>) -> Rc<Vec<String>> {
+pub fn named_type_vars_in_inferred(inferred: Option<InferredNode>) -> Rc<Vec<String>> {
     match inferred.clone().as_deref().cloned() {
         Some(InferredNode::TypeVariable { id: var_id, .. }) => Rc::new(vec![var_id.clone()]),
         Some(InferredNode::Resolved { node: rt, .. }) => named_type_vars_in_node(rt.clone()),
@@ -1269,7 +1269,7 @@ pub fn named_type_vars_in_inferred(inferred: Option<Rc<InferredNode>>) -> Rc<Vec
     }
 }
 
-pub fn named_type_vars_in_node(n: Rc<Node>) -> Rc<Vec<String>> {
+pub fn named_type_vars_in_node(n: Node) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_vars = named_type_vars_in_inferred(n.inferred.clone());
         let child_vars = Rc::new({
@@ -1298,7 +1298,7 @@ pub fn named_type_vars_in_node(n: Rc<Node>) -> Rc<Vec<String>> {
 }
 
 pub fn render_named_type_base(
-    n: Rc<Node>,
+    n: Node,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -1341,7 +1341,7 @@ pub fn render_named_type_base(
 }
 
 pub fn render_node_type(
-    n: Rc<Node>,
+    n: Node,
     target: RenderTarget,
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -1840,7 +1840,7 @@ pub fn has_service_items(typed: Rc<ResolvedGraph>) -> bool {
     }
 }
 
-pub fn service_fallback_transport(item: Rc<Node>) -> Rc<Node> {
+pub fn service_fallback_transport(item: Node) -> Rc<Node> {
     if (item.transport.clone() == None) {
         local_transport_node(item.span.clone())
     } else {
@@ -1848,7 +1848,7 @@ pub fn service_fallback_transport(item: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn effective_operation_transport(op_node: Rc<Node>, fallback: Rc<Node>) -> Rc<Node> {
+pub fn effective_operation_transport(op_node: Node, fallback: Node) -> Rc<Node> {
     match op_node.transport.clone() {
         Some(op_transport) => op_transport.clone(),
         None => fallback,
@@ -1856,7 +1856,7 @@ pub fn effective_operation_transport(op_node: Rc<Node>, fallback: Rc<Node>) -> R
 }
 
 pub fn service_has_rest(
-    fallback_transport: Rc<Node>,
+    fallback_transport: Node,
     op_children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -1883,7 +1883,7 @@ pub fn service_has_rest(
     }
 }
 
-pub fn service_has_shell(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
+pub fn service_has_shell(fallback_transport: Node, op_children: Rc<Vec<Rc<Node>>>) -> bool {
     {
         let from_fallback = is_shell_transport(fallback_transport.clone());
         let from_ops = {
@@ -1905,7 +1905,7 @@ pub fn service_has_shell(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<No
 }
 
 pub fn service_has_file(
-    fallback_transport: Rc<Node>,
+    fallback_transport: Node,
     op_children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -1933,7 +1933,7 @@ pub fn service_has_file(
 }
 
 pub fn service_has_rest_auth(
-    fallback_transport: Rc<Node>,
+    fallback_transport: Node,
     op_children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -1999,7 +1999,7 @@ pub struct ServiceFieldSet {
 }
 
 pub fn compute_service_fields(
-    fallback_transport: Rc<Node>,
+    fallback_transport: Node,
     op_children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> ServiceFieldSet {
@@ -2078,14 +2078,13 @@ pub fn service_field_ctors(fs: ServiceFieldSet, t: Rc<ServiceFieldTemplates>) ->
 }
 
 pub fn emit_unified_transport_dispatch(
-    transport: Rc<Node>,
+    transport: Node,
     op_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
     target: RenderTarget,
-    render_rest: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String + Clone,
-    render_shell: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String
-        + Clone,
+    render_rest: impl Fn(String, Node, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String + Clone,
+    render_shell: impl Fn(String, Node, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String + Clone,
     render_file: impl Fn(String, i64) -> String + Clone,
     render_local: impl Fn(String, i64) -> String + Clone,
 ) -> String {
@@ -2120,12 +2119,12 @@ pub fn emit_unified_transport_dispatch(
 
 pub fn emit_unified_operation_method(
     service_name: String,
-    fallback_transport: Rc<Node>,
-    op_node: Rc<Node>,
+    fallback_transport: Node,
+    op_node: Node,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    env: Rc<TypeEnv>,
-    render_transport_body: impl Fn(Rc<Node>, String, Rc<HashMap<String, Rc<NewlineIndex>>>, i64) -> String
+    env: TypeEnv,
+    render_transport_body: impl Fn(Node, String, Rc<HashMap<String, Rc<NewlineIndex>>>, i64) -> String
         + Clone,
 ) -> String {
     {
@@ -2219,13 +2218,13 @@ pub fn emit_unified_operation_method(
 }
 
 pub fn emit_unified_service_def(
-    item: Rc<Node>,
+    item: Node,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    env: Rc<TypeEnv>,
-    render_service_fields: impl Fn(String, Rc<Node>, Rc<Vec<Rc<Node>>>, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String
+    env: TypeEnv,
+    render_service_fields: impl Fn(String, Node, Rc<Vec<Rc<Node>>>, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String
         + Clone,
-    render_transport_body: impl Fn(Rc<Node>, String, Rc<HashMap<String, Rc<NewlineIndex>>>, i64) -> String
+    render_transport_body: impl Fn(Node, String, Rc<HashMap<String, Rc<NewlineIndex>>>, i64) -> String
         + Clone,
 ) -> String {
     {
@@ -2303,7 +2302,7 @@ pub enum ExprCategory {
     ExprCatNone,
 }
 
-pub fn classify_expr(texpr: Rc<Node>) -> ExprCategory {
+pub fn classify_expr(texpr: Node) -> ExprCategory {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: _, .. } => ExprCategory::ExprCatLeaf,
         ExprData::ExprError { .. } => ExprCategory::ExprCatLeaf,
@@ -2340,19 +2339,19 @@ pub fn classify_expr(texpr: Rc<Node>) -> ExprCategory {
 pub enum FuncBodyShape {
     FuncBodyLet {
         name: String,
-        value: Rc<Node>,
-        rest: Option<Rc<Node>>,
+        value: Box<Rc<Node>>,
+        rest: Box<Option<Rc<Node>>>,
     },
     FuncBodyBlock {
         stmts: Rc<Vec<Rc<Node>>>,
     },
     FuncBodyExpr {
-        expr: Rc<Node>,
+        expr: Box<Rc<Node>>,
     },
 }
 
 pub fn classify_func_body(
-    body: Rc<Node>,
+    body: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<FuncBodyShape> {
     match (*body.expr_data.clone()).clone() {
@@ -2360,16 +2359,16 @@ pub fn classify_func_body(
             let n = let_binding_name_at(body.clone(), source_indices.clone());
             let v = let_value(body.clone());
             let rest = let_body(body.clone());
-            Rc::new(FuncBodyShape::FuncBodyLet {
+            FuncBodyShape::FuncBodyLet {
                 name: n.clone(),
                 value: v.clone(),
                 rest: rest.clone(),
-            })
+            }
         }
-        ExprData::ExprBlock => Rc::new(FuncBodyShape::FuncBodyBlock {
+        ExprData::ExprBlock => FuncBodyShape::FuncBodyBlock {
             stmts: body.children.clone(),
-        }),
-        _ => Rc::new(FuncBodyShape::FuncBodyExpr { expr: body.clone() }),
+        },
+        _ => FuncBodyShape::FuncBodyExpr { expr: body.clone() },
     }
 }
 
@@ -2381,70 +2380,70 @@ pub enum TcoExprShape {
         args: Rc<Vec<Rc<Node>>>,
     },
     TcoIf {
-        condition: Rc<Node>,
-        then_branch: Rc<Node>,
-        else_branch: Option<Rc<Node>>,
+        condition: Box<Rc<Node>>,
+        then_branch: Box<Rc<Node>>,
+        else_branch: Box<Option<Rc<Node>>>,
     },
     TcoMatch {
-        scrutinee: Rc<Node>,
+        scrutinee: Box<Rc<Node>>,
         arms: Rc<Vec<Rc<Node>>>,
     },
     TcoLet {
         name: String,
-        value: Rc<Node>,
-        body: Option<Rc<Node>>,
+        value: Box<Rc<Node>>,
+        body: Box<Option<Rc<Node>>>,
     },
     TcoBlock {
         stmts: Rc<Vec<Rc<Node>>>,
     },
     TcoOther {
-        expr: Rc<Node>,
+        expr: Box<Rc<Node>>,
     },
 }
 
 pub fn classify_tco_expr(
-    texpr: Rc<Node>,
+    texpr: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TcoExprShape> {
     match (*texpr.expr_data.clone()).clone() {
-        ExprData::ExprCall { .. } => Rc::new(TcoExprShape::TcoCall {
+        ExprData::ExprCall { .. } => TcoExprShape::TcoCall {
             func: expr_call_func_at(texpr.clone(), source_indices.clone()),
             args: texpr.children.clone(),
-        }),
+        },
         ExprData::ExprIf => {
             let c = if_condition(texpr.clone());
             let t = if_then_branch(texpr.clone());
             let e = if_else_branch(texpr.clone());
-            Rc::new(TcoExprShape::TcoIf {
+            TcoExprShape::TcoIf {
                 condition: c.clone(),
                 then_branch: t.clone(),
                 else_branch: e.clone(),
-            })
+            }
         }
         ExprData::ExprMatch => {
             let scrut = match_scrutinee(texpr.clone());
             let arm_list = match_arm_nodes(texpr.clone());
-            Rc::new(TcoExprShape::TcoMatch {
+            TcoExprShape::TcoMatch {
                 scrutinee: scrut.clone(),
                 arms: arm_list.clone(),
-            })
+            }
         }
         ExprData::ExprLet => {
             let n = let_binding_name_at(texpr.clone(), source_indices.clone());
             let v = let_value(texpr.clone());
             let bd = let_body(texpr.clone());
-            Rc::new(TcoExprShape::TcoLet {
+            TcoExprShape::TcoLet {
                 name: n.clone(),
                 value: v.clone(),
                 body: bd.clone(),
-            })
+            }
         }
-        ExprData::ExprBlock => Rc::new(TcoExprShape::TcoBlock {
+        ExprData::ExprBlock => TcoExprShape::TcoBlock {
             stmts: texpr.children.clone(),
-        }),
-        _ => Rc::new(TcoExprShape::TcoOther {
+        },
+        _ => TcoExprShape::TcoOther {
             expr: texpr.clone(),
-        }),
+        },
     }
 }
 
@@ -2465,7 +2464,7 @@ pub fn block_stmts_init(stmts: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
 
 pub fn is_tco_eligible(
     name: String,
-    body: Rc<Node>,
+    body: Node,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -2487,7 +2486,7 @@ pub fn is_tco_eligible(
 
 pub fn is_self_recursive(
     name: String,
-    body: Rc<Node>,
+    body: Node,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -2584,24 +2583,24 @@ pub fn tco_reassign_core(
 pub fn emit_shared_tco_expr(
     mut frame: Rc<TcoFrame>,
     mut fn_name: String,
-    mut emit_self_call_reassign: impl Fn(Rc<TcoReassignInput>) -> String + Clone,
-    mut emit_non_self_call: impl Fn(Rc<TcoFrame>) -> String + Clone,
-    mut emit_if: impl Fn(Rc<TcoFrame>) -> String + Clone,
-    mut emit_match: impl Fn(Rc<TcoFrame>) -> String + Clone,
-    mut emit_let: impl Fn(Rc<TcoFrame>) -> String + Clone,
-    mut emit_block: impl Fn(Rc<TcoFrame>) -> String + Clone,
-    mut emit_default_return: impl Fn(Rc<TcoFrame>) -> String + Clone,
+    mut emit_self_call_reassign: impl Fn(TcoReassignInput) -> String + Clone,
+    mut emit_non_self_call: impl Fn(TcoFrame) -> String + Clone,
+    mut emit_if: impl Fn(TcoFrame) -> String + Clone,
+    mut emit_match: impl Fn(TcoFrame) -> String + Clone,
+    mut emit_let: impl Fn(TcoFrame) -> String + Clone,
+    mut emit_block: impl Fn(TcoFrame) -> String + Clone,
+    mut emit_default_return: impl Fn(TcoFrame) -> String + Clone,
 ) -> String {
     loop {
         let si = frame.scope.clone().type_env.clone().source_indices.clone();
         match (*frame.expr.clone().expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
                 if (expr_call_func_at(frame.expr.clone(), si.clone()) == fn_name.clone()) {
-                    break emit_self_call_reassign(Rc::new(TcoReassignInput {
+                    break emit_self_call_reassign(TcoReassignInput {
                         args: frame.expr.clone().children.clone(),
                         scope: frame.scope.clone(),
                         depth: frame.depth.clone(),
-                    }));
+                    });
                 } else {
                     break emit_non_self_call(frame.clone());
                 }
@@ -2609,11 +2608,11 @@ pub fn emit_shared_tco_expr(
             ExprData::ExprReturn => {
                 let inner = return_value(frame.expr.clone());
                 {
-                    let __tco_0 = Rc::new(TcoFrame {
+                    let __tco_0 = TcoFrame {
                         expr: inner.clone(),
                         scope: frame.scope.clone(),
                         depth: frame.depth.clone(),
-                    });
+                    };
                     frame = __tco_0;
                     continue;
                 }
@@ -2670,7 +2669,7 @@ pub fn shared_tco_body(inner: String, depth: i64, spec: Rc<LanguageSpec>) -> Str
 pub fn shared_tco_default_return(
     frame: Rc<TcoFrame>,
     spec: Rc<LanguageSpec>,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+    recurse_expr: impl Fn(Node, InferScope, i64) -> String + Clone,
 ) -> String {
     {
         let val_str = recurse_expr(frame.expr.clone(), frame.scope.clone(), frame.depth.clone());
@@ -2685,7 +2684,7 @@ pub fn shared_tco_non_self_call(
     frame: Rc<TcoFrame>,
     target: RenderTarget,
     spec: Rc<LanguageSpec>,
-    recurse_call: impl Fn(String, Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> String + Clone,
+    recurse_call: impl Fn(String, Rc<Vec<Rc<Node>>>, InferScope, i64) -> String + Clone,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
@@ -2717,8 +2716,8 @@ pub fn shared_tco_if(
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     spec: Rc<LanguageSpec>,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
-    recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+    recurse_expr: impl Fn(Node, InferScope, i64) -> String + Clone,
+    recurse_tco: impl Fn(Node, InferScope, i64) -> String + Clone,
 ) -> String {
     {
         let syntax = spec.block_syntax.clone();
@@ -2845,8 +2844,8 @@ pub fn shared_tco_let(
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
-    recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+    recurse_expr: impl Fn(Node, InferScope, i64) -> String + Clone,
+    recurse_tco: impl Fn(Node, InferScope, i64) -> String + Clone,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprLet => {
@@ -2862,7 +2861,7 @@ pub fn shared_tco_let(
                 frame.scope.clone(),
                 n.clone(),
                 resolved_type(v.clone()),
-                Rc::new(SubValueRelation::SubValueUnknown),
+                SubValueRelation::SubValueUnknown,
             );
             match bd.clone() {
                 Some(b) => v1_rt::concat(
@@ -2885,8 +2884,8 @@ pub fn shared_tco_block(
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     spec: Rc<LanguageSpec>,
-    emit_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
-    recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+    emit_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, InferScope, i64) -> BlockEmitState + Clone,
+    recurse_tco: impl Fn(Node, InferScope, i64) -> String + Clone,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprBlock => {
@@ -2947,23 +2946,23 @@ pub fn shared_tco_reassign(
 }
 
 pub fn unified_tco_recurse(
-    expr: Rc<Node>,
+    expr: Node,
     scope: Rc<InferScope>,
     depth: i64,
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
-    render_match: impl Fn(Rc<TcoFrame>) -> String + Clone,
-    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
+    recurse_expr: impl Fn(Node, InferScope, i64) -> String + Clone,
+    render_match: impl Fn(TcoFrame) -> String + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, InferScope, i64) -> BlockEmitState + Clone,
 ) -> String {
     emit_unified_tco_expr(
-        Rc::new(TcoFrame {
+        TcoFrame {
             expr: expr.clone(),
             scope: scope.clone(),
             depth: depth.clone(),
-        }),
+        },
         fn_name.clone(),
         params.clone(),
         target.clone(),
@@ -2980,9 +2979,9 @@ pub fn emit_unified_tco_expr(
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
-    render_match: impl Fn(Rc<TcoFrame>) -> String + Clone,
-    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
+    recurse_expr: impl Fn(Node, InferScope, i64) -> String + Clone,
+    render_match: impl Fn(TcoFrame) -> String + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, InferScope, i64) -> BlockEmitState + Clone,
 ) -> String {
     {
         let spec = language_spec(target.clone());
@@ -3093,25 +3092,25 @@ pub fn emit_unified_tco_expr(
 }
 
 pub fn emit_unified_tco_body(
-    texpr: Rc<Node>,
+    texpr: Node,
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
-    render_match: impl Fn(Rc<TcoFrame>) -> String + Clone,
-    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
+    recurse_expr: impl Fn(Node, InferScope, i64) -> String + Clone,
+    render_match: impl Fn(TcoFrame) -> String + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, InferScope, i64) -> BlockEmitState + Clone,
 ) -> String {
     {
         let spec = language_spec(target.clone());
         let inner = emit_unified_tco_expr(
-            Rc::new(TcoFrame {
+            TcoFrame {
                 expr: texpr.clone(),
                 scope: scope.clone(),
                 depth: (depth.clone() + 1),
-            }),
+            },
             fn_name.clone(),
             params.clone(),
             target.clone(),
@@ -3131,7 +3130,7 @@ pub fn emit_unified_init_block_stmts(
     depth: i64,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
+    render_pattern: impl Fn(MatchPattern) -> String + Clone,
 ) -> Rc<BlockEmitState> {
     {
         let prepend = if language_spec(target.clone())
@@ -3173,8 +3172,8 @@ pub fn emit_tco_match_go(
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
-    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
+    render_pattern: impl Fn(MatchPattern) -> String + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, InferScope, i64) -> BlockEmitState + Clone,
 ) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
@@ -3188,11 +3187,11 @@ pub fn emit_tco_match_go(
                     let bindings =
                         emit_go_match_arm_bindings(arm.clone(), body_depth.clone(), si.clone());
                     let tco_body = emit_unified_tco_expr(
-                        Rc::new(TcoFrame {
+                        TcoFrame {
                             expr: arm_body(arm.clone()),
                             scope: scope.clone(),
                             depth: body_depth.clone(),
-                        }),
+                        },
                         fn_name.clone(),
                         params.clone(),
                         RenderTarget::Go,
@@ -3277,8 +3276,8 @@ pub fn emit_unified_tco_match(
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
-    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
+    render_pattern: impl Fn(MatchPattern) -> String + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, InferScope, i64) -> BlockEmitState + Clone,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprMatch => {
@@ -3359,15 +3358,15 @@ pub fn emit_unified_tco_match(
 }
 
 pub fn emit_unified_tco_match_arm(
-    arm: Rc<Node>,
+    arm: Node,
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
-    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
+    render_pattern: impl Fn(MatchPattern) -> String + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, InferScope, i64) -> BlockEmitState + Clone,
 ) -> String {
     {
         let bs = language_spec(target.clone()).block_syntax.clone();
@@ -3391,11 +3390,11 @@ pub fn emit_unified_tco_match_arm(
         let body_str = emit_match_arm_body_stmt(
             target.clone(),
             emit_unified_tco_expr(
-                Rc::new(TcoFrame {
+                TcoFrame {
                     expr: arm_body(arm.clone()),
                     scope: scope.clone(),
                     depth: body_depth.clone(),
-                }),
+                },
                 fn_name.clone(),
                 params.clone(),
                 target.clone(),
@@ -3438,14 +3437,14 @@ pub fn emit_unified_tco_match_arm(
 }
 
 pub fn emit_tco_unified(
-    texpr: Rc<Node>,
+    texpr: Node,
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
+    render_pattern: impl Fn(MatchPattern) -> String + Clone,
 ) -> String {
     emit_unified_tco_body(
         texpr.clone(),
@@ -3474,7 +3473,7 @@ pub fn emit_tco_unified(
                 target.clone(),
                 registry.clone(),
                 render_pattern.clone(),
-                |stmts, scope, depth| {
+                Rc::new(|stmts, scope, depth| {
                     emit_unified_init_block_stmts(
                         stmts.clone(),
                         Rc::new(vec![]),
@@ -3484,10 +3483,10 @@ pub fn emit_tco_unified(
                         registry.clone(),
                         render_pattern.clone(),
                     )
-                },
+                }),
             )
         },
-        |stmts, scope, depth| {
+        Rc::new(|stmts, scope, depth| {
             emit_unified_init_block_stmts(
                 stmts.clone(),
                 Rc::new(vec![]),
@@ -3497,12 +3496,12 @@ pub fn emit_tco_unified(
                 registry.clone(),
                 render_pattern.clone(),
             )
-        },
+        }),
     )
 }
 
 pub fn emit_unified_typed_func_body(
-    body: Rc<Node>,
+    body: Node,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
@@ -3540,7 +3539,7 @@ pub fn emit_unified_typed_func_body(
                     scope.clone(),
                     n.clone(),
                     resolved_type(v.clone()),
-                    Rc::new(SubValueRelation::SubValueUnknown),
+                    SubValueRelation::SubValueUnknown,
                 );
                 match inner.clone() {
                     Some(bd) => v1_rt::concat(
@@ -3662,7 +3661,7 @@ pub fn emit_unified_typed_func_body(
 }
 
 pub fn is_tco_candidate(
-    texpr: Rc<Node>,
+    texpr: Node,
     func_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -4046,7 +4045,7 @@ pub fn emit_unary_op(op: UnaryOpKind, operand_str: String, target: RenderTarget)
     }
 }
 
-pub fn go_lambda_emits_statement_body(body: Rc<Node>) -> bool {
+pub fn go_lambda_emits_statement_body(body: Node) -> bool {
     match (*body.expr_data.clone()).clone() {
         ExprData::ExprMatch => true,
         _ => false,
@@ -4115,7 +4114,7 @@ pub fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) ->
 }
 
 pub fn emit_expr_var_shared(
-    expr: Rc<Node>,
+    expr: Node,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -4134,9 +4133,9 @@ pub fn emit_expr_var_shared(
 }
 
 pub fn emit_expr_field_access_shared(
-    expr: Rc<Node>,
+    expr: Node,
     target: RenderTarget,
-    emit_field: impl Fn(Rc<Node>) -> String + Clone,
+    emit_field: impl Fn(Node) -> String + Clone,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if is_typed_service_call_receiver(expr.clone(), source_indices.clone()) {
@@ -4149,7 +4148,7 @@ pub fn emit_expr_field_access_shared(
     }
 }
 
-pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
+pub fn extract_string_interp_parts(expr: Node) -> Rc<Vec<Rc<StringPart>>> {
     Rc::new({
         let mut __result = Vec::new();
         for child in expr.children.clone().iter().cloned() {
@@ -4158,13 +4157,13 @@ pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
                     let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
                         unreachable!()
                     };
-                    Rc::new(StringPart::Text {
+                    StringPart::Text {
                         value: text.clone(),
-                    })
+                    }
                 }
-                _ => Rc::new(StringPart::Interpolation {
+                _ => StringPart::Interpolation {
                     expr: arg_value(child.clone()),
-                }),
+                },
             });
         }
         __result
@@ -4172,10 +4171,10 @@ pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
 }
 
 pub fn emit_typed_cast_shared(
-    expr: Rc<Node>,
-    cast_target_node: Rc<Node>,
+    expr: Node,
+    cast_target_node: Node,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> String + Clone,
+    recurse: impl Fn(Node) -> String + Clone,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -4214,12 +4213,12 @@ pub fn emit_typed_cast_shared(
 
 pub fn emit_typed_for_each_shared(
     variable: String,
-    collection: Rc<Node>,
-    body: Rc<Node>,
+    collection: Node,
+    body: Node,
     target: RenderTarget,
     depth: i64,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    recurse: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+    recurse: impl Fn(Node, InferScope, i64) -> String + Clone,
     scope: Rc<InferScope>,
 ) -> String {
     {
@@ -4230,7 +4229,7 @@ pub fn emit_typed_for_each_shared(
             scope.clone(),
             variable.clone(),
             elem_type.clone(),
-            Rc::new(SubValueRelation::SubValueUnknown),
+            SubValueRelation::SubValueUnknown,
         );
         let body_str = recurse(body.clone(), body_scope.clone(), (depth.clone() + 1));
         let var_str = emit_ident(variable.clone(), target.clone());
@@ -4289,10 +4288,10 @@ pub fn emit_typed_for_each_shared(
 }
 
 pub fn emit_typed_index_shared(
-    base: Rc<Node>,
-    index: Rc<Node>,
+    base: Node,
+    index: Node,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> String + Clone,
+    recurse: impl Fn(Node) -> String + Clone,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -4329,11 +4328,11 @@ pub fn emit_typed_index_shared(
 }
 
 pub fn emit_typed_slice_shared(
-    base: Rc<Node>,
-    start: Rc<Node>,
-    end: Rc<Node>,
+    base: Node,
+    start: Node,
+    end: Node,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> String + Clone,
+    recurse: impl Fn(Node) -> String + Clone,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -4373,26 +4372,26 @@ pub fn emit_typed_slice_shared(
 }
 
 pub fn emit_shared_expr(
-    texpr: Rc<Node>,
+    texpr: Node,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     wrap_result: impl Fn(String) -> String + Clone,
-    recurse: impl Fn(Rc<Node>) -> String + Clone,
-    emit_var: impl Fn(Rc<Node>) -> String + Clone,
-    emit_field_access: impl Fn(Rc<Node>) -> String + Clone,
-    emit_call: impl Fn(Rc<Node>) -> String + Clone,
-    emit_method_call: impl Fn(Rc<Node>) -> String + Clone,
-    emit_match: impl Fn(Rc<Node>) -> String + Clone,
-    emit_if: impl Fn(Rc<Node>) -> String + Clone,
-    emit_let: impl Fn(Rc<Node>) -> String + Clone,
-    emit_record_lit: impl Fn(Rc<Node>) -> String + Clone,
-    emit_string_interp: impl Fn(Rc<Node>) -> String + Clone,
-    emit_block: impl Fn(Rc<Node>) -> String + Clone,
-    emit_cast: impl Fn(Rc<Node>) -> String + Clone,
-    emit_for_each: impl Fn(Rc<Node>) -> String + Clone,
-    emit_index: impl Fn(Rc<Node>) -> String + Clone,
-    emit_slice: impl Fn(Rc<Node>) -> String + Clone,
-    emit_bin_op: impl Fn(Rc<Node>) -> String + Clone,
+    recurse: impl Fn(Node) -> String + Clone,
+    emit_var: impl Fn(Node) -> String + Clone,
+    emit_field_access: impl Fn(Node) -> String + Clone,
+    emit_call: impl Fn(Node) -> String + Clone,
+    emit_method_call: impl Fn(Node) -> String + Clone,
+    emit_match: impl Fn(Node) -> String + Clone,
+    emit_if: impl Fn(Node) -> String + Clone,
+    emit_let: impl Fn(Node) -> String + Clone,
+    emit_record_lit: impl Fn(Node) -> String + Clone,
+    emit_string_interp: impl Fn(Node) -> String + Clone,
+    emit_block: impl Fn(Node) -> String + Clone,
+    emit_cast: impl Fn(Node) -> String + Clone,
+    emit_for_each: impl Fn(Node) -> String + Clone,
+    emit_index: impl Fn(Node) -> String + Clone,
+    emit_slice: impl Fn(Node) -> String + Clone,
+    emit_bin_op: impl Fn(Node) -> String + Clone,
 ) -> String {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: v, .. } => {
@@ -4470,10 +4469,10 @@ pub fn emit_shared_expr(
 }
 
 pub fn emit_default_bin_op(
-    texpr: Rc<Node>,
+    texpr: Node,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    recurse: impl Fn(Rc<Node>) -> String + Clone,
+    recurse: impl Fn(Node) -> String + Clone,
     wrap_result: impl Fn(String) -> String + Clone,
 ) -> String {
     match (*texpr.expr_data.clone()).clone() {
@@ -4527,15 +4526,15 @@ pub fn emit_block_stmts_shared(
     mut scope: Rc<InferScope>,
     mut depth: i64,
     mut prepend_indent: bool,
-    mut emit_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+    mut emit_expr: impl Fn(Node, InferScope, i64) -> String + Clone,
 ) -> Rc<BlockEmitState> {
     loop {
         match remaining.clone().first().cloned() {
             None => {
-                break Rc::new(BlockEmitState {
+                break BlockEmitState {
                     text: text.clone(),
                     scope: scope.clone(),
-                });
+                };
             }
             Some(stmt) => {
                 let raw = emit_expr(stmt.clone(), scope.clone(), depth.clone());
@@ -4571,15 +4570,15 @@ pub fn emit_init_block_stmts_shared(
     mut scope: Rc<InferScope>,
     mut depth: i64,
     mut prepend_indent: bool,
-    mut emit_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+    mut emit_expr: impl Fn(Node, InferScope, i64) -> String + Clone,
 ) -> Rc<BlockEmitState> {
     loop {
         match remaining.clone().first().cloned() {
             None => {
-                break Rc::new(BlockEmitState {
+                break BlockEmitState {
                     text: text.clone(),
                     scope: scope.clone(),
-                });
+                };
             }
             Some(stmt) => {
                 let rest = Rc::new(
@@ -4592,10 +4591,10 @@ pub fn emit_init_block_stmts_shared(
                 );
                 match rest.clone().first().cloned() {
                     None => {
-                        break Rc::new(BlockEmitState {
+                        break BlockEmitState {
                             text: text.clone(),
                             scope: scope.clone(),
-                        });
+                        };
                     }
                     Some(_) => {
                         let raw = emit_expr(stmt.clone(), scope.clone(), depth.clone());
@@ -4624,11 +4623,11 @@ pub fn emit_init_block_stmts_shared(
 pub fn emit_typed_let_shared(
     name: String,
     value_str: String,
-    body: Option<Rc<Node>>,
+    body: Option<Node>,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>, Rc<InferScope>) -> String + Clone,
+    recurse: impl Fn(Node, InferScope) -> String + Clone,
     scope: Rc<InferScope>,
-    value_node: Rc<Node>,
+    value_node: Node,
 ) -> String {
     {
         let let_line = emit_let_binding(name.clone(), value_str.clone(), target.clone());
@@ -4638,7 +4637,7 @@ pub fn emit_typed_let_shared(
                     scope.clone(),
                     name.clone(),
                     resolved_type(value_node.clone()),
-                    Rc::new(SubValueRelation::SubValueUnknown),
+                    SubValueRelation::SubValueUnknown,
                 );
                 v1_rt::concat(
                     v1_rt::concat(let_line.clone(), "\n".to_string()),
@@ -4652,13 +4651,13 @@ pub fn emit_typed_let_shared(
 
 pub fn emit_typed_if_shared(
     cond_str: String,
-    then_branch: Rc<Node>,
-    else_branch: Option<Rc<Node>>,
-    if_result_type: Option<Rc<Node>>,
+    then_branch: Node,
+    else_branch: Option<Node>,
+    if_result_type: Option<Node>,
     depth: i64,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    recurse: impl Fn(Rc<Node>, i64) -> String + Clone,
+    recurse: impl Fn(Node, i64) -> String + Clone,
 ) -> String {
     {
         let spec = language_spec(target.clone());
@@ -4788,7 +4787,7 @@ pub fn emit_typed_if_shared(
 }
 
 pub fn emit_param_shared(
-    param: Rc<Node>,
+    param: Node,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -4843,7 +4842,7 @@ pub fn emit_params_shared(
 }
 
 pub fn emit_inferred_shared(
-    inferred: Rc<Node>,
+    inferred: Node,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -4881,7 +4880,7 @@ pub fn emit_typed_block_join(
     stmts: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    emit_block_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
+    emit_block_stmts: impl Fn(Rc<Vec<Rc<Node>>>, InferScope, i64) -> BlockEmitState + Clone,
 ) -> String {
     {
         let state = emit_block_stmts(stmts.clone(), scope.clone(), depth.clone());
@@ -4889,9 +4888,7 @@ pub fn emit_typed_block_join(
     }
 }
 
-pub fn method_template_emit_for_target(
-    target: RenderTarget,
-) -> Option<Rc<HashMap<String, String>>> {
+pub fn method_template_emit_for_target(target: RenderTarget) -> Option<HashMap<String, String>> {
     match target.clone() {
         RenderTarget::Rust => Some(rust_method_templates()),
         RenderTarget::Python => Some(python_method_templates_flat()),
@@ -4925,7 +4922,7 @@ pub fn emit_algebra_method_template(
 pub fn emit_typed_first_arg_shared(
     args: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> String + Clone,
+    recurse: impl Fn(Node) -> String + Clone,
 ) -> String {
     match args.clone().first().cloned() {
         Some(a) => recurse(arg_value(a.clone())),
@@ -4936,7 +4933,7 @@ pub fn emit_typed_first_arg_shared(
 pub fn emit_typed_string_interp_unified(
     parts: Rc<Vec<Rc<StringPart>>>,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> String + Clone,
+    recurse: impl Fn(Node) -> String + Clone,
 ) -> String {
     {
         let spec = language_spec(target.clone());
@@ -4969,15 +4966,15 @@ pub fn emit_typed_string_interp_unified(
                                 } else {
                                     base.clone()
                                 };
-                                Rc::new(InterpPart {
+                                InterpPart {
                                     format_segment: escaped.clone(),
                                     arg_expr: "".to_string(),
-                                })
+                                }
                             }
-                            StringPart::Interpolation { expr: e, .. } => Rc::new(InterpPart {
+                            StringPart::Interpolation { expr: e, .. } => InterpPart {
                                 format_segment: ph.clone(),
                                 arg_expr: recurse(e.clone()),
-                            }),
+                            },
                         });
                     }
                     __result
@@ -5056,7 +5053,7 @@ pub fn emit_typed_record_lit_unified(
     fields: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    recurse: impl Fn(Rc<Node>) -> String + Clone,
+    recurse: impl Fn(Node) -> String + Clone,
 ) -> String {
     {
         let rls = language_spec(target.clone()).record_lit.clone();
@@ -5175,7 +5172,7 @@ pub fn emit_typed_call_unified(
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-    recurse: impl Fn(Rc<Node>) -> String + Clone,
+    recurse: impl Fn(Node) -> String + Clone,
 ) -> String {
     {
         let spec = language_spec(target.clone());
@@ -5274,11 +5271,11 @@ pub fn bridge_method_name_unified(method_name: String, target: RenderTarget) -> 
 
 pub fn emit_algebra_method_call_unified(
     method_name: String,
-    receiver: Rc<Node>,
+    receiver: Node,
     args: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     first_arg_str: String,
-    recurse: impl Fn(Rc<Node>) -> String + Clone,
+    recurse: impl Fn(Node) -> String + Clone,
 ) -> String {
     {
         let spec = language_spec(target.clone());
@@ -5319,11 +5316,11 @@ pub fn emit_algebra_method_call_unified(
 }
 
 pub fn emit_plain_method_call_unified(
-    receiver: Rc<Node>,
+    receiver: Node,
     method: String,
     args: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> String + Clone,
+    recurse: impl Fn(Node) -> String + Clone,
 ) -> String {
     {
         let recv_str = recurse(receiver.clone());
@@ -5352,15 +5349,15 @@ pub fn emit_plain_method_call_unified(
 }
 
 pub fn emit_typed_method_call_unified(
-    receiver: Rc<Node>,
+    receiver: Node,
     method: String,
     args: Rc<Vec<Rc<Node>>>,
-    method_semantics: Option<Rc<MethodSemantics>>,
+    method_semantics: Option<MethodSemantics>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    recurse: impl Fn(Rc<Node>) -> String + Clone,
+    recurse: impl Fn(Node) -> String + Clone,
 ) -> String {
     {
         let spec = language_spec(target.clone());
@@ -5472,7 +5469,7 @@ pub fn emit_typed_method_call_unified(
 }
 
 pub fn emit_unified_pattern(
-    pattern: Rc<MatchPattern>,
+    pattern: MatchPattern,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -5582,13 +5579,13 @@ pub fn emit_match_arm_body_stmt(target: RenderTarget, body_str: String) -> Strin
 }
 
 pub fn emit_match_arm_line(
-    arm: Rc<Node>,
+    arm: Node,
     target: RenderTarget,
     case_depth: i64,
     body_depth: i64,
     body_str: String,
     guard_str: String,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
+    render_pattern: impl Fn(MatchPattern) -> String + Clone,
 ) -> String {
     {
         let spec = language_spec(target.clone());
@@ -5619,9 +5616,9 @@ pub fn emit_match_arm_line(
 }
 
 pub fn emit_arm_guard(
-    arm: Rc<Node>,
+    arm: Node,
     target: RenderTarget,
-    render_guard_expr: impl Fn(Rc<Node>) -> String + Clone,
+    render_guard_expr: impl Fn(Node) -> String + Clone,
 ) -> String {
     {
         let es = language_spec(target.clone()).expression_semantics.clone();
@@ -5639,7 +5636,7 @@ pub fn emit_arm_guard(
 }
 
 pub fn emit_go_match_arm_bindings(
-    arm: Rc<Node>,
+    arm: Node,
     indent_level: i64,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -5690,8 +5687,8 @@ pub fn emit_typed_match_go(
     scrutinee_str: String,
     arms: Rc<Vec<Rc<Node>>>,
     depth: i64,
-    recurse: impl Fn(Rc<Node>, i64) -> String + Clone,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
+    recurse: impl Fn(Node, i64) -> String + Clone,
+    render_pattern: impl Fn(MatchPattern) -> String + Clone,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -5757,8 +5754,8 @@ pub fn emit_typed_match_unified(
     arms: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     depth: i64,
-    recurse: impl Fn(Rc<Node>, i64) -> String + Clone,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
+    recurse: impl Fn(Node, i64) -> String + Clone,
+    render_pattern: impl Fn(MatchPattern) -> String + Clone,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match target.clone() {
@@ -5863,13 +5860,13 @@ pub fn emit_field_access_unified(
 }
 
 pub fn emit_unified_typed_expr(
-    texpr: Rc<Node>,
+    texpr: Node,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     fuel: i64,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
+    render_pattern: impl Fn(MatchPattern) -> String + Clone,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let si = scope.type_env.clone().source_indices.clone();
@@ -6113,7 +6110,7 @@ pub fn emit_unified_typed_expr(
                     expr.children.clone(),
                     scope.clone(),
                     depth.clone(),
-                    |remaining, sc, d| {
+                    Rc::new(|remaining, sc, d| {
                         let prepend = if spec.block_syntax.clone().significant_whitespace.clone() {
                             false
                         } else {
@@ -6137,7 +6134,7 @@ pub fn emit_unified_typed_expr(
                                 )
                             },
                         )
-                    },
+                    }),
                 )
             },
             |expr| {
@@ -6244,7 +6241,7 @@ pub fn emit_unified_typed_expr(
 }
 
 pub fn is_tco_identity_passthrough(
-    arg_val: Rc<Node>,
+    arg_val: Node,
     param_name: String,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -6260,7 +6257,7 @@ pub fn emit_typed_tco_reassign_shared(
     args: Rc<Vec<Rc<Node>>>,
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> String + Clone,
+    recurse: impl Fn(Node) -> String + Clone,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {

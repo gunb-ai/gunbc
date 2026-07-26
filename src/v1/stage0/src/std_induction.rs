@@ -91,9 +91,9 @@ pub fn inductive_field_to_dimension(
     field: Rc<InductiveField>,
     param: String,
 ) -> Rc<RankingDimension> {
-    Rc::new(RankingDimension::TreeSize {
+    RankingDimension::TreeSize {
         param: param.clone(),
-    })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -248,26 +248,26 @@ pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             let la = sub_value_level(a.clone());
             let lb = sub_value_level(b.clone());
             if ((la.clone() == 0) || (lb.clone() == 0)) {
-                Rc::new(SubValueRelation::SubValueUnknown)
+                SubValueRelation::SubValueUnknown
             } else {
                 if ((la.clone() == 4) || (lb.clone() == 4)) {
-                    Rc::new(SubValueRelation::NonIncreasingValue)
+                    SubValueRelation::NonIncreasingValue
                 } else {
                     if (la.clone() == 3) {
                         if is_strict_style_structural(b.clone()) {
                             b.clone()
                         } else {
-                            Rc::new(SubValueRelation::NonIncreasingValue)
+                            SubValueRelation::NonIncreasingValue
                         }
                     } else {
                         if (lb.clone() == 3) {
                             if is_strict_style_structural(a.clone()) {
                                 a.clone()
                             } else {
-                                Rc::new(SubValueRelation::NonIncreasingValue)
+                                SubValueRelation::NonIncreasingValue
                             }
                         } else {
-                            Rc::new(SubValueRelation::NonIncreasingValue)
+                            SubValueRelation::NonIncreasingValue
                         }
                     }
                 }
@@ -290,7 +290,7 @@ pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
                     a.clone()
                 } else {
                     if ((la.clone() == 4) || (lb.clone() == 4)) {
-                        Rc::new(SubValueRelation::MixedTop)
+                        SubValueRelation::MixedTop
                     } else {
                         if (la.clone() == 1) {
                             b.clone()
@@ -301,9 +301,9 @@ pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
                                 if (is_strict_style_structural(a.clone())
                                     && is_strict_style_structural(b.clone()))
                                 {
-                                    Rc::new(SubValueRelation::StrictAxisErased)
+                                    SubValueRelation::StrictAxisErased
                                 } else {
-                                    Rc::new(SubValueRelation::MixedTop)
+                                    SubValueRelation::MixedTop
                                 }
                             }
                         }
@@ -319,11 +319,11 @@ pub fn compose_sub_value(
     field: Rc<InductiveField>,
 ) -> Rc<SubValueRelation> {
     match (*base.clone()).clone() {
-        SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-        _ => Rc::new(SubValueRelation::StrictSubValue {
+        SubValueRelation::SubValueUnknown => SubValueRelation::SubValueUnknown,
+        _ => SubValueRelation::StrictSubValue {
             field: field.clone(),
-            factor: Rc::new(ShrinkFactor::UnitShrink),
-        }),
+            factor: ShrinkFactor::UnitShrink,
+        },
     }
 }
 
@@ -333,103 +333,91 @@ pub fn compose_sub_value_relations(
 ) -> Rc<SubValueRelation> {
     match (*callee_rel.clone()).clone() {
         SubValueRelation::PreservedValue => arg_rel,
-        SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+        SubValueRelation::SubValueUnknown => SubValueRelation::SubValueUnknown,
         SubValueRelation::NonIncreasingValue => match (*arg_rel).clone() {
-            SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-            _ => Rc::new(SubValueRelation::NonIncreasingValue),
+            SubValueRelation::SubValueUnknown => SubValueRelation::SubValueUnknown,
+            _ => SubValueRelation::NonIncreasingValue,
         },
         SubValueRelation::StrictAxisErased => match (*arg_rel).clone() {
-            SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-            SubValueRelation::PreservedValue => Rc::new(SubValueRelation::StrictAxisErased),
-            SubValueRelation::StrictSubValue { .. } => Rc::new(SubValueRelation::StrictAxisErased),
+            SubValueRelation::SubValueUnknown => SubValueRelation::SubValueUnknown,
+            SubValueRelation::PreservedValue => SubValueRelation::StrictAxisErased,
+            SubValueRelation::StrictSubValue { .. } => SubValueRelation::StrictAxisErased,
             SubValueRelation::IteratedSubValue { field: _, .. } => {
-                Rc::new(SubValueRelation::StrictAxisErased)
+                SubValueRelation::StrictAxisErased
             }
-            SubValueRelation::ArithmeticDescent { .. } => {
-                Rc::new(SubValueRelation::StrictAxisErased)
-            }
-            SubValueRelation::StrictAxisErased => Rc::new(SubValueRelation::StrictAxisErased),
-            SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
-            SubValueRelation::MixedTop => Rc::new(SubValueRelation::MixedTop),
+            SubValueRelation::ArithmeticDescent { .. } => SubValueRelation::StrictAxisErased,
+            SubValueRelation::StrictAxisErased => SubValueRelation::StrictAxisErased,
+            SubValueRelation::NonIncreasingValue => SubValueRelation::NonIncreasingValue,
+            SubValueRelation::MixedTop => SubValueRelation::MixedTop,
         },
         SubValueRelation::MixedTop => match (*arg_rel).clone() {
-            SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-            SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
-            _ => Rc::new(SubValueRelation::MixedTop),
+            SubValueRelation::SubValueUnknown => SubValueRelation::SubValueUnknown,
+            SubValueRelation::NonIncreasingValue => SubValueRelation::NonIncreasingValue,
+            _ => SubValueRelation::MixedTop,
         },
         SubValueRelation::StrictSubValue { .. } => match (*arg_rel).clone() {
             SubValueRelation::PreservedValue => callee_rel.clone(),
-            SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-            SubValueRelation::StrictSubValue { field: f, .. } => {
-                Rc::new(SubValueRelation::StrictSubValue {
-                    field: f.clone(),
-                    factor: Rc::new(ShrinkFactor::UnitShrink),
-                })
-            }
+            SubValueRelation::SubValueUnknown => SubValueRelation::SubValueUnknown,
+            SubValueRelation::StrictSubValue { field: f, .. } => SubValueRelation::StrictSubValue {
+                field: f.clone(),
+                factor: ShrinkFactor::UnitShrink,
+            },
             SubValueRelation::IteratedSubValue { field: f, .. } => {
-                Rc::new(SubValueRelation::StrictSubValue {
+                SubValueRelation::StrictSubValue {
                     field: f.clone(),
-                    factor: Rc::new(ShrinkFactor::UnitShrink),
-                })
+                    factor: ShrinkFactor::UnitShrink,
+                }
             }
-            SubValueRelation::ArithmeticDescent { .. } => {
-                Rc::new(SubValueRelation::SubValueUnknown)
-            }
-            SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
-            SubValueRelation::StrictAxisErased => Rc::new(SubValueRelation::StrictAxisErased),
-            SubValueRelation::MixedTop => Rc::new(SubValueRelation::MixedTop),
+            SubValueRelation::ArithmeticDescent { .. } => SubValueRelation::SubValueUnknown,
+            SubValueRelation::NonIncreasingValue => SubValueRelation::NonIncreasingValue,
+            SubValueRelation::StrictAxisErased => SubValueRelation::StrictAxisErased,
+            SubValueRelation::MixedTop => SubValueRelation::MixedTop,
         },
         SubValueRelation::IteratedSubValue { field: _, .. } => match (*arg_rel).clone() {
             SubValueRelation::PreservedValue => callee_rel.clone(),
-            SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-            SubValueRelation::StrictSubValue { field: f, .. } => {
-                Rc::new(SubValueRelation::StrictSubValue {
-                    field: f.clone(),
-                    factor: Rc::new(ShrinkFactor::UnitShrink),
-                })
-            }
+            SubValueRelation::SubValueUnknown => SubValueRelation::SubValueUnknown,
+            SubValueRelation::StrictSubValue { field: f, .. } => SubValueRelation::StrictSubValue {
+                field: f.clone(),
+                factor: ShrinkFactor::UnitShrink,
+            },
             SubValueRelation::IteratedSubValue { field: f, .. } => {
-                Rc::new(SubValueRelation::StrictSubValue {
+                SubValueRelation::StrictSubValue {
                     field: f.clone(),
-                    factor: Rc::new(ShrinkFactor::UnitShrink),
-                })
+                    factor: ShrinkFactor::UnitShrink,
+                }
             }
-            SubValueRelation::ArithmeticDescent { .. } => {
-                Rc::new(SubValueRelation::SubValueUnknown)
-            }
-            SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
-            SubValueRelation::StrictAxisErased => Rc::new(SubValueRelation::StrictAxisErased),
-            SubValueRelation::MixedTop => Rc::new(SubValueRelation::MixedTop),
+            SubValueRelation::ArithmeticDescent { .. } => SubValueRelation::SubValueUnknown,
+            SubValueRelation::NonIncreasingValue => SubValueRelation::NonIncreasingValue,
+            SubValueRelation::StrictAxisErased => SubValueRelation::StrictAxisErased,
+            SubValueRelation::MixedTop => SubValueRelation::MixedTop,
         },
         SubValueRelation::ArithmeticDescent {
             param: p,
             factor: f,
             ..
         } => match (*arg_rel).clone() {
-            SubValueRelation::PreservedValue => Rc::new(SubValueRelation::ArithmeticDescent {
+            SubValueRelation::PreservedValue => SubValueRelation::ArithmeticDescent {
                 param: p.clone(),
                 factor: f.clone(),
-            }),
-            SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-            SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
-            SubValueRelation::StrictAxisErased => Rc::new(SubValueRelation::StrictAxisErased),
-            SubValueRelation::MixedTop => Rc::new(SubValueRelation::MixedTop),
-            _ => Rc::new(SubValueRelation::SubValueUnknown),
+            },
+            SubValueRelation::SubValueUnknown => SubValueRelation::SubValueUnknown,
+            SubValueRelation::NonIncreasingValue => SubValueRelation::NonIncreasingValue,
+            SubValueRelation::StrictAxisErased => SubValueRelation::StrictAxisErased,
+            SubValueRelation::MixedTop => SubValueRelation::MixedTop,
+            _ => SubValueRelation::SubValueUnknown,
         },
     }
 }
 
 pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<CallPattern>> {
     match (*relation.clone()).clone() {
-        SubValueRelation::StrictSubValue { field: f, .. } => {
-            Some(Rc::new(CallPattern::ChildAccessorCall {
-                accessor: f.field_name.clone(),
-            }))
-        }
+        SubValueRelation::StrictSubValue { field: f, .. } => Some(CallPattern::ChildAccessorCall {
+            accessor: f.field_name.clone(),
+        }),
         SubValueRelation::IteratedSubValue { field: f, .. } => {
-            Some(Rc::new(CallPattern::ChildAccessorCall {
+            Some(CallPattern::ChildAccessorCall {
                 accessor: f.field_name.clone(),
-            }))
+            })
         }
         SubValueRelation::ArithmeticDescent {
             param: p,
@@ -437,23 +425,23 @@ pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<Ca
             ..
         } => match (*f.clone()).clone() {
             ShrinkFactor::ConstantShrink { steps: steps, .. } => {
-                Some(Rc::new(CallPattern::ArithmeticSubtractCall {
+                Some(CallPattern::ArithmeticSubtractCall {
                     steps: steps.clone(),
                     ring_param: p.clone(),
-                }))
+                })
             }
             ShrinkFactor::ProportionalShrink { divisor: d, .. } => {
-                Some(Rc::new(CallPattern::ArithmeticDivideCall {
+                Some(CallPattern::ArithmeticDivideCall {
                     divisor: d.clone(),
                     ring_param: p.clone(),
-                }))
+                })
             }
-            ShrinkFactor::UnitShrink => Some(Rc::new(CallPattern::ArithmeticSubtractCall {
-                steps: Rc::new(PositiveDescentAmount::OneStep),
+            ShrinkFactor::UnitShrink => Some(CallPattern::ArithmeticSubtractCall {
+                steps: PositiveDescentAmount::OneStep,
                 ring_param: p.clone(),
-            })),
+            }),
         },
-        SubValueRelation::PreservedValue => Some(Rc::new(CallPattern::SameArgumentCall)),
+        SubValueRelation::PreservedValue => Some(CallPattern::SameArgumentCall),
         SubValueRelation::NonIncreasingValue => None,
         SubValueRelation::StrictAxisErased => None,
         SubValueRelation::MixedTop => None,
@@ -467,42 +455,42 @@ pub fn sub_value_to_lowering_target(relation: Rc<SubValueRelation>) -> Option<Rc
             field: f,
             factor: fac,
             ..
-        } => Some(Rc::new(LoweringTarget {
+        } => Some(LoweringTarget {
             primitive: IterationPrimitive::Descend,
             bound: tree_size_bound(f.field_name.clone()),
             evidence: DescentEvidence::Strict,
             factor: Some(fac.clone()),
-        })),
-        SubValueRelation::IteratedSubValue { field: f, .. } => Some(Rc::new(LoweringTarget {
+        }),
+        SubValueRelation::IteratedSubValue { field: f, .. } => Some(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::CollectionSize {
+            bound: SizeBound::CollectionSize {
                 param: f.field_name.clone(),
-            }),
+            },
             evidence: DescentEvidence::Strict,
             factor: None,
-        })),
+        }),
         SubValueRelation::ArithmeticDescent {
             param: p,
             factor: fac,
             ..
-        } => Some(Rc::new(LoweringTarget {
+        } => Some(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
-            bound: Rc::new(SizeBound::ArithmeticParam { param: p.clone() }),
+            bound: SizeBound::ArithmeticParam { param: p.clone() },
             evidence: DescentEvidence::Strict,
             factor: Some(fac.clone()),
-        })),
-        SubValueRelation::PreservedValue => Some(Rc::new(LoweringTarget {
+        }),
+        SubValueRelation::PreservedValue => Some(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
-            bound: Rc::new(SizeBound::Forever),
+            bound: SizeBound::Forever,
             evidence: DescentEvidence::NonIncreasing,
             factor: None,
-        })),
-        SubValueRelation::NonIncreasingValue => Some(Rc::new(LoweringTarget {
+        }),
+        SubValueRelation::NonIncreasingValue => Some(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
-            bound: Rc::new(SizeBound::Forever),
+            bound: SizeBound::Forever,
             evidence: DescentEvidence::NonIncreasing,
             factor: None,
-        })),
+        }),
         SubValueRelation::StrictAxisErased => None,
         SubValueRelation::MixedTop => None,
         SubValueRelation::SubValueUnknown => None,
@@ -527,9 +515,9 @@ pub enum PolynomialExponent {
 }
 
 pub fn poly_exp_degree_one() -> Rc<PolynomialExponent> {
-    Rc::new(PolynomialExponent::IntegerExpPos {
-        degree: Rc::new(PositiveDescentAmount::OneStep),
-    })
+    PolynomialExponent::IntegerExpPos {
+        degree: PositiveDescentAmount::OneStep,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -556,32 +544,24 @@ impl AtomicCost {
 #[serde(tag = "_variant")]
 pub enum CostBound {
     ConstantBound,
-    AtomicBound {
-        cost: Rc<AtomicCost>,
-    },
-    ProductBound {
-        factors: Rc<Vec<Rc<AtomicCost>>>,
-    },
-    SumOfProductsBound {
-        terms: Rc<Vec<Rc<Vec<Rc<AtomicCost>>>>>,
-    },
-    SumBound {
-        terms: Rc<Vec<Rc<CostBound>>>,
-    },
+    AtomicBound { cost: Rc<AtomicCost> },
+    ProductBound { factors: Rc<Vec<Rc<AtomicCost>>> },
+    SumOfProductsBound { terms: Rc<Vec<Vec<Rc<AtomicCost>>>> },
+    SumBound { terms: Rc<Vec<Rc<CostBound>>> },
     ForeverBound,
     ErrorBound,
 }
 
-pub fn sum_bound(terms: Rc<Vec<Rc<CostBound>>>) -> Rc<CostBound> {
+pub fn sum_bound(terms: Rc<Vec<Rc<CostBound>>>) -> CostBound {
     match terms.clone().first().cloned() {
-        None => Rc::new(CostBound::ErrorBound),
-        Some(_) => Rc::new(CostBound::SumBound {
+        None => CostBound::ErrorBound,
+        Some(_) => CostBound::SumBound {
             terms: terms.clone(),
-        }),
+        },
     }
 }
 
-pub fn cost_bound_is_sum_bound(b: Rc<CostBound>) -> bool {
+pub fn cost_bound_is_sum_bound(b: CostBound) -> bool {
     match (*b.clone()).clone() {
         CostBound::SumBound { terms: _, .. } => true,
         CostBound::ConstantBound => false,
@@ -593,108 +573,108 @@ pub fn cost_bound_is_sum_bound(b: Rc<CostBound>) -> bool {
     }
 }
 
-pub fn cost_constant() -> Rc<CostBound> {
-    Rc::new(CostBound::ConstantBound)
+pub fn cost_constant() -> CostBound {
+    CostBound::ConstantBound
 }
 
-pub fn cost_linear(param: String) -> Rc<CostBound> {
-    Rc::new(CostBound::AtomicBound {
-        cost: Rc::new(AtomicCost::PolyCost {
+pub fn cost_linear(param: String) -> CostBound {
+    CostBound::AtomicBound {
+        cost: AtomicCost::PolyCost {
             param: param.clone(),
             exponent: poly_exp_degree_one(),
-        }),
-    })
+        },
+    }
 }
 
-pub fn cost_poly(param: String, degree: i64) -> Rc<CostBound> {
+pub fn cost_poly(param: String, degree: i64) -> CostBound {
     if (degree.clone() < 0) {
-        Rc::new(CostBound::ErrorBound)
+        CostBound::ErrorBound
     } else {
         if (degree.clone() == 0) {
-            Rc::new(CostBound::AtomicBound {
-                cost: Rc::new(AtomicCost::PolyCost {
+            CostBound::AtomicBound {
+                cost: AtomicCost::PolyCost {
                     param: param.clone(),
-                    exponent: Rc::new(PolynomialExponent::IntegerExpZero),
-                }),
-            })
+                    exponent: PolynomialExponent::IntegerExpZero,
+                },
+            }
         } else {
             match positive_descent_amount_from_positive_int(degree.clone()) {
-                Some(deg) => Rc::new(CostBound::AtomicBound {
-                    cost: Rc::new(AtomicCost::PolyCost {
+                Some(deg) => CostBound::AtomicBound {
+                    cost: AtomicCost::PolyCost {
                         param: param.clone(),
-                        exponent: Rc::new(PolynomialExponent::IntegerExpPos {
+                        exponent: PolynomialExponent::IntegerExpPos {
                             degree: deg.clone(),
-                        }),
-                    }),
-                }),
-                None => Rc::new(CostBound::ErrorBound),
+                        },
+                    },
+                },
+                None => CostBound::ErrorBound,
             }
         }
     }
 }
 
-pub fn cost_root(param: String, k: i64) -> Rc<CostBound> {
+pub fn cost_root(param: String, k: i64) -> CostBound {
     if (k.clone() <= 0) {
-        Rc::new(CostBound::ErrorBound)
+        CostBound::ErrorBound
     } else {
         match positive_descent_amount_from_positive_int(k.clone()) {
-            Some(rw) => Rc::new(CostBound::AtomicBound {
-                cost: Rc::new(AtomicCost::PolyCost {
+            Some(rw) => CostBound::AtomicBound {
+                cost: AtomicCost::PolyCost {
                     param: param.clone(),
-                    exponent: Rc::new(PolynomialExponent::FractionExp {
-                        numerator: Rc::new(PositiveDescentAmount::OneStep),
+                    exponent: PolynomialExponent::FractionExp {
+                        numerator: PositiveDescentAmount::OneStep,
                         root: rw.clone(),
-                    }),
-                }),
-            }),
-            None => Rc::new(CostBound::ErrorBound),
+                    },
+                },
+            },
+            None => CostBound::ErrorBound,
         }
     }
 }
 
-pub fn cost_sqrt(param: String) -> Rc<CostBound> {
+pub fn cost_sqrt(param: String) -> CostBound {
     cost_root(param.clone(), 2)
 }
 
-pub fn cost_cbrt(param: String) -> Rc<CostBound> {
+pub fn cost_cbrt(param: String) -> CostBound {
     cost_root(param.clone(), 3)
 }
 
-pub fn cost_log(param: String) -> Rc<CostBound> {
-    Rc::new(CostBound::AtomicBound {
-        cost: Rc::new(AtomicCost::LogCost {
+pub fn cost_log(param: String) -> CostBound {
+    CostBound::AtomicBound {
+        cost: AtomicCost::LogCost {
             param: param.clone(),
-        }),
-    })
+        },
+    }
 }
 
-pub fn cost_nlogn(param: String) -> Rc<CostBound> {
-    Rc::new(CostBound::ProductBound {
+pub fn cost_nlogn(param: String) -> CostBound {
+    CostBound::ProductBound {
         factors: Rc::new(vec![
-            Rc::new(AtomicCost::PolyCost {
+            AtomicCost::PolyCost {
                 param: param.clone(),
                 exponent: poly_exp_degree_one(),
-            }),
-            Rc::new(AtomicCost::LogCost {
+            },
+            AtomicCost::LogCost {
                 param: param.clone(),
-            }),
+            },
         ]),
-    })
+    }
 }
 
-pub fn cost_graph_linear(v_param: String, e_param: String) -> Rc<CostBound> {
-    Rc::new(CostBound::SumOfProductsBound {
+pub fn cost_graph_linear(v_param: String, e_param: String) -> CostBound {
+    CostBound::SumOfProductsBound {
         terms: Rc::new(vec![
-            Rc::new(vec![Rc::new(AtomicCost::PolyCost {
+            Rc::new(vec![AtomicCost::PolyCost {
                 param: v_param.clone(),
                 exponent: poly_exp_degree_one(),
-            })]),
-            Rc::new(vec![Rc::new(AtomicCost::PolyCost {
+            }]),
+            Rc::new(vec![AtomicCost::PolyCost {
                 param: e_param.clone(),
                 exponent: poly_exp_degree_one(),
-            })]),
+            }]),
         ]),
-    })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -862,23 +842,23 @@ pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i6
     }
 }
 
-pub fn master_theorem(form: Rc<RecurrenceForm>) -> Rc<CostBound> {
+pub fn master_theorem(form: Rc<RecurrenceForm>) -> CostBound {
     {
         let a = form.branches.clone();
         let b = form.divisor.clone();
         let d = form.work_exponent.clone();
         let n = form.param.clone();
         if ((a.clone() < 1) || (b.clone() < 2)) {
-            Rc::new(CostBound::ErrorBound)
+            CostBound::ErrorBound
         } else {
             match bounded_int_pow_exponent(d.clone()) {
-                None => Rc::new(CostBound::ErrorBound),
+                None => CostBound::ErrorBound,
                 Some(d_ok) => match int_pow_bounded(b.clone(), d_ok.clone()) {
-                    None => Rc::new(CostBound::ErrorBound),
+                    None => CostBound::ErrorBound,
                     Some(b_to_d) => {
                         if (a.clone() < b_to_d.clone()) {
                             match d_ok.clone() {
-                                0 => Rc::new(CostBound::ConstantBound),
+                                0 => CostBound::ConstantBound,
                                 _ => cost_poly(n.clone(), d_ok.clone()),
                             }
                         } else {
@@ -888,41 +868,37 @@ pub fn master_theorem(form: Rc<RecurrenceForm>) -> Rc<CostBound> {
                                     _ => match positive_descent_amount_from_positive_int(
                                         d_ok.clone(),
                                     ) {
-                                        Some(deg) => Rc::new(CostBound::ProductBound {
+                                        Some(deg) => CostBound::ProductBound {
                                             factors: Rc::new(vec![
-                                                Rc::new(AtomicCost::PolyCost {
+                                                AtomicCost::PolyCost {
                                                     param: n.clone(),
-                                                    exponent: Rc::new(
-                                                        PolynomialExponent::IntegerExpPos {
-                                                            degree: deg.clone(),
-                                                        },
-                                                    ),
-                                                }),
-                                                Rc::new(AtomicCost::LogCost { param: n.clone() }),
+                                                    exponent: PolynomialExponent::IntegerExpPos {
+                                                        degree: deg.clone(),
+                                                    },
+                                                },
+                                                AtomicCost::LogCost { param: n.clone() },
                                             ]),
-                                        }),
-                                        None => Rc::new(CostBound::ErrorBound),
+                                        },
+                                        None => CostBound::ErrorBound,
                                     },
                                 }
                             } else {
                                 match proportional_divisor_from_int_at_least_two(b.clone()) {
                                     Some(base_w) => {
                                         match positive_descent_amount_from_positive_int(a.clone()) {
-                                            Some(arg_w) => Rc::new(CostBound::AtomicBound {
-                                                cost: Rc::new(AtomicCost::PolyCost {
+                                            Some(arg_w) => CostBound::AtomicBound {
+                                                cost: AtomicCost::PolyCost {
                                                     param: n.clone(),
-                                                    exponent: Rc::new(
-                                                        PolynomialExponent::LogBasedExp {
-                                                            base: base_w.clone(),
-                                                            argument: arg_w.clone(),
-                                                        },
-                                                    ),
-                                                }),
-                                            }),
-                                            None => Rc::new(CostBound::ErrorBound),
+                                                    exponent: PolynomialExponent::LogBasedExp {
+                                                        base: base_w.clone(),
+                                                        argument: arg_w.clone(),
+                                                    },
+                                                },
+                                            },
+                                            None => CostBound::ErrorBound,
                                         }
                                     }
-                                    None => Rc::new(CostBound::ErrorBound),
+                                    None => CostBound::ErrorBound,
                                 }
                             }
                         }
@@ -933,12 +909,12 @@ pub fn master_theorem(form: Rc<RecurrenceForm>) -> Rc<CostBound> {
     }
 }
 
-pub fn catamorphism_bound(param: String, nesting_depth: i64) -> Rc<CostBound> {
+pub fn catamorphism_bound(param: String, nesting_depth: i64) -> CostBound {
     if (nesting_depth.clone() < 0) {
-        Rc::new(CostBound::ErrorBound)
+        CostBound::ErrorBound
     } else {
         if (nesting_depth.clone() == 0) {
-            Rc::new(CostBound::ConstantBound)
+            CostBound::ConstantBound
         } else {
             cost_poly(param.clone(), nesting_depth.clone())
         }
@@ -950,153 +926,153 @@ pub fn derive_bound(
     branches: i64,
     factor: Rc<ShrinkFactor>,
     work_exponent: i64,
-) -> Rc<CostBound> {
+) -> CostBound {
     if (branches.clone() < 1) {
-        Rc::new(CostBound::ErrorBound)
+        CostBound::ErrorBound
     } else {
         match bounded_int_pow_exponent(work_exponent.clone()) {
-            None => Rc::new(CostBound::ErrorBound),
+            None => CostBound::ErrorBound,
             Some(_) => match (*factor.clone()).clone() {
                 ShrinkFactor::UnitShrink => {
                     if (branches.clone() <= 1) {
                         cost_linear(param.clone())
                     } else {
-                        Rc::new(CostBound::ForeverBound)
+                        CostBound::ForeverBound
                     }
                 }
                 ShrinkFactor::ConstantShrink { steps: _, .. } => {
                     if (branches.clone() <= 1) {
                         cost_linear(param.clone())
                     } else {
-                        Rc::new(CostBound::ForeverBound)
+                        CostBound::ForeverBound
                     }
                 }
                 ShrinkFactor::ProportionalShrink { divisor: d, .. } => {
-                    master_theorem(Rc::new(RecurrenceForm {
+                    master_theorem(RecurrenceForm {
                         param: param.clone(),
                         branches: branches.clone(),
                         divisor: proportional_divisor_to_int(d.clone()),
                         work_exponent: work_exponent.clone(),
-                    }))
+                    })
                 }
             },
         }
     }
 }
 
-pub fn tree_traversal_bound() -> Rc<CostBound> {
+pub fn tree_traversal_bound() -> CostBound {
     catamorphism_bound("tree".to_string(), 1)
 }
 
-pub fn nested_iteration_bound() -> Rc<CostBound> {
+pub fn nested_iteration_bound() -> CostBound {
     catamorphism_bound("items".to_string(), 2)
 }
 
-pub fn linear_scan_bound() -> Rc<CostBound> {
+pub fn linear_scan_bound() -> CostBound {
     catamorphism_bound("xs".to_string(), 1)
 }
 
-pub fn binary_search_bound() -> Rc<CostBound> {
+pub fn binary_search_bound() -> CostBound {
     derive_bound(
         "xs".to_string(),
         1,
-        Rc::new(ShrinkFactor::ProportionalShrink {
-            divisor: Rc::new(ProportionalDivisor::DivideByTwo),
-        }),
+        ShrinkFactor::ProportionalShrink {
+            divisor: ProportionalDivisor::DivideByTwo,
+        },
         0,
     )
 }
 
-pub fn mergesort_bound() -> Rc<CostBound> {
+pub fn mergesort_bound() -> CostBound {
     derive_bound(
         "xs".to_string(),
         2,
-        Rc::new(ShrinkFactor::ProportionalShrink {
-            divisor: Rc::new(ProportionalDivisor::DivideByTwo),
-        }),
+        ShrinkFactor::ProportionalShrink {
+            divisor: ProportionalDivisor::DivideByTwo,
+        },
         1,
     )
 }
 
-pub fn karatsuba_bound() -> Rc<CostBound> {
+pub fn karatsuba_bound() -> CostBound {
     derive_bound(
         "digits".to_string(),
         3,
-        Rc::new(ShrinkFactor::ProportionalShrink {
-            divisor: Rc::new(ProportionalDivisor::DivideByTwo),
-        }),
+        ShrinkFactor::ProportionalShrink {
+            divisor: ProportionalDivisor::DivideByTwo,
+        },
         1,
     )
 }
 
-pub fn strassen_bound() -> Rc<CostBound> {
+pub fn strassen_bound() -> CostBound {
     derive_bound(
         "n".to_string(),
         7,
-        Rc::new(ShrinkFactor::ProportionalShrink {
-            divisor: Rc::new(ProportionalDivisor::DivideByTwo),
-        }),
+        ShrinkFactor::ProportionalShrink {
+            divisor: ProportionalDivisor::DivideByTwo,
+        },
         2,
     )
 }
 
-pub fn trial_division_bound() -> Rc<CostBound> {
+pub fn trial_division_bound() -> CostBound {
     cost_sqrt("n".to_string())
 }
 
-pub fn cube_root_bound() -> Rc<CostBound> {
+pub fn cube_root_bound() -> CostBound {
     cost_cbrt("n".to_string())
 }
 
-pub fn kth_root_bound(k: i64) -> Rc<CostBound> {
+pub fn kth_root_bound(k: i64) -> CostBound {
     cost_root("n".to_string(), k.clone())
 }
 
-pub fn bfs_dfs_bound() -> Rc<CostBound> {
+pub fn bfs_dfs_bound() -> CostBound {
     cost_graph_linear("V".to_string(), "E".to_string())
 }
 
-pub fn dijkstra_bound() -> Rc<CostBound> {
-    Rc::new(CostBound::SumOfProductsBound {
+pub fn dijkstra_bound() -> CostBound {
+    CostBound::SumOfProductsBound {
         terms: Rc::new(vec![
             Rc::new(vec![
-                Rc::new(AtomicCost::PolyCost {
+                AtomicCost::PolyCost {
                     param: "V".to_string(),
                     exponent: poly_exp_degree_one(),
-                }),
-                Rc::new(AtomicCost::LogCost {
+                },
+                AtomicCost::LogCost {
                     param: "V".to_string(),
-                }),
+                },
             ]),
             Rc::new(vec![
-                Rc::new(AtomicCost::PolyCost {
+                AtomicCost::PolyCost {
                     param: "E".to_string(),
                     exponent: poly_exp_degree_one(),
-                }),
-                Rc::new(AtomicCost::LogCost {
+                },
+                AtomicCost::LogCost {
                     param: "V".to_string(),
-                }),
+                },
             ]),
         ]),
-    })
+    }
 }
 
-pub fn bellman_ford_bound() -> Rc<CostBound> {
-    Rc::new(CostBound::ProductBound {
+pub fn bellman_ford_bound() -> CostBound {
+    CostBound::ProductBound {
         factors: Rc::new(vec![
-            Rc::new(AtomicCost::PolyCost {
+            AtomicCost::PolyCost {
                 param: "V".to_string(),
                 exponent: poly_exp_degree_one(),
-            }),
-            Rc::new(AtomicCost::PolyCost {
+            },
+            AtomicCost::PolyCost {
                 param: "E".to_string(),
                 exponent: poly_exp_degree_one(),
-            }),
+            },
         ]),
-    })
+    }
 }
 
-pub fn floyd_warshall_bound() -> Rc<CostBound> {
+pub fn floyd_warshall_bound() -> CostBound {
     cost_poly("V".to_string(), 3)
 }
 
