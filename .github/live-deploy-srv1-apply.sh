@@ -5,6 +5,7 @@ set -euo pipefail
 # Wave C envelope: deploy-access preflight + sudoers dropin emitted from roster before mutation.
 _gunbc_stage="$(mktemp -d)"
 trap 'rm -rf "$_gunbc_stage"' EXIT
+# 🟡 dissolve-on: gunbc.ci_deploy_access_emit — deploy-access preflight modeled as v2.std.orchestration Pipeline/PipelineStep (principal probe + sudo -n grant probes); DISSOLVES WHEN extdeps access/sudo typed-argv op transport and live_deploy_emit_shell_dissolution_trigger retire (bash-emit #5828 / shell-intent Phase 2 realizes preflight through typed effect-plan emit without medium-as-string concat).
 # deploy-access-bootstrap-preflight (principal + roster grants)
 _gunbc_principal="$(whoami )"
 if ! [ "$_gunbc_principal" = "ghrunner" ]; then
