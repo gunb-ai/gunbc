@@ -902,13 +902,21 @@ fn rust_seed_inferred_type_rendered(value: Node, shared_types: Set<String>, scop
 fn rust_inferred_node_needs_rc_wrap(result_type: InferredNode?, shared_types: Set<String>, scope: InferScope, emit_info: EmitGraphInfo) -> Bool {
   match result_type {
     Present { value: Resolved { node: rt } } =>
-      rust_type_is_rc_wrapped(type_name: render_rust_type_with_applied_binding(n: rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, use_site: OwnershipWrapUseSiteAbsent))
+      let rendered = render_rust_type_with_applied_binding(n: rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, use_site: OwnershipAtFunctionReturn)
+      let type_name = rust_fn_sig_leaf_name(source_indices: scope.type_env.source_indices, n: rt)
+      rust_seed_value_needs_rc_wrap(type_name: type_name, rendered: rendered, use_site: OwnershipAtFunctionReturn)
     _ => false
   }
 }
 
 fn rust_seed_inferred_type_needs_rc_wrap(value: Node, shared_types: Set<String>, scope: InferScope, emit_info: EmitGraphInfo) -> Bool {
-  rust_type_is_rc_wrapped(type_name: rust_seed_inferred_type_rendered(value: value, shared_types: shared_types, scope: scope, emit_info: emit_info))
+  let rt = match value.inferred {
+    Present { value: Resolved { node: rt } } => rt
+    _ => resolved_type(n: value)
+  }
+  let rendered = render_rust_type_with_applied_binding(n: rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, use_site: OwnershipAtBindingProjection)
+  let type_name = rust_fn_sig_leaf_name(source_indices: scope.type_env.source_indices, n: rt)
+  rust_seed_value_needs_rc_wrap(type_name: type_name, rendered: rendered, use_site: OwnershipAtBindingProjection)
 }
 
 fn rust_seed_expr_list_literal_needs_rc(value: Node, shared_types: Set<String>, scope: InferScope, emit_info: EmitGraphInfo) -> Bool {
@@ -6743,7 +6751,7 @@ fn rust_wrap_runtime_collection_result(call_str: String, function_name: String, 
       concat("Rc::new(", call_str, ")")
     }
   } else {
-    rust_seed_demote_outer_rc_wrap(emitted: call_str)
+    call_str
   }
 }
 

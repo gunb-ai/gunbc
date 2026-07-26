@@ -1865,26 +1865,53 @@ pub fn rust_seed_inferred_type_needs_rc_wrap(
     scope: Rc<InferScope>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> bool {
-    match value.inferred.clone() {
+    let rt = match value.inferred.clone() {
+        Some(rc) => match (*rc).clone() {
+            InferredNode::Resolved { node: rt, .. } => rt,
+            _ => resolved_type(value.clone()),
+        },
+        _ => resolved_type(value.clone()),
+    };
+    let rendered = render_rust_type_with_applied_binding(
+        rt.clone(),
+        shared_types.clone(),
+        emit_info.corpus_repr.clone(),
+        scope.type_env.source_indices.clone(),
+        OwnershipWrapUseSite::OwnershipAtBindingProjection,
+    );
+    let type_name = rust_fn_sig_leaf_name(scope.type_env.source_indices.clone(), rt);
+    rust_seed_value_needs_rc_wrap(
+        type_name,
+        rendered,
+        OwnershipWrapUseSite::OwnershipAtBindingProjection,
+    )
+}
+
+pub fn rust_inferred_node_needs_rc_wrap(
+    result_type: Option<Rc<InferredNode>>,
+    shared_types: Rc<BTreeSet<String>>,
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    match result_type {
         Some(rc) => match (*rc).clone() {
             InferredNode::Resolved { node: rt, .. } => {
-                rust_type_is_rc_wrapped(render_rust_type_with_applied_binding(
-                    rt,
-                    shared_types,
+                let rendered = render_rust_type_with_applied_binding(
+                    rt.clone(),
+                    shared_types.clone(),
                     emit_info.corpus_repr.clone(),
                     scope.type_env.source_indices.clone(),
-                    OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent,
-                ))
+                    OwnershipWrapUseSite::OwnershipAtFunctionReturn,
+                );
+                let type_name =
+                    rust_fn_sig_leaf_name(scope.type_env.source_indices.clone(), rt);
+                rust_seed_value_needs_rc_wrap(
+                    type_name,
+                    rendered,
+                    OwnershipWrapUseSite::OwnershipAtFunctionReturn,
+                )
             }
-            _ => {
-                let rendered =
-                    rust_seed_inferred_type_rendered(value, shared_types, scope, emit_info);
-                if rendered.is_empty() {
-                    false
-                } else {
-                    rust_type_is_rc_wrapped(rendered)
-                }
-            }
+            _ => false,
         },
         _ => false,
     }
@@ -18125,8 +18152,21 @@ pub fn rust_wrap_runtime_collection_result(
     call_str: String,
     function_name: String,
     result_type: Option<Rc<InferredNode>>,
+    shared_types: Rc<BTreeSet<String>>,
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
-    if rust_runtime_bridge_wraps_collection_result_in_rc(function_name.clone()) {
+    let needs_rc = if rust_runtime_bridge_wraps_collection_result_in_rc(function_name.clone()) {
+        rust_inferred_node_needs_rc_wrap(
+            result_type.clone(),
+            shared_types.clone(),
+            scope.clone(),
+            emit_info.clone(),
+        )
+    } else {
+        false
+    };
+    if needs_rc {
         if rust_runtime_bridge_collection_result_needs_rc_elements(
             function_name.clone(),
             result_type.clone(),
@@ -19136,6 +19176,12 @@ pub fn emit_typed_call_expr(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
+        let needs_rc_result = rust_inferred_node_needs_rc_wrap(
+            inferred.clone(),
+            shared_types.clone(),
+            scope.clone(),
+            emit_info.clone(),
+        );
         let call_str = if (func.clone() == "empty_map".to_string()) {
             match inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: ret_type, .. }) => {
@@ -19146,20 +19192,38 @@ pub fn emit_typed_call_expr(
                         scope.type_env.clone().source_indices.clone(),
                     );
                     if (kv_type_str.clone() != "".to_string()) {
-                        v1_rt::concat(
+                        if needs_rc_result.clone() {
                             v1_rt::concat(
-                                "v1_rt::rc_empty_map::<".to_string(),
-                                kv_type_str.clone(),
-                            ),
-                            ">()".to_string(),
-                        )
-                    } else {
+                                v1_rt::concat(
+                                    "v1_rt::rc_empty_map::<".to_string(),
+                                    kv_type_str.clone(),
+                                ),
+                                ">()".to_string(),
+                            )
+                        } else {
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "v1_rt::empty_map::<".to_string(),
+                                    kv_type_str.clone(),
+                                ),
+                                ">()".to_string(),
+                            )
+                        }
+                    } else if needs_rc_result.clone() {
                         "Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */"
                             .to_string()
+                    } else {
+                        "HashMap::new() /* BRIDGE: empty_map value type unresolved */".to_string()
                     }
                 }
-                _ => "Rc::new(HashMap::new()) /* BRIDGE: empty_map return type unresolved */"
-                    .to_string(),
+                _ => {
+                    if needs_rc_result.clone() {
+                        "Rc::new(HashMap::new()) /* BRIDGE: empty_map return type unresolved */"
+                            .to_string()
+                    } else {
+                        "HashMap::new() /* BRIDGE: empty_map return type unresolved */".to_string()
+                    }
+                }
             }
         } else {
             if (func.clone() == "empty_set".to_string()) {
@@ -19187,9 +19251,13 @@ pub fn emit_typed_call_expr(
             }
         };
         if rust_runtime_bridge_wraps_collection_result_in_rc(func.clone()) {
-            v1_rt::concat(
-                v1_rt::concat("Rc::new(".to_string(), call_str.clone()),
-                ")".to_string(),
+            rust_wrap_runtime_collection_result(
+                call_str.clone(),
+                func.clone(),
+                inferred.clone(),
+                shared_types.clone(),
+                scope.clone(),
+                emit_info.clone(),
             )
         } else {
             call_str.clone()
@@ -21624,9 +21692,13 @@ pub fn emit_rust_generic_method_call(
                     ")".to_string(),
                 );
                 if rust_runtime_bridge_wraps_collection_result_in_rc(function_name.clone()) {
-                    v1_rt::concat(
-                        v1_rt::concat("Rc::new(".to_string(), lowered.clone()),
-                        ")".to_string(),
+                    rust_wrap_runtime_collection_result(
+                        lowered.clone(),
+                        function_name.clone(),
+                        result_type.clone(),
+                        shared_types.clone(),
+                        scope.clone(),
+                        emit_info.clone(),
                     )
                 } else {
                     lowered.clone()
@@ -21995,7 +22067,14 @@ pub fn emit_typed_method_call(
                                                                         bindings.clone(),
                                                                     );
                                                                     if rust_runtime_bridge_wraps_collection_result_in_rc(method_name.clone()) {
-                                                        v1_rt::concat(v1_rt::concat("Rc::new(".to_string(), raw.clone()), ")".to_string())
+                                                        rust_wrap_runtime_collection_result(
+                                                            raw.clone(),
+                                                            method_name.clone(),
+                                                            result_type.clone(),
+                                                            shared_types.clone(),
+                                                            scope.clone(),
+                                                            emit_info.clone(),
+                                                        )
                                                     } else {
                                                         raw.clone()
                                                     }
@@ -22071,9 +22150,13 @@ pub fn emit_typed_method_call(
                                 let raw = apply_named_template(tmpl.clone(), bindings.clone());
                                 if rust_runtime_bridge_wraps_collection_result_in_rc(method.clone())
                                 {
-                                    v1_rt::concat(
-                                        v1_rt::concat("Rc::new(".to_string(), raw.clone()),
-                                        ")".to_string(),
+                                    rust_wrap_runtime_collection_result(
+                                        raw.clone(),
+                                        method.clone(),
+                                        result_type.clone(),
+                                        shared_types.clone(),
+                                        scope.clone(),
+                                        emit_info.clone(),
                                     )
                                 } else {
                                     raw.clone()
