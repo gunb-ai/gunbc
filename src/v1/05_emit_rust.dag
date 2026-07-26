@@ -47,7 +47,7 @@ import extdeps.languages.rust.wrap_catalog {
   rust_sg_rc_wrap_layer_lookup, rust_sg_rc_wrap_carrier_key
 }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
-import gunbc.stage0_crate_layout_generated { generated_pub_mod_block }
+import gunbc.stage0_crate_layout_generated { generated_pub_mod_basenames }
 import v1.compiler.languages {
   scaffold_for_target, serialization_for_target,
   TestConventions, ItemKeywords,
@@ -2305,6 +2305,24 @@ fn emit_v2_std_text_closure_stub_module() -> TextFile {
   }
 }
 
+fn emit_lib_rs_declared_mod_basenames(all_module_files: List<TextFile>) -> List<String> {
+  let src_prefix_len = string_length(s: rust_source_root())
+  let ext_len = string_length(s: rust_source_ext())
+  all_module_files |> map(f =>
+    let path_len = string_length(s: f.path)
+    substring(s: f.path, start: src_prefix_len, end: path_len - ext_len)
+  )
+}
+
+fn emit_lib_rs_hand_maintained_missing_mod_decls(declared_basenames: List<String>) -> String {
+  generated_pub_mod_basenames
+    |> filter(basename => !(declared_basenames |> any(name => name == basename)))
+    |> map(basename =>
+      concat(rust_visibility_prefix(), rust_items().module_keyword, " ", basename, ";")
+    )
+    |> join(separator: "\n")
+}
+
 fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: Bool) -> TextFile {
   let src_prefix_len = string_length(s: rust_source_root())
   let ext_len = string_length(s: rust_source_ext())
@@ -2315,7 +2333,10 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
   )
 
   let hand_maintained_mods = if has_compiler_tests {
-    generated_pub_mod_block
+    let missing = emit_lib_rs_hand_maintained_missing_mod_decls(
+      declared_basenames: emit_lib_rs_declared_mod_basenames(all_module_files: all_module_files)
+    )
+    if missing == "" { "" } else { concat("\n", missing) }
   } else {
     ""
   }

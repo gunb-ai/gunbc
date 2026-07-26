@@ -4267,19 +4267,19 @@ fn rust_sg_rc_wrap_catalog_row_to_realization_required(
 ) -> TargetUseSiteOwnershipRealization {
   match rust_sg_rc_wrap_catalog_row_to_realization(row: row) {
     Present { value: realization } => realization
-    Absent => rust_sg_rc_wrap_catalog_row_to_realization_refused(row: row)
+    Absent => rust_sg_rc_wrap_catalog_absent_row_refusal_trap()
   }
 }
 
-fn rust_sg_rc_wrap_catalog_row_to_realization_refused(
-  row: RustSgRcOwnershipWrapCatalogRow
-) -> TargetUseSiteOwnershipRealization {
-  match rust_sg_rc_wrap_catalog_row_to_realization(row: row) {
-    Present { value: realization } => realization
-    Absent =>
-      match pure_dag_seam_unreachable() {
-        _ => rust_sg_rc_wrap_catalog_row_to_realization_refused(row: row)
-      }
+fn rust_sg_rc_wrap_catalog_absent_row_refusal_trap() -> TargetUseSiteOwnershipRealization {
+  match pure_dag_seam_unreachable() {
+    _ => rust_sg_rc_wrap_catalog_absent_row_refusal_unreachable_tail()
+  }
+}
+
+fn rust_sg_rc_wrap_catalog_absent_row_refusal_unreachable_tail() -> TargetUseSiteOwnershipRealization {
+  match pure_dag_seam_unreachable() {
+    _ => rust_sg_rc_wrap_catalog_absent_row_refusal_unreachable_tail()
   }
 }
 
