@@ -18,7 +18,6 @@ import v2.lens.no_dual_representation_test.scan {
 import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -64,9 +63,15 @@ fn no_dual_representation_test_clean_holds() -> Bool {
 }
 
 
-data no_dual_representation_test_coverage_honesty_holds_symbol: Symbol = no_dual_representation_test_coverage_honesty_holds
-data no_dual_representation_test_clean_holds_symbol: Symbol = no_dual_representation_test_clean_holds
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
+
+data no_dual_representation_test_manual_orphan_pins: Bool = if false {
+  no_dual_representation_test_coverage_honesty_holds()
+    && no_dual_representation_test_clean_holds()
+} else {
+  true
+}
+

@@ -1,5 +1,4 @@
 module v2.test.manual.inhabitant_neutralization
-import v2.std.node { Symbol }
 
 import v2.compiler.emit { emit }
 import v2.compiler.ingest { cross_language_compile }
@@ -317,12 +316,6 @@ fn inhabitant_neutralization_python_to_go_emit_rejects() -> Bool {
 }
 
 
-data inhabitant_neutralization_python_int_std_projection_holds_symbol: Symbol = inhabitant_neutralization_python_int_std_projection_holds
-data inhabitant_neutralization_ts_target_lookup_holds_symbol: Symbol = inhabitant_neutralization_ts_target_lookup_holds
-data inhabitant_neutralization_python_to_ts_cross_language_compile_e2e_holds_symbol: Symbol = inhabitant_neutralization_python_to_ts_cross_language_compile_e2e_holds
-data inhabitant_neutralization_python_to_go_holds_symbol: Symbol = inhabitant_neutralization_python_to_go_holds
-data inhabitant_neutralization_python_to_go_translate_rejects_symbol: Symbol = inhabitant_neutralization_python_to_go_translate_rejects
-data inhabitant_neutralization_python_to_go_emit_rejects_symbol: Symbol = inhabitant_neutralization_python_to_go_emit_rejects
 
 data claim_inhabitant_neutralization_module_compiles: TestClaim = CompilesClaim {
   label: "manual/inhabitant_neutralization: module compiles",
@@ -331,3 +324,15 @@ data claim_inhabitant_neutralization_module_compiles: TestClaim = CompilesClaim 
   expected_value: python_emitted_add_fn_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
+
+data inhabitant_neutralization_manual_orphan_pins: Bool = if false {
+  inhabitant_neutralization_python_int_std_projection_holds()
+    && inhabitant_neutralization_ts_target_lookup_holds()
+    && inhabitant_neutralization_python_to_ts_cross_language_compile_e2e_holds()
+    && inhabitant_neutralization_python_to_go_holds()
+    && inhabitant_neutralization_python_to_go_translate_rejects()
+    && inhabitant_neutralization_python_to_go_emit_rejects()
+} else {
+  true
+}
+

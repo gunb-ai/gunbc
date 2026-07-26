@@ -21,7 +21,6 @@ import v2.std.diagnostic {
 import v2.std.host_run { HostLogicalRun }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.text { String }
 import v2.test.manual.add_body_emit_typescript {
@@ -90,6 +89,10 @@ fn typescript_descriptor_node_ts_node_run_catalog_minus_discriminates() -> Bool 
   }
 }
 
-data typescript_descriptor_node_ts_node_run_add_holds_symbol: Symbol = typescript_descriptor_node_ts_node_run_add_holds
-data typescript_descriptor_node_ts_node_run_catalog_minus_discriminates_symbol: Symbol = typescript_descriptor_node_ts_node_run_catalog_minus_discriminates
+data typescript_descriptor_node_run_manual_orphan_pins: Bool = if false {
+  typescript_descriptor_node_ts_node_run_add_holds()
+    && typescript_descriptor_node_ts_node_run_catalog_minus_discriminates()
+} else {
+  true
+}
 

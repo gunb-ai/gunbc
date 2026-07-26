@@ -493,6 +493,10 @@ test fn bash_program_andor_exit_matches_golden_holds() -> Bool {
   )
 }
 
-data bash_program_real_witness_matches_golden_holds_symbol: Symbol = bash_program_real_witness_matches_golden_holds
-data bash_program_real_claims_matches_golden_holds_symbol: Symbol = bash_program_real_claims_matches_golden_holds
+data bash_program_real_manual_orphan_pins: Bool = if false {
+  bash_program_real_witness_matches_golden_holds()
+    && bash_program_real_claims_matches_golden_holds()
+} else {
+  true
+}
 
