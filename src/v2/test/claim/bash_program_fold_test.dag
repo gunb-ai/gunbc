@@ -1,6 +1,5 @@
 module v2.test.claim.bash_program_fold
 
-import tools.build_step { BuildArtifact, emit_verifications }
 import v2.extdeps.languages.bash_build {
   bash_build_and_then,
   bash_build_assign,
@@ -34,6 +33,16 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
+import v2.test.claim.bash_program_fold_support {
+  bash_program_fixture_assign_root_node,
+  bash_program_fold_tag_assign,
+  bash_program_fold_tag_command,
+  bash_program_fold_tag_if,
+  bash_program_fold_tag_or_else,
+  bash_program_fold_tag_subshell,
+  bash_program_fold_tag_with_redir
+}
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -60,206 +69,6 @@ data bash_program_real_witness_golden: String = "set -e\nROOT=$('git' 'rev-parse
 data bash_program_real_claims_golden: String = "set -e\nROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')\nGUNBC=\"$ROOT\"'/target/release/gunbc'\nif '[' '!' '-x' \"$GUNBC\" ']'; then ('cd' \"$ROOT\" && 'cargo' 'build' '-p' 'v1-compiler' '--release' '--bin' 'gunbc') || exit 1; fi\nif '[' '!' '-x' \"$GUNBC\" ']'; then 'echo' '::error::build verification: declared artifact '\\''gunbc'\\'' absent or not executable after a '\\''successful'\\'' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: '\"$GUNBC\" >&2; exit 1; fi\nif '[' '!' '-s' \"$GUNBC\" ']'; then 'echo' '::error::build verification: declared artifact '\\''gunbc'\\'' is zero-byte after a '\\''successful'\\'' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: '\"$GUNBC\" >&2; exit 1; fi\n\"$GUNBC\" 'run' '--source-root' 'src/v2' '--source-root' 'dag' '--entry' 'src/v2/test/claim/bash_program_fold_test.dag' '--function' 'bash_program_serialize_matches_golden_holds' '--claim-run'\n"
 
 data bash_program_exit_tail_regression_note: String = "The exit-in-joined-tail tests below are the discriminating controls for the improper-string class fixed in 06_translate (serialize joins once built modeled cons cells with the last spelling attached as an improper native tail; interp == NORMALIZES a top-level hybrid, so a matches-golden oracle alone can be fooled when both sides carry the same hybrid - which is why the literal-equality witness exists: it is normalization-independent). Red before the concat grounding of serialize_concrete_syntax_tokens_to_source_string / target_serialize_relation_row_from_model_bounded / token_sequence_to_source_bounded; green after. Declared residue of the same class (not yet grounded, no bash-row consumer today): the type-expression joins in 06_translate (serialize_type_expr_args/separated/record_fields) and the list_append string joins in emit_produced.dag / emit_module.dag - the follow-up sweep grounds them the same way (native concat accumulator), priced by the first oracle that reds on them."
-
-fn bash_program_fold_tagged(
-  node: Node,
-  production_binding: Symbol,
-  rule_name: Symbol
-) -> BashEmitSpecial {
-  BashEmitTagged {
-    stmt: BashEmitStmt {
-      node: node,
-      production_binding: production_binding,
-      rule_name: rule_name
-    }
-  }
-}
-
-fn bash_program_fold_tag_command(node: Node) -> BashEmitSpecial {
-  bash_program_fold_tagged(
-    node: node,
-    production_binding: ^bash_production_fold_command,
-    rule_name: ^bash_relation_rule_fold_command
-  )
-}
-
-fn bash_program_fold_tag_assign(node: Node) -> BashEmitSpecial {
-  bash_program_fold_tagged(
-    node: node,
-    production_binding: ^bash_production_fold_assign,
-    rule_name: ^bash_relation_rule_fold_assign
-  )
-}
-
-fn bash_program_fold_tag_if(node: Node) -> BashEmitSpecial {
-  bash_program_fold_tagged(
-    node: node,
-    production_binding: ^bash_production_fold_if,
-    rule_name: ^bash_relation_rule_fold_if
-  )
-}
-
-fn bash_program_fold_tag_subshell(node: Node) -> BashEmitSpecial {
-  bash_program_fold_tagged(
-    node: node,
-    production_binding: ^bash_production_fold_subshell,
-    rule_name: ^bash_relation_rule_fold_subshell
-  )
-}
-
-fn bash_program_fold_tag_or_else(node: Node) -> BashEmitSpecial {
-  bash_program_fold_tagged(
-    node: node,
-    production_binding: ^bash_production_fold_or_else,
-    rule_name: ^bash_relation_rule_fold_or_else
-  )
-}
-
-fn bash_program_fold_tag_with_redir(node: Node) -> BashEmitSpecial {
-  bash_program_fold_tagged(
-    node: node,
-    production_binding: ^bash_production_fold_with_redir,
-    rule_name: ^bash_relation_rule_fold_with_redir
-  )
-}
-
-fn bash_program_fold_tag_if_nodes(nodes: List<Node>) -> List<BashEmitSpecial> {
-  list_map(xs: nodes, f: fn(n) { bash_program_fold_tag_if(node: n) })
-}
-
-fn bash_program_fold_test_not_executable_node(path: Node) -> Node {
-  bash_build_command_from_word_nodes(words: [
-    bash_build_word_lit(text: "["),
-    bash_build_word_lit(text: "!"),
-    bash_build_word_lit(text: "-x"),
-    path,
-    bash_build_word_lit(text: "]")
-  ])
-}
-
-fn bash_program_fixture_assign_root_node() -> Node {
-  bash_build_assign(
-    name: "ROOT",
-    value: bash_build_word_cmdsubst(
-      body: bash_build_or_else(
-        left: bash_build_with_redir(
-          inner: bash_build_command_from_lits(lits: ["git", "rev-parse", "--show-toplevel"]),
-          redir: ^bash_production_fold_redir_stderr_null
-        ),
-        right: bash_build_command_from_lits(lits: ["pwd"])
-      )
-    )
-  )
-}
-
-fn bash_program_fixture_build_bin_if_absent(bin_path: Node, root: Node, bin_name: String) -> Node {
-  bash_build_if_from_stmts(
-    cond: bash_program_fold_test_not_executable_node(path: bin_path),
-    then_stmts: [
-      bash_build_or_else(
-        left: bash_build_subshell_from_stmts(stmts: [
-          bash_build_and_then(
-            left: bash_build_command_from_word_nodes(words: [
-              bash_build_word_lit(text: "cd"),
-              root
-            ]),
-            right: bash_build_command_from_lits(lits: [
-              "cargo", "build", "-p", "v1-compiler", "--release", "--bin", bin_name
-            ])
-          )
-        ]),
-        right: bash_build_exit(code: "1")
-      )
-    ]
-  )
-}
-
-fn bash_program_fixture_ensure_bin_specials(var_name: String, bin_name: String) -> List<BashEmitSpecial> {
-  let root = bash_build_word_var(name: "ROOT")
-  let bin = bash_build_word_var(name: var_name)
-  let bin_path = bash_build_word_concat_from_nodes(parts: [
-    root,
-    bash_build_word_lit(text: concat("/target/release/", bin_name))
-  ])
-  let verify_nodes = emit_verifications(
-    produces: [BuildArtifact { path: bin_path, name: bin_name }]
-  )
-  list_append(
-    xs: [
-      bash_program_fold_tag_assign(node: bash_program_fixture_assign_root_node()),
-      bash_program_fold_tag_assign(
-        node: bash_build_assign(
-          name: var_name,
-          value: bash_build_word_concat(
-            parts: bash_build_command_words_pair(
-              left: bash_build_command_words_single(word: root),
-              right: bash_build_word_lit(text: concat("/target/release/", bin_name))
-            )
-          )
-        )
-      ),
-      bash_program_fold_tag_if(
-        node: bash_program_fixture_build_bin_if_absent(
-          bin_path: bin_path,
-          root: root,
-          bin_name: bin_name
-        )
-      )
-    ],
-    ys: bash_program_fold_tag_if_nodes(nodes: verify_nodes)
-  )
-}
-
-fn bash_program_fixture_witness_bin_specials(
-  var_name: String,
-  bin_name: String,
-  args: List<String>
-) -> List<BashEmitSpecial> {
-  let root = bash_build_word_var(name: "ROOT")
-  let invoke = bash_build_word_var(name: var_name)
-  list_append(
-    xs: bash_program_fixture_ensure_bin_specials(var_name: var_name, bin_name: bin_name),
-    ys: [
-      bash_program_fold_tag_command(
-        node: bash_build_command_from_word_nodes(words: [
-          bash_build_word_lit(text: "cd"),
-          root
-        ])
-      ),
-      bash_program_fold_tag_command(
-        node: bash_build_command_from_word_nodes(
-          words: list_append(
-            xs: [invoke],
-            ys: list_map(xs: args, f: fn(a) { bash_build_word_lit(text: a) })
-          )
-        )
-      )
-    ]
-  )
-}
-
-fn bash_program_fixture_gunbc_claims_specials() -> List<BashEmitSpecial> {
-  list_append(
-    xs: bash_program_fixture_ensure_bin_specials(var_name: "GUNBC", bin_name: "gunbc"),
-    ys: [
-      bash_program_fold_tag_command(
-        node: bash_build_command_from_word_nodes(words: [
-          bash_build_word_var(name: "GUNBC"),
-          bash_build_word_lit(text: "run"),
-          bash_build_word_lit(text: "--source-root"),
-          bash_build_word_lit(text: "src/v2"),
-          bash_build_word_lit(text: "--source-root"),
-          bash_build_word_lit(text: "dag"),
-          bash_build_word_lit(text: "--entry"),
-          bash_build_word_lit(text: "src/v2/test/claim/bash_program_fold_test.dag"),
-          bash_build_word_lit(text: "--function"),
-          bash_build_word_lit(text: "bash_program_serialize_matches_golden_holds"),
-          bash_build_word_lit(text: "--claim-run")
-        ])
-      )
-    ]
-  )
-}
 
 fn bash_program_fold_sample_specials() -> List<BashEmitSpecial> {
   [

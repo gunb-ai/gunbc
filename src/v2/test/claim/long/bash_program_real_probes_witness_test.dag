@@ -4,10 +4,12 @@ import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.workflow.bash_emit { bash_emit_program_matches_golden }
 import v2.test.claim.bash_program_fold {
-  bash_program_fixture_gunbc_claims_specials,
-  bash_program_fixture_witness_bin_specials,
   bash_program_real_claims_golden,
   bash_program_real_witness_golden
+}
+import v2.test.claim.bash_program_fold_support {
+  bash_program_fixture_gunbc_claims_specials,
+  bash_program_fixture_witness_bin_specials
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
