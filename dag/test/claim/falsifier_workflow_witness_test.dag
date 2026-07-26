@@ -7,9 +7,7 @@ import gunbc.falsifier_workflow {
   falsifier_workflow,
   gunbc_falsifier_job_backstop_timeout_minutes,
   gunbc_falsifier_step_timeout_minutes,
-  gunbc_falsifier_step_timeout_basis,
-  FalsifierStepTimeoutBasis,
-  MeasuredEnvelopeNotComposed,
+  gunbc_falsifier_step_timeout_basis_is_measured_not_composed,
   gunbc_falsifier_compile_clean_cold_control_timeout_minutes,
   gunbc_falsifier_native_cache_cold_control_timeout_minutes,
   expected_falsifier_yml
@@ -52,20 +50,7 @@ fn falsifier_concurrency_queues_not_cancels() -> Bool {
 }
 
 fn falsifier_step_timeout_basis_is_measured_not_composed() -> Bool {
-  match gunbc_falsifier_step_timeout_basis {
-    FalsifierStepTimeoutBasis {
-      kind: MeasuredEnvelopeNotComposed,
-      single_step_cap_minutes: cap,
-      prior_cap_minutes: 120,
-      current_cap_minutes: 170,
-      measurement_github_actions_run_id: run,
-      not_algebraically_closed_from: _,
-      dissolution_trigger: _
-    } =>
-      cap == gunbc_falsifier_step_timeout_minutes
-        && run == "29135185172"
-        && gunbc_falsifier_step_timeout_minutes == 170
-  }
+  gunbc_falsifier_step_timeout_basis_is_measured_not_composed()
 }
 
 fn falsifier_backstop_is_step_sum_plus_prelude() -> Bool {
