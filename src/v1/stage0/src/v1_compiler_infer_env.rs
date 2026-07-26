@@ -23,7 +23,7 @@ use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::TypeVariable;
 pub use crate::v1_std_core::{
     authored_name_at, empty_intern_table, find_child_named, intern, intern_find, intern_str,
-    kernel_span, merge_intern_tables, module_path_segments, param_node_name_at,
+    is_type_variable, kernel_span, merge_intern_tables, module_path_segments, param_node_name_at,
     param_node_type_expr, source_text_at,
 };
 pub use crate::v1_std_core::{
@@ -1251,16 +1251,9 @@ pub fn type_ref_fn_type_param_bindable(env: Rc<TypeEnv>, name: String) -> bool {
         512 * 1024,
         2 * 1024 * 1024,
         || match lookup_binding_by_name_local(env.clone(), name.clone()) {
-            Some(binding) => match binding
-                .resolved
-                .clone()
-                .inferred
-                .clone()
-                .as_deref()
-                .cloned()
-            {
-                Some(InferredNode::TypeVariable { id: _, .. }) => true,
-                _ => false,
+            Some(binding) => match binding.resolved.clone().inferred.clone() {
+                Some(inf) => is_type_variable(inf.clone()),
+                None => false,
             },
             None => env.parents.clone().iter().cloned().fold(
                 false,
@@ -1450,9 +1443,9 @@ pub fn qualify_borrowed_type_names(
             })
         };
         let name = authored_name_at(env.source_indices.clone(), n.clone());
-        let is_type_var = match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: _, .. }) => true,
-            _ => false,
+        let is_type_var = match n.inferred.clone() {
+            Some(inf) => is_type_variable(inf.clone()),
+            None => false,
         };
         let rewrite = ((((((n.connective.clone() == Connective::NoConnective)
             && (name.clone() != "".to_string()))
