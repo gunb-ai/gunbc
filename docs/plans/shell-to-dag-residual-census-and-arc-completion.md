@@ -292,14 +292,17 @@ These are correct as shell (GHA `run:`, cron, git hooks, pre-runtime bootstrap �
 | `roadmap_static_site.dag` body fns | srv1 dashboard (belt B) | E-emit / dissolves with belt B |
 | `fleet_posix_accounts.dag` `probe_command: "id <user>"` (×4) | account-existence probe | **NOT a shell emit site** — authored provenance metadata; live proof is `deploy_access_check_observed` via typed `SudoNopasswdExecuteProbe` |
 
-### 4.F — bottom transport & brand (Phase-3 WALL — the construction guard)
+### 4.F — bottom transport (Phase-3 WALL — **LANDED**, operator acceptance 2026-07-24)
+
+> **Trued up 2026-07-26 (`review 43486`).** This table described the wall as *pending* and directed Phase 3 to "brand `TransportScript`" across "26 sites". **The wall landed on 2026-07-24 and branding was proven ineffective by execution** — both facts were already recorded in §5.E's ruling block ~275 lines below, which superseded this table in place without updating it. A worker reading the action column would have executed superseded work. Corrected against the tree.
 
 | surface | status | action |
 | --- | --- | --- |
-| `transport_script_from_body(body: String)` — 26 sites | the **porous** `TransportScript` brand: `shell.Exec.Run` already takes `TransportScript` (`extdeps/shell/exec.dag:53`) but the constructor accepts any `String` | Phase-3: brand `TransportScript` so it is produced ONLY by `emit(intent,Bash)` — a hand-concat becomes a type error (§5 construction wall). *(Corrected 2026-07-26: this read "`emit(intent,Bash)`/`serialize_bash`". Naming a deleted sidecar as a sanctioned producer would re-open the very hole the brand closes — there is exactly **one** producer.)* |
-| `shell_exec_via_bash` (`shell_bash_runner.dag:32`) | heredoc runner scaffold | dissolves when no caller passes a raw script |
-| `host_language_transport_script` lens | **inert** (`fail_closed_lockdown.dag`) — no gate reds a bare-string `shell.Exec.Run` | activate once the brand lands |
-| meta-exec module `extdeps.shell.exec` | not walled | module-isolate / symbol-visibility confinement (meta-exec-confinement lane) |
+| `transport_script_from_body(body: String)` | **DELETED** from `extdeps.shell.exec`. Not 26 live sites — **zero**. Surviving occurrences are a note recording its replacement (`retained_shell_script.dag:15`), two compile-**RED** controls asserting the deleted-minter fake *fails to compile* (`transport_script_wall_compile_red_test.dag`), and v1-seed Rust detector code | **none — done.** The single sanctioned `String → TransportScript` mint is now `gunbc.retained_shell_script`, which takes the **record**, so the only route from a script body to a transport is authoring a counted `RetainedShellScript` row |
+| `TransportScript` branding | **abandoned deliberately, not pending.** `TransportScript = String where brand(…)` is a *transparent* brand: `peel_nominal_alias_identity` peels it to its base, so a bare or computed `String` flows into a `TransportScript` position with no cast. Branding alone cannot make a hand-join a type error | **superseded** by the record wall — a `String` cannot fill a record-typed field. See §5.E's design-correction block |
+| `shell_exec_via_bash` (`shell_bash_runner.dag:32`) | heredoc runner scaffold | dissolves when no caller passes a raw script *(still open)* |
+| `host_language_transport_script` lens | **inert, and deliberately so.** Its own RED control records why: a computed concat is `ComputedApplication` and the lens is *green* on it by design — it never caught the #7064 fake. Only construction closed the class | **do not "activate once the brand lands"** — that action was predicated on a brand that does not work. The lens is a residue reader, not the wall |
+| meta-exec module `extdeps.shell.exec` | not walled | module-isolate / symbol-visibility confinement (meta-exec-confinement lane) *(still open — the genuinely remaining Phase-3 item)* |
 
 ### 4.G — bash-AST emit vocab (emit-internal — NOT fraud, already confined)
 
@@ -574,9 +577,11 @@ Bash-as-target lives in one isolated backend: `src/v2/extdeps/languages/bash*` +
 
 Every §5.A/§5.B row can be **faked by joining argv back into a string** and feeding `shell.Exec.Run(script)` / `ShellOnHost{script}` — sleek-crab #7064 did exactly this (`argv_join(...) + " 2>/dev/null || true"`). As long as that sink is reachable from intent, relocation is the path of least resistance and a brief alone won't stop it. So the wall is **not cleanup-after** — it's the enabler:
 
-- Brand `TransportScript` so it is produced ONLY by `emit(intent, Bash)` (today `transport_script_from_body(body: String)` accepts any string — the porous boundary). *(Corrected 2026-07-26 with §4.F: `serialize_bash` was listed here as a second sanctioned producer; it is deleted, and a wall with two doors is not a wall.)*
-- Make `ShellOnHost{script}` / the runtime-present realization edge take **typed argv (`List<String>`), not `String`** — a hand-join becomes a type error.
-- Activate the `host_language_transport_script` lens (inert today, `fail_closed_lockdown.dag`).
+> ⚠ **The three bullets immediately below are the ORIGINAL plan and are superseded by the ruling + design-correction block that follows them.** They are kept because the correction is only legible against them — bullets 1 and 3 were **refuted by execution**, not merely completed. Do not action them; read on. *(Flagged 2026-07-26, `review 43486` — this section had superseded itself in place, and §4.F above was still citing the pre-correction version.)*
+
+- ~~Brand `TransportScript` so it is produced ONLY by `emit(intent, Bash)`~~ — **refuted:** the brand is transparent, so branding cannot make a hand-join a type error. Replaced by the `RetainedShellScript` **record**.
+- Make `ShellOnHost{script}` / the runtime-present realization edge take **typed argv (`List<String>`), not `String`** — a hand-join becomes a type error. *(This one held; it is the retained-script edge retype, **landed**.)*
+- ~~Activate the `host_language_transport_script` lens~~ — **refuted:** a computed concat is `ComputedApplication` and the lens is deliberately green on it; it never caught the #7064 fake. Construction closed the class, not the lens.
 
 > **RULING — wall-first, one PR (operator, 2026-07-24). STOP per-op migration.** The §5.A/§5.B per-op
 > migration PRs are paused. Build §5.E's construction wall first, in ONE PR (large PRs fine); §5.B
