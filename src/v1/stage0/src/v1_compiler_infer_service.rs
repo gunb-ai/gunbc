@@ -39,12 +39,12 @@ pub struct OpEntry {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceMethodResult {
-    pub result_type: Rc<Node>,
+    pub result_type: Box<Rc<Node>>,
     pub op_params: Rc<Vec<Rc<Node>>>,
 }
 
 pub fn is_typed_service_call_receiver(
-    receiver: Rc<Node>,
+    receiver: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*receiver.expr_data.clone()).clone() {
@@ -69,7 +69,7 @@ pub fn is_typed_service_call_receiver(
 }
 
 pub fn extract_typed_service_name(
-    receiver: Rc<Node>,
+    receiver: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match (*receiver.expr_data.clone()).clone() {
@@ -94,16 +94,16 @@ pub fn extract_typed_service_name(
 }
 
 pub fn collect_typed_service_calls(
-    texpr: Rc<Node>,
+    texpr: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     {
         let result = collect_typed_service_calls_into(
             texpr.clone(),
-            Rc::new(UniqueAccum {
+            UniqueAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
-            }),
+            },
             source_indices.clone(),
         );
         result.result.clone()
@@ -111,7 +111,7 @@ pub fn collect_typed_service_calls(
 }
 
 pub fn collect_typed_service_calls_into(
-    texpr: Rc<Node>,
+    texpr: Node,
     acc: Rc<UniqueAccum>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<UniqueAccum> {
@@ -128,7 +128,7 @@ pub fn collect_typed_service_calls_into(
                             if emit_map_has(acc.seen.clone(), service_name.clone()) {
                                 acc.clone()
                             } else {
-                                Rc::new(UniqueAccum {
+                                UniqueAccum {
                                     seen: v1_rt::rc_map_insert(
                                         acc.seen.clone(),
                                         service_name.clone(),
@@ -138,7 +138,7 @@ pub fn collect_typed_service_calls_into(
                                         acc.result.clone(),
                                         service_name.clone(),
                                     ),
-                                })
+                                }
                             }
                         }
                         None => acc.clone(),
@@ -160,7 +160,7 @@ pub fn collect_typed_service_calls_into(
 }
 
 pub fn collect_called_func_names_into(
-    texpr: Rc<Node>,
+    texpr: Node,
     acc: Rc<UniqueAccum>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<UniqueAccum> {
@@ -171,10 +171,10 @@ pub fn collect_called_func_names_into(
                 if emit_map_has(acc.seen.clone(), f.clone()) {
                     acc.clone()
                 } else {
-                    Rc::new(UniqueAccum {
+                    UniqueAccum {
                         seen: v1_rt::rc_map_insert(acc.seen.clone(), f.clone(), true),
                         result: v1_rt::rc_list_push(acc.result.clone(), f.clone()),
-                    })
+                    }
                 }
             }
             _ => acc.clone(),
@@ -190,16 +190,16 @@ pub fn collect_called_func_names_into(
 }
 
 pub fn collect_called_func_names(
-    texpr: Rc<Node>,
+    texpr: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     {
         let result = collect_called_func_names_into(
             texpr.clone(),
-            Rc::new(UniqueAccum {
+            UniqueAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
-            }),
+            },
             source_indices.clone(),
         );
         result.result.clone()
@@ -210,7 +210,7 @@ pub fn expand_transitive_services_once(
     modules: Rc<Vec<Rc<TypedModule>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    modules.clone().iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(reg, |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, item: Rc<Node>| {
+    modules.clone().iter().cloned().fold(registry.clone(), |reg: HashMap<String, Rc<ItemInfo>>, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(reg, |reg2: HashMap<String, Rc<ItemInfo>>, item: Rc<Node>| {
         let item_name = authored_name_at(m.type_env.clone().source_indices.clone(), item.clone());
 match v1_rt::map_get(&reg2, item_name.clone()) {
     Some(info) => {
@@ -224,7 +224,7 @@ let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.c
     Some(callee_info) => callee_info.service_names.clone(),
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
-let merged = extra.clone().iter().cloned().fold(info.service_names.clone(), |svc_list: Rc<Vec<String>>, svc: String| if { let mut __found = false; for s in svc_list.clone().iter().cloned() { if (s.clone() == svc.clone()) { __found = true; break; } } __found } {
+let merged = extra.clone().iter().cloned().fold(info.service_names.clone(), |svc_list: Vec<String>, svc: String| if { let mut __found = false; for s in svc_list.clone().iter().cloned() { if (s.clone() == svc.clone()) { __found = true; break; } } __found } {
                         svc_list.clone()
                     } else {
                         v1_rt::rc_list_push(svc_list.clone(), svc.clone())
@@ -233,7 +233,7 @@ let same_count = ((merged.clone().len() as i64) == (info.service_names.clone().l
 if same_count.clone() {
                         reg2.clone()
                     } else {
-                        v1_rt::rc_map_insert(reg2.clone(), item_name.clone(), Rc::new(ItemInfo {
+                        v1_rt::rc_map_insert(reg2.clone(), item_name.clone(), ItemInfo {
     name: info.name.clone(),
     module_name: info.module_name.clone(),
     kind: info.kind.clone(),
@@ -242,7 +242,7 @@ if same_count.clone() {
     params: info.params.clone(),
     is_self_recursive: info.is_self_recursive.clone(),
     has_non_tail_self_call: info.has_non_tail_self_call.clone(),
-}))
+})
                     }
 }
             }
@@ -289,9 +289,9 @@ pub fn expand_transitive_services(
 }
 
 pub fn check_service_field_access_node(
-    base_type: Rc<Node>,
+    base_type: Node,
     field: String,
-    service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    service_registry: Rc<HashMap<String, Vec<Rc<OpEntry>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     if ((base_type.connective.clone() == Connective::NoConnective)
@@ -316,9 +316,9 @@ pub fn check_service_field_access_node(
 }
 
 pub fn check_service_method_call_node(
-    receiver_type: Rc<Node>,
+    receiver_type: Node,
     method: String,
-    service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    service_registry: Rc<HashMap<String, Vec<Rc<OpEntry>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<ServiceMethodResult>> {
     if ((receiver_type.connective.clone() == Connective::NoConnective)
@@ -341,29 +341,29 @@ pub fn check_service_method_call_node(
                 match matching.clone().first().cloned() {
                     Some(op) => {
                         if ((op.outputs.clone().len() as i64) == 0) {
-                            Some(Rc::new(ServiceMethodResult {
+                            Some(ServiceMethodResult {
                                 result_type: unit_type(),
                                 op_params: op.params.clone(),
-                            }))
+                            })
                         } else {
-                            Some(Rc::new(ServiceMethodResult {
-                                result_type: Rc::new(Node {
+                            Some(ServiceMethodResult {
+                                result_type: Node {
                                     name: "".to_string(),
                                     span: no_span(),
                                     ident_span: None,
                                     children: Rc::new({
                                         let mut __result = Vec::new();
                                         for f in op.outputs.clone().iter().cloned() {
-                                            __result.push(Rc::new(Node {
+                                            __result.push(Node {
                                                 name: f.name.clone(),
                                                 span: f.span.clone(),
                                                 ident_span: f.ident_span.clone(),
                                                 children: Rc::new(vec![]),
                                                 connective: Connective::NoConnective,
                                                 params: Rc::new(vec![]),
-                                                inferred: Some(Rc::new(InferredNode::Resolved {
+                                                inferred: Some(InferredNode::Resolved {
                                                     node: param_node_type_expr(f.clone()),
-                                                })),
+                                                }),
                                                 return_cardinality: Cardinality::Required,
                                                 uses: Rc::new(vec![]),
                                                 body: None,
@@ -373,9 +373,9 @@ pub fn check_service_method_call_node(
                                                 is_self_recursive: false,
                                                 has_non_tail_self_call: false,
                                                 match_pattern: None,
-                                                expr_data: Rc::new(ExprData::NoExprData),
+                                                expr_data: ExprData::NoExprData,
                                                 ident: None,
-                                            }));
+                                            });
                                         }
                                         __result
                                     }),
@@ -391,11 +391,11 @@ pub fn check_service_method_call_node(
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
-                                    expr_data: Rc::new(ExprData::NoExprData),
+                                    expr_data: ExprData::NoExprData,
                                     ident: None,
-                                }),
+                                },
                                 op_params: op.params.clone(),
-                            }))
+                            })
                         }
                     }
                     None => None,
@@ -409,10 +409,10 @@ pub fn check_service_method_call_node(
 }
 
 pub fn service_op_entry(
-    child: Rc<Node>,
+    child: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<OpEntry> {
-    Rc::new(OpEntry {
+    OpEntry {
         name: authored_name_at(source_indices.clone(), child.clone()),
         outputs: inferred_to_outputs(
             child.inferred.clone(),
@@ -420,5 +420,5 @@ pub fn service_op_entry(
             source_indices.clone(),
         ),
         params: child.params.clone(),
-    })
+    }
 }

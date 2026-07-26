@@ -17,12 +17,12 @@ use std::rc::Rc;
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+                ExternalAuthority {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "doc.rust-lang.org/reference/types.html".to_string(),
-    }),
-    })
+    },
+    }
             };
         }
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
@@ -162,7 +162,7 @@ pub fn arc_template() -> String {
 pub fn common_trait_bounds() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["Clone".to_string(), "Debug".to_string(), "Send".to_string(), "Sync".to_string(), "Serialize".to_string(), "Deserialize".to_string()])
+            vec!["Clone".to_string(), "Debug".to_string(), "Send".to_string(), "Sync".to_string(), "Serialize".to_string(), "Deserialize".to_string()]
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())

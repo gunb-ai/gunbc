@@ -60,9 +60,9 @@ pub fn descent_evidence_lattice_join(a: DescentEvidence, b: DescentEvidence) -> 
     }
 }
 
-pub fn descent_evidence_bounded_lattice() -> Rc<BoundedLattice<DescentEvidence>> {
+pub fn descent_evidence_bounded_lattice() -> BoundedLattice<DescentEvidence> {
     thread_local! {
-        static CACHED: Rc<BoundedLattice<DescentEvidence>> = {
+        static CACHED: BoundedLattice<DescentEvidence> = {
             Rc::new(BoundedLattice {
                 meet: Rc::new(descent_evidence_lattice_meet),
                 join: Rc::new(descent_evidence_lattice_join),
@@ -72,7 +72,7 @@ pub fn descent_evidence_bounded_lattice() -> Rc<BoundedLattice<DescentEvidence>>
             })
         };
     }
-    CACHED.with(|c: &Rc<BoundedLattice<DescentEvidence>>| c.clone())
+    CACHED.with(|c: &BoundedLattice<DescentEvidence>| c.clone())
 }
 
 pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
@@ -149,7 +149,7 @@ impl PositiveDescentAmount {
     }
 }
 
-pub fn positive_descent_count(steps: Rc<PositiveDescentAmount>) -> i64 {
+pub fn positive_descent_count(steps: PositiveDescentAmount) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*steps.clone()).clone() {
             PositiveDescentAmount::OneStep => 1,
@@ -175,7 +175,7 @@ impl ProportionalDivisor {
     }
 }
 
-pub fn proportional_divisor_to_int(d: Rc<ProportionalDivisor>) -> i64 {
+pub fn proportional_divisor_to_int(d: ProportionalDivisor) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*d.clone()).clone() {
         ProportionalDivisor::DivideByTwo => 2,
         ProportionalDivisor::StrictlyLarger { inner: p, .. } => {
@@ -188,7 +188,7 @@ pub fn peano_literal_materialization_cap() -> i64 {
     256
 }
 
-pub fn positive_descent_amount_from_positive_int(k: i64) -> Option<Rc<PositiveDescentAmount>> {
+pub fn positive_descent_amount_from_positive_int(k: i64) -> Option<PositiveDescentAmount> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (k.clone() <= 0) {
             None
@@ -197,12 +197,12 @@ pub fn positive_descent_amount_from_positive_int(k: i64) -> Option<Rc<PositiveDe
                 None
             } else {
                 if (k.clone() == 1) {
-                    Some(Rc::new(PositiveDescentAmount::OneStep))
+                    Some(PositiveDescentAmount::OneStep)
                 } else {
                     match positive_descent_amount_from_positive_int((k.clone() - 1)) {
-                        Some(prev) => Some(Rc::new(PositiveDescentAmount::AdditionalStep {
+                        Some(prev) => Some(PositiveDescentAmount::AdditionalStep {
                             previous: prev.clone(),
-                        })),
+                        }),
                         None => None,
                     }
                 }
@@ -211,7 +211,7 @@ pub fn positive_descent_amount_from_positive_int(k: i64) -> Option<Rc<PositiveDe
     })
 }
 
-pub fn proportional_divisor_from_int_at_least_two(k: i64) -> Option<Rc<ProportionalDivisor>> {
+pub fn proportional_divisor_from_int_at_least_two(k: i64) -> Option<ProportionalDivisor> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (k.clone() < 2) {
             None
@@ -220,12 +220,12 @@ pub fn proportional_divisor_from_int_at_least_two(k: i64) -> Option<Rc<Proportio
                 None
             } else {
                 if (k.clone() == 2) {
-                    Some(Rc::new(ProportionalDivisor::DivideByTwo))
+                    Some(ProportionalDivisor::DivideByTwo)
                 } else {
                     match proportional_divisor_from_int_at_least_two((k.clone() - 1)) {
-                        Some(prev) => Some(Rc::new(ProportionalDivisor::StrictlyLarger {
+                        Some(prev) => Some(ProportionalDivisor::StrictlyLarger {
                             inner: prev.clone(),
-                        })),
+                        }),
                         None => None,
                     }
                 }

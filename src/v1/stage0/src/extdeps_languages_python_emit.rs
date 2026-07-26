@@ -15,12 +15,12 @@ use std::rc::Rc;
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+                ExternalAuthority {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "docs.python.org/3/reference/".to_string(),
-    }),
-    })
+    },
+    }
             };
         }
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
@@ -64,7 +64,7 @@ pub fn python_container_templates() -> Rc<HashMap<String, String>> {
 pub fn python_reserved() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["False".to_string(), "None".to_string(), "True".to_string(), "and".to_string(), "as".to_string(), "assert".to_string(), "async".to_string(), "await".to_string(), "break".to_string(), "class".to_string(), "continue".to_string(), "def".to_string(), "del".to_string(), "elif".to_string(), "else".to_string(), "except".to_string(), "finally".to_string(), "for".to_string(), "from".to_string(), "global".to_string(), "if".to_string(), "import".to_string(), "in".to_string(), "is".to_string(), "lambda".to_string(), "nonlocal".to_string(), "not".to_string(), "or".to_string(), "pass".to_string(), "raise".to_string(), "return".to_string(), "try".to_string(), "while".to_string(), "with".to_string(), "yield".to_string(), "type".to_string(), "match".to_string(), "case".to_string()])
+            vec!["False".to_string(), "None".to_string(), "True".to_string(), "and".to_string(), "as".to_string(), "assert".to_string(), "async".to_string(), "await".to_string(), "break".to_string(), "class".to_string(), "continue".to_string(), "def".to_string(), "del".to_string(), "elif".to_string(), "else".to_string(), "except".to_string(), "finally".to_string(), "for".to_string(), "from".to_string(), "global".to_string(), "if".to_string(), "import".to_string(), "in".to_string(), "is".to_string(), "lambda".to_string(), "nonlocal".to_string(), "not".to_string(), "or".to_string(), "pass".to_string(), "raise".to_string(), "return".to_string(), "try".to_string(), "while".to_string(), "with".to_string(), "yield".to_string(), "type".to_string(), "match".to_string(), "case".to_string()]
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
@@ -217,7 +217,7 @@ pub fn python_module_init() -> String {
 pub fn python_string_types() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["String".to_string(), "Secret".to_string()])
+            vec!["String".to_string(), "Secret".to_string()]
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
@@ -236,7 +236,7 @@ pub fn python_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 pub fn python_method_templates_flat() -> Rc<HashMap<String, String>> {
     python_simple_method_specs().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, spec: _| {
+        |acc: HashMap<String, String>, spec: _| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )

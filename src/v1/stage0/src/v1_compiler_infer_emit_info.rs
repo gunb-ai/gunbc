@@ -28,7 +28,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
+pub fn is_type_variable(inferred: InferredNode) -> bool {
     match (*inferred.clone()).clone() {
         InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
@@ -79,20 +79,20 @@ pub struct UniqueStringAccum {
 pub fn dedupe_nonempty_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
         let acc = items.clone().iter().cloned().fold(
-            Rc::new(UniqueStringAccum {
+            UniqueStringAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
-            }),
+            },
             |inner: Rc<UniqueStringAccum>, item: String| {
                 if ((item.clone() == "".to_string())
                     || emit_map_has(inner.seen.clone(), item.clone()))
                 {
                     inner.clone()
                 } else {
-                    Rc::new(UniqueStringAccum {
+                    UniqueStringAccum {
                         seen: v1_rt::rc_map_insert(inner.seen.clone(), item.clone(), true),
                         result: v1_rt::concat(inner.result.clone(), Rc::new(vec![item.clone()])),
-                    })
+                    }
                 }
             },
         );
@@ -101,7 +101,7 @@ pub fn dedupe_nonempty_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
 }
 
 pub fn collect_type_node_import_surface_names(
-    n: Rc<Node>,
+    n: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -172,7 +172,7 @@ pub struct EmitGraphInfo {
     pub corpus_repr: RustCorpusRepr,
     pub fn_generic_param_names: Rc<Vec<String>>,
     pub fn_type_env: Rc<TypeEnv>,
-    pub fn_return_type: Option<Rc<Node>>,
+    pub fn_return_type: Box<Option<Rc<Node>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -191,7 +191,7 @@ pub fn empty_emit_graph_info_ord_fallback_note() -> String {
 }
 
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
-    Rc::new(EmitGraphInfo {
+    EmitGraphInfo {
         type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
         type_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
         recursive_type_set: v1_rt::rc_empty_set::<String>(),
@@ -208,15 +208,15 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         fn_generic_param_names: Rc::new(vec![]),
         fn_type_env: empty_type_env(),
         fn_return_type: None,
-    })
+    }
 }
 
 pub fn emit_info_with_fn_type_context(
     emit_info: Rc<EmitGraphInfo>,
     generic_param_names: Rc<Vec<String>>,
-    env: Rc<TypeEnv>,
+    env: TypeEnv,
 ) -> Rc<EmitGraphInfo> {
-    Rc::new(EmitGraphInfo {
+    EmitGraphInfo {
         type_summaries: emit_info.type_summaries.clone(),
         type_decl_items: emit_info.type_decl_items.clone(),
         recursive_type_set: emit_info.recursive_type_set.clone(),
@@ -233,14 +233,14 @@ pub fn emit_info_with_fn_type_context(
         fn_generic_param_names: generic_param_names.clone(),
         fn_type_env: env.clone(),
         fn_return_type: emit_info.fn_return_type.clone(),
-    })
+    }
 }
 
 pub fn emit_info_with_fn_return(
     emit_info: Rc<EmitGraphInfo>,
-    fn_return_type: Option<Rc<Node>>,
+    fn_return_type: Option<Node>,
 ) -> Rc<EmitGraphInfo> {
-    Rc::new(EmitGraphInfo {
+    EmitGraphInfo {
         type_summaries: emit_info.type_summaries.clone(),
         type_decl_items: emit_info.type_decl_items.clone(),
         recursive_type_set: emit_info.recursive_type_set.clone(),
@@ -257,7 +257,7 @@ pub fn emit_info_with_fn_return(
         fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
         fn_type_env: emit_info.fn_type_env.clone(),
         fn_return_type: fn_return_type.clone(),
-    })
+    }
 }
 
 pub fn variant_has_fields(
@@ -293,7 +293,7 @@ pub fn lookup_emit_type_decl(emit_info: Rc<EmitGraphInfo>, type_name: String) ->
 }
 
 pub fn emit_graph_records_type_decl(
-    item: Rc<Node>,
+    item: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match build_type_summary(item.clone(), source_indices.clone()) {
@@ -315,21 +315,15 @@ pub fn derive_variant_to_enum(
         .cloned()
         .fold(
             v1_rt::rc_empty_map::<String, String>(),
-            |acc: Rc<HashMap<String, String>>, summary: Rc<TypeSummary>| match (*summary
-                .repr
-                .clone())
-            .clone()
+            |acc: HashMap<String, String>, summary: Rc<TypeSummary>| match (*summary.repr.clone())
+                .clone()
             {
                 TypeRepr::EnumRepr { unit_only: _, .. } => {
                     Rc::new(v1_rt::map_keys(&summary.variant_name_set.clone()))
                         .iter()
                         .cloned()
-                        .fold(
-                            acc.clone(),
-                            |inner: Rc<HashMap<String, String>>, vn: String| match v1_rt::map_get(
-                                &inner,
-                                vn.clone(),
-                            ) {
+                        .fold(acc.clone(), |inner: HashMap<String, String>, vn: String| {
+                            match v1_rt::map_get(&inner, vn.clone()) {
                                 Some(_) => {
                                     v1_rt::rc_map_insert(inner.clone(), vn.clone(), "".to_string())
                                 }
@@ -338,8 +332,8 @@ pub fn derive_variant_to_enum(
                                     vn.clone(),
                                     summary.name.clone(),
                                 ),
-                            },
-                        )
+                            }
+                        })
                 }
                 _ => acc.clone(),
             },
@@ -414,7 +408,7 @@ pub fn find_variant_parent(
     .cloned()
 }
 
-pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape {
+pub fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
     {
         let normed = normalize_access_type_node(type_node.clone());
         let is_optional = (normed.return_cardinality.clone() == Cardinality::CardOptional);
@@ -426,13 +420,13 @@ pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape 
     }
 }
 
-pub fn is_tuple_type(n: Rc<Node>) -> bool {
+pub fn is_tuple_type(n: Node) -> bool {
     (((n.connective.clone() == Connective::Conj) && (n.ident_span.clone() == None))
         && ((n.children.clone().len() as i64) == 2))
 }
 
 pub fn build_struct_field_summaries(
-    parent: Rc<Node>,
+    parent: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<FieldSummary>>> {
     {
@@ -451,7 +445,7 @@ pub fn build_struct_field_summaries(
         .cloned()
         .fold(
             v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
-            |acc: Rc<HashMap<String, Rc<FieldSummary>>>, pair: (i64, Rc<Node>)| {
+            |acc: HashMap<String, Rc<FieldSummary>>, pair: (i64, Rc<Node>)| {
                 let idx = pair.0.clone();
                 let child = pair.1.clone();
                 if (child.inferred.clone() == None) {
@@ -471,12 +465,12 @@ pub fn build_struct_field_summaries(
                         v1_rt::rc_map_insert(
                             acc.clone(),
                             key.clone(),
-                            Rc::new(FieldSummary {
+                            FieldSummary {
                                 access_style: style.clone(),
                                 value_shape: field_value_shape_from_type_node(child_type_node(
                                     child.clone(),
                                 )),
-                            }),
+                            },
                         )
                     }
                 }
@@ -521,7 +515,7 @@ pub fn enum_field_present_in_all_variants(
 pub fn enum_field_type_consistent(
     variants: Rc<Vec<Rc<Node>>>,
     field_name: String,
-    expected: Rc<Node>,
+    expected: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -595,7 +589,7 @@ pub fn build_enum_field_summaries(
         });
         consistent.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
-            |acc: Rc<HashMap<String, Rc<FieldSummary>>>, field_name: String| {
+            |acc: HashMap<String, Rc<FieldSummary>>, field_name: String| {
                 match find_first_enum_field_node(
                     variants.clone(),
                     field_name.clone(),
@@ -604,12 +598,12 @@ pub fn build_enum_field_summaries(
                     Some(first_field) => v1_rt::rc_map_insert(
                         acc.clone(),
                         field_name.clone(),
-                        Rc::new(FieldSummary {
+                        FieldSummary {
                             access_style: FieldAccessStyle::EnumAccessor,
                             value_shape: field_value_shape_from_type_node(child_type_node(
                                 first_field.clone(),
                             )),
-                        }),
+                        },
                     ),
                     None => acc.clone(),
                 }
@@ -623,10 +617,10 @@ pub fn build_field_type_map(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<FieldTypeMapBuild> {
     children.clone().iter().cloned().fold(
-        Rc::new(FieldTypeMapBuild {
+        FieldTypeMapBuild {
             field_types: v1_rt::rc_empty_map::<String, String>(),
             import_surface_names: Rc::new(vec![]),
-        }),
+        },
         |acc: Rc<FieldTypeMapBuild>, child: Rc<Node>| match child
             .inferred
             .clone()
@@ -658,13 +652,13 @@ pub fn build_field_type_map(
                 } else {
                     acc.field_types.clone()
                 };
-                Rc::new(FieldTypeMapBuild {
+                FieldTypeMapBuild {
                     field_types: next_field_types.clone(),
                     import_surface_names: dedupe_nonempty_strings(v1_rt::concat(
                         acc.import_surface_names.clone(),
                         surface_names.clone(),
                     )),
-                })
+                }
             }
             _ => acc.clone(),
         },
@@ -672,7 +666,7 @@ pub fn build_field_type_map(
 }
 
 pub fn build_type_summary(
-    item: Rc<Node>,
+    item: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<TypeSummary>> {
     {
@@ -709,9 +703,9 @@ pub fn build_type_summary(
             {
                 let field_types =
                     build_field_type_map(item.children.clone(), source_indices.clone());
-                Some(Rc::new(TypeSummary {
+                Some(TypeSummary {
                     name: authored_name_at(source_indices.clone(), item.clone()),
-                    repr: Rc::new(TypeRepr::StructRepr),
+                    repr: TypeRepr::StructRepr,
                     field_summaries: build_struct_field_summaries(
                         item.clone(),
                         source_indices.clone(),
@@ -721,7 +715,7 @@ pub fn build_type_summary(
                     variant_name_set: v1_rt::rc_empty_map::<String, bool>(),
                     generic_param_names: gpn.clone(),
                     has_fn_fields: has_fn.clone(),
-                }))
+                })
             }
         } else {
             {
@@ -735,11 +729,11 @@ pub fn build_type_summary(
                     }
                     __all
                 };
-                Some(Rc::new(TypeSummary {
+                Some(TypeSummary {
                     name: authored_name_at(source_indices.clone(), item.clone()),
-                    repr: Rc::new(TypeRepr::EnumRepr {
+                    repr: TypeRepr::EnumRepr {
                         unit_only: unit_only.clone(),
-                    }),
+                    },
                     field_summaries: build_enum_field_summaries(
                         item.children.clone(),
                         source_indices.clone(),
@@ -748,7 +742,7 @@ pub fn build_type_summary(
                     field_import_surface_names: Rc::new(vec![]),
                     variant_name_set: item.children.clone().iter().cloned().fold(
                         v1_rt::rc_empty_map::<String, bool>(),
-                        |acc: Rc<HashMap<String, bool>>, child: Rc<Node>| {
+                        |acc: HashMap<String, bool>, child: Rc<Node>| {
                             v1_rt::rc_map_insert(
                                 acc,
                                 authored_name_at(source_indices.clone(), child.clone()),
@@ -758,7 +752,7 @@ pub fn build_type_summary(
                     ),
                     generic_param_names: gpn.clone(),
                     has_fn_fields: has_fn.clone(),
-                }))
+                })
             }
         }
     }
@@ -811,7 +805,7 @@ pub fn close_fn_fields(
 ) -> Rc<HashMap<String, Rc<TypeSummary>>> {
     Rc::new(v1_rt::map_keys(&summaries)).iter().cloned().fold(
         summaries.clone(),
-        |acc: Rc<HashMap<String, Rc<TypeSummary>>>, name: String| match v1_rt::map_get(
+        |acc: HashMap<String, Rc<TypeSummary>>, name: String| match v1_rt::map_get(
             &summaries,
             name.clone(),
         ) {
@@ -826,7 +820,7 @@ pub fn close_fn_fields(
                     v1_rt::rc_map_insert(
                         acc.clone(),
                         name.clone(),
-                        Rc::new(TypeSummary {
+                        TypeSummary {
                             name: s.name.clone(),
                             repr: s.repr.clone(),
                             field_summaries: s.field_summaries.clone(),
@@ -835,7 +829,7 @@ pub fn close_fn_fields(
                             variant_name_set: s.variant_name_set.clone(),
                             generic_param_names: s.generic_param_names.clone(),
                             has_fn_fields: true,
-                        }),
+                        },
                     )
                 } else {
                     acc.clone()
@@ -848,7 +842,7 @@ pub fn close_fn_fields(
 
 pub fn add_emit_item_summary(
     state: Rc<EmitInfoBuildState>,
-    item: Rc<Node>,
+    item: Node,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<EmitInfoBuildState> {
     {
@@ -856,14 +850,14 @@ pub fn add_emit_item_summary(
         let state = if ((decl_name.clone() != "".to_string())
             && emit_graph_records_type_decl(item.clone(), source_indices.clone()))
         {
-            Rc::new(EmitInfoBuildState {
+            EmitInfoBuildState {
                 type_summaries: state.type_summaries.clone(),
                 type_decl_items: v1_rt::rc_map_insert(
                     state.type_decl_items.clone(),
                     decl_name.clone(),
                     item.clone(),
                 ),
-            })
+            }
         } else {
             state.clone()
         };
@@ -874,7 +868,7 @@ pub fn add_emit_item_summary(
                         TypeRepr::EnumRepr { unit_only: _, .. } => {
                             item.children.clone().iter().cloned().fold(
                                 state.type_summaries.clone(),
-                                |acc: Rc<HashMap<String, Rc<TypeSummary>>>, variant: Rc<Node>| {
+                                |acc: HashMap<String, Rc<TypeSummary>>, variant: Rc<Node>| {
                                     if ((variant.children.clone().len() as i64) > 0) {
                                         {
                                             let v_has_fn = {
@@ -912,9 +906,9 @@ pub fn add_emit_item_summary(
                                             v1_rt::rc_map_insert(
                                                 acc.clone(),
                                                 qualified_vname.clone(),
-                                                Rc::new(TypeSummary {
+                                                TypeSummary {
                                                     name: qualified_vname.clone(),
-                                                    repr: Rc::new(TypeRepr::StructRepr),
+                                                    repr: TypeRepr::StructRepr,
                                                     field_summaries: build_struct_field_summaries(
                                                         variant.clone(),
                                                         source_indices.clone(),
@@ -932,7 +926,7 @@ pub fn add_emit_item_summary(
                                                     ),
                                                     generic_param_names: Rc::new(vec![]),
                                                     has_fn_fields: v_has_fn.clone(),
-                                                }),
+                                                },
                                             )
                                         }
                                     } else {
@@ -948,10 +942,10 @@ pub fn add_emit_item_summary(
                     summary.name.clone(),
                     summary.clone(),
                 );
-                Rc::new(EmitInfoBuildState {
+                EmitInfoBuildState {
                     type_summaries: next_summaries.clone(),
                     type_decl_items: state.type_decl_items.clone(),
-                })
+                }
             }
             None => state.clone(),
         }

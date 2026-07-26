@@ -336,15 +336,15 @@ pub fn stage0_lookup_module_owner_package_name(
             }
         });
         if (package_name.clone() == "".to_string()) {
-            Rc::new(Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused {
-                cause: Rc::new(Stage0ModuleOwnerRefusalCause::Stage0ModuleOwnerMissing {
+            Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused {
+                cause: Stage0ModuleOwnerRefusalCause::Stage0ModuleOwnerMissing {
                     module_basename: module_basename.clone(),
-                }),
-            })
+                },
+            }
         } else {
-            Rc::new(Stage0ModuleOwnerLookup::Stage0ModuleOwnerFound {
+            Stage0ModuleOwnerLookup::Stage0ModuleOwnerFound {
                 package_name: package_name.clone(),
-            })
+            }
         }
     }
 }
@@ -373,17 +373,15 @@ pub fn stage0_lookup_package_crate_dir(package_name: String) -> Rc<Stage0Package
                     }
                 });
         if (crate_dir.clone() == "".to_string()) {
-            Rc::new(Stage0PackageCrateDirLookup::Stage0PackageCrateDirRefused {
-                cause: Rc::new(
-                    Stage0PackageCrateDirRefusalCause::Stage0PackageCrateDirMissing {
-                        package_name: package_name.clone(),
-                    },
-                ),
-            })
+            Stage0PackageCrateDirLookup::Stage0PackageCrateDirRefused {
+                cause: Stage0PackageCrateDirRefusalCause::Stage0PackageCrateDirMissing {
+                    package_name: package_name.clone(),
+                },
+            }
         } else {
-            Rc::new(Stage0PackageCrateDirLookup::Stage0PackageCrateDirFound {
+            Stage0PackageCrateDirLookup::Stage0PackageCrateDirFound {
                 crate_dir: crate_dir.clone(),
-            })
+            }
         }
     }
 }
@@ -395,11 +393,9 @@ pub fn stage0_map_package_dir_refusal_to_boundary(
         Stage0PackageCrateDirRefusalCause::Stage0PackageCrateDirMissing {
             package_name: package_name,
             ..
-        } => Rc::new(
-            Stage0CrateBoundaryEmitRefusalCause::Stage0CrateBoundaryEmitPackageCrateDirMissing {
-                package_name: package_name.clone(),
-            },
-        ),
+        } => Stage0CrateBoundaryEmitRefusalCause::Stage0CrateBoundaryEmitPackageCrateDirMissing {
+            package_name: package_name.clone(),
+        },
     }
 }
 
@@ -410,11 +406,9 @@ pub fn stage0_map_module_owner_refusal_to_boundary(
         Stage0ModuleOwnerRefusalCause::Stage0ModuleOwnerMissing {
             module_basename: module_basename,
             ..
-        } => Rc::new(
-            Stage0CrateBoundaryEmitRefusalCause::Stage0CrateBoundaryEmitModuleOwnerMissing {
-                module_basename: module_basename.clone(),
-            },
-        ),
+        } => Stage0CrateBoundaryEmitRefusalCause::Stage0CrateBoundaryEmitModuleOwnerMissing {
+            module_basename: module_basename.clone(),
+        },
     }
 }
 
@@ -441,74 +435,74 @@ pub fn stage0_crate_boundary_emit_refusal_message(
 
 pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> {
     Rc::new(vec![
-        Rc::new(CargoDependency {
+        CargoDependency {
             name: "stacker".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: CargoDepSource::RegistryDep {
                 version: "0.1".to_string(),
                 features: Rc::new(vec![]),
-            }),
-        }),
-        Rc::new(CargoDependency {
+            },
+        },
+        CargoDependency {
             name: "im".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: CargoDepSource::RegistryDep {
                 version: "15.1".to_string(),
                 features: Rc::new(vec!["serde".to_string()]),
-            }),
-        }),
-        Rc::new(CargoDependency {
+            },
+        },
+        CargoDependency {
             name: "serde".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: CargoDepSource::RegistryDep {
                 version: "1".to_string(),
                 features: Rc::new(vec!["derive".to_string(), "rc".to_string()]),
-            }),
-        }),
-        Rc::new(CargoDependency {
+            },
+        },
+        CargoDependency {
             name: "serde_json".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: CargoDepSource::RegistryDep {
                 version: "1".to_string(),
                 features: Rc::new(vec![]),
-            }),
-        }),
-        Rc::new(CargoDependency {
+            },
+        },
+        CargoDependency {
             name: "unicode-ident".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: CargoDepSource::RegistryDep {
                 version: "1".to_string(),
                 features: Rc::new(vec![]),
-            }),
-        }),
-        Rc::new(CargoDependency {
+            },
+        },
+        CargoDependency {
             name: "unicode-properties".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: CargoDepSource::RegistryDep {
                 version: "0.1".to_string(),
                 features: Rc::new(vec!["emoji".to_string()]),
-            }),
-        }),
+            },
+        },
     ])
 }
 
 pub fn stage0_emit_shell_registry_dependencies() -> Rc<Vec<Rc<CargoDependency>>> {
     Rc::new(vec![
-        Rc::new(CargoDependency {
+        CargoDependency {
             name: "stacker".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: CargoDepSource::RegistryDep {
                 version: "0.1".to_string(),
                 features: Rc::new(vec![]),
-            }),
-        }),
-        Rc::new(CargoDependency {
+            },
+        },
+        CargoDependency {
             name: "im".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: CargoDepSource::RegistryDep {
                 version: "15.1".to_string(),
                 features: Rc::new(vec!["serde".to_string()]),
-            }),
-        }),
-        Rc::new(CargoDependency {
+            },
+        },
+        CargoDependency {
             name: "serde".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
+            source: CargoDepSource::RegistryDep {
                 version: "1".to_string(),
                 features: Rc::new(vec!["derive".to_string(), "rc".to_string()]),
-            }),
-        }),
+            },
+        },
     ])
 }
 
@@ -516,41 +510,37 @@ pub fn stage0_reexport_path_dependencies_outcome(
     reexport_packages: Rc<Vec<String>>,
 ) -> Rc<Stage0ReexportPathDepsOutcome> {
     reexport_packages.clone().iter().cloned().fold(
-        Rc::new(Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
+        Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
             deps: Rc::new(vec![]),
-        }),
+        },
         |acc: Rc<Stage0ReexportPathDepsOutcome>, pkg: String| match (*acc).clone() {
             Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused {
                 cause: cause, ..
-            } => Rc::new(
-                Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused {
-                    cause: cause.clone(),
-                },
-            ),
+            } => Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused {
+                cause: cause.clone(),
+            },
             Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk { deps: deps, .. } => {
                 match (*stage0_lookup_package_crate_dir(pkg.clone())).clone() {
                     Stage0PackageCrateDirLookup::Stage0PackageCrateDirFound {
                         crate_dir: crate_dir,
                         ..
-                    } => Rc::new(Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
+                    } => Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
                         deps: v1_rt::concat(
                             deps.clone(),
-                            Rc::new(vec![Rc::new(CargoDependency {
+                            Rc::new(vec![CargoDependency {
                                 name: pkg.clone(),
-                                source: Rc::new(CargoDepSource::LocalPathDep {
+                                source: CargoDepSource::LocalPathDep {
                                     path: stage0_crate_dir_to_sibling_dep_path(crate_dir.clone()),
-                                }),
-                            })]),
+                                },
+                            }]),
                         ),
-                    }),
+                    },
                     Stage0PackageCrateDirLookup::Stage0PackageCrateDirRefused {
                         cause: cause,
                         ..
-                    } => Rc::new(
-                        Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused {
-                            cause: cause.clone(),
-                        },
-                    ),
+                    } => Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused {
+                        cause: cause.clone(),
+                    },
                 }
             }
         },
@@ -572,12 +562,12 @@ pub fn stage0_emit_shell_path_dependencies() -> Rc<Vec<Rc<CargoDependency>>> {
         .iter()
         .cloned()
         {
-            __result.push(Rc::new(CargoDependency {
+            __result.push(CargoDependency {
                 name: row.package_name.clone(),
-                source: Rc::new(CargoDepSource::LocalPathDep {
+                source: CargoDepSource::LocalPathDep {
                     path: stage0_crate_dir_to_sibling_dep_path(row.crate_dir.clone()),
-                }),
-            }));
+                },
+            });
         }
         __result
     })
@@ -604,9 +594,9 @@ pub fn stage0_partition_row_dependencies_outcome(
 ) -> Rc<Stage0PartitionRowDepsOutcome> {
     match row.kind.clone() {
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => {
-            Rc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
+            Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
                 deps: stage0_foundation_runtime_dependencies(),
-            })
+            }
         }
         GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => {
             match (*stage0_reexport_path_dependencies_outcome(row.reexport_packages.clone()))
@@ -615,29 +605,27 @@ pub fn stage0_partition_row_dependencies_outcome(
                 Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
                     deps: reexport_deps,
                     ..
-                } => Rc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
+                } => Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
                     deps: v1_rt::concat(
                         stage0_foundation_runtime_dependencies(),
                         reexport_deps.clone(),
                     ),
-                }),
+                },
                 Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused {
                     cause: cause,
                     ..
-                } => Rc::new(
-                    Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsRefused {
-                        cause: cause.clone(),
-                    },
-                ),
+                } => Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsRefused {
+                    cause: cause.clone(),
+                },
             }
         }
         GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => {
-            Rc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
+            Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
                 deps: v1_rt::concat(
                     stage0_foundation_runtime_dependencies(),
                     stage0_emit_shell_path_dependencies(),
                 ),
-            })
+            }
         }
     }
 }
@@ -646,12 +634,10 @@ pub fn stage0_partition_row_features(
     row: Rc<GeneratedPartitionCrateRow>,
 ) -> Rc<Vec<Rc<CargoFeature>>> {
     match row.kind.clone() {
-        GeneratedPartitionCrateKind::GeneratedFoundationCrate => {
-            Rc::new(vec![Rc::new(CargoFeature {
-                name: "text_lookup_work_counter".to_string(),
-                dependencies: Rc::new(vec![]),
-            })])
-        }
+        GeneratedPartitionCrateKind::GeneratedFoundationCrate => Rc::new(vec![CargoFeature {
+            name: "text_lookup_work_counter".to_string(),
+            dependencies: Rc::new(vec![]),
+        }]),
         GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => Rc::new(vec![]),
         GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => Rc::new(vec![]),
     }
@@ -662,15 +648,13 @@ pub fn stage0_partition_row_to_spec_outcome(
 ) -> Rc<Stage0PartitionRowSpecOutcome> {
     match (*stage0_partition_row_dependencies_outcome(row.clone())).clone() {
         Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsRefused { cause: cause, .. } => {
-            Rc::new(
-                Stage0PartitionRowSpecOutcome::Stage0PartitionRowSpecRefused {
-                    cause: cause.clone(),
-                },
-            )
+            Stage0PartitionRowSpecOutcome::Stage0PartitionRowSpecRefused {
+                cause: cause.clone(),
+            }
         }
         Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk { deps: deps, .. } => {
-            Rc::new(Stage0PartitionRowSpecOutcome::Stage0PartitionRowSpecOk {
-                spec: Rc::new(Stage0CrateSpec {
+            Stage0PartitionRowSpecOutcome::Stage0PartitionRowSpecOk {
+                spec: Stage0CrateSpec {
                     package_name: row.package_name.clone(),
                     crate_dir: row.crate_dir.clone(),
                     kind: stage0_partition_row_kind(row.clone()),
@@ -680,8 +664,8 @@ pub fn stage0_partition_row_to_spec_outcome(
                     dependencies: deps.clone(),
                     features: stage0_partition_row_features(row.clone()),
                     carries_non_empty_wrappers: row.carries_non_empty_wrappers.clone(),
-                }),
-            })
+                },
+            }
         }
     }
 }
@@ -771,10 +755,10 @@ pub fn emit_stage0_crate_manifest(spec: Rc<Stage0CrateSpec>) -> Rc<TextFile> {
             ),
             deps.clone(),
         );
-        Rc::new(TextFile {
+        TextFile {
             path: v1_rt::concat(spec.crate_dir.clone(), "/Cargo.toml".to_string()),
             content: content.clone(),
-        })
+        }
     }
 }
 
@@ -895,20 +879,16 @@ pub fn stage0_emit_shell_module_reexports_outcome(
     modules: Rc<Vec<String>>,
 ) -> Rc<Stage0EmitShellReexportsOutcome> {
     modules.clone().iter().cloned().fold(
-        Rc::new(
-            Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk {
-                lines: Rc::new(vec![]),
-            },
-        ),
+        Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk {
+            lines: Rc::new(vec![]),
+        },
         |acc: Rc<Stage0EmitShellReexportsOutcome>, module_basename: String| match (*acc).clone() {
             Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused {
                 cause: cause,
                 ..
-            } => Rc::new(
-                Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused {
-                    cause: cause.clone(),
-                },
-            ),
+            } => Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused {
+                cause: cause.clone(),
+            },
             Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk {
                 lines: lines, ..
             } => {
@@ -916,38 +896,34 @@ pub fn stage0_emit_shell_module_reexports_outcome(
                     Stage0ModuleOwnerLookup::Stage0ModuleOwnerFound {
                         package_name: owner,
                         ..
-                    } => Rc::new(
-                        Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk {
-                            lines: v1_rt::concat(
-                                lines.clone(),
-                                Rc::new(vec![v1_rt::concat(
+                    } => Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk {
+                        lines: v1_rt::concat(
+                            lines.clone(),
+                            Rc::new(vec![v1_rt::concat(
+                                v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
                                                 v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        "pub mod ".to_string(),
-                                                        module_basename.clone(),
-                                                    ),
-                                                    " {\n    pub use ".to_string(),
+                                                    "pub mod ".to_string(),
+                                                    module_basename.clone(),
                                                 ),
-                                                stage0_package_name_to_rust_ident(owner.clone()),
+                                                " {\n    pub use ".to_string(),
                                             ),
-                                            "::".to_string(),
+                                            stage0_package_name_to_rust_ident(owner.clone()),
                                         ),
-                                        module_basename.clone(),
+                                        "::".to_string(),
                                     ),
-                                    "::*;\n}".to_string(),
-                                )]),
-                            ),
-                        },
-                    ),
+                                    module_basename.clone(),
+                                ),
+                                "::*;\n}".to_string(),
+                            )]),
+                        ),
+                    },
                     Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused { cause: cause, .. } => {
-                        Rc::new(
-                            Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused {
-                                cause: cause.clone(),
-                            },
-                        )
+                        Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused {
+                            cause: cause.clone(),
+                        }
                     }
                 }
             }
@@ -959,15 +935,15 @@ pub fn render_stage0_emit_core_lib_outcome(
     spec: Rc<Stage0CrateSpec>,
 ) -> Rc<Stage0CrateLibEmitOutcome> {
     match (*stage0_emit_shell_module_reexports_outcome(spec.modules.clone())).clone() {
-    Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused { cause: cause, .. } => Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitRefused {
+    Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused { cause: cause, .. } => Stage0CrateLibEmitOutcome::Stage0CrateLibEmitRefused {
     cause: cause.clone(),
-}),
-    Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk { lines: lines, .. } => Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
-    file: Rc::new(TextFile {
+},
+    Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk { lines: lines, .. } => Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
+    file: TextFile {
     path: v1_rt::concat(spec.crate_dir.clone(), "/src/lib.rs".to_string()),
     content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(spec.header_doc.clone(), "\n\n".to_string()), stage0_crate_allow_block()), "\n\n".to_string()), "pub use v1_stage0_runtime::{NonEmptyBTreeSet, NonEmptyVec};".to_string()), "\n\n".to_string()), lines.clone().join(&"\n\n".to_string())), "\n\n".to_string()), "#[rustfmt::skip]\n#[path = \"../../stage0/src/v1_compiler_emit_core_support.rs\"]\npub mod v1_compiler_emit_core_support;".to_string()), "\n\n".to_string()), "pub use v1_compiler_emit_core_support::*;".to_string()), "\n".to_string()),
-}),
-}),
+},
+},
 }
 }
 
@@ -980,54 +956,50 @@ pub fn stage0_partition_lookups_valid() -> bool {
 
 pub fn emit_stage0_crate_lib_outcome(spec: Rc<Stage0CrateSpec>) -> Rc<Stage0CrateLibEmitOutcome> {
     match spec.kind.clone() {
-        Stage0CrateKind::FoundationCrate => {
-            Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
-                file: Rc::new(TextFile {
-                    path: v1_rt::concat(spec.crate_dir.clone(), "/src/lib.rs".to_string()),
-                    content: render_stage0_foundation_lib(spec.clone()),
-                }),
-            })
-        }
-        Stage0CrateKind::LayeredCoreCrate => {
-            Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
-                file: Rc::new(TextFile {
-                    path: v1_rt::concat(spec.crate_dir.clone(), "/src/lib.rs".to_string()),
-                    content: render_stage0_layered_core_lib(spec.clone()),
-                }),
-            })
-        }
+        Stage0CrateKind::FoundationCrate => Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
+            file: TextFile {
+                path: v1_rt::concat(spec.crate_dir.clone(), "/src/lib.rs".to_string()),
+                content: render_stage0_foundation_lib(spec.clone()),
+            },
+        },
+        Stage0CrateKind::LayeredCoreCrate => Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
+            file: TextFile {
+                path: v1_rt::concat(spec.crate_dir.clone(), "/src/lib.rs".to_string()),
+                content: render_stage0_layered_core_lib(spec.clone()),
+            },
+        },
         Stage0CrateKind::EmitCoreCrate => render_stage0_emit_core_lib_outcome(spec.clone()),
     }
 }
 
 pub fn stage0_crate_plan_outcome() -> Rc<Stage0CratePlanOutcome> {
     generated_partition_crate_rows().iter().cloned().fold(
-        Rc::new(Stage0CratePlanOutcome::Stage0CratePlanOk {
-            plan: Rc::new(Stage0CratePlan {
+        Stage0CratePlanOutcome::Stage0CratePlanOk {
+            plan: Stage0CratePlan {
                 crates: Rc::new(vec![]),
-            }),
-        }),
+            },
+        },
         |acc: Rc<Stage0CratePlanOutcome>, row: _| match (*acc).clone() {
             Stage0CratePlanOutcome::Stage0CratePlanRefused { cause: cause, .. } => {
-                Rc::new(Stage0CratePlanOutcome::Stage0CratePlanRefused {
+                Stage0CratePlanOutcome::Stage0CratePlanRefused {
                     cause: cause.clone(),
-                })
+                }
             }
             Stage0CratePlanOutcome::Stage0CratePlanOk { plan: plan, .. } => {
                 match (*stage0_partition_row_to_spec_outcome(row.clone())).clone() {
                     Stage0PartitionRowSpecOutcome::Stage0PartitionRowSpecRefused {
                         cause: cause,
                         ..
-                    } => Rc::new(Stage0CratePlanOutcome::Stage0CratePlanRefused {
+                    } => Stage0CratePlanOutcome::Stage0CratePlanRefused {
                         cause: cause.clone(),
-                    }),
+                    },
                     Stage0PartitionRowSpecOutcome::Stage0PartitionRowSpecOk {
                         spec: spec, ..
-                    } => Rc::new(Stage0CratePlanOutcome::Stage0CratePlanOk {
-                        plan: Rc::new(Stage0CratePlan {
+                    } => Stage0CratePlanOutcome::Stage0CratePlanOk {
+                        plan: Stage0CratePlan {
                             crates: v1_rt::concat(plan.crates.clone(), Rc::new(vec![spec.clone()])),
-                        }),
-                    }),
+                        },
+                    },
                 }
             }
         },
@@ -1038,28 +1010,24 @@ pub fn emit_stage0_crate_boundary_files_outcome(
     plan: Rc<Stage0CratePlan>,
 ) -> Rc<Stage0CrateBoundaryEmitOutcome> {
     plan.crates.clone().iter().cloned().fold(
-        Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk {
+        Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk {
             files: Rc::new(vec![]),
-        }),
+        },
         |acc: Rc<Stage0CrateBoundaryEmitOutcome>, spec: Rc<Stage0CrateSpec>| match (*acc).clone() {
             Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
                 cause: cause, ..
-            } => Rc::new(
-                Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
-                    cause: cause.clone(),
-                },
-            ),
+            } => Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
+                cause: cause.clone(),
+            },
             Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk { files: files, .. } => {
                 match (*emit_stage0_crate_lib_outcome(spec.clone())).clone() {
                     Stage0CrateLibEmitOutcome::Stage0CrateLibEmitRefused {
                         cause: cause, ..
-                    } => Rc::new(
-                        Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
-                            cause: stage0_map_module_owner_refusal_to_boundary(cause.clone()),
-                        },
-                    ),
+                    } => Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
+                        cause: stage0_map_module_owner_refusal_to_boundary(cause.clone()),
+                    },
                     Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk { file: lib_file, .. } => {
-                        Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk {
+                        Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk {
                             files: v1_rt::concat(
                                 files.clone(),
                                 Rc::new(vec![
@@ -1067,7 +1035,7 @@ pub fn emit_stage0_crate_boundary_files_outcome(
                                     lib_file.clone(),
                                 ]),
                             ),
-                        })
+                        }
                     }
                 }
             }
@@ -1077,11 +1045,11 @@ pub fn emit_stage0_crate_boundary_files_outcome(
 
 pub fn stage0_crate_boundary_emit_outcome() -> Rc<Stage0CrateBoundaryEmitOutcome> {
     match (*stage0_crate_plan_outcome()).clone() {
-        Stage0CratePlanOutcome::Stage0CratePlanRefused { cause: cause, .. } => Rc::new(
+        Stage0CratePlanOutcome::Stage0CratePlanRefused { cause: cause, .. } => {
             Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
                 cause: stage0_map_package_dir_refusal_to_boundary(cause.clone()),
-            },
-        ),
+            }
+        }
         Stage0CratePlanOutcome::Stage0CratePlanOk { plan: plan, .. } => {
             emit_stage0_crate_boundary_files_outcome(plan.clone())
         }
