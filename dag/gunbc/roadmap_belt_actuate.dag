@@ -33,6 +33,7 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchSpawnCommands,
   dispatch_spawn_commands,
   dispatch_attempt_key,
+  DispatchAttemptRef, dispatch_attempt_refs, git_for_each_ref_dispatch_argv,
   dispatch_tmux_session_name,
   dispatch_worktree_root,
   tmux_ls_argv,
@@ -514,6 +515,63 @@ fn belt_tick_result_json_value(t: BeltTickResult) -> JsonValue {
     json_kv(key: "spawn_outcomes", value: json_array(elements: t.spawn_outcomes |> map(o => belt_spawn_outcome_json(o: o)))),
     json_kv(key: "teardown_outcomes", value: json_array(elements: t.teardown_outcomes |> map(o => belt_teardown_outcome_json(o: o)))),
   ])
+}
+
+type BeltAttempts
+  = AttemptsObserved { attempts: List<DispatchAttemptRef> }
+  | AttemptsRefused { reason: String }
+
+data belt_attempts_observe_note: String = "U3: the attempts observation mirrors belt_observe's fail-closed grammar — git absent or a non-zero for-each-ref is an UNKNOWABLE attempts set (AttemptsRefused, typed, carries stderr), never widened to zero attempts; exit 0 with empty output IS a genuine zero (for-each-ref's documented no-match behavior). Runs in belt_actuate_workdir — the same repo-root authority the spawn's worktree add uses, because the attempt branches live exactly where spawns mint them."
+
+fn belt_attempts_observe() -> BeltAttempts {
+  let cmd = git_for_each_ref_dispatch_argv()
+  if belt_program_available(program: cmd.program) {
+    let result = gunbc.WitnessBin.Run(
+      workdir: belt_actuate_workdir,
+      bin_path: cmd.program as FilePath,
+      args: cmd.args,
+    )
+    if result.success {
+      AttemptsObserved { attempts: dispatch_attempt_refs(git_output: result.stdout) }
+    } else {
+      AttemptsRefused { reason: concat("git for-each-ref failed: ", result.stderr) }
+    }
+  } else {
+    AttemptsRefused { reason: "git not found on PATH — the attempts set is unknowable" }
+  }
+}
+
+fn belt_attempts_json_value(a: BeltAttempts) -> JsonValue {
+  match a {
+    AttemptsRefused { reason: r } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-attempts/v1")),
+        json_kv(key: "attempts_refused", value: json_bool(b: true)),
+        json_kv(key: "reason", value: json_string(s: r)),
+      ])
+    AttemptsObserved { attempts } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-attempts/v1")),
+        json_kv(key: "attempts_refused", value: json_bool(b: false)),
+        json_kv(key: "attempts", value: json_array(elements: attempts |> map(a2 =>
+          json_object(members: [
+            json_kv(key: "node_id", value: json_string(s: a2.node_id)),
+            json_kv(key: "branch", value: json_string(s: a2.branch)),
+            json_kv(key: "attempt_key", value: json_string(s: a2.attempt_key)),
+          ])))),
+      ])
+  }
+}
+
+fn belt_attempts_observed_json(a: BeltAttempts) -> String {
+  serialize_json(v: belt_attempts_json_value(a: a))
+}
+
+fn belt_attempts_http_status(a: BeltAttempts) -> Int {
+  match a {
+    AttemptsRefused { reason: _ } => 503
+    AttemptsObserved { attempts: _ } => 200
+  }
 }
 
 data belt_sessions_json_note: String = "U2 (sessions panel v0): the belt observation projected as wire JSON so the PAGE can know what is live without the render losing purity — the healthz digest is taken over the pure page body, so live state must arrive by fetch, exactly as dispatch answers do. The projection is a pure fn over BeltObserve (every arm witnessed on synthetic values); the effectful wrapper only threads belt_observe() in. The refusal arm stays a refusal on the wire (observe_refused true + reason, served 503): an unknowable session set renders loud at the client, never as an empty panel."

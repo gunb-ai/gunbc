@@ -583,6 +583,12 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: MarginRight, value: scale_var(t: space_2)),
     ] },
+    StaticRule { selector: ClassSelector { name: "dispatch-attempts" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: Margin, value: scale_triple(a: space_2, b: space_0, c: space_1)),
+    ] },
     StaticRule { selector: ClassSelector { name: "observe-refused" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_12)),
       role_decl(prop: Color, r: TextRole),

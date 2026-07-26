@@ -1,0 +1,92 @@
+module test.claim.dispatch_attempts_witness
+
+import gunbc.roadmap_belt_actuate {
+  BeltAttempts, AttemptsObserved, AttemptsRefused,
+  belt_attempts_json_value, belt_attempts_observed_json, belt_attempts_http_status,
+}
+import gunbc.roadmap_dispatch_actuator {
+  DispatchAttemptRef, parse_dispatch_attempt_branch, dispatch_attempt_refs,
+  git_for_each_ref_dispatch_argv, dispatch_attempt_key, dispatch_branch_name,
+}
+import gunbc.roadmap_component { dispatch_client_js_source }
+import gunbc.roadmap_style { roadmap_css }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data dispatch_attempts_witness_note: String = "U3's receipts: the attempt-branch parse proven on real shapes (an attempt-grain branch round-trips node and key; a LEGACY pre-attempt-grain branch — the operator's accidental spawn class — parses with an empty key rather than filtering as noise; garbage refuses), the wire projection proven on synthetic observations both arms, and the client machinery pinned in the served asset. The round-trip witness closes the loop with U1: a branch MINTED by dispatch_branch_name must parse back to its own node and key — the two authorities cannot drift."
+
+fn attempt_fixture() -> DispatchAttemptRef {
+  DispatchAttemptRef { node_id: "5-regen-cutover", branch: "dispatch/5-regen-cutover-afeedfacefeedface", attempt_key: "feedfacefeedface" }
+}
+
+test fn attempts_parse_roundtrips_the_minted_branch() -> Bool {
+  let k = dispatch_attempt_key(node_id: "ts-wf-progress", probed_at: "2026-07-25T22:00:00Z")
+  let b = dispatch_branch_name(node_id: "ts-wf-progress", attempt_key: k)
+  return match parse_dispatch_attempt_branch(line: b) {
+    Present { value: r } => r.node_id == "ts-wf-progress" && r.attempt_key == k && r.branch == b
+    Absent => false
+  }
+}
+
+test fn attempts_parse_holds_on_the_three_shapes() -> Bool {
+  let modern = parse_dispatch_attempt_branch(line: "dispatch/5-regen-cutover-afeedfacefeedface")
+  let legacy = parse_dispatch_attempt_branch(line: "dispatch/ts-authority-converge")
+  let garbage = parse_dispatch_attempt_branch(line: "refs/stash")
+  return match modern {
+    Present { value: m } => m.node_id == "5-regen-cutover" && m.attempt_key == "feedfacefeedface"
+    Absent => false
+  } && match legacy {
+    Present { value: l } => l.node_id == "ts-authority-converge" && l.attempt_key == ""
+    Absent => false
+  } && match garbage {
+    Present { value: g2 } => false
+    Absent => true
+  }
+}
+
+test fn attempts_multi_line_output_parses() -> Bool {
+  let out = "dispatch/node-x-afeedfacefeedface\ndispatch/ts-authority-converge\n"
+  let refs = dispatch_attempt_refs(git_output: out)
+  return count(refs) == 2
+    && any(refs, r => r.node_id == "node-x" && r.attempt_key == "feedfacefeedface")
+    && any(refs, r => r.node_id == "ts-authority-converge" && r.attempt_key == "")
+}
+
+test fn attempts_observed_projects_to_wire() -> Bool {
+  let j = belt_attempts_observed_json(a: AttemptsObserved { attempts: [attempt_fixture()] })
+  return string_contains(s: j, pattern: "\"schema\": \"roadmap-attempts/v1\"")
+    && string_contains(s: j, pattern: "\"attempts_refused\": false")
+    && string_contains(s: j, pattern: "\"branch\": \"dispatch/5-regen-cutover-afeedfacefeedface\"")
+    && belt_attempts_http_status(a: AttemptsObserved { attempts: [] }) == 200
+}
+
+test fn attempts_refusal_is_loud_on_the_wire() -> Bool {
+  let a = AttemptsRefused { reason: "git not found on PATH — the attempts set is unknowable" }
+  let j = belt_attempts_observed_json(a: a)
+  return string_contains(s: j, pattern: "\"attempts_refused\": true")
+    && string_contains(s: j, pattern: "unknowable")
+    && belt_attempts_http_status(a: a) == 503
+    && !string_contains(s: j, pattern: "\"attempts\":")
+}
+
+test fn attempts_client_renders_and_shouts() -> Bool {
+  let js = dispatch_client_js_source()
+  return string_contains(s: js, pattern: "fetch('/attempts.json')")
+    && string_contains(s: js, pattern: "aj.attempts_refused")
+    && string_contains(s: js, pattern: "'dispatch-attempts'")
+    && string_contains(s: js, pattern: "att.branch")
+    && string_contains(s: js, pattern: "attempt observation refused: ")
+    && string_contains(s: js, pattern: "session observation refused: ")
+}
+
+test fn attempts_row_is_styled() -> Bool {
+  return string_contains(s: roadmap_css(), pattern: ".dispatch-attempts { font-size: var(--text-11); font-family: var(--font-mono); color: var(--text-dim); margin: var(--space-2) var(--space-0) var(--space-1) }")
+}
+
+test fn attempts_argv_is_typed_and_scoped() -> Bool {
+  let cmd = git_for_each_ref_dispatch_argv()
+  return cmd.program == "git"
+    && any(cmd.args, a => a == "refs/heads/dispatch/")
+    && !any(cmd.args, a => a == "-rf")
+}
