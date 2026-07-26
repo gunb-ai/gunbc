@@ -73,6 +73,16 @@ fn catalog_node_struct_field_wraps_box() {
 }
 
 #[test]
+fn catalog_node_struct_field_literal_wraps_box_new() {
+    let source = "module ownwrap.fixture\n\ntype Node { child: Node? }\n\ntype Tree { child: Node }\n\ndata tree: Tree = Tree { child: Node { child: none } }\n";
+    let emitted = emit(source);
+    assert!(
+        emitted.contains("Box::new(Node {") || emitted.contains("child: Box::new("),
+        "Node struct-field literal value must Box::new-wrap (catalog row), got:\n{emitted}"
+    );
+}
+
+#[test]
 fn catalog_node_generic_struct_field_wraps_box_once() {
     let source =
         "module ownwrap.fixture\n\ntype Node { child: Node? }\n\ntype Tree<T> { child: Node }\n";

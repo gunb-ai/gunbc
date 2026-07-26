@@ -845,6 +845,21 @@ fn rust_seed_catalog_wraps_rc_at_use_site(type_name: String, rendered: String, u
   rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, use_site: use_site) == ReferenceLayerRc
 }
 
+fn rust_seed_catalog_wraps_box_at_use_site(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> Bool {
+  rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, use_site: use_site) == ReferenceLayerBox
+}
+
+fn rust_seed_wrap_value_at_use_site(emitted: String, type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> String {
+  match rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, use_site: use_site) {
+    ReferenceLayerOwned => emitted
+    ReferenceLayerRc => rust_seed_align_expr_rc_wrap(emitted: emitted, needs_rc: true)
+    ReferenceLayerBox =>
+      if string_length(s: emitted) > 10 && substring(s: emitted, start: 0, end: 10) == "Box::new(" { emitted }
+      else if rust_type_is_box_wrapped(type_name: emitted) { emitted }
+      else { concat("Box::new(", emitted, ")") }
+  }
+}
+
 fn rust_seed_value_needs_rc_wrap(type_name: String, rendered: String, shared_types: Set<String>, use_site: OwnershipWrapUseSite) -> Bool {
   match use_site {
     OwnershipWrapUseSiteAbsent => false
@@ -8211,8 +8226,29 @@ fn rust_struct_field_type_node_from_container(container: Node, field_name: Strin
 fn rust_record_field_needs_box(scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> Bool {
   match rust_struct_field_type_node_variant_aware(scope: scope, emit_info: emit_info, struct_name: struct_name, field_name: field_name) {
     Present { value: field_type } =>
-      needs_box_wrapping(n: field_type, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+      let leaf = rust_fn_sig_leaf_name(source_indices: scope.type_env.source_indices, n: field_type)
+      let rendered = render_rust_type_with_applied_binding(n: field_type, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, use_site: OwnershipAtStructField)
+      if rust_seed_catalog_wraps_box_at_use_site(type_name: leaf, rendered: rendered, use_site: OwnershipAtStructField) {
+        true
+      } else {
+        needs_box_wrapping(n: field_type, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+      }
     Absent => false
+  }
+}
+
+fn rust_record_field_wrap_value_at_use_site(raw: String, scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> String {
+  match rust_struct_field_type_node_variant_aware(scope: scope, emit_info: emit_info, struct_name: struct_name, field_name: field_name) {
+    Present { value: field_type } =>
+      let leaf = rust_fn_sig_leaf_name(source_indices: scope.type_env.source_indices, n: field_type)
+      let rendered = render_rust_type_with_applied_binding(n: field_type, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, use_site: OwnershipAtStructField)
+      let layer = rust_seed_effective_reference_layer(type_name: leaf, rendered: rendered, use_site: OwnershipAtStructField)
+      if layer == ReferenceLayerOwned && needs_box_wrapping(n: field_type, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices) {
+        concat("Box::new(", raw, ")")
+      } else {
+        rust_seed_wrap_value_at_use_site(emitted: raw, type_name: leaf, rendered: rendered, use_site: OwnershipAtStructField)
+      }
+    Absent => raw
   }
 }
 
@@ -8222,10 +8258,8 @@ fn wrap_rust_record_field_value(raw: String, scope: InferScope, emit_info: EmitG
     concat("Rc::new(", raw, ")")
   } else if is_bounded_lattice_field && (field_name == "meet" || field_name == "join") {
     concat("Rc::new(", raw, ")")
-  } else if rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: struct_name, field_name: field_name) {
-    concat("Box::new(", raw, ")")
   } else {
-    raw
+    rust_record_field_wrap_value_at_use_site(raw: raw, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: struct_name, field_name: field_name)
   }
 }
 
@@ -8360,13 +8394,18 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
             Absent => pe
           }
           let raw = emit_typed_record_lit(type_name: tn, fields: inner_fields, parent_enum: corrected_parent, resolved_type: resolved_type(n: field_value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-          let rc_name = match corrected_parent {
-            Present { value: en } => en
-            Absent => variant_name
+          match expected_type {
+            Present { value: et } =>
+              rust_seed_wrap_value_at_use_site(emitted: raw, type_name: et, rendered: et, use_site: OwnershipAtStructField)
+            Absent =>
+              let rc_name = match corrected_parent {
+                Present { value: en } => en
+                Absent => variant_name
+              }
+              if rc_name != "" && rust_seed_value_needs_rc_wrap(type_name: rc_name, rendered: rc_name, shared_types: shared_types, use_site: OwnershipAtStructField) {
+                concat("Rc::new(", raw, ")")
+              } else { raw }
           }
-          if rc_name != "" && rust_seed_value_needs_rc_wrap(type_name: rc_name, rendered: rc_name, shared_types: shared_types, use_site: OwnershipAtStructField) {
-            concat("Rc::new(", raw, ")")
-          } else { raw }
         Absent =>
           emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       }
