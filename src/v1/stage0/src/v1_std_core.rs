@@ -182,7 +182,8 @@ pub fn is_compiler_error(inferred: Rc<InferredNode>) -> bool {
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     match (*inferred.clone()).clone() {
         InferredNode::TypeVariable { id: _, .. } => true,
-        _ => false,
+        InferredNode::Resolved { node: _, .. } => false,
+        InferredNode::CompilerError { .. } => false,
     }
 }
 

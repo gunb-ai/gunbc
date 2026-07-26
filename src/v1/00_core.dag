@@ -69,7 +69,8 @@ fn is_compiler_error(inferred: InferredNode) -> Bool {
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
     TypeVariable { id: _ } => true
-    _ => false
+    Resolved { node: _ } => false
+    CompilerError { message: _, span: _ } => false
   }
 }
 
