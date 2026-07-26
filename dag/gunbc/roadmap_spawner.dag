@@ -9,7 +9,7 @@ import gunbc.roadmap_model {
   SectionElement, Prose, Group, SectionGroup,
   RoadmapParent, TopLevel, UnderParent, roadmap_parent,
 }
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_is_done, item_superseded_by }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_is_done, item_superseded_by, signoff_accepts }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import extdeps.languages.json.emit {
@@ -61,16 +61,22 @@ fn node_parent_ids(edges: List<RoadmapEdge>, id: RoadmapNodeId) -> List<RoadmapN
   edges |> filter(e => e.child == id) |> map(e => e.parent)
 }
 
+data spawn_frontier_completion_note: String = "Frontier completion is the union of the line's grounded completion fact (merged PR or authored/ticket box) and operator sign-off. The page's done status gives sign-off precedence, while the spawner needs both arms so a signed manual row cannot remain Ready and a signed prerequisite cannot strand its child. This is one predicate reused by ready, upcoming, done, and unmet-parent projections."
+
+fn node_is_complete(n: RoadmapNode, merged: List<Int>) -> Bool {
+  signoff_accepts(s: n.signoff) || item_is_done(item: n.line, merged: merged)
+}
+
 fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId, merged: List<Int>) -> Bool {
   all(node_parent_ids(edges: edges, id: id), pid =>
-    any(nodes, n => n.node == pid && item_is_done(item: n.line, merged: merged)))
+    any(nodes, n => n.node == pid && node_is_complete(n: n, merged: merged)))
 }
 
 fn node_is_spawnable(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> Bool {
   match n.sizing {
     Unsized => false
     Sized { intricacy: _, volume: _, repo: _, acceptance: _ } =>
-      !item_is_done(item: n.line, merged: merged)
+      !node_is_complete(n: n, merged: merged)
         && node_dep_done(nodes: nodes, edges: edges, id: n.node, merged: merged)
   }
 }
@@ -90,12 +96,12 @@ fn node_is_sized(n: RoadmapNode) -> Bool {
 
 fn node_is_upcoming(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> Bool {
   node_is_sized(n: n)
-    && !item_is_done(item: n.line, merged: merged)
+    && !node_is_complete(n: n, merged: merged)
     && !node_dep_done(nodes: nodes, edges: edges, id: n.node, merged: merged)
 }
 
 fn node_is_frontier_done(n: RoadmapNode, merged: List<Int>) -> Bool {
-  node_is_sized(n: n) && item_is_done(item: n.line, merged: merged)
+  node_is_sized(n: n) && node_is_complete(n: n, merged: merged)
 }
 
 type SpawnFrontier {
@@ -221,7 +227,7 @@ fn node_json(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String,
 
 fn node_unmet_parent_ids(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId, merged: List<Int>) -> List<RoadmapNodeId> {
   node_parent_ids(edges: edges, id: id)
-    |> filter(pid => !any(nodes, n => n.node == pid && item_is_done(item: n.line, merged: merged)))
+    |> filter(pid => !any(nodes, n => n.node == pid && node_is_complete(n: n, merged: merged)))
 }
 
 fn ready_array_json(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> String {

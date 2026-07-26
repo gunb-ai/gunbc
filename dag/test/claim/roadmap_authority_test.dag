@@ -46,7 +46,8 @@ test fn witness_fabric_design_rule() -> Bool {
 test fn witness_emit_refs_from_binding() -> Bool {
   let o = out()
   string_contains(s: o, pattern: "**provenance ingest live at floor runtime** (#6105)")
-    && string_contains(s: o, pattern: "**orchestration emission → agnostic registry dispatch** (#6106)")
+    && string_contains(s: o, pattern: "**registry-dispatch foundation** — #6106 merged")
+    && string_contains(s: o, pattern: "**superseded →** 2-emit-partition")
     && string_contains(s: o, pattern: "**no-dual-representation-test lens rebuilt pure-v2** (#6104)")
 }
 
@@ -107,4 +108,3 @@ test fn witness_audit_lane_present() -> Bool {
     && string_contains(s: o, pattern: "**artifact-freshness gate**")
     && string_contains(s: o, pattern: "**one tree, one verdict**")
 }
-

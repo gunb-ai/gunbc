@@ -8,7 +8,7 @@ import gunbc.roadmap_model {
   NodeSizing, Unsized, Sized,
   SectionElement, Group, SectionGroup,
 }
-import gunbc.roadmap_status { DerivableLine, SupersededLine, Signoff, Unsigned }
+import gunbc.roadmap_status { DerivableLine, SupersededLine, Signoff, Unsigned, SignedOff }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { spawn_frontier, next_spawnable }
 import gunbc.roadmap_page {
@@ -88,6 +88,26 @@ test fn witness_done_is_merged_sized_node() -> Bool {
   any(frontier.done, n => n.node == nid(s: "done-node"))
     && !any(frontier.ready, n => n.node == nid(s: "done-node"))
     && !any(frontier.upcoming, n => n.node == nid(s: "done-node"))
+}
+
+test fn witness_signed_node_is_done_and_unblocks_child() -> Bool {
+  let base = sized_derivable(id: "signed-parent", prs: [700], title: "Signed Parent")
+  let parent = RoadmapNode {
+    node: base.node,
+    line: base.line,
+    carriers: base.carriers,
+    sizing: base.sizing,
+    owner: base.owner,
+    signoff: SignedOff { by: "operator", works: true, scope_equivalent: true, as_expected: true },
+  }
+  let child = sized_derivable(id: "after-signoff", prs: [701], title: "After Signoff")
+  let edge = RoadmapEdge { child: child.node, parent: parent.node }
+  let frontier = spawn_frontier(
+    doc: fixture_doc(nodes: [parent, child], edges: [edge]),
+    merged: [])
+  any(frontier.done, n => n.node == parent.node)
+    && !any(frontier.ready, n => n.node == parent.node)
+    && any(frontier.ready, n => n.node == child.node)
 }
 
 test fn witness_unsized_excluded_from_frontier() -> Bool {
@@ -185,4 +205,3 @@ test fn witness_authority_daily_workspace_serializes() -> Bool {
     EmitRejected { reason: _ } => false
   }
 }
-

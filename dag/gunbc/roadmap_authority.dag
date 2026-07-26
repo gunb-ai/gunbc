@@ -320,7 +320,7 @@ fn section_2() -> RoadmapSection {
     elements: [
       section_prose(content: "State (2026-07-01): required CI is back on the fleet after the Ubicloud detour (#6107, reverted #6111). The detour was the **diagnostic and emergency valve, not a failure**: it proved raw VM isolation alone does not solve a serial floor (same ~50min wall on both runner types), and it stays the **break-glass/burst option**, just not the active required path. So the active work is (1) reduce floor recompute, (2) make fleet admission/caps safe — the dominant wall-clock is inside the floor, not host placement alone. The fleet — srv1/srv2 (128c/125GiB Ampere) + srv3 (greenfield, OpenBMC) — carries agent sessions, the dashboard, and all runners, with live cgroup caps, runner registration, sudoers, and tailscale-ACL actuation still **hand-managed**; the fleet-era OOM/sccache exposure returned with the traffic (operator-accepted interim). #6096 (fleet converge control plane) was **closed unmerged**; its review gap-list is the re-land spec, and the findings apply to the committed `.github/fleet-converge.sh` too (mutate-then-read, `|| true` swallowing, no hostname dispatch) — the re-land is an architecture change, not a rebase. → [CI humming](docs/plans/ci-humming.md) · [host-effect orchestration](docs/plans/host-effect-orchestration.md) · [compute envelope](docs/plans/compute-envelope-model.md) · [charter](docs/plans/ci-process-end-to-end.md) · [host-converge inventory](docs/plans/host-converge-inventory.md)"),
       section_prose(content: "**The core design rule (operator-signed, 2026-07-01):** provider-specific power is earned behind a `ProviderOffer` adapter; the core fabric only knows `RunShape → Allocation → Receipt`; default allocation is **strict/ephemeral**; oversubscription is an optimization proven by receipts, never assumed by placement. Not \"Ubicloud vs fleet\" — GitHub Actions asks for a RunShape, the fabric chooses a ProviderOffer (srv1/srv2 fixed-host slice, Ubicloud ephemeral VM, or later others). srv1/srv2 are modeled as little Ubiclouds first (N strict slots, hard caps, read-back receipts); their richer allocation opportunity (stranded cores, burst, co-residency) is Phase 2, earned by receipts."),
-      section_prose(content: "**◆ Milestones:** OOM root-caused (hand-set caps vs measured peaks + budget double-count) ✓ · Ubicloud stabilization trialed ✓ (#6107) → reverted, operator call (#6111 — no wall-clock win; width=9 was live by construction and never touched the serial wall) · converge shell emitted ✓ (#5725/#5827) · `apply()` Phase A ✓ (#5756) · CD to srv1 ✓ (#6030/#6060/#6093) · witness-level affected-set pruning LIVE ✓ (#6061) → **▸ NOW: kill the serial compile-clean wall · floor <1min · CD wrong-host fix · stateless-frontend MVP (first non-CI fabric consumer) · converge re-land to the signed design** → srv1/srv2 runner-allocation v0 (hand-config retired) → StrictLease + shape labels → dormant-Ubicloud provider row (design-break probe) → periodic actuation with receipts → srv3 OsInstalled · `apply()` Phases B–D → **TERMINAL: required CI runs on the compute fabric — the model can choose any admitted ProviderOffer, the receipt proves the shape was honored, and install/manage/decom all ride `apply()` with fail-closed receipts**"),
+      section_prose(content: "**◆ Milestones:** OOM root-caused (hand-set caps vs measured peaks + budget double-count) ✓ · Ubicloud stabilization trialed ✓ (#6107) → reverted, operator call (#6111 — no wall-clock win; width=9 was live by construction and never touched the serial wall) · converge shell emitted ✓ (#5725/#5827) · `apply()` Phase A ✓ (#5756) · CD to srv1 ✓ (#6030/#6060/#6093) · witness-level affected-set pruning LIVE ✓ (#6061) → **▸ NOW: kill the serial compile-clean wall · floor <1min · CD wrong-host fix · stateless-frontend MVP (first non-CI fabric consumer) · converge re-land to the signed design** → srv1/srv2 runner-allocation v0 (hand-config retired) → StrictLease + shape labels → dormant-Ubicloud provider row (design-break probe) → periodic actuation with receipts → host lifecycle/decom on the same spine → **TERMINAL: required CI runs on the compute fabric — the model can choose any admitted ProviderOffer, the receipt proves the shape was honored, and install/manage/decom all ride `apply()` with fail-closed receipts**"),
       section_prose(content: "**Acceptance rule (operator, 2026-07-02): an item is not complete because its algebra exists — it is complete only when a NAMED consumer uses it on the LIVE path and produces a receipt** (DESIGN §5: a typecheck or a grep is not a consumer). Completion tiers: **T0** modeled · **T1** fixture/synthetic witness · **T2** wired to the intended consumer (proof by consumption, never grep) · **T3** live dry-run receipt · **T4** live apply + independent read-back receipt · **T5** a periodic/CI consumer keeps it alive. Every dispatchable node states **Accept:** — its required tier plus an operator-checkable end state on the real fleet (what is different on srv1/srv2 or in CI afterward) plus a discriminating RED; control-plane/fabric items close at **T4/T5**, and anything below the named tier is a subtask, never completion. A sized node without an explicit Accept is not ready to dispatch; algebra, carriers, and lenses are mechanisms and never their own acceptance. The bar for real progress: *can srv1/srv2 runner allocation be changed through the model, read back, re-run safely, and retracted?* Until yes, the work is scaffolding. Full per-node checklists: [fleet acceptance criteria](docs/plans/fleet-acceptance-criteria.md) — the node's Accept line is the summary, the doc is the checklist, and edits to one land with the other."),
       section_group(
         label: "Now — correctness of the current posture",
@@ -727,15 +727,16 @@ fn section_2() -> RoadmapSection {
           }),
           ticket_wi(id: "2-converge-reland", done: false, t: TicketFields {
             headline: "closed-loop converge — T4 acceptance on the spine",
-            brief: "Landed inventory: the three-way-diff carrier EXISTS (host_converge_delta.dag + srv2 ConvergeKnob fixture witness); converge thin-run landed (#6572/#6585/#6598, re-verified 2026-07-20); per-slot MemoryMax convergence generalized multi-unit (#7009) and srv3 caps via host-standup converge (#7000); apply/teardown poles unified on the membership_reconcile spine (#6814) — deploy = one fleet reconcile spine (operator).",
+            brief: "Close the real host loop: typed desired knobs + independent observed state -> keyed delta -> privileged apply -> independent read-back receipt. The #6572/#6585/#6598 thin-run was a precursor, not acceptance; #7121 deleted its unconsumed fleet_converge artifact. The membership_reconcile spine and PerSlotMemoryCap realization exist, but no current full-host path proves the model can reproduce srv1/srv2.",
             displaced_cost: "",
-            current_state: "re-based 2026-07-23; the live read seam is still ReadAbsent (fleet_show_effective_read) — bind ReadObserved at the apply increment",
-            first_slice: "",
+            current_state: "2026-07-26: host_converge_realize implements PerSlotMemoryCap only and refuses other knobs; host_effect_realize still transports retained shell text. The live read seam remains incomplete, and no caps-only apply CLI plus live perturb/heal receipt closes T4.",
+            first_slice: "bind the completed live MemoryMax/MemoryHigh/MemorySwapMax/TasksMax reads to a caps-only plan/apply/read-back path before widening the knob vocabulary",
             red_control: "the full T4 accept, unchanged: reconfigure srv1/srv2 to a NEW runner allocation from the model alone, plan shows exactly the delta, independent read-back (systemctl show, never our own write echoed back), hand-edit reds the next converge, retract restores, values survive daemon-reload ([12-step checklist](docs/plans/fleet-acceptance-criteria.md))",
-            out_of_scope: "",
-            handback: "",
+            out_of_scope: "reviving fleet_converge.sh or treating emitted text without an executing consumer as progress",
+            handback: "refuse rather than flatten an unsupported knob or echo the planned write back as observation",
             updates: [
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 17)" },
+              TicketUpdate { on: "2026-07-26", note: "removed obsolete thin-run-landed claim after #7121 paper-transport deletion; current realization and receipt gaps named" },
             ],
             authored_on: "",
             last_verified_on: "2026-07-23",
@@ -817,7 +818,7 @@ fn section_2() -> RoadmapSection {
           }, intricacy: IntricacyHigh, volume: VolumeSmall, repo: "gunbc"),
           ticket_row(id: "2-periodic-actuation", done: false, t: TicketFields {
             headline: "periodic actuation with receipts",
-            brief: "A systemd timer (or ctrl thin-run) executes the emitted converge per-host under the privilege model; receipts land where a hand-edit REDS (G3's unmet promise). Until this exists the emitted shell is spec-without-execution.",
+            brief: "A systemd timer (or ctrl invocation) executes the typed reconcile/apply path per host under the privilege model; receipts land where a hand-edit REDS. It follows closed-loop T4 acceptance. An emitted script, timer unit, or self-reported write is not progress without independent observation and an executing reader for the receipt.",
             displaced_cost: "",
             current_state: "",
             first_slice: "",
@@ -826,6 +827,7 @@ fn section_2() -> RoadmapSection {
             handback: "",
             updates: [
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 17)" },
+              TicketUpdate { on: "2026-07-26", note: "rewritten after the unconsumed thin-run artifact was deleted; acceptance now names the typed reconcile path rather than emitted shell" },
             ],
             authored_on: "",
             last_verified_on: "",
@@ -891,85 +893,61 @@ fn section_2() -> RoadmapSection {
             authored_on: "",
             last_verified_on: "",
           }, path: "docs/plans/compute-envelope-model.md"),
-          ticket_doc(id: "6-shell-emission", done: false, t: TicketFields {
-            headline: "shell emission model",
-            brief: "emit(intent, Bash); scoped by the bash-minimization rule (operator 2026-07-03): bash is emitted only into foreign executors + bootstrap windows; where the runtime is present, effects are typed argv/REST or binary-interpreted plans (the tail slices are shelved).",
-            displaced_cost: "",
-            current_state: "",
-            first_slice: "",
-            red_control: "",
-            out_of_scope: "",
-            handback: "",
-            updates: [
-              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 15)" },
-            ],
-            authored_on: "2026-07-03",
-            last_verified_on: "",
-          }, path: "docs/plans/shell-emission-model.md"),
-          derivable(id: "2-debash-orchestration", prs: [6106], title: "**orchestration emission → agnostic registry dispatch**", description: "— de-bash the compiler stage (in flight)"),
-          owned(rn: ticket_wi(id: "2-emit-partition", done: false, t: TicketFields {
-            headline: "emit partition cleanup — shell/json/yaml as grammar rows, zero language knowledge in the wrong layer",
-            brief: "One grammar per language, read in both directions (DESIGN §4); emission is rows in extdeps/languages/, never stage code. Four leftovers: (a) 05_emit_orchestration still carries orchestration→bash lowering IN the compiler stage — the #6106 registry dispatch is the exit; the env-weld half is DISCHARGED (#5868/#6137); (b) the bash grammar is FORKED across trees — one authority must win (the #6112 class); (c) JSON has no grammar authority — N hand-rolled emitters; (d) YAML rows sit in the workflow layer — they belong in extdeps/languages/ with GHA-workflow rows on top, retiring the yaml_check Rust scaffold once parse is grammar-owned.",
-            displaced_cost: "",
-            current_state: "",
-            first_slice: "",
-            red_control: "the construction wall that makes the splice class unwritable: a string literal is an ATOM, never a COMPOSITION — joins live in extdeps/languages rows, never workflow code ([no-smuggled-programs wall, dissolved with program.dag FULL DELETE](docs/plans/shell-intent-emit-realization-design.md))",
-            out_of_scope: "",
-            handback: "",
+          with_plan(rn: superseded(
+            id: "6-shell-emission",
+            by: "2-emit-partition + 6-shell-intent-phase1 + 2-converge-reland",
+            content: "**shell emission policy umbrella** — the model is established; full dissolution is NOT done. Concrete acceptance and dispatch now live on the product-intent construction arc, the While/BoundedPoll/Retry fidelity slice, and closed-loop host converge. Zero concat across the repository is explicitly not the finish line."
+          ), path: "docs/plans/shell-emission-model.md"),
+          with_plan(rn: superseded(
+            id: "2-debash-orchestration",
+            by: "2-emit-partition",
+            content: "**registry-dispatch foundation** — #6106 merged. It established the agnostic registry exit but did not remove the remaining compiler-stage bridge; the construction arc below owns that residue with current acceptance."
+          ), path: "docs/plans/shell-intent-emit-realization-design.md"),
+          owned(rn: with_plan(rn: ticket_wi(id: "2-emit-partition", done: false, t: TicketFields {
+            headline: "shell construction arc close — product intent onto typed targets",
+            brief: "Move every product/foreign-executor shell builder through typed orchestration and the canonical Bash target, then delete the raw producer. Runtime-present paths use typed effects; foreign executors/bootstrap may emit bounded shell. #7293 owns ToFile, Comment and ExitStatus plus the two #7265 residues. FileExists, IntNe, Exit, ambient Run.command, and CaptureSpec fidelity remain later slices.",
+            displaced_cost: "product intent still assembles executable text, so a migration can move a concat without deleting the untyped authority",
+            current_state: "2026-07-26 census: 16 production intent declarations / 117 raw concat sites remain; 36 / 110 canonical Bash grammar sites and 15 / 30 realization-adapter sites are separate classified bands, not automatically debt. #7293 is open and green at 9a245785 but is not arc completion.",
+            first_slice: "#7293 may close only its named variants and migrated consumers; preserve its explicit PR2b residue list as counted follow-up work",
+            red_control: "Accept each slice only when the target variant is modeled, every scoped production consumer migrates, the old builder/fallback deletes, all source fields are emitted or loudly refused, and planted unsupported-field / extra-step cases RED. Arc close additionally requires a construction wall rejecting new product-intent command composition.",
+            out_of_scope: "canonical Bash serializer spelling; independent test goldens; v1 bootstrap emitter debt; JSON/YAML work without its own current evidence",
+            handback: "stop if a source field has no typed target or a migration can pass only by dropping env, redirect, capture, log source, or extra body steps",
             updates: [
               TicketUpdate { on: "2026-07-01", note: "operator directive" },
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 18)" },
+              TicketUpdate { on: "2026-07-26", note: "roadmap truth-up: old shell/json/yaml umbrella narrowed to the executing shell arc; live #7293 ownership and classified denominator recorded" },
             ],
             authored_on: "2026-07-01",
-            last_verified_on: "",
-          }, intricacy: IntricacyHigh, volume: VolumeLarge, repo: "gunbc"), owner: "dispatched 2026-07-02 · adhoc-2040cdfe-46b"),
+            last_verified_on: "2026-07-26",
+          }, intricacy: IntricacyHigh, volume: VolumeLarge, repo: "gunbc"), path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md"), owner: "Wise Crane · PR #7293"),
           sign(rn: authored_doc(id: "6-shell-slice0", done: true, content: "**slice 0 — CI EAGAIN-retry** ✓ (#6467) — `ci_cargo_eagain_retry_core` → `emit(Retry, Bash)`; byte-oracle = committed `ci.yml`", path: "docs/plans/shell-emission-model.md"), s: signed(by: "operator", works: true, scope_equivalent: true, as_expected: true)),
           sign(rn: authored_doc(id: "6-shell-slice1", done: true, content: "**slice 1 — control-flow emit (census-scoped)** ✓ (#6475; tier-2 Procedure/Let band #6566) — the `If` band only (`orch_emit_step::If` + else + condition forms + pipes/cmdsubst/`$?`/AndOr/redirect/env words, byte goldens); `For`/`While` NOT in scope — the pre-runtime census (2026-07-03) found zero pre-runtime sites needing them", path: "docs/plans/shell-emission-model.md"), s: signed(by: "operator", works: true, scope_equivalent: true, as_expected: true)),
-          ticket_doc(id: "6-shell-intent-phase1", done: false, t: TicketFields {
-            headline: "shell→intent Phase 1 — agnostic orchestration emit",
-            brief: "While/BoundedPoll/general Retry (N-level escalation) emit via 05_emit_orchestration + bash grammar rows; byte goldens orchestration_*_emit_test; production consumer ci_floor_peak_emit.dag.",
-            displaced_cost: "",
-            current_state: "MERGED (#6832), operator sign-off PENDING",
-            first_slice: "",
-            red_control: "",
-            out_of_scope: "",
-            handback: "flip to done: true + sign(operator) on sign-off (mirrors 6-shell-slice2)",
+          with_plan(rn: ticket_wi(id: "6-shell-intent-phase1", done: false, t: TicketFields {
+            headline: "While / BoundedPoll / Retry fidelity and production adoption",
+            brief: "#6832 landed grammar and emit machinery, not this arc's acceptance. While has one production consumer but retains raw Run.command leaves. BoundedPoll and N-level Retry are test-only; production Retry is one-level. Retry currently reads only the first body step and specializes log paths while discarding source Run env/redirect/capture. Complete production adoption or narrow the modeled claim.",
+            displaced_cost: "the roadmap says general control flow exists while real inputs can be silently dropped or remain untyped",
+            current_state: "open after 2026-07-26 tree audit: merged mechanism, incomplete consumers and fidelity; the direct While witness remains on the dark long cadence",
+            first_slice: "make Retry refuse a second body step instead of dropping it, then preserve or explicitly refuse env/redirect/capture and LogMatches.source before adding a production BoundedPoll/N-level consumer",
+            red_control: "REDs: a second Retry body step is located and refused; a changed log source changes emission or refuses; redirect/capture/env cannot disappear. Green: every claimed construct has a production consumer, scoped old composers are deleted, and the witness executes on a normal cadence.",
+            out_of_scope: "claiming generality from byte goldens alone; unrelated product-intent builders owned by 2-emit-partition",
+            handback: "if production needs only the specialized one-level CI retry, narrow the type and roadmap claim instead of fabricating a general consumer",
             updates: [
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 15)" },
+              TicketUpdate { on: "2026-07-26", note: "operator-requested acceptance audit found test-only constructs and silent Retry field/body loss; sign-off-only status withdrawn" },
             ],
             authored_on: "",
-            last_verified_on: "",
-          }, path: "docs/plans/shell-intent-emit-realization-design.md"),
-          ticket_doc(id: "6-shell-slice2", done: false, t: TicketFields {
-            headline: "slice 2 — converge thin-run",
-            brief: "fleet_converge steady-state interpreted in the binary as a typed plan via apply(); emitted bash is the fresh-standup bootstrap fragment + thin invocation lines (supersedes emit-the-whole-fleet-converge.sh). Implementation MERGED: #6572 keystone ConvergePlan + EmitArtifactThenThinRun + converge_apply · #6585 golden shrink 323→21 lines · #6598 gunbc converge --host CLI receiver.",
-            displaced_cost: "",
-            current_state: "operator sign-off PENDING; FLAGs 2a(i)/2b/2c signed/discharged 2026-07-14 ([census](docs/plans/shell-to-dag-residual-census-and-arc-completion.md) §2); receipts re-verified by execution 2026-07-20 (fleet_converge_emit / fleet_converge_apply witnesses)",
-            first_slice: "",
-            red_control: "",
-            out_of_scope: "",
-            handback: "flip to done: true + sign(operator) on sign-off (mirrors 6-shell-intent-phase1)",
-            updates: [
-              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 15)" },
-            ],
-            authored_on: "",
-            last_verified_on: "2026-07-20",
-          }, path: "docs/plans/shell-emission-model.md"),
-          ticket_doc(id: "2-host-effect-phases", done: false, t: TicketFields {
-            headline: "apply() Phases B–F",
-            brief: "B host_exec→apply() (gated on srv3 OsInstalled) · C Redfish live (partially via #6097) · D converge lane = EmitArtifactThenThinRun handler (first ctrl LOC deleted) · E pull-mode self-converge (autoinstall plants the on-host agent; the push star retires) · F decom.",
-            displaced_cost: "",
-            current_state: "Phase A landed (#5756)",
-            first_slice: "",
-            red_control: "",
-            out_of_scope: "",
-            handback: "",
-            updates: [
-              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 19)" },
-            ],
-            authored_on: "",
-            last_verified_on: "",
-          }, path: "docs/plans/host-effect-orchestration.md"),
+            last_verified_on: "2026-07-26",
+          }, intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"), path: "docs/plans/shell-intent-emit-realization-design.md"),
+          with_plan(rn: superseded(
+            id: "6-shell-slice2",
+            by: "2-converge-reland",
+            content: "**converge thin-run precursor** — #6572/#6585/#6598 landed, then #7121 deleted the unconsumed 21-line fleet_converge artifact as paper transport. Current host convergence is not complete: `2-live-read-seam`, `2-converge-reland`, and `2-periodic-actuation` own typed observation, apply, and live receipts."
+          ), path: "docs/plans/shell-emission-model.md"),
+          with_plan(rn: superseded(
+            id: "2-host-effect-phases",
+            by: "2-live-read-seam + 2-converge-reland + 2-periodic-actuation",
+            content: "**apply() Phases B-F umbrella** — the phase snapshot predates the current reconcile spine and no longer defines executable acceptance. The live-read, closed-loop converge, and periodic-actuation tickets below own the remaining host-effect milestones."
+          ), path: "docs/plans/host-effect-orchestration.md"),
           owned(rn: ticket_wi(id: "2-temporal-effect-spine-a", done: true, t: TicketFields {
             headline: "temporal-effect-spine-a — temporal realization spine (T1 vocabulary)",
             brief: "std.temporal_effect: durable facts + plan_next_step_from_prior_receipt_and_lease (single prior+lease; list fold is consumer-side); 🟡 markers on stringly receipt labels + derived step id. Not a workflow engine.",
@@ -1002,36 +980,16 @@ fn section_2() -> RoadmapSection {
             authored_on: "2026-07-02",
             last_verified_on: "",
           }, intricacy: IntricacyHigh, volume: VolumeSmall, repo: "gunbc"), owner: "dispatched 2026-07-02 · zesty-bat-588"),
-          ticket_wi(id: "2-srv3-install-reconcile-a", done: true, t: TicketFields {
-            headline: "srv3-install-reconcile-a — dry-run reconcile entrypoint",
-            brief: "InstallAttemptIntent + workflow steps as data; srv3_os_install_reconcile folds preflight + diagnostic + temporal spine; dry-run first. Gated on temporal-effect-spine-a + os-install-deduction-a.",
-            displaced_cost: "",
-            current_state: "",
-            first_slice: "",
-            red_control: "Accept (T3): dry-run receipt on srv1 actuator host",
-            out_of_scope: "",
-            handback: "",
-            updates: [
-              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 19)" },
-            ],
-            authored_on: "",
-            last_verified_on: "",
-          }, intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"),
-          ticket_doc(id: "2-srv3-osinstalled", done: false, t: TicketFields {
-            headline: "srv3 → OsInstalled",
-            brief: "Finish the greenfield install over the solve-driven NBD-proxy actuator (#6097, live BMC); proves the install band end-to-end.",
-            displaced_cost: "",
-            current_state: "",
-            first_slice: "",
-            red_control: "",
-            out_of_scope: "",
-            handback: "",
-            updates: [
-              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 19)" },
-            ],
-            authored_on: "",
-            last_verified_on: "",
-          }, path: "docs/plans/srv3-webui-kvm-virtual-media.md"),
+          superseded(
+            id: "2-srv3-install-reconcile-a",
+            by: "srv3 install/reconcile retirement (#7233/#7237)",
+            content: "**srv3 install dry-run precursor** — its `srv3_os_install_reconcile*` implementation was intentionally deleted with the dead, unconsumed install/reconcile subgraph. It is a historical receipt, not work awaiting sign-off."
+          ),
+          with_plan(rn: superseded(
+            id: "2-srv3-osinstalled",
+            by: "srv3 install/reconcile retirement (#7233/#7237)",
+            content: "**srv3 -> OsInstalled objective** — srv3 was already installed and the orphaned reconcile path had no CLI/CI consumer, so current main retired the subgraph instead of preserving a false reproducibility claim. Future host install work must start from a live consumer and the generic host lifecycle spine."
+          ), path: "docs/plans/srv3-webui-kvm-virtual-media.md"),
           ticket_wi(id: "2-resource-namespace-upsert-a", done: true, t: TicketFields {
             headline: "resource-namespace-upsert-a — vocabulary only",
             brief: "std.upsert_decision (ObservationVerdict + UpsertDecision<P>); domain modules gunbc.file_access, gunbc.session_lease, gunbc.install_media.",
@@ -1048,21 +1006,11 @@ fn section_2() -> RoadmapSection {
             authored_on: "2026-07-03",
             last_verified_on: "",
           }, intricacy: IntricacyHigh, volume: VolumeSmall, repo: "gunbc"),
-          ticket_wi(id: "2-install-media-generic-layer", done: false, t: TicketFields {
-            headline: "install-media-generic-layer — extract Ubuntu flavor from process",
-            brief: "Split extdeps/os/install_media.dag generic shapes (fetch/remaster/serve verdicts) from ubuntu_* flavor rows; move .gunbc-content-hash sidecar + remaster policy to gunbc/install_media_*; mandatory before second OS/distro. Post-#6134.",
-            displaced_cost: "",
-            current_state: "",
-            first_slice: "",
-            red_control: "",
-            out_of_scope: "",
-            handback: "",
-            updates: [
-              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 19)" },
-            ],
-            authored_on: "",
-            last_verified_on: "",
-          }, intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"),
+          superseded(
+            id: "2-install-media-generic-layer",
+            by: "future second-OS/distro consumer",
+            content: "**install-media generic extraction** — no current second-OS consumer displaces this work after the srv3 reconcile retirement. Reintroduce it with that consumer and a current model-first acceptance, not as speculative cleanup."
+          ),
           ticket_wi(id: "2-nbd-serve-held-session-lease", done: true, t: TicketFields {
             headline: "nbd-serve-held-session-lease",
             brief: "NbdProxyServeSession intent with port/pid/cmdline/ISO/token fingerprint; classification + plan INSTANTIATE std.upsert_decision (domain facts as the P payload — do NOT mint a parallel lease vocabulary, cf. the fork-census 2026-07-03). Live consumer: srv3 actuator.",
@@ -1078,36 +1026,16 @@ fn section_2() -> RoadmapSection {
             authored_on: "",
             last_verified_on: "",
           }, intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"),
-          ticket_wi(id: "2-srv3-boot-action-diagnostic", done: false, t: TicketFields {
-            headline: "srv3-boot-action-diagnostic — Redfish vs ipmitool fallback state machine",
-            brief: "Separate transports for BmcBootAction; boot refused unless serve RunningExpected; NoRebootObserved → optional IpmiResetFallback with separate approval; OutOfBandHostActionReceipt until modeled.",
-            displaced_cost: "",
-            current_state: "",
-            first_slice: "",
-            red_control: "",
-            out_of_scope: "",
-            handback: "",
-            updates: [
-              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 19)" },
-            ],
-            authored_on: "",
-            last_verified_on: "",
-          }, intricacy: IntricacyHigh, volume: VolumeSmall, repo: "gunbc"),
-          ticket_row(id: "2-os-install-generic-naming", done: false, t: TicketFields {
-            headline: "os-install generic naming cleanup",
-            brief: "Rename generic behavior tests/modules away from srv3_* where testing credential resolution, remaster classification, workflow escalation; keep srv3 only in instance fixtures (srv3_pre_install_lease_table, srv3_seeded_install_media_artifact). Post-#6134.",
-            displaced_cost: "",
-            current_state: "",
-            first_slice: "",
-            red_control: "",
-            out_of_scope: "",
-            handback: "",
-            updates: [
-              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 19)" },
-            ],
-            authored_on: "",
-            last_verified_on: "",
-          }),
+          superseded(
+            id: "2-srv3-boot-action-diagnostic",
+            by: "srv3 install/reconcile retirement (#7233/#7237)",
+            content: "**srv3 boot fallback diagnostic** — belonged to the retired install/reconcile objective and has no current executing consumer. A future BMC boot workflow must declare its own live actuator and refusal receipts."
+          ),
+          superseded(
+            id: "2-os-install-generic-naming",
+            by: "future generic host-install consumer",
+            content: "**os-install naming cleanup** — naming-only work no longer has an executing consumer after the srv3 reconcile retirement. Refile with a live generic install path rather than dispatching speculative renames."
+          ),
         ],
         edges: [
           RoadmapEdge { child: nid(s: "2-temporal-effect-spine-a"), parent: nid(s: "2-host-effect-phases") },
@@ -2604,21 +2532,11 @@ fn task_sheet_lead_lane() -> RoadmapSection {
       section_group(
         label: "4 · Antagonistic product review — the last two weeks of merges",
         nodes: [
-          ticket_row(id: "ts-concat-class", done: false, t: TicketFields {
-            headline: "the concat-composition class — shortcuts that calcify and spread",
-            brief: "String-building concat chains as the easiest path to the objective: 2,798 concat( sites in dag+src/v2, 112 nested concat(concat( in dag/** alone, densest in host/shell-adjacent modules — exactly where the shell→intent rework fights them. The ruling already exists (operator 2026-07-14, #6656: a string literal is an ATOM, never a COMPOSITION; TargetText carrier at the emit seam). The work is the census + wall: classify each chain (emit-seam-internal = fine · smuggled composition = migrate to its typed carrier) and gate new ones at the boundary.",
-            displaced_cost: "the class spreading through every new host/shell module",
-            current_state: "counts are the 2026-07-22 sweep's snapshot",
-            first_slice: "",
-            red_control: "",
-            out_of_scope: "",
-            handback: "",
-            updates: [
-              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 9)" },
-            ],
-            authored_on: "",
-            last_verified_on: "",
-          }),
+          with_plan(rn: superseded(
+            id: "ts-concat-class",
+            by: "2-emit-partition + dag/gunbc/v1_deletion_plan.dag",
+            content: "**concat census snapshot** — superseded by the classified 2026-07-26 census. The broad production lexical ceiling is 1,750 declarations / 4,522 sites, not a debt count. Actionable product-intent shell is 16 / 117; v1 bootstrap emitters are 419 / 1,194; sanctioned language/realization edges are 86 / 276. Per-sink owners carry the work; a global zero-concat goal would delete valid serializers."
+          ), path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md"),
           ticket_row(id: "ts-unconsumed", done: false, t: TicketFields {
             headline: "unconsumed-component sweep",
             brief: "Mechanisms merged without an executing consumer are coverage-by-illusion (§6); the admission invariant (every witness row names an executing consumer — module-identity thread Phase 0) is the wall. Sweep the wave for landed-but-inert mechanisms and either wire a consumer or revert.",
