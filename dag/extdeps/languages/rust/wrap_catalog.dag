@@ -2,7 +2,7 @@ module extdeps.languages.rust.wrap_catalog
 
 data rust_sg_rc_wrap_catalog_note: String = "Single authority for rust_sg_rc_use_site_ownership_catalog rows (v1 seed emitter + v2.extdeps.languages.rust). Carrier is a closed enum (not a string tag). NonEmptyDiagnostics aliases Diagnostics at the lookup boundary only — dissolve-on: modeled alias row in the catalog when NonEmptyDiagnostics itself dissolves (§3 nickname; do not grow rust_sg_rc_wrap_carrier_key string branches)."
 
-data rust_sg_rc_wrap_catalog_realization_fork_note: String = "Residual §3 fork (non-blocking): .dag row authority is OwnershipWrapCarrier; emitted stage0 RustSgRcOwnershipWrapCatalogRow still stores carrier as String — do not treat generated stage0 .rs as authoritative for catalog shape. Lookup enters via rust_sg_rc_wrap_carrier_from_type_name (string-key match). Dissolve-on: stage0 emits closed carrier enum inhabited from .dag without string-key compare at the realization boundary."
+data rust_sg_rc_wrap_catalog_realization_fork_note: String = "Stage0 seed hand-sync (OWNERSHIP-68): extdeps_languages_rust_wrap_catalog.rs carries OwnershipWrapCarrier on RustSgRcOwnershipWrapCatalogRow — same closed enum as this module. Stale full-regen emit still materializes carrier: String until compile-green self-host regen lands. Dissolve-on: regen_verify green without string-carrier rows (sharp-bee-290 Gate 3 / ROADMAP.md §④ regen_verify + rc-ownership-wrap-decision-design.md step 3)."
 
 type OwnershipWrapUseSite
   = OwnershipWrapUseSiteAbsent

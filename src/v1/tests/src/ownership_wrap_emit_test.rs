@@ -1,9 +1,16 @@
 //! Seed emitter wrap-decision gate: catalog carriers wrap per use-site;
 //! shared_types members absent from the catalog (e.g. user structs) stay bare.
 //!
-//! Receipt (review 42806): compile_dag_target behavioral witnesses for
-//! OWNERSHIP-68 / rc-ownership-wrap-decision-design.md — fn-sig, struct-field,
-//! alias-RHS, and data-def emit paths; no corpus census shrink (scoped fixtures).
+//! Behavioral witness (compile_dag_target): OWNERSHIP-68 /
+//! docs/plans/rc-ownership-wrap-decision-design.md — fn-sig, struct-field,
+//! alias-RHS, and data-def emit paths.
+//!
+//! SCAFFOLD deferral (§7 hand-Rust gate): corpus census shrink is NOT in this
+//! PR — deferred to lane sharp-bee-290 / Weak→Strong Self Host Gate 3
+//! (compile-green stage0 regen fixed point; ROADMAP.md §④ regen_verify +
+//! rc-ownership-wrap-decision-design.md implementation sequence step 3).
+//! Dissolve-on: regen_verify green with ownership_wrap witnesses enrolled on
+//! the affected-set corpus (not fixture-only scoped emit).
 
 use crate::helpers::compile_dag_target;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
