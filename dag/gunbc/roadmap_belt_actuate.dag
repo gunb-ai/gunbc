@@ -34,6 +34,10 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_spawn_commands,
   dispatch_attempt_key,
   DispatchAttemptRef, dispatch_attempt_refs, git_for_each_ref_dispatch_argv,
+  TmuxPaneEntry, parse_tmux_panes_output, tmux_list_panes_argv,
+  tmux_session_observation_with_panes, dispatch_tmux_session_scope,
+  DispatchStopGate, StopPermitted, StopRefused, dispatch_stop_gate,
+  TmuxLsEntry,
   dispatch_tmux_session_name,
   dispatch_worktree_root,
   tmux_ls_argv,
@@ -572,6 +576,103 @@ fn belt_attempts_http_status(a: BeltAttempts) -> Int {
     AttemptsRefused { reason: _ } => 503
     AttemptsObserved { attempts: _ } => 200
   }
+}
+
+type BeltStopResult
+  = StopStopped { node_id: String, session_name: String }
+  | StopRefusedResult { node_id: String, reason: String }
+  | StopObserveRefused { node_id: String, reason: String }
+  | StopTeardownFailed { node_id: String, session_name: String, detail: String }
+
+data belt_stop_note: String = "U4 (stop from the UI): the R5 owned-only teardown as a wire actuation. The decision chain is observation-first and refuses at every unknowable: tmux ls refused → StopObserveRefused (503); pane read refused → the observation stays name-only and the gate refuses fingerprint-unobserved (409) — a pane-read failure NEVER widens into a kill; the gate itself refuses foreign/absent/inaccessible per verdict (409/404); only a Converged-or-Drifted observation reaches tmux kill-session, and a kill that fails is its own typed arm (502). The operator's hand-made sleep session wearing a dispatch name is the standing negative control: it observes Conflict and the button refuses to kill it."
+
+fn belt_observe_panes() -> List<TmuxPaneEntry>? {
+  let cmd = tmux_list_panes_argv()
+  if belt_program_available(program: cmd.program) {
+    let result = gunbc.WitnessBin.Run(
+      workdir: belt_observe_workdir,
+      bin_path: cmd.program as FilePath,
+      args: cmd.args,
+    )
+    if result.success {
+      Present { value: parse_tmux_panes_output(output: result.stdout) }
+    } else {
+      none
+    }
+  } else {
+    none
+  }
+}
+
+fn belt_stop_node(node_id: String) -> BeltStopResult {
+  match belt_observe() {
+    ObserveRefused { reason: r } => StopObserveRefused { node_id: node_id, reason: r }
+    Observed { live } => {
+      let scope = dispatch_tmux_session_scope(node_id: node_id)
+      let entries = live
+        |> filter(sess => sess.session_name == (scope.session_name as String))
+        |> map(sess => TmuxLsEntry { session_name: sess.session_name, windows: sess.windows })
+      let obs = match belt_observe_panes() {
+        Present { value: panes } =>
+          tmux_session_observation_with_panes(scope: scope, entries: entries, panes: panes)
+        Absent =>
+          tmux_session_observation_with_panes(scope: scope, entries: entries, panes: [])
+      }
+      match dispatch_stop_gate(scope: scope, obs: obs) {
+        StopRefused { reason: r2 } => StopRefusedResult { node_id: node_id, reason: r2 }
+        StopPermitted { session_name: sn } =>
+          match belt_actuate_teardown(session_name: sn) {
+            ReapedSession { session_name: sn2 } => StopStopped { node_id: node_id, session_name: sn2 }
+            TeardownFailed { session_name: sn3, detail: d } =>
+              StopTeardownFailed { node_id: node_id, session_name: sn3, detail: d }
+          }
+      }
+    }
+  }
+}
+
+fn belt_stop_result_json_value(r: BeltStopResult) -> JsonValue {
+  match r {
+    StopStopped { node_id: nid, session_name: sn } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "stopped")),
+        json_kv(key: "session_name", value: json_string(s: sn)),
+      ])
+    StopRefusedResult { node_id: nid, reason: r2 } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "stop_refused")),
+        json_kv(key: "reason", value: json_string(s: r2)),
+      ])
+    StopObserveRefused { node_id: nid, reason: r3 } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "observe_refused")),
+        json_kv(key: "reason", value: json_string(s: r3)),
+      ])
+    StopTeardownFailed { node_id: nid, session_name: sn, detail: d } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "teardown_failed")),
+        json_kv(key: "session_name", value: json_string(s: sn)),
+        json_kv(key: "detail", value: json_string(s: d)),
+      ])
+  }
+}
+
+fn belt_stop_http_status(r: BeltStopResult) -> Int {
+  match r {
+    StopStopped { node_id: _, session_name: _ } => 200
+    StopRefusedResult { node_id: _, reason: r2 } =>
+      if string_contains(s: r2, pattern: "no live session") { 404 } else { 409 }
+    StopObserveRefused { node_id: _, reason: _ } => 503
+    StopTeardownFailed { node_id: _, session_name: _, detail: _ } => 502
+  }
+}
+
+fn belt_stop_json(node_id: String) -> String {
+  serialize_json(v: belt_stop_result_json_value(r: belt_stop_node(node_id: node_id)))
 }
 
 data belt_sessions_json_note: String = "U2 (sessions panel v0): the belt observation projected as wire JSON so the PAGE can know what is live without the render losing purity — the healthz digest is taken over the pure page body, so live state must arrive by fetch, exactly as dispatch answers do. The projection is a pure fn over BeltObserve (every arm witnessed on synthetic values); the effectful wrapper only threads belt_observe() in. The refusal arm stays a refusal on the wire (observe_refused true + reason, served 503): an unknowable session set renders loud at the client, never as an empty panel."

@@ -42,6 +42,7 @@ import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_ls_argv,
   shape_tmux_kill_session_argv,
+  shape_tmux_list_panes_argv,
 }
 import extdeps.llm.cli { shape_claude_invoke_argv }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -49,13 +50,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.host_layout { srv1_dispatch_worktree_root }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 
-data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.roadmap_dispatch_actuator",
-    decl_name: "classify_dispatch_lease_upsert",
-    field: WholeDeclaration
-  }
+data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Terminal {
+  reason: "DISSOLVED (U4, 2026-07-25): the pane-fingerprint observation landed — tmux list-panes with the cited format variables feeds tmux_session_observation_with_panes, so SessionObserved carries pane_current_command and the lease classification's Converged/Conflict arms are reachable by observation, not only by fixture. The R5 owned-only teardown gate (dispatch_stop_gate) is its first live consumer." as NonEmptyStr
 }
 
 data dispatch_repo: String = "gunbc"
@@ -65,6 +61,8 @@ data dispatch_worktree_root_note: String = "PROJECTION of gunbc.host_layout.srv1
 data dispatch_worktree_root: String = srv1_dispatch_worktree_root as String
 data dispatch_git_remote_ref: String = gunbc_merge_target_ref as String
 data dispatch_tmux_session_prefix: String = "gunbc-dispatch-"
+data dispatch_claude_fingerprint_finding_note: String = "NAMED FINDING (U4 live drive, macOS, 2026-07-25): pane_current_command is the kernel process name (p_comm) — symlinks resolve and exec -a cannot fake it, which is exactly the anti-spoof property R5 wants — BUT a REAL running claude CLI on this macOS reported its VERSION STRING (2.1.220) as p_comm, not claude (node process.title). So the Converged green path may not fire on real workers until the fingerprint a real srv1 spawned session reports is READ, not guessed. The refuse arms are unaffected (they are the safety half and were proven live four ways). DECIDE-BY-RECEIPT: run tmux list-panes on srv1 beside a live dispatch session; if it reports claude this row stands; if it reports a version-or-node name, this row becomes the observed value (or an accepted set) — a data edit, never a code change."
+
 data dispatch_claude_process_fingerprint: NonEmptyStr = "claude" as NonEmptyStr
 data claude_skip_permission_settings_json: String = "{\"skipDangerousModePermissionPrompt\":true}"
 data dispatch_claude_start_prompt: String = "Begin working on the assigned node."
@@ -659,6 +657,84 @@ fn git_for_each_ref_dispatch_argv() -> HostExecArgv {
 }
 
 data dispatch_session_ownership_note: String = "R5 owned-only teardown, session grain: a live dispatch session is teardown-eligible (OUR process) ONLY when its lease verdict is Converged (running with our expected process fingerprint) or Drifted (our fingerprint, stale lease — reap-able stale-ours, matching decision_for_dispatch_lease_verdict's DrainStale). Conflict (foreign process), Inaccessible, UnknownRefused, Absent are NOT owned. Name-only tmux-ls observation yields UnknownRefused/Inaccessible only, so teardown FAIL-CLOSED-REFUSES until the observation carries a process fingerprint — correct R5 (no ownership proof, no reap). This owned-ness judgment lives HERE (the actuator owns lease/ownership classification, §3) as a Bool; gunbc.roadmap_belt lifts the Bool into gunbc.ownership.Ownership for the reconcile teardown gate, so the belt never imports ObservationVerdict."
+
+data tmux_pane_fingerprint_note: String = "U4 (stop from the UI): the pane read is the scaffold's declared dissolution — tmux list-panes -a with the cited format variables yields (session_name, pane_current_command) per pane, and pane_current_command IS the process-fingerprint evidence the lease classification was built to consume. The observation upgrade is total over its inputs: a session whose pane row is found observes as SessionObserved (fingerprint in hand — Converged for claude, Conflict for anything else wearing the name, e.g. a hand-made sleep); a session visible in ls but absent from the pane read stays SessionNameObserved (honest partial — UnknownRefused downstream, still no reap). The stop gate is the R5 table as a typed decision: owned stops; everything else refuses with the verdict's own reason, and refusing to kill what we cannot prove ours is the point, not a limitation."
+
+type TmuxPaneEntry {
+  session_name: String
+  command: String
+}
+
+fn parse_tmux_pane_line(line: String) -> TmuxPaneEntry? {
+  let segs = split(s: line, delimiter: " ")
+  if count(segs) >= 2 && segs.first() != "" {
+    let name = segs.first()
+    Present { value: TmuxPaneEntry {
+      session_name: name,
+      command: substring(s: line, start: string_length(s: name) + 1, end: string_length(s: line)),
+    } }
+  } else {
+    none
+  }
+}
+
+fn parse_tmux_panes_output(output: String) -> List<TmuxPaneEntry> {
+  fold(
+    split(s: output, delimiter: "\n"),
+    init: [],
+    f: (acc, line) => match parse_tmux_pane_line(line: line) {
+      Present { value: e } => append(acc, [e])
+      Absent => acc
+    },
+  )
+}
+
+fn tmux_list_panes_argv() -> HostExecArgv {
+  host_exec_argv(program: "tmux", args: shape_tmux_list_panes_argv())
+}
+
+fn pane_command_for_session(panes: List<TmuxPaneEntry>, session_name: String) -> String {
+  fold(panes, init: "", f: (acc, p) =>
+    if acc == "" && p.session_name == session_name { p.command } else { acc })
+}
+
+fn tmux_session_observation_with_panes(
+  scope: TmuxSessionScope,
+  entries: List<TmuxLsEntry>,
+  panes: List<TmuxPaneEntry>,
+) -> TmuxSessionObservation {
+  match tmux_session_observation_for_scope(scope: scope, entries: entries) {
+    SessionNameObserved { session_name: name, windows: w } => {
+      let cmd = pane_command_for_session(panes: panes, session_name: name as String)
+      if cmd == "" {
+        SessionNameObserved { session_name: name, windows: w }
+      } else {
+        SessionObserved { session_name: name, windows: w, process_fingerprint: cmd as NonEmptyStr }
+      }
+    }
+    SessionAbsent => SessionAbsent
+    SessionObserved { session_name: n2, windows: w2, process_fingerprint: f2 } =>
+      SessionObserved { session_name: n2, windows: w2, process_fingerprint: f2 }
+    SessionObservedStaleExpected { session_name: n3, windows: w3, process_fingerprint: f3, stale_reason: r3 } =>
+      SessionObservedStaleExpected { session_name: n3, windows: w3, process_fingerprint: f3, stale_reason: r3 }
+    SessionInaccessible => SessionInaccessible
+  }
+}
+
+type DispatchStopGate
+  = StopPermitted { session_name: String }
+  | StopRefused { reason: String }
+
+fn dispatch_stop_gate(scope: TmuxSessionScope, obs: TmuxSessionObservation) -> DispatchStopGate {
+  match classify_tmux_session(scope: scope, obs: obs) {
+    Converged => StopPermitted { session_name: scope.session_name as String }
+    Drifted => StopPermitted { session_name: scope.session_name as String }
+    Absent => StopRefused { reason: "no live session for this node" }
+    Conflict => StopRefused { reason: "a foreign process wears the dispatch session name — refusing to kill what we cannot prove ours" }
+    Inaccessible => StopRefused { reason: "tmux session inaccessible" }
+    UnknownRefused => StopRefused { reason: "process fingerprint unobserved — no ownership proof, no reap" }
+  }
+}
 
 fn dispatch_session_is_owned(session: DispatchLiveSession) -> Bool {
   match session.lease_verdict {

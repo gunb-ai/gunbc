@@ -1059,6 +1059,66 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
           left: ts_member(object: ts_ident(name: "sb"), property: "title"),
           op: "=",
           right: ts_member(object: ts_ident(name: "sess"), property: "session_name"))),
+        ts_let(name: "sc", value: ts_call(
+          callee: ts_member(object: ts_member(object: ts_ident(name: "sb"), property: "parentElement"), property: "querySelector"),
+          args: [ts_lit_str(value: ".stop-chip")])),
+        ts_if(
+          cond: ts_prefix(op: "!", expr: ts_ident(name: "sc")),
+          then: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "sc"), op: "=", right: ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "createElement"), args: [ts_lit_str(value: "button")]))),
+            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "className"), op: "=", right: ts_lit_str(value: "stop-chip"))),
+            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "type"), op: "=", right: ts_lit_str(value: "button"))),
+            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "textContent"), op: "=", right: ts_lit_str(value: "stop"))),
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_member(object: ts_ident(name: "sc"), property: "addEventListener"),
+              args: [ts_lit_str(value: "click"), ts_arrow(params: ["ev"], body: ts_block(stmts: [
+                ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "textContent"), op: "=", right: ts_lit_str(value: "stopping…"))),
+                ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "disabled"), op: "=", right: ts_ident(name: "true"))),
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_member(
+                    object: ts_call(
+                      callee: ts_member(
+                        object: ts_call(
+                          callee: ts_member(
+                            object: ts_call(callee: ts_ident(name: "fetch"), args: [
+                              ts_binop(left: ts_lit_str(value: "/stop/"), op: "+", right: ts_member(object: ts_ident(name: "sess"), property: "node_id")),
+                              ts_object(fields: [ts_field(key: "method", value: ts_lit_str(value: "POST"))]),
+                            ]),
+                            property: "then"),
+                          args: [ts_arrow(params: ["r"], body: ts_block(stmts: [ts_return(expr: ts_call(callee: ts_member(object: ts_ident(name: "r"), property: "json"), args: []))]))]),
+                        property: "then"),
+                      args: [ts_arrow(params: ["j"], body: ts_block(stmts: [
+                        ts_if(
+                          cond: ts_binop(left: ts_member(object: ts_ident(name: "j"), property: "status"), op: "===", right: ts_lit_str(value: "stopped")),
+                          then: ts_block(stmts: [
+                            ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "window"), property: "location"), property: "reload"), args: [])),
+                          ]),
+                          else_stmt: Present { value: ts_block(stmts: [
+                            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "textContent"), op: "=", right: ts_lit_str(value: "stop refused"))),
+                            ts_expr_stmt(expr: ts_binop(
+                              left: ts_member(object: ts_ident(name: "sc"), property: "title"),
+                              op: "=",
+                              right: ts_binop(
+                                left: ts_binop(left: ts_member(object: ts_ident(name: "j"), property: "reason"), op: "||", right: ts_member(object: ts_ident(name: "j"), property: "detail")),
+                                op: "||",
+                                right: ts_lit_str(value: "no reason on the wire")))),
+                            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "disabled"), op: "=", right: ts_ident(name: "false"))),
+                          ]) },
+                        ),
+                      ]))]),
+                    property: "catch"),
+                  args: [ts_arrow(params: ["e"], body: ts_block(stmts: [
+                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "textContent"), op: "=", right: ts_lit_str(value: "stop failed"))),
+                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "title"), op: "=", right: ts_binop(left: ts_ident(name: "e"), op: "+", right: ts_lit_str(value: "")))),
+                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "disabled"), op: "=", right: ts_ident(name: "false"))),
+                  ]))])),
+              ]))])),
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_member(object: ts_ident(name: "sb"), property: "insertAdjacentElement"),
+              args: [ts_lit_str(value: "afterend"), ts_ident(name: "sc")])),
+          ]),
+          else_stmt: none,
+        ),
       ]),
       else_stmt: none,
     ),

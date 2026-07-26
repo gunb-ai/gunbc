@@ -252,8 +252,8 @@ fn witness_foreign_process_fingerprint_is_conflict() -> Bool {
 
 fn witness_fingerprint_scaffold_marker_present() -> Bool {
   match dispatch_tmux_process_fingerprint_observation_dissolution_trigger {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
+    Scaffold { dissolves_to: _, bind: _ } => false
+    Terminal { reason: r } => string_contains(s: r as String, pattern: "DISSOLVED")
   }
 }
 

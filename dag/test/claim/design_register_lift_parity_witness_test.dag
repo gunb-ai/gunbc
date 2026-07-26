@@ -40,7 +40,9 @@ data roadmap_css_repin_sessions_note: String = "Re-pinned for U2 (sessions panel
 
 data roadmap_css_repin_attempts_note: String = "Re-pinned for U3 (result surfacing v0): one new rule — .dispatch-attempts, the mono dim attempts line in the row disclosure. Derived by execution; this digest only pins bytes."
 
-data roadmap_css_lift_parity_digest: String = "c020930b7552052e"
+data roadmap_css_repin_stop_note: String = "Re-pinned for U4 (stop from the UI): one new rule — .stop-chip, the toggle-chip-family action control beside a live session pill. Derived by execution; this digest only pins bytes."
+
+data roadmap_css_lift_parity_digest: String = "28c06723684117e4"
 data moodboard_thesis_themes_lift_parity_digest: String = "69e68066c49667f9"
 
 fn emission_content_digest(s: String) -> String {

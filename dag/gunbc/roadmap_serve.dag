@@ -49,6 +49,7 @@ import gunbc.roadmap_belt_actuate {
   belt_observe, belt_sessions_observed_json, belt_sessions_http_status,
   BeltAttempts, AttemptsObserved, AttemptsRefused,
   belt_attempts_observe, belt_attempts_observed_json, belt_attempts_http_status,
+  BeltStopResult, belt_stop_node, belt_stop_result_json_value, belt_stop_http_status,
 }
 
 data roadmap_serve_note: String = "The gunbc-served dashboard instantiation (docs/plans/gunbc-served-dashboard-design.md; belt B, parent-approved 2026-07-20). H = RoadmapServeHandler: every row is a DynamicRoute whose handler calls the SAME authority the static-site artifacts call (roadmap_page, roadmap_static_site) — the artifact table and this serve table are two projections of one authority set, never two copies of content, and every body is computed at request time so the served page is the LIVE roadmap, not a deploy-frozen snapshot (the section-3 dual-representation cost this module exists to remove). Dispatch: POST /dispatch/NODE_ID invokes gunbc.roadmap_belt_actuate.belt_dispatch_node IN-PROCESS — the single dispatch authority (#6914), no emitted JS, no subprocess exec, no env-var channel. The launch button that POSTs here is transport-agnostic and lands with belt A in roadmap_page (lane agreement 2026-07-20): the page never knows which backend answers."
@@ -77,6 +78,7 @@ type RoadmapServeHandler
   | SandboxEchoHandler
   | SessionsJsonHandler
   | AttemptsJsonHandler
+  | BeltStopHandler
 
 data roadmap_serve_table_build_note: String = "Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo in any route literal would have silently become a second root matcher, a widen at the very seam §5 forbids). The build is now a typed fold: the FIRST malformed literal refuses the WHOLE table (RoadmapServeTableRefused carries raw/segment/reason — typed, located), and the serve entry answers EVERY request with a 500 naming the broken literal until it is fixed — a loudly broken dashboard, never silently wrong routing. The RED control is witness_malformed_route_literal_refuses_table (a bad literal through the same build fold -> Refused)."
 
@@ -104,6 +106,7 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: sandbox_asset_path, handler: SandboxAssetHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
+    RoadmapServeRouteSpec { method: POST, raw: "/stop/\{node_id\}", handler: BeltStopHandler },
   ]
 }
 
@@ -247,6 +250,24 @@ fn roadmap_serve_invoke(handler: RoadmapServeHandler, params: List<PathParamBind
     SandboxEchoHandler => sandbox_echo_response(request: request)
     SessionsJsonHandler => serve_sessions_response()
     AttemptsJsonHandler => serve_attempts_response()
+    BeltStopHandler => serve_stop_handler_response(params: params)
+  }
+}
+
+fn serve_stop_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  if node_id == "" {
+    serve_text_response(
+      status: 400,
+      content_type: text_plain_utf8,
+      body: "stop requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
+    )
+  } else {
+    let r = belt_stop_node(node_id: node_id)
+    serve_text_response(
+      status: belt_stop_http_status(r: r),
+      content_type: application_json_utf8,
+      body: serialize_json(v: belt_stop_result_json_value(r: r)))
   }
 }
 
