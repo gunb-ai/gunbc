@@ -484,6 +484,14 @@ fn gunbc_falsifier_silent_pick_gate_receipt_wall_budget_ms() -> v2.std.nat.Nat {
   second_count(s: gunbc_falsifier_silent_pick_gate_receipt_wall_budget) * 1000
 }
 
+data gunbc_falsifier_substrate_long_lane_budget_note: String = "Per-witness eval budget for the Hermetic substrate long lane (falsifier batch 6), dated 2026-07-26. WHY IT EXISTS: budgets are scoped by LANE, never by witness kind. claim_executor previously selected the eval ceiling by execution_mode.is_hermetic(), so every Hermetic batch inherited gunbc_ci_fast_lane_witness_eval_budget — including the one lane whose entire purpose is hosting rows OVER that budget. The lane's first scheduled execution (run 30176416535, 2026-07-25) reddened with 7 of 10 rows killed at 5001-5013ms by a refusal whose own text says the row 'lives in a long/ test dir and runs via its dedicated lane': the budget had followed it there. The executor now arms this row for discovery batches whose explicit entries intersect falsifier_substrate_long_lane_entries, and the residual (Hermetic, no lane roster) keeps the fast lane — so a future lane that forgets to declare a ceiling reds loudly at 5s rather than running unbounded (the arm narrows, never widens, DESIGN 5). BASIS (two-tier: worst row + host spread; all ten rows measured by execution, cold, local, 2026-07-26 — CI had never produced a green row on this lane). Seven affected_set_provenance_producer rows: 11906, 12213, 12229, 12714, 13032, 13654, 13770ms. Two edit_locus_source_provenance rows: 12384, 12558ms — measurable only after repair, since both were self-recursing wrappers that had never executed (edit_locus_source_provenance_wrapper_shadowing_note). One wave1_gate1_d census row: 126921ms here, 134526ms on the merry-ibex-306 cold run 2026-07-25 (the worst observed, and the row's declared basis). Worst observed 134.5s + host spread (the floor runs under adaptive-width memory pressure; the silent-pick lane's receipted spread was ~12% of an 815s row) -> 180s dated ceiling. Same shape as the wet lanes: one lane ceiling sized to its worst row, not per-row envelopes. A raise requires an appended dated re-basis — never a silent widen to absorb a slow host. Dissolve-on: per-witness declared cost envelopes (the witness-cost-locality admission law, the same trigger gunbc_ci_fast_lane_rule_note names) replace every blanket lane budget with declared per-row rows."
+
+data gunbc_falsifier_substrate_long_lane_witness_eval_budget: Second = second(count: 180)
+
+fn gunbc_falsifier_substrate_long_lane_eval_budget_ms() -> v2.std.nat.Nat {
+  second_count(s: gunbc_falsifier_substrate_long_lane_witness_eval_budget) * 1000
+}
+
 fn corpus_runnable_for(spec: CiSpec) -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),

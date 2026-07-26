@@ -28,11 +28,14 @@ use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
 };
 
-/// Whole-receipt wall/interp budgets for falsifier Wet lanes that own a dated
-/// ceiling. Self-host wet (green + known-red quarantine) share the 600s budget;
-/// silent-pick owns `gunbc_falsifier_silent_pick_gate_receipt_wall_budget` (900s).
-/// Rehomed-bin Wet must not inherit either — the prior mis-scope reds silent-pick
-/// against the 600s self-host ceiling after the self-host cadence rehome.
+/// Per-LANE budgets for the falsifier's rostered batches, each keyed by the lane's own
+/// roster so a batch draws exactly the ceiling its lane declares. Self-host wet (green +
+/// known-red quarantine) share the 600s wall budget; silent-pick owns
+/// `gunbc_falsifier_silent_pick_gate_receipt_wall_budget` (900s); the Hermetic substrate
+/// long lane owns `gunbc_falsifier_substrate_long_lane_witness_eval_budget`. No lane
+/// inherits another's ceiling — the prior mis-scopes reddened silent-pick against the
+/// 600s self-host wall (2026-07-25) and the substrate long lane against the 5s per-PR
+/// fast-lane eval budget (run 30176416535, 7 of 10 rows killed at ~5001ms).
 #[derive(Clone, Default)]
 struct FalsifierSelfHostWetBudgets {
     wall_budget_ms: Option<u64>,
@@ -46,6 +49,11 @@ struct FalsifierSelfHostWetBudgets {
     hermetic_known_red_entry_paths: Vec<String>,
     silent_pick_wall_budget_ms: Option<u64>,
     silent_pick_entry_paths: Vec<String>,
+    /// Hermetic substrate long-lane paths (`falsifier_substrate_long_lane_entries`) —
+    /// rows deliberately excluded from per-PR discovery precisely because their eval
+    /// exceeds the fast-lane budget, so they arm their own dated eval ceiling instead.
+    substrate_long_lane_entry_paths: Vec<String>,
+    substrate_long_lane_eval_budget_ms: Option<u64>,
 }
 
 fn read_positive_budget_ms(
@@ -760,40 +768,16 @@ fn run_batch_unit(
             discovery_scope_dirs,
             execution_mode,
         } => {
-            // The fast-lane eval budget (operator 5s rule) governs the HERMETIC per-PR
-            // discovery corpus — witnesses whose own eval must stay cheap or move to a
-            // long/ lane. Wet batches skip that budget (subprocess I/O is their job).
-            // Whole-receipt wall budgets are roster-scoped: self-host wet (green OR
-            // known-red quarantine) → 600s; silent-pick → 900s dated ceiling; rehomed
-            // bin inherits neither (receipt: silent-pick 707s red under a mis-scoped
-            // 600s self-host budget while batch walls stayed green — 2026-07-25).
-            let (effective_fast_lane, wet_wall_budget_ms, wet_interp_budget_ms) =
-                if execution_mode.is_hermetic() {
-                    (fast_lane_eval_budget_ms, None, None)
-                } else if discovery_entries_intersect_roster(
-                    &explicit_entries,
-                    &falsifier_self_host_wet_budgets.roster_entry_paths,
-                ) || discovery_entries_intersect_roster(
-                    &explicit_entries,
-                    &falsifier_self_host_wet_budgets.known_red_entry_paths,
-                ) {
-                    (
-                        None,
-                        falsifier_self_host_wet_budgets.wall_budget_ms,
-                        falsifier_self_host_wet_budgets.interp_eval_budget_ms,
-                    )
-                } else if discovery_entries_intersect_roster(
-                    &explicit_entries,
-                    &falsifier_self_host_wet_budgets.silent_pick_entry_paths,
-                ) {
-                    (
-                        None,
-                        falsifier_self_host_wet_budgets.silent_pick_wall_budget_ms,
-                        None,
-                    )
-                } else {
-                    (None, None, None)
-                };
+            let DiscoveryBatchBudgets {
+                eval_budget_ms: effective_fast_lane,
+                wet_wall_budget_ms,
+                wet_interp_budget_ms,
+            } = select_discovery_batch_budgets(
+                execution_mode,
+                &explicit_entries,
+                fast_lane_eval_budget_ms,
+                &falsifier_self_host_wet_budgets,
+            );
             let expect_red = discovery_entries_are_expect_red(
                 &explicit_entries,
                 &falsifier_self_host_wet_budgets.hermetic_known_red_entry_paths,
@@ -1180,6 +1164,88 @@ fn discovery_entries_are_expect_red(
 
 /// True when this discovery batch's explicit entries intersect `roster_entry_paths`.
 /// Path equality is the gate — substring heuristics would re-fork the roster.
+/// The budgets a single discovery batch runs under.
+struct DiscoveryBatchBudgets {
+    /// Cooperative per-witness CPU eval deadline.
+    eval_budget_ms: Option<u64>,
+    /// Whole-receipt wall budget (Wet lanes only).
+    wet_wall_budget_ms: Option<u64>,
+    /// Secondary interpreter-wedge eval deadline for Wet self-host receipts.
+    wet_interp_budget_ms: Option<u64>,
+}
+
+/// Budgets are scoped by LANE, never by witness kind.
+///
+/// The fast-lane eval budget (operator 5s rule) governs the per-PR discovery corpus and its
+/// cold replays — witnesses whose own eval must stay cheap or move to a `long/` lane. A
+/// Hermetic batch that carries its own lane roster draws that lane's dated ceiling instead:
+/// selecting on `is_hermetic()` alone armed the 5s per-PR budget on the substrate long lane,
+/// whose entire purpose is hosting rows OVER that budget (run 30176416535 — 7 of 10 rows
+/// killed at ~5001ms by a refusal whose own text says the row belongs on its dedicated lane).
+///
+/// The residual (Hermetic, no lane roster) keeps the fast lane, so a new lane that forgets to
+/// declare a ceiling reds loudly at 5s rather than running unbounded — the failure arm
+/// narrows, never widens (DESIGN §5). For the same reason the declared ceiling is part of the
+/// condition, not the payload: a rostered lane whose budget row is missing falls back to the
+/// fast lane rather than to no budget at all. The plan read refuses a missing/mistyped budget
+/// first, so that arm is unreachable today; it is written so the unreachable direction is the
+/// narrow one.
+///
+/// Wet batches skip the eval budget (subprocess I/O is their job) and take whole-receipt wall
+/// budgets the same roster-scoped way: self-host wet (green OR known-red quarantine) → 600s;
+/// silent-pick → 900s dated ceiling; rehomed bin inherits neither (receipt: silent-pick 707s
+/// red under a mis-scoped 600s self-host budget while batch walls stayed green — 2026-07-25).
+fn select_discovery_batch_budgets(
+    execution_mode: ExecutionMode,
+    explicit_entries: &[(String, String)],
+    fast_lane_eval_budget_ms: Option<u64>,
+    budgets: &FalsifierSelfHostWetBudgets,
+) -> DiscoveryBatchBudgets {
+    let fast_lane = DiscoveryBatchBudgets {
+        eval_budget_ms: fast_lane_eval_budget_ms,
+        wet_wall_budget_ms: None,
+        wet_interp_budget_ms: None,
+    };
+    if execution_mode.is_hermetic() {
+        return match budgets.substrate_long_lane_eval_budget_ms {
+            Some(ms)
+                if discovery_entries_intersect_roster(
+                    explicit_entries,
+                    &budgets.substrate_long_lane_entry_paths,
+                ) =>
+            {
+                DiscoveryBatchBudgets {
+                    eval_budget_ms: Some(ms),
+                    wet_wall_budget_ms: None,
+                    wet_interp_budget_ms: None,
+                }
+            }
+            _ => fast_lane,
+        };
+    }
+    if discovery_entries_intersect_roster(explicit_entries, &budgets.roster_entry_paths)
+        || discovery_entries_intersect_roster(explicit_entries, &budgets.known_red_entry_paths)
+    {
+        return DiscoveryBatchBudgets {
+            eval_budget_ms: None,
+            wet_wall_budget_ms: budgets.wall_budget_ms,
+            wet_interp_budget_ms: budgets.interp_eval_budget_ms,
+        };
+    }
+    if discovery_entries_intersect_roster(explicit_entries, &budgets.silent_pick_entry_paths) {
+        return DiscoveryBatchBudgets {
+            eval_budget_ms: None,
+            wet_wall_budget_ms: budgets.silent_pick_wall_budget_ms,
+            wet_interp_budget_ms: None,
+        };
+    }
+    DiscoveryBatchBudgets {
+        eval_budget_ms: None,
+        wet_wall_budget_ms: None,
+        wet_interp_budget_ms: None,
+    }
+}
+
 fn discovery_entries_intersect_roster(
     explicit_entries: &[(String, String)],
     roster_entry_paths: &[String],
@@ -3020,6 +3086,26 @@ fn run() -> Result<ExitCode, ExitCode> {
                     return Err(ExitCode::from(1));
                 }
             },
+            substrate_long_lane_entry_paths: match read_schedule_witness_entry_paths(
+                &plan_ctx,
+                "falsifier_substrate_long_lane_entries",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
+            substrate_long_lane_eval_budget_ms: match read_positive_budget_ms(
+                &plan_ctx,
+                "gunbc_falsifier_substrate_long_lane_eval_budget_ms",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
         }
     } else {
         FalsifierSelfHostWetBudgets::default()
@@ -3175,6 +3261,25 @@ fn falsifier_failure_mode(details: &[String]) -> &'static str {
     }
 }
 
+/// Projection of a failure mode into the `gunbc.ci_failure_class` vocabulary. `Structural`
+/// is `Structural { reason: String }`, so an arm printed WITHOUT its reason is a lossy
+/// rendering of the typed value, not the value: it collapses BudgetExceeded and WitnessRed
+/// — which have different remedies (re-basis the lane's dated ceiling vs. fix the witness)
+/// — into one indistinguishable string, discarding the `mode` computed beside it (receipt:
+/// run 30176416535 printed mode=BudgetExceeded next to arm=FloorFailed{class:Structural}).
+/// Both non-Infra modes stay Structural — an over-budget witness is a real, non-retryable
+/// failure that blocks merge — but the reason rides along. Enumerated, not defaulted, so a
+/// new mode cannot fall through into an unlabelled Structural (the OOM-reclassification
+/// consumer stays on its own design doc).
+fn ci_failure_class_arm(mode: &str) -> String {
+    match mode {
+        "Infra" => "FloorFailed{class:Infra}".to_string(),
+        "BudgetExceeded" => "FloorFailed{class:Structural{reason:BudgetExceeded}}".to_string(),
+        "WitnessRed" => "FloorFailed{class:Structural{reason:WitnessRed}}".to_string(),
+        other => format!("FloorFailed{{class:Structural{{reason:{other}}}}}"),
+    }
+}
+
 fn emit_falsifier_failure_class(details: &[String]) {
     let joined = details.join(" | ");
     let mode = falsifier_failure_mode(details);
@@ -3186,12 +3291,7 @@ fn emit_falsifier_failure_class(details: &[String]) {
             eprintln!("[falsifier-failure-class] {d}");
         }
     }
-    // Natural fit into gunbc.ci_failure_class vocabulary: BudgetExceeded/WitnessRed → Structural;
-    // Infra signatures stay Infra (OOM-reclassification consumer stays on its own design doc).
-    let ci_arm = match mode {
-        "Infra" => "FloorFailed{class:Infra}",
-        _ => "FloorFailed{class:Structural}",
-    };
+    let ci_arm = ci_failure_class_arm(mode);
     eprintln!(
         "[falsifier-failure-class] ci_failure_class_arm={ci_arm} reason_preview={}",
         {
@@ -3387,6 +3487,125 @@ mod tests {
                 "batch=2 BudgetExceeded{wall_ms=601000,budget_ms=600000}".into()
             ]),
             "BudgetExceeded"
+        );
+    }
+
+    // The lane-scoping wiring itself, both directions. The receipted defect (run
+    // 30176416535) was that EVERY Hermetic batch drew the 5s per-PR fast-lane budget,
+    // including the substrate long lane whose rows measure 12–135s. Discriminating: the
+    // same execution_mode with different rosters must yield different ceilings.
+    #[test]
+    fn hermetic_eval_budget_is_scoped_by_lane_not_by_witness_kind() {
+        let long_lane_entry =
+            "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag";
+        let budgets = FalsifierSelfHostWetBudgets {
+            substrate_long_lane_entry_paths: vec![long_lane_entry.to_string()],
+            substrate_long_lane_eval_budget_ms: Some(180_000),
+            ..Default::default()
+        };
+        let on_lane = vec![(
+            long_lane_entry.to_string(),
+            "lens_edit_locus_source_provenance_affected_set_wire_holds".to_string(),
+        )];
+        let off_lane = vec![(
+            "src/v2/test/claim/self_host/some_fast_witness_test.dag".to_string(),
+            "some_fast_holds".to_string(),
+        )];
+
+        // On the lane: its own dated ceiling, NOT the 5s per-PR budget.
+        let picked = select_discovery_batch_budgets(
+            ExecutionMode::Hermetic,
+            &on_lane,
+            Some(5_000),
+            &budgets,
+        );
+        assert_eq!(picked.eval_budget_ms, Some(180_000));
+        assert_eq!(picked.wet_wall_budget_ms, None);
+
+        // Same execution_mode, different roster: the per-PR fast lane is the residual.
+        let residual = select_discovery_batch_budgets(
+            ExecutionMode::Hermetic,
+            &off_lane,
+            Some(5_000),
+            &budgets,
+        );
+        assert_eq!(residual.eval_budget_ms, Some(5_000));
+
+        // The whole point: witness kind alone must not decide the ceiling.
+        assert_ne!(
+            picked.eval_budget_ms, residual.eval_budget_ms,
+            "two Hermetic batches on different lanes must not share one ceiling"
+        );
+
+        // A rostered lane with no declared ceiling narrows to the fast lane (a loud,
+        // named red), never to an unbudgeted eval.
+        let unbudgeted = FalsifierSelfHostWetBudgets {
+            substrate_long_lane_eval_budget_ms: None,
+            ..budgets.clone()
+        };
+        assert_eq!(
+            select_discovery_batch_budgets(
+                ExecutionMode::Hermetic,
+                &on_lane,
+                Some(5_000),
+                &unbudgeted
+            )
+            .eval_budget_ms,
+            Some(5_000)
+        );
+
+        // Wet lanes are untouched by the long-lane roster: no eval budget, and the
+        // self-host wall/interp pair still arms off its own roster.
+        let wet = FalsifierSelfHostWetBudgets {
+            wall_budget_ms: Some(600_000),
+            interp_eval_budget_ms: Some(120_000),
+            roster_entry_paths: vec!["dag/test/claim/wet_receipt_test.dag".to_string()],
+            ..budgets.clone()
+        };
+        let wet_pick = select_discovery_batch_budgets(
+            ExecutionMode::Wet,
+            &[(
+                "dag/test/claim/wet_receipt_test.dag".to_string(),
+                "receipt_holds".to_string(),
+            )],
+            Some(5_000),
+            &wet,
+        );
+        assert_eq!(wet_pick.eval_budget_ms, None);
+        assert_eq!(wet_pick.wet_wall_budget_ms, Some(600_000));
+        assert_eq!(wet_pick.wet_interp_budget_ms, Some(120_000));
+    }
+
+    // The mode must survive the projection into the ci_failure_class vocabulary. Before
+    // this, both non-Infra modes rendered as the reason-less `FloorFailed{class:Structural}`
+    // — the receipted mis-map (run 30176416535: mode=BudgetExceeded, arm=…Structural).
+    // Discriminating: a budget kill and a witness red must NOT print the same arm.
+    #[test]
+    fn ci_failure_class_arm_carries_the_structural_reason() {
+        assert_eq!(ci_failure_class_arm("Infra"), "FloorFailed{class:Infra}");
+        assert_eq!(
+            ci_failure_class_arm("BudgetExceeded"),
+            "FloorFailed{class:Structural{reason:BudgetExceeded}}"
+        );
+        assert_eq!(
+            ci_failure_class_arm("WitnessRed"),
+            "FloorFailed{class:Structural{reason:WitnessRed}}"
+        );
+        assert_ne!(
+            ci_failure_class_arm("BudgetExceeded"),
+            ci_failure_class_arm("WitnessRed"),
+            "a budget kill and a witness red must be distinguishable in the emitted arm"
+        );
+        // End-to-end through the mode classifier: the batch-6 eval-budget detail shape.
+        let detail: Vec<String> = vec![
+            "batch=6 fn=discovery-corpus detail=7 of 10 discovery witness(es) failed: \
+             lens_affected_set_provenance_producer_coverage_receipt_holds runtime error: \
+             eval budget exceeded: 5001ms elapsed > 5000ms fast-lane budget"
+                .into(),
+        ];
+        assert_eq!(
+            ci_failure_class_arm(falsifier_failure_mode(&detail)),
+            "FloorFailed{class:Structural{reason:BudgetExceeded}}"
         );
     }
 

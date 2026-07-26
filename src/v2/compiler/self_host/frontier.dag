@@ -108,7 +108,7 @@ type CompilerModuleFrontierRow {
   tractability_rank: Int
 }
 
-data compiler_frontier_module_count_expected: Int = 27
+data compiler_frontier_self_emitted_baseline_ratchet_note: String = "Class-5 carve-out: this baseline is a progress ratchet on SelfEmitted disposition count, not a duplicate of roster length. compiler_frontier_self_emitted_count() filters the roster by disposition; the baseline is an independent floor that reds when modules silently regress SelfEmitted -> SeedRetained. Deriving it from the same filter would tautologize the check (same rule as languages_consumer_census and test_migration_debt ratchets)."
 
 data compiler_frontier_self_emitted_baseline: Int = 6
 
@@ -624,12 +624,12 @@ fn compiler_frontier_self_emitted_count() -> Int {
   count_self_emitted_frontier_rows(xs: compiler_frontier_roster)
 }
 
-fn compiler_frontier_seed_retained_count() -> Int {
-  count_seed_retained_frontier_rows(xs: compiler_frontier_roster)
+fn compiler_frontier_self_emitted_baseline_holds() -> Bool {
+  compiler_frontier_self_emitted_count() == compiler_frontier_self_emitted_baseline
 }
 
-fn compiler_frontier_roster_complete_holds() -> Bool {
-  compiler_frontier_roster_count() == compiler_frontier_module_count_expected
+fn compiler_frontier_seed_retained_count() -> Int {
+  count_seed_retained_frontier_rows(xs: compiler_frontier_roster)
 }
 
 fn compiler_frontier_known_module_path_exactly_once_holds() -> Bool {
@@ -644,10 +644,6 @@ fn compiler_frontier_phantom_module_path_absent_holds() -> Bool {
     xs: compiler_frontier_roster,
     target: "src/v2/compiler/not_a_real_module.dag"
   ) == 0
-}
-
-fn compiler_frontier_self_emitted_baseline_holds() -> Bool {
-  compiler_frontier_self_emitted_count() == compiler_frontier_self_emitted_baseline
 }
 
 fn frontier_located_reason_is_class_projection(reason: Symbol) -> Bool {
@@ -818,7 +814,7 @@ fn compiler_frontier_sweep_order_matches_tractability_rank_holds() -> Bool {
 }
 
 fn compiler_frontier_sweep_order_complete_holds() -> Bool {
-  length(xs: compiler_frontier_sweep_order) == compiler_frontier_module_count_expected
+  length(xs: compiler_frontier_sweep_order) == compiler_frontier_roster_count()
 }
 
 fn band_a_emit_readiness_roster_row_trigger_matches(
@@ -1235,8 +1231,7 @@ fn compiler_frontier_crate_layout_holds(index: ModuleStorageIndex) -> Bool {
 }
 
 fn compiler_frontier_census_holds() -> Bool {
-  compiler_frontier_roster_complete_holds()
-    && compiler_frontier_roster_paths_unique_holds()
+  compiler_frontier_roster_paths_unique_holds()
     && compiler_frontier_self_emitted_baseline_holds()
     && compiler_frontier_execution_measured_attribution_holds()
     && compiler_frontier_blocker_class_distribution_knowledge_attributed_holds()

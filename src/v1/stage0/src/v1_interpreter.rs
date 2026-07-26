@@ -2800,6 +2800,10 @@ fn match_pattern(
                     }
                     _ => None,
                 },
+                // GroupCompletion{pos,neg} destructuring against a native Value::Int is
+                // deliberately unhandled here (no corpus site exercises it yet, #5-scoped
+                // deferral) — an unmatched pattern name falls through to `_ => None` below,
+                // refusing rather than fabricating a wrong (pos, neg) pair.
                 Value::Int(n) if name_last == "Zero" || name_last == "Succ" => match name_last {
                     "Zero" => {
                         if *n == 0 {
@@ -4342,6 +4346,14 @@ fn eval_record_lit(
             fields: Rc::new(fields),
         })
     } else {
+        if type_name == "GroupCompletion" {
+            if let (Some(Value::Int(pos)), Some(Value::Int(neg))) = (
+                fields_get(&fields, ctx.sym("pos")),
+                fields_get(&fields, ctx.sym("neg")),
+            ) {
+                return Ok(Value::Int(pos - neg));
+            }
+        }
         Ok(Value::Record {
             type_name: ctx.sym(&type_name),
             fields: Rc::new(fields),
@@ -5598,25 +5610,204 @@ fn value_to_host_string(val: &Value) -> String {
     value_as_host_string(val).unwrap_or_else(|| format!("{}", val))
 }
 
-fn materialize_argv_expr_for_bindings(
+/// Why a generic argv materialization refused. Mirrors `ArgvRefusalCause` in
+/// `src/v2/std/operation_argv.dag` arm for arm — the .dag module is the authority for
+/// the vocabulary, this enum is the seed realization of it. Every arm refuses; none
+/// widens, defaults, or sanitizes (DESIGN §5).
+#[derive(Debug, Clone)]
+pub enum ArgvRefusalCause {
+    OperationNotFound,
+    UndeclaredInputBound(String),
+    DuplicateInputBinding(String),
+    DeclaredInputUnbound(String),
+    ArgvEmpty,
+    ExecutablePositionNotLiteral(String),
+    TokenListInStringPosition(String),
+    ArgvExpressionUnsupported(String),
+    BindingMalformed(String),
+}
+
+fn argv_expr_kind_label(node: &Rc<Node>) -> &'static str {
+    match node.expr_data.as_ref() {
+        ExprData::NoExprData => "no-expr",
+        ExprData::ExprLiteral { .. } => "literal",
+        ExprData::ExprError { .. } => "error",
+        ExprData::ExprVar { .. } => "var",
+        ExprData::ExprFieldAccess { .. } => "field-access",
+        ExprData::ExprCall { .. } => "call",
+        ExprData::ExprMethodCall { .. } => "method-call",
+        ExprData::ExprMatch => "match",
+        ExprData::ExprIf => "if",
+        ExprData::ExprLet => "let",
+        ExprData::ExprRecordLit { .. } => "record-literal",
+        ExprData::ExprListLit => "list-literal",
+        ExprData::ExprBinOp { .. } => "binop",
+        ExprData::ExprUnaryOp { .. } => "unary-op",
+        ExprData::ExprLambda => "lambda",
+        ExprData::ExprStringInterp => "string-interpolation",
+        ExprData::ExprBlock => "block",
+        ExprData::ExprCast => "cast",
+        ExprData::ExprForEach => "for-each",
+        ExprData::ExprIndex => "index",
+        ExprData::ExprSlice => "slice",
+        ExprData::ExprReturn => "return",
+    }
+}
+
+/// A declared default, read from the declaration itself. Only shapes that are literal
+/// *data* are admitted (a string literal, or a list literal of string literals): a
+/// default that is a call or a reference is left UNBOUND, so an argv position that
+/// needs it refuses by name rather than being filled with a guess (DESIGN §5 — a
+/// fabricated plausible default is the failure this avoids).
+fn declared_default_value(node: &Rc<Node>) -> Option<Value> {
+    match node.expr_data.as_ref() {
+        ExprData::ExprLiteral { value } => match value.as_ref() {
+            LiteralValue::LitStr { value } => Some(Value::Str(value.clone())),
+            _ => None,
+        },
+        ExprData::ExprListLit => {
+            let mut items: Vec<Value> = Vec::new();
+            for child in node.children.iter() {
+                match child.expr_data.as_ref() {
+                    ExprData::ExprLiteral { value } => match value.as_ref() {
+                        LiteralValue::LitStr { value } => items.push(Value::Str(value.clone())),
+                        _ => return None,
+                    },
+                    _ => return None,
+                }
+            }
+            Some(list_value(items))
+        }
+        _ => None,
+    }
+}
+
+/// Read one `OperationInputBinding` record from the `.dag` side.
+fn operation_input_binding_entry(
+    item: &Value,
+    ctx: &InterpContext,
+) -> Result<(String, Value), ArgvRefusalCause> {
+    let Value::Record { fields, .. } = item else {
+        return Err(ArgvRefusalCause::BindingMalformed(format!(
+            "binding list element is {}, expected an OperationInputBinding record",
+            item.type_label()
+        )));
+    };
+    let Some(Value::Str(name)) = fields_get(fields, ctx.sym("name")).cloned() else {
+        return Err(ArgvRefusalCause::BindingMalformed(
+            "OperationInputBinding.name must be a String".to_string(),
+        ));
+    };
+    let Some(value) = fields_get(fields, ctx.sym("value")).cloned() else {
+        return Err(ArgvRefusalCause::BindingMalformed(format!(
+            "OperationInputBinding `{name}` carries no value"
+        )));
+    };
+    let bound = match &value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            if *variant_name == ctx.sym("InputText") {
+                match fields_get(fields, ctx.sym("text")).cloned() {
+                    Some(Value::Str(text)) => Value::Str(text),
+                    _ => {
+                        return Err(ArgvRefusalCause::BindingMalformed(format!(
+                            "InputText for `{name}` carries no String text"
+                        )))
+                    }
+                }
+            } else if *variant_name == ctx.sym("InputTextList") {
+                match fields_get(fields, ctx.sym("items")).cloned() {
+                    Some(items) => match free_monoid_to_vec(&items) {
+                        Some(vals) => list_value(vals),
+                        None => {
+                            return Err(ArgvRefusalCause::BindingMalformed(format!(
+                                "InputTextList for `{name}` carries no List<String> items"
+                            )))
+                        }
+                    },
+                    None => {
+                        return Err(ArgvRefusalCause::BindingMalformed(format!(
+                            "InputTextList for `{name}` carries no items field"
+                        )))
+                    }
+                }
+            } else {
+                return Err(ArgvRefusalCause::BindingMalformed(format!(
+                    "OperationInputValue for `{name}` is an unknown variant"
+                )));
+            }
+        }
+        other => {
+            return Err(ArgvRefusalCause::BindingMalformed(format!(
+                "OperationInputValue for `{name}` is {}, expected InputText | InputTextList",
+                other.type_label()
+            )))
+        }
+    };
+    Ok((name, bound))
+}
+
+/// Bindings ∪ declared defaults, validated against the operation's OWN declared inputs.
+/// A binding naming an input the operation does not declare is refused rather than
+/// injected — the seed's previous materializer unconditionally injected `package`,
+/// `bin`, `args`, `unit` and `property` into every operation, which is exactly the
+/// channel a generic binder must not keep open.
+fn operation_input_binding_env(
+    bindings: &Value,
+    declared: &[(String, Option<Rc<Node>>)],
+    ctx: &InterpContext,
+) -> Result<HashMap<String, Value>, ArgvRefusalCause> {
+    let Some(items) = free_monoid_to_vec(bindings) else {
+        return Err(ArgvRefusalCause::BindingMalformed(format!(
+            "bindings argument is {}, expected a List<OperationInputBinding>",
+            bindings.type_label()
+        )));
+    };
+    let mut env: HashMap<String, Value> = HashMap::new();
+    for item in items.iter() {
+        let (name, value) = operation_input_binding_entry(item, ctx)?;
+        if !declared
+            .iter()
+            .any(|(declared_name, _)| *declared_name == name)
+        {
+            return Err(ArgvRefusalCause::UndeclaredInputBound(name));
+        }
+        if env.contains_key(&name) {
+            return Err(ArgvRefusalCause::DuplicateInputBinding(name));
+        }
+        env.insert(name, value);
+    }
+    for (name, default) in declared.iter() {
+        if env.contains_key(name) {
+            continue;
+        }
+        if let Some(default_value) = default.as_ref().and_then(declared_default_value) {
+            env.insert(name.clone(), default_value);
+        }
+    }
+    Ok(env)
+}
+
+fn bind_argv_expr(
     node: &Rc<Node>,
-    bindings: &HashMap<String, Value>,
+    env: &HashMap<String, Value>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-) -> Result<Value, String> {
+) -> Result<Value, ArgvRefusalCause> {
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value } => match value.as_ref() {
             LiteralValue::LitStr { value } => Ok(Value::Str(value.clone())),
-            other => Err(format!(
-                "shell argv materialize: unsupported literal {:?}",
-                other
-            )),
+            other => Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
+                "argv element literal is {other:?}, expected a string literal"
+            ))),
         },
         ExprData::ExprVar { .. } => {
             let name = expr_var_name_at(node.clone(), source_indices.clone());
-            bindings
-                .get(&name)
+            env.get(&name)
                 .cloned()
-                .ok_or_else(|| format!("shell argv materialize: unbound param `{name}`"))
+                .ok_or(ArgvRefusalCause::DeclaredInputUnbound(name))
         }
         ExprData::ExprStringInterp => {
             let parts = extract_string_interp_parts(node.clone());
@@ -5625,35 +5816,149 @@ fn materialize_argv_expr_for_bindings(
                 match part.as_ref() {
                     StringPart::Text { value } => result.push_str(value),
                     StringPart::Interpolation { expr } => {
-                        let val =
-                            materialize_argv_expr_for_bindings(expr, bindings, source_indices)?;
-                        result.push_str(&value_to_host_string(&val));
+                        let val = bind_argv_expr(expr, env, source_indices)?;
+                        match &val {
+                            Value::List(_) => {
+                                return Err(ArgvRefusalCause::TokenListInStringPosition(
+                                    expr_var_name_at(expr.clone(), source_indices.clone()),
+                                ))
+                            }
+                            _ => result.push_str(&value_to_host_string(&val)),
+                        }
                     }
                 }
             }
             Ok(Value::Str(result))
         }
-        other => Err(format!(
-            "shell argv materialize: unsupported expr {:?}",
-            other
-        )),
+        _ => Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
+            "argv element is a {} expression; materialization binds declared inputs, it does not evaluate expressions",
+            argv_expr_kind_label(node)
+        ))),
     }
 }
 
-pub fn materialize_shell_argv_for_operation(
-    path: String,
-    service: String,
-    operation: String,
-    param_bindings: HashMap<String, Value>,
-) -> Result<Vec<String>, String> {
-    let (argv_nodes, source_indices) =
-        crate::cli_run::shell_argv_nodes_for_operation(path, service, operation);
+/// Materialize an operation's transport argv by binding its own declared inputs.
+///
+/// The executable position is a construction wall, not a check with a lenient arm:
+/// `argv[0]` must be a string literal in the declaration, so no binding — declared or
+/// not — can decide which program runs.
+pub fn materialize_operation_argv(
+    path: &str,
+    service: &str,
+    operation: &str,
+    bindings: &Value,
+    ctx: &InterpContext,
+) -> Result<Vec<String>, ArgvRefusalCause> {
+    let Some(declaration) =
+        crate::cli_run::shell_transport_operation_declaration(path, service, operation)
+    else {
+        return Err(ArgvRefusalCause::OperationNotFound);
+    };
+    let env = operation_input_binding_env(bindings, &declaration.declared_inputs, ctx)?;
+
+    let Some(executable) = declaration.argv.iter().next() else {
+        return Err(ArgvRefusalCause::ArgvEmpty);
+    };
+    let executable_is_literal = matches!(
+        executable.expr_data.as_ref(),
+        ExprData::ExprLiteral { value } if matches!(value.as_ref(), LiteralValue::LitStr { .. })
+    );
+    if !executable_is_literal {
+        return Err(ArgvRefusalCause::ExecutablePositionNotLiteral(format!(
+            "argv[0] is a {} expression; the executable must be a literal in the declaration",
+            argv_expr_kind_label(executable)
+        )));
+    }
+
     let mut argv: Vec<String> = Vec::new();
-    for node in argv_nodes.iter() {
-        let val = materialize_argv_expr_for_bindings(node, &param_bindings, &source_indices)?;
-        push_shell_argv_tokens(&mut argv, val).map_err(|e| format!("{e:?}"))?;
+    for node in declaration.argv.iter() {
+        let val = bind_argv_expr(node, &env, &declaration.source_indices)?;
+        push_shell_argv_tokens(&mut argv, val).map_err(|e| {
+            ArgvRefusalCause::ArgvExpressionUnsupported(format!("argv token flatten failed: {e:?}"))
+        })?;
     }
     Ok(argv)
+}
+
+fn argv_refusal_cause_value(cause: &ArgvRefusalCause, ctx: &InterpContext) -> Value {
+    let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
+        type_name: ctx.sym("ArgvRefusalCause"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(sorted_fields(fields)),
+    };
+    match cause {
+        ArgvRefusalCause::OperationNotFound => variant("OperationNotFound", vec![]),
+        ArgvRefusalCause::ArgvEmpty => variant("ArgvEmpty", vec![]),
+        ArgvRefusalCause::UndeclaredInputBound(name) => variant(
+            "UndeclaredInputBound",
+            vec![(ctx.sym("name"), Value::Str(name.clone()))],
+        ),
+        ArgvRefusalCause::DuplicateInputBinding(name) => variant(
+            "DuplicateInputBinding",
+            vec![(ctx.sym("name"), Value::Str(name.clone()))],
+        ),
+        ArgvRefusalCause::DeclaredInputUnbound(name) => variant(
+            "DeclaredInputUnbound",
+            vec![(ctx.sym("name"), Value::Str(name.clone()))],
+        ),
+        ArgvRefusalCause::TokenListInStringPosition(name) => variant(
+            "TokenListInStringPosition",
+            vec![(ctx.sym("name"), Value::Str(name.clone()))],
+        ),
+        ArgvRefusalCause::ExecutablePositionNotLiteral(detail) => variant(
+            "ExecutablePositionNotLiteral",
+            vec![(ctx.sym("detail"), Value::Str(detail.clone()))],
+        ),
+        ArgvRefusalCause::ArgvExpressionUnsupported(detail) => variant(
+            "ArgvExpressionUnsupported",
+            vec![(ctx.sym("detail"), Value::Str(detail.clone()))],
+        ),
+        ArgvRefusalCause::BindingMalformed(detail) => variant(
+            "BindingMalformed",
+            vec![(ctx.sym("detail"), Value::Str(detail.clone()))],
+        ),
+    }
+}
+
+fn operation_ref_value(path: &str, service: &str, operation: &str, ctx: &InterpContext) -> Value {
+    Value::Record {
+        type_name: ctx.sym("OperationRef"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("path"), Value::Str(path.to_string())),
+            (ctx.sym("service"), Value::Str(service.to_string())),
+            (ctx.sym("operation"), Value::Str(operation.to_string())),
+        ])),
+    }
+}
+
+fn argv_materialization_value(
+    result: Result<Vec<String>, ArgvRefusalCause>,
+    path: &str,
+    service: &str,
+    operation: &str,
+    ctx: &InterpContext,
+) -> Value {
+    match result {
+        Ok(argv) => Value::Variant {
+            type_name: ctx.sym("ArgvMaterialization"),
+            variant_name: ctx.sym("ArgvMaterialized"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("argv"),
+                list_value(argv.into_iter().map(Value::Str).collect::<Vec<_>>()),
+            )])),
+        },
+        Err(cause) => Value::Variant {
+            type_name: ctx.sym("ArgvMaterialization"),
+            variant_name: ctx.sym("ArgvMaterializationRefused"),
+            fields: Rc::new(sorted_fields(vec![
+                (
+                    ctx.sym("at"),
+                    operation_ref_value(path, service, operation, ctx),
+                ),
+                (ctx.sym("cause"), argv_refusal_cause_value(&cause, ctx)),
+            ])),
+        },
+    }
 }
 
 /// SGR foreground parameters per `SemanticColor`, mirroring the
@@ -8965,57 +9270,62 @@ fn eval_builtin_inner(
             )))
         }
 
-        "shell_materialize_argv_for_operation" => {
+        "shell_materialize_operation_argv" => {
             let path = expect_str(
                 positional.first().copied(),
-                "shell_materialize_argv_for_operation",
+                "shell_materialize_operation_argv",
             )?;
             let service = expect_str(
                 positional.get(1).copied(),
-                "shell_materialize_argv_for_operation",
+                "shell_materialize_operation_argv",
             )?;
             let operation = expect_str(
                 positional.get(2).copied(),
-                "shell_materialize_argv_for_operation",
+                "shell_materialize_operation_argv",
             )?;
-            let package = expect_str(
-                positional.get(3).copied(),
-                "shell_materialize_argv_for_operation",
-            )?;
-            let bin = expect_str(
-                positional.get(4).copied(),
-                "shell_materialize_argv_for_operation",
-            )?;
-            let extra_args = expect_str_list(
-                positional.get(5).copied(),
-                "shell_materialize_argv_for_operation",
-            )?;
-            let unit = positional
-                .get(6)
-                .and_then(|v| match v {
-                    Value::Str(s) => Some(s.clone()),
-                    _ => None,
-                })
-                .unwrap_or_default();
-            let mut param_bindings = HashMap::new();
-            param_bindings.insert("package".to_string(), Value::Str(package));
-            param_bindings.insert("bin".to_string(), Value::Str(bin.clone()));
-            param_bindings.insert(
-                "args".to_string(),
-                list_value(extra_args.into_iter().map(Value::Str).collect::<Vec<_>>()),
-            );
-            if !unit.is_empty() {
-                param_bindings.insert("unit".to_string(), Value::Str(unit));
-            }
-            if !bin.is_empty() {
-                param_bindings.insert("property".to_string(), Value::Str(bin));
-            }
-            let argv =
-                materialize_shell_argv_for_operation(path, service, operation, param_bindings)
-                    .map_err(|e| InterpError::TypeError { msg: e })?;
-            Ok(Some(list_value(
-                argv.into_iter().map(Value::Str).collect::<Vec<_>>(),
+            let bindings = positional
+                .get(3)
+                .copied()
+                .cloned()
+                .unwrap_or_else(|| list_value(Vec::<Value>::new()));
+            let result = materialize_operation_argv(&path, &service, &operation, &bindings, ctx);
+            Ok(Some(argv_materialization_value(
+                result, &path, &service, &operation, ctx,
             )))
+        }
+
+        "shell_transport_operation_rows" => {
+            let mut items: Vec<Value> = Vec::new();
+            for row in crate::cli_run::shell_transport_operation_rows() {
+                items.push(Value::Record {
+                    type_name: ctx.sym("ShellTransportOperationRow"),
+                    fields: Rc::new(sorted_fields(vec![
+                        (
+                            ctx.sym("at"),
+                            operation_ref_value(&row.path, &row.service, &row.operation, ctx),
+                        ),
+                        (
+                            ctx.sym("declared_inputs"),
+                            list_value(
+                                row.declared_inputs
+                                    .into_iter()
+                                    .map(Value::Str)
+                                    .collect::<Vec<_>>(),
+                            ),
+                        ),
+                        (
+                            ctx.sym("argv_input_refs"),
+                            list_value(
+                                row.argv_input_refs
+                                    .into_iter()
+                                    .map(Value::Str)
+                                    .collect::<Vec<_>>(),
+                            ),
+                        ),
+                    ])),
+                });
+            }
+            Ok(Some(list_value(items)))
         }
 
         "extdeps_qualified_name_resolves_in_derived_module_set" => {
