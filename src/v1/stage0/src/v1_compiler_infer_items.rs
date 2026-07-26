@@ -71,7 +71,7 @@ pub fn typed_module_interface_body_dual_field_dissolution_trigger() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedModule {
-    pub module: Box<Rc<Node>>,
+    pub module: Rc<Node>,
     pub items: Rc<Vec<Rc<Node>>>,
     pub type_env: Rc<TypeEnv>,
     pub type_env_cache: Rc<TypeEnvCache>,
@@ -96,7 +96,7 @@ pub struct ResolvedGraph {
 }
 
 pub fn inferred_to_outputs(
-    inferred: Option<InferredNode>,
+    inferred: Option<Rc<InferredNode>>,
     span: Rc<SourceSpan>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
@@ -179,7 +179,7 @@ pub fn inferred_to_outputs(
     }
 }
 
-pub fn item_kind(item: Node) -> ItemKind {
+pub fn item_kind(item: Rc<Node>) -> ItemKind {
     {
         let kind = if ((item.connective.clone() != Connective::NoConnective)
             && (item.transport.clone() == None))
