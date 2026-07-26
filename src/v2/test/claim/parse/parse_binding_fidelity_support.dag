@@ -44,15 +44,8 @@ import v2.std.grammar { ParseTree, node_atom_identity_optional }
 import v2.std.compilers.lexing { TokenStream, symbol_lexeme }
 import v2.std.logic { Bool }
 import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Named,
   Node,
-  Positional,
-  Symbol,
-  TypeNode,
-  SyntheticOccurrence
+  Symbol
 }
 import v2.std.node_query { find_arrow_body_child }
 import v2.std.resolution_policy { ImportScoped }
@@ -62,7 +55,7 @@ import v2.compiler.namespace_graft { module_header_containment_graft }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data parse_binding_fidelity_support_note: String = "Shared parse-binding helpers for long-lane + body_lowering consumers. Not a *_test.dag — module-local orphan hygiene would false-red these as dark when only cross-module callers exist (review 43128). Fast-lane tests stay in parse_binding_fidelity_test.dag."
+data parse_binding_fidelity_support_note: String = "Shared parse-binding helpers for long-lane + body_lowering consumers (review 43128: not a *_test.dag — module-local orphan hygiene would false-red cross-module-only helpers). Dead `pbf_tree_contains_atom_identity` deleted (review 43356 — was self-recursive only, not a shared consumer). Fast-lane tests stay in parse_binding_fidelity_test.dag."
 
 fn pbf_tokenize() -> Outcome<TokenStream> {
   let lm = dag_language_model()
@@ -139,29 +132,6 @@ fn pbf_arrow_body_operand_id(arrow: Node, index: Int) -> Optional<Symbol> {
         Absent => Absent
       }
     Rejected { diagnostics: _ } => Absent
-  }
-}
-
-fn pbf_tree_contains_atom_identity(root: Node, wanted: Symbol) -> Bool {
-  match root.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      if id == wanted {
-        true
-      } else {
-        false
-      }
-    _ =>
-      fold(
-        root.children,
-        init: false,
-        f: fn(found, edge) {
-          if found {
-            true
-          } else {
-            pbf_tree_contains_atom_identity(root: edge.target, wanted: wanted)
-          }
-        }
-      )
   }
 }
 
