@@ -9112,9 +9112,9 @@ fn eval_builtin_inner(
                 positional.first().copied(),
                 "fallback_arm_census_class_count",
             )?;
-            Ok(Some(Value::Int(crate::cli_run::fallback_arm_census_class_count(
-                &class,
-            ))))
+            Ok(Some(Value::Int(
+                crate::cli_run::fallback_arm_census_class_count(&class),
+            )))
         }
         "fallback_arm_census_total" => Ok(Some(Value::Int(
             crate::cli_run::fallback_arm_census_total(),
