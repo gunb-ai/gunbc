@@ -1903,8 +1903,7 @@ pub fn rust_inferred_node_needs_rc_wrap(
                     scope.type_env.source_indices.clone(),
                     OwnershipWrapUseSite::OwnershipAtFunctionReturn,
                 );
-                let type_name =
-                    rust_fn_sig_leaf_name(scope.type_env.source_indices.clone(), rt);
+                let type_name = rust_fn_sig_leaf_name(scope.type_env.source_indices.clone(), rt);
                 rust_seed_value_needs_rc_wrap(
                     type_name,
                     rendered,
