@@ -18519,34 +18519,20 @@ pub fn contextual_variant_parent(
                 None
             }
         }
-        None => contextual_variant_parent_from_resolved_type(
-            variant_name.clone(),
-            resolved_type.clone(),
-            emit_info.clone(),
-            source_indices.clone(),
-        ),
-    }
-}
-
-pub fn contextual_variant_parent_from_resolved_type(
-    variant_name: String,
-    resolved_type: Rc<Node>,
-    emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
-    {
-        let rt_name = authored_name_at(source_indices.clone(), resolved_type.clone());
-        if (((resolved_type.ident_span.clone() != None)
-            && (rt_name.clone() != variant_name.clone()))
-            && variant_belongs_to_enum(
-                emit_info.type_summaries.clone(),
-                variant_name.clone(),
-                rt_name.clone(),
-            ))
-        {
-            Some(rt_name.clone())
-        } else {
-            None
+        None => {
+            let rt_name = authored_name_at(source_indices.clone(), resolved_type.clone());
+            if (((resolved_type.ident_span.clone() != None)
+                && (rt_name.clone() != variant_name.clone()))
+                && variant_belongs_to_enum(
+                    emit_info.type_summaries.clone(),
+                    variant_name.clone(),
+                    rt_name.clone(),
+                ))
+            {
+                Some(rt_name.clone())
+            } else {
+                None
+            }
         }
     }
 }
@@ -23622,10 +23608,8 @@ pub fn emit_typed_record_lit(
                     }
                 }
                 let optional_variant = (is_optional_variant_name(tn.clone())
-                    && ((is_optional_parent(bare_parent_enum.clone())
-                        || is_optional_parent(effective_parent.clone()))
-                        || (resolved_type.return_cardinality.clone()
-                            == Cardinality::CardOptional)));
+                    && (is_optional_parent(bare_parent_enum.clone())
+                        || is_optional_parent(effective_parent.clone())));
                 let rust_tn = if optional_variant.clone() {
                     if is_some_like_variant_name(tn.clone()) {
                         "Some".to_string()
