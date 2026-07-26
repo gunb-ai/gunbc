@@ -4,8 +4,8 @@ import std.types { NonEmptyStr }
 import extdeps.process.posix_exit {
   exit_code_success,
   exit_code_general_error,
-  exit_code_misuse,
 }
+import extdeps.process.gnu_bash_exit { exit_code_misuse }
 
 type ProcessExit
   = ExitSuccess
