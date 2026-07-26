@@ -17,7 +17,7 @@ import std.syntax {
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/languages/dag"
+    locator: "github.com/gunb-ai/gunbc/blob/main/DESIGN.md#4-the-closed-grounded-substrate"
   }
 }
 
