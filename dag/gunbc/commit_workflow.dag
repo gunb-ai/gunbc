@@ -154,7 +154,16 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag",
-      check_fns: [],
+      check_fns: [
+        "witness_materialization_gate_recompute_denies_store",
+        "witness_recompute_fixture_carries_recompute_verdict",
+        "witness_door_insert_refused_for_recompute_table",
+        "witness_door_lookup_refused_for_recompute_table",
+        "parse_table_memo_door_order_independent",
+        "parse_table_memo_bypass_store_reds",
+        "witness_memoize_carrier_allows_store",
+        "witness_content_key_subject_stable"
+      ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },

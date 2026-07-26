@@ -172,7 +172,7 @@ fn edit_locus_occurrence_textual_file_eq(
   }
 }
 
-test fn edit_locus_source_provenance_producer_holds() -> Bool {
+fn edit_locus_source_provenance_producer_holds() -> Bool {
   match source_ir_artifact_provenance(
     source_read: edit_locus_source_producer_fixture_source_read
   ) {
@@ -248,7 +248,7 @@ fn edit_locus_root_from_source_locus_holds(
   }
 }
 
-test fn edit_locus_source_provenance_parse_root_span_holds() -> Bool {
+fn edit_locus_source_provenance_parse_root_span_holds() -> Bool {
   match source_ir_artifact_provenance(
     source_read: edit_locus_source_producer_fixture_source_read
   ) {
@@ -278,6 +278,8 @@ data edit_locus_affected_set_wire_claim_passes: Bool = edit_locus_affected_set_w
 data edit_locus_affected_set_wire_fail_closed_claim_passes: Bool = edit_locus_affected_set_wire_fail_closed_holds()
 data edit_locus_source_provenance_affected_set_wire_claim_passes: Bool = edit_locus_source_provenance_affected_set_wire_holds()
 data edit_locus_source_provenance_producer_rejects_malformed_source_claim_passes: Bool = edit_locus_source_provenance_producer_rejects_malformed_source_holds()
+data edit_locus_source_provenance_producer_claim_passes: Bool = edit_locus_source_provenance_producer_holds()
+data edit_locus_source_provenance_parse_root_span_claim_passes: Bool = edit_locus_source_provenance_parse_root_span_holds()
 
 data edit_locus_narrow_resolution_holds_symbol: Symbol = edit_locus_narrow_resolution_holds
 

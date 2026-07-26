@@ -4,7 +4,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data target_carriers_probe_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"
 
-test fn dag_target_advertises_declared_loss() -> Bool {
+fn dag_target_advertises_declared_loss() -> Bool {
   match decode_fidelity_from_target(target: dag_target_model()) {
     Accepted { value: fidelity, diagnostics: _ } =>
       match fidelity {
@@ -15,7 +15,7 @@ test fn dag_target_advertises_declared_loss() -> Bool {
   }
 }
 
-test fn rust_target_advertises_lossless() -> Bool {
+fn rust_target_advertises_lossless() -> Bool {
   match decode_fidelity_from_target(target: rust_target_model()) {
     Accepted { value: fidelity, diagnostics: _ } =>
       match fidelity {
@@ -26,7 +26,7 @@ test fn rust_target_advertises_lossless() -> Bool {
   }
 }
 
-test fn dag_emit_medium_matches_compose_up() -> Bool {
+fn dag_emit_medium_matches_compose_up() -> Bool {
   match target_source_medium(
     text: target_carriers_probe_text,
     target: dag_target_model()
@@ -40,7 +40,7 @@ test fn dag_emit_medium_matches_compose_up() -> Bool {
   }
 }
 
-test fn dag_serialize_source_advertises_declared_loss() -> Bool {
+fn dag_serialize_source_advertises_declared_loss() -> Bool {
   match target_serialize_source_from_model(
     target: dag_target_model(),
     emitted: dag_fixture_emitted_add_fn
@@ -54,7 +54,7 @@ test fn dag_serialize_source_advertises_declared_loss() -> Bool {
   }
 }
 
-test fn red_dag_emit_mis_tags_lossless() -> Bool {
+fn red_dag_emit_mis_tags_lossless() -> Bool {
   match target_serialize_source_from_model(
     target: dag_target_model(),
     emitted: dag_fixture_emitted_add_fn
@@ -68,7 +68,7 @@ test fn red_dag_emit_mis_tags_lossless() -> Bool {
   }
 }
 
-test fn perturbed_quotient_fidelity_is_lossless() -> Bool {
+fn perturbed_quotient_fidelity_is_lossless() -> Bool {
   match decode_fidelity_from_target(
     target: dag_target_model_lossless_fidelity_quotient()
   ) {
@@ -81,7 +81,7 @@ test fn perturbed_quotient_fidelity_is_lossless() -> Bool {
   }
 }
 
-test fn perturbed_quotient_fidelity_red_if_still_lossy() -> Bool {
+fn perturbed_quotient_fidelity_red_if_still_lossy() -> Bool {
   match decode_fidelity_from_target(
     target: dag_target_model_lossless_fidelity_quotient()
   ) {
@@ -94,3 +94,12 @@ test fn perturbed_quotient_fidelity_red_if_still_lossy() -> Bool {
   }
 }
 
+test fn target_carriers_declared_loss_fidelity_holds() -> Bool {
+  dag_target_advertises_declared_loss()
+    && rust_target_advertises_lossless()
+    && dag_emit_medium_matches_compose_up()
+    && dag_serialize_source_advertises_declared_loss()
+    && !red_dag_emit_mis_tags_lossless()
+    && perturbed_quotient_fidelity_is_lossless()
+    && !perturbed_quotient_fidelity_red_if_still_lossy()
+}

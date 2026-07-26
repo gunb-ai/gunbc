@@ -51,16 +51,20 @@ fn no_dual_representation_body_partial_frontier_declared() -> Bool {
   no_dual_representation_body_partial_frontier_note != ""
 }
 
-test fn no_dual_representation_test_coverage_honesty_holds() -> Bool {
+fn no_dual_representation_test_coverage_honesty_holds() -> Bool {
   dual_rep_coverage_honesty_holds(
     eq_site_count: no_dual_representation_test_live_eq_site_count(),
     frontier_declared: no_dual_representation_body_partial_frontier_declared()
   )
 }
 
-test fn no_dual_representation_test_clean_holds() -> Bool {
+fn no_dual_representation_test_clean_holds() -> Bool {
   dual_rep_clean_holds_for_scans(scans: dual_rep_live_module_scans())
 }
+
+
+data no_dual_representation_test_coverage_honesty_claim_passes: Bool = no_dual_representation_test_coverage_honesty_holds()
+data no_dual_representation_test_clean_claim_passes: Bool = no_dual_representation_test_clean_holds()
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
