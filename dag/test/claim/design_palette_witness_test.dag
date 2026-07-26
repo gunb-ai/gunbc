@@ -237,16 +237,30 @@ fn witness_workspace_for_use_completion_admissible() -> Bool {
 }
 
 fn witness_in_family_inks_carry_their_fills() -> Bool {
-  grade_rank(g: grade_pairing(figure: island_mint_ink, ground: island_mint).grade) >= 2
-    && grade_rank(g: grade_pairing(figure: island_butter_ink, ground: island_butter).grade) >= 2
-    && grade_rank(g: grade_pairing(figure: island_aqua_ink, ground: island_aqua).grade) >= 2
+  match grade_pairing(figure: island_mint_ink, ground: island_mint) {
+    Present { value: p } => grade_rank(g: p.grade) >= 2
+    Absent => false
+  }
+    && match grade_pairing(figure: island_butter_ink, ground: island_butter) {
+      Present { value: p } => grade_rank(g: p.grade) >= 2
+      Absent => false
+    }
+    && match grade_pairing(figure: island_aqua_ink, ground: island_aqua) {
+      Present { value: p } => grade_rank(g: p.grade) >= 2
+      Absent => false
+    }
 }
 
 fn witness_venom_carries_ivory_text_and_refuses_loam() -> Bool {
-  let on_ivory = grade_pairing(figure: island_ivory, ground: island_venom)
-  let on_loam = grade_pairing(figure: island_venom, ground: island_loam)
-  grade_rank(g: on_ivory.grade) == 3
-    && grade_rank(g: on_loam.grade) == 0
+  match grade_pairing(figure: island_ivory, ground: island_venom) {
+    Present { value: on_ivory } => match grade_pairing(figure: island_venom, ground: island_loam) {
+      Present { value: on_loam } =>
+        grade_rank(g: on_ivory.grade) == 3
+          && grade_rank(g: on_loam.grade) == 0
+      Absent => false
+    }
+    Absent => false
+  }
 }
 
 fn witness_graduated_default_clears_text_aa() -> Bool {
