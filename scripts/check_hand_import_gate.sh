@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Scaffold wrapper — authority: dag/tools/hand_import_gate.dag
-# Gate-internal dissolution triggers: hand_import_parse_single_line_dissolution_trigger,
-# hand_import_allowed_prefixes_mirror_dissolution_trigger,
-# hand_import_new_file_baseline_dissolution_trigger.
+# Gate-internal dissolution triggers: hand_import_parse_multiline_dissolution_trigger,
+# hand_import_allowed_prefixes_mirror_dissolution_trigger.
 # Shell-carrier dissolution: hand_import_gate_shell_emit_dissolution_trigger /
 # hand_import_gate_shell_runner_scaffold (orchestration-to-shell bash-emission capability).
 # CI enrolls dag/test/claim/hand_import_gate_witness_test.dag.

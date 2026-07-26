@@ -1343,10 +1343,9 @@ pub fn compile_dag_dag_fixture_witness_check(
 /// (shell→intent Phase 3 · cli-run-hollowing §2 · ROADMAP ts-seed-interim).
 ///
 /// Scaffold residues (each has its own dissolution trigger in `hand_import_gate.dag`):
-/// - `hand_import_parse_single_line_dissolution_trigger` — parser sees single-line imports only.
+/// - `hand_import_parse_multiline_dissolution_trigger` — multi-line braced imports invisible.
 /// - `hand_import_allowed_prefixes_mirror_dissolution_trigger` — roster below mirrors
 ///   `hand_import_allowed_path_prefixes` until the gate reads it on-carrier.
-/// - `hand_import_new_file_baseline_dissolution_trigger` — new files have no import baseline.
 pub fn hand_import_gate_passes(base_ref: &str) -> bool {
     // Mirrors tools.hand_import_gate.hand_import_allowed_path_prefixes (review 43116).
     const ALLOWED_PREFIXES: &[&str] = &[
@@ -1391,9 +1390,10 @@ fn hand_import_file_has_additions(rel_path: &str, base_ref: &str) -> bool {
     if head.is_none() {
         return false;
     }
-    // hand_import_new_file_baseline_dissolution_trigger: no prior baseline — churn undefined.
     if base.is_none() {
-        return false;
+        // New file outside allowed prefixes: any import row (including bare `import mod`) is churn.
+        let head_imports = hand_import_parse_imports(head.as_ref().unwrap());
+        return !head_imports.is_empty();
     }
     let head_imports = hand_import_parse_imports(head.as_ref().unwrap());
     let base_imports = hand_import_parse_imports(base.as_ref().unwrap());
@@ -1420,8 +1420,7 @@ fn hand_import_git_show(rel_path: &str, rev: &str) -> Option<String> {
         .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
 }
 
-/// hand_import_parse_single_line_dissolution_trigger: bare `import mod` and multi-line
-/// braced imports are invisible — only single-line `import mod { sym, ... }` rows count.
+/// hand_import_parse_multiline_dissolution_trigger: multi-line braced imports are invisible.
 fn hand_import_parse_imports(text: &str) -> HashMap<String, std::collections::BTreeSet<String>> {
     let mut out: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
     for line in text.lines() {
@@ -1437,6 +1436,11 @@ fn hand_import_parse_imports(text: &str) -> HashMap<String, std::collections::BT
                     .map(|s| s.to_string())
                     .collect();
                 out.insert(module.to_string(), syms);
+            } else {
+                let module = rest.trim();
+                if !module.is_empty() {
+                    out.insert(module.to_string(), std::collections::BTreeSet::new());
+                }
             }
         }
     }
