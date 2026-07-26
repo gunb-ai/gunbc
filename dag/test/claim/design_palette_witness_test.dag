@@ -23,8 +23,7 @@ import gunbc.roadmap_style {
   island_mint_ink, island_butter_ink, island_aqua_ink,
   workspace_band_paints, pressed_stop,
 }
-import std.integer { uint8_channel_inclusive_max_value, uint8_channel_inclusive_max_value_derived }
-import std.measure { uint8_channel_inclusive_max }
+import std.integer { uint8_channel_inclusive_max_value_derived }
 import extdeps.numeric.base16 { hex_digit_char_lower, base16_digit_refusal_sentinel }
 import gunbc.site.tokens { quiet_envelope_srgb8 }
 import gunbc.design.catalog {
@@ -57,9 +56,11 @@ fn witness_pairing_matrix_total() -> Bool {
 }
 
 fn witness_camel_ivory_near_miss() -> Bool {
-  let r = srgb8_contrast_ratio_x100(a: island_camel.color, b: island_ivory.color)
-  r >= 280 && r < 300
-    && grade_rank(g: grade_of_contrast(contrast_x100: r)) == 0
+  match srgb8_contrast_ratio_x100(a: island_camel.color, b: island_ivory.color) {
+    Present { value: r } => r >= 280 && r < 300
+      && grade_rank(g: grade_of_contrast(contrast_x100: r)) == 0
+    Absent => false
+  }
 }
 
 fn authored_five() -> SwatchSet {
@@ -90,48 +91,69 @@ fn witness_loam_carries_text_capability() -> Bool {
 fn witness_grade_kernel_discriminates() -> Bool {
   let black = Srgb8 { r: 0, g: 0, b: 0 }
   let white = Srgb8 { r: 255, g: 255, b: 255 }
-  srgb8_contrast_ratio_x100(a: black, b: white) == 2100
-    && grade_rank(g: grade_of_contrast(contrast_x100: 2100)) == 3
-    && srgb8_contrast_ratio_x100(a: island_mint.color, b: island_mint.color) == 100
-    && grade_rank(g: grade_of_contrast(contrast_x100: 100)) == 0
-    && !srgb8_admissible(c: Srgb8 { r: 256, g: 0, b: 0 })
+  match srgb8_contrast_ratio_x100(a: black, b: white) {
+    Present { value: r_bw } =>
+      r_bw == 2100
+        && grade_rank(g: grade_of_contrast(contrast_x100: 2100)) == 3
+        && match srgb8_contrast_ratio_x100(a: island_mint.color, b: island_mint.color) {
+          Present { value: r_mm } =>
+            r_mm == 100
+              && grade_rank(g: grade_of_contrast(contrast_x100: 100)) == 0
+              && !srgb8_admissible(c: Srgb8 { r: 256, g: 0, b: 0 })
+          Absent => false
+        }
+    Absent => false
+  }
 }
 
 fn witness_camel_hsl_projection() -> Bool {
-  let proj = srgb8_to_hsl_projection(c: island_camel.color)
-  match proj {
-    Chromatic { h, s_pct, l_pct } => h == 35 && s_pct == 53 && l_pct == 51
-    Achromatic { l_pct: _ } => false
+  match srgb8_to_hsl_projection(c: island_camel.color) {
+    Present { value: proj } => match proj {
+      Chromatic { h, s_pct, l_pct } => h == 35 && s_pct == 53 && l_pct == 51
+      Achromatic { l_pct: _ } => false
+    }
+    Absent => false
   }
 }
 
 fn witness_hsl_projection_red_on_off_by_one_hue() -> Bool {
-  let proj = srgb8_to_hsl_projection(c: island_camel.color)
-  match proj {
-    Chromatic { h, s_pct, l_pct } => !(h == 36 && s_pct == 53 && l_pct == 51)
-    Achromatic { l_pct: _ } => true
+  match srgb8_to_hsl_projection(c: island_camel.color) {
+    Present { value: proj } => match proj {
+      Chromatic { h, s_pct, l_pct } => !(h == 36 && s_pct == 53 && l_pct == 51)
+      Achromatic { l_pct: _ } => true
+    }
+    Absent => false
   }
 }
 
 fn witness_achromatic_maps_to_variant_not_hue_zero() -> Bool {
   match srgb8_to_hsl_projection(c: Srgb8 { r: 128, g: 128, b: 128 }) {
-    Achromatic { l_pct: _ } => true
-    Chromatic { h: _, s_pct: _, l_pct: _ } => false
+    Present { value: proj } => match proj {
+      Achromatic { l_pct: _ } => true
+      Chromatic { h: _, s_pct: _, l_pct: _ } => false
+    }
+    Absent => false
   }
 }
 
 fn witness_chromatic_still_projects_hue() -> Bool {
   match srgb8_to_hsl_projection(c: Srgb8 { r: 255, g: 0, b: 0 }) {
-    Chromatic { h, s_pct, l_pct: _ } => h >= 0 && s_pct > 0
-    Achromatic { l_pct: _ } => false
+    Present { value: proj } => match proj {
+      Chromatic { h, s_pct, l_pct: _ } => h >= 0 && s_pct > 0
+      Achromatic { l_pct: _ } => false
+    }
+    Absent => false
   }
 }
 
 fn witness_gray_never_yields_hue_zero_as_red() -> Bool {
   match srgb8_to_hsl_projection(c: Srgb8 { r: 127, g: 127, b: 127 }) {
-    Chromatic { h: 0, s_pct: 0, l_pct: _ } => false
-    Chromatic { h: _, s_pct: _, l_pct: _ } => true
-    Achromatic { l_pct: _ } => true
+    Present { value: proj } => match proj {
+      Chromatic { h: 0, s_pct: 0, l_pct: _ } => false
+      Chromatic { h: _, s_pct: _, l_pct: _ } => true
+      Achromatic { l_pct: _ } => true
+    }
+    Absent => false
   }
 }
 
@@ -202,8 +224,7 @@ fn witness_base16_digit_refuses_out_of_range() -> Bool {
 
 fn witness_uint8_channel_inclusive_max_value_present() -> Bool {
   match uint8_channel_inclusive_max_value_derived() {
-    Present { value: derived } => derived == uint8_channel_inclusive_max
-      && uint8_channel_inclusive_max_value() == uint8_channel_inclusive_max
+    Present { value: derived } => derived == 255
     Absent => false
   }
 }
@@ -216,16 +237,30 @@ fn witness_workspace_for_use_completion_admissible() -> Bool {
 }
 
 fn witness_in_family_inks_carry_their_fills() -> Bool {
-  grade_rank(g: grade_pairing(figure: island_mint_ink, ground: island_mint).grade) >= 2
-    && grade_rank(g: grade_pairing(figure: island_butter_ink, ground: island_butter).grade) >= 2
-    && grade_rank(g: grade_pairing(figure: island_aqua_ink, ground: island_aqua).grade) >= 2
+  match grade_pairing(figure: island_mint_ink, ground: island_mint) {
+    Present { value: p } => grade_rank(g: p.grade) >= 2
+    Absent => false
+  }
+    && match grade_pairing(figure: island_butter_ink, ground: island_butter) {
+      Present { value: p } => grade_rank(g: p.grade) >= 2
+      Absent => false
+    }
+    && match grade_pairing(figure: island_aqua_ink, ground: island_aqua) {
+      Present { value: p } => grade_rank(g: p.grade) >= 2
+      Absent => false
+    }
 }
 
 fn witness_venom_carries_ivory_text_and_refuses_loam() -> Bool {
-  let on_ivory = grade_pairing(figure: island_ivory, ground: island_venom)
-  let on_loam = grade_pairing(figure: island_venom, ground: island_loam)
-  grade_rank(g: on_ivory.grade) == 3
-    && grade_rank(g: on_loam.grade) == 0
+  match grade_pairing(figure: island_ivory, ground: island_venom) {
+    Present { value: on_ivory } => match grade_pairing(figure: island_venom, ground: island_loam) {
+      Present { value: on_loam } =>
+        grade_rank(g: on_ivory.grade) == 3
+          && grade_rank(g: on_loam.grade) == 0
+      Absent => false
+    }
+    Absent => false
+  }
 }
 
 fn witness_graduated_default_clears_text_aa() -> Bool {

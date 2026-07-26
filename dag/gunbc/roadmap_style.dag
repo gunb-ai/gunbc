@@ -33,7 +33,8 @@ import gunbc.roadmap_component {
   roadmap_row_grid_template, roadmap_row_height, roadmap_row_gutter, roadmap_row_column_gutter, node_mid_class,
 }
 import extdeps.color.srgb { Srgb8 }
-import extdeps.accessibility.wcag_contrast { srgb8_contrast_ratio_x100 }
+import std.integer { uint8_channel_inclusive_max_value_derived }
+import extdeps.accessibility.wcag_contrast { srgb8_contrast_ratio_x100_for_max }
 import gunbc.design.palette { Swatch, SwatchSet, SwatchSetForUse, swatch_filed, swatch_paint, swatches_of, for_use_combined_set }
 import gunbc.design.catalog {
   island_pastel, island_mint, island_aqua, island_ivory, island_butter, island_loam,
@@ -163,20 +164,26 @@ fn swatch_named(s: SwatchSet, name: String) -> Swatch? {
   swatches_of(s: s) |> filter(sw => sw.name == name) |> first
 }
 
-fn audition_ink_for(s: SwatchSet, fill: Swatch) -> Swatch {
-  fold(swatches_of(s: s), init: fill, f: (best, sw) =>
-    if srgb8_contrast_ratio_x100(a: sw.color, b: fill.color) > srgb8_contrast_ratio_x100(a: best.color, b: fill.color) {
-      sw
-    } else {
-      best
-    })
+fn audition_ink_for(s: SwatchSet, fill: Swatch) -> Swatch? {
+  match uint8_channel_inclusive_max_value_derived() {
+    Absent => none
+    Present { value: maxv } => Present {
+      value: fold(swatches_of(s: s), init: fill, f: (best, sw) => {
+        let r_sw = srgb8_contrast_ratio_x100_for_max(a: sw.color, b: fill.color, maxv: maxv)
+        let r_best = srgb8_contrast_ratio_x100_for_max(a: best.color, b: fill.color, maxv: maxv)
+        if r_sw > r_best { sw } else { best }
+      })
+    }
+  }
 }
 
 fn audition_paints(a: AuditionSet) -> List<BandPaint> {
   fold(a.fills, init: [], f: (acc, row) => match swatch_named(s: a.set, name: row.swatch_name) {
     Absent => acc
-    Present { value: fill } =>
-      concat(acc, [BandPaint { key: row.key, fill: fill, ink: audition_ink_for(s: a.set, fill: fill) }])
+    Present { value: fill } => match audition_ink_for(s: a.set, fill: fill) {
+      Absent => acc
+      Present { value: ink } => concat(acc, [BandPaint { key: row.key, fill: fill, ink: ink }])
+    }
   })
 }
 
