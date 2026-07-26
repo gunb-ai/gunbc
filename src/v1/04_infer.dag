@@ -18,7 +18,7 @@ import v1.std.core {
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   make_expr_node, make_named_expr_node, make_expr_error_node,
   expr_var_name_at, field_access_base, field_access_field_at, FieldAccessSpine, field_access_spine, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, lambda_param_names_at, record_lit_type_name_at,
-  qualified_last_segment, type_name_compatible,
+  qualified_last_segment, type_name_compatible, is_witness_type_name,
   make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node,
   map_children, arg_value, arg_name_at,
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
@@ -174,10 +174,6 @@ import v1.compiler.infer_lookup {
 import v1.compiler.infer_access {
   AccessCheckResultNode,
   check_index_access_node, check_slice_access_node
-}
-
-fn is_witness_type_name(name: String) -> Bool {
-  name == "Witness" || name == "witness"
 }
 
 type ItemContribution {
