@@ -1748,6 +1748,33 @@ pub fn render_rust_shared_type_if_needed(
     apply_seed_wrap_decision(type_name.clone(), rendered.clone(), use_site.clone())
 }
 
+pub fn rust_seed_wrap_value_at_use_site(
+    emitted: String,
+    type_name: String,
+    rendered: String,
+    use_site: OwnershipWrapUseSite,
+) -> String {
+    match rust_seed_effective_reference_layer(type_name.clone(), rendered.clone(), use_site.clone())
+    {
+        OwnershipReferenceLayer::ReferenceLayerOwned => emitted.clone(),
+        OwnershipReferenceLayer::ReferenceLayerRc => {
+            rust_seed_align_expr_rc_wrap(emitted.clone(), true)
+        }
+        OwnershipReferenceLayer::ReferenceLayerBox => {
+            if emitted.len() > 10 && emitted.starts_with("Box::new(") {
+                emitted.clone()
+            } else if rust_type_is_box_wrapped(emitted.clone()) {
+                emitted.clone()
+            } else {
+                v1_rt::concat(
+                    v1_rt::concat("Box::new(".to_string(), emitted.clone()),
+                    ")".to_string(),
+                )
+            }
+        }
+    }
+}
+
 pub fn rust_seed_catalog_wraps_rc_at_use_site(
     type_name: String,
     rendered: String,
@@ -1804,7 +1831,7 @@ pub fn rust_seed_inferred_type_needs_rc_wrap(
                     shared_types,
                     emit_info.corpus_repr.clone(),
                     scope.type_env.source_indices.clone(),
-                    OwnershipWrapUseSite::OwnershipAtFunctionReturn,
+                    OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent,
                 ))
             }
             _ => {
@@ -22995,6 +23022,62 @@ pub fn rust_record_field_needs_box(
     }
 }
 
+pub fn rust_record_field_wrap_value_at_use_site(
+    raw: String,
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Rc<BTreeSet<String>>,
+    struct_name: String,
+    field_name: String,
+) -> String {
+    match rust_struct_field_type_node_variant_aware(
+        scope.clone(),
+        emit_info.clone(),
+        struct_name.clone(),
+        field_name.clone(),
+    ) {
+        Some(field_type) => {
+            let leaf = rust_fn_sig_leaf_name(
+                scope.type_env.clone().source_indices.clone(),
+                field_type.clone(),
+            );
+            let rendered = render_rust_type_with_applied_binding(
+                field_type.clone(),
+                shared_types.clone(),
+                emit_info.corpus_repr.clone(),
+                scope.type_env.clone().source_indices.clone(),
+                OwnershipWrapUseSite::OwnershipAtStructField,
+            );
+            let layer = rust_seed_effective_reference_layer(
+                leaf.clone(),
+                rendered.clone(),
+                OwnershipWrapUseSite::OwnershipAtStructField,
+            );
+            if layer == OwnershipReferenceLayer::ReferenceLayerOwned
+                && needs_box_wrapping(
+                    field_type.clone(),
+                    emit_info.recursive_type_set.clone(),
+                    shared_types.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                )
+            {
+                v1_rt::concat(
+                    v1_rt::concat("Box::new(".to_string(), raw.clone()),
+                    ")".to_string(),
+                )
+            } else {
+                rust_seed_wrap_value_at_use_site(
+                    raw.clone(),
+                    leaf.clone(),
+                    rendered.clone(),
+                    OwnershipWrapUseSite::OwnershipAtStructField,
+                )
+            }
+        }
+        None => raw.clone(),
+    }
+}
+
 pub fn wrap_rust_record_field_value(
     raw: String,
     scope: Rc<InferScope>,
@@ -23020,20 +23103,14 @@ pub fn wrap_rust_record_field_value(
                     ")".to_string(),
                 )
             } else {
-                if rust_record_field_needs_box(
+                rust_record_field_wrap_value_at_use_site(
+                    raw.clone(),
                     scope.clone(),
                     emit_info.clone(),
                     shared_types.clone(),
                     struct_name.clone(),
                     field_name.clone(),
-                ) {
-                    v1_rt::concat(
-                        v1_rt::concat("Box::new(".to_string(), raw.clone()),
-                        ")".to_string(),
-                    )
-                } else {
-                    raw.clone()
-                }
+                )
             }
         }
     }
@@ -28695,7 +28772,7 @@ pub fn emit_data_def(
                     shared_types.clone(),
                     emit_info.corpus_repr.clone(),
                     scope.type_env.clone().source_indices.clone(),
-                    OwnershipWrapUseSite::OwnershipAtFunctionReturn,
+                    OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent,
                 )
             }
         };
@@ -28746,11 +28823,7 @@ pub fn emit_data_def(
             ty_str.clone(),
             OwnershipWrapUseSite::OwnershipAtFunctionReturn,
         );
-        let needs_rc = rust_seed_catalog_wraps_rc_at_use_site(
-            carrier_name.clone(),
-            raw_ty_str.clone(),
-            OwnershipWrapUseSite::OwnershipAtFunctionReturn,
-        );
+        let needs_rc = rust_type_is_rc_wrapped(ty_str.clone());
         if (is_simple_type_node(
             type_node.clone(),
             scope.type_env.clone().source_indices.clone(),

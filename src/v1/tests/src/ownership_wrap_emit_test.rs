@@ -73,7 +73,6 @@ fn catalog_node_struct_field_wraps_box() {
 }
 
 #[test]
-#[ignore = "dissolve-on: stage0 regen lands rust_seed_wrap_value_at_use_site in v1_compiler_emit_rust.rs"]
 fn catalog_node_struct_field_literal_wraps_box_new() {
     let source = "module ownwrap.fixture\n\ntype Node { child: Node? }\n\ntype Tree { child: Node }\n\ndata tree: Tree = Tree { child: Node { child: none } }\n";
     let emitted = emit(source);
