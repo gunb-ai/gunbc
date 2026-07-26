@@ -54,23 +54,101 @@ data rust_dry_run_mode_scaffold_row: LanguageSourceScaffoldRow = LanguageSourceS
   disposition: rust_dry_run_mode_scaffold_trigger
 }
 
+data runtime_rust_trace_mark_scaffold_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "std.observation",
+    decl_name: "Observation",
+    field: WholeDeclaration
+  }
+}
+
+data runtime_rust_kernel_opcode_scaffold_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "std.realization",
+    decl_name: "RealizationPlan",
+    field: WholeDeclaration
+  }
+}
+
+data runtime_rust_fnv1a64_terminal: Disposition = Terminal {
+  reason: "named irreducible intrinsic kernel: fnv1a64 is the content-hash primitive std.content_hash is defined over, so it has no substrate decomposition to dissolve into"
+}
+
+data runtime_rust_trace_mark_scaffold_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust",
+  blob_decl: "rt_resolution_silent_pick_telemetry",
+  disposition: runtime_rust_trace_mark_scaffold_trigger
+}
+
+data runtime_rust_kernel_opcode_scaffold_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust",
+  blob_decl: "rt_accelerator_demo_kernel",
+  disposition: runtime_rust_kernel_opcode_scaffold_trigger
+}
+
+data runtime_rust_hash_ops_terminal_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust",
+  blob_decl: "rt_hash_ops",
+  disposition: runtime_rust_fnv1a64_terminal
+}
+
+data compiler_tests_rust_hand_assertion_scaffold_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1.compiler.coercion",
+    decl_name: "CoercionTestEntry",
+    field: WholeDeclaration
+  }
+}
+
+data compiler_tests_rust_hand_assertion_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust",
+  blob_decl: "ct_groupcompletion_checkpoint_fires_under_faithful_corpus_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
 data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
   rust_pair_completion_spelling_scaffold_row,
   rust_bool_host_bridge_scaffold_row,
-  rust_dry_run_mode_scaffold_row
+  rust_dry_run_mode_scaffold_row,
+  runtime_rust_trace_mark_scaffold_row,
+  runtime_rust_kernel_opcode_scaffold_row,
+  runtime_rust_hash_ops_terminal_row,
+  compiler_tests_rust_hand_assertion_row
 ]
 
-fn language_source_scaffold_row_has_trigger(row: LanguageSourceScaffoldRow) -> Bool {
+fn language_source_scaffold_row_is_dispositioned(row: LanguageSourceScaffoldRow) -> Bool {
   match row.disposition {
-    Scaffold { dissolves_to: _, bind: bind } => bind.decl_name != ""
+    Scaffold { dissolves_to: _, bind: bind } => bind.decl_name != "" && bind.module_path != ""
+    Terminal { reason: reason } => reason != ""
+  }
+}
+
+fn language_source_scaffold_roster_all_dispositioned() -> Bool {
+  all(language_source_scaffold_roster, row => language_source_scaffold_row_is_dispositioned(row: row))
+}
+
+fn language_source_scaffold_row_is_scaffold(row: LanguageSourceScaffoldRow) -> Bool {
+  match row.disposition {
+    Scaffold { dissolves_to: _, bind: _ } => true
     Terminal { reason: _ } => false
   }
 }
 
-fn language_source_scaffold_roster_all_triggered() -> Bool {
-  all(language_source_scaffold_roster, row => language_source_scaffold_row_has_trigger(row: row))
-}
-
 fn language_source_scaffold_roster_size() -> Int {
   language_source_scaffold_roster |> count
+}
+
+fn language_source_scaffold_pending_count() -> Int {
+  language_source_scaffold_roster
+    |> filter(row => language_source_scaffold_row_is_scaffold(row: row))
+    |> count
+}
+
+fn language_source_scaffold_terminal_count() -> Int {
+  language_source_scaffold_roster
+    |> filter(row => language_source_scaffold_row_is_scaffold(row: row) == false)
+    |> count
 }

@@ -1,24 +1,39 @@
 module test.claim.language_source_scaffold_index_test
 
 
-data language_source_scaffold_index_test_note: String = "B2 control for the language-source scaffold inventory. The positive families assert every rostered hand-authored target-source blob carries a Scaffold disposition binding the construction that subsumes it. The RED control is a synthetic Terminal-dispositioned row: because Disposition has no prose arm, an untriggered mark is a TYPED state, so the check discriminates without classifying string content."
+data language_source_scaffold_index_test_note: String = "B2/B4/B5 control for the language-source scaffold inventory. Every rostered blob of hand-authored target source must carry a std.disposition Disposition that actually names something: a Scaffold binding the construction that subsumes it, or a Terminal stating why it is irreducible. Because Disposition has no prose arm, an UNMARKED blob is unwritable, so the discriminating case is a mark that names nothing — the RED control is a Scaffold with an empty bind. A Terminal WITH a reason is legitimate (fnv1a64 is a named irreducible kernel), so the control is deliberately not 'Terminal is bad'."
 
-data untriggered_control_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+data empty_bind_control_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "extdeps.languages.rust.emit",
-  blob_decl: "synthetic_untriggered_blob",
-  disposition: Terminal { reason: "synthetic negative control — no dissolution named" }
+  blob_decl: "synthetic_blob_marked_with_nothing",
+  disposition: Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclarationRef { module_path: "", decl_name: "", field: WholeDeclaration }
+  }
 }
 
-test fn language_source_scaffold_roster_is_fully_triggered() -> Bool {
-  language_source_scaffold_roster_all_triggered()
+data legitimate_terminal_control_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust",
+  blob_decl: "synthetic_irreducible_kernel",
+  disposition: Terminal { reason: "named irreducible intrinsic kernel" }
 }
 
-test fn language_source_scaffold_roster_is_non_empty() -> Bool {
-  language_source_scaffold_roster_size() > 0
+test fn language_source_scaffold_roster_is_fully_dispositioned() -> Bool {
+  language_source_scaffold_roster_all_dispositioned()
 }
 
-test fn untriggered_scaffold_row_is_refused() -> Bool {
-  language_source_scaffold_row_has_trigger(row: untriggered_control_row) == false
+test fn language_source_scaffold_roster_covers_every_carrier() -> Bool {
+  let total = language_source_scaffold_pending_count() + language_source_scaffold_terminal_count()
+  language_source_scaffold_roster_size() == total && language_source_scaffold_roster_size() > 0
+}
+
+test fn scaffold_binding_nothing_is_refused() -> Bool {
+  language_source_scaffold_row_is_dispositioned(row: empty_bind_control_row) == false
+}
+
+test fn reasoned_terminal_is_accepted() -> Bool {
+  language_source_scaffold_row_is_dispositioned(row: legitimate_terminal_control_row)
+    && language_source_scaffold_row_is_scaffold(row: legitimate_terminal_control_row) == false
 }
 
 test fn pair_completion_spelling_binds_the_derivation_authority() -> Bool {
