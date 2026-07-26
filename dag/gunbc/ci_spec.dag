@@ -272,6 +272,17 @@ fn ci_floor_build_verify_script() -> String {
 
 data ci_release_bins_archive_name: String = "release-bins.tgz"
 
+data ci_release_bins_pack_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "ci_release_bins_pack_script",
+    field: WholeDeclaration
+  }
+}
+
+data ci_release_bins_pack_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_release_bins_pack_script — concat-built foreign-executor (GitHub Actions run:) release-bins tar pack runner; membership of archived bin names is derived from gunbc.ci_release_bins, but the pack transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the pack runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold"
+
 fn ci_release_bins_pack_script() -> String {
   let names = fold(
     ci_floor_required_artifact_names(),
@@ -279,24 +290,41 @@ fn ci_release_bins_pack_script() -> String {
     f: (acc, name) => concat(acc, concat(" ", concat("\"", concat(name, "\""))))
   )
   concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    concat("# ", concat(ci_release_bins_pack_shell_emit_dissolution_trigger, "\n")),
     concat(
-      concat(concat("tar -czf \"$ROOT/", ci_release_bins_archive_name), "\" -C \"$ROOT/target/release\""),
-      concat(names, "\n")
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
+      concat(
+        concat(concat("tar -czf \"$ROOT/", ci_release_bins_archive_name), "\" -C \"$ROOT/target/release\""),
+        concat(names, "\n")
+      )
     )
   )
 }
 
+data ci_release_bins_unpack_verify_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "ci_release_bins_unpack_verify_script",
+    field: WholeDeclaration
+  }
+}
+
+data ci_release_bins_unpack_verify_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold"
+
 fn ci_release_bins_unpack_verify_script() -> String {
   concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    concat("# ", concat(ci_release_bins_unpack_verify_shell_emit_dissolution_trigger, "\n")),
     concat(
-      "mkdir -p \"$ROOT/target/release\"\n",
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
       concat(
-        concat(concat("tar -xzf \"$ROOT/", ci_release_bins_archive_name), "\" -C \"$ROOT/target/release\"\n"),
+        "mkdir -p \"$ROOT/target/release\"\n",
         concat(
-          concat(concat("rm -f \"$ROOT/", ci_release_bins_archive_name), "\"\n"),
-          ci_floor_build_verify_script()
+          concat(concat("tar -xzf \"$ROOT/", ci_release_bins_archive_name), "\" -C \"$ROOT/target/release\"\n"),
+          concat(
+            concat(concat("rm -f \"$ROOT/", ci_release_bins_archive_name), "\"\n"),
+            ci_floor_build_verify_script()
+          )
         )
       )
     )
