@@ -115,6 +115,15 @@ pub fn witness_kind_eq(a: WitnessKind, b: WitnessKind) -> bool {
     }
 }
 
+pub fn schedule_witness_entry_function_optional_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "function is OPTIONAL at file grain (umbrella dissolution U3, 2026-07-26): the empty string means Absent — the executor enumerates the entry's test fns through the same path discovery uses (scan_test_decl_names / floor_discovery_scan_test_decl_names). Non-empty keeps fn grain (per-row wet budgets, QuarantineProbeExpectRed probes, roster_registry rows that legitimately stay fn-scoped). CommitWitnessClaim.check_fns: [] projects one ScheduleWitnessEntry with function: \"\". Dissolve-on: Optional<String> when enrollment is derived from discovery (commit_witness_claim_roster_dissolution_trigger).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScheduleWitnessEntry {
     pub entry: String,
