@@ -1,5 +1,6 @@
 module test.claim.e0599_probe_census_witness_test
 
+import std.types { list_length }
 import tools.e0599_probe_census {
   MissingMethod,
   BoundsUnsatisfied,
@@ -11,6 +12,7 @@ import tools.e0599_probe_census {
   R5AsDerefUnit,
   e0599_canonical_seven_module_count,
   e0599_message_pattern_row_count,
+  e0599_message_pattern_rows_blob,
   e0599_root_family_for,
   e0599_root_family_label_for_row,
 }
@@ -23,6 +25,17 @@ test fn e0599_probe_census_pattern_rows_complete() -> Bool {
 
 test fn e0599_probe_census_canonical_seven_roster() -> Bool {
   e0599_canonical_seven_module_count() == 7
+}
+
+test fn e0599_message_pattern_rows_blob_line_count() -> Bool {
+  list_length(items: e0599_message_pattern_rows_blob() |> split(delimiter: "\n")) == 5
+}
+
+test fn e0599_message_pattern_rows_blob_first_row_is_missing_method() -> Bool {
+  match e0599_message_pattern_rows_blob() |> split(delimiter: "\n") |> first {
+    Present { value: line } => string_contains(s: line, pattern: "missing_method\t")
+    Absent => false
+  }
 }
 
 test fn e0599_root_family_clone_type_param_is_r1() -> Bool {

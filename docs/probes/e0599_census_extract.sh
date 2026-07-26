@@ -3,9 +3,8 @@
 # (+ generic std-seed-link follow-up) retires this hand-shell log classifier; until then it
 # projects per-error E0599 census from PROBE_KEEP_LOG_DIR/*.cargo.log (probe-only).
 # dissolve-on alt: gunbc bash-emit #5828 / modeled cssl_probe transport in .dag.
-# Authority: dag/tools/e0599_probe_census.dag (e0599_message_pattern_rows + e0599_root_family_for).
-# Root-family labels are derived by calling e0599_root_family_label_for_row via gunbc — not
-# reimplemented in this script. Regex patterns MUST stay in sync with e0599_message_pattern_rows.
+# Authority: dag/tools/e0599_probe_census.dag — patterns via e0599_message_pattern_rows_blob,
+# root-family labels via e0599_root_family_labels_from_blob (both fetched through gunbc).
 # Witness: dag/test/claim/e0599_probe_census_witness_test.dag. Frozen output receipt (not authority):
 # docs/probes/e0599_canonical_seven_census_2026-07-26.tsv. Input logs from
 # docs/probes/curated_cargo_probe_one.sh PROBE_KEEP_LOG_DIR hook.
@@ -34,8 +33,6 @@ export E0599_CENSUS_ROOT="$ROOT"
 export E0599_CENSUS_GUNBC="$GUNBC"
 
 python3 - "$AGGREGATE" "$@" <<'PY'
-# Patterns below mirror tools.e0599_probe_census e0599_message_pattern_rows (ordinal 1-5).
-# Root-family labels are fetched from tools.e0599_probe_census via gunbc (single authority).
 import collections
 import pathlib
 import re
@@ -48,21 +45,54 @@ paths = [pathlib.Path(p) for p in sys.argv[2:]]
 root = pathlib.Path(__import__("os").environ["E0599_CENSUS_ROOT"])
 gunbc = __import__("os").environ["E0599_CENSUS_GUNBC"]
 
-RE_MISSING = re.compile(
-    r"error\[E0599\]: no method named `([^`]+)` found for (.+?) in the current scope"
-)
-RE_BOUNDS = re.compile(
-    r"error\[E0599\]: the method `([^`]+)` exists for (.+?), but its trait bounds were not satisfied"
-)
-RE_VARIANT = re.compile(
-    r"error\[E0599\]: no variant(?:, associated function, or constant)? named `([^`]+)` found for (.+?)(?: in the current scope)?$"
-)
-RE_ASSOC = re.compile(
-    r"error\[E0599\]: no function or associated item named `([^`]+)` found for (.+?)(?: in the current scope)?$"
-)
-RE_OTHER = re.compile(r"error\[E0599\]: (.+)")
-
 _root_family_cache: dict[tuple[str, str, str], str] = {}
+
+
+def gunbc_run(function: str, blob_arg: str | None = None) -> str:
+    cmd = [
+        gunbc,
+        "run",
+        "--source-root",
+        str(root / "dag"),
+        "--entry",
+        "dag/tools/e0599_probe_census.dag",
+        "--function",
+        function,
+    ]
+    if blob_arg is not None:
+        cmd.extend(["--arg", f"blob={blob_arg}"])
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    lines: list[str] = []
+    capture = False
+    for line in proc.stdout.splitlines():
+        if line.startswith("running "):
+            capture = True
+            continue
+        if line.startswith("error:"):
+            break
+        if capture and line.strip():
+            lines.append(line)
+    if not lines and proc.returncode not in (0, 2):
+        raise RuntimeError(
+            f"gunbc {function} failed: stdout={proc.stdout!r} stderr={proc.stderr!r}"
+        )
+    return "\n".join(lines)
+
+
+def load_message_patterns() -> list[tuple[str, re.Pattern[str]]]:
+    blob = gunbc_run("e0599_message_pattern_rows_blob")
+    patterns: list[tuple[str, re.Pattern[str]]] = []
+    for line in blob.splitlines():
+        if not line.strip():
+            continue
+        shape, pattern = line.split("\t", 1)
+        patterns.append((shape, re.compile(pattern)))
+    if not patterns:
+        raise RuntimeError("e0599_message_pattern_rows_blob returned no pattern rows")
+    return patterns
+
+
+MESSAGE_PATTERNS = load_message_patterns()
 
 
 def normalize_receiver(raw: str) -> str:
@@ -73,37 +103,12 @@ def gunbc_root_family_labels(keys: list[tuple[str, str, str]]) -> dict[tuple[str
     if not keys:
         return {}
     blob = "\n".join(f"{shape}\t{method}\t{receiver}" for shape, method, receiver in keys)
-    proc = subprocess.run(
-        [
-            gunbc,
-            "run",
-            "--source-root",
-            str(root / "dag"),
-            "--entry",
-            "dag/tools/e0599_probe_census.dag",
-            "--function",
-            "e0599_root_family_labels_from_blob",
-            "--arg",
-            f"blob={blob}",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    labels: list[str] = []
-    capture = False
-    for line in proc.stdout.splitlines():
-        if line.startswith("running "):
-            capture = True
-            continue
-        if line.startswith("error:"):
-            break
-        if capture and line.strip():
-            labels.append(line.strip())
+    out = gunbc_run("e0599_root_family_labels_from_blob", blob_arg=blob)
+    labels = out.splitlines() if out else []
     if len(labels) != len(keys):
         raise RuntimeError(
             f"e0599_root_family_labels_from_blob returned {len(labels)} labels for {len(keys)} keys: "
-            f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+            f"stdout={out!r}"
         )
     return dict(zip(keys, labels))
 
@@ -128,18 +133,13 @@ def prefetch_root_families(keys: list[tuple[str, str, str]]) -> None:
 
 
 def classify_line(line: str):
-    for rx, shape in (
-        (RE_MISSING, "missing_method"),
-        (RE_BOUNDS, "bounds_unsatisfied"),
-        (RE_VARIANT, "no_variant"),
-        (RE_ASSOC, "no_assoc_fn"),
-    ):
+    for shape, rx in MESSAGE_PATTERNS:
         m = rx.search(line)
-        if m:
-            return shape, m.group(1), normalize_receiver(m.group(2))
-    m = RE_OTHER.search(line)
-    if m:
-        return "other", "?", normalize_receiver(m.group(1))
+        if not m:
+            continue
+        if shape == "other":
+            return shape, "?", normalize_receiver(m.group(1))
+        return shape, m.group(1), normalize_receiver(m.group(2))
     return None
 
 
