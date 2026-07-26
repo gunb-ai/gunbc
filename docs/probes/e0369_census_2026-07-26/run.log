@@ -1,15 +1,19 @@
-=== probing src/v2/compiler/06_translate.dag ===
+# Spine: CSSL_STD_SEED_LINK=1 PROBE_KEEP_LOG_DIR=.../logs \
+#   docs/probes/curated_cargo_probe_one.sh <module.dag>
+# Post-pass: docs/probes/e0369_extract_shapes.sh .../shapes
+# (forked e0369_census_probe.sh deleted — review 43515 / HAND-SHELL GATE)
+=== extract 06_translate ===
 06_translate: 14 E0369 across 12 shapes
-=== probing src/v2/compiler/04_infer.dag ===
+=== extract 04_infer ===
 04_infer: 14 E0369 across 12 shapes
-=== probing src/v2/compiler/05_eval.dag ===
+=== extract 05_eval ===
 05_eval: 29 E0369 across 19 shapes
-=== probing src/v2/compiler/05_emit.dag ===
+=== extract 05_emit ===
 05_emit: 14 E0369 across 12 shapes
-=== probing src/v2/compiler/emit_host.dag ===
+=== extract emit_host ===
 emit_host: 81 E0369 across 37 shapes
-=== probing src/v2/compiler/emit_module.dag ===
+=== extract emit_module ===
 emit_module: 14 E0369 across 12 shapes
-=== probing src/v2/compiler/materialization_carriers.dag ===
+=== extract materialization_carriers ===
 materialization_carriers: 62 E0369 across 22 shapes
 DONE
