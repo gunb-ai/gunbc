@@ -11,6 +11,7 @@ import tools.e0599_probe_census {
   R4OptionalCoproductGrounding,
   R5AsDerefUnit,
   e0599_canonical_seven_module_count,
+  e0599_canonical_seven_module_log_labels_blob,
   e0599_message_pattern_row_count,
   e0599_message_pattern_rows_blob,
   e0599_root_family_for,
@@ -26,6 +27,17 @@ test fn e0599_probe_census_pattern_rows_complete() -> Bool {
 
 test fn e0599_probe_census_canonical_seven_roster() -> Bool {
   e0599_canonical_seven_module_count() == 7
+}
+
+test fn e0599_canonical_seven_module_log_labels_blob_line_count() -> Bool {
+  list_length(items: e0599_canonical_seven_module_log_labels_blob() |> split(delimiter: "\n")) == 7
+}
+
+test fn e0599_canonical_seven_module_log_labels_blob_first_is_06_translate() -> Bool {
+  match e0599_canonical_seven_module_log_labels_blob() |> split(delimiter: "\n") |> first {
+    Present { value: line } => line == "06_translate"
+    Absent => false
+  }
 }
 
 test fn e0599_message_pattern_rows_blob_line_count() -> Bool {

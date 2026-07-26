@@ -4,6 +4,7 @@
 # projects per-error E0599 census from PROBE_KEEP_LOG_DIR/*.cargo.log (probe-only).
 # dissolve-on alt: gunbc bash-emit #5828 / modeled cssl_probe transport in .dag.
 # Authority: dag/tools/e0599_probe_census.dag — patterns via e0599_write_message_pattern_rows_blob,
+# roster via e0599_write_canonical_seven_module_log_labels_blob (aggregate refuses unless exact match),
 # root-family labels via e0599_write_root_family_labels_from_blob (ProcessExit gunbc exports).
 # Witness: dag/test/claim/e0599_probe_census_witness_test.dag. Frozen output receipt (not authority):
 # docs/probes/e0599_canonical_seven_census_2026-07-26.tsv. Input logs from
@@ -106,6 +107,42 @@ def load_message_patterns() -> list[tuple[str, re.Pattern[str]]]:
 MESSAGE_PATTERNS = load_message_patterns()
 
 
+def load_canonical_seven_log_labels() -> list[str]:
+    with tempfile.NamedTemporaryFile(prefix="e0599_roster_", delete=False) as tmp:
+        out_path = tmp.name
+    try:
+        blob = gunbc_write("e0599_write_canonical_seven_module_log_labels_blob", out_path)
+    finally:
+        pathlib.Path(out_path).unlink(missing_ok=True)
+    labels = [line for line in blob.splitlines() if line.strip()]
+    if not labels:
+        raise RuntimeError("e0599_canonical_seven_module_log_labels_blob returned no roster rows")
+    return labels
+
+
+def resolve_canonical_seven_paths(input_paths: list[pathlib.Path]) -> list[tuple[str, pathlib.Path]]:
+    roster = load_canonical_seven_log_labels()
+    roster_set = set(roster)
+    if len(roster) != len(roster_set):
+        raise RuntimeError("e0599_canonical_seven_modules roster has duplicate log labels")
+    observed: dict[str, pathlib.Path] = {}
+    for path in input_paths:
+        mod = module_from_log(path)
+        if mod in observed:
+            print(f"error: duplicate cargo.log module label: {mod}", file=sys.stderr)
+            sys.exit(2)
+        observed[mod] = path
+    missing = [mod for mod in roster if mod not in observed]
+    extra = [mod for mod in observed if mod not in roster_set]
+    if missing or extra:
+        print(
+            f"error: canonical-seven roster mismatch: missing={missing!r} extra={extra!r}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return [(mod, observed[mod]) for mod in roster]
+
+
 def normalize_receiver(raw: str) -> str:
     return " ".join(raw.strip().split())
 
@@ -173,11 +210,11 @@ def module_from_log(path: pathlib.Path) -> str:
 
 
 if aggregate or len(paths) > 1:
+    roster_paths = resolve_canonical_seven_paths(paths)
     per_module = {}
     global_counts = collections.Counter()
     module_totals = {}
-    for path in sorted(paths):
-        mod = module_from_log(path)
+    for mod, path in roster_paths:
         rows = parse_log(path)
         per_module[mod] = rows
         module_totals[mod] = len(rows)
@@ -186,7 +223,7 @@ if aggregate or len(paths) > 1:
     prefetch_root_families(list(global_counts.keys()))
     print("# e0599_canonical_seven_census aggregate")
     print("module\ttotal_E0599")
-    for mod in sorted(module_totals):
+    for mod, _path in roster_paths:
         print(f"{mod}\t{module_totals[mod]}")
     print(f"TOTAL\t{sum(module_totals.values())}")
     print()

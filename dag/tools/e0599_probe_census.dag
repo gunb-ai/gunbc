@@ -30,7 +30,7 @@ type E0599RootFamilyRow {
   description: String,
 }
 
-data e0599_probe_census_note: String = "Single authority for canonical-seven E0599 per-error census: failure-shape patterns (rustc message text), root-family rollup (three mechanistic roots + tails), and module roster. Realization: docs/probes/e0599_census_extract.sh (SCAFFOLD) calls e0599_write_message_pattern_rows_blob and e0599_write_root_family_labels_from_blob (ProcessExit exports) over PROBE_KEEP_LOG_DIR/*.cargo.log; frozen receipt docs/probes/e0599_canonical_seven_census_2026-07-26.tsv is output, not authority. dissolve-on: gunbc bash-emit #5828 / modeled cssl_probe transport or self_host_curated_seed_linked_harness probe classifier row."
+data e0599_probe_census_note: String = "Single authority for canonical-seven E0599 per-error census: failure-shape patterns (rustc message text), root-family rollup (three mechanistic roots + tails), and module roster. Realization: docs/probes/e0599_census_extract.sh (SCAFFOLD) calls e0599_write_message_pattern_rows_blob, e0599_write_canonical_seven_module_log_labels_blob, and e0599_write_root_family_labels_from_blob (ProcessExit exports) over PROBE_KEEP_LOG_DIR/*.cargo.log; aggregate output refuses unless inputs match e0599_canonical_seven_modules exactly. Frozen receipt docs/probes/e0599_canonical_seven_census_2026-07-26.tsv is output, not authority. dissolve-on: gunbc bash-emit #5828 / modeled cssl_probe transport or self_host_curated_seed_linked_harness probe classifier row."
 
 data e0599_baseline_receipt: String = "docs/probes/refresh_canonical_seven_2026-07-26.tsv"
 
@@ -229,6 +229,28 @@ fn e0599_root_family_for(shape: E0599FailureShape, method: String, receiver: Str
   }
 }
 
+fn e0599_module_log_label_from_path(path: String) -> String {
+  let file = match path |> split(delimiter: "/") |> last {
+    Present { value: v } => v
+    Absent => ""
+  }
+  match file |> split(delimiter: ".") |> first {
+    Present { value: stem } => stem
+    Absent => ""
+  }
+}
+
+fn e0599_canonical_seven_module_log_labels_blob() -> String {
+  fold(e0599_canonical_seven_modules, init: "", f: fn(acc, path) {
+    let line = e0599_module_log_label_from_path(path: path)
+    if acc == "" {
+      line
+    } else {
+      concat(acc, concat("\n", line))
+    }
+  })
+}
+
 fn e0599_write_blob(path: String, content: String, label: String) -> ProcessExit {
   if content == "" {
     exit_failure(reason: concat(label, ": refused empty export"))
@@ -257,6 +279,14 @@ fn e0599_write_root_family_labels_from_blob(blob: String, out_path: String) -> P
     path: out_path,
     content: e0599_root_family_labels_from_blob(blob: blob),
     label: "e0599_root_family_labels_from_blob"
+  )
+}
+
+fn e0599_write_canonical_seven_module_log_labels_blob(out_path: String) -> ProcessExit {
+  e0599_write_blob(
+    path: out_path,
+    content: e0599_canonical_seven_module_log_labels_blob(),
+    label: "e0599_canonical_seven_module_log_labels_blob"
   )
 }
 
