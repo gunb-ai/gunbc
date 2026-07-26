@@ -12,15 +12,15 @@ import gunbc.proactive_verification_ledger {
 }
 import v2.std.logic { Bool }
 
-data proactive_verification_ledger_witness_note: String = "OVERLAP-START structural receipt (sunny-lynx-241, operator no-soak 2026-07-20): the proactive verification ledger is enumerated on dag/gunbc/proactive_verification_ledger.dag (12 rows: 3 spine + 9 witness-realization families). Family KnownRed disposition projects from gunbc.ci_layer_roots known_red_probe_entries (§3 single authority — never hand-declared). Hermetic per-PR discovery pins enumeration invariants only. Family equals_eval execution lives in src/v2/test/claim/execution/proactive_verification_ledger_overlap_execution_test.dag — excluded from hermetic discovery (run_gunbc_claims needs IsExecutable; two-tier policy: wet evidence does not gate per-PR CI). Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry src/v2/test/claim/execution/proactive_verification_ledger_overlap_execution_test.dag --function proactive_verification_ledger_overlap_execution_holds"
+data proactive_verification_ledger_witness_note: String = "OVERLAP-START structural receipt (sunny-lynx-241, operator no-soak 2026-07-20): the proactive verification ledger is enumerated on dag/gunbc/proactive_verification_ledger.dag (13 rows: 3 spine + 10 equals_eval execution receipts across the nine #6879 partition families — meet_join contributes meet and join peer primaries, review 43336). Family KnownRed disposition projects from gunbc.ci_layer_roots known_red_probe_entries (§3 single authority — never hand-declared). Hermetic per-PR discovery pins enumeration invariants only. Family equals_eval execution lives in src/v2/test/claim/execution/proactive_verification_ledger_overlap_execution_test.dag — excluded from hermetic discovery (run_gunbc_claims needs IsExecutable; two-tier policy: wet evidence does not gate per-PR CI). Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry src/v2/test/claim/execution/proactive_verification_ledger_overlap_execution_test.dag --function proactive_verification_ledger_overlap_execution_holds"
 
 test fn proactive_verification_ledger_enumeration_holds() -> Bool {
   ledger_spine_row_count() == 3
-    && ledger_family_row_count() == 9
-    && ledger_total_row_count() == 12
-    && ledger_v1_delete_required_green_count() == 12
+    && ledger_family_row_count() == 10
+    && ledger_total_row_count() == 13
+    && ledger_v1_delete_required_green_count() == 13
     && ledger_all_spine_kinds_present() == true
     && ledger_blocked_count() == 3
     && ledger_known_red_count() == 0
-    && ledger_executable_now_count() == 9
+    && ledger_executable_now_count() == 10
 }

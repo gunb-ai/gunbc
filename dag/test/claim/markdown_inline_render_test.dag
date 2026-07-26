@@ -16,17 +16,17 @@ fn parse_and_render(text: String) -> List<Fragment> {
   )
 }
 
-fn witness_bold_renders_to_strong_node() -> Bool {
+test fn witness_bold_renders_to_strong_node() -> Bool {
   parse_and_render(text: "**bold text**") ==
     [ Element { tag: "strong", attributes: [], children: [ FragmentText { content: "bold text" } ] } ]
 }
 
-fn witness_code_renders_to_code_node() -> Bool {
+test fn witness_code_renders_to_code_node() -> Bool {
   parse_and_render(text: "`inline code`") ==
     [ Element { tag: "code", attributes: [], children: [ FragmentText { content: "inline code" } ] } ]
 }
 
-fn witness_link_renders_to_anchor_node() -> Bool {
+test fn witness_link_renders_to_anchor_node() -> Bool {
   parse_and_render(text: "[label](/docs/plan.md)") ==
     [ Element {
         tag: "a",
@@ -36,12 +36,12 @@ fn witness_link_renders_to_anchor_node() -> Bool {
     ]
 }
 
-fn witness_em_renders_to_em_node() -> Bool {
+test fn witness_em_renders_to_em_node() -> Bool {
   parse_and_render(text: "*emphasis*") ==
     [ Element { tag: "em", attributes: [], children: [ FragmentText { content: "emphasis" } ] } ]
 }
 
-fn witness_mixed_inline_renders_to_nodes() -> Bool {
+test fn witness_mixed_inline_renders_to_nodes() -> Bool {
   parse_and_render(text: "**bold** and `code`") ==
     [
       Element { tag: "strong", attributes: [], children: [ FragmentText { content: "bold" } ] },
@@ -50,15 +50,15 @@ fn witness_mixed_inline_renders_to_nodes() -> Bool {
     ]
 }
 
-fn witness_plain_text_stays_text_node() -> Bool {
+test fn witness_plain_text_stays_text_node() -> Bool {
   parse_and_render(text: "plain text no markup") == [ FragmentText { content: "plain text no markup" } ]
 }
 
-fn witness_markup_bold_differs_from_plain() -> Bool {
+test fn witness_markup_bold_differs_from_plain() -> Bool {
   !(parse_and_render(text: "**bold**") == parse_and_render(text: "bold"))
 }
 
-fn witness_image_inline_renders_to_img_node() -> Bool {
+test fn witness_image_inline_renders_to_img_node() -> Bool {
   markdown_inline_to_fragments(inline: ImageInline { alt: "description", url: "/img.png" }) ==
     [ Element {
         tag: "img",
@@ -71,13 +71,3 @@ fn witness_image_inline_renders_to_img_node() -> Bool {
     ]
 }
 
-test fn markdown_inline_render_keystone_holds() -> Bool {
-  witness_bold_renders_to_strong_node()
-    && witness_code_renders_to_code_node()
-    && witness_link_renders_to_anchor_node()
-    && witness_em_renders_to_em_node()
-    && witness_mixed_inline_renders_to_nodes()
-    && witness_plain_text_stays_text_node()
-    && witness_markup_bold_differs_from_plain()
-    && witness_image_inline_renders_to_img_node()
-}

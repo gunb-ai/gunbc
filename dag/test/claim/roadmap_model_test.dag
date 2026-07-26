@@ -34,18 +34,18 @@ fn verdict_is_underivable(v: DriftVerdict) -> Bool {
   match v { Underivable => true  Drifted => false  Clean => false }
 }
 
-fn witness_child_has_parent() -> Bool {
+test fn witness_child_has_parent() -> Bool {
   match roadmap_parent(edges: edges(), node: child_node) {
     UnderParent { parent: p } => p == parent_node
     TopLevel => false
   }
 }
 
-fn witness_orphan_is_top_level() -> Bool {
+test fn witness_orphan_is_top_level() -> Bool {
   is_top_level(edges: edges(), node: orphan_node)
 }
 
-fn witness_parent_is_top_level() -> Bool {
+test fn witness_parent_is_top_level() -> Bool {
   is_top_level(edges: edges(), node: parent_node)
 }
 
@@ -65,25 +65,25 @@ fn node_with_carriers(cs: List<Pointer>) -> RoadmapNode {
   }
 }
 
-fn witness_resolving_carrier_clean() -> Bool {
+test fn witness_resolving_carrier_clean() -> Bool {
   node_carrier_clean(
     rn: node_with_carriers(cs: [Pointer { label: "plan", path: "docs/plans/invert-hand-maintained.md" }]),
     existing_docs: existing_docs,
   )
 }
 
-fn witness_dangling_carrier_caught() -> Bool {
+test fn witness_dangling_carrier_caught() -> Bool {
   !node_carrier_clean(
     rn: node_with_carriers(cs: [Pointer { label: "plan", path: "docs/plans/does-not-exist.md" }]),
     existing_docs: existing_docs,
   )
 }
 
-fn witness_no_carrier_clean() -> Bool {
+test fn witness_no_carrier_clean() -> Bool {
   node_carrier_clean(rn: node_with_carriers(cs: []), existing_docs: existing_docs)
 }
 
-fn witness_node_status_drifts() -> Bool {
+test fn witness_node_status_drifts() -> Bool {
   let rn = RoadmapNode {
     node: child_node,
     line: DerivableLine { prs: [5491], title: "stale", description: "" },
@@ -95,7 +95,7 @@ fn witness_node_status_drifts() -> Bool {
   verdict_is_drifted(v: node_status_drift(rn: rn, committed_box: true, merged: [5491]))
 }
 
-fn witness_node_unsigned_box_clean() -> Bool {
+test fn witness_node_unsigned_box_clean() -> Bool {
   let rn = RoadmapNode {
     node: child_node,
     line: AuthoredLine { done: false, content: "partial evidence" },
@@ -111,13 +111,3 @@ fn witness_node_unsigned_box_clean() -> Bool {
   }
 }
 
-test fn roadmap_model_witnesses() -> Bool {
-  witness_child_has_parent()
-    && witness_orphan_is_top_level()
-    && witness_parent_is_top_level()
-    && witness_resolving_carrier_clean()
-    && witness_dangling_carrier_caught()
-    && witness_no_carrier_clean()
-    && witness_node_status_drifts()
-    && witness_node_unsigned_box_clean()
-}

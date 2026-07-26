@@ -1,0 +1,37 @@
+module v2.workflow.orchestration_bash_emit_support
+
+import v2.compiler.emit_orchestration { orch_emit_pipeline }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.std.orchestration { Do, Pipeline, PipelineStep, Run }
+import v2.std.collection { Absent }
+import v2.std.diagnostic { Accepted, Rejected, None, Some }
+
+data orchestration_bash_emit_support_note: String = "Shared run/do/emit_pipeline helpers for v2.workflow.ci_*_emit modules (bucket D PR1 extraction). Each emit module keeps its own refused_poison string; this module holds the byte-identical plumbing only. Pre-existing ci_*_emit forks migrate here in bucket D PR2."
+
+fn orch_bash_run(command: String) -> Run {
+  Run {
+    command: command,
+    env: [],
+    redirect: Absent,
+    capture: Absent
+  }
+}
+
+fn orch_bash_do(command: String) -> PipelineStep {
+  Do { run: orch_bash_run(command: command) }
+}
+
+fn orch_bash_comment_line(text: String) -> PipelineStep {
+  orch_bash_do(command: concat("# ", text))
+}
+
+fn orch_bash_emit_pipeline(p: Pipeline, refused_poison: String) -> String {
+  match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source.carried
+        Some { diagnostics: _ } => refused_poison
+      }
+    Rejected { diagnostics: _ } => refused_poison
+  }
+}

@@ -1,15 +1,14 @@
 module test.claim.yaml_multiline_block_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn witness_top_level_multiline_is_block_literal() -> Bool {
+test fn witness_top_level_multiline_is_block_literal() -> Bool {
   let out = serialize_yaml(v: yaml_string(s: "l1\nl2"))
   (out == "|\n  l1\n  l2\n") &&
     (out != "l1\nl2\n")
 }
 
-fn witness_multiline_sequence_element_is_block_literal() -> Bool {
+test fn witness_multiline_sequence_element_is_block_literal() -> Bool {
   let out = serialize_yaml(v: yaml_mapping(entries: [
     kv(key: "items", value: yaml_sequence(elements: [yaml_string(s: "l1\nl2")]))
   ]))
@@ -17,23 +16,17 @@ fn witness_multiline_sequence_element_is_block_literal() -> Bool {
     (out != "items: [l1\nl2]\n")
 }
 
-fn witness_multiline_mapping_value_still_block_literal() -> Bool {
+test fn witness_multiline_mapping_value_still_block_literal() -> Bool {
   let out = serialize_yaml(v: yaml_mapping(entries: [
     kv(key: "run", value: yaml_string(s: "l1\nl2"))
   ]))
   out == "run: |\n  l1\n  l2\n"
 }
 
-fn witness_no_embedded_newline_in_any_position() -> Bool {
+test fn witness_no_embedded_newline_in_any_position() -> Bool {
   let top = serialize_yaml(v: yaml_string(s: "a\nb"))
   let seq = serialize_yaml(v: yaml_sequence(elements: [yaml_string(s: "a\nb")]))
   (top == "|\n  a\n  b\n") &&
     (seq == "- |\n  a\n  b\n")
 }
 
-test fn yaml_multiline_block_keystone_holds() -> Bool {
-  witness_top_level_multiline_is_block_literal() &&
-    witness_multiline_sequence_element_is_block_literal() &&
-    witness_multiline_mapping_value_still_block_literal() &&
-    witness_no_embedded_newline_in_any_position()
-}

@@ -810,7 +810,7 @@ mod cli_path_resolution_wiring_tests {
             "--entry",
             &entry,
             "--function",
-            "commit_workflow_witnesses",
+            "witness_roster_nonempty",
         ]))
         .unwrap_or_else(|_| panic!("absolute existing paths must parse"));
         assert_eq!(parsed.source_roots, vec![root]);
@@ -840,7 +840,7 @@ mod cli_path_resolution_wiring_tests {
             "--entry",
             "dag/test/claim/commit_workflow_witness_test.dag",
             "--function",
-            "commit_workflow_witnesses",
+            "witness_roster_nonempty",
         ]));
         assert_eq!(
             result.is_ok(),

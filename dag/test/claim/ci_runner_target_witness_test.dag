@@ -1,29 +1,28 @@
 module test.claim.ci_runner_target_witness
 
-
-fn witness_fleet_target_projects_fleet_derivation() -> Bool {
+test fn witness_fleet_target_projects_fleet_derivation() -> Bool {
   ci_runner_target_spec(target: FleetSelfHosted) == gunbc_ci_runner_spec()
 }
 
-fn witness_selected_target_projects_fleet() -> Bool {
+test fn witness_selected_target_projects_fleet() -> Bool {
   gunbc_ci_selected_runner_spec() == ci_runner_target_spec(target: FleetSelfHosted)
 }
 
-fn witness_ubicloud_target_projects_catalog_label() -> Bool {
+test fn witness_ubicloud_target_projects_catalog_label() -> Bool {
   match ci_runner_target_spec(target: UbicloudRunner { row: ubicloud_standard_16_arm_catalog }) {
     SelfHosted { labels: ls } => ls.length() == 1 && ls.first() == "ubicloud-standard-16-arm"
     _ => false
   }
 }
 
-fn witness_github_private_target_projects_hosted_scalar_variant() -> Bool {
+test fn witness_github_private_target_projects_hosted_scalar_variant() -> Bool {
   match ci_runner_target_spec(target: GithubHostedRunner { row: github_hosted_ubuntu_2404_arm_private_catalog }) {
     HostedRunner { label: l } => runner_label_string(label: l) == "ubuntu-24.04-arm"
     _ => false
   }
 }
 
-fn witness_runner_yaml_forms_discriminate_hosted_vs_label_routed() -> Bool {
+test fn witness_runner_yaml_forms_discriminate_hosted_vs_label_routed() -> Bool {
   let hosted = runner_yaml(spec: ci_runner_target_spec(target: GithubHostedRunner { row: github_hosted_ubuntu_2404_arm_private_catalog }))
   let label_routed = runner_yaml(spec: ci_runner_target_spec(target: UbicloudRunner { row: ubicloud_standard_16_arm_catalog }))
   hosted == yaml_string(s: "ubuntu-24.04-arm")
@@ -31,7 +30,7 @@ fn witness_runner_yaml_forms_discriminate_hosted_vs_label_routed() -> Bool {
     && hosted != string_list_flow(items: ["ubuntu-24.04-arm"])
 }
 
-fn witness_fleet_regime_is_slot_carved_with_throttle_line() -> Bool {
+test fn witness_fleet_regime_is_slot_carved_with_throttle_line() -> Bool {
   match ci_runner_target_memory_regime(target: FleetSelfHosted) {
     SlotCarved { desired: d } =>
       let high = byte_size_count(b: d.memory_high)
@@ -41,14 +40,14 @@ fn witness_fleet_regime_is_slot_carved_with_throttle_line() -> Bool {
   }
 }
 
-fn witness_cloud_regime_is_whole_machine() -> Bool {
+test fn witness_cloud_regime_is_whole_machine() -> Bool {
   match ci_runner_target_memory_regime(target: UbicloudRunner { row: ubicloud_standard_16_arm_catalog }) {
     SlotCarved { desired: _ } => false
     WholeMachine { ram: r } => byte_size_count(b: r) == 48000000000
   }
 }
 
-fn witness_ubicloud_arm_family_holds_cited_ratio() -> Bool {
+test fn witness_ubicloud_arm_family_holds_cited_ratio() -> Bool {
   let arm_rows = filter(
     ubicloud_runner_catalog(),
     predicate: fn(row) { string_contains(s: row.runs_on_label, pattern: "-arm") }
@@ -59,28 +58,16 @@ fn witness_ubicloud_arm_family_holds_cited_ratio() -> Bool {
       })
 }
 
-fn witness_github_visibility_axis_discriminates() -> Bool {
+test fn witness_github_visibility_axis_discriminates() -> Bool {
   let private_bytes = byte_size_count(b: github_hosted_ubuntu_2404_arm_private_catalog.memory_bytes)
   let public_bytes = byte_size_count(b: github_hosted_ubuntu_2404_arm_public_catalog.memory_bytes)
   private_bytes < public_bytes
 }
 
-fn witness_selected_regime_is_slot_carved() -> Bool {
+test fn witness_selected_regime_is_slot_carved() -> Bool {
   match ci_runner_target_memory_regime(target: selected_ci_runner_target()) {
     SlotCarved { desired: _ } => true
     WholeMachine { ram: _ } => false
   }
 }
 
-test fn ci_runner_target_witnesses() -> Bool {
-  witness_fleet_target_projects_fleet_derivation()
-    && witness_selected_target_projects_fleet()
-    && witness_selected_regime_is_slot_carved()
-    && witness_ubicloud_target_projects_catalog_label()
-    && witness_github_private_target_projects_hosted_scalar_variant()
-    && witness_runner_yaml_forms_discriminate_hosted_vs_label_routed()
-    && witness_fleet_regime_is_slot_carved_with_throttle_line()
-    && witness_cloud_regime_is_whole_machine()
-    && witness_ubicloud_arm_family_holds_cited_ratio()
-    && witness_github_visibility_axis_discriminates()
-}

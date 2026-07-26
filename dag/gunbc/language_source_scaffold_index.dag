@@ -304,6 +304,11 @@ data ct_row_ct_type_size_test: LanguageSourceScaffoldRow = LanguageSourceScaffol
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
 }
 
+data ct_row_ct_render_rust_applied_type_qualified_base_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_render_rust_applied_type_qualified_base_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
 data ct_row_ct_diagnostics_carrier_grounding_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_diagnostics_carrier_grounding_test",
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
@@ -331,11 +336,6 @@ data ct_row_ct_sole_constructor_fieldless_witness_test: LanguageSourceScaffoldRo
 
 data ct_row_ct_contracts_sidecar_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_contracts_sidecar_witness_test",
-  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
-}
-
-data ct_row_ct_render_rust_applied_type_qualified_base_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
-  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_render_rust_applied_type_qualified_base_test",
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
 }
 
@@ -385,13 +385,13 @@ data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
   ct_row_ct_self_compile_test,
   ct_row_ct_self_compile_cargo_check_test,
   ct_row_ct_type_size_test,
+  ct_row_ct_render_rust_applied_type_qualified_base_test,
   ct_row_ct_diagnostics_carrier_grounding_test,
   ct_row_ct_rust_btree_set_ord_eligibility_test,
   ct_row_ct_unlisted_import_use_witness_test,
   ct_row_ct_sole_constructor_test,
   ct_row_ct_sole_constructor_fieldless_witness_test,
   ct_row_ct_contracts_sidecar_witness_test,
-  ct_row_ct_render_rust_applied_type_qualified_base_test,
   ct_row_ct_profile_self_compile_test,
   ct_row_ct_profile_full_pipeline_test,
   ct_row_ct_profile_reconcile_test,

@@ -24,7 +24,7 @@ fn sandbox_html() -> String {
   }
 }
 
-fn witness_auditioner_blocks_emitted_with_derived_inks() -> Bool {
+test fn witness_auditioner_blocks_emitted_with_derived_inks() -> Bool {
   let css = sandbox_css()
   all(audition_sets, a => audition_set_resolved(a: a))
     && string_contains(s: css, pattern: ":root[data-swatch-set=\"island-pastel\"]")
@@ -38,7 +38,7 @@ fn witness_auditioner_blocks_emitted_with_derived_inks() -> Bool {
     && swatch_default_set_value == okabe_ito.name
 }
 
-fn witness_auditioner_missing_swatch_is_loud() -> Bool {
+test fn witness_auditioner_missing_swatch_is_loud() -> Bool {
   let bogus = AuditionSet {
     set_name: "bogus",
     set: okabe_ito,
@@ -48,7 +48,7 @@ fn witness_auditioner_missing_swatch_is_loud() -> Bool {
     && audition_block_css(a: bogus) == ""
 }
 
-fn witness_sandbox_carries_auditioner_control() -> Bool {
+test fn witness_sandbox_carries_auditioner_control() -> Bool {
   let h = sandbox_html()
   let js = sandbox_client_js_source()
   string_contains(s: h, pattern: "class=\"swatch-toggle\"")
@@ -56,7 +56,7 @@ fn witness_sandbox_carries_auditioner_control() -> Bool {
     && string_contains(s: js, pattern: "'island-pastel'")
 }
 
-fn witness_gallery_covers_every_wire_label() -> Bool {
+test fn witness_gallery_covers_every_wire_label() -> Bool {
   let gallery = sandbox_gallery_terminal_labels()
   let wire = belt_dispatch_all_status_labels()
   gallery.length() == wire.length()
@@ -64,26 +64,26 @@ fn witness_gallery_covers_every_wire_label() -> Bool {
     && all(gallery, g => any(wire, w => w == g))
 }
 
-fn witness_gallery_drop_is_located_red() -> Bool {
+test fn witness_gallery_drop_is_located_red() -> Bool {
   let dropped = component_drop_state(c: dispatch_button_component(), drop_key: "spawned")
   let labels = map(component_terminal_states(c: dropped), s => dispatch_state_display_text(state: s))
   labels.length() == belt_dispatch_all_status_labels().length() - 1
     && !any(labels, l => l == "spawned")
 }
 
-fn witness_echo_answers_every_wire_arm() -> Bool {
+test fn witness_echo_answers_every_wire_arm() -> Bool {
   all(belt_dispatch_all_status_labels(), l => {
     let r = roadmap_serve_respond(method_label: "POST", path: join(["/sandbox/echo?status=", l], ""), body: "")
     r.status == 200 && string_contains(s: r.body, pattern: l) && string_contains(s: r.body, pattern: "status")
   })
 }
 
-fn witness_echo_unknown_label_refuses() -> Bool {
+test fn witness_echo_unknown_label_refuses() -> Bool {
   let r = roadmap_serve_respond(method_label: "POST", path: "/sandbox/echo?status=bogus", body: "")
   r.status == 400 && string_contains(s: r.body, pattern: "unknown status")
 }
 
-fn witness_sandbox_renders_register_depths() -> Bool {
+test fn witness_sandbox_renders_register_depths() -> Bool {
   let h = sandbox_html()
   string_contains(s: h, pattern: "roles — night / day")
     && string_contains(s: h, pattern: "scales")
@@ -93,7 +93,7 @@ fn witness_sandbox_renders_register_depths() -> Bool {
     && string_contains(s: h, pattern: "space-8")
 }
 
-fn witness_sandbox_gallery_and_live_render() -> Bool {
+test fn witness_sandbox_gallery_and_live_render() -> Bool {
   let h = sandbox_html()
   string_contains(s: h, pattern: "dispatch button — every state")
     && string_contains(s: h, pattern: "dispatch-ok")
@@ -104,14 +104,3 @@ fn witness_sandbox_gallery_and_live_render() -> Bool {
     && all(belt_dispatch_all_status_labels(), l => string_contains(s: h, pattern: join(["data-status=\"", l, "\""], "")))
 }
 
-test fn roadmap_sandbox_keystone_holds() -> Bool {
-  witness_auditioner_blocks_emitted_with_derived_inks()
-    && witness_auditioner_missing_swatch_is_loud()
-    && witness_sandbox_carries_auditioner_control()
-    && witness_gallery_covers_every_wire_label()
-    && witness_gallery_drop_is_located_red()
-    && witness_echo_answers_every_wire_arm()
-    && witness_echo_unknown_label_refuses()
-    && witness_sandbox_renders_register_depths()
-    && witness_sandbox_gallery_and_live_render()
-}

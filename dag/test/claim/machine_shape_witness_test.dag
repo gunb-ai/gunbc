@@ -71,7 +71,7 @@ fn shape_from_rtx5090_catalog() -> MachineShape {
   }
 }
 
-fn catalog_derivation_matches_row() -> Bool {
+test fn catalog_derivation_matches_row() -> Bool {
   let shape = shape_from_rtx5090_catalog()
   let memory = shape.domains.first().memory
   let device = memory.skip(n: list_length(items: memory) - 1).first()
@@ -88,7 +88,7 @@ fn catalog_derivation_matches_row() -> Bool {
   }
 }
 
-fn minimal_grant_is_single_domain() -> Bool {
+test fn minimal_grant_is_single_domain() -> Bool {
   machine_shape_is_single_domain(shape: shape_from_rtx5090_catalog())
 }
 
@@ -105,26 +105,26 @@ fn shape_from_m5_catalog() -> MachineShape {
   }
 }
 
-fn gpu_sm_cache_levels_integrated_when_cited() -> Bool {
+test fn gpu_sm_cache_levels_integrated_when_cited() -> Bool {
   let memory = shape_from_rtx5090_catalog().domains.first().memory
   list_length(items: memory) == 3
     && byte_size_count(b: memory.first().capacity) == rtx5090_sm_register_bytes
     && byte_size_count(b: memory.skip(n: 1).first().capacity) == rtx5090_sm_shared_bytes
 }
 
-fn gpu_sm_cache_absent_when_ungranted() -> Bool {
+test fn gpu_sm_cache_absent_when_ungranted() -> Bool {
   list_length(items: shape_from_m5_catalog().domains.first().memory) == 1
 }
 
-fn energy_derived_not_stored() -> Bool {
+test fn energy_derived_not_stored() -> Bool {
   joule_count(j: energy_from_power_and_time(power: watt(count: 100), time: second(count: 5))) == 500
 }
 
-fn pcie_interconnect_link_derives_bandwidth() -> Bool {
+test fn pcie_interconnect_link_derives_bandwidth() -> Bool {
   bandwidth_count(b: pcie_interconnect_link(link: rtx5090_pcie_link).bandwidth) == bandwidth_count(b: pcie_link_bandwidth(link: rtx5090_pcie_link))
 }
 
-fn red_dangling_domain_refuses() -> Bool {
+test fn red_dangling_domain_refuses() -> Bool {
   let good = shape_from_rtx5090_catalog()
   let bad = MachineShape {
     domains: good.domains
@@ -143,7 +143,7 @@ fn red_dangling_domain_refuses() -> Bool {
   }
 }
 
-fn red_dangling_level_refuses() -> Bool {
+test fn red_dangling_level_refuses() -> Bool {
   let bad_level: LevelId = "missing-level" as LevelId
   let bad = MachineShape {
     domains: shape_from_rtx5090_catalog().domains
@@ -163,13 +163,3 @@ fn red_dangling_level_refuses() -> Bool {
   }
 }
 
-test fn machine_shape_witnesses() -> Bool {
-  catalog_derivation_matches_row()
-    && minimal_grant_is_single_domain()
-    && gpu_sm_cache_levels_integrated_when_cited()
-    && gpu_sm_cache_absent_when_ungranted()
-    && energy_derived_not_stored()
-    && pcie_interconnect_link_derives_bandwidth()
-    && red_dangling_domain_refuses()
-    && red_dangling_level_refuses()
-}

@@ -12,7 +12,7 @@ fn stats_fixture(total_bytes: Int) -> SwapStats {
 
 data witness_requirement_derivation_note: String = "The requirement must come from the DECLARED cap, not from a number typed into this witness, or the module is asserting its own invention. So the assertion is a relationship: the derived min_total equals gunbc_runner_slot_desired().memory_swap_max exactly, which means editing that one declaration moves the requirement and this witness together, and a hand-written swap size anywhere would break it."
 
-fn witness_requirement_is_derived_from_the_declared_cap() -> Bool {
+test fn witness_requirement_is_derived_from_the_declared_cap() -> Bool {
   match host_swap_backing_requirement() {
     SwapBackingRequired { min_total: m, requiring_declaration: d } =>
       byte_size_count(b: m) == byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)
@@ -23,7 +23,7 @@ fn witness_requirement_is_derived_from_the_declared_cap() -> Bool {
 
 data witness_verdict_arms_note: String = "The four backing states must stay distinct, because each names a different piece of work: no producer (build one), zero total (provision backing), undersized total (resize), sufficient total (done). A fold that collapsed any pair would make one of those disappear from every count derived from it. Absent is asserted specifically against zero rather than against small, because zero is the state the whole module exists for — a cap over nothing."
 
-fn witness_backing_verdict_separates_unknown_absent_drifted_converged() -> Bool {
+test fn witness_backing_verdict_separates_unknown_absent_drifted_converged() -> Bool {
   let req = host_swap_backing_requirement()
   let cap_bytes = byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)
   let no_producer = host_swap_backing_verdict(req: req, observed: none)
@@ -47,7 +47,7 @@ fn witness_backing_verdict_separates_unknown_absent_drifted_converged() -> Bool 
 
 data witness_cap_qualification_note: String = "THE conjunct the module exists for. A per-slot MemorySwapMax read that says Converged is the input on every line here; only the backing term varies. With backing observed Converged the cap verdict passes through unchanged — the non-vacuity control, without which a qualifier that refused everything would look correct. With backing zero, unobserved, or unreachable, the same green cap must NOT survive as Converged, and each case must keep its own arm rather than rounding to a single 'not converged': absent backing is provisioning work, unobserved backing is producer work, unreachable backing is the A1 reach lane."
 
-fn witness_green_cap_does_not_survive_missing_backing() -> Bool {
+test fn witness_green_cap_does_not_survive_missing_backing() -> Bool {
   let green_cap = std.upsert_decision.Converged
   let with_backing = swap_cap_verdict_qualified_by_backing(cap: green_cap, backing: std.upsert_decision.Converged)
   let no_backing = swap_cap_verdict_qualified_by_backing(
@@ -64,7 +64,7 @@ fn witness_green_cap_does_not_survive_missing_backing() -> Bool {
 
 data witness_qualification_is_not_a_lattice_meet_note: String = "The qualification is a presupposition check and not a meet over some verdict ordering, and this conjunct pins the asymmetry so a later refactor cannot quietly turn it into one. A DRIFTED cap under CONVERGED backing stays Drifted — the backing does not repair the cap — while a CONVERGED cap under DRIFTED backing becomes Drifted. Under a symmetric meet those two would be the same value by construction and the direction of the check would be lost."
 
-fn witness_qualification_direction_is_asymmetric() -> Bool {
+test fn witness_qualification_direction_is_asymmetric() -> Bool {
   let drifted_cap_good_backing = swap_cap_verdict_qualified_by_backing(
     cap: std.upsert_decision.Drifted,
     backing: std.upsert_decision.Converged,
@@ -83,7 +83,7 @@ fn witness_qualification_direction_is_asymmetric() -> Bool {
 
 data witness_red_control_note: String = "The discriminating RED control, and its perturbation is the corpus's CURRENT behaviour rather than an invented one: reporting the cap verdict with no backing term at all. The gate rejects the sketch and accepts the authority on identical inputs. Both halves are required — rejection alone would pass for a gate that rejects everything, acceptance alone for a gate that accepts everything — and the gate's own decision is computed from the backing argument, not from which function produced the verdict, so it cannot be satisfied by relabelling."
 
-fn witness_red_control_backing_blind_rejected_by_gate() -> Bool {
+test fn witness_red_control_backing_blind_rejected_by_gate() -> Bool {
   let backing = std.upsert_decision.UnknownRefused
   let widened = swap_cap_verdict_backing_blind_widen_sketch(cap: std.upsert_decision.Converged, backing: backing)
   let authority = swap_cap_verdict_qualified_by_backing(cap: std.upsert_decision.Converged, backing: backing)
@@ -92,23 +92,14 @@ fn witness_red_control_backing_blind_rejected_by_gate() -> Bool {
     && swap_cap_verdict_gate_accepts(verdict: authority, backing: backing)
 }
 
-fn witness_gate_admits_a_green_cap_when_backing_is_present() -> Bool {
+test fn witness_gate_admits_a_green_cap_when_backing_is_present() -> Bool {
   swap_cap_verdict_gate_accepts(verdict: std.upsert_decision.Converged, backing: std.upsert_decision.Converged)
 }
 
 data witness_frontier_count_note: String = "The observation frontier is a counted number, not a silence. All four enrolled hosts derive UnknownRefused today because no /proc/swaps or free(1) producer exists in the tree, and pinning the count to the full fleet size means landing a producer is a VISIBLE event that must update this witness. It also fails in the right direction: if someone were to add a fabricated per-host fixture to make the matrix look greener, this count would drop and the witness would red."
 
-fn witness_every_enrolled_host_is_unobserved_today() -> Bool {
+test fn witness_every_enrolled_host_is_unobserved_today() -> Bool {
   host_swap_backing_fleet_unobserved_count() == fleet_subsumption_hosts.length()
     && fleet_subsumption_hosts.length() > 0
 }
 
-test fn host_swap_backing_witnesses() -> Bool {
-  witness_requirement_is_derived_from_the_declared_cap()
-    && witness_backing_verdict_separates_unknown_absent_drifted_converged()
-    && witness_green_cap_does_not_survive_missing_backing()
-    && witness_qualification_direction_is_asymmetric()
-    && witness_red_control_backing_blind_rejected_by_gate()
-    && witness_gate_admits_a_green_cap_when_backing_is_present()
-    && witness_every_enrolled_host_is_unobserved_today()
-}
