@@ -2,7 +2,10 @@ module tools.e0599_probe_census
 
 import std.types { Bool, Int, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.error_primitives { Result, Ok, Err }
 import extdeps.filesystem.filesystem_io { Filesystem }
+
+type E0599LogShapeParseError = UnknownFailureShapeLabel { label: String }
 
 type E0599FailureShape
   = MissingMethod
@@ -124,17 +127,26 @@ fn e0599_message_pattern_rows_blob() -> String {
   })
 }
 
-fn e0599_failure_shape_from_log_shape(shape_str: String) -> E0599FailureShape {
+fn e0599_log_shape_parse_error_message(err: E0599LogShapeParseError) -> String {
+  match err {
+    UnknownFailureShapeLabel { label: label } =>
+      concat("e0599_failure_shape_from_log_shape: refused unknown label ", label)
+  }
+}
+
+fn e0599_failure_shape_from_log_shape(shape_str: String) -> Result<E0599FailureShape, E0599LogShapeParseError> {
   if shape_str == "missing_method" {
-    MissingMethod
+    Ok { value: MissingMethod }
   } else if shape_str == "bounds_unsatisfied" {
-    BoundsUnsatisfied
+    Ok { value: BoundsUnsatisfied }
   } else if shape_str == "no_variant" {
-    NoVariant
+    Ok { value: NoVariant }
   } else if shape_str == "no_assoc_fn" {
-    NoAssocFn
+    Ok { value: NoAssocFn }
+  } else if shape_str == "other" {
+    Ok { value: Other }
   } else {
-    Other
+    Err { value: UnknownFailureShapeLabel { label: shape_str } }
   }
 }
 
@@ -149,17 +161,19 @@ fn e0599_root_family_label(family: E0599RootFamily) -> String {
   }
 }
 
-fn e0599_root_family_label_for_row(shape_str: String, method: String, receiver: String) -> String {
-  e0599_root_family_label(
-    family: e0599_root_family_for(
-      shape: e0599_failure_shape_from_log_shape(shape_str: shape_str),
-      method: method,
-      receiver: receiver
-    )
-  )
+fn e0599_root_family_label_for_row(shape_str: String, method: String, receiver: String) -> Result<String, E0599LogShapeParseError> {
+  match e0599_failure_shape_from_log_shape(shape_str: shape_str) {
+    Err { value: e } => Err { value: e }
+    Ok { value: shape } =>
+      Ok {
+        value: e0599_root_family_label(
+          family: e0599_root_family_for(shape: shape, method: method, receiver: receiver)
+        )
+      }
+  }
 }
 
-fn e0599_root_family_label_for_tuple_line(line: String) -> String {
+fn e0599_root_family_label_for_tuple_line(line: String) -> Result<String, E0599LogShapeParseError> {
   let parts = line |> split(delimiter: "\t")
   let shape_str = match parts |> first {
     Present { value: v } => v
@@ -177,14 +191,21 @@ fn e0599_root_family_label_for_tuple_line(line: String) -> String {
   e0599_root_family_label_for_row(shape_str: shape_str, method: method, receiver: receiver)
 }
 
-fn e0599_root_family_labels_from_blob(blob: String) -> String {
+fn e0599_root_family_labels_from_blob(blob: String) -> Result<String, E0599LogShapeParseError> {
   let lines = if blob == "" { [] } else { blob |> split(delimiter: "\n") }
-  fold(lines, init: "", f: fn(acc, line) {
-    let label = e0599_root_family_label_for_tuple_line(line: line)
-    if acc == "" {
-      label
-    } else {
-      concat(acc, concat("\n", label))
+  fold(lines, init: Ok { value: "" }, f: fn(acc, line) {
+    match acc {
+      Err { value: e } => Err { value: e }
+      Ok { value: prior } =>
+        match e0599_root_family_label_for_tuple_line(line: line) {
+          Err { value: e } => Err { value: e }
+          Ok { value: label } =>
+            if prior == "" {
+              Ok { value: label }
+            } else {
+              Ok { value: concat(prior, concat("\n", label)) }
+            }
+        }
     }
   })
 }
@@ -275,11 +296,15 @@ fn e0599_write_root_family_labels_from_blob(blob: String, out_path: String) -> P
   if blob == "" {
     exit_failure(reason: "e0599_root_family_labels_from_blob: refused empty input blob")
   }
-  e0599_write_blob(
-    path: out_path,
-    content: e0599_root_family_labels_from_blob(blob: blob),
-    label: "e0599_root_family_labels_from_blob"
-  )
+  match e0599_root_family_labels_from_blob(blob: blob) {
+    Err { value: e } => exit_failure(reason: e0599_log_shape_parse_error_message(err: e))
+    Ok { value: labels } =>
+      e0599_write_blob(
+        path: out_path,
+        content: labels,
+        label: "e0599_root_family_labels_from_blob"
+      )
+  }
 }
 
 fn e0599_write_canonical_seven_module_log_labels_blob(out_path: String) -> ProcessExit {

@@ -1,6 +1,7 @@
 module test.claim.e0599_probe_census_witness_test
 
 import std.types { list_length }
+import std.error_primitives { Ok, Err }
 import tools.e0599_probe_census {
   MissingMethod,
   BoundsUnsatisfied,
@@ -12,6 +13,7 @@ import tools.e0599_probe_census {
   R5AsDerefUnit,
   e0599_canonical_seven_module_count,
   e0599_canonical_seven_module_log_labels_blob,
+  e0599_failure_shape_from_log_shape,
   e0599_message_pattern_row_count,
   e0599_message_pattern_rows_blob,
   e0599_root_family_for,
@@ -19,7 +21,7 @@ import tools.e0599_probe_census {
   e0599_root_family_labels_from_blob,
 }
 
-data e0599_probe_census_witness_note: String = "Witness for tools.e0599_probe_census authority: pattern row census, canonical-seven roster blob, and root-family rollup used by docs/probes/e0599_census_extract.sh (SCAFFOLD realization). Aggregate path refuses unless inputs match e0599_canonical_seven_modules exactly (missing/duplicate/extra). RED: misclassified GlobalBare or type-parameter clone tuple."
+data e0599_probe_census_witness_note: String = "Witness for tools.e0599_probe_census authority: pattern row census, canonical-seven roster blob, and root-family rollup used by docs/probes/e0599_census_extract.sh (SCAFFOLD realization). Aggregate path refuses unless inputs match e0599_canonical_seven_modules exactly (missing/duplicate/extra). Export boundary refuses unknown failure-shape labels (fail-closed). RED: misclassified GlobalBare or type-parameter clone tuple; drifted shape_str."
 
 test fn e0599_probe_census_pattern_rows_complete() -> Bool {
   e0599_message_pattern_row_count() == 5
@@ -100,15 +102,35 @@ test fn e0599_root_family_red_control_generic_diff_not_r1() -> Bool {
 }
 
 test fn e0599_root_family_label_for_row_log_shape_bridge() -> Bool {
-  e0599_root_family_label_for_row(
+  match e0599_root_family_label_for_row(
     shape_str: "bounds_unsatisfied",
     method: "is_empty",
     receiver: "struct `Rc<im::Vector<T>>`"
-  ) == "R2VectorMethodBounds"
+  ) {
+    Ok { value: label } => label == "R2VectorMethodBounds"
+    Err { value: _ } => false
+  }
+}
+
+test fn e0599_failure_shape_unknown_label_refused() -> Bool {
+  match e0599_failure_shape_from_log_shape(shape_str: "bogus_shape") {
+    Err { value: _ } => true
+    Ok { value: _ } => false
+  }
+}
+
+test fn e0599_root_family_labels_from_blob_unknown_shape_refused() -> Bool {
+  match e0599_root_family_labels_from_blob(blob: "bogus_shape\tclone\ttype parameter `T`") {
+    Err { value: _ } => true
+    Ok { value: _ } => false
+  }
 }
 
 test fn e0599_root_family_labels_from_blob_batch() -> Bool {
-  e0599_root_family_labels_from_blob(
+  match e0599_root_family_labels_from_blob(
     blob: "missing_method\tclone\ttype parameter `T`\nbounds_unsatisfied\tis_empty\tstruct `Rc<im::Vector<T>>`"
-  ) == "R1CloneBoundOnTypeParam\nR2VectorMethodBounds"
+  ) {
+    Ok { value: labels } => labels == "R1CloneBoundOnTypeParam\nR2VectorMethodBounds"
+    Err { value: _ } => false
+  }
 }
