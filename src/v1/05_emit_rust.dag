@@ -803,14 +803,16 @@ fn rust_seed_legacy_container_blanket_rc(rendered: String) -> Bool {
   else { false }
 }
 
-fn rust_seed_effective_reference_layer(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> OwnershipReferenceLayer {
+fn rust_seed_effective_reference_layer(type_name: String, rendered: String, shared_types: Set<String>, use_site: OwnershipWrapUseSite) -> OwnershipReferenceLayer {
   match use_site {
     OwnershipWrapUseSiteAbsent => ReferenceLayerOwned
     _ =>
       match rust_sg_rc_wrap_layer_lookup(type_name: type_name, use_site: use_site) {
         Present { value: layer } => layer
         Absent =>
-          if rust_seed_legacy_container_blanket_rc(rendered: rendered) {
+          if set_contains(shared_types, type_name) && !rust_type_is_rc_wrapped(type_name: rendered) {
+            ReferenceLayerRc
+          } else if rust_seed_legacy_container_blanket_rc(rendered: rendered) {
             ReferenceLayerRc
           } else {
             ReferenceLayerOwned
@@ -819,8 +821,8 @@ fn rust_seed_effective_reference_layer(type_name: String, rendered: String, use_
   }
 }
 
-fn apply_seed_wrap_decision(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> String {
-  match rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, use_site: use_site) {
+fn apply_seed_wrap_decision(type_name: String, rendered: String, shared_types: Set<String>, use_site: OwnershipWrapUseSite) -> String {
+  match rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, shared_types: shared_types, use_site: use_site) {
     ReferenceLayerOwned => rendered
     ReferenceLayerRc =>
       if rust_type_is_rc_wrapped(type_name: rendered) {
@@ -837,20 +839,20 @@ fn apply_seed_wrap_decision(type_name: String, rendered: String, use_site: Owner
   }
 }
 
-fn render_rust_shared_type_if_needed(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> String {
-  apply_seed_wrap_decision(type_name: type_name, rendered: rendered, use_site: use_site)
+fn render_rust_shared_type_if_needed(type_name: String, rendered: String, shared_types: Set<String>, use_site: OwnershipWrapUseSite) -> String {
+  apply_seed_wrap_decision(type_name: type_name, rendered: rendered, shared_types: shared_types, use_site: use_site)
 }
 
-fn rust_seed_catalog_wraps_rc_at_use_site(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> Bool {
-  rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, use_site: use_site) == ReferenceLayerRc
+fn rust_seed_catalog_wraps_rc_at_use_site(type_name: String, rendered: String, shared_types: Set<String>, use_site: OwnershipWrapUseSite) -> Bool {
+  rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, shared_types: shared_types, use_site: use_site) == ReferenceLayerRc
 }
 
-fn rust_seed_catalog_wraps_box_at_use_site(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> Bool {
-  rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, use_site: use_site) == ReferenceLayerBox
+fn rust_seed_catalog_wraps_box_at_use_site(type_name: String, rendered: String, shared_types: Set<String>, use_site: OwnershipWrapUseSite) -> Bool {
+  rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, shared_types: shared_types, use_site: use_site) == ReferenceLayerBox
 }
 
-fn rust_seed_wrap_value_at_use_site(emitted: String, type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> String {
-  match rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, use_site: use_site) {
+fn rust_seed_wrap_value_at_use_site(emitted: String, type_name: String, rendered: String, shared_types: Set<String>, use_site: OwnershipWrapUseSite) -> String {
+  match rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, shared_types: shared_types, use_site: use_site) {
     ReferenceLayerOwned => emitted
     ReferenceLayerRc => rust_seed_align_expr_rc_wrap(emitted: emitted, needs_rc: true)
     ReferenceLayerBox =>
@@ -860,10 +862,10 @@ fn rust_seed_wrap_value_at_use_site(emitted: String, type_name: String, rendered
   }
 }
 
-fn rust_seed_value_needs_rc_wrap(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> Bool {
+fn rust_seed_value_needs_rc_wrap(type_name: String, rendered: String, shared_types: Set<String>, use_site: OwnershipWrapUseSite) -> Bool {
   match use_site {
     OwnershipWrapUseSiteAbsent => false
-    _ => rust_seed_catalog_wraps_rc_at_use_site(type_name: type_name, rendered: rendered, use_site: use_site)
+    _ => rust_seed_catalog_wraps_rc_at_use_site(type_name: type_name, rendered: rendered, shared_types: shared_types, use_site: use_site)
   }
 }
 
