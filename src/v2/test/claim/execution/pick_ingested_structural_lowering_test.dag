@@ -257,7 +257,7 @@ fn pick_ingested_normalized_branch_arms_magnitude_holds(
   }
 }
 
-fn pick_ingested_normalized_swapped_arms_structural_red_holds() -> Bool {
+test fn pick_ingested_normalized_swapped_arms_structural_red_holds() -> Bool {
   pick_ingested_normalized_branch_arms_magnitude_holds(
     source: pick_ingested_source,
     then_mag: 1,
@@ -411,7 +411,7 @@ fn pick_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool 
   }
 }
 
-fn pick_ingested_pick_true_executes_holds() -> Bool {
+test fn pick_ingested_pick_true_executes_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick_ingested_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
@@ -424,7 +424,7 @@ fn pick_ingested_pick_true_executes_holds() -> Bool {
   }
 }
 
-fn pick_ingested_pick_false_executes_holds() -> Bool {
+test fn pick_ingested_pick_false_executes_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick_ingested_false_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
@@ -437,7 +437,7 @@ fn pick_ingested_pick_false_executes_holds() -> Bool {
   }
 }
 
-fn pick_ingested_swapped_arms_red_holds() -> Bool {
+test fn pick_ingested_swapped_arms_red_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick_ingested_swapped_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
@@ -450,7 +450,7 @@ fn pick_ingested_swapped_arms_red_holds() -> Bool {
   }
 }
 
-fn pick_ingested_pipeline_resolves_holds() -> Bool {
+test fn pick_ingested_pipeline_resolves_holds() -> Bool {
   match pick_ingested_resolved_module_from_source(source: pick_ingested_source) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
