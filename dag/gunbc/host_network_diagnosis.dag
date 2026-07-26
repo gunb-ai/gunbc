@@ -2,7 +2,7 @@ module gunbc.host_network_diagnosis
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
-import extdeps.os.cloud_init {
+import extdeps.cloud_init.cloud_init {
   CloudInitDisposition,
   CloudInitEnabled,
   CloudInitDisabledByMarkerFile,
@@ -19,7 +19,7 @@ import extdeps.os.cloud_init {
 import gunbc.host_phase_status { observation_verdict_eq, fleet_subsumption_hosts }
 import gunbc.readback_independence { readback_evidence_verdict, ip_link_carrier_read_probe }
 import product.placement_supply { HostIdentity }
-import extdeps.os.netplan {
+import extdeps.netplan.netplan {
   NetplanConfigFile,
   NetplanConfigWriter,
   WrittenByCloudInit,
@@ -39,7 +39,7 @@ import extdeps.os.netplan {
   interface_has_link,
 }
 
-data host_network_diagnosis_authority_note: String = "The fold that turns three independently-observable facts — is a netplan config present, is the interface configured, does it have carrier — into a located diagnosis naming the LAYER at fault. It exists because those three were collapsed by hand during the srv4 outage of 2026-07-25 and the collapse produced a confident wrong answer: cloud-init was found disabled, that was read as the config never being applied, and a whole causal story was built on it while the machine's netplan was in fact present, correct and applied, and the real fault was a dead physical link. The generator's state is not an input to this fold AT ALL, and that is the point — it cannot be, because it does not bear on whether the config is in effect (extdeps.os.netplan netplan_file_is_applied). What the generator's state DOES determine is who owns the file going forward, which is a separate question this module answers separately."
+data host_network_diagnosis_authority_note: String = "The fold that turns three independently-observable facts — is a netplan config present, is the interface configured, does it have carrier — into a located diagnosis naming the LAYER at fault. It exists because those three were collapsed by hand during the srv4 outage of 2026-07-25 and the collapse produced a confident wrong answer: cloud-init was found disabled, that was read as the config never being applied, and a whole causal story was built on it while the machine's netplan was in fact present, correct and applied, and the real fault was a dead physical link. The generator's state is not an input to this fold AT ALL, and that is the point — it cannot be, because it does not bear on whether the config is in effect (extdeps.netplan.netplan netplan_file_is_applied). What the generator's state DOES determine is who owns the file going forward, which is a separate question this module answers separately."
 
 type HostNetworkDiagnosis
   = NetworkConfigAbsent { detail: NonEmptyStr }

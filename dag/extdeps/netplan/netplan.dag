@@ -1,4 +1,4 @@
-module extdeps.os.netplan
+module extdeps.netplan.netplan
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import extdeps.external_authority { ExternalAuthority }
@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data netplan_authority_note: String = "netplan was entirely unmodeled before this — zero occurrences corpus-wide — and its absence is why the fleet model can RECORD an address without being able to say anything about whether a host holds it. gunbc.fleet_intent_network carries srv1..srv4's addresses as NetworkEndpoint rows, which are topology facts: what the address IS, not that the host has it. netplan is the party that decides the latter, so the ensure side of host networking has nowhere to live until this module exists. This is the applier half of the writer/applier pair whose fusion produced a wrong diagnosis on srv4 (see extdeps.os.cloud_init)."
+data netplan_authority_note: String = "netplan was entirely unmodeled before this — zero occurrences corpus-wide — and its absence is why the fleet model can RECORD an address without being able to say anything about whether a host holds it. gunbc.fleet_intent_network carries srv1..srv4's addresses as NetworkEndpoint rows, which are topology facts: what the address IS, not that the host has it. netplan is the party that decides the latter, so the ensure side of host networking has nowhere to live until this module exists. This is the applier half of the writer/applier pair whose fusion produced a wrong diagnosis on srv4 (see extdeps.cloud_init.cloud_init)."
 
 data netplan_config_dir: NonEmptyStr = "/etc/netplan"
 

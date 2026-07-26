@@ -1,4 +1,4 @@
-module extdeps.os.cloud_init
+module extdeps.cloud_init.cloud_init
 
 import std.types { String, NonEmptyStr, Bool, List }
 import extdeps.external_authority { ExternalAuthority }
@@ -31,7 +31,7 @@ data cloud_init_installer_config_paths: List<NonEmptyStr> = [
   "/etc/cloud/cloud.cfg.d/99-installer.cfg",
 ]
 
-data cloud_init_is_a_writer_not_an_applier_note: String = "THE fact this module exists to make unfusable. cloud-init GENERATES /etc/netplan/50-cloud-init.yaml; it does not APPLY it. Applying is netplan's job (extdeps.os.netplan), performed at every boot by the renderer, and the renderer neither knows nor cares which process wrote the file or whether that process still runs. So disabling cloud-init freezes the file — no future regeneration, and hand edits become authoritative because nothing will overwrite them — and changes NOTHING about whether the network comes up. The tempting inference, 'the generator is disabled, therefore its output is not in effect', is FALSE, and it is false in the direction that produces a confident wrong diagnosis rather than a visible error. It was drawn live on srv4 (2026-07-25) against a host whose netplan was present, correct, and applied, and whose actual fault was a dead physical link. gunbc.host_network_diagnosis carries that inference as an executable RED control so it cannot be drawn again unnoticed."
+data cloud_init_is_a_writer_not_an_applier_note: String = "THE fact this module exists to make unfusable. cloud-init GENERATES /etc/netplan/50-cloud-init.yaml; it does not APPLY it. Applying is netplan's job (extdeps.netplan.netplan), performed at every boot by the renderer, and the renderer neither knows nor cares which process wrote the file or whether that process still runs. So disabling cloud-init freezes the file — no future regeneration, and hand edits become authoritative because nothing will overwrite them — and changes NOTHING about whether the network comes up. The tempting inference, 'the generator is disabled, therefore its output is not in effect', is FALSE, and it is false in the direction that produces a confident wrong diagnosis rather than a visible error. It was drawn live on srv4 (2026-07-25) against a host whose netplan was present, correct, and applied, and whose actual fault was a dead physical link. gunbc.host_network_diagnosis carries that inference as an executable RED control so it cannot be drawn again unnoticed."
 
 fn cloud_init_is_disabled(d: CloudInitDisposition) -> Bool {
   match d {
