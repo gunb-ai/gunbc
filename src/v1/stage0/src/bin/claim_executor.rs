@@ -1295,33 +1295,41 @@ fn read_schedule_witness_entry_paths(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn witness_row_costs_from_summary(summary: &DiscoverySummary) -> Vec<WitnessTimingRow> {
-    match compute_witness_timing_rows(summary) {
-        Ok(rows) => rows,
-        Err(msg) => {
-            eprintln!("[witness-row-cost] {msg}");
-            Vec::new()
-        }
-    }
-}
-
 fn discovery_claim_result(
     function: String,
     ok: bool,
     detail: String,
     summary: &DiscoverySummary,
 ) -> ClaimResult {
-    ClaimResult {
-        function,
-        ok,
-        detail,
-        wall_nanos: 0,
-        resolve_nanos: 0,
-        corpus_resolve_nanos: summary.total_resolve_nanos,
-        corpus_eval_nanos: summary.total_measured_nanos,
-        corpus_witnesses: summary.total,
-        witness_row_costs: witness_row_costs_from_summary(summary),
+    // Per-row identity is load-bearing for the receipt spine: a compute failure must refuse
+    // the discovery claim (typed/located), never silently emit an empty row set (§5 absorbing
+    // fallback — review 43261).
+    match compute_witness_timing_rows(summary) {
+        Ok(witness_row_costs) => ClaimResult {
+            function,
+            ok,
+            detail,
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: summary.total_resolve_nanos,
+            corpus_eval_nanos: summary.total_measured_nanos,
+            corpus_witnesses: summary.total,
+            witness_row_costs,
+        },
+        Err(msg) => {
+            eprintln!("[witness-row-cost] refused: {msg}");
+            ClaimResult {
+                function,
+                ok: false,
+                detail: format!("witness row-cost receipt refused: {msg}"),
+                wall_nanos: 0,
+                resolve_nanos: 0,
+                corpus_resolve_nanos: summary.total_resolve_nanos,
+                corpus_eval_nanos: summary.total_measured_nanos,
+                corpus_witnesses: summary.total,
+                witness_row_costs: Vec::new(),
+            }
+        }
     }
 }
 
@@ -2153,14 +2161,69 @@ struct WitnessRowCostBasisRow {
     run_ref: String,
 }
 
+fn millisecond_value(ctx: &InterpContext, count_ms: u128) -> Result<Value, String> {
+    let count = i64::try_from(count_ms).map_err(|_| {
+        format!("witness-row-cost: millisecond count {count_ms} exceeds i64 (fail-closed)")
+    })?;
+    match run_in_context_with_args(
+        ctx,
+        "millisecond",
+        &[(Some("count".to_string()), Value::Int(count))],
+        false,
+    ) {
+        Ok(v) => Ok(v),
+        Err(e) => Err(format!("millisecond({count}): {e}")),
+    }
+}
+
+/// Single-authority projection: evaluate `gunbc.witness_row_cost.witness_row_cost_exceeds_basis`
+/// rather than re-implementing `observed > basis * 2` in the seed (review 43261).
+fn witness_row_cost_exceeds_basis_via_authority(
+    ctx: &InterpContext,
+    observed_ms: u128,
+    basis_ms: u128,
+) -> Result<bool, String> {
+    let observed = millisecond_value(ctx, observed_ms)?;
+    let basis = millisecond_value(ctx, basis_ms)?;
+    match run_in_context_with_args(
+        ctx,
+        "witness_row_cost_exceeds_basis",
+        &[
+            (Some("observed".to_string()), observed),
+            (Some("basis".to_string()), basis),
+        ],
+        false,
+    ) {
+        Ok(Value::Bool(b)) => Ok(b),
+        Ok(other) => Err(format!(
+            "witness_row_cost_exceeds_basis returned {other}, expected Bool (fail-closed)"
+        )),
+        Err(e) => Err(format!("witness_row_cost_exceeds_basis: {e}")),
+    }
+}
+
 /// Drift comparison on the falsifier cadence only (margin ruling: row grew >2× against its
 /// dated basis = counted drift receipt, never merge-refusing). A row with no dated basis is
-/// BasisAbsent — typed, located, counted; never assume fine.
+/// BasisAbsent — typed, located, counted; never assume fine. Comparator authority is
+/// `dag/gunbc/witness_row_cost.dag` (resolved once; per-row exceeds_basis calls).
 fn write_witness_row_cost_drift_receipt_at(
     base: &std::path::Path,
     batch_records: &[BatchRecord],
     basis_path: &std::path::Path,
+    source_roots: &[String],
 ) -> bool {
+    let entry = "dag/gunbc/witness_row_cost.dag";
+    let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
+        Ok(v) => v,
+        Err(m) => {
+            eprintln!(
+                "claim_executor: failed to resolve {entry} for drift comparator (fail-closed):\n{m}"
+            );
+            return false;
+        }
+    };
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+
     let mut basis: std::collections::HashMap<(String, String), WitnessRowCostBasisRow> =
         std::collections::HashMap::new();
     if let Ok(text) = std::fs::read_to_string(basis_path) {
@@ -2217,7 +2280,21 @@ fn write_witness_row_cost_drift_receipt_at(
                         ));
                     }
                     Some(b) => {
-                        let verdict = if observed > b.eval_ms_basis.saturating_mul(2) {
+                        let exceeds = match witness_row_cost_exceeds_basis_via_authority(
+                            &ctx,
+                            observed,
+                            b.eval_ms_basis,
+                        ) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                eprintln!(
+                                    "claim_executor: drift comparator refused for {}::{}: {e} — walk fails closed here",
+                                    row.entry, row.function
+                                );
+                                return false;
+                            }
+                        };
+                        let verdict = if exceeds {
                             drift_count += 1;
                             "DriftExceeded"
                         } else {
@@ -2756,6 +2833,7 @@ fn run_walk(
             std::path::Path::new("target"),
             &batch_records,
             witness_row_cost_basis_path,
+            source_roots,
         )
     } else {
         true

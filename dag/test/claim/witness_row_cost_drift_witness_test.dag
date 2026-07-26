@@ -4,55 +4,67 @@ import gunbc.witness_row_cost {
   BasisAbsent,
   DriftExceeded,
   WithinBasis,
+  WitnessRowCostDatedBasis,
   witness_row_cost_exceeds_basis,
   witness_row_cost_verdict,
-  witness_row_cost_verdict_is_drift,
-  witness_row_cost_verdict_is_basis_absent,
 }
 import std.logic { Bool }
+import std.nat { Nat }
+import std.measure { millisecond, millisecond_count }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
 
-data witness_row_cost_drift_note: String = "Executing consumer for the per-witness cost drift comparator (gunbc.witness_row_cost, placement #5 spine). THE PAIR IS THE PROOF: a synthetic row exceeding 2× its dated basis MUST produce DriftExceeded, and one within basis MUST NOT — either alone is satisfiable by a broken comparator. BasisAbsent is a third arm: no dated basis is typed and counted, never assume fine. Structural claims only here — every ms basis value in production rows must cite an arm64 fleet run id (witness_row_cost_basis_host_class_note)."
+data witness_row_cost_drift_note: String = "Executing consumer for the per-witness cost drift comparator (gunbc.witness_row_cost, placement #5 spine). THE PAIR IS THE PROOF: a synthetic row exceeding 2× its dated basis MUST produce DriftExceeded, and one within basis MUST NOT — either alone is satisfiable by a broken comparator. BasisAbsent is a third arm: no dated basis is typed and counted, never assume fine. Structural claims only here — every ms basis value in production rows must cite an arm64 fleet run id (witness_row_cost_basis_host_class_note). Consumers match WitnessRowCostVerdict directly (no Bool predicate dissolution)."
+
+fn dated_basis(eval_ms: Nat, run_ref: String) -> WitnessRowCostDatedBasis {
+  WitnessRowCostDatedBasis {
+    eval: millisecond(count: eval_ms),
+    run_ref: run_ref,
+  }
+}
 
 fn drift_red_control_exceeds_basis_holds() -> Bool {
   let v = witness_row_cost_verdict(
-    observed_eval_ms: 21,
-    basis_present: true,
-    basis_eval_ms: 10,
+    observed: millisecond(count: 21),
+    basis: Present { value: dated_basis(eval_ms: 10, run_ref: "synthetic-red") },
   )
-  witness_row_cost_verdict_is_drift(v: v)
-    && match v {
-      DriftExceeded { observed_eval_ms: o, basis_eval_ms: b } => o == 21 && b == 10
-      WithinBasis => false
-      BasisAbsent => false
-    }
+  match v {
+    DriftExceeded { observed: o, basis: b } =>
+      millisecond_count(m: o) == 21 && millisecond_count(m: b) == 10
+    WithinBasis => false
+    BasisAbsent => false
+  }
 }
 
 fn within_basis_control_does_not_drift_holds() -> Bool {
   let v = witness_row_cost_verdict(
-    observed_eval_ms: 20,
-    basis_present: true,
-    basis_eval_ms: 10,
+    observed: millisecond(count: 20),
+    basis: Present { value: dated_basis(eval_ms: 10, run_ref: "synthetic-within") },
   )
-  !witness_row_cost_verdict_is_drift(v: v)
-    && match v {
-      WithinBasis => true
-      DriftExceeded { observed_eval_ms: _, basis_eval_ms: _ } => false
-      BasisAbsent => false
-    }
+  match v {
+    WithinBasis => true
+    DriftExceeded { observed: _, basis: _ } => false
+    BasisAbsent => false
+  }
 }
 
 fn basis_absent_control_holds() -> Bool {
   let v = witness_row_cost_verdict(
-    observed_eval_ms: 999,
-    basis_present: false,
-    basis_eval_ms: 0,
+    observed: millisecond(count: 999),
+    basis: Absent,
   )
-  witness_row_cost_verdict_is_basis_absent(v: v)
-    && !witness_row_cost_verdict_is_drift(v: v)
+  match v {
+    BasisAbsent => true
+    WithinBasis => false
+    DriftExceeded { observed: _, basis: _ } => false
+  }
 }
 
 fn boundary_at_exactly_twice_is_not_drift_holds() -> Bool {
-  !witness_row_cost_exceeds_basis(observed_eval_ms: 20, basis_eval_ms: 10)
+  !witness_row_cost_exceeds_basis(
+    observed: millisecond(count: 20),
+    basis: millisecond(count: 10),
+  )
 }
 
 test fn witness_row_cost_drift_comparator_holds() -> Bool {

@@ -2,9 +2,11 @@ module gunbc.witness_row_cost
 
 import std.logic { Bool }
 import std.nat { Nat }
+import std.measure { Millisecond, millisecond, millisecond_count }
+import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 
-data witness_row_cost_spine_note: String = "Per-witness cost receipts (placement workstream #5 spine). Discovery preserves (entry, function, eval_ms, resolve_ms) into target/floor-witness-row-cost-receipt.tsv — one row per witness, never an averaged discovery batch row. THE W2 CROSS-LANE RULING: this TSV is the complete machine-readable per-entry/witness record; rendered observation streams may project a subset (AttentionLevel/ ObservationDensity) but must not delete rows — demotion is projection policy, not deletion. Basis values MUST cite an arm64 srv-fleet run id (never local x86 measurements — a basis established on the wrong host class makes the 2× comparator read as content drift forever). A row with no dated basis is BasisAbsent: typed, located, counted; never assume fine, never rerun to find out. Drift is counted and reported on the falsifier cadence, NOT merge-refusing (margin ruling 2026-07-25). Executing consumer: dag/test/claim/witness_row_cost_drift_witness_test.dag."
+data witness_row_cost_spine_note: String = "Per-witness cost receipts (placement workstream #5 spine). Discovery preserves (entry, function, eval_ms, resolve_ms) into target/floor-witness-row-cost-receipt.tsv — one row per witness, never an averaged discovery batch row. THE W2 CROSS-LANE RULING: this TSV is the complete machine-readable per-entry/witness record; rendered streams may project a subset (AttentionLevel/ ObservationDensity) but must not delete rows — demotion is projection policy, not deletion. Basis values MUST cite an arm64 srv-fleet run id (never local x86 measurements — a basis established on the wrong host class makes the 2× comparator read as content drift forever). A row with no dated basis is BasisAbsent: typed, located, counted; never assume fine, never rerun to find out. Drift is counted and reported on the falsifier cadence, NOT merge-refusing (margin ruling 2026-07-25). Durations are Millisecond (std.measure), never bare Nat. The seed drift writer calls witness_row_cost_exceeds_basis through this module — it does not re-implement the 2× inequality. Executing consumer: dag/test/claim/witness_row_cost_drift_witness_test.dag."
 
 data witness_row_cost_basis_host_class_note: String = "Every signed basis row names host_class=srv_fleet_arm64 (the same idiom as gunbc_ci_floor_batch_clamp_note's 1000ms coefficient basis). When the fleet or governor width moves, basis rows re-sign from a new cited run — never a local measurement."
 
@@ -12,51 +14,36 @@ data placement_workstream_task_20_open_unknown_note: String = "TASK #20 — REOP
 
 data expectation_frontier_burn_down_lane_note: String = "TRACKED LANE (not this PR's scope): the expectation frontier is measurable but unshrunk — 340 service-op call sites, 16 annotated, 67 undeclared dispatches on generated_artifact_drift_test alone (expectation_declaration_frontier_note). The three A2 annotations in this PR (VerifyBuildArtifacts, chmod, shell.Exec.Run read-back) are the first deliberate shrink sites; the burn-down continues as its own lane with the [expectation-frontier] receipt as the progress oracle."
 
+type WitnessRowCostDatedBasis {
+  eval: Millisecond
+  run_ref: String
+}
+
 type WitnessRowCostVerdict
   = WithinBasis
-  | DriftExceeded { observed_eval_ms: Nat, basis_eval_ms: Nat }
+  | DriftExceeded { observed: Millisecond, basis: Millisecond }
   | BasisAbsent
 
 fn witness_row_cost_drift_ratio_numerator() -> Nat {
   2
 }
 
-fn witness_row_cost_exceeds_basis(observed_eval_ms: Nat, basis_eval_ms: Nat) -> Bool {
-  observed_eval_ms > basis_eval_ms * witness_row_cost_drift_ratio_numerator()
+fn witness_row_cost_exceeds_basis(observed: Millisecond, basis: Millisecond) -> Bool {
+  millisecond_count(m: observed)
+    > millisecond_count(m: basis) * witness_row_cost_drift_ratio_numerator()
 }
 
 fn witness_row_cost_verdict(
-  observed_eval_ms: Nat,
-  basis_present: Bool,
-  basis_eval_ms: Nat,
+  observed: Millisecond,
+  basis: Optional<WitnessRowCostDatedBasis>,
 ) -> WitnessRowCostVerdict {
-  if !basis_present {
-    BasisAbsent
-  } else if witness_row_cost_exceeds_basis(
-    observed_eval_ms: observed_eval_ms,
-    basis_eval_ms: basis_eval_ms,
-  ) {
-    DriftExceeded {
-      observed_eval_ms: observed_eval_ms,
-      basis_eval_ms: basis_eval_ms,
-    }
-  } else {
-    WithinBasis
-  }
-}
-
-fn witness_row_cost_verdict_is_drift(v: WitnessRowCostVerdict) -> Bool {
-  match v {
-    DriftExceeded { observed_eval_ms: _, basis_eval_ms: _ } => true
-    WithinBasis => false
-    BasisAbsent => false
-  }
-}
-
-fn witness_row_cost_verdict_is_basis_absent(v: WitnessRowCostVerdict) -> Bool {
-  match v {
-    BasisAbsent => true
-    WithinBasis => false
-    DriftExceeded { observed_eval_ms: _, basis_eval_ms: _ } => false
+  match basis {
+    Absent => BasisAbsent
+    Present { value: b } =>
+      if witness_row_cost_exceeds_basis(observed: observed, basis: b.eval) {
+        DriftExceeded { observed: observed, basis: b.eval }
+      } else {
+        WithinBasis
+      }
   }
 }
