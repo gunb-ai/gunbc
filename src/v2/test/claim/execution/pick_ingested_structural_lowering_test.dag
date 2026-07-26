@@ -135,6 +135,21 @@ fn pick_ingested_normalized_module_from_source(source: String) -> Outcome<Node> 
   )
 }
 
+fn pick_ingested_parsed_module_from_source(source: String) -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(text: source, file: ^pick_ingested_source_file, rules: lm.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: parse_module(tokens: tokens, grammar: lm.grammar),
+        f: fn(artifact) {
+          outcome_accepted(value: artifact.tree)
+        }
+      )
+    }
+  )
+}
+
 fn pick_ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
   match root.kind {
     TypeNode { connective: Arrow } => Present { value: root }
@@ -145,6 +160,25 @@ fn pick_ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
           Absent => pick_ingested_find_arrow_in_module(root: e.target)
         }
       })
+  }
+}
+
+fn pick_ingested_normalized_arrow_has_branch_body(source: String) -> Bool {
+  match pick_ingested_normalized_module_from_source(source: source) {
+    Accepted { value: normalized, diagnostics: _ } =>
+      match pick_ingested_find_arrow_in_module(root: normalized) {
+        Present { value: arrow } =>
+          match find_arrow_body_child(root: arrow) {
+            Accepted { value: body, diagnostics: _ } =>
+              match body.kind {
+                ComputationNode { behavior: Branch } => true
+                _ => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -410,6 +444,17 @@ test fn pick_ingested_swapped_arms_red_holds() -> Bool {
 
 test fn pick_ingested_pipeline_resolves_holds() -> Bool {
   match pick_ingested_resolved_module_from_source(source: pick_ingested_source) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn pick_ingested_normalized_arrow_has_branch_body_holds() -> Bool {
+  pick_ingested_normalized_arrow_has_branch_body(source: pick_ingested_source)
+}
+
+test fn pick_ingested_parsed_module_from_source_holds() -> Bool {
+  match pick_ingested_parsed_module_from_source(source: pick_ingested_source) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
