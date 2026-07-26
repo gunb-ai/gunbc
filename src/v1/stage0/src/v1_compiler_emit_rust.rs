@@ -1743,6 +1743,101 @@ pub fn rust_seed_value_needs_rc_wrap(
     }
 }
 
+pub fn rust_seed_inferred_type_rendered(
+    value: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    match value.inferred.clone() {
+        Some(InferredNode::Resolved { node: rt }) => render_rust_type(
+            rt,
+            shared_types,
+            emit_info.corpus_repr.clone(),
+            scope.type_env.source_indices.clone(),
+            emit_info.clone(),
+        ),
+        _ => "".to_string(),
+    }
+}
+
+pub fn rust_seed_inferred_type_needs_rc_wrap(
+    value: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    match value.inferred.clone() {
+        Some(InferredNode::Resolved { node: rt }) => rust_type_is_rc_wrapped(
+            render_rust_type_with_applied_binding(
+                rt,
+                shared_types,
+                emit_info.corpus_repr.clone(),
+                scope.type_env.source_indices.clone(),
+                OwnershipWrapUseSite::OwnershipAtFunctionReturn,
+            ),
+        ),
+        _ => {
+            let rendered =
+                rust_seed_inferred_type_rendered(value, shared_types, scope, emit_info);
+            if rendered.is_empty() {
+                false
+            } else {
+                rust_type_is_rc_wrapped(rendered)
+            }
+        }
+    }
+}
+
+pub fn rust_seed_demote_outer_rc_wrap(emitted: String) -> String {
+    if emitted == "Rc::new(vec![])" {
+        "vec![]".to_string()
+    } else if emitted.len() > 9
+        && emitted.starts_with("Rc::new(")
+        && emitted.ends_with(')')
+    {
+        emitted[8..emitted.len() - 1].to_string()
+    } else {
+        emitted
+    }
+}
+
+pub fn rust_seed_align_expr_rc_wrap(emitted: String, needs_rc: bool) -> String {
+    if needs_rc {
+        if emitted.len() > 9 && emitted.starts_with("Rc::new(") {
+            emitted
+        } else if rust_type_is_rc_wrapped(emitted.clone()) {
+            emitted
+        } else {
+            v1_rt::concat(
+                v1_rt::concat("Rc::new(".to_string(), emitted),
+                ")".to_string(),
+            )
+        }
+    } else {
+        rust_seed_demote_outer_rc_wrap(emitted)
+    }
+}
+
+pub fn rust_seed_align_list_literal_wrap(emitted: String, needs_rc: bool) -> String {
+    rust_seed_align_expr_rc_wrap(emitted, needs_rc)
+}
+
+pub fn rust_seed_wrap_typed_expr_result(
+    texpr: Rc<Node>,
+    emitted: String,
+    shared_types: Rc<BTreeSet<String>>,
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    let needs_rc =
+        rust_seed_inferred_type_needs_rc_wrap(texpr.clone(), shared_types, scope, emit_info);
+    match texpr.expr_data.as_ref() {
+        ExprData::ExprListLit => rust_seed_align_list_literal_wrap(emitted, needs_rc),
+        _ => rust_seed_align_expr_rc_wrap(emitted, needs_rc),
+    }
+}
+
 pub fn render_rust_shared_type_with_optional(
     n: Rc<Node>,
     type_name: String,
@@ -18129,44 +18224,7 @@ pub fn emit_rust_expr_record_lit(
                 shared_types.clone(),
                 emit_info.clone(),
             );
-            let rc_name = match parent_enum.clone() {
-                Some(en) => en.clone(),
-                None => match contextual_variant_parent(
-                    variant_name.clone(),
-                    parent_enum.clone(),
-                    expanded_rt.clone(),
-                    emit_info.clone(),
-                    si.clone(),
-                ) {
-                    Some(p) => p.clone(),
-                    None => {
-                        let expanded_name = authored_name_at(si.clone(), expanded_rt.clone());
-                        if ((((expanded_rt.ident_span.clone() != None)
-                            && (expanded_name.clone() != "".to_string()))
-                            && (expanded_name.clone() != variant_name.clone()))
-                            && v1_rt::set_contains(&shared_types, expanded_name.clone()))
-                        {
-                            expanded_name.clone()
-                        } else {
-                            variant_name.clone()
-                        }
-                    }
-                },
-            };
-            if ((rc_name.clone() != "".to_string())
-                && rust_seed_value_needs_rc_wrap(
-                    rc_name.clone(),
-                    shared_types.clone(),
-                    OwnershipWrapUseSite::OwnershipAtStructField,
-                ))
-            {
-                v1_rt::concat(
-                    v1_rt::concat("Rc::new(".to_string(), raw.clone()),
-                    ")".to_string(),
-                )
-            } else {
-                raw.clone()
-            }
+            raw
         }
         _ => emit_error_expr(
             "emit_rust_expr_record_lit expected ExprRecordLit".to_string(),
@@ -18414,7 +18472,15 @@ pub fn emit_typed_expr(
             texpr.clone(),
             RenderTarget::Rust,
             scope.type_env.clone().source_indices.clone(),
-            |result| result.clone(),
+            |result| {
+                rust_seed_wrap_typed_expr_result(
+                    texpr.clone(),
+                    result,
+                    shared_types.clone(),
+                    scope.clone(),
+                    emit_info.clone(),
+                )
+            },
             |child| {
                 emit_typed_expr(
                     child.clone(),
@@ -28556,10 +28622,11 @@ pub fn emit_data_def(
             ty_str.clone(),
             OwnershipWrapUseSite::OwnershipAtFunctionReturn,
         );
-        let needs_rc = rust_seed_catalog_wraps_rc_at_use_site(
-            carrier_name.clone(),
-            OwnershipWrapUseSite::OwnershipAtFunctionReturn,
-        );
+        let needs_rc = rust_type_is_rc_wrapped(ty_str.clone())
+            || rust_seed_catalog_wraps_rc_at_use_site(
+                carrier_name.clone(),
+                OwnershipWrapUseSite::OwnershipAtFunctionReturn,
+            );
         if (is_simple_type_node(
             type_node.clone(),
             scope.type_env.clone().source_indices.clone(),
@@ -28944,61 +29011,14 @@ pub fn emit_data_def_body(
                                 emit_info.clone(),
                                 1024,
                             );
-                            let is_already_wrapped = match (*value.expr_data.clone()).clone() {
-                                ExprData::ExprRecordLit { parent_enum: _, .. } => true,
-                                ExprData::ExprListLit => true,
-                                ExprData::ExprVar {
-                                    binding_kind: bk, ..
-                                } => {
-                                    let vname = expr_var_name_at(
-                                        value.clone(),
-                                        scope.type_env.clone().source_indices.clone(),
-                                    );
-                                    match effective_variant_parent(
-                                        vname.clone(),
-                                        bk.clone(),
-                                        value.inferred.clone(),
-                                        emit_info.clone(),
-                                        scope.type_env.clone().source_indices.clone(),
-                                    ) {
-                                        Some(enum_name) => variant_ref_self_wraps(
-                                            vname.clone(),
-                                            enum_name.clone(),
-                                            shared_types.clone(),
-                                            emit_info.corpus_repr.clone(),
-                                        ),
-                                        None => value_inferred_type_is_rc_wrapped(
-                                            value.clone(),
-                                            shared_types.clone(),
-                                            scope.clone(),
-                                            emit_info.clone(),
-                                        ),
-                                    }
-                                }
-                                _ => value_inferred_type_is_rc_wrapped(
-                                    value.clone(),
-                                    shared_types.clone(),
-                                    scope.clone(),
-                                    emit_info.clone(),
-                                ),
-                            };
-                            let wrap_start = if (needs_rc.clone() && !is_already_wrapped.clone()) {
-                                "Rc::new(".to_string()
-                            } else {
-                                "".to_string()
-                            };
-                            let wrap_end = if (needs_rc.clone() && !is_already_wrapped.clone()) {
-                                ")".to_string()
-                            } else {
-                                "".to_string()
-                            };
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat("            ".to_string(), wrap_start.clone()),
+                            let val_str = match (*value.expr_data.clone()).clone() {
+                                ExprData::ExprListLit => rust_seed_align_list_literal_wrap(
                                     val_str.clone(),
+                                    needs_rc.clone(),
                                 ),
-                                wrap_end.clone(),
-                            )
+                                _ => rust_seed_align_expr_rc_wrap(val_str.clone(), needs_rc.clone()),
+                            };
+                            v1_rt::concat("            ".to_string(), val_str.clone())
                         }
                     }
                 }
