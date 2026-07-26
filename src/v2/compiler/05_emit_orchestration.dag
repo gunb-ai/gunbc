@@ -35,7 +35,8 @@ import v2.extdeps.languages.bash {
   bash_stmt_with_redir_target_model,
   bash_redir_stdout_and_stderr_null_source_text,
   bash_redir_stderr_null_source_text,
-  bash_redir_stdout_to_stderr_source_text
+  bash_redir_stdout_to_stderr_source_text,
+  bash_redir_to_file_source_text
 }
 import v2.extdeps.languages.bash_orch_tier2 {
   bash_orch_call_emitted
@@ -82,7 +83,9 @@ import v2.std.orchestration {
   DiscardAll,
   DiscardErr,
   StdoutAndStderr,
+  ToFile,
   IgnoreFail,
+  Comment,
   EnvBinding
 }
 import std.algebra { FreeMonoid }
@@ -179,6 +182,7 @@ fn orch_emit_redir_suffix(r: RedirectSpec) -> String {
     DiscardAll => bash_redir_stdout_and_stderr_null_source_text
     DiscardErr => bash_redir_stderr_null_source_text
     StdoutAndStderr => bash_redir_stdout_to_stderr_source_text
+    ToFile { path: p } => bash_redir_to_file_source_text(path: p)
   }
 }
 
@@ -606,6 +610,12 @@ fn orch_emit_bounded_poll_step(
 fn orch_emit_step(s: PipelineStep, medium: OrchestrationEmitMedium) -> Outcome<extdeps.communication.medium.Medium<String>> {
   match s {
     Do { run: r } => orch_emit_run(r: r, medium: medium)
+    Comment { text: t } =>
+      orch_emit_from_registry(
+        medium: medium,
+        construct_tag: orch_construct_run_rawline,
+        target: medium.realize_run_rawline(concat("# ", t))
+      )
     If { cond: c, then_: t, else_: e } =>
       orch_emit_if_step(cond: c, then_: t, else_: e, medium: medium)
     For { binder: _, over: _, body: _ } =>
@@ -626,6 +636,7 @@ fn orch_emit_step(s: PipelineStep, medium: OrchestrationEmitMedium) -> Outcome<e
 fn orch_retry_step_command(s: PipelineStep) -> Optional<String> {
   match s {
     Do { run: r } => Present { value: r.command }
+    Comment { text: _ } => Absent
     If { cond: _, then_: _, else_: _ } => Absent
     For { binder: _, over: _, body: _ } => Absent
     While { cond: _, body: _ } => Absent

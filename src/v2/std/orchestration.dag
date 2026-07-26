@@ -20,11 +20,14 @@ type RedirectSpec
   = StdoutAndStderr
   | DiscardAll
   | DiscardErr
+  | ToFile { path: String }
 
 type CaptureSpec
   = TeeTo { log: String }
   | CmdSubst
   | IgnoreFail
+
+data redirect_spec_to_file_note: String = "ToFile \{ path \} is the stdout-to-path carrier (\"> path\"). Added with live consumer ci_merge_admission_floor_disposition_stamp (bucket D PR2) — dissolves the echo++concat redirect. bash_redir_to_file_* rows already existed on the fold side; this variant is the intent-side authority orch_emit_redir_suffix matches."
 
 type Run {
   command: String
@@ -70,6 +73,7 @@ type Procedure {
 
 type PipelineStep
   = Do { run: Run }
+  | Comment { text: String }
   | If { cond: Predicate, then_: Pipeline, else_: Optional<Pipeline> }
   | For { binder: Symbol, over: ValueSource, body: Pipeline }
   | While { cond: Predicate, body: Pipeline }
@@ -85,6 +89,8 @@ type PipelineStep
     }
   | Let { name: String, value: Expr }
   | Call { callee: String, args: List<String> }
+
+data pipeline_step_comment_note: String = "Comment \{ text \} is a non-command PipelineStep (comment body WITHOUT the leading \"# \"). Emission reuses the existing orch_construct_run_rawline / realize_run_rawline path (bash_fold_raw_line_target_model) — no new grammar row. Dissolves orch_bash_comment_line's prior fake Do\{Run\{command:\"# …\"\}\} (bucket D PR2)."
 
 type Pipeline {
   steps: FreeMonoid<PipelineStep>

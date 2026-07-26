@@ -1,6 +1,27 @@
 module v2.workflow.ci_merge_admission_emit_test
 
-import v2.workflow.ci_merge_admission_emit { ci_floor_disposition_marker_init_script }
+import v2.workflow.ci_merge_admission_emit {
+  ci_floor_disposition_marker_init_script,
+  ci_floor_disposition_marker_stamp_step,
+  ci_floor_disposition_stamp_echo_command
+}
+import v2.workflow.orchestration_bash_emit_support {
+  orch_bash_comment_line,
+  orch_bash_emit_pipeline
+}
+import v2.compiler.emit_orchestration { orch_emit_step }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.std.orchestration {
+  Comment,
+  Do,
+  FailFast,
+  Pipeline,
+  PipelineStep,
+  Run,
+  ToFile
+}
+import v2.std.collection { Absent, Present }
+import v2.std.diagnostic { Accepted, Rejected }
 
 data ci_merge_admission_emit_golden_note: String = "Hand-authored golden independent of grammar row spellings; byte test compares emit output against this literal (#6467 pattern)."
 
@@ -17,4 +38,72 @@ data ci_floor_disposition_marker_init_golden: String = concat(
 
 test fn ci_floor_disposition_marker_init_emit_matches_golden_holds() -> Bool {
   ci_floor_disposition_marker_init_script() == ci_floor_disposition_marker_init_golden
+}
+
+data orch_to_file_redirect_golden: String = "echo floor_running > target/ci-floor-disposition.txt"
+
+fn orch_to_file_redirect_emit() -> String {
+  match orch_emit_step(s: ci_floor_disposition_marker_stamp_step(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => "__TO_FILE_EMIT_REJECTED__"
+  }
+}
+
+test fn orch_to_file_redirect_emit_matches_golden_holds() -> Bool {
+  orch_to_file_redirect_emit() == orch_to_file_redirect_golden
+}
+
+test fn orch_to_file_redirect_emit_red_when_path_wrong_holds() -> Bool {
+  let wrong = Do {
+    run: Run {
+      command: ci_floor_disposition_stamp_echo_command,
+      env: [],
+      redirect: Present { value: ToFile { path: "target/WRONG-path.txt" } },
+      capture: Absent
+    }
+  }
+  match orch_emit_step(s: wrong, medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: _ } =>
+      !(source.carried == orch_to_file_redirect_golden)
+      && string_contains(s: source.carried, pattern: "WRONG-path")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data orch_comment_step_golden: String = "# carrier-comment-body"
+
+fn orch_comment_step_emit() -> String {
+  match orch_emit_step(s: Comment { text: "carrier-comment-body" }, medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => "__COMMENT_EMIT_REJECTED__"
+  }
+}
+
+test fn orch_comment_step_emit_matches_golden_holds() -> Bool {
+  orch_comment_step_emit() == orch_comment_step_golden
+}
+
+test fn orch_comment_step_emit_red_when_hash_dropped_holds() -> Bool {
+  let fake_command = Do {
+    run: Run {
+      command: "carrier-comment-body",
+      env: [],
+      redirect: Absent,
+      capture: Absent
+    }
+  }
+  match orch_emit_step(s: fake_command, medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried == "carrier-comment-body"
+      && !(source.carried == orch_comment_step_golden)
+      && orch_comment_step_emit() == orch_comment_step_golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_bash_comment_line_is_comment_step_holds() -> Bool {
+  match orch_bash_comment_line(text: "x") {
+    Comment { text: t } => t == "x"
+    _ => false
+  }
 }
