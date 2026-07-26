@@ -16,7 +16,6 @@
 use im::{OrdSet as BTreeSet, Vector as Vec};
 
 pub mod cli_run;
-pub mod test_module_hygiene;
 pub mod coproduct_reflection;
 pub mod extdeps_cargo;
 pub mod extdeps_cargo_version;
@@ -75,6 +74,7 @@ pub mod std_syntax;
 pub mod std_termination;
 pub mod std_trait_derive_shape;
 pub mod std_types;
+pub mod test_module_hygiene;
 pub mod usv_pilot_v2_std_algebra;
 pub mod usv_pilot_v2_std_collection;
 pub mod usv_pilot_v2_std_node;
