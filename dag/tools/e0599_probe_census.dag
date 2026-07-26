@@ -119,7 +119,14 @@ fn e0599_root_family_for(shape: E0599FailureShape, method: String, receiver: Str
         R6Other
       }
     }
-    NoVariant | NoAssocFn => {
+    NoVariant => {
+      if string_contains(s: receiver, pattern: "GlobalBare") || string_contains(s: method, pattern: "GlobalBare") {
+        R4OptionalCoproductGrounding
+      } else {
+        R6Other
+      }
+    }
+    NoAssocFn => {
       if string_contains(s: receiver, pattern: "GlobalBare") || string_contains(s: method, pattern: "GlobalBare") {
         R4OptionalCoproductGrounding
       } else {
