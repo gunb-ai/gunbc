@@ -24,23 +24,16 @@ import v2.extdeps.frameworks.react {
   Text,
   UseActionState,
   UseCallback,
-  UseContext,
   UseDebugValue,
   UseDeferredValue,
   UseEffect,
-  UseEffectEvent,
   UseId,
-  UseImperativeHandle,
   UseInsertionEffect,
   UseLayoutEffect,
   UseMemo,
   UseOptimistic,
-  UseReducer,
-  UseRef,
-  UseState,
   UseSyncExternalStore,
   UseTransition,
-  ValueAbsent
 }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { length }
@@ -60,34 +53,6 @@ fn react_probe_props_site() -> ReactPropsSite {
   ReactPropsSite {
     props_type_ref: react_probe_cross_decl_ref,
     props_value_ref: react_probe_cross_decl_ref
-  }
-}
-
-fn react_probe_hook_use_state() -> ReactHookSite {
-  UseState { initial_ref: react_probe_cross_decl_ref }
-}
-
-fn react_probe_hook_use_reducer() -> ReactHookSite {
-  UseReducer {
-    reducer_ref: react_probe_cross_decl_ref,
-    initial_arg_ref: react_probe_cross_decl_ref,
-    init: ValueAbsent
-  }
-}
-
-fn react_probe_hook_use_context() -> ReactHookSite {
-  UseContext { context_ref: react_probe_cross_decl_ref }
-}
-
-fn react_probe_hook_use_ref() -> ReactHookSite {
-  UseRef { initial_ref: react_probe_cross_decl_ref }
-}
-
-fn react_probe_hook_use_imperative_handle() -> ReactHookSite {
-  UseImperativeHandle {
-    ref_target: react_probe_cross_decl_ref,
-    factory_ref: react_probe_cross_decl_ref,
-    dependencies: DependenciesArgOmitted
   }
 }
 
@@ -113,10 +78,6 @@ fn react_probe_hook_use_insertion_effect() -> ReactHookSite {
     dependencies: DependenciesArgOmitted,
     cleanup: NoCleanup
   }
-}
-
-fn react_probe_hook_use_effect_event() -> ReactHookSite {
-  UseEffectEvent { callback_ref: react_probe_cross_decl_ref }
 }
 
 fn react_probe_hook_use_memo() -> ReactHookSite {

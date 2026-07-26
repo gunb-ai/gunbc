@@ -24471,7 +24471,12 @@ pub(crate) fn non_fold_residue_units_from_module_source(
                                 ),
                             }
                         }
-                        path = row_path;
+                        path = Some(row_path.unwrap_or_else(|| {
+                            panic!(
+                                "nfr frontier reader: `subject` in a `{data_name}` row of \
+                                 {module_rel_path} is `PathSubject` but carries no `path` field"
+                            )
+                        }));
                     }
                     _ => panic!(
                         "nfr frontier reader: `subject` in a `{data_name}` row of \
@@ -25056,6 +25061,28 @@ mod nfr_tests {
         assert!(
             refused,
             "a row without a `subject` field must refuse loudly (fail-closed)"
+        );
+    }
+
+    #[test]
+    fn nfr_frontier_reader_locates_path_subject_without_path() {
+        let synthetic = "module gunbc.non_fold_residue\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { subject: PathSubject { }, reason: \"r\", trigger: TriggerProse { text: \"d\" } }\n\
+             ]\n";
+        let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
+        }))
+        .expect_err("a PathSubject carrying no `path` field must refuse loudly (fail-closed)");
+        let message = refusal
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| refusal.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default();
+        assert!(
+            message.contains("`PathSubject` but carries no `path` field"),
+            "the refusal must LOCATE the missing `path` inside the present PathSubject, not \
+             report the row as having no `subject` field; got: {message}"
         );
     }
 }
