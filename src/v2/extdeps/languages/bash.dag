@@ -2531,6 +2531,46 @@ fn bash_redir_stderr_null_target_model() -> TargetModel {
   )
 }
 
+fn bash_redir_stdout_null_phrase() -> LexicalPhrase {
+  phrase([
+    span(text: ">/dev/null", class: ^bash_token_redir_stdout_null_freestanding)
+  ])
+}
+
+fn bash_redir_stdout_null_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  phrase_to_fixed_concrete_tokens(p: bash_redir_stdout_null_phrase())
+}
+
+data bash_redir_stdout_null_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_redir_stdout_null_concrete_tokens()
+)
+
+data bash_redir_stdout_null_source_text: String = phrase_to_source_text(p: bash_redir_stdout_null_phrase())
+
+fn bash_redir_stdout_null_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_redir_stdout_null,
+    lhs: ^bash_production_redir_stdout_null,
+    tokens: bash_redir_stdout_null_concrete_tokens(),
+    emitted: bash_redir_stdout_null_emitted
+  )
+}
+
+fn bash_redir_stdout_null_lex() -> LexRules {
+  phrase_to_lex_rules(p: bash_redir_stdout_null_phrase())
+}
+
+fn bash_redir_stdout_null_target_model() -> TargetModel {
+  bash_make_fixed_tokens_target_model(
+    rules: bash_redir_stdout_null_translation_rules_node(),
+    source_literal: ^bash_redir_stdout_null_source_literal,
+    production_name: ^bash_production_redir_stdout_null,
+    tokens: bash_redir_stdout_null_concrete_tokens(),
+    source_text: bash_redir_stdout_null_source_text,
+    lex: bash_redir_stdout_null_lex()
+  )
+}
+
 fn bash_redir_stdout_and_stderr_null_phrase() -> LexicalPhrase {
   phrase([
     span(text: ">/dev/null 2>&1", class: ^bash_token_redir_stdout_and_stderr_null)

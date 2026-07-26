@@ -20,6 +20,7 @@ type RedirectSpec
   = StdoutAndStderr
   | DiscardAll
   | DiscardErr
+  | DiscardOut
 
 type CaptureSpec
   = TeeTo { log: String }
