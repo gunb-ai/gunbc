@@ -31,15 +31,16 @@ use crate::v1_interpreter;
 use crate::v1_rt;
 use crate::v1_rt::SilentPickTelemetry;
 use crate::v1_std_core::{
-    arg_name_at, arg_value, arm_pattern, authored_name_at, block_stmts, build_newline_index,
-    byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
-    empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at, field_access_base,
-    field_access_field_at, field_init_node_name_at, field_init_node_value, has_child_named,
-    inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic, is_error_diagnostic,
-    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, match_arm_nodes,
-    match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span, param_node_name_at,
-    param_node_type_expr, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
-    ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex, Node,
+    arg_name_at, arg_value, arm_body, arm_pattern, authored_name_at, block_stmts,
+    build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
+    empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
+    field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
+    has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
+    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
+    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
+    Node,
 };
 use serde::Serialize;
 
@@ -24375,7 +24376,12 @@ pub(crate) fn non_fold_residue_units_from_module_source(
                                 ),
                             }
                         }
-                        path = row_path;
+                        path = Some(row_path.unwrap_or_else(|| {
+                            panic!(
+                                "nfr frontier reader: `subject` in a `{data_name}` row of \
+                                 {module_rel_path} is `PathSubject` but carries no `path` field"
+                            )
+                        }));
                     }
                     _ => panic!(
                         "nfr frontier reader: `subject` in a `{data_name}` row of \
@@ -24960,6 +24966,28 @@ mod nfr_tests {
         assert!(
             refused,
             "a row without a `subject` field must refuse loudly (fail-closed)"
+        );
+    }
+
+    #[test]
+    fn nfr_frontier_reader_locates_path_subject_without_path() {
+        let synthetic = "module gunbc.non_fold_residue\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { subject: PathSubject { }, reason: \"r\", trigger: TriggerProse { text: \"d\" } }\n\
+             ]\n";
+        let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
+        }))
+        .expect_err("a PathSubject carrying no `path` field must refuse loudly (fail-closed)");
+        let message = refusal
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| refusal.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default();
+        assert!(
+            message.contains("`PathSubject` but carries no `path` field"),
+            "the refusal must LOCATE the missing `path` inside the present PathSubject, not \
+             report the row as having no `subject` field; got: {message}"
         );
     }
 }
@@ -25921,6 +25949,237 @@ fn cla_cached_wildcard_facts() -> &'static ClaWildcardFactsCache {
 
 pub fn complexity_linearity_wildcard_facts() -> &'static [ComplexityLinearityWildcardFactRaw] {
     &cla_cached_wildcard_facts().facts
+}
+
+// --- Fallback-arm census (W2, docs/plans/fallback-arm-census.md) ---
+// Per-arm structural wildcard walk over decl_facts. Classifies each MatchPattern::Wildcard
+// arm into exactly one of: refuses | completes_closed_total | declared_interim |
+// answers_on_open | unknown. Completeness: class counts sum to structural wildcard-arm
+// count (authority). Text `_ =>` grep is a measured over-approx, not the reconciliation
+// denominator. Zero production behavior change — register only.
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FallbackArmCensusFactRaw {
+    pub site: String,
+    pub fn_name: String,
+    pub rel_path: String,
+    pub class: String,
+    pub owning_lane: String,
+    pub closed_coproduct_scrutinee: bool,
+}
+
+#[derive(Default)]
+struct FacBodyMarks {
+    refuses: bool,
+    answers: bool,
+}
+
+fn fac_name_is_refuse(name: &str) -> bool {
+    name.contains("outcome_rejected")
+        || name.contains("Refused")
+        || name.ends_with("Rejected")
+        || name.contains("reject_")
+}
+
+fn fac_name_is_answer(name: &str) -> bool {
+    name.contains("outcome_accepted")
+        || name.contains("Accepted")
+        || name == "true"
+        || name == "True"
+}
+
+fn fac_walk_body_marks(
+    node: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    marks: &mut FacBodyMarks,
+) {
+    match node.expr_data.as_ref() {
+        ExprData::ExprCall { .. } => {
+            let fname = expr_call_func_at(node.clone(), si.clone());
+            if fac_name_is_refuse(&fname) {
+                marks.refuses = true;
+            }
+            if fac_name_is_answer(&fname) {
+                marks.answers = true;
+            }
+        }
+        ExprData::ExprVar { binding_kind: _ } => {
+            let name = authored_name_at(si.clone(), node.clone());
+            if fac_name_is_refuse(&name) {
+                marks.refuses = true;
+            }
+            if fac_name_is_answer(&name) {
+                marks.answers = true;
+            }
+        }
+        _ => {}
+    }
+    for child in node.children.iter() {
+        fac_walk_body_marks(child, si, marks);
+    }
+}
+
+fn fac_owning_lane(rel_path: &str) -> &'static str {
+    if rel_path.contains("/05_emit")
+        || rel_path.contains("/emit_")
+        || rel_path.contains("wrap_decision")
+        || rel_path.contains("06_translate")
+    {
+        "gate-1"
+    } else if rel_path.contains("/03_resolve")
+        || rel_path.contains("/04_infer")
+        || rel_path.contains("/01_tokenize")
+        || rel_path.contains("/02_parse")
+    {
+        "resolver"
+    } else if rel_path.contains("workflow")
+        || rel_path.contains("gunbc/")
+        || rel_path.contains("fleet")
+        || rel_path.contains("ci_floor")
+    {
+        "workflow-fleet"
+    } else {
+        "intake"
+    }
+}
+
+fn fac_classify_arm(
+    body: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    closed_scrutinee: bool,
+    interim_declared: bool,
+) -> &'static str {
+    if interim_declared {
+        return "declared_interim";
+    }
+    let mut marks = FacBodyMarks::default();
+    fac_walk_body_marks(body, si, &mut marks);
+    // Refuse wins when both marks fire (mirrors classify_fallback_arm in
+    // v2.lens.fallback_arm_census — a propagating refusal is not AnswersOnOpen).
+    if marks.refuses {
+        "refuses"
+    } else if marks.answers {
+        if closed_scrutinee {
+            "completes_closed_total"
+        } else {
+            "answers_on_open"
+        }
+    } else {
+        "unknown"
+    }
+}
+
+fn fac_collect_wildcard_arms(
+    node: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    param_types: &BTreeMap<String, String>,
+    closed: &BTreeSet<String>,
+    interim_declared: bool,
+    fn_name: &str,
+    rel_path: &str,
+    out: &mut Vec<FallbackArmCensusFactRaw>,
+) {
+    if let ExprData::ExprMatch = node.expr_data.as_ref() {
+        let scrutinee = match_scrutinee(node.clone());
+        let scrutinee_name = expr_var_name_at(scrutinee, si.clone());
+        let closed_scrutinee = !scrutinee_name.is_empty()
+            && cla_is_closed_coproduct_param_scrutinee(&scrutinee_name, param_types, closed);
+        for (arm_idx, arm) in match_arm_nodes(node.clone()).iter().enumerate() {
+            if !cla_is_wildcard_arm(arm) {
+                continue;
+            }
+            let body = arm_body(arm.clone());
+            let class = fac_classify_arm(&body, si, closed_scrutinee, interim_declared);
+            out.push(FallbackArmCensusFactRaw {
+                site: format!("{rel_path}::{fn_name}#arm{arm_idx}"),
+                fn_name: fn_name.to_string(),
+                rel_path: rel_path.to_string(),
+                class: class.to_string(),
+                owning_lane: fac_owning_lane(rel_path).to_string(),
+                closed_coproduct_scrutinee: closed_scrutinee,
+            });
+        }
+    }
+    for child in node.children.iter() {
+        fac_collect_wildcard_arms(
+            child,
+            si,
+            param_types,
+            closed,
+            interim_declared,
+            fn_name,
+            rel_path,
+            out,
+        );
+    }
+}
+
+fn fac_compute_census_facts(roots: &[String]) -> Vec<FallbackArmCensusFactRaw> {
+    let walk = decl_facts_corpus_walk(roots);
+    let closed = non_fold_residue_closed_coproduct_type_names();
+    let mut out = Vec::new();
+    for fact in &walk.facts {
+        if !matches!(fact.kind, ItemKind::FnItem | ItemKind::FuncItem) {
+            continue;
+        }
+        let Some(body) = fact.node.body.as_ref() else {
+            continue;
+        };
+        let param_types = cla_fn_param_type_heads(&fact.node, &fact.source_indices);
+        // DeclaredInterim requires a dissolve_on / FrontierRow marker beside the arm.
+        // Host cannot yet pair arms to FrontierRows reliably — leave false here; the
+        // planted DeclaredInterim fixture covers the class, and Unknown absorbs the
+        // undecided interim residue until a typed join lands.
+        let interim = false;
+        fac_collect_wildcard_arms(
+            body,
+            &fact.source_indices,
+            &param_types,
+            closed,
+            interim,
+            &fact.name,
+            &fact.rel_path,
+            &mut out,
+        );
+    }
+    out.sort();
+    out
+}
+
+struct FacCensusCache {
+    facts: Vec<FallbackArmCensusFactRaw>,
+}
+
+fn fac_cached_census_facts() -> &'static FacCensusCache {
+    static CACHE: OnceLock<FacCensusCache> = OnceLock::new();
+    CACHE.get_or_init(|| FacCensusCache {
+        facts: fac_compute_census_facts(&witness_layer_roots()),
+    })
+}
+
+pub fn fallback_arm_census_facts() -> &'static [FallbackArmCensusFactRaw] {
+    &fac_cached_census_facts().facts
+}
+
+pub fn fallback_arm_census_class_count(class: &str) -> i64 {
+    fallback_arm_census_facts()
+        .iter()
+        .filter(|f| f.class == class)
+        .count() as i64
+}
+
+pub fn fallback_arm_census_total() -> i64 {
+    fallback_arm_census_facts().len() as i64
+}
+
+pub fn fallback_arm_census_reconciliation_holds() -> bool {
+    let total = fallback_arm_census_total();
+    let sum = fallback_arm_census_class_count("refuses")
+        + fallback_arm_census_class_count("completes_closed_total")
+        + fallback_arm_census_class_count("declared_interim")
+        + fallback_arm_census_class_count("answers_on_open")
+        + fallback_arm_census_class_count("unknown");
+    total == sum && total > 0
 }
 
 #[cfg(test)]
