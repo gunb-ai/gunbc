@@ -1,6 +1,8 @@
 label	BEFORE_pr7269_dotted_applied_type
 class_message	expected one of `,` or `>`, found `.
-measurement_note	Class-scoped rustc message-text count per sharp-bee-290 msg_6c27c10b. first_error column no longer discriminates post-#7197 (rule-1 positional reorder); uncoded bucket conflates classes. Canonical-seven cargo sweep on merged HEAD 071d3966b8 WITHOUT applied-type leaf fix.
+class_message_grep_literal	expected one of `,` or `>`, found `.
+pattern_validation	pr7269_pattern_validation_2026-07-26.tsv (positive control count=1 at 14685dc76 on 04_infer)
+elimination_attribution	#7197 GroupCompletion grounding keystone (efe67794cd) eliminated this class in full-module cargo logs; unattributed at 071d3966 BEFORE #7269 fix revert probe
 gunbc_sha	a6d07de583315df19f7fb59223d7de5f794d6d2cfa398df608da4fa8c8c0ae62
 git_sha	071d3966b8b0a00f0f53be2e4621e9e147d9d454
 module	dotted_applied_type_count
