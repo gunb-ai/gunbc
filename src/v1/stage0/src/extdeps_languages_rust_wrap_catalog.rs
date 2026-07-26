@@ -6,9 +6,9 @@
 // stale emit path still produces on full regen (dissolve-on: compile-green
 // stage0 regen; docs/plans/rc-ownership-wrap-decision-design.md §implementation).
 
-use self::OwnershipWrapCatalogRowKey::*;
 use self::OwnershipReferenceLayer::*;
 use self::OwnershipWrapCarrier::*;
+use self::OwnershipWrapCatalogRowKey::*;
 use self::OwnershipWrapSourceProjection::*;
 use self::OwnershipWrapUseSite::*;
 pub use crate::std_types::List;
@@ -139,48 +139,56 @@ pub fn rust_sg_rc_wrap_carrier_from_type_name(type_name: String) -> Option<Owner
 pub fn rust_sg_rc_ownership_wrap_catalog_rows() -> Rc<Vec<Rc<RustSgRcOwnershipWrapCatalogRow>>> {
     Rc::new(vec![
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowDiagnosticsReturn,
             carrier: WrapCarrierDiagnostics,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionReturn,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowDiagnosticsParam,
             carrier: WrapCarrierDiagnostics,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionParameter,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerOwned,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowDiagnosticsBinding,
             carrier: WrapCarrierDiagnostics,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtBindingProjection,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowNodeReturn,
             carrier: WrapCarrierNode,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionReturn,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowNodeParam,
             carrier: WrapCarrierNode,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionParameter,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerOwned,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowNodeStructField,
             carrier: WrapCarrierNode,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtStructField,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerBox,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowNodeBinding,
             carrier: WrapCarrierNode,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtBindingProjection,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowTestClaimReturn,
             carrier: WrapCarrierTestClaim,
             source_projection:
                 OwnershipWrapSourceProjection::UseSiteOwnershipInstantiationHeadCarrier,
@@ -188,6 +196,7 @@ pub fn rust_sg_rc_ownership_wrap_catalog_rows() -> Rc<Vec<Rc<RustSgRcOwnershipWr
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowTestClaimBinding,
             carrier: WrapCarrierTestClaim,
             source_projection:
                 OwnershipWrapSourceProjection::UseSiteOwnershipInstantiationHeadCarrier,
@@ -195,18 +204,21 @@ pub fn rust_sg_rc_ownership_wrap_catalog_rows() -> Rc<Vec<Rc<RustSgRcOwnershipWr
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowFreeMonoidReturn,
             carrier: WrapCarrierFreeMonoid,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionReturn,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowFreeMonoidBinding,
             carrier: WrapCarrierFreeMonoid,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtBindingProjection,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowOutcomeReturn,
             carrier: WrapCarrierOutcome,
             source_projection:
                 OwnershipWrapSourceProjection::UseSiteOwnershipInstantiationHeadCarrier,
@@ -214,6 +226,7 @@ pub fn rust_sg_rc_ownership_wrap_catalog_rows() -> Rc<Vec<Rc<RustSgRcOwnershipWr
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowOutcomeBinding,
             carrier: WrapCarrierOutcome,
             source_projection:
                 OwnershipWrapSourceProjection::UseSiteOwnershipInstantiationHeadCarrier,
@@ -221,54 +234,63 @@ pub fn rust_sg_rc_ownership_wrap_catalog_rows() -> Rc<Vec<Rc<RustSgRcOwnershipWr
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowModelCoreReturn,
             carrier: WrapCarrierModelCore,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionReturn,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowModelCoreBinding,
             carrier: WrapCarrierModelCore,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtBindingProjection,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowAlgebraInhabitanceReturn,
             carrier: WrapCarrierAlgebraInhabitanceDecl,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionReturn,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowAlgebraInhabitanceBinding,
             carrier: WrapCarrierAlgebraInhabitanceDecl,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtBindingProjection,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowProbeHeapReturn,
             carrier: WrapCarrierProbeHeap,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionReturn,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowProbeHeapBinding,
             carrier: WrapCarrierProbeHeap,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtBindingProjection,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerRc,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowUseSiteVerdictReturn,
             carrier: WrapCarrierUseSiteVerdict,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionReturn,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerOwned,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowUseSiteVerdictParam,
             carrier: WrapCarrierUseSiteVerdict,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtFunctionParameter,
             reference_layer: OwnershipReferenceLayer::ReferenceLayerOwned,
         }),
         Rc::new(RustSgRcOwnershipWrapCatalogRow {
+            key: WrapRowUseSiteVerdictBinding,
             carrier: WrapCarrierUseSiteVerdict,
             source_projection: OwnershipWrapSourceProjection::UseSiteOwnershipExactCarrier,
             use_site: OwnershipWrapUseSite::OwnershipAtBindingProjection,
