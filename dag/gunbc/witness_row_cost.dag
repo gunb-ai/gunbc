@@ -2,17 +2,54 @@ module gunbc.witness_row_cost
 
 import std.logic { Bool }
 import std.nat { Nat }
+import std.types { NonEmptyStr, List }
 import std.measure { Millisecond, millisecond, millisecond_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.observation {
+  ObservationEvent,
+  ObservationSubject,
+  ObservationSegment,
+  EntrySegment,
+  DeclarationSegment,
+  PhaseSegment,
+  RunSegment,
+  BatchSegment,
+  ModuleSegment,
+  ObservationGrain,
+  DeclarationGrain,
+  observation_subject_grain,
+  Measured,
+  MeasuredValue,
+  MeasuredUnavailable,
+  ObservationTransition,
+  Begin,
+  Step,
+  Concluded,
+  ObservationOutcome,
+  Done,
+}
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 
-data witness_row_cost_spine_note: String = "Per-witness cost receipts (placement workstream #5 spine). Discovery preserves (entry, function, eval_ms, resolve_ms) into target/floor-witness-row-cost-receipt.tsv — one row per witness, never an averaged discovery batch row. THE W2 CROSS-LANE RULING: this TSV is the complete machine-readable per-entry/witness record; rendered streams may project a subset (AttentionLevel/ ObservationDensity) but must not delete rows — demotion is projection policy, not deletion. Basis values MUST cite an arm64 srv-fleet run id (never local x86 measurements — a basis established on the wrong host class makes the 2× comparator read as content drift forever). A row with no dated basis is BasisAbsent: typed, located, counted; never assume fine, never rerun to find out. Drift is counted and reported on the falsifier cadence, NOT merge-refusing (margin ruling 2026-07-25). Durations are Millisecond (std.measure), never bare Nat. The seed drift writer calls witness_row_cost_exceeds_basis through this module — it does not re-implement the 2× inequality. Executing consumer: dag/test/claim/witness_row_cost_drift_witness_test.dag."
+data witness_row_cost_spine_note: String = "Per-witness cost receipts (placement workstream #5 spine). THE RECORD is std.observation.ObservationEvent (progress-observation-design §2/§3c) — not a TSV schema and not WitnessTimingRow. Production shape is N+1 per entry: exactly ONE entry resolve-phase Concluded event (entry-level/shared resolve wall) plus one declaration-grain Concluded event per witness (eval wall + actual outcome; Refused distinct from Failed). RSS is MeasuredUnavailable with an explicit cause. The TSV is a COMPLETE join projection of that stream (every joined row retained); warm_ms is derived as eval+resolve at projection time. The resolve column repeats the observed full entry resolve for each child — never divided across witnesses and never summed N times into a corpus total. W2 filters the SAME events via AttentionLevel/ObservationDensity (Ambient may suppress a render line while the complete receipt still retains the row). Basis values MUST cite an arm64 srv-fleet run id (never local x86). A row with no dated basis is BasisAbsent. Drift is falsifier-cadence counted, not merge-refusing. Millisecond only at the event/projection boundary. Executing consumers: dag/test/claim/witness_row_cost_drift_witness_test.dag and dag/test/claim/witness_row_cost_projection_witness_test.dag."
 
 data witness_row_cost_basis_host_class_note: String = "Every signed basis row names host_class=srv_fleet_arm64 (the same idiom as gunbc_ci_floor_batch_clamp_note's 1000ms coefficient basis). When the fleet or governor width moves, basis rows re-sign from a new cited run — never a local measurement."
 
 data placement_workstream_task_20_open_unknown_note: String = "TASK #20 — REOPENED 2026-07-26 as OpenUnknown (was marked completed-but-unexplained when a red vanished on merging main without diagnosis — an un-diagnosed defect wearing a green hat). STATUS: OpenUnknown. REPRODUCTION (start from arm64 srv fleet, do not re-derive on local x86 — this container proves logic, never cost): begin from the gate_gauntlet_flip_basis_note composition run 30181042050 on srv fleet arm64; reproduce the per-witness cost receipt + drift comparator path on the falsifier cadence with [witness-row-cost] and [witness-row-cost-drift] lines from that host class. The original red's mechanism was never named before the merge went green. DISSOLVE-ON: the red is reproduced OR its absence is explained by a typed, cited mechanism row — never silently closed again."
 
 data expectation_frontier_burn_down_lane_note: String = "TRACKED LANE (not this PR's scope): the expectation frontier is measurable but unshrunk — 340 service-op call sites, 16 annotated, 67 undeclared dispatches on generated_artifact_drift_test alone (expectation_declaration_frontier_note). The three A2 annotations in this PR (VerifyBuildArtifacts, chmod, shell.Exec.Run read-back) are the first deliberate shrink sites; the burn-down continues as its own lane with the [expectation-frontier] receipt as the progress oracle."
+
+data witness_timing_row_seed_view_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.observation",
+    decl_name: "ObservationEvent",
+    field: WholeDeclaration
+  }
+}
+
+data witness_timing_row_seed_view_note: String = "WitnessTimingRow in cli_run.rs is a seed MATERIALIZED VIEW of the ObservationEvent join projection only (Scaffold bound above) — not a lockstep authority type and not the #5 record. total_nanos is derived. Dissolve-on: seed produces the N+1 ObservationEvent values (or host bridge equivalent); receipt writer and drift path consume the complete projection; WitnessTimingRow is deleted. Nanos may remain internal seed units; Millisecond conversion is at the event boundary."
 
 type WitnessRowCostDatedBasis {
   eval: Millisecond
@@ -44,5 +81,292 @@ fn witness_row_cost_verdict(
       } else {
         WithinBasis
       }
+  }
+}
+
+fn witness_cost_warm(eval: Millisecond, resolve: Millisecond) -> Millisecond {
+  millisecond(count: millisecond_count(m: eval) + millisecond_count(m: resolve))
+}
+
+fn witness_cost_subject_entry(subject: ObservationSubject) -> Optional<NonEmptyStr> {
+  fold(subject.segments, init: Absent, f: (acc, seg) =>
+    match seg {
+      EntrySegment { source_path: p } => Present { value: p }
+      RunSegment { id: _ } => acc
+      BatchSegment { index: _, label: _ } => acc
+      ModuleSegment { module_path: _ } => acc
+      DeclarationSegment { declaration: _ } => acc
+      PhaseSegment { name: _ } => acc
+    }
+  )
+}
+
+fn witness_cost_subject_declaration(subject: ObservationSubject) -> Optional<DeclarationRef> {
+  fold(subject.segments, init: Absent, f: (acc, seg) =>
+    match seg {
+      DeclarationSegment { declaration: d } => Present { value: d }
+      RunSegment { id: _ } => acc
+      BatchSegment { index: _, label: _ } => acc
+      EntrySegment { source_path: _ } => acc
+      ModuleSegment { module_path: _ } => acc
+      PhaseSegment { name: _ } => acc
+    }
+  )
+}
+
+fn witness_cost_subject_has_resolve_phase(subject: ObservationSubject) -> Bool {
+  fold(subject.segments, init: false, f: (acc, seg) =>
+    match seg {
+      PhaseSegment { name: n } => acc || n == ("resolve" as NonEmptyStr)
+      RunSegment { id: _ } => acc
+      BatchSegment { index: _, label: _ } => acc
+      EntrySegment { source_path: _ } => acc
+      ModuleSegment { module_path: _ } => acc
+      DeclarationSegment { declaration: _ } => acc
+    }
+  )
+}
+
+fn witness_cost_is_entry_resolve_event(event: ObservationEvent) -> Bool {
+  witness_cost_subject_has_resolve_phase(subject: event.subject) &&
+  match event.transition {
+    Concluded { outcome: _ } => true
+    Begin => false
+    Step { k: _, n: _ } => false
+  }
+}
+
+fn witness_cost_is_declaration_witness_event(event: ObservationEvent) -> Bool {
+  observation_subject_grain(subject: event.subject) == DeclarationGrain &&
+  match event.transition {
+    Concluded { outcome: _ } => true
+    Begin => false
+    Step { k: _, n: _ } => false
+  }
+}
+
+fn witness_cost_measured_wall(wall: Measured<Millisecond>) -> Optional<Millisecond> {
+  match wall {
+    MeasuredValue { value: v } => Present { value: v }
+    MeasuredUnavailable { cause: _ } => Absent
+  }
+}
+
+fn witness_cost_concluded_outcome(event: ObservationEvent) -> Optional<ObservationOutcome> {
+  match event.transition {
+    Concluded { outcome: o } => Present { value: o }
+    Begin => Absent
+    Step { k: _, n: _ } => Absent
+  }
+}
+
+fn witness_cost_count_resolve_for_entry(events: List<ObservationEvent>, entry: NonEmptyStr) -> Nat {
+  fold(events, init: 0, f: (acc, event) =>
+    if witness_cost_is_entry_resolve_event(event: event) {
+      match witness_cost_subject_entry(subject: event.subject) {
+        Present { value: p } =>
+          if p == entry {
+            acc + 1
+          } else {
+            acc
+          }
+        Absent => acc
+      }
+    } else {
+      acc
+    }
+  )
+}
+
+fn witness_cost_unique_resolve_wall(
+  events: List<ObservationEvent>,
+  entry: NonEmptyStr,
+) -> Optional<Millisecond> {
+  if witness_cost_count_resolve_for_entry(events: events, entry: entry) == 1 {
+    fold(events, init: Absent, f: (acc, event) =>
+      if witness_cost_is_entry_resolve_event(event: event) {
+        match witness_cost_subject_entry(subject: event.subject) {
+          Present { value: p } =>
+            if p == entry {
+              witness_cost_measured_wall(wall: event.wall)
+            } else {
+              acc
+            }
+          Absent => acc
+        }
+      } else {
+        acc
+      }
+    )
+  } else {
+    Absent
+  }
+}
+
+type WitnessCostReceiptRow {
+  entry: NonEmptyStr
+  declaration: DeclarationRef
+  eval: Millisecond
+  resolve: Millisecond
+  warm: Millisecond
+  outcome: ObservationOutcome
+}
+
+type WitnessCostProjection
+  = WitnessCostProjectionComplete { rows: List<WitnessCostReceiptRow> }
+  | WitnessCostProjectionRefused { cause: NonEmptyStr }
+
+fn witness_cost_project_one_witness(
+  events: List<ObservationEvent>,
+  event: ObservationEvent,
+) -> WitnessCostProjection {
+  match witness_cost_subject_entry(subject: event.subject) {
+    Absent =>
+      WitnessCostProjectionRefused {
+        cause: "declaration-grain witness event missing EntrySegment" as NonEmptyStr
+      }
+    Present { value: entry } => {
+      let n = witness_cost_count_resolve_for_entry(events: events, entry: entry)
+      if n == 0 {
+        WitnessCostProjectionRefused {
+          cause: "missing parent resolve-phase event for entry (refuse; never invent)" as NonEmptyStr
+        }
+      } else if n > 1 {
+        WitnessCostProjectionRefused {
+          cause: "multiple parent resolve-phase events for entry (refuse; never silently pick)" as NonEmptyStr
+        }
+      } else {
+        match witness_cost_unique_resolve_wall(events: events, entry: entry) {
+          Absent =>
+            WitnessCostProjectionRefused {
+              cause: "parent resolve wall MeasuredUnavailable (refuse; never fabricate)" as NonEmptyStr
+            }
+          Present { value: resolve } =>
+            match witness_cost_measured_wall(wall: event.wall) {
+              Absent =>
+                WitnessCostProjectionRefused {
+                  cause: "witness eval wall MeasuredUnavailable (refuse; never fabricate)" as NonEmptyStr
+                }
+              Present { value: eval } =>
+                match witness_cost_subject_declaration(subject: event.subject) {
+                  Absent =>
+                    WitnessCostProjectionRefused {
+                      cause: "declaration-grain witness missing DeclarationSegment" as NonEmptyStr
+                    }
+                  Present { value: decl } =>
+                    match witness_cost_concluded_outcome(event: event) {
+                      Absent =>
+                        WitnessCostProjectionRefused {
+                          cause: "declaration-grain witness is not Concluded" as NonEmptyStr
+                        }
+                      Present { value: outcome } =>
+                        WitnessCostProjectionComplete {
+                          rows: [
+                            WitnessCostReceiptRow {
+                              entry: entry,
+                              declaration: decl,
+                              eval: eval,
+                              resolve: resolve,
+                              warm: witness_cost_warm(eval: eval, resolve: resolve),
+                              outcome: outcome
+                            }
+                          ]
+                        }
+                    }
+                }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn witness_cost_append_projection(
+  left: WitnessCostProjection,
+  right: WitnessCostProjection,
+) -> WitnessCostProjection {
+  match left {
+    WitnessCostProjectionRefused { cause: c } => WitnessCostProjectionRefused { cause: c }
+    WitnessCostProjectionComplete { rows: a } =>
+      match right {
+        WitnessCostProjectionRefused { cause: c } => WitnessCostProjectionRefused { cause: c }
+        WitnessCostProjectionComplete { rows: b } =>
+          WitnessCostProjectionComplete { rows: concat(a, b) }
+      }
+  }
+}
+
+fn witness_cost_any_entry_has_multiple_resolves(events: List<ObservationEvent>) -> Bool {
+  fold(events, init: false, f: (acc, event) =>
+    if acc {
+      true
+    } else if witness_cost_is_entry_resolve_event(event: event) {
+      match witness_cost_subject_entry(subject: event.subject) {
+        Present { value: entry } =>
+          witness_cost_count_resolve_for_entry(events: events, entry: entry) > 1
+        Absent => true
+      }
+    } else {
+      false
+    }
+  )
+}
+
+fn project_witness_cost_receipt(events: List<ObservationEvent>) -> WitnessCostProjection {
+  if witness_cost_any_entry_has_multiple_resolves(events: events) {
+    WitnessCostProjectionRefused {
+      cause: "multiple parent resolve-phase events for an entry (refuse; never silently pick)" as NonEmptyStr
+    }
+  } else {
+    fold(events, init: WitnessCostProjectionComplete { rows: [] }, f: (acc, event) =>
+      if witness_cost_is_declaration_witness_event(event: event) {
+        witness_cost_append_projection(
+          left: acc,
+          right: witness_cost_project_one_witness(events: events, event: event)
+        )
+      } else {
+        acc
+      }
+    )
+  }
+}
+
+fn witness_cost_rss_unavailable_cause() -> NonEmptyStr {
+  "per-witness RSS not sampled on discovery claim path" as NonEmptyStr
+}
+
+fn witness_cost_entry_resolve_event(
+  entry: NonEmptyStr,
+  resolve: Millisecond,
+) -> ObservationEvent {
+  ObservationEvent {
+    subject: ObservationSubject {
+      segments: [
+        EntrySegment { source_path: entry },
+        PhaseSegment { name: "resolve" as NonEmptyStr }
+      ]
+    },
+    transition: Concluded { outcome: Done },
+    wall: MeasuredValue { value: resolve },
+    rss: MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
+  }
+}
+
+fn witness_cost_declaration_event(
+  entry: NonEmptyStr,
+  declaration: DeclarationRef,
+  eval: Millisecond,
+  outcome: ObservationOutcome,
+) -> ObservationEvent {
+  ObservationEvent {
+    subject: ObservationSubject {
+      segments: [
+        EntrySegment { source_path: entry },
+        DeclarationSegment { declaration: declaration }
+      ]
+    },
+    transition: Concluded { outcome: outcome },
+    wall: MeasuredValue { value: eval },
+    rss: MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
   }
 }

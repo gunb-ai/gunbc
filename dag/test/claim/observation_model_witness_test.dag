@@ -19,6 +19,7 @@ import std.symbols {
   ChangeRemoved,
 }
 import std.change { KeyedDiffAddedHunk, KeyedDiffRemovedHunk, KeyedDiffModifiedHunk }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
 import std.measure { Millisecond, millisecond, ByteSize, byte_size, BasisPoint, basis_point, basis_point_count }
 import std.perturbation { BackwardDiffInDiffOut, ForwardSameInSameOut, perturbation_consistent }
 import extdeps.render.glyphs { resolve_symbol, symbol_color, reward_animal_at, reward_animals }
@@ -28,6 +29,7 @@ import std.observation {
   BatchSegment,
   EntrySegment,
   ModuleSegment,
+  DeclarationSegment,
   PhaseSegment,
   ObservationSubject,
   ObservationGrain,
@@ -35,6 +37,7 @@ import std.observation {
   BatchGrain,
   EntryGrain,
   ModuleGrain,
+  DeclarationGrain,
   PhaseGrain,
   observation_grain_of_segment,
   observation_grain_depth,
@@ -43,6 +46,8 @@ import std.observation {
   observation_subject_contains,
   observation_subject_path,
   observation_subject_render,
+  observation_segment_key,
+  observation_declaration_key,
   Measured,
   MeasuredValue,
   MeasuredUnavailable,
@@ -390,7 +395,41 @@ test fn w_grain_orders_the_containment_tree() -> Bool {
   observation_subject_grain(subject: obs_leaf_subject()) == PhaseGrain &&
   observation_grain_at_or_above_entry(g: RunGrain) &&
   observation_grain_at_or_above_entry(g: EntryGrain) &&
-  !observation_grain_at_or_above_entry(g: PhaseGrain)
+  !observation_grain_at_or_above_entry(g: PhaseGrain) &&
+  !observation_grain_at_or_above_entry(g: DeclarationGrain)
+}
+
+test fn w_declaration_segment_key_and_grain_totality_holds() -> Bool {
+  let whole = DeclarationRef {
+    module_path: "test.claim.observation_model_witness_test" as NonEmptyStr,
+    decl_name: "observation_model_witnesses" as NonEmptyStr,
+    field: WholeDeclaration
+  }
+  let fielded = DeclarationRef {
+    module_path: "test.claim.observation_model_witness_test" as NonEmptyStr,
+    decl_name: "observation_model_witnesses" as NonEmptyStr,
+    field: NamedField { field_name: "body" as NonEmptyStr }
+  }
+  let whole_seg = DeclarationSegment { declaration: whole }
+  let field_seg = DeclarationSegment { declaration: fielded }
+  let decl_subject = ObservationSubject {
+    segments: [
+      EntrySegment { source_path: "dag/test/claim/observation_model_witness_test.dag" as NonEmptyStr },
+      whole_seg
+    ]
+  }
+  observation_grain_of_segment(seg: whole_seg) == DeclarationGrain &&
+  observation_grain_of_segment(seg: field_seg) == DeclarationGrain &&
+  observation_grain_depth(g: ModuleGrain) == 3 &&
+  observation_grain_depth(g: DeclarationGrain) == 4 &&
+  observation_grain_depth(g: PhaseGrain) == 5 &&
+  observation_grain_depth(g: ModuleGrain) < observation_grain_depth(g: DeclarationGrain) &&
+  observation_grain_depth(g: DeclarationGrain) < observation_grain_depth(g: PhaseGrain) &&
+  observation_subject_grain(subject: decl_subject) == DeclarationGrain &&
+  observation_segment_key(seg: whole_seg) == observation_declaration_key(d: whole) &&
+  observation_segment_key(seg: field_seg) == observation_declaration_key(d: fielded) &&
+  observation_segment_key(seg: whole_seg) != observation_segment_key(seg: field_seg) &&
+  !observation_grain_at_or_above_entry(g: DeclarationGrain)
 }
 
 test fn w_presentation_glyph_reads_the_table_not_a_hardcoded_string() -> Bool {
@@ -524,4 +563,3 @@ test fn w_status_pulse_glyph_is_available_to_the_heartbeat() -> Bool {
     Absent => false
   }
 }
-

@@ -12215,12 +12215,20 @@ pub struct HistogramData {
     pub eval: TimingPercentiles,
 }
 
-/// One witness row with per-witness eval time and its entry's amortized resolve cost.
+/// One witness row with per-witness eval time and its entry's resolve cost.
+///
+/// SCAFFOLD materialized view of `std.observation.ObservationEvent` join projection
+/// (`gunbc.witness_row_cost.witness_timing_row_seed_view_disposition`) — NOT the #5
+/// authority and NOT a lockstep type. `total_nanos` is derived. Dissolve-on: seed
+/// produces N+1 ObservationEvent values; receipt/drift consume
+/// `project_witness_cost_receipt`; this struct is deleted. Nanos stay internal seed
+/// units; Millisecond conversion is at the event boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WitnessTimingRow {
     pub entry: String,
     pub function: String,
     pub eval_nanos: u128,
+    /// Entry-level/shared resolve wall (repeated per child row; never divided).
     pub resolve_nanos: u128,
     pub total_nanos: u128,
 }
