@@ -4,8 +4,6 @@ import v2.compiler.eval {
   TestClaimEvalSubject,
   TestClaimRun,
   eval_context_with_semantics,
-  eval_with_context,
-  inputs_root_only,
   run_test_claim,
   test_claim_run_verdict,
   test_claim_typed_input_node
