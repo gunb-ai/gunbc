@@ -186,7 +186,9 @@ Both are deleted in this true-up (deletion is the receipt; a row claiming "done"
 
 ### 4.B — DIRECT `ShellCommand{script}` still constructed in intent
 
-The relocation wave turned most direct construction into nickname variants (4.A), but **two live direct sites remain** on `origin/main` — the multiline form my first-draft single-line P1 missed (review 41467):
+**STATUS 2026-07-26 (census true-up): both rows below are DISCHARGED — there are now ZERO direct `ShellCommand{script}` construction sites in `dag/gunbc/live_deploy/`** (verified: `grep -rn ShellCommand dag/gunbc/live_deploy/` returns 0). `live_deploy_unit_diagnosis_command` and `live_deploy_healthz_probe_script_for_port` no longer exist anywhere in tree — D2 #7192 (tree_sync `| tail` + `exit 0` absorbing fallback, converted to a typed `Systemctl.Status` exit-as-data refusal) and D3 #7193 (readiness routed through `gunbc.systemctl_status_read` + `http.Client.Get`) closed them. The table is kept struck-through as the audit trail.
+
+~~The relocation wave turned most direct construction into nickname variants (4.A), but **two live direct sites remain** on `origin/main` — the multiline form my first-draft single-line P1 missed (review 41467):~~
 
 | site (file · construction) | builder (file · fn) | runs on | dissolve to |
 | --- | --- | --- | --- |
@@ -197,8 +199,9 @@ Residue only (not construction to migrate):
 
 | site (file · symbol) | what | action |
 | --- | --- | --- |
-| `host_effect_plan.dag` · `ShellCommand { script: "" }` | empty placeholder | delete with the type |
-| `host_effect.dag` · `ShellCommand { script: String }` | the **type variant** itself | delete at arc close (DESIGN §5, escalated) — terminal |
+| `host_effect_plan.dag:39` · `ShellCommand { script: "" }` | empty placeholder | delete with the type — **still present** (verified 2026-07-26) |
+| `host_effect.dag:28` · `ShellCommand { script: String }` | the **type variant** itself | delete at arc close (DESIGN §5, escalated) — terminal; **still present** |
+| `fleet_converge_cli.dag:57` · `ShellCommand { script: _ } => fallback` | a **match arm**, not a construction site — consumes the variant, builds no string | *(row added by the 2026-07-26 true-up; previously uncensused)* dissolves with the type variant above. Listed so the arc-close delete has a complete consumer list — a missed match arm is what turns the terminal delete into a non-exhaustive-match break |
 
 *(The first draft mis-grounded on a divergent worktree — `fleet_show`/`host_identity` corrected to 4.A per review 41399 — and then under-scoped P1 to single-line, missing these `readiness.dag` sites per review 41467. Both fixed.)*
 
@@ -215,7 +218,20 @@ Residue only (not construction to migrate):
 
 ### 4.D — `ssh.Session.Exec` command-string (vs typed `ExecArgv`)
 
-All in `host_effect_realize.dag`, via `ssh_session_exec(command:)` / `ssh_session_exec_script(script:)`:
+**RECLASSIFIED by the 2026-07-26 true-up — read before picking this up.** Every `ssh_session_exec(command:)` site in the table below sits inside an **`srv3_*` function**, i.e. inside the srv\* cluster the operator wound down 2026-07-22 and authorized for retirement 2026-07-24 (§5.D roadmap item). So 4.D is **not** an independently-dispatchable A1 bucket: dissolving these to `ExecArgv` would be typed-argv work on a subgraph slated for deletion — motion, not progress. **4.D inherits A5's deferred status** and should be picked up only as part of the srv3 retirement, or if that retirement is abandoned.
+
+Exhaustive site list, verified on `origin/main` @ `efe67794cd` (enclosing fn in bold — this is what the original table did not record):
+
+| line | enclosing fn | verb | disposition |
+| --- | --- | --- | --- |
+| `:731` | **`srv3_transport_witness_bin_success`** | arbitrary command (`cd … && bin args`) | A5-deferred (srv3) |
+| `:742` | **`srv3_transport_test_executable`** | `test -x <path>` | A5-deferred (srv3) |
+| `:752` | **`srv3_apt_tool_present`** | `command -v <tool>` | A5-deferred (srv3) |
+| `:775` | **`srv3_tool_bin_path`** | `command -v <tool>` | A5-deferred (srv3) |
+| `:821`, `:822` | **`srv3_chown_directory_to_current_user`** | `id -u` / `id -g` | A5-deferred (srv3) |
+| `:1169` | **`run_shell_transport`** | `ssh_session_exec_script(script: script.body)` | **NOT srv3** — this is the realization core's `RetainedShellScript` → SSH path, i.e. the §5.E counted frontier's own transport. It dissolves when the frontier empties, not by a per-site migration. Do not edit under a 4.D brief |
+
+The original table's rows are retained below for provenance:
 
 | construction | verb | should call | class |
 | --- | --- | --- | --- |
@@ -256,6 +272,17 @@ These are correct as shell (a GHA runner / cron / git / pre-runtime host only un
 ### 4.H — oracle / test retainers (NOT live construction — skip)
 
 `live_deploy/emit.dag:448,452` `expected_*_script` (drift-gate oracles), `*_test.dag` fixtures. These are test expectations, not runtime construction; they follow their subject's dissolution.
+
+### Ledger true-up @ 2026-07-26 (§4.A/4.B/4.D, snappy-moth-330) — read this FIRST
+
+Re-censused §4.A, §4.B and §4.D against `origin/main` @ `efe67794cd` by execution over the tree, not by trusting the rows. Four corrections, in descending order of how badly the stale row would mislead:
+
+1. **§4.D is not a dispatchable bucket — it is A5-deferred.** Every `ssh_session_exec(command:)` site is inside an **`srv3_*`** fn (the wound-down srv\* cluster), except `:1169` which is the realization core's own `RetainedShellScript` transport. The old table listed the verbs without the enclosing fns, which made it read like an independent typed-argv bucket. It is not; picking it up would be typed-argv work on a subgraph slated for retirement.
+2. **§4.A4 and §4.B are DONE.** `live_deploy/host_effect_script.dag` is deleted and `dag/gunbc/live_deploy/` contains zero `ShellCommand`. This closes "do-not-miss" item 1 (the #7004/#7006 relocation debt), which had been the loudest open warning in this doc.
+3. **§4.A1 is DONE, but left two dead concat builders behind** — deleted in this true-up, with the witness that was pinning one of them as contract. See the A1 dead-scaffold note in §4.A; the pattern (a file note claiming "no concat shell strings" while two sat below it, plus a tautological witness conjunct asserting the bypass still had the right shape) is the reusable finding.
+4. **One uncensused consumer added** — `fleet_converge_cli.dag:57`'s `ShellCommand` **match arm**, so the terminal type delete has a complete consumer list.
+
+**Net:** with bucket D (§4.E/§4.I) in flight, the non-deferred remainder of this arc is **§4.F wall-green only** (the `host_language_transport_script` lens promotion + meta-exec confinement) — and that is coupled to the node/subtree visibility-grants lane, not independently schedulable here. Everything else open is operator-deferred srv\*.
 
 ### Ledger true-up @ 2026-07-25 (bucket A, calm-pike-837) — read this before the 07-22 snapshot below
 
@@ -301,12 +328,12 @@ The state of every PR in this arc, so nothing is missed if work pauses here. **A
 **Not started — the remaining arc (bounded, fully specified in §5; safe to pause):**
 
 - **§5.A** — **COMPLETE.** All four ops landed on #7194 and are verified in tree at their post-#7231 homes: `os.Hostname.ReadShort`/`Set` (`dag/extdeps/tools/hostname.dag`), `systemd.Systemctl.ListUnits` and `.Status` (`dag/extdeps/systemd/systemctl.dag:185,219`), `os.Id.Uid` (`dag/extdeps/tools/id.dag:26`). (`ssh.Session.ExecArgv` landed via C5; `Clock.Now` in `dag/extdeps/clock/clock.dag` already existed and is now the single authority for every `date -Iseconds` site.) **The finite new-op list this whole arc needed is closed** — everything remaining in §5.B is calling ops that now exist.
-- **§5.B** — the call-the-op migrations, **UNPAUSED** (the wall landed, #7184). D1/D2/D3 (#7192/#7193/#7194) and this PR's bucket A discharged the hostname, systemctl-read and clock clusters; the srv\* cluster (4.A5) and `live_deploy` (4.A4) remain.
+- **§5.B** — the call-the-op migrations, **UNPAUSED** (the wall landed, #7184). D1/D2/D3 (#7192/#7193/#7194) and bucket A discharged the hostname, systemctl-read and clock clusters. **Updated 2026-07-26:** `live_deploy` (4.A4) and the `fleet_show`/`host_converge_slice1` systemctl cluster (4.A1) are **also done** — only the **operator-deferred srv\* cluster (4.A5, and 4.D which is inside it)** remains in §5.B. With bucket D (4.E/4.I foreign-executor emit) in flight, the non-deferred §5.B queue is **empty**.
 - **§5.E** — the **transport-script construction wall** — **LANDED #7184.** Built as a `RetainedShellScript` RECORD edge + free-minter deletion + counted bridges + lens activation + compile-fail REDs (see §5.E ruling block; "brand `TransportScript`" was found non-walling because the brand is transparent). The 2026-07-24 wall-first ruling that paused §5.A/§5.B is therefore discharged.
 
 **⚠ Do-not-miss for wind-down:**
 
-1. **#7004 and #7006 merged as "progress" but are relocations** — the concats were moved, not deleted, so those sites (live_deploy/apply, host_identity) are **not actually bash-free.** #7064 fixes `fleet_show`; the rest still need the proper dissolution.
+1. ~~**#7004 and #7006 merged as "progress" but are relocations**~~ — **CLOSED by the 2026-07-26 true-up.** Both relocation sites are now genuinely dissolved: `live_deploy/host_effect_script.dag` is **deleted** (D2 #7192) with zero `ShellCommand` left in the directory, and `host_identity`'s hostname path went typed on D1 #7194. The relocation debt this item tracked no longer exists on main.
 2. **Two open PRs to land:** #7065 (census/plan) and #7064 (exemplar).
 3. **Nothing is lost by pausing** — §5 is the durable, bounded plan (4 ops + call-existing-op + emit-roster + wall). Resume from §5 whenever.
 
