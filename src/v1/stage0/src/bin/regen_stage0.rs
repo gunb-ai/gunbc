@@ -1018,7 +1018,10 @@ fn assert_output_set_matches_registry(
     committed_src: &Path,
     fresh_src: &Path,
 ) -> Result<(), String> {
-    let registered: BTreeSet<&str> = generated_stage0_files().iter().map(|s| s.as_str()).collect();
+    let registered: BTreeSet<&str> = generated_stage0_files()
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
     let hand_maintained: BTreeSet<&str> = HAND_MAINTAINED_STAGE0_FILES.iter().copied().collect();
     let fresh_files = direct_rs_file_names(fresh_src)?;
 
@@ -1215,15 +1218,17 @@ mod tests {
 
     /// Construction close of the #7258 dual-copy fork: regen must read
     /// `gunbc.stage0_emit_model.generated_stage0_files` and must not carry a second
-    /// hand `GENERATED_STAGE0_FILES` const. RED: re-introduce the const → this fails;
+    /// hand list const. RED: re-introduce the deleted roster const → this fails;
     /// drop a known generated basename from the .dag list → the positives fail.
     #[test]
     fn generated_stage0_files_read_from_dag_authority_not_rust_const() {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/bin/regen_stage0.rs");
         let source = fs::read_to_string(&path).expect("read regen_stage0.rs");
+        // Needle assembled so this assertion's own source text is not a false positive.
+        let banned_const = format!("const {}{}{}", "GENERATED_STAGE0_FILES", ": ", "&[&str]");
         assert!(
-            !source.contains("const GENERATED_STAGE0_FILES:"),
-            "GENERATED_STAGE0_FILES const must stay deleted — dual-copy fork is unwritable"
+            !source.contains(&banned_const),
+            "hand-copied generated_stage0_files Rust const must stay deleted — dual-copy fork is unwritable"
         );
         assert!(
             source.contains("lens_string_list_data"),
@@ -1296,12 +1301,18 @@ mod tests {
         // Plain byte compare: only the file whose content genuinely changed is listed.
         seed_registered_files(&committed, "fn same() {}\n");
         seed_registered_files(&fresh, "fn same() {}\n");
-        fs::write(fresh.join(generated_stage0_files()[0].as_str()), "fn changed() {}\n")
-            .expect("write changed generated file");
+        fs::write(
+            fresh.join(generated_stage0_files()[0].as_str()),
+            "fn changed() {}\n",
+        )
+        .expect("write changed generated file");
 
         let changed =
             changed_registered_outputs(&fresh, &committed).expect("changed output receipt");
-        assert_eq!(changed, vec![generated_stage0_files()[0].as_str().to_string()]);
+        assert_eq!(
+            changed,
+            vec![generated_stage0_files()[0].as_str().to_string()]
+        );
 
         let _ = fs::remove_dir_all(committed);
         let _ = fs::remove_dir_all(fresh);
