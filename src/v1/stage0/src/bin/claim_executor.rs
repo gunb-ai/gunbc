@@ -1301,9 +1301,10 @@ fn discovery_claim_result(
     detail: String,
     summary: &DiscoverySummary,
 ) -> ClaimResult {
-    // Per-row identity is load-bearing for the receipt spine: a compute failure must refuse
-    // the discovery claim (typed/located), never silently emit an empty row set (§5 absorbing
-    // fallback — review 43261).
+    // Per-row identity is load-bearing for the receipt spine: a compute failure OR an
+    // incomplete row set must refuse the discovery claim (typed/located), never silently
+    // emit a partial receipt as complete (§5 / review 43261 + review 43274).
+    // `compute_witness_timing_rows` itself refuses on missing entry-resolve coverage.
     match compute_witness_timing_rows(summary) {
         Ok(witness_row_costs) => ClaimResult {
             function,
