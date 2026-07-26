@@ -789,7 +789,9 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
   }
 }
 
-data rust_seed_wrap_decision_note: String = "Construction wall replacing shared_types blanket Rc wrap (rc-ownership-wrap-decision-design.md). Per-use-site wrapping is keyed on rust_sg_rc_ownership_wrap_catalog_rows; types in shared_types but absent from the catalog (e.g. DecimalDigitsStep) emit bare. OwnershipWrapUseSiteAbsent refuses catalog lookup at expression/alias positions. At explicit use sites, legacy shared_types container carriers (List/HashMap/…) still Rc-wrap when the catalog misses — regen fixed-point bridge until expression alignment lands."
+data rust_seed_wrap_decision_note: String = "Construction wall replacing shared_types blanket Rc wrap (rc-ownership-wrap-decision-design.md). Single authority: rust_seed_effective_reference_layer — both type render and value wrap read the same effective OwnershipReferenceLayer. Catalog MISS is not conflated with Owned: legacy container fallback (Vec</HashMap</BTreeMap< prefix scan) lives inside the decision as a named scaffold until catalog coverage is complete."
+
+data rust_seed_legacy_container_blanket_scaffold_note: String = "SCAFFOLD — dissolution trigger: catalog coverage complete for all legacy container carriers. Until then, catalog MISS at an explicit use site may fall back to ReferenceLayerRc when rust_seed_legacy_container_blanket_rc matches rendered text. That helper is a string-prefix scan on rendered types (the wrap-decision design's ruled-out shape); become structural when this scaffold dissolves."
 
 fn rust_seed_legacy_container_blanket_rc(rendered: String) -> Bool {
   if rust_type_is_rc_wrapped(type_name: rendered) { false }
@@ -799,27 +801,36 @@ fn rust_seed_legacy_container_blanket_rc(rendered: String) -> Bool {
   else { false }
 }
 
+fn rust_seed_effective_reference_layer(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> OwnershipReferenceLayer {
+  match use_site {
+    OwnershipWrapUseSiteAbsent => ReferenceLayerOwned
+    _ =>
+      match rust_sg_rc_wrap_layer_lookup(carrier: rust_sg_rc_wrap_carrier_key(type_name: type_name), use_site: use_site) {
+        Present { value: layer } => layer
+        Absent =>
+          if rust_seed_legacy_container_blanket_rc(rendered: rendered) {
+            ReferenceLayerRc
+          } else {
+            ReferenceLayerOwned
+          }
+      }
+  }
+}
+
 fn apply_seed_wrap_decision(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> String {
-  let carrier = rust_sg_rc_wrap_carrier_key(type_name: type_name)
-  match rust_sg_rc_wrap_layer_lookup(carrier: carrier, use_site: use_site) {
-    Present { value: ReferenceLayerOwned } => rendered
-    Present { value: ReferenceLayerRc } =>
+  match rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, use_site: use_site) {
+    ReferenceLayerOwned => rendered
+    ReferenceLayerRc =>
       if rust_type_is_rc_wrapped(type_name: rendered) {
         rendered
       } else {
         wrap_shared_type(target: Rust, inner: rendered)
       }
-    Present { value: ReferenceLayerBox } =>
+    ReferenceLayerBox =>
       if rust_type_is_box_wrapped(type_name: rendered) {
         rendered
       } else {
         concat("Box<", rendered, ">")
-      }
-    Absent =>
-      if use_site != OwnershipWrapUseSiteAbsent && rust_seed_legacy_container_blanket_rc(rendered: rendered) {
-        wrap_shared_type(target: Rust, inner: rendered)
-      } else {
-        rendered
       }
   }
 }
@@ -828,17 +839,14 @@ fn render_rust_shared_type_if_needed(type_name: String, rendered: String, use_si
   apply_seed_wrap_decision(type_name: type_name, rendered: rendered, use_site: use_site)
 }
 
-fn rust_seed_catalog_wraps_rc_at_use_site(type_name: String, use_site: OwnershipWrapUseSite) -> Bool {
-  match rust_sg_rc_wrap_layer_lookup(type_name: type_name, use_site: use_site) {
-    Present { value: ReferenceLayerRc } => true
-    _ => false
-  }
+fn rust_seed_catalog_wraps_rc_at_use_site(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> Bool {
+  rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, use_site: use_site) == ReferenceLayerRc
 }
 
-fn rust_seed_value_needs_rc_wrap(type_name: String, shared_types: Set<String>, use_site: OwnershipWrapUseSite) -> Bool {
+fn rust_seed_value_needs_rc_wrap(type_name: String, rendered: String, shared_types: Set<String>, use_site: OwnershipWrapUseSite) -> Bool {
   match use_site {
     OwnershipWrapUseSiteAbsent => false
-    _ => rust_seed_catalog_wraps_rc_at_use_site(type_name: type_name, use_site: use_site)
+    _ => rust_seed_catalog_wraps_rc_at_use_site(type_name: type_name, rendered: rendered, use_site: use_site)
   }
 }
 
@@ -6322,9 +6330,9 @@ fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolve
 
 fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<String>, corpus_repr: RustCorpusRepr) -> Bool {
   if freemonoid_empty_from_variant_parent(leaf_name: name, enum_name: enum_name) {
-    rust_seed_catalog_wraps_rc_at_use_site(type_name: "FreeMonoid", use_site: OwnershipAtBindingProjection)
+    rust_seed_catalog_wraps_rc_at_use_site(type_name: "FreeMonoid", rendered: "FreeMonoid", use_site: OwnershipAtBindingProjection)
   } else {
-    rust_seed_value_needs_rc_wrap(type_name: enum_name, shared_types: shared_types, use_site: OwnershipAtBindingProjection)
+    rust_seed_value_needs_rc_wrap(type_name: enum_name, rendered: enum_name, shared_types: shared_types, use_site: OwnershipAtBindingProjection)
   }
 }
 
@@ -6338,7 +6346,7 @@ fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>, emit_info
         concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
       Absent =>
         if freemonoid_empty_from_emit_info(leaf_name: leaf, emit_info: emit_info) {
-          emit_freemonoid_empty_value(wrap_in_rc: rust_seed_catalog_wraps_rc_at_use_site(type_name: "FreeMonoid", use_site: OwnershipAtBindingProjection))
+          emit_freemonoid_empty_value(wrap_in_rc: rust_seed_catalog_wraps_rc_at_use_site(type_name: "FreeMonoid", rendered: "FreeMonoid", use_site: OwnershipAtBindingProjection))
         }
         else { emit_ident(name: leaf, target: Rust) }
     }
@@ -6417,14 +6425,14 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
         match variant_parent {
           Present { value: enum_name } =>
             if freemonoid_empty_from_variant_parent(leaf_name: leaf_name, enum_name: enum_name) {
-              emit_freemonoid_empty_value(wrap_in_rc: rust_seed_catalog_wraps_rc_at_use_site(type_name: "FreeMonoid", use_site: OwnershipAtBindingProjection))
+              emit_freemonoid_empty_value(wrap_in_rc: rust_seed_catalog_wraps_rc_at_use_site(type_name: "FreeMonoid", rendered: "FreeMonoid", use_site: OwnershipAtBindingProjection))
             } else {
             let qualified = if is_optional_variant_name(name: leaf_name) && is_optional_like_parent_name(name: enum_name) {
               if is_some_like_variant_name(name: leaf_name) { "Some" } else { "None" }
             } else {
               concat(enum_name, "::", leaf_name)
             }
-            if rust_seed_value_needs_rc_wrap(type_name: enum_name, shared_types: shared_types, use_site: OwnershipAtBindingProjection) {
+            if rust_seed_value_needs_rc_wrap(type_name: enum_name, rendered: enum_name, shared_types: shared_types, use_site: OwnershipAtBindingProjection) {
               concat("Rc::new(", qualified, ")")
             } else { qualified }
             }
@@ -6935,7 +6943,7 @@ fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemIn
         concat("        ", pat, " => ", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", child_text, "\".to_string()"), corpus_repr: emit_info.corpus_repr), ",")
         )
 
-        let scrut_ref = if rust_seed_value_needs_rc_wrap(type_name: ty_name, shared_types: shared_types, use_site: OwnershipAtBindingProjection) {
+        let scrut_ref = if rust_seed_value_needs_rc_wrap(type_name: ty_name, rendered: ty_name, shared_types: shared_types, use_site: OwnershipAtBindingProjection) {
           concat("&*(", scrutinee, ")")
         } else {
           concat("&(", scrutinee, ")")
@@ -8339,7 +8347,7 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
             Present { value: en } => en
             Absent => variant_name
           }
-          if rc_name != "" && rust_seed_value_needs_rc_wrap(type_name: rc_name, shared_types: shared_types, use_site: OwnershipAtStructField) {
+          if rc_name != "" && rust_seed_value_needs_rc_wrap(type_name: rc_name, rendered: rc_name, shared_types: shared_types, use_site: OwnershipAtStructField) {
             concat("Rc::new(", raw, ")")
           } else { raw }
         Absent =>
@@ -8442,7 +8450,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                   if rust_record_field_needs_fn_rc(scope: scope, struct_name: r_sn, field_name: fname0) {
                     let wrapped_val = wrap_rust_record_field_value(raw: fval0, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: r_sn, field_name: fname0)
                     let struct_lit = concat(r_sn, " {\n    ", emit_ident(name: fname0, target: Rust), ": ", wrapped_val, ",\n}")
-                    if rust_seed_value_needs_rc_wrap(type_name: r_sn, shared_types: shared_types, use_site: OwnershipAtBindingProjection) {
+                    if rust_seed_value_needs_rc_wrap(type_name: r_sn, rendered: r_sn, shared_types: shared_types, use_site: OwnershipAtBindingProjection) {
                       concat("Rc::new(", struct_lit, ")")
                     } else { struct_lit }
                   } else { fval0 }
@@ -8470,7 +8478,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
               )
               let body = field_strs |> join(separator: "\n")
               let struct_lit = concat(resolved_sn, " {\n", body, "\n}")
-              if rust_seed_value_needs_rc_wrap(type_name: resolved_sn, shared_types: shared_types, use_site: OwnershipAtBindingProjection) {
+              if rust_seed_value_needs_rc_wrap(type_name: resolved_sn, rendered: resolved_sn, shared_types: shared_types, use_site: OwnershipAtBindingProjection) {
                 concat("Rc::new(", struct_lit, ")")
               } else { struct_lit }
             Absent =>
@@ -8542,7 +8550,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         }
       } else if fields |> count == 0 {
         let host_freemonoid_carrier = authored_name_at(source_indices: si, node: resolved_type)
-        let wrap_freemonoid = rust_seed_catalog_wraps_rc_at_use_site(type_name: host_freemonoid_carrier, use_site: OwnershipAtBindingProjection) || rust_seed_catalog_wraps_rc_at_use_site(type_name: "FreeMonoid", use_site: OwnershipAtBindingProjection)
+        let wrap_freemonoid = rust_seed_catalog_wraps_rc_at_use_site(type_name: host_freemonoid_carrier, rendered: host_freemonoid_carrier, use_site: OwnershipAtBindingProjection) || rust_seed_catalog_wraps_rc_at_use_site(type_name: "FreeMonoid", rendered: "FreeMonoid", use_site: OwnershipAtBindingProjection)
         match rust_seed_host_freemonoid_empty(carrier_name: host_freemonoid_carrier, corpus_repr: emit_info.corpus_repr, wrap_in_rc: wrap_freemonoid) {
           Present { value: grounded } => grounded
           Absent => concat(display_tn, " {}")
@@ -8631,7 +8639,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         let all_field_strs = concat(concat(field_strs, default_strs), phantom_strs)
         let fields_str = all_field_strs |> join(separator: "\n")
         let raw = concat(display_tn, " {\n", fields_str, "\n}")
-        if ctor_alias_resolved && rust_seed_value_needs_rc_wrap(type_name: ctor_name, shared_types: shared_types, use_site: OwnershipAtBindingProjection) {
+        if ctor_alias_resolved && rust_seed_value_needs_rc_wrap(type_name: ctor_name, rendered: ctor_name, shared_types: shared_types, use_site: OwnershipAtBindingProjection) {
           concat("Rc::new(", raw, ")")
         } else { raw }
         }
@@ -10024,7 +10032,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   let fn_name = to_snake(name: name)
   let carrier_name = authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)
   let ty_str = apply_seed_wrap_decision(type_name: carrier_name, rendered: ty_str, use_site: OwnershipAtFunctionReturn)
-  let needs_rc = rust_type_is_rc_wrapped(type_name: ty_str) || rust_seed_catalog_wraps_rc_at_use_site(type_name: carrier_name, use_site: OwnershipAtFunctionReturn)
+  let needs_rc = rust_seed_catalog_wraps_rc_at_use_site(type_name: carrier_name, rendered: raw_ty_str, use_site: OwnershipAtFunctionReturn)
   if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) || rust_nominal_identity_carrier_type_eligible(type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)) {
     let val_str = match rust_nominal_identity_data_expr(type_node: type_node, value: value, source_indices: scope.type_env.source_indices) {
       Present { value: identity_expr } => identity_expr

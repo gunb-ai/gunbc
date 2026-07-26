@@ -1646,7 +1646,16 @@ pub fn render_rust_applied_type(
 pub fn rust_seed_wrap_decision_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Construction wall replacing shared_types blanket Rc wrap (rc-ownership-wrap-decision-design.md). Per-use-site wrapping is keyed only on rust_sg_rc_ownership_wrap_catalog_rows; types in shared_types but absent from the catalog (e.g. DecimalDigitsStep) emit bare. OwnershipWrapUseSiteAbsent refuses catalog lookup at expression/alias positions.".to_string()
+            "Construction wall replacing shared_types blanket Rc wrap (rc-ownership-wrap-decision-design.md). Single authority: rust_seed_effective_reference_layer — both type render and value wrap read the same effective OwnershipReferenceLayer. Catalog MISS is not conflated with Owned: legacy container fallback lives inside the decision as a named scaffold until catalog coverage is complete.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_seed_legacy_container_blanket_scaffold_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "SCAFFOLD — dissolution trigger: catalog coverage complete for all legacy container carriers. Until then, catalog MISS at an explicit use site may fall back to ReferenceLayerRc when rust_seed_legacy_container_blanket_rc matches rendered text. That helper is a string-prefix scan on rendered types (the wrap-decision design's ruled-out shape); become structural when this scaffold dissolves.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1672,40 +1681,54 @@ pub fn rust_seed_legacy_container_blanket_rc(rendered: String) -> bool {
     }
 }
 
+pub fn rust_seed_effective_reference_layer(
+    type_name: String,
+    rendered: String,
+    use_site: OwnershipWrapUseSite,
+) -> OwnershipReferenceLayer {
+    match use_site {
+        OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent => {
+            OwnershipReferenceLayer::ReferenceLayerOwned
+        }
+        _ => match rust_sg_rc_wrap_layer_lookup(
+            rust_sg_rc_wrap_carrier_key(type_name.clone()),
+            use_site.clone(),
+        ) {
+            Some(layer) => layer,
+            None => {
+                if rust_seed_legacy_container_blanket_rc(rendered.clone()) {
+                    OwnershipReferenceLayer::ReferenceLayerRc
+                } else {
+                    OwnershipReferenceLayer::ReferenceLayerOwned
+                }
+            }
+        },
+    }
+}
+
 pub fn apply_seed_wrap_decision(
     type_name: String,
     rendered: String,
     use_site: OwnershipWrapUseSite,
 ) -> String {
+    match rust_seed_effective_reference_layer(type_name.clone(), rendered.clone(), use_site.clone())
     {
-        let carrier = rust_sg_rc_wrap_carrier_key(type_name.clone());
-        match rust_sg_rc_wrap_layer_lookup(carrier.clone(), use_site.clone()) {
-            Some(OwnershipReferenceLayer::ReferenceLayerOwned) => rendered.clone(),
-            Some(OwnershipReferenceLayer::ReferenceLayerRc) => {
-                if rust_type_is_rc_wrapped(rendered.clone()) {
-                    rendered.clone()
-                } else {
-                    wrap_shared_type(RenderTarget::Rust, rendered.clone())
-                }
+        OwnershipReferenceLayer::ReferenceLayerOwned => rendered.clone(),
+        OwnershipReferenceLayer::ReferenceLayerRc => {
+            if rust_type_is_rc_wrapped(rendered.clone()) {
+                rendered.clone()
+            } else {
+                wrap_shared_type(RenderTarget::Rust, rendered.clone())
             }
-            Some(OwnershipReferenceLayer::ReferenceLayerBox) => {
-                if rust_type_is_box_wrapped(rendered.clone()) {
-                    rendered.clone()
-                } else {
-                    v1_rt::concat(
-                        v1_rt::concat("Box<".to_string(), rendered.clone()),
-                        ">".to_string(),
-                    )
-                }
-            }
-            None => {
-                if use_site != OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent
-                    && rust_seed_legacy_container_blanket_rc(rendered.clone())
-                {
-                    wrap_shared_type(RenderTarget::Rust, rendered.clone())
-                } else {
-                    rendered.clone()
-                }
+        }
+        OwnershipReferenceLayer::ReferenceLayerBox => {
+            if rust_type_is_box_wrapped(rendered.clone()) {
+                rendered.clone()
+            } else {
+                v1_rt::concat(
+                    v1_rt::concat("Box<".to_string(), rendered.clone()),
+                    ">".to_string(),
+                )
             }
         }
     }
@@ -1721,25 +1744,22 @@ pub fn render_rust_shared_type_if_needed(
 
 pub fn rust_seed_catalog_wraps_rc_at_use_site(
     type_name: String,
+    rendered: String,
     use_site: OwnershipWrapUseSite,
 ) -> bool {
-    match rust_sg_rc_wrap_layer_lookup(
-        rust_sg_rc_wrap_carrier_key(type_name.clone()),
-        use_site.clone(),
-    ) {
-        Some(OwnershipReferenceLayer::ReferenceLayerRc) => true,
-        _ => false,
-    }
+    rust_seed_effective_reference_layer(type_name.clone(), rendered.clone(), use_site.clone())
+        == OwnershipReferenceLayer::ReferenceLayerRc
 }
 
 pub fn rust_seed_value_needs_rc_wrap(
     type_name: String,
+    rendered: String,
     _shared_types: Rc<BTreeSet<String>>,
     use_site: OwnershipWrapUseSite,
 ) -> bool {
     match use_site {
         OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent => false,
-        _ => rust_seed_catalog_wraps_rc_at_use_site(type_name, use_site),
+        _ => rust_seed_catalog_wraps_rc_at_use_site(type_name, rendered, use_site),
     }
 }
 
@@ -1772,15 +1792,15 @@ pub fn rust_seed_inferred_type_needs_rc_wrap(
 ) -> bool {
     match value.inferred.clone() {
         Some(rc) => match (*rc).clone() {
-            InferredNode::Resolved { node: rt, .. } => rust_type_is_rc_wrapped(
-                render_rust_type_with_applied_binding(
+            InferredNode::Resolved { node: rt, .. } => {
+                rust_type_is_rc_wrapped(render_rust_type_with_applied_binding(
                     rt,
                     shared_types,
                     emit_info.corpus_repr.clone(),
                     scope.type_env.source_indices.clone(),
                     OwnershipWrapUseSite::OwnershipAtFunctionReturn,
-                ),
-            ),
+                ))
+            }
             _ => {
                 let rendered =
                     rust_seed_inferred_type_rendered(value, shared_types, scope, emit_info);
@@ -1798,10 +1818,7 @@ pub fn rust_seed_inferred_type_needs_rc_wrap(
 pub fn rust_seed_demote_outer_rc_wrap(emitted: String) -> String {
     if emitted == "Rc::new(vec![])" {
         "vec![]".to_string()
-    } else if emitted.len() > 9
-        && emitted.starts_with("Rc::new(")
-        && emitted.ends_with(')')
-    {
+    } else if emitted.len() > 9 && emitted.starts_with("Rc::new(") && emitted.ends_with(')') {
         emitted[8..emitted.len() - 1].to_string()
     } else {
         emitted
@@ -17069,10 +17086,12 @@ pub fn variant_ref_self_wraps(
     if freemonoid_empty_from_variant_parent(name.clone(), enum_name.clone()) {
         rust_seed_catalog_wraps_rc_at_use_site(
             "FreeMonoid".to_string(),
+            "FreeMonoid".to_string(),
             OwnershipWrapUseSite::OwnershipAtBindingProjection,
         )
     } else {
         rust_seed_value_needs_rc_wrap(
+            enum_name.clone(),
             enum_name,
             shared_types,
             OwnershipWrapUseSite::OwnershipAtBindingProjection,
@@ -17319,6 +17338,7 @@ pub fn emit_typed_expr_base(
                                                 )
                                             };
                                         if rust_seed_value_needs_rc_wrap(
+                                            enum_name.clone(),
                                             enum_name.clone(),
                                             shared_types.clone(),
                                             OwnershipWrapUseSite::OwnershipAtBindingProjection,
@@ -18826,6 +18846,7 @@ pub fn emit_discriminant_call_lowering(
                             __result
                         });
                         let scrut_ref = if rust_seed_value_needs_rc_wrap(
+                            ty_name.clone(),
                             ty_name.clone(),
                             shared_types.clone(),
                             OwnershipWrapUseSite::OwnershipAtBindingProjection,
@@ -23204,6 +23225,7 @@ pub fn emit_field_value_with_context(
                     if ((rc_name.clone() != "".to_string())
                         && rust_seed_value_needs_rc_wrap(
                             rc_name.clone(),
+                            rc_name.clone(),
                             shared_types.clone(),
                             OwnershipWrapUseSite::OwnershipAtStructField,
                         ))
@@ -23485,6 +23507,7 @@ pub fn emit_typed_record_lit(
                                                 );
                                                 if rust_seed_value_needs_rc_wrap(
                                                     r_sn.clone(),
+                                                    r_sn.clone(),
                                                     shared_types.clone(),
                                                     OwnershipWrapUseSite::OwnershipAtBindingProjection,
                                                 ) {
@@ -23597,6 +23620,7 @@ pub fn emit_typed_record_lit(
                                         "\n}".to_string(),
                                     );
                                     if rust_seed_value_needs_rc_wrap(
+                                        resolved_sn.clone(),
                                         resolved_sn.clone(),
                                         shared_types.clone(),
                                         OwnershipWrapUseSite::OwnershipAtBindingProjection,
@@ -24133,6 +24157,7 @@ Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_s
                                     );
                                     if (ctor_alias_resolved.clone()
                                         && rust_seed_value_needs_rc_wrap(
+                                            ctor_name.clone(),
                                             ctor_name.clone(),
                                             shared_types.clone(),
                                             OwnershipWrapUseSite::OwnershipAtBindingProjection,
@@ -28628,11 +28653,11 @@ pub fn emit_data_def(
             ty_str.clone(),
             OwnershipWrapUseSite::OwnershipAtFunctionReturn,
         );
-        let needs_rc = rust_type_is_rc_wrapped(ty_str.clone())
-            || rust_seed_catalog_wraps_rc_at_use_site(
-                carrier_name.clone(),
-                OwnershipWrapUseSite::OwnershipAtFunctionReturn,
-            );
+        let needs_rc = rust_seed_catalog_wraps_rc_at_use_site(
+            carrier_name.clone(),
+            raw_ty_str.clone(),
+            OwnershipWrapUseSite::OwnershipAtFunctionReturn,
+        );
         if (is_simple_type_node(
             type_node.clone(),
             scope.type_env.clone().source_indices.clone(),
@@ -29022,7 +29047,9 @@ pub fn emit_data_def_body(
                                     val_str.clone(),
                                     needs_rc.clone(),
                                 ),
-                                _ => rust_seed_align_expr_rc_wrap(val_str.clone(), needs_rc.clone()),
+                                _ => {
+                                    rust_seed_align_expr_rc_wrap(val_str.clone(), needs_rc.clone())
+                                }
                             };
                             v1_rt::concat("            ".to_string(), val_str.clone())
                         }
