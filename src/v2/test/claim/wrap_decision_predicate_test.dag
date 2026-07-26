@@ -235,13 +235,3 @@ test fn wrap_decision_node_struct_field_is_box() -> Bool {
   )
 }
 
-test fn wrap_decision_predicate_witness_holds() -> Bool {
-  wrap_decision_diagnostics_return_is_rc()
-    && wrap_decision_diagnostics_param_is_owned()
-    && wrap_decision_probe_heap_param_miss_rejects()
-    && wrap_decision_bundle_absent_inapplicable()
-    && wrap_decision_bundle_partial_rejects()
-    && wrap_decision_use_site_verdict_param_is_owned()
-    && wrap_decision_use_site_verdict_return_is_owned()
-    && wrap_decision_node_struct_field_is_box()
-}

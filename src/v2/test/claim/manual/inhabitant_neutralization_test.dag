@@ -243,7 +243,7 @@ test fn inhabitant_neutralization_python_to_go_cross_language_compile_e2e_holds(
   }
 }
 
-fn inhabitant_neutralization_python_to_go_discriminates_on_real_tree() -> Bool {
+test fn inhabitant_neutralization_python_to_go_discriminates_on_real_tree() -> Bool {
   match python_grammar_parse_fixture() {
     Accepted { value: python_parse_tree, diagnostics: _ } =>
       match cross_language_compile(
@@ -256,11 +256,6 @@ fn inhabitant_neutralization_python_to_go_discriminates_on_real_tree() -> Bool {
       }
     Rejected { diagnostics: _ } => false
   }
-}
-
-test fn inhabitant_neutralization_python_to_go_holds() -> Bool {
-  inhabitant_neutralization_python_to_go_cross_language_compile_e2e_holds()
-    && inhabitant_neutralization_python_to_go_discriminates_on_real_tree()
 }
 
 data claim_inhabitant_neutralization_module_compiles: TestClaim = CompilesClaim {

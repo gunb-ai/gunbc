@@ -321,7 +321,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/execution/bind_eval_by_execution_test.dag",
-      check_fns: ["bind_eval_by_execution_keystone_holds"],
+      check_fns: [],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
@@ -330,7 +330,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/execution/loop_eval_by_execution_test.dag",
-      check_fns: ["loop_eval_by_execution_keystone_holds"],
+      check_fns: [],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
@@ -339,7 +339,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/execution/emit_host_native_only_verdict_test.dag",
-      check_fns: ["emit_host_native_only_verdict_mock_all_holds"],
+      check_fns: [],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
@@ -348,7 +348,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
-      check_fns: ["ingested_classical_not_emit_mock_shape_all_holds"],
+      check_fns: [],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
@@ -357,7 +357,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/manual/bind_demand_driven_eval_test.dag",
-      check_fns: ["bind_reference_binding_protocol_witnesses_hold"],
+      check_fns: [],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
@@ -404,7 +404,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/host_language_transport_script/lens_unit/transport_script_position_test.dag",
-      check_fns: ["transport_script_position_witnesses"],
+      check_fns: [],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
@@ -478,7 +478,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "dag/test/claim/orchestration_if_emit_test.dag",
-      check_fns: ["orch_if_band_holds"],
+      check_fns: [],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },

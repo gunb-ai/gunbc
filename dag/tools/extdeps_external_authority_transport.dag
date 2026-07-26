@@ -5,7 +5,7 @@ import tools.host_prelude { ClaimRun }
 data transport_note: String = "Witness transport for the extdeps external-authority gate, rewired 2026-07-22 onto the mandatory-tag dissolution: the verdict authority is v2.lens.mandatory_tag (compile-gate fold, red/green-controlled at the v2 parse grain in v2.lens.mandatory_tag.gate_witness_test, discovery-enrolled); this transport runs the CORPUS-cadence rows - the retained host anchor projection (v2.lens.mandatory_tag.corpus_scan, a declared shrunken scaffold whose dissolution trigger is witness realization of the parse-grain corpus witness) plus the uri modeling witnesses. The old per-module lens_unit rows retired with v2.lens.extdeps_external_authority; their grain is covered by the gate witnesses. Pooled 2026-07-23 (the cold-child class, attribution doc section 9): the three per-concern fns' calls collapse into ONE claim_batch child; SUPERSEDED same day by the batch-0 pool (CI floor endgame D1, tools.cheap_gate_pool — one child for the whole cheap batch, so this concern's claims no longer pay their own index build). This module is the concern authority only (the claim list below); the gate module beside it is the enrollment wall. The former extdeps_external_authority_source_roots datum was a nickname of witness_layer_roots and dissolved into it."
 
 data uri_witness_entry: String = "dag/test/claim/uri_witness_test.dag"
-data uri_witness_fn: String = "uri_witnesses"
+data uri_witness_fn: String = "uri_scheme_is_http_matches_https_holds"
 
 data corpus_scan_entry: String = "src/v2/lens/mandatory_tag/corpus_scan_witness_test.dag"
 

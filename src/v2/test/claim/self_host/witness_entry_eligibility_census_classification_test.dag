@@ -61,11 +61,3 @@ test fn census_emit_host_gate_not_family_grain_holds() -> Bool {
   census_reason_column_for_entry(entry: "dag/test/claim/emit_host_gate_witness_test.dag") == "BulkFlipPendingCensusIncomplete"
 }
 
-test fn witness_entry_eligibility_census_classification_witnesses() -> Bool {
-  census_long_lane_row_holds()
-    && census_offline_recipe_row_holds()
-    && census_emit_on_demand_family_crate_leg_holds()
-    && census_emit_host_execution_family_row_holds()
-    && census_emit_host_gate_not_family_grain_holds()
-    && census_bulk_pending_default_holds()
-}

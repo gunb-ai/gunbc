@@ -85,20 +85,14 @@ fn javascript_link_node() -> Fragment {
   }
 }
 
-fn witness_unsafe_href_blocks_serialization() -> Bool {
+test fn witness_unsafe_href_blocks_serialization() -> Bool {
   match try_serialize_html_source(node: javascript_link_node()) {
     EmitRejected { reason: _ } => true
     EmitOk { html: _ } => false
   }
 }
 
-fn witness_escape_url_passes_javascript_scheme() -> Bool {
+test fn witness_escape_url_passes_javascript_scheme() -> Bool {
   escape_url(s: "javascript:alert(1)") == "javascript:alert(1)"
-}
-
-test fn witness_allowlist_rejects_what_escape_url_passes() -> Bool {
-  witness_escape_url_passes_javascript_scheme()
-    && witness_javascript_href_rejects()
-    && witness_unsafe_href_blocks_serialization()
 }
 

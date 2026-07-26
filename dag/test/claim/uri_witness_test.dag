@@ -1,6 +1,5 @@
 module test.claim.uri_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn uri_scheme_is_http_matches_https_holds() -> Bool {
@@ -19,9 +18,3 @@ test fn uri_is_url_file_not_url_holds() -> Bool {
   uri_is_url(uri: Uri { scheme: File, locator: "/doc/spec.pdf" }) == false
 }
 
-test fn uri_witnesses() -> Bool {
-  uri_scheme_is_http_matches_https_holds()
-    && uri_scheme_is_http_rejects_file_holds()
-    && uri_is_url_https_projection_holds()
-    && uri_is_url_file_not_url_holds()
-}

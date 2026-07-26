@@ -234,10 +234,12 @@ fn analyze_test_module(path: &Path, content: &str) -> Option<ModuleFns> {
 }
 
 fn umbrellas_in_module(entry: &str, module: &ModuleFns) -> Vec<UmbrellaRecord> {
+    // Nullary locals include both plain helpers and test fns — a residual umbrella
+    // that &&-chains already-promoted test fns must still be detected and deleted.
     let nullary_locals: HashSet<String> = module
         .fns
         .iter()
-        .filter(|(_, (is_test, params, _))| !*is_test && *params == 0)
+        .filter(|(_, (_is_test, params, _))| *params == 0)
         .map(|(n, _)| n.clone())
         .collect();
     let mut out = Vec::new();

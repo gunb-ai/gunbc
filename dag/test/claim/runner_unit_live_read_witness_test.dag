@@ -157,7 +157,7 @@ test fn witness_matching_high_read_converges_on_desired() -> Bool {
   }
 }
 
-fn witness_matching_read_converges_on_memory_max_target() -> Bool {
+test fn witness_matching_read_converges_on_memory_max_target() -> Bool {
   let read = runner_unit_live_read_typed(row: matching_memory_max_row())
   match converge_target_live_verdict(read: read, target: fixture_memory_max_target()) {
     Present { value: VerdictConverged } => true
@@ -165,7 +165,7 @@ fn witness_matching_read_converges_on_memory_max_target() -> Bool {
   }
 }
 
-fn witness_drift_read_fails_memory_max_target() -> Bool {
+test fn witness_drift_read_fails_memory_max_target() -> Bool {
   let read = runner_unit_live_read_typed(row: drift_memory_max_row())
   match converge_target_live_verdict(read: read, target: fixture_memory_max_target()) {
     Present { value: Drifted } => true
@@ -185,12 +185,6 @@ test fn witness_target_bytes_value_is_single_authority() -> Bool {
     Present { value: VerdictConverged } => true
     _ => false
   }
-}
-
-test fn witness_perturbed_fixture_read_diff_red_on_memory_max() -> Bool {
-  witness_fixture_memory_max_drifts_against_model_cap()
-    && witness_matching_read_converges_on_memory_max_target()
-    && witness_drift_read_fails_memory_max_target()
 }
 
 test fn witness_memory_limit_absent_routes_to_absent_verdict() -> Bool {
