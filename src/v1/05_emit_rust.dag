@@ -915,7 +915,7 @@ fn rust_seed_align_expr_rc_wrap(emitted: String, needs_rc: Bool) -> String {
     else if rust_type_is_rc_wrapped(type_name: emitted) { emitted }
     else { concat("Rc::new(", emitted, ")") }
   } else {
-    rust_seed_demote_outer_rc_wrap(emitted: emitted)
+    emitted
   }
 }
 
@@ -6919,7 +6919,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
     texpr: texpr,
     target: Rust,
     source_indices: scope.type_env.source_indices,
-    wrap_result: result => rust_seed_wrap_typed_expr_result(texpr: texpr, emitted: result, shared_types: shared_types, scope: scope, emit_info: emit_info),
+    wrap_result: result => result,
     recurse: child => emit_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel - 1),
     emit_var: expr => emit_rust_expr_var(expr: expr, registry: registry, shared_types: shared_types, emit_info: emit_info, source_indices: scope.type_env.source_indices),
     emit_field_access: expr => emit_rust_expr_field_access(expr: expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
