@@ -13,6 +13,8 @@ data hand_import_allowed_path_prefixes: List<String> = [
   "dag/tools/hand_import_gate.dag",
   "dag/tools/type_resolution_pool_coincidence_transport.dag",
   "dag/std/os/invocation.dag",
+  "dag/gunbc/hand_import_gate_scaffold.dag",
+  "dag/gunbc/type_resolution_pool_coincidence_scaffold.dag",
 ]
 
 data hand_import_gate_note: String = "Pre-corpus-wide gate: zero import additions vs origin/main outside operator-allowed witness roster and type-resolution / value-resolution probe fixture dirs (hand_import_allowed_path_prefixes). Host realization: hand_import_gate_passes (git diff + per-file import-block compare). Operator ruling (clever-pike-49, keen-wolf-121): blocks hand-import churn before projection-generator corpus-wide runs. HAND-RUST receipt authority: gunbc.hand_import_gate_scaffold (hand_import_gate_hand_rust_scaffold + hand_import_gate_receipt_plan_anchor — shell→intent Phase 3 lane). Counted fail-open residues each carry their own scaffold dissolution trigger — not one bundled trigger (review 43116): multiline braced imports (parse residue), allowed-prefix mirror (§3 parallel representation until on-carrier roster)."
