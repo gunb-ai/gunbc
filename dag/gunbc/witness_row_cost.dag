@@ -78,7 +78,7 @@ data witness_cost_role_bool_filter_disposition: Disposition = Scaffold {
   }
 }
 
-data witness_cost_role_bool_filter_note: String = "Scaffold (review 43383): is_entry_resolve_event / is_declaration_witness_event remain Bool filters over (subject facts x concluded Optional), not ObservationTransition->Bool. Dissolve-on: count/project folds match witness_cost_entry_resolve_entry / witness_cost_declaration_witness_concluded Present/Absent inline (no Bool nickname)."
+data witness_cost_role_bool_filter_note: String = "Scaffold receipt for review 43383 (typed Disposition above — prose alone does not discharge the gate): is_entry_resolve_event / is_declaration_witness_event are Bool filters over (subject facts × witness_cost_concluded_outcome Optional), not ObservationTransition→Bool. Dissolves when count/unique/project folds match that Optional Present/Absent (plus phase/grain facts) inline with no Bool nickname."
 
 type WitnessRowCostDatedBasis {
   eval: Millisecond

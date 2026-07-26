@@ -16,6 +16,8 @@ import gunbc.witness_row_cost {
   witness_timing_row_hand_rust_scaffold_deletion,
   witness_timing_row_hand_rust_loc_delta_net,
   witness_timing_row_hand_rust_test_discriminator,
+  witness_cost_role_bool_filter_disposition,
+  witness_cost_role_bool_filter_note,
 }
 import std.logic { Bool }
 import std.nat { Nat }
@@ -261,6 +263,16 @@ fn hand_rust_scaffold_receipts_are_checkable_holds() -> Bool {
   )
 }
 
+fn role_bool_filter_disposition_receipt_holds() -> Bool {
+  match witness_cost_role_bool_filter_disposition {
+    Scaffold { dissolves_to: SingleAuthority, bind: bind } =>
+      bind.module_path == ("gunbc.witness_row_cost" as NonEmptyStr) &&
+      bind.decl_name == ("witness_cost_concluded_outcome" as NonEmptyStr) &&
+      string_contains(s: witness_cost_role_bool_filter_note, pattern: "review 43383")
+    _ => false
+  }
+}
+
 test fn witness_row_cost_projection_holds() -> Bool {
   two_events_project_one_exact_tsv_row_holds() &&
   missing_parent_resolve_refuses_holds() &&
@@ -269,5 +281,6 @@ test fn witness_row_cost_projection_holds() -> Bool {
   refused_outcome_distinct_from_failed_in_projection_holds() &&
   w2_ambient_suppress_retains_complete_receipt_row_holds() &&
   rss_unavailable_carries_cause_on_modeled_events_holds() &&
-  hand_rust_scaffold_receipts_are_checkable_holds()
+  hand_rust_scaffold_receipts_are_checkable_holds() &&
+  role_bool_filter_disposition_receipt_holds()
 }
