@@ -17,9 +17,9 @@ fn w_measure_list_param_preserves_applied_generics() -> Bool {
 
 fn w_zero_param_alias_list_param_unchanged() -> Bool {
   compile_dag_rust_emit_check(
-    "module root4_zero_param_alias\nimport std.measure { ByteSize }\nimport std.realization_measurement { space_measure_list_seq }\n\nfn witness(spaces: List<ByteSize>) -> ByteSize {\n  space_measure_list_seq(spaces: spaces)\n}\n",
+    "module root4_zero_param_alias\nimport std.measure { ByteSize, byte_size }\n\nfn witness(spaces: List<ByteSize>) -> ByteSize {\n  byte_size(count: 0)\n}\n",
     "src/root4_zero_param_alias.rs",
-    ["Vec<ByteSize>"],
+    ["witness(spaces: Rc<Vec<ByteSize>>)"],
     ["ByteSize<", "Vec<Rc<Measure"]
   )
 }
