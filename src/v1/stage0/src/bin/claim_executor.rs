@@ -586,6 +586,8 @@ struct ClaimResult {
     corpus_eval_nanos: u128,
     /// Number of discovery witnesses (non-zero only for discovery batch nodes).
     corpus_witnesses: usize,
+    /// Per-witness eval+resolve identity preserved from discovery (empty for gate/single-claim rows).
+    witness_row_costs: Vec<WitnessTimingRow>,
 }
 
 /// A batch is partitioned into resolve-groups before scheduling. SingleClaims that share one
@@ -706,6 +708,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
         },
         ClaimOutcome::Fail => ClaimResult {
             function,
@@ -716,6 +719,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
         },
         ClaimOutcome::NotBool { got } => ClaimResult {
             function,
@@ -726,6 +730,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
         },
         ClaimOutcome::RuntimeError { message } => ClaimResult {
             function,
@@ -736,6 +741,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
         },
     }
 }
@@ -758,6 +764,7 @@ fn run_batch_unit(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
         }],
         BatchUnit::Discovery {
             source_roots: roots,
@@ -837,6 +844,7 @@ fn run_shared_entry_claims(
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
                 })
                 .collect();
         }
@@ -895,6 +903,7 @@ fn run_memo_shared_claims(
                         corpus_resolve_nanos: 0,
                         corpus_eval_nanos: 0,
                         corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
                     })
                     .collect();
             }
@@ -1287,6 +1296,36 @@ fn read_schedule_witness_entry_paths(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn witness_row_costs_from_summary(summary: &DiscoverySummary) -> Vec<WitnessTimingRow> {
+    match compute_witness_timing_rows(summary) {
+        Ok(rows) => rows,
+        Err(msg) => {
+            eprintln!("[witness-row-cost] {msg}");
+            Vec::new()
+        }
+    }
+}
+
+fn discovery_claim_result(
+    function: String,
+    ok: bool,
+    detail: String,
+    summary: &DiscoverySummary,
+) -> ClaimResult {
+    ClaimResult {
+        function,
+        ok,
+        detail,
+        wall_nanos: 0,
+        resolve_nanos: 0,
+        corpus_resolve_nanos: summary.total_resolve_nanos,
+        corpus_eval_nanos: summary.total_measured_nanos,
+        corpus_witnesses: summary.total,
+        witness_row_costs: witness_row_costs_from_summary(summary),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn run_discovery_batch_node(
     source_roots: Vec<String>,
     scan_dirs: Vec<String>,
@@ -1371,30 +1410,22 @@ fn run_discovery_batch_node(
             emit_slowest_witness_attribution(&source_roots, &summary);
             if expect_red && summary.total > 0 {
                 // All green on an expect-red probe = stale quarantine (dissolve-on fired).
-                ClaimResult {
-                    function: label,
-                    ok: false,
-                    detail: format!(
+                discovery_claim_result(
+                    label,
+                    false,
+                    format!(
                         "expect_red probe unexpectedly green: {} witness(es) passed — un-quarantine (delete known_red_probe_entries / falsifier_self_host_wet_known_red_entries rows) or restore the discriminating red",
                         summary.total
                     ),
-                    wall_nanos: 0,
-                    resolve_nanos: 0,
-                    corpus_resolve_nanos: summary.total_resolve_nanos,
-                    corpus_eval_nanos: summary.total_measured_nanos,
-                    corpus_witnesses: summary.total,
-                }
+                    &summary,
+                )
             } else {
-                ClaimResult {
-                    function: format!("{label} ({} witnesses)", summary.total),
-                    ok: true,
-                    detail: String::new(),
-                    wall_nanos: 0,
-                    resolve_nanos: 0,
-                    corpus_resolve_nanos: summary.total_resolve_nanos,
-                    corpus_eval_nanos: summary.total_measured_nanos,
-                    corpus_witnesses: summary.total,
-                }
+                discovery_claim_result(
+                    format!("{label} ({} witnesses)", summary.total),
+                    true,
+                    String::new(),
+                    &summary,
+                )
             }
         }
         Ok(summary) => {
@@ -1404,32 +1435,24 @@ fn run_discovery_batch_node(
                     summary.failures.len(),
                     summary.total
                 );
-                ClaimResult {
-                    function: format!("{label} (expect_red still-red OK)"),
-                    ok: true,
-                    detail: String::new(),
-                    wall_nanos: 0,
-                    resolve_nanos: 0,
-                    corpus_resolve_nanos: summary.total_resolve_nanos,
-                    corpus_eval_nanos: summary.total_measured_nanos,
-                    corpus_witnesses: summary.total,
-                }
+                discovery_claim_result(
+                    format!("{label} (expect_red still-red OK)"),
+                    true,
+                    String::new(),
+                    &summary,
+                )
             } else {
-                ClaimResult {
-                    function: label,
-                    ok: false,
-                    detail: format!(
+                discovery_claim_result(
+                    label,
+                    false,
+                    format!(
                         "{} of {} discovery witness(es) failed: {}",
                         summary.failures.len(),
                         summary.total,
                         summary.failures.join("; ")
                     ),
-                    wall_nanos: 0,
-                    resolve_nanos: 0,
-                    corpus_resolve_nanos: summary.total_resolve_nanos,
-                    corpus_eval_nanos: summary.total_measured_nanos,
-                    corpus_witnesses: summary.total,
-                }
+                    &summary,
+                )
             }
         }
         Err(msg) => {
@@ -1448,6 +1471,7 @@ fn run_discovery_batch_node(
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
                 }
             } else {
                 ClaimResult {
@@ -1459,6 +1483,7 @@ fn run_discovery_batch_node(
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
                 }
             }
         }
@@ -2075,6 +2100,157 @@ fn write_gate_warm_cost_receipt_at(base: &std::path::Path, batch_records: &[Batc
     true
 }
 
+/// Per-witness cost receipt (Piece #5 spine): one row per discovery witness preserving
+/// `(entry, function, eval_ms, resolve_ms)` identity — the grain falsifier_cadence_surface_note
+/// requires before per-row placement is admissible. The complete machine-readable record is
+/// the TSV file; rendered streams may project a subset later (W2 ruling: one record, two
+/// projections). Fail-closed on write error.
+fn write_witness_row_cost_receipt(batch_records: &[BatchRecord]) -> bool {
+    write_witness_row_cost_receipt_at(std::path::Path::new("target"), batch_records)
+}
+
+fn write_witness_row_cost_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
+    let mut body = String::from("batch\tentry\tfunction\teval_ms\tresolve_ms\twarm_ms\n");
+    let mut row_count = 0usize;
+    for rec in batch_records {
+        let n = rec.batch_index + 1;
+        for result in &rec.results {
+            for row in &result.witness_row_costs {
+                let eval_ms = row.eval_nanos / 1_000_000;
+                let resolve_ms = row.resolve_nanos / 1_000_000;
+                let warm_ms = row.total_nanos / 1_000_000;
+                body.push_str(&format!(
+                    "{n}\t{}\t{}\t{eval_ms}\t{resolve_ms}\t{warm_ms}\n",
+                    row.entry, row.function
+                ));
+                row_count += 1;
+            }
+        }
+    }
+    for line in body.lines() {
+        eprintln!("[witness-row-cost] {line}");
+    }
+    let path = base.join("floor-witness-row-cost-receipt.tsv");
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write witness row-cost receipt {}: {e} — walk fails closed here",
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] floor witness row-cost: {row_count} row(s) (TSV receipt: {})",
+        path.display()
+    );
+    true
+}
+
+struct WitnessRowCostBasisRow {
+    eval_ms_basis: u128,
+    run_ref: String,
+}
+
+/// Drift comparison on the falsifier cadence only (margin ruling: row grew >2× against its
+/// dated basis = counted drift receipt, never merge-refusing). A row with no dated basis is
+/// BasisAbsent — typed, located, counted; never assume fine.
+fn write_witness_row_cost_drift_receipt_at(
+    base: &std::path::Path,
+    batch_records: &[BatchRecord],
+    basis_path: &std::path::Path,
+) -> bool {
+    let mut basis: std::collections::HashMap<(String, String), WitnessRowCostBasisRow> =
+        std::collections::HashMap::new();
+    if let Ok(text) = std::fs::read_to_string(basis_path) {
+        for line in text.lines().skip(1) {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() < 5 {
+                eprintln!(
+                    "claim_executor: malformed witness-row-cost basis line (need 5 cols): {line}"
+                );
+                continue;
+            }
+            let eval_ms_basis = parts[2].parse::<u128>().unwrap_or(0);
+            if eval_ms_basis == 0 {
+                eprintln!(
+                    "claim_executor: witness-row-cost basis row has zero eval_ms_basis (refused as basis): {line}"
+                );
+                continue;
+            }
+            basis.insert(
+                (parts[0].to_string(), parts[1].to_string()),
+                WitnessRowCostBasisRow {
+                    eval_ms_basis,
+                    run_ref: parts[3].to_string(),
+                },
+            );
+        }
+    } else {
+        eprintln!(
+            "claim_executor: witness-row-cost basis file missing at {} — every row records BasisAbsent",
+            basis_path.display()
+        );
+    }
+
+    let mut body = String::from(
+        "batch\tentry\tfunction\tobserved_eval_ms\tbasis_eval_ms\tverdict\trun_ref\n",
+    );
+    let mut drift_count = 0usize;
+    let mut basis_absent_count = 0usize;
+    for rec in batch_records {
+        let n = rec.batch_index + 1;
+        for result in &rec.results {
+            for row in &result.witness_row_costs {
+                let observed = row.eval_nanos / 1_000_000;
+                let key = (row.entry.clone(), row.function.clone());
+                match basis.get(&key) {
+                    None => {
+                        basis_absent_count += 1;
+                        body.push_str(&format!(
+                            "{n}\t{}\t{}\t{observed}\t\tBasisAbsent\t\n",
+                            row.entry, row.function
+                        ));
+                    }
+                    Some(b) => {
+                        let verdict = if observed > b.eval_ms_basis.saturating_mul(2) {
+                            drift_count += 1;
+                            "DriftExceeded"
+                        } else {
+                            "WithinBasis"
+                        };
+                        body.push_str(&format!(
+                            "{n}\t{}\t{}\t{observed}\t{}\t{verdict}\t{}\n",
+                            row.entry, row.function, b.eval_ms_basis, b.run_ref
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    eprintln!(
+        "[witness-row-cost-drift] basis_absent={basis_absent_count} drift_exceeded={drift_count}"
+    );
+    for line in body.lines() {
+        eprintln!("[witness-row-cost-drift] {line}");
+    }
+    let path = base.join("floor-witness-row-cost-drift-receipt.tsv");
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write witness row-cost drift receipt {}: {e} — walk fails closed here",
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] floor witness row-cost drift: basis_absent={basis_absent_count} drift_exceeded={drift_count} (TSV: {})",
+        path.display()
+    );
+    true
+}
+
 fn write_resolve_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
     let mut resolves_total: u64 = 0;
     let mut resolve_ms_total: u128 = 0;
@@ -2319,6 +2495,8 @@ fn run_walk(
     stop_policy: FloorBatchStopPolicy,
     batch_clamp_params: Option<&[(u128, u128)]>,
     budget_tighten_ms: Option<u128>,
+    emit_witness_row_cost_drift: bool,
+    witness_row_cost_basis_path: &Path,
 ) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
@@ -2570,6 +2748,16 @@ fn run_walk(
     let resolve_receipt_ok = write_resolve_receipt(&batch_records);
     let batch_wall_receipt_ok = write_batch_wall_receipt(&batch_records);
     let gate_warm_cost_receipt_ok = write_gate_warm_cost_receipt(&batch_records);
+    let witness_row_cost_receipt_ok = write_witness_row_cost_receipt(&batch_records);
+    let witness_row_cost_drift_receipt_ok = if emit_witness_row_cost_drift {
+        write_witness_row_cost_drift_receipt_at(
+            std::path::Path::new("target"),
+            &batch_records,
+            witness_row_cost_basis_path,
+        )
+    } else {
+        true
+    };
     // Memo contexts absorb their ledger totals into the process accumulator on
     // Drop, so they must die before the materialization receipt is written.
     drop(walk_memo);
@@ -2579,6 +2767,8 @@ fn run_walk(
             || !resolve_receipt_ok
             || !batch_wall_receipt_ok
             || !gate_warm_cost_receipt_ok
+            || !witness_row_cost_receipt_ok
+            || !witness_row_cost_drift_receipt_ok
             || !materialization_receipt_ok,
         batches_run,
         failure_details,
@@ -2784,6 +2974,8 @@ fn run_perturb_check(
         FloorBatchStopPolicy::StopBeforeDependents,
         None,
         None,
+        false,
+        Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
     );
     let _ = fs::remove_dir_all(&tmp);
 
@@ -3198,6 +3390,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         batch_stop_policy,
         batch_clamp_params.as_deref(),
         budget_tighten_ms,
+        plan_function == "gunbc_falsifier_batches",
+        Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
     );
     // Floor receipts block — data, not outcomes. One named group; pulse glyphs only
     // (operator live-log 2026-07-25: outcome glyphs for outcomes only).
