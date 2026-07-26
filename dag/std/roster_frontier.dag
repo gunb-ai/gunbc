@@ -124,7 +124,7 @@ fn frontier_units(rows: List<FrontierRow>) -> List<String> {
 }
 
 fn concat_frontier_row_groups(groups: List<List<FrontierRow>>) -> List<FrontierRow> {
-  fold(groups, init: [], f: fn(acc, group) { concat(acc, group) })
+  flat_map(groups, group => group)
 }
 
 type FrontierExpiryReport {
