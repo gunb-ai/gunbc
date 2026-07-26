@@ -1,18 +1,17 @@
 module test.claim.runnable_resource_profile
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn witness_negligible_profile_is_not_heavy() -> Bool {
+test fn witness_negligible_profile_is_not_heavy() -> Bool {
   !runnable_heavy_whole_tree_resolve(profile: runnable_resource_profile_negligible())
 }
 
-fn witness_negligible_profile_declares_hermetic() -> Bool {
+test fn witness_negligible_profile_declares_hermetic() -> Bool {
   let p = runnable_resource_profile_negligible()
   execution_mode_eq(left: p.execution_mode, right: Hermetic)
 }
 
-fn witness_profile_eq_discriminates_execution_mode() -> Bool {
+test fn witness_profile_eq_discriminates_execution_mode() -> Bool {
   let hermetic = runnable_resource_profile(
     heavy_whole_tree_resolve: false,
     spawns_host_compiler: false,
@@ -29,7 +28,7 @@ fn witness_profile_eq_discriminates_execution_mode() -> Bool {
     && !runnable_resource_profile_eq(left: hermetic, right: wet)
 }
 
-fn witness_substantial_memory_forbids_corpus_co_residence() -> Bool {
+test fn witness_substantial_memory_forbids_corpus_co_residence() -> Bool {
   let heavy = RunnableSingleClaim {
     entry: "e"
     function: "f"
@@ -43,7 +42,7 @@ fn witness_substantial_memory_forbids_corpus_co_residence() -> Bool {
   runnable_forbids_corpus_co_residence(r: heavy)
 }
 
-fn witness_corpus_never_forbids_co_residence() -> Bool {
+test fn witness_corpus_never_forbids_co_residence() -> Bool {
   let corpus = RunnableDiscoveryBatch {
     source_roots: []
     scan_dirs: []
@@ -61,17 +60,9 @@ fn witness_corpus_never_forbids_co_residence() -> Bool {
   !runnable_forbids_corpus_co_residence(r: corpus)
 }
 
-fn witness_memory_class_eq_discriminates_variants() -> Bool {
+test fn witness_memory_class_eq_discriminates_variants() -> Bool {
   runnable_memory_class_eq(left: runnable_memory_negligible(), right: runnable_memory_negligible())
     && runnable_memory_class_eq(left: runnable_memory_substantial(), right: runnable_memory_substantial())
     && !runnable_memory_class_eq(left: runnable_memory_negligible(), right: runnable_memory_substantial())
 }
 
-test fn runnable_resource_profile_witnesses() -> Bool {
-  witness_negligible_profile_is_not_heavy()
-    && witness_negligible_profile_declares_hermetic()
-    && witness_profile_eq_discriminates_execution_mode()
-    && witness_substantial_memory_forbids_corpus_co_residence()
-    && witness_corpus_never_forbids_co_residence()
-    && witness_memory_class_eq_discriminates_variants()
-}

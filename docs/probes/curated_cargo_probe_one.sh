@@ -196,6 +196,10 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
     else
       MAPPED_GATE="UNKNOWN"
     fi
+    if [[ -n "${PROBE_KEEP_LOG_DIR:-}" ]]; then
+      mkdir -p "$PROBE_KEEP_LOG_DIR"
+      cp "$BUILD_LOG" "$PROBE_KEEP_LOG_DIR/$(basename "$MODULE_PATH" .dag).cargo.log"
+    fi
   fi
 fi
 

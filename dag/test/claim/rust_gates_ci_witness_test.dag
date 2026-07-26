@@ -5,28 +5,28 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-fn w_diag_names_check() -> Bool {
+test fn w_diag_names_check() -> Bool {
   string_contains(
     s: gate_diag(check: "cargo fmt --all --check", stdout: "diff here", stderr: ""),
     pattern: "cargo fmt --all --check"
   )
 }
 
-fn w_diag_includes_stdout() -> Bool {
+test fn w_diag_includes_stdout() -> Bool {
   string_contains(
     s: gate_diag(check: "cargo fmt --all --check", stdout: "diff here", stderr: ""),
     pattern: "diff here"
   )
 }
 
-fn w_diag_includes_stderr() -> Bool {
+test fn w_diag_includes_stderr() -> Bool {
   string_contains(
     s: gate_diag(check: "cargo nextest run -p v1-compiler-tests", stdout: "", stderr: "FAILED test::my_failing_test"),
     pattern: "FAILED test::my_failing_test"
   )
 }
 
-fn w_quiet_on_passing_fmt() -> Bool {
+test fn w_quiet_on_passing_fmt() -> Bool {
   let reason = rust_gate_reason(
     fmt_success: true, fmt_stdout: "SENTINEL_SHOULD_NOT_APPEAR", fmt_stderr: "",
     test_success: false, test_stdout: "", test_stderr: "some test error"
@@ -34,7 +34,7 @@ fn w_quiet_on_passing_fmt() -> Bool {
   !string_contains(s: reason, pattern: "SENTINEL_SHOULD_NOT_APPEAR")
 }
 
-fn w_red_surfaces_nextest() -> Bool {
+test fn w_red_surfaces_nextest() -> Bool {
   let reason = rust_gate_reason(
     fmt_success: true, fmt_stdout: "", fmt_stderr: "",
     test_success: false, test_stdout: "", test_stderr: "FAILED test::x_failure"
@@ -43,10 +43,3 @@ fn w_red_surfaces_nextest() -> Bool {
   string_contains(s: reason, pattern: "cargo nextest run -p v1-compiler-tests")
 }
 
-test fn rust_gates_ci_witnesses() -> Bool {
-  w_diag_names_check() &&
-  w_diag_includes_stdout() &&
-  w_diag_includes_stderr() &&
-  w_quiet_on_passing_fmt() &&
-  w_red_surfaces_nextest()
-}

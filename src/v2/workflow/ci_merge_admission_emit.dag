@@ -1,0 +1,46 @@
+module v2.workflow.ci_merge_admission_emit
+
+import gunbc.merge_admission_produce {
+  ci_floor_disposition_marker_init_shell_emit_dissolution_trigger,
+  ci_floor_disposition_marker_init_note,
+  merge_admission_floor_disposition_floor_running,
+  ci_floor_disposition_marker_path,
+}
+import v2.workflow.orchestration_bash_emit_support {
+  orch_bash_comment_line,
+  orch_bash_do,
+  orch_bash_emit_pipeline
+}
+import v2.std.orchestration { FailFast, Pipeline }
+
+data ci_merge_admission_emit_authority_note: String = "Foreign-executor shell emission for gunbc.merge_admission_produce script surfaces (bucket D). Intent stays out of dag/gunbc/merge_admission_produce; bash medium binding lives here per shell→intent routing."
+
+data ci_merge_admission_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ merge-admission run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
+
+data ci_floor_disposition_marker_mkdir_command: String = "mkdir -p target"
+
+fn ci_merge_admission_floor_disposition_stamp_command() -> String {
+  concat(
+    concat("echo ", merge_admission_floor_disposition_floor_running),
+    concat(" > ", ci_floor_disposition_marker_path)
+  )
+}
+
+fn ci_floor_disposition_marker_init_intent() -> Pipeline {
+  Pipeline {
+    steps: [
+      orch_bash_comment_line(text: ci_floor_disposition_marker_init_shell_emit_dissolution_trigger),
+      orch_bash_comment_line(text: ci_floor_disposition_marker_init_note),
+      orch_bash_do(command: ci_floor_disposition_marker_mkdir_command),
+      orch_bash_do(command: ci_merge_admission_floor_disposition_stamp_command())
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn ci_floor_disposition_marker_init_script() -> String {
+  orch_bash_emit_pipeline(
+    p: ci_floor_disposition_marker_init_intent(),
+    refused_poison: ci_merge_admission_emit_refused_poison
+  )
+}

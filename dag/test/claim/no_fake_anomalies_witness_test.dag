@@ -43,7 +43,7 @@ fn stderr_has_anomaly_glyph(stderr: String) -> Bool {
 test fn passing_run_shows_no_fake_anomaly_holds() -> Bool {
   let stderr = run_corpus_capturing_stderr(
     entry: "dag/test/claim/roadmap_belt_actuate_witness_test.dag",
-    function: "roadmap_belt_actuate_witnesses"
+    function: "witness_uuid_deterministic"
   )
   !stderr_has_anomaly_glyph(stderr: stderr)
 }

@@ -125,18 +125,6 @@ type TcoReassignInput {
   depth: Int
 }
 
-type BackendCapability
-  = CapServiceEmit
-  | CapAsyncTransport
-  | CapTestGeneration
-  | CapDryRunMode
-  | CapRcOwnership
-
-type BackendInfo {
-  target_name: String
-  capabilities: List<BackendCapability>
-}
-
 fn derive_module_imports(items: List<Node>, import_rules: List<ImportRule>, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> List<String> {
   let has_async = items |> any(item => item.uses |> count > 0)
   let type_names = collect_type_names_from_items(items: items, source_indices: source_indices)

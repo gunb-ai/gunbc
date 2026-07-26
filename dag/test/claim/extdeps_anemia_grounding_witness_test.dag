@@ -1,6 +1,5 @@
 module test.claim.extdeps_anemia_grounding_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data sample_email: Email = "author@example.com"
@@ -8,7 +7,7 @@ data sample_sha: CommitSha = "abc1234def5678901234567890abcd1234567890"
 data sample_ref: GitRef = "feature/widgets"
 data sample_path: std.types.FilePath = "dag/extdeps/git/git.dag"
 
-fn w_git_author_email_grounded() -> Bool {
+test fn w_git_author_email_grounded() -> Bool {
   let author = GitAuthor {
     name: "Example Author",
     email: sample_email,
@@ -17,7 +16,7 @@ fn w_git_author_email_grounded() -> Bool {
   author.email == sample_email
 }
 
-fn w_pull_request_ref_grounded() -> Bool {
+test fn w_pull_request_ref_grounded() -> Bool {
   let head = PullRequestRef {
     ref: sample_ref,
     sha: sample_sha,
@@ -26,7 +25,7 @@ fn w_pull_request_ref_grounded() -> Bool {
   head.ref == sample_ref && head.sha == sample_sha
 }
 
-fn w_pull_review_commit_id_grounded() -> Bool {
+test fn w_pull_review_commit_id_grounded() -> Bool {
   let review = PullReview {
     id: 1,
     body: "Looks good",
@@ -37,7 +36,7 @@ fn w_pull_review_commit_id_grounded() -> Bool {
   review.commit_id == sample_sha
 }
 
-fn w_review_comment_path_grounded() -> Bool {
+test fn w_review_comment_path_grounded() -> Bool {
   let comment = ReviewComment {
     id: 1,
     node_id: "PRRC_kwDO",
@@ -50,7 +49,7 @@ fn w_review_comment_path_grounded() -> Bool {
   comment.path == sample_path
 }
 
-fn w_digest_subject_survives_grounded_pull_request_ref() -> Bool {
+test fn w_digest_subject_survives_grounded_pull_request_ref() -> Bool {
   let pr = extdeps.github.pulls.PullRequest {
     number: 42,
     title: "Ground extdeps git/github fields",
@@ -77,11 +76,11 @@ fn w_digest_subject_survives_grounded_pull_request_ref() -> Bool {
   subject.head_sha == sample_sha && subject.base_ref == "main"
 }
 
-fn w_cpu_tdp_watts_power_dimension() -> Bool {
+test fn w_cpu_tdp_watts_power_dimension() -> Bool {
   watt_count(altra_max_m12830_catalog.tdp_watts) == 183
 }
 
-fn w_cpu_catalog_row_tdp_not_bare_int() -> Bool {
+test fn w_cpu_catalog_row_tdp_not_bare_int() -> Bool {
   let row = CpuModelCatalogRow {
     model_number: "TEST",
     oem_listing_id: none,
@@ -102,12 +101,3 @@ fn w_cpu_catalog_row_tdp_not_bare_int() -> Bool {
   watt_count(row.tdp_watts) == 99
 }
 
-test fn extdeps_anemia_grounding_witnesses() -> Bool {
-  w_git_author_email_grounded()
-    && w_pull_request_ref_grounded()
-    && w_pull_review_commit_id_grounded()
-    && w_review_comment_path_grounded()
-    && w_digest_subject_survives_grounded_pull_request_ref()
-    && w_cpu_tdp_watts_power_dimension()
-    && w_cpu_catalog_row_tdp_not_bare_int()
-}

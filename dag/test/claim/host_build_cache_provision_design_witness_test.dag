@@ -1,13 +1,12 @@
 module test.claim.host_build_cache_provision_design
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn design_witness_read_back_fails_closed_in_shell() -> Bool {
+test fn design_witness_read_back_fails_closed_in_shell() -> Bool {
   build_cache_provision_read_back_fails_closed()
 }
 
-fn design_witness_unknown_catalog_refuses_at_gate() -> Bool {
+test fn design_witness_unknown_catalog_refuses_at_gate() -> Bool {
   match provision_build_cache_catalog_gate_verdict(
     catalog_id: provision_build_cache_unknown_catalog_fixture,
   ) {
@@ -16,7 +15,7 @@ fn design_witness_unknown_catalog_refuses_at_gate() -> Bool {
   }
 }
 
-fn design_witness_known_non_sccache_catalog_refuses_at_gate() -> Bool {
+test fn design_witness_known_non_sccache_catalog_refuses_at_gate() -> Bool {
   match provision_build_cache_catalog_gate_verdict(catalog_id: gha_actions_cache_id) {
     ProvisionBuildCacheCatalogRefused { reason: reason } =>
       string_contains(s: reason as String, pattern: "not yet realized")
@@ -24,7 +23,7 @@ fn design_witness_known_non_sccache_catalog_refuses_at_gate() -> Bool {
   }
 }
 
-fn design_witness_known_non_sccache_catalog_refuses_at_verdict() -> Bool {
+test fn design_witness_known_non_sccache_catalog_refuses_at_verdict() -> Bool {
   match provision_build_cache_verdict(
     catalog_id: gha_actions_cache_id,
     observed: DaemonStatsOk { stats_line: "compile_requests=1" },
@@ -35,29 +34,29 @@ fn design_witness_known_non_sccache_catalog_refuses_at_verdict() -> Bool {
   }
 }
 
-fn design_witness_sccache_catalog_passes_gate() -> Bool {
+test fn design_witness_sccache_catalog_passes_gate() -> Bool {
   match provision_build_cache_catalog_gate_verdict(catalog_id: sccache_local_id) {
     ProvisionBuildCacheCatalogRealizable => true
     ProvisionBuildCacheCatalogRefused { reason: _ } => false
   }
 }
 
-fn design_witness_routes_through_host_effect_apply() -> Bool {
+test fn design_witness_routes_through_host_effect_apply() -> Bool {
   provision_build_cache_routes_through_host_effect_apply()
 }
 
-fn design_witness_default_effect_pins_sccache_catalog() -> Bool {
+test fn design_witness_default_effect_pins_sccache_catalog() -> Bool {
   match provision_build_cache_default_effect() {
     ProvisionBuildCache { catalog_id: id } => id == sccache_local_id
     _ => false
   }
 }
 
-fn design_witness_absent_daemon_fail_closed() -> Bool {
+test fn design_witness_absent_daemon_fail_closed() -> Bool {
   daemon_absent_refuses_fail_closed()
 }
 
-fn design_witness_authority_gate_accepts_absent_refusal() -> Bool {
+test fn design_witness_authority_gate_accepts_absent_refusal() -> Bool {
   build_cache_provision_gate_accepts(
     verdict: provision_build_cache_verdict(
       catalog_id: sccache_local_id,
@@ -67,11 +66,11 @@ fn design_witness_authority_gate_accepts_absent_refusal() -> Bool {
   )
 }
 
-fn design_witness_cited_fatal_error_fragment() -> Bool {
+test fn design_witness_cited_fatal_error_fragment() -> Bool {
   misconfigured_matches_cited_fragment()
 }
 
-fn design_witness_converged_not_refused_on_ok_stats() -> Bool {
+test fn design_witness_converged_not_refused_on_ok_stats() -> Bool {
   match provision_build_cache_verdict(
     catalog_id: sccache_local_id,
     observed: DaemonStatsOk { stats_line: "compile_requests=42" },
@@ -91,7 +90,7 @@ fn witness_widen_sketch_fabricates_converged_on_absent() -> Bool {
   }
 }
 
-fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
+test fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
   witness_widen_sketch_fabricates_converged_on_absent()
     && !build_cache_provision_gate_accepts(
       verdict: provision_build_cache_absorbing_fallback_widen_sketch(
@@ -107,7 +106,7 @@ fn path_shadow_observation_fixture() -> BuildCacheDaemonObservation {
   DaemonPathShadowed { resolved: "/usr/bin/sccache", expected: "/usr/local/bin/sccache" }
 }
 
-fn design_witness_path_shadow_refuses_fail_closed() -> Bool {
+test fn design_witness_path_shadow_refuses_fail_closed() -> Bool {
   match provision_build_cache_verdict(
     catalog_id: sccache_local_id,
     observed: path_shadow_observation_fixture(),
@@ -121,7 +120,7 @@ fn design_witness_path_shadow_refuses_fail_closed() -> Bool {
   }
 }
 
-fn design_witness_red_control_widen_on_path_shadow_rejected_by_gate() -> Bool {
+test fn design_witness_red_control_widen_on_path_shadow_rejected_by_gate() -> Bool {
   match provision_build_cache_absorbing_fallback_widen_sketch(
     catalog_id: sccache_local_id,
     observed: path_shadow_observation_fixture(),
@@ -144,7 +143,7 @@ fn design_witness_red_control_widen_on_path_shadow_rejected_by_gate() -> Bool {
     )
 }
 
-fn design_witness_path_authority_observation_not_emitted_as_shell() -> Bool {
+test fn design_witness_path_authority_observation_not_emitted_as_shell() -> Bool {
   !string_contains(
     s: build_cache_observe_stats_body(),
     pattern: "path_authority=SHADOWED",
@@ -160,15 +159,15 @@ fn design_witness_path_authority_observation_not_emitted_as_shell() -> Bool {
   )
 }
 
-fn design_witness_install_is_cited_not_package_manager() -> Bool {
+test fn design_witness_install_is_cited_not_package_manager() -> Bool {
   build_cache_install_is_cited_not_package_manager()
 }
 
-fn design_witness_unit_execstart_matches_install_path() -> Bool {
+test fn design_witness_unit_execstart_matches_install_path() -> Bool {
   build_cache_unit_execstart_matches_install_path()
 }
 
-fn design_witness_unit_is_foreground_supervised() -> Bool {
+test fn design_witness_unit_is_foreground_supervised() -> Bool {
   build_cache_unit_is_foreground_supervised()
 }
 
@@ -193,7 +192,7 @@ fn unit_self_exiting_sketch_body() -> String {
   ], "\n")
 }
 
-fn design_witness_unit_daemon_runs_until_stopped() -> Bool {
+test fn design_witness_unit_daemon_runs_until_stopped() -> Bool {
   build_cache_unit_daemon_runs_until_stopped()
     && !build_cache_unit_body_runs_until_stopped(body: unit_self_exiting_sketch_body())
     && build_cache_unit_body_runs_until_stopped(body: build_cache_systemd_user_unit_body())
@@ -203,7 +202,7 @@ fn unsupervised_observation_fixture() -> BuildCacheDaemonObservation {
   DaemonUnsupervised { unit: "sccache.service", unit_state: "inactive (dead)" }
 }
 
-fn design_witness_unsupervised_refuses_fail_closed() -> Bool {
+test fn design_witness_unsupervised_refuses_fail_closed() -> Bool {
   match provision_build_cache_verdict(
     catalog_id: sccache_local_id,
     observed: unsupervised_observation_fixture(),
@@ -217,7 +216,7 @@ fn design_witness_unsupervised_refuses_fail_closed() -> Bool {
   }
 }
 
-fn design_witness_red_control_widen_on_unsupervised_rejected_by_gate() -> Bool {
+test fn design_witness_red_control_widen_on_unsupervised_rejected_by_gate() -> Bool {
   match provision_build_cache_absorbing_fallback_widen_sketch(
     catalog_id: sccache_local_id,
     observed: unsupervised_observation_fixture(),
@@ -240,7 +239,7 @@ fn design_witness_red_control_widen_on_unsupervised_rejected_by_gate() -> Bool {
     )
 }
 
-fn design_witness_supervision_observation_not_emitted_as_shell() -> Bool {
+test fn design_witness_supervision_observation_not_emitted_as_shell() -> Bool {
   !string_contains(
     s: build_cache_observe_stats_body(),
     pattern: "is-active",
@@ -250,20 +249,20 @@ fn design_witness_supervision_observation_not_emitted_as_shell() -> Bool {
   )
 }
 
-fn design_witness_classifier_covers_every_cited_fragment() -> Bool {
+test fn design_witness_classifier_covers_every_cited_fragment() -> Bool {
   build_cache_classifier_covers_every_cited_fragment()
 }
 
-fn design_witness_classifier_is_a_fold_not_an_unrolled_chain() -> Bool {
+test fn design_witness_classifier_is_a_fold_not_an_unrolled_chain() -> Bool {
   !string_contains(s: build_cache_classify_failure_body(), pattern: "elif")
     && string_contains(s: build_cache_classify_failure_body(), pattern: "for frag in ")
 }
 
-fn design_witness_fragment_words_are_shell_safe() -> Bool {
+test fn design_witness_fragment_words_are_shell_safe() -> Bool {
   build_cache_fragment_words_are_shell_safe()
 }
 
-fn design_witness_release_arch_token_is_fail_closed() -> Bool {
+test fn design_witness_release_arch_token_is_fail_closed() -> Bool {
   match sccache_release_arch_token(arch: Aarch64) {
     Present { value: token } => token as String == "aarch64"
     Absent => false
@@ -279,7 +278,7 @@ fn design_witness_release_arch_token_is_fail_closed() -> Bool {
   }
 }
 
-fn design_witness_release_digest_is_fail_closed() -> Bool {
+test fn design_witness_release_digest_is_fail_closed() -> Bool {
   match sccache_release_digest(rel: sccache_release_0_15_0, arch: Aarch64) {
     Present { value: d } => d == sccache_release_0_15_0.digest_aarch64
     Absent => false
@@ -292,7 +291,7 @@ fn design_witness_release_digest_is_fail_closed() -> Bool {
   }
 }
 
-fn design_witness_arch_unknown_host_refuses_realization() -> Bool {
+test fn design_witness_arch_unknown_host_refuses_realization() -> Bool {
   match realize_provision_build_cache(
     effect_intent: provision_build_cache_arch_unknown_intent_fixture(),
   ) {
@@ -303,7 +302,7 @@ fn design_witness_arch_unknown_host_refuses_realization() -> Bool {
   }
 }
 
-fn design_witness_known_arch_host_does_not_refuse_for_arch() -> Bool {
+test fn design_witness_known_arch_host_does_not_refuse_for_arch() -> Bool {
   match provision_build_cache_host_arch(
     effect_intent: provision_build_cache_witness_intent(),
   ) {
@@ -316,34 +315,3 @@ fn design_witness_known_arch_host_does_not_refuse_for_arch() -> Bool {
   }
 }
 
-test fn host_build_cache_provision_design_witnesses() -> Bool {
-  design_witness_read_back_fails_closed_in_shell()
-    && design_witness_path_shadow_refuses_fail_closed()
-    && design_witness_red_control_widen_on_path_shadow_rejected_by_gate()
-    && design_witness_path_authority_observation_not_emitted_as_shell()
-    && design_witness_install_is_cited_not_package_manager()
-    && design_witness_unit_execstart_matches_install_path()
-    && design_witness_unit_is_foreground_supervised()
-    && design_witness_unit_daemon_runs_until_stopped()
-    && design_witness_unsupervised_refuses_fail_closed()
-    && design_witness_red_control_widen_on_unsupervised_rejected_by_gate()
-    && design_witness_supervision_observation_not_emitted_as_shell()
-    && design_witness_classifier_covers_every_cited_fragment()
-    && design_witness_classifier_is_a_fold_not_an_unrolled_chain()
-    && design_witness_fragment_words_are_shell_safe()
-    && design_witness_release_arch_token_is_fail_closed()
-    && design_witness_release_digest_is_fail_closed()
-    && design_witness_arch_unknown_host_refuses_realization()
-    && design_witness_known_arch_host_does_not_refuse_for_arch()
-    && design_witness_unknown_catalog_refuses_at_gate()
-    && design_witness_known_non_sccache_catalog_refuses_at_gate()
-    && design_witness_known_non_sccache_catalog_refuses_at_verdict()
-    && design_witness_sccache_catalog_passes_gate()
-    && design_witness_routes_through_host_effect_apply()
-    && design_witness_default_effect_pins_sccache_catalog()
-    && design_witness_absent_daemon_fail_closed()
-    && design_witness_authority_gate_accepts_absent_refusal()
-    && design_witness_cited_fatal_error_fragment()
-    && design_witness_converged_not_refused_on_ok_stats()
-    && witness_red_control_widen_on_absent_rejected_by_gate()
-}

@@ -30,7 +30,7 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
                 Rc::new(ExternalAuthority {
         uri: Rc::new(Uri {
         scheme: UriScheme::Https,
-        locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/languages/dag".to_string(),
+        locator: "github.com/gunb-ai/gunbc/blob/main/DESIGN.md#4-the-closed-grounded-substrate".to_string(),
     }),
     })
             };

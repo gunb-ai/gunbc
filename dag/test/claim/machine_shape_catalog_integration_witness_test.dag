@@ -43,7 +43,7 @@ fn cpu_catalog_shape() -> MachineShape {
   }
 }
 
-fn w_cpu_cache_levels_integrated_into_memory_shape() -> Bool {
+test fn w_cpu_cache_levels_integrated_into_memory_shape() -> Bool {
   let memory = cpu_catalog_shape().domains.first().memory
   list_length(items: memory) == 3
     && memory.first().id == ampere_l1_level
@@ -58,7 +58,7 @@ fn w_cpu_cache_levels_integrated_into_memory_shape() -> Bool {
     && byte_size_count(b: memory.skip(n: 2).first().capacity) == ampere_l3_bytes
 }
 
-fn w_cpu_catalog_lane_count_matches_threads() -> Bool {
+test fn w_cpu_catalog_lane_count_matches_threads() -> Bool {
   match machine_shape_domain_lane_count(shape: cpu_catalog_shape()) {
     Present { value: lanes } =>
       hardware_thread_count_value(t: lanes) == hardware_thread_count_value(t: altra_max_m12830_catalog.threads)
@@ -66,7 +66,3 @@ fn w_cpu_catalog_lane_count_matches_threads() -> Bool {
   }
 }
 
-test fn machine_shape_catalog_integration_witnesses() -> Bool {
-  w_cpu_cache_levels_integrated_into_memory_shape()
-    && w_cpu_catalog_lane_count_matches_threads()
-}
