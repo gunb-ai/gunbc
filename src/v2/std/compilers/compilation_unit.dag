@@ -6,7 +6,15 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
 import v2.std.algebra { any, fold_list, length }
-import v2.std.collection { Absent, Optional, Present, map_get, optional_present }
+import v2.std.collection {
+  map_get
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_present
+}
 import v2.std.diagnostic { Accepted, Rejected, Outcome, outcome_accepted, outcome_rejected }
 import v2.std.node {
   Atom,

@@ -2,7 +2,16 @@ module v2.extdeps.formats.spice
 
 import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, list_append, list_snoc_item }
-import v2.std.collection { List, Optional, Absent, Present, optional_present, optional_absent }
+import v2.std.collection {
+  List
+}
+import v2.std.optional {
+  Optional,
+  Absent,
+  Present,
+  optional_present,
+  optional_absent
+}
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,

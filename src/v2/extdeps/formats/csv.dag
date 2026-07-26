@@ -1,7 +1,9 @@
 module v2.extdeps.formats.csv
 
 import v2.std.grammar { GrammarSchema }
-import v2.std.collection { Optional }
+import v2.std.optional {
+  Optional
+}
 
 type CsvRfc4180DelimiterProfile {
   comma_field_separator: CsvRfc4180CommaFieldSep,

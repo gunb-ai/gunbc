@@ -29,7 +29,14 @@ import gunbc.ci_gate {
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.algebra { filter, length, list_map, list_snoc_item, skip, zip_map }
-import v2.std.collection { List, Optional, Absent, Present }
+import v2.std.collection {
+  List
+}
+import v2.std.optional {
+  Optional,
+  Absent,
+  Present
+}
 import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
 import v2.std.text { String }

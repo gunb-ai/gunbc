@@ -4,7 +4,15 @@ import v2.extdeps.languages.dag { dag_named_edge }
 import v2.std.grammar { GrammarSchema }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, list_append, list_snoc_item }
-import v2.std.collection { Absent, List, Map, Optional, Present }
+import v2.std.collection {
+  List,
+  Map
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present
+}
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -25,10 +33,8 @@ import v2.std.model_core {
   PrimitiveFactBundle,
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSignedness,
-  ModelCoreFactAxisSurfaceSpelling,
-  primitive_fact_axis_unbound_diagnostic
+  ModelCoreFactAxisSurfaceSpelling
 }
-import v2.std.witness { Holds, Violates }
 
 type SqlDialect
   = SqlDialectIso9075
@@ -258,13 +264,11 @@ fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<Symbol, Node> 
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: sql_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          Holds { value: sql_inhabitant_atom(id: ^sql_tag_signed) }
+          v2.std.optional.Present { value: sql_inhabitant_atom(id: ^sql_tag_signed) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          v2.std.optional.Absent
       }
     }
   }
@@ -274,11 +278,9 @@ fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: sql_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          v2.std.optional.Absent
       }
     }
   }
@@ -288,13 +290,11 @@ fn sql_nonnumeric_spec_facts(facts: SqlNonNumericPrimitiveFacts) -> Map<Symbol, 
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: sql_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: sql_inhabitant_atom(id: facts.representation) }
+          v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.representation) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          v2.std.optional.Absent
       }
     }
   }
@@ -493,7 +493,7 @@ fn sql_serialize_identifier_list(ids: List<SqlIdentifier>) -> String {
 fn sql_serialize_primary_key_clause(pk: Optional<List<SqlIdentifier>>) -> String {
   match pk {
     Absent => ""
-    Present { value: cols } =>
+    v2.std.optional.Present { value: cols } =>
       concat(
         ", PRIMARY KEY (",
         concat(

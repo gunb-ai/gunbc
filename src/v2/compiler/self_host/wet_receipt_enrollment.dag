@@ -8,7 +8,16 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_roster
 }
 import v2.std.algebra { length }
-import v2.std.collection { List, Optional, Absent, Present, optional_absent, optional_present }
+import v2.std.collection {
+  List
+}
+import v2.std.optional {
+  Optional,
+  Absent,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v2.std.logic { Bool }
 import v2.std.text { String }
 

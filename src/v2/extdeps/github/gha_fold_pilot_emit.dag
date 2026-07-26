@@ -9,7 +9,14 @@ import extdeps.github.actions {
   UsesStep
 }
 import v2.std.algebra { for_all }
-import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.collection {
+  List
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present
+}
 
 type GhaPilotStepEmit
   = GhaPilotRunEmit { run: String }
