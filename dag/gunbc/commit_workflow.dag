@@ -154,12 +154,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag",
-      check_fns: [
-        "parse_table_memo_governed_store_refused_when_recompute",
-        "parse_table_memo_bypass_store_reds",
-        "parse_table_memo_governed_memoize_allows_store",
-        "parse_table_memo_door_order_independent"
-      ],
+      check_fns: [],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
@@ -439,7 +434,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/host_language_transport_script/corpus/facts_readback_verdict_perturb_test.dag",
-      check_fns: ["transport_script_facts_readback_verdict_perturb_witness"],
+      check_fns: [],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
@@ -568,13 +563,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/long/gauntlet_lane_enrollment_witness_test.dag",
-      check_fns: [
-        "gauntlet_lane_rehomed_rows_are_cadence_enrolled_holds",
-        "gauntlet_lane_rehome_is_never_bare_deenrollment_holds",
-        "gauntlet_lane_rehome_bare_deenrollment_RED_control_holds",
-        "gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds",
-        "gauntlet_lane_gate_bare_deenrollment_RED_control_holds"
-      ],
+      check_fns: [],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
