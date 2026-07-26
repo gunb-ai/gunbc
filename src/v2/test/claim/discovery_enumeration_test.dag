@@ -17,7 +17,7 @@ test fn discovery_enumeration_unified_claim_arm_modules_holds() -> Bool {
     && unified_claim_arm_node_corpus_module == "v2.std.verification"
 }
 
-fn corpus_init_round_trips() -> Bool {
+test fn corpus_init_round_trips() -> Bool {
   let init: OwnedDataDeclInitializer = OwnedNodeCorpusInit
   match init {
     OwnedNodeCorpusInit => true
@@ -25,7 +25,7 @@ fn corpus_init_round_trips() -> Bool {
   }
 }
 
-fn bool_witness_init_round_trips() -> Bool {
+test fn bool_witness_init_round_trips() -> Bool {
   let init: OwnedDataDeclInitializer = OwnedBoolWitnessClaimInit {
     witness_entry: "entry.dag",
     witness_function: "witness_fn"
@@ -37,7 +37,7 @@ fn bool_witness_init_round_trips() -> Bool {
   }
 }
 
-fn other_init_round_trips() -> Bool {
+test fn other_init_round_trips() -> Bool {
   let init: OwnedDataDeclInitializer = OwnedOtherInit {
     resolved: ResolvedDeclRef { module: "v2.example", name: ^sym }
   }
@@ -46,12 +46,6 @@ fn other_init_round_trips() -> Bool {
       (d.module == "v2.example") && (d.name == ^sym)
     _ => false
   }
-}
-
-test fn discovery_enumeration_initializer_variants_constructible() -> Bool {
-  corpus_init_round_trips()
-    && bool_witness_init_round_trips()
-    && other_init_round_trips()
 }
 
 test fn discovery_enumeration_receipt_zero_default_holds() -> Bool {

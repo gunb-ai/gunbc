@@ -113,12 +113,12 @@ fn is_teardown_failed(o: BeltTeardownOutcome) -> Bool {
   }
 }
 
-fn witness_exec_ok_runs_echo() -> Bool {
+test fn witness_exec_ok_runs_echo() -> Bool {
   let o = belt_exec(cmd: host_exec_argv(program: "echo", args: ["belt-ok"]), workdir: "/")
   is_exec_ok(o: o) && exec_ok_stdout_contains(o: o, pattern: "belt-ok")
 }
 
-fn witness_exec_refuses_missing_program() -> Bool {
+test fn witness_exec_refuses_missing_program() -> Bool {
   let o = belt_exec(
     cmd: host_exec_argv(program: "belt-nonexistent-program-xyz", args: []),
     workdir: "/",
@@ -126,12 +126,12 @@ fn witness_exec_refuses_missing_program() -> Bool {
   is_exec_refused(o: o)
 }
 
-fn witness_exec_fails_on_nonzero_exit() -> Bool {
+test fn witness_exec_fails_on_nonzero_exit() -> Bool {
   let o = belt_exec(cmd: host_exec_argv(program: "false", args: []), workdir: "/")
   is_exec_failed(o: o)
 }
 
-fn witness_exec_all_runs_every_step_when_ok() -> Bool {
+test fn witness_exec_all_runs_every_step_when_ok() -> Bool {
   let o = belt_exec_all(
     cmds: [
       host_exec_argv(program: "echo", args: ["first"]),
@@ -142,7 +142,7 @@ fn witness_exec_all_runs_every_step_when_ok() -> Bool {
   is_exec_ok(o: o) && exec_ok_stdout_contains(o: o, pattern: "second")
 }
 
-fn witness_exec_all_short_circuits_after_failure() -> Bool {
+test fn witness_exec_all_short_circuits_after_failure() -> Bool {
   let o = belt_exec_all(
     cmds: [
       host_exec_argv(program: "false", args: []),
@@ -153,7 +153,7 @@ fn witness_exec_all_short_circuits_after_failure() -> Bool {
   is_exec_failed(o: o) && !exec_ok_stdout_contains(o: o, pattern: "should-not-run")
 }
 
-fn witness_exec_all_fails_on_later_step() -> Bool {
+test fn witness_exec_all_fails_on_later_step() -> Bool {
   let o = belt_exec_all(
     cmds: [
       host_exec_argv(program: "echo", args: ["ok"]),
@@ -164,12 +164,12 @@ fn witness_exec_all_fails_on_later_step() -> Bool {
   is_exec_failed(o: o)
 }
 
-fn witness_spawn_member_refuses_observed_shape() -> Bool {
+test fn witness_spawn_member_refuses_observed_shape() -> Bool {
   let m = ObservedMember { node_id: "z", session: live_session(node_id: "z", verdict: Converged) }
   is_spawn_failed(o: belt_actuate_spawn_member(m: m, workdir: "/"))
 }
 
-fn witness_teardown_member_refuses_desired_shape() -> Bool {
+test fn witness_teardown_member_refuses_desired_shape() -> Bool {
   let m = DesiredMember { node_id: "a", node: ready_node(id: "a") }
   is_teardown_failed(o: belt_actuate_teardown_member(m: m))
 }
@@ -188,7 +188,7 @@ fn is_observe_refused(o: BeltObserve) -> Bool {
   }
 }
 
-fn witness_observe_parses_live_on_success() -> Bool {
+test fn witness_observe_parses_live_on_success() -> Bool {
   observe_live_count(o: belt_observe_from_result(
     success: true,
     stdout: "gunbc-dispatch-a: 1 windows",
@@ -196,7 +196,7 @@ fn witness_observe_parses_live_on_success() -> Bool {
   )) == 1
 }
 
-fn witness_observe_empty_on_no_server() -> Bool {
+test fn witness_observe_empty_on_no_server() -> Bool {
   observe_live_count(o: belt_observe_from_result(
     success: false,
     stdout: "",
@@ -204,7 +204,7 @@ fn witness_observe_empty_on_no_server() -> Bool {
   )) == 0
 }
 
-fn witness_observe_empty_on_no_sessions() -> Bool {
+test fn witness_observe_empty_on_no_sessions() -> Bool {
   observe_live_count(o: belt_observe_from_result(
     success: false,
     stdout: "",
@@ -212,7 +212,7 @@ fn witness_observe_empty_on_no_sessions() -> Bool {
   )) == 0
 }
 
-fn witness_observe_refuses_permission_error() -> Bool {
+test fn witness_observe_refuses_permission_error() -> Bool {
   is_observe_refused(o: belt_observe_from_result(
     success: false,
     stdout: "",
@@ -220,7 +220,7 @@ fn witness_observe_refuses_permission_error() -> Bool {
   ))
 }
 
-fn witness_observe_refuses_empty_stderr_failure() -> Bool {
+test fn witness_observe_refuses_empty_stderr_failure() -> Bool {
   is_observe_refused(o: belt_observe_from_result(
     success: false,
     stdout: "",
@@ -232,19 +232,19 @@ fn uuid_char(u: String, i: Int) -> String {
   substring(s: u, start: i, end: i + 1)
 }
 
-fn witness_uuid_deterministic() -> Bool {
+test fn witness_uuid_deterministic() -> Bool {
   let a = belt_spawn_session_uuid(node_id: "5-regen-cutover")
   let b = belt_spawn_session_uuid(node_id: "5-regen-cutover")
   a == b
 }
 
-fn witness_uuid_distinct_nodes() -> Bool {
+test fn witness_uuid_distinct_nodes() -> Bool {
   let a = belt_spawn_session_uuid(node_id: "node-a")
   let b = belt_spawn_session_uuid(node_id: "node-b")
   !(a == b)
 }
 
-fn witness_uuid_rfc4122_shape() -> Bool {
+test fn witness_uuid_rfc4122_shape() -> Bool {
   let u = belt_spawn_session_uuid(node_id: "5-regen-cutover")
   string_length(s: u) == 36
     && uuid_char(u: u, i: 8) == "-"
@@ -262,11 +262,11 @@ fn is_node_found(l: BeltNodeLookup) -> Bool {
   }
 }
 
-fn witness_find_node_hits() -> Bool {
+test fn witness_find_node_hits() -> Bool {
   is_node_found(l: belt_find_node_in(nodes: [ready_node(id: "a"), ready_node(id: "b")], node_id: "b"))
 }
 
-fn witness_find_node_misses() -> Bool {
+test fn witness_find_node_misses() -> Bool {
   !is_node_found(l: belt_find_node_in(nodes: [ready_node(id: "a"), ready_node(id: "b")], node_id: "z"))
 }
 
@@ -288,27 +288,27 @@ fn found_owner(l: BeltNodeLookup) -> String {
   }
 }
 
-fn witness_find_node_first_wins_on_duplicate() -> Bool {
+test fn witness_find_node_first_wins_on_duplicate() -> Bool {
   found_owner(l: belt_find_node_in(
     nodes: [owned_node(id: "dup", owner: "first"), owned_node(id: "dup", owner: "second")],
     node_id: "dup",
   )) == "first"
 }
 
-fn witness_node_session_live_true() -> Bool {
+test fn witness_node_session_live_true() -> Bool {
   belt_node_session_live(live: [live_session(node_id: "a", verdict: Converged)], node_id: "a")
 }
 
-fn witness_node_session_live_false() -> Bool {
+test fn witness_node_session_live_false() -> Bool {
   !belt_node_session_live(live: [live_session(node_id: "a", verdict: Converged)], node_id: "b")
 }
 
-fn witness_dispatch_result_ok_spawned_and_live() -> Bool {
+test fn witness_dispatch_result_ok_spawned_and_live() -> Bool {
   belt_dispatch_result_ok(r: DispatchSpawned { node_id: "a", session_name: "gunbc-dispatch-a" })
     && belt_dispatch_result_ok(r: DispatchAlreadyLive { node_id: "a", session_name: "gunbc-dispatch-a" })
 }
 
-fn witness_dispatch_result_refusals_not_ok() -> Bool {
+test fn witness_dispatch_result_refusals_not_ok() -> Bool {
   !belt_dispatch_result_ok(r: DispatchNodeNotFound { node_id: "a" })
     && !belt_dispatch_result_ok(r: DispatchNodeAlreadyDone { node_id: "a" })
     && !belt_dispatch_result_ok(r: DispatchObserveRefused { node_id: "a", reason: "x" })
@@ -321,7 +321,7 @@ fn status_label_glued_to_ok(r: BeltDispatchResult) -> Bool {
   ok == label_in_ok_set
 }
 
-fn witness_dispatch_status_labels_glued_to_ok_set() -> Bool {
+test fn witness_dispatch_status_labels_glued_to_ok_set() -> Bool {
   status_label_glued_to_ok(r: DispatchSpawned { node_id: "a", session_name: "s" })
     && status_label_glued_to_ok(r: DispatchAlreadyLive { node_id: "a", session_name: "s" })
     && status_label_glued_to_ok(r: DispatchNodeNotFound { node_id: "a" })
@@ -330,7 +330,7 @@ fn witness_dispatch_status_labels_glued_to_ok_set() -> Bool {
     && status_label_glued_to_ok(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x" })
 }
 
-fn witness_dispatch_status_labels_pin_wire_contract() -> Bool {
+test fn witness_dispatch_status_labels_pin_wire_contract() -> Bool {
   belt_dispatch_status_label(r: DispatchSpawned { node_id: "a", session_name: "s" }) == "spawned"
     && belt_dispatch_status_label(r: DispatchAlreadyLive { node_id: "a", session_name: "s" }) == "already_live"
     && belt_dispatch_status_label(r: DispatchNodeNotFound { node_id: "a" }) == "node_not_found"
@@ -347,7 +347,7 @@ fn band_key_for_label(label: String) -> String {
   }
 }
 
-fn witness_band_fold_pins_operator_vocabulary() -> Bool {
+test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
   belt_dispatch_label_band_rows().length() == 6
     && band_key_for_label(label: "spawned") == "ok"
     && band_key_for_label(label: "already_live") == "ok"
@@ -357,15 +357,15 @@ fn witness_band_fold_pins_operator_vocabulary() -> Bool {
     && band_key_for_label(label: "spawn_failed") == "loud"
 }
 
-fn witness_no_result_maps_to_in_progress() -> Bool {
+test fn witness_no_result_maps_to_in_progress() -> Bool {
   all(belt_dispatch_label_band_rows(), row => row.band_key != "in-progress")
 }
 
-fn witness_ok_labels_derive_from_band_fold() -> Bool {
+test fn witness_ok_labels_derive_from_band_fold() -> Bool {
   belt_dispatch_ok_status_labels() == ["spawned", "already_live"]
 }
 
-fn witness_label_band_cover_reds_on_missing_row() -> Bool {
+test fn witness_label_band_cover_reds_on_missing_row() -> Bool {
   let rows = belt_dispatch_label_band_rows()
   let labels = belt_dispatch_all_status_labels()
   let truncated = filter(rows, row => row.wire_label != "spawned")
@@ -383,7 +383,7 @@ fn d4_exemplars_reconcile(exemplars: List<BeltDispatchResult>) -> Bool {
   map(exemplars, r => belt_dispatch_status_label(r: r)) == d4_wire_contract_labels()
 }
 
-fn witness_exemplar_roster_reconciles_variant_set() -> Bool {
+test fn witness_exemplar_roster_reconciles_variant_set() -> Bool {
   d4_exemplars_reconcile(exemplars: belt_dispatch_result_exemplars())
     && belt_dispatch_all_status_labels() == d4_wire_contract_labels()
 }
@@ -398,7 +398,7 @@ fn d4_exemplars_missing_one() -> List<BeltDispatchResult> {
   ]
 }
 
-fn witness_exemplar_roster_missing_variant_reds() -> Bool {
+test fn witness_exemplar_roster_missing_variant_reds() -> Bool {
   !d4_exemplars_reconcile(exemplars: d4_exemplars_missing_one())
 }
 
@@ -431,7 +431,7 @@ fn preflight_with_config(config: String) -> BeltClaudePreflight {
   )
 }
 
-fn witness_preflight_refuses_missing_claude() -> Bool {
+test fn witness_preflight_refuses_missing_claude() -> Bool {
   preflight_refused_step(p: belt_claude_preflight_decision(
     claude_on_path: false,
     home: "/home/u",
@@ -442,7 +442,7 @@ fn witness_preflight_refuses_missing_claude() -> Bool {
   )) == "claude-cli"
 }
 
-fn witness_preflight_refuses_unknown_home() -> Bool {
+test fn witness_preflight_refuses_unknown_home() -> Bool {
   preflight_refused_step(p: belt_claude_preflight_decision(
     claude_on_path: true,
     home: "",
@@ -453,7 +453,7 @@ fn witness_preflight_refuses_unknown_home() -> Bool {
   )) == "claude-trust-home"
 }
 
-fn witness_preflight_refuses_unreadable_store() -> Bool {
+test fn witness_preflight_refuses_unreadable_store() -> Bool {
   preflight_refused_step(p: belt_claude_preflight_decision(
     claude_on_path: true,
     home: "/home/u",
@@ -464,7 +464,7 @@ fn witness_preflight_refuses_unreadable_store() -> Bool {
   )) == "claude-trust-store"
 }
 
-fn witness_preflight_refuses_unseeded_root() -> Bool {
+test fn witness_preflight_refuses_unseeded_root() -> Bool {
   preflight_refused_step(p: preflight_with_config(
     config: "\{\"projects\":\{\"/opt/other\":\{\"hasTrustDialogAccepted\":true\}\}\}",
   )) == "claude-trust-seed"
@@ -473,52 +473,13 @@ fn witness_preflight_refuses_unseeded_root() -> Bool {
     )) == "claude-trust-seed"
 }
 
-fn witness_preflight_ok_when_seeded() -> Bool {
+test fn witness_preflight_ok_when_seeded() -> Bool {
   preflight_ok(p: preflight_with_config(config: seeded_trust_config()))
 }
 
-fn witness_preflight_ok_on_enriched_entry() -> Bool {
+test fn witness_preflight_ok_on_enriched_entry() -> Bool {
   preflight_ok(p: preflight_with_config(
     config: "\{\"projects\":\{\"/opt/x/worktrees\":\{\"mcpServers\":\{\},\"allowedTools\":[\"a\}b\"],\"hasTrustDialogAccepted\":true\}\}\}",
   ))
 }
 
-test fn roadmap_belt_actuate_witnesses() -> Bool {
-  witness_exec_ok_runs_echo()
-    && witness_exec_refuses_missing_program()
-    && witness_exec_fails_on_nonzero_exit()
-    && witness_exec_all_runs_every_step_when_ok()
-    && witness_exec_all_short_circuits_after_failure()
-    && witness_exec_all_fails_on_later_step()
-    && witness_spawn_member_refuses_observed_shape()
-    && witness_teardown_member_refuses_desired_shape()
-    && witness_observe_parses_live_on_success()
-    && witness_observe_empty_on_no_server()
-    && witness_observe_empty_on_no_sessions()
-    && witness_observe_refuses_permission_error()
-    && witness_observe_refuses_empty_stderr_failure()
-    && witness_uuid_deterministic()
-    && witness_uuid_distinct_nodes()
-    && witness_uuid_rfc4122_shape()
-    && witness_find_node_hits()
-    && witness_find_node_misses()
-    && witness_find_node_first_wins_on_duplicate()
-    && witness_node_session_live_true()
-    && witness_node_session_live_false()
-    && witness_dispatch_result_ok_spawned_and_live()
-    && witness_dispatch_result_refusals_not_ok()
-    && witness_dispatch_status_labels_glued_to_ok_set()
-    && witness_dispatch_status_labels_pin_wire_contract()
-    && witness_exemplar_roster_reconciles_variant_set()
-    && witness_exemplar_roster_missing_variant_reds()
-    && witness_band_fold_pins_operator_vocabulary()
-    && witness_no_result_maps_to_in_progress()
-    && witness_ok_labels_derive_from_band_fold()
-    && witness_label_band_cover_reds_on_missing_row()
-    && witness_preflight_refuses_missing_claude()
-    && witness_preflight_refuses_unknown_home()
-    && witness_preflight_refuses_unreadable_store()
-    && witness_preflight_refuses_unseeded_root()
-    && witness_preflight_ok_when_seeded()
-    && witness_preflight_ok_on_enriched_entry()
-}

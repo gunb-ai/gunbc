@@ -36,14 +36,14 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn witness_catalog_admissible() -> Bool {
+test fn witness_catalog_admissible() -> Bool {
   catalog_admissible()
     && swatch_set_admissible(s: island_pastel)
     && swatch_set_admissible(s: okabe_ito)
     && swatch_set_admissible(s: solarized)
 }
 
-fn witness_hex_serialization_matches_authored() -> Bool {
+test fn witness_hex_serialization_matches_authored() -> Bool {
   swatch_paint(sw: island_mint) == "#9dffb0"
     && swatch_paint(sw: island_aqua) == "#81f1f7"
     && swatch_paint(sw: island_ivory) == "#fffffa"
@@ -52,11 +52,11 @@ fn witness_hex_serialization_matches_authored() -> Bool {
     && swatch_paint(sw: island_loam) == "#724d15"
 }
 
-fn witness_pairing_matrix_total() -> Bool {
+test fn witness_pairing_matrix_total() -> Bool {
   graded_pairings(s: island_pastel).length() == 30
 }
 
-fn witness_camel_ivory_near_miss() -> Bool {
+test fn witness_camel_ivory_near_miss() -> Bool {
   let r = srgb8_contrast_ratio_x100(a: island_camel.color, b: island_ivory.color)
   r >= 280 && r < 300
     && grade_rank(g: grade_of_contrast(contrast_x100: r)) == 0
@@ -71,14 +71,14 @@ fn authored_five() -> SwatchSet {
   }
 }
 
-fn witness_authored_set_has_no_text_pairing() -> Bool {
+test fn witness_authored_set_has_no_text_pairing() -> Bool {
   let five = authored_five()
   swatches_of(s: five).length() == 5
     && !set_text_capable(s: five)
     && pairings_at_least(s: five, min_rank: 1).length() == 0
 }
 
-fn witness_loam_carries_text_capability() -> Bool {
+test fn witness_loam_carries_text_capability() -> Bool {
   set_text_capable(s: island_pastel)
     && srgb8_contrast_at_least(a: island_loam.color, b: island_mint.color, threshold_hundredths: wcag_aa_normal_text_hundredths)
     && srgb8_contrast_at_least(a: island_loam.color, b: island_aqua.color, threshold_hundredths: wcag_aa_normal_text_hundredths)
@@ -87,7 +87,7 @@ fn witness_loam_carries_text_capability() -> Bool {
     && pairings_at_least(s: island_pastel, min_rank: 2).length() == 8
 }
 
-fn witness_grade_kernel_discriminates() -> Bool {
+test fn witness_grade_kernel_discriminates() -> Bool {
   let black = Srgb8 { r: 0, g: 0, b: 0 }
   let white = Srgb8 { r: 255, g: 255, b: 255 }
   srgb8_contrast_ratio_x100(a: black, b: white) == 2100
@@ -97,7 +97,7 @@ fn witness_grade_kernel_discriminates() -> Bool {
     && !srgb8_admissible(c: Srgb8 { r: 256, g: 0, b: 0 })
 }
 
-fn witness_camel_hsl_projection() -> Bool {
+test fn witness_camel_hsl_projection() -> Bool {
   let proj = srgb8_to_hsl_projection(c: island_camel.color)
   match proj {
     Chromatic { h, s_pct, l_pct } => h == 35 && s_pct == 53 && l_pct == 51
@@ -105,7 +105,7 @@ fn witness_camel_hsl_projection() -> Bool {
   }
 }
 
-fn witness_hsl_projection_red_on_off_by_one_hue() -> Bool {
+test fn witness_hsl_projection_red_on_off_by_one_hue() -> Bool {
   let proj = srgb8_to_hsl_projection(c: island_camel.color)
   match proj {
     Chromatic { h, s_pct, l_pct } => !(h == 36 && s_pct == 53 && l_pct == 51)
@@ -113,21 +113,21 @@ fn witness_hsl_projection_red_on_off_by_one_hue() -> Bool {
   }
 }
 
-fn witness_achromatic_maps_to_variant_not_hue_zero() -> Bool {
+test fn witness_achromatic_maps_to_variant_not_hue_zero() -> Bool {
   match srgb8_to_hsl_projection(c: Srgb8 { r: 128, g: 128, b: 128 }) {
     Achromatic { l_pct: _ } => true
     Chromatic { h: _, s_pct: _, l_pct: _ } => false
   }
 }
 
-fn witness_chromatic_still_projects_hue() -> Bool {
+test fn witness_chromatic_still_projects_hue() -> Bool {
   match srgb8_to_hsl_projection(c: Srgb8 { r: 255, g: 0, b: 0 }) {
     Chromatic { h, s_pct, l_pct: _ } => h >= 0 && s_pct > 0
     Achromatic { l_pct: _ } => false
   }
 }
 
-fn witness_gray_never_yields_hue_zero_as_red() -> Bool {
+test fn witness_gray_never_yields_hue_zero_as_red() -> Bool {
   match srgb8_to_hsl_projection(c: Srgb8 { r: 127, g: 127, b: 127 }) {
     Chromatic { h: 0, s_pct: 0, l_pct: _ } => false
     Chromatic { h: _, s_pct: _, l_pct: _ } => true
@@ -135,21 +135,21 @@ fn witness_gray_never_yields_hue_zero_as_red() -> Bool {
   }
 }
 
-fn witness_camel_passes_quiet_envelope() -> Bool {
+test fn witness_camel_passes_quiet_envelope() -> Bool {
   quiet_envelope_srgb8(c: island_camel.color)
 }
 
-fn witness_mint_refused_by_quiet_envelope() -> Bool {
+test fn witness_mint_refused_by_quiet_envelope() -> Bool {
   !quiet_envelope_srgb8(c: island_mint.color)
 }
 
-fn witness_ivory_refused_despite_near_achromatic_oklch() -> Bool {
+test fn witness_ivory_refused_despite_near_achromatic_oklch() -> Bool {
   !quiet_envelope_srgb8(c: island_ivory.color)
 }
 
 data ivory_hsl_proxy_defect_note: String = "Teaching case: ivory (255,255,250) is refused by the HSL quiet_envelope despite perceptual near-achromatic OKLCH chroma (~0.007) — documents the HSL-proxy defect that design-register-library.md sect 10 schedules for OKLCH reground; this witness pins the defect, it does not fix it."
 
-fn witness_cited_palette_counts() -> Bool {
+test fn witness_cited_palette_counts() -> Bool {
   swatches_of(s: okabe_ito).length() == 8
     && swatches_of(s: solarized).length() == 16
     && palette_catalog.length() == 3
@@ -163,7 +163,7 @@ fn ladder_step_matches_catalog(step_name: String, step_color: Srgb8) -> Bool {
       && row.color.b == step_color.b))
 }
 
-fn witness_solarized_base_ladder_order_and_count() -> Bool {
+test fn witness_solarized_base_ladder_order_and_count() -> Bool {
   solarized_base_ladder.length() == 8
     && all(solarized_base_ladder, step => ladder_step_matches_catalog(step_name: step.name, step_color: step.color))
 }
@@ -185,7 +185,7 @@ fn solarized_mode_partner(name: String) -> String {
   else { name }
 }
 
-fn witness_solarized_base_mode_pairing_involution() -> Bool {
+test fn witness_solarized_base_mode_pairing_involution() -> Bool {
   solarized_base_mode_pairs.length() == 4
     && has_solarized_mode_pair(dark: "base03", light: "base3")
     && has_solarized_mode_pair(dark: "base02", light: "base2")
@@ -195,12 +195,12 @@ fn witness_solarized_base_mode_pairing_involution() -> Bool {
     && solarized_mode_partner(name: solarized_mode_partner(name: "base03")) == "base03"
 }
 
-fn witness_base16_digit_refuses_out_of_range() -> Bool {
+test fn witness_base16_digit_refuses_out_of_range() -> Bool {
   hex_digit_char_lower(d: 16) == base16_digit_refusal_sentinel
     && hex_digit_char_lower(d: -1) == base16_digit_refusal_sentinel
 }
 
-fn witness_uint8_channel_inclusive_max_value_present() -> Bool {
+test fn witness_uint8_channel_inclusive_max_value_present() -> Bool {
   match uint8_channel_inclusive_max_value_derived() {
     Present { value: derived } => derived == uint8_channel_inclusive_max
       && uint8_channel_inclusive_max_value() == uint8_channel_inclusive_max
@@ -208,68 +208,40 @@ fn witness_uint8_channel_inclusive_max_value_present() -> Bool {
   }
 }
 
-fn witness_workspace_for_use_completion_admissible() -> Bool {
+test fn witness_workspace_for_use_completion_admissible() -> Bool {
   swatch_set_for_use_admissible(u: island_pastel_for_workspace)
     && swatches_for_use(u: island_pastel_for_workspace).length() == 10
     && swatches_of(s: island_pastel).length() == 6
     && swatch_paint(sw: island_venom) == "#8a2f23"
 }
 
-fn witness_in_family_inks_carry_their_fills() -> Bool {
+test fn witness_in_family_inks_carry_their_fills() -> Bool {
   grade_rank(g: grade_pairing(figure: island_mint_ink, ground: island_mint).grade) >= 2
     && grade_rank(g: grade_pairing(figure: island_butter_ink, ground: island_butter).grade) >= 2
     && grade_rank(g: grade_pairing(figure: island_aqua_ink, ground: island_aqua).grade) >= 2
 }
 
-fn witness_venom_carries_ivory_text_and_refuses_loam() -> Bool {
+test fn witness_venom_carries_ivory_text_and_refuses_loam() -> Bool {
   let on_ivory = grade_pairing(figure: island_ivory, ground: island_venom)
   let on_loam = grade_pairing(figure: island_venom, ground: island_loam)
   grade_rank(g: on_ivory.grade) == 3
     && grade_rank(g: on_loam.grade) == 0
 }
 
-fn witness_graduated_default_clears_text_aa() -> Bool {
+test fn witness_graduated_default_clears_text_aa() -> Bool {
   count(workspace_band_paints()) == 5
     && all(workspace_band_paints(), p =>
       srgb8_contrast_at_least(a: p.ink.color, b: p.fill.color, threshold_hundredths: wcag_aa_normal_text_hundredths))
 }
 
-fn witness_pressed_stop_derivation_and_legibility() -> Bool {
+test fn witness_pressed_stop_derivation_and_legibility() -> Bool {
   swatch_paint(sw: Swatch { name: "probe", color: pressed_stop(c: Srgb8 { r: 0, g: 158, b: 115 }) }) == "#008560"
     && all(workspace_band_paints(), p =>
       srgb8_contrast_at_least(a: p.ink.color, b: pressed_stop(c: p.fill.color), threshold_hundredths: wcag_aa_large_text_and_graphics_hundredths))
 }
 
-fn witness_for_use_refuses_empty_and_duplicate() -> Bool {
+test fn witness_for_use_refuses_empty_and_duplicate() -> Bool {
   !swatch_set_for_use_admissible(u: SwatchSetForUse { name: "x", base: island_pastel, completions: [], use_note: "control" })
     && !swatch_set_for_use_admissible(u: SwatchSetForUse { name: "x", base: island_pastel, completions: [swatch_filed(sw: Swatch { name: "mint", color: island_venom.color })], use_note: "control" })
 }
 
-test fn design_palette_catalog_keystone_holds() -> Bool {
-  witness_catalog_admissible()
-    && witness_hex_serialization_matches_authored()
-    && witness_pairing_matrix_total()
-    && witness_camel_ivory_near_miss()
-    && witness_authored_set_has_no_text_pairing()
-    && witness_loam_carries_text_capability()
-    && witness_grade_kernel_discriminates()
-    && witness_camel_hsl_projection()
-    && witness_hsl_projection_red_on_off_by_one_hue()
-    && witness_achromatic_maps_to_variant_not_hue_zero()
-    && witness_chromatic_still_projects_hue()
-    && witness_gray_never_yields_hue_zero_as_red()
-    && witness_camel_passes_quiet_envelope()
-    && witness_mint_refused_by_quiet_envelope()
-    && witness_ivory_refused_despite_near_achromatic_oklch()
-    && witness_cited_palette_counts()
-    && witness_solarized_base_ladder_order_and_count()
-    && witness_solarized_base_mode_pairing_involution()
-    && witness_base16_digit_refuses_out_of_range()
-    && witness_uint8_channel_inclusive_max_value_present()
-    && witness_workspace_for_use_completion_admissible()
-    && witness_venom_carries_ivory_text_and_refuses_loam()
-    && witness_in_family_inks_carry_their_fills()
-    && witness_graduated_default_clears_text_aa()
-    && witness_pressed_stop_derivation_and_legibility()
-    && witness_for_use_refuses_empty_and_duplicate()
-}

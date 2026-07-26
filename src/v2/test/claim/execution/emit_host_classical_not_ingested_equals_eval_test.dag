@@ -200,20 +200,6 @@ fn ingested_classical_not_eval_subgraph_canonical() -> Node {
   )
 }
 
-fn ingested_classical_not_eval_subgraph_swapped() -> Node {
-  dag_match_body_from_arms(
-    scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
-    true_arm: dag_match_arm_node(
-      pattern_lit: ^dag_token_kw_true,
-      body_lit: ^dag_token_kw_true
-    ),
-    false_arm: dag_match_arm_node(
-      pattern_lit: ^dag_token_kw_false,
-      body_lit: ^dag_token_kw_false
-    )
-  )
-}
-
 fn ingested_classical_not_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,

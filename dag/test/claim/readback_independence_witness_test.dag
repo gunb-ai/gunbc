@@ -4,7 +4,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_cited_incident_note: String = "The conjunct is the incident itself, replayed through the criterion. On srv3 2026-07-25 `sccache --show-stats` returned a full stats table — a Converged read — over a host whose modeled unit had been dead for six hours. The criterion must turn that exact input into UnknownRefused, and it must do so because of what the PROBE can do, not because of anything about the value it returned."
 
-fn witness_self_establishing_probe_cannot_report_converged() -> Bool {
+test fn witness_self_establishing_probe_cannot_report_converged() -> Bool {
   observation_verdict_eq(
     a: readback_evidence_verdict(
       p: sccache_show_stats_probe,
@@ -16,7 +16,7 @@ fn witness_self_establishing_probe_cannot_report_converged() -> Bool {
 
 data witness_negatives_survive_note: String = "The asymmetry, and it is the conjunct that stops the criterion from being a blunt discard. A self-establishing probe that reports a NEGATIVE is still telling the truth: it had every opportunity to bring the subject into existence and still could not report it, so Absent stays Absent, Drifted stays Drifted, Inaccessible stays Inaccessible. Only the positive is rewritten. A fold that returned UnknownRefused for every verdict from a non-independent probe would pass the conjunct above and destroy real evidence here."
 
-fn witness_negative_results_from_a_tainted_probe_survive() -> Bool {
+test fn witness_negative_results_from_a_tainted_probe_survive() -> Bool {
   observation_verdict_eq(
     a: readback_evidence_verdict(p: sccache_show_stats_probe, observed: std.upsert_decision.Absent),
     b: std.upsert_decision.Absent,
@@ -39,7 +39,7 @@ fn witness_negative_results_from_a_tainted_probe_survive() -> Bool {
 
 data witness_inert_probe_note: String = "The non-vacuity control in the other direction. `systemctl show` and `systemctl --user is-active` read the manager's recorded state and start nothing, so their Converged results must survive untouched. Without this, a criterion that refused every probe would satisfy every other conjunct in this file while making read-back worthless — the absorbing fallback wearing a safety badge, which is precisely the failure this lane keeps catching."
 
-fn witness_inert_probes_keep_their_evidence() -> Bool {
+test fn witness_inert_probes_keep_their_evidence() -> Bool {
   observation_verdict_eq(
     a: readback_evidence_verdict(
       p: systemd_is_active_probe,
@@ -59,7 +59,7 @@ fn witness_inert_probes_keep_their_evidence() -> Bool {
 
 data witness_unknown_effect_note: String = "An unaudited transport must be treated as tainted, not as clean. This is the fail-closed default and it is where the criterion earns most of its value, because the classified probes are a handful and the unclassified ones are everything else."
 
-fn witness_unclassified_probe_is_treated_as_tainted() -> Bool {
+test fn witness_unclassified_probe_is_treated_as_tainted() -> Bool {
   let unaudited = ReadBackProbe {
     label: "hypothetical unaudited transport",
     subject: "some subject",
@@ -74,7 +74,7 @@ fn witness_unclassified_probe_is_treated_as_tainted() -> Bool {
 
 data witness_red_control_note: String = "The discriminating RED control. The perturbation is trusting the probe's own answer regardless of transport — the corpus's behaviour everywhere the criterion has not been applied — and the gate rejects it on the srv3 inputs while accepting the authority on the same inputs. Both directions are asserted so neither an always-reject nor an always-accept gate could pass."
 
-fn witness_red_control_trusting_probe_rejected_by_gate() -> Bool {
+test fn witness_red_control_trusting_probe_rejected_by_gate() -> Bool {
   let p = sccache_show_stats_probe
   let widened = readback_evidence_trusting_widen_sketch(
     p: p,
@@ -89,7 +89,7 @@ fn witness_red_control_trusting_probe_rejected_by_gate() -> Bool {
 
 data witness_live_consumer_note: String = "The criterion has a live consumer, or it is an inert lens — a thing DESIGN §6 calls a lie in its own right. gunbc.host_swap_backing routes every host verdict through it. The routing is a no-op today because /proc/swaps is inert, so the conjunct proves it by SUBSTITUTION: the same swap verdict carried by the sccache probe instead would be refused. That is what makes the classification load-bearing rather than decorative — swapping the transport for an ensure-shaped one changes the answer."
 
-fn witness_swap_axis_consumes_the_criterion() -> Bool {
+test fn witness_swap_axis_consumes_the_criterion() -> Bool {
   let inert_route = readback_evidence_verdict(
     p: proc_swaps_read_probe,
     observed: std.upsert_decision.Converged,
@@ -106,17 +106,8 @@ fn witness_swap_axis_consumes_the_criterion() -> Bool {
     )
 }
 
-fn witness_roster_names_the_cited_incident() -> Bool {
+test fn witness_roster_names_the_cited_incident() -> Bool {
   readback_non_independent_probe_count() == 1
     && readback_probe_roster.length() == 4
 }
 
-test fn readback_independence_witnesses() -> Bool {
-  witness_self_establishing_probe_cannot_report_converged()
-    && witness_negative_results_from_a_tainted_probe_survive()
-    && witness_inert_probes_keep_their_evidence()
-    && witness_unclassified_probe_is_treated_as_tainted()
-    && witness_red_control_trusting_probe_rejected_by_gate()
-    && witness_swap_axis_consumes_the_criterion()
-    && witness_roster_names_the_cited_incident()
-}

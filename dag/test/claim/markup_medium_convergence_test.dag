@@ -44,7 +44,7 @@ fn md_medium() -> MarkupMedium {
   markdown_markup_medium(sp: commonmark_gfm_spellings)
 }
 
-fn witness_same_fold_html_vs_md() -> Bool {
+test fn witness_same_fold_html_vs_md() -> Bool {
   let html = serialize_fragment_with(frag: em_hi(), medium: html_markup_medium())
   let md = serialize_fragment_with(frag: em_hi(), medium: md_medium())
   (html == "<em>hi</em>") && (md == "*hi*") && (html != md)
@@ -61,7 +61,7 @@ fn md_medium_underscore() -> MarkupMedium {
   }
 }
 
-fn witness_perturb_row_flips_output() -> Bool {
+test fn witness_perturb_row_flips_output() -> Bool {
   let base = serialize_fragment_with(frag: em_hi(), medium: md_medium())
   let perturbed = serialize_fragment_with(frag: em_hi(), medium: md_medium_underscore())
   (base == "*hi*") && (perturbed == "_hi_") && (base != perturbed)
@@ -93,7 +93,7 @@ fn single_quote_medium() -> MarkupMedium {
   }
 }
 
-fn witness_third_medium_is_one_row() -> Bool {
+test fn witness_third_medium_is_one_row() -> Bool {
   let html = serialize_fragment_with(frag: button_node(), medium: html_markup_medium())
   let single_quote = serialize_fragment_with(frag: button_node(), medium: single_quote_medium())
   (html == "<button class=\"primary\">Go</button>")
@@ -115,7 +115,7 @@ fn md_mixed_doc() -> MarkdownDocument {
   }
 }
 
-fn witness_md_inline_emission_bytes() -> Bool {
+test fn witness_md_inline_emission_bytes() -> Bool {
   let out = serialize_markdown_source_with(doc: md_mixed_doc(), sp: commonmark_gfm_spellings)
   out == "**bold** and *em*\n"
 }
@@ -132,7 +132,7 @@ fn md_link_doc() -> MarkdownDocument {
   }
 }
 
-fn witness_md_link_named_arm_bytes() -> Bool {
+test fn witness_md_link_named_arm_bytes() -> Bool {
   let out = serialize_markdown_source_with(doc: md_link_doc(), sp: commonmark_gfm_spellings)
   out == "[text](https://x.com)\n"
 }
@@ -145,18 +145,10 @@ fn hostile_href_node() -> Fragment {
   }
 }
 
-fn witness_xss_still_rejected_through_fold() -> Bool {
+test fn witness_xss_still_rejected_through_fold() -> Bool {
   match try_serialize_html_source(node: hostile_href_node()) {
     EmitRejected { reason: _ } => true
     EmitOk { html: _ } => false
   }
 }
 
-test fn markup_medium_convergence_holds() -> Bool {
-  witness_same_fold_html_vs_md()
-    && witness_perturb_row_flips_output()
-    && witness_third_medium_is_one_row()
-    && witness_md_inline_emission_bytes()
-    && witness_md_link_named_arm_bytes()
-    && witness_xss_still_rejected_through_fold()
-}

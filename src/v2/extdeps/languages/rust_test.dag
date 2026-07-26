@@ -89,185 +89,9 @@ fn rust_pick_grammar_sequence() -> GrammarExpr {
   }
 }
 
-fn rust_formal_production_fn_pick() -> FormalProduction {
-  grammar_formal_production(
-    lhs: ^rust_production_fn_pick,
-    rhs: rust_formal_rhs_from_tokens(tokens: rust_pick_concrete_tokens())
-  )
-}
-
-fn rust_grammar_production_fn_pick() -> GrammarProduction {
-  GrammarProduction {
-    name: ^rust_production_fn_pick,
-    expression: rust_pick_grammar_sequence(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item)
-  }
-}
-
-fn rust_pick_grammar_relation_row() -> RustGrammarRelationRow {
-  RustGrammarRelationRow {
-    production: rust_grammar_production_fn_pick(),
-    emitted: rust_grammar_atom(id: ^rust_surface_fn_item),
-    tokens: rust_pick_concrete_tokens()
-  }
-}
-
-fn rust_pick_scaffold_relation_row_node() -> Node {
-  rust_grammar_relation_row_node(row: rust_pick_grammar_relation_row())
-}
-
-fn rust_pick_bodied_relation_row_node() -> Node {
-  grammar_relation_row_attach_bodied_scaffold(
-    row: rust_pick_scaffold_relation_row_node(),
-    scaffold: rust_pick_bodied_arrow_statement_scaffold()
-  )
-}
-
-fn rust_pick_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: ^rust_relation_rule_fn_pick,
-        target: rust_pick_bodied_relation_row_node()
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn rust_pick_serialize_source_prefix_edges() -> List<Edge> {
-  [
-    rust_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_pick_source_literal)
-    ),
-    rust_named_edge(
-      name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_pick)
-    )
-  ]
-}
-
-fn rust_pick_serialize_source_node() -> Node {
-  let _authority = rust_pick_source_text
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: rust_pick_serialize_source_prefix_edges(),
-      right: [
-        rust_named_edge(
-          name: ^grammar_relation_field_tokens,
-          target: grammar_relation_tokens_node(
-            tokens: rust_pick_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
-          )
-        )
-      ]
-    ),
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn rust_pick_binding_spellings() -> Map<Symbol, String> {
-  let m0 = map_insert(empty_map(), ^dag_binding_fn_one_or_two, "one_or_two")
-  let m1 = map_insert(m0, ^dag_binding_pick_lit_one, "1")
-  map_insert(m1, ^dag_binding_pick_lit_two, "2")
-}
-
-fn rust_pick_additional_lex_rules() -> List<LexRule> {
-  [
-    rust_lex_rule(token_class: ^rust_token_kw_if, text: "if "),
-    rust_lex_rule(token_class: ^rust_token_unwired_else, text: " } else { "),
+ else { "),
     rust_lex_rule(token_class: ^dag_token_kw_true, text: "true")
   ]
-}
-
-fn rust_pick_lex_rules() -> LexRuleSet {
-  LexRuleSet {
-    rules: list_append(
-      left: rust_fn_add_lex_rules().rules,
-      right: rust_pick_additional_lex_rules()
-    )
-  }
-}
-
-fn rust_pick_lex() -> LexRules {
-  ModeledLexRules { root: rust_pick_lex_rules() }
-}
-
-fn rust_pick_target_model_core_edges() -> List<Edge> {
-  [
-    rust_named_edge(
-      name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_declared_inhabitants,
-      target: rust_add_declared_inhabitants_root()
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_translation_rules,
-      target: rust_pick_translation_rules_node()
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_pick_serialize_source_node()
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_reference_layer_tokens,
-      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_use_site_ownership_realizations,
-      target: target_use_site_ownership_catalog_node(
-        rows: rust_sg_rc_use_site_ownership_catalog()
-      )
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_value_semantics_carriers,
-      target: target_value_semantics_carriers_node(
-        atoms: rust_value_semantics_carrier_atoms()
-      )
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_value_expression_projection,
-      target: value_expr_projection_bundle_node(
-        projection: rust_value_expression_projection()
-      )
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_operator_realizations,
-      target: target_operator_realizations_catalog_node(rows: [])
-    )
-  ]
-}
-
-fn rust_pick_target_model_bundle_core() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: rust_pick_target_model_core_edges(),
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn rust_pick_target_model_staging() -> TargetModel {
-  TargetModel {
-    bundle: rust_pick_target_model_bundle_core(),
-    lex: rust_pick_lex(),
-    binding_spellings: rust_pick_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: rust_pick_source_text,
-    runtime_row: rust_runtime_row()
-  }
 }
 
 data rust_match_source_text: String = "fn one_or_two() -> i32 { match (true) { true => 1, false => 2 } }"
@@ -348,13 +172,6 @@ fn rust_match_grammar_sequence() -> GrammarExpr {
       rust_grammar_terminal(token_class: ^rust_token_kw_fn)
     RustGramBuild1StateReady { expr: result } => result
   }
-}
-
-fn rust_formal_production_fn_match() -> FormalProduction {
-  grammar_formal_production(
-    lhs: ^rust_production_fn_match,
-    rhs: rust_formal_rhs_from_tokens(tokens: rust_match_concrete_tokens())
-  )
 }
 
 fn rust_grammar_production_fn_match() -> GrammarProduction {
@@ -730,13 +547,6 @@ fn rust_loop_grammar_sequence() -> GrammarExpr {
       rust_grammar_terminal(token_class: ^rust_token_kw_fn)
     RustGramBuild1StateReady { expr: result } => result
   }
-}
-
-fn rust_formal_production_fn_loop() -> FormalProduction {
-  grammar_formal_production(
-    lhs: ^rust_production_fn_loop,
-    rhs: rust_formal_rhs_from_tokens(tokens: rust_loop_concrete_tokens())
-  )
 }
 
 fn rust_grammar_production_fn_loop() -> GrammarProduction {

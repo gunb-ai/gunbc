@@ -63,7 +63,7 @@ fn inhabitant_neutralization_ts_target_lookup_holds() -> Bool {
   }
 }
 
-fn inhabitant_neutralization_go_int64_std_projection_holds() -> Bool {
+test fn inhabitant_neutralization_go_int64_std_projection_holds() -> Bool {
   match inhabitant_std_projection_symbol(
     inhabitant: go_int64_additive_numeric_inhabitant_node()
   ) {
@@ -72,7 +72,7 @@ fn inhabitant_neutralization_go_int64_std_projection_holds() -> Bool {
   }
 }
 
-fn inhabitant_neutralization_go_int_additive_numeric_std_projection_holds() -> Bool {
+test fn inhabitant_neutralization_go_int_additive_numeric_std_projection_holds() -> Bool {
   match inhabitant_std_projection_symbol(
     inhabitant: go_int_additive_numeric_inhabitant_node()
   ) {
@@ -81,7 +81,7 @@ fn inhabitant_neutralization_go_int_additive_numeric_std_projection_holds() -> B
   }
 }
 
-fn inhabitant_neutralization_go_int_additive_numeric_target_lookup_holds() -> Bool {
+test fn inhabitant_neutralization_go_int_additive_numeric_target_lookup_holds() -> Bool {
   match target_inhabitant_for_std_projection(
     std_projection: ^std_projection_additive_numeric,
     target: go_target_model()
@@ -91,7 +91,7 @@ fn inhabitant_neutralization_go_int_additive_numeric_target_lookup_holds() -> Bo
   }
 }
 
-fn inhabitant_neutralization_go_additive_numeric_lookup_tiebreak_selects_platform_int_holds() -> Bool {
+test fn inhabitant_neutralization_go_additive_numeric_lookup_tiebreak_selects_platform_int_holds() -> Bool {
   match target_inhabitant_for_std_projection(
     std_projection: ^std_projection_additive_numeric,
     target: go_target_model()
@@ -134,7 +134,7 @@ test fn inhabitant_neutralization_go_unqualified_std_projection_lookup_rejects_h
   }
 }
 
-fn inhabitant_neutralization_go_int64_to_ts_emit_holds() -> Bool {
+test fn inhabitant_neutralization_go_int64_to_ts_emit_holds() -> Bool {
   match neutralize_core_for_target(
     core: go_int64_falsifier_emitted_add_fn_node(),
     target: ts_target_model()
@@ -152,7 +152,7 @@ fn inhabitant_neutralization_go_int64_to_ts_emit_holds() -> Bool {
   }
 }
 
-fn inhabitant_neutralization_neutralize_python_to_go_holds() -> Bool {
+test fn inhabitant_neutralization_neutralize_python_to_go_holds() -> Bool {
   match neutralize_core_for_target(
     core: python_emitted_add_fn_node(),
     target: go_target_model()
@@ -160,15 +160,6 @@ fn inhabitant_neutralization_neutralize_python_to_go_holds() -> Bool {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
-}
-
-test fn inhabitant_neutralization_third_inhabitant_falsifier_holds() -> Bool {
-  inhabitant_neutralization_go_int64_std_projection_holds()
-    && inhabitant_neutralization_go_int_additive_numeric_std_projection_holds()
-    && inhabitant_neutralization_go_int_additive_numeric_target_lookup_holds()
-    && inhabitant_neutralization_go_additive_numeric_lookup_tiebreak_selects_platform_int_holds()
-    && inhabitant_neutralization_neutralize_python_to_go_holds()
-    && inhabitant_neutralization_go_int64_to_ts_emit_holds()
 }
 
 test fn inhabitant_neutralization_emit_after_neutralize_holds() -> Bool {
@@ -189,7 +180,7 @@ test fn inhabitant_neutralization_emit_after_neutralize_holds() -> Bool {
   }
 }
 
-fn inhabitant_neutralization_raw_emit_still_fails_closed() -> Bool {
+test fn inhabitant_neutralization_raw_emit_still_fails_closed() -> Bool {
   match infer(tree: python_emitted_add_fn_node()) {
     Accepted { value: inferred, diagnostics: _ } =>
       match emit(tree: inferred, target: ts_target_model()) {
@@ -200,11 +191,11 @@ fn inhabitant_neutralization_raw_emit_still_fails_closed() -> Bool {
   }
 }
 
-fn inhabitant_neutralization_same_language_cross_language_compile_unchanged_holds() -> Bool {
+test fn inhabitant_neutralization_same_language_cross_language_compile_unchanged_holds() -> Bool {
   ingest_cross_language_compile_holds()
 }
 
-fn inhabitant_neutralization_same_flavor_python_emit_holds() -> Bool {
+test fn inhabitant_neutralization_same_flavor_python_emit_holds() -> Bool {
   match neutralize_core_for_target(
     core: python_emitted_add_fn_node(),
     target: python_target_model()
@@ -222,13 +213,7 @@ fn inhabitant_neutralization_same_flavor_python_emit_holds() -> Bool {
   }
 }
 
-test fn inhabitant_neutralization_03_ingest_regression_guard_holds() -> Bool {
-  inhabitant_neutralization_same_language_cross_language_compile_unchanged_holds()
-    && inhabitant_neutralization_same_flavor_python_emit_holds()
-    && inhabitant_neutralization_raw_emit_still_fails_closed()
-}
-
-fn inhabitant_neutralization_python_to_ts_cross_language_compile_e2e_holds() -> Bool {
+test fn inhabitant_neutralization_python_to_ts_cross_language_compile_e2e_holds() -> Bool {
   match python_grammar_parse_fixture() {
     Accepted { value: python_parse_tree, diagnostics: _ } =>
       match cross_language_compile(
@@ -243,7 +228,7 @@ fn inhabitant_neutralization_python_to_ts_cross_language_compile_e2e_holds() -> 
   }
 }
 
-fn inhabitant_neutralization_python_to_go_cross_language_compile_e2e_holds() -> Bool {
+test fn inhabitant_neutralization_python_to_go_cross_language_compile_e2e_holds() -> Bool {
   match python_grammar_parse_fixture() {
     Accepted { value: python_parse_tree, diagnostics: _ } =>
       match cross_language_compile(
@@ -273,45 +258,9 @@ fn inhabitant_neutralization_python_to_go_discriminates_on_real_tree() -> Bool {
   }
 }
 
-fn inhabitant_neutralization_python_to_go_holds() -> Bool {
+test fn inhabitant_neutralization_python_to_go_holds() -> Bool {
   inhabitant_neutralization_python_to_go_cross_language_compile_e2e_holds()
     && inhabitant_neutralization_python_to_go_discriminates_on_real_tree()
-}
-
-fn inhabitant_neutralization_python_to_go_translate_rejects() -> Bool {
-  match neutralize_core_for_target(
-    core: python_emitted_add_fn_node(),
-    target: go_target_model()
-  ) {
-    Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
-        Accepted { value: inferred, diagnostics: _ } =>
-          match translate(tree: inferred, target: go_target_model()) {
-            Rejected { diagnostics: _ } => true
-            Accepted { value: _, diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn inhabitant_neutralization_python_to_go_emit_rejects() -> Bool {
-  match neutralize_core_for_target(
-    core: python_emitted_add_fn_node(),
-    target: go_target_model()
-  ) {
-    Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
-        Accepted { value: inferred, diagnostics: _ } =>
-          match emit(tree: inferred, target: go_target_model()) {
-            Rejected { diagnostics: _ } => true
-            Accepted { value: _, diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
 }
 
 data claim_inhabitant_neutralization_module_compiles: TestClaim = CompilesClaim {

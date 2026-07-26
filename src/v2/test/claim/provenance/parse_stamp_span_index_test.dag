@@ -1,6 +1,5 @@
 module v2.test.provenance.parse_stamp_span_index
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn parse_stamp_list_absent_diagnostic() -> Diagnostic {
@@ -121,7 +120,7 @@ fn parse_stamp_derived_by_pair_holds(
   }
 }
 
-fn parse_stamp_terminal_from_source_holds() -> Bool {
+test fn parse_stamp_terminal_from_source_holds() -> Bool {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: parse_stamp_terminal_root(), at: at) {
     Rejected { diagnostics: _ } => false
@@ -157,7 +156,7 @@ fn parse_stamp_terminal_from_source_holds() -> Bool {
   }
 }
 
-fn parse_stamp_sequence_derived_by_holds() -> Bool {
+test fn parse_stamp_sequence_derived_by_holds() -> Bool {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: parse_stamp_sequence_root(), at: at) {
     Rejected { diagnostics: _ } => false
@@ -227,7 +226,3 @@ fn parse_stamp_sequence_derived_by_holds() -> Bool {
   }
 }
 
-test fn witness_parse_stamp_span_index_holds() -> Bool {
-  parse_stamp_terminal_from_source_holds()
-    && parse_stamp_sequence_derived_by_holds()
-}

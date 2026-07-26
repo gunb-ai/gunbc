@@ -23,7 +23,7 @@ fn role_var_for_label(wire_label: String) -> String {
     init: "", f: (acc, s) => role_var(r: s.role))
 }
 
-fn witness_reserved_width_is_caption_projection() -> Bool {
+test fn witness_reserved_width_is_caption_projection() -> Bool {
   let captions = dispatch_caption_set()
   let real = dispatch_reserved_ch()
   real == longest_label_len(labels: captions) + 2
@@ -33,7 +33,7 @@ fn witness_reserved_width_is_caption_projection() -> Bool {
     && string_contains(s: roadmap_css(), pattern: join([to_string(real), "ch"], ""))
 }
 
-fn witness_chip_material_is_band_paint() -> Bool {
+test fn witness_chip_material_is_band_paint() -> Bool {
   let css = roadmap_css()
   let ok_block = css_block(
     selector: join([".dispatch-btn.", dispatch_class_ok], ""),
@@ -56,7 +56,7 @@ fn witness_chip_material_is_band_paint() -> Bool {
     && role_var_for_label(wire_label: "spawned") == role_var(r: FigureRole)
 }
 
-fn witness_chip_wrong_paint_not_shipped() -> Bool {
+test fn witness_chip_wrong_paint_not_shipped() -> Bool {
   let wrong = css_block(
     selector: join([".dispatch-btn.", dispatch_class_ok], ""),
     decls: [
@@ -67,14 +67,14 @@ fn witness_chip_wrong_paint_not_shipped() -> Bool {
   !string_contains(s: roadmap_css(), pattern: wrong)
 }
 
-fn witness_located_fields_surface_to_title() -> Bool {
+test fn witness_located_fields_surface_to_title() -> Bool {
   let js = dispatch_client_js_source()
   string_contains(s: js, pattern: "b.title =")
     && string_contains(s: js, pattern: "j.step")
     && string_contains(s: js, pattern: "j.detail")
 }
 
-fn witness_js_and_css_share_class_authority() -> Bool {
+test fn witness_js_and_css_share_class_authority() -> Bool {
   let js = dispatch_client_js_source()
   let css = roadmap_css()
   string_contains(s: js, pattern: dispatch_class_ok)
@@ -85,10 +85,3 @@ fn witness_js_and_css_share_class_authority() -> Bool {
     && string_contains(s: css, pattern: join([".dispatch-btn.", dispatch_class_requested], ""))
 }
 
-test fn dispatch_presentation_keystone_holds() -> Bool {
-  witness_reserved_width_is_caption_projection()
-    && witness_chip_material_is_band_paint()
-    && witness_chip_wrong_paint_not_shipped()
-    && witness_located_fields_surface_to_title()
-    && witness_js_and_css_share_class_authority()
-}

@@ -15509,8 +15509,7 @@ fn run_discovery_corpus_with_options_inner(
         .map(|r| (r.entry.clone(), r.function.clone()))
         .collect();
     // U3 — empty function = file-grain: enumerate via the same test-decl scan discovery uses.
-    let expanded_explicit =
-        crate::test_module_hygiene::expand_explicit_entries(explicit_entries)?;
+    let expanded_explicit = crate::test_module_hygiene::expand_explicit_entries(explicit_entries)?;
     for (entry, function) in &expanded_explicit {
         if seen.insert((entry.clone(), function.clone())) {
             rows.push(DiscoveryRow {

@@ -94,7 +94,7 @@ fn witness_forced_scc_split_assignment() -> Map<ModuleId, CompilationUnitId> {
     |> map_insert(witness_mod_c, witness_unit_y)
 }
 
-fn witness_r4_refuses_forced_scc_split_holds() -> Bool {
+test fn witness_r4_refuses_forced_scc_split_holds() -> Bool {
   let dag = witness_triangle_scc_dag()
   let assignment = witness_forced_scc_split_assignment()
   let units = match partition_fold_outcome(module_dag: dag, assignment: assignment) {
@@ -144,7 +144,7 @@ fn witness_cyclic_unit_graph() -> List<CompilationUnit> {
   ]
 }
 
-fn witness_r4_refuses_unit_graph_cycle_holds() -> Bool {
+test fn witness_r4_refuses_unit_graph_cycle_holds() -> Bool {
   let dag = witness_acyclic_module_dag()
   let assignment = witness_two_unit_assignment_no_scc_split()
   let units = witness_cyclic_unit_graph()
@@ -157,7 +157,7 @@ fn witness_r4_refuses_unit_graph_cycle_holds() -> Bool {
   }
 }
 
-fn witness_partition_perturbation_member_coverage_holds() -> Bool {
+test fn witness_partition_perturbation_member_coverage_holds() -> Bool {
   let coverage_same = stage0_partition_member_coverage_consistent(
     left: stage0_single_crate_fold_outcome(),
     right: stage0_partition_receipt_outcome()
@@ -168,15 +168,15 @@ fn witness_partition_perturbation_member_coverage_holds() -> Bool {
   )
 }
 
-fn witness_interim_physical_crate_count_holds() -> Bool {
+test fn witness_interim_physical_crate_count_holds() -> Bool {
   stage0_physical_crate_count() == rust_crate_partition_declared_core_target
 }
 
-fn witness_interim_module_bearing_unit_count_holds() -> Bool {
+test fn witness_interim_module_bearing_unit_count_holds() -> Bool {
   stage0_module_bearing_unit_count() == rust_crate_partition_module_bearing_unit_target
 }
 
-fn witness_policy_partition_refuses_holds() -> Bool {
+test fn witness_policy_partition_refuses_holds() -> Bool {
   let dag = stage0_module_dag()
   match resolve_partition_outcome(
     parameter: PolicyPartitionParam {
@@ -189,14 +189,14 @@ fn witness_policy_partition_refuses_holds() -> Bool {
   }
 }
 
-fn witness_interim_provenance_is_hand_explicit_holds() -> Bool {
+test fn witness_interim_provenance_is_hand_explicit_holds() -> Bool {
   match stage0_partition_provenance() {
     HandExplicit => true
     PolicyDerived { policy: _ } => false
   }
 }
 
-fn witness_provenance_distinct_from_policy_derived_holds() -> Bool {
+test fn witness_provenance_distinct_from_policy_derived_holds() -> Bool {
   let explicit = partition_provenance_hand_explicit()
   let derived = partition_provenance_policy_derived(
     policy: DeclarationRef {
@@ -208,7 +208,7 @@ fn witness_provenance_distinct_from_policy_derived_holds() -> Bool {
   !partition_provenance_eq(left: explicit, right: derived)
 }
 
-fn witness_runtime_unit_members_holds() -> Bool {
+test fn witness_runtime_unit_members_holds() -> Bool {
   match stage0_partition_receipt_outcome() {
     Stage0PartitionReceiptOk { units: units } =>
       match partition_unit_by_id(units: units, unit_id: stage0_unit_runtime) {
@@ -221,7 +221,7 @@ fn witness_runtime_unit_members_holds() -> Bool {
   }
 }
 
-fn witness_v1_infer_unit_members_holds() -> Bool {
+test fn witness_v1_infer_unit_members_holds() -> Bool {
   match stage0_partition_receipt_outcome() {
     Stage0PartitionReceiptOk { units: units } =>
       match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_infer) {
@@ -234,7 +234,7 @@ fn witness_v1_infer_unit_members_holds() -> Bool {
   }
 }
 
-fn witness_v1_artifact_unit_members_holds() -> Bool {
+test fn witness_v1_artifact_unit_members_holds() -> Bool {
   match stage0_partition_receipt_outcome() {
     Stage0PartitionReceiptOk { units: units } =>
       match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_artifact) {
@@ -247,15 +247,15 @@ fn witness_v1_artifact_unit_members_holds() -> Bool {
   }
 }
 
-fn witness_partition_fold_unit_count_holds() -> Bool {
+test fn witness_partition_fold_unit_count_holds() -> Bool {
   stage0_partition_fold_ok()
 }
 
-fn witness_partition_r4_valid_on_interim_holds() -> Bool {
+test fn witness_partition_r4_valid_on_interim_holds() -> Bool {
   stage0_partition_r4_valid()
 }
 
-fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
+test fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
   let dag = stage0_module_dag()
   match resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: dag) {
     ResolvePartitionOk { assignment: resolved } => {
@@ -266,39 +266,19 @@ fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
   }
 }
 
-fn witness_stage0_partition_row_lookups_resolved_holds() -> Bool {
+test fn witness_stage0_partition_row_lookups_resolved_holds() -> Bool {
   stage0_partition_row_lookups_resolved()
 }
 
-fn witness_dissolve_on_note_present_holds() -> Bool {
+test fn witness_dissolve_on_note_present_holds() -> Bool {
   (rust_crate_partition_dissolve_on |> count) > 0
 }
 
-fn witness_stage0_module_dag_interface_grounding_debt_declared_holds() -> Bool {
+test fn witness_stage0_module_dag_interface_grounding_debt_declared_holds() -> Bool {
   stage0_module_dag_interface_grounding_is_debt()
 }
 
-fn witness_stage0_module_dag_interface_grounding_debt_dissolve_on_present_holds() -> Bool {
+test fn witness_stage0_module_dag_interface_grounding_debt_dissolve_on_present_holds() -> Bool {
   (stage0_module_dag_interface_grounding_debt_dissolve_on |> count) > 0
 }
 
-test fn rust_crate_partition_witnesses() -> Bool {
-  witness_interim_physical_crate_count_holds()
-    && witness_interim_module_bearing_unit_count_holds()
-    && witness_policy_partition_refuses_holds()
-    && witness_interim_provenance_is_hand_explicit_holds()
-    && witness_provenance_distinct_from_policy_derived_holds()
-    && witness_runtime_unit_members_holds()
-    && witness_v1_infer_unit_members_holds()
-    && witness_v1_artifact_unit_members_holds()
-    && witness_partition_fold_unit_count_holds()
-    && witness_partition_r4_valid_on_interim_holds()
-    && witness_resolve_partition_explicit_returns_assignment_holds()
-    && witness_r4_refuses_forced_scc_split_holds()
-    && witness_r4_refuses_unit_graph_cycle_holds()
-    && witness_partition_perturbation_member_coverage_holds()
-    && witness_stage0_module_dag_interface_grounding_debt_declared_holds()
-    && witness_stage0_module_dag_interface_grounding_debt_dissolve_on_present_holds()
-    && witness_stage0_partition_row_lookups_resolved_holds()
-    && witness_dissolve_on_note_present_holds()
-}

@@ -167,7 +167,7 @@ fn witness_partition_fold_two_units() -> List<CompilationUnit> {
   )
 }
 
-fn witness_unit_one_members_and_deps() -> Bool {
+test fn witness_unit_one_members_and_deps() -> Bool {
   let units = witness_partition_fold_two_units()
   match partition_unit_by_id(units: units, unit_id: witness_unit_one) {
     Present { value: unit } =>
@@ -178,7 +178,7 @@ fn witness_unit_one_members_and_deps() -> Bool {
   }
 }
 
-fn witness_unit_two_interface_carries_declaration_content() -> Bool {
+test fn witness_unit_two_interface_carries_declaration_content() -> Bool {
   let units = witness_partition_fold_two_units()
   let export_decl = witness_fn_taking_point_by_value()
   match partition_unit_by_id(units: units, unit_id: witness_unit_two) {
@@ -190,7 +190,7 @@ fn witness_unit_two_interface_carries_declaration_content() -> Bool {
   }
 }
 
-fn witness_unit_two_interface_includes_by_value_type_def() -> Bool {
+test fn witness_unit_two_interface_includes_by_value_type_def() -> Bool {
   let units = witness_partition_fold_two_units()
   let point_def = witness_point_struct_conj_body()
   match partition_unit_by_id(units: units, unit_id: witness_unit_two) {
@@ -201,7 +201,7 @@ fn witness_unit_two_interface_includes_by_value_type_def() -> Bool {
   }
 }
 
-fn witness_interface_closure_saturates_on_triangle() -> Bool {
+test fn witness_interface_closure_saturates_on_triangle() -> Bool {
   let dag = witness_triangle_dag()
   let assignment = witness_two_unit_assignment()
   let units = partition_fold(module_dag: dag, assignment: assignment)
@@ -219,7 +219,7 @@ fn witness_interface_closure_saturates_on_triangle() -> Bool {
   }
 }
 
-fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
+test fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
   match partition_fold_outcome_with_closure_fuel(
     module_dag: witness_triangle_dag(),
     assignment: witness_two_unit_assignment(),
@@ -232,7 +232,7 @@ fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
   }
 }
 
-fn witness_single_unit_partition_has_no_cross_unit_deps() -> Bool {
+test fn witness_single_unit_partition_has_no_cross_unit_deps() -> Bool {
   let units = partition_fold(
     module_dag: witness_triangle_dag(),
     assignment: witness_single_unit_assignment()
@@ -246,7 +246,7 @@ fn witness_single_unit_partition_has_no_cross_unit_deps() -> Bool {
   }
 }
 
-fn witness_intra_unit_edges_do_not_become_deps() -> Bool {
+test fn witness_intra_unit_edges_do_not_become_deps() -> Bool {
   let units = partition_fold(
     module_dag: witness_chain_dag(),
     assignment: witness_single_unit_assignment()
@@ -257,21 +257,21 @@ fn witness_intra_unit_edges_do_not_become_deps() -> Bool {
   }
 }
 
-fn witness_fold_deps_match_boundary_edges_two_unit() -> Bool {
+test fn witness_fold_deps_match_boundary_edges_two_unit() -> Bool {
   partition_fold_deps_match_boundary_edges(
     module_dag: witness_triangle_dag(),
     assignment: witness_two_unit_assignment()
   )
 }
 
-fn witness_fold_deps_match_boundary_edges_single_unit() -> Bool {
+test fn witness_fold_deps_match_boundary_edges_single_unit() -> Bool {
   partition_fold_deps_match_boundary_edges(
     module_dag: witness_triangle_dag(),
     assignment: witness_single_unit_assignment()
   )
 }
 
-fn witness_misderived_deps_would_fail_receipt() -> Bool {
+test fn witness_misderived_deps_would_fail_receipt() -> Bool {
   let units = witness_partition_fold_two_units()
   match partition_unit_by_id(units: units, unit_id: witness_unit_one) {
     Present { value: unit } =>
@@ -282,7 +282,7 @@ fn witness_misderived_deps_would_fail_receipt() -> Bool {
   }
 }
 
-fn witness_provenance_variants_distinct() -> Bool {
+test fn witness_provenance_variants_distinct() -> Bool {
   let explicit = partition_provenance_hand_explicit()
   let derived = partition_provenance_policy_derived(
     policy: DeclarationRef {
@@ -299,7 +299,7 @@ fn witness_provenance_variants_distinct() -> Bool {
     }
 }
 
-fn witness_r4_interface_carriers_only() -> Bool {
+test fn witness_r4_interface_carriers_only() -> Bool {
   let valid_verdict = PartitionR4Valid
   let refused_verdict = partition_r4_witness_refused_scc_split
   match valid_verdict {
@@ -312,7 +312,7 @@ fn witness_r4_interface_carriers_only() -> Bool {
     }
 }
 
-fn witness_partition_fold_outcome_ok_on_triangle() -> Bool {
+test fn witness_partition_fold_outcome_ok_on_triangle() -> Bool {
   match partition_fold_outcome(
     module_dag: witness_triangle_dag(),
     assignment: witness_two_unit_assignment()
@@ -322,18 +322,3 @@ fn witness_partition_fold_outcome_ok_on_triangle() -> Bool {
   }
 }
 
-test fn compilation_unit_witnesses() -> Bool {
-  witness_unit_one_members_and_deps()
-    && witness_unit_two_interface_carries_declaration_content()
-    && witness_unit_two_interface_includes_by_value_type_def()
-    && witness_interface_closure_saturates_on_triangle()
-    && witness_partition_fold_outcome_refuses_zero_closure_fuel()
-    && witness_single_unit_partition_has_no_cross_unit_deps()
-    && witness_intra_unit_edges_do_not_become_deps()
-    && witness_fold_deps_match_boundary_edges_two_unit()
-    && witness_fold_deps_match_boundary_edges_single_unit()
-    && witness_misderived_deps_would_fail_receipt()
-    && witness_provenance_variants_distinct()
-    && witness_r4_interface_carriers_only()
-    && witness_partition_fold_outcome_ok_on_triangle()
-}

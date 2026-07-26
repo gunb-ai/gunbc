@@ -18,37 +18,31 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn witness_ci_policy_observation_succeeds() -> Bool {
+test fn witness_ci_policy_observation_succeeds() -> Bool {
   match floor_observe_git_diff_unified_for_ci() {
     UnifiedDiffOk { text: _ } => true
     UnifiedDiffFail { reason: _ } => false
   }
 }
 
-fn witness_invalid_base_fails_closed() -> Bool {
+test fn witness_invalid_base_fails_closed() -> Bool {
   match floor_run_git_diff_unified(base: "__gunbc_invalid_diff_base__", head: "HEAD", mode: DiffMergeBase) {
     UnifiedDiffFail { reason: _ } => true
     UnifiedDiffOk { text: _ } => false
   }
 }
 
-fn witness_ci_policy_name_status_observation_succeeds() -> Bool {
+test fn witness_ci_policy_name_status_observation_succeeds() -> Bool {
   match floor_observe_git_diff_name_status_for_ci() {
     NameStatusDiffOk { changed_paths: _, departed_paths: _ } => true
     NameStatusDiffFail { reason: _ } => false
   }
 }
 
-fn witness_invalid_base_name_status_fails_closed() -> Bool {
+test fn witness_invalid_base_name_status_fails_closed() -> Bool {
   match floor_run_git_diff_name_status(base: "__gunbc_invalid_diff_base__", head: "HEAD", mode: DiffMergeBase) {
     NameStatusDiffFail { reason: _ } => true
     NameStatusDiffOk { changed_paths: _, departed_paths: _ } => false
   }
 }
 
-test fn floor_diff_observe_host_effect_apply_holds() -> Bool {
-  witness_ci_policy_observation_succeeds()
-    && witness_invalid_base_fails_closed()
-    && witness_ci_policy_name_status_observation_succeeds()
-    && witness_invalid_base_name_status_fails_closed()
-}

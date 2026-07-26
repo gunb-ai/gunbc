@@ -82,7 +82,7 @@ fn compile_eval_thesis_medium_matches_expected(medium: Medium<Node>) -> Bool {
   }
 }
 
-fn compile_eval_bool_reaches_node_value_holds() -> Bool {
+test fn compile_eval_bool_reaches_node_value_holds() -> Bool {
   match compile_inferred(
     inferred: compile_eval_thesis_inferred(root: v2_eval_bool_literal_pin),
     mode: Eval { runtime: v2_eval_bool_literal_pin }
@@ -93,7 +93,7 @@ fn compile_eval_bool_reaches_node_value_holds() -> Bool {
   }
 }
 
-fn compile_eval_bool_via_compile_entry_holds() -> Bool {
+test fn compile_eval_bool_via_compile_entry_holds() -> Bool {
   match compile(
     source: v2_eval_bool_literal_pin,
     mode: Eval { runtime: v2_eval_bool_literal_pin }
@@ -104,7 +104,7 @@ fn compile_eval_bool_via_compile_entry_holds() -> Bool {
   }
 }
 
-fn compile_eval_unit_unrepresentable_red_holds() -> Bool {
+test fn compile_eval_unit_unrepresentable_red_holds() -> Bool {
   match compile_inferred(
     inferred: compile_eval_thesis_inferred(root: v2_eval_unit_literal_pin),
     mode: Eval { runtime: v2_eval_unit_literal_pin }
@@ -113,12 +113,6 @@ fn compile_eval_unit_unrepresentable_red_holds() -> Bool {
       d.head.reason == ^eval_rejected_runtime_value_node_unrepresentable
     Accepted { value: _, diagnostics: _ } => false
   }
-}
-
-test fn compile_eval_thesis_proof_holds() -> Bool {
-  compile_eval_bool_reaches_node_value_holds()
-    && compile_eval_bool_via_compile_entry_holds()
-    && compile_eval_unit_unrepresentable_red_holds()
 }
 
 test fn isolate_t1_holds() -> Bool {

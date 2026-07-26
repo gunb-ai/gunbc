@@ -92,7 +92,7 @@ fn rust_loop_emit_from_wrong_value_tree(target: TargetModel) -> Outcome<Medium<S
   )
 }
 
-fn rust_loop_emit_one_accepts() -> Bool {
+test fn rust_loop_emit_one_accepts() -> Bool {
   match rust_loop_emit_from_tree(target: rust_loop_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_loop_source_text) && (d == None)
@@ -100,7 +100,7 @@ fn rust_loop_emit_one_accepts() -> Bool {
   }
 }
 
-fn rust_loop_emit_wrong_value_discriminates() -> Bool {
+test fn rust_loop_emit_wrong_value_discriminates() -> Bool {
   match rust_loop_emit_from_wrong_value_tree(target: rust_loop_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_loop_wrong_value_source_text) &&
@@ -110,7 +110,3 @@ fn rust_loop_emit_wrong_value_discriminates() -> Bool {
   }
 }
 
-test fn rust_loop_emit_holds() -> Bool {
-  rust_loop_emit_one_accepts()
-    && rust_loop_emit_wrong_value_discriminates()
-}

@@ -117,7 +117,7 @@ fn bash_build_round_trip_command_echo_hi_holds() -> Bool {
   }
 }
 
-fn bash_build_round_trip_assign_foo_bar_holds() -> Bool {
+test fn bash_build_round_trip_assign_foo_bar_holds() -> Bool {
   let emitted = bash_build_assign_lit(name: "FOO", text: "bar")
   match bash_build_round_trip_target_for(
     emitted: emitted,
@@ -135,7 +135,7 @@ fn bash_build_round_trip_assign_foo_bar_holds() -> Bool {
   }
 }
 
-fn bash_build_round_trip_exit_42_holds() -> Bool {
+test fn bash_build_round_trip_exit_42_holds() -> Bool {
   let emitted = bash_build_exit(code: "42")
   match bash_build_round_trip_target_for(
     emitted: emitted,
@@ -153,7 +153,7 @@ fn bash_build_round_trip_exit_42_holds() -> Bool {
   }
 }
 
-fn bash_build_round_trip_and_then_holds() -> Bool {
+test fn bash_build_round_trip_and_then_holds() -> Bool {
   let emitted = bash_build_and_then(
     left: bash_fold_cmd_true_emitted,
     right: bash_fold_cmd_false_emitted
@@ -174,7 +174,7 @@ fn bash_build_round_trip_and_then_holds() -> Bool {
   }
 }
 
-fn bash_build_round_trip_pipe_holds() -> Bool {
+test fn bash_build_round_trip_pipe_holds() -> Bool {
   let emitted = bash_build_pipe(
     left: bash_build_command_from_lits(lits: ["echo", "hi"]),
     right: bash_fold_cmd_wc_minus_c_emitted
@@ -199,9 +199,3 @@ test fn bash_build_round_trip_command_tier_holds() -> Bool {
   bash_build_round_trip_command_echo_hi_holds()
 }
 
-test fn bash_build_round_trip_stmt_tier_holds() -> Bool {
-  bash_build_round_trip_assign_foo_bar_holds()
-  && bash_build_round_trip_exit_42_holds()
-  && bash_build_round_trip_and_then_holds()
-  && bash_build_round_trip_pipe_holds()
-}

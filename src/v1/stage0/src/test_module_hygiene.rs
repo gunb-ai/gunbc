@@ -14,7 +14,8 @@ use crate::module_path_index::parsed_dag_file::parse_dag_file;
 use crate::std_syntax::BinOp;
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_std_core::{
-    authored_name_at, binop_left, binop_right, block_stmts, expr_call_func_at, ExprData, Node,
+    authored_name_at, binop_left, binop_right, block_stmts, expr_call_func_at, expr_var_name_at,
+    ExprData, Node,
 };
 
 /// Empty `ScheduleWitnessEntry.function` / empty `CommitWitnessClaim.check_fns` means
@@ -116,7 +117,13 @@ pub fn expand_explicit_entries(
     Ok(out)
 }
 
-fn walk_calls(node: &Rc<Node>, si: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>, out: &mut HashSet<String>) {
+/// Collect local names reached from an expression: call callees AND bare vars
+/// (fn-as-value bindings like `call_primitive: bind_eval_call_primitive`).
+fn walk_refs(
+    node: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    out: &mut HashSet<String>,
+) {
     match node.expr_data.as_ref() {
         ExprData::ExprCall { .. } => {
             let name = expr_call_func_at(node.clone(), si.clone());
@@ -124,10 +131,16 @@ fn walk_calls(node: &Rc<Node>, si: &Rc<HashMap<String, Rc<crate::v1_std_core::Ne
                 out.insert(name);
             }
         }
+        ExprData::ExprVar { .. } => {
+            let name = expr_var_name_at(node.clone(), si.clone());
+            if !name.is_empty() {
+                out.insert(name);
+            }
+        }
         _ => {}
     }
     for child in node.children.iter() {
-        walk_calls(child, si, out);
+        walk_refs(child, si, out);
     }
 }
 
@@ -268,9 +281,9 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
         if *is_test {
             reachable.insert(name.clone());
             if let Some(body) = body {
-                let mut calls = HashSet::new();
-                walk_calls(body, &module.si, &mut calls);
-                for c in calls {
+                let mut refs = HashSet::new();
+                walk_refs(body, &module.si, &mut refs);
+                for c in refs {
                     if plain.contains(&c) {
                         queue.push_back(c);
                     }
@@ -278,10 +291,11 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
             }
         }
     }
+    // data + test data initializers (fixture / claim-row surface)
     for body in &module.data_bodies {
-        let mut calls = HashSet::new();
-        walk_calls(body, &module.si, &mut calls);
-        for c in calls {
+        let mut refs = HashSet::new();
+        walk_refs(body, &module.si, &mut refs);
+        for c in refs {
             if plain.contains(&c) {
                 queue.push_back(c);
             }
@@ -293,9 +307,9 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
             continue;
         }
         if let Some((_, _, Some(body))) = module.fns.get(&n) {
-            let mut calls = HashSet::new();
-            walk_calls(body, &module.si, &mut calls);
-            for c in calls {
+            let mut refs = HashSet::new();
+            walk_refs(body, &module.si, &mut refs);
+            for c in refs {
                 if plain.contains(&c) && !reachable.contains(&c) {
                     queue.push_back(c);
                 }
@@ -419,8 +433,8 @@ pub fn check_orphan_helpers_in_entries(entry_paths: &[String]) -> Result<(), Str
         if !is_test_dag_path(entry) {
             continue;
         }
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| format!("orphan check read {entry}: {e}"))?;
+        let content =
+            std::fs::read_to_string(path).map_err(|e| format!("orphan check read {entry}: {e}"))?;
         let Some(module) = analyze_test_module(path, &content) else {
             return Err(format!("orphan check: parse failed for {entry}"));
         };
@@ -508,8 +522,7 @@ test fn beta_holds() -> Bool { true }
         )
         .unwrap();
         let entry = file.to_string_lossy().into_owned();
-        let expanded =
-            expand_explicit_entries(&[(entry.clone(), String::new())]).expect("expand");
+        let expanded = expand_explicit_entries(&[(entry.clone(), String::new())]).expect("expand");
         assert_eq!(expanded.len(), 2, "file-grain row must yield two verdicts");
         let names: BTreeSet<_> = expanded.into_iter().map(|(_, f)| f).collect();
         assert_eq!(
