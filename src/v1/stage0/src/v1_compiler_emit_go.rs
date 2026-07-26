@@ -167,18 +167,18 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             ),
             test_files.clone(),
         );
-        EmitResult {
+        Rc::new(EmitResult {
             files: files.clone(),
             diagnostics: Rc::new(vec![]),
-        }
+        })
     }
 }
 
 pub fn emit_go_v2rt_module() -> Rc<TextFile> {
-    TextFile {
+    Rc::new(TextFile {
         path: v1_rt::concat(go_emit_module_root(), "/v2rt/v2rt.go".to_string()),
         content: go_runtime_source(),
-    }
+    })
 }
 
 pub fn emit_go_mod(module_name: String) -> Rc<TextFile> {
@@ -191,15 +191,15 @@ pub fn emit_go_mod(module_name: String) -> Rc<TextFile> {
             v1_rt::concat("module ".to_string(), module_name.clone()),
             "\n\ngo 1.21\n".to_string(),
         );
-        TextFile {
+        Rc::new(TextFile {
             path: manifest_path.clone(),
             content: content.clone(),
-        }
+        })
     }
 }
 
 pub fn go_mock_expr_uses_fmt(
-    expr: Node,
+    expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -302,10 +302,10 @@ pub fn emit_go_test_file(
     projections: Rc<Vec<Rc<TestProjection>>>,
 ) -> Rc<TextFile> {
     if ((projections.clone().len() as i64) == 0) {
-        TextFile {
+        Rc::new(TextFile {
             path: "".to_string(),
             content: "".to_string(),
-        }
+        })
     } else {
         {
             let package_name = go_package_name(module_name.clone());
@@ -353,10 +353,10 @@ pub fn emit_go_test_file(
                 ),
                 "\n".to_string(),
             );
-            TextFile {
+            Rc::new(TextFile {
                 path: test_file_path(module_name.clone(), RenderTarget::Go),
                 content: content.clone(),
-            }
+            })
         }
     }
 }
@@ -440,7 +440,7 @@ pub fn emit_go_operation_test(projection: Rc<TestProjection>, depth: i64) -> Str
 }
 
 pub fn emit_go_mock_prop_setup(
-    mock_prop: Node,
+    mock_prop: Rc<Node>,
     depth: i64,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -530,7 +530,7 @@ pub fn emit_go_module(
             ),
             "\n".to_string(),
         );
-        TextFile {
+        Rc::new(TextFile {
             path: v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
@@ -547,7 +547,7 @@ pub fn emit_go_module(
                     .clone(),
             ),
             content: content.clone(),
-        }
+        })
     }
 }
 
@@ -701,7 +701,7 @@ pub fn collect_go_std_imports(
 }
 
 pub fn emit_go_typed_item(
-    item: Node,
+    item: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
 ) -> String {
@@ -784,7 +784,7 @@ pub fn emit_go_typed_item(
     }
 }
 
-pub fn emit_go_type_def_from_connective(item: Node, env: TypeEnv) -> String {
+pub fn emit_go_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let item_text = authored_name(env.clone(), item.clone());
         let is_product = (item.connective.clone() == Connective::Conj);
@@ -799,7 +799,7 @@ pub fn emit_go_type_def_from_connective(item: Node, env: TypeEnv) -> String {
 pub fn emit_go_struct_from_children(
     name: String,
     children: Rc<Vec<Rc<Node>>>,
-    env: TypeEnv,
+    env: Rc<TypeEnv>,
 ) -> String {
     if ((children.clone().len() as i64) == 0) {
         v1_rt::concat(
@@ -870,7 +870,7 @@ pub fn emit_go_struct_from_children(
     }
 }
 
-pub fn emit_go_struct_field_from_child(child: Node, env: TypeEnv) -> String {
+pub fn emit_go_struct_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let child_text = authored_name(env.clone(), child.clone());
         let ty = emit_node_type(
@@ -898,7 +898,7 @@ pub fn emit_go_struct_field_from_child(child: Node, env: TypeEnv) -> String {
 pub fn emit_go_sum_from_children(
     name: String,
     children: Rc<Vec<Rc<Node>>>,
-    env: TypeEnv,
+    env: Rc<TypeEnv>,
 ) -> String {
     {
         let has_data = {
@@ -1020,7 +1020,7 @@ pub fn emit_go_sum_from_children(
     }
 }
 
-pub fn emit_go_variant_struct(parent_name: String, child: Node, env: TypeEnv) -> String {
+pub fn emit_go_variant_struct(parent_name: String, child: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let struct_name = v1_rt::concat(
             parent_name.clone(),
@@ -1124,7 +1124,7 @@ pub fn emit_go_variant_struct(parent_name: String, child: Node, env: TypeEnv) ->
 
 pub fn emit_go_type_alias(
     name: String,
-    base: Node,
+    base: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     v1_rt::concat(
@@ -1149,8 +1149,8 @@ pub fn emit_go_type_alias(
 pub fn emit_go_fn_def(
     name: String,
     params: Rc<Vec<Rc<Node>>>,
-    inferred: Node,
-    body: Node,
+    inferred: Rc<Node>,
+    body: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
 ) -> String {
@@ -1254,9 +1254,9 @@ pub fn emit_go_fn_def(
 pub fn emit_go_func_def(
     name: String,
     params: Rc<Vec<Rc<Node>>>,
-    inferred: Node,
+    inferred: Rc<Node>,
     uses: Rc<Vec<Rc<Node>>>,
-    body: Node,
+    body: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
 ) -> String {
@@ -1285,7 +1285,7 @@ pub fn emit_go_func_def(
                     s,
                     resource_use_name_at(u.clone(), si.clone()),
                     resource_use_resource(u.clone()),
-                    SubValueRelation::SubValueUnknown,
+                    Rc::new(SubValueRelation::SubValueUnknown),
                 )
             },
         );
@@ -1388,7 +1388,7 @@ pub fn emit_go_func_params(
 }
 
 pub fn emit_go_typed_expr(
-    texpr: Node,
+    texpr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
@@ -1412,7 +1412,7 @@ pub fn emit_go_typed_expr(
 }
 
 pub fn emit_go_transport_body(
-    transport: Node,
+    transport: Rc<Node>,
     op_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
@@ -1431,9 +1431,9 @@ pub fn emit_go_transport_body(
 }
 
 pub fn emit_go_service_def(
-    item: Node,
+    item: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    env: TypeEnv,
+    env: Rc<TypeEnv>,
 ) -> String {
     emit_unified_service_def(
         item.clone(),
@@ -1456,7 +1456,7 @@ pub fn emit_go_service_def(
 
 pub fn emit_go_service_struct(
     name: String,
-    fallback_transport: Node,
+    fallback_transport: Rc<Node>,
     op_children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -1532,7 +1532,7 @@ pub fn emit_go_service_struct(
 
 pub fn emit_go_rest_call(
     op_name: String,
-    transport: Node,
+    transport: Rc<Node>,
     depth: i64,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -1620,7 +1620,7 @@ pub fn emit_go_rest_call(
 
 pub fn emit_go_shell_call(
     op_name: String,
-    transport: Node,
+    transport: Rc<Node>,
     depth: i64,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -1722,7 +1722,7 @@ pub fn emit_go_local_call(op_name: String, depth: i64) -> String {
     }
 }
 
-pub fn emit_go_resource_def(item: Node, env: TypeEnv) -> String {
+pub fn emit_go_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let item_text = authored_name(env.clone(), item.clone());
         let cap_children = Rc::new({
@@ -1765,7 +1765,7 @@ pub fn emit_go_resource_def(item: Node, env: TypeEnv) -> String {
     }
 }
 
-pub fn emit_go_capability_method(cap_node: Node, depth: i64, env: TypeEnv) -> String {
+pub fn emit_go_capability_method(cap_node: Rc<Node>, depth: i64, env: Rc<TypeEnv>) -> String {
     {
         let input_params = Rc::new({
             let mut __result = Vec::new();
@@ -1817,8 +1817,8 @@ pub fn emit_go_capability_method(cap_node: Node, depth: i64, env: TypeEnv) -> St
 
 pub fn emit_go_data_def(
     name: String,
-    type_node: Node,
-    value: Node,
+    type_node: Rc<Node>,
+    value: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,

@@ -25,7 +25,7 @@ pub struct NormalizeResult {
 }
 
 pub fn check_bare_containers(
-    n: Node,
+    n: Rc<Node>,
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
@@ -51,12 +51,12 @@ pub fn check_bare_containers(
                         && !has_structure.clone())
                     {
                         Rc::new(vec![make_error_node(
-                            CompilerDiagnostic::ArityMismatch {
+                            Rc::new(CompilerDiagnostic::ArityMismatch {
                                 name: nname.clone(),
                                 expected: expected.clone(),
                                 got: 0,
                                 span: n.span.clone(),
-                            },
+                            }),
                             module_name.clone(),
                         )])
                     } else {
@@ -215,9 +215,9 @@ pub fn normalize_graph(
             }
             __result
         });
-        NormalizeResult {
+        Rc::new(NormalizeResult {
             graph: graph.clone(),
             diagnostics: diags.clone(),
-        }
+        })
     }
 }

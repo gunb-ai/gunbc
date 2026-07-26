@@ -848,12 +848,7 @@ fn rust_seed_catalog_wraps_rc_at_use_site(type_name: String, rendered: String, u
 fn rust_seed_value_needs_rc_wrap(type_name: String, rendered: String, shared_types: Set<String>, use_site: OwnershipWrapUseSite) -> Bool {
   match use_site {
     OwnershipWrapUseSiteAbsent => false
-    _ =>
-      if rust_seed_catalog_wraps_rc_at_use_site(type_name: type_name, rendered: rendered, use_site: use_site) {
-        true
-      } else {
-        rust_seed_legacy_container_blanket_rc(rendered: rendered)
-      }
+    _ => rust_seed_catalog_wraps_rc_at_use_site(type_name: type_name, rendered: rendered, use_site: use_site)
   }
 }
 
@@ -874,13 +869,7 @@ fn rust_inferred_node_needs_rc_wrap(result_type: InferredNode?, shared_types: Se
 }
 
 fn rust_seed_inferred_type_needs_rc_wrap(value: Node, shared_types: Set<String>, scope: InferScope, emit_info: EmitGraphInfo) -> Bool {
-  let rt = match value.inferred {
-    Present { value: Resolved { node: rt } } => rt
-    _ => resolved_type(n: value)
-  }
-  let leaf = rust_fn_sig_leaf_name(source_indices: scope.type_env.source_indices, n: rt)
-  let rendered = rust_seed_inferred_type_rendered(value: value, shared_types: shared_types, scope: scope, emit_info: emit_info)
-  rust_seed_value_needs_rc_wrap(type_name: leaf, rendered: rendered, shared_types: shared_types, use_site: OwnershipAtBindingProjection)
+  rust_type_is_rc_wrapped(type_name: rust_seed_inferred_type_rendered(value: value, shared_types: shared_types, scope: scope, emit_info: emit_info))
 }
 
 fn rust_seed_expr_list_literal_needs_rc(value: Node, shared_types: Set<String>, scope: InferScope, emit_info: EmitGraphInfo) -> Bool {
@@ -8478,7 +8467,9 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                   if rust_record_field_needs_fn_rc(scope: scope, struct_name: r_sn, field_name: fname0) {
                     let wrapped_val = wrap_rust_record_field_value(raw: fval0, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: r_sn, field_name: fname0)
                     let struct_lit = concat(r_sn, " {\n    ", emit_ident(name: fname0, target: Rust), ": ", wrapped_val, ",\n}")
-                    struct_lit
+                    if rust_seed_value_needs_rc_wrap(type_name: r_sn, rendered: r_sn, shared_types: shared_types, use_site: OwnershipAtBindingProjection) {
+                      concat("Rc::new(", struct_lit, ")")
+                    } else { struct_lit }
                   } else { fval0 }
                 Absent => fval0
               }
@@ -8504,7 +8495,9 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
               )
               let body = field_strs |> join(separator: "\n")
               let struct_lit = concat(resolved_sn, " {\n", body, "\n}")
-              struct_lit
+              if rust_seed_value_needs_rc_wrap(type_name: resolved_sn, rendered: resolved_sn, shared_types: shared_types, use_site: OwnershipAtBindingProjection) {
+                concat("Rc::new(", struct_lit, ")")
+              } else { struct_lit }
             Absent =>
               let vals = fields |> map(f =>
                 emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -8663,7 +8656,9 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         let all_field_strs = concat(concat(field_strs, default_strs), phantom_strs)
         let fields_str = all_field_strs |> join(separator: "\n")
         let raw = concat(display_tn, " {\n", fields_str, "\n}")
-        raw
+        if rust_seed_value_needs_rc_wrap(type_name: ctor_name, rendered: ctor_name, shared_types: shared_types, use_site: OwnershipAtBindingProjection) {
+          concat("Rc::new(", raw, ")")
+        } else { raw }
         }
       }
   }
@@ -10058,12 +10053,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) || rust_nominal_identity_carrier_type_eligible(type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)) {
     let val_str = match rust_nominal_identity_data_expr(type_node: type_node, value: value, source_indices: scope.type_env.source_indices) {
       Present { value: identity_expr } => identity_expr
-      Absent =>
-        let emitted = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-        match value.expr_data {
-          ExprListLit => rust_seed_align_list_literal_wrap(emitted: emitted, needs_rc: needs_rc)
-          _ => rust_seed_align_expr_rc_wrap(emitted: emitted, needs_rc: needs_rc)
-        }
+      Absent => emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
     }
     let kw = rust_items().func_keyword
     concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
