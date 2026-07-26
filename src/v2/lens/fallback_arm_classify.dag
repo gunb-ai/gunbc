@@ -1,5 +1,7 @@
 module v2.lens.fallback_arm_classify
 
+import std.disposition { SubstrateMandatoryTag }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.lens.complexity_linearity_audit {
   ComplexityLinearityWildcardFact,
   complexity_linearity_wildcard_facts_live,
@@ -21,6 +23,7 @@ import v2.std.node {
   match_arm_body,
   match_arm_pattern
 }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.text { String }
 import v2.std.grammar { node_atom_identity_optional }
@@ -213,4 +216,8 @@ fn fallback_arm_corpus_unknown_count_live() -> Int {
 
 fn fallback_arm_structural_wildcard_site_count(root: Node) -> Int {
   length(xs: fallback_arm_collect_wildcard_sites_in_node(n: root))
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }
