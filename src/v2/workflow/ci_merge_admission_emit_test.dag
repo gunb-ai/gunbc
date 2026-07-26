@@ -15,15 +15,18 @@ import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_me
 import v2.std.orchestration {
   Comment,
   Do,
+  EscalationLevel,
   ExitStatus,
   FailFast,
+  LogMatches,
   Pipeline,
   PipelineStep,
+  Retry,
   Run,
   ToFile
 }
 import v2.std.collection { Absent, Present }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, EmitDirective, Rejected, SeverityWarning }
 
 data ci_merge_admission_emit_golden_note: String = "Hand-authored golden independent of grammar row spellings; byte test compares emit output against this literal (#6467 pattern)."
 
@@ -260,6 +263,105 @@ test fn orch_exit_status_binder_newline_not_executable_second_line_holds() -> Bo
         && false
     Rejected { diagnostics: _ } =>
       orch_exit_status_capture_emit() == orch_exit_status_capture_golden
+  }
+}
+
+data orch_to_file_then_exit_status_golden: String = "echo floor_running > target/ci-floor-disposition.txt\nSTAMP_EXIT=$?"
+
+fn orch_to_file_then_exit_status_intent() -> PipelineStep {
+  Do {
+    run: Run {
+      command: ci_floor_disposition_stamp_echo_command,
+      env: [],
+      redirect: Present { value: ToFile { path: "target/ci-floor-disposition.txt" } },
+      capture: Present { value: ExitStatus { binder: "STAMP_EXIT" } }
+    }
+  }
+}
+
+test fn orch_to_file_then_exit_status_emit_matches_golden_holds() -> Bool {
+  match orch_emit_step(s: orch_to_file_then_exit_status_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried == orch_to_file_then_exit_status_golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_to_file_then_exit_status_invalid_path_refuses_whole_holds() -> Bool {
+  match orch_emit_step(
+    s: Do {
+      run: Run {
+        command: ci_floor_disposition_stamp_echo_command,
+        env: [],
+        redirect: Present { value: ToFile { path: "target/x;injected" } },
+        capture: Present { value: ExitStatus { binder: "STAMP_EXIT" } }
+      }
+    },
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: source, diagnostics: _ } =>
+      string_contains(s: source.carried, pattern: "STAMP_EXIT=$?")
+        && false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn orch_retry_body_carrier_probe_escalation() -> EscalationLevel {
+  EscalationLevel {
+    detect: LogMatches { source: "BUILD_LOG", pattern: "PAT" },
+    warning: EmitDirective {
+      severity: SeverityWarning,
+      message: "probe"
+    },
+    env: []
+  }
+}
+
+fn orch_retry_with_body_run(r: Run) -> PipelineStep {
+  Retry {
+    body: Pipeline {
+      steps: [Do { run: r }],
+      on_failure: FailFast
+    },
+    escalations: [orch_retry_body_carrier_probe_escalation()],
+    on_exhausted: Pipeline {
+      steps: [Do { run: Run { command: "exit 1", env: [], redirect: Absent, capture: Absent } }],
+      on_failure: FailFast
+    }
+  }
+}
+
+test fn orch_retry_body_to_file_refused_holds() -> Bool {
+  match orch_emit_step(
+    s: orch_retry_with_body_run(
+      r: Run {
+        command: "true",
+        env: [],
+        redirect: Present { value: ToFile { path: "target/x.txt" } },
+        capture: Absent
+      }
+    ),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn orch_retry_body_exit_status_refused_holds() -> Bool {
+  match orch_emit_step(
+    s: orch_retry_with_body_run(
+      r: Run {
+        command: "true",
+        env: [],
+        redirect: Absent,
+        capture: Present { value: ExitStatus { binder: "STAMP_EXIT" } }
+      }
+    ),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 

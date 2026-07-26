@@ -86,6 +86,8 @@ import v2.std.orchestration {
   ToFile,
   IgnoreFail,
   ExitStatus,
+  TeeTo,
+  CmdSubst,
   Comment,
   EnvBinding
 }
@@ -727,9 +729,38 @@ fn orch_emit_step(s: PipelineStep, medium: OrchestrationEmitMedium) -> Outcome<e
   }
 }
 
+fn orch_retry_run_redirect_capture_admitted(r: Run) -> Bool {
+  match r.redirect {
+    Absent =>
+      match r.capture {
+        Absent => true
+        Present { value: TeeTo { log: _ } } => true
+        Present { value: CmdSubst } => false
+        Present { value: IgnoreFail } => false
+        Present { value: ExitStatus { binder: _ } } => false
+      }
+    Present { value: StdoutAndStderr } =>
+      match r.capture {
+        Absent => true
+        Present { value: TeeTo { log: _ } } => true
+        Present { value: CmdSubst } => false
+        Present { value: IgnoreFail } => false
+        Present { value: ExitStatus { binder: _ } } => false
+      }
+    Present { value: DiscardAll } => false
+    Present { value: DiscardErr } => false
+    Present { value: ToFile { path: _ } } => false
+  }
+}
+
 fn orch_retry_step_command(s: PipelineStep) -> Optional<String> {
   match s {
-    Do { run: r } => Present { value: r.command }
+    Do { run: r } =>
+      if orch_retry_run_redirect_capture_admitted(r: r) {
+        Present { value: r.command }
+      } else {
+        Absent
+      }
     Comment { text: _ } => Absent
     If { cond: _, then_: _, else_: _ } => Absent
     For { binder: _, over: _, body: _ } => Absent
