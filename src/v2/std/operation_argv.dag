@@ -1,0 +1,140 @@
+module v2.std.operation_argv
+
+import std.types { String, List, Bool }
+import v2.std.algebra { list_map }
+
+data operation_argv_authority_note: String = "An operation's transport argv is materialized by binding THAT OPERATION'S OWN DECLARED INPUTS, by name, from the declaration. The seed's prior materializer carried a fixed five-name vocabulary (package, bin, args, unit, property) hardwired in Rust: a second, impoverished representation of a fact the operation row already declares (DESIGN 3), which left 95 of the corpus's 139 shell-transport operations unmaterializable (they reference an input outside those five names) and silently injected all five names into every operation regardless of what it declared. This module is the single authority for the binding vocabulary; the seed builtin shell_materialize_operation_argv reads the declaration and answers in these types."
+
+data operation_argv_executable_position_note: String = "The executable position (argv[0]) is NOT bindable: it must be a string literal in the operation's own declaration. A generic binder that let a declared input decide WHICH PROGRAM RUNS would be strictly worse than the hardcoded list it replaces, so the class is refused, never sanitized and never escaped (DESIGN 5 construction-over-validation: the refusal has no arm that proceeds). Corpus-measured at authoring time: argv[0] is a declaration literal in 139 of 139 shell-transport operations, so the wall is zero-false-positive today."
+
+data operation_argv_binding_shape_note: String = "A binding the seed cannot DECODE is its own cause (BindingMalformed), separate from an argv element it cannot EVALUATE (ArgvExpressionUnsupported): they name different work and would be one state-space conflation if fused. A bindings argument that is not a list refuses here too -- reading it as `no bindings` would silently turn a caller error into a DeclaredInputUnbound refusal against the wrong subject (DESIGN 5)."
+
+data operation_argv_expression_residue_note: String = "Materialization binds names; it does not EVALUATE argv element expressions. An argv element that is a call or a field access (7 operations at authoring time, e.g. git.Core.DiffUnified0's git_diff_range_argv(..) element) is refused as ArgvExpressionUnsupported -- typed, located, and counted, never absorbed into a fabricated argv. Those operations never materialized through the seed builtin before this module either; they execute through the interpreter's service-invocation path (dispatch_shell), which evaluates argv expressions in the full evaluator and is untouched here. Dissolves when argv element evaluation lands, which is a separate lane."
+
+type OperationRef {
+  path: String
+  service: String
+  operation: String
+}
+
+type OperationInputValue
+  = InputText { text: String }
+  | InputTextList { items: List<String> }
+
+type OperationInputBinding {
+  name: String
+  value: OperationInputValue
+}
+
+type ArgvRefusalCause
+  = OperationNotFound
+  | ArgvEmpty
+  | UndeclaredInputBound { name: String }
+  | DuplicateInputBinding { name: String }
+  | DeclaredInputUnbound { name: String }
+  | ExecutablePositionNotLiteral { detail: String }
+  | TokenListInStringPosition { name: String }
+  | ArgvExpressionUnsupported { detail: String }
+  | BindingMalformed { detail: String }
+
+type ArgvMaterialization
+  = ArgvMaterialized { argv: List<String> }
+  | ArgvMaterializationRefused { at: OperationRef, cause: ArgvRefusalCause }
+
+type ShellTransportOperationRow {
+  at: OperationRef
+  declared_inputs: List<String>
+  argv_input_refs: List<String>
+}
+
+fn operation_argv_bind_text(name: String, text: String) -> OperationInputBinding {
+  OperationInputBinding {
+    name: name,
+    value: InputText { text: text }
+  }
+}
+
+fn operation_argv_bind_text_list(name: String, items: List<String>) -> OperationInputBinding {
+  OperationInputBinding {
+    name: name,
+    value: InputTextList { items: items }
+  }
+}
+
+
+data operation_argv_classification_note: String = "ONE tagged classification, not a family of coproduct-to-Bool predicates (review 42972, the std/ predicate-dissolution rule: a Bool predicate erases WHICH arm answered and becomes a second surface over the coproduct). Consumers fold ArgvMaterialization through this in a single pass and match the tag; it also means a corpus row materializes ONCE per row rather than once per question asked about it."
+
+type ArgvRowClassification
+  = ArgvRowMaterialized
+  | ArgvRowExpressionResidue
+  | ArgvRowExecutablePositionRefused
+  | ArgvRowOtherRefusal
+
+fn operation_argv_classify_cause(cause: ArgvRefusalCause) -> ArgvRowClassification {
+  match cause {
+    ArgvExpressionUnsupported { detail: _ } => ArgvRowExpressionResidue
+    ExecutablePositionNotLiteral { detail: _ } => ArgvRowExecutablePositionRefused
+    OperationNotFound => ArgvRowOtherRefusal
+    ArgvEmpty => ArgvRowOtherRefusal
+    UndeclaredInputBound { name: _ } => ArgvRowOtherRefusal
+    DuplicateInputBinding { name: _ } => ArgvRowOtherRefusal
+    DeclaredInputUnbound { name: _ } => ArgvRowOtherRefusal
+    TokenListInStringPosition { name: _ } => ArgvRowOtherRefusal
+    BindingMalformed { detail: _ } => ArgvRowOtherRefusal
+  }
+}
+
+fn operation_argv_classify(m: ArgvMaterialization) -> ArgvRowClassification {
+  match m {
+    ArgvMaterialized { argv: _ } => ArgvRowMaterialized
+    ArgvMaterializationRefused { at: _, cause: c } => operation_argv_classify_cause(cause: c)
+  }
+}
+
+fn operation_argv_cause_label(cause: ArgvRefusalCause) -> String {
+  match cause {
+    OperationNotFound => "OperationNotFound"
+    ArgvEmpty => "ArgvEmpty"
+    UndeclaredInputBound { name: n } => concat("UndeclaredInputBound:", n)
+    DuplicateInputBinding { name: n } => concat("DuplicateInputBinding:", n)
+    DeclaredInputUnbound { name: n } => concat("DeclaredInputUnbound:", n)
+    ExecutablePositionNotLiteral { detail: d } => concat("ExecutablePositionNotLiteral:", d)
+    TokenListInStringPosition { name: n } => concat("TokenListInStringPosition:", n)
+    ArgvExpressionUnsupported { detail: d } => concat("ArgvExpressionUnsupported:", d)
+    BindingMalformed { detail: d } => concat("BindingMalformed:", d)
+  }
+}
+
+fn operation_argv_ref_label(at: OperationRef) -> String {
+  concat(concat(concat(concat(at.path, " "), at.service), "."), at.operation)
+}
+
+fn operation_argv_refusal_label(m: ArgvMaterialization) -> String {
+  match m {
+    ArgvMaterialized { argv: _ } => ""
+    ArgvMaterializationRefused { at: a, cause: c } =>
+      concat(concat(operation_argv_ref_label(at: a), " => "), operation_argv_cause_label(cause: c))
+  }
+}
+
+fn operation_argv_tokens_or_refusal_label(m: ArgvMaterialization) -> List<String> {
+  match m {
+    ArgvMaterialized { argv: a } => a
+    ArgvMaterializationRefused { at: _, cause: _ } => [operation_argv_refusal_label(m: m)]
+  }
+}
+
+
+
+
+
+fn operation_argv_row_binding_for_input(name: String) -> OperationInputBinding {
+  operation_argv_bind_text(name: name, text: concat("bound-", name))
+}
+
+fn operation_argv_row_bindings(row: ShellTransportOperationRow) -> List<OperationInputBinding> {
+  list_map(
+    xs: row.declared_inputs,
+    f: fn(n) { operation_argv_row_binding_for_input(name: n) }
+  )
+}

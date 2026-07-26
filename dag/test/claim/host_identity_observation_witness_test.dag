@@ -15,8 +15,11 @@ fn require_dns_label(raw: String) -> DnsLabel {
 }
 
 fn witness_hostname_read_argv_is_typed_not_concat() -> Bool {
-  hostname_short_read_operation_argv_matches_authority()
-    && join(hostname_short_read_operation_argv(), " ") == "hostname -s"
+  match hostname_short_read_operation_argv() {
+    ArgvMaterialized { argv: argv } =>
+      hostname_short_read_operation_argv_matches_authority() && join(argv, " ") == "hostname -s"
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  }
 }
 
 fn witness_hostname_read_resolves_typed_cell_not_shell_script() -> Bool {

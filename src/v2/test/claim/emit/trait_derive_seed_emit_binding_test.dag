@@ -11,13 +11,13 @@ import std.trait_derive_shape {
   record_derive_traits_heap,
   record_derive_traits_copy,
   repr_grounding_derive_completeness_predicate,
-  repr_grounding_supplemental_commutative_semiring_target,
+  repr_grounding_supplemental_group_completion_target,
   repr_grounding_supplemental_bool_host_bridge_target,
   kernel_int_arithmetic_traits
 }
 import extdeps.languages.rust.emit {
   rust_trait_derive_attr_from_traits,
-  rust_supplemental_impls_commutative_semiring_magnitude,
+  rust_supplemental_impls_group_completion,
   rust_supplemental_impls_bool_coproduct
 }
 import v2.std.logic { Bool }
@@ -57,28 +57,29 @@ test fn payload_coproduct_predicate_satisfied() -> Bool {
   )
 }
 
-test fn commutative_semiring_supplemental_impl_present() -> Bool {
-  let supplemental = rust_supplemental_impls_commutative_semiring_magnitude()
-  let target_ok = repr_grounding_supplemental_commutative_semiring_target(
+test fn group_completion_supplemental_impl_present() -> Bool {
+  let supplemental = rust_supplemental_impls_group_completion()
+  let target_ok = repr_grounding_supplemental_group_completion_target(
     module_path: "std.algebra",
-    name: "CommutativeSemiring"
+    name: "GroupCompletion"
   )
   let predicate_ok = repr_grounding_derive_completeness_predicate(
     kernel_int_arithmetic_traits(),
     ReprDeriveElemKernelInt
   )
-  let wrong_module = repr_grounding_supplemental_commutative_semiring_target(
+  let wrong_module = repr_grounding_supplemental_group_completion_target(
     module_path: "std.magma",
-    name: "CommutativeSemiring"
+    name: "GroupCompletion"
   )
-  let wrong_name = repr_grounding_supplemental_commutative_semiring_target(
+  let wrong_name = repr_grounding_supplemental_group_completion_target(
     module_path: "std.algebra",
     name: "Magma"
   )
   target_ok
     && predicate_ok
     && supplemental != ""
-    && supplemental.contains("unimplemented!")
+    && supplemental.contains("self.pos + rhs.pos")
+    && supplemental.contains("unimplemented!") == false
     && wrong_module == false
     && wrong_name == false
 }
@@ -110,6 +111,6 @@ test fn trait_derive_seed_emit_binding_witness_holds() -> Bool {
     && record_heap_attr_contains_serde()
     && ord_carrier_shape_rejects_nullary_copy_traits()
     && ord_carrier_attr_differs_from_nullary()
-    && commutative_semiring_supplemental_impl_present()
+    && group_completion_supplemental_impl_present()
     && bool_supplemental_impl_present()
 }

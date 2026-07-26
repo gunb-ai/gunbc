@@ -1,0 +1,133 @@
+module test.claim.observation_crawl_replay_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, NonEmptyStr, Bool, List }
+import std.measure { millisecond, byte_size, basis_point }
+import std.symbols { Emoji }
+import std.observation {
+  ObservationSubject,
+  RunSegment,
+  BatchSegment,
+  EntrySegment,
+  ModuleSegment,
+  PhaseSegment,
+  MeasuredValue,
+  MeasuredUnavailable,
+  ObservationEvent,
+  Concluded,
+  Done,
+  AttentionBasis,
+  observation_dwell_threshold,
+  PsiPressure,
+}
+import gunbc.observation_ci_render {
+  RenderedLine,
+  ci_render_line,
+  ci_event_line,
+  ci_heartbeat_line,
+  ci_escalation_line,
+  ci_escalation_blocked_line,
+  ci_refusal_restate_line,
+  ci_run_summary_line,
+  ci_group_open,
+  ci_group_close,
+  ci_collapsed_summary,
+  HeartbeatSample,
+  FloorRunSummary,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_note: String = "End-to-end replay of the captured crawl window of run 30044816605 through the P1 CI renderer, asserting the WHOLE assembled block by execution — the flagship's before/after made a green witness rather than a hand-typed sample. Every input number is read off that run's log: the t=33m heartbeat carried current=16107200512 swap=34359738368 psi_some_avg10=9.01 and named no subject, and the module the process sat inside for 606984ms, v2.compiler.normalized_tree, was disclosed only at walk end. This witness renders those same facts and asserts the block now NAMES the activity where the capture was silent. observation_crawl_after_block is also the function the PR body's after-sample is produced from, so the pasted sample is a projection of a green execution, not prose."
+
+fn crawl_entry() -> ObservationSubject {
+  ObservationSubject {
+    segments: [
+      RunSegment { id: "30044816605" as NonEmptyStr },
+      BatchSegment { index: 3, label: "witness discovery" as NonEmptyStr },
+      EntrySegment { source_path: "dag/test/claim/virtual_media_unification_witness_test.dag" as NonEmptyStr }
+    ]
+  }
+}
+
+fn crawl_leaf() -> ObservationSubject {
+  ObservationSubject {
+    segments: [
+      RunSegment { id: "30044816605" as NonEmptyStr },
+      BatchSegment { index: 3, label: "witness discovery" as NonEmptyStr },
+      EntrySegment { source_path: "dag/test/claim/virtual_media_unification_witness_test.dag" as NonEmptyStr },
+      ModuleSegment { module_path: "v2.compiler.normalized_tree" as NonEmptyStr },
+      PhaseSegment { name: "typecheck" as NonEmptyStr }
+    ]
+  }
+}
+
+fn crawl_basis() -> AttentionBasis {
+  AttentionBasis { average: millisecond(count: 1000), maximum: millisecond(count: 5000) }
+}
+
+fn crawl_heartbeat_at(minute: Int, rss: Int, swap: Int, psi: Int) -> RenderedLine {
+  ci_heartbeat_line(sample: HeartbeatSample {
+    elapsed: millisecond(count: minute * 60000),
+    active: crawl_leaf(),
+    entry_index: 214,
+    entry_total: 602,
+    rss: MeasuredValue { value: byte_size(rss) },
+    swap: MeasuredValue { value: byte_size(swap) },
+    pressure: MeasuredValue { value: basis_point(count: psi) }
+  })
+}
+
+fn observation_crawl_after_block() -> String {
+  let lines = [
+    ci_group_open(title: "witness discovery — batch 3 (602 entries)"),
+    ci_render_line(line: ci_event_line(event: ObservationEvent {
+      subject: crawl_entry(),
+      transition: Concluded { outcome: Done },
+      wall: MeasuredValue { value: millisecond(count: 230) },
+      rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
+    }, basis: crawl_basis()), tier: Emoji),
+    ci_collapsed_summary(green_count: 213),
+    ci_render_line(line: crawl_heartbeat_at(minute: 29, rss: 16106717184, swap: 34359738368, psi: 533), tier: Emoji),
+    ci_render_line(line: crawl_heartbeat_at(minute: 33, rss: 16107200512, swap: 34359738368, psi: 901), tier: Emoji),
+    ci_render_line(line: ci_escalation_line(quiet_subject: crawl_entry(), active_leaf: crawl_leaf(), quiet: millisecond(count: 120000), t: observation_dwell_threshold), tier: Emoji),
+    ci_render_line(line: ci_escalation_blocked_line(quiet_subject: crawl_entry(), active_leaf: crawl_leaf(), quiet: millisecond(count: 240000), t: observation_dwell_threshold, hold: PsiPressure { avg10: basis_point(count: 901) }), tier: Emoji),
+    ci_render_line(line: ci_refusal_restate_line(subject: crawl_entry(), diagnostic: "FLOOR-BATCH-OVER-BUDGET wall=41m12s budget=22m" as NonEmptyStr), tier: Emoji),
+    ci_group_close(),
+    ci_render_line(line: ci_run_summary_line(summary: FloorRunSummary {
+      entries_complete: 213,
+      entries_total: 602,
+      refusals: 1,
+      failures: 0,
+      wall: millisecond(count: 2472000)
+    }), tier: Emoji)
+  ]
+  join(lines, "\n")
+}
+
+fn w_replay_names_the_module_where_the_capture_was_silent() -> Bool {
+  let block = observation_crawl_after_block()
+  string_contains(s: block, pattern: "still in witness discovery: entry 214 of 602, now typecheck v2.compiler.normalized_tree") &&
+  string_contains(s: block, pattern: "quiet for 2 minutes — still working") &&
+  string_contains(s: block, pattern: "quiet for 4 minutes — blocked on memory reclaim (pressure 9.0%)")
+}
+
+fn w_replay_uses_human_units_not_raw_bytes() -> Bool {
+  let block = observation_crawl_after_block()
+  string_contains(s: block, pattern: "memory 15.0 GiB, swap 32.0 GiB, pressure 9.0%") &&
+  !string_contains(s: block, pattern: "16107200512") &&
+  !string_contains(s: block, pattern: "current=")
+}
+
+fn w_replay_ends_in_a_refusal_summary_not_a_silent_timeout() -> Bool {
+  let block = observation_crawl_after_block()
+  string_contains(s: block, pattern: "213 of 602 entries finished") &&
+  string_contains(s: block, pattern: "1 refused and 0 failed") &&
+  string_contains(s: block, pattern: "FLOOR-BATCH-OVER-BUDGET")
+}
+
+test fn observation_crawl_replay_witnesses() -> Bool {
+  w_replay_names_the_module_where_the_capture_was_silent() &&
+  w_replay_uses_human_units_not_raw_bytes() &&
+  w_replay_ends_in_a_refusal_summary_not_a_silent_timeout()
+}
