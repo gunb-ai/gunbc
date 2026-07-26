@@ -89,7 +89,7 @@ pub fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
 }
 
 pub fn rust_nominal_identity_carrier_shape_eligible(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((((authored_name_at(source_indices.clone(), n.clone()) == "Symbol".to_string())
