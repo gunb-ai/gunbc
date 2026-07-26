@@ -6,6 +6,7 @@ import gunbc.plans.dag_v2_defork_audit { dag_v2_defork_audit_plan }
 import gunbc.plans.v2_self_hosting { v2_self_hosting_plan }
 import gunbc.plans.m5_fixture_store_consolidation { m5_fixture_store_consolidation_plan }
 import gunbc.plans.model_realization_fork { model_realization_fork_plan }
+import gunbc.plans.value_null_split { value_null_split_plan }
 import gunbc.plans.ci_merge_freshness { ci_merge_freshness_plan }
 import gunbc.plans.seed_debt_bundle_item_2 { seed_debt_bundle_item_2_plan }
 
@@ -15,6 +16,7 @@ data batch_b_plans: List<Plan> = [
   v2_self_hosting_plan,
   m5_fixture_store_consolidation_plan,
   model_realization_fork_plan,
+  value_null_split_plan,
   ci_merge_freshness_plan,
   seed_debt_bundle_item_2_plan
 ]

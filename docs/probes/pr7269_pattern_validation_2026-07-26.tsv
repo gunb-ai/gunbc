@@ -1,0 +1,9 @@
+label	pattern_validation_positive_control
+class_message_full	expected one of `,` or `>`, found `.
+class_message_tsv_note	TSV class_message column omits trailing backtick before period due to shell/TSV quoting; grep uses the full rustc literal via grep -cF
+positive_control_git_sha	14685dc76cd3188fbbff4ff543e181b3d8577125
+positive_control_label	pr7174_canonical_seven_AFTER_2026-07-25
+positive_control_module	src/v2/compiler/04_infer.dag
+positive_control_count	1
+elimination_attribution	#7197 GroupCompletion grounding keystone (efe67794cd): count 1→0 on 04_infer; b4cc08686b (#7269 leaf routing alone) still count=1 on same module
+elimination_not	#7211 Witness/Diagnostic decouple (32daad429b count=1), #7216 (95e4bbad69 count=1)

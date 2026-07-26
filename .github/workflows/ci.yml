@@ -212,8 +212,8 @@ jobs:
           if ! test -f target/floor-resolve-receipt.txt; then echo "floor resolve receipt missing - fail closed"; exit 1; fi
           n=$(sed -n 's/^resolves_total=//p' target/floor-resolve-receipt.txt)
           if test -z "$n"; then echo "floor resolve receipt malformed - fail closed"; exit 1; fi
-          if test "$n" -ne 3; then echo "floor resolve count $n differs from declared 3: duplicate-computation debt changed - update ci_floor_declared_resolve_count consciously (dag/gunbc/ci_materialization.dag)"; exit 1; fi
-          echo "floor resolve count $n matches declared 3 (declared cold-resolve receipt)"
+          if test "$n" -ne 1; then echo "floor resolve count $n differs from declared 1: duplicate-computation debt changed - update ci_floor_declared_resolve_count consciously (dag/gunbc/ci_materialization.dag)"; exit 1; fi
+          echo "floor resolve count $n matches declared 1 (declared cold-resolve receipt)"
         timeout-minutes: 5
       - name: Floor materialization receipt gate (demand ledger; disclosure gate — count pins retracted, walls tracked in ci_materialization.dag)
         run: |
@@ -327,6 +327,7 @@ jobs:
           if [ -e "docs/plans/v2-self-hosting.md" ]; then git add "docs/plans/v2-self-hosting.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/v2-self-hosting.md"; fi
           if [ -e "docs/plans/m5-fixture-store-consolidation.md" ]; then git add "docs/plans/m5-fixture-store-consolidation.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/m5-fixture-store-consolidation.md"; fi
           if [ -e "docs/plans/model-realization-fork.md" ]; then git add "docs/plans/model-realization-fork.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/model-realization-fork.md"; fi
+          if [ -e "docs/plans/value-null-split.md" ]; then git add "docs/plans/value-null-split.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/value-null-split.md"; fi
           if [ -e "docs/plans/ci-merge-freshness.md" ]; then git add "docs/plans/ci-merge-freshness.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/ci-merge-freshness.md"; fi
           if [ -e "docs/plans/seed-debt-bundle-item-2.md" ]; then git add "docs/plans/seed-debt-bundle-item-2.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/seed-debt-bundle-item-2.md"; fi
           if [ -e "docs/plans/axiom-syllogism-lens.md" ]; then git add "docs/plans/axiom-syllogism-lens.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/axiom-syllogism-lens.md"; fi

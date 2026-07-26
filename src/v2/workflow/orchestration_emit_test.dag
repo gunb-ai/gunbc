@@ -7,11 +7,15 @@ import v2.std.orchestration {
   Run,
   PipelineStep,
   Do,
+  If,
   Pipeline,
   FailFast,
   EnvSet,
-  EnvUnset
+  EnvUnset,
+  Predicate,
+  ExitZero
 }
+import v2.std.optional { Optional, Present }
 import v2.std.collection { Absent }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -109,6 +113,100 @@ test fn orch_run_env_prefixed_structured_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "CARGO_BUILD_JOBS=1 cargo test --workspace") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn orch_if_cond() -> Predicate {
+  ExitZero {
+    run: Run { command: "[ -z \"$1\" ]", env: [], redirect: Absent, capture: Absent }
+  }
+}
+
+fn orch_do_step(command: String) -> PipelineStep {
+  Do { run: Run { command: command, env: [], redirect: Absent, capture: Absent } }
+}
+
+fn orch_if_then_one_step() -> Pipeline {
+  Pipeline { steps: [orch_do_step(command: "verdict=absent")], on_failure: FailFast }
+}
+
+fn orch_if_then_two_steps() -> Pipeline {
+  Pipeline {
+    steps: [orch_do_step(command: "verdict=absent"), orch_do_step(command: "echo \"$verdict\"")],
+    on_failure: FailFast
+  }
+}
+
+fn orch_if_else_one_step() -> Pipeline {
+  Pipeline { steps: [orch_do_step(command: "verdict=present")], on_failure: FailFast }
+}
+
+fn orch_if_else_two_steps() -> Pipeline {
+  Pipeline {
+    steps: [orch_do_step(command: "verdict=present"), orch_do_step(command: "echo \"$verdict\"")],
+    on_failure: FailFast
+  }
+}
+
+fn orch_if_pipeline(then_: Pipeline, else_: Optional<Pipeline>) -> Pipeline {
+  Pipeline {
+    steps: [If { cond: orch_if_cond(), then_: then_, else_: else_ }],
+    on_failure: FailFast
+  }
+}
+
+test fn orch_if_single_step_no_else_byte_identical_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: Absent),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then verdict=absent; fi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_single_step_with_else_byte_identical_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: Present { value: orch_if_else_one_step() }),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then verdict=absent; else verdict=present; fi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_multi_step_then_no_else_block_form_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_two_steps(), else_: Absent),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then\nverdict=absent\necho \"$verdict\"\nfi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_multi_step_then_and_else_block_form_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_two_steps(), else_: Present { value: orch_if_else_two_steps() }),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then\nverdict=absent\necho \"$verdict\"\nelse\nverdict=present\necho \"$verdict\"\nfi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_multi_step_else_only_block_form_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: Present { value: orch_if_else_two_steps() }),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then\nverdict=absent\nelse\nverdict=present\necho \"$verdict\"\nfi") && (dg == None)
     Rejected { diagnostics: _ } => false
   }
 }

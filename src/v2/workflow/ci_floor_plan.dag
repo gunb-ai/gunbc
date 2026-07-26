@@ -20,7 +20,7 @@ import gunbc.ci_spec {
   gunbc_ci_floor_batch_clamp_params,
 }
 import gunbc.falsifier_workflow { falsifier_plan_function }
-import gunbc.commit_workflow { commit_gate_roster, project_falsifier_witness_entries }
+import gunbc.commit_workflow { commit_gate_roster, project_falsifier_witness_entries, project_falsifier_gates }
 import gunbc.ci_gate {
   Gate, EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
@@ -960,6 +960,24 @@ fn falsifier_batches_append_if_enrolled(acc: List<List<Runnable>>, enrolled: Boo
   }
 }
 
+fn falsifier_batches_append_group_if_enrolled(acc: List<List<Runnable>>, enrolled: Bool, batch: List<Runnable>) -> List<List<Runnable>> {
+  if enrolled {
+    list_snoc_item(xs: acc, item: batch)
+  } else {
+    acc
+  }
+}
+
+data falsifier_gate_batch_note: String = "The EXECUTING consumer for gates enrolled on gunbc.commit_workflow's FalsifierCadenceJob surface — the gate counterpart of gunbc_falsifier_cadence_witness_batch, and it lands in the same change as project_falsifier_gates and the gate-half wall for the reason that note already states: a surface tag with no batch reading it is enrollment-by-illusion. Until this existed, the FalsifierCadenceJob surface accepted a gate row syntactically and executed it nowhere, and no witness could red on that because the bare-deenrollment wall filtered on enrollment_is_witness_claim. GRAIN: one batch holding every cadence gate, not one batch per gate — the gates are mutually independent (each is its own RunnableSingleClaim with its own profile from gate_runnable) and the falsifier's fail-closed halt already sequences batches, so splitting them would buy ordering nobody needs and cost a batch boundary each. AT LANDING THIS APPENDS NOTHING: no gate rides FalsifierCadenceJob until the measured flips land, so falsifier_gate_batch_enrolled() is false and the batch chain is byte-identical — the same zero-behaviour-change-until-flip discipline gunbc_pr_native_batch_note follows. Profile is NOT restated here: each runnable carries gate_runnable_profile(g), the single authority the per-PR floor reads, so a gate's resource shape cannot fork between the two lanes."
+
+fn falsifier_gate_runnables() -> List<Runnable> {
+  list_map(xs: project_falsifier_gates(roster: commit_gate_roster), f: fn(g) { gate_runnable(g: g) })
+}
+
+fn falsifier_gate_batch_enrolled() -> Bool {
+  length(xs: falsifier_gate_runnables()) > 0
+}
+
 data falsifier_rehomed_bin_wet_batch_note: String = "Nightly falsifier batch 5 (CI floor endgame D6, 2026-07-23): the declared Wet bin-execution lane for rows RE-HOMED off the per-PR bin-witness batch because their measured wall exceeds bin_witness_wet_per_row_wall_budget_seconds (gunbc.ci_layer_roots falsifier_rehomed_bin_wet_rows — typed frontier rows, reason + dissolve_on each). Same mechanism as the other falsifier lanes (RunnableDiscoveryBatch, SelectionApplied, fail-closed halt on earlier batch failure), so correctness coverage continues at the 4-hourly cadence while the per-PR floor keeps only short/quick rows."
 
 fn falsifier_rehomed_bin_wet_batch_enrolled() -> Bool {
@@ -1038,10 +1056,15 @@ fn gunbc_falsifier_batches() -> List<List<Runnable>> {
     enrolled: falsifier_substrate_long_lane_batch_enrolled(),
     batch: gunbc_falsifier_substrate_long_lane_batch()
   )
-  falsifier_batches_append_if_enrolled(
+  let with_cadence_witness = falsifier_batches_append_if_enrolled(
     acc: with_substrate_long,
     enrolled: falsifier_cadence_witness_batch_enrolled(),
     batch: gunbc_falsifier_cadence_witness_batch()
+  )
+  falsifier_batches_append_group_if_enrolled(
+    acc: with_cadence_witness,
+    enrolled: falsifier_gate_batch_enrolled(),
+    batch: falsifier_gate_runnables()
   )
 }
 

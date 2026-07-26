@@ -16,6 +16,8 @@ data orch_construct_retry_escalation_final: Symbol = ^orch_construct_retry_escal
 data orch_construct_retry_escalation_step: Symbol = ^orch_construct_retry_escalation_step
 data orch_construct_if: Symbol = ^orch_construct_if
 data orch_construct_if_else: Symbol = ^orch_construct_if_else
+data orch_construct_if_block: Symbol = ^orch_construct_if_block
+data orch_construct_if_else_block: Symbol = ^orch_construct_if_else_block
 data orch_construct_while: Symbol = ^orch_construct_while
 data orch_construct_bounded_poll: Symbol = ^orch_construct_bounded_poll
 data orch_construct_procedure: Symbol = ^orch_construct_procedure
@@ -48,6 +50,8 @@ type OrchestrationEmitMedium {
   realize_retry_escalation_step: fn(String, String, String, String, String) -> TargetModel
   realize_if: fn(String, String) -> Outcome<TargetModel>
   realize_if_else: fn(String, String, String) -> Outcome<TargetModel>
+  realize_if_block: fn(String, String) -> Outcome<TargetModel>
+  realize_if_else_block: fn(String, String, String) -> Outcome<TargetModel>
   realize_while: fn(String, String) -> Outcome<TargetModel>
   realize_bounded_poll: fn(String, String, String) -> Outcome<TargetModel>
   realize_procedure: fn(String, String) -> TargetModel

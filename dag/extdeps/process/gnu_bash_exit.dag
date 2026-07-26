@@ -1,0 +1,16 @@
+module extdeps.process.gnu_bash_exit
+
+import std.types { Int, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/bash/manual/html_node/Exit-Status.html"
+  }
+}
+
+data gnu_bash_exit_status_note: String = "GNU Bash reserves exit status 2 for misuse of shell builtins (invalid arguments, syntax errors in builtin invocation). Distinct from POSIX.1-2017 exit status semantics (0 = success; nonzero = failure; 126/127/>128 reserved)."
+
+data exit_code_misuse: Int = 2
