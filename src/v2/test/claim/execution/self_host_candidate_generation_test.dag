@@ -13,7 +13,16 @@ import v2.compiler.translate {
   TargetBundleMalformed,
   TranslateDiagnosticReason
 }
-import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
+import v2.std.collection {
+  List
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v2.extdeps.languages.dag {
   dag_emitted_add_fn_node,
   dag_target_model

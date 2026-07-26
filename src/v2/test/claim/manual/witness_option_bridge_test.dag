@@ -21,30 +21,6 @@ test fn map_get_miss_bridges_witness_to_absent() -> Bool {
   }
 }
 
-fn custom_lookup_failure() -> Diagnostic {
-  Diagnostic {
-    reason: ^custom_lookup_failure,
-    at: port_locus(port: ^custom_map_lookup_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn malformed_map() -> Map<String, Int> {
-  Map {
-    lookup: fn(_) {
-      Violates { diagnostic: custom_lookup_failure() }
-    }
-  }
-}
-
-test fn map_get_rejects_non_absent_lookup_failure() -> Bool {
-  match v2.std.collection.map_get(malformed_map(), "k") {
-    Accepted { value: Present { value: _ }, diagnostics: _ } => false
-    Accepted { value: Absent, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
-  }
-}
-
 test fn excluded_propagation_proof_evaluates_true() -> Bool {
   excluded_propagation_proof_claim_holds()
 }

@@ -5,6 +5,7 @@ import extdeps.filesystem.filesystem_io
 import extdeps.git
 import extdeps.gunbc
 import gunbc.ci_layer_roots { compile_clean_source_roots }
+import gunbc.output_policy { ExpectFailure, ExpectSuccess }
 import std.logic { Bool }
 import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
@@ -105,7 +106,8 @@ fn dcc_perturb_compile_with_args(
   let compile = gunbc.WitnessBin.Run(
     workdir: root.path,
     bin_path: dcc_gunbc_path(root: root.path),
-    args: compile_args
+    args: compile_args,
+    expect: if expect_success { ExpectSuccess } else { ExpectFailure }
   )
   let cleaned = shell.Remove.RecursiveForce(path: tmp_path)
   wrote.success && cleaned.success && (compile.success == expect_success)

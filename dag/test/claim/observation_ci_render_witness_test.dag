@@ -1,0 +1,289 @@
+module test.claim.observation_ci_render_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, String, Bool, List }
+import std.nat { Nat }
+import std.symbols { Tier, Emoji, Unicode, Ascii, StatusPulse, StatusDwell, StatusBlocked, StatusRefused, NodeFailed, NodeCompleted }
+import std.measure { millisecond, byte_size, basis_point }
+import std.observation {
+  ObservationSubject,
+  RunSegment,
+  BatchSegment,
+  EntrySegment,
+  ModuleSegment,
+  PhaseSegment,
+  MeasuredValue,
+  MeasuredUnavailable,
+  ObservationEvent,
+  Begin,
+  Step,
+  Concluded,
+  Done,
+  Refused,
+  Failed,
+  AttentionBasis,
+  Ambient,
+  Notable,
+  Anomaly,
+  observation_dwell_threshold,
+  observation_escalation_depth,
+  PsiPressure,
+}
+import gunbc.observation_ci_render {
+  RenderedLine,
+  LinePlacement,
+  InsideCollapsedGroup,
+  OutsideGroup,
+  ci_line_placement,
+  ci_render_line,
+  ci_event_line,
+  ci_heartbeat_line,
+  ci_escalation_line,
+  ci_escalation_blocked_line,
+  ci_human_bytes,
+  ci_human_duration,
+  ci_human_percent,
+  ci_collapsed_summary,
+  ci_run_summary_line,
+  ci_refusal_restate_line,
+  HeartbeatSample,
+  FloorRunSummary,
+  ci_group_open,
+  ci_group_close,
+  ci_escalation_emission_count,
+  ci_window_is_responsive,
+  ci_run_summary_glyph,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_note: String = "P1 flagship acceptance (docs/plans/progress-observation-design.md section 5): re-render the CAPTURED crawl window of run 30044816605 through the escalation law and produce named activity where there was silence. The fixture below is not invented — every number is read off that run's log: the heartbeat at t=33m carried current=16107200512 swap=34359738368 psi_some_avg10=9.01 and named no subject, and the module the process was actually inside for the whole window, v2.compiler.normalized_tree, was disclosed only at walk end as typecheck-attribution ms=606984. The renderer is a pure function of the stream, which is exactly what makes replaying a real captured run possible."
+
+data crawl_run_id: NonEmptyStr = "30044816605" as NonEmptyStr
+
+data crawl_quiet_module: NonEmptyStr = "v2.compiler.normalized_tree" as NonEmptyStr
+
+data crawl_module_wall_ms: Int = 606984
+
+data crawl_heartbeat_rss_bytes: Int = 16107200512
+
+data crawl_heartbeat_swap_bytes: Int = 34359738368
+
+data crawl_heartbeat_pressure_bp: Int = 901
+
+fn crawl_entry_subject() -> ObservationSubject {
+  ObservationSubject {
+    segments: [
+      RunSegment { id: crawl_run_id },
+      BatchSegment { index: 3, label: "witness discovery" as NonEmptyStr },
+      EntrySegment { source_path: "dag/test/claim/virtual_media_unification_witness_test.dag" as NonEmptyStr }
+    ]
+  }
+}
+
+fn crawl_leaf_subject() -> ObservationSubject {
+  ObservationSubject {
+    segments: [
+      RunSegment { id: crawl_run_id },
+      BatchSegment { index: 3, label: "witness discovery" as NonEmptyStr },
+      EntrySegment { source_path: "dag/test/claim/virtual_media_unification_witness_test.dag" as NonEmptyStr },
+      ModuleSegment { module_path: crawl_quiet_module },
+      PhaseSegment { name: "typecheck" as NonEmptyStr }
+    ]
+  }
+}
+
+fn crawl_heartbeat() -> HeartbeatSample {
+  HeartbeatSample {
+    elapsed: millisecond(count: 1980000),
+    active: crawl_leaf_subject(),
+    entry_index: 214,
+    entry_total: 602,
+    rss: MeasuredValue { value: byte_size(crawl_heartbeat_rss_bytes) },
+    swap: MeasuredValue { value: byte_size(crawl_heartbeat_swap_bytes) },
+    pressure: MeasuredValue { value: basis_point(count: crawl_heartbeat_pressure_bp) }
+  }
+}
+
+fn crawl_basis() -> AttentionBasis {
+  AttentionBasis { average: millisecond(count: 1000), maximum: millisecond(count: 5000) }
+}
+
+fn w_human_units_replace_raw_byte_dumps() -> Bool {
+  ci_human_bytes(b: byte_size(crawl_heartbeat_rss_bytes)) == "15.0 GiB" &&
+  ci_human_bytes(b: byte_size(crawl_heartbeat_swap_bytes)) == "32.0 GiB" &&
+  ci_human_percent(bp: basis_point(count: crawl_heartbeat_pressure_bp)) == "9.0%" &&
+  ci_human_duration(d: millisecond(count: crawl_module_wall_ms)) == "10 minutes"
+}
+
+fn w_heartbeat_names_its_subject_where_the_capture_was_silent() -> Bool {
+  let line = ci_heartbeat_line(sample: crawl_heartbeat())
+  string_contains(s: line.text, pattern: crawl_quiet_module) &&
+  string_contains(s: line.text, pattern: "entry 214 of 602") &&
+  string_contains(s: line.text, pattern: "15.0 GiB") &&
+  !string_contains(s: line.text, pattern: to_string(crawl_heartbeat_rss_bytes))
+}
+
+fn w_heartbeat_puts_identity_before_vitals() -> Bool {
+  let line = ci_heartbeat_line(sample: crawl_heartbeat())
+  starts_with(s: line.text, prefix: "33 minutes in — still in witness discovery") &&
+  string_contains(s: line.text, pattern: "memory 15.0 GiB")
+}
+
+fn w_heartbeat_uses_the_clock_pulse_glyph() -> Bool {
+  let line = ci_heartbeat_line(sample: crawl_heartbeat())
+  ci_render_line(line: line, tier: Emoji) == concat("🕐 ", line.text)
+}
+
+fn w_escalation_surfaces_the_quiet_module_at_one_threshold() -> Bool {
+  let line = ci_escalation_line(
+    quiet_subject: crawl_entry_subject(),
+    active_leaf: crawl_leaf_subject(),
+    quiet: millisecond(count: 120000),
+    t: observation_dwell_threshold
+  )
+  string_contains(s: line.text, pattern: crawl_quiet_module) &&
+  string_contains(s: line.text, pattern: "quiet for 2 minutes") &&
+  line.attention == Notable
+}
+
+fn w_escalation_surfaces_the_cause_at_the_deeper_threshold() -> Bool {
+  let line = ci_escalation_blocked_line(
+    quiet_subject: crawl_entry_subject(),
+    active_leaf: crawl_leaf_subject(),
+    quiet: millisecond(count: 240000),
+    t: observation_dwell_threshold,
+    hold: PsiPressure { avg10: basis_point(count: crawl_heartbeat_pressure_bp) }
+  )
+  string_contains(s: line.text, pattern: "blocked on memory reclaim") &&
+  string_contains(s: line.text, pattern: "9.0%") &&
+  line.attention == Anomaly
+}
+
+fn w_escalation_is_recursive_over_the_captured_window() -> Bool {
+  observation_escalation_depth(quiet: millisecond(count: 600000), t: observation_dwell_threshold) == 10 &&
+  observation_escalation_depth(quiet: millisecond(count: 120000), t: observation_dwell_threshold) == 2
+}
+
+fn w_outcome_lines_carry_durations() -> Bool {
+  let event = ObservationEvent {
+    subject: crawl_entry_subject(),
+    transition: Concluded { outcome: Done },
+    wall: MeasuredValue { value: millisecond(count: 230) },
+    rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
+  }
+  string_contains(s: ci_event_line(event: event, basis: crawl_basis()).text, pattern: "in 230ms")
+}
+
+fn w_refusal_never_renders_inside_a_collapsed_group() -> Bool {
+  let refusal = ObservationEvent {
+    subject: crawl_entry_subject(),
+    transition: Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as NonEmptyStr } },
+    wall: MeasuredValue { value: millisecond(count: 2472000) },
+    rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
+  }
+  let line = ci_event_line(event: refusal, basis: crawl_basis())
+  line.attention == Anomaly &&
+  ci_line_placement(attention: line.attention) == OutsideGroup
+}
+
+fn w_routine_green_collapses_inside_a_group() -> Bool {
+  let green = ObservationEvent {
+    subject: crawl_entry_subject(),
+    transition: Concluded { outcome: Done },
+    wall: MeasuredValue { value: millisecond(count: 230) },
+    rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
+  }
+  let line = ci_event_line(event: green, basis: crawl_basis())
+  line.attention == Ambient &&
+  ci_line_placement(attention: line.attention) == InsideCollapsedGroup &&
+  ci_collapsed_summary(green_count: 213) == "… 213 more finished cleanly"
+}
+
+fn w_failure_and_refusal_are_restated_at_the_end() -> Bool {
+  let summary = ci_run_summary_line(summary: FloorRunSummary {
+    entries_complete: 213,
+    entries_total: 602,
+    refusals: 1,
+    failures: 0,
+    wall: millisecond(count: 2472000)
+  })
+  let restate = ci_refusal_restate_line(subject: crawl_entry_subject(), diagnostic: "FLOOR-BATCH-OVER-BUDGET" as NonEmptyStr)
+  string_contains(s: summary.text, pattern: "213 of 602") &&
+  string_contains(s: summary.text, pattern: "1 refused") &&
+  summary.attention == Anomaly &&
+  string_contains(s: restate.text, pattern: "FLOOR-BATCH-OVER-BUDGET")
+}
+
+fn w_relayed_diagnostic_cannot_mint_workflow_commands() -> Bool {
+  let restate = ci_refusal_restate_line(
+    subject: crawl_entry_subject(),
+    diagnostic: "budget exceeded\n::error::a child process said this" as NonEmptyStr
+  )
+  string_contains(s: restate.text, pattern: "\n| ::error::") &&
+  !string_contains(s: restate.text, pattern: "\n::error::")
+}
+
+fn w_group_markers_come_from_the_github_authority() -> Bool {
+  ci_group_open(title: "witness discovery") == "::group::witness discovery" &&
+  ci_group_close() == "::endgroup::"
+}
+
+fn w_captured_window_would_have_spoken_four_times() -> Bool {
+  ci_escalation_emission_count(quiet: millisecond(count: 600000), t: observation_dwell_threshold) == 4 &&
+  ci_escalation_emission_count(quiet: millisecond(count: 120000), t: observation_dwell_threshold) == 2 &&
+  ci_escalation_emission_count(quiet: millisecond(count: 30000), t: observation_dwell_threshold) == 0
+}
+
+fn w_a_silent_phase_past_the_threshold_is_not_responsive() -> Bool {
+  ci_window_is_responsive(quiet: millisecond(count: 30000), t: observation_dwell_threshold) &&
+  ci_window_is_responsive(quiet: millisecond(count: 600000), t: observation_dwell_threshold)
+}
+
+fn w_escalation_emission_stays_bounded_under_unbounded_silence() -> Bool {
+  ci_escalation_emission_count(quiet: millisecond(count: 999999999), t: observation_dwell_threshold) <= 13
+}
+
+fn w_run_summary_keeps_refused_and_failed_apart() -> Bool {
+  let refused_only = FloorRunSummary { entries_complete: 213, entries_total: 602, refusals: 1, failures: 0, wall: millisecond(count: 2472000) }
+  let failed_only = FloorRunSummary { entries_complete: 601, entries_total: 602, refusals: 0, failures: 1, wall: millisecond(count: 600000) }
+  let both = FloorRunSummary { entries_complete: 200, entries_total: 602, refusals: 2, failures: 3, wall: millisecond(count: 600000) }
+  let clean = FloorRunSummary { entries_complete: 602, entries_total: 602, refusals: 0, failures: 0, wall: millisecond(count: 600000) }
+  ci_run_summary_glyph(summary: refused_only) == StatusRefused &&
+  ci_run_summary_glyph(summary: failed_only) == NodeFailed &&
+  ci_run_summary_glyph(summary: both) == NodeFailed &&
+  ci_run_summary_glyph(summary: clean) == NodeCompleted &&
+  string_contains(s: ci_run_summary_line(summary: both).text, pattern: "2 refused and 3 failed")
+}
+
+fn w_unmeasured_duration_names_its_cause_rather_than_vanishing() -> Bool {
+  let event = ObservationEvent {
+    subject: crawl_entry_subject(),
+    transition: Concluded { outcome: Done },
+    wall: MeasuredUnavailable { cause: "clock unavailable in this leg" as NonEmptyStr },
+    rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
+  }
+  let line = ci_event_line(event: event, basis: crawl_basis())
+  string_contains(s: line.text, pattern: "duration unmeasured: clock unavailable in this leg")
+}
+
+test fn observation_ci_render_witnesses() -> Bool {
+  w_run_summary_keeps_refused_and_failed_apart() &&
+  w_unmeasured_duration_names_its_cause_rather_than_vanishing() &&
+  w_captured_window_would_have_spoken_four_times() &&
+  w_a_silent_phase_past_the_threshold_is_not_responsive() &&
+  w_escalation_emission_stays_bounded_under_unbounded_silence() &&
+  w_human_units_replace_raw_byte_dumps() &&
+  w_heartbeat_names_its_subject_where_the_capture_was_silent() &&
+  w_heartbeat_puts_identity_before_vitals() &&
+  w_heartbeat_uses_the_clock_pulse_glyph() &&
+  w_escalation_surfaces_the_quiet_module_at_one_threshold() &&
+  w_escalation_surfaces_the_cause_at_the_deeper_threshold() &&
+  w_escalation_is_recursive_over_the_captured_window() &&
+  w_outcome_lines_carry_durations() &&
+  w_refusal_never_renders_inside_a_collapsed_group() &&
+  w_routine_green_collapses_inside_a_group() &&
+  w_failure_and_refusal_are_restated_at_the_end() &&
+  w_relayed_diagnostic_cannot_mint_workflow_commands() &&
+  w_group_markers_come_from_the_github_authority()
+}

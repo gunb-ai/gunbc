@@ -2,10 +2,19 @@ module v2.std.witness
 
 import v2.std.diagnostic { Diagnostic }
 import v2.std.node { Node, Symbol }
+import v2.std.optional { Absent, Optional, Present }
 
 type Witness<C>
   = Holds { value: C }
   | Violates { diagnostic: Diagnostic }
+
+fn witness_from_optional<T>(opt: Optional<T>, absent: Diagnostic) -> Witness<T> {
+  match opt {
+    Present { value: v } => Holds { value: v }
+    Absent => Violates { diagnostic: absent }
+  }
+}
+
 type StructuralPropertyWitness {
   property: Symbol
   evidence: Node

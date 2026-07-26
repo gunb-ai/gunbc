@@ -5,7 +5,11 @@ import v2.extdeps.languages.dag {
   ParseSubtreeFound,
   parse_subtree_find_production_captured
 }
-import v2.std.collection { Absent, Optional, Present }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,

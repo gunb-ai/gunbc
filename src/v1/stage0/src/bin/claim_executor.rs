@@ -12,6 +12,7 @@ use std::time::Instant;
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
     compute_histogram_data, compute_witness_timing_rows, enable_floor_compile_clean_lazy_install,
+    heartbeat_feed_enter_batch, heartbeat_feed_entry_completed, heartbeat_feed_snapshot,
     install_floor_compile_clean_receipt, make_eval_context, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
@@ -20,18 +21,21 @@ use v1_compiler::cli_run::{
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
-    leaf_cgroup_dir, mem_total_bytes, memory_events_field, memory_pressure_some_avg10,
-    read_cgroup_raw, read_cgroup_u64, AdmittedSlot, MemoryGovernor,
+    leaf_cgroup_dir, mem_total_bytes, memory_pressure_some_avg10, read_cgroup_raw, read_cgroup_u64,
+    AdmittedSlot, MemoryGovernor,
 };
 use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
 };
 
-/// Whole-receipt wall/interp budgets for falsifier Wet lanes that own a dated
-/// ceiling. Self-host wet (green + known-red quarantine) share the 600s budget;
-/// silent-pick owns `gunbc_falsifier_silent_pick_gate_receipt_wall_budget` (900s).
-/// Rehomed-bin Wet must not inherit either — the prior mis-scope reds silent-pick
-/// against the 600s self-host ceiling after the self-host cadence rehome.
+/// Per-LANE budgets for the falsifier's rostered batches, each keyed by the lane's own
+/// roster so a batch draws exactly the ceiling its lane declares. Self-host wet (green +
+/// known-red quarantine) share the 600s wall budget; silent-pick owns
+/// `gunbc_falsifier_silent_pick_gate_receipt_wall_budget` (900s); the Hermetic substrate
+/// long lane owns `gunbc_falsifier_substrate_long_lane_witness_eval_budget`. No lane
+/// inherits another's ceiling — the prior mis-scopes reddened silent-pick against the
+/// 600s self-host wall (2026-07-25) and the substrate long lane against the 5s per-PR
+/// fast-lane eval budget (run 30176416535, 7 of 10 rows killed at ~5001ms).
 #[derive(Clone, Default)]
 struct FalsifierSelfHostWetBudgets {
     wall_budget_ms: Option<u64>,
@@ -45,6 +49,11 @@ struct FalsifierSelfHostWetBudgets {
     hermetic_known_red_entry_paths: Vec<String>,
     silent_pick_wall_budget_ms: Option<u64>,
     silent_pick_entry_paths: Vec<String>,
+    /// Hermetic substrate long-lane paths (`falsifier_substrate_long_lane_entries`) —
+    /// rows deliberately excluded from per-PR discovery precisely because their eval
+    /// exceeds the fast-lane budget, so they arm their own dated eval ceiling instead.
+    substrate_long_lane_entry_paths: Vec<String>,
+    substrate_long_lane_eval_budget_ms: Option<u64>,
 }
 
 fn read_positive_budget_ms(
@@ -62,66 +71,104 @@ fn read_positive_budget_ms(
     }
 }
 
-/// THE COST WALL (CI floor endgame D5 — authority `gunbc.ci_spec.gunbc_ci_floor_batch_wall_budget_seconds`
-/// + `gunbc_ci_floor_batch_wall_budget_note`): per-batch wall budgets for the floor plan, read
-/// fail-closed at arm time from the plan ctx (the fast-lane-budget pattern). Budgets are
-/// admission/scheduling facts at the walk grain — witness verdicts never carry a wall-clock
-/// term (the ruling split reconciled in the carrier note). `GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS`
-/// is the RED-control fault injection: it can only LOWER budgets (min), so it can force the
-/// refusal for a control run but can never open the gate — not an escape hatch by construction.
-fn read_floor_batch_wall_budgets_ms(
+/// THE COST WALL (Piece 3 derived clamp — authority `gunbc.ci_spec.gunbc_ci_floor_batch_clamp_params`
+/// + `gunbc_ci_floor_batch_clamp_note`): the per-batch clamp is `overhead_seconds*1000 +
+/// runtime_unit_count * per_unit_ms`. This reads the two index-aligned param lists fail-closed at
+/// arm time (the fast-lane-budget pattern); the clamp itself is computed at enforcement, because the
+/// affected-set-selected unit count is a runtime datum the schedule does not hold. Clamps are
+/// admission/scheduling facts at the walk grain — witness verdicts never carry a wall-clock term
+/// (the ruling split reconciled in the carrier note).
+fn read_floor_batch_clamp_params(
     plan_ctx: &InterpContext,
     batch_count: usize,
-) -> Result<Vec<u128>, String> {
-    let items = match run_value(plan_ctx, "gunbc_ci_floor_batch_wall_budgets_seconds") {
+) -> Result<Vec<(u128, u128)>, String> {
+    let overhead_items = match run_value(plan_ctx, "gunbc_ci_floor_batch_clamp_overhead_seconds") {
         Ok(Value::List(items)) => items,
         Ok(other) => {
             return Err(format!(
-                "claim_executor: gunbc_ci_floor_batch_wall_budgets_seconds must be a List<Int>,                  got {other:?} (fail-closed)"
+                "claim_executor: gunbc_ci_floor_batch_clamp_overhead_seconds must be a List<Int>, got {other:?} (fail-closed)"
             ));
         }
         Err(msg) => {
             return Err(format!(
-                "claim_executor: floor plan schedules batches but                  gunbc_ci_floor_batch_wall_budgets_seconds is unavailable (fail-closed): {msg}"
+                "claim_executor: floor plan schedules batches but gunbc_ci_floor_batch_clamp_overhead_seconds is unavailable (fail-closed): {msg}"
             ));
         }
     };
-    let mut budgets_ms: Vec<u128> = Vec::new();
-    for item in items.iter() {
+    let mut overheads_ms: Vec<u128> = Vec::new();
+    for item in overhead_items.iter() {
         match item {
-            Value::Int(n) if *n > 0 => budgets_ms.push(*n as u128 * 1000),
+            Value::Int(n) if *n > 0 => overheads_ms.push(*n as u128 * 1000),
             other => {
                 return Err(format!(
-                    "claim_executor: gunbc_ci_floor_batch_wall_budgets_seconds rows must be                      positive Ints, got {other:?} (fail-closed)"
+                    "claim_executor: gunbc_ci_floor_batch_clamp_overhead_seconds rows must be positive Ints, got {other:?} (fail-closed)"
                 ));
             }
         }
     }
-    if budgets_ms.len() != batch_count {
+    let rate_items = match run_value(plan_ctx, "gunbc_ci_floor_batch_clamp_per_unit_ms") {
+        Ok(Value::List(items)) => items,
+        Ok(other) => {
+            return Err(format!(
+                "claim_executor: gunbc_ci_floor_batch_clamp_per_unit_ms must be a List<Int>, got {other:?} (fail-closed)"
+            ));
+        }
+        Err(msg) => {
+            return Err(format!(
+                "claim_executor: floor plan schedules batches but gunbc_ci_floor_batch_clamp_per_unit_ms is unavailable (fail-closed): {msg}"
+            ));
+        }
+    };
+    let mut rates_ms: Vec<u128> = Vec::new();
+    for item in rate_items.iter() {
+        match item {
+            Value::Int(n) if *n >= 0 => rates_ms.push(*n as u128),
+            other => {
+                return Err(format!(
+                    "claim_executor: gunbc_ci_floor_batch_clamp_per_unit_ms rows must be non-negative Ints, got {other:?} (fail-closed)"
+                ));
+            }
+        }
+    }
+    if overheads_ms.len() != batch_count || rates_ms.len() != batch_count {
         return Err(format!(
-            "claim_executor: gunbc_ci_floor_batch_wall_budgets_seconds has {} row(s) but the              plan schedules {} batch(es) — the budget list must cover the schedule exactly              (fail-closed; update gunbc.ci_spec beside the schedule change)",
-            budgets_ms.len(),
+            "claim_executor: floor batch clamp params (overhead {} row(s), rate {} row(s)) must each cover the {} scheduled batch(es) exactly (fail-closed; update gunbc.ci_spec beside the schedule change)",
+            overheads_ms.len(),
+            rates_ms.len(),
             batch_count
         ));
     }
-    if let Ok(tighten) = std::env::var("GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS") {
-        match tighten.parse::<u128>() {
-            Ok(t) => {
-                for b in budgets_ms.iter_mut() {
-                    *b = (*b).min(t);
-                }
-                eprintln!(
-                    "claim_executor: GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS={t} — budgets tightened                      (RED-control injection; tighten-only, can never widen a budget)"
-                );
-            }
-            Err(_) => {
-                return Err(format!(
-                    "claim_executor: GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS must parse as                      milliseconds, got {tighten:?} (fail-closed)"
-                ));
-            }
-        }
+    Ok(overheads_ms.into_iter().zip(rates_ms).collect())
+}
+
+/// The RED-control fault injection (`GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS`): lowers the COMPUTED
+/// per-batch clamp (min) at enforcement, so it can force a FLOOR-BATCH-OVER-BUDGET refusal for a
+/// control run but can never open the gate — tighten-only by construction, never an escape hatch.
+fn read_floor_batch_budget_tighten_ms() -> Result<Option<u128>, String> {
+    match std::env::var("GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS") {
+        Ok(t) => match t.parse::<u128>() {
+            Ok(v) => Ok(Some(v)),
+            Err(_) => Err(format!(
+                "claim_executor: GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS must parse as milliseconds, got {t:?} (fail-closed)"
+            )),
+        },
+        Err(_) => Ok(None),
     }
-    Ok(budgets_ms)
+}
+
+/// Runtime per-batch unit count for the derived clamp: a discovery aggregate result contributes
+/// its post-selection witness count (`corpus_witnesses`); every single-claim gate row contributes 1.
+fn batch_runtime_unit_count(results: &[ClaimResult]) -> u128 {
+    results
+        .iter()
+        .map(|r| {
+            if r.corpus_witnesses > 0 {
+                r.corpus_witnesses as u128
+            } else {
+                1u128
+            }
+        })
+        .sum()
 }
 
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority:
@@ -721,40 +768,16 @@ fn run_batch_unit(
             discovery_scope_dirs,
             execution_mode,
         } => {
-            // The fast-lane eval budget (operator 5s rule) governs the HERMETIC per-PR
-            // discovery corpus — witnesses whose own eval must stay cheap or move to a
-            // long/ lane. Wet batches skip that budget (subprocess I/O is their job).
-            // Whole-receipt wall budgets are roster-scoped: self-host wet (green OR
-            // known-red quarantine) → 600s; silent-pick → 900s dated ceiling; rehomed
-            // bin inherits neither (receipt: silent-pick 707s red under a mis-scoped
-            // 600s self-host budget while batch walls stayed green — 2026-07-25).
-            let (effective_fast_lane, wet_wall_budget_ms, wet_interp_budget_ms) =
-                if execution_mode.is_hermetic() {
-                    (fast_lane_eval_budget_ms, None, None)
-                } else if discovery_entries_intersect_roster(
-                    &explicit_entries,
-                    &falsifier_self_host_wet_budgets.roster_entry_paths,
-                ) || discovery_entries_intersect_roster(
-                    &explicit_entries,
-                    &falsifier_self_host_wet_budgets.known_red_entry_paths,
-                ) {
-                    (
-                        None,
-                        falsifier_self_host_wet_budgets.wall_budget_ms,
-                        falsifier_self_host_wet_budgets.interp_eval_budget_ms,
-                    )
-                } else if discovery_entries_intersect_roster(
-                    &explicit_entries,
-                    &falsifier_self_host_wet_budgets.silent_pick_entry_paths,
-                ) {
-                    (
-                        None,
-                        falsifier_self_host_wet_budgets.silent_pick_wall_budget_ms,
-                        None,
-                    )
-                } else {
-                    (None, None, None)
-                };
+            let DiscoveryBatchBudgets {
+                eval_budget_ms: effective_fast_lane,
+                wet_wall_budget_ms,
+                wet_interp_budget_ms,
+            } = select_discovery_batch_budgets(
+                execution_mode,
+                &explicit_entries,
+                fast_lane_eval_budget_ms,
+                &falsifier_self_host_wet_budgets,
+            );
             let expect_red = discovery_entries_are_expect_red(
                 &explicit_entries,
                 &falsifier_self_host_wet_budgets.hermetic_known_red_entry_paths,
@@ -1141,6 +1164,88 @@ fn discovery_entries_are_expect_red(
 
 /// True when this discovery batch's explicit entries intersect `roster_entry_paths`.
 /// Path equality is the gate — substring heuristics would re-fork the roster.
+/// The budgets a single discovery batch runs under.
+struct DiscoveryBatchBudgets {
+    /// Cooperative per-witness CPU eval deadline.
+    eval_budget_ms: Option<u64>,
+    /// Whole-receipt wall budget (Wet lanes only).
+    wet_wall_budget_ms: Option<u64>,
+    /// Secondary interpreter-wedge eval deadline for Wet self-host receipts.
+    wet_interp_budget_ms: Option<u64>,
+}
+
+/// Budgets are scoped by LANE, never by witness kind.
+///
+/// The fast-lane eval budget (operator 5s rule) governs the per-PR discovery corpus and its
+/// cold replays — witnesses whose own eval must stay cheap or move to a `long/` lane. A
+/// Hermetic batch that carries its own lane roster draws that lane's dated ceiling instead:
+/// selecting on `is_hermetic()` alone armed the 5s per-PR budget on the substrate long lane,
+/// whose entire purpose is hosting rows OVER that budget (run 30176416535 — 7 of 10 rows
+/// killed at ~5001ms by a refusal whose own text says the row belongs on its dedicated lane).
+///
+/// The residual (Hermetic, no lane roster) keeps the fast lane, so a new lane that forgets to
+/// declare a ceiling reds loudly at 5s rather than running unbounded — the failure arm
+/// narrows, never widens (DESIGN §5). For the same reason the declared ceiling is part of the
+/// condition, not the payload: a rostered lane whose budget row is missing falls back to the
+/// fast lane rather than to no budget at all. The plan read refuses a missing/mistyped budget
+/// first, so that arm is unreachable today; it is written so the unreachable direction is the
+/// narrow one.
+///
+/// Wet batches skip the eval budget (subprocess I/O is their job) and take whole-receipt wall
+/// budgets the same roster-scoped way: self-host wet (green OR known-red quarantine) → 600s;
+/// silent-pick → 900s dated ceiling; rehomed bin inherits neither (receipt: silent-pick 707s
+/// red under a mis-scoped 600s self-host budget while batch walls stayed green — 2026-07-25).
+fn select_discovery_batch_budgets(
+    execution_mode: ExecutionMode,
+    explicit_entries: &[(String, String)],
+    fast_lane_eval_budget_ms: Option<u64>,
+    budgets: &FalsifierSelfHostWetBudgets,
+) -> DiscoveryBatchBudgets {
+    let fast_lane = DiscoveryBatchBudgets {
+        eval_budget_ms: fast_lane_eval_budget_ms,
+        wet_wall_budget_ms: None,
+        wet_interp_budget_ms: None,
+    };
+    if execution_mode.is_hermetic() {
+        return match budgets.substrate_long_lane_eval_budget_ms {
+            Some(ms)
+                if discovery_entries_intersect_roster(
+                    explicit_entries,
+                    &budgets.substrate_long_lane_entry_paths,
+                ) =>
+            {
+                DiscoveryBatchBudgets {
+                    eval_budget_ms: Some(ms),
+                    wet_wall_budget_ms: None,
+                    wet_interp_budget_ms: None,
+                }
+            }
+            _ => fast_lane,
+        };
+    }
+    if discovery_entries_intersect_roster(explicit_entries, &budgets.roster_entry_paths)
+        || discovery_entries_intersect_roster(explicit_entries, &budgets.known_red_entry_paths)
+    {
+        return DiscoveryBatchBudgets {
+            eval_budget_ms: None,
+            wet_wall_budget_ms: budgets.wall_budget_ms,
+            wet_interp_budget_ms: budgets.interp_eval_budget_ms,
+        };
+    }
+    if discovery_entries_intersect_roster(explicit_entries, &budgets.silent_pick_entry_paths) {
+        return DiscoveryBatchBudgets {
+            eval_budget_ms: None,
+            wet_wall_budget_ms: budgets.silent_pick_wall_budget_ms,
+            wet_interp_budget_ms: None,
+        };
+    }
+    DiscoveryBatchBudgets {
+        eval_budget_ms: None,
+        wet_wall_budget_ms: None,
+        wet_interp_budget_ms: None,
+    }
+}
+
 fn discovery_entries_intersect_roster(
     explicit_entries: &[(String, String)],
     roster_entry_paths: &[String],
@@ -1395,6 +1500,59 @@ struct WalkOutcome {
     failure_details: Vec<String>,
 }
 
+/// Render a floor phase-completion line through the single-authority observation
+/// renderer (`gunbc.observation_ci_render`, via the seed boundary
+/// `gunbc.observation_seed_render`) instead of a raw `[t+…]` byte string in the seed
+/// — the format lives in `.dag`, this only transports primitives across the boundary,
+/// exactly as `cli_run::install_output_policy` calls `output_policy.resolve_channel_policy`.
+/// The seed occurrence "a floor phase concluded in `elapsed_ms`" is modelled as a
+/// `Concluded` event on a `PhaseSegment` subject and projected by
+/// `ci_event_line ∘ ci_render_line`. Resolve is memoized in the process resolve store,
+/// so the render module is resolved once and every later mark is a cache hit + a cheap
+/// eval. Returns `None` only if the renderer cannot be resolved/evaluated; the caller
+/// degrades loudly and never reproduces the old marker (§5: a failure arm refuses, it
+/// does not widen). The entry is located under whichever source root holds it as an
+/// absolute path, so resolution does not depend on the process CWD (production runs
+/// from the repo root; `cargo test` runs from the crate dir).
+fn render_phase_concluded_line(
+    source_roots: &[String],
+    phase: &str,
+    elapsed_ms: u64,
+    overhead_ms: u64,
+    emoji: bool,
+) -> Option<String> {
+    let entry = source_roots
+        .iter()
+        .map(|r| Path::new(r).join("gunbc/observation_seed_render.dag"))
+        .find(|p| p.exists())?
+        .to_string_lossy()
+        .into_owned();
+    let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let out = run_in_context_with_args(
+        &ctx,
+        "phase_concluded_line",
+        &[
+            (Some("phase".to_string()), Value::Str(phase.to_string())),
+            (
+                Some("elapsed_ms".to_string()),
+                Value::Int(elapsed_ms as i64),
+            ),
+            (
+                Some("overhead_ms".to_string()),
+                Value::Int(overhead_ms as i64),
+            ),
+            (Some("emoji".to_string()), Value::Bool(emoji)),
+        ],
+        false,
+    )
+    .ok()?;
+    match out {
+        Value::Str(s) => Some(s),
+        _ => None,
+    }
+}
+
 fn peak_rss_bytes() -> Option<u64> {
     let status = std::fs::read_to_string("/proc/self/status").ok()?;
     let line = status.lines().find(|l| l.starts_with("VmHWM"))?;
@@ -1402,9 +1560,101 @@ fn peak_rss_bytes() -> Option<u64> {
     Some(kb.saturating_mul(1024))
 }
 
-fn heartbeat_field(v: Option<u64>) -> String {
-    v.map(|b| b.to_string())
-        .unwrap_or_else(|| "unreadable".into())
+/// Mirror of `gunbc.observation_ci_render.ci_minute_switch_seconds` — where the
+/// sentence form switches from seconds to minutes (display policy, not a unit).
+const CI_MINUTE_SWITCH_SECONDS: u64 = 90;
+
+/// Mirror of `gunbc.observation_seed_render.seed_heartbeat_unreadable_cause`.
+const SEED_HEARTBEAT_UNREADABLE_CAUSE: &str = "cgroup field unreadable";
+
+/// Pure Rust mirror of `gunbc.observation_seed_render.seed_heartbeat_line` —
+/// `ci_heartbeat_line ∘ ci_render_line` over the seed's real input space. The
+/// heartbeat thread cannot call the interpreter (would build a duplicate module
+/// index under the memory envelope it watches — DESIGN §2); this mirror is proven
+/// byte-equal to the `.dag` oracle by `render_heartbeat_line_mirror_matches_seed_oracle`.
+/// Subject is batch-grain only (parallel entries → no fabricated per-module detail).
+fn render_heartbeat_line_mirror(
+    elapsed_ms: u64,
+    batch_label: &str,
+    entry_index: u64,
+    entry_total: u64,
+    rss_bytes: Option<u64>,
+    swap_bytes: Option<u64>,
+    pressure_bp: Option<u64>,
+    emoji: bool,
+) -> String {
+    let glyph = if emoji { "🕐" } else { "◷" };
+    let duration = mirror_ci_human_duration(elapsed_ms);
+    let rss = mirror_ci_measured_bytes(rss_bytes);
+    let swap = mirror_ci_measured_bytes(swap_bytes);
+    let pressure = mirror_ci_measured_percent(pressure_bp);
+    format!(
+        "{glyph} {duration} in — still in {batch_label}: entry {entry_index} of {entry_total}. memory {rss}, swap {swap}, pressure {pressure}"
+    )
+}
+
+fn mirror_ci_human_duration(ms: u64) -> String {
+    if ms < 1_000 {
+        format!("{ms}ms")
+    } else if ms < CI_MINUTE_SWITCH_SECONDS * 1_000 {
+        format!("{} seconds", ms / 1_000)
+    } else {
+        format!("{} minutes", ms / 60_000)
+    }
+}
+
+fn mirror_ci_tenths_text(tenths: u64) -> String {
+    format!("{}.{}", tenths / 10, tenths % 10)
+}
+
+fn mirror_ci_human_bytes(bytes: u64) -> String {
+    // Mirror of ci_gibibyte_tenths: (bytes * 10) / gibibyte_scale_factor_bytes (2^30).
+    let tenths = (bytes.saturating_mul(10)) / 1_073_741_824;
+    format!("{} GiB", mirror_ci_tenths_text(tenths))
+}
+
+fn mirror_ci_human_percent(bp: u64) -> String {
+    // Mirror of ci_human_percent: tenths = bp / 10 → "9.0%".
+    format!("{}%", mirror_ci_tenths_text(bp / 10))
+}
+
+fn mirror_ci_measured_bytes(v: Option<u64>) -> String {
+    match v {
+        Some(b) => mirror_ci_human_bytes(b),
+        None => format!("unreadable ({SEED_HEARTBEAT_UNREADABLE_CAUSE})"),
+    }
+}
+
+fn mirror_ci_measured_percent(v: Option<u64>) -> String {
+    match v {
+        Some(bp) => mirror_ci_human_percent(bp),
+        None => format!("unreadable ({SEED_HEARTBEAT_UNREADABLE_CAUSE})"),
+    }
+}
+
+/// PSI `avg10` is a percent with one decimal (e.g. `"9.01"`). One basis point is
+/// 0.01 percentage points, so percent × 100 = bp (9.01 → 901) — the same scale
+/// `std.observation` carries for `PsiPressure.avg10`.
+fn psi_avg10_to_basis_points(avg10: &str) -> Option<u64> {
+    let pct: f64 = avg10.parse().ok()?;
+    if !pct.is_finite() || pct < 0.0 {
+        return None;
+    }
+    Some((pct * 100.0).round() as u64)
+}
+
+fn batch_heartbeat_label(batch: &[Runnable]) -> String {
+    if batch
+        .iter()
+        .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }))
+    {
+        // Canonical crawl-window subject — matches the seed oracle's batch label.
+        "witness discovery".to_string()
+    } else if let Some(Runnable::SingleClaim { function, .. }) = batch.first() {
+        function.clone()
+    } else {
+        "batch".to_string()
+    }
 }
 
 /// Floor memory heartbeat — FIDELITY ONLY (reads state, changes no behavior; §5 stopped-line
@@ -1412,13 +1662,13 @@ fn heartbeat_field(v: Option<u64>) -> String {
 /// invisible precisely here: `memory.high` throttles instead of killing, so the only log
 /// evidence was a post-hoc `memory.peak` pinned at `high + <1MiB` after a 30-49min silent
 /// tail. One synchronous regime-disclosure line at floor start (which limits bind, where),
-/// then one line per minute from a detached thread (dies with the process): `memory.current`,
-/// `memory.swap.current`, `memory.events` high-throttle count, PSI `some avg10`. The wedge
-/// signature becomes: current pinned at high, swap climbing, high-events exploding, PSI avg10
-/// double digits — attributable to a 60s window instead of a forensic reconstruction.
-/// Sampling denominator = the binding-high dir when set (the slot slice that throttles), else
-/// the binding-cap dir, else the leaf (whole-machine regimes); absence of all three refuses
-/// loudly and the floor proceeds unmonitored — never a fabricated zero.
+/// then one line per minute from a detached thread (dies with the process), projected
+/// through `render_heartbeat_line_mirror` — identity-first, human units, subject from the
+/// HeartbeatFeed. The raw floor-memory byte dump (minute counter + raw current/swap
+/// integers) is deleted (census negative example). Sampling denominator = the binding-high
+/// dir when set (the slot slice that throttles), else the binding-cap dir, else the leaf
+/// (whole-machine regimes); absence of all three refuses loudly and the floor proceeds
+/// unmonitored — never a fabricated zero.
 fn spawn_floor_memory_heartbeat() {
     let high_dir = binding_high_cgroup_dir();
     let cap_dir = binding_cap_cgroup_dir();
@@ -1442,24 +1692,36 @@ fn spawn_floor_memory_heartbeat() {
         );
         return;
     };
+    let emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
     let spawned = std::thread::Builder::new()
         .name("floor-memory-heartbeat".into())
         .spawn(move || {
-            let mut minute: u64 = 0;
+            let started = Instant::now();
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(60));
-                minute += 1;
-                let psi = read_cgroup_raw(&dir, "memory.pressure")
+                // Skip until a batch has armed the feed with a real entry_total —
+                // never a fabricated 0-of-0 during prelude / roster assembly.
+                let Some(feed) = heartbeat_feed_snapshot() else {
+                    continue;
+                };
+                let rss = read_cgroup_u64(&dir, "memory.current");
+                let swap = read_cgroup_u64(&dir, "memory.swap.current");
+                let pressure = read_cgroup_raw(&dir, "memory.pressure")
                     .and_then(|c| memory_pressure_some_avg10(&c))
-                    .unwrap_or_else(|| "unreadable".into());
-                let high_events = read_cgroup_raw(&dir, "memory.events")
-                    .and_then(|c| memory_events_field(&c, "high"));
-                eprintln!(
-                    "[floor-memory] t={minute}m current={} swap={} high_events={} psi_some_avg10={psi}",
-                    heartbeat_field(read_cgroup_u64(&dir, "memory.current")),
-                    heartbeat_field(read_cgroup_u64(&dir, "memory.swap.current")),
-                    heartbeat_field(high_events),
+                    .as_deref()
+                    .and_then(psi_avg10_to_basis_points);
+                let elapsed_ms = started.elapsed().as_millis() as u64;
+                let line = render_heartbeat_line_mirror(
+                    elapsed_ms,
+                    &feed.batch_label,
+                    feed.entry_done,
+                    feed.entry_total,
+                    rss,
+                    swap,
+                    pressure,
+                    emoji,
                 );
+                eprintln!("{line}");
             }
         });
     if let Err(e) = spawned {
@@ -1595,8 +1857,17 @@ fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
 /// standalone `--measure-cgroup-peak` mode so the `ci` and `rust_tests` jobs report an
 /// identically-shaped line. `context` distinguishes the call site.
 fn emit_cgroup_measurement(context: &str) {
+    let emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
     match cgroup_job_measurement() {
         Some(m) => {
+            let label = format!("cgroup peak @ {} ({context})", m.leaf_rel);
+            eprintln!(
+                "{}",
+                v1_compiler::cli_run::render_peak_rss_line_mirror(&label, Some(m.leaf_peak), emoji)
+            );
+            // Diagnostic companions (cap/pids/sccache) stay as Ambient detail beside the
+            // Measured peak — not the old raw-byte `[measurement]` dump. Placement still
+            // reads the typed `cgroup_job_measurement` fact, not this prose.
             let cap = match m.cap_bytes {
                 Some(b) => format!("{b} bytes"),
                 None => "uncapped(RAM-bound)".to_string(),
@@ -1611,16 +1882,23 @@ fn emit_cgroup_measurement(context: &str) {
                 (None, _) => "not-found (treat as fixed host overhead)".to_string(),
             };
             eprintln!(
-                "[measurement] cgroup peak: {peak} bytes (memory.peak @ {rel}) memory.max={cap} host_ram={host_ram} pids.current={pc} pids.max={pm} sccache-server-cgroup={sccache} context={context}",
-                peak = m.leaf_peak,
-                rel = m.leaf_rel,
+                "  memory.max={cap} host_ram={host_ram} pids_current={pc} pids_max={pm} sccache-server-cgroup={sccache}",
                 pc = m.pids_current,
                 pm = m.pids_max
             );
         }
-        None => eprintln!(
-            "[measurement] cgroup peak: unavailable (no leaf cgroup or memory.peak unreadable; kernel < 5.19?) context={context}"
-        ),
+        None => {
+            let label = format!("cgroup peak ({context})");
+            eprintln!(
+                "{}",
+                v1_compiler::cli_run::render_peak_rss_line_mirror_with_cause(
+                    &label,
+                    None,
+                    "no leaf cgroup or memory.peak unreadable; kernel < 5.19?",
+                    emoji,
+                )
+            );
+        }
     }
 }
 
@@ -1660,6 +1938,11 @@ fn sccache_server_cgroup_rel() -> Option<String> {
 struct BatchRecord {
     batch_index: usize,
     wall_nanos: u128,
+    /// The derived clamp computed for this batch (overhead + unit_count*rate, tightened), or None
+    /// for budget-less plans (falsifier/regen). Recorded so the receipt never recomputes it.
+    clamp_ms: Option<u128>,
+    /// The runtime unit count the clamp used (discovery witnesses + gate rows).
+    unit_count: u128,
     /// Flattened results from all units in this batch (order: unit by unit).
     results: Vec<ClaimResult>,
 }
@@ -1676,42 +1959,32 @@ fn write_resolve_receipt(batch_records: &[BatchRecord]) -> bool {
     write_resolve_receipt_at(std::path::Path::new("target"), batch_records)
 }
 
-/// Per-batch wall receipt (THE COST WALL, D5): typed rows — one wall/budget/verdict triple
-/// per batch — so the floor's time story is a receipt, not a log archaeology exercise.
-/// `OverBudget` rows correspond one-to-one with the FLOOR-BATCH-OVER-BUDGET refusals the
-/// walk printed; a budget-less run (falsifier/regen plans) records walls with
+/// Per-batch wall receipt (THE COST WALL, Piece 3 derived clamp): typed rows — one
+/// wall/units/clamp/verdict group per batch — so the floor's time story is a receipt, not a log
+/// archaeology exercise. `OverBudget` rows correspond one-to-one with the FLOOR-BATCH-OVER-BUDGET
+/// refusals the walk printed; a clamp-less run (falsifier/regen plans) records walls with
 /// `verdict=Unbudgeted`. Returns false on a write error — the walk fails closed here.
-fn write_batch_wall_receipt(
-    batch_records: &[BatchRecord],
-    batch_wall_budgets_ms: Option<&[u128]>,
-) -> bool {
-    write_batch_wall_receipt_at(
-        std::path::Path::new("target"),
-        batch_records,
-        batch_wall_budgets_ms,
-    )
+fn write_batch_wall_receipt(batch_records: &[BatchRecord]) -> bool {
+    write_batch_wall_receipt_at(std::path::Path::new("target"), batch_records)
 }
 
-fn write_batch_wall_receipt_at(
-    base: &std::path::Path,
-    batch_records: &[BatchRecord],
-    batch_wall_budgets_ms: Option<&[u128]>,
-) -> bool {
+fn write_batch_wall_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
     let mut body = String::new();
     let mut over_budget = 0usize;
     for rec in batch_records {
         let n = rec.batch_index + 1;
         let wall_ms = rec.wall_nanos / 1_000_000;
         body.push_str(&format!("batch_{n}_wall_ms={wall_ms}\n"));
-        match batch_wall_budgets_ms.and_then(|b| b.get(rec.batch_index)) {
-            Some(budget_ms) => {
-                let verdict = if wall_ms > *budget_ms {
+        match rec.clamp_ms {
+            Some(clamp_ms) => {
+                let verdict = if wall_ms > clamp_ms {
                     over_budget += 1;
                     "OverBudget"
                 } else {
                     "WithinBudget"
                 };
-                body.push_str(&format!("batch_{n}_budget_ms={budget_ms}\n"));
+                body.push_str(&format!("batch_{n}_units={}\n", rec.unit_count));
+                body.push_str(&format!("batch_{n}_clamp_ms={clamp_ms}\n"));
                 body.push_str(&format!("batch_{n}_verdict={verdict}\n"));
             }
             None => {
@@ -1732,6 +2005,71 @@ fn write_batch_wall_receipt_at(
         "[receipt] floor batch walls: {} batch(es), {} over budget (receipt: {})",
         batch_records.len(),
         over_budget,
+        path.display()
+    );
+    true
+}
+
+fn write_gate_warm_cost_receipt(batch_records: &[BatchRecord]) -> bool {
+    write_gate_warm_cost_receipt_at(std::path::Path::new("target"), batch_records)
+}
+
+/// Per-gate warm-cost TSV (D2 placement probe, ci-two-tier-placement-redesign §9.1): one row per
+/// gate/claim carrying its warm eval wall, resolve time, and combined warm cost — the PLACEMENT
+/// ROSTER's measurement basis. A gate rides PrTier only if its measured warm cost is within the
+/// 5s fast-lane budget (else fail-closed to Gauntlet — v2.workflow.ci_placement). Denominated PER
+/// GATE (placement is per-gate), reusing the ClaimResult timings the floor already records
+/// (operator ruling 2026-07-24: instrument the existing floor, do not add a throwaway probe
+/// workflow). For a single-claim gate `wall_nanos` IS the eval wall (== thread-CPU on its one
+/// thread); the discovery row carries the per-witness rate (serial-sum eval over the witness
+/// count — the parallel batch wall is the batch-wall receipt's, not a per-witness figure). The
+/// probe reads a WARM run's rows; run cold-then-warm on >=2 hosts and the roster records value +
+/// host basis. Fail-closed on a write error (shares target/ with the gated receipts, so a write
+/// failure here is the same disk fault that fails them); never a verdict term.
+fn write_gate_warm_cost_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
+    let mut body =
+        String::from("gate\tbatch\teval_ms\tresolve_ms\twarm_ms\twitnesses\ts_per_witness_us\n");
+    for rec in batch_records {
+        let n = rec.batch_index + 1;
+        for result in &rec.results {
+            if result.corpus_witnesses > 0 {
+                let eval_ms = result.corpus_eval_nanos / 1_000_000;
+                let resolve_ms = result.corpus_resolve_nanos / 1_000_000;
+                let warm_ms = (result.corpus_eval_nanos + result.corpus_resolve_nanos) / 1_000_000;
+                let per_witness_us =
+                    result.corpus_eval_nanos / (result.corpus_witnesses as u128) / 1_000;
+                body.push_str(&format!(
+                    "discovery\t{n}\t{eval_ms}\t{resolve_ms}\t{warm_ms}\t{}\t{per_witness_us}\n",
+                    result.corpus_witnesses
+                ));
+            } else {
+                let eval_ms = result.wall_nanos / 1_000_000;
+                let resolve_ms = result.resolve_nanos / 1_000_000;
+                let warm_ms = (result.wall_nanos + result.resolve_nanos) / 1_000_000;
+                body.push_str(&format!(
+                    "{}\t{n}\t{eval_ms}\t{resolve_ms}\t{warm_ms}\t0\t0\n",
+                    result.function
+                ));
+            }
+        }
+    }
+    // Mirror the TSV into the log (prefixed, grep-collectable) so the placement probe can lift
+    // it from get_job_logs on a fleet run without an artifact-upload step — the file stays for
+    // future .dag consumers (Piece 1 roster fill).
+    for line in body.lines() {
+        eprintln!("[gate-warm-cost] {line}");
+    }
+    let path = base.join("floor-gate-warm-cost-receipt.tsv");
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write gate warm-cost receipt {}: {e} — walk fails closed here",
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] floor gate warm-cost: {} batch(es) (TSV receipt: {})",
+        batch_records.len(),
         path.display()
     );
     true
@@ -1824,7 +2162,9 @@ fn write_materialization_receipt() -> bool {
     true
 }
 
-/// Emit a fractal Gantt tree to stderr when GUNBC_FLOOR_GANTT=1.
+/// Emit a fractal post-walk tree to stderr when GUNBC_FLOOR_GANTT=1.
+/// Wired (gantt flip): each row is a PhaseSegment Concluded projection via the
+/// observation mirror — the raw `[gantt] … wall: {}ms` key=value tree is gone.
 fn emit_gantt(batch_records: &[BatchRecord], total_wall_nanos: u128) {
     let gantt_enabled = std::env::var("GUNBC_FLOOR_GANTT")
         .map(|v| v == "1")
@@ -1832,64 +2172,72 @@ fn emit_gantt(batch_records: &[BatchRecord], total_wall_nanos: u128) {
     if !gantt_enabled {
         return;
     }
-    let total_ms = total_wall_nanos / 1_000_000;
-    eprintln!("[gantt] claim_executor wall: {}ms", total_ms);
+    let emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
+    let total_ms = (total_wall_nanos / 1_000_000) as u64;
+    eprintln!(
+        "{}",
+        v1_compiler::v1_rt::render_phase_concluded_line_mirror("claim_executor", total_ms, emoji)
+    );
     for rec in batch_records {
-        let batch_ms = rec.wall_nanos / 1_000_000;
-        let pct = if total_ms == 0 {
-            0.0
-        } else {
-            100.0 * batch_ms as f64 / total_ms as f64
-        };
+        let batch_ms = (rec.wall_nanos / 1_000_000) as u64;
+        let batch_label = format!("batch {}", rec.batch_index + 1);
         eprintln!(
-            "[gantt]   batch {} wall: {}ms ({:.1}%)",
-            rec.batch_index + 1,
-            batch_ms,
-            pct,
+            "{}",
+            v1_compiler::v1_rt::render_phase_concluded_line_mirror(&batch_label, batch_ms, emoji)
         );
         for result in &rec.results {
-            let batch_pct = |ns: u128| -> f64 {
-                if rec.wall_nanos == 0 {
-                    0.0
-                } else {
-                    100.0 * ns as f64 / rec.wall_nanos as f64
-                }
-            };
             if result.corpus_witnesses > 0 {
-                // Discovery batch: show serial-sum breakdown.
-                let corpus_resolve_ms = result.corpus_resolve_nanos / 1_000_000;
-                let corpus_eval_ms = result.corpus_eval_nanos / 1_000_000;
-                eprintln!(
-                    "[gantt]     {} ({} witnesses)",
+                let corpus_resolve_ms = (result.corpus_resolve_nanos / 1_000_000) as u64;
+                let corpus_eval_ms = (result.corpus_eval_nanos / 1_000_000) as u64;
+                let name = format!(
+                    "{} ({} witnesses)",
                     result.function, result.corpus_witnesses
                 );
                 eprintln!(
-                    "[gantt]       resolve (serial sum): {}ms  ({:.1}% of batch wall)",
-                    corpus_resolve_ms,
-                    batch_pct(result.corpus_resolve_nanos),
+                    "{}",
+                    v1_compiler::v1_rt::render_phase_concluded_line_mirror(
+                        &name,
+                        corpus_resolve_ms + corpus_eval_ms,
+                        emoji
+                    )
                 );
                 eprintln!(
-                    "[gantt]       eval    (serial sum): {}ms  ({:.1}% of batch wall)",
-                    corpus_eval_ms,
-                    batch_pct(result.corpus_eval_nanos),
+                    "{}",
+                    v1_compiler::v1_rt::render_phase_concluded_line_mirror(
+                        &format!("{}.resolve", result.function),
+                        corpus_resolve_ms,
+                        emoji
+                    )
+                );
+                eprintln!(
+                    "{}",
+                    v1_compiler::v1_rt::render_phase_concluded_line_mirror(
+                        &format!("{}.eval", result.function),
+                        corpus_eval_ms,
+                        emoji
+                    )
                 );
             } else {
-                // Single claim: show resolve (if charged) + eval.
                 if result.resolve_nanos > 0 {
-                    let resolve_ms = result.resolve_nanos / 1_000_000;
+                    let resolve_ms = (result.resolve_nanos / 1_000_000) as u64;
                     eprintln!(
-                        "[gantt]     resolve (entry): {}ms  ({:.1}% of batch wall)",
-                        resolve_ms,
-                        batch_pct(result.resolve_nanos),
+                        "{}",
+                        v1_compiler::v1_rt::render_phase_concluded_line_mirror(
+                            "resolve (entry)",
+                            resolve_ms,
+                            emoji
+                        )
                     );
                 }
-                let wall_ms = result.wall_nanos / 1_000_000;
-                let ok = if result.ok { "PASS" } else { "FAIL" };
+                let wall_ms = (result.wall_nanos / 1_000_000) as u64;
+                let label = if result.ok {
+                    result.function.clone()
+                } else {
+                    format!("{} [FAIL]", result.function)
+                };
                 eprintln!(
-                    "[gantt]     {}: {}ms  [{ok}]  ({:.1}% of batch wall)",
-                    result.function,
-                    wall_ms,
-                    batch_pct(result.wall_nanos),
+                    "{}",
+                    v1_compiler::v1_rt::render_phase_concluded_line_mirror(&label, wall_ms, emoji)
                 );
             }
         }
@@ -1969,7 +2317,8 @@ fn run_walk(
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
     stop_policy: FloorBatchStopPolicy,
-    batch_wall_budgets_ms: Option<&[u128]>,
+    batch_clamp_params: Option<&[(u128, u128)]>,
+    budget_tighten_ms: Option<u128>,
 ) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
@@ -1990,6 +2339,21 @@ fn run_walk(
     for (bi, batch) in batches.iter().enumerate() {
         batches_run = bi + 1;
         let units = group_batch_units(batch);
+        // Arm the observation heartbeat feed at batch-enter: discovery leaves
+        // entry_total pending (filled when the roster's entry-group count is known);
+        // SingleClaim arms immediately with the claim count. Never a fabricated 0-of-0.
+        let label = batch_heartbeat_label(batch);
+        let entry_total = if batch
+            .iter()
+            .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }))
+        {
+            None
+        } else if batch.is_empty() {
+            None
+        } else {
+            Some(batch.len() as u64)
+        };
+        heartbeat_feed_enter_batch(bi as u64, &label, entry_total);
         eprintln!(
             "claim_executor: batch {} — {} node(s) in {} resolve-group(s), governor target_width={}",
             bi + 1,
@@ -2088,6 +2452,15 @@ fn run_walk(
             v1_compiler::v1_interpreter::group_end();
         }
         for result in &batch_results {
+            // SingleClaim path: discovery advances the feed via
+            // `index_schedule_entry_completed`; gate batches have no schedule
+            // retention, so each claim result is the per-entry completed tick.
+            if !batch
+                .iter()
+                .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }))
+            {
+                heartbeat_feed_entry_completed();
+            }
             if result.ok {
                 println!(
                     "{}",
@@ -2130,40 +2503,48 @@ fn run_walk(
             any_failed = true;
         }
         let batch_wall_nanos = batch_start.elapsed().as_nanos();
-        // THE COST WALL (D5): over-budget is a typed, located refusal — batch id, measured
-        // wall, budget row — that reds the walk. It never widens (no rerun, no scope change,
-        // no cap raise); witness verdicts inside the batch stand as evaluated (the budget is
-        // an admission/scheduling fact, not a verdict term — carrier note has the ruling split).
-        if let Some(budgets) = batch_wall_budgets_ms {
-            if let Some(budget_ms) = budgets.get(bi) {
-                let wall_ms = batch_wall_nanos / 1_000_000;
-                if wall_ms > *budget_ms {
-                    println!(
-                        "{}",
-                        paint(
-                            &format!(
-                                "✗ FLOOR-BATCH-OVER-BUDGET batch={} wall_ms={} budget_ms={}                                  (budget row: gunbc.ci_spec gunbc_ci_floor_batch_wall_budget_seconds[{}];                                  raising it requires an appended receipt note per                                  gunbc_ci_floor_batch_wall_budget_note — a refusal, never a widen)",
-                                bi + 1,
-                                wall_ms,
-                                budget_ms,
-                                bi
-                            ),
-                            sgr::ERROR
-                        )
-                    );
-                    failure_details.push(format!(
-                        "batch={} BudgetExceeded{{wall_ms={},budget_ms={}}}",
-                        bi + 1,
-                        wall_ms,
-                        budget_ms
-                    ));
-                    any_failed = true;
-                }
+        // THE COST WALL (Piece 3 derived clamp): the per-batch clamp is overhead + runtime unit
+        // count * rate, computed HERE where the affected-set-selected count is known (the schedule
+        // holds one opaque discovery runnable; the count is runtime). Over-clamp is a typed, located
+        // refusal that reds the walk; it never widens (no rerun, no scope change, no cap raise).
+        // Witness verdicts inside the batch stand as evaluated (the clamp is an admission/scheduling
+        // fact, not a verdict term — carrier note has the ruling split).
+        let batch_unit_count = batch_runtime_unit_count(&batch_results);
+        let batch_clamp_ms: Option<u128> =
+            batch_clamp_params
+                .and_then(|p| p.get(bi))
+                .map(|&(overhead_ms, rate_ms)| {
+                    let mut clamp = overhead_ms + batch_unit_count * rate_ms;
+                    if let Some(t) = budget_tighten_ms {
+                        clamp = clamp.min(t);
+                    }
+                    clamp
+                });
+        if let Some(clamp_ms) = batch_clamp_ms {
+            let wall_ms = batch_wall_nanos / 1_000_000;
+            if wall_ms > clamp_ms {
+                println!(
+                    "{}",
+                    paint(
+                        &format!(
+                            "✗ FLOOR-BATCH-OVER-BUDGET batch={} wall_ms={} clamp_ms={} units={}                                  (clamp = overhead + units*rate; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_clamp_params[{}]; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
+                            bi + 1,
+                            wall_ms,
+                            clamp_ms,
+                            batch_unit_count,
+                            bi
+                        ),
+                        sgr::ERROR
+                    )
+                );
+                any_failed = true;
             }
         }
         batch_records.push(BatchRecord {
             batch_index: bi,
             wall_nanos: batch_wall_nanos,
+            clamp_ms: batch_clamp_ms,
+            unit_count: batch_unit_count,
             results: batch_results,
         });
         if any_failed {
@@ -2187,7 +2568,8 @@ fn run_walk(
     let total_wall_nanos = walk_start.elapsed().as_nanos();
     emit_gantt(&batch_records, total_wall_nanos);
     let resolve_receipt_ok = write_resolve_receipt(&batch_records);
-    let batch_wall_receipt_ok = write_batch_wall_receipt(&batch_records, batch_wall_budgets_ms);
+    let batch_wall_receipt_ok = write_batch_wall_receipt(&batch_records);
+    let gate_warm_cost_receipt_ok = write_gate_warm_cost_receipt(&batch_records);
     // Memo contexts absorb their ledger totals into the process accumulator on
     // Drop, so they must die before the materialization receipt is written.
     drop(walk_memo);
@@ -2196,6 +2578,7 @@ fn run_walk(
         any_failed: any_failed
             || !resolve_receipt_ok
             || !batch_wall_receipt_ok
+            || !gate_warm_cost_receipt_ok
             || !materialization_receipt_ok,
         batches_run,
         failure_details,
@@ -2400,6 +2783,7 @@ fn run_perturb_check(
         FalsifierSelfHostWetBudgets::default(),
         FloorBatchStopPolicy::StopBeforeDependents,
         None,
+        None,
     );
     let _ = fs::remove_dir_all(&tmp);
 
@@ -2505,17 +2889,61 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     };
 
-    // Coarse wall-clock phase marks: the pre-walk phases (hygiene walk, policy
-    // install, plan resolve, plan eval, width eval) are interpreter-heavy and used
-    // to be SILENT — a 30-minute prelude looked identical to a hang. Every phase
-    // now stamps a line so the floor log itemizes its own time.
+    // Coarse phase marks for the pre-walk prelude (hygiene walk, policy install,
+    // plan resolve/eval, governor arm) — interpreter-heavy phases that used to be
+    // SILENT, so a 30-minute prelude looked identical to a hang. These now render
+    // through the single-authority observation renderer (`gunbc.observation_ci_render`,
+    // via the `gunbc.observation_seed_render` boundary) as `✅ <phase> done in <human
+    // duration>` instead of a raw `[t+…]` byte string the seed would fork the format
+    // into. Each mark carries its OWN wall (delta since the last mark), not a running
+    // `t+`, so the log itemizes which prelude phase is slow — the step toward the
+    // per-phase receipt keys the ci_spec prelude-coverage-hole follow-up calls for.
     let floor_started = Instant::now();
+    let phase_last = std::cell::Cell::new(floor_started);
+    // Emoji glyphs under GitHub Actions, Unicode on a plain terminal (the same medium
+    // split `install_group_syntax` makes for `::group::` markers).
+    let phase_glyph_emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
+    // Placement basis only (see `gunbc.observation_seed_render`): the clamp overhead
+    // `gunbc.ci_spec` budgets for non-per-unit floor time, so a prelude phase completing
+    // within it reads Ambient. Coarse + placement-only — `ci_render_line` reads only the
+    // glyph and text — and dissolves when the stream driver reads the basis from ci_spec.
+    const PHASE_BASIS_OVERHEAD_MS: u64 = 300_000;
+    let phase_mark_roots = source_roots.clone();
     let phase_mark = |label: &str| {
-        eprintln!(
-            "claim_executor: [t+{:.1}s] {label}",
-            floor_started.elapsed().as_secs_f64()
-        );
+        let now = Instant::now();
+        let delta_ms = now.saturating_duration_since(phase_last.get()).as_millis() as u64;
+        phase_last.set(now);
+        match render_phase_concluded_line(
+            &phase_mark_roots,
+            label,
+            delta_ms,
+            PHASE_BASIS_OVERHEAD_MS,
+            phase_glyph_emoji,
+        ) {
+            Some(line) => eprintln!("{line}"),
+            // §5: refuse to fabricate the pretty format when the renderer is unreachable,
+            // and never reproduce the deleted `[t+…]` marker — name the degradation loudly.
+            None => eprintln!(
+                "claim_executor: phase {label} (+{:.1}s) [observation renderer unavailable]",
+                (delta_ms as f64) / 1000.0
+            ),
+        }
     };
+
+    // Install the host-effect trace policy from the .dag authority FIRST — before the
+    // naming-hygiene walk below and every subsequent corpus read — so `[file] read` /
+    // `[rest]` / `[hermetic:mock]` etc. are funnelled per `gunbc.output_policy`
+    // (Instrumentation is Suppressed at Normal, the CI default) instead of flooding the
+    // floor log. Installing AFTER the walk (the prior order) left the walk's whole-tree
+    // read at the `Full` default — ~2.3k `[file] read` lines, the firehose the
+    // observation-emit census (`gunbc.observation_emit_census`) targets. The walk still
+    // runs before plan evaluation, so a naming violation stays the cheapest failure.
+    v1_compiler::cli_run::install_output_policy(&source_roots);
+    // Install the per-target group-marker syntax (GitHub Actions `::group::` vs a
+    // plain-terminal header) from the .dag authority, so the parallel walk folds each
+    // batch's host-effect traces into a collapsible group.
+    v1_compiler::cli_run::install_group_syntax(&source_roots);
+    phase_mark("output-policy + group-syntax install");
 
     // Under the opt-in inversion the plan's DiscoveryBatches carry explicit entries
     // only (or are absent entirely on an empty roster), and the explicit-only path
@@ -2534,17 +2962,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     }
-    phase_mark("naming-hygiene walk complete");
-
-    // Install the host-effect trace policy from the .dag authority once, before
-    // discovery threads spawn, so `[file] read` / `[rest]` / `[hermetic:mock]` etc.
-    // are funnelled per `gunbc.output_policy` instead of flooding the floor log.
-    v1_compiler::cli_run::install_output_policy(&source_roots);
-    // Install the per-target group-marker syntax (GitHub Actions `::group::` vs a
-    // plain-terminal header) from the .dag authority, so the parallel walk folds each
-    // batch's host-effect traces into a collapsible group.
-    v1_compiler::cli_run::install_group_syntax(&source_roots);
-    phase_mark("output policy + group syntax installed");
+    phase_mark("naming-hygiene walk");
 
     if perturb_check {
         return run_perturb_check(&source_roots, &plan_entry, &plan_function);
@@ -2560,7 +2978,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     };
-    phase_mark("plan entry resolved");
+    phase_mark("plan resolve");
 
     let plan_ctx = make_eval_context(&plan_graph, plan_indices.clone(), ExecutionMode::Hermetic);
     let batches = match eval_plan_in_ctx(&plan_ctx, &plan_entry, &plan_function) {
@@ -2668,17 +3086,38 @@ fn run() -> Result<ExitCode, ExitCode> {
                     return Err(ExitCode::from(1));
                 }
             },
+            substrate_long_lane_entry_paths: match read_schedule_witness_entry_paths(
+                &plan_ctx,
+                "falsifier_substrate_long_lane_entries",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
+            substrate_long_lane_eval_budget_ms: match read_positive_budget_ms(
+                &plan_ctx,
+                "gunbc_falsifier_substrate_long_lane_eval_budget_ms",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
         }
     } else {
         FalsifierSelfHostWetBudgets::default()
     };
     let batch_stop_policy = resolve_floor_batch_stop_policy(&plan_ctx, &plan_function);
-    // THE COST WALL (D5): the floor plan's per-batch wall budgets, read fail-closed at arm
-    // time (the fast-lane-budget pattern). Scoped to the full floor plan only: the
-    // plan-artifact shortcut runs a single batch of the same schedule and the falsifier
-    // carries its own receipt budgets, so neither reads this list.
-    let batch_wall_budgets_ms: Option<Vec<u128>> = if plan_function == "gunbc_ci_floor_batches" {
-        match read_floor_batch_wall_budgets_ms(&plan_ctx, batches.len()) {
+    // THE COST WALL (Piece 3 derived clamp): the floor plan's per-batch clamp params, read
+    // fail-closed at arm time (the fast-lane-budget pattern). Scoped to the full floor plan only:
+    // the plan-artifact shortcut runs a single batch of the same schedule and the falsifier
+    // carries its own receipt budgets, so neither reads these lists.
+    let batch_clamp_params: Option<Vec<(u128, u128)>> = if plan_function == "gunbc_ci_floor_batches"
+    {
+        match read_floor_batch_clamp_params(&plan_ctx, batches.len()) {
             Ok(v) => Some(v),
             Err(msg) => {
                 eprintln!("{msg}");
@@ -2688,8 +3127,15 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         None
     };
+    let budget_tighten_ms: Option<u128> = match read_floor_batch_budget_tighten_ms() {
+        Ok(v) => v,
+        Err(msg) => {
+            eprintln!("{msg}");
+            return Err(ExitCode::from(1));
+        }
+    };
     drop(plan_ctx);
-    phase_mark("plan evaluated");
+    phase_mark("plan eval");
 
     eprintln!(
         "claim_executor: [{}] executor plan = {} batch(es) from {}::{}",
@@ -2719,7 +3165,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     }
-    phase_mark("memory governor armed; starting batch walk");
+    phase_mark("memory-governor arm");
     spawn_floor_memory_heartbeat();
 
     // Plans whose schedule carries the compile-clean gate node: the gate only CONSUMES the
@@ -2750,24 +3196,41 @@ fn run() -> Result<ExitCode, ExitCode> {
         fast_lane_eval_budget_ms,
         falsifier_self_host_wet_budgets,
         batch_stop_policy,
-        batch_wall_budgets_ms.as_deref(),
+        batch_clamp_params.as_deref(),
+        budget_tighten_ms,
     );
+    // Floor receipts block — data, not outcomes. One named group; pulse glyphs only
+    // (operator live-log 2026-07-25: outcome glyphs for outcomes only).
+    v1_compiler::v1_interpreter::group_begin("floor receipts");
     match peak_rss_bytes() {
         Some(bytes) => {
-            eprintln!("[measurement] floor peak RSS: {bytes} bytes (VmHWM) (adaptive width)");
+            eprintln!(
+                "{}",
+                v1_compiler::cli_run::render_peak_rss_line_mirror(
+                    "floor peak RSS (adaptive width)",
+                    Some(bytes),
+                    std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"),
+                )
+            );
         }
         None => eprintln!(
-            "[measurement] floor peak RSS: unavailable (no /proc/self/status) (adaptive width)"
+            "{}",
+            v1_compiler::cli_run::render_peak_rss_line_mirror(
+                "floor peak RSS (adaptive width)",
+                None,
+                std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"),
+            )
         ),
     }
     // The governor receipt is the §5-counted degradation story for the run: every graceful
     // hold, hard back-off, and forced-serial admission, beside the width actually reached.
     eprintln!("{}", governor.receipt_line());
-    // [measurement] WHOLE-TREE cgroup peak — the SOUND placement divisor input (SELF-RSS above omits
+    // WHOLE-TREE cgroup peak — the SOUND placement divisor input (SELF-RSS above omits
     // child rustc/sccache PIDs; cgroup-v2 `memory.peak` at the leaf job cgroup is hierarchical and
     // captures them). Single authority `emit_cgroup_measurement` so the `ci` and `rust_tests` jobs
     // report an identically-shaped line. Runtime-harmless read-only.
     emit_cgroup_measurement("floor adaptive-width");
+    v1_compiler::v1_interpreter::group_end();
     if outcome.any_failed {
         emit_falsifier_failure_class(&outcome.failure_details);
     }
@@ -2798,6 +3261,25 @@ fn falsifier_failure_mode(details: &[String]) -> &'static str {
     }
 }
 
+/// Projection of a failure mode into the `gunbc.ci_failure_class` vocabulary. `Structural`
+/// is `Structural { reason: String }`, so an arm printed WITHOUT its reason is a lossy
+/// rendering of the typed value, not the value: it collapses BudgetExceeded and WitnessRed
+/// — which have different remedies (re-basis the lane's dated ceiling vs. fix the witness)
+/// — into one indistinguishable string, discarding the `mode` computed beside it (receipt:
+/// run 30176416535 printed mode=BudgetExceeded next to arm=FloorFailed{class:Structural}).
+/// Both non-Infra modes stay Structural — an over-budget witness is a real, non-retryable
+/// failure that blocks merge — but the reason rides along. Enumerated, not defaulted, so a
+/// new mode cannot fall through into an unlabelled Structural (the OOM-reclassification
+/// consumer stays on its own design doc).
+fn ci_failure_class_arm(mode: &str) -> String {
+    match mode {
+        "Infra" => "FloorFailed{class:Infra}".to_string(),
+        "BudgetExceeded" => "FloorFailed{class:Structural{reason:BudgetExceeded}}".to_string(),
+        "WitnessRed" => "FloorFailed{class:Structural{reason:WitnessRed}}".to_string(),
+        other => format!("FloorFailed{{class:Structural{{reason:{other}}}}}"),
+    }
+}
+
 fn emit_falsifier_failure_class(details: &[String]) {
     let joined = details.join(" | ");
     let mode = falsifier_failure_mode(details);
@@ -2809,12 +3291,7 @@ fn emit_falsifier_failure_class(details: &[String]) {
             eprintln!("[falsifier-failure-class] {d}");
         }
     }
-    // Natural fit into gunbc.ci_failure_class vocabulary: BudgetExceeded/WitnessRed → Structural;
-    // Infra signatures stay Infra (OOM-reclassification consumer stays on its own design doc).
-    let ci_arm = match mode {
-        "Infra" => "FloorFailed{class:Infra}",
-        _ => "FloorFailed{class:Structural}",
-    };
+    let ci_arm = ci_failure_class_arm(mode);
     eprintln!(
         "[falsifier-failure-class] ci_failure_class_arm={ci_arm} reason_preview={}",
         {
@@ -3013,6 +3490,125 @@ mod tests {
         );
     }
 
+    // The lane-scoping wiring itself, both directions. The receipted defect (run
+    // 30176416535) was that EVERY Hermetic batch drew the 5s per-PR fast-lane budget,
+    // including the substrate long lane whose rows measure 12–135s. Discriminating: the
+    // same execution_mode with different rosters must yield different ceilings.
+    #[test]
+    fn hermetic_eval_budget_is_scoped_by_lane_not_by_witness_kind() {
+        let long_lane_entry =
+            "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag";
+        let budgets = FalsifierSelfHostWetBudgets {
+            substrate_long_lane_entry_paths: vec![long_lane_entry.to_string()],
+            substrate_long_lane_eval_budget_ms: Some(180_000),
+            ..Default::default()
+        };
+        let on_lane = vec![(
+            long_lane_entry.to_string(),
+            "lens_edit_locus_source_provenance_affected_set_wire_holds".to_string(),
+        )];
+        let off_lane = vec![(
+            "src/v2/test/claim/self_host/some_fast_witness_test.dag".to_string(),
+            "some_fast_holds".to_string(),
+        )];
+
+        // On the lane: its own dated ceiling, NOT the 5s per-PR budget.
+        let picked = select_discovery_batch_budgets(
+            ExecutionMode::Hermetic,
+            &on_lane,
+            Some(5_000),
+            &budgets,
+        );
+        assert_eq!(picked.eval_budget_ms, Some(180_000));
+        assert_eq!(picked.wet_wall_budget_ms, None);
+
+        // Same execution_mode, different roster: the per-PR fast lane is the residual.
+        let residual = select_discovery_batch_budgets(
+            ExecutionMode::Hermetic,
+            &off_lane,
+            Some(5_000),
+            &budgets,
+        );
+        assert_eq!(residual.eval_budget_ms, Some(5_000));
+
+        // The whole point: witness kind alone must not decide the ceiling.
+        assert_ne!(
+            picked.eval_budget_ms, residual.eval_budget_ms,
+            "two Hermetic batches on different lanes must not share one ceiling"
+        );
+
+        // A rostered lane with no declared ceiling narrows to the fast lane (a loud,
+        // named red), never to an unbudgeted eval.
+        let unbudgeted = FalsifierSelfHostWetBudgets {
+            substrate_long_lane_eval_budget_ms: None,
+            ..budgets.clone()
+        };
+        assert_eq!(
+            select_discovery_batch_budgets(
+                ExecutionMode::Hermetic,
+                &on_lane,
+                Some(5_000),
+                &unbudgeted
+            )
+            .eval_budget_ms,
+            Some(5_000)
+        );
+
+        // Wet lanes are untouched by the long-lane roster: no eval budget, and the
+        // self-host wall/interp pair still arms off its own roster.
+        let wet = FalsifierSelfHostWetBudgets {
+            wall_budget_ms: Some(600_000),
+            interp_eval_budget_ms: Some(120_000),
+            roster_entry_paths: vec!["dag/test/claim/wet_receipt_test.dag".to_string()],
+            ..budgets.clone()
+        };
+        let wet_pick = select_discovery_batch_budgets(
+            ExecutionMode::Wet,
+            &[(
+                "dag/test/claim/wet_receipt_test.dag".to_string(),
+                "receipt_holds".to_string(),
+            )],
+            Some(5_000),
+            &wet,
+        );
+        assert_eq!(wet_pick.eval_budget_ms, None);
+        assert_eq!(wet_pick.wet_wall_budget_ms, Some(600_000));
+        assert_eq!(wet_pick.wet_interp_budget_ms, Some(120_000));
+    }
+
+    // The mode must survive the projection into the ci_failure_class vocabulary. Before
+    // this, both non-Infra modes rendered as the reason-less `FloorFailed{class:Structural}`
+    // — the receipted mis-map (run 30176416535: mode=BudgetExceeded, arm=…Structural).
+    // Discriminating: a budget kill and a witness red must NOT print the same arm.
+    #[test]
+    fn ci_failure_class_arm_carries_the_structural_reason() {
+        assert_eq!(ci_failure_class_arm("Infra"), "FloorFailed{class:Infra}");
+        assert_eq!(
+            ci_failure_class_arm("BudgetExceeded"),
+            "FloorFailed{class:Structural{reason:BudgetExceeded}}"
+        );
+        assert_eq!(
+            ci_failure_class_arm("WitnessRed"),
+            "FloorFailed{class:Structural{reason:WitnessRed}}"
+        );
+        assert_ne!(
+            ci_failure_class_arm("BudgetExceeded"),
+            ci_failure_class_arm("WitnessRed"),
+            "a budget kill and a witness red must be distinguishable in the emitted arm"
+        );
+        // End-to-end through the mode classifier: the batch-6 eval-budget detail shape.
+        let detail: Vec<String> = vec![
+            "batch=6 fn=discovery-corpus detail=7 of 10 discovery witness(es) failed: \
+             lens_affected_set_provenance_producer_coverage_receipt_holds runtime error: \
+             eval budget exceeded: 5001ms elapsed > 5000ms fast-lane budget"
+                .into(),
+        ];
+        assert_eq!(
+            ci_failure_class_arm(falsifier_failure_mode(&detail)),
+            "FloorFailed{class:Structural{reason:BudgetExceeded}}"
+        );
+    }
+
     // D2 RED control: a receipt that cannot be written REDS the walk (returns false,
     // folded into any_failed → nonzero exit) — it never vanishes behind the fast exit.
     // The base path is a FILE, so create_dir_all refuses.
@@ -3023,7 +3619,7 @@ mod tests {
         let _ = fs::remove_file(&base);
         fs::write(&base, b"a file where the receipt dir should be").unwrap();
         assert!(!write_resolve_receipt_at(&base, &[]));
-        assert!(!write_batch_wall_receipt_at(&base, &[], None));
+        assert!(!write_batch_wall_receipt_at(&base, &[]));
         let _ = fs::remove_file(&base);
     }
 
@@ -3035,30 +3631,40 @@ mod tests {
         let base =
             std::env::temp_dir().join(format!("claim-executor-batch-wall-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
-        let records = vec![
+        // Clamped: batch 0 wall 5s > clamp 2s (OverBudget); batch 1 wall 1s < clamp 2s (WithinBudget).
+        let clamped_records = vec![
             BatchRecord {
                 batch_index: 0,
                 wall_nanos: 5_000_000_000, // 5s
+                clamp_ms: Some(2_000),     // 2s
+                unit_count: 3,
                 results: Vec::new(),
             },
             BatchRecord {
                 batch_index: 1,
                 wall_nanos: 1_000_000_000, // 1s
+                clamp_ms: Some(2_000),     // 2s
+                unit_count: 0,
                 results: Vec::new(),
             },
         ];
-        let budgets_ms: Vec<u128> = vec![2_000, 2_000]; // 2s each: batch 1 over, batch 2 within
-        assert!(write_batch_wall_receipt_at(
-            &base,
-            &records,
-            Some(&budgets_ms)
-        ));
+        assert!(write_batch_wall_receipt_at(&base, &clamped_records));
         let body = fs::read_to_string(base.join("floor-batch-wall-receipt.txt")).unwrap();
         assert!(body.contains("batch_1_wall_ms=5000"));
+        assert!(body.contains("batch_1_units=3"));
+        assert!(body.contains("batch_1_clamp_ms=2000"));
         assert!(body.contains("batch_1_verdict=OverBudget"));
         assert!(body.contains("batch_2_verdict=WithinBudget"));
         assert!(body.contains("over_budget_batches=1"));
-        assert!(write_batch_wall_receipt_at(&base, &records, None));
+        // Clamp-less (falsifier/regen plans): records carry clamp_ms None -> Unbudgeted.
+        let unbudgeted_records = vec![BatchRecord {
+            batch_index: 0,
+            wall_nanos: 5_000_000_000,
+            clamp_ms: None,
+            unit_count: 0,
+            results: Vec::new(),
+        }];
+        assert!(write_batch_wall_receipt_at(&base, &unbudgeted_records));
         let body = fs::read_to_string(base.join("floor-batch-wall-receipt.txt")).unwrap();
         assert!(body.contains("batch_1_verdict=Unbudgeted"));
         assert!(body.contains("over_budget_batches=0"));
@@ -3169,6 +3775,654 @@ mod tests {
             "claim_executor seed const must match ci_floor_plan materialized roster \
              (dissolve-on: v2 emit of stage0 host constants)"
         );
+    }
+
+    // The seed→.dag render boundary by execution: `render_phase_concluded_line`
+    // resolves `gunbc.observation_seed_render` and projects a floor phase mark through
+    // the single-authority renderer, so the seed speaks the observation vocabulary
+    // rather than a raw `[t+…]` byte string. Discriminating RED: a helper that fell
+    // back to the raw marker, dropped the phase, or forked the duration format fails
+    // one of the three asserts below (human units, completed glyph, no old marker).
+    #[test]
+    fn phase_mark_renders_through_the_observation_render_authority() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        // Emoji tier (the CI target): 48s concludes as `✅ naming-hygiene walk done in
+        // 48 seconds`. overhead_ms is the placement basis only (the 300s clamp overhead).
+        let line =
+            render_phase_concluded_line(&roots, "naming-hygiene walk", 48_000, 300_000, true)
+                .expect("observation_seed_render must resolve and render a phase line");
+        assert!(
+            line.contains("naming-hygiene walk") && line.contains("done in 48 seconds"),
+            "phase line must name the phase in human units: {line:?}"
+        );
+        assert!(
+            line.starts_with('✅'),
+            "a Done outcome concludes with the completed glyph at the Emoji tier: {line:?}"
+        );
+        assert!(
+            !line.contains("[t+"),
+            "the projection must not carry the deleted raw phase marker: {line:?}"
+        );
+    }
+
+    fn run_seed_phase_begin_line(
+        source_roots: &[String],
+        phase: &str,
+        overhead_ms: u64,
+        emoji: bool,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_seed_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let out = run_in_context_with_args(
+            &ctx,
+            "phase_begin_line",
+            &[
+                (Some("phase".to_string()), Value::Str(phase.to_string())),
+                (
+                    Some("overhead_ms".to_string()),
+                    Value::Int(overhead_ms as i64),
+                ),
+                (Some("emoji".to_string()), Value::Bool(emoji)),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    // Gantt flip byte-oracle: compile-path mirrors of phase_begin_line /
+    // phase_concluded_line must stay byte-equal to the .dag seed (justified
+    // divergence — interpreter render from inside compile would recurse).
+    #[test]
+    fn gantt_phase_mirrors_match_seed_oracle() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let begin_oracle = run_seed_phase_begin_line(&roots, "compile.frontend", 300_000, true)
+            .expect("phase_begin_line must resolve and render");
+        let begin_mirror =
+            v1_compiler::v1_rt::render_phase_begin_line_mirror("compile.frontend", true);
+        assert_eq!(
+            begin_oracle, begin_mirror,
+            "begin mirror must be byte-equal to seed oracle"
+        );
+        assert!(
+            begin_oracle.starts_with('🔄') && begin_oracle.contains("started compile.frontend"),
+            "begin line shape: {begin_oracle:?}"
+        );
+
+        let done_oracle =
+            render_phase_concluded_line(&roots, "compile.frontend", 12_000, 300_000, true)
+                .expect("phase_concluded_line must resolve and render");
+        let done_mirror = v1_compiler::v1_rt::render_phase_concluded_line_mirror(
+            "compile.frontend",
+            12_000,
+            true,
+        );
+        assert_eq!(
+            done_oracle, done_mirror,
+            "concluded mirror must be byte-equal to seed oracle"
+        );
+        assert!(
+            done_oracle.contains("compile.frontend done in 12 seconds"),
+            "concluded line shape: {done_oracle:?}"
+        );
+    }
+
+    fn run_seed_psi_hold_line(
+        source_roots: &[String],
+        avg10_bp: u64,
+        emoji: bool,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_seed_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let out = run_in_context_with_args(
+            &ctx,
+            "seed_psi_hold_line",
+            &[
+                (Some("avg10_bp".to_string()), Value::Int(avg10_bp as i64)),
+                (Some("emoji".to_string()), Value::Bool(emoji)),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    fn run_seed_high_water_hold_line(
+        source_roots: &[String],
+        current_bytes: u64,
+        high_water_bytes: u64,
+        emoji: bool,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_seed_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let out = run_in_context_with_args(
+            &ctx,
+            "seed_high_water_hold_line",
+            &[
+                (
+                    Some("current_bytes".to_string()),
+                    Value::Int(current_bytes as i64),
+                ),
+                (
+                    Some("high_water_bytes".to_string()),
+                    Value::Int(high_water_bytes as i64),
+                ),
+                (Some("emoji".to_string()), Value::Bool(emoji)),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    // Governor flip byte-oracle: HoldReason → ci_hold_cause_text mirrors must stay
+    // byte-equal to seed_psi_hold_line / seed_high_water_hold_line.
+    #[test]
+    fn governor_hold_mirrors_match_seed_oracle() {
+        use v1_compiler::memory_governor::{render_governor_hold_line_mirror, HoldReason};
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        // 37.5% → 3750 basis points
+        let psi_oracle = run_seed_psi_hold_line(&roots, 3750, true)
+            .expect("seed_psi_hold_line must resolve and render");
+        let psi_mirror =
+            render_governor_hold_line_mirror(&HoldReason::PsiPressure { avg10: 37.5 }, true);
+        assert_eq!(
+            psi_oracle, psi_mirror,
+            "psi hold mirror must be byte-equal to seed oracle"
+        );
+        assert!(
+            psi_oracle.starts_with('⏳') && psi_oracle.contains("blocked on memory reclaim"),
+            "psi hold shape: {psi_oracle:?}"
+        );
+
+        let hw_oracle = run_seed_high_water_hold_line(&roots, 8_589_934_592, 10_737_418_240, true)
+            .expect("seed_high_water_hold_line must resolve and render");
+        let hw_mirror = render_governor_hold_line_mirror(
+            &HoldReason::CurrentHighWater {
+                current: 8_589_934_592,
+                high_water: 10_737_418_240,
+            },
+            true,
+        );
+        assert_eq!(
+            hw_oracle, hw_mirror,
+            "high-water hold mirror must be byte-equal to seed oracle"
+        );
+        assert!(
+            hw_oracle.contains("blocked on the memory high-water line"),
+            "high-water hold shape: {hw_oracle:?}"
+        );
+    }
+
+    fn run_seed_typecheck_concluded_line(
+        source_roots: &[String],
+        module_path: &str,
+        elapsed_ms: u64,
+        overhead_ms: u64,
+        emoji: bool,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_seed_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let out = run_in_context_with_args(
+            &ctx,
+            "typecheck_concluded_line",
+            &[
+                (
+                    Some("module_path".to_string()),
+                    Value::Str(module_path.to_string()),
+                ),
+                (
+                    Some("elapsed_ms".to_string()),
+                    Value::Int(elapsed_ms as i64),
+                ),
+                (
+                    Some("overhead_ms".to_string()),
+                    Value::Int(overhead_ms as i64),
+                ),
+                (Some("emoji".to_string()), Value::Bool(emoji)),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn typecheck_attribution_mirrors_match_seed_oracle() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let oracle = run_seed_typecheck_concluded_line(
+            &roots,
+            "v2.compiler.normalized_tree",
+            606_984,
+            300_000,
+            true,
+        )
+        .expect("typecheck_concluded_line must resolve and render");
+        let mirror = v1_compiler::cli_run::render_typecheck_concluded_line_mirror(
+            "v2.compiler.normalized_tree",
+            606_984,
+            true,
+        );
+        assert_eq!(
+            oracle, mirror,
+            "typecheck concluded mirror must be byte-equal to seed oracle"
+        );
+        assert!(
+            oracle.starts_with('✅')
+                && oracle.contains("typecheck v2.compiler.normalized_tree done in 10 minutes"),
+            "typecheck concluded shape: {oracle:?}"
+        );
+        let begin_mirror = v1_compiler::cli_run::render_typecheck_begin_line_mirror(
+            "v2.compiler.normalized_tree",
+            true,
+        );
+        assert_eq!(
+            begin_mirror,
+            "🔄 started typecheck v2.compiler.normalized_tree"
+        );
+    }
+
+    fn run_seed_peak_rss_line(
+        source_roots: &[String],
+        label: &str,
+        rss_bytes: u64,
+        rss_available: bool,
+        emoji: bool,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_seed_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let out = run_in_context_with_args(
+            &ctx,
+            "seed_peak_rss_line",
+            &[
+                (Some("label".to_string()), Value::Str(label.to_string())),
+                (Some("rss_bytes".to_string()), Value::Int(rss_bytes as i64)),
+                (
+                    Some("rss_available".to_string()),
+                    Value::Bool(rss_available),
+                ),
+                (Some("emoji".to_string()), Value::Bool(emoji)),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn peak_rss_mirror_matches_seed_oracle() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        // 1 GiB exact → "1.0 GiB"
+        let oracle = run_seed_peak_rss_line(&roots, "floor peak RSS", 1_073_741_824, true, true)
+            .expect("seed_peak_rss_line must resolve and render");
+        let mirror = v1_compiler::cli_run::render_peak_rss_line_mirror(
+            "floor peak RSS",
+            Some(1_073_741_824),
+            true,
+        );
+        assert_eq!(oracle, mirror, "peak RSS mirror must be byte-equal to seed");
+        assert_eq!(oracle, "🕐 floor peak RSS — 1.0 GiB");
+
+        // 1536 MiB → "1.5 GiB"
+        let oracle15 = run_seed_peak_rss_line(&roots, "cgroup peak", 1_610_612_736, true, false)
+            .expect("seed");
+        let mirror15 = v1_compiler::cli_run::render_peak_rss_line_mirror(
+            "cgroup peak",
+            Some(1_610_612_736),
+            false,
+        );
+        assert_eq!(oracle15, mirror15);
+        assert_eq!(oracle15, "◷ cgroup peak — 1.5 GiB");
+
+        let unread = run_seed_peak_rss_line(&roots, "floor peak RSS", 0, false, true)
+            .expect("unreadable seed");
+        let unread_mirror =
+            v1_compiler::cli_run::render_peak_rss_line_mirror("floor peak RSS", None, true);
+        assert_eq!(unread, unread_mirror);
+        assert!(unread.contains("unreadable (no /proc/self/status)"));
+    }
+
+    fn run_seed_shell_effect_failed_line(
+        source_roots: &[String],
+        intent: &str,
+        argv_collapsed: &str,
+        exit_code: u64,
+        elapsed_ms: u64,
+        overhead_ms: u64,
+        emoji: bool,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_seed_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let out = run_in_context_with_args(
+            &ctx,
+            "shell_effect_failed_line",
+            &[
+                (Some("intent".to_string()), Value::Str(intent.to_string())),
+                (
+                    Some("argv_collapsed".to_string()),
+                    Value::Str(argv_collapsed.to_string()),
+                ),
+                (Some("exit_code".to_string()), Value::Int(exit_code as i64)),
+                (
+                    Some("elapsed_ms".to_string()),
+                    Value::Int(elapsed_ms as i64),
+                ),
+                (
+                    Some("overhead_ms".to_string()),
+                    Value::Int(overhead_ms as i64),
+                ),
+                (Some("emoji".to_string()), Value::Bool(emoji)),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn shell_effect_failed_mirror_matches_seed_oracle() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let oracle = run_seed_shell_effect_failed_line(
+            &roots,
+            "shell.Exec.Run",
+            "echo hi",
+            1,
+            2000,
+            300_000,
+            true,
+        )
+        .expect("shell_effect_failed_line must resolve and render");
+        let mirror = v1_compiler::v1_interpreter::render_shell_effect_failed_line_mirror(
+            "shell.Exec.Run",
+            "echo hi",
+            1,
+            2000,
+            true,
+        );
+        assert_eq!(
+            oracle, mirror,
+            "shell Failed mirror must be byte-equal to seed oracle"
+        );
+        assert_eq!(
+            oracle,
+            "❌ shell.Exec.Run failed: $ echo hi (exit=1) in 2 seconds"
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_seed_heartbeat_line(
+        source_roots: &[String],
+        elapsed_ms: u64,
+        batch_label: &str,
+        entry_index: u64,
+        entry_total: u64,
+        rss: Option<u64>,
+        swap: Option<u64>,
+        pressure: Option<u64>,
+        emoji: bool,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_seed_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let out = run_in_context_with_args(
+            &ctx,
+            "seed_heartbeat_line",
+            &[
+                (Some("elapsed_ms".into()), Value::Int(elapsed_ms as i64)),
+                (Some("batch_index".into()), Value::Int(0)),
+                (
+                    Some("batch_label".into()),
+                    Value::Str(batch_label.to_string()),
+                ),
+                (Some("entry_index".into()), Value::Int(entry_index as i64)),
+                (Some("entry_total".into()), Value::Int(entry_total as i64)),
+                (
+                    Some("rss_bytes".into()),
+                    Value::Int(rss.unwrap_or(0) as i64),
+                ),
+                (Some("rss_available".into()), Value::Bool(rss.is_some())),
+                (
+                    Some("swap_bytes".into()),
+                    Value::Int(swap.unwrap_or(0) as i64),
+                ),
+                (Some("swap_available".into()), Value::Bool(swap.is_some())),
+                (
+                    Some("pressure_bp".into()),
+                    Value::Int(pressure.unwrap_or(0) as i64),
+                ),
+                (
+                    Some("pressure_available".into()),
+                    Value::Bool(pressure.is_some()),
+                ),
+                (Some("emoji".into()), Value::Bool(emoji)),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    // The floor-memory heartbeat's seed→.dag boundary, proven by execution:
+    // seed_heartbeat_line takes the primitives the heartbeat thread has (elapsed,
+    // batch label, entry position, memory vitals) and projects them through the one
+    // renderer — identity first, human units, no raw byte dump. These golden strings
+    // are the oracle the Rust mirror is proven byte-equal to
+    // (`render_heartbeat_line_mirror_matches_seed_oracle`); the subject is batch-grain
+    // (parallel entries → no fabricated per-module detail).
+    #[test]
+    fn seed_heartbeat_line_renders_identity_first_in_human_units() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        // The captured crawl window's memory beat: identity first, human units, the
+        // raw byte value absent.
+        let line = run_seed_heartbeat_line(
+            &roots,
+            1_980_000,
+            "witness discovery",
+            214,
+            602,
+            Some(16_107_200_512),
+            Some(34_359_738_368),
+            Some(901),
+            true,
+        )
+        .expect("seed_heartbeat_line must resolve and render");
+        assert_eq!(
+            line,
+            "🕐 33 minutes in — still in witness discovery: entry 214 of 602. memory 15.0 GiB, swap 32.0 GiB, pressure 9.0%"
+        );
+        assert!(
+            !line.contains("16107200512"),
+            "raw bytes must not appear: {line}"
+        );
+
+        // An unreadable cgroup field names its cause, never a fabricated zero.
+        let unreadable = run_seed_heartbeat_line(
+            &roots,
+            500,
+            "self-host fixed-point",
+            0,
+            2,
+            None,
+            Some(0),
+            None,
+            true,
+        )
+        .expect("resolve");
+        assert_eq!(
+            unreadable,
+            "🕐 500ms in — still in self-host fixed-point: entry 0 of 2. memory unreadable (cgroup field unreadable), swap 0.0 GiB, pressure unreadable (cgroup field unreadable)"
+        );
+    }
+
+    // Wiring flip 4b: the Rust mirror is proven byte-equal to the 4a seed oracle.
+    // The heartbeat thread cannot call the interpreter (duplicate module index under
+    // the memory envelope it watches); this pin is what keeps the mirror honest.
+    #[test]
+    fn render_heartbeat_line_mirror_matches_seed_oracle() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let crawl = run_seed_heartbeat_line(
+            &roots,
+            1_980_000,
+            "witness discovery",
+            214,
+            602,
+            Some(16_107_200_512),
+            Some(34_359_738_368),
+            Some(901),
+            true,
+        )
+        .expect("seed oracle");
+        let mirror = render_heartbeat_line_mirror(
+            1_980_000,
+            "witness discovery",
+            214,
+            602,
+            Some(16_107_200_512),
+            Some(34_359_738_368),
+            Some(901),
+            true,
+        );
+        assert_eq!(
+            mirror, crawl,
+            "mirror must be byte-equal to the seed oracle"
+        );
+        assert_eq!(
+            mirror,
+            "🕐 33 minutes in — still in witness discovery: entry 214 of 602. memory 15.0 GiB, swap 32.0 GiB, pressure 9.0%"
+        );
+
+        let unreadable_oracle = run_seed_heartbeat_line(
+            &roots,
+            500,
+            "self-host fixed-point",
+            0,
+            2,
+            None,
+            Some(0),
+            None,
+            true,
+        )
+        .expect("seed oracle");
+        let unreadable_mirror = render_heartbeat_line_mirror(
+            500,
+            "self-host fixed-point",
+            0,
+            2,
+            None,
+            Some(0),
+            None,
+            true,
+        );
+        assert_eq!(
+            unreadable_mirror, unreadable_oracle,
+            "unreadable fields must stay byte-equal"
+        );
+        assert!(
+            !mirror.contains("16107200512") && !unreadable_mirror.contains("[floor-memory]"),
+            "mirror must not carry the deleted byte-dump shape"
+        );
+    }
+
+    #[test]
+    fn psi_avg10_converts_to_basis_points_at_observation_scale() {
+        assert_eq!(psi_avg10_to_basis_points("9.01"), Some(901));
+        assert_eq!(psi_avg10_to_basis_points("37.5"), Some(3750));
+        assert_eq!(psi_avg10_to_basis_points("0.0"), Some(0));
+        assert_eq!(psi_avg10_to_basis_points("garbage"), None);
     }
 
     // The materialization-receipt chain by execution: a real entry resolves, a

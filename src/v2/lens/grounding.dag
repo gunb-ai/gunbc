@@ -325,11 +325,15 @@ fn has_any_layer_included_candidate_from_decls(decls: List<ConceptDecl>) -> Bool
   })
 }
 
-data whole_tree_extract_smoke_min_decl_count: Int = 1000
+data whole_tree_extract_smoke_decl_floor_note: String = "Class-5 carve-out: this is a policy FLOOR for smoke coverage (live concept_decl_facts count must exceed it), not a count beside a structural roster. The live extract enumeration is the independent representation; the floor is the ceiling authority."
+
+fn whole_tree_extract_smoke_decl_floor() -> Int {
+  1000
+}
 
 fn whole_tree_extract_smoke() -> Bool {
   let decls = concept_decl_facts(pool_roots: witness_layer_roots)
-  (length(xs: decls) > whole_tree_extract_smoke_min_decl_count)
+  (length(xs: decls) > whole_tree_extract_smoke_decl_floor())
     && has_any_layer_included_candidate_from_decls(decls: decls)
 }
 

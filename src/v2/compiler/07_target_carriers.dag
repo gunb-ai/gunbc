@@ -3,7 +3,11 @@ module v2.compiler.target_carriers
 import extdeps.communication.fidelity_carriers { decode_fidelity_merge }
 import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }
 import v2.std.compilers.target_model { TargetModel }
-import v2.std.collection { Absent, Optional, Present }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,

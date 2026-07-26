@@ -11,8 +11,6 @@ use crate::std_error_primitives::DivError::*;
 use crate::std_error_primitives::Result::*;
 pub use crate::std_error_primitives::{DivError, Result};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -61,11 +59,79 @@ pub struct AbelianGroup<T> {
     pub _phantom: std::marker::PhantomData<T>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct GroupCompletion<M>(pub std::marker::PhantomData<M>);
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GroupCompletion<M> {
+    pub pos: M,
+    pub neg: M,
+    pub _phantom: std::marker::PhantomData<M>,
+}
+// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic (v1 seed emit; GroupCompletion<M> pos/neg pair arithmetic (#7197): Grothendieck add (componentwise), ring-completion mul ((ac+bd, ad+bc)), div on canonical representative (pos-neg)/(rhs.pos-rhs.neg) with zero neg; no PartialEq<i64> cross-representation bridge.)
+impl<M> std::ops::Neg for GroupCompletion<M> {
+    type Output = Self;
+    fn neg(self) -> Self::Output {
+        GroupCompletion {
+            pos: self.neg,
+            neg: self.pos,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+impl<M> std::ops::Add for GroupCompletion<M>
+where
+    M: std::ops::Add<Output = M>,
+{
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self::Output {
+        GroupCompletion {
+            pos: self.pos + rhs.pos,
+            neg: self.neg + rhs.neg,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+impl<M> std::ops::Sub for GroupCompletion<M>
+where
+    M: std::ops::Add<Output = M> + std::ops::Neg<Output = M>,
+{
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self::Output {
+        self + (-rhs)
+    }
+}
+impl<M> std::ops::Mul for GroupCompletion<M>
+where
+    M: std::ops::Add<Output = M> + std::ops::Mul<Output = M> + Clone,
+{
+    type Output = Self;
+    fn mul(self, rhs: Self) -> Self::Output {
+        GroupCompletion {
+            pos: self.pos.clone() * rhs.pos.clone() + self.neg.clone() * rhs.neg.clone(),
+            neg: self.pos * rhs.neg + self.neg * rhs.pos,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+impl<M> std::ops::Div for GroupCompletion<M>
+where
+    M: std::ops::Add<Output = M> + std::ops::Sub<Output = M> + std::ops::Div<Output = M> + Default,
+{
+    type Output = Self;
+    fn div(self, rhs: Self) -> Self::Output {
+        let q = (self.pos - self.neg) / (rhs.pos - rhs.neg);
+        GroupCompletion {
+            pos: q,
+            neg: M::default(),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct FieldOfFractions<R>(pub std::marker::PhantomData<R>);
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FieldOfFractions<R> {
+    pub num: R,
+    pub denom: R,
+    pub _phantom: std::marker::PhantomData<R>,
+}
 
 #[derive(Clone)]
 pub struct Semiring<T> {
@@ -83,30 +149,6 @@ pub struct CommutativeSemiring<T> {
     pub mul: Rc<dyn Fn(T, T) -> T>,
     pub one: T,
     pub _phantom: std::marker::PhantomData<T>,
-}
-// repr-grounding arm (b): Nat carrier arithmetic (v1 seed emit; Interim CommutativeSemiring<Magnitude> carrier arithmetic stubs dissolve when GroupCompletion pair arithmetic bodies land (#7197, eager-crane numeric-tower lane — NOT silent-badger-23); replace fail-closed unimplemented! stubs with grounded operations. Do not retain PartialEq<i64> cross-representation bridge — numeric-tower grounding replaces the straddle.)
-impl std::ops::Add for CommutativeSemiring<crate::std_magnitude::Magnitude> {
-    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;
-    fn add(self, _rhs: Self) -> Self::Output {
-        unimplemented!("interim CommutativeSemiring<Magnitude> stub — see #7197")
-    }
-}
-impl std::ops::Mul for CommutativeSemiring<crate::std_magnitude::Magnitude> {
-    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;
-    fn mul(self, _rhs: Self) -> Self::Output {
-        unimplemented!("interim CommutativeSemiring<Magnitude> stub — see #7197")
-    }
-}
-impl std::ops::Div for CommutativeSemiring<crate::std_magnitude::Magnitude> {
-    type Output = std::rc::Rc<CommutativeSemiring<crate::std_magnitude::Magnitude>>;
-    fn div(self, _rhs: Self) -> Self::Output {
-        unimplemented!("interim CommutativeSemiring<Magnitude> stub — see #7197")
-    }
-}
-impl std::cmp::PartialEq<i64> for CommutativeSemiring<crate::std_magnitude::Magnitude> {
-    fn eq(&self, _other: &i64) -> bool {
-        unimplemented!("interim CommutativeSemiring<Magnitude> stub — see #7197")
-    }
 }
 
 #[derive(Clone)]
@@ -186,7 +228,7 @@ pub type FreeMonoid<T> = Vec<T>;
 
 #[derive(Clone)]
 pub struct PartialFunction<K, V> {
-    pub lookup: Rc<dyn Fn(K) -> Witness<V>>,
+    pub lookup: Rc<dyn Fn(K) -> Option<V>>,
     pub empty: Rc<PartialFunction<K, V>>,
     pub get: Rc<dyn Fn(K) -> Option<V>>,
     pub insert: Rc<dyn Fn(K, V) -> Rc<PartialFunction<K, V>>>,
@@ -1323,7 +1365,7 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
                 Rc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Rc::new(AlgebraTypeTemplate::ReceiverKey),
             ]),
-            return_type: Rc::new(AlgebraTypeTemplate::WitnessOf {
+            return_type: Rc::new(AlgebraTypeTemplate::OptionalOf {
                 inner: Rc::new(AlgebraTypeTemplate::ReceiverValue),
             }),
             size_effect: None,

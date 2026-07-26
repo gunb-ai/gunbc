@@ -21,8 +21,6 @@ pub use crate::std_syntax::{
 };
 pub use crate::std_types::SourceSpan;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{InternalError, ParseError};
@@ -1646,8 +1644,8 @@ pub fn expect_name(tokens: Rc<TokenStream>) -> Rc<NameResult> {
 pub fn is_name_keyword(token: Rc<Token>) -> bool {
     if is_keyword_shape(token.shape.clone()) {
         match v1_rt::lookup(&dag_non_name_keywords(), token.text.clone()) {
-            v1_rt::Witness::Holds { value: _, .. } => false,
-            v1_rt::Witness::Violates { diagnostic: _, .. } => true,
+            Some(_) => false,
+            None => true,
         }
     } else {
         false
@@ -10923,7 +10921,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
                 let lit_val =
                     v1_rt::lookup(&dag_syntax_spec().keyword_literals.clone(), kw_text.clone());
                 match lit_val.clone() {
-                    v1_rt::Witness::Holds { value: lv, .. } => Rc::new(ExprResult {
+                    Some(lv) => Rc::new(ExprResult {
                         expr: make_expr_node(
                             Rc::new(ExprData::ExprLiteral { value: lv.clone() }),
                             Rc::new(vec![]),
@@ -10934,7 +10932,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
                         ctx: ctx.clone(),
                         err: None,
                     }),
-                    v1_rt::Witness::Violates { diagnostic: _, .. } => {
+                    None => {
                         if (kw_text.clone() == "match".to_string()) {
                             parse_match(tokens.clone(), ctx.clone())
                         } else {
@@ -12674,13 +12672,13 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
                 let lit_val =
                     v1_rt::lookup(&dag_syntax_spec().keyword_literals.clone(), kw_text.clone());
                 match lit_val.clone() {
-                    v1_rt::Witness::Holds { value: lv, .. } => Rc::new(PatternResult {
+                    Some(lv) => Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::LitPattern { value: lv.clone() }),
                         tokens: token_stream_advance(tokens.clone(), 1),
                         ctx: ctx.clone(),
                         err: None,
                     }),
-                    v1_rt::Witness::Violates { diagnostic: _, .. } => Rc::new(PatternResult {
+                    None => Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::Wildcard),
                         tokens: tokens.clone(),
                         ctx: ctx.clone(),

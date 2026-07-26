@@ -51,6 +51,10 @@ mod faithful_string_element_char_witness_test;
 #[cfg(test)]
 mod field_import_surface_generic_arg_test;
 #[cfg(test)]
+mod field_of_fractions_construction_test;
+#[cfg(test)]
+mod field_of_fractions_single_declaration_test;
+#[cfg(test)]
 mod floor_drain_retention_test;
 #[cfg(test)]
 mod fn_as_value_test;
@@ -70,6 +74,8 @@ mod global_bare_census_coverage_test;
 mod global_bare_corpus_census_test;
 #[cfg(test)]
 mod global_bare_variant_locals_receipt_test;
+#[cfg(test)]
+mod group_completion_construction_test;
 #[cfg(test)]
 mod gunbhub_serve_program_test;
 #[cfg(test)]

@@ -41,14 +41,18 @@ import v2.workflow.ci_floor_plan {
   gunbc_falsifier_self_host_wet_interp_eval_budget_ms,
   gunbc_falsifier_silent_pick_gate_receipt_wall_budget_ms,
   gunbc_ci_fast_lane_eval_budget_ms,
+  gunbc_falsifier_substrate_long_lane_eval_budget_ms,
   falsifier_self_host_wet_batch_enrolled,
   falsifier_known_red_probe_batch_enrolled,
   falsifier_silent_pick_gate_batch_enrolled,
   falsifier_rehomed_bin_wet_batch_enrolled,
+  falsifier_cadence_witness_batch_enrolled,
+  falsifier_cadence_witness_entries,
   falsifier_substrate_long_lane_batch_enrolled,
   gunbc_ci_floor_schedule_lens_holds,
-  witness_floor_batch_wall_budgets_cover_schedule,
-  witness_floor_batch_wall_budgets_all_positive,
+  witness_floor_batch_clamp_params_cover_schedule,
+  witness_floor_batch_clamp_overhead_all_positive,
+  witness_floor_batch_clamp_rate_all_nonneg,
 }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, known_red_probe_entries, falsifier_silent_pick_gate_entries, falsifier_substrate_long_lane_entries }
 import v2.compiler.self_host.wet_receipt_enrollment {
@@ -470,6 +474,29 @@ fn falsifier_self_host_wet_budget_declared_holds() -> Bool {
     && gunbc_falsifier_self_host_wet_interp_eval_budget_ms() == 120000
     && gunbc_falsifier_silent_pick_gate_receipt_wall_budget_ms() == 900000
     && gunbc_ci_fast_lane_eval_budget_ms() == 5000
+    && gunbc_falsifier_substrate_long_lane_eval_budget_ms() == 180000
+}
+
+fn falsifier_substrate_long_lane_budget_exceeds_fast_lane_holds() -> Bool {
+  gunbc_falsifier_substrate_long_lane_eval_budget_ms() > gunbc_ci_fast_lane_eval_budget_ms()
+}
+
+fn falsifier_cadence_witness_batch_holds(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
+      match mode {
+        SelectionApplied => true
+        SelectionPredictOnly => false
+        SelectionOff => false
+      }
+        && (length(xs: dirs) == 0)
+        && (length(xs: entries) == length(xs: falsifier_cadence_witness_entries()))
+        && discovery_batch_declares_wet(r: r)
+        && p.spawns_host_compiler
+        && (p.heavy_whole_tree_resolve == false)
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
+  }
 }
 
 fn falsifier_plan_structure_holds() -> Bool {
@@ -482,7 +509,8 @@ fn falsifier_plan_structure_holds() -> Bool {
   let silent_pick_gate_enrolled = falsifier_silent_pick_gate_batch_enrolled()
   let rehomed_enrolled = falsifier_rehomed_bin_wet_batch_enrolled()
   let substrate_long_enrolled = falsifier_substrate_long_lane_batch_enrolled()
-  let expected_batches = 1 + (if wet_enrolled { 1 } else { 0 }) + (if wet_known_red_enrolled { 1 } else { 0 }) + (if probe_enrolled { 1 } else { 0 }) + (if silent_pick_gate_enrolled { 1 } else { 0 }) + (if rehomed_enrolled { 1 } else { 0 }) + (if substrate_long_enrolled { 1 } else { 0 })
+  let cadence_enrolled = falsifier_cadence_witness_batch_enrolled()
+  let expected_batches = 1 + (if wet_enrolled { 1 } else { 0 }) + (if wet_known_red_enrolled { 1 } else { 0 }) + (if probe_enrolled { 1 } else { 0 }) + (if silent_pick_gate_enrolled { 1 } else { 0 }) + (if rehomed_enrolled { 1 } else { 0 }) + (if substrate_long_enrolled { 1 } else { 0 }) + (if cadence_enrolled { 1 } else { 0 })
   let wet_ok = if wet_enrolled {
     let wet_batch = skip(xs: batches, n: 1).first()
     (wet_batch.length() == 1)
@@ -529,7 +557,15 @@ fn falsifier_plan_structure_holds() -> Bool {
   } else {
     true
   }
-  (length(xs: batches) == expected_batches) && predict_ok && wet_ok && wet_known_red_ok && probe_ok && silent_pick_gate_ok && rehomed_ok && substrate_long_ok
+  let cadence_ok = if cadence_enrolled {
+    let cadence_offset = 1 + (if wet_enrolled { 1 } else { 0 }) + (if wet_known_red_enrolled { 1 } else { 0 }) + (if probe_enrolled { 1 } else { 0 }) + (if silent_pick_gate_enrolled { 1 } else { 0 }) + (if rehomed_enrolled { 1 } else { 0 }) + (if substrate_long_enrolled { 1 } else { 0 })
+    let cadence_batch = skip(xs: batches, n: cadence_offset).first()
+    (cadence_batch.length() == 1)
+      && falsifier_cadence_witness_batch_holds(r: cadence_batch.first())
+  } else {
+    true
+  }
+  (length(xs: batches) == expected_batches) && predict_ok && wet_ok && wet_known_red_ok && probe_ok && silent_pick_gate_ok && rehomed_ok && substrate_long_ok && cadence_ok
 }
 
 fn witness_cheap_gates_are_resource_anchors() -> Bool {
@@ -559,10 +595,12 @@ test fn ci_floor_plan_witnesses() -> Bool {
     && witness_hermetic_floor_posture_declared()
     && witness_floor_arm_time_budget_refusal_plan_roster_authority()
     && witness_floor_arm_time_budget_refusal_materialized_roster_matches_seed()
-    && witness_floor_batch_wall_budgets_cover_schedule()
-    && witness_floor_batch_wall_budgets_all_positive()
+    && witness_floor_batch_clamp_params_cover_schedule()
+    && witness_floor_batch_clamp_overhead_all_positive()
+    && witness_floor_batch_clamp_rate_all_nonneg()
     && falsifier_rehomed_bin_wet_batch_enrolled()
     && falsifier_substrate_long_lane_batch_enrolled()
+    && falsifier_substrate_long_lane_budget_exceeds_fast_lane_holds()
 }
 
 test fn ci_floor_optin_roster_witnesses() -> Bool {

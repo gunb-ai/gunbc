@@ -1,7 +1,13 @@
 module v2.extdeps.formats.json_schema
 
 import v2.extdeps.formats.json { JsonDocument, JsonValue }
-import v2.std.collection { Map, Optional, Set }
+import v2.std.collection {
+  Map,
+  Set
+}
+import v2.std.optional {
+  Optional
+}
 import v2.std.witness { Witness }
 
 type JsonSchemaCoreTypeName
