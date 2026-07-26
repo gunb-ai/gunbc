@@ -15,7 +15,22 @@ data hand_import_allowed_path_prefixes: List<String> = [
   "dag/std/os/invocation.dag",
 ]
 
-data hand_import_gate_note: String = "Pre-corpus-wide gate: zero import additions vs origin/main outside operator-allowed witness roster and type-resolution / value-resolution probe fixture dirs (hand_import_allowed_path_prefixes). Host realization: hand_import_gate_passes (git diff + per-file import-block compare). Operator ruling (clever-pike-49, keen-wolf-121): blocks hand-import churn before projection-generator corpus-wide runs. HAND-RUST receipt authority: gunbc.hand_import_gate_scaffold (hand_import_gate_hand_rust_scaffold + hand_import_gate_receipt_plan_anchor — shell→intent Phase 3 lane). Counted fail-open residues each carry their own scaffold dissolution trigger — not one bundled trigger (review 43116): multiline braced imports (parse residue), allowed-prefix mirror (§3 parallel representation until on-carrier roster)."
+data hand_import_gate_note: String = "Pre-corpus-wide gate: zero import additions vs origin/main outside operator-allowed witness roster and type-resolution / value-resolution probe fixture dirs (hand_import_allowed_path_prefixes). Host realization: hand_import_gate_passes (git diff + per-file import-block compare). Operator ruling (clever-pike-49, keen-wolf-121): blocks hand-import churn before projection-generator corpus-wide runs. HAND-RUST receipt authority: tools.hand_import_gate (hand_import_gate_hand_rust_scaffold + hand_import_gate_receipt_plan_anchor — shell→intent Phase 3 lane). Counted fail-open residues each carry their own scaffold dissolution trigger — not one bundled trigger (review 43116): multiline braced imports (parse residue), allowed-prefix mirror (§3 parallel representation until on-carrier roster)."
+
+data hand_import_gate_hand_rust_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "hand_import_gate_passes",
+    field: WholeDeclaration
+  }
+}
+
+data hand_import_gate_dissolve_trigger: String = "🟡 dissolve-on: cli_run::hand_import_gate_passes — git diff + single-line import-block compare host realization (mirrors tools.hand_import_gate roster). DISSOLVES WHEN hand_import_gate_passes_for_pr is enrolled as a CI floor witness without a hand-written shell carrier (gunbc orchestration emit / host_effect_apply routes gate eval — shell→intent lane ROADMAP shell→intent Phase 3, docs/plans/shell-intent-emit-realization-design.md)."
+
+data hand_import_gate_receipt_plan_anchor: String = "docs/plans/shell-intent-emit-realization-design.md Phase 3 · docs/plans/cli-run-hollowing-plan.md §2 Corpus discovery · ROADMAP §7 ts-seed-interim (hand-Rust review bar: named lane + concrete plan row — operator ruling clever-pike-49 keen-wolf-121 pre-corpus-wide import gate)."
+
+data hand_import_gate_equivalence_witness: String = "dag/test/claim/hand_import_gate_witness_test.dag"
 
 data hand_import_parse_multiline_residue_note: String = "hand_import_parse_imports counts single-line `import mod { sym, ... }` and bare `import mod` rows. Multi-line braced imports contribute no entries and are invisible to the gate — a counted fail-open parse residue until the parser is grammar-owned."
 
