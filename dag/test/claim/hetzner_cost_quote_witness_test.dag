@@ -1,6 +1,5 @@
 module test.claim.hetzner_cost_quote_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn hetzner_cax41_hourly_micros() -> std.nat.Nat {
@@ -12,7 +11,7 @@ fn hetzner_cax41_hourly_micros() -> std.nat.Nat {
   )
 }
 
-fn hetzner_cax41_cost_class_is_per_second_billed() -> Bool {
+test fn hetzner_cax41_cost_class_is_per_second_billed() -> Bool {
   let quote = per_second_billed_cost_quote(
     unit_price: cax41_catalog.hourly,
     currency: cax41_catalog.currency,
@@ -25,19 +24,14 @@ fn hetzner_cax41_cost_class_is_per_second_billed() -> Bool {
   }
 }
 
-fn hetzner_cax41_currency_is_eur() -> Bool {
+test fn hetzner_cax41_currency_is_eur() -> Bool {
   match cax41_catalog.currency {
     Eur => true
     _ => false
   }
 }
 
-fn hetzner_cax41_unit_price_matches_catalog() -> Bool {
+test fn hetzner_cax41_unit_price_matches_catalog() -> Bool {
   hetzner_cax41_hourly_micros() == 50500
 }
 
-test fn hetzner_cost_quote_witness_holds() -> Bool {
-  hetzner_cax41_cost_class_is_per_second_billed()
-    && hetzner_cax41_currency_is_eur()
-    && hetzner_cax41_unit_price_matches_catalog()
-}

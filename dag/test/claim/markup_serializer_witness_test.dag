@@ -18,15 +18,15 @@ import extdeps.languages.html_fragment { serialize_fragment }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn witness_text_escaping_by_execution() -> Bool {
+test fn witness_text_escaping_by_execution() -> Bool {
   escape_text(s: "a <b> & c") == "a &lt;b&gt; &amp; c"
 }
 
-fn witness_attribute_escaping_by_execution() -> Bool {
+test fn witness_attribute_escaping_by_execution() -> Bool {
   escape_attribute(s: "a \"q\" <&>") == "a &quot;q&quot; &lt;&amp;&gt;"
 }
 
-fn witness_url_escaping_by_execution() -> Bool {
+test fn witness_url_escaping_by_execution() -> Bool {
   escape_url(s: "/p?x=a b&y=\"z\"<") == "/p?x=a%20b&amp;y=%22z%22%3C"
 }
 
@@ -41,7 +41,7 @@ fn sample_fragment() -> Fragment {
   }
 }
 
-fn witness_serialize_fragment_full() -> Bool {
+test fn witness_serialize_fragment_full() -> Bool {
   serialize_fragment(frag: sample_fragment()) ==
     "<a href=\"/x?a=1&amp;b=2\">hi &lt;b&gt; &amp; \"q\"<span>&gt;end</span></a>"
 }
@@ -62,25 +62,25 @@ fn react_consumer_button() -> Fragment {
   }
 }
 
-fn witness_one_fold_serves_html_and_react() -> Bool {
+test fn witness_one_fold_serves_html_and_react() -> Bool {
   let html = serialize_fragment(frag: html_consumer_button())
   let react = serialize_fragment(frag: react_consumer_button())
   (html == react) && (html == "<button class=\"primary\">Go</button>")
 }
 
-fn witness_round_trip_text() -> Bool {
+test fn witness_round_trip_text() -> Bool {
   unescape_text(s: escape_text(s: "x <a> & \"q\" y")) == "x <a> & \"q\" y"
 }
 
-fn witness_round_trip_attribute() -> Bool {
+test fn witness_round_trip_attribute() -> Bool {
   unescape_attribute(s: escape_attribute(s: "x <a> & \"q\" y")) == "x <a> & \"q\" y"
 }
 
-fn witness_round_trip_url() -> Bool {
+test fn witness_round_trip_url() -> Bool {
   unescape_url(s: escape_url(s: "x <a> & \"q\" y")) == "x <a> & \"q\" y"
 }
 
-fn witness_round_trip_url_literal_percent() -> Bool {
+test fn witness_round_trip_url_literal_percent() -> Bool {
   unescape_url(s: escape_url(s: "a %3C %22 %25 <b>")) == "a %3C %22 %25 <b>"
 }
 
@@ -92,7 +92,7 @@ fn req_a_breakout_fragment() -> Fragment {
   }
 }
 
-fn witness_url_within_attribute_composition() -> Bool {
+test fn witness_url_within_attribute_composition() -> Bool {
   serialize_fragment(frag: req_a_breakout_fragment()) ==
     "<a href=\"x%22&amp;%3Cy%20onmouseover=z\"></a>"
 }
@@ -101,22 +101,9 @@ fn escape_text_drop_lt(s: String) -> String {
   replace(replace(s, "&", "&amp;"), ">", "&gt;")
 }
 
-fn witness_perturb_break_escape_goes_red() -> Bool {
+test fn witness_perturb_break_escape_goes_red() -> Bool {
   (escape_text(s: "a <b>") != escape_text_drop_lt(s: "a <b>")) &&
     (escape_text(s: "a <b>") == "a &lt;b&gt;") &&
     (escape_text_drop_lt(s: "a <b>") == "a <b&gt;")
 }
 
-test fn markup_serializer_keystone_holds() -> Bool {
-  witness_text_escaping_by_execution() &&
-    witness_attribute_escaping_by_execution() &&
-    witness_url_escaping_by_execution() &&
-    witness_serialize_fragment_full() &&
-    witness_one_fold_serves_html_and_react() &&
-    witness_round_trip_text() &&
-    witness_round_trip_attribute() &&
-    witness_round_trip_url() &&
-    witness_round_trip_url_literal_percent() &&
-    witness_url_within_attribute_composition() &&
-    witness_perturb_break_escape_goes_red()
-}

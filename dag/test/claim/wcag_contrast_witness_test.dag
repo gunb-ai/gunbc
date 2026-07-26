@@ -18,7 +18,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn witness_extremes_exact() -> Bool {
+test fn witness_extremes_exact() -> Bool {
   let white = relative_luminance_scaled(hue: 0, sat_pct: 0, light_pct: 100)
   let black = relative_luminance_scaled(hue: 0, sat_pct: 0, light_pct: 0)
   white == 10000
@@ -27,7 +27,7 @@ fn witness_extremes_exact() -> Bool {
     && contrast_ratio_x100(lum_a_scaled: white, lum_b_scaled: white) == 100
 }
 
-fn witness_gamma_kernel_pinned() -> Bool {
+test fn witness_gamma_kernel_pinned() -> Bool {
   let full = linearize_channel_scaled(c_scaled: 10000)
   let half = linearize_channel_scaled(c_scaled: 5000)
   let low = linearize_channel_scaled(c_scaled: 300)
@@ -36,23 +36,23 @@ fn witness_gamma_kernel_pinned() -> Bool {
     && low == (300 * 100) / 1292
 }
 
-fn witness_reviewer_oracle_night_text() -> Bool {
+test fn witness_reviewer_oracle_night_text() -> Bool {
   let r = hsl_contrast_ratio_x100(hue_a: 35, sat_a: 14, light_a: 78, hue_b: 226, sat_b: 30, light_b: 7)
   r >= 1100 && r <= 1200
 }
 
-fn witness_reviewer_oracle_day_brass_marks_only() -> Bool {
+test fn witness_reviewer_oracle_day_brass_marks_only() -> Bool {
   let r = hsl_contrast_ratio_x100(hue_a: 42, sat_a: 52, light_a: 38, hue_b: 40, sat_b: 32, light_b: 95)
   r >= 375 && r <= 420
     && hsl_contrast_at_least(hue_a: 42, sat_a: 52, light_a: 38, hue_b: 40, sat_b: 32, light_b: 95, threshold_hundredths: wcag_aa_large_text_and_graphics_hundredths)
     && !hsl_contrast_at_least(hue_a: 42, sat_a: 52, light_a: 38, hue_b: 40, sat_b: 32, light_b: 95, threshold_hundredths: wcag_aa_normal_text_hundredths)
 }
 
-fn witness_same_color_refuses_all_thresholds() -> Bool {
+test fn witness_same_color_refuses_all_thresholds() -> Bool {
   !hsl_contrast_at_least(hue_a: 226, sat_a: 30, light_a: 7, hue_b: 226, sat_b: 30, light_b: 7, threshold_hundredths: wcag_aa_large_text_and_graphics_hundredths)
 }
 
-fn witness_live_themes_clear_hardened_law() -> Bool {
+test fn witness_live_themes_clear_hardened_law() -> Bool {
   theme_contrast_ok(t: night_theme) && theme_contrast_ok(t: day_theme)
 }
 
@@ -67,16 +67,7 @@ fn mud_theme() -> Theme {
   ] }
 }
 
-fn witness_mud_theme_refused() -> Bool {
+test fn witness_mud_theme_refused() -> Bool {
   !theme_contrast_ok(t: mud_theme())
 }
 
-test fn wcag_contrast_keystone_holds() -> Bool {
-  witness_extremes_exact()
-    && witness_gamma_kernel_pinned()
-    && witness_reviewer_oracle_night_text()
-    && witness_reviewer_oracle_day_brass_marks_only()
-    && witness_same_color_refuses_all_thresholds()
-    && witness_live_themes_clear_hardened_law()
-    && witness_mud_theme_refused()
-}

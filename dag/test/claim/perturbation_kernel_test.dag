@@ -1,6 +1,5 @@
 module test.claim.perturbation_kernel
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn is_consistent(reading: PerturbationReading, responded: Bool) -> Bool {
@@ -10,33 +9,26 @@ fn is_consistent(reading: PerturbationReading, responded: Bool) -> Bool {
   }
 }
 
-fn witness_forward_silent_is_consistent() -> Bool {
+test fn witness_forward_silent_is_consistent() -> Bool {
   is_consistent(reading: ForwardSameInSameOut, responded: false)
 }
 
-fn witness_forward_responded_is_violation() -> Bool {
+test fn witness_forward_responded_is_violation() -> Bool {
   perturbation_is_violation(reading: ForwardSameInSameOut, output_responded: true)
 }
 
-fn witness_backward_responded_is_consistent() -> Bool {
+test fn witness_backward_responded_is_consistent() -> Bool {
   perturbation_consistent(reading: BackwardDiffInDiffOut, output_responded: true)
 }
 
-fn witness_backward_silent_is_violation() -> Bool {
+test fn witness_backward_silent_is_violation() -> Bool {
   perturbation_is_violation(reading: BackwardDiffInDiffOut, output_responded: false)
 }
 
-fn witness_readings_are_dual() -> Bool {
+test fn witness_readings_are_dual() -> Bool {
   (is_consistent(reading: ForwardSameInSameOut, responded: false)
     && (is_consistent(reading: BackwardDiffInDiffOut, responded: false) == false))
   && (is_consistent(reading: BackwardDiffInDiffOut, responded: true)
     && (is_consistent(reading: ForwardSameInSameOut, responded: true) == false))
 }
 
-test fn perturbation_kernel_witnesses() -> Bool {
-  witness_forward_silent_is_consistent()
-    && witness_forward_responded_is_violation()
-    && witness_backward_responded_is_consistent()
-    && witness_backward_silent_is_violation()
-    && witness_readings_are_dual()
-}

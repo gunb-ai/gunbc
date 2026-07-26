@@ -1,14 +1,13 @@
 module test.claim.cargo_version
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn w_stage0_default_package_version() -> Bool {
+test fn w_stage0_default_package_version() -> Bool {
   default_stage0_package_version == "0.1.0"
     && render_cargo_package_version_field(version: default_stage0_package_version) == "version = \"0.1.0\""
 }
 
-fn w_package_version_field_renders() -> Bool {
+test fn w_package_version_field_renders() -> Bool {
   let pkg = CargoPackage {
     name: "demo",
     version: "2.4.6",
@@ -18,7 +17,7 @@ fn w_package_version_field_renders() -> Bool {
   render_cargo_package_version_field(version: pkg.version) == "version = \"2.4.6\""
 }
 
-fn w_registry_dep_version_requirements() -> Bool {
+test fn w_registry_dep_version_requirements() -> Bool {
   let serde = CargoDependency {
     name: "serde",
     source: RegistryDep { version: "1", features: ["derive", "rc"] }
@@ -41,30 +40,21 @@ fn w_registry_dep_version_requirements() -> Bool {
     }
 }
 
-fn w_requirement_distinct_from_package_version() -> Bool {
+test fn w_requirement_distinct_from_package_version() -> Bool {
   render_cargo_version_requirement_toml(req: "1") != render_cargo_package_version_field(version: "1.0.0")
 }
 
-fn w_emitter_header_prefix_uses_default() -> Bool {
+test fn w_emitter_header_prefix_uses_default() -> Bool {
   render_cargo_package_header_prefix(name: "demo-crate") == "[package]\nname = \"demo-crate\"\nversion = \"0.1.0\""
 }
 
-fn w_min_cargo_version_grounded() -> Bool {
+test fn w_min_cargo_version_grounded() -> Bool {
   min_cargo_version == ">= 1.56"
 }
 
 fn dep_requirement_one() -> CargoVersionRequirement { "1" }
 
-fn w_tool_floor_distinct_from_dep_requirement() -> Bool {
+test fn w_tool_floor_distinct_from_dep_requirement() -> Bool {
   min_cargo_version != dep_requirement_one()
 }
 
-test fn cargo_version_witnesses() -> Bool {
-  w_stage0_default_package_version()
-    && w_package_version_field_renders()
-    && w_registry_dep_version_requirements()
-    && w_requirement_distinct_from_package_version()
-    && w_emitter_header_prefix_uses_default()
-    && w_min_cargo_version_grounded()
-    && w_tool_floor_distinct_from_dep_requirement()
-}

@@ -21,7 +21,7 @@ data rtx_5090_pcie_lane_count: Nat = 16
 data rtx_5090_sm_shared_memory_bytes: Nat = 102400
 data rtx_5090_sm_register_file_bytes: Nat = 262144
 
-fn w_rtx_5090_interconnect_is_the_shared_pcie_authority() -> Bool {
+test fn w_rtx_5090_interconnect_is_the_shared_pcie_authority() -> Bool {
   match nvidia_rtx_5090_catalog.interconnect {
     Present { value: link } =>
       link.generation == Gen5
@@ -32,7 +32,7 @@ fn w_rtx_5090_interconnect_is_the_shared_pcie_authority() -> Bool {
   }
 }
 
-fn w_rtx_5090_sm_cache_geometry_matches_cuda_docs() -> Bool {
+test fn w_rtx_5090_sm_cache_geometry_matches_cuda_docs() -> Bool {
   match nvidia_rtx_5090_catalog.sm_cache {
     Present { value: geometry } =>
       byte_size_count(b: geometry.shared_memory_per_sm) == rtx_5090_sm_shared_memory_bytes
@@ -42,13 +42,13 @@ fn w_rtx_5090_sm_cache_geometry_matches_cuda_docs() -> Bool {
   }
 }
 
-fn w_rtx_5090_sm_cache_citations_cover_both_fields() -> Bool {
+test fn w_rtx_5090_sm_cache_citations_cover_both_fields() -> Bool {
   let citations = rtx_5090_sm_cache_citations
   list_length(items: citations) == 2
     && citations.first().authority == cuda_compute_capabilities_authority
 }
 
-fn w_apple_m5_gpu_leaves_unified_soc_facts_unfabricated() -> Bool {
+test fn w_apple_m5_gpu_leaves_unified_soc_facts_unfabricated() -> Bool {
   match apple_m5_gpu_catalog.interconnect {
     Absent => true
     Present { value: _ } => false
@@ -59,9 +59,3 @@ fn w_apple_m5_gpu_leaves_unified_soc_facts_unfabricated() -> Bool {
     }
 }
 
-test fn gpu_interconnect_and_sm_cache_witnesses() -> Bool {
-  w_rtx_5090_interconnect_is_the_shared_pcie_authority()
-    && w_rtx_5090_sm_cache_geometry_matches_cuda_docs()
-    && w_rtx_5090_sm_cache_citations_cover_both_fields()
-    && w_apple_m5_gpu_leaves_unified_soc_facts_unfabricated()
-}
