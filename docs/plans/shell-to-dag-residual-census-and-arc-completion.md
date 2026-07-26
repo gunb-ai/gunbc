@@ -134,9 +134,11 @@ Two tracks run in parallel.
 - **P6:** `host_identity_converge` drops its `sudo hostnamectl` script for a typed hostname effect (it's already on `apply_gated`). *(P6 Part 2 corrected 2026-07-26: `nbd_proxy_serve_program`'s `RawLine` body is **already gone** — the operator's 2026-07-14 no-`trap`/`&`/`$!` ruling routed it to a systemd transient-unit transport instead of "first-class typed background/trap statements", which are now explicitly **not** a target. What remains is the observe-side read-back grounding, §1.C.)*
 - **P7:** `build_step_transport` — **LANDED (#6565, 2026-07-14)**: corruption-probe harness reshaped onto typed `shell.Mktemp`/`Filesystem.Write`/`WitnessBin.Run`, dropping the `verifications_script` `serialize_bash` execution.
 
-### The join — delete `program.dag`
+### The join — ~~delete `program.dag`~~ **already done (#6831); the real terminus is the wall**
 
-When Track 1's emitters route through the v2 bash rows and Track 2's runtime-present shell is on `apply()` with typed effects, the `bash_program_importer_count` reaches the permanent-residue floor (the v2 replacement emitter + the foreign-executor roster). At that point `bash.program`/`serialize_bash` has no runtime importer, the ratchet's baseline hits the floor, and `program.dag` + `serialize_bash` delete — the arc's terminal step. The v2 bidirectional bash language is the single bash authority.
+**Superseded 2026-07-26 (`review 43477`).** This section described the arc's terminal step as: importers drain → the `bash_program_importer_count` ratchet hits its floor → `program.dag` + `serialize_bash` delete. **None of that is pending.** The sidecar was deleted outright in #6831 Phase 0 and the ratchet was pruned with it as vacuous (resolve now fails before it could fire); the identifier survives nowhere but this document. So the join is not a deletion the tracks build toward — it already happened, ahead of them.
+
+The v2 bidirectional bash language **is** the single bash authority today. What actually remains as the arc's terminus is the **Phase-3 wall** (§4.F): brand `TransportScript` so shell text can only be *produced* by `emit(intent, Bash)`, and activate the inert `host_language_transport_script` lens — turning "no sidecar exists" into "a hand-built transport string is unwritable" (§5 construction over validation). Tracks 1 and 2 below feed that wall, not a deletion.
 
 **Critical-path summary:** everything non-foreign converges on **P4 (the `host_effect_apply` typed-effect + `EmitArtifactThenThinRun` mint)** — **P4 is LANDED** (#6572/#6585/#6598; FLAGs 2a(i)/2b/2c signed/discharged 2026-07-14, see §2). The critical path is now P5/P6 (mechanical on the landed interface) and the operator sign of roadmap `6-shell-slice2`; P1/P2 (emitter side) run independently. **Dispatch note (2026-07-20):** do not re-dispatch workers onto P4/slice 2 from the old ~275-line framing — that staleness produced two misdispatches onto finished work.
 
@@ -294,7 +296,7 @@ These are correct as shell (GHA `run:`, cron, git hooks, pre-runtime bootstrap �
 
 | surface | status | action |
 | --- | --- | --- |
-| `transport_script_from_body(body: String)` — 26 sites | the **porous** `TransportScript` brand: `shell.Exec.Run` already takes `TransportScript` (`extdeps/shell/exec.dag:53`) but the constructor accepts any `String` | Phase-3: brand `TransportScript` so it is produced ONLY by `emit(intent,Bash)`/`serialize_bash` — a hand-concat becomes a type error (§5 construction wall) |
+| `transport_script_from_body(body: String)` — 26 sites | the **porous** `TransportScript` brand: `shell.Exec.Run` already takes `TransportScript` (`extdeps/shell/exec.dag:53`) but the constructor accepts any `String` | Phase-3: brand `TransportScript` so it is produced ONLY by `emit(intent,Bash)` — a hand-concat becomes a type error (§5 construction wall). *(Corrected 2026-07-26: this read "`emit(intent,Bash)`/`serialize_bash`". Naming a deleted sidecar as a sanctioned producer would re-open the very hole the brand closes — there is exactly **one** producer.)* |
 | `shell_exec_via_bash` (`shell_bash_runner.dag:32`) | heredoc runner scaffold | dissolves when no caller passes a raw script |
 | `host_language_transport_script` lens | **inert** (`fail_closed_lockdown.dag`) — no gate reds a bare-string `shell.Exec.Run` | activate once the brand lands |
 | meta-exec module `extdeps.shell.exec` | not walled | module-isolate / symbol-visibility confinement (meta-exec-confinement lane) |
@@ -572,7 +574,7 @@ Bash-as-target lives in one isolated backend: `src/v2/extdeps/languages/bash*` +
 
 Every §5.A/§5.B row can be **faked by joining argv back into a string** and feeding `shell.Exec.Run(script)` / `ShellOnHost{script}` — sleek-crab #7064 did exactly this (`argv_join(...) + " 2>/dev/null || true"`). As long as that sink is reachable from intent, relocation is the path of least resistance and a brief alone won't stop it. So the wall is **not cleanup-after** — it's the enabler:
 
-- Brand `TransportScript` so it is produced ONLY by `emit(intent, Bash)`/`serialize_bash` (today `transport_script_from_body(body: String)` accepts any string — the porous boundary).
+- Brand `TransportScript` so it is produced ONLY by `emit(intent, Bash)` (today `transport_script_from_body(body: String)` accepts any string — the porous boundary). *(Corrected 2026-07-26 with §4.F: `serialize_bash` was listed here as a second sanctioned producer; it is deleted, and a wall with two doors is not a wall.)*
 - Make `ShellOnHost{script}` / the runtime-present realization edge take **typed argv (`List<String>`), not `String`** — a hand-join becomes a type error.
 - Activate the `host_language_transport_script` lens (inert today, `fail_closed_lockdown.dag`).
 
