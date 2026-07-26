@@ -14,11 +14,9 @@
 
 ## 1. Pure-eval emit seam (`emit_host`)
 
-**UPDATED 2026-07-26 (loyal-raven-94, Kernel-D lane):** this symptom is stale. `v2.compiler.emit_host.run_host_process` / `run_host_process_with_cache` / `run_host_process_admitted` are wired: transport admission via `build_transport_admissible`, actual dispatch via `emit_host_run_transport` / `emit_host_run_transport_cached` against the modeled `HostTransportDescriptor` rows. `emit_host_transport_not_wired` no longer exists in `emit_host.dag` — grep confirms zero occurrences. The pure-eval emit seam described below is landed; treat this section as historical record of the prior gap, not the current state.
+**Symptom:** `v2.compiler.emit_host.run_host_process` is fail-closed (`emit_host_transport_not_wired`) — the modeled `HostTransportDescriptor` rows in `extdeps/languages/*` are not yet consumed by the v1 interpreter tap. **Authority:** `run_test_claim_emit_vs_eval` already compares `emit(tree)` against `eval(tree)` for `EqualsClaim` / `CompilesClaim`; the host run is the residue.
 
-**Symptom (historical):** `v2.compiler.emit_host.run_host_process` was fail-closed (`emit_host_transport_not_wired`) — the modeled `HostTransportDescriptor` rows in `extdeps/languages/*` were not yet consumed by the v1 interpreter tap. **Authority:** `run_test_claim_emit_vs_eval` already compares `emit(tree)` against `eval(tree)` for `EqualsClaim` / `CompilesClaim`; the host run was the residue.
-
-**Construction direction (this slice, DONE):** name the authority modules and phase gate (`ModelAndWitnessOnly` → `PureEvalEmitWired`). **Follow-on:** wire transport realization in the seed interpreter (or thin host handler) from `HostTransportDescriptor` rows — same class as #5075 `TargetModel.runtime_row`. (Landed — see UPDATED note above.)
+**Construction direction (this slice):** name the authority modules and phase gate (`ModelAndWitnessOnly` → `PureEvalEmitWired`). **Follow-on:** wire transport realization in the seed interpreter (or thin host handler) from `HostTransportDescriptor` rows — same class as #5075 `TargetModel.runtime_row`.
 
 ## 2. Pinned host-physics (transports / fixtures / cache)
 
