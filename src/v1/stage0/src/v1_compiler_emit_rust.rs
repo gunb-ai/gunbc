@@ -23376,24 +23376,7 @@ pub fn emit_field_value_with_context(
                         shared_types.clone(),
                         emit_info.clone(),
                     );
-                    let rc_name = match corrected_parent.clone() {
-                        Some(en) => en.clone(),
-                        None => variant_name.clone(),
-                    };
-                    if ((rc_name.clone() != "".to_string())
-                        && rust_seed_value_needs_rc_wrap(
-                            rc_name.clone(),
-                            rc_name.clone(),
-                            OwnershipWrapUseSite::OwnershipAtStructField,
-                        ))
-                    {
-                        v1_rt::concat(
-                            v1_rt::concat("Rc::new(".to_string(), raw.clone()),
-                            ")".to_string(),
-                        )
-                    } else {
-                        raw.clone()
-                    }
+                    raw.clone()
                 }
                 None => emit_typed_expr(
                     field_value.clone(),

@@ -6806,21 +6806,7 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
         if concrete != "" && concrete != variant_name { Present { value: concrete } } else { tn }
       } else { tn }
       let raw = emit_typed_record_lit(type_name: peeled_type_name, fields: fs, parent_enum: parent_enum, resolved_type: expanded_rt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-      let rc_name = match parent_enum {
-        Present { value: en } => en
-        Absent =>
-          match contextual_variant_parent(variant_name: variant_name, parent_enum: parent_enum, resolved_type: expanded_rt, emit_info: emit_info, source_indices: si) {
-            Present { value: p } => p
-            Absent =>
-              let expanded_name = authored_name_at(source_indices: si, node: expanded_rt)
-              if expanded_rt.ident_span != none && expanded_name != "" && expanded_name != variant_name && set_contains(shared_types, expanded_name) {
-                expanded_name
-              } else { variant_name }
-          }
-      }
-      if rc_name != "" && set_contains(shared_types, rc_name) {
-        concat("Rc::new(", raw, ")")
-      } else { raw }
+      raw
     _ => emit_error_expr(message: "emit_rust_expr_record_lit expected ExprRecordLit", target: Rust)
   }
 }
@@ -8408,25 +8394,7 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
             Absent => pe
           }
           let raw = emit_typed_record_lit(type_name: tn, fields: inner_fields, parent_enum: corrected_parent, resolved_type: resolved_type(n: field_value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-          let rc_name = match corrected_parent {
-            Present { value: en } => en
-            Absent => variant_name
-          }
-          let after_shared = if rc_name != "" && set_contains(shared_types, rc_name) {
-            concat("Rc::new(", raw, ")")
-          } else { raw }
-          match expected_type {
-            Present { value: et } =>
-              let rendered = render_rust_type_with_applied_binding(n: field_value, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, use_site: OwnershipAtStructField)
-              if rust_seed_catalog_wraps_box_at_use_site(type_name: et, rendered: rendered, use_site: OwnershipAtStructField) {
-                if string_length(s: after_shared) > 10 && substring(s: after_shared, start: 0, end: 10) == "Box::new(" { after_shared }
-                else if rust_type_is_box_wrapped(type_name: after_shared) { after_shared }
-                else { concat("Box::new(", after_shared, ")") }
-              } else {
-                after_shared
-              }
-            Absent => after_shared
-          }
+          raw
         Absent =>
           emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       }
