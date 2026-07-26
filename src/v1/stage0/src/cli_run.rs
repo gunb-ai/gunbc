@@ -28091,7 +28091,8 @@ mod module_path_index_tests {
         let keys =
             super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
         assert!(
-            keys.iter().any(|k| k.ends_with("::witness_band_fold_pins_operator_vocabulary")),
+            keys.iter()
+                .any(|k| k.ends_with("::witness_band_fold_pins_operator_vocabulary")),
             "file-grain bin_wet must expand to leaf consumer keys; got {keys:?}"
         );
         assert!(
