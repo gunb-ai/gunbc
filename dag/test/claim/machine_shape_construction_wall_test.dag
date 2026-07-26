@@ -67,13 +67,6 @@ fn non_empty_contains_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
   }
 }
 
-fn gate_rejects(o: Outcome<Witness<Node>>) -> Bool {
-  match o {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
-  }
-}
-
 fn gate_accepts(o: Outcome<Witness<Node>>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true

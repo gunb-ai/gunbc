@@ -83,10 +83,6 @@ fn nullary_inhabitant_discriminants(inhabitants: List<Behavior>) -> List<Symbol>
   })
 }
 
-fn symbol_in(syms: List<Symbol>, s: Symbol) -> Bool {
-  fold(syms, init: false, f: fn(acc, x) { acc || (x == s) })
-}
-
 test fn witness_gate_roster_matches_coproduct_arms() -> Bool {
   let arm_keys = coproduct_arm_keys(type_name: reflect_gate_type)
   match coproduct_nullary_inhabitants(type_name: reflect_gate_type) {

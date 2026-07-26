@@ -363,10 +363,6 @@ data rust_add_inferred_tree: InferredTree = InferredTree {
   }
 }
 
-fn anchor_rust_add_translate_accepts() -> Outcome<Node> {
-  translate(tree: rust_add_inferred_tree, target: rust_add_target_model)
-}
-
 fn anchor_rust_add_emit_accepts() -> Outcome<Medium<String>> {
   emit(tree: rust_add_inferred_tree, target: rust_add_target_model)
 }

@@ -120,29 +120,6 @@ fn pick_eval_int_literal_optional(lexeme: String) -> Optional<Node> {
   }
 }
 
-fn pick_eval_kw_true_node() -> Node {
-  pick_eval_atom(s: ^dag_token_kw_true)
-}
-
-fn pick_eval_kw_false_node() -> Node {
-  pick_eval_atom(s: ^dag_token_kw_false)
-}
-
-fn pick_ingested_parsed_module_from_source(source: String) -> Outcome<Node> {
-  let lm = dag_language_model()
-  bind_outcome(
-    o: tokenize(text: source, file: ^pick_ingested_source_file, rules: lm.lex),
-    f: fn(tokens) {
-      bind_outcome(
-        o: parse_module(tokens: tokens, grammar: lm.grammar),
-        f: fn(artifact) {
-          outcome_accepted(value: artifact.tree)
-        }
-      )
-    }
-  )
-}
-
 fn pick_ingested_normalized_module_from_source(source: String) -> Outcome<Node> {
   let lm = dag_language_model()
   bind_outcome(
@@ -168,25 +145,6 @@ fn pick_ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
           Absent => pick_ingested_find_arrow_in_module(root: e.target)
         }
       })
-  }
-}
-
-fn pick_ingested_normalized_arrow_has_branch_body(source: String) -> Bool {
-  match pick_ingested_normalized_module_from_source(source: source) {
-    Accepted { value: normalized, diagnostics: _ } =>
-      match pick_ingested_find_arrow_in_module(root: normalized) {
-        Present { value: arrow } =>
-          match find_arrow_body_child(root: arrow) {
-            Accepted { value: body, diagnostics: _ } =>
-              match body.kind {
-                ComputationNode { behavior: Branch } => true
-                _ => false
-              }
-            Rejected { diagnostics: _ } => false
-          }
-        Absent => false
-      }
-    Rejected { diagnostics: _ } => false
   }
 }
 

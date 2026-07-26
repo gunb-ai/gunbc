@@ -30,10 +30,6 @@ fn edges() -> List<RoadmapEdge> {
 fn verdict_is_drifted(v: DriftVerdict) -> Bool {
   match v { Drifted => true  Clean => false  Underivable => false }
 }
-fn verdict_is_underivable(v: DriftVerdict) -> Bool {
-  match v { Underivable => true  Drifted => false  Clean => false }
-}
-
 test fn witness_child_has_parent() -> Bool {
   match roadmap_parent(edges: edges(), node: child_node) {
     UnderParent { parent: p } => p == parent_node

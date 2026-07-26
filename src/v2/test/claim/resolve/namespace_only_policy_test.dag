@@ -36,15 +36,6 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn policy_pilot_namespace() -> Namespace {
-  Namespace {
-    bindings: empty_map(),
-    canonical_symbols: empty_canonical_symbol_set(),
-    symbol_index: si_index,
-    module_qn: si_module_qn
-  }
-}
-
 fn policy_pilot_namespace_with_index(
   symbol_index: SymbolIndex,
   module_qn: QualifiedName

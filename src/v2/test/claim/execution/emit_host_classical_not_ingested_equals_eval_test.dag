@@ -150,15 +150,6 @@ fn ingested_arrow_from_source(source: String) -> Outcome<Node> {
     }
   )
 }
-
-fn ingested_match_body_from_source(source: String) -> Outcome<Node> {
-  bind_outcome(
-    o: ingested_arrow_from_source(source: source),
-    f: fn(arrow) {
-      find_arrow_body_child(root: arrow)
-    }
-  )
-}
 fn ingested_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
   bind_outcome(
     o: ingested_arrow_from_source(source: source),

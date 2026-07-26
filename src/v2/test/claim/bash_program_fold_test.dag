@@ -97,14 +97,6 @@ fn bash_program_fold_tag_if(node: Node) -> BashEmitSpecial {
   )
 }
 
-fn bash_program_fold_tag_exit(node: Node) -> BashEmitSpecial {
-  bash_program_fold_tagged(
-    node: node,
-    production_binding: ^bash_production_fold_exit,
-    rule_name: ^bash_relation_rule_fold_exit
-  )
-}
-
 fn bash_program_fold_tag_subshell(node: Node) -> BashEmitSpecial {
   bash_program_fold_tagged(
     node: node,

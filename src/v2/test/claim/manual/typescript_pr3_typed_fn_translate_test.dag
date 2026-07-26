@@ -188,39 +188,6 @@ fn typescript_pr3_emit_claim_outcome() -> Outcome<Node> {
   }
 }
 
-fn typescript_pr3_compile_inferred_claim_outcome() -> Outcome<Node> {
-  match typescript_pr3_compile_inferred_receipt {
-    Accepted { value: compile_result, diagnostics: d } =>
-      match compile_result {
-        TranslateResult { source } =>
-          if (source.carried == ts_pr3_identity_source_text) && (d == None) {
-            Accepted { value: typescript_pr3_emitted_root, diagnostics: None }
-          } else {
-            Rejected {
-              diagnostics: diagnostics_singleton(
-                d: Diagnostic {
-                  reason: ^typescript_pr3_compile_source_mismatch,
-                  at: node_locus(node: typescript_pr3_emitted_root),
-                  correction: Unavailable { reason: ExternalContractUnknown }
-                }
-              )
-            }
-          }
-        _ =>
-          Rejected {
-            diagnostics: diagnostics_singleton(
-              d: Diagnostic {
-                reason: ^typescript_pr3_compile_source_mismatch,
-                at: node_locus(node: typescript_pr3_emitted_root),
-                correction: Unavailable { reason: ExternalContractUnknown }
-              }
-            )
-          }
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
-
 data claim_typescript_pr3_typed_fn_emit_accepts: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: pr3 identity typed-fn emit round-trips via derive grammar-relation row",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),

@@ -92,13 +92,6 @@ test fn parse_tree_to_target_model_bridge_realized() -> Bool {
   }
 }
 
-fn parse_tree_to_target_model_bridge_fails_closed() -> Bool {
-  match parse_tree_to_target_model_bridge_scaffold() {
-    Violates { diagnostic: d } => d.reason == ^parse_tree_to_target_model_bridge_not_realized
-    Holds { value: _ } => false
-  }
-}
-
 test fn cross_language_emit_inhabitant_neutralization_fails_closed() -> Bool {
   match infer(tree: python_emitted_add_fn_node()) {
     Accepted { value: inferred, diagnostics: _ } =>

@@ -503,9 +503,3 @@ test fn emit_on_demand_family_crate_pr_native_agreement_holds() -> Bool {
 test fn family_crate_emit_family_rejected_divergence_holds() -> Bool {
   format_native_agreement_divergence(d: family_crate_emit_family_rejected_divergence()) == "member=emit_family interpreted=emit_rejected native=emit_rejected"
 }
-
-fn emit_on_demand_family_crate_pr_native_agreement_failure_receipt() -> String {
-  native_agreement_failure_receipt(
-    divergences: family_crate_pr_native_agreement_divergences()
-  )
-}

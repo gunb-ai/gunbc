@@ -179,10 +179,6 @@ fn lazy_arm_lit_one() -> Node {
   lazy_arm_int_literal_from_lexeme(lexeme: "1")
 }
 
-fn lazy_arm_lit_two() -> Node {
-  lazy_arm_int_literal_from_lexeme(lexeme: "2")
-}
-
 data lazy_arm_divergent_value_node: Node = Node {
   kind: ComputationNode { behavior: Value },
   occurrence_id: SyntheticOccurrence,

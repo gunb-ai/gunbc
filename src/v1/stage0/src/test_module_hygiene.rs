@@ -244,17 +244,20 @@ struct ModuleFns {
     fns: BTreeMap<String, (bool, usize, Option<Rc<Node>>)>,
     /// data/const initializer bodies (reachability roots for fixture constructors)
     data_bodies: Vec<Rc<Node>>,
-    /// `test fn` / `test data` decls present (enrollment surface — not inferred from path).
-    has_enrolled_test_decl: bool,
+    /// Enrollment surface present: `test fn` / `test data` *or* plain `data` claim rows.
+    /// Plain `data` is a legacy/manual enrollment grain (e.g. CompilesClaim receipts) —
+    /// treating "no test fn" alone as total demotion falsely orphans helpers reached
+    /// only from those rows (regen red after orphan-gate wire).
+    has_enrollment_surface: bool,
     si: Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 }
 
 fn analyze_test_module(path: &Path, content: &str) -> Option<ModuleFns> {
     let parsed = parse_dag_file(path)?;
     let test_names: HashSet<String> = scan_test_decl_names(content).into_iter().collect();
-    let has_enrolled_test_decl = !test_names.is_empty();
     let mut fns = BTreeMap::new();
     let mut data_bodies = Vec::new();
+    let mut data_item_count = 0usize;
     for item in parsed.items.iter() {
         let name = authored_name_at(parsed.source_indices.clone(), item.clone());
         if name.is_empty() {
@@ -268,6 +271,7 @@ fn analyze_test_module(path: &Path, content: &str) -> Option<ModuleFns> {
                 fns.insert(name, (is_test, param_count, item.body.clone()));
             }
             ItemKind::DataItem => {
+                data_item_count += 1;
                 if let Some(body) = item.body.clone() {
                     data_bodies.push(body);
                 }
@@ -275,10 +279,11 @@ fn analyze_test_module(path: &Path, content: &str) -> Option<ModuleFns> {
             _ => {}
         }
     }
+    let has_enrollment_surface = !test_names.is_empty() || data_item_count > 0;
     Some(ModuleFns {
         fns,
         data_bodies,
-        has_enrolled_test_decl,
+        has_enrollment_surface,
         si: parsed.source_indices,
     })
 }
@@ -326,14 +331,17 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
         return Vec::new();
     }
 
-    // Zero enrolled `test fn` / `test data` + plain helpers is the demotion failure
-    // mode (all witnesses accidentally plain) — refuse, never assume "fixture library"
-    // from path suffix or directory prefix alone (DESIGN §5; reviews 43330 / 43367).
-    // Exemption: explicit CROSS_MODULE_FIXTURE_LIBRARY_ENTRIES only.
-    if !module.has_enrolled_test_decl {
-        if is_cross_module_fixture_library_path(entry) {
-            return Vec::new();
-        }
+    // Cross-module fixture libraries export plain helpers for importers local
+    // reachability cannot see — exempt the whole orphan check, not only the
+    // zero-enrollment demotion arm (review 43367 allowlist intent).
+    if is_cross_module_fixture_library_path(entry) {
+        return Vec::new();
+    }
+
+    // Zero enrollment surface + plain helpers is the demotion failure mode
+    // (all witnesses accidentally plain) — refuse (DESIGN §5; reviews 43330 / 43367).
+    // Enrollment surface = `test fn` / `test data` OR plain `data` claim rows.
+    if !module.has_enrollment_surface {
         let mut orphans: Vec<OrphanHelper> = plain
             .into_iter()
             .map(|name| OrphanHelper {
@@ -512,11 +520,11 @@ pub fn check_orphan_helpers_or_err(roots: &[String]) -> Result<(), String> {
         orphans.len()
     ));
     // Cap the printed list so the diagnostic stays usable; full count is in the header.
-    for o in orphans.iter().take(40) {
+    for o in orphans.iter().take(200) {
         lines.push(format!("  {}::{}", o.entry, o.name));
     }
-    if orphans.len() > 40 {
-        lines.push(format!("  … and {} more", orphans.len() - 40));
+    if orphans.len() > 200 {
+        lines.push(format!("  … and {} more", orphans.len() - 200));
     }
     Err(lines.join("\n"))
 }
@@ -722,6 +730,37 @@ test data enrolled_row: Bool = used_by_test_data()
         assert!(
             !err.contains("used_by_test_data"),
             "reachable-from-test-data must not red: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn plain_data_claim_rows_count_as_enrollment_surface() {
+        // Manual/CompilesClaim modules enroll via plain `data`, not `test fn`.
+        let dir = tmp_dir();
+        let file = dir.join("plain_data_enroll_test.dag");
+        std::fs::write(
+            &file,
+            r#"module plain_data_enroll
+
+fn helper_holds() -> Bool { true }
+
+fn dark_plain() -> Bool { false }
+
+data receipt: Bool = helper_holds()
+"#,
+        )
+        .unwrap();
+        let entry = file.to_string_lossy().into_owned();
+        let err = check_orphan_helpers_in_entries(&[entry])
+            .expect_err("plain data enrollment must still orphan unreachable plains");
+        assert!(
+            err.contains("dark_plain"),
+            "must name unreachable plain: {err}"
+        );
+        assert!(
+            !err.contains("helper_holds"),
+            "reachable-from-plain-data must not red: {err}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

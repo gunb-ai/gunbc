@@ -169,14 +169,6 @@ fn loop_runtime_int_is_one(value: RuntimeValue) -> Bool {
   }
 }
 
-fn loop_runtime_int_is_two(value: RuntimeValue) -> Bool {
-  match value {
-    RuntimePrimitive { value: p } =>
-      (p.primitive_type == loop_i64_node()) && (count(p.bytes) == 2)
-    _ => false
-  }
-}
-
 fn loop_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
   if dag_node_is_int_literal_atom(node: node) {
     match dag_int_literal_magnitude_int_from_node(node: node) {

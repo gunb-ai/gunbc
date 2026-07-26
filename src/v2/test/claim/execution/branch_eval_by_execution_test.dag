@@ -200,14 +200,6 @@ fn branch_runtime_int_is_one(value: RuntimeValue) -> Bool {
   }
 }
 
-fn branch_runtime_int_is_two(value: RuntimeValue) -> Bool {
-  match value {
-    RuntimePrimitive { value: p } =>
-      (p.primitive_type == branch_i64_node()) && (count(p.bytes) == 2)
-    _ => false
-  }
-}
-
 fn branch_kw_true_node() -> Node {
   branch_atom(s: ^dag_token_kw_true)
 }
