@@ -44,6 +44,8 @@ type FallbackArmSite {
   class: FallbackArmClass
 }
 
+data fallback_arm_sites_empty: List<FallbackArmSite> = []
+
 fn match_arm_wire_is_well_formed(arm: Node) -> Bool {
   match arm.kind {
     TypeNode { connective: Conj } =>
@@ -107,7 +109,7 @@ fn fallback_arm_collect_wildcard_sites_in_node(n: Node) -> List<FallbackArmSite>
           ComputationNode { behavior: Match } =>
             fold_list(
               xs: match_arm_targets(node: node0),
-              empty: [],
+              empty: fallback_arm_sites_empty,
               cons: fn(acc, arm) {
                 let arm_class = classify_structural_wildcard_arm(arm: arm)
                 match arm_class {
@@ -129,7 +131,7 @@ fn fallback_arm_collect_wildcard_sites_in_node(n: Node) -> List<FallbackArmSite>
                 }
               }
             )
-          _ => []
+          _ => fallback_arm_sites_empty
         }
       },
       step: fn(acc, _edge, child_sites) { concat(acc, child_sites) }
