@@ -55,8 +55,6 @@ type OwnershipWrapCatalogRowKey
   | WrapRowUseSiteVerdictParam
   | WrapRowUseSiteVerdictBinding
 
-type RustSgRcOwnershipWrapCatalogRow = OwnershipWrapCatalogRowKey
-
 fn rust_sg_rc_wrap_catalog_row_carrier(key: OwnershipWrapCatalogRowKey) -> OwnershipWrapCarrier {
   match key {
     WrapRowDiagnosticsReturn => WrapCarrierDiagnostics
@@ -171,7 +169,7 @@ fn rust_sg_rc_wrap_carrier_from_type_name(type_name: String) -> OwnershipWrapCar
   }
 }
 
-fn rust_sg_rc_ownership_wrap_catalog_rows() -> List<RustSgRcOwnershipWrapCatalogRow> {
+fn rust_sg_rc_ownership_wrap_catalog_rows() -> List<OwnershipWrapCatalogRowKey> {
   [
     WrapRowDiagnosticsReturn,
     WrapRowDiagnosticsParam,

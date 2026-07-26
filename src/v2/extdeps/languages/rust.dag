@@ -301,7 +301,6 @@ import extdeps.languages.rust.emit {
 }
 import extdeps.languages.rust.wrap_catalog {
   rust_sg_rc_ownership_wrap_catalog_rows,
-  RustSgRcOwnershipWrapCatalogRow,
   OwnershipWrapCatalogRowKey,
   OwnershipWrapUseSite,
   OwnershipWrapUseSiteAbsent,
@@ -4170,7 +4169,7 @@ fn rust_sg_rc_wrap_catalog_row_reference_layer_to_target(
 }
 
 fn rust_sg_rc_wrap_catalog_row_to_realization(
-  key: RustSgRcOwnershipWrapCatalogRow
+  key: OwnershipWrapCatalogRowKey
 ) -> TargetUseSiteOwnershipRealization {
   TargetUseSiteOwnershipRealization {
     source_carrier: rust_sg_rc_wrap_catalog_row_carrier_node(carrier: rust_sg_rc_wrap_catalog_row_carrier(key: key)),
