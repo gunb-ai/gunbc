@@ -12537,6 +12537,28 @@ fn witness_admission_entry_function_keys_from_source(
     const WINDOW: usize = 400;
     let mut keys: Vec<String> = Vec::new();
     fn push_pair(keys: &mut Vec<String>, entry: &str, function: &str) {
+        // U3 file-grain: empty `f: ""` means every test decl in the entry. Admission
+        // keys must expand the same way `expand_explicit_entries` does for execution —
+        // otherwise deferred leaf rows (entry::leaf) never match the unexpanded
+        // consumer key (entry::) and Phase 0(b) falsely refuses (roadmap_belt #7273).
+        if crate::test_module_hygiene::is_file_grain_function(function) {
+            let path = workspace_root().join(entry);
+            let names = crate::test_module_hygiene::enumerate_entry_test_fns(
+                path.to_str().unwrap_or(entry),
+            )
+            .unwrap_or_else(|e| {
+                panic!(
+                    "witness admission: file-grain `{entry}` failed to enumerate test decls: {e}"
+                )
+            });
+            for name in names {
+                let key = witness_admission_manifest_key(entry, &name);
+                if !keys.iter().any(|k| k == &key) {
+                    keys.push(key);
+                }
+            }
+            return;
+        }
         let key = witness_admission_manifest_key(entry, function);
         if !keys.iter().any(|k| k == &key) {
             keys.push(key);
@@ -28055,6 +28077,26 @@ mod module_path_index_tests {
         assert!(
             keys.contains(&"dag/test/claim/x_test.dag::x_holds".to_string()),
             "a RehomedBinWetRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
+        );
+    }
+
+    #[test]
+    fn file_grain_bin_wet_expands_admission_consumer_keys() {
+        // Discriminator for the #7273 UnexecutedDeferredWitness miss: empty f: must
+        // expand to leaf test-fn keys, never register only `entry::`.
+        let synthetic = "module gunbc.ci_layer_roots\n\n\
+             data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [\n\
+               bin_wet(entry: \"dag/test/claim/roadmap_belt_actuate_witness_test.dag\", f: \"\"),\n\
+             ]\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.iter().any(|k| k.ends_with("::witness_band_fold_pins_operator_vocabulary")),
+            "file-grain bin_wet must expand to leaf consumer keys; got {keys:?}"
+        );
+        assert!(
+            !keys.iter().any(|k| k.ends_with("::")),
+            "unexpanded empty-function key must not remain; got {keys:?}"
         );
     }
 
