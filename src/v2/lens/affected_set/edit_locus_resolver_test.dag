@@ -288,9 +288,3 @@ data unified_claim_edit_locus_narrow: UnifiedTestClaim = BoolWitnessClaim {
   }
 }
 
-data edit_locus_source_provenance_expensive_manual_orphan_pins: Bool = if false {
-  edit_locus_source_provenance_producer_holds()
-    && edit_locus_source_provenance_parse_root_span_holds()
-} else {
-  true
-}

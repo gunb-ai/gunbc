@@ -68,10 +68,4 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
 
-data no_dual_representation_test_manual_orphan_pins: Bool = if false {
-  no_dual_representation_test_coverage_honesty_holds()
-    && no_dual_representation_test_clean_holds()
-} else {
-  true
-}
 

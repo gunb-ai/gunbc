@@ -97,6 +97,11 @@ fn is_test_dag_path(path: &str) -> bool {
 const CROSS_MODULE_FIXTURE_LIBRARY_ENTRIES: &[&str] = &[
     "src/v2/extdeps/languages/rust_test.dag",
     "dag/examples/interp_test/interp_test.dag",
+    // long/ wrappers execute these holds; module-local orphan walk cannot see importers
+    // (review 43557 — honest fixture-library disposition, not if-false pins).
+    // Dissolve-on: rename each off `*_test.dag`.
+    "src/v2/lens/no_dual_representation_test.dag",
+    "src/v2/lens/affected_set/edit_locus_resolver_test.dag",
 ];
 
 fn is_cross_module_fixture_library_path(path: &str) -> bool {

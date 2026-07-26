@@ -1,0 +1,42 @@
+module v2.test.long.typescript_descriptor_node_run_witness
+
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.test.manual.typescript_descriptor_node_run_support {
+  typescript_descriptor_node_host_run_i32
+}
+import v2.extdeps.languages.typescript { ts_target_model }
+import v2.std.diagnostic { Accepted, None }
+import v2.test.manual.add_body_emit_typescript {
+  add_body_ts_emit_from_producer_tree,
+  add_body_ts_target_model_minus_catalog
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data typescript_descriptor_node_run_long_note: String = "Wet host-run typescript descriptor probes (review 43557). OfflineLocalRecipe under long/; helpers live in typescript_descriptor_node_run.dag (not *_test.dag). Dissolve-on: emit-host MVP smokes subsume these, or measured under fast-lane and re-enroll per-PR."
+
+test fn typescript_descriptor_node_ts_node_run_add_holds() -> Bool {
+  match add_body_ts_emit_from_producer_tree(target: ts_target_model()) {
+    Accepted { value: source, diagnostics: None } =>
+      match typescript_descriptor_node_host_run_i32(target: ts_target_model(), source: source) {
+        Accepted { value: n, diagnostics: None } => n == 5
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn typescript_descriptor_node_ts_node_run_catalog_minus_discriminates() -> Bool {
+  match add_body_ts_emit_from_producer_tree(target: add_body_ts_target_model_minus_catalog()) {
+    Accepted { value: source, diagnostics: None } =>
+      match typescript_descriptor_node_host_run_i32(
+        target: add_body_ts_target_model_minus_catalog(),
+        source: source
+      ) {
+        Accepted { value: n, diagnostics: None } => n == -1
+        _ => false
+      }
+    _ => false
+  }
+}

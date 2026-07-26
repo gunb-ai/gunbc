@@ -1,4 +1,4 @@
-module v2.test.manual.typescript_descriptor_node_run
+module v2.test.manual.typescript_descriptor_node_run_support
 
 import v2.compiler.eval {
   Inputs,
@@ -64,35 +64,6 @@ fn typescript_descriptor_node_host_run_i32(target: TargetModel, source: Medium<S
   }
 }
 
-fn typescript_descriptor_node_ts_node_run_add_holds() -> Bool {
-  match add_body_ts_emit_from_producer_tree(target: ts_target_model()) {
-    Accepted { value: source, diagnostics: None } =>
-      match typescript_descriptor_node_host_run_i32(target: ts_target_model(), source: source) {
-        Accepted { value: n, diagnostics: None } => n == 5
-        _ => false
-      }
-    _ => false
-  }
-}
 
-fn typescript_descriptor_node_ts_node_run_catalog_minus_discriminates() -> Bool {
-  match add_body_ts_emit_from_producer_tree(target: add_body_ts_target_model_minus_catalog()) {
-    Accepted { value: source, diagnostics: None } =>
-      match typescript_descriptor_node_host_run_i32(
-        target: add_body_ts_target_model_minus_catalog(),
-        source: source
-      ) {
-        Accepted { value: n, diagnostics: None } => n == -1
-        _ => false
-      }
-    _ => false
-  }
-}
 
-data typescript_descriptor_node_run_manual_orphan_pins: Bool = if false {
-  typescript_descriptor_node_ts_node_run_add_holds()
-    && typescript_descriptor_node_ts_node_run_catalog_minus_discriminates()
-} else {
-  true
-}
 

@@ -1,0 +1,107 @@
+module v2.test.long.inhabitant_neutralization_e2e_witness
+
+import v2.compiler.emit { emit }
+import v2.compiler.ingest { cross_language_compile }
+import v2.compiler.infer { infer }
+import v2.compiler.translate { translate }
+import v2.extdeps.languages.go { go_source_text, go_target_model }
+import v2.extdeps.languages.python {
+  python_emitted_add_fn_node,
+  python_target_model
+}
+import v2.extdeps.languages.typescript { ts_source_text, ts_target_model }
+import v2.std.inhabitant_neutralization { neutralize_core_for_target }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.test.manual.python_grammar_claim { python_grammar_parse_fixture }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data inhabitant_neutralization_e2e_long_note: String = "Offline/long disposition for inhabitant cross-language e2e + translate/emit refusal poles (review 43557): these were never per-PR enrolled and must not use if-false orphan pins (DESIGN §5 specification-without-execution). They live under test/claim/long/ (OfflineLocalRecipe) as real test fns — local recipe / future falsifier enrollment, never fabricated reachability. Dissolve-on: re-enroll per-PR when measured under gunbc_ci_fast_lane_witness_eval_budget, or delete as duplicate of a faster mechanism receipt."
+
+test fn inhabitant_neutralization_python_to_ts_cross_language_compile_e2e_holds() -> Bool {
+  match python_grammar_parse_fixture() {
+    Accepted { value: python_parse_tree, diagnostics: _ } =>
+      match cross_language_compile(
+        parse_tree: python_parse_tree,
+        source_model: python_target_model(),
+        target_model: ts_target_model()
+      ) {
+        Accepted { value: source, diagnostics: _ } => source.carried == ts_source_text
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn inhabitant_neutralization_python_to_go_cross_language_compile_e2e_holds() -> Bool {
+  match python_grammar_parse_fixture() {
+    Accepted { value: python_parse_tree, diagnostics: _ } =>
+      match cross_language_compile(
+        parse_tree: python_parse_tree,
+        source_model: python_target_model(),
+        target_model: go_target_model()
+      ) {
+        Accepted { value: source, diagnostics: _ } => source.carried == go_source_text
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn inhabitant_neutralization_python_to_go_discriminates_on_real_tree() -> Bool {
+  match python_grammar_parse_fixture() {
+    Accepted { value: python_parse_tree, diagnostics: _ } =>
+      match cross_language_compile(
+        parse_tree: python_parse_tree,
+        source_model: python_target_model(),
+        target_model: ts_target_model()
+      ) {
+        Accepted { value: source, diagnostics: _ } => source.carried == ts_source_text
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn inhabitant_neutralization_python_to_go_holds() -> Bool {
+  inhabitant_neutralization_python_to_go_cross_language_compile_e2e_holds()
+    && inhabitant_neutralization_python_to_go_discriminates_on_real_tree()
+}
+
+test fn inhabitant_neutralization_python_to_go_translate_rejects() -> Bool {
+  match neutralize_core_for_target(
+    core: python_emitted_add_fn_node(),
+    target: go_target_model()
+  ) {
+    Accepted { value: neutralized, diagnostics: _ } =>
+      match infer(tree: neutralized) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          match translate(tree: inferred, target: go_target_model()) {
+            Rejected { diagnostics: _ } => true
+            Accepted { value: _, diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn inhabitant_neutralization_python_to_go_emit_rejects() -> Bool {
+  match neutralize_core_for_target(
+    core: python_emitted_add_fn_node(),
+    target: go_target_model()
+  ) {
+    Accepted { value: neutralized, diagnostics: _ } =>
+      match infer(tree: neutralized) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          match emit(tree: inferred, target: go_target_model()) {
+            Rejected { diagnostics: _ } => true
+            Accepted { value: _, diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
