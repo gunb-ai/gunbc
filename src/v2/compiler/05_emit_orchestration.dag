@@ -756,10 +756,9 @@ fn orch_retry_run_redirect_capture_admitted(r: Run) -> Bool {
 fn orch_retry_step_command(s: PipelineStep) -> Optional<String> {
   match s {
     Do { run: r } =>
-      if orch_retry_run_redirect_capture_admitted(r: r) {
-        Present { value: r.command }
-      } else {
-        Absent
+      match orch_retry_run_redirect_capture_admitted(r: r) {
+        true => Present { value: r.command }
+        false => Absent
       }
     Comment { text: _ } => Absent
     If { cond: _, then_: _, else_: _ } => Absent
