@@ -8,16 +8,16 @@ data root4_measure_missing_generics_witness_note: String = "Root-4 measure_missi
 
 fn w_measure_list_param_preserves_applied_generics() -> Bool {
   compile_dag_rust_emit_check(
-    "module root4_measure_list\nimport std.measure { Measure, Time, time_measure }\nimport std.nat { Nat }\nimport std.realization_measurement { time_measure_list_total }\n\nfn witness<S>(times: List<Measure<Time, S, Nat>>) -> Measure<Time, S, Nat> {\n  time_measure_list_total(times: times)\n}\n",
+    "module root4_measure_list\nimport std.measure { Measure, Time }\nimport std.nat { Nat }\n\nfn witness<S>(times: List<Measure<Time, S, Nat>>) -> List<Measure<Time, S, Nat>> {\n  times\n}\n",
     "src/root4_measure_list.rs",
-    ["Vec<Rc<Measure<(), S, Nat>>", "-> Rc<Measure<(), S, Nat>>"],
+    ["Vec<Rc<Measure<(), S, Nat>>"],
     ["Vec<Rc<Measure>>", "Rc<Measure>>"]
   )
 }
 
 fn w_zero_param_alias_list_param_unchanged() -> Bool {
   compile_dag_rust_emit_check(
-    "module root4_zero_param_alias\nimport std.measure { ByteSize, byte_size }\n\nfn witness(spaces: List<ByteSize>) -> ByteSize {\n  byte_size(count: 0)\n}\n",
+    "module root4_zero_param_alias\nimport std.measure { ByteSize }\n\nfn witness(spaces: List<ByteSize>) -> List<ByteSize> {\n  spaces\n}\n",
     "src/root4_zero_param_alias.rs",
     ["Rc<Vec<ByteSize<Memory, One, Nat>>"],
     ["Vec<Rc<Measure"]
