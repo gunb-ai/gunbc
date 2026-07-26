@@ -23,8 +23,7 @@
 
 /// INTERIM hand-Rust scaffold marker (`test_module_hygiene_orphan_gate` / §7).
 /// Receipt: see module-level SCAFFOLD header (`rg -F` pin == 1 until deletion).
-pub const TEST_MODULE_HYGIENE_ORPHAN_GATE_SCAFFOLD_MARKER: &str =
-    "test_module_hygiene_orphan_gate";
+pub const TEST_MODULE_HYGIENE_ORPHAN_GATE_SCAFFOLD_MARKER: &str = "test_module_hygiene_orphan_gate";
 
 use im::HashMap;
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
