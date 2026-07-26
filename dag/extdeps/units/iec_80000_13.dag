@@ -1,6 +1,7 @@
 module extdeps.units.iec_80000_13
 
-import std.types { String, Nat }
+import std.types { String }
+import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -13,7 +14,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data iec_80000_13_version_note: String = "IEC 80000-13:2008 (Quantities and units — Part 13: Information science and technology): binary prefixes (kibi = 2^10) and the octet (8 bits) as the information-unit byte."
 
-fn kibi_factor() -> Nat {
+fn iec_kibi_factor() -> Nat {
   1024
 }
 

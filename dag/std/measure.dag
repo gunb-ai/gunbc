@@ -3,8 +3,8 @@ module std.measure
 import std.currency { CurrencyCode }
 import std.nat { Nat }
 import std.types { Int }
-import extdeps.units.iec_80000_13 { kibi_factor as cited_kibi_factor, octet_bit_count }
-import extdeps.units.iso8601 { seconds_per_minute as cited_seconds_per_minute, minutes_per_hour as cited_minutes_per_hour }
+import extdeps.units.iec_80000_13 { iec_kibi_factor, octet_bit_count }
+import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour }
 import extdeps.units.dimensionless {
   parts_per_ten_thousand_unity_count,
   percent_unity_hundred_count,
@@ -89,19 +89,19 @@ fn gibibyte_scale_factor_bytes() -> Nat {
 }
 
 fn kibi_factor() -> Nat {
-  cited_kibi_factor()
+  iec_kibi_factor()
+}
+
+fn seconds_per_minute() -> Nat {
+  iso8601_seconds_per_minute()
+}
+
+fn minutes_per_hour() -> Nat {
+  iso8601_minutes_per_hour()
 }
 
 fn milliseconds_per_second() -> Nat {
   1000
-}
-
-fn seconds_per_minute() -> Nat {
-  cited_seconds_per_minute()
-}
-
-fn minutes_per_hour() -> Nat {
-  cited_minutes_per_hour()
 }
 
 fn time_scale_factor_seconds(s: Scale) -> Nat? {

@@ -1,6 +1,7 @@
 module extdeps.units.dimensionless
 
-import std.types { String, Nat }
+import std.types { String }
+import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
