@@ -15,12 +15,12 @@ use std::rc::Rc;
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
-                ExternalAuthority {
-        uri: Uri {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "go.dev/ref/spec".to_string(),
-    },
-    }
+    }),
+    })
             };
         }
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
@@ -135,7 +135,7 @@ pub fn interface_def_template() -> String {
 pub fn integer_types() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            vec!["int".to_string(), "int8".to_string(), "int16".to_string(), "int32".to_string(), "int64".to_string(), "uint".to_string(), "uint8".to_string(), "uint16".to_string(), "uint32".to_string(), "uint64".to_string(), "uintptr".to_string()]
+            Rc::new(vec!["int".to_string(), "int8".to_string(), "int16".to_string(), "int32".to_string(), "int64".to_string(), "uint".to_string(), "uint8".to_string(), "uint16".to_string(), "uint32".to_string(), "uint64".to_string(), "uintptr".to_string()])
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
@@ -144,7 +144,7 @@ pub fn integer_types() -> Rc<Vec<String>> {
 pub fn float_types() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            vec!["float32".to_string(), "float64".to_string()]
+            Rc::new(vec!["float32".to_string(), "float64".to_string()])
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())

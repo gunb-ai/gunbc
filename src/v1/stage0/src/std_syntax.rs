@@ -110,31 +110,31 @@ pub struct AlgebraFieldEntry {
 pub fn algebra_field_entries() -> Rc<Vec<Rc<AlgebraFieldEntry>>> {
     thread_local! {
             static CACHED: Rc<Vec<Rc<AlgebraFieldEntry>>> = {
-                vec![AlgebraFieldEntry {
+                Rc::new(vec![Rc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgAdd,
         field_name: "add".to_string(),
-    }, AlgebraFieldEntry {
+    }), Rc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgMul,
         field_name: "mul".to_string(),
-    }, AlgebraFieldEntry {
+    }), Rc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgReciprocal,
         field_name: "reciprocal".to_string(),
-    }, AlgebraFieldEntry {
+    }), Rc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgQuotient,
         field_name: "quotient".to_string(),
-    }, AlgebraFieldEntry {
+    }), Rc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgRemainder,
         field_name: "remainder".to_string(),
-    }, AlgebraFieldEntry {
+    }), Rc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgCompare,
         field_name: "compare".to_string(),
-    }, AlgebraFieldEntry {
+    }), Rc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgMeet,
         field_name: "meet".to_string(),
-    }, AlgebraFieldEntry {
+    }), Rc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgJoin,
         field_name: "join".to_string(),
-    }]
+    })])
             };
         }
     CACHED.with(|c: &Rc<Vec<Rc<AlgebraFieldEntry>>>| c.clone())

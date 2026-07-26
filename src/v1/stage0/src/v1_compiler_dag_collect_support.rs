@@ -22,7 +22,7 @@ use std::rc::Rc;
 pub struct DagCollectSlot {
     pub key: String,
     pub fp: String,
-    pub node: Box<Rc<Node>>,
+    pub node: Rc<Node>,
     pub seq: i64,
 }
 
@@ -60,15 +60,15 @@ pub fn dag_collect_pack_slots(
         });
         let seen = ordered_slots.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
-            |acc: HashMap<String, String>, s: Rc<DagCollectSlot>| {
+            |acc: Rc<HashMap<String, String>>, s: Rc<DagCollectSlot>| {
                 v1_rt::rc_map_insert(acc, s.key.clone(), s.fp.clone())
             },
         );
-        DagCollectAcc {
+        Rc::new(DagCollectAcc {
             seen: seen.clone(),
             order: order.clone(),
             collision_errors: collision_errors.clone(),
-        }
+        })
     }
 }
 
@@ -79,7 +79,7 @@ pub fn json_quote(s: String) -> String {
     )
 }
 
-pub fn inferred_fingerprint(value: Option<InferredNode>) -> String {
+pub fn inferred_fingerprint(value: Option<Rc<InferredNode>>) -> String {
     match value.clone().as_deref().cloned() {
         None => "none".to_string(),
         Some(InferredNode::Resolved { node: _, .. }) => "Resolved".to_string(),
@@ -167,7 +167,7 @@ pub fn child_subtree_hash(connective: Connective, digests: Rc<Vec<String>>) -> S
     }
 }
 
-pub fn dag_node_surface_leaf_mix(node: Node) -> String {
+pub fn dag_node_surface_leaf_mix(node: Rc<Node>) -> String {
     v1_rt::atom_identity_hash(v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -186,7 +186,7 @@ pub fn dag_node_surface_leaf_mix(node: Node) -> String {
     ))
 }
 
-pub fn dag_node_surface_fingerprint_rec(node: Node) -> String {
+pub fn dag_node_surface_fingerprint_rec(node: Rc<Node>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let child_hashes = Rc::new({
             let mut __result = Vec::new();
@@ -213,7 +213,7 @@ pub fn dag_node_surface_fingerprint_rec(node: Node) -> String {
     })
 }
 
-pub fn dag_node_surface_fingerprint(node: Node) -> String {
+pub fn dag_node_surface_fingerprint(node: Rc<Node>) -> String {
     dag_node_surface_fingerprint_rec(node.clone())
 }
 
@@ -221,7 +221,7 @@ pub fn dag_collect_fp_memo_reset() -> bool {
     true
 }
 
-pub fn dag_node_surface_fingerprint_memo(node: Node) -> String {
+pub fn dag_node_surface_fingerprint_memo(node: Rc<Node>) -> String {
     dag_node_surface_fingerprint(node.clone())
 }
 
@@ -235,7 +235,7 @@ pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<Err
             "".to_string()
         };
         make_error_node(
-            CompilerDiagnostic::InternalError {
+            Rc::new(CompilerDiagnostic::InternalError {
                 message: v1_rt::concat(
                     v1_rt::concat(
                         "dag artifact: distinct nodes share identity key ".to_string(),
@@ -244,7 +244,7 @@ pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<Err
                     detail.clone(),
                 ),
                 span: span.clone(),
-            },
+            }),
             "".to_string(),
         )
     }
