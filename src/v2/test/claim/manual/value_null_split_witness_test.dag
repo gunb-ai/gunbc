@@ -1,7 +1,7 @@
 module v2.test.manual.value_null_split_witness
 
 import v2.std.collection { empty_map, map_insert }
-import v2.std.diagnostic { Accepted, None, Rejected }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.optional {
   Absent,
   Present,
@@ -9,10 +9,13 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.witness { Holds, Violates }
+import v2.test.generated.cross_representation_equality {
+  witness_cross_representation_equality_covers_optional_null
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data value_null_split_phase_a_note: String = "Phase A witnesses (keen-ferret-250): pin Optional/Witness construction carriers vs the overloaded Value::Null sentinel. optional_absent_differs_from_none_literal and raw_get_miss_differs_from_optional_absent document the live straddle until Phase D/E of gunbc.plans.value_null_split dissolve it."
+data value_null_split_phase_a_note: String = "Phase A witnesses (keen-ferret-250): pin Optional/Witness construction carriers vs the overloaded Value::Null sentinel. optional_null_straddle_rostered_until_phase_e delegates the Optional×native_value_null straddle to the testgen roster (removed in Phase E). raw_get_miss_differs_from_optional_absent stays GREEN while raw get miss is untyped and optional_absent() is Optional::Absent; it flips RED in Phase B when get+Optional routes through map_lookup_as_optional."
 
 test fn optional_absent_matches_absent_pattern() -> Bool {
   match optional_absent() {
@@ -45,8 +48,8 @@ test fn map_get_hit_is_present() -> Bool {
   }
 }
 
-test fn optional_absent_differs_from_none_literal() -> Bool {
-  optional_absent() != None
+test fn optional_null_straddle_rostered_until_phase_e() -> Bool {
+  witness_cross_representation_equality_covers_optional_null
 }
 
 test fn raw_get_miss_differs_from_optional_absent() -> Bool {
