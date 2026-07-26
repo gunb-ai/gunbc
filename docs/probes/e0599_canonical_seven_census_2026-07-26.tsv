@@ -1,0 +1,210 @@
+label	E0599_canonical_seven_census
+baseline_authority	docs/probes/refresh_canonical_seven_2026-07-26.tsv
+git_sha	29e87dff82155e78e4953a31bfa8548aa88cf8ae
+gunbc_sha	2901267968f5b02c496a97db96d350d336aa1dc6ff2939062fa1eec294e3942a
+gunbc_mtime	2026-07-26T12:58:34Z
+classifier	dag/tools/e0599_probe_census.dag (realization: e0599_census_extract.sh)
+protocol	CSSL_STD_SEED_LINK=1; gunbc compile -> cssl_assemble -> cargo build --release --lib; CTRL_BUILD_WRAP_CARGO=0
+handoff	loyal-raven-94 partial 2/7 census corroborated on 06_translate+04_infer before E0277 reassignment
+
+# section=per_module_totals
+module	E0599_measured	E0599_baseline	delta
+04_infer	88	88	0
+05_emit	93	93	0
+05_eval	91	91	0
+06_translate	93	93	0
+emit_host	96	96	0
+emit_module	93	93	0
+materialization_carriers	81	81	0
+TOTAL	635	635	0
+
+# section=per_module_method_histogram
+module	method	count
+04_infer	clone	58
+04_infer	is_empty	14
+04_infer	iter	10
+04_infer	GlobalBareAmbiguous	2
+04_infer	GlobalBareUnique	2
+04_infer	as_deref	2
+05_emit	clone	63
+05_emit	is_empty	14
+05_emit	iter	10
+05_emit	GlobalBareAmbiguous	2
+05_emit	GlobalBareUnique	2
+05_emit	as_deref	2
+05_eval	clone	61
+05_eval	is_empty	14
+05_eval	iter	10
+05_eval	GlobalBareAmbiguous	2
+05_eval	GlobalBareUnique	2
+05_eval	as_deref	2
+06_translate	clone	63
+06_translate	is_empty	14
+06_translate	iter	10
+06_translate	GlobalBareAmbiguous	2
+06_translate	GlobalBareUnique	2
+06_translate	as_deref	2
+emit_host	clone	66
+emit_host	is_empty	14
+emit_host	iter	10
+emit_host	GlobalBareAmbiguous	2
+emit_host	GlobalBareUnique	2
+emit_host	as_deref	2
+emit_module	clone	63
+emit_module	is_empty	14
+emit_module	iter	10
+emit_module	GlobalBareAmbiguous	2
+emit_module	GlobalBareUnique	2
+emit_module	as_deref	2
+materialization_carriers	clone	57
+materialization_carriers	is_empty	14
+materialization_carriers	iter	10
+
+# section=detail_keyed_by_shape_method_receiver
+module	failure_shape	method	receiver_carrier	count
+04_infer	missing_method	clone	type parameter `T`	29
+04_infer	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<T>>`	12
+04_infer	bounds_unsatisfied	clone	enum `Outcome<T>`	9
+04_infer	bounds_unsatisfied	iter	struct `im::Vector<T>`	8
+04_infer	bounds_unsatisfied	clone	enum `Outcome<U>`	4
+04_infer	bounds_unsatisfied	clone	enum `std::option::Option<T>`	4
+04_infer	bounds_unsatisfied	clone	struct `im::Vector<T>`	3
+04_infer	missing_method	clone	type parameter `A`	3
+04_infer	bounds_unsatisfied	clone	struct `im::Vector<U>`	2
+04_infer	missing_method	as_deref	unit type `()`	2
+04_infer	missing_method	clone	type parameter `U`	2
+04_infer	no_variant	GlobalBareAmbiguous	enum `std::option::Option<T>`	2
+04_infer	no_variant	GlobalBareUnique	enum `std::option::Option<_>`	2
+04_infer	bounds_unsatisfied	clone	struct `im::Vector<C>`	1
+04_infer	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<A>>`	1
+04_infer	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<B>>`	1
+04_infer	bounds_unsatisfied	iter	struct `im::Vector<A>`	1
+04_infer	bounds_unsatisfied	iter	struct `im::Vector<B>`	1
+04_infer	missing_method	clone	type parameter `B`	1
+05_emit	missing_method	clone	type parameter `T`	30
+05_emit	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<T>>`	12
+05_emit	bounds_unsatisfied	clone	enum `Outcome<T>`	9
+05_emit	bounds_unsatisfied	iter	struct `im::Vector<T>`	8
+05_emit	bounds_unsatisfied	clone	enum `Outcome<U>`	4
+05_emit	bounds_unsatisfied	clone	enum `std::option::Option<T>`	4
+05_emit	bounds_unsatisfied	clone	struct `im::Vector<T>`	4
+05_emit	missing_method	clone	type parameter `A`	3
+05_emit	missing_method	clone	type parameter `R`	3
+05_emit	bounds_unsatisfied	clone	struct `im::Vector<U>`	2
+05_emit	missing_method	as_deref	unit type `()`	2
+05_emit	missing_method	clone	type parameter `U`	2
+05_emit	no_variant	GlobalBareAmbiguous	enum `std::option::Option<T>`	2
+05_emit	no_variant	GlobalBareUnique	enum `std::option::Option<_>`	2
+05_emit	bounds_unsatisfied	clone	struct `im::Vector<C>`	1
+05_emit	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<A>>`	1
+05_emit	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<B>>`	1
+05_emit	bounds_unsatisfied	iter	struct `im::Vector<A>`	1
+05_emit	bounds_unsatisfied	iter	struct `im::Vector<B>`	1
+05_emit	missing_method	clone	type parameter `B`	1
+05_eval	missing_method	clone	type parameter `T`	29
+05_eval	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<T>>`	12
+05_eval	bounds_unsatisfied	clone	enum `Outcome<T>`	9
+05_eval	bounds_unsatisfied	iter	struct `im::Vector<T>`	8
+05_eval	bounds_unsatisfied	clone	enum `Outcome<U>`	4
+05_eval	bounds_unsatisfied	clone	enum `std::option::Option<T>`	4
+05_eval	bounds_unsatisfied	clone	enum `Verdict<Subj, T>`	3
+05_eval	bounds_unsatisfied	clone	struct `im::Vector<T>`	3
+05_eval	missing_method	clone	type parameter `A`	3
+05_eval	bounds_unsatisfied	clone	struct `im::Vector<U>`	2
+05_eval	missing_method	as_deref	unit type `()`	2
+05_eval	missing_method	clone	type parameter `U`	2
+05_eval	no_variant	GlobalBareAmbiguous	enum `std::option::Option<T>`	2
+05_eval	no_variant	GlobalBareUnique	enum `std::option::Option<_>`	2
+05_eval	bounds_unsatisfied	clone	struct `im::Vector<C>`	1
+05_eval	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<A>>`	1
+05_eval	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<B>>`	1
+05_eval	bounds_unsatisfied	iter	struct `im::Vector<A>`	1
+05_eval	bounds_unsatisfied	iter	struct `im::Vector<B>`	1
+05_eval	missing_method	clone	type parameter `B`	1
+06_translate	missing_method	clone	type parameter `T`	30
+06_translate	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<T>>`	12
+06_translate	bounds_unsatisfied	clone	enum `Outcome<T>`	9
+06_translate	bounds_unsatisfied	iter	struct `im::Vector<T>`	8
+06_translate	bounds_unsatisfied	clone	enum `Outcome<U>`	4
+06_translate	bounds_unsatisfied	clone	enum `std::option::Option<T>`	4
+06_translate	bounds_unsatisfied	clone	struct `im::Vector<T>`	4
+06_translate	missing_method	clone	type parameter `A`	3
+06_translate	missing_method	clone	type parameter `R`	3
+06_translate	bounds_unsatisfied	clone	struct `im::Vector<U>`	2
+06_translate	missing_method	as_deref	unit type `()`	2
+06_translate	missing_method	clone	type parameter `U`	2
+06_translate	no_variant	GlobalBareAmbiguous	enum `std::option::Option<T>`	2
+06_translate	no_variant	GlobalBareUnique	enum `std::option::Option<_>`	2
+06_translate	bounds_unsatisfied	clone	struct `im::Vector<C>`	1
+06_translate	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<A>>`	1
+06_translate	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<B>>`	1
+06_translate	bounds_unsatisfied	iter	struct `im::Vector<A>`	1
+06_translate	bounds_unsatisfied	iter	struct `im::Vector<B>`	1
+06_translate	missing_method	clone	type parameter `B`	1
+emit_host	missing_method	clone	type parameter `T`	30
+emit_host	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<T>>`	12
+emit_host	bounds_unsatisfied	clone	enum `Outcome<T>`	9
+emit_host	bounds_unsatisfied	iter	struct `im::Vector<T>`	8
+emit_host	bounds_unsatisfied	clone	enum `Outcome<U>`	4
+emit_host	bounds_unsatisfied	clone	enum `std::option::Option<T>`	4
+emit_host	bounds_unsatisfied	clone	struct `im::Vector<T>`	4
+emit_host	bounds_unsatisfied	clone	enum `Verdict<Subj, T>`	3
+emit_host	missing_method	clone	type parameter `A`	3
+emit_host	missing_method	clone	type parameter `R`	3
+emit_host	bounds_unsatisfied	clone	struct `im::Vector<U>`	2
+emit_host	missing_method	as_deref	unit type `()`	2
+emit_host	missing_method	clone	type parameter `U`	2
+emit_host	no_variant	GlobalBareAmbiguous	enum `std::option::Option<T>`	2
+emit_host	no_variant	GlobalBareUnique	enum `std::option::Option<_>`	2
+emit_host	bounds_unsatisfied	clone	struct `im::Vector<C>`	1
+emit_host	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<A>>`	1
+emit_host	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<B>>`	1
+emit_host	bounds_unsatisfied	iter	struct `im::Vector<A>`	1
+emit_host	bounds_unsatisfied	iter	struct `im::Vector<B>`	1
+emit_host	missing_method	clone	type parameter `B`	1
+emit_module	missing_method	clone	type parameter `T`	30
+emit_module	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<T>>`	12
+emit_module	bounds_unsatisfied	clone	enum `Outcome<T>`	9
+emit_module	bounds_unsatisfied	iter	struct `im::Vector<T>`	8
+emit_module	bounds_unsatisfied	clone	enum `Outcome<U>`	4
+emit_module	bounds_unsatisfied	clone	enum `std::option::Option<T>`	4
+emit_module	bounds_unsatisfied	clone	struct `im::Vector<T>`	4
+emit_module	missing_method	clone	type parameter `A`	3
+emit_module	missing_method	clone	type parameter `R`	3
+emit_module	bounds_unsatisfied	clone	struct `im::Vector<U>`	2
+emit_module	missing_method	as_deref	unit type `()`	2
+emit_module	missing_method	clone	type parameter `U`	2
+emit_module	no_variant	GlobalBareAmbiguous	enum `std::option::Option<T>`	2
+emit_module	no_variant	GlobalBareUnique	enum `std::option::Option<_>`	2
+emit_module	bounds_unsatisfied	clone	struct `im::Vector<C>`	1
+emit_module	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<A>>`	1
+emit_module	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<B>>`	1
+emit_module	bounds_unsatisfied	iter	struct `im::Vector<A>`	1
+emit_module	bounds_unsatisfied	iter	struct `im::Vector<B>`	1
+emit_module	missing_method	clone	type parameter `B`	1
+materialization_carriers	missing_method	clone	type parameter `T`	28
+materialization_carriers	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<T>>`	12
+materialization_carriers	bounds_unsatisfied	clone	enum `Outcome<T>`	9
+materialization_carriers	bounds_unsatisfied	iter	struct `im::Vector<T>`	8
+materialization_carriers	bounds_unsatisfied	clone	enum `Outcome<U>`	4
+materialization_carriers	missing_method	clone	type parameter `A`	4
+materialization_carriers	bounds_unsatisfied	clone	struct `im::Vector<T>`	3
+materialization_carriers	bounds_unsatisfied	clone	enum `CacheLookupResult<T>`	2
+materialization_carriers	bounds_unsatisfied	clone	struct `im::Vector<U>`	2
+materialization_carriers	missing_method	clone	type parameter `U`	2
+materialization_carriers	bounds_unsatisfied	clone	enum `CacheProbe<B>`	1
+materialization_carriers	bounds_unsatisfied	clone	struct `im::Vector<C>`	1
+materialization_carriers	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<A>>`	1
+materialization_carriers	bounds_unsatisfied	is_empty	struct `Rc<im::Vector<B>>`	1
+materialization_carriers	bounds_unsatisfied	iter	struct `im::Vector<A>`	1
+materialization_carriers	bounds_unsatisfied	iter	struct `im::Vector<B>`	1
+materialization_carriers	missing_method	clone	type parameter `B`	1
+
+# section=root_family_rollup_all_modules
+root_family	description	total_count	share_pct
+R1_clone_bound_on_type_param	missing_method clone on type parameter	261	41.1
+R2_vector_method_bounds	bounds_unsatisfied is_empty/iter on im::Vector carriers	168	26.5
+R3_container_clone_bounds	bounds_unsatisfied clone on Outcome/Option/im::Vector	161	25.4
+R4_optional_coproduct_grounding	GlobalBareUnique/GlobalBareAmbiguous on std::option::Option	24	3.8
+R5_as_deref_unit	as_deref on unit type ()	12	1.9
+R6_other	misc cache/verdict clone bounds	9	1.4
