@@ -15,85 +15,85 @@ use std::rc::Rc;
 pub fn compiler_inductive_fields() -> Rc<Vec<Rc<InductiveField>>> {
     thread_local! {
             static CACHED: Rc<Vec<Rc<InductiveField>>> = {
-                Rc::new(vec![Rc::new(InductiveField {
+                vec![InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
         field_name: "children".to_string(),
         shape: RecursionShape::ListRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }, InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
         field_name: "params".to_string(),
         shape: RecursionShape::ListRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }, InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
         field_name: "uses".to_string(),
         shape: RecursionShape::ListRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }, InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
         field_name: "properties".to_string(),
         shape: RecursionShape::ListRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }, InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
         field_name: "body".to_string(),
         shape: RecursionShape::OptionalRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }, InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
         field_name: "transport".to_string(),
         shape: RecursionShape::OptionalRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }, InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
         field_name: "type_annotation".to_string(),
         shape: RecursionShape::OptionalRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }, InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
         field_name: "inferred".to_string(),
         shape: RecursionShape::OptionalRecursion,
         element_type: "InferredNode".to_string(),
-    }), Rc::new(InductiveField {
+    }, InductiveField {
         type_name: "InferredNode".to_string(),
         variant_name: "Resolved".to_string(),
         field_name: "node".to_string(),
         shape: RecursionShape::DirectRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }, InductiveField {
         type_name: "MatchPattern".to_string(),
         variant_name: "VariantPattern".to_string(),
         field_name: "field_bindings".to_string(),
         shape: RecursionShape::ListRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }, InductiveField {
         type_name: "MethodSemantics".to_string(),
         variant_name: "AlgebraMethodSemantics".to_string(),
         field_name: "method_def".to_string(),
         shape: RecursionShape::DirectRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }, InductiveField {
         type_name: "MethodSemantics".to_string(),
         variant_name: "AlgebraMethodSemantics".to_string(),
         field_name: "fold_accumulator_type".to_string(),
         shape: RecursionShape::OptionalRecursion,
         element_type: "Node".to_string(),
-    }), Rc::new(InductiveField {
+    }, InductiveField {
         type_name: "MethodSemantics".to_string(),
         variant_name: "ServiceMethodSemantics".to_string(),
         field_name: "op_params".to_string(),
         shape: RecursionShape::ListRecursion,
         element_type: "Node".to_string(),
-    })])
+    }]
             };
         }
     CACHED.with(|c: &Rc<Vec<Rc<InductiveField>>>| c.clone())

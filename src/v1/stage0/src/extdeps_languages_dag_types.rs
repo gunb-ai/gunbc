@@ -15,12 +15,12 @@ use std::rc::Rc;
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+                ExternalAuthority {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/languages/dag".to_string(),
-    }),
-    })
+    },
+    }
             };
         }
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())

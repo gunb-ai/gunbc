@@ -22,11 +22,11 @@ use std::rc::Rc;
 pub struct ResolvedFuncSig {
     pub name: String,
     pub params: Rc<Vec<Rc<Node>>>,
-    pub inferred: Rc<Node>,
+    pub inferred: Box<Rc<Node>>,
     pub is_async: bool,
-    pub output_provenance: Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    pub output_provenance: Rc<Vec<HashMap<String, Rc<SubValueRelation>>>>,
     pub variant_provenance:
-        Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>,
+        Rc<HashMap<String, HashMap<String, HashMap<String, Rc<SubValueRelation>>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -85,18 +85,18 @@ pub fn flatten_parent_envs(
             __result
         });
         let dedup = ordered.clone().iter().cloned().fold(
-            Rc::new(FlattenAccum {
+            FlattenAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 out: Rc::new(vec![]),
-            }),
+            },
             |acc: Rc<FlattenAccum>, p: Rc<ResolvedFuncEnv>| {
                 if emit_map_has(acc.seen.clone(), p.name.clone()) {
                     acc.clone()
                 } else {
-                    Rc::new(FlattenAccum {
+                    FlattenAccum {
                         seen: v1_rt::rc_map_insert(acc.seen.clone(), p.name.clone(), true),
                         out: v1_rt::rc_list_push(acc.out.clone(), p.clone()),
-                    })
+                    }
                 }
             },
         );
@@ -135,41 +135,41 @@ pub struct ChainSigScan {
 }
 
 pub fn lookup_resolved_sig_unique_across_parents(
-    env: Rc<ResolvedFuncEnv>,
+    env: ResolvedFuncEnv,
     name: String,
 ) -> Rc<FuncSigLookup> {
     {
         let scan = env.parents.clone().iter().cloned().fold(
-            Rc::new(ChainSigScan {
+            ChainSigScan {
                 first_sig: None,
                 owners: Rc::new(vec![]),
-            }),
+            },
             |acc: Rc<ChainSigScan>, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(
                 &p.local.clone(),
                 name.clone(),
             ) {
-                Some(sig) => Rc::new(ChainSigScan {
+                Some(sig) => ChainSigScan {
                     first_sig: if (acc.first_sig.clone() != None) {
                         acc.first_sig.clone()
                     } else {
                         Some(sig.clone())
                     },
                     owners: v1_rt::concat(acc.owners.clone(), Rc::new(vec![p.name.clone()])),
-                }),
+                },
                 None => acc.clone(),
             },
         );
         let owner_count = (scan.owners.clone().len() as i64);
         if (owner_count.clone() == 0) {
-            Rc::new(FuncSigLookup::FuncSigUnresolved)
+            FuncSigLookup::FuncSigUnresolved
         } else {
             if (owner_count.clone() == 1) {
                 match scan.first_sig.clone() {
-                    Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() }),
-                    None => Rc::new(FuncSigLookup::FuncSigUnresolved),
+                    Some(sig) => FuncSigLookup::FuncSigResolved { sig: sig.clone() },
+                    None => FuncSigLookup::FuncSigUnresolved,
                 }
             } else {
-                Rc::new(FuncSigLookup::FuncSigAmbiguous {
+                FuncSigLookup::FuncSigAmbiguous {
                     candidates: Rc::new({
                         let mut __result = Vec::new();
                         for o in scan.owners.clone().iter().cloned() {
@@ -180,28 +180,28 @@ pub fn lookup_resolved_sig_unique_across_parents(
                         }
                         __result
                     }),
-                })
+                }
             }
         }
     }
 }
 
 pub fn lookup_resolved_sig_with_telemetry(
-    env: Rc<ResolvedFuncEnv>,
+    env: ResolvedFuncEnv,
     name: String,
 ) -> Option<Rc<ResolvedFuncSig>> {
     {
         let scan = env.parents.clone().iter().cloned().fold(
-            Rc::new(ParentSigScan {
+            ParentSigScan {
                 sig: None,
                 match_count: 0,
                 first_parent: None,
-            }),
+            },
             |acc: Rc<ParentSigScan>, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(
                 &p.local.clone(),
                 name.clone(),
             ) {
-                Some(sig) => Rc::new(ParentSigScan {
+                Some(sig) => ParentSigScan {
                     sig: if (acc.sig.clone() != None) {
                         acc.sig.clone()
                     } else {
@@ -213,7 +213,7 @@ pub fn lookup_resolved_sig_with_telemetry(
                     } else {
                         Some(p.name.clone())
                     },
-                }),
+                },
                 None => acc.clone(),
             },
         );
@@ -232,9 +232,9 @@ pub fn lookup_resolved_sig_with_telemetry(
     }
 }
 
-pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Rc<FuncSigLookup> {
+pub fn lookup_resolved_sig(env: ResolvedFuncEnv, name: String) -> Rc<FuncSigLookup> {
     match v1_rt::map_get(&env.local.clone(), name.clone()) {
-        Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() }),
+        Some(sig) => FuncSigLookup::FuncSigResolved { sig: sig.clone() },
         None => {
             if v1_rt::name_resolution_policy_is_namespace_only() {
                 lookup_resolved_sig_unique_across_parents(env.clone(), name.clone())
@@ -254,8 +254,8 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Rc<FuncSig
                         )
                     };
                     match first_hit.clone() {
-                        Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() }),
-                        None => Rc::new(FuncSigLookup::FuncSigUnresolved),
+                        Some(sig) => FuncSigLookup::FuncSigResolved { sig: sig.clone() },
+                        None => FuncSigLookup::FuncSigUnresolved,
                     }
                 }
             }
@@ -296,7 +296,7 @@ pub fn collect_func_call_edges(
 
 pub fn collect_calls_in_expr(
     caller: String,
-    texpr: Rc<Node>,
+    texpr: Node,
     local_func_set: Rc<HashMap<String, bool>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<CallEdge>>> {
@@ -305,10 +305,10 @@ pub fn collect_calls_in_expr(
             ExprData::ExprCall { .. } => {
                 let f = expr_call_func_at(texpr.clone(), source_indices.clone());
                 if emit_map_has(local_func_set.clone(), f.clone()) {
-                    Rc::new(vec![Rc::new(CallEdge {
+                    Rc::new(vec![CallEdge {
                         caller: caller.clone(),
                         callee: f.clone(),
-                    })])
+                    }])
                 } else {
                     Rc::new(vec![])
                 }
@@ -393,21 +393,19 @@ pub fn func_reaches_self(
 pub fn build_name_set(names: Rc<Vec<String>>) -> Rc<HashMap<String, bool>> {
     names.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, name: String| {
-            v1_rt::rc_map_insert(acc, name.clone(), true)
-        },
+        |acc: HashMap<String, bool>, name: String| v1_rt::rc_map_insert(acc, name.clone(), true),
     )
 }
 
-pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
-    Rc::new(ResolvedFuncSig {
+pub fn declared_to_resolved(dsig: DeclaredFuncSig) -> Rc<ResolvedFuncSig> {
+    ResolvedFuncSig {
         name: dsig.name.clone(),
         params: dsig.params.clone(),
         inferred: dsig.inferred.clone().clone().unwrap(),
         is_async: dsig.is_async.clone(),
         output_provenance: dsig.output_provenance.clone(),
         variant_provenance: dsig.variant_provenance.clone(),
-    })
+    }
 }
 
 pub fn merge_remaining_declared(
@@ -419,7 +417,7 @@ pub fn merge_remaining_declared(
         .cloned()
         .fold(
             resolved.clone(),
-            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
+            |acc: HashMap<String, Rc<ResolvedFuncSig>>, dsig: Rc<DeclaredFuncSig>| {
                 if (dsig.inferred.clone() != None) {
                     v1_rt::rc_map_insert(
                         acc.clone(),
@@ -452,8 +450,7 @@ pub fn topo_resolve_loop(
                     .cloned()
                     .fold(
                         resolved.clone(),
-                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-                         dsig: Rc<DeclaredFuncSig>| {
+                        |acc: HashMap<String, Rc<ResolvedFuncSig>>, dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != None) {
                                 v1_rt::rc_map_insert(
                                     acc.clone(),
@@ -465,14 +462,16 @@ pub fn topo_resolve_loop(
                             }
                         },
                     );
-                return Rc::new(ResolveFuncSigsResult {
-                    func_env: Rc::new(ResolvedFuncEnv {
-                        name: module_name.clone(),
-                        local: all_resolved.clone(),
-                        parents: parent_envs.clone(),
-                    }),
-                    diagnostics: diagnostics.clone(),
-                });
+                Rc::new(
+                    return ResolveFuncSigsResult {
+                        func_env: ResolvedFuncEnv {
+                            name: module_name.clone(),
+                            local: all_resolved.clone(),
+                            parents: parent_envs.clone(),
+                        },
+                        diagnostics: diagnostics.clone(),
+                    },
+                )
             }
         }
         let ready = Rc::new({
@@ -527,39 +526,39 @@ pub fn topo_resolve_loop(
         if ((ready.clone().len() as i64) == 0) {
             {
                 let cycle_accum = remaining.clone().iter().cloned().fold(
-                    Rc::new(SigsAccum {
+                    SigsAccum {
                         signatures: resolved.clone(),
                         diagnostics: Rc::new(vec![]),
-                    }),
+                    },
                     |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
                         &declared_sigs,
                         fn_name.clone(),
                     ) {
                         Some(dsig) => {
                             if (dsig.inferred.clone() != None) {
-                                Rc::new(SigsAccum {
+                                SigsAccum {
                                     signatures: v1_rt::rc_map_insert(
                                         acc.signatures.clone(),
                                         fn_name.clone(),
                                         declared_to_resolved(dsig.clone()),
                                     ),
                                     diagnostics: acc.diagnostics.clone(),
-                                })
+                                }
                             } else {
-                                Rc::new(SigsAccum {
+                                SigsAccum {
                                     signatures: acc.signatures.clone(),
                                     diagnostics: v1_rt::rc_list_push(
                                         acc.diagnostics.clone(),
                                         make_error_node(
-                                            Rc::new(CompilerDiagnostic::MissingAnnotation {
+                                            CompilerDiagnostic::MissingAnnotation {
                                                 fn_name: fn_name.clone(),
                                                 what: "return type (recursive)".to_string(),
                                                 span: no_span(),
-                                            }),
+                                            },
                                             module_name.clone(),
                                         ),
                                     ),
-                                })
+                                }
                             }
                         }
                         None => acc.clone(),
@@ -570,8 +569,7 @@ pub fn topo_resolve_loop(
                     .cloned()
                     .fold(
                         cycle_accum.signatures.clone(),
-                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-                         dsig: Rc<DeclaredFuncSig>| {
+                        |acc: HashMap<String, Rc<ResolvedFuncSig>>, dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != None) {
                                 v1_rt::rc_map_insert(
                                     acc.clone(),
@@ -583,53 +581,55 @@ pub fn topo_resolve_loop(
                             }
                         },
                     );
-                return Rc::new(ResolveFuncSigsResult {
-                    func_env: Rc::new(ResolvedFuncEnv {
-                        name: module_name.clone(),
-                        local: all_resolved.clone(),
-                        parents: parent_envs.clone(),
-                    }),
-                    diagnostics: v1_rt::concat(
-                        diagnostics.clone(),
-                        cycle_accum.diagnostics.clone(),
-                    ),
-                });
+                Rc::new(
+                    return ResolveFuncSigsResult {
+                        func_env: ResolvedFuncEnv {
+                            name: module_name.clone(),
+                            local: all_resolved.clone(),
+                            parents: parent_envs.clone(),
+                        },
+                        diagnostics: v1_rt::concat(
+                            diagnostics.clone(),
+                            cycle_accum.diagnostics.clone(),
+                        ),
+                    },
+                )
             }
         }
         let ready_accum = ready.clone().iter().cloned().fold(
-            Rc::new(SigsAccum {
+            SigsAccum {
                 signatures: resolved.clone(),
                 diagnostics: diagnostics.clone(),
-            }),
+            },
             |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
                 &declared_sigs,
                 fn_name.clone(),
             ) {
                 Some(dsig) => {
                     if (dsig.inferred.clone() != None) {
-                        Rc::new(SigsAccum {
+                        SigsAccum {
                             signatures: v1_rt::rc_map_insert(
                                 acc.signatures.clone(),
                                 fn_name.clone(),
                                 declared_to_resolved(dsig.clone()),
                             ),
                             diagnostics: acc.diagnostics.clone(),
-                        })
+                        }
                     } else {
-                        Rc::new(SigsAccum {
+                        SigsAccum {
                             signatures: acc.signatures.clone(),
                             diagnostics: v1_rt::rc_list_push(
                                 acc.diagnostics.clone(),
                                 make_error_node(
-                                    Rc::new(CompilerDiagnostic::MissingAnnotation {
+                                    CompilerDiagnostic::MissingAnnotation {
                                         fn_name: fn_name.clone(),
                                         what: "return type".to_string(),
                                         span: no_span(),
-                                    }),
+                                    },
                                     module_name.clone(),
                                 ),
                             ),
-                        })
+                        }
                     }
                 }
                 None => acc.clone(),
@@ -637,7 +637,7 @@ pub fn topo_resolve_loop(
         );
         let ready_set = ready.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, fn_name: String| {
+            |acc: HashMap<String, bool>, fn_name: String| {
                 v1_rt::rc_map_insert(acc, fn_name.clone(), true)
             },
         );
