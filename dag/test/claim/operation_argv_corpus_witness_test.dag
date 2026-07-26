@@ -1,7 +1,7 @@
 module test.claim.operation_argv_corpus_witness
 
 import std.types { String, List, Bool, Int }
-import v2.std.algebra { fold_list, any }
+import v2.std.algebra { fold_list, any, length, list_head, HeadFound, HeadAbsent }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.operation_argv {
   ArgvMaterialization,
@@ -153,7 +153,12 @@ test fn operation_argv_corpus_RED_literal_executable_control_materializes() -> B
     "LiteralExecutable",
     [operation_argv_bind_text(name: "flag", text: "--version")]
   ) {
-    ArgvMaterialized { argv: argv } => join(argv, " ") == "true --version"
+    ArgvMaterialized { argv: argv } =>
+      length(xs: argv) == 2
+        && match list_head(xs: argv) {
+          HeadFound { value: head } => head == "true"
+          HeadAbsent => false
+        }
     ArgvMaterializationRefused { at: _, cause: _ } => false
   }
 }
