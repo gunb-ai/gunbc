@@ -2,8 +2,16 @@
 //! undetermined-carrier `none`/`None` must REFUSE, never emit the fail-open
 //! Rust `None` default. CardOptional resolves type-directed to `None`.
 //!
-//! Hand-authored stage0 integration test (not a `ct_` blob — no scaffold
-//! roster row). Lives outside regen_stage0 so it is not wiped.
+//! SCAFFOLD (DESIGN §7 HAND-RUST GATE — explicit deferral / RetainedNonMigratable):
+//! Lane: Value::Null split (`gunbc.plans.value_null_split`; ROADMAP fail-closed
+//! meta band — "Value::Null split (the deep root)").
+//! Why host-Rust: calls `emit_none_keyword_for_resolved_type` on the v1 seed
+//! emitter surface; a `.dag` floor witness cannot import the v1 compiler crate
+//! (same class as `e0308_mechanical_trio_retained`).
+//! Dissolution: delete this module when the refuse is pinned by a floor-enrolled
+//! emit-fixture witness that reaches the seed emitter, or when `src/v1` deletes
+//! at v2 self-host (ROADMAP hand-MAINTAINED→zero terminal).
+//! Checkable receipt: `dag/test/retirement/none_undetermined_carrier_refuse_retained.dag`.
 
 use std::rc::Rc;
 use v1_compiler::v1_compiler_emit_rust::emit_none_keyword_for_resolved_type;

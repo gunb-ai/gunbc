@@ -46,10 +46,6 @@ ureq = { version = "2", features = ["json"] }
 # burns CPU and is caught). Already present transitively; declared direct for this use.
 libc = "0.2"
 
-[[test]]
-name = "none_undetermined_carrier_refuse"
-path = "tests/none_undetermined_carrier_refuse.rs"
-
 [[bin]]
 name = "gunbc"
 path = "src/main.rs"

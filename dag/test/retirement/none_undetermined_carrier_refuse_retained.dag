@@ -1,0 +1,9 @@
+module test.retirement.none_undetermined_carrier_refuse_retained
+
+
+data none_undetermined_carrier_refuse_retention: TestModuleRetirement = TestModuleRetirement {
+  module: "none_undetermined_carrier_refuse_test.rs",
+  disposition: RetainedNonMigratable {
+    reason: "HAND-RUST GATE explicit deferral (review 43410). Discriminating RED for Phase C Value::Null-split emitter fail-open close: calls emit_none_keyword_for_resolved_type on the v1 seed emitter surface (undetermined refuses; CardOptional → None; non-optional resolved refuses). A .dag floor witness cannot reach that surface without importing the v1 compiler crate (same class as e0308_mechanical_trio_retained). Lane: gunbc.plans.value_null_split / ROADMAP fail-closed meta band (Value::Null split). Dissolves when a floor-enrolled emit-fixture witness pins the refuse, or when src/v1 deletes at v2 self-host (ROADMAP hand-MAINTAINED→zero). Not migration debt and not a delete candidate."
+  }
+}
