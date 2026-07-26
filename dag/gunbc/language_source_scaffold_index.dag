@@ -349,17 +349,22 @@ data ct_row_ct_profile_reconcile_test: LanguageSourceScaffoldRow = LanguageSourc
   disposition: compiler_tests_profile_trigger
 }
 
-data language_source_row_driven_exclusion_note: String = "Blobs deliberately absent from the roster because they are already row-driven, not hand-authored — the coverage witness derives its expected count from this list instead of a hand-tuned numeric offset, so a second row-driven emitter gets a NAMED row here rather than an unexplained +1."
+data compiler_tests_coercion_hybrid_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1.compiler.coercion",
+    decl_name: "CoercionTestEntry",
+    field: WholeDeclaration
+  }
+}
 
-data compiler_tests_row_driven_exclusions: List<String> = [
-  "ct_coercion_tests"
-]
-
-fn compiler_tests_row_driven_exclusion_count() -> Int {
-  compiler_tests_row_driven_exclusions |> count
+data ct_row_ct_coercion_tests: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_coercion_tests",
+  disposition: compiler_tests_coercion_hybrid_trigger
 }
 
 data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
+  ct_row_ct_coercion_tests,
   ct_row_ct_module_header,
   ct_row_ct_module_footer,
   ct_row_ct_workspace_helpers,

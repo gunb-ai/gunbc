@@ -16,7 +16,7 @@ import gunbc.language_source_scaffold_index {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data language_source_scaffold_index_test_note: String = "B2/B4/B5 control for the language-source scaffold inventory. Two distinct obligations are asserted separately. (1) DISPOSITION: every rostered blob carries a Disposition that names something — a Scaffold binding the construction that subsumes it, or a Terminal stating why it is irreducible. Because Disposition has no prose arm, an unmarked row is unwritable, so the discriminating case is a mark that names NOTHING: the RED control is a Scaffold with an empty bind. A Terminal WITH a reason is legitimate (fnv1a64 is a named irreducible kernel), so the control is deliberately not 'Terminal is bad'. (2) COVERAGE: the roster must actually cover its carriers. Asserting hardcoded census counts alone would let a new rt_/ct_ blob land unmarked and stay green until someone bumped the number by hand (review 43161), so coverage is read from the LIVE TREE: the rt_ and ct_ declaration counts in the carrier sources are compared against the roster, and a newly added blob reds this witness instead of sitting unrostered."
+data language_source_scaffold_index_test_note: String = "B2/B4/B5 control for the language-source scaffold inventory. Two distinct obligations are asserted separately. (1) DISPOSITION: every rostered blob carries a Disposition that names something — a Scaffold binding the construction that subsumes it, or a Terminal stating why it is irreducible. Because Disposition has no prose arm, an unmarked row is unwritable, so the discriminating case is a mark that names NOTHING: the RED control is a Scaffold with an empty bind. A Terminal WITH a reason is legitimate (fnv1a64 is a named irreducible kernel), so the control is deliberately not 'Terminal is bad'. (2) COVERAGE: the roster must actually cover its carriers. Asserting hardcoded census counts alone would let a new rt_/ct_ blob land unmarked and stay green until someone bumped the number by hand (review 43161), so coverage is read from the LIVE TREE: the rt_ and ct_ declaration counts in the carrier sources are compared against the roster, and a newly added blob reds this witness instead of sitting unrostered. The comparison is EXACT equality with no offset: an earlier version used declared == rostered + 1 to absorb ct_coercion_tests, which was itself an absorbing fallback (review 43177) — that blob is a hybrid (row-driven core via extract_coercion_tests, but it still emits a hand-authored header and aggregates three hand blobs), so it is rostered like any other and the fudge is gone."
 
 data runtime_rust_source_path: String = "src/v1/runtime_rust.dag"
 data compiler_tests_rust_source_path: String = "src/v1/compiler_tests_rust.dag"
@@ -58,7 +58,7 @@ test fn runtime_rust_blobs_are_all_rostered() -> Bool {
 test fn compiler_tests_rust_blobs_are_all_rostered() -> Bool {
   let declared = declared_fn_count(path: compiler_tests_rust_source_path, prefix: "\nfn ct_")
   let rostered = rostered_count_for(carrier: "v1.compiler.compiler_tests_rust")
-  declared == rostered + 1
+  declared == rostered
 }
 
 test fn scaffold_binding_nothing_is_refused() -> Bool {
