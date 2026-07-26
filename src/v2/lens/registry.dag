@@ -497,6 +497,10 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
       EmittedBinaryEffectConfinement => true
       _ => false
     }
+    FallbackArmClassify => match right {
+      FallbackArmClassify => true
+      _ => false
+    }
     MandatoryTag => match right {
       MandatoryTag => true
       _ => false
