@@ -12,6 +12,7 @@ import tools.e0599_probe_census {
   e0599_canonical_seven_module_count,
   e0599_message_pattern_row_count,
   e0599_root_family_for,
+  e0599_root_family_label_for_row,
 }
 
 data e0599_probe_census_witness_note: String = "Witness for tools.e0599_probe_census authority: pattern row census + root-family rollup used by docs/probes/e0599_census_extract.sh (SCAFFOLD realization). RED: misclassified GlobalBare or type-parameter clone tuple."
@@ -70,4 +71,12 @@ test fn e0599_root_family_red_control_generic_diff_not_r1() -> Bool {
     method: "clone",
     receiver: "struct `im::Vector<T>`"
   ) != R1CloneBoundOnTypeParam
+}
+
+test fn e0599_root_family_label_for_row_log_shape_bridge() -> Bool {
+  e0599_root_family_label_for_row(
+    shape_str: "bounds_unsatisfied",
+    method: "is_empty",
+    receiver: "struct `Rc<im::Vector<T>>`"
+  ) == "R2VectorMethodBounds"
 }
