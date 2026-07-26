@@ -1,21 +1,17 @@
 module v2.workflow.ci_merge_admission_emit
 
-import v2.compiler.emit_orchestration { orch_emit_pipeline }
-import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import gunbc.merge_admission_produce {
   ci_floor_disposition_marker_init_shell_emit_dissolution_trigger,
   ci_floor_disposition_marker_init_note,
   merge_admission_floor_disposition_floor_running,
   ci_floor_disposition_marker_path,
 }
-import v2.std.orchestration {
-  Do,
-  FailFast,
-  Pipeline,
-  PipelineStep,
-  Run
+import v2.workflow.orchestration_bash_emit_support {
+  orch_bash_comment_line,
+  orch_bash_do,
+  orch_bash_emit_pipeline
 }
-import v2.std.diagnostic { Accepted, Rejected, None, Some }
+import v2.std.orchestration { FailFast, Pipeline }
 
 data ci_merge_admission_emit_authority_note: String = "Foreign-executor shell emission for gunbc.merge_admission_produce script surfaces (bucket D). Intent stays out of dag/gunbc/merge_admission_produce; bash medium binding lives here per shell→intent routing."
 
@@ -30,46 +26,21 @@ fn ci_merge_admission_floor_disposition_stamp_command() -> String {
   )
 }
 
-fn ci_merge_admission_run(command: String) -> Run {
-  Run {
-    command: command,
-    env: [],
-    redirect: Absent,
-    capture: Absent
-  }
-}
-
-fn ci_merge_admission_do(command: String) -> PipelineStep {
-  Do { run: ci_merge_admission_run(command: command) }
-}
-
-fn ci_merge_admission_comment_line(text: String) -> PipelineStep {
-  ci_merge_admission_do(command: concat("# ", text))
-}
-
-fn ci_merge_admission_emit_pipeline(p: Pipeline) -> String {
-  match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
-    Accepted { value: source, diagnostics: d } =>
-      match d {
-        None => source.carried
-        Some { diagnostics: _ } => ci_merge_admission_emit_refused_poison
-      }
-    Rejected { diagnostics: _ } => ci_merge_admission_emit_refused_poison
-  }
-}
-
 fn ci_floor_disposition_marker_init_intent() -> Pipeline {
   Pipeline {
     steps: [
-      ci_merge_admission_comment_line(text: ci_floor_disposition_marker_init_shell_emit_dissolution_trigger),
-      ci_merge_admission_comment_line(text: ci_floor_disposition_marker_init_note),
-      ci_merge_admission_do(command: ci_floor_disposition_marker_mkdir_command),
-      ci_merge_admission_do(command: ci_merge_admission_floor_disposition_stamp_command())
+      orch_bash_comment_line(text: ci_floor_disposition_marker_init_shell_emit_dissolution_trigger),
+      orch_bash_comment_line(text: ci_floor_disposition_marker_init_note),
+      orch_bash_do(command: ci_floor_disposition_marker_mkdir_command),
+      orch_bash_do(command: ci_merge_admission_floor_disposition_stamp_command())
     ],
     on_failure: FailFast
   }
 }
 
 fn ci_floor_disposition_marker_init_script() -> String {
-  ci_merge_admission_emit_pipeline(p: ci_floor_disposition_marker_init_intent())
+  orch_bash_emit_pipeline(
+    p: ci_floor_disposition_marker_init_intent(),
+    refused_poison: ci_merge_admission_emit_refused_poison
+  )
 }

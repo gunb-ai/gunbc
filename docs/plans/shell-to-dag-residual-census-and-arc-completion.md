@@ -256,6 +256,7 @@ These are correct as shell (GHA `run:`, cron, git hooks, pre-runtime bootstrap �
 | `v2.workflow.ci_floor_peak_emit` | `ci_cgroup_peak_locate_shell`, `ci_floor_peak_pre_script`, `ci_floor_peak_post_script` | GHA `run:` |
 | `v2.workflow.ci_retry_emit` | `ci_cargo_eagain_retry_script` | GHA `run:` (via `ci_release_build_emit`) |
 | `v2.workflow.ci_release_build_emit` | `ci_release_build_script`, `gunbc_ci_run_script` | GHA `run:` (partial — still concat-wraps verify script) |
+| `v2.workflow.orchestration_bash_emit_support` | `orch_bash_run`, `orch_bash_do`, `orch_bash_emit_pipeline` | shared emit plumbing (**#7265**; pre-existing four `ci_*_emit` forks migrate in PR2) |
 | `v2.workflow.ci_materialization_emit` | `ci_sccache_provider_shell_injection` | GHA `run:` (**LANDED #7265**) |
 | `v2.workflow.ci_merge_admission_emit` | `ci_floor_disposition_marker_init_script` | GHA `run:` (**LANDED #7265**) |
 | `gunbc.assimilate.bmc_token_federation` | `gcp_token_smoke_script` | GHA `run:` |
@@ -446,7 +447,7 @@ The per-symbol remaining work and batching plan for §4.E CI sites. **Load-beari
 
 | PR | scope |
 | --- | --- |
-| **PR 1 (#7265)** | `ci_sccache_provider_shell_injection` + `ci_floor_disposition_marker_init_script` emit migrations; witness tests + `realization_vocabulary_containment` roster; regen `ci.yml`. Does not touch `ci_spec.dag` composers beyond import delegation. |
+| **PR 1 (#7265)** | `ci_sccache_provider_shell_injection` + `ci_floor_disposition_marker_init_script` emit migrations; `orchestration_bash_emit_support` shared plumbing; semijoin scaffold dissolved onto block-bodied `if_else` (#7277); witness tests + `realization_vocabulary_containment` roster; regen `ci.yml`. Does not touch `ci_spec.dag` composers beyond import delegation. |
 | **PR 2** | merge-admission cluster completion + receipt gates (A/B remaining rows). |
 | **PR 3** | `ci_spec` composer migration + `ci_fmt_gate_line` → typed `cargo.Build.Fmt`. **Operator review required** — load-bearing CI generator. |
 
