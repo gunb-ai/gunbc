@@ -47,6 +47,7 @@ import v2.workflow.ci_floor_plan {
   falsifier_rehomed_bin_wet_batch_enrolled,
   falsifier_cadence_witness_batch_enrolled,
   falsifier_cadence_witness_entries,
+  falsifier_gate_batch_enrolled,
   falsifier_substrate_long_lane_batch_enrolled,
   gunbc_ci_floor_schedule_lens_holds,
   witness_floor_batch_clamp_params_cover_schedule,
@@ -59,7 +60,7 @@ import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_known_red_entries,
   falsifier_self_host_wet_known_red_batch_enrolled
 }
-import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, DagCompileCleanGate, RegenVerifyGate }
+import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, DagCompileCleanGate, RegenVerifyGate, SourceRootIngestGate }
 import std.realization_schedule {
   Runnable, RunnableSingleClaim,
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
@@ -293,8 +294,23 @@ fn witness_optin_plan_gates_corpus_after_compile() -> Bool {
     (batch_index_of(batches: batches, target: corpus_sentinel) >= 2)
 }
 
+data source_ingest_ordering_spec_note: String = "SourceRootIngestGate left the per-PR floor for the falsifier cadence on 2026-07-26 (gunbc.commit_workflow gate_gauntlet_flip_basis_note), so optin_spec — which derives its gates from the LIVE roster — no longer carries it and this ordering claim went unsatisfiable. The property under witness is the SCHEDULER's behaviour (a source-root-ingest runnable is serialized after the corpus batches), which is a fact about the planner and must stay pinned no matter which lane the live roster currently routes that gate through. So the spec is made synthetic here, exactly as heavy_pair_spec_note does for the deleted EmitDeterminismGate: re-add the gate to a local spec and assert the ordering against it. DELETING THIS WITNESS WAS THE ALTERNATIVE AND IT IS THE WRONG ONE — a scheduler ordering rule would then have no executing consumer at all, and the flip would have quietly bought a coverage loss in the planner that has nothing to do with where the gate runs. Re-pointing at a synthetic spec preserves the claim; dropping it would be the narrowing this file's own substrate_long_lane_is_a_sibling_cadence_note warns against."
+
+fn ci_spec_with_source_ingest_gate(spec: CiSpec) -> CiSpec {
+  CiSpec {
+    gates: concat(spec.gates, [SourceRootIngestGate]),
+    witness_entries: spec.witness_entries,
+    discovery_scan_dirs: spec.discovery_scan_dirs,
+    diff_policy: spec.diff_policy,
+    notice_title: spec.notice_title,
+    deploy_stages: spec.deploy_stages,
+  }
+}
+
+data source_ingest_ordering_spec: CiSpec = ci_spec_with_source_ingest_gate(spec: optin_spec)
+
 fn witness_optin_source_ingest_serialized_after_corpus() -> Bool {
-  let batches = floor_schedule_for(spec: optin_spec, serialize_heavy: true)
+  let batches = floor_schedule_for(spec: source_ingest_ordering_spec, serialize_heavy: true)
   let corpus_idx = batch_index_of(batches: batches, target: corpus_sentinel)
   let ingest_idx = batch_index_of(batches: batches, target: "source_root_ingest_gate_passes")
   (corpus_idx >= 1) && (ingest_idx > corpus_idx)
@@ -504,7 +520,8 @@ fn falsifier_plan_structure_holds() -> Bool {
   let rehomed_enrolled = falsifier_rehomed_bin_wet_batch_enrolled()
   let substrate_long_enrolled = falsifier_substrate_long_lane_batch_enrolled()
   let cadence_enrolled = falsifier_cadence_witness_batch_enrolled()
-  let expected_batches = 1 + (if wet_enrolled { 1 } else { 0 }) + (if wet_known_red_enrolled { 1 } else { 0 }) + (if probe_enrolled { 1 } else { 0 }) + (if silent_pick_gate_enrolled { 1 } else { 0 }) + (if rehomed_enrolled { 1 } else { 0 }) + (if substrate_long_enrolled { 1 } else { 0 }) + (if cadence_enrolled { 1 } else { 0 })
+  let gate_enrolled = falsifier_gate_batch_enrolled()
+  let expected_batches = 1 + (if wet_enrolled { 1 } else { 0 }) + (if wet_known_red_enrolled { 1 } else { 0 }) + (if probe_enrolled { 1 } else { 0 }) + (if silent_pick_gate_enrolled { 1 } else { 0 }) + (if rehomed_enrolled { 1 } else { 0 }) + (if substrate_long_enrolled { 1 } else { 0 }) + (if cadence_enrolled { 1 } else { 0 }) + (if gate_enrolled { 1 } else { 0 })
   let wet_ok = if wet_enrolled {
     let wet_batch = skip(xs: batches, n: 1).first()
     (wet_batch.length() == 1)
@@ -559,7 +576,22 @@ fn falsifier_plan_structure_holds() -> Bool {
   } else {
     true
   }
-  (length(xs: batches) == expected_batches) && predict_ok && wet_ok && wet_known_red_ok && probe_ok && silent_pick_gate_ok && rehomed_ok && substrate_long_ok && cadence_ok
+  let gate_ok = if gate_enrolled {
+    let gate_offset = 1 + (if wet_enrolled { 1 } else { 0 }) + (if wet_known_red_enrolled { 1 } else { 0 }) + (if probe_enrolled { 1 } else { 0 }) + (if silent_pick_gate_enrolled { 1 } else { 0 }) + (if rehomed_enrolled { 1 } else { 0 }) + (if substrate_long_enrolled { 1 } else { 0 }) + (if cadence_enrolled { 1 } else { 0 })
+    let gate_batch = skip(xs: batches, n: gate_offset).first()
+    falsifier_gate_batch_carries_the_flipped_gates(batch: gate_batch)
+  } else {
+    true
+  }
+  (length(xs: batches) == expected_batches) && predict_ok && wet_ok && wet_known_red_ok && probe_ok && silent_pick_gate_ok && rehomed_ok && substrate_long_ok && cadence_ok && gate_ok
+}
+
+data falsifier_gate_batch_pin_note: String = "This pin names the two flipped gates by their RUNNABLE FUNCTION rather than asserting a batch length, and the difference is the whole point. A length check (`gate_batch.length() == length(falsifier_gate_runnables())`) is tautological — both sides read the same projection, so it passes for an empty batch, a batch of the wrong gates, or a batch built from a broken projector. The claim worth making is the one the flip is actually asserting: source_root_ingest and self_host_realized_comparison LEFT the per-PR floor and ARRIVED here, executing. Naming them means a future de-enrollment that empties the lane reds on this pin rather than silently satisfying it, which is the same failure the gate-half wall exists to catch, read one layer down at the batch instead of the roster."
+
+fn falsifier_gate_batch_carries_the_flipped_gates(batch: List<Runnable>) -> Bool {
+  let fns = batch_functions(b: batch)
+  list_contains_str(xs: fns, target: "source_root_ingest_gate_passes")
+    && list_contains_str(xs: fns, target: "self_host_realized_comparison_reads_real_bytes_gate_holds")
 }
 
 fn witness_cheap_gates_are_resource_anchors() -> Bool {

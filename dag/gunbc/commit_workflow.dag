@@ -85,7 +85,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: SourceRootIngestGate },
-    surfaces: [GithubActionsCiJob]
+    surfaces: [FalsifierCadenceJob]
   },
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: RegenVerifyGate },
@@ -93,7 +93,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: SelfHostReadsRealBytesGate },
-    surfaces: [GithubActionsCiJob]
+    surfaces: [FalsifierCadenceJob]
   },
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: SelfHostStalenessGate },
@@ -647,6 +647,8 @@ fn project_ci_regen_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate>
     rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsCiRegenJob))
   )
 }
+
+data gate_gauntlet_flip_basis_note: String = "THE MEASURED FLIPS (D3b, first application of the gate lane above). Basis is the per-run [gate-warm-cost] receipt the floor already emits — a real measurement at the grain the placement law requires for a GATE, which is why these three could be priced when the 36 CommitWitnessClaim rows still cannot: the TSV measures gates, and falsifier_cadence_surface_note's blocker is per-ROW receipts. Conflating the two grains would have been the fabrication that note forbids. Warm costs from the green composition run (30181042050, srv fleet arm64): source_root_ingest 427s as ONE opaque entry (its heartbeat reads 'entry 0 of 1' for ~8 minutes), self_host_realized_comparison 223s. Both are ORDERS above the 5s fast-lane budget (gunbc_ci_fast_lane_eval_budget_ms), so PrTier is inadmissible under ci_placement_law_note and Gauntlet is not a preference but the only admissible placement — no signature can make a 427s check fast-lane-eligible. THE COST, stated rather than elided: a regression in either now has up to a 4-hour detection window instead of one PR, and this is the same trade provenance_wall_cadence_rehome_risk accepted three days earlier, priced the same way. WHAT KEEPS IT FROM BEING A BARE NARROW is structural, not a promise: the gate lane's projector and batch land in the same change (falsifier_gate_projection_note), and gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds proves by execution that these rows reach an executing surface rather than vanishing. FOLLOW-ON TRIGGER, deliberately NOT taken here: a diff-proportional PR-tier proxy for source_root_ingest (ingest only the affected roots per-PR, full ingest on cadence) would return per-PR coverage at a cost that scales with the diff instead of the corpus — that is the real fix, and this flip is the interim that stops paying 427s per PR while it is built. THE THIRD GATE IS NOT FLIPPED, and the reason is a finding rather than caution: CheapClaimPoolGate (75s) is a declared member of v2.workflow.ci_floor_plan gunbc_ci_cheap_floor_gate_membership, which makes it BOTH a DataDependsOn predecessor of the compile root (floor_cheap_gates_precede_compile_edges) AND a floor_resource_anchor whose exclusion from corpus→gate serialization is what that list's own note says 'avoids a scheduler deadlock' (cheap→compile data order, corpus→cheap resource order, compile→corpus data order closing the cycle). Moving it is therefore a scheduler rewire, not a surface edit, for the smallest of the three prizes — 75s of the 725s measured. It stays per-PR pending an operator call on whether that rewire is worth 10 percent of the recovery."
 
 data falsifier_gate_projection_note: String = "The GATE half of the FalsifierCadenceJob lane, and it did not exist until 2026-07-26. FOUND BY AUDIT, not by a red: the lane shipped with a witness projector (project_falsifier_witness_entries) and no gate projector, while witness_entries_from_enrollments drops CommitSpecGate rows by construction (`CommitSpecGate { gate: _ } => acc`). So a gate row moved to surfaces: [FalsifierCadenceJob] projected into NOTHING — it left the per-PR floor and arrived on no lane — and bare_deenrollment_wall_note's wall could not catch it because that wall filters on enrollment_is_witness_claim, which answers false for exactly this row kind. A gate was therefore the one enrollment shape that could be silently de-enrolled by a one-line surface edit that reads, in the diff, identically to a legitimate re-home. This projector plus gate_enrollment_is_scheduled close that: the lane can now receive gates, and the wall now counts them. THE ORDER MATTERS AND IS NOT COSMETIC: this projector and its executing batch (v2.workflow.ci_floor_plan gunbc_falsifier_gate_batch) land in the SAME change as the wall extension, because a wall that credits FalsifierCadenceJob for gates before any batch reads them would bless precisely the enrollment-by-illusion it exists to forbid — the same 'a surface tag with no batch reading it' trap falsifier_cadence_witness_batch_note names for witnesses."
 
