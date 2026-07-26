@@ -5,9 +5,9 @@ import gunbc.non_fold_residue {
   non_fold_residue_frontier_units,
   non_fold_residue_frontier_well_formed
 }
-import std.roster_frontier { FrontierRow, frontier_row_well_formed }
+import std.roster_frontier { FrontierRow, PathSubject, TriggerProse, frontier_row_well_formed }
 
-data non_fold_residue_frontier_test_note: String = "GREEN: every enrolled non-fold-residue row is well-formed (nonempty unit, reason, dissolve_on) and the roster is populated. RED control: a synthetic row with an empty dissolve_on fails well-formedness — a reason without a trigger is not a frontier row. The host-side equivalence receipt (nfr_roster_receipt: unrostered=0, stale=0 against the live corpus scan) lives in cli_run.rs nfr_tests and the always-on witness enrollment on src/v2/lens/non_fold_residue_test.dag."
+data non_fold_residue_frontier_test_note: String = "GREEN: every enrolled non-fold-residue row is well-formed (nonempty subject, reason, trigger) and the roster is populated. RED control: a synthetic row with an empty trigger fails well-formedness — a reason without a trigger is not a frontier row. The host-side equivalence receipt (nfr_roster_receipt: unrostered=0, stale=0 against the live corpus scan) lives in cli_run.rs nfr_tests and the always-on witness enrollment on src/v2/lens/non_fold_residue_test.dag."
 
 test fn non_fold_residue_frontier_rows_well_formed_holds() -> Bool {
   non_fold_residue_frontier_well_formed()
@@ -20,9 +20,9 @@ test fn non_fold_residue_frontier_is_populated() -> Bool {
 test fn non_fold_residue_frontier_red_control_empty_trigger_reds() -> Bool {
   let verdict = frontier_row_well_formed(
     row: FrontierRow {
-      unit: "synthetic.dag::f",
+      subject: PathSubject { path: "synthetic.dag::f" },
       reason: "a reason without a trigger is not a frontier row",
-      dissolve_on: ""
+      trigger: TriggerProse { text: "" }
     }
   )
   verdict == false
