@@ -402,7 +402,7 @@ the width it encodes. Brief requires this class run over extdeps and gunbc too.
 
 | symbol | file:line | value | disposition | destination / basis |
 | --- | --- | --- | --- | --- |
-| `interpreter_surviving_roles_ceiling` | `dag/std/emit_on_demand.dag:109` | 8 | Derive | `count(interpreter_surviving_roles)` — note at `:108` is narrative only |
+| `interpreter_surviving_roles_ceiling` | `dag/std/emit_on_demand.dag:110` | 8 | Add-basis-row | **Inventory corrected (operator 2026-07-26):** policy ceiling with bootstrap headroom — NOT `count(interpreter_surviving_roles)` (occupancy 3 today; deriving would tighten 8→3). Assertion: `interpreter_surviving_roles_occupancy_within_ceiling()` |
 | `peano_literal_materialization_cap` | `dag/std/termination.dag:107` | 256 | Add-basis-row | Peano literal materialization bound (termination lane) |
 | `forever_iteration_bound` | `dag/std/computation.dag:130` | i64::MAX | Add-basis-row | Non-termination sentinel; cite boundedness policy |
 
@@ -410,17 +410,17 @@ the width it encodes. Brief requires this class run over extdeps and gunbc too.
 
 | symbol | file:line | value | disposition | destination / basis |
 | --- | --- | --- | --- | --- |
-| `byte_offset_residual_quotient_magnitude_shift_limbs` | `src/v2/std/node.dag:762` | 4 | Derive | Limb-shift schedule for byte-offset digest (encode from width) |
-| `byte_offset_residual_quotient_magnitude_max_shift` | `src/v2/std/node.dag:764` | 28 | Derive | `shift_limbs × limb_base_log` authority |
-| `byte_offset_cache_digest_max_limbs` | `src/v2/std/node.dag:765` | 9 | Derive | Digest limb budget from `max_shift` + overflow policy |
-| `byte_offset_cache_digest_overflow_limbs` | `src/v2/std/node.dag:767` | 4 | Derive | Overflow peel depth paired with `:765` |
+| `byte_offset_residual_quotient_magnitude_shift_limbs` | `src/v2/std/node.dag:762` | 4 | Deferred | Shift-step stride (hardcoded schedule 0,4,…,28). Derivation blocked until honest `limb_base_log` authority exists — do not tune formula to fit 28 |
+| `byte_offset_residual_quotient_magnitude_max_shift` | `src/v2/std/node.dag:764` | 28 | Deferred | **Finding:** 28 = 7×4 (last shift step) but ≠ `shift_limbs × log₂(256)` (32). Inventory `shift_limbs × limb_base_log` row is wrong |
+| `byte_offset_cache_digest_max_limbs` | `src/v2/std/node.dag:765` | 9 | Deferred | Paired with overflow peel; no closed-form reproduces 9 without encoding the hardcoded 8-window tree |
+| `byte_offset_cache_digest_overflow_limbs` | `src/v2/std/node.dag:767` | 4 | Deferred | Overflow peel depth at max_shift terminal; paired with `:765` |
 
 **`dag/extdeps/` specimens (3 rows)**
 
 | symbol | file:line | value | disposition | destination / basis |
 | --- | --- | --- | --- | --- |
 | `linux_execve_max_arg_strlen_page_factor` | `dag/extdeps/os/exec_arg_limit.dag:17` | 32 | Add-basis-row | POSIX `ARG_MAX` / page-size derivation |
-| `cik_digit_width` | `dag/extdeps/sec/types.dag:17` | 10 | Derive | SEC CIK format (zero-padded width) |
+| `cik_digit_width` | `dag/extdeps/sec/types.dag:17` | 10 | **Landed** | SEC EDGAR CIK zero-pad width via `edgar_cik_zero_pad_digit_count()` (#7278) |
 | `elemwise_mul_wire_op_code` (+ add/relu siblings) | `dag/extdeps/languages/simd/kernel.dag:56–58` | 1/2/3 | Add-basis-row | Wire opcode table for SIMD kernel transport |
 
 **`dag/gunbc/` specimens (4 rows)**
@@ -429,8 +429,8 @@ the width it encodes. Brief requires this class run over extdeps and gunbc too.
 | --- | --- | --- | --- | --- |
 | `cheap_gate_pool_max_claims_per_child` | `dag/tools/cheap_gate_pool.dag:13` | 16 | Add-basis-row | Slot memory envelope (`:11` note); sized-to-slot policy |
 | `roadmap_max_depth` | `dag/gunbc/roadmap_emit.dag:16` | 8 | Add-basis-row | Roadmap tree depth cap (matches `roadmap_page.dag:30`) |
-| `gunbc_ci_job_timeout_policy_minutes` | `dag/gunbc/ci_workflow.dag:422` | 90 | Add-basis-row | Composed from step budgets (`:430` note history) |
-| `gunbc_falsifier_step_timeout_minutes` | `dag/gunbc/falsifier_workflow.dag:27` | 170 | Add-basis-row | Falsifier cadence wall; sum of enrolled lane budgets |
+| `gunbc_ci_job_backstop_timeout_minutes()` | `dag/gunbc/ci_workflow.dag:459` | 115 (today) | **Landed composed** | **Inventory corrected:** deleted orphan `gunbc_ci_job_timeout_policy_minutes` (90, zero consumers). Live ci job reads composed step-sum + prelude; witness `ci_workflow_witness_test.dag` |
+| `gunbc_falsifier_step_timeout_minutes` | `dag/gunbc/falsifier_workflow.dag:27` | 170 | Add-basis-row (alongside) | **Inventory corrected:** single-step cap (NOT job backstop 290). Batch clamps do not algebraically close to 170; `gunbc_falsifier_step_timeout_derived_delta_note` states delta; consumer stays on hand 170 |
 
 ### Class 5 — Hand counts beside structure (14 rows)
 
