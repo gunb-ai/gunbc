@@ -329,6 +329,8 @@ data rust_pair_completion_spellings: List<RustPairCompletionSpelling> = [
   { method: "div", trait_path: "std::ops::Div", where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Sub<Output = M> + std::ops::Div<Output = M> + Default," }
 ]
 
+data rust_pair_completion_op_key_totality_note: String = "Total over ReprGroundingDeriveTrait by construction, with no wildcard arm (DESIGN §6 non-fold residue; caught by v2.lens.non_fold_residue on the first floor run that was not superseded). The first draft matched the five arithmetic variants and swept the other ten into `_ => \"\"`, which is two defects in one line: a new unrostered residue site, and a FABRICATED key — an empty string is not the key of any trait, it is the absence of an answer wearing a String. It also made the coproduct's growth silent, which is the actual cost: a sixteenth ReprGroundingDeriveTrait variant would have landed as \"\" and been read as a legitimate lookup that simply missed. Every variant now returns its own key. Ten of the fifteen have no pair-completion spelling row and are not expected to — a pair completion has no Debug or Ord operator, and Rem is arithmetic but is not one of the five Grothendieck ops — so they resolve to Absent in rust_pair_completion_spelling_for and surface through the compile_error! arm NAMED, which is strictly better than the empty key: the diagnostic says which trait was asked for. Adding a variant to the coproduct now forces an edit here rather than defaulting."
+
 fn rust_pair_completion_op_key(op: ReprGroundingDeriveTrait) -> String {
   match op {
     ReprDeriveAdd => "add"
@@ -336,7 +338,16 @@ fn rust_pair_completion_op_key(op: ReprGroundingDeriveTrait) -> String {
     ReprDeriveMul => "mul"
     ReprDeriveDiv => "div"
     ReprDeriveNeg => "neg"
-    _ => ""
+    ReprDeriveRem => "rem"
+    ReprDeriveDebug => "debug"
+    ReprDeriveClone => "clone"
+    ReprDeriveCopy => "copy"
+    ReprDerivePartialEq => "partial_eq"
+    ReprDeriveEq => "eq"
+    ReprDerivePartialOrd => "partial_ord"
+    ReprDeriveOrd => "ord"
+    ReprDeriveSerialize => "serialize"
+    ReprDeriveDeserialize => "deserialize"
   }
 }
 
