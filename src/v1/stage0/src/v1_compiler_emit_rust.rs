@@ -16902,6 +16902,32 @@ pub fn emit_value_ref_ident(
     }
 }
 
+pub fn none_undetermined_carrier_refuse_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Fail-open closed (sharp-bee-290 msg_6317aebe / DESIGN §5): when none/None has no resolved variant_parent, the emitter previously emitted Rust null as a fabricated plausible default. variant_parent == none conflated (a) bare Optional none with a determined CardOptional carrier and (b) undetermined carrier. Split: CardOptional → None (type-directed); any other determined non-optional carrier → typed refuse; undetermined (Absent / non-Resolved inferred) → typed refuse. Never null as a default. The refuse surfaces as emit_error_expr (UNRESOLVED_… diagnostic text in emitted Rust) so the deficit is countable; if the refusal spike is corpus-red-large, fold a named counted interim INSIDE this single decision with an explicit dissolution trigger — never restore an escaping Optional default at callers.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn emit_none_keyword_for_resolved_type(resolved_type: Option<Rc<InferredNode>>) -> String {
+    match resolved_type.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => match rt.return_cardinality.clone() {
+            Cardinality::CardOptional => emit_keyword("null".to_string(), RenderTarget::Rust),
+            _ => emit_error_expr(
+                "none/None with non-optional resolved carrier — refuse fail-open null default"
+                    .to_string(),
+                RenderTarget::Rust,
+            ),
+        },
+        _ => emit_error_expr(
+            "none/None with undetermined carrier — refuse fail-open null default".to_string(),
+            RenderTarget::Rust,
+        ),
+    }
+}
+
 pub fn emit_var_ref(
     name: String,
     binding_kind: Option<Rc<VarBindingKind>>,
@@ -16924,7 +16950,7 @@ pub fn emit_var_ref(
             || (leaf_name.clone() == "None".to_string()))
             && (variant_parent.clone() == None))
         {
-            emit_keyword("null".to_string(), RenderTarget::Rust)
+            emit_none_keyword_for_resolved_type(resolved_type.clone())
         } else {
             if ((leaf_name.clone() == "true".to_string())
                 || (leaf_name.clone() == "false".to_string()))
@@ -17064,7 +17090,7 @@ pub fn emit_typed_expr_base(
                     || (leaf_name.clone() == "None".to_string()))
                     && (variant_parent.clone() == None))
                 {
-                    emit_keyword("null".to_string(), RenderTarget::Rust)
+                    emit_none_keyword_for_resolved_type(texpr.inferred.clone())
                 } else {
                     if ((leaf_name.clone() == "true".to_string())
                         || (leaf_name.clone() == "false".to_string()))

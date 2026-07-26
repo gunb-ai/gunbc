@@ -1,0 +1,38 @@
+count	message
+11	binary operation `==` cannot be applied to type `Rc<Rc<CommutativeSemiring<Magnitude>>>`
+11	binary operation `==` cannot be applied to type `Rc<Measure<(), (), Rc<Rc<CommutativeSemiring<Magnitude>>>>>`
+6	cannot multiply `Rc<Rc<CommutativeSemiring<Magnitude>>>` by `Rc<Rc<CommutativeSemiring<Magnitude>>>`
+4	binary operation `>` cannot be applied to type `Rc<Rc<CommutativeSemiring<Magnitude>>>`
+4	binary operation `==` cannot be applied to type `Rc<dyn Fn(Rc<Node>, Rc<EvaluationEnvironment>) -> Rc<Outcome<Rc<RuntimeValue>>>>`
+3	cannot multiply `Rc<CommutativeSemiring<Magnitude>>` by `Rc<Rc<CommutativeSemiring<Magnitude>>>`
+2	binary operation `<` cannot be applied to type `Rc<Rc<CommutativeSemiring<Magnitude>>>`
+2	binary operation `==` cannot be applied to type `Rc<im::Vector<T>>`
+2	cannot add `Rc<Rc<CommutativeSemiring<Magnitude>>>` to `Rc<Rc<CommutativeSemiring<Magnitude>>>`
+2	binary operation `!=` cannot be applied to type `Rc<Rc<CommutativeSemiring<Magnitude>>>`
+2	cannot subtract `Rc<Rc<CommutativeSemiring<Magnitude>>>` from `Rc<Rc<CommutativeSemiring<Magnitude>>>`
+2	binary operation `<` cannot be applied to type `Rc<v2_std_nat::Nat>`
+2	binary operation `==` cannot be applied to type `Rc<dyn Fn(Rc<Node>, Rc<Vector<Rc<RuntimeValue>>>, Rc<...>) -> ...>`
+2	binary operation `==` cannot be applied to type `Rc<dyn Fn(Rc<Node>, Rc<RuntimeValue>, Rc<EvaluationEnvironment>) -> Rc<Outcome<Rc<Node>>>>`
+2	binary operation `==` cannot be applied to type `Rc<dyn Fn(Rc<Node>, Rc<EvaluationEnvironment>) -> Rc<Outcome<Rc<ControlTransfer>>>>`
+2	binary operation `==` cannot be applied to type `Rc<dyn Fn(Rc<EnvironmentBindingKey>, Rc<RuntimeValue>, ...) -> ...>`
+2	binary operation `==` cannot be applied to type `Rc<InterpretationAlgebra>`
+1	binary operation `==` cannot be applied to type `&Rc<im::Vector<T>>`
+1	binary operation `==` cannot be applied to type `Rc<CommutativeSemiring<Magnitude>>`
+1	cannot divide `Rc<CommutativeSemiring<Magnitude>>` by `Rc<CommutativeSemiring<Magnitude>>`
+1	cannot subtract `{integer}` from `Rc<Rc<CommutativeSemiring<Magnitude>>>`
+1	cannot add `Rc<CommutativeSemiring<Magnitude>>` to `Rc<CommutativeSemiring<Magnitude>>`
+1	binary operation `<=` cannot be applied to type `Rc<CommutativeSemiring<Magnitude>>`
+1	cannot divide `Rc<Rc<CommutativeSemiring<Magnitude>>>` by `Rc<Rc<CommutativeSemiring<Magnitude>>>`
+1	cannot divide `Rc<Rc<CommutativeSemiring<Magnitude>>>` by `{integer}`
+1	binary operation `==` cannot be applied to type `Rc<Measure<(), S, Rc<Rc<CommutativeSemiring<Magnitude>>>>>`
+1	binary operation `>=` cannot be applied to type `Rc<Rc<CommutativeSemiring<Magnitude>>>`
+1	cannot divide `Rc<v2_std_nat::Nat>` by `{integer}`
+1	binary operation `==` cannot be applied to type `Rc<im::HashMap<Rc<EnvironmentBindingKey>, Rc<RuntimeValue>>>`
+1	binary operation `==` cannot be applied to type `&Rc<ValueInterpreter>`
+1	binary operation `==` cannot be applied to type `&Rc<TransformInterpreter>`
+1	binary operation `==` cannot be applied to type `&Rc<BranchInterpreter>`
+1	binary operation `==` cannot be applied to type `&Rc<LoopInterpreter>`
+1	binary operation `==` cannot be applied to type `&Rc<BindInterpreter>`
+1	binary operation `==` cannot be applied to type `&Rc<MatchInterpreter>`
+1	binary operation `==` cannot be applied to type `Rc<im::HashMap<Rc<Node>, Rc<InferredFacts>>>`
+1	binary operation `==` cannot be applied to type `&Rc<EffectIoEvalBundle>`
