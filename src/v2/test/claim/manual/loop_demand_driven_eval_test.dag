@@ -1,5 +1,4 @@
 module v2.test.manual.loop_demand_driven_eval
-
 import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
@@ -417,3 +416,8 @@ fn loop_eval_arrow_lit_one_body_holds() -> Bool {
 test fn loop_demand_driven_eval_keystone_holds() -> Bool {
   loop_eval_divergent_body_step_loop_holds()
 }
+
+data loop_eval_lit_one_body_step_loop_holds_symbol: Symbol = loop_eval_lit_one_body_step_loop_holds
+data loop_eval_pick_call_direct_holds_symbol: Symbol = loop_eval_pick_call_direct_holds
+data loop_eval_arrow_lit_one_body_holds_symbol: Symbol = loop_eval_arrow_lit_one_body_holds
+

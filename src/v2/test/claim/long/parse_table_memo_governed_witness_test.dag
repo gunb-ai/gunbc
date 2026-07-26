@@ -1,4 +1,5 @@
 module v2.test.long.parse_table_memo_governed_witness
+import v2.std.node { Symbol }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -149,6 +150,8 @@ test fn parse_table_memo_bypass_store_reds() -> Bool {
   witness_bypass_store_reds_non_memoize_carrier()
 }
 
-test fn parse_table_memo_warm_equals_cold_content_hash() -> Bool {
+fn parse_table_memo_warm_equals_cold_content_hash() -> Bool {
   witness_parse_table_memo_hit_path_content_hash_stable()
 }
+
+data parse_table_memo_warm_equals_cold_content_hash_symbol: Symbol = parse_table_memo_warm_equals_cold_content_hash

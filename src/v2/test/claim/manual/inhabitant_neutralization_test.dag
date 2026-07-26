@@ -1,4 +1,5 @@
 module v2.test.manual.inhabitant_neutralization
+import v2.std.node { Symbol }
 
 import v2.compiler.emit { emit }
 import v2.compiler.ingest { cross_language_compile }
@@ -272,6 +273,56 @@ fn inhabitant_neutralization_python_to_go_discriminates_on_real_tree() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+
+
+fn inhabitant_neutralization_python_to_go_holds() -> Bool {
+  inhabitant_neutralization_python_to_go_cross_language_compile_e2e_holds()
+    && inhabitant_neutralization_python_to_go_discriminates_on_real_tree()
+}
+
+fn inhabitant_neutralization_python_to_go_translate_rejects() -> Bool {
+  match neutralize_core_for_target(
+    core: python_emitted_add_fn_node(),
+    target: go_target_model()
+  ) {
+    Accepted { value: neutralized, diagnostics: _ } =>
+      match infer(tree: neutralized) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          match translate(tree: inferred, target: go_target_model()) {
+            Rejected { diagnostics: _ } => true
+            Accepted { value: _, diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn inhabitant_neutralization_python_to_go_emit_rejects() -> Bool {
+  match neutralize_core_for_target(
+    core: python_emitted_add_fn_node(),
+    target: go_target_model()
+  ) {
+    Accepted { value: neutralized, diagnostics: _ } =>
+      match infer(tree: neutralized) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          match emit(tree: inferred, target: go_target_model()) {
+            Rejected { diagnostics: _ } => true
+            Accepted { value: _, diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+data inhabitant_neutralization_python_int_std_projection_holds_symbol: Symbol = inhabitant_neutralization_python_int_std_projection_holds
+data inhabitant_neutralization_ts_target_lookup_holds_symbol: Symbol = inhabitant_neutralization_ts_target_lookup_holds
+data inhabitant_neutralization_python_to_ts_cross_language_compile_e2e_holds_symbol: Symbol = inhabitant_neutralization_python_to_ts_cross_language_compile_e2e_holds
+data inhabitant_neutralization_python_to_go_holds_symbol: Symbol = inhabitant_neutralization_python_to_go_holds
+data inhabitant_neutralization_python_to_go_translate_rejects_symbol: Symbol = inhabitant_neutralization_python_to_go_translate_rejects
+data inhabitant_neutralization_python_to_go_emit_rejects_symbol: Symbol = inhabitant_neutralization_python_to_go_emit_rejects
 
 data claim_inhabitant_neutralization_module_compiles: TestClaim = CompilesClaim {
   label: "manual/inhabitant_neutralization: module compiles",

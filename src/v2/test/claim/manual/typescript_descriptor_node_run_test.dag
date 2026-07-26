@@ -89,3 +89,7 @@ fn typescript_descriptor_node_ts_node_run_catalog_minus_discriminates() -> Bool 
     _ => false
   }
 }
+
+data typescript_descriptor_node_ts_node_run_add_holds_symbol: Symbol = typescript_descriptor_node_ts_node_run_add_holds
+data typescript_descriptor_node_ts_node_run_catalog_minus_discriminates_symbol: Symbol = typescript_descriptor_node_ts_node_run_catalog_minus_discriminates
+

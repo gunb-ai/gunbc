@@ -1,5 +1,4 @@
 module v2.test.manual.branch_infer_fail_open_audit
-
 import v2.compiler.infer { infer }
 import v2.extdeps.languages.dag {
   dag_pick_if_body_fixture,
@@ -8,7 +7,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Node }
+import v2.std.node { Node, Symbol }
 import v2.std.verification {
   BoolWitness,
   BoolWitnessClaim,
@@ -46,3 +45,7 @@ fn branch_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+
+data branch_infer_fail_open_audit_silent_accept_holds_symbol: Symbol = branch_infer_fail_open_audit_silent_accept_holds
+data branch_infer_fail_open_audit_literal_arm_accepts_holds_symbol: Symbol = branch_infer_fail_open_audit_literal_arm_accepts_holds
+
