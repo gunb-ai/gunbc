@@ -32,13 +32,7 @@ data anchor_stub_inferred_facts: InferredFacts = claim_inferred_facts_from_nodes
 
 data anchor_stub_empty_facts_map: Map<Node, InferredFacts> = Map {
   lookup: fn(_) {
-    Violates {
-      diagnostic: Diagnostic {
-        reason: ^anchor_facts_map_lookup_not_realized,
-        at: port_locus(port: ^anchor_facts_map_lookup_not_realized),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      }
-    }
+    Absent
   }
 }
 

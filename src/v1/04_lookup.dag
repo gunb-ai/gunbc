@@ -27,7 +27,6 @@ import std.algebra {
 
 import v1.compiler.infer_types {
   child_type_node,
-  make_container_type,
   nominal_type_ref,
   normalize_access_type_node, node_is_keyed_collection, node_is_set_collection,
   method_receiver_element_node,
@@ -63,10 +62,6 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
     TypeVariable { id: _ } => true
     _ => false
   }
-}
-
-fn is_witness_type_name(name: String) -> Bool {
-  name == "Witness" || name == "witness"
 }
 
 type KnownMethodResolution {
@@ -219,7 +214,7 @@ fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<Strin
                 Present { value: child } => child_type_node(ch: child)
                 Absent => nominal_type_ref(name: "V")
               }
-              Present { value: make_container_type(kind_name: "Witness", element: value_child).ty }
+              Present { value: with_optional_cardinality(n: value_child) }
             } else {
               Present { value: child_type_node(ch: field_child) }
             }
@@ -422,10 +417,10 @@ fn map_lookup_result_type(product: Node, field: Node, source_indices: Map<String
   if authored_name_at(source_indices: source_indices, node: product) == "Map" {
     match product_field_result_type(field: field) {
       Present { value: raw } =>
-        if is_witness_type_name(name: authored_name_at(source_indices: source_indices, node: raw)) {
+        if (raw.return_cardinality == CardOptional) {
           Present { value: raw }
         } else {
-          Present { value: make_container_type(kind_name: "Witness", element: raw).ty }
+          Present { value: with_optional_cardinality(n: raw) }
         }
       Absent => none
     }

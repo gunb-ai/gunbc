@@ -651,15 +651,15 @@ data node_field_roles: Map<String, NodeFieldRole> = {
 
 fn is_children_list_field(field_name: String) -> Bool {
   match lookup(node_field_roles, key: field_name) {
-    Holds { value: ChildrenListField } => true
+    Present { value: ChildrenListField } => true
     _ => false
   }
 }
 
 fn is_sub_value_field(field_name: String) -> Bool {
   match lookup(node_field_roles, key: field_name) {
-    Holds { value: SubValueField } => true
-    Holds { value: ChildrenListField } => true
+    Present { value: SubValueField } => true
+    Present { value: ChildrenListField } => true
     _ => false
   }
 }
@@ -681,32 +681,32 @@ data function_size_effects: Map<String, FunctionSizeEffect> = {
 
 fn is_tree_size_preserving(func_name: String) -> Bool {
   match lookup(function_size_effects, key: func_name) {
-    Holds { value: effect } => match effect {
+    Present { value: effect } => match effect {
       TreeSizePreserving => true
       PropertyContraction { domain_size: _ } => true
       _ => false
     }
-    Violates { diagnostic: _ } => false
+    Absent => false
   }
 }
 
 fn is_tree_size_reducing(func_name: String) -> Bool {
   match lookup(function_size_effects, key: func_name) {
-    Holds { value: effect } => match effect {
+    Present { value: effect } => match effect {
       TreeSizeReducing => true
       _ => false
     }
-    Violates { diagnostic: _ } => false
+    Absent => false
   }
 }
 
 fn is_property_contraction(func_name: String) -> Bool {
   match lookup(function_size_effects, key: func_name) {
-    Holds { value: effect } => match effect {
+    Present { value: effect } => match effect {
       PropertyContraction { domain_size: _ } => true
       _ => false
     }
-    Violates { diagnostic: _ } => false
+    Absent => false
   }
 }
 

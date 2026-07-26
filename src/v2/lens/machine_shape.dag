@@ -7,11 +7,13 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v2.std.collection {
-  Absent,
   List,
+  list_at_optional
+}
+import v2.std.optional {
+  Absent,
   Optional,
   Present,
-  list_at_optional,
   optional_absent,
   optional_present
 }

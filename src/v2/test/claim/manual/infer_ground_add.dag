@@ -236,9 +236,7 @@ fn infer_receipt_empty_tree(root: Node) -> InferredTree {
     root: root,
     facts: Map {
       lookup: fn(_) {
-        Violates {
-          diagnostic: infer_descent_not_derived_diagnostic(at: node_locus(node: root))
-        }
+        Absent
       }
     }
   }

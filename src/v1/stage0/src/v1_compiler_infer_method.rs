@@ -4,8 +4,6 @@
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_types::{make_container_type, make_map_type};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::NoConnective;
@@ -60,12 +58,6 @@ pub fn list_of_type_variable(id: String) -> Rc<Node> {
 
 pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
     make_container_type("List".to_string(), element.clone())
-        .ty
-        .clone()
-}
-
-pub fn witness_of_element(element: Rc<Node>) -> Rc<Node> {
-    make_container_type("Witness".to_string(), element.clone())
         .ty
         .clone()
 }
@@ -177,7 +169,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "lookup".to_string(),
-            witness_of_element(type_variable_node("map_value".to_string())),
+            with_optional_cardinality(type_variable_node("map_value".to_string())),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),

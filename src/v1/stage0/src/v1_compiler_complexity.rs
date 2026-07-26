@@ -72,8 +72,6 @@ pub use crate::v1_compiler_parse::{
 };
 pub use crate::v1_compiler_parse::{ParserCallIdentity, ParserResultWitness};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprError, ExprFieldAccess, ExprForEach, ExprIf, ExprLambda,
