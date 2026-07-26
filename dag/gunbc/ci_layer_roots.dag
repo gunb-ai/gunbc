@@ -395,6 +395,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: excl_substrate_long_lane_dissolve
   },
   WitnessExclusionRow {
+    pattern: "fallback_arm_census_witness_test.dag",
+    classification: FalsifierSubstrateLongLane,
+    reason: excl_substrate_long_lane_reason,
+    dissolve_on: excl_substrate_long_lane_dissolve
+  },
+  WitnessExclusionRow {
     pattern: "synthetic_orphan_admission_witness_test.dag",
     classification: NoConsumer,
     reason: "deliberate no-consumer synthetic path: the admission RED control keys on this reserved (nonexistent) entry to prove enrolled-with-zero-consumers refuses (witness_admission_test, cli_run admission tests)",
@@ -924,6 +930,36 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "lens_edit_locus_source_provenance_producer_rejects_malformed_source_holds",
     reason: "Class C live-grain row (edit-locus provenance producer ×3 family): malformed-source refusal through parse pipeline exceeds per-PR 5s budget. Renamed off the imported fn's own name 2026-07-26 — the same-name wrapper self-recursed instead of delegating (edit_locus_source_provenance_wrapper_shadowing_note); the row had never executed",
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/fallback_arm_census_witness_test.dag",
+    function: "fallback_arm_census_reconciliation_holds",
+    reason: "W2 fallback-arm census corpus grain (docs/plans/fallback-arm-census.md, 2026-07-25): host-seamed MatchPattern::Wildcard walk over witness_layer_roots via decl_facts — exceeds per-PR 5s fast-lane budget (Class C). Per-PR fixture walls stay in fallback_arm_census_planted_test.dag",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/fallback_arm_census_witness_test.dag",
+    function: "fallback_arm_census_total_nonempty_holds",
+    reason: "same W2 census corpus grain as sibling reconciliation_holds",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/fallback_arm_census_witness_test.dag",
+    function: "fallback_arm_census_class_counts_nonnegative_holds",
+    reason: "same W2 census corpus grain as sibling reconciliation_holds",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/fallback_arm_census_witness_test.dag",
+    function: "fallback_arm_seed_inventory_count_holds",
+    reason: "same W2 census corpus grain as sibling reconciliation_holds (seed inventory count receipt)",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/fallback_arm_census_witness_test.dag",
+    function: "fallback_arm_census_self_applies_holds",
+    reason: "same W2 census corpus grain as sibling reconciliation_holds (lens self-application: zero AnswersOnOpen on fallback_arm_census.dag)",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag"
   }
 ]
 
