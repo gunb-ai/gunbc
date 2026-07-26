@@ -1,0 +1,70 @@
+module extdeps.netplan.netplan
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "netplan.readthedocs.io/en/stable/netplan-yaml/"
+  }
+}
+
+data netplan_authority_note: String = "netplan was entirely unmodeled before this — zero occurrences corpus-wide — and its absence is why the fleet model can RECORD an address without being able to say anything about whether a host holds it. gunbc.fleet_intent_network carries srv1..srv4's addresses as NetworkEndpoint rows, which are topology facts: what the address IS, not that the host has it. netplan is the party that decides the latter, so the ensure side of host networking has nowhere to live until this module exists. This is the applier half of the writer/applier pair whose fusion produced a wrong diagnosis on srv4 (see extdeps.cloud_init.cloud_init)."
+
+data netplan_config_dir: NonEmptyStr = "/etc/netplan"
+
+type NetplanRenderer = SystemdNetworkd | NetworkManager
+
+data netplan_reads_every_yaml_note: String = "THE applier fact, and the counterpart to cloud-init's writer fact. netplan reads EVERY *.yaml under /etc/netplan at boot, merges them in lexical order, and renders the result to its backend — with no knowledge of and no dependency on which process wrote any of them. A file whose generator has been uninstalled, disabled, or deleted is applied exactly as a hand-written one is. That is the whole content of the inference the srv4 diagnosis got wrong, stated positively so it can be consumed rather than merely warned about."
+
+type NetplanConfigWriter
+  = WrittenByCloudInit
+  | WrittenByInstaller
+  | WrittenByOperator
+  | WriterUnknown
+
+type NetplanConfigFile {
+  path: NonEmptyStr
+  writer: NetplanConfigWriter
+}
+
+fn netplan_file_is_applied(f: NetplanConfigFile) -> Bool {
+  true
+}
+
+data netplan_file_is_applied_note: String = "Deliberately total, and deliberately ignoring its argument's writer field. This looks like a function that should not exist until you notice it is the exact proposition the srv4 misdiagnosis denied: presence in /etc/netplan is sufficient for application, and the writer is irrelevant to it. Writing it as a total function makes the writer-dependent version unwritable in any consumer that routes through here, and gives the RED control in gunbc.host_network_diagnosis something concrete to contradict. If netplan ever gains a genuine non-application case — a malformed file the renderer rejects, say — this becomes a real fold with a typed refusal, and that is a change to THIS module rather than to every consumer that had rolled its own rule."
+
+data netplan_link_state_note: String = "Link state is the axis netplan CANNOT influence, and separating it is what lets a diagnosis point at the right layer. An interface that netplan has configured is administratively UP with a real qdisc; whether it has CARRIER is a fact about the cable, the switch port and the PHY. The two are independently observable and were observed to disagree on srv4 (2026-07-25): enP3p3s0f1 read <NO-CARRIER,BROADCAST,MULTICAST,UP> with qdisc mq — configured and applied, no link partner — while its unused siblings read <BROADCAST,MULTICAST> with qdisc noop, which is what an interface no configuration mentions looks like. Those two shapes are easy to confuse by eye and mean opposite things about whether the model did its job, which is exactly why they are separate variants here rather than one 'down' flag."
+
+type InterfaceAdminState
+  = AdminUpConfigured
+  | AdminDownUnconfigured
+
+type InterfaceCarrier
+  = CarrierPresent
+  | CarrierAbsent
+  | CarrierUnobserved
+
+type InterfaceObservation {
+  name: NonEmptyStr
+  mac: NonEmptyStr
+  admin: InterfaceAdminState
+  carrier: InterfaceCarrier
+}
+
+fn interface_is_configured(o: InterfaceObservation) -> Bool {
+  match o.admin {
+    AdminUpConfigured => true
+    AdminDownUnconfigured => false
+  }
+}
+
+fn interface_has_link(o: InterfaceObservation) -> Bool {
+  match o.carrier {
+    CarrierPresent => true
+    CarrierAbsent => false
+    CarrierUnobserved => false
+  }
+}
