@@ -33,12 +33,15 @@ type CitedColorRow {
   color: Srgb8
 }
 
+fn srgb8_admissible_for_max(c: Srgb8, maxv: Int) -> Bool {
+  c.r >= 0 && c.r <= maxv
+    && c.g >= 0 && c.g <= maxv
+    && c.b >= 0 && c.b <= maxv
+}
+
 fn srgb8_admissible(c: Srgb8) -> Bool {
   match uint8_channel_inclusive_max_value_derived() {
-    Present { value: maxv } =>
-      c.r >= 0 && c.r <= maxv
-        && c.g >= 0 && c.g <= maxv
-        && c.b >= 0 && c.b <= maxv
+    Present { value: maxv } => srgb8_admissible_for_max(c: c, maxv: maxv)
     Absent => false
   }
 }
@@ -53,18 +56,18 @@ type RgbScaled {
   b: Int
 }
 
+fn srgb8_to_scaled_for_max(c: Srgb8, maxv: Int) -> RgbScaled {
+  let denom = basis_point_unity_count()
+  RgbScaled {
+    r: (c.r * denom) / maxv,
+    g: (c.g * denom) / maxv,
+    b: (c.b * denom) / maxv,
+  }
+}
+
 fn srgb8_to_scaled(c: Srgb8) -> RgbScaled? {
   match uint8_channel_inclusive_max_value_derived() {
-    Present { value: maxv } => {
-      let denom = basis_point_unity_count()
-      Present {
-        value: RgbScaled {
-          r: (c.r * denom) / maxv,
-          g: (c.g * denom) / maxv,
-          b: (c.b * denom) / maxv,
-        }
-      }
-    }
+    Present { value: maxv } => Present { value: srgb8_to_scaled_for_max(c: c, maxv: maxv) }
     Absent => none
   }
 }
