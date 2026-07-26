@@ -1,10 +1,55 @@
 module v2.test.claim.ownership_wrap_catalog_inert
 
-import v2.extdeps.languages.rust_wrap_catalog { ownership_wrap_catalog_inert_authority_witness_holds }
+import v2.compiler.wrap_decision { wrap_decision_gate }
+import v2.extdeps.languages.rust { rust_sg2_type_expr_target_model }
+import v2.extdeps.languages.rust_wrap_catalog {
+  ownership_wrap_catalog_inert_authority_witness_holds,
+  rust_sg_rc_wrap_layer_lookup
+}
+import v2.std.compilers.target_model {
+  TargetReferenceLayer,
+  OwnershipAtFunctionReturn,
+  OwnershipAtStructField,
+  ReferenceLayerBox,
+  ReferenceLayerRc,
+  WrapByReference,
+  WrapGateDecided,
+  target_carrier_node_node
+}
+import v2.std.diagnostic { Accepted }
 import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present }
 
-data ownership_wrap_catalog_inert_note: String = "INERT-FIRST (OWNERSHIP-68 / sharp-bee-290): v2.extdeps.languages.rust_wrap_catalog consumes rust_sg_rc_use_site_ownership_catalog — zero 05_emit_rust.dag consumers. RED: delete rust_seed_effective_reference_layer -> witness fails."
+data ownership_wrap_catalog_inert_note: String = "INERT-FIRST (OWNERSHIP-68 / sharp-bee-290): v2.extdeps.languages.rust_wrap_catalog consumes rust_sg_rc_use_site_ownership_catalog — zero 05_emit_rust.dag consumers. Catalog-hit cross-check witness ties lookup to live wrap_decision_gate. RED: delete rust_seed_effective_reference_layer -> witness fails."
+
+fn ownership_wrap_catalog_catalog_hit_agrees_with_wrap_decision_gate_holds() -> Bool {
+  let target = rust_sg2_type_expr_target_model()
+  let carrier = target_carrier_node_node()
+  match rust_sg_rc_wrap_layer_lookup(type_name: "Node", use_site: OwnershipAtFunctionReturn) {
+    Present { value: catalog_layer } =>
+      match wrap_decision_gate(target: target, source_carrier: carrier, use_site: OwnershipAtFunctionReturn) {
+        Accepted {
+          value: WrapGateDecided { decision: WrapByReference { layer: gate_layer } },
+          diagnostics: _
+        } => catalog_layer == gate_layer
+        _ => false
+      }
+    Absent => false
+  }
+    && match rust_sg_rc_wrap_layer_lookup(type_name: "Node", use_site: OwnershipAtStructField) {
+      Present { value: ReferenceLayerBox } =>
+        match wrap_decision_gate(target: target, source_carrier: carrier, use_site: OwnershipAtStructField) {
+          Accepted {
+            value: WrapGateDecided { decision: WrapByReference { layer: ReferenceLayerBox } },
+            diagnostics: _
+          } => true
+          _ => false
+        }
+      Absent => false
+    }
+}
 
 test fn ownership_wrap_catalog_inert_witness_holds() -> Bool {
   ownership_wrap_catalog_inert_authority_witness_holds()
+    && ownership_wrap_catalog_catalog_hit_agrees_with_wrap_decision_gate_holds()
 }

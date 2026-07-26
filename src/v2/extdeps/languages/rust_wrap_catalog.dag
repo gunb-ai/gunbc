@@ -35,7 +35,9 @@ data ownership_wrap_catalog_placement_note: String = "v1 seed disposition lives 
 
 data rust_sg_rc_wrap_catalog_note: String = "Consumes rust_sg_rc_use_site_ownership_catalog() from v2.extdeps.languages.rust — no parallel row table. v1 seed type_name → carrier Node bridge is scaffolded until SymbolIndex consumer-flip."
 
-data rust_seed_effective_reference_layer_note: String = "INERT-FIRST (OWNERSHIP-68 / sharp-bee-290): rust_seed_ownership_wrap_layer_disposition is canonical; rust_seed_effective_reference_layer projects to TargetReferenceLayer? and returns none on WrapLayerRefusedEnrolledRowMissing."
+data rust_seed_ownership_wrap_layer_disposition_note: String = "SCAFFOLD — v1 seed disposition surface only; NOT parallel authority to v2.compiler.wrap_decision.wrap_decision_gate (live v2 emitter path). Catalog hits use the same rust_sg_rc_use_site_ownership_catalog + target_use_site_ownership_lookup_in_catalog as the gate; v1-only arms (type_name bridge, legacy container fallback, default-owned unenrolled) dissolve on first consumer-flip PR that routes 05_emit_rust.dag through wrap_decision_gate or a gate extension."
+
+data rust_seed_effective_reference_layer_note: String = "INERT-FIRST (OWNERSHIP-68 / sharp-bee-290): projects rust_seed_ownership_wrap_layer_disposition to TargetReferenceLayer?; none on WrapLayerRefusedEnrolledRowMissing. Zero production consumers — see rust_seed_ownership_wrap_layer_disposition_note."
 
 data rust_seed_legacy_container_blanket_dissolve_on: String = "wrap_catalog legacy container carriers covered — List/HashMap/BTreeMap rows land in rust_sg_rc_use_site_ownership_catalog and rust_seed_legacy_container_blanket_rc deletes"
 
