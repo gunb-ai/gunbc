@@ -1,0 +1,9 @@
+module repro.probe_crossboundary
+
+import repro.irrelevant { irrelevant_marker }
+
+fn local_hash(x: ContentHash) -> ContentHash { x }
+
+fn feed_real_consumer(x: ContentHash) -> std.types.ContentHash {
+  std.content_hash.content_hash_combine(left: local_hash(x: x), right: local_hash(x: x))
+}

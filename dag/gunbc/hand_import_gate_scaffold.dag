@@ -1,0 +1,20 @@
+module gunbc.hand_import_gate_scaffold
+
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+
+data hand_import_gate_hand_rust_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "hand_import_gate_passes",
+    field: WholeDeclaration
+  }
+}
+
+data hand_import_gate_dissolve_trigger: String = "🟡 dissolve-on: cli_run::hand_import_gate_passes — git diff + single-line import-block compare host realization (mirrors tools.hand_import_gate roster). DISSOLVES WHEN hand_import_gate_passes_for_pr is enrolled as a CI floor witness without a hand-written shell carrier (gunbc orchestration emit / host_effect_apply routes gate eval — shell→intent lane ROADMAP shell→intent Phase 3, docs/plans/shell-intent-emit-realization-design.md)."
+
+data hand_import_gate_receipt_plan_anchor: String = "docs/plans/shell-intent-emit-realization-design.md Phase 3 · docs/plans/cli-run-hollowing-plan.md §2 Corpus discovery · ROADMAP §7 ts-seed-interim (hand-Rust review bar: named lane + concrete plan row — operator ruling clever-pike-49 keen-wolf-121 pre-corpus-wide import gate)."
+
+data hand_import_gate_equivalence_witness: String = "dag/test/claim/hand_import_gate_witness_test.dag"

@@ -1,8 +1,17 @@
 module v1.compiler.infer_env
 
-import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
+import v1.std.core {
+  Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str,
+  source_text_at, authored_name_at, find_child_named,
+  Cardinality, Connective, NoConnective, ExprData, InferredNode, TypeVariable, kernel_span, module_path_segments,
+  param_node_name_at, param_node_type_expr,
+  CompilerDiagnostic, AmbiguousReference, UnresolvedType
+}
 
 import std.types { SourceSpan, is_kernel_type }
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 
@@ -601,6 +610,126 @@ fn bare_name_miss_diagnostic(env: TypeEnv, name: String, span: SourceSpan) -> Co
     AmbiguousReference { name: name, candidates: cands, span: span }
   } else {
     UnresolvedType { name: name, span: span }
+  }
+}
+
+data type_ref_import_chain_reachable_note: String = "Import-chain reachability for a type reference name: lookup_binding_by_name_local succeeds (module locals or ancestry overlay from the import DAG), or the name is a nullary arm of a local/ancestry coproduct (e.g. Measure<Count, One, Nat> in std.measure). Corpus pool coincidence (global_bare_lookup / lookup_qualified_module_projection) is excluded — pool-present-but-not-import-reachable type refs must refuse (DESIGN section 5), never fabricate Product(<anon>) via grounding into a defining-module alias the use site did not import."
+
+fn coproduct_variant_arm_import_reachable(env: TypeEnv, name: String) -> Bool {
+  fold(env.str_bindings |> map_values, init: false, f: (found, binding) =>
+    if found {
+      true
+    } else {
+      match variant_arm_type_projection(env: env, owner: binding.resolved, name: name) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    }
+  ) || fold(env.ancestry_str_bindings |> map_values, init: false, f: (found, binding) =>
+    if found {
+      true
+    } else {
+      match variant_arm_type_projection(env: env, owner: binding.resolved, name: name) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    }
+  )
+}
+
+fn binding_import_chain_visible(env: TypeEnv, name: String) -> Bool {
+  lookup_binding_by_name_local(env: env, name: name) != none
+    || coproduct_variant_arm_import_reachable(env: env, name: name)
+}
+
+fn type_ref_import_chain_reachable(env: TypeEnv, name: String) -> Bool {
+  binding_import_chain_visible(env: env, name: name)
+}
+
+fn module_path_to_qualified_path(module_path: String, name: String) -> String {
+  if module_path == "" { name } else { module_path + "." + name }
+}
+
+fn symbol_index_lexical_candidate_count(env: TypeEnv, name: String, position: String) -> Int {
+  let qn = module_path_to_qualified_path(module_path: position, name: name)
+  let here = if symbol_index_lookup(index: env.symbol_index, qualified_name: qn) != none { 1 } else { 0 }
+  if position == "" { here } else { here + symbol_index_lexical_candidate_count(env: env, name: name, position: qualified_all_but_last(name: position)) }
+}
+
+fn symbol_index_lexical_lookup_unique(env: TypeEnv, name: String) -> Bool {
+  symbol_index_lexical_candidate_count(env: env, name: name, position: env.module_path) == 1
+}
+
+data type_ref_containment_bindable_note: String = "Containment-tree binding for masked type refs (namespace lane step (a)): lexical unique-on-ancestor-chain lookup, qualified module projection, or global-bare policy candidate on the referencing module's ancestor chain — refuses ambiguous homonyms (global_bare_is_ambiguous) and off-chain GlobalBareUniqueBinding (pool coincidence). Distinct from import-chain overlay (lookup_binding_by_name_local)."
+
+fn declaring_module_on_ancestor_chain(declaring_module_path: String, env_module_path: String) -> Bool {
+  let env_segs = module_path_segments(path: env_module_path)
+  let cand_segs = module_path_segments(path: declaring_module_path)
+  segment_lcp_len(a: cand_segs, b: env_segs) == (cand_segs |> count)
+}
+
+fn type_ref_global_bare_policy_bindable(env: TypeEnv, name: String) -> Bool {
+  match map_get(env.symbol_index.global_bare, name) {
+    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+      declaring_module_on_ancestor_chain(declaring_module_path: mp, env_module_path: env.module_path)
+        && binding_declares_name(binding: b, name: name, source_indices: env.source_indices)
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      match global_bare_policy_candidate(env_module_path: env.module_path, candidates: cands) {
+        Present { value: cand } =>
+          binding_declares_name(binding: cand.binding, name: name, source_indices: env.source_indices)
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn type_ref_containment_bindable(env: TypeEnv, name: String) -> Bool {
+  if contains(name, ".") {
+    lookup_qualified_module_projection(env: env, name: name) != none
+  } else if global_bare_is_ambiguous(env: env, name: name) {
+    false
+  } else if symbol_index_lexical_lookup_unique(env: env, name: name) {
+    true
+  } else {
+    type_ref_global_bare_policy_bindable(env: env, name: name)
+  }
+}
+
+data type_ref_fn_type_param_bindable_note: String = "Fn type-parameter binding for masked type refs: lookup_binding_by_name_local finds a TypeVariable binding in the current env (env_with_type_variable_bindings) or an ancestor parents chain. Generic parameters are neither import-chain overlay nor containment-tree facts — they are bound by the enclosing fn signature. Without this arm, lookup_type_for can succeed via pool coincidence while the mask refuses, and fold generic-param env threading collapses to compile_error!(UNRESOLVED) in emit (nested_fold_generic_param_emit_test.rs)."
+
+fn type_ref_fn_type_param_bindable(env: TypeEnv, name: String) -> Bool {
+  match lookup_binding_by_name_local(env: env, name: name) {
+    Present { value: binding } =>
+      match binding.resolved.inferred {
+        Present { value: TypeVariable { id: _ } } => true
+        _ => false
+      }
+    Absent =>
+      fold(env.parents, init: false, f: (found, parent) =>
+        if found { true } else { type_ref_fn_type_param_bindable(env: parent, name: name) }
+      )
+  }
+}
+
+data type_ref_pool_coincidence_mask_staging_note: String = "Mask enforcement is staged OFF by default until projection-generator extdeps import burndown lands — whole-tree compile (regen, heal, naming-hygiene closure) still relies on global_bare pool binding today. Witness paths and cargo discriminators enable explicitly via type_ref_pool_coincidence_mask_set_enabled(true). Dissolution: type_ref_pool_coincidence_mask_global_enforcement_dissolution_trigger — delete toggle when hand_import_gate allows dag/extdeps/** import additions and corpus compiles clean mask-default-on."
+
+data type_ref_pool_coincidence_mask_global_enforcement_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1.compiler.infer_env",
+    decl_name: "type_ref_mask_allows_binding",
+    field: WholeDeclaration
+  }
+}
+
+fn type_ref_mask_allows_binding(env: TypeEnv, name: String) -> Bool {
+  if type_ref_pool_coincidence_mask_is_enabled() == false {
+    true
+  } else {
+    is_kernel_type(name: name)
+    || type_ref_fn_type_param_bindable(env: env, name: name)
+    || type_ref_import_chain_reachable(env: env, name: name)
+    || type_ref_containment_bindable(env: env, name: name)
   }
 }
 

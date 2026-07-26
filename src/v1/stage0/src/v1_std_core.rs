@@ -3860,6 +3860,11 @@ pub fn qualified_last_segment(name: String) -> String {
     }
 }
 
+pub fn is_witness_type_name(name: String) -> bool {
+    (((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string()))
+        || (qualified_last_segment(name.clone()) == "Witness".to_string()))
+}
+
 pub fn type_name_compatible(a: String, b: String) -> bool {
     if (a.clone() == b.clone()) {
         true

@@ -2,6 +2,11 @@
 // Source module: v1.compiler.infer_env
 
 use self::GlobalBareLookupState::*;
+use crate::std_decl_ref::DeclField::WholeDeclaration;
+pub use crate::std_decl_ref::{DeclField, DeclarationRef};
+use crate::std_disposition::ConstructionMechanism::SingleAuthority;
+use crate::std_disposition::Disposition::Scaffold;
+pub use crate::std_disposition::{ConstructionMechanism, Disposition};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
@@ -13,9 +18,9 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::{AmbiguousReference, UnresolvedType};
-use crate::v1_std_core::Connective::*;
+use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ExprData::*;
-use crate::v1_std_core::InferredNode::*;
+use crate::v1_std_core::InferredNode::TypeVariable;
 pub use crate::v1_std_core::{
     authored_name_at, empty_intern_table, find_child_named, intern, intern_find, intern_str,
     kernel_span, merge_intern_tables, module_path_segments, param_node_name_at,
@@ -1074,6 +1079,236 @@ pub fn bare_name_miss_diagnostic(
                 span: span.clone(),
             })
         }
+    }
+}
+
+pub fn type_ref_import_chain_reachable_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Import-chain reachability for a type reference name: lookup_binding_by_name_local succeeds (module locals or ancestry overlay from the import DAG), or the name is a nullary arm of a local/ancestry coproduct (e.g. Measure<Count, One, Nat> in std.measure). Corpus pool coincidence (global_bare_lookup / lookup_qualified_module_projection) is excluded — pool-present-but-not-import-reachable type refs must refuse (DESIGN section 5), never fabricate Product(<anon>) via grounding into a defining-module alias the use site did not import.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn coproduct_variant_arm_import_reachable(env: Rc<TypeEnv>, name: String) -> bool {
+    (Rc::new(v1_rt::map_values(&env.str_bindings.clone()))
+        .iter()
+        .cloned()
+        .fold(false, |found: bool, binding: Rc<TypeBinding>| {
+            if found {
+                true
+            } else {
+                match variant_arm_type_projection(
+                    env.clone(),
+                    binding.resolved.clone(),
+                    name.clone(),
+                ) {
+                    Some(_) => true,
+                    None => false,
+                }
+            }
+        })
+        || Rc::new(v1_rt::map_values(&env.ancestry_str_bindings.clone()))
+            .iter()
+            .cloned()
+            .fold(false, |found: bool, binding: Rc<TypeBinding>| {
+                if found {
+                    true
+                } else {
+                    match variant_arm_type_projection(
+                        env.clone(),
+                        binding.resolved.clone(),
+                        name.clone(),
+                    ) {
+                        Some(_) => true,
+                        None => false,
+                    }
+                }
+            }))
+}
+
+pub fn binding_import_chain_visible(env: Rc<TypeEnv>, name: String) -> bool {
+    ((lookup_binding_by_name_local(env.clone(), name.clone()) != None)
+        || coproduct_variant_arm_import_reachable(env.clone(), name.clone()))
+}
+
+pub fn type_ref_import_chain_reachable(env: Rc<TypeEnv>, name: String) -> bool {
+    binding_import_chain_visible(env.clone(), name.clone())
+}
+
+pub fn module_path_to_qualified_path(module_path: String, name: String) -> String {
+    if (module_path.clone() == "".to_string()) {
+        name
+    } else {
+        ((module_path.clone() + &".".to_string()) + &name)
+    }
+}
+
+pub fn symbol_index_lexical_candidate_count(
+    env: Rc<TypeEnv>,
+    name: String,
+    position: String,
+) -> i64 {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let qn = module_path_to_qualified_path(position.clone(), name.clone());
+        let here = if (symbol_index_lookup(env.symbol_index.clone(), qn.clone()) != None) {
+            1
+        } else {
+            0
+        };
+        if (position.clone() == "".to_string()) {
+            here
+        } else {
+            (here
+                + symbol_index_lexical_candidate_count(
+                    env.clone(),
+                    name.clone(),
+                    qualified_all_but_last(position.clone()),
+                ))
+        }
+    })
+}
+
+pub fn symbol_index_lexical_lookup_unique(env: Rc<TypeEnv>, name: String) -> bool {
+    (symbol_index_lexical_candidate_count(env.clone(), name.clone(), env.module_path.clone()) == 1)
+}
+
+pub fn type_ref_containment_bindable_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Containment-tree binding for masked type refs (namespace lane step (a)): lexical unique-on-ancestor-chain lookup, qualified module projection, or global-bare policy candidate on the referencing module's ancestor chain — refuses ambiguous homonyms (global_bare_is_ambiguous) and off-chain GlobalBareUniqueBinding (pool coincidence). Distinct from import-chain overlay (lookup_binding_by_name_local).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn declaring_module_on_ancestor_chain(
+    declaring_module_path: String,
+    env_module_path: String,
+) -> bool {
+    {
+        let env_segs = module_path_segments(env_module_path.clone());
+        let cand_segs = module_path_segments(declaring_module_path.clone());
+        (segment_lcp_len(cand_segs.clone(), env_segs.clone()) == (cand_segs.clone().len() as i64))
+    }
+}
+
+pub fn type_ref_global_bare_policy_bindable(env: Rc<TypeEnv>, name: String) -> bool {
+    match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
+        .as_deref()
+        .cloned()
+    {
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+            module_path: mp,
+            binding: b,
+            ..
+        }) => {
+            (declaring_module_on_ancestor_chain(mp.clone(), env.module_path.clone())
+                && binding_declares_name(b.clone(), name.clone(), env.source_indices.clone()))
+        }
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
+            candidates: cands, ..
+        }) => match global_bare_policy_candidate(env.module_path.clone(), cands.clone()) {
+            Some(cand) => binding_declares_name(
+                cand.binding.clone(),
+                name.clone(),
+                env.source_indices.clone(),
+            ),
+            None => false,
+        },
+        None => false,
+    }
+}
+
+pub fn type_ref_containment_bindable(env: Rc<TypeEnv>, name: String) -> bool {
+    if v1_rt::contains(name.clone(), ".".to_string()) {
+        (lookup_qualified_module_projection(env.clone(), name.clone()) != None)
+    } else {
+        if global_bare_is_ambiguous(env.clone(), name.clone()) {
+            false
+        } else {
+            if symbol_index_lexical_lookup_unique(env.clone(), name.clone()) {
+                true
+            } else {
+                type_ref_global_bare_policy_bindable(env.clone(), name.clone())
+            }
+        }
+    }
+}
+
+pub fn type_ref_fn_type_param_bindable_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Fn type-parameter binding for masked type refs: lookup_binding_by_name_local finds a TypeVariable binding in the current env (env_with_type_variable_bindings) or an ancestor parents chain. Generic parameters are neither import-chain overlay nor containment-tree facts — they are bound by the enclosing fn signature. Without this arm, lookup_type_for can succeed via pool coincidence while the mask refuses, and fold generic-param env threading collapses to compile_error!(UNRESOLVED) in emit (nested_fold_generic_param_emit_test.rs).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn type_ref_fn_type_param_bindable(env: Rc<TypeEnv>, name: String) -> bool {
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || match lookup_binding_by_name_local(env.clone(), name.clone()) {
+            Some(binding) => match binding
+                .resolved
+                .clone()
+                .inferred
+                .clone()
+                .as_deref()
+                .cloned()
+            {
+                Some(InferredNode::TypeVariable { id: _, .. }) => true,
+                _ => false,
+            },
+            None => env.parents.clone().iter().cloned().fold(
+                false,
+                |found: bool, parent: Rc<TypeEnv>| {
+                    if found {
+                        true
+                    } else {
+                        type_ref_fn_type_param_bindable(parent.clone(), name.clone())
+                    }
+                },
+            ),
+        },
+    )
+}
+
+pub fn type_ref_pool_coincidence_mask_staging_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Mask enforcement is staged OFF by default until projection-generator extdeps import burndown lands — whole-tree compile (regen, heal, naming-hygiene closure) still relies on global_bare pool binding today. Witness paths and cargo discriminators enable explicitly via type_ref_pool_coincidence_mask_set_enabled(true). Dissolution: type_ref_pool_coincidence_mask_global_enforcement_dissolution_trigger — delete toggle when hand_import_gate allows dag/extdeps/** import additions and corpus compiles clean mask-default-on.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn type_ref_pool_coincidence_mask_global_enforcement_dissolution_trigger() -> Rc<Disposition> {
+    thread_local! {
+            static CACHED: Rc<Disposition> = {
+                Rc::new(Disposition::Scaffold {
+        dissolves_to: ConstructionMechanism::SingleAuthority,
+        bind: Rc::new(DeclarationRef {
+        module_path: "v1.compiler.infer_env".to_string(),
+        decl_name: "type_ref_mask_allows_binding".to_string(),
+        field: Rc::new(DeclField::WholeDeclaration),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<Disposition>| c.clone())
+}
+
+pub fn type_ref_mask_allows_binding(env: Rc<TypeEnv>, name: String) -> bool {
+    if (v1_rt::type_ref_pool_coincidence_mask_is_enabled() == false) {
+        true
+    } else {
+        (((is_kernel_type(name.clone())
+            || type_ref_fn_type_param_bindable(env.clone(), name.clone()))
+            || type_ref_import_chain_reachable(env.clone(), name.clone()))
+            || type_ref_containment_bindable(env.clone(), name.clone()))
     }
 }
 

@@ -1,0 +1,21 @@
+module test.claim.hand_import_gate_witness
+
+import tools.hand_import_gate {
+  hand_import_gate_passes_for_pr,
+  hand_import_gate_shell_runner_scaffold,
+}
+import std.disposition { Scaffold, Terminal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn hand_import_gate_passes_on_branch() -> Bool {
+  hand_import_gate_passes_for_pr()
+}
+
+test fn hand_import_gate_shell_runner_carries_dissolution_trigger() -> Bool {
+  match hand_import_gate_shell_runner_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
+}

@@ -1,37 +1,34 @@
 use crate::helpers::{compile_multi, diagnostic_messages};
-use v1_compiler::v1_std_core::{diagnostic_to_message, CompilerDiagnostic};
+use v1_compiler::v1_rt;
+use v1_compiler::v1_std_core::CompilerDiagnostic;
 
 #[test]
 fn std_types_freebie_no_longer_leaks_types_into_non_importers() {
     let std_types = "module std.types\ntype Shape { width: Int }\n";
     let leak_probe = "module leak_probe\ntype Holder { item: Shape }\n";
 
+    v1_rt::type_ref_pool_coincidence_mask_set_enabled(true);
     let result = compile_multi(&[("std_types.dag", std_types), ("leak_probe.dag", leak_probe)]);
+    v1_rt::type_ref_pool_coincidence_mask_set_enabled(false);
 
-    // Namespace-only resolution (wave-1) supersedes this test's original premise: `Shape`
-    // is corpus-globally-unique, so it resolves from anywhere via the census walk — by
-    // design, not via the old std.types freebie base-injection (still gone). The interim
-    // surface is the UnlistedImportUse ADVISORY naming the unlisted use; there must be no
-    // hard UnresolvedType, and no silent resolution either (the advisory is the receipt
-    // that resolution came from the census, not an import).
-    let unresolved: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::UnresolvedType { .. }))
-        .collect();
+    // Pool-present-but-not-import-reachable must refuse (type-resolution fail-closed b):
+    // a globally-unique census name does NOT bind without an import chain — no silent
+    // Product(<anon>) fabrication and no advisory-only green.
     assert!(
-        unresolved.is_empty(),
-        "globally-unique `Shape` must resolve via the census walk (namespace-only \
-         resolution); got hard diagnostics {:?}",
+        result.diagnostics.iter().any(|d| {
+            matches!(
+                &*d.diagnostic,
+                CompilerDiagnostic::UnresolvedType { name, .. } if name == "Shape"
+            )
+        }),
+        "unimported `Shape` must refuse as UnresolvedType; got {:?}",
         diagnostic_messages(&result)
     );
     assert!(
-        diagnostic_messages(&result)
+        !diagnostic_messages(&result)
             .iter()
-            .any(|m| m.starts_with("unlisted import use") && m.contains("Shape")),
-        "census-resolved unlisted use must carry the UnlistedImportUse advisory naming \
-         `Shape`; got {:?}",
-        diagnostic_messages(&result)
+            .any(|m| m.contains("Product(<anon>)")),
+        "must not fabricate anonymous product"
     );
 }
 

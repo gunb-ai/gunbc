@@ -9608,6 +9608,61 @@ fn eval_builtin_inner(
             )))
         }
 
+        "compile_dag_dag_fixture_witness_check" => {
+            // Scaffold: pool_coincidence_fixture_witness_check_dissolution_trigger in
+            // dag/tools/type_resolution_pool_coincidence_transport.dag — dissolves when
+            // fixture compile witnesses are pure .dag transport without this interpreter bridge.
+            let entry_path = expect_str(
+                Some(builtin_named_arg(args, &["entry_path"], 0, name)?),
+                name,
+            )?;
+            let source = expect_str(Some(builtin_named_arg(args, &["source"], 1, name)?), name)?;
+            let extra_roots = expect_str_list(
+                Some(builtin_named_arg(args, &["extra_source_roots"], 2, name)?),
+                name,
+            )?;
+            let expect_clean = expect_bool(
+                Some(builtin_named_arg(args, &["expect_clean"], 3, name)?),
+                name,
+            )?;
+            let required_unresolved = expect_str(
+                Some(builtin_named_arg(
+                    args,
+                    &["required_unresolved_type", "required_unresolved_type_name"],
+                    4,
+                    name,
+                )?),
+                name,
+            )?;
+            let forbidden = expect_str_list(
+                Some(builtin_named_arg(
+                    args,
+                    &["forbidden_diagnostic_substrings", "forbidden_substrings"],
+                    5,
+                    name,
+                )?),
+                name,
+            )?;
+            Ok(Some(Value::Bool(
+                crate::cli_run::compile_dag_dag_fixture_witness_check(
+                    &entry_path,
+                    &source,
+                    &extra_roots,
+                    expect_clean,
+                    &required_unresolved,
+                    &forbidden,
+                ),
+            )))
+        }
+
+        "hand_import_gate_passes" => {
+            let base_ref =
+                expect_str(Some(builtin_named_arg(args, &["base_ref"], 0, name)?), name)?;
+            Ok(Some(Value::Bool(crate::cli_run::hand_import_gate_passes(
+                &base_ref,
+            ))))
+        }
+
         "witness_layer_roots_compile_clean_check" => Ok(Some(Value::Bool(
             crate::cli_run::witness_layer_roots_compile_clean_check(),
         ))),
@@ -10638,6 +10693,48 @@ fn expect_string(val: &Value, context: &str) -> InterpResult<String> {
         Value::Str(s) => Ok(s.clone()),
         _ => Err(InterpError::TypeError {
             msg: format!("{} expects a string, got {}", context, val.type_label()),
+        }),
+    }
+}
+
+fn builtin_named_arg<'a>(
+    args: &'a [(Option<String>, Value)],
+    names: &[&str],
+    index: usize,
+    context: &str,
+) -> InterpResult<&'a Value> {
+    for name in names {
+        if let Some((_, val)) = args
+            .iter()
+            .find(|(arg_name, _)| arg_name.as_deref() == Some(*name))
+        {
+            return Ok(val);
+        }
+    }
+    let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
+    match positional.get(index) {
+        Some(val) => Ok(*val),
+        None => Err(InterpError::TypeError {
+            msg: format!(
+                "{} missing argument (wanted {:?} or positional index {})",
+                context, names, index
+            ),
+        }),
+    }
+}
+
+fn expect_bool(val: Option<&Value>, context: &str) -> InterpResult<bool> {
+    match val {
+        Some(Value::Bool(b)) => Ok(*b),
+        Some(v) => Err(InterpError::TypeError {
+            msg: format!(
+                "{} expects a Bool argument, got {}",
+                context,
+                v.type_label()
+            ),
+        }),
+        None => Err(InterpError::TypeError {
+            msg: format!("{} requires a Bool argument", context),
         }),
     }
 }

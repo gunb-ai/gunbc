@@ -12,7 +12,7 @@ pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::{
     authored_name, bare_name_miss_diagnostic, env_with_type_variable_bindings, is_recursive_type,
     is_recursive_type_by_name, is_recursive_type_for, lookup_type, lookup_type_by_name,
-    lookup_type_for,
+    lookup_type_for, type_ref_mask_allows_binding,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_types::{
@@ -1615,98 +1615,106 @@ pub fn resolve_node_bounded(
                                     } else {
                                         match lookup_type_for(env.clone(), n.clone()) {
                                             Some(resolved) => {
-                                                let structurally_resolved = if (((resolved
-                                                    .connective
-                                                    .clone()
-                                                    == Connective::NoConnective)
-                                                    && ((resolved.children.clone().len() as i64)
-                                                        == 0))
-                                                    && (resolved.inferred.clone() != None))
+                                                let type_name =
+                                                    authored_name(env.clone(), n.clone());
+                                                if (masked.clone()
+                                                    && (type_ref_mask_allows_binding(
+                                                        env.clone(),
+                                                        type_name.clone(),
+                                                    ) == false))
                                                 {
-                                                    match resolved
-                                                        .inferred
-                                                        .clone()
-                                                        .as_deref()
-                                                        .cloned()
+                                                    Rc::new(NodeResolveResult {
+                                                        resolved: n.clone(),
+                                                        diagnostics: Rc::new(vec![
+                                                            make_error_node(
+                                                                bare_name_miss_diagnostic(
+                                                                    env.clone(),
+                                                                    type_name.clone(),
+                                                                    n.span.clone(),
+                                                                ),
+                                                                module_name.clone(),
+                                                            ),
+                                                        ]),
+                                                    })
+                                                } else {
                                                     {
-                                                        Some(InferredNode::Resolved {
-                                                            node: target,
-                                                            ..
-                                                        }) => {
-                                                            let target_is_coproduct_use = ((((target
-                                                                .connective
+                                                        let structurally_resolved = if (((resolved
+                                                            .connective
+                                                            .clone()
+                                                            == Connective::NoConnective)
+                                                            && ((resolved.children.clone().len()
+                                                                as i64)
+                                                                == 0))
+                                                            && (resolved.inferred.clone() != None))
+                                                        {
+                                                            match resolved
+                                                                .inferred
                                                                 .clone()
-                                                                == Connective::NoConnective)
-                                                                && ((target.children.clone().len()
-                                                                    as i64)
-                                                                    > 0))
-                                                                && is_user_generic_use_site(
-                                                                    target.clone(),
-                                                                    env.clone(),
-                                                                ))
-                                                                && (resolve_generic_use_decl(
-                                                                    env.clone(),
-                                                                    target.clone(),
-                                                                )
-                                                                .connective
-                                                                .clone()
-                                                                    == Connective::Disj));
-                                                            if target_is_coproduct_use.clone() {
-                                                                resolve_node_bounded(
-                                                                    target.clone(),
-                                                                    env.clone(),
-                                                                    module_name.clone(),
-                                                                    (depth.clone() + 1),
-                                                                    false,
-                                                                )
-                                                                .resolved
-                                                                .clone()
-                                                            } else {
-                                                                target.clone()
+                                                                .as_deref()
+                                                                .cloned()
+                                                            {
+                                                                Some(InferredNode::Resolved {
+                                                                    node: target,
+                                                                    ..
+                                                                }) => {
+                                                                    let target_is_coproduct_use = ((((target.connective.clone() == Connective::NoConnective) && ((target.children.clone().len() as i64) > 0)) && is_user_generic_use_site(target.clone(), env.clone())) && (resolve_generic_use_decl(env.clone(), target.clone()).connective.clone() == Connective::Disj));
+                                                                    if target_is_coproduct_use
+                                                                        .clone()
+                                                                    {
+                                                                        resolve_node_bounded(
+                                                                            target.clone(),
+                                                                            env.clone(),
+                                                                            module_name.clone(),
+                                                                            (depth.clone() + 1),
+                                                                            false,
+                                                                        )
+                                                                        .resolved
+                                                                        .clone()
+                                                                    } else {
+                                                                        target.clone()
+                                                                    }
+                                                                }
+                                                                _ => resolved.clone(),
                                                             }
-                                                        }
-                                                        _ => resolved.clone(),
-                                                    }
-                                                } else {
-                                                    resolved.clone()
-                                                };
-                                                let is_optional = (n.return_cardinality.clone()
-                                                    == Cardinality::CardOptional);
-                                                let final_resolved = if is_optional.clone() {
-                                                    with_optional_cardinality(
-                                                        structurally_resolved.clone(),
-                                                    )
-                                                } else {
-                                                    structurally_resolved.clone()
-                                                };
-                                                let unlisted_diags = if ((masked.clone()
-                                                    && (v1_rt::map_is_empty(
-                                                        &env.source_visible_names.clone(),
-                                                    ) == false))
-                                                    && (v1_rt::map_has(
-                                                        &env.source_visible_names.clone(),
-                                                        authored_name(env.clone(), n.clone()),
-                                                    ) == false))
-                                                {
-                                                    Rc::new(vec![make_error_node(
-                                                        Rc::new(
-                                                            CompilerDiagnostic::UnlistedImportUse {
-                                                                name: authored_name(
+                                                        } else {
+                                                            resolved.clone()
+                                                        };
+                                                        let is_optional =
+                                                            (n.return_cardinality.clone()
+                                                                == Cardinality::CardOptional);
+                                                        let final_resolved = if is_optional.clone()
+                                                        {
+                                                            with_optional_cardinality(
+                                                                structurally_resolved.clone(),
+                                                            )
+                                                        } else {
+                                                            structurally_resolved.clone()
+                                                        };
+                                                        let unlisted_diags = if ((masked.clone()
+                                                            && (v1_rt::map_is_empty(
+                                                                &env.source_visible_names.clone(),
+                                                            ) == false))
+                                                            && (v1_rt::map_has(
+                                                                &env.source_visible_names.clone(),
+                                                                authored_name(
                                                                     env.clone(),
                                                                     n.clone(),
                                                                 ),
-                                                                span: n.span.clone(),
-                                                            },
-                                                        ),
-                                                        module_name.clone(),
-                                                    )])
-                                                } else {
-                                                    Rc::new(vec![])
-                                                };
-                                                Rc::new(NodeResolveResult {
-                                                    resolved: final_resolved.clone(),
-                                                    diagnostics: unlisted_diags.clone(),
-                                                })
+                                                            ) == false))
+                                                        {
+                                                            Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::UnlistedImportUse {
+    name: authored_name(env.clone(), n.clone()),
+    span: n.span.clone(),
+}), module_name.clone())])
+                                                        } else {
+                                                            Rc::new(vec![])
+                                                        };
+                                                        Rc::new(NodeResolveResult {
+                                                            resolved: final_resolved.clone(),
+                                                            diagnostics: unlisted_diags.clone(),
+                                                        })
+                                                    }
+                                                }
                                             }
                                             None => {
                                                 let n_is_error = if (n.inferred.clone() != None) {

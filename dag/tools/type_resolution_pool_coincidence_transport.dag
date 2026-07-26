@@ -1,0 +1,90 @@
+module tools.type_resolution_pool_coincidence_transport
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+data pool_coincidence_fixture_dir: String = "dag/test/fixtures/type_resolution_pool_coincidence"
+
+data pool_coincidence_transport_note: String = "CI floor transport for type-resolution pool-coincidence probes: compiles fixture modules through compile_dag_dag_fixture_witness_check (host realization mirroring src/v1/tests/src/type_resolution_pool_coincidence_test.rs). Fixture sources are read live from disk at witness eval time. Mask enforcement is enabled per compile via type_ref_pool_coincidence_mask_set_enabled(true) in the host bridge — whole-tree compile stays staged OFF until extdeps import burndown (type_ref_pool_coincidence_mask_staging_note in v1.compiler.infer_env). HAND-RUST receipt authority: gunbc.type_resolution_pool_coincidence_scaffold (pool_coincidence_compile_fixture_hand_rust_scaffold + receipt_plan_anchor). Transport-side scaffold: pool_coincidence_fixture_witness_check_dissolution_trigger — dissolves when fixture compile witnesses are modeled as pure .dag transport without cli_run::compile_dag_dag_fixture_witness_check."
+
+data pool_coincidence_fixture_witness_check_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "tools.type_resolution_pool_coincidence_transport",
+    decl_name: "pool_coincidence_probe_witness_check",
+    field: WholeDeclaration
+  }
+}
+
+fn pool_coincidence_fixture_roots() -> List<String> {
+  [pool_coincidence_fixture_dir]
+}
+
+fn pool_coincidence_fixture_path(name: String) -> String {
+  concat(pool_coincidence_fixture_dir, concat("/", name))
+}
+
+fn pool_coincidence_fixture_source(name: String) -> String {
+  let read = Filesystem.Read(path: pool_coincidence_fixture_path(name: name))
+  if read.success { read.content } else { "" }
+}
+
+fn pool_coincidence_probe_witness_check(
+  entry_name: String,
+  expect_clean: Bool,
+  required_unresolved_type: String,
+  forbidden_diagnostic_substrings: List<String>,
+) -> Bool {
+  compile_dag_dag_fixture_witness_check(
+    entry_path: pool_coincidence_fixture_path(name: entry_name),
+    source: pool_coincidence_fixture_source(name: entry_name),
+    extra_source_roots: pool_coincidence_fixture_roots(),
+    expect_clean: expect_clean,
+    required_unresolved_type_name: required_unresolved_type,
+    forbidden_diagnostic_substrings: forbidden_diagnostic_substrings
+  )
+}
+
+fn probe_green_compiles_clean() -> Bool {
+  pool_coincidence_probe_witness_check(
+    entry_name: "probe_green.dag",
+    expect_clean: true,
+    required_unresolved_type: "",
+    forbidden_diagnostic_substrings: []
+  )
+}
+
+fn probe_silent_refuses_content_hash() -> Bool {
+  pool_coincidence_probe_witness_check(
+    entry_name: "probe_silent.dag",
+    expect_clean: false,
+    required_unresolved_type: "ContentHash",
+    forbidden_diagnostic_substrings: []
+  )
+}
+
+fn probe_one_import_refuses_content_hash() -> Bool {
+  pool_coincidence_probe_witness_check(
+    entry_name: "probe_one_import.dag",
+    expect_clean: false,
+    required_unresolved_type: "ContentHash",
+    forbidden_diagnostic_substrings: ["incompatible types"]
+  )
+}
+
+fn probe_crossboundary_refuses_content_hash() -> Bool {
+  pool_coincidence_probe_witness_check(
+    entry_name: "probe_crossboundary.dag",
+    expect_clean: false,
+    required_unresolved_type: "ContentHash",
+    forbidden_diagnostic_substrings: []
+  )
+}
+
+fn type_resolution_pool_coincidence_witness_holds() -> Bool {
+  probe_green_compiles_clean()
+    && probe_silent_refuses_content_hash()
+    && probe_one_import_refuses_content_hash()
+    && probe_crossboundary_refuses_content_hash()
+}

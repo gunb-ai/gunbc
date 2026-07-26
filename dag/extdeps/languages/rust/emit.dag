@@ -225,6 +225,7 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "record_source_chars_index_lookup", bridge_name: "record_source_chars_index_lookup", passes_by_ref: false, wraps_result: false },
   { name: "resolution_silent_pick_is_enabled", bridge_name: "resolution_silent_pick_is_enabled", passes_by_ref: false, wraps_result: false },
   { name: "name_resolution_policy_is_namespace_only", bridge_name: "name_resolution_policy_is_namespace_only", passes_by_ref: false, wraps_result: false },
+  { name: "type_ref_pool_coincidence_mask_is_enabled", bridge_name: "type_ref_pool_coincidence_mask_is_enabled", passes_by_ref: false, wraps_result: false },
   { name: "resolution_silent_pick_record_global_bare_lcp_pick", bridge_name: "resolution_silent_pick_record_global_bare_lcp_pick", passes_by_ref: false, wraps_result: false },
   { name: "resolution_silent_pick_record_global_bare_lcp_tie", bridge_name: "resolution_silent_pick_record_global_bare_lcp_tie", passes_by_ref: false, wraps_result: false },
   { name: "resolution_silent_pick_record_fn_parent_first_hit", bridge_name: "resolution_silent_pick_record_fn_parent_first_hit", passes_by_ref: false, wraps_result: false },

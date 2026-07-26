@@ -1,0 +1,11 @@
+module repro.callee_definer
+
+type Row { unit: String }
+
+type Typed { unit: String }
+
+data fixture: Row = Row { unit: "actions-runner@srv1-01.service" }
+
+fn fixture_callee_read_typed(row: Row) -> Typed {
+  Typed { unit: row.unit }
+}

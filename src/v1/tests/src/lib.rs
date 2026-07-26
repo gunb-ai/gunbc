@@ -171,6 +171,8 @@ mod type_env_scope_chain_test;
 #[cfg(test)]
 mod type_param_casing_test;
 #[cfg(test)]
+mod type_resolution_pool_coincidence_test;
+#[cfg(test)]
 mod typescript_effect_io_receipt_test;
 #[cfg(test)]
 mod typescript_field_access_typecheck_test;
@@ -182,6 +184,7 @@ mod union_resolve_receipts_test;
 mod v1_compiler_lib_test;
 #[cfg(test)]
 mod value_carrier_swap_test;
+mod value_resolution_unreachable_callee_test;
 #[cfg(test)]
 mod variant_export_surface_witness_test;
 #[cfg(test)]

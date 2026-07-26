@@ -1,0 +1,5 @@
+module repro.probe_silent
+
+fn local_hash(x: ContentHash) -> ContentHash { x }
+
+fn passthrough(x: ContentHash) -> ContentHash { local_hash(x: x) }

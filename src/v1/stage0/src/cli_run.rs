@@ -698,14 +698,6 @@ mod process_workspace_root_tests {
     }
 
     #[test]
-    fn witness_admission_source_scan_scaffold_marker_is_declared() {
-        assert_eq!(
-            super::CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER,
-            "cli_run_witness_admission_source_scan"
-        );
-    }
-
-    #[test]
     fn declared_source_ref_selection_bridge_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_DECLARED_SOURCE_REF_SELECTION_BRIDGE_MARKER,
@@ -1261,6 +1253,186 @@ pub fn compile_dag_rust_emit_check(
         }
         None => false,
     }
+}
+
+/// Host realization for `.dag` floor witnesses that compile fixture programs to
+/// `RenderTarget::Dag` with optional extra source roots (fixture dirs). Discriminates
+/// clean compiles vs located `UnresolvedType` refusals — the CI-facing counterpart of
+/// `src/v1/tests/src/type_resolution_pool_coincidence_test.rs`.
+///
+/// HAND-RUST scaffold receipt (review 43400): `gunbc.type_resolution_pool_coincidence_scaffold`
+/// — `pool_coincidence_compile_fixture_hand_rust_scaffold`, dissolve trigger, and
+/// `pool_coincidence_compile_fixture_receipt_plan_anchor` (cli-run-hollowing §2 · witness-realization).
+pub fn compile_dag_dag_fixture_witness_check(
+    entry_path: &str,
+    source: &str,
+    extra_roots: &[String],
+    expect_clean: bool,
+    required_unresolved_type: &str,
+    forbidden_substrings: &[String],
+) -> bool {
+    v1_rt::type_ref_pool_coincidence_mask_set_enabled(true);
+    let mut roots = witness_layer_roots();
+    for root in extra_roots {
+        if !roots.iter().any(|r| r == root) {
+            roots.push(root.clone());
+        }
+    }
+    let module_index = build_module_path_index(&roots);
+    let sources = resolve_virtual_source_with_imports(entry_path, source, &module_index);
+    let result = v1_compiler_compile::compile_sources(
+        Rc::new(sources.into()),
+        crate::v1_compiler_artifact::RenderTarget::Dag,
+    );
+    let hard_messages: Vec<String> = result
+        .diagnostics
+        .iter()
+        .filter(|d| is_error_diagnostic(d.diagnostic.clone()))
+        .map(|d| diagnostic_to_message(d.diagnostic.clone()))
+        .collect();
+    if forbidden_substrings.iter().any(|needle| {
+        hard_messages
+            .iter()
+            .any(|msg| msg.contains(needle.as_str()))
+    }) {
+        v1_rt::type_ref_pool_coincidence_mask_set_enabled(false);
+        return false;
+    }
+    if expect_clean {
+        let ok = hard_messages.is_empty();
+        v1_rt::type_ref_pool_coincidence_mask_set_enabled(false);
+        return ok;
+    }
+    if hard_messages.is_empty() {
+        v1_rt::type_ref_pool_coincidence_mask_set_enabled(false);
+        return false;
+    }
+    if !required_unresolved_type.is_empty() {
+        let has_unresolved = result.diagnostics.iter().any(|d| {
+            matches!(
+                &*d.diagnostic,
+                crate::v1_std_core::CompilerDiagnostic::UnresolvedType { name, .. }
+                    if name == required_unresolved_type
+            )
+        });
+        if !has_unresolved {
+            v1_rt::type_ref_pool_coincidence_mask_set_enabled(false);
+            return false;
+        }
+    }
+    let ok = !hard_messages
+        .iter()
+        .any(|msg| msg.contains("Product(<anon>)"));
+    v1_rt::type_ref_pool_coincidence_mask_set_enabled(false);
+    ok
+}
+
+/// Host realization for `tools.hand_import_gate` — counts import additions vs `base_ref`
+/// outside operator-allowed witness roster and probe-fixture paths.
+///
+/// HAND-RUST scaffold receipt (review 43400): `gunbc.hand_import_gate_scaffold` —
+/// `hand_import_gate_hand_rust_scaffold`, dissolve trigger, and `hand_import_gate_receipt_plan_anchor`
+/// (shell→intent Phase 3 · cli-run-hollowing §2 · ROADMAP ts-seed-interim).
+///
+/// Scaffold residues (each has its own dissolution trigger in `hand_import_gate.dag`):
+/// - `hand_import_parse_single_line_dissolution_trigger` — parser sees single-line imports only.
+/// - `hand_import_allowed_prefixes_mirror_dissolution_trigger` — roster below mirrors
+///   `hand_import_allowed_path_prefixes` until the gate reads it on-carrier.
+/// - `hand_import_new_file_baseline_dissolution_trigger` — new files have no import baseline.
+pub fn hand_import_gate_passes(base_ref: &str) -> bool {
+    // Mirrors tools.hand_import_gate.hand_import_allowed_path_prefixes (review 43116).
+    const ALLOWED_PREFIXES: &[&str] = &[
+        "dag/test/claim/",
+        "dag/test/fixtures/type_resolution_pool_coincidence/",
+        "dag/test/fixtures/value_resolution_unreachable_callee/",
+        "dag/tools/hand_import_gate.dag",
+        "dag/tools/type_resolution_pool_coincidence_transport.dag",
+        "dag/std/os/invocation.dag",
+    ];
+    let output = std::process::Command::new("git")
+        .args(["diff", "--name-only", base_ref, "HEAD", "--", "dag"])
+        .output();
+    let Ok(output) = output else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let changed = String::from_utf8_lossy(&output.stdout);
+    for path in changed.lines() {
+        let path = path.trim();
+        if path.is_empty() {
+            continue;
+        }
+        if ALLOWED_PREFIXES
+            .iter()
+            .any(|prefix| path.starts_with(prefix))
+        {
+            continue;
+        }
+        if hand_import_file_has_additions(path, base_ref) {
+            return false;
+        }
+    }
+    true
+}
+
+fn hand_import_file_has_additions(rel_path: &str, base_ref: &str) -> bool {
+    let head = hand_import_git_show(rel_path, "HEAD");
+    let base = hand_import_git_show(rel_path, base_ref);
+    if head.is_none() {
+        return false;
+    }
+    // hand_import_new_file_baseline_dissolution_trigger: no prior baseline — churn undefined.
+    if base.is_none() {
+        return false;
+    }
+    let head_imports = hand_import_parse_imports(head.as_ref().unwrap());
+    let base_imports = hand_import_parse_imports(base.as_ref().unwrap());
+    for (module, syms) in head_imports {
+        match base_imports.get(&module) {
+            None => return true,
+            Some(base_syms) => {
+                if syms.iter().any(|s| !base_syms.contains(s)) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn hand_import_git_show(rel_path: &str, rev: &str) -> Option<String> {
+    let spec = format!("{}:{}", rev, rel_path);
+    std::process::Command::new("git")
+        .args(["show", &spec])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+}
+
+/// hand_import_parse_single_line_dissolution_trigger: bare `import mod` and multi-line
+/// braced imports are invisible — only single-line `import mod { sym, ... }` rows count.
+fn hand_import_parse_imports(text: &str) -> HashMap<String, std::collections::BTreeSet<String>> {
+    let mut out: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("import ") {
+            if let Some((module, symbols)) = rest.split_once('{') {
+                let module = module.trim();
+                let symbols = symbols.trim_end_matches('}');
+                let syms: std::collections::BTreeSet<String> = symbols
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string())
+                    .collect();
+                out.insert(module.to_string(), syms);
+            }
+        }
+    }
+    out
 }
 
 const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
@@ -12550,39 +12722,14 @@ fn witness_admission_manifest_key(entry: &str, function: &str) -> String {
     format!("{entry}::{function}")
 }
 
-// SCAFFOLD (§7 HAND-RUST — `cli_run_witness_admission_source_scan`):
-// ROADMAP lane `5-dissolve-patches` / module-identity-storage-binding Phase 1 (b)
-// (gunbc.roadmap_authority / ROADMAP.md; docs/plans/module-identity-storage-binding-design.md).
-// The host Phase 0(b) admission key set is a hand-rolled text scan over enrollment forms
-// until the host consumes the `.dag`-authoritative
-// `v2.workflow.witness_admission.witness_admission_explicit_consumer_manifest` (module-binding
-// supply-carrier pattern). #7273's U3 file-grain arm (~21 LOC + one unit RED) is NOT a new
-// seed surface — it closes a false-refuse gap under this same interim so empty `f: ""` expands
-// to leaf keys the way `expand_explicit_entries` already does for execution.
-// Not a census shrink: HAND_MAINTAINED `cli_run.rs` LOC grows by the file-grain arm until
-// Phase 1 (b) deletes the scan; the dissolution is counted interim debt, not permanent surface.
-// DELETE WHEN dissolved: `witness_admission_entry_function_keys_from_source`,
-// `witness_admission_manifest_key`, the file-grain expand arm, and the unit tests that pin it
-// (`file_grain_bin_wet_expands_admission_consumer_keys` and sibling form parsers) — host then
-// reads emitted manifest rows (file-grain expansion lives in the `.dag` authority, not here).
-// Receipt (declaration grain; bare token `cli_run_witness_admission_source_scan` is multi-hit
-// by design — scaffold header / string literal / unit test). Executable pin that does NOT
-// self-match this comment (IDENT and TYPE_ANN are on separate lines here; contiguous only
-// on the declaration):
-//   IDENT=CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER
-//   TYPE_ANN=: &str =
-//   rg -F "${IDENT}${TYPE_ANN}" src/v1/stage0/src/cli_run.rs   # == 1 until deletion
-// Not a compiler_frontier `.dag` row (seed-Rust, counted here not in module census).
-pub(crate) const CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER: &str =
-    "cli_run_witness_admission_source_scan";
-
-/// INTERIM hand-Rust scaffold (`CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER` / §7).
-///
-/// Fail-closed in BOTH directions (§5): every occurrence of a recognized row head either
-/// parses to a key, is a verified definition or non-literal pass-through site, or PANICS with
-/// its location — a mis-parse stops the line and never silently excuses an orphan; and a
-/// consumer expressed in an unrecognized form yields NO key, so its deferred row surfaces as
-/// a loud orphan rather than being absorbed.
+// 🟡 dissolve-on: witness_admission_explicit_consumer_manifest — replace this hand-rolled
+// per-form scan with the `.dag`-authoritative manifest from v2.workflow.witness_admission
+// (the module-binding supply-carrier pattern: host consumes emitted manifest rows; tracked in
+// the Phase 1 (b) lane). Until then the scan is fail-closed in BOTH directions (§5): every
+// occurrence of a recognized row head either parses to a key, is a verified definition or
+// non-literal pass-through site, or PANICS with its location — a mis-parse stops the line and
+// never silently excuses an orphan; and a consumer expressed in an unrecognized form yields
+// NO key, so its deferred row surfaces as a loud orphan rather than being absorbed.
 fn witness_admission_entry_function_keys_from_source(
     source_label: &str,
     content: &str,
@@ -12590,28 +12737,6 @@ fn witness_admission_entry_function_keys_from_source(
     const WINDOW: usize = 400;
     let mut keys: Vec<String> = Vec::new();
     fn push_pair(keys: &mut Vec<String>, entry: &str, function: &str) {
-        // U3 file-grain: empty `f: ""` means every test decl in the entry. Admission
-        // keys must expand the same way `expand_explicit_entries` does for execution —
-        // otherwise deferred leaf rows (entry::leaf) never match the unexpanded
-        // consumer key (entry::) and Phase 0(b) falsely refuses (roadmap_belt #7273).
-        if crate::test_module_hygiene::is_file_grain_function(function) {
-            let path = workspace_root().join(entry);
-            let names = crate::test_module_hygiene::enumerate_entry_test_fns(
-                path.to_str().unwrap_or(entry),
-            )
-            .unwrap_or_else(|e| {
-                panic!(
-                    "witness admission: file-grain `{entry}` failed to enumerate test decls: {e}"
-                )
-            });
-            for name in names {
-                let key = witness_admission_manifest_key(entry, &name);
-                if !keys.iter().any(|k| k == &key) {
-                    keys.push(key);
-                }
-            }
-            return;
-        }
         let key = witness_admission_manifest_key(entry, function);
         if !keys.iter().any(|k| k == &key) {
             keys.push(key);
@@ -13189,8 +13314,8 @@ pub fn discover_floor_witness_roster(
     // U2 orphan enroll-or-refuse is implemented in test_module_hygiene (unit RED live) but
     // NOT wired into the naming walk on this PR: the live corpus still has dark helpers that
     // the companion sweep PR resolves. Wiring here before that sweep fail-closes the floor
-    // on ~75 pre-existing orphans. Dissolve-on: #7274 / session/proud-wren-892-sweep-b
-    // (re-enable check_orphan_helpers_or_err here in the same commit as the src/v2 corpus sweep).
+    // on ~75 pre-existing orphans. Dissolve-on: session/proud-wren-892-full-sweep merge
+    // (re-enable check_orphan_helpers_or_err here in the same commit as the corpus sweep).
     let mut rows = invoke_floor_discovery_producer(source_roots, scan_dirs, exclude_substrings)?;
     rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
     let FloorLensImportGraph {
@@ -28145,27 +28270,6 @@ mod module_path_index_tests {
         assert!(
             keys.contains(&"dag/test/claim/x_test.dag::x_holds".to_string()),
             "a RehomedBinWetRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
-        );
-    }
-
-    #[test]
-    fn file_grain_bin_wet_expands_admission_consumer_keys() {
-        // Discriminator for the #7273 UnexecutedDeferredWitness miss: empty f: must
-        // expand to leaf test-fn keys, never register only `entry::`.
-        let synthetic = "module gunbc.ci_layer_roots\n\n\
-             data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [\n\
-               bin_wet(entry: \"dag/test/claim/roadmap_belt_actuate_witness_test.dag\", f: \"\"),\n\
-             ]\n";
-        let keys =
-            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
-        assert!(
-            keys.iter()
-                .any(|k| k.ends_with("::witness_band_fold_pins_operator_vocabulary")),
-            "file-grain bin_wet must expand to leaf consumer keys; got {keys:?}"
-        );
-        assert!(
-            !keys.iter().any(|k| k.ends_with("::")),
-            "unexpanded empty-function key must not remain; got {keys:?}"
         );
     }
 

@@ -1,0 +1,20 @@
+module gunbc.type_resolution_pool_coincidence_scaffold
+
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+
+data pool_coincidence_compile_fixture_hand_rust_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "compile_dag_dag_fixture_witness_check",
+    field: WholeDeclaration
+  }
+}
+
+data pool_coincidence_compile_fixture_dissolve_trigger: String = "🟡 dissolve-on: cli_run::compile_dag_dag_fixture_witness_check — host bridge for mask-on fixture compiles (enables type_ref_pool_coincidence_mask_set_enabled per probe, mirrors src/v1/tests/src/type_resolution_pool_coincidence_test.rs). DISSOLVES WHEN tools.type_resolution_pool_coincidence_transport compiles fixtures through modeled substrate transport without the HAND-Rust compile driver (witness-realization lane schedules native runs; floor/witness execution chunk in docs/plans/cli-run-hollowing-plan.md §2)."
+
+data pool_coincidence_compile_fixture_receipt_plan_anchor: String = "docs/plans/cli-run-hollowing-plan.md §2 Floor / witness execution · docs/plans/witness-realization-plan.md · ROADMAP §7 ts-seed-interim (hand-Rust review bar: named dissolution trigger + plan anchor — not indefinite interim debt)."
+
+data pool_coincidence_compile_fixture_equivalence_test: String = "type_resolution_pool_coincidence_test"

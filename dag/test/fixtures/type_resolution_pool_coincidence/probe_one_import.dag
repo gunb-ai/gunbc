@@ -1,0 +1,9 @@
+module repro.probe_one_import
+
+import repro.irrelevant { irrelevant_marker }
+
+fn local_hash(x: ContentHash) -> ContentHash { x }
+
+fn probe_bare_type(x: ContentHash) -> ContentHash {
+  local_hash(x: x)
+}

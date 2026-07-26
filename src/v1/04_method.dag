@@ -1,6 +1,8 @@
 module v1.compiler.infer_method
 
 import std.types { SourceSpan }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 import v1.std.core {
   Node, TypeVariable, Resolved,
   NoConnective,
@@ -28,6 +30,17 @@ fn list_of_type_variable(id: String) -> Node {
 
 fn list_of_element(element: Node) -> Node {
   make_container_type(kind_name: "List", element: element).ty
+}
+
+data builtin_container_return_under_resolution_note: String = "Measured frontier (NOT fixed in this PR): map_insert/map_merge/with, set_insert/set_union, list_push return type-variable Map/List/Set containers (builtin_function_registry seeds map_of_type_variables / list_of_type_variable) that inference does not concretize from receiver actuals — fan_in under-resolution main carries today. TYPE_REF_POOL_COINCIDENCE_MASK default OFF hides pool-coincidence type-ref refusal during whole-tree compile; mask ON additionally surfaces this class on container-receiver paths. Horizontal fix (receiver_self_container_concrete_return in infer) was analyzed but never committed to git — zero history for that symbol. Dissolution: builtin_container_return_under_resolution_dissolution_trigger."
+
+data builtin_container_return_under_resolution_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1.compiler.infer_method",
+    decl_name: "builtin_function_registry",
+    field: WholeDeclaration
+  }
 }
 
 fn seed_node_map(key: String, value: Node) -> Map<String, Node> {
@@ -61,6 +74,7 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "record_source_chars_index_lookup", unit_type)
   let m = map_insert(m, "resolution_silent_pick_is_enabled", bool_type)
   let m = map_insert(m, "name_resolution_policy_is_namespace_only", bool_type)
+  let m = map_insert(m, "type_ref_pool_coincidence_mask_is_enabled", bool_type)
   let m = map_insert(m, "resolution_silent_pick_record_global_bare_lcp_pick", unit_type)
   let m = map_insert(m, "resolution_silent_pick_record_global_bare_lcp_tie", unit_type)
   let m = map_insert(m, "resolution_silent_pick_record_fn_parent_first_hit", unit_type)
@@ -118,6 +132,8 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "doc_graph_dangling_link_count", int_type)
   let m = map_insert(m, "doc_graph_doc_count", int_type)
   let m = map_insert(m, "compile_dag_rust_emit_check", bool_type)
+  let m = map_insert(m, "compile_dag_dag_fixture_witness_check", bool_type)
+  let m = map_insert(m, "hand_import_gate_passes", bool_type)
   let m = map_insert(m, "witness_layer_roots_compile_clean_check", bool_type)
   let m = map_insert(m, "witness_layer_roots_compile_clean_emit_check", bool_type)
   let m = map_insert(m, "consume_floor_compile_clean_gate_verdict", bool_type)

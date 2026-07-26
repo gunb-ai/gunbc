@@ -1394,6 +1394,10 @@ fn qualified_last_segment(name: String) -> String {
   }
 }
 
+fn is_witness_type_name(name: String) -> Bool {
+  name == "Witness" || name == "witness" || qualified_last_segment(name: name) == "Witness"
+}
+
 fn type_name_compatible(a: String, b: String) -> Bool {
   if a == b { true }
   else if contains(a, ".") && contains(b, ".") { false }

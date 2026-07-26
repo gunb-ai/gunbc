@@ -1,0 +1,3 @@
+module repro.irrelevant
+
+fn irrelevant_marker(x: Int) -> Int { x }
