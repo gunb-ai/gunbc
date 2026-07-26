@@ -1,0 +1,126 @@
+label	Root-4_E0107_E0109_census_AFTER
+classifier_stamp	rule1-first-error-plus-residual-histogram-v3-uncoded-split
+protocol	CSSL_STD_SEED_LINK=1; curated_cargo_probe_one.sh spine; empty shim
+git_sha	6ed00c3d72f76929339b7b6dc5390bf0f4e95afc
+gunbc_sha	60226294b98834dfa075220bc701b2e0f668b10d6dacefb38ea14634c083bdba
+before_receipt	root4_e0107_e0109_census_2026-07-26.tsv
+total_E0107	82
+total_E0109	0
+total_E0107_plus_E0109	82
+total_E0308	843
+total_E0599	635
+total_E0277	603
+total_E0369	228
+
+bucket	count	share_of_E0107_E0109
+missing_generics_emit_other	32	0.3902
+wrong_generic_arity_emit	50	0.6098
+
+module	E0107	E0109	checkpoint_scalar_phantom	measure_missing_generics	missing_generics_emit_other	wrong_generic_arity_emit	E0107_unclassified	E0109_other
+src/v2/compiler/06_translate.dag	12	0	0	0	4	8	0	0
+src/v2/compiler/04_infer.dag	12	0	0	0	4	8	0	0
+src/v2/compiler/05_eval.dag	14	0	0	0	6	8	0	0
+src/v2/compiler/05_emit.dag	12	0	0	0	4	8	0	0
+src/v2/compiler/emit_host.dag	17	0	0	0	8	9	0	0
+src/v2/compiler/emit_module.dag	12	0	0	0	4	8	0	0
+src/v2/compiler/materialization_carriers.dag	3	0	0	0	2	1	0	0
+
+normalized_message	bucket	E_code	count
+type alias takes 0 generic arguments but 1 generic argument was supplied	wrong_generic_arity_emit	E0107	48
+missing generics for enum `Witness`	missing_generics_emit_other	E0107	28
+missing generics for type alias `List`	missing_generics_emit_other	E0107	2
+missing generics for type alias `std_types::List`	missing_generics_emit_other	E0107	2
+type alias takes 0 generic arguments but 3 generic arguments were supplied	wrong_generic_arity_emit	E0107	2
+
+detail_module	E_code	bucket	message	location_sample
+src/v2/compiler/06_translate.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:75:19
+src/v2/compiler/06_translate.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_witness.rs:33:79
+src/v2/compiler/06_translate.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:48:58
+src/v2/compiler/06_translate.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:116:86
+src/v2/compiler/06_translate.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_std_qualified_name.rs:300:63
+src/v2/compiler/06_translate.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3518:96
+src/v2/compiler/06_translate.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3599:101
+src/v2/compiler/06_translate.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3622:82
+src/v2/compiler/06_translate.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3657:77
+src/v2/compiler/06_translate.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3735:70
+src/v2/compiler/06_translate.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3748:113
+src/v2/compiler/06_translate.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3805:70
+src/v2/compiler/04_infer.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:75:19
+src/v2/compiler/04_infer.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_witness.rs:33:79
+src/v2/compiler/04_infer.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:48:58
+src/v2/compiler/04_infer.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:116:86
+src/v2/compiler/04_infer.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_std_qualified_name.rs:300:63
+src/v2/compiler/04_infer.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3518:96
+src/v2/compiler/04_infer.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3599:101
+src/v2/compiler/04_infer.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3622:82
+src/v2/compiler/04_infer.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3657:77
+src/v2/compiler/04_infer.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3735:70
+src/v2/compiler/04_infer.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3748:113
+src/v2/compiler/04_infer.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3805:70
+src/v2/compiler/05_eval.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:75:19
+src/v2/compiler/05_eval.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_host_run.rs:37:32
+src/v2/compiler/05_eval.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_witness.rs:33:79
+src/v2/compiler/05_eval.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:48:58
+src/v2/compiler/05_eval.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:116:86
+src/v2/compiler/05_eval.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_compiler_eval.rs:825:51
+src/v2/compiler/05_eval.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_std_qualified_name.rs:300:63
+src/v2/compiler/05_eval.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3518:96
+src/v2/compiler/05_eval.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3599:101
+src/v2/compiler/05_eval.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3622:82
+src/v2/compiler/05_eval.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3657:77
+src/v2/compiler/05_eval.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3735:70
+src/v2/compiler/05_eval.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3748:113
+src/v2/compiler/05_eval.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3805:70
+src/v2/compiler/05_emit.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:75:19
+src/v2/compiler/05_emit.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_witness.rs:33:79
+src/v2/compiler/05_emit.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:48:58
+src/v2/compiler/05_emit.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:116:86
+src/v2/compiler/05_emit.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_std_qualified_name.rs:300:63
+src/v2/compiler/05_emit.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3518:96
+src/v2/compiler/05_emit.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3599:101
+src/v2/compiler/05_emit.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3622:82
+src/v2/compiler/05_emit.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3657:77
+src/v2/compiler/05_emit.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3735:70
+src/v2/compiler/05_emit.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3748:113
+src/v2/compiler/05_emit.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3805:70
+src/v2/compiler/emit_host.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:77:19
+src/v2/compiler/emit_host.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_host_run.rs:37:32
+src/v2/compiler/emit_host.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_witness.rs:33:79
+src/v2/compiler/emit_host.dag	E0107	missing_generics_emit_other	missing generics for type alias `std_types::List`	--> src/std_realization_measurement.rs:165:62
+src/v2/compiler/emit_host.dag	E0107	missing_generics_emit_other	missing generics for type alias `std_types::List`	--> src/std_realization_measurement.rs:169:84
+src/v2/compiler/emit_host.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:50:58
+src/v2/compiler/emit_host.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:118:86
+src/v2/compiler/emit_host.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_compiler_eval.rs:827:51
+src/v2/compiler/emit_host.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 3 generic arguments were supplied	--> src/std_realization_measurement.rs:72:46
+src/v2/compiler/emit_host.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_std_qualified_name.rs:300:63
+src/v2/compiler/emit_host.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3520:96
+src/v2/compiler/emit_host.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3601:101
+src/v2/compiler/emit_host.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3624:82
+src/v2/compiler/emit_host.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3659:77
+src/v2/compiler/emit_host.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3737:70
+src/v2/compiler/emit_host.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3750:113
+src/v2/compiler/emit_host.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3807:70
+src/v2/compiler/emit_module.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:75:19
+src/v2/compiler/emit_module.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_witness.rs:33:79
+src/v2/compiler/emit_module.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:48:58
+src/v2/compiler/emit_module.dag	E0107	missing_generics_emit_other	missing generics for enum `Witness`	--> src/v2_std_collection.rs:116:86
+src/v2/compiler/emit_module.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_std_qualified_name.rs:300:63
+src/v2/compiler/emit_module.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3518:96
+src/v2/compiler/emit_module.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3599:101
+src/v2/compiler/emit_module.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3622:82
+src/v2/compiler/emit_module.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3657:77
+src/v2/compiler/emit_module.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3735:70
+src/v2/compiler/emit_module.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3748:113
+src/v2/compiler/emit_module.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 1 generic argument was supplied	--> src/v2_extdeps_languages_dag.rs:3805:70
+src/v2/compiler/materialization_carriers.dag	E0107	missing_generics_emit_other	missing generics for type alias `List`	--> src/std_realization_measurement.rs:165:62
+src/v2/compiler/materialization_carriers.dag	E0107	missing_generics_emit_other	missing generics for type alias `List`	--> src/std_realization_measurement.rs:169:84
+src/v2/compiler/materialization_carriers.dag	E0107	wrong_generic_arity_emit	type alias takes 0 generic arguments but 3 generic arguments were supplied	--> src/std_realization_measurement.rs:72:46
+
+probe_module	emit	cargo	first_error	residual_histogram
+src/v2/compiler/06_translate.dag	60 files emitted, 27 diagnostics	refuse	error: UNRESOLVED_CompilerError	error[E0308]:114 error[E0599]:93 error[E0277]:76 error[E0063]:18 error[E0369]:14 error[E0597]:13 error[E0107]:12 error[E0282]:9 error[E0609]:6 error[E0614]:3 error[E0392]:2 error[E0560]:1 error[E0061]:1 error[E0004]:1 uncoded_unreachable_pattern:21 uncoded_UNRESOLVED_CompilerError:1
+src/v2/compiler/04_infer.dag	52 files emitted, 19 diagnostics	refuse	error: UNRESOLVED_CompilerError	error[E0308]:91 error[E0599]:88 error[E0277]:75 error[E0063]:18 error[E0369]:14 error[E0107]:12 error[E0282]:9 error[E0609]:6 error[E0597]:5 error[E0614]:3 error[E0392]:2 error[E0560]:1 error[E0061]:1 error[E0004]:1 uncoded_unreachable_pattern:18 uncoded_UNRESOLVED_CompilerError:1
+src/v2/compiler/05_eval.dag	59 files emitted, 26 diagnostics	refuse	error: UNRESOLVED_CompilerError	error[E0308]:117 error[E0599]:91 error[E0277]:81 error[E0369]:29 error[E0614]:22 error[E0063]:20 error[E0107]:14 error[E0282]:9 error[E0597]:8 error[E0609]:6 error[E0560]:2 error[E0392]:2 error[E0310]:2 error[E0271]:1 error[E0061]:1 error[E0004]:1 uncoded_unreachable_pattern:20 uncoded_UNRESOLVED_CompilerError:1
+src/v2/compiler/05_emit.dag	61 files emitted, 27 diagnostics	refuse	error: UNRESOLVED_CompilerError	error[E0308]:114 error[E0599]:93 error[E0277]:76 error[E0063]:18 error[E0369]:14 error[E0597]:13 error[E0107]:12 error[E0282]:9 error[E0609]:6 error[E0614]:3 error[E0392]:2 error[E0560]:1 error[E0061]:1 error[E0004]:1 uncoded_unreachable_pattern:21 uncoded_UNRESOLVED_CompilerError:1
+src/v2/compiler/emit_host.dag	91 files emitted, 81 diagnostics	refuse	error: UNRESOLVED_CompilerError	error[E0308]:205 error[E0277]:129 error[E0599]:96 error[E0369]:81 error[E0614]:22 error[E0063]:20 error[E0107]:17 error[E0597]:16 error[E0282]:9 error[E0609]:6 error[E0560]:2 error[E0425]:2 error[E0392]:2 error[E0310]:2 error[E0271]:1 error[E0061]:1 error[E0004]:1 uncoded_unreachable_pattern:24 uncoded_UNRESOLVED_CompilerError:1
+src/v2/compiler/emit_module.dag	62 files emitted, 27 diagnostics	refuse	error: UNRESOLVED_CompilerError	error[E0308]:122 error[E0599]:93 error[E0277]:76 error[E0063]:18 error[E0369]:14 error[E0597]:13 error[E0107]:12 error[E0282]:9 error[E0609]:6 error[E0614]:3 error[E0392]:2 error[E0560]:1 error[E0061]:1 error[E0004]:1 uncoded_unreachable_pattern:21 uncoded_UNRESOLVED_CompilerError:1
+src/v2/compiler/materialization_carriers.dag	44 files emitted, 50 diagnostics	refuse	error[E0107]: missing generics for type alias `List`	error[E0277]:90 error[E0599]:81 error[E0308]:80 error[E0369]:62 error[E0107]:3 error[E0061]:2 error[E0282]:1 uncoded_unreachable_pattern:1
