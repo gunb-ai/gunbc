@@ -23,7 +23,17 @@ import v2.lens.subsumption {
   rust_language_model_emit_subsumption
 }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Map, Set }
+import v2.std.collection {
+  Map,
+  Set
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 
 import v2.std.diagnostic {
   Accepted,
@@ -374,8 +384,8 @@ fn subsumption_facts(node: Node) -> InferredFacts {
   )
 }
 
-fn subsumption_fact_lookup(node: Node) -> Witness<InferredFacts> {
-  Holds { value: subsumption_facts(node: node) }
+fn subsumption_fact_lookup(node: Node) -> Optional<InferredFacts> {
+  optional_present(value: subsumption_facts(node: node))
 }
 
 fn subsumption_inferred_tree(root: Node) -> InferredTree {

@@ -14,23 +14,16 @@ import v2.std.diagnostic {
   port_locus
 }
 import v2.std.node { Symbol }
-import v2.std.witness { Holds, Violates, Witness }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present,
+  optional_prefer_first_present
+}
+import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 
-type Optional<T>
-  = Absent
-  | Present { value: T }
-fn optional_absent<T>() -> Optional<T> {
-  Absent
-}
-fn optional_present<T>(value: T) -> Optional<T> {
-  Present { value: value }
-}
-fn optional_prefer_first_present<T>(left: Optional<T>, right: Optional<T>) -> Optional<T> {
-  match left {
-    Present { value: _ } => left
-    Absent => right
-  }
-}
 fn optional_absent_unwrap_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^optional_absent_unwrap,
@@ -40,10 +33,7 @@ fn optional_absent_unwrap_diagnostic() -> Diagnostic {
 }
 
 fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
-  match opt {
-    Present { value: v } => Holds { value: v }
-    Absent => Violates { diagnostic: optional_absent_unwrap_diagnostic() }
-  }
+  witness_from_optional(opt: opt, absent: optional_absent_unwrap_diagnostic())
 }
 
 type List<T> = std.algebra.FreeMonoid<T>
@@ -59,13 +49,6 @@ type IndexedLookup<T> {
 type ListAtLookup<T>
   = ListAtMissing { remaining: Int }
   | ListAtFound { value: T }
-fn map_absent_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: ^map_key_absent,
-    at: port_locus(port: ^map_lookup_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
 fn empty_map_primitive_delegate<K, V>() -> Map<K, V> {
   empty_map_primitive_delegate()
 }
@@ -76,7 +59,7 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
   Map {
     lookup: fn(candidate) {
       match candidate == key {
-        true => Holds { value: value }
+        true => Present { value: value }
         false => m.lookup(candidate)
       }
     }
@@ -84,15 +67,7 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
 }
 
 fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
-  match m.lookup(key) {
-    Holds { value: v } => outcome_accepted(value: Present { value: v })
-    Violates { diagnostic: d } =>
-      if d.reason == ^map_key_absent {
-        outcome_accepted(value: Absent)
-      } else {
-        outcome_rejected(d: d)
-      }
-  }
+  outcome_accepted(value: m.lookup(key))
 }
 fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {
   fold_list(

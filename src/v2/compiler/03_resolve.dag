@@ -15,14 +15,16 @@ import v2.extdeps.languages.dag {
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { length, list_snoc_item }
 import v2.std.collection {
-  Absent,
   Map,
-  Optional,
-  Present,
   Set,
   empty_map,
   map_get,
-  map_insert,
+  map_insert
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
   optional_absent,
   optional_present
 }

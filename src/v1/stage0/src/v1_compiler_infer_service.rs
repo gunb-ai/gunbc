@@ -7,8 +7,6 @@ use crate::v1_compiler_infer_items::ItemKind::FuncItem;
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, TypedModule};
 pub use crate::v1_compiler_infer_types::{emit_map_has, nominal_type_ref};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, NoConnective};

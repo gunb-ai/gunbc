@@ -13,9 +13,7 @@ test fn eval_bind_node_eval_rejects_value_interpreter_holds() -> Bool {
     root: node,
     facts: Map {
       lookup: fn(n) {
-        Violates {
-          diagnostic: eval_diagnostic(reason: ^eval_rejected_type_node, node: n)
-        }
+        Absent
       }
     }
   }

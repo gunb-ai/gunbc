@@ -21,7 +21,7 @@ import v2.extdeps.runtimes.v2_evaluator {
   v2_evaluator_interpretation_structure_witness
 }
 import v2.compiler.infer { InferredTree }
-import v2.test.lens_common.infer_fixture { claim_atom_node }
+import v2.test.lens_common.infer_fixture { claim_atom_node, claim_inferred_facts, claim_inferred_tree }
 import v2.std.collection { List, Map }
 import v2.std.diagnostic {
   Accepted,
@@ -74,7 +74,6 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
-import v2.std.witness { Violates }
 
 fn tcc_cache_pass_node() -> Node {
   Node {
@@ -104,23 +103,15 @@ fn tcc_cache_eval_node_b() -> Node {
   claim_atom_node(s: ^tcc_cache_eval_b_sym)
 }
 
-fn tcc_cache_facts_diagnostic(reason: Symbol) -> Diagnostic {
-  Diagnostic {
-    reason: reason,
-    at: node_locus(node: tcc_cache_root()),
-    correction: Unavailable { reason: AmbiguousIntent }
-  }
-}
-
-fn tcc_cache_tree_facts_violates(reason: Symbol) -> InferredTree {
-  InferredTree {
+fn tcc_cache_tree_facts_for_reason(reason: Symbol) -> InferredTree {
+  claim_inferred_tree(
     root: tcc_cache_root(),
-    facts: Map {
-      lookup: fn(_) {
-        Violates { diagnostic: tcc_cache_facts_diagnostic(reason: reason) }
-      }
-    }
-  }
+    facts: claim_inferred_facts(
+      type_symbol: reason,
+      algebra_symbol: ^tcc_cache_facts_algebra_sym,
+      descent_symbol: ^tcc_cache_facts_descent_sym,
+    )
+  )
 }
 
 fn tcc_cache_eval_context() -> EvalContext {
@@ -153,8 +144,8 @@ fn tcc_cache_subject(
 }
 
 fn tcc_cache_facts_diagnostic_digest_differs() -> Bool {
-  let tree_a = tcc_cache_tree_facts_violates(reason: ^tcc_cache_facts_diag_a)
-  let tree_b = tcc_cache_tree_facts_violates(reason: ^tcc_cache_facts_diag_b)
+  let tree_a = tcc_cache_tree_facts_for_reason(reason: ^tcc_cache_facts_diag_a)
+  let tree_b = tcc_cache_tree_facts_for_reason(reason: ^tcc_cache_facts_diag_b)
   let hash_a = test_claim_cache_interpretation_hash_node(
     subject: tcc_cache_subject(tree: tree_a, evaluator_input: tcc_cache_eval_node_a())
   )
@@ -208,7 +199,7 @@ fn tcc_cache_diagnostic_reason_claim_hash_differs() -> Bool {
 }
 
 fn tcc_cache_evaluator_input_digest_differs() -> Bool {
-  let tree = tcc_cache_tree_facts_violates(reason: ^tcc_cache_facts_diag_a)
+  let tree = tcc_cache_tree_facts_for_reason(reason: ^tcc_cache_facts_diag_a)
   let hash_a = test_claim_cache_interpretation_hash_node(
     subject: tcc_cache_subject(tree: tree, evaluator_input: tcc_cache_eval_node_a())
   )
@@ -598,7 +589,7 @@ fn tcc_cache_sensitivity_claim_input(ok: Bool) -> Node {
 }
 
 data claim_test_claim_cache_facts_diagnostic_digest_differs: TestClaim = CompilesClaim {
-  label: "manual/test_claim_cache: same root, distinct facts diagnostics yield distinct interpretation_hash",
+  label: "manual/test_claim_cache: same root, distinct facts-map lookup payloads yield distinct interpretation_hash",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   classification: TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_facts_diagnostic_digest_differs()),

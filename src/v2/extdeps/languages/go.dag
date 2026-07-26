@@ -41,7 +41,7 @@ import v2.std.compilers.lexing {
   TriviaRule,
   lex_rule_set_token_class_member
 }
-import v2.std.collection { List, Map, Set, empty_map, map_insert, optional_absent }
+import v2.std.collection { Absent, List, Map, Present, Set, empty_map, map_insert, optional_absent }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
@@ -53,8 +53,7 @@ import v2.std.model_core {
   ModelCoreFactAxisWidth,
   ModelCorePrimitiveFactAxis,
   PartialitySemanticsDecl,
-  PrimitiveFactBundle,
-  primitive_fact_axis_unbound_diagnostic
+  PrimitiveFactBundle
 }
 import v2.std.grounding {
   empty_per_language_fact_bundle_registry,
@@ -94,7 +93,6 @@ import v2.std.host_transport {
 }
 import v2.std.logic { Bool, bool_boolean_algebra, bool_node }
 import v2.std.diagnostic { bind_outcome, outcome_accepted, Outcome }
-import v2.std.witness { Holds, Violates }
 import std.algebra { Empty }
 import v2.std.algebra { BooleanAlgebra, approximate_field_node, boolean_algebra_node, commutative_ring_node, fold_list, free_monoid_node, list_append, list_snoc_item }
 import v2.std.text { String }
@@ -636,9 +634,7 @@ fn go_string_facts_node(facts: GoStringPrimitiveFacts) -> Node {
 fn go_empty_primitive_spec_facts() -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      Violates {
-        diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-      }
+      v2.std.optional.Absent
     }
   }
 }

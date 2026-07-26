@@ -23,7 +23,15 @@ import v2.extdeps.languages.dag {
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_node }
-import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
+import v2.std.collection {
+  List,
+  list_at_optional
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present
+}
 import v2.std.qualified_name { QualifiedName }
 import v2.std.diagnostic {
   Accepted,

@@ -1,6 +1,10 @@
 module v2.extdeps.formats.spice_passive_projection
 
-import v2.std.collection { Optional, Absent, Present }
+import v2.std.optional {
+  Optional,
+  Absent,
+  Present
+}
 import v2.std.timeseries_signal {
   CapacitorPassive,
   GroundReference,

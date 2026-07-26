@@ -4,15 +4,17 @@ import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured, TargetEmitHostRuntimeRow }
 import v2.std.collection {
-  Absent,
   List,
   Set,
   Map,
-  Optional,
-  Present,
   empty_map,
   list_at_optional,
-  map_insert,
+  map_insert
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
   optional_absent,
   optional_present
 }

@@ -20,7 +20,16 @@ import v2.extdeps.languages.dag {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection { Map }
+import v2.std.collection {
+  Map
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness
@@ -113,24 +122,22 @@ fn field_access_canonical_grounding_for(node: Node) -> Witness<CanonicalGroundin
   }
 }
 
-fn field_access_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
+fn field_access_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
   match field_access_canonical_grounding_for(node: node) {
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
       match termination_proof_witness_for_node(n: node) {
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Violates { diagnostic: d } => optional_absent()
         Holds { value: proof } =>
-          Holds {
-            value: claim_inferred_facts_witness(
+          optional_present(value: claim_inferred_facts_witness(
               grounding: grounding,
               descent: Holds { value: proof }
-            )
-          }
+            ))
       }
   }
 }
 
-fn field_access_facts_lookup(key: Node) -> Witness<InferredFacts> {
+fn field_access_facts_lookup(key: Node) -> Optional<InferredFacts> {
   field_access_inferred_facts_for(node: key)
 }
 

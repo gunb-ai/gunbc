@@ -3,8 +3,6 @@
 
 pub use crate::std_types::kernel_type_set;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::{
     CircularDependency, DuplicateModule, MissingExport, UnresolvedImport,

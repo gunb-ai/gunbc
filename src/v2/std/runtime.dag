@@ -1,6 +1,15 @@
 module v2.std.runtime
 
-import v2.std.collection { List, Map, Optional, Present, optional_absent, optional_present }
+import v2.std.collection {
+  List,
+  Map
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,

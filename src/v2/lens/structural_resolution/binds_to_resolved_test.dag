@@ -41,7 +41,7 @@ fn sr_claim_facts() -> InferredFacts {
 fn sr_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
   Map {
     lookup: fn(_) {
-      Holds { value: facts }
+      Present { value: facts }
     }
   }
 }

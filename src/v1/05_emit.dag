@@ -1660,8 +1660,8 @@ fn emit_export_ident(name: String, target: RenderTarget) -> String {
 
 fn apply_bridge_method_overrides(name: String, overrides: Map<String, String>) -> String {
   match lookup(overrides, key: name) {
-    Holds { value: replacement } => replacement
-    Violates { diagnostic: _ } => name
+    Present { value: replacement } => replacement
+    Absent => name
   }
 }
 

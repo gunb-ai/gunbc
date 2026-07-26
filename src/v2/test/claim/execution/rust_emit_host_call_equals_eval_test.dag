@@ -24,7 +24,17 @@ import v2.test.emit.rust_call_emit {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { List, Map }
+import v2.std.collection {
+  List,
+  Map
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -194,10 +204,10 @@ fn emit_call_eval_generic_facts(node: Node) -> InferredFacts {
   )
 }
 
-fn emit_call_eval_composed_facts(key: Node) -> Witness<InferredFacts> {
+fn emit_call_eval_composed_facts(key: Node) -> Optional<InferredFacts> {
   match rust_call_facts_miss(key: key) {
-    Holds { value: f } => Holds { value: f }
-    Violates { diagnostic: _ } => Holds { value: emit_call_eval_generic_facts(node: key) }
+    Holds { value: f } => optional_present(value: f)
+    Violates { diagnostic: _ } => optional_present(value: emit_call_eval_generic_facts(node: key))
   }
 }
 
