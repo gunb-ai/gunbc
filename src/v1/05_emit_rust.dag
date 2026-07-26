@@ -495,14 +495,14 @@ fn rust_applied_type_base(name: String, corpus_repr: RustCorpusRepr) -> String {
 }
 
 fn rust_normalize_witness_type_text(rendered: String) -> String {
-  replace(rendered, "witness<", "v1_rt::Witness<")
+  replace(rendered, "witness<", "Witness<")
 }
 
 fn rust_witness_parent_leaf(parent: String) -> Bool {
   qualified_last_segment(name: parent) == "Witness"
 }
 
-data rust_witness_variant_arm_names_note: String = "Holds/Violates literals below are the two arms of std.witness.Witness<C> (dag/std/witness.dag) — not minted nicknames. Pattern position still routes v1_rt::Witness via variant_pattern_qualified_path; construction turbofish here keys type-arg resolution off the modeled arm names only."
+data rust_witness_variant_arm_names_note: String = "Holds/Violates literals below are the two arms of std.witness.Witness<C> (dag/std/witness.dag) — not minted nicknames. Pattern position routes via variant_pattern_qualified_path like any other modeled enum; construction turbofish here keys type-arg resolution off the modeled arm names only."
 
 fn rust_peel_one_rc_type_node(type_node: Node, source_indices: Map<String, NewlineIndex>) -> Node {
   if qualified_last_segment(name: type_node.name) != "Rc" {
@@ -4336,26 +4336,8 @@ fn emit_prelude(imported_names: List<String>, local_type_names: List<String>) ->
     "use crate::v1_rt::\{VecCompat, VecJoin\};\n",
     "use std::rc::Rc;\n",
     "use crate::v1_rt;")
-  let witness_locally_defined = rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "Witness")
-  let has_witness = imported_names |> any(n => n == "Witness")
-  let has_holds = imported_names |> any(n => n == "Holds")
-  let has_violates = imported_names |> any(n => n == "Violates")
-  let witness_line = if witness_locally_defined || has_witness || has_holds || has_violates {
-    ""
-  } else {
-    "\nuse crate::v1_rt::Witness;"
-  }
-  let variant_line = if witness_locally_defined || (has_holds && has_violates) {
-    ""
-  } else if has_holds {
-    "\nuse crate::v1_rt::Witness::Violates;"
-  } else if has_violates {
-    "\nuse crate::v1_rt::Witness::Holds;"
-  } else {
-    "\nuse crate::v1_rt::Witness::\{Holds, Violates\};"
-  }
   let wrapper_use = "\nuse crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;"
-  concat(base, witness_line, variant_line, wrapper_use)
+  concat(base, wrapper_use)
 }
 
 fn emit_non_empty_wrappers() -> String {
@@ -5692,12 +5674,7 @@ data variant_pattern_dotted_qualification_note: String = "Construction wall for 
 fn variant_pattern_qualified_path(rust_name: String, resolved_parent: String?) -> String {
   match resolved_parent {
     Present { value: parent } =>
-      let parent_leaf = qualified_last_segment(name: parent)
-      if parent_leaf == "Witness" {
-        concat("v1_rt::Witness::", rust_name)
-      } else {
-        concat(parent_leaf, "::", rust_name)
-      }
+      concat(qualified_last_segment(name: parent), "::", rust_name)
     Absent => rust_name
   }
 }

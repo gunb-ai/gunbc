@@ -17,7 +17,7 @@ type StructuralResolutionFact {
 }
 
 fn inferred_facts_for_node(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
-  tree.facts.lookup(node)
+  witness_from_optional(opt: tree.facts.lookup(node), absent: infer_facts_lookup_miss_diagnostic(key: node))
 }
 
 fn status_for_binding_facts(usage_site_facts: Witness<InferredFacts>) -> StructuralResolutionStatus {

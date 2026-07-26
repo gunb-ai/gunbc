@@ -4,7 +4,16 @@ import std.machine_shape { ExecutionDomain, LevelId, MemoryLevel }
 import std.measure { ByteSize, byte_size, measure_add, measure_le }
 import std.types { ContentHash, Int }
 import v2.std.algebra { any, length }
-import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
+import v2.std.collection {
+  List
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v2.std.dependency { DependencyView }
 import v2.std.logic { Bool }
 import v2.std.materialize { hashes_contain }

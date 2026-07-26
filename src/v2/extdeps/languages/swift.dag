@@ -53,7 +53,18 @@ import v2.std.compilers.lexing {
   WhitespaceChar,
   lex_rule_set_token_class_member
 }
-import v2.std.collection { List, Map, Set, empty_map, map_insert, Optional }
+import v2.std.collection {
+  List,
+  Map,
+  Set,
+  empty_map,
+  map_insert
+}
+import v2.std.optional {
+  Absent,
+  Present,
+  Optional
+}
 import v2.std.model_core {
   AlgebraInhabitanceDecl,
   AlgebraLawObligation,
@@ -69,10 +80,8 @@ import v2.std.model_core {
   ModelCoreFactAxisOverflowDisposition,
   ModelCoreFactAxisSignedness,
   ModelCoreFactAxisSurfaceSpelling,
-  primitive_fact_axis_unbound_diagnostic,
   ModelCoreFactAxisWidth
 }
-import v2.std.witness { Holds, Violates }
 import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.node {
@@ -1612,9 +1621,7 @@ fn swift_lex_token_symbol(sym: Symbol) -> Bool {
 fn swift_empty_primitive_spec_facts() -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      Violates {
-        diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-      }
+      v2.std.optional.Absent
     }
   }
 }

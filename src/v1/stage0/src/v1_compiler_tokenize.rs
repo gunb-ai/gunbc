@@ -7,8 +7,6 @@ pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_languages::canonical_emoji_char_escape;
 pub use crate::v1_compiler_languages::EmojiCharEscape;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::make_file_span;
 use crate::v1_std_core::TokenShape::{
@@ -26,8 +24,8 @@ use std::rc::Rc;
 
 pub fn is_keyword_text(text: String) -> bool {
     match v1_rt::lookup(&dag_keyword_set(), text.clone()) {
-        v1_rt::Witness::Holds { value: _, .. } => true,
-        v1_rt::Witness::Violates { diagnostic: _, .. } => false,
+        Some(_) => true,
+        None => false,
     }
 }
 
@@ -490,14 +488,14 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
         }
         let ch_text = source_char(source.clone(), pos.pos.clone());
         match v1_rt::lookup(&single_punct(), ch_text.clone()) {
-            v1_rt::Witness::Holds { value: sh, .. } => emit(
+            Some(sh) => emit(
                 pos.clone(),
                 sh.clone(),
                 ch_text.clone(),
                 1,
                 source.file.clone(),
             ),
-            v1_rt::Witness::Violates { diagnostic: _, .. } => emit(
+            None => emit(
                 pos.clone(),
                 TokenShape::ShUnknown,
                 ch_text.clone(),

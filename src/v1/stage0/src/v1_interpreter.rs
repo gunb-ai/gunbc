@@ -425,11 +425,34 @@ fn optional_absent(ctx: &InterpContext) -> Value {
     }
 }
 
-fn map_lookup_as_optional(raw: Value, ctx: &InterpContext) -> Value {
-    if matches!(raw, Value::Null) {
-        optional_absent(ctx)
-    } else {
-        optional_present(raw, ctx)
+/// Whether a `raw_map_lookup` result already carries the `Optional<V>` contract
+/// (a `.dag`-authored `Map.lookup` closure returns `Optional<V>` by construction)
+/// or is a bare storage read that still needs the `Optional` wrap applied
+/// (native `Value::Map`/field storage, where a miss is `Value::Null`).
+/// Distinguishing by the call site — not by sniffing the value's shape — is
+/// required so a stored `V = Optional<T>` payload isn't mistaken for an
+/// already-wrapped lookup result (DESIGN §5: construction, not validation).
+enum RawMapLookup {
+    AlreadyOptional(Value),
+    NeedsWrap(Value),
+}
+
+fn map_lookup_as_optional(raw: RawMapLookup, ctx: &InterpContext) -> Value {
+    match raw {
+        RawMapLookup::AlreadyOptional(v) => v,
+        RawMapLookup::NeedsWrap(Value::Null) => optional_absent(ctx),
+        RawMapLookup::NeedsWrap(v) => optional_present(v, ctx),
+    }
+}
+
+impl RawMapLookup {
+    /// Bare-value callers (field access, `[]` indexing, the raw `lookup`/`get`
+    /// builtins) don't observe the `Optional` contract at all — they want
+    /// exactly what was found, miss-as-`Null` included.
+    fn into_raw(self) -> Value {
+        match self {
+            RawMapLookup::AlreadyOptional(v) | RawMapLookup::NeedsWrap(v) => v,
+        }
     }
 }
 
@@ -4183,7 +4206,8 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
         let key = args.first().ok_or_else(|| InterpError::TypeError {
             msg: "lookup requires a key argument".to_string(),
         })?;
-        return raw_map_lookup_witness(&receiver_val, key, env, ctx);
+        let raw = raw_map_lookup(&receiver_val, key, env, ctx)?;
+        return Ok(map_lookup_as_optional(raw, ctx));
     }
 
     if let Value::Record { fields, .. } | Value::Variant { fields, .. } = &receiver_val {
@@ -4266,7 +4290,8 @@ fn extract_field(
                 type_name: ctx.resolve(*type_name).to_string(),
                 field: field.to_string(),
             }),
-        Value::Map(_) => raw_map_lookup(value, &Value::Str(field.to_string()), env, ctx),
+        Value::Map(_) => raw_map_lookup(value, &Value::Str(field.to_string()), env, ctx)
+            .map(RawMapLookup::into_raw),
         _ => Err(InterpError::TypeError {
             msg: format!("cannot access field '{}' on {}", field, value.type_label()),
         }),
@@ -4493,7 +4518,9 @@ fn eval_index(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
             let i = *i as usize;
             Ok(items.get(i).cloned().unwrap_or(Value::Null))
         }
-        (base, key) if is_map_lookup_receiver(base) => raw_map_lookup(base, key, env, ctx),
+        (base, key) if is_map_lookup_receiver(base) => {
+            raw_map_lookup(base, key, env, ctx).map(RawMapLookup::into_raw)
+        }
         (Value::Str(s), Value::Int(i)) => {
             let i = *i as usize;
             Ok(s.chars()
@@ -4571,7 +4598,7 @@ fn eval_algebra_method_inner(
             let key = args.first().ok_or_else(|| InterpError::TypeError {
                 msg: "lookup requires a key argument".to_string(),
             })?;
-            raw_map_lookup(&receiver, key, env, ctx)
+            raw_map_lookup(&receiver, key, env, ctx).map(RawMapLookup::into_raw)
         }
 
         "map" => list_method_with_closure("map", receiver, args, env, ctx, |items, f, env, ctx| {
@@ -4898,7 +4925,7 @@ fn eval_algebra_method_inner(
                 let key = args.first().ok_or_else(|| InterpError::TypeError {
                     msg: "get requires a key argument".to_string(),
                 })?;
-                raw_map_lookup(&receiver, key, env, ctx)
+                raw_map_lookup(&receiver, key, env, ctx).map(RawMapLookup::into_raw)
             } else if let Ok(items) = expect_list(&receiver, "get") {
                 let idx = expect_int(args.first(), "get")?;
                 Ok(list_get_at_or_null(&items, idx))
@@ -4906,7 +4933,7 @@ fn eval_algebra_method_inner(
                 let key = args.first().ok_or_else(|| InterpError::TypeError {
                     msg: "get requires a key argument".to_string(),
                 })?;
-                raw_map_lookup(&receiver, key, env, ctx)
+                raw_map_lookup(&receiver, key, env, ctx).map(RawMapLookup::into_raw)
             }
         }
 
@@ -8359,7 +8386,10 @@ fn eval_builtin_inner(
         },
 
         "lookup" => match positional.as_slice() {
-            [map, key] => Ok(Some(raw_map_lookup(map, key, &Env::empty(), ctx)?)),
+            [map, key] => {
+                let raw = raw_map_lookup(map, key, &Env::empty(), ctx)?;
+                Ok(Some(map_lookup_as_optional(raw, ctx)))
+            }
             _ => Ok(None),
         },
 
@@ -9900,50 +9930,30 @@ fn is_map_lookup_receiver(val: &Value) -> bool {
     }
 }
 
-fn raw_map_lookup_witness(
-    map: &Value,
-    key: &Value,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
-    match map {
-        Value::Map(m) => match CanonKey::new(key.clone()) {
-            Some(ck) => match m.get(&ck) {
-                Some(v) => Ok(witness_holds(v.clone(), ctx)),
-                None => Ok(witness_violates(
-                    native_map_absent_diagnostic_value(ctx),
-                    ctx,
-                )),
-            },
-            None => Ok(witness_violates(
-                native_map_absent_diagnostic_value(ctx),
-                ctx,
-            )),
-        },
-        _ => raw_map_lookup(map, key, env, ctx),
-    }
-}
-
 fn raw_map_lookup(
     map: &Value,
     key: &Value,
     env: &Rc<Env>,
     ctx: &InterpContext,
-) -> InterpResult<Value> {
+) -> InterpResult<RawMapLookup> {
     match map {
         Value::Map(m) => match CanonKey::new(key.clone()) {
-            Some(ck) => Ok(m.get(&ck).cloned().unwrap_or(Value::Null)),
-            None => Ok(Value::Null),
+            Some(ck) => Ok(RawMapLookup::NeedsWrap(
+                m.get(&ck).cloned().unwrap_or(Value::Null),
+            )),
+            None => Ok(RawMapLookup::NeedsWrap(Value::Null)),
         },
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
             let lookup_sym = ctx.sym("lookup");
             match fields_get(fields, lookup_sym) {
-                Some(lookup @ Value::Closure { .. }) => {
-                    apply_closure(lookup, &[key.clone()], env, ctx)
-                }
+                Some(lookup @ Value::Closure { .. }) => Ok(RawMapLookup::AlreadyOptional(
+                    apply_closure(lookup, &[key.clone()], env, ctx)?,
+                )),
                 Some(Value::Fn { node }) => {
                     let named = vec![(None, key.clone())];
-                    call_function(ctx, node, &named, env)
+                    Ok(RawMapLookup::AlreadyOptional(call_function(
+                        ctx, node, &named, env,
+                    )?))
                 }
                 Some(_) => Err(InterpError::TypeError {
                     msg: "Map.lookup field is not callable".to_string(),
@@ -9951,9 +9961,11 @@ fn raw_map_lookup(
                 None => match key {
                     Value::Str(s) => {
                         let k = ctx.sym(s);
-                        Ok(fields_get(fields, k).cloned().unwrap_or(Value::Null))
+                        Ok(RawMapLookup::NeedsWrap(
+                            fields_get(fields, k).cloned().unwrap_or(Value::Null),
+                        ))
                     }
-                    _ => Ok(Value::Null),
+                    _ => Ok(RawMapLookup::NeedsWrap(Value::Null)),
                 },
             }
         }

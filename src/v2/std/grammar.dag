@@ -3,12 +3,14 @@ module v2.std.grammar
 import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, fold_list_node, list_append, list_snoc_item, zip_eq }
 import v2.std.collection {
-  Absent,
   List,
+  Set,
+  list_nth
+}
+import v2.std.optional {
+  Absent,
   Optional,
   Present,
-  Set,
-  list_nth,
   optional_absent,
   optional_present
 }

@@ -8,8 +8,6 @@ pub use crate::v1_compiler_dag_collect_support::{
 pub use crate::v1_compiler_dag_collect_support::{DagCollectAcc, DagCollectSlot};
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::import_is_all;
 use crate::v1_std_core::Connective::NoConnective;

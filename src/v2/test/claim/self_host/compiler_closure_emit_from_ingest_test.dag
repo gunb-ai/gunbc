@@ -11,7 +11,10 @@ import v2.compiler.source_authority { DagSourceReadWitness, source_root_coverage
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { fold_list, length }
-import v2.std.collection { Absent, Optional }
+import v2.std.optional {
+  Absent,
+  Optional
+}
 import v2.std.diagnostic {
   Accepted,
   Locus,

@@ -47,7 +47,16 @@ import v2.std.diagnostic {
 }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.algebra { fold_list, length }
-import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
+import v2.std.collection {
+  List
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }

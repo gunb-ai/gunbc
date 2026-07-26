@@ -619,8 +619,8 @@ fn expect_name(tokens: TokenStream) -> NameResult {
 fn is_name_keyword(token: Token) -> Bool {
   if is_keyword_shape(shape: token.shape) {
     match lookup(dag_non_name_keywords, key: token.text) {
-      Holds { value: _ } => false
-      Violates { diagnostic: _ } => true
+      Present { value: _ } => false
+      Absent => true
     }
   } else {
     false
@@ -3482,10 +3482,10 @@ fn parse_primary(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
       let kw_text = tok.value.text
       let lit_val = lookup(dag_syntax_spec.keyword_literals, key: kw_text)
       match lit_val {
-        Holds { value: lv } => {
+        Present { value: lv } => {
           ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: lv }, children: [], inferred: none, span: span), tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, err: none }
         }
-        Violates { diagnostic: _ } => {
+        Absent => {
       if kw_text == "match" { parse_match(tokens: tokens, ctx: ctx) }
       else if kw_text == "if" { parse_if(tokens: tokens, ctx: ctx) }
       else if kw_text == "for" { parse_for(tokens: tokens, ctx: ctx) }
@@ -4117,10 +4117,10 @@ fn parse_pattern(tokens: TokenStream, ctx: ParseContext) -> PatternResult {
       let kw_text = tok.value.text
       let lit_val = lookup(dag_syntax_spec.keyword_literals, key: kw_text)
       match lit_val {
-        Holds { value: lv } => {
+        Present { value: lv } => {
           PatternResult { pattern: LitPattern { value: lv }, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, err: none }
         }
-        Violates { diagnostic: _ } => PatternResult { pattern: Wildcard, tokens: tokens, ctx: ctx, err: none }
+        Absent => PatternResult { pattern: Wildcard, tokens: tokens, ctx: ctx, err: none }
       }
     }
     Present { value: ShLitInt } => {

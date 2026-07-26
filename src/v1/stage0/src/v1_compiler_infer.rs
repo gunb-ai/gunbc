@@ -85,7 +85,6 @@ pub use crate::v1_compiler_infer_lookup::{
 };
 pub use crate::v1_compiler_infer_method::{
     builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
-    witness_of_element,
 };
 use crate::v1_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v1_compiler_infer_patterns::{
@@ -126,8 +125,6 @@ pub use crate::v1_compiler_infer_types::{
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
@@ -1804,13 +1801,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                         ..
                     }) => {
                         match map_value_type_in_env(receiver_type.clone(), scope.type_env.clone()) {
-                            Some(value_type) => {
-                                if (func_name.clone() == "lookup".to_string()) {
-                                    witness_of_element(value_type.clone())
-                                } else {
-                                    with_optional_cardinality(value_type.clone())
-                                }
-                            }
+                            Some(value_type) => with_optional_cardinality(value_type.clone()),
                             None => resolve_builtin_call_type(func_name.clone()),
                         }
                     }

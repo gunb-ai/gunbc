@@ -23,15 +23,17 @@ import v2.extdeps.formats.sql_target {
 }
 import v2.std.algebra { fold_list, list_append }
 import v2.std.collection {
-  Absent,
   List,
   Map,
-  Optional,
-  Present,
   empty_map,
   list_at_optional,
   list_nth,
   map_insert
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present
 }
 import v2.std.compilers.lexing { LexRule, LexRuleSet, LexRules, ModeledLexRules }
 import v2.std.compilers.target_model {

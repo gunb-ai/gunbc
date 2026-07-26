@@ -12,7 +12,15 @@ import v2.extdeps.languages.dag {
   parse_production_captured_child_optional
 }
 import v2.extdeps.languages.rust { rust_target_model }
-import v2.std.collection { Absent, Optional, Present, list_at_optional, optional_present }
+import v2.std.collection {
+  list_at_optional
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_present
+}
 import v2.std.compilers.lexing { TokenStream, token_stream_all }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, outcome_accepted }
 import v2.std.logic { Bool }

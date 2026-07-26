@@ -4,7 +4,10 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_graft_spine }
-import v2.std.collection { Absent, Present }
+import v2.std.optional {
+  Absent,
+  Present
+}
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node {
   ComputationNode,

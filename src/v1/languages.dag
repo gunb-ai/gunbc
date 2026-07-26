@@ -945,9 +945,9 @@ fn language_spec_for_target(target: RenderTarget) -> LanguageSpec {
 
 fn target_keyword(target: RenderTarget, key: String) -> String {
   match target {
-    Rust => match lookup(rust_keywords, key: key) { Holds { value: kw } => kw  Violates { diagnostic: _ } => key }
-    Go => match lookup(go_keywords, key: key) { Holds { value: kw } => kw  Violates { diagnostic: _ } => key }
-    Python => match lookup(python_keywords, key: key) { Holds { value: kw } => kw  Violates { diagnostic: _ } => key }
+    Rust => match lookup(rust_keywords, key: key) { Present { value: kw } => kw  Absent => key }
+    Go => match lookup(go_keywords, key: key) { Present { value: kw } => kw  Absent => key }
+    Python => match lookup(python_keywords, key: key) { Present { value: kw } => kw  Absent => key }
     Dag => key
   }
 }

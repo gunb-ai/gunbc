@@ -11,13 +11,15 @@ import v2.std.algebra {
   list_snoc_item
 }
 import v2.std.collection {
-  Absent,
   Map,
-  Optional,
-  Present,
   empty_map,
   map_get,
-  map_insert,
+  map_insert
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
   optional_absent,
   optional_present
 }
