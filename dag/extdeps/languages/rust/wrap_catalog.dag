@@ -104,11 +104,22 @@ fn rust_sg_rc_wrap_layer_lookup(type_name: String, use_site: OwnershipWrapUseSit
                     if row.carrier == carrier && row.use_site == use_site {
                       Present { value: row.reference_layer }
                     } else {
-                      none
+                      acc
                     }
                 }
             )
         Absent => none
       }
+  }
+}
+
+fn rust_sg_rc_wrap_layer_lookup_witness_holds() -> Bool {
+  match rust_sg_rc_wrap_layer_lookup(type_name: "Node", use_site: OwnershipAtStructField) {
+    Present { value: ReferenceLayerBox } =>
+      match rust_sg_rc_wrap_layer_lookup(type_name: "Node", use_site: OwnershipAtBindingProjection) {
+        Present { value: ReferenceLayerRc } => true
+        _ => false
+      }
+    _ => false
   }
 }

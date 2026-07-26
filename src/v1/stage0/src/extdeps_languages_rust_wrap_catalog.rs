@@ -230,7 +230,7 @@ pub fn rust_sg_rc_wrap_layer_lookup(
                             {
                                 Some(row.reference_layer.clone())
                             } else {
-                                None
+                                acc
                             }
                         }
                     },
