@@ -244,17 +244,42 @@ The original table's rows are retained below for provenance:
 
 ### 4.E — FOREIGN-EXECUTOR / BOOTSTRAP emit (LEGIT shell — route through `emit(intent,Bash)`, stays shell but bounded)
 
-These are correct as shell (a GHA runner / cron / git / pre-runtime host only understands shell text). Target = emitted through the v2 bash rows, a **roster not a growth surface** — NOT dissolved to a typed op.
+> **True-up @ post-#7216 (wise-crane-222, 2026-07-26):** fresh bucket-D re-census; supersedes the 07-22 rows below for CI placement files. Authority: `shell-intent-emit-realization-design.md`, `host-effect-orchestration.md`. Invariant: intent imports no `bash_build` / `ShellProgram` / `serialize_bash` (`realization_vocabulary_containment`).
+
+These are correct as shell (GHA `run:`, cron, git hooks, pre-runtime bootstrap — the executor only understands shell text). Target = emitted through the v2 bash rows via `orch_emit_pipeline(medium: bash_orchestration_emit_medium())`, a **roster not a growth surface** — NOT dissolved to a typed op unless a row names one.
+
+**Already on emit (do not re-migrate):**
+
+| module | symbols | executor |
+| --- | --- | --- |
+| `v2.workflow.ci_workflow_run_emit` | `ci_isolate_toolchain_script`, `ci_pin_rustup_default_script`, `ci_selection_control_script` | GHA `run:` |
+| `v2.workflow.ci_floor_peak_emit` | `ci_cgroup_peak_locate_shell`, `ci_floor_peak_pre_script`, `ci_floor_peak_post_script` | GHA `run:` |
+| `v2.workflow.ci_retry_emit` | `ci_cargo_eagain_retry_script` | GHA `run:` (via `ci_release_build_emit`) |
+| `v2.workflow.ci_release_build_emit` | `ci_release_build_script`, `gunbc_ci_run_script` | GHA `run:` (partial — still concat-wraps verify script) |
+| `v2.workflow.ci_materialization_emit` | `ci_sccache_provider_shell_injection` | GHA `run:` (**LANDED #7265**) |
+| `v2.workflow.ci_merge_admission_emit` | `ci_floor_disposition_marker_init_script` | GHA `run:` (**LANDED #7265**) |
+| `gunbc.assimilate.bmc_token_federation` | `gcp_token_smoke_script` | GHA `run:` |
+| `gunbc.live_deploy.emit` | `expected_live_deploy_apply_script`, `expected_live_deploy_retract_script` | GHA deploy `run:` |
+| `gunbc.host_effect` | `fresh_standup_bootstrap_intent` → `EmitArtifactThenThinRun` bootstrap arm | pre-runtime bootstrap |
+
+**Remaining concat-built foreign-executor punch-list** — per-symbol table and PR batching in §4.J.
+
+**Deferred / out of bucket D:**
+
+| site | reason |
+| --- | --- |
+| `roadmap_static_site.dag` body fns | HTML/JSON content emit, not shell — belt B (`gunbc serve`) |
+| `runner_host_deploy.dag` · `runner_host_docker_provision_script` | fleet manual-gap lane |
+| `bmc_virtual_media.dag` srv4 gadget scripts | BMC provisioning, separate lane |
+| Runtime-present `host_effect_apply` / srvN tails | bucket B (typed effects), not foreign-executor emit |
+
+**Legacy 07-22 snapshot rows** (superseded for CI sites; non-CI rows unchanged):
 
 | site | executor | class |
 | --- | --- | --- |
-| `ci_spec.dag` `ci_floor_build_verify/ci_release_bins_pack/…unpack_verify/ci_regen_floor_skip_shortcut` + retry `command:` | GitHub Actions | E-emit |
-| `ci_materialization.dag:217,246` gate scripts | GitHub Actions | E-emit |
-| `merge_admission_produce.dag:192,199,261,320` stamp/gate scripts | GitHub Actions | E-emit |
-| `fleet_converge_emit.dag` `fresh_standup_bootstrap_script` + the fresh-standup `Run{command: concat(...)}` rows (`:112,120,133,136,140,147,153,161,171`) | pre-runtime bootstrap | E-emit (byte-oracle vs `.github/fleet-converge.sh`) |
-| `roadmap_static_site.dag:76,80,144,209` body fns | srv1 dashboard (belt B — being replaced by `gunbc serve`) | E-emit / dissolves with belt B |
-| `fleet_posix_accounts.dag` `probe_command: "id <user>"` (×4) | account-existence probe | A2 (an `id` argv op) or E if roster — DFS |
-| `assimilate/bmc_token_federation.dag:65` `gcp_token_smoke_script` | GCP token smoke | DFS — likely A (typed gcp op exists) |
+| `fleet_converge_emit.dag` `fresh_standup_bootstrap_script` + fresh-standup `Run{command: concat(...)}` rows | pre-runtime bootstrap | E-emit (byte-oracle vs `.github/fleet-converge.sh`) |
+| `roadmap_static_site.dag` body fns | srv1 dashboard (belt B) | E-emit / dissolves with belt B |
+| `fleet_posix_accounts.dag` `probe_command: "id <user>"` (×4) | account-existence probe | **NOT a shell emit site** — authored provenance metadata; live proof is `deploy_access_check_observed` via typed `SudoNopasswdExecuteProbe` |
 
 ### 4.F — bottom transport & brand (Phase-3 WALL — the construction guard)
 
@@ -296,6 +321,7 @@ The 07-22 snapshot is ~7 merges stale. What has landed since, keyed to the rows 
 | #7215 | census doc pass | — |
 | #7231 | **extdeps positioning restructure** | import paths repointed: `extdeps.os.systemctl` → `extdeps.systemd`, `extdeps.os.hostname` → `extdeps.tools.hostname`, `extdeps.os.exec_arg_limit` → `extdeps.exec`, `os.os` → `extdeps.os` hub-loose. Older rows in §4/§5 still spell the pre-restructure paths; read them through this mapping. |
 | #7233 | srv3 `Record` | 4.A5 srv\* cluster (still deferred) |
+| **#7265** | bucket D PR1 — `ci_sccache_provider_shell_injection` + `ci_floor_disposition_marker_init_script` → `ci_materialization_emit` / `ci_merge_admission_emit` | 4.E/4.I/4.J rows for those two symbols DONE; §4.E/4.J true-up folded here (orphan doc deleted) |
 | **this PR** | **bucket A** — the last `date -Iseconds` in `host_runner_memory_cap_verify.dag` onto `Clock.Now`; `meta_exec_confinement_exception_roster` **3 → 0** | 4.C `date -Iseconds` and `hostname -s` rows DONE; the meta-exec roster is now empty, so §4.F's wall has no exceptions left to grant |
 
 **Meta-exec roster: 3 → 0, and the dark lane that hid it.** Two of the three rows (`dag/gunbc/tools/review.dag`, `dag/gunbc/ci_deploy_target_host.dag`) were **stale** — their sites had stopped importing `extdeps.shell.exec` merges earlier and nobody noticed, because `meta_exec_roster_sound_live` existed in the lens but ran on **no** per-PR cadence; the only enrolled roster RED was synthetic (hand-written fact rows, blind to the live roster). Measured this PR: the live receipt costs **13.5s cold** against a 5s fast-lane budget, so it cannot be enrolled per-PR as-is. The per-PR enforcement is instead a **construction wall** — `stale_count` is bounded above by roster length, so the empty roster proves soundness with no scan, and any re-added row reds `meta_exec_roster_shrunk_to_empty_holds` in the same PR that adds it. The live receipt stays as a backstop in `src/v2/test/claim/long/meta_exec_confinement_clean_tree_test.dag` (with a non-degeneracy control, since a clean tree makes a live scan vacuously true if the walk reads nothing). **Named residue:** that long lane is still dark (not roster-enrolled); its dissolve-on is a falsifier batch admitting live-tree lens receipts.
@@ -347,7 +373,7 @@ The state of every PR in this arc, so nothing is missed if work pauses here. **A
 | `ci_spec.dag` · `gunbc_ci_deploy_invoke` | `ROOT=$(git rev-parse … \|\| pwd); "$ROOT/target/release/gunbc" run … live_deploy_apply_srv1_wet` (deploy job) | GitHub Actions | E-emit (thin `gunbc` invocation wrapped in bash); the `git rev-parse … \|\| pwd` prelude is a §5 fallback (below) |
 | `ci_spec.dag` · `gunbc_ci_heal_regen_invoke` | `gunbc run … generated_artifact_gate main_wet` (heal job) | GitHub Actions | E-emit (same thin-invoke shape; `ci_heal_regen_note` documents it) |
 | `ci_spec.dag` · `ci_heal_git_add_lines` + commit/push | `git add` over `committed_generated_artifact_paths()` (each `[ -e ]`-guarded), `git diff --cached --quiet` gate, `git commit`, `git push origin HEAD:<branch>` (heal job, 76 lines) | GitHub Actions | E-emit — the git verbs dissolve to typed `git.Core.*` ops (Add/Commit/Push); `ci_heal_commit_push_note` already frames it as "the foreign-executor case that renders through bash" |
-| `ci_materialization.dag` · `ci_sccache_provider_shell_injection` | `if sccache --show-stats >/dev/null 2>&1; then RUSTC_WRAPPER=sccache; …; fi` (embedded in "Isolate toolchain dirs") | GitHub Actions | E-emit **+ §5 ABSORBING-FALLBACK** — the opportunistic guard SILENTLY skips caching when the daemon is down (no refusal, no count), exactly the shape of the readiness.dag `\| tail`+`exit 0` at §4.B. Dissolves to a MANDATORY provisioning-ensure (`ci_sccache_opportunistic_detect_scaffold` → srvN build-cache STEP-2) — the sibling of the level-2 `-u RUSTC_WRAPPER` absorbing fallback removed on #7138. |
+| `ci_materialization.dag` · `ci_sccache_provider_shell_injection` | `if sccache --show-stats >/dev/null 2>&1; then RUSTC_WRAPPER=sccache; …; fi` (embedded in "Isolate toolchain dirs") | GitHub Actions | **DONE (#7265)** — migrated to `v2.workflow.ci_materialization_emit`; still carries §5 ABSORBING-FALLBACK debt (opportunistic guard silently skips caching when daemon is down → dissolve-on: mandatory provisioning-ensure via srvN build-cache STEP-2) |
 
 **§5 absorbing-fallbacks INSIDE the CI scripts** (§5.B rule: each becomes a *modeled outcome*, never re-appended). The census tracked the scripts but not these internal widens:
 
@@ -359,6 +385,70 @@ The state of every PR in this arc, so nothing is missed if work pauses here. **A
 | `ci_spec.dag:219` · `ci_retry_escalation_level1` | `CARGO_BUILD_JOBS=1` on EAGAIN | masks a fleet-pressure *resource deficit* rather than emitting a typed counted diagnostic (its level-2 sibling `-u RUSTC_WRAPPER` was removed as STEP-2, #7138); recover parallelism-cap as a fleet-admission control, not a per-run silent degrade |
 
 **Adjacent (NOT shell-string) — cross-ref, tracked elsewhere.** The same audit found a second class the CI shares that is *not* a `ShellProgram`/string sink and so does **not** belong in this census: hand-spelled **config** that should DERIVE from an existing model. The exemplar is toolchain isolation — `ToolchainEnvIsolation = SharedHomeAcrossJobs \| PerJobCargoHome{…} \| HermeticContainer` (`extdeps/toolchain/types.dag`) is modeled and consumed by `sccache`/`fleet_intent`, but the workflow emit never reads `env_isolation`; it hand-spells per-job isolation (build isolates, the ci/gate job shares → the rustup `ETXTBSY` race, documented in PROSE in `ci_floor_gate_toolchain_note` on `ci_workflow.dag` rather than modeled/gated). Same shape for the GHA **cache key** (modeled `gha_actions_cache_facts` key-derivation vs the hand-spelled `ci_cache_key_template`), **artifact** upload/download (un-modeled; the dissolve-on artifact-CacheProvider named in `ci_materialization.dag` is undone), and **permissions** (`std.effect_grant` vs per-job `WorkflowPermissions`). These are the model↔realization-fork open thread + roadmap `2-emit-partition`, not the ShellProgram arc; noted here only so the audit's findings aren't lost across the seam.
+
+### 4.J — Bucket D foreign-executor emit punch-list @ post-#7216 (wise-crane-222, 2026-07-26)
+
+The per-symbol remaining work and batching plan for §4.E CI sites. **Load-bearing:** every `ci_spec.dag` composer change regenerates `.github/workflows/ci.yml`; drift+parse gate is the byte-oracle.
+
+**Typed-op candidates (route to extdeps op, NOT bash emit):**
+
+| site | current | target op | notes |
+| --- | --- | --- | --- |
+| `ci_spec.dag` · `ci_fmt_gate_line` | `"$CARGO_BIN" fmt --all --check` | `cargo.Build.Fmt` | `ci_fmt_gate_note` already names dissolve-on; **load-bearing ci.yml** |
+| `ci_deploy_access_emit.dag` · `deploy_access_emit_principal_read_script` | `"whoami"` | `os.Id.Lookup` / effective-principal read | deploy preflight; Wave C typed argv |
+
+**Remaining concat-built foreign-executor punch-list:**
+
+#### A — `merge_admission_produce.dag` (5 script surfaces)
+
+| symbol | GHA consumer | status / emit complexity |
+| --- | --- | --- |
+| `ci_floor_disposition_marker_init_script` | floor opener (via `gunbc_ci_floor_only_script`) | **DONE (#7265)** → `ci_merge_admission_emit` |
+| `ci_documentation_only_gate_skip_prefix` | receipt gates, merge gate, selection control | open — medium (nested if/test + cmdsubst) |
+| `ci_merge_admission_stamp_script` | merge-admission stamp step | open — low |
+| `ci_merge_admission_gate_script` | merge-admission gate step | open — medium |
+| `ci_floor_stamp_merge_admission_script` | floor tail | open — medium (`$?` capture) |
+
+#### B — `ci_materialization.dag` (3 script surfaces)
+
+| symbol | GHA consumer | status / emit complexity |
+| --- | --- | --- |
+| `ci_sccache_provider_shell_injection` | isolate-toolchain pipeline | **DONE (#7265)** → `ci_materialization_emit` |
+| `ci_floor_materialization_receipt_gate_script` | ci job gate | open — high (sed parses + if ladder) |
+| `ci_floor_resolve_receipt_gate_script` | ci job gate | open — high (sed + numeric compare) |
+
+#### C — `ci_spec.dag` (~15 distinct script composers feeding GHA)
+
+| symbol | GHA consumer | route |
+| --- | --- | --- |
+| `ci_release_build_line` | build (via retry emit) | emit (partially done) |
+| `ci_fmt_gate_line` | build fmt step | **typed op** |
+| `ci_floor_build_verify_script` | build verify + unpack | emit (build_step transport pattern) |
+| `ci_release_bins_pack_script` | build pack artifact | emit |
+| `ci_release_bins_unpack_verify_script` | ci unpack step | emit |
+| `gunbc_ci_floor_only_script` | ci floor `run:` | emit (composes A rows) |
+| `ci_regen_floor_skip_shortcut_script` | regen skip | emit (`if` + cmdsubst) |
+| `gunbc_ci_regen_floor_only_script` | regen job | emit (composer) |
+| `gunbc_ci_deploy_invoke` | deploy job | emit (thin gunbc run) |
+| `gunbc_ci_heal_regen_invoke` | heal regen | emit |
+| `gunbc_ci_heal_commit_push_script` | heal commit/push | emit (git verbs; future typed git ops) |
+| `scheduler_invoke` / `scheduler_invoke_with` | floor/regen | emit (thin claim_executor) |
+| `git_fetch_script` | floor/regen/deploy | emit (`git fetch` + fallback) |
+
+#### D — permanent roster (emit target, never typed-op dissolve)
+
+| site | executor |
+| --- | --- |
+| `gunbc.githooks_pre_push_emit` · `expected_githooks_pre_push_sh` | git pre-push hook |
+| cron entry lines (REST transport witness corpus) | cron |
+
+**Proposed batching (3 PRs):**
+
+| PR | scope |
+| --- | --- |
+| **PR 1 (#7265)** | `ci_sccache_provider_shell_injection` + `ci_floor_disposition_marker_init_script` emit migrations; witness tests + `realization_vocabulary_containment` roster; regen `ci.yml`. Does not touch `ci_spec.dag` composers beyond import delegation. |
+| **PR 2** | merge-admission cluster completion + receipt gates (A/B remaining rows). |
+| **PR 3** | `ci_spec` composer migration + `ci_fmt_gate_line` → typed `cargo.Build.Fmt`. **Operator review required** — load-bearing CI generator. |
 
 ### Dissolution trigger for §4
 
