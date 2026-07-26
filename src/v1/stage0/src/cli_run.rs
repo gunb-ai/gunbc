@@ -1246,12 +1246,7 @@ pub fn compile_dag_rust_emit_check(
         Rc::new(sources.into()),
         crate::v1_compiler_artifact::RenderTarget::Rust,
     );
-    let hard_diagnostics = result
-        .diagnostics
-        .iter()
-        .filter(|d| !diagnostic_to_message(d.diagnostic.clone()).starts_with("complexity: "))
-        .count();
-    if hard_diagnostics != 0 {
+    if compile_clean_im_vector_has_hard_errors(&result.diagnostics) {
         return false;
     }
     match result.files.iter().find(|f| f.path == file_path) {
