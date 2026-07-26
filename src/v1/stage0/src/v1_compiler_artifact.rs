@@ -91,10 +91,10 @@ pub fn plan_artifacts(rule: Rc<PartitionRule>) -> Rc<ArtifactPlan> {
     match (*rule.clone()).clone() {
         PartitionRule::Explicit {
             artifacts: arts, ..
-        } => Rc::new(ArtifactPlan {
+        } => ArtifactPlan {
             artifacts: arts.clone(),
-            boundaries: Rc::new(vec![]),
-        }),
+            boundaries: vec![],
+        },
     }
 }
 
@@ -108,15 +108,15 @@ pub fn default_artifact_plan(
     root_modules: Rc<Vec<String>>,
     target: RenderTarget,
 ) -> Rc<ArtifactPlan> {
-    plan_artifacts(Rc::new(PartitionRule::Explicit {
-        artifacts: Rc::new(vec![Rc::new(Artifact {
+    plan_artifacts(PartitionRule::Explicit {
+        artifacts: vec![Artifact {
             name: "default".to_string(),
             kind: ArtifactKind::ServiceBinary,
             target: target.clone(),
             entry_modules: root_modules.clone(),
-            dependencies: Rc::new(vec![]),
-        })]),
-    }))
+            dependencies: vec![],
+        }],
+    })
 }
 
 pub type DagNodeId = String;

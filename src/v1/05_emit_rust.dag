@@ -815,7 +815,9 @@ fn rust_seed_effective_reference_layer(type_name: String, rendered: String, shar
       match rust_sg_rc_wrap_layer_lookup(type_name: type_name, use_site: use_site) {
         Present { value: layer } => layer
         Absent =>
-          if rust_seed_legacy_container_blanket_rc(rendered: rendered) {
+          if set_contains(shared_types, type_name) && !rust_type_is_rc_wrapped(type_name: rendered) {
+            ReferenceLayerRc
+          } else if rust_seed_legacy_container_blanket_rc(rendered: rendered) {
             ReferenceLayerRc
           } else {
             ReferenceLayerOwned
@@ -8396,17 +8398,24 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
             Absent => pe
           }
           let raw = emit_typed_record_lit(type_name: tn, fields: inner_fields, parent_enum: corrected_parent, resolved_type: resolved_type(n: field_value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+          let rc_name = match corrected_parent {
+            Present { value: en } => en
+            Absent => variant_name
+          }
+          let after_shared = if rc_name != "" && set_contains(shared_types, rc_name) {
+            concat("Rc::new(", raw, ")")
+          } else { raw }
           match expected_type {
             Present { value: et } =>
-              rust_seed_wrap_value_at_use_site(emitted: raw, type_name: et, rendered: et, shared_types: shared_types, use_site: OwnershipAtStructField)
-            Absent =>
-              let rc_name = match corrected_parent {
-                Present { value: en } => en
-                Absent => variant_name
+              let rendered = render_rust_type_with_applied_binding(n: field_value, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, use_site: OwnershipAtStructField)
+              if rust_seed_catalog_wraps_box_at_use_site(type_name: et, rendered: rendered, shared_types: shared_types, use_site: OwnershipAtStructField) {
+                if string_length(s: after_shared) > 10 && substring(s: after_shared, start: 0, end: 10) == "Box::new(" { after_shared }
+                else if rust_type_is_box_wrapped(type_name: after_shared) { after_shared }
+                else { concat("Box::new(", after_shared, ")") }
+              } else {
+                after_shared
               }
-              if rc_name != "" && rust_seed_value_needs_rc_wrap(type_name: rc_name, rendered: rc_name, shared_types: shared_types, use_site: OwnershipAtStructField) {
-                concat("Rc::new(", raw, ")")
-              } else { raw }
+            Absent => after_shared
           }
         Absent =>
           emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)

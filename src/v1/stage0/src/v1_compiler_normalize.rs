@@ -25,7 +25,7 @@ pub struct NormalizeResult {
 }
 
 pub fn check_bare_containers(
-    n: Rc<Node>,
+    n: Node,
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
@@ -41,7 +41,7 @@ pub fn check_bare_containers(
         };
         let nname = authored_name_at(source_indices.clone(), n.clone());
         let self_diags = if is_expr.clone() {
-            Rc::new(vec![])
+            vec![]
         } else {
             match container_expected_arity(nname.clone()) {
                 Some(expected) => {
@@ -50,20 +50,20 @@ pub fn check_bare_containers(
                         && (n.connective.clone() == Connective::NoConnective))
                         && !has_structure.clone())
                     {
-                        Rc::new(vec![make_error_node(
-                            Rc::new(CompilerDiagnostic::ArityMismatch {
+                        vec![make_error_node(
+                            CompilerDiagnostic::ArityMismatch {
                                 name: nname.clone(),
                                 expected: expected.clone(),
                                 got: 0,
                                 span: n.span.clone(),
-                            }),
+                            },
                             module_name.clone(),
-                        )])
+                        )]
                     } else {
-                        Rc::new(vec![])
+                        vec![]
                     }
                 }
-                None => Rc::new(vec![]),
+                None => vec![],
             }
         };
         let child_diags = Rc::new({
@@ -100,16 +100,16 @@ pub fn check_bare_containers(
             Some(ta) => {
                 check_bare_containers(ta.clone(), module_name.clone(), source_indices.clone())
             }
-            None => Rc::new(vec![]),
+            None => vec![],
         };
         let body_diags = match n.body.clone() {
             Some(b) => {
                 check_bare_containers(b.clone(), module_name.clone(), source_indices.clone())
             }
-            None => Rc::new(vec![]),
+            None => vec![],
         };
         let inferred_diags = if ((n.params.clone().len() as i64) > 0) {
-            Rc::new(vec![])
+            vec![]
         } else {
             match n.inferred.clone() {
                 Some(inf) => match (*inf.clone()).clone() {
@@ -118,9 +118,9 @@ pub fn check_bare_containers(
                         module_name.clone(),
                         source_indices.clone(),
                     ),
-                    _ => Rc::new(vec![]),
+                    _ => vec![],
                 },
-                None => Rc::new(vec![]),
+                None => vec![],
             }
         };
         let uses_diags = Rc::new({
@@ -155,7 +155,7 @@ pub fn check_bare_containers(
         });
         Rc::new({
             let mut __result = Vec::new();
-            for d in Rc::new(vec![
+            for d in vec![
                 self_diags.clone(),
                 child_diags.clone(),
                 param_diags.clone(),
@@ -164,7 +164,7 @@ pub fn check_bare_containers(
                 body_diags.clone(),
                 uses_diags.clone(),
                 prop_diags.clone(),
-            ])
+            ]
             .iter()
             .cloned()
             {
@@ -215,9 +215,9 @@ pub fn normalize_graph(
             }
             __result
         });
-        Rc::new(NormalizeResult {
+        NormalizeResult {
             graph: graph.clone(),
             diagnostics: diags.clone(),
-        })
+        }
     }
 }
