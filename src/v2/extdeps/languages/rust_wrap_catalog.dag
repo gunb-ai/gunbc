@@ -4,7 +4,6 @@ import v2.extdeps.languages.rust { rust_sg_rc_use_site_ownership_catalog }
 import v2.std.compilers.target_model {
   TargetOwnershipUseSite,
   TargetReferenceLayer,
-  TargetUseSiteOwnershipRealization,
   OwnershipAtBindingProjection,
   OwnershipAtFunctionParameter,
   OwnershipAtFunctionReturn,
