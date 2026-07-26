@@ -9,6 +9,7 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_method_wraps_result, rust_serde_rename_all_screaming_snake_case,
     rust_serde_rename_all_snake_case,
 };
+pub use crate::extdeps_languages_rust_wrap_catalog::rust_sg_rc_wrap_layer_lookup;
 use crate::extdeps_languages_rust_wrap_catalog::OwnershipReferenceLayer::{
     ReferenceLayerBox, ReferenceLayerOwned, ReferenceLayerRc,
 };
@@ -17,12 +18,9 @@ use crate::extdeps_languages_rust_wrap_catalog::OwnershipWrapUseSite::{
     OwnershipAtStructField, OwnershipWrapUseSiteAbsent,
 };
 pub use crate::extdeps_languages_rust_wrap_catalog::{
-    rust_sg_rc_wrap_carrier_key, rust_sg_rc_wrap_layer_lookup,
-};
-pub use crate::extdeps_languages_rust_wrap_catalog::{
     OwnershipReferenceLayer, OwnershipWrapUseSite,
 };
-pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
+pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_basenames;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 use crate::std_serialization::VariantEncoding::*;
@@ -5289,6 +5287,74 @@ pub fn emit_v2_std_text_closure_stub_module() -> Rc<TextFile> {
     })
 }
 
+pub fn emit_lib_rs_declared_mod_basenames(
+    all_module_files: Rc<Vec<Rc<TextFile>>>,
+) -> Rc<Vec<String>> {
+    {
+        let src_prefix_len = v1_rt::string_length(&rust_source_root());
+        let ext_len = v1_rt::string_length(&rust_source_ext());
+        Rc::new({
+            let mut __result = Vec::new();
+            for f in all_module_files.clone().iter().cloned() {
+                __result.push({
+                    let path_len = v1_rt::string_length(&f.path.clone());
+                    v1_rt::substring(
+                        &f.path.clone(),
+                        src_prefix_len.clone(),
+                        (path_len.clone() - ext_len.clone()),
+                    )
+                });
+            }
+            __result
+        })
+    }
+}
+
+pub fn emit_lib_rs_hand_maintained_missing_mod_decls(
+    declared_basenames: Rc<Vec<String>>,
+) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for basename in Rc::new({
+            let mut __result = Vec::new();
+            for basename in generated_pub_mod_basenames().iter().cloned() {
+                if !{
+                    let mut __found = false;
+                    for name in declared_basenames.clone().iter().cloned() {
+                        if (name.clone() == basename.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    __result.push(basename);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            rust_visibility_prefix(),
+                            rust_items().module_keyword.clone(),
+                        ),
+                        " ".to_string(),
+                    ),
+                    basename.clone(),
+                ),
+                ";".to_string(),
+            ));
+        }
+        __result
+    })
+    .join(&"\n".to_string())
+}
+
 pub fn emit_lib_rs_from_files(
     all_module_files: Rc<Vec<Rc<TextFile>>>,
     has_compiler_tests: bool,
@@ -5324,7 +5390,16 @@ pub fn emit_lib_rs_from_files(
             __result
         });
         let hand_maintained_mods = if has_compiler_tests.clone() {
-            generated_pub_mod_block()
+            {
+                let missing = emit_lib_rs_hand_maintained_missing_mod_decls(
+                    emit_lib_rs_declared_mod_basenames(all_module_files.clone()),
+                );
+                if (missing.clone() == "".to_string()) {
+                    "".to_string()
+                } else {
+                    v1_rt::concat("\n".to_string(), missing.clone())
+                }
+            }
         } else {
             "".to_string()
         };
