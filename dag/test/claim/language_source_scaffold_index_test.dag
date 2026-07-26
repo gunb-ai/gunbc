@@ -23,8 +23,12 @@ test fn language_source_scaffold_roster_is_fully_dispositioned() -> Bool {
 }
 
 test fn language_source_scaffold_roster_covers_every_carrier() -> Bool {
-  let total = language_source_scaffold_pending_count() + language_source_scaffold_terminal_count()
-  language_source_scaffold_roster_size() == total && language_source_scaffold_roster_size() > 0
+  let runtime_rows = language_source_scaffold_roster |> filter(r => r.carrier_module == "v1.compiler.runtime_rust") |> count
+  let tests_rows = language_source_scaffold_roster |> filter(r => r.carrier_module == "v1.compiler.compiler_tests_rust") |> count
+  let rust_emit_rows = language_source_scaffold_roster |> filter(r => r.carrier_module == "extdeps.languages.rust.emit") |> count
+  let emit_rust_rows = language_source_scaffold_roster |> filter(r => r.carrier_module == "v1.compiler.emit_rust") |> count
+  runtime_rows == 13 && tests_rows == 25 && rust_emit_rows == 2 && emit_rust_rows == 1
+    && language_source_scaffold_roster_size() == 41
 }
 
 test fn scaffold_binding_nothing_is_refused() -> Bool {
