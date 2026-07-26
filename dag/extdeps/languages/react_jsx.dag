@@ -14,11 +14,24 @@ import extdeps.languages.html {
 import extdeps.uri_validation {
   find_first_rejected_url,
 }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "react.dev/learn/writing-markup-with-jsx"
+  }
+}
+
+data react_jsx_keep_mark_note: String = "KEEP with mark (#7272 A3 re-ruling; gpu/wgsl treatment). Not dead vocabulary: enrolled CI keystone corpus_ci_gate_row_react_jsx_emit_keystone (claim_witness_corpus_ci_runner), hostile-href XSS control witness_hostile_href_rejected, and second executing consumer void_element_test (serialize_jsx_component). No production consumer today. First-consumer candidates: gunb.ai site-subsumption (gunbc.site.markup) or belt-B dashboard (gunbc.roadmap_serve) if either adopts JSX emission. Failing that, the next census sweep re-raises deletion with the full removal set: this module, dag/test/claim/react_jsx_emit_test.dag, corpus_ci_gate_row_react_jsx_emit_keystone enrollment (+ roster row at :580), and the void_element_test import of serialize_jsx_component."
+
+data react_jsx_awaiting_production_consumer: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.site.markup",
+    decl_name: "el",
+    field: WholeDeclaration
   }
 }
 

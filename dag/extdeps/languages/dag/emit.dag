@@ -1,12 +1,12 @@
 module extdeps.languages.dag.emit
 
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
+import extdeps.uri { Uri, File }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
-    scheme: Https
-    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/languages/dag"
+    scheme: File
+    locator: "DESIGN.md#4-the-closed-grounded-substrate"
   }
 }
 

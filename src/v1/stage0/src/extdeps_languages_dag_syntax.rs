@@ -2,7 +2,7 @@
 // Source module: extdeps.languages.dag.syntax
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
-use crate::extdeps_uri::UriScheme::Https;
+use crate::extdeps_uri::UriScheme::File;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
@@ -29,8 +29,8 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
         uri: Rc::new(Uri {
-        scheme: UriScheme::Https,
-        locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/languages/dag".to_string(),
+        scheme: UriScheme::File,
+        locator: "DESIGN.md#4-the-closed-grounded-substrate".to_string(),
     }),
     })
             };

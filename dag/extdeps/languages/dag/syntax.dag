@@ -1,7 +1,7 @@
 module extdeps.languages.dag.syntax
 
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
+import extdeps.uri { Uri, File }
 
 import std.syntax {
   ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
@@ -16,8 +16,8 @@ import std.syntax {
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
-    scheme: Https
-    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/languages/dag"
+    scheme: File
+    locator: "DESIGN.md#4-the-closed-grounded-substrate"
   }
 }
 

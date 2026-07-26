@@ -103,9 +103,8 @@ pub use crate::v1_compiler_resolve::get_exported_names;
 pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
 pub use crate::v1_compiler_trait_derive_emit::{
     rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible,
-    v1_emit_enum_derives, v1_emit_enum_supplemental_impls, v1_emit_struct_derives,
-    v1_emit_struct_supplemental_impls, v1_emit_type_params_with_clone_bounds,
-    v1_generic_params_needing_clone_bound,
+    v1_emit_enum_derives, v1_emit_enum_supplemental_impls, v1_emit_struct_from_capability_table,
+    v1_emit_type_params_with_clone_bounds, v1_generic_params_needing_clone_bound,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -11994,7 +11993,8 @@ pub fn emit_struct_from_children(
 ) -> String {
     {
         let has_fn_fields = type_has_fn_fields(name.clone(), emit_info.clone());
-        let derives = v1_emit_struct_derives(
+        let surface = v1_emit_struct_from_capability_table(
+            env.module_path.clone(),
             name.clone(),
             children.clone(),
             shared_types.clone(),
@@ -12008,7 +12008,7 @@ pub fn emit_struct_from_children(
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    v1_rt::concat(derives.clone(), "\n".to_string()),
+                                    v1_rt::concat(surface.derive_attr.clone(), "\n".to_string()),
                                     rust_visibility_prefix(),
                                 ),
                                 rust_items().struct_keyword.clone(),
@@ -12072,7 +12072,10 @@ pub fn emit_struct_from_children(
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat(derives.clone(), "\n".to_string()),
+                                                v1_rt::concat(
+                                                    surface.derive_attr.clone(),
+                                                    "\n".to_string(),
+                                                ),
                                                 rust_visibility_prefix(),
                                             ),
                                             rust_items().struct_keyword.clone(),
@@ -12089,12 +12092,10 @@ pub fn emit_struct_from_children(
                     ),
                     "\n}".to_string(),
                 );
-                let supplemental =
-                    v1_emit_struct_supplemental_impls(env.module_path.clone(), name.clone());
-                if (supplemental.clone() == "".to_string()) {
+                if (surface.impl_bodies.clone() == "".to_string()) {
                     struct_def
                 } else {
-                    v1_rt::concat(struct_def, supplemental.clone())
+                    v1_rt::concat(struct_def, surface.impl_bodies.clone())
                 }
             }
         }

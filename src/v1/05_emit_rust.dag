@@ -55,7 +55,7 @@ import v1.compiler.closure_stub_v2_std_integer_rust { closure_stub_v2_std_intege
 import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_source }
 import v1.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint }
 import v1.compiler.trait_derive_emit {
-  v1_emit_struct_derives, v1_emit_enum_derives,
+  v1_emit_enum_derives,
   v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls,
   v1_generic_params_needing_clone_bound, v1_emit_type_params_with_clone_bounds,
   rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible
