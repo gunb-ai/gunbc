@@ -27,11 +27,18 @@ import extdeps.languages.json.emit {
   json_object,
   json_kv,
 }
+import gunbc.clock_read { clock_now_probed_at }
 import gunbc.roadmap_dispatch_actuator {
   HostExecArgv,
   DispatchLiveSession,
   DispatchSpawnCommands,
   dispatch_spawn_commands,
+  dispatch_attempt_key,
+  DispatchAttemptRef, dispatch_attempt_refs, git_for_each_ref_dispatch_argv,
+  TmuxPaneEntry, parse_tmux_panes_output, tmux_list_panes_argv,
+  tmux_session_observation_with_panes, dispatch_tmux_session_scope,
+  DispatchStopGate, StopPermitted, StopRefused, dispatch_stop_gate,
+  TmuxLsEntry,
   dispatch_tmux_session_name,
   dispatch_worktree_root,
   tmux_ls_argv,
@@ -202,16 +209,19 @@ fn belt_claude_preflight() -> BeltClaudePreflight {
   }
 }
 
-fn belt_actuate_spawn(node: RoadmapNode, session_uuid: String, workdir: String) -> BeltSpawnOutcome {
+fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String) -> BeltSpawnOutcome {
   match belt_claude_preflight() {
     ClaudePreflightRefused { step: st, detail: d } =>
       SpawnFailed { node_id: node.node as String, step: st, detail: d }
-    ClaudePreflightOk => belt_actuate_spawn_exec(node: node, session_uuid: session_uuid, workdir: workdir)
+    ClaudePreflightOk => belt_actuate_spawn_exec(node: node, probed_at: probed_at, workdir: workdir)
   }
 }
 
-fn belt_actuate_spawn_exec(node: RoadmapNode, session_uuid: String, workdir: String) -> BeltSpawnOutcome {
-  let cmds = dispatch_spawn_commands(node: node, session_uuid: session_uuid)
+fn belt_actuate_spawn_exec(node: RoadmapNode, probed_at: String, workdir: String) -> BeltSpawnOutcome {
+  let cmds = dispatch_spawn_commands(
+    node: node,
+    session_uuid: belt_spawn_session_uuid(node_id: node.node as String, probed_at: probed_at),
+    attempt_key: dispatch_attempt_key(node_id: node.node, probed_at: probed_at))
   match belt_exec_all(cmds: [cmds.worktree_add, cmds.tmux_spawn], workdir: workdir) {
     ExecOk { stdout: _ } =>
       Spawned {
@@ -243,13 +253,17 @@ data belt_actuate_member_shape_note: String = "The reconcile guarantees spawns a
 
 data belt_session_uuid_salt: NonEmptyStr = "belt-session-uuid-v1" as NonEmptyStr
 
-data belt_spawn_session_uuid_note: String = "The spawned session name is claude's --session-id, which claude REQUIRES to be a syntactically valid UUID (claude --help; a `belt-<node_id>` placeholder is rejected). So we derive a DETERMINISTIC UUID from the node_id: two fnv1a64 content hashes (the bare node_id, and node_id combined with belt_session_uuid_salt) give 16 + 16 = 32 lowercase hex chars (content_hash_atom renders {:016x}), reshaped to RFC-4122 v4 (version nibble at index 12 -> '4', variant nibble at index 16 -> '8') and dashed 8-4-4-4-12. Deterministic = the SAME node re-derives the SAME session-id, so an observe/reconcile that keys sessions by name stays idempotent across ticks and process restarts (no random uuidgen, which would spawn a fresh session every tick). Grounded on std.content_hash — the single hashing authority (DESIGN §3 fnv1a64 dual-surface) — not a hand-rolled hash."
+data belt_spawn_session_uuid_note: String = "The spawned session name is claude's --session-id, which claude REQUIRES to be a syntactically valid UUID (a `belt-<node_id>` placeholder is rejected). The UUID is ATTEMPT-scoped (U1 redispatch fix 2026-07-25): derived from (node_id x the spawn's clock observation) — two fnv1a64 content hashes over the stamped id give 16 + 16 = 32 lowercase hex chars, reshaped to RFC-4122 v4 and dashed 8-4-4-4-12. The earlier node-deterministic derivation made every node one-shot at the claude layer: claude refuses a --session-id whose archived transcript exists, so a stopped node could never dispatch again. Reconcile idempotency never keyed on this id — the TMUX SESSION NAME (node-grain, unchanged) is what observe keys on, so no-spawn-per-tick holds exactly as before; per attempt the derivation stays deterministic (same node + same observation = same id), grounded on std.content_hash — the single hashing authority — not uuidgen."
 
-fn belt_uuid_hex32(node_id: String) -> String {
+fn belt_uuid_stamped_id(node_id: String, probed_at: String) -> NonEmptyStr {
+  join([node_id, "\n", probed_at], "") as NonEmptyStr
+}
+
+fn belt_uuid_hex32(node_id: String, probed_at: String) -> String {
   concat(
-    content_hash_atom(value: node_id as NonEmptyStr) as String,
+    content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, probed_at: probed_at)) as String,
     content_hash_combine(
-      left: content_hash_atom(value: node_id as NonEmptyStr),
+      left: content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, probed_at: probed_at)),
       right: content_hash_atom(value: belt_session_uuid_salt),
     ) as String,
   )
@@ -275,18 +289,23 @@ fn belt_uuid_dash(v: String) -> String {
   substring(s: v, start: 20, end: 32)))))))))
 }
 
-fn belt_spawn_session_uuid(node_id: String) -> String {
-  belt_uuid_dash(v: belt_uuid_rfc4122(hex: belt_uuid_hex32(node_id: node_id)))
+fn belt_spawn_session_uuid(node_id: String, probed_at: String) -> String {
+  belt_uuid_dash(v: belt_uuid_rfc4122(hex: belt_uuid_hex32(node_id: node_id, probed_at: probed_at)))
 }
 
 fn belt_actuate_spawn_member(m: DispatchMember, workdir: String) -> BeltSpawnOutcome {
   match m {
     DesiredMember { node_id: nid, node: node } =>
-      belt_actuate_spawn(
-        node: node,
-        session_uuid: belt_spawn_session_uuid(node_id: nid),
-        workdir: workdir,
-      )
+      match clock_now_probed_at() {
+        Present { value: probed_at } =>
+          belt_actuate_spawn(node: node, probed_at: probed_at as String, workdir: workdir)
+        Absent =>
+          SpawnFailed {
+            node_id: nid,
+            step: "attempt-clock",
+            detail: "clock observation refused; an attempt without a stamp would collide with a later one — fail-closed, no unknown-stamped attempts",
+          }
+      }
     ObservedMember { node_id: nid, session: _ } =>
       SpawnFailed {
         node_id: nid,
@@ -507,6 +526,198 @@ fn belt_tick_result_json_value(t: BeltTickResult) -> JsonValue {
   ])
 }
 
+type BeltAttempts
+  = AttemptsObserved { attempts: List<DispatchAttemptRef> }
+  | AttemptsRefused { reason: String }
+
+data belt_attempts_observe_note: String = "U3: the attempts observation mirrors belt_observe's fail-closed grammar — git absent or a non-zero for-each-ref is an UNKNOWABLE attempts set (AttemptsRefused, typed, carries stderr), never widened to zero attempts; exit 0 with empty output IS a genuine zero (for-each-ref's documented no-match behavior). Runs in belt_actuate_workdir — the same repo-root authority the spawn's worktree add uses, because the attempt branches live exactly where spawns mint them."
+
+fn belt_attempts_observe() -> BeltAttempts {
+  let cmd = git_for_each_ref_dispatch_argv()
+  if belt_program_available(program: cmd.program) {
+    let result = gunbc.WitnessBin.Run(
+      workdir: belt_actuate_workdir,
+      bin_path: cmd.program as FilePath,
+      args: cmd.args,
+    )
+    if result.success {
+      AttemptsObserved { attempts: dispatch_attempt_refs(git_output: result.stdout) }
+    } else {
+      AttemptsRefused { reason: concat("git for-each-ref failed: ", result.stderr) }
+    }
+  } else {
+    AttemptsRefused { reason: "git not found on PATH — the attempts set is unknowable" }
+  }
+}
+
+fn belt_attempts_json_value(a: BeltAttempts) -> JsonValue {
+  match a {
+    AttemptsRefused { reason: r } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-attempts/v1")),
+        json_kv(key: "attempts_refused", value: json_bool(b: true)),
+        json_kv(key: "reason", value: json_string(s: r)),
+      ])
+    AttemptsObserved { attempts } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-attempts/v1")),
+        json_kv(key: "attempts_refused", value: json_bool(b: false)),
+        json_kv(key: "attempts", value: json_array(elements: attempts |> map(a2 =>
+          json_object(members: [
+            json_kv(key: "node_id", value: json_string(s: a2.node_id)),
+            json_kv(key: "branch", value: json_string(s: a2.branch)),
+            json_kv(key: "attempt_key", value: json_string(s: a2.attempt_key)),
+          ])))),
+      ])
+  }
+}
+
+fn belt_attempts_observed_json(a: BeltAttempts) -> String {
+  serialize_json(v: belt_attempts_json_value(a: a))
+}
+
+fn belt_attempts_http_status(a: BeltAttempts) -> Int {
+  match a {
+    AttemptsRefused { reason: _ } => 503
+    AttemptsObserved { attempts: _ } => 200
+  }
+}
+
+type BeltStopResult
+  = StopStopped { node_id: String, session_name: String }
+  | StopRefusedResult { node_id: String, reason: String }
+  | StopObserveRefused { node_id: String, reason: String }
+  | StopTeardownFailed { node_id: String, session_name: String, detail: String }
+
+data belt_stop_note: String = "U4 (stop from the UI): the R5 owned-only teardown as a wire actuation. The decision chain is observation-first and refuses at every unknowable: tmux ls refused → StopObserveRefused (503); pane read refused → the observation stays name-only and the gate refuses fingerprint-unobserved (409) — a pane-read failure NEVER widens into a kill; the gate itself refuses foreign/absent/inaccessible per verdict (409/404); only a Converged-or-Drifted observation reaches tmux kill-session, and a kill that fails is its own typed arm (502). The operator's hand-made sleep session wearing a dispatch name is the standing negative control: it observes Conflict and the button refuses to kill it."
+
+fn belt_observe_panes() -> List<TmuxPaneEntry>? {
+  let cmd = tmux_list_panes_argv()
+  if belt_program_available(program: cmd.program) {
+    let result = gunbc.WitnessBin.Run(
+      workdir: belt_observe_workdir,
+      bin_path: cmd.program as FilePath,
+      args: cmd.args,
+    )
+    if result.success {
+      Present { value: parse_tmux_panes_output(output: result.stdout) }
+    } else {
+      none
+    }
+  } else {
+    none
+  }
+}
+
+fn belt_stop_node(node_id: String) -> BeltStopResult {
+  match belt_observe() {
+    ObserveRefused { reason: r } => StopObserveRefused { node_id: node_id, reason: r }
+    Observed { live } => {
+      let scope = dispatch_tmux_session_scope(node_id: node_id)
+      let entries = live
+        |> filter(sess => sess.session_name == (scope.session_name as String))
+        |> map(sess => TmuxLsEntry { session_name: sess.session_name, windows: sess.windows })
+      let obs = match belt_observe_panes() {
+        Present { value: panes } =>
+          tmux_session_observation_with_panes(scope: scope, entries: entries, panes: panes)
+        Absent =>
+          tmux_session_observation_with_panes(scope: scope, entries: entries, panes: [])
+      }
+      match dispatch_stop_gate(scope: scope, obs: obs) {
+        StopRefused { reason: r2 } => StopRefusedResult { node_id: node_id, reason: r2 }
+        StopPermitted { session_name: sn } =>
+          match belt_actuate_teardown(session_name: sn) {
+            ReapedSession { session_name: sn2 } => StopStopped { node_id: node_id, session_name: sn2 }
+            TeardownFailed { session_name: sn3, detail: d } =>
+              StopTeardownFailed { node_id: node_id, session_name: sn3, detail: d }
+          }
+      }
+    }
+  }
+}
+
+fn belt_stop_result_json_value(r: BeltStopResult) -> JsonValue {
+  match r {
+    StopStopped { node_id: nid, session_name: sn } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "stopped")),
+        json_kv(key: "session_name", value: json_string(s: sn)),
+      ])
+    StopRefusedResult { node_id: nid, reason: r2 } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "stop_refused")),
+        json_kv(key: "reason", value: json_string(s: r2)),
+      ])
+    StopObserveRefused { node_id: nid, reason: r3 } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "observe_refused")),
+        json_kv(key: "reason", value: json_string(s: r3)),
+      ])
+    StopTeardownFailed { node_id: nid, session_name: sn, detail: d } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "teardown_failed")),
+        json_kv(key: "session_name", value: json_string(s: sn)),
+        json_kv(key: "detail", value: json_string(s: d)),
+      ])
+  }
+}
+
+fn belt_stop_http_status(r: BeltStopResult) -> Int {
+  match r {
+    StopStopped { node_id: _, session_name: _ } => 200
+    StopRefusedResult { node_id: _, reason: r2 } =>
+      if string_contains(s: r2, pattern: "no live session") { 404 } else { 409 }
+    StopObserveRefused { node_id: _, reason: _ } => 503
+    StopTeardownFailed { node_id: _, session_name: _, detail: _ } => 502
+  }
+}
+
+fn belt_stop_json(node_id: String) -> String {
+  serialize_json(v: belt_stop_result_json_value(r: belt_stop_node(node_id: node_id)))
+}
+
+data belt_sessions_json_note: String = "U2 (sessions panel v0): the belt observation projected as wire JSON so the PAGE can know what is live without the render losing purity — the healthz digest is taken over the pure page body, so live state must arrive by fetch, exactly as dispatch answers do. The projection is a pure fn over BeltObserve (every arm witnessed on synthetic values); the effectful wrapper only threads belt_observe() in. The refusal arm stays a refusal on the wire (observe_refused true + reason, served 503): an unknowable session set renders loud at the client, never as an empty panel."
+
+fn belt_sessions_json_value(o: BeltObserve) -> JsonValue {
+  match o {
+    ObserveRefused { reason: r } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-sessions/v1")),
+        json_kv(key: "observe_refused", value: json_bool(b: true)),
+        json_kv(key: "reason", value: json_string(s: r)),
+      ])
+    Observed { live } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-sessions/v1")),
+        json_kv(key: "observe_refused", value: json_bool(b: false)),
+        json_kv(key: "sessions", value: json_array(elements: live |> map(sess =>
+          json_object(members: [
+            json_kv(key: "node_id", value: json_string(s: sess.node_id)),
+            json_kv(key: "session_name", value: json_string(s: sess.session_name)),
+          ])))),
+      ])
+  }
+}
+
+fn belt_sessions_observed_json(o: BeltObserve) -> String {
+  serialize_json(v: belt_sessions_json_value(o: o))
+}
+
+fn belt_sessions_json() -> String {
+  belt_sessions_observed_json(o: belt_observe())
+}
+
+fn belt_sessions_http_status(o: BeltObserve) -> Int {
+  match o {
+    ObserveRefused { reason: _ } => 503
+    Observed { live: _ } => 200
+  }
+}
+
 fn belt_run_once_json() -> String {
   serialize_json(v: belt_tick_result_json_value(t: belt_run_once()))
 }
@@ -576,11 +787,16 @@ fn belt_dispatch_node(node_id: String) -> BeltDispatchResult {
                 session_name: dispatch_tmux_session_name(node_id: node.node),
               }
             } else {
-              match belt_actuate_spawn(
-                node: node,
-                session_uuid: belt_spawn_session_uuid(node_id: node_id),
-                workdir: belt_actuate_workdir as String,
-              ) {
+              match (match clock_now_probed_at() {
+                Present { value: probed_at } =>
+                  belt_actuate_spawn(node: node, probed_at: probed_at as String, workdir: belt_actuate_workdir as String)
+                Absent =>
+                  SpawnFailed {
+                    node_id: node_id,
+                    step: "attempt-clock",
+                    detail: "clock observation refused; an attempt without a stamp would collide with a later one — fail-closed, no unknown-stamped attempts",
+                  }
+              }) {
                 Spawned { node_id: sid, session_name: sn } =>
                   DispatchSpawned { node_id: sid, session_name: sn }
                 SpawnFailed { node_id: sid, step: st, detail: d } =>

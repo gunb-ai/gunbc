@@ -1,0 +1,58 @@
+module test.claim.sessions_panel_witness
+
+import gunbc.roadmap_belt_actuate {
+  BeltObserve, Observed, ObserveRefused,
+  belt_sessions_json_value, belt_sessions_observed_json, belt_sessions_http_status,
+}
+import gunbc.roadmap_dispatch_actuator { DispatchLiveSession }
+import gunbc.roadmap_component { dispatch_client_js_source, sessions_route_path }
+import gunbc.roadmap_style { roadmap_css }
+import std.upsert_decision { ObservationVerdict, Converged }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data sessions_panel_witness_note: String = "U2's receipts: the observation-to-wire projection proven on synthetic BeltObserve values (every arm — the effectful wrapper only threads belt_observe in), the refusal arm proven LOUD end to end (503 on the wire; the banner machinery in the served asset), and the live-mark path pinned in the emitted client. The RED feeds the projection a refusal and asserts it can never serve 200 or an empty sessions list dressed as success."
+
+fn fixture_live() -> DispatchLiveSession {
+  DispatchLiveSession {
+    session_name: "gunbc-dispatch-5-regen-cutover",
+    node_id: "5-regen-cutover",
+    windows: 1,
+    lease_verdict: Converged,
+  }
+}
+
+test fn sessions_observed_projects_to_wire() -> Bool {
+  let j = belt_sessions_observed_json(o: Observed { live: [fixture_live()] })
+  return string_contains(s: j, pattern: "\"schema\": \"roadmap-sessions/v1\"")
+    && string_contains(s: j, pattern: "\"observe_refused\": false")
+    && string_contains(s: j, pattern: "\"node_id\": \"5-regen-cutover\"")
+    && string_contains(s: j, pattern: "\"session_name\": \"gunbc-dispatch-5-regen-cutover\"")
+    && belt_sessions_http_status(o: Observed { live: [fixture_live()] }) == 200
+}
+
+test fn sessions_refusal_is_loud_on_the_wire() -> Bool {
+  let o = ObserveRefused { reason: "tmux ls: permission denied" }
+  let j = belt_sessions_observed_json(o: o)
+  return string_contains(s: j, pattern: "\"observe_refused\": true")
+    && string_contains(s: j, pattern: "tmux ls: permission denied")
+    && belt_sessions_http_status(o: o) == 503
+    && !string_contains(s: j, pattern: "\"sessions\"")
+}
+
+test fn sessions_client_marks_live_and_shouts_refusal() -> Bool {
+  let js = dispatch_client_js_source()
+  return string_contains(s: js, pattern: "fetch('/sessions.json')")
+    && string_contains(s: js, pattern: "sj.observe_refused")
+    && string_contains(s: js, pattern: "session · live")
+    && string_contains(s: js, pattern: "sb.title = sess.session_name")
+    && string_contains(s: js, pattern: "'observe-refused'")
+    && string_contains(s: js, pattern: "session observation refused: ")
+    && string_contains(s: js, pattern: "mn.prepend(bn)")
+    && string_contains(s: js, pattern: ".catch(")
+}
+
+test fn sessions_banner_is_styled_loud() -> Bool {
+  return string_contains(s: roadmap_css(), pattern: ".observe-refused { font-size: var(--text-12); color: var(--text); border-left: var(--border-2) solid var(--band-loud); padding-left: var(--space-6); margin: var(--space-4) var(--space-0) var(--space-8); font-family: var(--font-mono) }")
+}

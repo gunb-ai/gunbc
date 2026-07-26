@@ -1,0 +1,102 @@
+module test.claim.dispatch_stop_witness
+
+import gunbc.roadmap_dispatch_actuator {
+  TmuxSessionScope, TmuxLsEntry, TmuxPaneEntry,
+  parse_tmux_pane_line, parse_tmux_panes_output, tmux_list_panes_argv,
+  tmux_session_observation_with_panes, dispatch_tmux_session_scope,
+  DispatchStopGate, StopPermitted, StopRefused, dispatch_stop_gate,
+  dispatch_tmux_process_fingerprint_observation_dissolution_trigger,
+}
+import gunbc.roadmap_belt_actuate {
+  BeltStopResult, StopStopped, StopRefusedResult, StopObserveRefused, StopTeardownFailed,
+  belt_stop_result_json_value, belt_stop_http_status,
+}
+import gunbc.roadmap_component { dispatch_client_js_source }
+import gunbc.roadmap_style { roadmap_css }
+import std.disposition { Disposition, Scaffold, Terminal }
+import extdeps.languages.json.emit { serialize_json }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data dispatch_stop_witness_note: String = "U4's receipts: the pane parse, the fingerprint-carrying observation upgrade, and the R5 stop gate proven arm by arm — the star RED is the operator's own test fixture (a hand-made sleep session wearing the dispatch name observes Conflict and the gate REFUSES to kill it: refusing what we cannot prove ours is the point). The wire mapping discriminates 404 (no session) from 409 (ownership refusal) from 503 (unknowable) from 502 (kill failed); the client chip is pinned in the served asset; and the fingerprint scaffold's dissolution is asserted discharged."
+
+fn scope() -> TmuxSessionScope {
+  dispatch_tmux_session_scope(node_id: "ts-authority-converge")
+}
+
+fn entry() -> TmuxLsEntry {
+  TmuxLsEntry { session_name: "gunbc-dispatch-ts-authority-converge", windows: 1 }
+}
+
+test fn stop_pane_parse_holds() -> Bool {
+  let one = parse_tmux_pane_line(line: "gunbc-dispatch-ts-authority-converge sleep")
+  let multi = parse_tmux_panes_output(output: "main zsh\ngunbc-dispatch-x claude\n")
+  return match one {
+    Present { value: p } => p.session_name == "gunbc-dispatch-ts-authority-converge" && p.command == "sleep"
+    Absent => false
+  }
+    && count(multi) == 2
+    && any(multi, p => p.session_name == "gunbc-dispatch-x" && p.command == "claude")
+    && match parse_tmux_pane_line(line: "") { Present { value: p2 } => false Absent => true }
+}
+
+test fn stop_gate_kills_only_proven_claude() -> Bool {
+  let claude_obs = tmux_session_observation_with_panes(
+    scope: scope(), entries: [entry()],
+    panes: [TmuxPaneEntry { session_name: "gunbc-dispatch-ts-authority-converge", command: "claude" }])
+  let sleep_obs = tmux_session_observation_with_panes(
+    scope: scope(), entries: [entry()],
+    panes: [TmuxPaneEntry { session_name: "gunbc-dispatch-ts-authority-converge", command: "sleep" }])
+  let blind_obs = tmux_session_observation_with_panes(scope: scope(), entries: [entry()], panes: [])
+  let absent_obs = tmux_session_observation_with_panes(scope: scope(), entries: [], panes: [])
+  return match dispatch_stop_gate(scope: scope(), obs: claude_obs) {
+    StopPermitted { session_name: sn } => sn == "gunbc-dispatch-ts-authority-converge"
+    StopRefused { reason: _ } => false
+  } && match dispatch_stop_gate(scope: scope(), obs: sleep_obs) {
+    StopPermitted { session_name: _ } => false
+    StopRefused { reason: r } => string_contains(s: r, pattern: "foreign process")
+  } && match dispatch_stop_gate(scope: scope(), obs: blind_obs) {
+    StopPermitted { session_name: _ } => false
+    StopRefused { reason: r2 } => string_contains(s: r2, pattern: "fingerprint unobserved")
+  } && match dispatch_stop_gate(scope: scope(), obs: absent_obs) {
+    StopPermitted { session_name: _ } => false
+    StopRefused { reason: r3 } => string_contains(s: r3, pattern: "no live session")
+  }
+}
+
+test fn stop_wire_statuses_discriminate() -> Bool {
+  let stopped = StopStopped { node_id: "n", session_name: "gunbc-dispatch-n" }
+  let foreign = StopRefusedResult { node_id: "n", reason: "a foreign process wears the dispatch session name — refusing to kill what we cannot prove ours" }
+  let missing = StopRefusedResult { node_id: "n", reason: "no live session for this node" }
+  let unknowable = StopObserveRefused { node_id: "n", reason: "tmux ls: permission denied" }
+  let failed = StopTeardownFailed { node_id: "n", session_name: "gunbc-dispatch-n", detail: "kill-session exited 1" }
+  return belt_stop_http_status(r: stopped) == 200
+    && belt_stop_http_status(r: foreign) == 409
+    && belt_stop_http_status(r: missing) == 404
+    && belt_stop_http_status(r: unknowable) == 503
+    && belt_stop_http_status(r: failed) == 502
+    && string_contains(s: serialize_json(v: belt_stop_result_json_value(r: stopped)), pattern: "\"status\": \"stopped\"")
+    && string_contains(s: serialize_json(v: belt_stop_result_json_value(r: foreign)), pattern: "\"status\": \"stop_refused\"")
+}
+
+test fn stop_client_carries_the_chip() -> Bool {
+  let js = dispatch_client_js_source()
+  return string_contains(s: js, pattern: "'stop-chip'")
+    && string_contains(s: js, pattern: "'/stop/' + sess.node_id")
+    && string_contains(s: js, pattern: "{ method: 'POST' }")
+    && string_contains(s: js, pattern: "j.status === 'stopped'")
+    && string_contains(s: js, pattern: "window.location.reload()")
+    && string_contains(s: js, pattern: "'stop refused'")
+}
+
+test fn stop_chip_is_styled() -> Bool {
+  return string_contains(s: roadmap_css(), pattern: ".stop-chip { font-size: var(--text-10);")
+}
+
+test fn stop_fingerprint_scaffold_is_discharged() -> Bool {
+  return match dispatch_tmux_process_fingerprint_observation_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => false
+    Terminal { reason: r } => string_contains(s: r as String, pattern: "DISSOLVED")
+  }
+}
