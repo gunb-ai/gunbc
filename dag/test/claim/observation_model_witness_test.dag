@@ -191,13 +191,13 @@ fn obs_glyph_resolves_all_tiers(c: ObservationEventClass) -> Bool {
   }
 }
 
-test fn w_presentation_is_total_over_class_roster() -> Bool {
+fn w_presentation_is_total_over_class_roster() -> Bool {
   fold(observation_event_classes, init: true, f: (acc, c) =>
     acc && obs_glyph_resolves_all_tiers(c: c)
   )
 }
 
-test fn w_class_roster_covers_every_constructed_class() -> Bool {
+fn w_class_roster_covers_every_constructed_class() -> Bool {
   count(observation_event_classes) == 10 &&
   observation_event_class(event: obs_event(transition: Begin, wall_ms: 1)) == ClassBegin &&
   observation_event_class(event: obs_event(transition: Step { k: 34, n: 61 }, wall_ms: 1)) == ClassStep &&
@@ -208,7 +208,7 @@ test fn w_class_roster_covers_every_constructed_class() -> Bool {
   observation_event_class(event: obs_event(transition: Concluded { outcome: Final { shown_failures: 0 } }, wall_ms: 1)) == ClassFinal
 }
 
-test fn w_refused_is_distinct_from_failed() -> Bool {
+fn w_refused_is_distinct_from_failed() -> Bool {
   let refused = observation_presentation(c: ClassRefused)
   let failed = observation_presentation(c: ClassFailed)
   let timed_out = observation_presentation(c: ClassTimedOut)
@@ -226,7 +226,7 @@ test fn w_refused_is_distinct_from_failed() -> Bool {
   }
 }
 
-test fn w_anomaly_classes_never_collapse() -> Bool {
+fn w_anomaly_classes_never_collapse() -> Bool {
   fold(observation_event_classes, init: true, f: (acc, c) => {
     let p = observation_presentation(c: c)
     if observation_class_is_intrinsic_anomaly(c: c) {
@@ -237,7 +237,7 @@ test fn w_anomaly_classes_never_collapse() -> Bool {
   })
 }
 
-test fn w_density_is_the_single_display_authority() -> Bool {
+fn w_density_is_the_single_display_authority() -> Bool {
   observation_class_density(c: ClassRefused) == AnomalyExpanded &&
   observation_class_density(c: ClassFailed) == AnomalyExpanded &&
   observation_class_density(c: ClassTimedOut) == AnomalyExpanded &&
@@ -250,7 +250,7 @@ test fn w_density_is_the_single_display_authority() -> Bool {
   observation_class_density(c: ClassSkipped) == RoutineCollapsible
 }
 
-test fn w_presentation_projects_density_rather_than_restating_it() -> Bool {
+fn w_presentation_projects_density_rather_than_restating_it() -> Bool {
   fold(observation_event_classes, init: true, f: (acc, c) => {
     let p = observation_presentation(c: c)
     let d = observation_class_density(c: c)
@@ -261,7 +261,7 @@ test fn w_presentation_projects_density_rather_than_restating_it() -> Bool {
   })
 }
 
-test fn w_routine_progress_collapses_but_the_summary_always_shows() -> Bool {
+fn w_routine_progress_collapses_but_the_summary_always_shows() -> Bool {
   observation_presentation(c: ClassBegin).collapsible &&
   observation_presentation(c: ClassStep).collapsible &&
   observation_presentation(c: ClassDone).collapsible &&
@@ -270,14 +270,14 @@ test fn w_routine_progress_collapses_but_the_summary_always_shows() -> Bool {
   !observation_class_is_intrinsic_anomaly(c: ClassFinal)
 }
 
-test fn w_refusal_is_anomaly_on_any_basis() -> Bool {
+fn w_refusal_is_anomaly_on_any_basis() -> Bool {
   let refused = obs_event(transition: Concluded { outcome: Refused { diagnostic: "budget" as NonEmptyStr } }, wall_ms: 1)
   let generous = AttentionBasis { average: millisecond(count: 999999), maximum: millisecond(count: 999999) }
   observation_attention(event: refused, basis: generous) == Anomaly &&
   observation_attention(event: refused, basis: obs_basis()) == Anomaly
 }
 
-test fn w_attention_grounds_on_supplied_basis() -> Bool {
+fn w_attention_grounds_on_supplied_basis() -> Bool {
   let quick = obs_event(transition: Concluded { outcome: Done }, wall_ms: 500)
   let over_average = obs_event(transition: Concluded { outcome: Done }, wall_ms: 2000)
   let over_maximum = obs_event(transition: Concluded { outcome: Done }, wall_ms: 9000)
@@ -286,7 +286,7 @@ test fn w_attention_grounds_on_supplied_basis() -> Bool {
   observation_attention(event: over_maximum, basis: obs_basis()) == Anomaly
 }
 
-test fn w_attention_moves_with_the_basis_not_a_local_constant() -> Bool {
+fn w_attention_moves_with_the_basis_not_a_local_constant() -> Bool {
   let event = obs_event(transition: Concluded { outcome: Done }, wall_ms: 2000)
   let strict = AttentionBasis { average: millisecond(count: 100), maximum: millisecond(count: 200) }
   let loose = AttentionBasis { average: millisecond(count: 10000), maximum: millisecond(count: 20000) }
@@ -296,7 +296,7 @@ test fn w_attention_moves_with_the_basis_not_a_local_constant() -> Bool {
   )
 }
 
-test fn w_unavailable_measurement_carries_a_cause() -> Bool {
+fn w_unavailable_measurement_carries_a_cause() -> Bool {
   let event = obs_event(transition: Concluded { outcome: Done }, wall_ms: 1)
   match event.rss {
     MeasuredValue { value: _ } => false
@@ -304,7 +304,7 @@ test fn w_unavailable_measurement_carries_a_cause() -> Bool {
   }
 }
 
-test fn w_blocked_on_resource_is_derived_for_every_hold() -> Bool {
+fn w_blocked_on_resource_is_derived_for_every_hold() -> Bool {
   observation_hold_resource(hold: WindowFull { active: 4, target: 4 }) == AdmissionWindow &&
   observation_hold_resource(hold: CurrentHighWater { current: byte_size(1), high_water: byte_size(2) }) == MemoryBudget &&
   observation_hold_resource(hold: PsiPressure { avg10: basis_point(count: 900) }) == MemoryBudget &&
@@ -314,7 +314,7 @@ test fn w_blocked_on_resource_is_derived_for_every_hold() -> Bool {
   observation_hold_resource(hold: AdmissionCeiling { current: byte_size(1), ceiling: byte_size(2) }) == MaturationReserve
 }
 
-test fn w_blocked_on_carries_holders_and_named_remaining() -> Bool {
+fn w_blocked_on_carries_holders_and_named_remaining() -> Bool {
   let b = observation_blocked_on(
     hold: PsiPressure { avg10: basis_point(count: 900) },
     holders: [obs_leaf_subject()],
@@ -328,7 +328,7 @@ test fn w_blocked_on_carries_holders_and_named_remaining() -> Bool {
   }
 }
 
-test fn w_escalation_depth_is_recursive_not_one_level() -> Bool {
+fn w_escalation_depth_is_recursive_not_one_level() -> Bool {
   let t = observation_dwell_threshold
   observation_escalation_depth(quiet: millisecond(count: 0), t: t) == 0 &&
   observation_escalation_depth(quiet: millisecond(count: 60000), t: t) == 1 &&
@@ -336,7 +336,7 @@ test fn w_escalation_depth_is_recursive_not_one_level() -> Bool {
   observation_escalation_depth(quiet: millisecond(count: 240000), t: t) == 4
 }
 
-test fn w_escalation_surfaces_deeper_subject_over_time() -> Bool {
+fn w_escalation_surfaces_deeper_subject_over_time() -> Bool {
   let t = observation_dwell_threshold
   let quiet = obs_entry_subject()
   let leaf = obs_leaf_subject()
@@ -347,7 +347,7 @@ test fn w_escalation_surfaces_deeper_subject_over_time() -> Bool {
   observation_subject_contains(ancestor: at_t, descendant: at_2t)
 }
 
-test fn w_escalation_refuses_to_surface_an_unrelated_subject() -> Bool {
+fn w_escalation_refuses_to_surface_an_unrelated_subject() -> Bool {
   let t = observation_dwell_threshold
   let unrelated = ObservationSubject { segments: [RunSegment { id: "other-run" as NonEmptyStr }] }
   let surfaced = observation_escalation_subject(
@@ -359,7 +359,7 @@ test fn w_escalation_refuses_to_surface_an_unrelated_subject() -> Bool {
   count(surfaced.segments) == 3
 }
 
-test fn w_watchdog_converts_quiet_past_budget_into_a_typed_line() -> Bool {
+fn w_watchdog_converts_quiet_past_budget_into_a_typed_line() -> Bool {
   let within = observation_watchdog(subject: obs_entry_subject(), elapsed: millisecond(count: 1000), budget: millisecond(count: 5000))
   let past = observation_watchdog(subject: obs_entry_subject(), elapsed: millisecond(count: 607000), budget: millisecond(count: 60000))
   observation_watchdog_attention(v: within) == Ambient &&
@@ -370,7 +370,7 @@ test fn w_watchdog_converts_quiet_past_budget_into_a_typed_line() -> Bool {
   }
 }
 
-test fn w_subject_identity_is_rendered_not_anonymous() -> Bool {
+fn w_subject_identity_is_rendered_not_anonymous() -> Bool {
   let rendered = observation_subject_render(subject: obs_leaf_subject())
   string_contains(s: rendered, pattern: "module=v2.compiler.normalized_tree") &&
   string_contains(s: rendered, pattern: "phase=typecheck") &&
@@ -378,13 +378,13 @@ test fn w_subject_identity_is_rendered_not_anonymous() -> Bool {
   string_contains(s: rendered, pattern: "batch=")
 }
 
-test fn w_containment_holds_along_the_path() -> Bool {
+fn w_containment_holds_along_the_path() -> Bool {
   observation_subject_contains(ancestor: obs_run_subject(), descendant: obs_leaf_subject()) &&
   observation_subject_contains(ancestor: obs_entry_subject(), descendant: obs_leaf_subject()) &&
   !observation_subject_contains(ancestor: obs_leaf_subject(), descendant: obs_run_subject())
 }
 
-test fn w_grain_orders_the_containment_tree() -> Bool {
+fn w_grain_orders_the_containment_tree() -> Bool {
   observation_subject_grain(subject: obs_run_subject()) == RunGrain &&
   observation_subject_grain(subject: obs_entry_subject()) == EntryGrain &&
   observation_subject_grain(subject: obs_leaf_subject()) == PhaseGrain &&
@@ -393,7 +393,7 @@ test fn w_grain_orders_the_containment_tree() -> Bool {
   !observation_grain_at_or_above_entry(g: PhaseGrain)
 }
 
-test fn w_presentation_glyph_reads_the_table_not_a_hardcoded_string() -> Bool {
+fn w_presentation_glyph_reads_the_table_not_a_hardcoded_string() -> Bool {
   let p = observation_presentation(c: ClassRefused)
   match resolve_symbol(id: p.glyph, tier: Unicode) {
     Present { value: u } =>
@@ -407,7 +407,7 @@ test fn w_presentation_glyph_reads_the_table_not_a_hardcoded_string() -> Bool {
   }
 }
 
-test fn w_presentation_colour_comes_from_the_glyph_authority() -> Bool {
+fn w_presentation_colour_comes_from_the_glyph_authority() -> Bool {
   fold(observation_event_classes, init: true, f: (acc, c) => {
     let p = observation_presentation(c: c)
     acc && match symbol_color(id: p.glyph) {
@@ -417,7 +417,7 @@ test fn w_presentation_colour_comes_from_the_glyph_authority() -> Bool {
   })
 }
 
-test fn w_reward_animal_selection_is_deterministic_and_wraps() -> Bool {
+fn w_reward_animal_selection_is_deterministic_and_wraps() -> Bool {
   let n = count(reward_animals)
   n > 0 &&
   match reward_animal_at(index: 3, tier: Ascii) {
@@ -434,14 +434,14 @@ test fn w_reward_animal_selection_is_deterministic_and_wraps() -> Bool {
   }
 }
 
-test fn w_every_law_is_stated_and_bound_to_an_enforcer() -> Bool {
+fn w_every_law_is_stated_and_bound_to_an_enforcer() -> Bool {
   count(observation_laws) == 5 &&
   fold(observation_laws, init: true, f: (acc, l) =>
     acc && l.id != "" && l.statement != "" && l.enforced_by.module_path == "std.observation" && l.enforced_by.decl_name != ""
   )
 }
 
-test fn w_change_kind_projects_from_the_one_diff_carrier() -> Bool {
+fn w_change_kind_projects_from_the_one_diff_carrier() -> Bool {
   let added = observation_change_presentation(hunk: KeyedDiffAddedHunk { hunk_key: "a", to: 1 })
   let removed = observation_change_presentation(hunk: KeyedDiffRemovedHunk { hunk_key: "a", from: 1 })
   let modified = observation_change_presentation(hunk: KeyedDiffModifiedHunk { hunk_key: "a", from: 1, to: 2 })
@@ -453,7 +453,7 @@ test fn w_change_kind_projects_from_the_one_diff_carrier() -> Bool {
   modified.symbol == ChangeModified
 }
 
-test fn w_change_kind_colour_follows_git_diff_convention() -> Bool {
+fn w_change_kind_colour_follows_git_diff_convention() -> Bool {
   match symbol_color(id: ChangeAdded) {
     Present { value: a } =>
       match symbol_color(id: ChangeModified) {
@@ -468,7 +468,7 @@ test fn w_change_kind_colour_follows_git_diff_convention() -> Bool {
   }
 }
 
-test fn w_change_kind_degrades_losslessly_without_colour() -> Bool {
+fn w_change_kind_degrades_losslessly_without_colour() -> Bool {
   let added = observation_change_presentation(hunk: KeyedDiffAddedHunk { hunk_key: "a", to: 1 })
   let removed = observation_change_presentation(hunk: KeyedDiffRemovedHunk { hunk_key: "a", from: 1 })
   let modified = observation_change_presentation(hunk: KeyedDiffModifiedHunk { hunk_key: "a", from: 1, to: 2 })
@@ -476,7 +476,7 @@ test fn w_change_kind_degrades_losslessly_without_colour() -> Bool {
   added.tag != removed.tag && added.tag != modified.tag && removed.tag != modified.tag
 }
 
-test fn w_no_op_kinds_each_explain_themselves() -> Bool {
+fn w_no_op_kinds_each_explain_themselves() -> Bool {
   let kinds = [
     DocsPolicy,
     Uncovered { declaration: "std.observation.observation_attention" as NonEmptyStr },
@@ -495,13 +495,13 @@ test fn w_no_op_kinds_each_explain_themselves() -> Bool {
   })
 }
 
-test fn w_uncovered_is_a_nudge_not_a_comfort() -> Bool {
+fn w_uncovered_is_a_nudge_not_a_comfort() -> Bool {
   observation_no_op_attention(n: Uncovered { declaration: "std.observation.observation_watchdog" as NonEmptyStr }) == Notable &&
   observation_no_op_attention(n: DocsPolicy) == Ambient &&
   observation_no_op_symbol(n: Uncovered { declaration: "x" as NonEmptyStr }) == StatusWarning
 }
 
-test fn w_departed_path_is_not_a_no_op() -> Bool {
+fn w_departed_path_is_not_a_no_op() -> Bool {
   observation_no_op_is_actually_a_widen(n: DepartedPath { cause: "deleted module" as NonEmptyStr }) &&
   !observation_no_op_is_actually_a_widen(n: DocsPolicy) &&
   !observation_no_op_is_actually_a_widen(n: NoDeclsTouched) &&
@@ -510,7 +510,7 @@ test fn w_departed_path_is_not_a_no_op() -> Bool {
   observation_no_op_attention(n: DepartedPath { cause: "deleted module" as NonEmptyStr }) == Notable
 }
 
-test fn w_psi_pressure_carries_a_scaled_magnitude_not_a_scalar() -> Bool {
+fn w_psi_pressure_carries_a_scaled_magnitude_not_a_scalar() -> Bool {
   let hold = PsiPressure { avg10: basis_point(count: 3750) }
   match hold {
     PsiPressure { avg10: r } => basis_point_count(bp: r) == 3750
@@ -518,10 +518,44 @@ test fn w_psi_pressure_carries_a_scaled_magnitude_not_a_scalar() -> Bool {
   }
 }
 
-test fn w_status_pulse_glyph_is_available_to_the_heartbeat() -> Bool {
+fn w_status_pulse_glyph_is_available_to_the_heartbeat() -> Bool {
   match resolve_symbol(id: StatusPulse, tier: Emoji) {
     Present { value: e } => e == "🕐"
     Absent => false
   }
 }
 
+test fn observation_model_witnesses() -> Bool {
+  w_presentation_is_total_over_class_roster() &&
+  w_class_roster_covers_every_constructed_class() &&
+  w_refused_is_distinct_from_failed() &&
+  w_anomaly_classes_never_collapse() &&
+  w_density_is_the_single_display_authority() &&
+  w_presentation_projects_density_rather_than_restating_it() &&
+  w_routine_progress_collapses_but_the_summary_always_shows() &&
+  w_refusal_is_anomaly_on_any_basis() &&
+  w_attention_grounds_on_supplied_basis() &&
+  w_attention_moves_with_the_basis_not_a_local_constant() &&
+  w_unavailable_measurement_carries_a_cause() &&
+  w_blocked_on_resource_is_derived_for_every_hold() &&
+  w_blocked_on_carries_holders_and_named_remaining() &&
+  w_escalation_depth_is_recursive_not_one_level() &&
+  w_escalation_surfaces_deeper_subject_over_time() &&
+  w_escalation_refuses_to_surface_an_unrelated_subject() &&
+  w_watchdog_converts_quiet_past_budget_into_a_typed_line() &&
+  w_subject_identity_is_rendered_not_anonymous() &&
+  w_containment_holds_along_the_path() &&
+  w_grain_orders_the_containment_tree() &&
+  w_presentation_glyph_reads_the_table_not_a_hardcoded_string() &&
+  w_presentation_colour_comes_from_the_glyph_authority() &&
+  w_reward_animal_selection_is_deterministic_and_wraps() &&
+  w_every_law_is_stated_and_bound_to_an_enforcer() &&
+  w_change_kind_projects_from_the_one_diff_carrier() &&
+  w_change_kind_colour_follows_git_diff_convention() &&
+  w_change_kind_degrades_losslessly_without_colour() &&
+  w_no_op_kinds_each_explain_themselves() &&
+  w_uncovered_is_a_nudge_not_a_comfort() &&
+  w_departed_path_is_not_a_no_op() &&
+  w_psi_pressure_carries_a_scaled_magnitude_not_a_scalar() &&
+  w_status_pulse_glyph_is_available_to_the_heartbeat()
+}

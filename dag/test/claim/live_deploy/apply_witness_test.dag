@@ -72,7 +72,7 @@ fn fixture_service_not_ready_readiness() -> Reconciliation<ServiceReadyApplyEffe
   }
 }
 
-test fn witness_red_control_mutation_without_readiness_cannot_converge() -> Bool {
+fn witness_red_control_mutation_without_readiness_cannot_converge() -> Bool {
   !reconciliation_converged(
     r: live_deploy_apply_readiness_gate_with_readiness(
       mutation: fixture_converged_mutation(),
@@ -81,7 +81,7 @@ test fn witness_red_control_mutation_without_readiness_cannot_converge() -> Bool
   )
 }
 
-test fn witness_red_control_service_not_ready_reason_surfaces_on_blocked_apply() -> Bool {
+fn witness_red_control_service_not_ready_reason_surfaces_on_blocked_apply() -> Bool {
   match live_deploy_apply_readiness_gate_with_readiness(
     mutation: fixture_converged_mutation(),
     readiness: fixture_service_not_ready_readiness(),
@@ -93,7 +93,7 @@ test fn witness_red_control_service_not_ready_reason_surfaces_on_blocked_apply()
   }
 }
 
-test fn witness_digest_readback_script_is_bounded_and_post_mutation() -> Bool {
+fn witness_digest_readback_script_is_bounded_and_post_mutation() -> Bool {
   let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
   let script = roadmap_site_digest_readback_script(port: port)
   string_contains(s: script, pattern: roadmap_site_roadmap_url_path)
@@ -104,3 +104,8 @@ test fn witness_digest_readback_script_is_bounded_and_post_mutation() -> Bool {
     && !string_contains(s: script, pattern: "healthz json parse failed")
 }
 
+test fn live_deploy_apply_witnesses() -> Bool {
+  witness_red_control_mutation_without_readiness_cannot_converge()
+    && witness_red_control_service_not_ready_reason_surfaces_on_blocked_apply()
+    && witness_digest_readback_script_is_bounded_and_post_mutation()
+}

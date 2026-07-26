@@ -433,14 +433,14 @@ fn branch_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
   }
 }
 
-test fn branch_source_pipeline_admits_holds() -> Bool {
+fn branch_source_pipeline_admits_holds() -> Bool {
   match table_fixture_pick_if_arrow_with_body() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn branch_source_driven_pick_true_executes_holds() -> Bool {
+fn branch_source_driven_pick_true_executes_holds() -> Bool {
   match table_fixture_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
@@ -453,7 +453,7 @@ test fn branch_source_driven_pick_true_executes_holds() -> Bool {
   }
 }
 
-test fn branch_source_driven_pick_false_executes_holds() -> Bool {
+fn branch_source_driven_pick_false_executes_holds() -> Bool {
   match table_fixture_pick_false_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
@@ -466,7 +466,7 @@ test fn branch_source_driven_pick_false_executes_holds() -> Bool {
   }
 }
 
-test fn branch_condition_perturbation_red_holds() -> Bool {
+fn branch_condition_perturbation_red_holds() -> Bool {
   match table_fixture_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
@@ -479,7 +479,7 @@ test fn branch_condition_perturbation_red_holds() -> Bool {
   }
 }
 
-test fn branch_direct_runtime_true_holds() -> Bool {
+fn branch_direct_runtime_true_holds() -> Bool {
   match table_fixture_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
       let input = branch_pick_call(callee: arrow)
@@ -504,7 +504,7 @@ test fn branch_direct_runtime_true_holds() -> Bool {
   }
 }
 
-test fn branch_swapped_arms_red_holds() -> Bool {
+fn branch_swapped_arms_red_holds() -> Bool {
   match table_fixture_pick_if_arrow_with_body_swapped_arms() {
     Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
@@ -517,7 +517,7 @@ test fn branch_swapped_arms_red_holds() -> Bool {
   }
 }
 
-test fn branch_fixture_producer_holds() -> Bool {
+fn branch_fixture_producer_holds() -> Bool {
   match table_fixture_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
@@ -530,3 +530,12 @@ test fn branch_fixture_producer_holds() -> Bool {
   }
 }
 
+test fn branch_eval_by_execution_keystone_holds() -> Bool {
+  branch_source_driven_pick_true_executes_holds()
+    && branch_source_driven_pick_false_executes_holds()
+    && branch_direct_runtime_true_holds()
+    && branch_source_pipeline_admits_holds()
+    && branch_condition_perturbation_red_holds()
+    && branch_swapped_arms_red_holds()
+    && branch_fixture_producer_holds()
+}

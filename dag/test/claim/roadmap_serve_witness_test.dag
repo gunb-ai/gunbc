@@ -50,7 +50,7 @@ fn selects(method: HttpMethod, path: String, want: RoadmapServeHandler) -> Bool 
   }
 }
 
-test fn witness_serve_table_selection() -> Bool {
+fn witness_serve_table_selection() -> Bool {
   selects(method: GET, path: "/", want: RoadmapDailyPageHandler)
     && selects(method: GET, path: "/roadmap", want: RoadmapFullPageHandler)
     && selects(method: GET, path: "/ROADMAP.md", want: RoadmapMdHandler)
@@ -63,7 +63,7 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: POST, path: "/dispatch/some-node", want: BeltDispatchHandler)
 }
 
-test fn witness_asset_route_serves_modeled_js() -> Bool {
+fn witness_asset_route_serves_modeled_js() -> Bool {
   let r = roadmap_serve_invoke(
     handler: DispatchAssetHandler,
     params: [],
@@ -76,7 +76,7 @@ test fn witness_asset_route_serves_modeled_js() -> Bool {
     && !string_contains(s: r.body, pattern: "j.ok")
 }
 
-test fn witness_dispatch_param_bound() -> Bool {
+fn witness_dispatch_param_bound() -> Bool {
   match serve_select_route(table: live_table_or_empty(), method: POST, path: "/dispatch/2-cd-transport") {
     SelectedDynamic { handler: _, params: ps } =>
       path_param_value(params: ps, name: "node_id") == "2-cd-transport"
@@ -86,7 +86,7 @@ test fn witness_dispatch_param_bound() -> Bool {
   }
 }
 
-test fn witness_dispatch_get_folds_405() -> Bool {
+fn witness_dispatch_get_folds_405() -> Bool {
   match serve_select_route(table: live_table_or_empty(), method: GET, path: "/dispatch/x") {
     MethodNotAllowed { allowed: ms } => count(ms) == 1 && any(ms, m => m == POST)
     SelectedStatic { route: _ } => false
@@ -99,19 +99,19 @@ fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest {
   ServeHttpRequest { method: method, path: path, body: "" }
 }
 
-test fn witness_unknown_path_folds_404_response() -> Bool {
+fn witness_unknown_path_folds_404_response() -> Bool {
   let r = roadmap_serve_selection_response(sel: NoRouteMatched, request: fixture_request(method: GET, path: "/nope"))
   r.status == 404
 }
 
-test fn witness_405_response_carries_allowed() -> Bool {
+fn witness_405_response_carries_allowed() -> Bool {
   let r = roadmap_serve_selection_response(sel: MethodNotAllowed { allowed: [POST] }, request: fixture_request(method: GET, path: "/dispatch/x"))
   r.status == 405 && string_contains(s: r.body, pattern: "POST")
 }
 
 data status_map_red_note: String = "The 404/409/503/502 rows are the REDs a lazy 200-or-500 collapse would fail (parent review 2026-07-20): each refusal variant must map to ITS status, so a collapse of any arm reds exactly one witness row below."
 
-test fn witness_dispatch_status_total() -> Bool {
+fn witness_dispatch_status_total() -> Bool {
   belt_dispatch_status(r: DispatchSpawned { node_id: "n", session_name: "s" }) == 200
     && belt_dispatch_status(r: DispatchAlreadyLive { node_id: "n", session_name: "s" }) == 200
     && belt_dispatch_status(r: DispatchNodeNotFound { node_id: "n" }) == 404
@@ -120,7 +120,7 @@ test fn witness_dispatch_status_total() -> Bool {
     && belt_dispatch_status(r: DispatchSpawnFailed { node_id: "n", step: "git", detail: "d" }) == 502
 }
 
-test fn witness_live_table_builds_ready_ten_routes() -> Bool {
+fn witness_live_table_builds_ready_ten_routes() -> Bool {
   match roadmap_serve_route_table_build() {
     RoadmapServeTable { table: t } => count(t.routes) == 10
     RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => false
@@ -129,7 +129,7 @@ test fn witness_live_table_builds_ready_ten_routes() -> Bool {
 
 data malformed_literal_red_note: String = "The RED control for review 40286's section-5 catch: a malformed route literal through the SAME build fold must REFUSE the whole table (typed, carrying the broken raw), never fabricate an empty template that would silently match '/'."
 
-test fn witness_malformed_route_literal_refuses_table() -> Bool {
+fn witness_malformed_route_literal_refuses_table() -> Bool {
   let specs = [
     RoadmapServeRouteSpec { method: GET, raw: "/ok", handler: HealthzHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/dispatch/\{node_id", handler: BeltDispatchHandler },
@@ -140,7 +140,7 @@ test fn witness_malformed_route_literal_refuses_table() -> Bool {
   }
 }
 
-test fn witness_unknown_method_refuses() -> Bool {
+fn witness_unknown_method_refuses() -> Bool {
   match parse_http_method_label(label: "BREW") {
     UnknownMethod { label: l } => l == "BREW"
     KnownMethod { method: _ } => false
@@ -149,12 +149,12 @@ test fn witness_unknown_method_refuses() -> Bool {
 
 data unknown_method_501_note: String = "review 40359: an unrecognized method label is 501 Not Implemented (RFC 9110 section 15.6.2 — the server does not implement the method at all), NEVER 405 (405 means the ROUTE exists but this method is not in its allowed set, and carries the allowed set — the MethodNotAllowed arm). The two arms must stay distinct statuses; collapsing them reds this row."
 
-test fn witness_unknown_method_folds_501_response() -> Bool {
+fn witness_unknown_method_folds_501_response() -> Bool {
   let r = roadmap_serve_respond(method_label: "BREW", path: "/", body: "")
   r.status == 501 && string_contains(s: r.body, pattern: "BREW")
 }
 
-test fn witness_known_methods_parse() -> Bool {
+fn witness_known_methods_parse() -> Bool {
   match parse_http_method_label(label: "GET") {
     KnownMethod { method: m } => m == GET
     UnknownMethod { label: _ } => false
@@ -165,3 +165,17 @@ test fn witness_known_methods_parse() -> Bool {
   }
 }
 
+test fn roadmap_serve_witnesses() -> Bool {
+  witness_serve_table_selection()
+    && witness_dispatch_param_bound()
+    && witness_dispatch_get_folds_405()
+    && witness_unknown_path_folds_404_response()
+    && witness_405_response_carries_allowed()
+    && witness_dispatch_status_total()
+    && witness_asset_route_serves_modeled_js()
+    && witness_live_table_builds_ready_ten_routes()
+    && witness_malformed_route_literal_refuses_table()
+    && witness_unknown_method_refuses()
+    && witness_unknown_method_folds_501_response()
+    && witness_known_methods_parse()
+}

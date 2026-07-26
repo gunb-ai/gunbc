@@ -34,17 +34,21 @@ fn branch_infer_arm_mismatch_body() -> Node {
   )
 }
 
-test fn branch_infer_bool_cond_accepts_holds() -> Bool {
+fn branch_infer_bool_cond_accepts_holds() -> Bool {
   match infer(tree: dag_pick_if_body_fixture) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn branch_infer_arm_mismatch_red_holds() -> Bool {
+fn branch_infer_arm_mismatch_red_holds() -> Bool {
   match infer(tree: branch_infer_arm_mismatch_body()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => d.head.reason == ^infer_branch_arm_type_mismatch
   }
 }
 
+test fn branch_infer_keystone_holds() -> Bool {
+  branch_infer_bool_cond_accepts_holds()
+    && branch_infer_arm_mismatch_red_holds()
+}

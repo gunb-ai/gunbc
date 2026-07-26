@@ -172,7 +172,7 @@ fn ingest_fixture_model_ambiguous(emitted: Node, spine_class: Symbol) -> TargetM
   ingest_fixture_model_from_bundle(bundle: ingest_fixture_bundle_with_rules(rules: rules))
 }
 
-test fn ingest_recovers_emitted_holds() -> Bool {
+fn ingest_recovers_emitted_holds() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
@@ -187,7 +187,7 @@ test fn ingest_recovers_emitted_holds() -> Bool {
   }
 }
 
-test fn ingest_bridge_to_canonical_holds() -> Bool {
+fn ingest_bridge_to_canonical_holds() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_target_model_bridge(
@@ -202,7 +202,7 @@ test fn ingest_bridge_to_canonical_holds() -> Bool {
   }
 }
 
-test fn ingest_fails_closed_off_frontier_holds() -> Bool {
+fn ingest_fails_closed_off_frontier_holds() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
@@ -216,7 +216,7 @@ test fn ingest_fails_closed_off_frontier_holds() -> Bool {
   }
 }
 
-test fn ingest_fails_closed_ambiguous_holds() -> Bool {
+fn ingest_fails_closed_ambiguous_holds() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
@@ -238,7 +238,7 @@ fn ingest_unstamped_node() -> Node {
 }
 }
 
-test fn ingest_fails_closed_on_unstamped_holds() -> Bool {
+fn ingest_fails_closed_on_unstamped_holds() -> Bool {
   match parse_tree_to_emitted_node(
     parse_tree: ingest_unstamped_node(),
     source_model: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
@@ -248,7 +248,7 @@ test fn ingest_fails_closed_on_unstamped_holds() -> Bool {
   }
 }
 
-test fn ingest_cross_language_compile_holds() -> Bool {
+fn ingest_cross_language_compile_holds() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
       match cross_language_compile(
@@ -262,6 +262,15 @@ test fn ingest_cross_language_compile_holds() -> Bool {
       }
     Rejected { diagnostics: _ } => false
   }
+}
+
+test fn ingest_bridge_realized() -> Bool {
+  ingest_recovers_emitted_holds()
+    && ingest_bridge_to_canonical_holds()
+    && ingest_fails_closed_off_frontier_holds()
+    && ingest_fails_closed_ambiguous_holds()
+    && ingest_fails_closed_on_unstamped_holds()
+    && ingest_cross_language_compile_holds()
 }
 
 fn ingest_bridge_realized_input(ok: Bool) -> Symbol {

@@ -1,13 +1,14 @@
 module test.claim.tailscale_acl_phase2_design_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn witness_secret_homed_in_gunbai_secrets() -> Bool {
+fn witness_secret_homed_in_gunbai_secrets() -> Bool {
   operator_tailscale_acl_secret_bindings.first().project == bmc_secrets_project_id
     && operator_tailscale_acl_secret_bindings.first().secret == (tailscale_acl_ephemeral_token_secret_id as String)
 }
 
-test fn witness_operator_user_principal_accessor_only() -> Bool {
+fn witness_operator_user_principal_accessor_only() -> Bool {
   operator_bindings_are_user_principal_accessor_only(bindings: operator_tailscale_acl_secret_bindings)
     && operator_tailscale_acl_secret_bindings.first().role == role_secretmanager_secret_accessor
     && operator_principal_member() == fleet_operator_gcp_iam_member()
@@ -15,13 +16,13 @@ test fn witness_operator_user_principal_accessor_only() -> Bool {
     && tailscale_acl_operator_email() == fleet_operator_email
 }
 
-test fn witness_excludes_repo_scoped_wif_structurally() -> Bool {
+fn witness_excludes_repo_scoped_wif_structurally() -> Bool {
   !operator_bindings_admit_repo_scoped_wif(bindings: operator_tailscale_acl_secret_bindings)
     && !operator_bindings_admit_bmc_assimilator_sa(bindings: operator_tailscale_acl_secret_bindings)
     && string_contains(s: bmc_wif_principal_set(), pattern: bmc_federated_github_repo)
 }
 
-test fn witness_wif_binding_perturbation_reddens() -> Bool {
+fn witness_wif_binding_perturbation_reddens() -> Bool {
   let poisoned_wif = SecretAccessBinding {
     member: bmc_wif_principal_set(),
     role: role_secretmanager_secret_accessor,
@@ -39,7 +40,7 @@ test fn witness_wif_binding_perturbation_reddens() -> Bool {
     && !operator_bindings_are_user_principal_accessor_only(bindings: [poisoned_wif])
 }
 
-test fn witness_credential_flow_binds_auth_pattern_authorities() -> Bool {
+fn witness_credential_flow_binds_auth_pattern_authorities() -> Bool {
   tailscale_acl_credential_flow_uses_auth_patterns()
     && tailscale_acl_gcp_secret_credential_authority.decl_name == "gcp_secret_credential"
     && tailscale_acl_adc_refresh_credential_authority.decl_name == "gcp_oauth_access_token_via_adc_refresh"
@@ -51,12 +52,12 @@ test fn witness_credential_flow_binds_auth_pattern_authorities() -> Bool {
     }
 }
 
-test fn witness_ephemeral_lifetime_matches_optional_impersonation_cap() -> Bool {
+fn witness_ephemeral_lifetime_matches_optional_impersonation_cap() -> Bool {
   second_count(s: tailscale_acl_ephemeral_lifetime) == 3600
     && string_contains(s: tailscale_acl_ephemeral_token_secret_id as String, pattern: "ephemeral")
 }
 
-test fn witness_fail_closed_on_absent_or_expired_token() -> Bool {
+fn witness_fail_closed_on_absent_or_expired_token() -> Bool {
   ephemeral_token_gate_fail_closed(gate: TokenAbsent { reason: "not dispensed" })
     && ephemeral_token_gate_fail_closed(gate: TokenExpired { reason: "ttl elapsed" })
     && !ephemeral_token_gate_valid(
@@ -78,7 +79,7 @@ test fn witness_fail_closed_on_absent_or_expired_token() -> Bool {
     )
 }
 
-test fn witness_diff_gate_refuses_auto_upsert() -> Bool {
+fn witness_diff_gate_refuses_auto_upsert() -> Bool {
   acl_auto_upsert_refused(gate: DiffPending { diff: PoliciesMatch })
     && acl_auto_upsert_refused(gate: DiffPending {
       diff: PoliciesDiffer { emitted: "{}", live: "{\"grants\":[]}" }
@@ -90,7 +91,7 @@ test fn witness_diff_gate_refuses_auto_upsert() -> Bool {
     && !acl_upsert_wet_shape_is_diff_print_only(shape: LiveWriteRefused { reason: "design only" })
 }
 
-test fn witness_upsert_requires_valid_ephemeral_token() -> Bool {
+fn witness_upsert_requires_valid_ephemeral_token() -> Bool {
   acl_upsert_permitted(
     gate: OperatorConfirmed {
       emitted: "{}",
@@ -111,14 +112,27 @@ test fn witness_upsert_requires_valid_ephemeral_token() -> Bool {
     )
 }
 
-test fn witness_phase2_is_design_only_scaffold() -> Bool {
+fn witness_phase2_is_design_only_scaffold() -> Bool {
   match tailscale_acl_phase2_live_write_disposition {
       Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
       _ => false
     }
 }
 
-test fn witness_design_spine() -> Bool {
+fn witness_design_spine() -> Bool {
   tailscale_acl_phase2_credential_design_holds()
 }
 
+test fn tailscale_acl_phase2_design_witnesses() -> Bool {
+  witness_secret_homed_in_gunbai_secrets()
+    && witness_operator_user_principal_accessor_only()
+    && witness_excludes_repo_scoped_wif_structurally()
+    && witness_wif_binding_perturbation_reddens()
+    && witness_credential_flow_binds_auth_pattern_authorities()
+    && witness_ephemeral_lifetime_matches_optional_impersonation_cap()
+    && witness_fail_closed_on_absent_or_expired_token()
+    && witness_diff_gate_refuses_auto_upsert()
+    && witness_upsert_requires_valid_ephemeral_token()
+    && witness_phase2_is_design_only_scaffold()
+    && witness_design_spine()
+}

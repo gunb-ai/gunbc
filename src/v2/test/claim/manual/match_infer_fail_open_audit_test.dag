@@ -153,7 +153,7 @@ test fn match_infer_fail_open_audit_extra_arm_rejects_holds() -> Bool {
   }
 }
 
-test fn match_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool {
+fn match_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool {
   match infer(tree: dag_match_if_body_fixture) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false

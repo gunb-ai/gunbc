@@ -34,3 +34,9 @@ test fn native_agreement_octet_display_names_raw_byte_holds() -> Bool {
     && octet_display(octet: 42) == "42"
 }
 
+test fn native_agreement_witnesses() -> Bool {
+  native_agreement_divergence_format_holds()
+    && native_agreement_failure_receipt_empty_when_clean_holds()
+    && native_agreement_failure_receipt_names_divergence_holds()
+    && native_agreement_octet_display_names_raw_byte_holds()
+}

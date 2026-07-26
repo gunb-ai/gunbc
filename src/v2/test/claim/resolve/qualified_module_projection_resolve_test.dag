@@ -100,7 +100,7 @@ fn qmpr_namespace(index: SymbolIndex) -> Namespace {
   }
 }
 
-test fn witness_qualified_name_node_resolves_holds() -> Bool {
+fn witness_qualified_name_node_resolves_holds() -> Bool {
   let namespace = qmpr_namespace(index: qmpr_provider_index)
   match resolve_node(
     ctx: ResolveContext {
@@ -118,7 +118,7 @@ test fn witness_qualified_name_node_resolves_holds() -> Bool {
   }
 }
 
-test fn witness_qualified_name_node_miss_red_holds() -> Bool {
+fn witness_qualified_name_node_miss_red_holds() -> Bool {
   let namespace = qmpr_namespace(index: empty_symbol_index())
   match resolve_node(
     ctx: ResolveContext {
@@ -136,3 +136,7 @@ test fn witness_qualified_name_node_miss_red_holds() -> Bool {
   }
 }
 
+test fn qualified_module_projection_resolve_witnesses() -> Bool {
+  witness_qualified_name_node_resolves_holds()
+    && witness_qualified_name_node_miss_red_holds()
+}

@@ -18,18 +18,18 @@ data exec_arg_limit_witness_note: String = "Single-authority closure for the Lin
 
 data v1_interpreter_source_path: String = "src/v1/stage0/src/v1_interpreter.rs"
 
-test fn witness_host_exec_arg_max_strlen_is_execve_formula() -> Bool {
+fn witness_host_exec_arg_max_strlen_is_execve_formula() -> Bool {
   host_exec_arg_max_strlen == host_exec_arg_max_strlen_from_page(
     page: x86_64_linux_architecture_profile.page_size,
     page_factor: linux_execve_max_arg_strlen_page_factor,
   )
 }
 
-test fn witness_linux_page_size_uniform_on_deploy_architectures() -> Bool {
+fn witness_linux_page_size_uniform_on_deploy_architectures() -> Bool {
   byte_size_count(x86_64_linux_architecture_profile.page_size) == byte_size_count(aarch64_linux_architecture_profile.page_size)
 }
 
-test fn witness_rust_const_mirrors_authority() -> Bool {
+fn witness_rust_const_mirrors_authority() -> Bool {
   let src = filesystem_read(path: v1_interpreter_source_path)
   let expected = to_string(byte_size_count(b: host_exec_arg_max_strlen))
   string_contains(
@@ -38,3 +38,8 @@ test fn witness_rust_const_mirrors_authority() -> Bool {
   )
 }
 
+test fn exec_arg_limit_witnesses() -> Bool {
+  witness_host_exec_arg_max_strlen_is_execve_formula()
+    && witness_linux_page_size_uniform_on_deploy_architectures()
+    && witness_rust_const_mirrors_authority()
+}

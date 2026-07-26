@@ -1,5 +1,6 @@
 module test.claim.host_identity_observation_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn srv1_os_target() -> NodeControlPlane {
@@ -13,7 +14,7 @@ fn require_dns_label(raw: String) -> DnsLabel {
   }
 }
 
-test fn witness_hostname_read_argv_is_typed_not_concat() -> Bool {
+fn witness_hostname_read_argv_is_typed_not_concat() -> Bool {
   match hostname_short_read_operation_argv() {
     ArgvMaterialized { argv: argv } =>
       hostname_short_read_operation_argv_matches_authority() && join(argv, " ") == "hostname -s"
@@ -21,19 +22,19 @@ test fn witness_hostname_read_argv_is_typed_not_concat() -> Bool {
   }
 }
 
-test fn witness_hostname_read_resolves_typed_cell_not_shell_script() -> Bool {
+fn witness_hostname_read_resolves_typed_cell_not_shell_script() -> Bool {
   match resolve_host_effect_cell(target: srv1_os_target(), effect: HostIdentityShortHostnameRead) {
     HostnameReadOnHost { node: _ } => true
     _ => false
   }
 }
 
-test fn witness_hostname_set_argv_is_typed_not_concat() -> Bool {
+fn witness_hostname_set_argv_is_typed_not_concat() -> Bool {
   hostname_set_operation_argv_matches_authority(desired: "srv9" as DnsLabel)
     && join(hostname_set_operation_argv(desired: "srv9" as DnsLabel), " ") == "hostnamectl set-hostname srv9"
 }
 
-test fn witness_hostname_set_resolves_typed_cell_not_shell_script() -> Bool {
+fn witness_hostname_set_resolves_typed_cell_not_shell_script() -> Bool {
   match resolve_host_effect_cell(
     target: srv1_os_target(),
     effect: SetHostnameCas {
@@ -47,14 +48,14 @@ test fn witness_hostname_set_resolves_typed_cell_not_shell_script() -> Bool {
   }
 }
 
-test fn witness_hostname_set_privileged_argv_matches_fleet_grant() -> Bool {
+fn witness_hostname_set_privileged_argv_matches_fleet_grant() -> Bool {
   hostname_set_privileged_operation_argv_matches_fleet_grant(
     hostnamectl_path: host_identity_hostnamectl_path,
     desired: "srv9" as DnsLabel,
   )
 }
 
-test fn witness_hostname_set_cas_refuses_base_mismatch() -> Bool {
+fn witness_hostname_set_cas_refuses_base_mismatch() -> Bool {
   match hostname_set_cas(
     hostnamectl_path: host_identity_hostnamectl_path,
     transport: LocalShell,
@@ -67,41 +68,41 @@ test fn witness_hostname_set_cas_refuses_base_mismatch() -> Bool {
   }
 }
 
-test fn witness_fixture_observation_types_srv1_observed_hostname() -> Bool {
+fn witness_fixture_observation_types_srv1_observed_hostname() -> Bool {
   let obs = fixture_host_identity_observation()
   obs.short_hostname == "altrad8ud-1l2t-1"
     && obs.probed_at == "2026-07-02"
     && host_identity_observation_nonempty(obs: obs)
 }
 
-test fn witness_fixture_observation_types_srv2_observed_hostname() -> Bool {
+fn witness_fixture_observation_types_srv2_observed_hostname() -> Bool {
   let obs = fixture_host_identity_observation_srv2()
   obs.short_hostname == "alstrad8d-1l2t-2"
     && host_identity_observation_nonempty(obs: obs)
 }
 
-test fn witness_empty_stdout_is_absent() -> Bool {
+fn witness_empty_stdout_is_absent() -> Bool {
   match host_identity_observation_from_stdout(stdout: "  \n", probed_at: "2026-07-02") {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-test fn witness_trimmed_stdout_is_typed() -> Bool {
+fn witness_trimmed_stdout_is_typed() -> Bool {
   match host_identity_observation_from_stdout(stdout: "  altrad8ud-1l2t-1\n", probed_at: "2026-07-02") {
     Present { value: obs } => obs.short_hostname == "altrad8ud-1l2t-1"
     Absent => false
   }
 }
 
-test fn witness_host_effect_apply_hostname_read_converges() -> Bool {
+fn witness_host_effect_apply_hostname_read_converges() -> Bool {
   reconciliation_converged(r: host_identity_observation_apply(
     target: srv1_os_target(),
     transport: LocalShell
   ))
 }
 
-test fn witness_host_effect_apply_failure_is_not_observation() -> Bool {
+fn witness_host_effect_apply_failure_is_not_observation() -> Bool {
   match host_identity_observation_from_apply(
     r: host_effect_apply(
       target: srv1_os_target(),
@@ -116,7 +117,7 @@ test fn witness_host_effect_apply_failure_is_not_observation() -> Bool {
   }
 }
 
-test fn witness_fixture_row_materializes_deployed_intent_v0() -> Bool {
+fn witness_fixture_row_materializes_deployed_intent_v0() -> Bool {
   let d = deployed_intent_v0_from_observation_row(
     fleet_slot: operator_host_srv1,
     target_host: srv1_host,
@@ -126,21 +127,21 @@ test fn witness_fixture_row_materializes_deployed_intent_v0() -> Bool {
     && deployed_intent_observed_differs_from_fleet_slot(d: d)
 }
 
-test fn witness_persisted_base_records_observed_not_design() -> Bool {
+fn witness_persisted_base_records_observed_not_design() -> Bool {
   let d = gunbc_srv1_deployed_intent_v0_persisted
   deployed_intent_observed_short_hostname(d: d) == "altrad8ud-1l2t-1"
     && d.fleet_slot == operator_host_srv1
     && deployed_intent_observed_differs_from_fleet_slot(d: d)
 }
 
-test fn witness_srv2_persisted_base_records_typo_hostname() -> Bool {
+fn witness_srv2_persisted_base_records_typo_hostname() -> Bool {
   let d = gunbc_srv2_deployed_intent_v0_persisted
   deployed_intent_observed_short_hostname(d: d) == "alstrad8d-1l2t-2"
     && d.fleet_slot == operator_host_srv2
     && deployed_intent_observed_differs_from_fleet_slot(d: d)
 }
 
-test fn witness_design_intent_conflation_red() -> Bool {
+fn witness_design_intent_conflation_red() -> Bool {
   let wrong_row = HostIdentityObservationRow {
     short_hostname_raw: operator_host_srv1,
     probed_at: "2026-07-02",
@@ -154,7 +155,7 @@ test fn witness_design_intent_conflation_red() -> Bool {
     && deployed_intent_observed_short_hostname(d: conflated) == operator_host_srv1
 }
 
-test fn witness_srv1_ssh_transport_targets_operator_host() -> Bool {
+fn witness_srv1_ssh_transport_targets_operator_host() -> Bool {
   match srv1_host_identity_ssh_transport() {
     SshShell { ssh_host: h } => h == operator_host_srv1
     LocalShell => false
@@ -162,7 +163,7 @@ test fn witness_srv1_ssh_transport_targets_operator_host() -> Bool {
   }
 }
 
-test fn witness_adopt_receipt_materializes_fixture_observation() -> Bool {
+fn witness_adopt_receipt_materializes_fixture_observation() -> Bool {
   let obs = fixture_host_identity_observation()
   let receipt = host_identity_adopt_receipt(
     fleet_slot: operator_host_srv1,
@@ -177,7 +178,7 @@ test fn witness_adopt_receipt_materializes_fixture_observation() -> Bool {
     && host_identity_transport_label(transport: srv1_host_identity_ssh_transport()) == "SshShell:srv1"
 }
 
-test fn witness_already_converged_host_receipt_is_valid() -> Bool {
+fn witness_already_converged_host_receipt_is_valid() -> Bool {
   let obs = host_identity_observation_from_stdout(stdout: operator_host_srv1, probed_at: "2026-07-02")
   match obs {
     Present { value: o } => {
@@ -195,12 +196,12 @@ test fn witness_already_converged_host_receipt_is_valid() -> Bool {
   }
 }
 
-test fn witness_adopt_model_hash_is_stable() -> Bool {
+fn witness_adopt_model_hash_is_stable() -> Bool {
   host_identity_knob_key(host: operator_host_srv1).host == operator_host_srv1
     && host_identity_adopt_model_hash() == host_identity_adopt_model_hash()
 }
 
-test fn witness_desired_intent_from_modeled_fleet_slot() -> Bool {
+fn witness_desired_intent_from_modeled_fleet_slot() -> Bool {
   match gunbc_srv1_deployed_intent_v1 {
     Present { value: desired } =>
       match deployed_intent_v1_desired_hostname_short(fleet_slot: operator_host_srv1) {
@@ -211,7 +212,7 @@ test fn witness_desired_intent_from_modeled_fleet_slot() -> Bool {
   }
 }
 
-test fn witness_patch_emits_exactly_one_modify_hunk() -> Bool {
+fn witness_patch_emits_exactly_one_modify_hunk() -> Bool {
   match host_identity_patch_from_intents(
     base_hostname: "altrad8ud-1l2t-1",
     observed_hostname: "altrad8ud-1l2t-1",
@@ -223,7 +224,7 @@ test fn witness_patch_emits_exactly_one_modify_hunk() -> Bool {
   }
 }
 
-test fn witness_patch_noop_when_already_converged() -> Bool {
+fn witness_patch_noop_when_already_converged() -> Bool {
   host_identity_precondition_is_noop(
     verdict: host_identity_patch_from_intents(
       base_hostname: operator_host_srv1,
@@ -233,7 +234,7 @@ test fn witness_patch_noop_when_already_converged() -> Bool {
   )
 }
 
-test fn witness_drift_conflict_red_no_apply_arm() -> Bool {
+fn witness_drift_conflict_red_no_apply_arm() -> Bool {
   host_identity_precondition_is_conflict(
     verdict: host_identity_patch_from_intents(
       base_hostname: "altrad8ud-1l2t-1",
@@ -250,7 +251,7 @@ test fn witness_drift_conflict_red_no_apply_arm() -> Bool {
     )
 }
 
-test fn witness_precondition_conflict_blocks_mutation() -> Bool {
+fn witness_precondition_conflict_blocks_mutation() -> Bool {
   let base = gunbc_srv1_deployed_intent_v0_persisted
   match gunbc_srv1_deployed_intent_v1 {
     Present { value: desired } =>
@@ -265,7 +266,7 @@ test fn witness_precondition_conflict_blocks_mutation() -> Bool {
   }
 }
 
-test fn witness_conflict_plan_has_no_effect_script_structural_no_shell() -> Bool {
+fn witness_conflict_plan_has_no_effect_script_structural_no_shell() -> Bool {
   let base = gunbc_srv1_deployed_intent_v0_persisted
   match gunbc_srv1_deployed_intent_v1 {
     Present { value: desired } =>
@@ -294,7 +295,7 @@ test fn witness_conflict_plan_has_no_effect_script_structural_no_shell() -> Bool
   }
 }
 
-test fn witness_converge_from_base_conflict_is_none_red() -> Bool {
+fn witness_converge_from_base_conflict_is_none_red() -> Bool {
   let target = HostIdentityAssimilationTarget {
     fleet_slot: gunbc_srv1_deployed_intent_v0_persisted.fleet_slot,
     target_host: srv1_host,
@@ -325,7 +326,7 @@ test fn witness_converge_from_base_conflict_is_none_red() -> Bool {
 
 data host_identity_mutation_marker: String = "host-identity-mutation-marker-9c2e"
 
-test fn witness_unprivileged_refusal_no_shell() -> Bool {
+fn witness_unprivileged_refusal_no_shell() -> Bool {
   let plan = ApplyPlan {
     base: deployed_intent_observed_short_hostname(d: gunbc_srv1_deployed_intent_v0_persisted) as DnsLabel,
     desired: require_dns_label(raw: operator_host_srv1 as String),
@@ -343,7 +344,7 @@ test fn witness_unprivileged_refusal_no_shell() -> Bool {
   }
 }
 
-test fn witness_stale_readback_not_converged() -> Bool {
+fn witness_stale_readback_not_converged() -> Bool {
   match host_identity_observation_from_stdout(
     stdout: "altrad8ud-1l2t-1",
     probed_at: "2026-07-02"
@@ -357,10 +358,42 @@ test fn witness_stale_readback_not_converged() -> Bool {
   }
 }
 
-test fn witness_invalid_desired_hostname_unwritable() -> Bool {
+fn witness_invalid_desired_hostname_unwritable() -> Bool {
   match parse_dns_label_raw(raw: "") {
     Err { value: _ } => true
     Ok { value: _ } => false
   }
 }
 
+test fn host_identity_observation_holds() -> Bool {
+  witness_hostname_read_argv_is_typed_not_concat()
+    && witness_hostname_read_resolves_typed_cell_not_shell_script()
+    && witness_hostname_set_argv_is_typed_not_concat()
+    && witness_hostname_set_privileged_argv_matches_fleet_grant()
+    && witness_hostname_set_resolves_typed_cell_not_shell_script()
+    && witness_hostname_set_cas_refuses_base_mismatch()
+    && witness_fixture_observation_types_srv1_observed_hostname()
+    && witness_fixture_observation_types_srv2_observed_hostname()
+    && witness_empty_stdout_is_absent()
+    && witness_trimmed_stdout_is_typed()
+    && witness_host_effect_apply_hostname_read_converges()
+    && witness_host_effect_apply_failure_is_not_observation()
+    && witness_fixture_row_materializes_deployed_intent_v0()
+    && witness_persisted_base_records_observed_not_design()
+    && witness_srv2_persisted_base_records_typo_hostname()
+    && witness_design_intent_conflation_red()
+    && witness_srv1_ssh_transport_targets_operator_host()
+    && witness_adopt_receipt_materializes_fixture_observation()
+    && witness_already_converged_host_receipt_is_valid()
+    && witness_adopt_model_hash_is_stable()
+    && witness_desired_intent_from_modeled_fleet_slot()
+    && witness_patch_emits_exactly_one_modify_hunk()
+    && witness_patch_noop_when_already_converged()
+    && witness_drift_conflict_red_no_apply_arm()
+    && witness_precondition_conflict_blocks_mutation()
+    && witness_conflict_plan_has_no_effect_script_structural_no_shell()
+    && witness_converge_from_base_conflict_is_none_red()
+    && witness_unprivileged_refusal_no_shell()
+    && witness_stale_readback_not_converged()
+    && witness_invalid_desired_hostname_unwritable()
+}

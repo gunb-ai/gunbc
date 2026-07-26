@@ -1,5 +1,6 @@
 module test.claim.medium_fidelity
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type ProbeVerdict = Dominates | Incomparable
@@ -36,7 +37,7 @@ fn mis_tagged_prose_medium() -> extdeps.communication.medium.Medium<String> {
   }
 }
 
-test fn text_medium_tag_is_lossless() -> Bool {
+fn text_medium_tag_is_lossless() -> Bool {
   let m = text_medium_lossless()
   match m.fidelity {
     Lossless => true
@@ -44,7 +45,7 @@ test fn text_medium_tag_is_lossless() -> Bool {
   }
 }
 
-test fn probe_medium_tag_is_lossless() -> Bool {
+fn probe_medium_tag_is_lossless() -> Bool {
   let m = probe_medium_lossless()
   match m.fidelity {
     Lossless => true
@@ -52,7 +53,7 @@ test fn probe_medium_tag_is_lossless() -> Bool {
   }
 }
 
-test fn probe_carried_is_non_text() -> Bool {
+fn probe_carried_is_non_text() -> Bool {
   let m = probe_medium_lossless()
   match m.carried {
     Dominates => true
@@ -60,7 +61,7 @@ test fn probe_carried_is_non_text() -> Bool {
   }
 }
 
-test fn prose_medium_tag_is_lossy() -> Bool {
+fn prose_medium_tag_is_lossy() -> Bool {
   let m = prose_medium()
   match m.fidelity {
     Lossy => true
@@ -68,11 +69,19 @@ test fn prose_medium_tag_is_lossy() -> Bool {
   }
 }
 
-test fn lossy_prose_not_advertised_lossless() -> Bool {
+fn lossy_prose_not_advertised_lossless() -> Bool {
   !is_lossless(prose_medium().fidelity)
 }
 
-test fn red_mistag_certifies_lossless_by_tag_alone() -> Bool {
+fn red_mistag_certifies_lossless_by_tag_alone() -> Bool {
   is_lossless(mis_tagged_prose_medium().fidelity)
 }
 
+test fn medium_fidelity_holds() -> Bool {
+  text_medium_tag_is_lossless()
+    && probe_medium_tag_is_lossless()
+    && probe_carried_is_non_text()
+    && prose_medium_tag_is_lossy()
+    && lossy_prose_not_advertised_lossless()
+    && red_mistag_certifies_lossless_by_tag_alone()
+}

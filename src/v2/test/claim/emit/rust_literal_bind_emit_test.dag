@@ -90,7 +90,7 @@ fn rust_literal_bind_int_wrong_emit_from_producer(target: TargetModel) -> Outcom
   )
 }
 
-test fn rust_literal_bind_int_emit_accepts() -> Bool {
+fn rust_literal_bind_int_emit_accepts() -> Bool {
   match rust_literal_bind_int_emit_from_producer(target: rust_bind_literal_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_bind_int_literal_source_text) && (d == None)
@@ -98,7 +98,7 @@ test fn rust_literal_bind_int_emit_accepts() -> Bool {
   }
 }
 
-test fn rust_literal_bind_int_wrong_value_discriminates() -> Bool {
+fn rust_literal_bind_int_wrong_value_discriminates() -> Bool {
   match rust_literal_bind_int_emit_from_producer(target: rust_bind_literal_target_model()) {
     Accepted { value: canonical, diagnostics: dc } =>
       match rust_literal_bind_int_wrong_emit_from_producer(target: rust_bind_literal_target_model()) {
@@ -113,7 +113,7 @@ test fn rust_literal_bind_int_wrong_value_discriminates() -> Bool {
   }
 }
 
-test fn rust_literal_bind_bool_emit_accepts() -> Bool {
+fn rust_literal_bind_bool_emit_accepts() -> Bool {
   match rust_literal_bind_emit_from_root(
     root: rust_bind_bool_literal_arrow_node(),
     target: rust_bind_literal_target_model()
@@ -124,7 +124,7 @@ test fn rust_literal_bind_bool_emit_accepts() -> Bool {
   }
 }
 
-test fn rust_literal_bind_bool_wrong_value_discriminates() -> Bool {
+fn rust_literal_bind_bool_wrong_value_discriminates() -> Bool {
   match rust_literal_bind_emit_from_root(
     root: rust_bind_bool_literal_arrow_node(),
     target: rust_bind_literal_target_model()
@@ -145,7 +145,7 @@ test fn rust_literal_bind_bool_wrong_value_discriminates() -> Bool {
   }
 }
 
-test fn rust_literal_bind_char_emit_accepts() -> Bool {
+fn rust_literal_bind_char_emit_accepts() -> Bool {
   match rust_literal_bind_emit_from_root(
     root: rust_bind_char_literal_arrow_node(),
     target: rust_bind_literal_target_model()
@@ -156,7 +156,7 @@ test fn rust_literal_bind_char_emit_accepts() -> Bool {
   }
 }
 
-test fn rust_literal_bind_char_wrong_value_discriminates() -> Bool {
+fn rust_literal_bind_char_wrong_value_discriminates() -> Bool {
   match rust_literal_bind_emit_from_root(
     root: rust_bind_char_literal_arrow_node(),
     target: rust_bind_literal_target_model()
@@ -177,7 +177,7 @@ test fn rust_literal_bind_char_wrong_value_discriminates() -> Bool {
   }
 }
 
-test fn rust_literal_bind_string_rope_refusal_is_executed() -> Bool {
+fn rust_literal_bind_string_rope_refusal_is_executed() -> Bool {
   match target_value_expression_projection_from_target(
     target: rust_bind_literal_target_model()
   ) {
@@ -203,10 +203,20 @@ test fn rust_literal_bind_string_rope_refusal_is_executed() -> Bool {
   }
 }
 
-test fn rust_literal_bind_string_rope_carrier_is_free_monoid() -> Bool {
+fn rust_literal_bind_string_rope_carrier_is_free_monoid() -> Bool {
   match free_monoid_type_node(inhabitant: char_kernel_type_node()).kind {
     TypeNode { connective: Disj } => true
     _ => false
   }
 }
 
+test fn rust_literal_bind_emit_holds() -> Bool {
+  rust_literal_bind_int_emit_accepts()
+    && rust_literal_bind_int_wrong_value_discriminates()
+    && rust_literal_bind_bool_emit_accepts()
+    && rust_literal_bind_bool_wrong_value_discriminates()
+    && rust_literal_bind_char_emit_accepts()
+    && rust_literal_bind_char_wrong_value_discriminates()
+    && rust_literal_bind_string_rope_refusal_is_executed()
+    && rust_literal_bind_string_rope_carrier_is_free_monoid()
+}

@@ -134,3 +134,13 @@ test fn self_host_frontier_parse_multi_arm_match_holds() -> Bool {
     && derisk_infer_accepts(src: src_multi_arm_match)
 }
 
+test fn self_host_module_emit_frontier_all_holds() -> Bool {
+  self_host_frontier_parse_module_header_holds()
+    && self_host_frontier_parse_type_decl_holds()
+    && self_host_frontier_parse_fn_simple_body_holds()
+    && self_host_frontier_parse_single_arm_match_holds()
+    && self_host_frontier_infer_single_arm_module_holds()
+    && self_host_frontier_parse_multi_arm_match_holds()
+    && self_host_frontier_emit_ownership_miss_accepts()
+    && self_host_frontier_emit_two_user_types_accepts()
+}

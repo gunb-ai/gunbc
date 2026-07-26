@@ -1,5 +1,6 @@
 module v2.test.claim.affected_set_witness_a_prove
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_a_fixture_fn_edit_touch: FloorDiffLineTouch = FloorDiffLineTouch {
@@ -36,7 +37,7 @@ data witness_a_fixture_fn_body_edit_touch: FloorDiffLineTouch = FloorDiffLineTou
   end_line: 78
 }
 
-test fn witness_a_dag_function_edited_model_holds() -> Bool {
+fn witness_a_dag_function_edited_model_holds() -> Bool {
   floor_test_fn_declaration_edited(
     touches: [witness_a_fixture_fn_edit_touch],
     file_path: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
@@ -45,7 +46,7 @@ test fn witness_a_dag_function_edited_model_holds() -> Bool {
   )
 }
 
-test fn witness_a_dag_function_edited_body_touch_holds() -> Bool {
+fn witness_a_dag_function_edited_body_touch_holds() -> Bool {
   floor_test_fn_declaration_edited(
     touches: [witness_a_fixture_fn_body_edit_touch],
     file_path: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
@@ -54,7 +55,7 @@ test fn witness_a_dag_function_edited_body_touch_holds() -> Bool {
   )
 }
 
-test fn witness_a_dag_superset_predicate_holds() -> Bool {
+fn witness_a_dag_superset_predicate_holds() -> Bool {
   floor_rust_run_implies_dag_run(
     rust_touches_frontier: true,
     rust_function_edited: false,
@@ -69,7 +70,13 @@ test fn witness_a_dag_superset_predicate_holds() -> Bool {
     )
 }
 
-test fn witness_a_dag_closure_fires_on_mid_path_holds() -> Bool {
+fn witness_a_dag_closure_fires_on_mid_path_holds() -> Bool {
   witness_a_dag_affected_includes_mid_for_path(changed: provenance_producer_path_mid)
 }
 
+test fn affected_set_witness_a_prove_dag_models_holds() -> Bool {
+  witness_a_dag_function_edited_model_holds()
+    && witness_a_dag_function_edited_body_touch_holds()
+    && witness_a_dag_superset_predicate_holds()
+    && witness_a_dag_closure_fires_on_mid_path_holds()
+}

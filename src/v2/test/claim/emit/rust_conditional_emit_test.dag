@@ -93,7 +93,7 @@ fn rust_conditional_emit_from_swapped_tree(target: TargetModel) -> Outcome<Mediu
   )
 }
 
-test fn rust_conditional_emit_pick_fn_accepts() -> Bool {
+fn rust_conditional_emit_pick_fn_accepts() -> Bool {
   match rust_conditional_emit_from_tree(target: rust_pick_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_pick_source_text) && (d == None)
@@ -101,7 +101,7 @@ test fn rust_conditional_emit_pick_fn_accepts() -> Bool {
   }
 }
 
-test fn rust_conditional_emit_swapped_arms_discriminates() -> Bool {
+fn rust_conditional_emit_swapped_arms_discriminates() -> Bool {
   match rust_conditional_emit_from_swapped_tree(target: rust_pick_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_conditional_emit_swapped_source_text) &&
@@ -111,3 +111,7 @@ test fn rust_conditional_emit_swapped_arms_discriminates() -> Bool {
   }
 }
 
+test fn rust_conditional_emit_holds() -> Bool {
+  rust_conditional_emit_pick_fn_accepts()
+    && rust_conditional_emit_swapped_arms_discriminates()
+}

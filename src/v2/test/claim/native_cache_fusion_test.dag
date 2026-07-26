@@ -7,19 +7,19 @@ import v2.workflow.native_cache_fusion {
 }
 import v2.std.logic { Bool }
 
-test fn witness_warm_marker_agrees_share() -> Bool {
+fn witness_warm_marker_agrees_share() -> Bool {
   fusion_agreement_holds_for(
     o: HostWarmObservation { marker_exists: true, cold_control: false }
   )
 }
 
-test fn witness_cold_marker_absent_agrees_recompute() -> Bool {
+fn witness_cold_marker_absent_agrees_recompute() -> Bool {
   fusion_agreement_holds_for(
     o: HostWarmObservation { marker_exists: false, cold_control: false }
   )
 }
 
-test fn witness_cold_control_forces_recompute_agreement() -> Bool {
+fn witness_cold_control_forces_recompute_agreement() -> Bool {
   let skipped = host_compile_skipped(
     o: HostWarmObservation { marker_exists: true, cold_control: true }
   )
@@ -29,3 +29,8 @@ test fn witness_cold_control_forces_recompute_agreement() -> Bool {
     )
 }
 
+test fn native_cache_fusion_witnesses() -> Bool {
+  witness_warm_marker_agrees_share()
+    && witness_cold_marker_absent_agrees_recompute()
+    && witness_cold_control_forces_recompute_agreement()
+}

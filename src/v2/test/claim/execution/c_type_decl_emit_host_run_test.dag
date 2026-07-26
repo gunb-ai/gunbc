@@ -142,3 +142,7 @@ test fn c_type_decl_emit_host_inject_fault_refuses_holds() -> Bool {
   }
 }
 
+test fn c_type_decl_emit_host_run_all_holds() -> Bool {
+  c_type_decl_emit_host_green_run_holds()
+    && c_type_decl_emit_host_inject_fault_refuses_holds()
+}

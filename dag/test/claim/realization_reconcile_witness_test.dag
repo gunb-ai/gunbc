@@ -1,5 +1,6 @@
 module test.claim.realization_reconcile_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn is_share(m: Materialization) -> Bool {
@@ -36,7 +37,7 @@ fn has_no_share<S>(steps: List<RealizedStep<S>>) -> Bool {
   (steps |> filter(e => is_share(m: e.materialization)) |> length) == 0
 }
 
-test fn witness_same_keysource_collapses_to_share() -> Bool {
+fn witness_same_keysource_collapses_to_share() -> Bool {
   let out = std.realization.reconcile(steps: [
     step_create_if_absent(field: "id"),
     step_create_if_absent(field: "id")
@@ -44,7 +45,7 @@ test fn witness_same_keysource_collapses_to_share() -> Bool {
   (out |> length) == 1 && has_exactly_one_share(steps: out)
 }
 
-test fn witness_different_keysource_does_not_collapse() -> Bool {
+fn witness_different_keysource_does_not_collapse() -> Bool {
   let out = std.realization.reconcile(steps: [
     step_create_if_absent(field: "id"),
     step_create_if_absent(field: "other")
@@ -52,8 +53,13 @@ test fn witness_different_keysource_does_not_collapse() -> Bool {
   (out |> length) == 2 && has_no_share(steps: out)
 }
 
-test fn witness_post_always_never_collapses() -> Bool {
+fn witness_post_always_never_collapses() -> Bool {
   let out = std.realization.reconcile(steps: [ step_post_always(), step_post_always() ])
   (out |> length) == 2 && has_no_share(steps: out)
 }
 
+test fn reconcile_share_collapse_witnesses() -> Bool {
+  witness_same_keysource_collapses_to_share()
+    && witness_different_keysource_does_not_collapse()
+    && witness_post_always_never_collapses()
+}

@@ -340,3 +340,12 @@ test fn emit_on_demand_classical_not_native_one_build_holds() -> Bool {
   }
 }
 
+test fn emit_on_demand_classical_not_ingested_family_witnesses() -> Bool {
+  emit_on_demand_classical_not_grain_keys_differ_holds()
+    && emit_on_demand_classical_not_materialize_recompute_on_miss_holds()
+    && emit_on_demand_classical_not_interpreter_roles_bounded_holds()
+    && emit_on_demand_classical_not_schedule_refuses_unreadable_budget_holds()
+    && emit_on_demand_classical_not_closure_keys_differ_for_distinct_trees_holds()
+    && emit_on_demand_classical_not_native_one_build_holds()
+    && emit_on_demand_classical_not_materialize_share_on_hit_holds()
+}

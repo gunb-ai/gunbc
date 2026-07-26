@@ -91,7 +91,7 @@ fn module_fixture_diamond_views() -> List<DependencyView> {
   }
 }
 
-test fn witness_dangling_import_is_not_an_edge() -> Bool {
+fn witness_dangling_import_is_not_an_edge() -> Bool {
   let edges = module_import_edges(
     imports: module_fixture_diamond_imports,
     declarations: module_fixture_declarations
@@ -99,7 +99,7 @@ test fn witness_dangling_import_is_not_an_edge() -> Bool {
   length(xs: edges) == 4
 }
 
-test fn witness_diamond_schedules_as_antichain_levels() -> Bool {
+fn witness_diamond_schedules_as_antichain_levels() -> Bool {
   match module_resolution_schedule(
     nodes: module_fixture_nodes,
     dependencies: module_fixture_diamond_views()
@@ -129,7 +129,7 @@ data module_fixture_cycle_imports: List<ImportResolutionFact> = [
   ImportResolutionFact { path: "fixture/b.dag", import_module: "fixture.a", target_declared: true }
 ]
 
-test fn witness_cycle_refuses_never_partially_schedules() -> Bool {
+fn witness_cycle_refuses_never_partially_schedules() -> Bool {
   match module_dependency_views(
     edges: module_import_edges(
       imports: module_fixture_cycle_imports,
@@ -155,7 +155,7 @@ data module_fixture_bindings_without_d: List<ModuleNodeBinding> = [
   ModuleNodeBinding { module: "fixture.c", node: module_fixture_c_node }
 ]
 
-test fn witness_missing_binding_refuses_with_the_module_named() -> Bool {
+fn witness_missing_binding_refuses_with_the_module_named() -> Bool {
   match module_dependency_views(
     edges: module_import_edges(
       imports: module_fixture_diamond_imports,
@@ -168,3 +168,9 @@ test fn witness_missing_binding_refuses_with_the_module_named() -> Bool {
   }
 }
 
+test fn module_resolution_plan_witnesses() -> Bool {
+  witness_dangling_import_is_not_an_edge()
+    && witness_diamond_schedules_as_antichain_levels()
+    && witness_cycle_refuses_never_partially_schedules()
+    && witness_missing_binding_refuses_with_the_module_named()
+}

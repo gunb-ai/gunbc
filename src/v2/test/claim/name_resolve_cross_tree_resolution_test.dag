@@ -329,7 +329,7 @@ fn ct_dag_to_v2_index() -> SourceRootIndex {
   )
 }
 
-test fn witness_dag_same_tree_import_resolves_holds() -> Bool {
+fn witness_dag_same_tree_import_resolves_holds() -> Bool {
   match resolve_with_admission_policy(
     lm: dag_language_model_surface_empty_prelude(),
     roots: ct_dag_same_tree_roots(),
@@ -343,7 +343,7 @@ test fn witness_dag_same_tree_import_resolves_holds() -> Bool {
   }
 }
 
-test fn witness_v2_same_tree_import_resolves_holds() -> Bool {
+fn witness_v2_same_tree_import_resolves_holds() -> Bool {
   match resolve_with_admission_policy(
     lm: dag_language_model_surface_empty_prelude(),
     roots: ct_v2_same_tree_roots(),
@@ -357,7 +357,7 @@ test fn witness_v2_same_tree_import_resolves_holds() -> Bool {
   }
 }
 
-test fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> Bool {
+fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> Bool {
   match resolve_with_admission_policy(
     lm: dag_language_model_surface_empty_prelude(),
     roots: ct_cross_tree_roots(),
@@ -371,7 +371,7 @@ test fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> Bool {
   }
 }
 
-test fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> Bool {
+fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> Bool {
   match resolve_with_admission_policy(
     lm: dag_language_model_surface_empty_prelude(),
     roots: ct_dag_to_v2_roots(),
@@ -390,3 +390,9 @@ test fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> Bool {
   }
 }
 
+test fn name_resolve_cross_tree_resolution_witnesses() -> Bool {
+  witness_dag_same_tree_import_resolves_holds()
+    && witness_v2_same_tree_import_resolves_holds()
+    && witness_cross_tree_v2_to_dag_grounded_resolves_holds()
+    && witness_cross_tree_dag_to_v2_grounded_denied_holds()
+}

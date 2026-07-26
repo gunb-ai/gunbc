@@ -1,11 +1,12 @@
 module v2.test.host_language_transport_script.corpus.facts_readback_verdict_perturb
 
+
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data corpus_computed_path: String = "dag/tools/dag_compile_clean_transport.dag"
 data perturb_literal_path: String = "src/v2/test/fixture/transport_script_scan/bare_string_literal/plant.dag"
 
-test fn witness_computed_facts_readback_holds() -> Bool {
+fn witness_computed_facts_readback_holds() -> Bool {
   let facts = transport_script_position_facts_live(path: corpus_computed_path)
   transport_script_literal_ban_holds(facts: facts)
     && match transport_script_lens_verdict(facts: facts) {
@@ -16,7 +17,7 @@ test fn witness_computed_facts_readback_holds() -> Bool {
     }
 }
 
-test fn witness_literal_perturb_facts_readback_red() -> Bool {
+fn witness_literal_perturb_facts_readback_red() -> Bool {
   let facts = transport_script_position_facts_live(path: perturb_literal_path)
   !transport_script_literal_ban_holds(facts: facts)
     && transport_script_literal_violation_count(facts: facts) == 1
@@ -28,3 +29,7 @@ test fn witness_literal_perturb_facts_readback_red() -> Bool {
     }
 }
 
+test fn transport_script_facts_readback_verdict_perturb_witness() -> Bool {
+  witness_computed_facts_readback_holds()
+    && witness_literal_perturb_facts_readback_red()
+}

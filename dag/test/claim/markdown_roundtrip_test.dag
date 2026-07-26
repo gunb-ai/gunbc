@@ -1,5 +1,6 @@
 module test.claim.markdown_roundtrip
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn roundtrip_core_doc() -> MarkdownDocument {
@@ -37,7 +38,7 @@ fn roundtrip_core_doc() -> MarkdownDocument {
   }
 }
 
-test fn witness_roundtrip_core() -> Bool {
+fn witness_roundtrip_core() -> Bool {
   ingest_markdown_source(src: serialize_markdown_source(doc: roundtrip_core_doc())) == roundtrip_core_doc()
 }
 
@@ -79,7 +80,7 @@ fn perturbed_separator_spellings() -> MarkdownSpellings {
   spellings_override(bullet: commonmark_gfm_spellings.unordered_bullet, separator: "\n---\n")
 }
 
-test fn witness_roundtrip_under_perturbed_rows() -> Bool {
+fn witness_roundtrip_under_perturbed_rows() -> Bool {
   let spb = perturbed_bullet_spellings()
   let restored_b = ingest_markdown_source_with(src: serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: spb), sp: spb)
   let sps = perturbed_separator_spellings()
@@ -87,14 +88,14 @@ test fn witness_roundtrip_under_perturbed_rows() -> Bool {
   (restored_b == roundtrip_core_doc()) && (restored_s == roundtrip_core_doc())
 }
 
-test fn witness_ingest_reads_bullet_row() -> Bool {
+fn witness_ingest_reads_bullet_row() -> Bool {
   let emitted_b = serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: perturbed_bullet_spellings())
   let emitted_s = serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: perturbed_separator_spellings())
   !(ingest_markdown_source(src: emitted_b) == roundtrip_core_doc())
     && !(ingest_markdown_source(src: emitted_s) == roundtrip_core_doc())
 }
 
-test fn witness_core_advertised_lossless() -> Bool {
+fn witness_core_advertised_lossless() -> Bool {
   let recovered = ingest_markdown_source(src: serialize_markdown_source(doc: roundtrip_core_doc()))
   let m = markdown_medium_lossless(doc: recovered)
   match m.fidelity {
@@ -116,7 +117,14 @@ fn frontier_emphasis_doc() -> MarkdownDocument {
   }
 }
 
-test fn witness_frontier_not_roundtripped() -> Bool {
+fn witness_frontier_not_roundtripped() -> Bool {
   !(ingest_markdown_source(src: serialize_markdown_source(doc: frontier_emphasis_doc())) == frontier_emphasis_doc())
 }
 
+test fn markdown_roundtrip_keystone_holds() -> Bool {
+  witness_roundtrip_core()
+    && witness_roundtrip_under_perturbed_rows()
+    && witness_ingest_reads_bullet_row()
+    && witness_core_advertised_lossless()
+    && witness_frontier_not_roundtripped()
+}

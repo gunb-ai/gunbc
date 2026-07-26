@@ -66,7 +66,7 @@ data zero_floor_registered_users_fixture: RegisteredUserCountRow = RegisteredUse
   citation: gitlab_fy2026_registered_users.citation,
 }
 
-test fn w_10k_users_floor_is_two_ax41_boxes() -> Bool {
+fn w_10k_users_floor_is_two_ax41_boxes() -> Bool {
   match derive_free_tier_serving_floor(
     box_row: hetzner_ax41_1_ltd_price,
     assumptions_input: FreeTierAssumptionsDeclared {
@@ -80,7 +80,7 @@ test fn w_10k_users_floor_is_two_ax41_boxes() -> Bool {
   }
 }
 
-test fn w_100k_users_floor_scales_to_nineteen_boxes() -> Bool {
+fn w_100k_users_floor_scales_to_nineteen_boxes() -> Bool {
   match derive_free_tier_serving_floor(
     box_row: hetzner_ax41_1_ltd_price,
     assumptions_input: FreeTierAssumptionsDeclared {
@@ -94,7 +94,7 @@ test fn w_100k_users_floor_scales_to_nineteen_boxes() -> Bool {
   }
 }
 
-test fn w_gitlab_fy2026_average_serving_cost_upper_bound() -> Bool {
+fn w_gitlab_fy2026_average_serving_cost_upper_bound() -> Bool {
   match average_serving_cost_per_registered_user_year_micros_upper_bound(
     annual_cost_of_revenue: gitlab_fy2026_cost_of_revenue,
     registered_users: gitlab_fy2026_registered_users,
@@ -105,7 +105,7 @@ test fn w_gitlab_fy2026_average_serving_cost_upper_bound() -> Bool {
   }
 }
 
-test fn w_gitlab_fy2023_average_serving_cost_upper_bound() -> Bool {
+fn w_gitlab_fy2023_average_serving_cost_upper_bound() -> Bool {
   match average_serving_cost_per_registered_user_year_micros_upper_bound(
     annual_cost_of_revenue: gitlab_fy2023_cost_of_revenue,
     registered_users: gitlab_fy2023_registered_users,
@@ -116,7 +116,7 @@ test fn w_gitlab_fy2023_average_serving_cost_upper_bound() -> Bool {
   }
 }
 
-test fn w_red_unknown_assumptions_refused() -> Bool {
+fn w_red_unknown_assumptions_refused() -> Bool {
   match derive_free_tier_serving_floor(
     box_row: hetzner_ax41_1_ltd_price,
     assumptions_input: FreeTierAssumptionsUnknown,
@@ -126,7 +126,7 @@ test fn w_red_unknown_assumptions_refused() -> Bool {
   }
 }
 
-test fn w_red_zero_user_count_refused() -> Bool {
+fn w_red_zero_user_count_refused() -> Bool {
   match derive_free_tier_serving_floor(
     box_row: hetzner_ax41_1_ltd_price,
     assumptions_input: FreeTierAssumptionsDeclared {
@@ -143,7 +143,7 @@ test fn w_red_zero_user_count_refused() -> Bool {
   }
 }
 
-test fn w_red_zero_storage_per_user_refused() -> Bool {
+fn w_red_zero_storage_per_user_refused() -> Bool {
   match derive_free_tier_serving_floor(
     box_row: hetzner_ax41_1_ltd_price,
     assumptions_input: FreeTierAssumptionsDeclared {
@@ -159,7 +159,7 @@ test fn w_red_zero_storage_per_user_refused() -> Bool {
   }
 }
 
-test fn w_red_zero_replica_count_refused() -> Bool {
+fn w_red_zero_replica_count_refused() -> Bool {
   match derive_free_tier_serving_floor(
     box_row: hetzner_ax41_1_ltd_price,
     assumptions_input: FreeTierAssumptionsDeclared {
@@ -176,7 +176,7 @@ test fn w_red_zero_replica_count_refused() -> Bool {
   }
 }
 
-test fn w_red_zero_egress_allowance_refused() -> Bool {
+fn w_red_zero_egress_allowance_refused() -> Bool {
   match derive_free_tier_serving_floor(
     box_row: hetzner_ax41_1_ltd_price,
     assumptions_input: FreeTierAssumptionsDeclared {
@@ -193,7 +193,7 @@ test fn w_red_zero_egress_allowance_refused() -> Bool {
   }
 }
 
-test fn w_red_zero_box_storage_refused() -> Bool {
+fn w_red_zero_box_storage_refused() -> Bool {
   match derive_free_tier_serving_floor(
     box_row: ax41_zero_storage_fixture,
     assumptions_input: FreeTierAssumptionsDeclared {
@@ -206,7 +206,7 @@ test fn w_red_zero_box_storage_refused() -> Bool {
   }
 }
 
-test fn w_red_zero_registered_user_floor_yields_no_bound() -> Bool {
+fn w_red_zero_registered_user_floor_yields_no_bound() -> Bool {
   match average_serving_cost_per_registered_user_year_micros_upper_bound(
     annual_cost_of_revenue: gitlab_fy2026_cost_of_revenue,
     registered_users: zero_floor_registered_users_fixture,
@@ -216,3 +216,16 @@ test fn w_red_zero_registered_user_floor_yields_no_bound() -> Bool {
   }
 }
 
+test fn free_tier_serving_witness() -> Bool {
+  w_10k_users_floor_is_two_ax41_boxes()
+    && w_100k_users_floor_scales_to_nineteen_boxes()
+    && w_gitlab_fy2026_average_serving_cost_upper_bound()
+    && w_gitlab_fy2023_average_serving_cost_upper_bound()
+    && w_red_unknown_assumptions_refused()
+    && w_red_zero_user_count_refused()
+    && w_red_zero_storage_per_user_refused()
+    && w_red_zero_replica_count_refused()
+    && w_red_zero_egress_allowance_refused()
+    && w_red_zero_box_storage_refused()
+    && w_red_zero_registered_user_floor_yields_no_bound()
+}

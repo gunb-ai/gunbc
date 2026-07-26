@@ -142,7 +142,7 @@ fn w_total_equals(quote: ProviderQuote, profile: ScmWorkloadProfile, expected: N
   }
 }
 
-test fn w_packing_divides_the_operation_count() -> Bool {
+fn w_packing_divides_the_operation_count() -> Bool {
   (packed_object_count(logical_node_ops: 2000000, policy: UnpackedNodeGrain) == 2000000)
     && (packed_object_count(logical_node_ops: 2000000, policy: PackedObjects { nodes_per_object: 1000 }) == 2000)
     && (packed_object_count(logical_node_ops: 1, policy: PackedObjects { nodes_per_object: 1000 }) == 1)
@@ -150,14 +150,14 @@ test fn w_packing_divides_the_operation_count() -> Bool {
     && (agentic_packed_10k.monthly_object_reads_per_user == 2000)
 }
 
-test fn w_agentic_unpacked_bills_at_agentic_magnitudes() -> Bool {
+fn w_agentic_unpacked_bills_at_agentic_magnitudes() -> Bool {
   w_total_equals(quote: r2_quote, profile: agentic_unpacked_10k, expected: 16275000000)
     && w_total_equals(quote: aws_quote, profile: agentic_unpacked_10k, expected: 19866200000)
     && w_total_equals(quote: storj_quote, profile: agentic_unpacked_10k, expected: 175000000)
     && w_total_equals(quote: wasabi_quote, profile: agentic_unpacked_10k, expected: 39950000)
 }
 
-test fn w_operations_become_essentially_the_whole_request_metered_bill() -> Bool {
+fn w_operations_become_essentially_the_whole_request_metered_bill() -> Bool {
   match ops_for(quote: r2_quote, profile: agentic_unpacked_10k) {
     Present { value: ops } =>
       match total_for(quote: r2_quote, profile: agentic_unpacked_10k) {
@@ -168,7 +168,7 @@ test fn w_operations_become_essentially_the_whole_request_metered_bill() -> Bool
   }
 }
 
-test fn w_operations_are_a_rounding_error_on_the_human_profile() -> Bool {
+fn w_operations_are_a_rounding_error_on_the_human_profile() -> Bool {
   match ops_for(quote: r2_quote, profile: human_profile_10k) {
     Present { value: ops } =>
       match total_for(quote: r2_quote, profile: human_profile_10k) {
@@ -179,7 +179,7 @@ test fn w_operations_are_a_rounding_error_on_the_human_profile() -> Bool {
   }
 }
 
-test fn w_ranking_inverts_between_human_and_agentic_profiles() -> Bool {
+fn w_ranking_inverts_between_human_and_agentic_profiles() -> Bool {
   match total_for(quote: r2_quote, profile: human_profile_10k) {
     Present { value: r2_human } =>
       match total_for(quote: storj_quote, profile: human_profile_10k) {
@@ -199,7 +199,7 @@ test fn w_ranking_inverts_between_human_and_agentic_profiles() -> Bool {
   }
 }
 
-test fn w_no_request_fee_vendors_win_by_two_orders_of_magnitude() -> Bool {
+fn w_no_request_fee_vendors_win_by_two_orders_of_magnitude() -> Bool {
   match total_for(quote: wasabi_quote, profile: agentic_unpacked_10k) {
     Present { value: wasabi } =>
       match total_for(quote: r2_quote, profile: agentic_unpacked_10k) {
@@ -215,7 +215,7 @@ test fn w_no_request_fee_vendors_win_by_two_orders_of_magnitude() -> Bool {
   }
 }
 
-test fn w_packing_collapses_the_request_metered_bill() -> Bool {
+fn w_packing_collapses_the_request_metered_bill() -> Bool {
   w_total_equals(quote: r2_quote, profile: agentic_packed_10k, expected: 91200000)
     && match total_for(quote: r2_quote, profile: agentic_unpacked_10k) {
       Present { value: unpacked } =>
@@ -228,12 +228,12 @@ test fn w_packing_collapses_the_request_metered_bill() -> Bool {
     }
 }
 
-test fn w_packing_leaves_the_byte_axes_untouched() -> Bool {
+fn w_packing_leaves_the_byte_axes_untouched() -> Bool {
   (agentic_packed_10k.stored_bytes_per_user_after_dedup == agentic_unpacked_10k.stored_bytes_per_user_after_dedup)
     && (agentic_packed_10k.monthly_egress_bytes_per_user == agentic_unpacked_10k.monthly_egress_bytes_per_user)
 }
 
-test fn w_agentic_at_one_million_users_is_a_seven_figure_bill_unpacked() -> Bool {
+fn w_agentic_at_one_million_users_is_a_seven_figure_bill_unpacked() -> Bool {
   match total_for(quote: r2_quote, profile: profile_at_user_count(profile: agentic_unpacked_10k, user_count: 1000000)) {
     Present { value: r2 } =>
       match total_for(quote: wasabi_quote, profile: profile_at_user_count(profile: agentic_unpacked_10k, user_count: 1000000)) {
@@ -245,11 +245,11 @@ test fn w_agentic_at_one_million_users_is_a_seven_figure_bill_unpacked() -> Bool
   }
 }
 
-test fn w_red_packing_by_one_is_the_unpacked_count() -> Bool {
+fn w_red_packing_by_one_is_the_unpacked_count() -> Bool {
   packed_object_count(logical_node_ops: 2000000, policy: PackedObjects { nodes_per_object: 1 }) == 2000000
 }
 
-test fn w_red_agentic_profile_is_not_the_human_profile() -> Bool {
+fn w_red_agentic_profile_is_not_the_human_profile() -> Bool {
   match total_for(quote: r2_quote, profile: human_profile_10k) {
     Present { value: human } =>
       match total_for(quote: r2_quote, profile: agentic_unpacked_10k) {
@@ -260,3 +260,16 @@ test fn w_red_agentic_profile_is_not_the_human_profile() -> Bool {
   }
 }
 
+test fn scm_agentic_stress_witness() -> Bool {
+  w_packing_divides_the_operation_count()
+    && w_agentic_unpacked_bills_at_agentic_magnitudes()
+    && w_operations_become_essentially_the_whole_request_metered_bill()
+    && w_operations_are_a_rounding_error_on_the_human_profile()
+    && w_ranking_inverts_between_human_and_agentic_profiles()
+    && w_no_request_fee_vendors_win_by_two_orders_of_magnitude()
+    && w_packing_collapses_the_request_metered_bill()
+    && w_packing_leaves_the_byte_axes_untouched()
+    && w_agentic_at_one_million_users_is_a_seven_figure_bill_unpacked()
+    && w_red_packing_by_one_is_the_unpacked_count()
+    && w_red_agentic_profile_is_not_the_human_profile()
+}

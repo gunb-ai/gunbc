@@ -103,7 +103,7 @@ fn loop_emit_wrong_value_from_producer(target: TargetModel) -> Outcome<Medium<St
   )
 }
 
-test fn loop_emit_holds() -> Bool {
+fn loop_emit_holds() -> Bool {
   match target_serialize_source_from_model(
     target: dag_loop_target_model(),
     emitted: dag_fixture_emitted_loop_fn
@@ -118,7 +118,7 @@ test fn loop_emit_holds() -> Bool {
   }
 }
 
-test fn loop_emit_wrong_value_discriminates() -> Bool {
+fn loop_emit_wrong_value_discriminates() -> Bool {
   match loop_emit_from_producer(target: dag_loop_target_model()) {
     Accepted { value: canonical, diagnostics: dc } =>
       match loop_emit_wrong_value_from_producer(target: dag_loop_target_model()) {
@@ -130,3 +130,35 @@ test fn loop_emit_wrong_value_discriminates() -> Bool {
   }
 }
 
+test fn loop_emit_keystone_holds() -> Bool {
+  loop_emit_holds() && loop_emit_wrong_value_discriminates()
+}
+
+fn loop_emit_post_translate_root() -> Outcome<Node> {
+  bind_outcome(
+    o: loop_emit_producer_tree(),
+    f: fn(tree) {
+      translate_emitted_node(tree: tree, target: dag_loop_target_model())
+    }
+  )
+}
+
+fn loop_emit_diag_loop_gate_on_post_translate_body() -> Bool {
+  match loop_emit_post_translate_root() {
+    Accepted { value: translated, diagnostics: d } =>
+      match find_arrow_body_child(root: translated) {
+        Accepted { value: body, diagnostics: bd } =>
+          target_value_expr_loop_gate(node: body) && (d == None) && (bd == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_emit_diag_emit_eq_authority_text() -> Bool {
+  match loop_emit_from_producer(target: dag_loop_target_model()) {
+    Accepted { value: emitted, diagnostics: d } =>
+      (emitted.carried == dag_loop_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}

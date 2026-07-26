@@ -206,6 +206,19 @@ fn kernel_cached_run_with_source_for_tree(
   }
 }
 
+fn kernel_cached_run_with_source(
+  workspace: String,
+  source: Medium<String>,
+  expect_compile_skipped: Bool
+) -> Bool {
+  kernel_cached_run_with_source_for_tree(
+    workspace: workspace,
+    tree: emit_eval_subject_tree(),
+    source: source,
+    expect_compile_skipped: expect_compile_skipped
+  )
+}
+
 fn kernel_cache_root_for(test_id: String) -> String {
   concat(kernel_cache_root, "/", test_id)
 }
@@ -316,3 +329,12 @@ test fn emit_on_demand_kernel_native_one_build_holds() -> Bool {
   }
 }
 
+test fn emit_on_demand_kernel_witnesses() -> Bool {
+  emit_on_demand_grain_keys_differ_holds()
+    && emit_on_demand_materialize_recompute_on_miss_holds()
+    && emit_on_demand_interpreter_roles_bounded_holds()
+    && emit_on_demand_schedule_refuses_unreadable_budget_holds()
+    && emit_on_demand_closure_keys_differ_for_distinct_trees_holds()
+    && emit_on_demand_kernel_native_one_build_holds()
+    && emit_on_demand_materialize_share_on_hit_holds()
+}

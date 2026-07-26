@@ -73,3 +73,8 @@ test fn emit_host_filesystem_read_wrong_oracle_refuses_holds() -> Bool {
   filesystem_read_native_run(expected_octet: 1 - filesystem_read_eval_expected_octet()) == false
 }
 
+test fn emit_host_filesystem_read_equals_eval_all_holds() -> Bool {
+  filesystem_read_eval_reads_real_bash_argv()
+    && emit_host_filesystem_read_equals_eval_holds()
+    && emit_host_filesystem_read_wrong_oracle_refuses_holds()
+}

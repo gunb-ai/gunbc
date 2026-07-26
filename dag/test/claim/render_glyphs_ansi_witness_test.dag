@@ -1,15 +1,16 @@
 module test.claim.render_glyphs_ansi_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn w_completed_ascii() -> Bool {
+fn w_completed_ascii() -> Bool {
   match resolve_symbol(id: NodeCompleted, tier: Ascii) {
     Present { value: s } => s == "[x]"
     Absent => false
   }
 }
 
-test fn w_completed_unicode_differs_from_ascii() -> Bool {
+fn w_completed_unicode_differs_from_ascii() -> Bool {
   match resolve_symbol(id: NodeCompleted, tier: Unicode) {
     Present { value: u } =>
       match resolve_symbol(id: NodeCompleted, tier: Ascii) {
@@ -20,7 +21,7 @@ test fn w_completed_unicode_differs_from_ascii() -> Bool {
   }
 }
 
-test fn w_glyph_at_selects_matching_tier_text() -> Bool {
+fn w_glyph_at_selects_matching_tier_text() -> Bool {
   let g = glyphs_for_tiers(
     emoji: glyph(text: "E"),
     unicode: glyph(text: "U"),
@@ -31,7 +32,7 @@ test fn w_glyph_at_selects_matching_tier_text() -> Bool {
   glyph_at(glyphs: g, tier: Emoji) == "E"
 }
 
-test fn w_failed_color_is_error() -> Bool {
+fn w_failed_color_is_error() -> Bool {
   match symbol_color(id: NodeFailed) {
     Present { value: c } =>
       match c {
@@ -42,7 +43,7 @@ test fn w_failed_color_is_error() -> Bool {
   }
 }
 
-test fn w_success_ansi_is_256_green() -> Bool {
+fn w_success_ansi_is_256_green() -> Bool {
   match ansi_code(c: Success) {
     Present { value: code } => code == "\x1b[38;5;34m"
     Absent => false
@@ -51,17 +52,26 @@ test fn w_success_ansi_is_256_green() -> Bool {
 
 data ansi_escape_is_a_real_byte_note: String = "w_success_ansi_is_256_green above compares one \\x1b literal against another, so it agreed with itself for as long as the tokenizer left BOTH undecoded — it passed throughout the period when every colour this repo authored rendered as the literal text backslash-x-1-b (seen in CI run 30167957464's TOP SLOWEST WITNESSES table). Equality against a same-source literal can never discriminate a decode defect. The two witnesses below do: they read the CODE POINT of the first character (27 = ESC, never 92 = backslash) and pin the decoded length, both of which are properties of the decode rather than of the spelling."
 
-test fn w_ansi_first_char_is_escape_byte() -> Bool {
+fn w_ansi_first_char_is_escape_byte() -> Bool {
   match ansi_code(c: Success) {
     Present { value: code } => code_point(char_at(s: code, pos: 0)) == 27
     Absent => false
   }
 }
 
-test fn w_ansi_code_has_no_literal_backslash() -> Bool {
+fn w_ansi_code_has_no_literal_backslash() -> Bool {
   match ansi_code(c: Success) {
     Present { value: code } => !string_contains(s: code, pattern: "\\")
     Absent => false
   }
 }
 
+test fn render_glyphs_ansi_witnesses() -> Bool {
+  w_completed_ascii() &&
+  w_completed_unicode_differs_from_ascii() &&
+  w_glyph_at_selects_matching_tier_text() &&
+  w_failed_color_is_error() &&
+  w_success_ansi_is_256_green() &&
+  w_ansi_first_char_is_escape_byte() &&
+  w_ansi_code_has_no_literal_backslash()
+}

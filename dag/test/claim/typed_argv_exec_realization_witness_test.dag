@@ -33,12 +33,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data typed_argv_exec_realization_note: String = "Wave C5 receipt: deploy-preflight probe effects realize through typed argv service operations (access.PosixEffectivePrincipal.Read, sudo.NopasswdExecuteProbe.Check) on LocalShell and gunbc.typed_argv_exec_over_ssh on SshShell — one argv shape per op, N transport handlers, no concat-shell. Argv tokens outside the portable allowlist fail closed before ssh spawn."
 
-test fn witness_posix_effective_principal_read_typed_argv_holds() -> Bool {
+fn witness_posix_effective_principal_read_typed_argv_holds() -> Bool {
   let result = access.PosixEffectivePrincipal.Read(read: EffectivePosixPrincipalRead {})
   result.success && result.stdout == "ghrunner"
 }
 
-test fn witness_sudo_nopasswd_probe_typed_argv_holds() -> Bool {
+fn witness_sudo_nopasswd_probe_typed_argv_holds() -> Bool {
   let cmd = deploy_access_apt_get_privileged_command()
   let result = sudo.NopasswdExecuteProbe.Check(
     probe: SudoNopasswdExecuteProbeShape { command_path: cmd.path, check_argv: cmd.check }
@@ -46,7 +46,7 @@ test fn witness_sudo_nopasswd_probe_typed_argv_holds() -> Bool {
   result.success
 }
 
-test fn witness_read_principal_host_effect_apply_typed_argv_holds() -> Bool {
+fn witness_read_principal_host_effect_apply_typed_argv_holds() -> Bool {
   reconciliation_converged(
     r: host_effect_apply(
       target: HostOs { node: srv1_host },
@@ -57,7 +57,7 @@ test fn witness_read_principal_host_effect_apply_typed_argv_holds() -> Bool {
   )
 }
 
-test fn witness_sudo_probe_host_effect_apply_typed_argv_holds() -> Bool {
+fn witness_sudo_probe_host_effect_apply_typed_argv_holds() -> Bool {
   reconciliation_converged(
     r: host_effect_apply(
       target: HostOs { node: srv1_host },
@@ -68,7 +68,7 @@ test fn witness_sudo_probe_host_effect_apply_typed_argv_holds() -> Bool {
   )
 }
 
-test fn witness_ssh_argv_exec_clean_token_holds() -> Bool {
+fn witness_ssh_argv_exec_clean_token_holds() -> Bool {
   match typed_argv_exec_over_ssh(
     host: operator_host_srv1 as NonEmptyStr,
     argv: posix_effective_principal_read_argv(),
@@ -78,56 +78,56 @@ test fn witness_ssh_argv_exec_clean_token_holds() -> Bool {
   }
 }
 
-test fn witness_ssh_argv_allowlist_semicolon_red_holds() -> Bool {
+fn witness_ssh_argv_allowlist_semicolon_red_holds() -> Bool {
   match typed_argv_shell_safe_refusal_argv(argv: ["whoami;rm"]) {
     Present { value: why } => string_contains(s: why, pattern: "allowlist")
     Absent => false
   }
 }
 
-test fn witness_ssh_argv_allowlist_pipe_red_holds() -> Bool {
+fn witness_ssh_argv_allowlist_pipe_red_holds() -> Bool {
   match typed_argv_shell_safe_refusal_argv(argv: ["echo", "a|b"]) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-test fn witness_ssh_argv_allowlist_dollar_red_holds() -> Bool {
+fn witness_ssh_argv_allowlist_dollar_red_holds() -> Bool {
   match typed_argv_shell_safe_refusal_argv(argv: ["$(whoami)"]) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-test fn witness_ssh_argv_allowlist_backtick_red_holds() -> Bool {
+fn witness_ssh_argv_allowlist_backtick_red_holds() -> Bool {
   match typed_argv_shell_safe_refusal_argv(argv: ["whoami`id`"]) {
     Present { value: why } => string_contains(s: why, pattern: "allowlist")
     Absent => false
   }
 }
 
-test fn witness_ssh_argv_allowlist_ampersand_red_holds() -> Bool {
+fn witness_ssh_argv_allowlist_ampersand_red_holds() -> Bool {
   match typed_argv_shell_safe_refusal_argv(argv: ["echo", "a&b"]) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-test fn witness_ssh_argv_allowlist_redirect_red_holds() -> Bool {
+fn witness_ssh_argv_allowlist_redirect_red_holds() -> Bool {
   match typed_argv_shell_safe_refusal_argv(argv: ["echo", "a>b"]) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-test fn witness_ssh_argv_allowlist_whitespace_red_holds() -> Bool {
+fn witness_ssh_argv_allowlist_whitespace_red_holds() -> Bool {
   match typed_argv_shell_safe_refusal_argv(argv: ["a b"]) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-test fn witness_ssh_sudo_probe_argv_shape_matches_local_authority() -> Bool {
+fn witness_ssh_sudo_probe_argv_shape_matches_local_authority() -> Bool {
   let cmd = deploy_access_apt_get_privileged_command()
   let probe = SudoNopasswdExecuteProbeShape { command_path: cmd.path, check_argv: cmd.check }
   match typed_argv_exec_over_ssh(
@@ -139,3 +139,18 @@ test fn witness_ssh_sudo_probe_argv_shape_matches_local_authority() -> Bool {
   }
 }
 
+test fn typed_argv_exec_realization_witnesses() -> Bool {
+  witness_posix_effective_principal_read_typed_argv_holds()
+    && witness_sudo_nopasswd_probe_typed_argv_holds()
+    && witness_read_principal_host_effect_apply_typed_argv_holds()
+    && witness_sudo_probe_host_effect_apply_typed_argv_holds()
+    && witness_ssh_argv_exec_clean_token_holds()
+    && witness_ssh_argv_allowlist_semicolon_red_holds()
+    && witness_ssh_argv_allowlist_pipe_red_holds()
+    && witness_ssh_argv_allowlist_dollar_red_holds()
+    && witness_ssh_argv_allowlist_backtick_red_holds()
+    && witness_ssh_argv_allowlist_ampersand_red_holds()
+    && witness_ssh_argv_allowlist_redirect_red_holds()
+    && witness_ssh_argv_allowlist_whitespace_red_holds()
+    && witness_ssh_sudo_probe_argv_shape_matches_local_authority()
+}

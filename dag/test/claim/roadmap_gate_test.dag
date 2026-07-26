@@ -1,5 +1,6 @@
 module test.claim.roadmap_gate
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn mini_doc(node: RoadmapNode) -> RoadmapDocument {
@@ -17,15 +18,15 @@ fn emit_node(node: RoadmapNode, merged: List<Int>) -> String {
   serialize_markdown_source(doc: project_roadmap_to_markdown(doc: mini_doc(node: node), merged: merged))
 }
 
-test fn witness_clean_not_drift() -> Bool {
+fn witness_clean_not_drift() -> Bool {
   !roadmap_drifted(committed: expected_roadmap_md())
 }
 
-test fn witness_hand_edit_drifts() -> Bool {
+fn witness_hand_edit_drifts() -> Bool {
   roadmap_drifted(committed: concat(expected_roadmap_md(), "\n- [x] **a hand-added line**"))
 }
 
-test fn witness_signed_emits_checked() -> Bool {
+fn witness_signed_emits_checked() -> Bool {
   let node = sign(
     rn: derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: ""),
     s: signed(by: "operator", works: true, scope_equivalent: true, as_expected: true),
@@ -35,7 +36,7 @@ test fn witness_signed_emits_checked() -> Bool {
     && string_contains(s: out, pattern: "✓ signed off: operator")
 }
 
-test fn witness_unsigned_with_evidence_awaiting() -> Bool {
+fn witness_unsigned_with_evidence_awaiting() -> Bool {
   let node = derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: "")
   let out = emit_node(node: node, merged: [5491])
   string_contains(s: out, pattern: "[ ] **signoff witness**")
@@ -43,7 +44,7 @@ test fn witness_unsigned_with_evidence_awaiting() -> Bool {
     && !string_contains(s: out, pattern: "[x] **signoff witness**")
 }
 
-test fn witness_merge_perturb_does_not_flip_box() -> Bool {
+fn witness_merge_perturb_does_not_flip_box() -> Bool {
   let signed_node = sign(
     rn: derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: ""),
     s: signed(by: "operator", works: true, scope_equivalent: true, as_expected: true),
@@ -56,3 +57,10 @@ test fn witness_merge_perturb_does_not_flip_box() -> Bool {
   signed_stays_checked && unsigned_stays_unchecked
 }
 
+test fn roadmap_gate_witnesses() -> Bool {
+  witness_clean_not_drift()
+    && witness_hand_edit_drifts()
+    && witness_signed_emits_checked()
+    && witness_unsigned_with_evidence_awaiting()
+    && witness_merge_perturb_does_not_flip_box()
+}

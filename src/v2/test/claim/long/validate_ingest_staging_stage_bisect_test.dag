@@ -143,6 +143,63 @@ fn bisect_through_parse_production() -> Outcome<ParseTree> {
   )
 }
 
+fn bisect_parse_production_terminates() -> Bool {
+  match bisect_through_parse_production() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn bisect_single_module_parse_expr() -> Bool {
+  let lm = dag_language_model()
+  match lm.grammar {
+    ModeledGrammar { root: root } =>
+      bind_outcome(
+        o: tokenize(
+          text: bisect_empty_source.carried,
+          file: ^compile_ingest_staging_source_file,
+          rules: lm.lex
+        ),
+        f: fn(token_stream) {
+          match grammar_lookup_production(root: root, name: root.start) {
+            Holds { value: production } =>
+              match parse_expr(
+                expr: production.expression,
+                tokens: token_stream_remaining(stream: token_stream),
+                all_tokens: token_stream_all(stream: token_stream),
+                root: root,
+                table: parse_table_empty(),
+                prov: parse_prov_initial()
+              ) {
+                ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: _ } =>
+                  outcome_accepted(value: true)
+                ParseExprRejected { diagnostics: _, table: _ } =>
+                  outcome_accepted(value: true)
+              }
+            Violates { diagnostic: _ } =>
+              Rejected { diagnostics: None }
+          }
+        }
+      )
+    _ =>
+      Rejected { diagnostics: None }
+  }
+}
+
+fn bisect_single_module_parse_expr_terminates() -> Bool {
+  match bisect_single_module_parse_expr() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn bisect_normalize_terminates() -> Bool {
+  match bisect_through_normalize() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
+  }
+}
+
 fn bisect_parse_module_add_parse_accepts() -> Bool {
   let lm = dag_language_model()
   match tokenize(
@@ -246,6 +303,72 @@ test fn witness_bisect_parse_module_add_correctness_holds() -> Bool {
     && bisect_parse_module_add_resolve_accepts()
     && bisect_parse_module_truncated_rejects()
     && ((bisect_parse_module_add_parse_accepts() == false) == false)
+}
+
+fn bisect_through_resolve() -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(
+      text: bisect_empty_source.carried,
+      file: ^compile_ingest_staging_source_file,
+      rules: lm.lex
+    ),
+    f: fn(token_stream) {
+      bind_outcome(
+        o: parse(tokens: token_stream, grammar: lm.grammar),
+        f: fn(parse_tree) {
+          bind_outcome(
+            o: normalize(parse_tree: parse_tree),
+            f: fn(normalized) {
+              resolve(tree: normalized, lm: lm)
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn bisect_through_infer() -> Outcome<InferredTree> {
+  bind_outcome(
+    o: bisect_through_resolve(),
+    f: fn(resolved) {
+      infer(tree: resolved)
+    }
+  )
+}
+
+fn bisect_through_lens_subtree() -> Outcome<List<LensGateWitness>> {
+  bind_outcome(
+    o: bisect_through_infer(),
+    f: fn(inferred) {
+      run_required_lens_gates_on_subtree(
+        inferred: inferred,
+        lenses: always_required_lenses()
+      )
+    }
+  )
+}
+
+fn bisect_resolve_terminates() -> Bool {
+  match bisect_through_resolve() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn bisect_infer_terminates() -> Bool {
+  match bisect_through_infer() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn bisect_lens_subtree_terminates() -> Bool {
+  match bisect_through_lens_subtree() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
+  }
 }
 
 data bisect_unbound_reference_source: Medium<String> = Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + zzz }", fidelity: Lossless }

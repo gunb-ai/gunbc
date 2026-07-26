@@ -182,7 +182,7 @@ fn distinct_nested_candidate_set() -> CandidateSet {
     closedness: distinct_closedness()
   }
 }
-test fn distinct_valid_witness() -> StructuralPropertyWitness {
+fn distinct_valid_witness() -> StructuralPropertyWitness {
   StructuralPropertyWitness {
     property: ^preservation_rule_exact_structural_equality_zip_fold,
     evidence: distinct_target_add_node()

@@ -1,5 +1,6 @@
 module test.claim.hardware_selection
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data altra8: Platform = Platform {
@@ -119,27 +120,27 @@ data cfg_b_axes: HardwareAxes = config_axes(cfg: sys(cpu: cpu_fast, mem: mem_2rx
 data cfg_c_axes: HardwareAxes = config_axes(cfg: sys(cpu: cpu_fast, mem: mem_1rx8_1dpc))
 data cfg_slow_axes: HardwareAxes = config_axes(cfg: sys(cpu: cpu_slow, mem: mem_1rx8_2dpc))
 
-test fn downclock_is_rank_dependent() -> Bool {
+fn downclock_is_rank_dependent() -> Bool {
   effective_data_rate_mts(platform: altra8, dimms_per_channel: 2, rank_count: 1) == 3200
     && effective_data_rate_mts(platform: altra8, dimms_per_channel: 2, rank_count: 2) == 2933
     && effective_data_rate_mts(platform: altra8, dimms_per_channel: 1, rank_count: 2) == 3200
 }
 
-test fn psu_sizing_is_computed() -> Bool {
+fn psu_sizing_is_computed() -> Bool {
   psu_is_adequate(cfg: sys(cpu: cpu_fast, mem: mem_1rx8_2dpc))
     && watt_count(w: wall_draw_watts(cfg: sys(cpu: cpu_fast, mem: mem_1rx8_2dpc))) == 281
 }
 
-test fn rank_tradeoff_is_incomparable() -> Bool {
+fn rank_tradeoff_is_incomparable() -> Bool {
   verdict_is_incomparable(v: dominates(a: cfg_a_axes, b: cfg_b_axes))
     && verdict_is_incomparable(v: dominates(a: cfg_b_axes, b: cfg_a_axes))
 }
 
-test fn higher_throughput_dominates() -> Bool {
+fn higher_throughput_dominates() -> Bool {
   verdict_dominates(v: dominates(a: cfg_a_axes, b: cfg_slow_axes))
 }
 
-test fn front_keeps_tradeoffs_strips_dominated() -> Bool {
+fn front_keeps_tradeoffs_strips_dominated() -> Bool {
   let pool = [cfg_a_axes, cfg_b_axes, cfg_c_axes, cfg_slow_axes]
   axes_on_front(candidate: cfg_a_axes, pool: pool)
     && axes_on_front(candidate: cfg_b_axes, pool: pool)
@@ -147,19 +148,29 @@ test fn front_keeps_tradeoffs_strips_dominated() -> Bool {
     && !axes_on_front(candidate: cfg_slow_axes, pool: pool)
 }
 
-test fn realizability_rejects_impossible_sku() -> Bool {
+fn realizability_rejects_impossible_sku() -> Bool {
   dram_module_is_realizable(module: mod_1rx8_16g, jedec: ddr4_generation_catalog)
     && dram_module_is_realizable(module: mod_2rx8_16g, jedec: ddr4_generation_catalog)
     && !dram_module_is_realizable(module: mod_1rx8_32g_impossible, jedec: ddr4_generation_catalog)
     && config_is_realizable(cfg: sys(cpu: cpu_fast, mem: mem_1rx8_2dpc))
 }
 
-test fn real_part_computes_real_die_density() -> Bool {
+fn real_part_computes_real_die_density() -> Bool {
   byte_size_count(b: dram_module_required_die_density(module: mod_1rx4_16g)) == 1073741824
 }
 
-test fn derived_ratios_are_computed() -> Bool {
+fn derived_ratios_are_computed() -> Bool {
   cost_micros_per_gib(a: cfg_a_axes) > 0
     && bandwidth_per_watt(a: cfg_a_axes) > bandwidth_per_watt(a: cfg_b_axes)
 }
 
+test fn hardware_selection_holds() -> Bool {
+  downclock_is_rank_dependent()
+    && psu_sizing_is_computed()
+    && rank_tradeoff_is_incomparable()
+    && higher_throughput_dominates()
+    && front_keeps_tradeoffs_strips_dominated()
+    && realizability_rejects_impossible_sku()
+    && real_part_computes_real_die_density()
+    && derived_ratios_are_computed()
+}

@@ -1,20 +1,24 @@
 module v2.test.claim.grounding_lens
 
+
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn witness_coincide_caseinsensitive() -> Bool {
+
+
+fn witness_coincide_caseinsensitive() -> Bool {
   name_coincides(field: "URL", concept_name: "url")
 }
 
-test fn witness_coincide_headnoun() -> Bool {
+fn witness_coincide_headnoun() -> Bool {
   name_coincides(field: "base_url", concept_name: "Url")
 }
 
-test fn witness_coincide_whole() -> Bool {
+fn witness_coincide_whole() -> Bool {
   name_coincides(field: "content_hash", concept_name: "ContentHash")
 }
 
-test fn witness_coincide_negative() -> Bool {
+fn witness_coincide_negative() -> Bool {
   !name_coincides(field: "note", concept_name: "Url")
 }
 
@@ -131,34 +135,34 @@ fn candidate_coincides_with(cands: List<GroundingWorklistEntry>, enclosing: Stri
   })
 }
 
-test fn witness_decide_flags_nickname() -> Bool {
+fn witness_decide_flags_nickname() -> Bool {
   has_candidate(cands: candidates_over_decls(decls: fixture_decls()), enclosing: "Endpoint", field: "base_url")
 }
 
-test fn witness_decide_clears_nonbare() -> Bool {
+fn witness_decide_clears_nonbare() -> Bool {
   !has_candidate(cands: candidates_over_decls(decls: fixture_decls()), enclosing: "Endpoint", field: "timeout")
 }
 
-test fn witness_decide_clears_clean_RED() -> Bool {
+fn witness_decide_clears_clean_RED() -> Bool {
   !has_candidate(cands: candidates_over_decls(decls: fixture_decls()), enclosing: "Note", field: "body")
 }
 
-test fn witness_role_word_flows_to_judge() -> Bool {
+fn witness_role_word_flows_to_judge() -> Bool {
   has_candidate(cands: candidates_over_decls(decls: fixture_decls()), enclosing: "Widget", field: "id")
 }
 
-test fn witness_meta_self_coincidence_excluded() -> Bool {
+fn witness_meta_self_coincidence_excluded() -> Bool {
   compute_layer_excluded(
     field: "field",
     matched: qc(qn: "v2.std.Field", nm: "Field", fs: [])
   )
 }
 
-test fn witness_layer_excludes_meta_field() -> Bool {
+fn witness_layer_excludes_meta_field() -> Bool {
   !has_candidate(cands: candidates_over_decls(decls: fixture_decls()), enclosing: "FieldRef", field: "field")
 }
 
-test fn witness_layer_inversion_now_included() -> Bool {
+fn witness_layer_inversion_now_included() -> Bool {
   has_candidate(
     cands: candidates_over_decls(decls: layer_inversion_fixture_decls()),
     enclosing: "Foo",
@@ -181,7 +185,7 @@ fn production_layer_inversion_fixture_decls() -> List<ConceptDecl> {
   ]
 }
 
-test fn witness_production_layer_inversion_now_included() -> Bool {
+fn witness_production_layer_inversion_now_included() -> Bool {
   has_candidate(
     cands: candidates_over_decls(decls: production_layer_inversion_fixture_decls()),
     enclosing: "Foo",
@@ -204,7 +208,7 @@ fn product_namespace_fixture_decls() -> List<ConceptDecl> {
   ]
 }
 
-test fn witness_product_namespace_not_layer_excluded() -> Bool {
+fn witness_product_namespace_not_layer_excluded() -> Bool {
   has_candidate(
     cands: candidates_over_decls(decls: product_namespace_fixture_decls()),
     enclosing: "Endpoint",
@@ -212,7 +216,7 @@ test fn witness_product_namespace_not_layer_excluded() -> Bool {
   )
 }
 
-test fn witness_enrich_target_structure() -> Bool {
+fn witness_enrich_target_structure() -> Bool {
   let s = candidate_structure(
     cands: candidates_over_decls(decls: fixture_decls()),
     enclosing: "Endpoint",
@@ -221,7 +225,7 @@ test fn witness_enrich_target_structure() -> Bool {
   s == "scheme: UriScheme, host: NonEmptyStr"
 }
 
-test fn witness_coincides_with_qualified_name() -> Bool {
+fn witness_coincides_with_qualified_name() -> Bool {
   candidate_coincides_with(
     cands: candidates_over_decls(decls: fixture_decls()),
     enclosing: "Endpoint",
@@ -229,3 +233,20 @@ test fn witness_coincides_with_qualified_name() -> Bool {
   ) == "v2.test.demo.Url"
 }
 
+test fn grounding_lens_fixture_witnesses() -> Bool {
+  witness_coincide_caseinsensitive()
+    && witness_coincide_headnoun()
+    && witness_coincide_whole()
+    && witness_coincide_negative()
+    && witness_decide_flags_nickname()
+    && witness_decide_clears_nonbare()
+    && witness_decide_clears_clean_RED()
+    && witness_role_word_flows_to_judge()
+    && witness_meta_self_coincidence_excluded()
+    && witness_layer_excludes_meta_field()
+    && witness_layer_inversion_now_included()
+    && witness_production_layer_inversion_now_included()
+    && witness_product_namespace_not_layer_excluded()
+    && witness_enrich_target_structure()
+    && witness_coincides_with_qualified_name()
+}

@@ -112,7 +112,7 @@ fn match_bool_emit_swapped_from_producer(target: TargetModel) -> Outcome<Medium<
   )
 }
 
-test fn match_bool_emit_holds() -> Bool {
+fn match_bool_emit_holds() -> Bool {
   match target_serialize_source_from_model(
     target: dag_match_target_model(),
     emitted: dag_fixture_emitted_match_fn
@@ -127,7 +127,7 @@ test fn match_bool_emit_holds() -> Bool {
   }
 }
 
-test fn match_bool_emit_swapped_arms_discriminates() -> Bool {
+fn match_bool_emit_swapped_arms_discriminates() -> Bool {
   match match_bool_emit_from_producer(target: dag_match_target_model()) {
     Accepted { value: canonical, diagnostics: dc } =>
       match match_bool_emit_swapped_from_producer(target: dag_match_target_model()) {
@@ -139,3 +139,51 @@ test fn match_bool_emit_swapped_arms_discriminates() -> Bool {
   }
 }
 
+test fn match_bool_emit_keystone_holds() -> Bool {
+  match_bool_emit_holds() && match_bool_emit_swapped_arms_discriminates()
+}
+
+fn match_bool_emit_post_translate_root() -> Outcome<Node> {
+  bind_outcome(
+    o: match_bool_emit_producer_tree(),
+    f: fn(tree) {
+      translate_emitted_node(tree: tree, target: dag_match_target_model())
+    }
+  )
+}
+
+fn match_bool_emit_diag_match_gate_on_post_translate_body() -> Bool {
+  match match_bool_emit_post_translate_root() {
+    Accepted { value: translated, diagnostics: d } =>
+      match find_arrow_body_child(root: translated) {
+        Accepted { value: body, diagnostics: bd } =>
+          target_value_expr_match_gate(node: body) && (d == None) && (bd == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn match_bool_emit_diag_scrut_bare_kw_true_on_post_translate() -> Bool {
+  match match_bool_emit_post_translate_root() {
+    Accepted { value: translated, diagnostics: d } =>
+      match find_arrow_body_child(root: translated) {
+        Accepted { value: body, diagnostics: bd } =>
+          match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+            Present { value: scrut } =>
+              dag_node_is_kw_true_atom(node: scrut) && (d == None) && (bd == None)
+            Absent => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn match_bool_emit_diag_emit_eq_authority_text() -> Bool {
+  match match_bool_emit_from_producer(target: dag_match_target_model()) {
+    Accepted { value: emitted, diagnostics: d } =>
+      (emitted.carried == dag_match_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}

@@ -1,5 +1,6 @@
 module test.claim.jedec_ddr_generation
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data mod_ddr4_32g_1rx8: DramModuleCatalogRow = DramModuleCatalogRow {
@@ -26,22 +27,22 @@ data mod_ddr5_32g_1rx8: DramModuleCatalogRow = DramModuleCatalogRow {
   rank_count: 1,
 }
 
-test fn generation_axis_is_decomposed() -> Bool {
+fn generation_axis_is_decomposed() -> Bool {
   dram_generation_ddr4.signaling_family == DoubleDataRate
     && dram_generation_ddr4.generation_number == 4
     && dram_generation_ddr5.signaling_family == DoubleDataRate
     && dram_generation_ddr5.generation_number == 5
 }
 
-test fn ddr4_ceiling_is_2_gib() -> Bool {
+fn ddr4_ceiling_is_2_gib() -> Bool {
   byte_size_count(b: ddr4_generation_catalog.max_monolithic_die_density) == 2147483648
 }
 
-test fn ddr5_ceiling_is_8_gib() -> Bool {
+fn ddr5_ceiling_is_8_gib() -> Bool {
   byte_size_count(b: ddr5_generation_catalog.max_monolithic_die_density) == 8589934592
 }
 
-test fn dispatch_selects_matching_generation() -> Bool {
+fn dispatch_selects_matching_generation() -> Bool {
   dram_generation_eq(
     a: jedec_ddr_generation_catalog_row(dram_generation_ddr4).generation,
     b: dram_generation_ddr4,
@@ -52,12 +53,20 @@ test fn dispatch_selects_matching_generation() -> Bool {
     )
 }
 
-test fn per_generation_ceiling_discriminates() -> Bool {
+fn per_generation_ceiling_discriminates() -> Bool {
   !dram_module_is_realizable(module: mod_ddr4_32g_1rx8, jedec: ddr4_generation_catalog)
     && dram_module_is_realizable(module: mod_ddr5_32g_1rx8, jedec: ddr5_generation_catalog)
 }
 
-test fn generation_mismatch_fails_closed() -> Bool {
+fn generation_mismatch_fails_closed() -> Bool {
   !dram_module_is_realizable(module: mod_ddr4_32g_1rx8, jedec: ddr5_generation_catalog)
 }
 
+test fn jedec_ddr_generation_holds() -> Bool {
+  generation_axis_is_decomposed()
+    && ddr4_ceiling_is_2_gib()
+    && ddr5_ceiling_is_8_gib()
+    && dispatch_selects_matching_generation()
+    && per_generation_ceiling_discriminates()
+    && generation_mismatch_fails_closed()
+}

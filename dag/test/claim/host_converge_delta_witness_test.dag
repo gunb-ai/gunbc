@@ -1,5 +1,6 @@
 module test.claim.host_converge_delta_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fixture_srv2_host() -> RunnerHostDeployment {
@@ -65,7 +66,7 @@ fn swap_max_key() -> ConvergeKnobKey {
   ConvergeKnobKey { slice: RunnerSlice, name: "per_slot_memory_swap_max_bytes" }
 }
 
-test fn witness_two_key_collection_fold() -> Bool {
+fn witness_two_key_collection_fold() -> Bool {
   let patch = host_converge_three_way_patch(
     base: fixture_base_knobs(),
     observed: fixture_base_knobs(),
@@ -76,7 +77,7 @@ test fn witness_two_key_collection_fold() -> Bool {
     && list_length(items: patch.entries) == 2
 }
 
-test fn witness_unchanged_knobs_absent_by_monoid_law() -> Bool {
+fn witness_unchanged_knobs_absent_by_monoid_law() -> Bool {
   let patch = host_converge_three_way_patch(
     base: fixture_base_knobs(),
     observed: fixture_base_knobs(),
@@ -92,7 +93,7 @@ test fn witness_unchanged_knobs_absent_by_monoid_law() -> Bool {
     )
 }
 
-test fn witness_memory_swap_hunks_are_apply() -> Bool {
+fn witness_memory_swap_hunks_are_apply() -> Bool {
   let patch = host_converge_three_way_patch(
     base: fixture_base_knobs(),
     observed: fixture_base_knobs(),
@@ -110,7 +111,7 @@ test fn witness_memory_swap_hunks_are_apply() -> Bool {
     }
 }
 
-test fn witness_drifted_knob_is_conflict() -> Bool {
+fn witness_drifted_knob_is_conflict() -> Bool {
   let drift_observed = fold(fixture_base_knobs(), init: [], f: fn(acc, knob) {
     if knob.name == "per_slot_memory_max_bytes" {
       concat(acc, [
@@ -148,7 +149,7 @@ test fn witness_drifted_knob_is_conflict() -> Bool {
     }
 }
 
-test fn witness_two_way_diff_modified_only() -> Bool {
+fn witness_two_way_diff_modified_only() -> Bool {
   host_converge_patch_hunk_count(
     patch: host_converge_two_way_diff(
       left: fixture_base_knobs(),
@@ -157,7 +158,7 @@ test fn witness_two_way_diff_modified_only() -> Bool {
   ) == 2
 }
 
-test fn witness_already_applied_is_noop() -> Bool {
+fn witness_already_applied_is_noop() -> Bool {
   !host_converge_knob_in_patch(
     patch: host_converge_three_way_patch(
       base: fixture_base_knobs(),
@@ -182,7 +183,7 @@ fn probe_effective_knob(ee: String) -> ConvergeKnob {
   )
 }
 
-test fn witness_payload_drift_not_flattened() -> Bool {
+fn witness_payload_drift_not_flattened() -> Bool {
   !converge_knob_values_equal(
     a: probe_effective_knob(ee: "16000000000"),
     b: probe_effective_knob(ee: "9000000000"),
@@ -193,3 +194,12 @@ test fn witness_payload_drift_not_flattened() -> Bool {
     )
 }
 
+test fn host_converge_delta_keystone_holds() -> Bool {
+  witness_two_key_collection_fold()
+    && witness_unchanged_knobs_absent_by_monoid_law()
+    && witness_memory_swap_hunks_are_apply()
+    && witness_drifted_knob_is_conflict()
+    && witness_two_way_diff_modified_only()
+    && witness_already_applied_is_noop()
+    && witness_payload_drift_not_flattened()
+}

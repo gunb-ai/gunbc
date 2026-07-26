@@ -52,7 +52,7 @@ data rust_logic_complement_emit_inferred_tree: InferredTree = rust_logic_complem
 
 data rust_logic_complement_emit_swapped_inferred_tree: InferredTree = rust_logic_complement_emit_inferred_tree_for(root: dag_complement_arrow_with_body_swapped_arms_fixture)
 
-test fn rust_logic_complement_emit_accepts() -> Bool {
+fn rust_logic_complement_emit_accepts() -> Bool {
   match emit(
     tree: rust_logic_complement_emit_inferred_tree,
     target: rust_logic_complement_target_model_staging()
@@ -63,7 +63,7 @@ test fn rust_logic_complement_emit_accepts() -> Bool {
   }
 }
 
-test fn rust_logic_complement_emit_swapped_discriminates() -> Bool {
+fn rust_logic_complement_emit_swapped_discriminates() -> Bool {
   match emit(
     tree: rust_logic_complement_emit_swapped_inferred_tree,
     target: rust_logic_complement_target_model_staging()
@@ -76,3 +76,7 @@ test fn rust_logic_complement_emit_swapped_discriminates() -> Bool {
   }
 }
 
+test fn rust_logic_complement_emit_holds() -> Bool {
+  rust_logic_complement_emit_accepts()
+    && rust_logic_complement_emit_swapped_discriminates()
+}

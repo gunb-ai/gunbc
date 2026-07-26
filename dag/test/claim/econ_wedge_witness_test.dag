@@ -136,7 +136,7 @@ data github_zero_vcpu_runner_fixture: GithubActionsRunnerPriceRow = GithubAction
   pricing_citation: "witness-fixture#runner-thread-count-unknown",
 }
 
-test fn w_gitlab_gross_margin_envelope_derived_from_filed_components() -> Bool {
+fn w_gitlab_gross_margin_envelope_derived_from_filed_components() -> Bool {
   match derive_margin_envelope_from_filed_facts(
     revenue: gitlab_fy2026_revenue,
     profit: gitlab_fy2026_gross_profit,
@@ -152,7 +152,7 @@ test fn w_gitlab_gross_margin_envelope_derived_from_filed_components() -> Bool {
   }
 }
 
-test fn w_gitlab_gross_margin_envelope_red_on_perturbed_gross_profit() -> Bool {
+fn w_gitlab_gross_margin_envelope_red_on_perturbed_gross_profit() -> Bool {
   match filed_amount(fact: gitlab_fy2026_gross_profit) {
     Present { value: gross_profit } => {
       let perturbed = usd_whole_dollars(
@@ -180,7 +180,7 @@ test fn w_gitlab_gross_margin_envelope_red_on_perturbed_gross_profit() -> Bool {
   }
 }
 
-test fn w_rollins_operating_margin_envelope_derived() -> Bool {
+fn w_rollins_operating_margin_envelope_derived() -> Bool {
   match derive_margin_envelope_from_filed_facts(
     revenue: rollins_fy2025_revenue,
     profit: rollins_fy2025_operating_income,
@@ -196,7 +196,7 @@ test fn w_rollins_operating_margin_envelope_derived() -> Bool {
   }
 }
 
-test fn w_chemed_operating_margin_envelope_derived() -> Bool {
+fn w_chemed_operating_margin_envelope_derived() -> Bool {
   match derive_margin_envelope_from_filed_facts(
     revenue: chemed_fy2025_revenue,
     profit: chemed_fy2025_operating_income,
@@ -212,12 +212,12 @@ test fn w_chemed_operating_margin_envelope_derived() -> Bool {
   }
 }
 
-test fn w_hetzner_ax41_threads_cited_from_amd_catalog() -> Bool {
+fn w_hetzner_ax41_threads_cited_from_amd_catalog() -> Bool {
   hardware_thread_count_value(t: hetzner_dedicated_server_threads(row: hetzner_ax41_1_ltd_price)) == hardware_thread_count_value(t: ryzen_5_3600_catalog.threads)
     && hardware_thread_count_value(t: ryzen_5_3600_catalog.threads) == 12
 }
 
-test fn w_github_hetzner_knowable_wedge_derived_with_declared_assumptions() -> Bool {
+fn w_github_hetzner_knowable_wedge_derived_with_declared_assumptions() -> Bool {
   match derive_github_hetzner_ci_minute_wedge(
     umbrella_row: github_actions_linux_2core_price,
     floor_row: hetzner_ax41_1_ltd_price,
@@ -233,7 +233,7 @@ test fn w_github_hetzner_knowable_wedge_derived_with_declared_assumptions() -> B
   }
 }
 
-test fn w_github_hetzner_knowable_wedge_red_on_unknown_assumptions() -> Bool {
+fn w_github_hetzner_knowable_wedge_red_on_unknown_assumptions() -> Bool {
   match derive_github_hetzner_ci_minute_wedge(
     umbrella_row: github_actions_linux_2core_price,
     floor_row: hetzner_ax41_1_ltd_price,
@@ -244,7 +244,7 @@ test fn w_github_hetzner_knowable_wedge_red_on_unknown_assumptions() -> Bool {
   }
 }
 
-test fn w_github_hetzner_knowable_wedge_red_on_zero_utilization() -> Bool {
+fn w_github_hetzner_knowable_wedge_red_on_zero_utilization() -> Bool {
   match derive_github_hetzner_ci_minute_wedge(
     umbrella_row: github_actions_linux_2core_price,
     floor_row: hetzner_ax41_1_ltd_price,
@@ -257,7 +257,7 @@ test fn w_github_hetzner_knowable_wedge_red_on_zero_utilization() -> Bool {
   }
 }
 
-test fn w_github_hetzner_knowable_wedge_red_on_floor_currency_mismatch() -> Bool {
+fn w_github_hetzner_knowable_wedge_red_on_floor_currency_mismatch() -> Bool {
   match derive_github_hetzner_ci_minute_wedge(
     umbrella_row: github_actions_linux_2core_price,
     floor_row: hetzner_ax41_usd_floor_fixture,
@@ -270,7 +270,7 @@ test fn w_github_hetzner_knowable_wedge_red_on_floor_currency_mismatch() -> Bool
   }
 }
 
-test fn w_github_hetzner_knowable_wedge_red_on_floor_exceeds_umbrella() -> Bool {
+fn w_github_hetzner_knowable_wedge_red_on_floor_exceeds_umbrella() -> Bool {
   match derive_github_hetzner_ci_minute_wedge(
     umbrella_row: github_tiny_umbrella_fixture,
     floor_row: hetzner_ax41_1_ltd_price,
@@ -283,7 +283,7 @@ test fn w_github_hetzner_knowable_wedge_red_on_floor_exceeds_umbrella() -> Bool 
   }
 }
 
-test fn w_github_hetzner_knowable_wedge_red_on_zero_runner_threads() -> Bool {
+fn w_github_hetzner_knowable_wedge_red_on_zero_runner_threads() -> Bool {
   match derive_github_hetzner_ci_minute_wedge(
     umbrella_row: github_zero_vcpu_runner_fixture,
     floor_row: hetzner_ax41_1_ltd_price,
@@ -296,3 +296,16 @@ test fn w_github_hetzner_knowable_wedge_red_on_zero_runner_threads() -> Bool {
   }
 }
 
+test fn econ_wedge_witness_holds() -> Bool {
+  w_gitlab_gross_margin_envelope_derived_from_filed_components()
+    && w_gitlab_gross_margin_envelope_red_on_perturbed_gross_profit()
+    && w_rollins_operating_margin_envelope_derived()
+    && w_chemed_operating_margin_envelope_derived()
+    && w_hetzner_ax41_threads_cited_from_amd_catalog()
+    && w_github_hetzner_knowable_wedge_derived_with_declared_assumptions()
+    && w_github_hetzner_knowable_wedge_red_on_unknown_assumptions()
+    && w_github_hetzner_knowable_wedge_red_on_zero_utilization()
+    && w_github_hetzner_knowable_wedge_red_on_floor_currency_mismatch()
+    && w_github_hetzner_knowable_wedge_red_on_floor_exceeds_umbrella()
+    && w_github_hetzner_knowable_wedge_red_on_zero_runner_threads()
+}

@@ -400,3 +400,6 @@ test fn emit_host_field_access_wrong_fixture_refuses_holds() -> Bool {
   }
 }
 
+test fn emit_host_field_access_equals_eval_all_holds() -> Bool {
+  emit_host_field_access_equals_eval_holds() && emit_host_field_access_wrong_fixture_refuses_holds()
+}

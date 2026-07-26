@@ -1,5 +1,6 @@
 module test.claim.realize_kernel
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_store_id: CacheInterfaceId = "realize-kernel-witness-store"
@@ -25,7 +26,7 @@ fn mk_receipt(content: ContentHash) -> CachedArtifactReceipt<ContentHash> {
   }
 }
 
-test fn witness_verified_hit_reuses() -> Bool {
+fn witness_verified_hit_reuses() -> Bool {
   let r = mk_receipt(content: content_v1)
   match realize_route(lookup: Hit { receipt: r }) {
     Reuse { receipt: _ } => true
@@ -33,28 +34,28 @@ test fn witness_verified_hit_reuses() -> Bool {
   }
 }
 
-test fn witness_miss_recomputes() -> Bool {
+fn witness_miss_recomputes() -> Bool {
   match realize_route(lookup: Miss) {
     Recompute { reason: SubjectAbsent } => true
     _ => false
   }
 }
 
-test fn witness_refused_hit_never_reused() -> Bool {
+fn witness_refused_hit_never_reused() -> Bool {
   match realize_route(lookup: RejectedHit { reason: ContentDigestMismatch }) {
     Recompute { reason: _ } => true
     Reuse { receipt: _ } => false
   }
 }
 
-test fn witness_refused_hit_surfaces_reason() -> Bool {
+fn witness_refused_hit_surfaces_reason() -> Bool {
   match realize_route(lookup: RejectedHit { reason: ContentDigestMismatch }) {
     Recompute { reason: HitRefused { reason: ContentDigestMismatch } } => true
     _ => false
   }
 }
 
-test fn witness_fresh_subject_written() -> Bool {
+fn witness_fresh_subject_written() -> Bool {
   let fresh = mk_receipt(content: content_v1)
   match classify_write(existing: Miss, offered_content: content_v1, fresh_receipt: fresh) {
     Written { receipt: _ } => true
@@ -62,7 +63,7 @@ test fn witness_fresh_subject_written() -> Bool {
   }
 }
 
-test fn witness_idempotent_same_content() -> Bool {
+fn witness_idempotent_same_content() -> Bool {
   let existing = mk_receipt(content: content_v1)
   let fresh = mk_receipt(content: content_v1)
   match classify_write(existing: Hit { receipt: existing }, offered_content: content_v1, fresh_receipt: fresh) {
@@ -71,7 +72,7 @@ test fn witness_idempotent_same_content() -> Bool {
   }
 }
 
-test fn witness_purity_conflict_rejects_overwrite() -> Bool {
+fn witness_purity_conflict_rejects_overwrite() -> Bool {
   let existing = mk_receipt(content: content_v1)
   let fresh = mk_receipt(content: content_v2)
   match classify_write(existing: Hit { receipt: existing }, offered_content: content_v2, fresh_receipt: fresh) {
@@ -80,7 +81,7 @@ test fn witness_purity_conflict_rejects_overwrite() -> Bool {
   }
 }
 
-test fn witness_write_over_rejected_hit_composes_reason() -> Bool {
+fn witness_write_over_rejected_hit_composes_reason() -> Bool {
   let fresh = mk_receipt(content: content_v1)
   match classify_write(
     existing: RejectedHit { reason: ContentDigestMismatch },
@@ -92,3 +93,13 @@ test fn witness_write_over_rejected_hit_composes_reason() -> Bool {
   }
 }
 
+test fn realize_kernel_witnesses() -> Bool {
+  witness_verified_hit_reuses()
+    && witness_miss_recomputes()
+    && witness_refused_hit_never_reused()
+    && witness_refused_hit_surfaces_reason()
+    && witness_fresh_subject_written()
+    && witness_idempotent_same_content()
+    && witness_purity_conflict_rejects_overwrite()
+    && witness_write_over_rejected_hit_composes_reason()
+}

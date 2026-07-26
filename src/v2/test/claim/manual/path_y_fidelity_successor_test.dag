@@ -1,5 +1,6 @@
 module v2.test.manual.path_y_fidelity_successor
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn path_y_core_expr() -> Expression {
@@ -76,7 +77,7 @@ fn bmc_lifecycle_inverse_is_lossy_section_not_iso_on_fidelity(fidelity: DecodeFi
   }
 }
 
-test fn bmc_credentials_rotated_perturb_decodes_lossless() -> Bool {
+fn bmc_credentials_rotated_perturb_decodes_lossless() -> Bool {
   match decode_fidelity_from_target(
     target: bmc_lifecycle_inverse_target_model_credentials_modeled_perturb()
   ) {
@@ -89,7 +90,7 @@ test fn bmc_credentials_rotated_perturb_decodes_lossless() -> Bool {
   }
 }
 
-test fn bmc_credentials_rotated_perturb_red_control_still_lossy() -> Bool {
+fn bmc_credentials_rotated_perturb_red_control_still_lossy() -> Bool {
   match decode_fidelity_from_target(
     target: bmc_lifecycle_inverse_target_model_credentials_modeled_perturb()
   ) {
@@ -102,7 +103,7 @@ test fn bmc_credentials_rotated_perturb_red_control_still_lossy() -> Bool {
   }
 }
 
-test fn bmc_credentials_rotated_perturb_flips_iso_section_red() -> Bool {
+fn bmc_credentials_rotated_perturb_flips_iso_section_red() -> Bool {
   match decode_fidelity_from_target(
     target: bmc_lifecycle_inverse_target_model_credentials_modeled_perturb()
   ) {
@@ -110,6 +111,12 @@ test fn bmc_credentials_rotated_perturb_flips_iso_section_red() -> Bool {
       !bmc_lifecycle_inverse_is_lossy_section_not_iso_on_fidelity(fidelity: fidelity)
     Rejected { diagnostics: _ } => false
   }
+}
+
+test fn path_y_bmc_quotient_teeth_perturb_credentials_rotated_flips_lossy() -> Bool {
+  bmc_credentials_rotated_perturb_decodes_lossless()
+    && !bmc_credentials_rotated_perturb_red_control_still_lossy()
+    && bmc_credentials_rotated_perturb_flips_iso_section_red()
 }
 
 test fn path_y_fidelity_successor_reads_target_model_quotient() -> Bool {

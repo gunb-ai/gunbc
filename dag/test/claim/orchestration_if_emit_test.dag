@@ -283,3 +283,13 @@ test fn orch_if_and_tests_holds() -> Bool {
   }
 }
 
+test fn orch_if_band_holds() -> Bool {
+  orch_if_streq_empty_then_holds()
+    && orch_if_streq_empty_then_has_teeth_holds()
+    && orch_if_streq_else_holds()
+    && orch_if_exit_zero_negated_holds()
+    && orch_if_run_redirect_ignore_fail_holds()
+    && orch_if_log_matches_holds()
+    && orch_if_and_tests_holds()
+}
+

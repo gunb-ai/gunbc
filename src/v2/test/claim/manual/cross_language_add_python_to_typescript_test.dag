@@ -160,6 +160,20 @@ fn cross_language_compile_on_real_tree_holds(parse_tree: ParseTree) -> Bool {
   }
 }
 
+fn cross_language_chain_discriminates_on_real_tree() -> Bool {
+  match python_grammar_parse_fixture() {
+    Accepted { value: python_parse_tree, diagnostics: _ } =>
+      match parse_tree_to_emitted_node(
+        parse_tree: python_parse_tree,
+        source_model: ts_target_model()
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 type CrossLanguageEmitCellStatus
   = ChainProven
   | ChainFailsClosedAtCheck { check: Symbol }

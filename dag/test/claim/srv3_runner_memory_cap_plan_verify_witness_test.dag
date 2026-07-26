@@ -1,5 +1,6 @@
 module test.claim.srv3_runner_memory_cap_plan_verify_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn srv3_memory_cap_converged_read() -> RunnerUnitMemoryLiveRead {
@@ -29,11 +30,11 @@ fn srv3_memory_cap_drifted_read() -> RunnerUnitMemoryLiveRead {
   )
 }
 
-test fn witness_plan_emit_claims_nothing_on_face() -> Bool {
+fn witness_plan_emit_claims_nothing_on_face() -> Bool {
   runner_memory_cap_plan_emit_claims_nothing(host: operator_host_srv3)
 }
 
-test fn witness_plan_emit_includes_three_memory_cap_knobs() -> Bool {
+fn witness_plan_emit_includes_three_memory_cap_knobs() -> Bool {
   let sheet = expected_runner_memory_cap_apply_sheet(host: operator_host_srv3)
   string_contains(s: sheet, pattern: "per_slot_memory_max_bytes")
     && string_contains(s: sheet, pattern: "per_slot_memory_high_bytes")
@@ -43,7 +44,7 @@ test fn witness_plan_emit_includes_three_memory_cap_knobs() -> Bool {
     && string_contains(s: sheet, pattern: gunbc_runner_per_slot_swap_dropin_path)
 }
 
-test fn witness_plan_emit_grounds_byte_values_on_authority() -> Bool {
+fn witness_plan_emit_grounds_byte_values_on_authority() -> Bool {
   let sheet = expected_runner_memory_cap_apply_sheet(host: operator_host_srv3)
   let desired = gunbc_runner_slot_desired()
   string_contains(s: sheet, pattern: to_string(byte_size_count(b: desired.memory_max)))
@@ -51,7 +52,7 @@ test fn witness_plan_emit_grounds_byte_values_on_authority() -> Bool {
     && string_contains(s: sheet, pattern: to_string(byte_size_count(b: desired.memory_swap_max)))
 }
 
-test fn witness_verify_receipt_converged_when_live_matches_policy() -> Bool {
+fn witness_verify_receipt_converged_when_live_matches_policy() -> Bool {
   match runner_memory_cap_verify_receipt_from_read(
     host: operator_host_srv3,
     read: srv3_memory_cap_converged_read(),
@@ -65,7 +66,7 @@ test fn witness_verify_receipt_converged_when_live_matches_policy() -> Bool {
   }
 }
 
-test fn witness_verify_receipt_counts_drifted_red_control() -> Bool {
+fn witness_verify_receipt_counts_drifted_red_control() -> Bool {
   match runner_memory_cap_verify_receipt_from_read(
     host: operator_host_srv3,
     read: srv3_memory_cap_drifted_read(),
@@ -78,11 +79,11 @@ test fn witness_verify_receipt_counts_drifted_red_control() -> Bool {
   }
 }
 
-test fn witness_converge_cli_verify_routes_srv3() -> Bool {
+fn witness_converge_cli_verify_routes_srv3() -> Bool {
   converge_cli_routes_to_memory_cap_verify(host: "srv3")
 }
 
-test fn witness_converge_cli_verify_output_projects_receipt() -> Bool {
+fn witness_converge_cli_verify_output_projects_receipt() -> Bool {
   match runner_memory_cap_verify_receipt_from_read(
     host: operator_host_srv3,
     read: srv3_memory_cap_converged_read(),
@@ -97,7 +98,7 @@ test fn witness_converge_cli_verify_output_projects_receipt() -> Bool {
   }
 }
 
-test fn witness_verify_absent_live_read_refuses_not_widens() -> Bool {
+fn witness_verify_absent_live_read_refuses_not_widens() -> Bool {
   match runner_memory_cap_verify_result_from_live_read(host: operator_host_srv3, read: none) {
     RunnerMemoryCapVerifyObserved { receipt: _ } => false
     RunnerMemoryCapVerifyRefused { host: h, reason: why } =>
@@ -107,7 +108,7 @@ test fn witness_verify_absent_live_read_refuses_not_widens() -> Bool {
   }
 }
 
-test fn witness_verify_present_live_read_observes() -> Bool {
+fn witness_verify_present_live_read_observes() -> Bool {
   match runner_memory_cap_verify_result_from_live_read(
     host: operator_host_srv3,
     read: Present { value: srv3_memory_cap_converged_read() },
@@ -118,3 +119,14 @@ test fn witness_verify_present_live_read_observes() -> Bool {
   }
 }
 
+test fn srv3_runner_memory_cap_plan_verify_holds() -> Bool {
+  witness_plan_emit_claims_nothing_on_face()
+    && witness_plan_emit_includes_three_memory_cap_knobs()
+    && witness_plan_emit_grounds_byte_values_on_authority()
+    && witness_verify_receipt_converged_when_live_matches_policy()
+    && witness_verify_receipt_counts_drifted_red_control()
+    && witness_converge_cli_verify_routes_srv3()
+    && witness_converge_cli_verify_output_projects_receipt()
+    && witness_verify_absent_live_read_refuses_not_widens()
+    && witness_verify_present_live_read_observes()
+}

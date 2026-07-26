@@ -1,5 +1,6 @@
 module test.claim.extdeps_version_semver
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn semver_identity_1_2_3() -> SemVerIdentity { "1.2.3" }
@@ -57,27 +58,27 @@ fn semver_1_0_0_build_1() -> SemVerVersion {
   }
 }
 
-test fn w_semver_identity_inhabits_version_identity() -> Bool {
+fn w_semver_identity_inhabits_version_identity() -> Bool {
   semver_identity_1_2_3() == "1.2.3"
 }
 
-test fn w_semver_constraint_inhabits_version_constraint() -> Bool {
+fn w_semver_constraint_inhabits_version_constraint() -> Bool {
   semver_constraint_caret() == "^1.2"
 }
 
-test fn w_identity_distinct_from_constraint() -> Bool {
+fn w_identity_distinct_from_constraint() -> Bool {
   semver_identity_1_0_0() != semver_constraint_one()
 }
 
-test fn w_semver_scheme_equality_compare() -> Bool {
+fn w_semver_scheme_equality_compare() -> Bool {
   semver_scheme.compare("1.0.0", "1.0.0") == std.algebra.Equal
 }
 
-test fn w_semver_scheme_wire_label_ordering() -> Bool {
+fn w_semver_scheme_wire_label_ordering() -> Bool {
   semver_scheme.compare("1.0.0", "2.0.0") == std.algebra.Less
 }
 
-test fn w_semver_compare_identifier_numeric_less_than_alphanumeric() -> Bool {
+fn w_semver_compare_identifier_numeric_less_than_alphanumeric() -> Bool {
   match semver_compare_identifier(
     a: SemVerNumericIdentifier { value: 1 },
     b: SemVerAlphanumericIdentifier { label: "alpha" }
@@ -87,27 +88,27 @@ test fn w_semver_compare_identifier_numeric_less_than_alphanumeric() -> Bool {
   }
 }
 
-test fn w_semver_version_label_core() -> Bool {
+fn w_semver_version_label_core() -> Bool {
   semver_version_label(v: semver_1_0_0()) == "1.0.0"
 }
 
-test fn w_semver_version_label_pre_release() -> Bool {
+fn w_semver_version_label_pre_release() -> Bool {
   semver_version_label(v: semver_1_0_0_alpha_0()) == "1.0.0-0.alpha.1"
 }
 
-test fn w_semver_version_label_build_ignored_in_compare() -> Bool {
+fn w_semver_version_label_build_ignored_in_compare() -> Bool {
   semver_version_label(v: semver_1_0_0_build_1()) == "1.0.0+1"
     && semver_compare(a: semver_1_0_0(), b: semver_1_0_0_build_1()) == std.algebra.Equal
 }
 
-test fn w_semver_compare_pre_release_less_than_release() -> Bool {
+fn w_semver_compare_pre_release_less_than_release() -> Bool {
   match semver_compare(a: semver_1_0_0_alpha_1(), b: semver_1_0_0()) {
     Less => true
     _ => false
   }
 }
 
-test fn w_semver_compare_pre_release_longer_set_greater() -> Bool {
+fn w_semver_compare_pre_release_longer_set_greater() -> Bool {
   match semver_compare(a: semver_1_0_0_alpha(), b: semver_1_0_0_alpha_1()) {
     Less =>
       match semver_compare(a: semver_1_0_0_alpha_1(), b: semver_1_0_0_alpha()) {
@@ -118,7 +119,7 @@ test fn w_semver_compare_pre_release_longer_set_greater() -> Bool {
   }
 }
 
-test fn w_semver_compare_major_minor_patch() -> Bool {
+fn w_semver_compare_major_minor_patch() -> Bool {
   let older = SemVerVersion { major: 1, minor: 2, patch: 3, pre_release: [], build: [] }
   let newer = SemVerVersion { major: 1, minor: 2, patch: 4, pre_release: [], build: [] }
   match semver_compare(a: older, b: newer) {
@@ -131,7 +132,22 @@ test fn w_semver_compare_major_minor_patch() -> Bool {
   }
 }
 
-test fn w_semver_to_version_identity() -> Bool {
+fn w_semver_to_version_identity() -> Bool {
   semver_to_version_identity(v: semver_1_0_0()) == "1.0.0"
 }
 
+test fn extdeps_version_semver_witnesses() -> Bool {
+  w_semver_identity_inhabits_version_identity()
+    && w_semver_constraint_inhabits_version_constraint()
+    && w_identity_distinct_from_constraint()
+    && w_semver_scheme_equality_compare()
+    && w_semver_scheme_wire_label_ordering()
+    && w_semver_compare_identifier_numeric_less_than_alphanumeric()
+    && w_semver_version_label_core()
+    && w_semver_version_label_pre_release()
+    && w_semver_version_label_build_ignored_in_compare()
+    && w_semver_compare_pre_release_less_than_release()
+    && w_semver_compare_pre_release_longer_set_greater()
+    && w_semver_compare_major_minor_patch()
+    && w_semver_to_version_identity()
+}

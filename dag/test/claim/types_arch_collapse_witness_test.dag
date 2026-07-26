@@ -15,57 +15,69 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
+
 data std_types_path: String = "dag/std/types.dag"
 data cpu_types_path: String = "dag/extdeps/cpu/types.dag"
 data oci_types_path: String = "dag/extdeps/container/oci/types.dag"
 data toolchain_types_path: String = "dag/extdeps/toolchain/types.dag"
 
-test fn witness_fork_target_architecture_gone() -> Bool {
+fn witness_fork_target_architecture_gone() -> Bool {
   let result = filesystem_read(path: std_types_path)
   !string_contains(s: result.content, pattern: "type TargetArchitecture")
 }
 
-test fn witness_fork_cpu_architecture_gone() -> Bool {
+fn witness_fork_cpu_architecture_gone() -> Bool {
   let result = filesystem_read(path: cpu_types_path)
   !string_contains(s: result.content, pattern: "type CpuArchitecture")
 }
 
-test fn witness_fork_image_config_architecture_gone() -> Bool {
+fn witness_fork_image_config_architecture_gone() -> Bool {
   let result = filesystem_read(path: oci_types_path)
   !string_contains(s: result.content, pattern: "type ImageConfigArchitecture")
 }
 
-test fn witness_single_architecture_authority_present() -> Bool {
+fn witness_single_architecture_authority_present() -> Bool {
   let result = filesystem_read(path: toolchain_types_path)
   string_contains(s: result.content, pattern: "type Architecture =")
 }
 
-test fn witness_goarch_parses_arm64_wire() -> Bool {
+fn witness_goarch_parses_arm64_wire() -> Bool {
   match parse_image_config_goarch("arm64") {
     ImageConfigGoarchKnown { value: Aarch64 } => true
     ImageConfigGoarchUnknown { wire: _ } => false
   }
 }
 
-test fn witness_goarch_rejects_unknown_wire() -> Bool {
+fn witness_goarch_rejects_unknown_wire() -> Bool {
   match parse_image_config_goarch("plan9") {
     ImageConfigGoarchUnknown { wire: _ } => true
     ImageConfigGoarchKnown { value: _ } => false
   }
 }
 
-test fn witness_goarch_label_roundtrips_known() -> Bool {
+fn witness_goarch_label_roundtrips_known() -> Bool {
   match image_config_goarch_label(Aarch64) {
     ImageConfigGoarchWireLabel { wire: w } => w == "arm64"
     ImageConfigGoarchUnrepresentable => false
   }
 }
 
-test fn witness_goarch_label_unrepresentable_armv7() -> Bool {
+fn witness_goarch_label_unrepresentable_armv7() -> Bool {
   match image_config_goarch_label(Armv7) {
     ImageConfigGoarchUnrepresentable => true
     ImageConfigGoarchWireLabel { wire: _ } => false
   }
+}
+
+test fn architecture_dissolution_witnesses() -> Bool {
+  witness_fork_target_architecture_gone()
+    && witness_fork_cpu_architecture_gone()
+    && witness_fork_image_config_architecture_gone()
+    && witness_single_architecture_authority_present()
+    && witness_goarch_parses_arm64_wire()
+    && witness_goarch_rejects_unknown_wire()
+    && witness_goarch_label_roundtrips_known()
+    && witness_goarch_label_unrepresentable_armv7()
 }
 
 test fn types_arch_collapse_witnesses() -> Bool {

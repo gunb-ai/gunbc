@@ -33,3 +33,6 @@ test fn logic_join_truth_table() -> Bool {
     && is_false(b: gt_join(a: False, b: False))
 }
 
+test fn logic_truth_tables_all() -> Bool {
+  logic_complement_truth_table() && logic_meet_truth_table() && logic_join_truth_table()
+}

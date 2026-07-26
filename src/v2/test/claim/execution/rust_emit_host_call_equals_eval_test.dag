@@ -294,3 +294,6 @@ test fn rust_emit_host_call_wrong_oracle_refuses_holds() -> Bool {
   )
 }
 
+test fn rust_emit_host_call_equals_eval_all_holds() -> Bool {
+  rust_emit_host_call_equals_eval_holds() && rust_emit_host_call_wrong_oracle_refuses_holds()
+}

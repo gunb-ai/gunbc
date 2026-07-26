@@ -1,5 +1,6 @@
 module v2.test.claim.algebra.freemonoid_first_skip_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample_list() -> FreeMonoid<Int> {
@@ -9,38 +10,45 @@ fn sample_list() -> FreeMonoid<Int> {
   }
 }
 
-test fn witness_first_empty_is_absent() -> Bool {
+fn witness_first_empty_is_absent() -> Bool {
   match list_head(xs: Empty) {
     HeadAbsent => true
     HeadFound { value: _ } => false
   }
 }
 
-test fn witness_first_returns_head() -> Bool {
+fn witness_first_returns_head() -> Bool {
   match list_head(xs: sample_list()) {
     HeadFound { value: v } => v == 1
     HeadAbsent => false
   }
 }
 
-test fn witness_skip_then_first() -> Bool {
+fn witness_skip_then_first() -> Bool {
   match list_head(xs: skip(xs: sample_list(), n: 1)) {
     HeadFound { value: v } => v == 2
     HeadAbsent => false
   }
 }
 
-test fn witness_skip_past_length_is_empty() -> Bool {
+fn witness_skip_past_length_is_empty() -> Bool {
   match list_head(xs: skip(xs: sample_list(), n: 4)) {
     HeadAbsent => true
     HeadFound { value: _ } => false
   }
 }
 
-test fn witness_skip_non_positive_is_identity() -> Bool {
+fn witness_skip_non_positive_is_identity() -> Bool {
   match list_head(xs: skip(xs: sample_list(), n: 0)) {
     HeadFound { value: v } => v == 1
     HeadAbsent => false
   }
 }
 
+test fn freemonoid_first_skip_witnesses() -> Bool {
+  witness_first_empty_is_absent()
+    && witness_first_returns_head()
+    && witness_skip_then_first()
+    && witness_skip_past_length_is_empty()
+    && witness_skip_non_positive_is_identity()
+}

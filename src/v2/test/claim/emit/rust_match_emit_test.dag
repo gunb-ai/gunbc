@@ -93,7 +93,7 @@ fn rust_match_emit_from_swapped_tree(target: TargetModel) -> Outcome<Medium<Stri
   )
 }
 
-test fn rust_match_emit_one_or_two_accepts() -> Bool {
+fn rust_match_emit_one_or_two_accepts() -> Bool {
   match rust_match_emit_from_tree(target: rust_match_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_match_source_text) && (d == None)
@@ -101,7 +101,7 @@ test fn rust_match_emit_one_or_two_accepts() -> Bool {
   }
 }
 
-test fn rust_match_emit_swapped_arms_discriminates() -> Bool {
+fn rust_match_emit_swapped_arms_discriminates() -> Bool {
   match rust_match_emit_from_swapped_tree(target: rust_match_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_match_emit_swapped_source_text) &&
@@ -111,3 +111,7 @@ test fn rust_match_emit_swapped_arms_discriminates() -> Bool {
   }
 }
 
+test fn rust_match_emit_holds() -> Bool {
+  rust_match_emit_one_or_two_accepts()
+    && rust_match_emit_swapped_arms_discriminates()
+}

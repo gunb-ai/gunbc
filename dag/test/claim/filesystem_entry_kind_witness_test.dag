@@ -1,5 +1,6 @@
 module test.claim.filesystem_entry_kind_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn is_other(k: EntryKind) -> Bool {
@@ -12,23 +13,31 @@ fn is_symlink(k: EntryKind) -> Bool {
   match k { Symlink => true  _ => false }
 }
 
-test fn w_posix_socket_is_other() -> Bool {
+fn w_posix_socket_is_other() -> Bool {
   is_other(k: posix_entry_kind(t: S_IFSOCK))
 }
-test fn w_posix_regular_is_regular() -> Bool {
+fn w_posix_regular_is_regular() -> Bool {
   is_regular(k: posix_entry_kind(t: S_IFREG))
 }
-test fn w_posix_symlink_is_symlink() -> Bool {
+fn w_posix_symlink_is_symlink() -> Bool {
   is_symlink(k: posix_entry_kind(t: S_IFLNK))
 }
 
-test fn w_ntfs_junction_is_other() -> Bool {
+fn w_ntfs_junction_is_other() -> Bool {
   is_other(k: ntfs_entry_kind(t: MountPointReparse))
 }
-test fn w_ntfs_symlink_is_symlink() -> Bool {
+fn w_ntfs_symlink_is_symlink() -> Bool {
   is_symlink(k: ntfs_entry_kind(t: SymlinkReparse))
 }
-test fn w_ntfs_normal_is_regular() -> Bool {
+fn w_ntfs_normal_is_regular() -> Bool {
   is_regular(k: ntfs_entry_kind(t: NormalFile))
 }
 
+test fn filesystem_entry_kind_witnesses() -> Bool {
+  w_posix_socket_is_other() &&
+  w_posix_regular_is_regular() &&
+  w_posix_symlink_is_symlink() &&
+  w_ntfs_junction_is_other() &&
+  w_ntfs_symlink_is_symlink() &&
+  w_ntfs_normal_is_regular()
+}

@@ -2,6 +2,7 @@ module test.claim.realization_schedule_witness
 
 import v2.workflow.ci_floor_plan { cheap_floor_gate_step_labels }
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data synthetic_target: ContentHash = "realization-schedule-witness-v1"
@@ -47,7 +48,7 @@ fn perturbed_schedule_wrong_order(correct: List<List<Runnable>>) -> List<List<Ru
   ]
 }
 
-test fn witness_schedule_lens_green_on_synthetic_plan() -> Bool {
+fn witness_schedule_lens_green_on_synthetic_plan() -> Bool {
   match v2.lens.schedule_lens.schedule_lens_verdict_for_ci_floor(
     plan: synthetic_correct_plan(),
     compile_gate_fn: compile_gate_fn,
@@ -60,7 +61,7 @@ test fn witness_schedule_lens_green_on_synthetic_plan() -> Bool {
   }
 }
 
-test fn witness_schedule_lens_red_when_corpus_runs_first_on_synthetic() -> Bool {
+fn witness_schedule_lens_red_when_corpus_runs_first_on_synthetic() -> Bool {
   let perturbed = RealizationPlan {
     target: synthetic_target
     objective: RealizationObjective { goals: [] }
@@ -79,3 +80,7 @@ test fn witness_schedule_lens_red_when_corpus_runs_first_on_synthetic() -> Bool 
   }
 }
 
+test fn realization_schedule_witnesses() -> Bool {
+  witness_schedule_lens_green_on_synthetic_plan()
+    && witness_schedule_lens_red_when_corpus_runs_first_on_synthetic()
+}

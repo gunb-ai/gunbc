@@ -125,3 +125,8 @@ test fn semantic_unsupported_shape_refuses() -> Bool {
   semantic_arrow_refuses()
 }
 
+test fn semantic_decl_routing_all_holds() -> Bool {
+  semantic_bool_coproduct_routes_to_enum_emit()
+    && semantic_record_routes_to_struct_emit()
+    && semantic_unsupported_shape_refuses()
+}

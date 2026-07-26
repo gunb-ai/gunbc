@@ -43,65 +43,78 @@ fn selected_ref(res: DiffBaselineResolution) -> String {
   }
 }
 
-test fn witness_stacked_pr_selects_actual_base() -> Bool {
+fn witness_stacked_pr_selects_actual_base() -> Bool {
   let res = resolve_case(override_ref: none, event_name: "pull_request", base_ref: Present { value: "feature/B" })
   arm_tag(res: res) == "merge_target"
     && selected_ref(res: res) == "origin/feature/B"
     && selected_ref(res: res) != "origin/main"
 }
 
-test fn witness_main_pr_equivalent_to_push_parent() -> Bool {
+fn witness_main_pr_equivalent_to_push_parent() -> Bool {
   let res = resolve_case(override_ref: none, event_name: "pull_request", base_ref: Present { value: "main" })
   arm_tag(res: res) == "merge_target"
     && selected_ref(res: res) == "origin/main"
     && selected_ref(res: res) == (gunbc_merge_target_ref as String)
 }
 
-test fn witness_push_keeps_todays_policy() -> Bool {
+fn witness_push_keeps_todays_policy() -> Bool {
   let res = resolve_case(override_ref: none, event_name: "push", base_ref: none)
   arm_tag(res: res) == "push_parent"
     && selected_ref(res: res) == "origin/main"
 }
 
-test fn witness_workflow_dispatch_keeps_todays_policy() -> Bool {
+fn witness_workflow_dispatch_keeps_todays_policy() -> Bool {
   let res = resolve_case(override_ref: none, event_name: "workflow_dispatch", base_ref: none)
   arm_tag(res: res) == "push_parent"
     && selected_ref(res: res) == "origin/main"
 }
 
-test fn witness_bootstrap_no_event_is_push_parent() -> Bool {
+fn witness_bootstrap_no_event_is_push_parent() -> Bool {
   let res = resolve_case(override_ref: none, event_name: "", base_ref: none)
   arm_tag(res: res) == "push_parent"
     && selected_ref(res: res) == "origin/main"
 }
 
-test fn witness_operator_override_is_typed_arm() -> Bool {
+fn witness_operator_override_is_typed_arm() -> Bool {
   let res = resolve_case(override_ref: Present { value: "HEAD~20" }, event_name: "schedule", base_ref: none)
   arm_tag(res: res) == "operator_override"
     && selected_ref(res: res) == "HEAD~20"
 }
 
-test fn witness_merge_group_uses_push_parent() -> Bool {
+fn witness_merge_group_uses_push_parent() -> Bool {
   let res = resolve_case(override_ref: none, event_name: "merge_group", base_ref: none)
   arm_tag(res: res) == "push_parent"
     && selected_ref(res: res) == "origin/main"
 }
 
-test fn witness_schedule_no_override_is_push_parent() -> Bool {
+fn witness_schedule_no_override_is_push_parent() -> Bool {
   let res = resolve_case(override_ref: none, event_name: "schedule", base_ref: none)
   arm_tag(res: res) == "push_parent"
     && selected_ref(res: res) == "origin/main"
 }
 
-test fn witness_unknown_event_refuses() -> Bool {
+fn witness_unknown_event_refuses() -> Bool {
   arm_tag(res: resolve_case(override_ref: none, event_name: "deployment_status", base_ref: none)) == "refused"
 }
 
-test fn witness_pull_request_empty_base_refuses() -> Bool {
+fn witness_pull_request_empty_base_refuses() -> Bool {
   arm_tag(res: resolve_case(override_ref: none, event_name: "pull_request", base_ref: Present { value: "" })) == "refused"
 }
 
-test fn witness_pull_request_absent_base_refuses() -> Bool {
+fn witness_pull_request_absent_base_refuses() -> Bool {
   arm_tag(res: resolve_case(override_ref: none, event_name: "pull_request", base_ref: none)) == "refused"
 }
 
+test fn diff_baseline_resolution_holds() -> Bool {
+  witness_stacked_pr_selects_actual_base()
+    && witness_main_pr_equivalent_to_push_parent()
+    && witness_push_keeps_todays_policy()
+    && witness_workflow_dispatch_keeps_todays_policy()
+    && witness_bootstrap_no_event_is_push_parent()
+    && witness_operator_override_is_typed_arm()
+    && witness_merge_group_uses_push_parent()
+    && witness_schedule_no_override_is_push_parent()
+    && witness_unknown_event_refuses()
+    && witness_pull_request_empty_base_refuses()
+    && witness_pull_request_absent_base_refuses()
+}

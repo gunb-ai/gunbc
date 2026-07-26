@@ -1,100 +1,101 @@
 module test.claim.json_emit_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn witness_json_cites_rfc8259() -> Bool {
+fn witness_json_cites_rfc8259() -> Bool {
   match extdeps.languages.json.emit.extdeps_external_authority_anchor {
     ExternalAuthority { uri } => uri.locator == "www.rfc-editor.org/rfc/rfc8259"
   }
 }
 
-test fn witness_escape_backslash_and_quote() -> Bool {
+fn witness_escape_backslash_and_quote() -> Bool {
   escape_json_string(s: "a\"b\\c") == "a\\\"b\\\\c"
 }
 
-test fn witness_escape_newline() -> Bool {
+fn witness_escape_newline() -> Bool {
   escape_json_string(s: "line one\nline two") == "line one\\nline two"
 }
 
-test fn witness_escape_tab() -> Bool {
+fn witness_escape_tab() -> Bool {
   escape_json_string(s: concat("a", concat(from_code_point(cp: 9), "b"))) == "a\\tb"
 }
 
-test fn witness_escape_carriage_return() -> Bool {
+fn witness_escape_carriage_return() -> Bool {
   escape_json_string(s: concat("x", concat(from_code_point(cp: 13), "y"))) == "x\\ry"
 }
 
-test fn witness_escape_control_u0001() -> Bool {
+fn witness_escape_control_u0001() -> Bool {
   escape_json_string(s: from_code_point(cp: 1)) == "\\u0001"
 }
 
-test fn witness_quote_json_string() -> Bool {
+fn witness_quote_json_string() -> Bool {
   quote_json_string(s: "hello") == "\"hello\""
     && quote_json_string(s: "a\"b") == "\"a\\\"b\""
 }
 
-test fn witness_serialize_null() -> Bool {
+fn witness_serialize_null() -> Bool {
   serialize_json(v: json_null()) == "null"
 }
 
-test fn witness_serialize_bool() -> Bool {
+fn witness_serialize_bool() -> Bool {
   serialize_json(v: json_bool(b: true)) == "true"
     && serialize_json(v: json_bool(b: false)) == "false"
 }
 
-test fn witness_serialize_int() -> Bool {
+fn witness_serialize_int() -> Bool {
   serialize_json(v: json_int(n: 42)) == "42"
 }
 
-test fn witness_serialize_object() -> Bool {
+fn witness_serialize_object() -> Bool {
   serialize_json(v: json_object(members: [
     json_kv(key: "host", value: json_string(s: "srv1")),
     json_kv(key: "runner_count", value: json_int(n: 4)),
   ])) == "{\"host\": \"srv1\", \"runner_count\": 4}"
 }
 
-test fn witness_serialize_nested_object() -> Bool {
+fn witness_serialize_nested_object() -> Bool {
   serialize_json(v: json_object(members: [
     json_kv(key: "Password", value: json_string(s: "secret")),
   ])) == "{\"Password\": \"secret\"}"
 }
 
-test fn witness_serialize_array() -> Bool {
+fn witness_serialize_array() -> Bool {
   serialize_json(v: json_array(elements: [json_string(s: "a"), json_string(s: "b")])) == "[\"a\", \"b\"]"
 }
 
-test fn witness_int_list_helper() -> Bool {
+fn witness_int_list_helper() -> Bool {
   json_int_list(nums: [1, 2, 3]) == "[1, 2, 3]"
 }
 
-test fn witness_str_list_helper() -> Bool {
+fn witness_str_list_helper() -> Bool {
   json_str_list(items: ["x", "y"]) == "[\"x\", \"y\"]"
 }
 
-test fn witness_grammar_rows_cover_json_value_variants() -> Bool {
+fn witness_grammar_rows_cover_json_value_variants() -> Bool {
   length(xs: json_production_rows) >= 8
 }
 
-test fn witness_invalid_number_lexeme_rejected() -> Bool {
+fn witness_invalid_number_lexeme_rejected() -> Bool {
   !json_number_lexeme_valid(s: "not-a-number")
     && !json_number_lexeme_valid(s: "12abc")
     && !json_number_lexeme_valid(s: "")
     && !json_number_lexeme_valid(s: "01")
 }
 
-test fn witness_json_int_lexeme_always_valid() -> Bool {
+fn witness_json_int_lexeme_always_valid() -> Bool {
   json_number_lexeme_valid(s: json_int_lexeme(n: 42) as String)
     && json_number_lexeme_valid(s: json_int_lexeme(n: -7) as String)
     && json_number_lexeme_valid(s: json_int_lexeme(n: 0) as String)
 }
 
-test fn witness_json_number_lexeme_valid_accepts_fraction_and_exp() -> Bool {
+fn witness_json_number_lexeme_valid_accepts_fraction_and_exp() -> Bool {
   json_number_lexeme_valid(s: "12.34")
     && json_number_lexeme_valid(s: "1e10")
     && json_number_lexeme_valid(s: "-0.5e+2")
 }
 
-test fn witness_json_number_lexeme_refuses_invalid_at_construction() -> Bool {
+fn witness_json_number_lexeme_refuses_invalid_at_construction() -> Bool {
   match json_number_lexeme(s: "not-a-number") {
     none => true
     Present { value: _ } => false
@@ -109,7 +110,7 @@ test fn witness_json_number_lexeme_refuses_invalid_at_construction() -> Bool {
     }
 }
 
-test fn witness_json_number_lexeme_accepts_valid_at_construction() -> Bool {
+fn witness_json_number_lexeme_accepts_valid_at_construction() -> Bool {
   match json_number_lexeme(s: "12.34") {
     Present { value: l } => (l as String) == "12.34"
     none => false
@@ -120,18 +121,44 @@ test fn witness_json_number_lexeme_accepts_valid_at_construction() -> Bool {
     }
 }
 
-test fn witness_json_number_from_lexeme_string_refuses_invalid() -> Bool {
+fn witness_json_number_from_lexeme_string_refuses_invalid() -> Bool {
   match json_number_from_lexeme_string(s: "01") {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-test fn witness_unicode_escape_hex4_boundary_0fff() -> Bool {
+fn witness_unicode_escape_hex4_boundary_0fff() -> Bool {
   json_unicode_escape_hex4(cp: 4095) == "0FFF"
 }
 
-test fn witness_unicode_escape_hex4_boundary_ffff() -> Bool {
+fn witness_unicode_escape_hex4_boundary_ffff() -> Bool {
   json_unicode_escape_hex4(cp: 65535) == "FFFF"
 }
 
+test fn json_emit_witnesses() -> Bool {
+  witness_json_cites_rfc8259()
+    && witness_escape_backslash_and_quote()
+    && witness_escape_newline()
+    && witness_escape_tab()
+    && witness_escape_carriage_return()
+    && witness_escape_control_u0001()
+    && witness_quote_json_string()
+    && witness_serialize_null()
+    && witness_serialize_bool()
+    && witness_serialize_int()
+    && witness_serialize_object()
+    && witness_serialize_nested_object()
+    && witness_serialize_array()
+    && witness_int_list_helper()
+    && witness_str_list_helper()
+    && witness_grammar_rows_cover_json_value_variants()
+    && witness_invalid_number_lexeme_rejected()
+    && witness_json_int_lexeme_always_valid()
+    && witness_json_number_lexeme_valid_accepts_fraction_and_exp()
+    && witness_json_number_lexeme_refuses_invalid_at_construction()
+    && witness_json_number_lexeme_accepts_valid_at_construction()
+    && witness_json_number_from_lexeme_string_refuses_invalid()
+    && witness_unicode_escape_hex4_boundary_0fff()
+    && witness_unicode_escape_hex4_boundary_ffff()
+}

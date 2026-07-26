@@ -1,5 +1,6 @@
 module test.claim.ci_failure_class_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn class_is_infra(c: FloorFailureClass) -> Bool {
@@ -48,7 +49,7 @@ fn list_has_signature(xs: List<InfraSignature>, target: InfraSignature) -> Bool 
   fold(xs, init: false, f: fn(acc, sig) { acc || (sig == target) })
 }
 
-test fn witness_real_infra_reasons_are_non_blocking() -> Bool {
+fn witness_real_infra_reasons_are_non_blocking() -> Bool {
   let eagain = "error: failed to run custom build command\nResource temporarily unavailable (os error 11)"
   let spawn = "error: could not compile; caused by: failed to spawn process"
   let sccache = "sccache: encountered fatal error\nsccache: error: Connection refused (os error 111)"
@@ -67,7 +68,7 @@ test fn witness_real_infra_reasons_are_non_blocking() -> Bool {
     && (floor_failure_blocks_merge(c: classify_failure_reason(reason: sccache_exec)) == false)
 }
 
-test fn witness_structural_not_swallowed_as_infra() -> Bool {
+fn witness_structural_not_swallowed_as_infra() -> Bool {
   let compile_err = "error[E0599]: no method named `frobnicate` found for type `Node`"
   let inference = "type inference failed: cannot unify Int with String at dag/gunbc/foo.dag:42"
   let assertion = "witness cheap_pool_chunk_totality_holds returned false (1 uncovered claim)"
@@ -84,30 +85,30 @@ test fn witness_structural_not_swallowed_as_infra() -> Bool {
     && floor_exit_blocks_merge(e: ExitFailure { code: 137, reason: oom_structural })
 }
 
-test fn witness_bare_exit_137_fails_closed() -> Bool {
+fn witness_bare_exit_137_fails_closed() -> Bool {
   let bare = ExitFailure { code: 137, reason: "Process completed with exit code 137." }
   outcome_is_structural(o: classify_floor_exit(e: bare))
     && floor_exit_blocks_merge(e: bare)
 }
 
-test fn witness_unknown_reason_fails_closed() -> Bool {
+fn witness_unknown_reason_fails_closed() -> Bool {
   let unknown = "some entirely novel failure mode we have never grounded"
   class_is_structural(c: classify_failure_reason(reason: unknown))
     && floor_exit_blocks_merge(e: ExitFailure { code: 1, reason: unknown })
 }
 
-test fn witness_floor_green_does_not_block() -> Bool {
+fn witness_floor_green_does_not_block() -> Bool {
   (floor_exit_blocks_merge(e: ExitSuccess) == false)
     && outcome_is_no_failure(o: classify_floor_exit(e: ExitSuccess))
 }
 
-test fn witness_grep_alternation_is_single_authority() -> Bool {
+fn witness_grep_alternation_is_single_authority() -> Bool {
   let expected = "Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile"
   (infra_retry_grep_alternation() == expected)
     && string_contains(s: infra_retry_grep_alternation(), pattern: "Resource temporarily unavailable|failed to spawn")
 }
 
-test fn witness_build_retry_subset_excludes_job_signals() -> Bool {
+fn witness_build_retry_subset_excludes_job_signals() -> Bool {
   let build = build_retry_infra_signatures()
   (list_len(xs: build) == 5)
     && (list_len(xs: verdict_infra_signatures) == 6)
@@ -115,7 +116,7 @@ test fn witness_build_retry_subset_excludes_job_signals() -> Bool {
     && (string_contains(s: infra_retry_grep_alternation(), pattern: infra_signature_match_substring(sig: RunnerLost)) == false)
 }
 
-test fn witness_every_signature_is_grounded() -> Bool {
+fn witness_every_signature_is_grounded() -> Bool {
   fold(verdict_infra_signatures, init: true, f: fn(acc, sig) {
     acc
       && (infra_signature_origin(sig: sig) != "")
@@ -123,8 +124,19 @@ test fn witness_every_signature_is_grounded() -> Bool {
   })
 }
 
-test fn witness_verdict_computed_but_gating_deferred() -> Bool {
+fn witness_verdict_computed_but_gating_deferred() -> Bool {
   (gating_is_enforced(s: merge_freshness_gating_status) == false)
     && (merge_freshness_verdict_is_consumed_to_block() == false)
 }
 
+test fn ci_failure_class_witnesses() -> Bool {
+  witness_every_signature_is_grounded()
+    && witness_real_infra_reasons_are_non_blocking()
+    && witness_structural_not_swallowed_as_infra()
+    && witness_bare_exit_137_fails_closed()
+    && witness_unknown_reason_fails_closed()
+    && witness_floor_green_does_not_block()
+    && witness_grep_alternation_is_single_authority()
+    && witness_build_retry_subset_excludes_job_signals()
+    && witness_verdict_computed_but_gating_deferred()
+}

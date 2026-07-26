@@ -96,7 +96,7 @@ fn rust_field_access_emit_from_root(root: Node, target: TargetModel) -> Outcome<
   emit(tree: rust_field_access_emit_inferred_tree_for(root: root), target: target)
 }
 
-test fn rust_field_access_emit_get_accepts() -> Bool {
+fn rust_field_access_emit_get_accepts() -> Bool {
   match rust_field_access_emit_from_root(
     root: rust_field_access_emit_root,
     target: rust_field_access_target_model_staging()
@@ -107,7 +107,7 @@ test fn rust_field_access_emit_get_accepts() -> Bool {
   }
 }
 
-test fn rust_field_access_emit_wrong_field_discriminates() -> Bool {
+fn rust_field_access_emit_wrong_field_discriminates() -> Bool {
   match rust_field_access_emit_from_root(
     root: rust_field_access_emit_wrong_field_root(),
     target: rust_field_access_target_model_staging()
@@ -120,3 +120,6 @@ test fn rust_field_access_emit_wrong_field_discriminates() -> Bool {
   }
 }
 
+test fn rust_field_access_emit_holds() -> Bool {
+  rust_field_access_emit_get_accepts() && rust_field_access_emit_wrong_field_discriminates()
+}

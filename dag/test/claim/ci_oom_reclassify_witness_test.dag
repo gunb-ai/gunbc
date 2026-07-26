@@ -1,5 +1,6 @@
 module test.claim.ci_oom_reclassify_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn bare_137_outcome() -> FloorOutcome {
@@ -42,7 +43,7 @@ fn clustered_simultaneous() -> ClusteringEvidence {
   Clustered { signal: SimultaneousMultiJobDeath { job_count: 3 } }
 }
 
-test fn witness_clustered_oom_promotes_137_to_infra_nonblocking() -> Bool {
+fn witness_clustered_oom_promotes_137_to_infra_nonblocking() -> Bool {
   let before = bare_137_outcome()
   let after = reclassify_floor_outcome(o: before, oom: confirmed_cgroup_oom(), clustering: clustered_simultaneous())
   outcome_is_structural(o: before)
@@ -51,7 +52,7 @@ test fn witness_clustered_oom_promotes_137_to_infra_nonblocking() -> Bool {
     && (floor_outcome_blocks_merge(o: after) == false)
 }
 
-test fn witness_boot_id_reset_clustering_also_promotes() -> Bool {
+fn witness_boot_id_reset_clustering_also_promotes() -> Bool {
   let before = bare_137_outcome()
   let clu = clustering_signal_from_boot_id(boot_id_before: "boot-uuid-A", boot_id_after: "boot-uuid-B")
   let after = reclassify_floor_outcome(o: before, oom: confirmed_oomd_oom(), clustering: clu)
@@ -60,14 +61,14 @@ test fn witness_boot_id_reset_clustering_also_promotes() -> Bool {
     && (floor_outcome_blocks_merge(o: after) == false)
 }
 
-test fn witness_lone_137_no_clustering_stays_structural_blocks() -> Bool {
+fn witness_lone_137_no_clustering_stays_structural_blocks() -> Bool {
   let before = bare_137_outcome()
   let after = reclassify_floor_outcome(o: before, oom: confirmed_cgroup_oom(), clustering: NotClustered)
   outcome_is_structural(o: after)
     && floor_outcome_blocks_merge(o: after)
 }
 
-test fn witness_no_confirmed_oom_stays_structural_blocks() -> Bool {
+fn witness_no_confirmed_oom_stays_structural_blocks() -> Bool {
   let before = bare_137_outcome()
   let after = reclassify_floor_outcome(o: before, oom: no_oom(), clustering: clustered_simultaneous())
   (oom_is_confirmed(o: no_oom()) == false)
@@ -75,18 +76,18 @@ test fn witness_no_confirmed_oom_stays_structural_blocks() -> Bool {
     && floor_outcome_blocks_merge(o: after)
 }
 
-test fn witness_dispatch_two_handlers_one_fact() -> Bool {
+fn witness_dispatch_two_handlers_one_fact() -> Bool {
   oom_is_confirmed(o: confirmed_cgroup_oom())
     && oom_is_confirmed(o: confirmed_oomd_oom())
     && (oom_is_confirmed(o: no_oom()) == false)
 }
 
-test fn witness_boot_id_oracle_discriminates() -> Bool {
+fn witness_boot_id_oracle_discriminates() -> Bool {
   host_boot_id_reset(boot_id_before: "boot-uuid-A", boot_id_after: "boot-uuid-B")
     && (host_boot_id_reset(boot_id_before: "boot-uuid-A", boot_id_after: "boot-uuid-A") == false)
 }
 
-test fn witness_reclassify_never_demotes_or_touches_non_137() -> Bool {
+fn witness_reclassify_never_demotes_or_touches_non_137() -> Bool {
   let no_failure = reclassify_floor_outcome(o: NoFailure, oom: confirmed_cgroup_oom(), clustering: clustered_simultaneous())
   let already_infra = FloorFailed { class: gunbc.ci_failure_class.Infra { signature: ClusteredOutOfMemoryKill } }
   let still_infra = reclassify_floor_outcome(o: already_infra, oom: no_oom(), clustering: NotClustered)
@@ -98,3 +99,12 @@ test fn witness_reclassify_never_demotes_or_touches_non_137() -> Bool {
     && floor_outcome_blocks_merge(o: unchanged)
 }
 
+test fn ci_oom_reclassify_witnesses() -> Bool {
+  witness_clustered_oom_promotes_137_to_infra_nonblocking()
+    && witness_boot_id_reset_clustering_also_promotes()
+    && witness_lone_137_no_clustering_stays_structural_blocks()
+    && witness_no_confirmed_oom_stays_structural_blocks()
+    && witness_dispatch_two_handlers_one_fact()
+    && witness_boot_id_oracle_discriminates()
+    && witness_reclassify_never_demotes_or_touches_non_137()
+}

@@ -1,5 +1,6 @@
 module test.claim.render_surface_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data plain_cap: RenderCapability = RenderCapability {
@@ -24,21 +25,21 @@ data sample_doc: Document = Document {
   ]
 }
 
-test fn w_detect_github() -> Bool {
+fn w_detect_github() -> Bool {
   match detect_target(env: SurfaceEnv { github_actions: true }) {
     GithubActions => true
     PlainTerminal => false
   }
 }
 
-test fn w_detect_plain() -> Bool {
+fn w_detect_plain() -> Bool {
   match detect_target(env: SurfaceEnv { github_actions: false }) {
     PlainTerminal => true
     GithubActions => false
   }
 }
 
-test fn w_github_wraps_group_in_workflow_commands() -> Bool {
+fn w_github_wraps_group_in_workflow_commands() -> Bool {
   let out = serialize_document(doc: sample_doc, target: GithubActions, cap: plain_cap)
   string_contains(s: out, pattern: "::group::host effects") &&
   string_contains(s: out, pattern: "[file] read foo.dag") &&
@@ -46,7 +47,7 @@ test fn w_github_wraps_group_in_workflow_commands() -> Bool {
   string_contains(s: out, pattern: "PASS some_witness")
 }
 
-test fn w_plain_terminal_uses_header_not_commands() -> Bool {
+fn w_plain_terminal_uses_header_not_commands() -> Bool {
   let out = serialize_document(doc: sample_doc, target: PlainTerminal, cap: plain_cap)
   string_contains(s: out, pattern: "── host effects ──") &&
   string_contains(s: out, pattern: "[file] read foo.dag") &&
@@ -54,7 +55,7 @@ test fn w_plain_terminal_uses_header_not_commands() -> Bool {
   !string_contains(s: out, pattern: "::endgroup::")
 }
 
-test fn w_close_line_is_explicit_only_on_github() -> Bool {
+fn w_close_line_is_explicit_only_on_github() -> Bool {
   let gha = group_syntax(target: GithubActions)
   let term = group_syntax(target: PlainTerminal)
   match gha.close_line {
@@ -67,10 +68,18 @@ test fn w_close_line_is_explicit_only_on_github() -> Bool {
   }
 }
 
-test fn w_resolve_group_syntax_keys_off_github_flag() -> Bool {
+fn w_resolve_group_syntax_keys_off_github_flag() -> Bool {
   let gha = resolve_group_syntax(github_actions: true)
   let term = resolve_group_syntax(github_actions: false)
   gha.open_prefix == "::group::" &&
   term.open_prefix == "── "
 }
 
+test fn render_surface_witnesses() -> Bool {
+  w_detect_github() &&
+  w_detect_plain() &&
+  w_github_wraps_group_in_workflow_commands() &&
+  w_plain_terminal_uses_header_not_commands() &&
+  w_close_line_is_explicit_only_on_github() &&
+  w_resolve_group_syntax_keys_off_github_flag()
+}

@@ -365,3 +365,7 @@ test fn emit_host_fold_closure_wrong_fixture_refuses_holds() -> Bool {
   emit_fold_eval_verdict_is_semantic_mismatch(run: emit_fold_eval_run(root: fold_fixture_param_wrong_arrow))
 }
 
+test fn emit_host_fold_closure_equals_eval_all_holds() -> Bool {
+  emit_host_fold_closure_equals_eval_holds()
+    && emit_host_fold_closure_wrong_fixture_refuses_holds()
+}

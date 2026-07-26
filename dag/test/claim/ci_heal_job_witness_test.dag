@@ -57,15 +57,15 @@ fn workflow_contents_is_read(w: Workflow) -> Bool {
   }
 }
 
-test fn heal_job_enrolled_in_ci_workflow() -> Bool {
+fn heal_job_enrolled_in_ci_workflow() -> Bool {
   fold(ci_workflow.jobs, init: false, f: (acc, j) => acc || (j.id == "heal_generated_artifacts"))
 }
 
-test fn heal_job_needs_build_not_ci() -> Bool {
+fn heal_job_needs_build_not_ci() -> Bool {
   ci_heal_generated_artifacts_job().needs == ["build"]
 }
 
-test fn heal_job_runs_on_pr_only() -> Bool {
+fn heal_job_runs_on_pr_only() -> Bool {
   match ci_heal_generated_artifacts_job().if_condition {
     Present { value: s } =>
       (s == ci_regen_heal_if)
@@ -75,23 +75,23 @@ test fn heal_job_runs_on_pr_only() -> Bool {
   }
 }
 
-test fn heal_job_has_scoped_contents_write() -> Bool {
+fn heal_job_has_scoped_contents_write() -> Bool {
   job_contents_is_write(j: ci_heal_generated_artifacts_job())
 }
 
-test fn contents_write_is_scoped_to_heal_only() -> Bool {
+fn contents_write_is_scoped_to_heal_only() -> Bool {
   workflow_contents_is_read(w: ci_workflow)
     && job_has_no_write(j: ci_build_job())
     && job_has_no_write(j: ci_job())
     && job_contents_is_write(j: ci_heal_generated_artifacts_job())
 }
 
-test fn heal_regen_targets_generated_artifact_main_wet() -> Bool {
+fn heal_regen_targets_generated_artifact_main_wet() -> Bool {
   (ci_heal_generated_artifact_regen_function == "main_wet")
     && (ci_heal_generated_artifact_gate_entry == "dag/tools/generated_artifact_gate.dag")
 }
 
-test fn heal_commit_scope_is_artifact_only() -> Bool {
+fn heal_commit_scope_is_artifact_only() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
   string_contains(s: script, pattern: concat("git add \"", artifact_path(a: CiYamlArtifact)))
     && string_contains(s: script, pattern: "git diff --cached --quiet")
@@ -99,13 +99,13 @@ test fn heal_commit_scope_is_artifact_only() -> Bool {
     && (count(committed_generated_artifact_paths()) > 0)
 }
 
-test fn heal_git_add_is_existence_guarded() -> Bool {
+fn heal_git_add_is_existence_guarded() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
   string_contains(s: script, pattern: concat("if [ -e \"", artifact_path(a: CiYamlArtifact)))
     && string_contains(s: script, pattern: "not staging:")
 }
 
-test fn heal_push_targets_triggering_branch() -> Bool {
+fn heal_push_targets_triggering_branch() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
   string_contains(s: script, pattern: "git push origin HEAD:${{ github.head_ref || github.ref_name }}")
     && !string_contains(s: script, pattern: "git push origin HEAD:main")
@@ -139,7 +139,19 @@ fn step_checks_out_branch(s: Step) -> Bool {
   }
 }
 
-test fn heal_checks_out_triggering_branch() -> Bool {
+fn heal_checks_out_triggering_branch() -> Bool {
   fold(ci_heal_generated_artifacts_job().steps, init: false, f: (acc, s) => acc || step_checks_out_branch(s: s))
 }
 
+test fn ci_heal_job_witnesses() -> Bool {
+  heal_job_enrolled_in_ci_workflow()
+    && heal_job_needs_build_not_ci()
+    && heal_job_runs_on_pr_only()
+    && heal_job_has_scoped_contents_write()
+    && contents_write_is_scoped_to_heal_only()
+    && heal_regen_targets_generated_artifact_main_wet()
+    && heal_commit_scope_is_artifact_only()
+    && heal_git_add_is_existence_guarded()
+    && heal_push_targets_triggering_branch()
+    && heal_checks_out_triggering_branch()
+}

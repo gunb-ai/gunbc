@@ -36,7 +36,7 @@ fn argv_join(argv: List<String>) -> String {
   join(argv, " ")
 }
 
-test fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
+fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
   let helper = dpkg_status_argv(package: package_tailscale)
   let transport = operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
@@ -51,7 +51,7 @@ test fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
   argv_join(argv: helper) == argv_join(argv: transport)
 }
 
-test fn witness_apt_install_argv_matches_transport_row() -> Bool {
+fn witness_apt_install_argv_matches_transport_row() -> Bool {
   let helper = apt_install_argv(package: package_nodejs)
   let transport = operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
@@ -66,7 +66,7 @@ test fn witness_apt_install_argv_matches_transport_row() -> Bool {
   argv_join(argv: helper) == argv_join(argv: transport)
 }
 
-test fn witness_systemctl_restart_argv_matches_transport_row() -> Bool {
+fn witness_systemctl_restart_argv_matches_transport_row() -> Bool {
   let helper = systemctl_restart_argv(unit: gunbc_roadmap_unit_name)
   let transport = operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
@@ -81,7 +81,7 @@ test fn witness_systemctl_restart_argv_matches_transport_row() -> Bool {
   argv_join(argv: helper) == argv_join(argv: transport)
 }
 
-test fn witness_systemctl_disable_now_argv_matches_transport_row() -> Bool {
+fn witness_systemctl_disable_now_argv_matches_transport_row() -> Bool {
   let helper = systemctl_disable_now_argv(unit: gunbc_roadmap_unit_name)
   let transport = operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
@@ -96,7 +96,7 @@ test fn witness_systemctl_disable_now_argv_matches_transport_row() -> Bool {
   argv_join(argv: helper) == argv_join(argv: transport)
 }
 
-test fn witness_systemctl_daemon_reload_argv_matches_transport_row() -> Bool {
+fn witness_systemctl_daemon_reload_argv_matches_transport_row() -> Bool {
   let helper = systemctl_daemon_reload_argv()
   let transport = operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
@@ -109,7 +109,7 @@ test fn witness_systemctl_daemon_reload_argv_matches_transport_row() -> Bool {
   argv_join(argv: helper) == argv_join(argv: transport)
 }
 
-test fn witness_systemctl_enable_argv_matches_transport_row() -> Bool {
+fn witness_systemctl_enable_argv_matches_transport_row() -> Bool {
   let helper = systemctl_enable_argv(unit: gunbc_roadmap_unit_name)
   let transport = operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
@@ -124,36 +124,53 @@ test fn witness_systemctl_enable_argv_matches_transport_row() -> Bool {
   argv_join(argv: helper) == argv_join(argv: transport)
 }
 
-test fn witness_dpkg_status_command_matches_transport() -> Bool {
+fn witness_dpkg_status_command_matches_transport() -> Bool {
   dpkg_status_command(package: package_tailscale) == "dpkg -s tailscale"
 }
 
-test fn witness_apt_install_command_matches_transport() -> Bool {
+fn witness_apt_install_command_matches_transport() -> Bool {
   apt_install_command(package: package_nodejs, privileged: false) == "apt-get install --yes nodejs"
 }
 
-test fn witness_privileged_apt_install_command() -> Bool {
+fn witness_privileged_apt_install_command() -> Bool {
   apt_install_command(package: package_tailscale, privileged: true) == "sudo -n apt-get install --yes tailscale"
 }
 
-test fn witness_systemctl_restart_command_matches_transport() -> Bool {
+fn witness_systemctl_restart_command_matches_transport() -> Bool {
   systemctl_restart_command(unit: gunbc_roadmap_unit_name, privileged: true) == "sudo -n systemctl restart gunbc-roadmap.service"
 }
 
-test fn witness_systemctl_enable_command_matches_transport() -> Bool {
+fn witness_systemctl_enable_command_matches_transport() -> Bool {
   systemctl_enable_command(unit: gunbc_roadmap_unit_name, privileged: true) == "sudo -n systemctl enable gunbc-roadmap.service"
 }
 
-test fn witness_systemctl_disable_now_command_matches_transport() -> Bool {
+fn witness_systemctl_disable_now_command_matches_transport() -> Bool {
   systemctl_disable_now_command(unit: gunbc_roadmap_unit_name, privileged: true) == "sudo -n systemctl disable --now gunbc-roadmap.service"
 }
 
-test fn witness_privileged_command_prefixes_sudo_n() -> Bool {
+fn witness_privileged_command_prefixes_sudo_n() -> Bool {
   privileged_command(argv: systemctl_daemon_reload_argv()) == "sudo -n systemctl daemon-reload"
 }
 
-test fn witness_systemctl_daemon_reload_command_privileged() -> Bool {
+fn witness_systemctl_daemon_reload_command_privileged() -> Bool {
   systemctl_daemon_reload_command(privileged: true) == "sudo -n systemctl daemon-reload"
+}
+
+test fn live_deploy_operations_holds() -> Bool {
+  witness_dpkg_status_argv_matches_transport_row()
+    && witness_apt_install_argv_matches_transport_row()
+    &&   witness_systemctl_restart_argv_matches_transport_row()
+    && witness_systemctl_disable_now_argv_matches_transport_row()
+    && witness_systemctl_daemon_reload_argv_matches_transport_row()
+    && witness_systemctl_enable_argv_matches_transport_row()
+    && witness_dpkg_status_command_matches_transport()
+    && witness_apt_install_command_matches_transport()
+    && witness_privileged_apt_install_command()
+    && witness_systemctl_restart_command_matches_transport()
+    && witness_systemctl_enable_command_matches_transport()
+    && witness_systemctl_disable_now_command_matches_transport()
+    && witness_privileged_command_prefixes_sudo_n()
+    && witness_systemctl_daemon_reload_command_privileged()
 }
 
 test fn live_deploy_operations_RED_apt_install_wrong_package_golden() -> Bool {

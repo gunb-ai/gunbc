@@ -1,5 +1,6 @@
 module v2.test.claim.grammar.formal_productions_for_lhs
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data formal_productions_for_lhs_fixture_a: Symbol = ^formal_productions_for_lhs_fixture_a
@@ -45,7 +46,7 @@ fn formal_productions_for_lhs_count(xs: List<FormalProduction>) -> Int {
   )
 }
 
-test fn formal_productions_for_lhs_filters_to_lhs_holds() -> Bool {
+fn formal_productions_for_lhs_filters_to_lhs_holds() -> Bool {
   let catalog = formal_productions_for_lhs_fixture_catalog()
   let filtered = formal_productions_for_lhs(
     productions: catalog,
@@ -58,7 +59,7 @@ test fn formal_productions_for_lhs_filters_to_lhs_holds() -> Bool {
     && formal_productions_for_lhs_count(xs: filtered) == 2
 }
 
-test fn formal_productions_for_lhs_empty_when_missing_holds() -> Bool {
+fn formal_productions_for_lhs_empty_when_missing_holds() -> Bool {
   let catalog = formal_productions_for_lhs_fixture_catalog()
   let filtered = formal_productions_for_lhs(
     productions: catalog,
@@ -71,3 +72,7 @@ test fn formal_productions_for_lhs_empty_when_missing_holds() -> Bool {
   )
 }
 
+test fn formal_productions_for_lhs_witnesses() -> Bool {
+  formal_productions_for_lhs_filters_to_lhs_holds()
+    && formal_productions_for_lhs_empty_when_missing_holds()
+}

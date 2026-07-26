@@ -21,13 +21,13 @@ import v2.std.materialize {
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-test fn witness_known_grades_permit_share() -> Bool {
+fn witness_known_grades_permit_share() -> Bool {
   identity_permits_share(ci: StructurallyIdentical)
     && identity_permits_share(ci: NormalizedIdentical { normalizer: "alpha-rename" })
     && identity_permits_share(ci: ExtensionallyIdentical { bound: "declared-input-domain" })
 }
 
-test fn witness_unknown_never_permits_share() -> Bool {
+fn witness_unknown_never_permits_share() -> Bool {
   let unknown = IdentityUnknown {
     cause: MissingEnforcement { detail: "no lens covers this producer" }
   }
@@ -35,13 +35,13 @@ test fn witness_unknown_never_permits_share() -> Bool {
     && (identity_grade_is_known(ci: unknown) == false)
 }
 
-test fn witness_unknown_cause_arms_construct() -> Bool {
+fn witness_unknown_cause_arms_construct() -> Bool {
   let a = IdentityUnknown { cause: MissingConcept { detail: "x" } }
   let b = IdentityUnknown { cause: BoundUnmodeled { detail: "y" } }
   (identity_grade_is_known(ci: a) == false) && (identity_grade_is_known(ci: b) == false)
 }
 
-test fn witness_materialize_share_is_structural() -> Bool {
+fn witness_materialize_share_is_structural() -> Bool {
   match materialize_share_identity_grade() {
     StructurallyIdentical => materialize_share_grade_permits_share()
     NormalizedIdentical { normalizer: _ } => false
@@ -50,7 +50,14 @@ test fn witness_materialize_share_is_structural() -> Bool {
   }
 }
 
-test fn witness_materialize_ungrounded_refuses_share() -> Bool {
+fn witness_materialize_ungrounded_refuses_share() -> Bool {
   identity_permits_share(ci: materialize_ungrounded_identity(detail: "normalized peer")) == false
 }
 
+test fn computation_identity_witnesses() -> Bool {
+  witness_known_grades_permit_share()
+    && witness_unknown_never_permits_share()
+    && witness_unknown_cause_arms_construct()
+    && witness_materialize_share_is_structural()
+    && witness_materialize_ungrounded_refuses_share()
+}

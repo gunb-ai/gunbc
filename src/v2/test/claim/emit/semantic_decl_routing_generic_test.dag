@@ -84,3 +84,7 @@ test fn semantic_generic_struct_routes_to_struct_emit() -> Bool {
     && !semantic_pair_matches(golden: semantic_pair_wrong_golden)
 }
 
+test fn semantic_decl_routing_generic_all_holds() -> Bool {
+  semantic_generic_enum_routes_to_enum_emit()
+    && semantic_generic_struct_routes_to_struct_emit()
+}

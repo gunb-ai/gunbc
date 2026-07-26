@@ -255,18 +255,18 @@ fn fold_call_emit_matches(arrow: Node, expected: List<ConcreteSyntaxToken>) -> B
   }
 }
 
-test fn fold_call_fixtures_well_formed() -> Bool {
+fn fold_call_fixtures_well_formed() -> Bool {
   well_formed(n: fold_call_canonical_arrow()) && well_formed(n: fold_call_swapped_arrow())
 }
 
-test fn fold_call_emit_holds() -> Bool {
+fn fold_call_emit_holds() -> Bool {
   fold_call_emit_matches(
     arrow: fold_call_canonical_arrow(),
     expected: fold_call_expected_canonical_tokens()
   )
 }
 
-test fn fold_call_swap_discriminates() -> Bool {
+fn fold_call_swap_discriminates() -> Bool {
   !fold_call_emit_matches(
     arrow: fold_call_swapped_arrow(),
     expected: fold_call_expected_canonical_tokens()
@@ -282,3 +282,8 @@ test fn fold_call_swap_discriminates() -> Bool {
   }
 }
 
+test fn fold_call_closure_emit_keystone_holds() -> Bool {
+  fold_call_fixtures_well_formed()
+    && fold_call_emit_holds()
+    && fold_call_swap_discriminates()
+}

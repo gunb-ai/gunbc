@@ -9,7 +9,7 @@ import v2.compiler.self_host.frontier {
 }
 import std.types { Bool, Int }
 
-test fn w_hand_maintained_stage0_filenames_include_self_emitted() -> Bool {
+fn w_hand_maintained_stage0_filenames_include_self_emitted() -> Bool {
   generated_stage0_filenames
     |> any(f => f == "v2_compiler_use_site_verdict.rs")
     && generated_stage0_filenames
@@ -18,19 +18,25 @@ test fn w_hand_maintained_stage0_filenames_include_self_emitted() -> Bool {
       |> any(f => f == "v2_compiler_discovery_enumeration.rs")
 }
 
-test fn w_generated_stage0_filenames_match_frontier() -> Bool {
+fn w_generated_stage0_filenames_match_frontier() -> Bool {
   generated_stage0_filenames.length() == hand_maintained_stage0_filenames().length()
     && generated_stage0_filenames
       |> all(f => hand_maintained_stage0_filenames() |> any(g => g == f))
 }
 
-test fn w_generated_stage0_dirs_match_frontier() -> Bool {
+fn w_generated_stage0_dirs_match_frontier() -> Bool {
   generated_stage0_dirs.length() == hand_maintained_stage0_dirs().length()
     && generated_stage0_dirs
       |> all(d => hand_maintained_stage0_dirs() |> any(g => g == d))
 }
 
-test fn w_self_emitted_derived_count() -> Bool {
+fn w_self_emitted_derived_count() -> Bool {
   compiler_frontier_self_emitted_stage0_mod_basenames().length() == compiler_frontier_self_emitted_count()
 }
 
+test fn stage0_crate_layout_witnesses() -> Bool {
+  w_hand_maintained_stage0_filenames_include_self_emitted()
+    && w_generated_stage0_filenames_match_frontier()
+    && w_generated_stage0_dirs_match_frontier()
+    && w_self_emitted_derived_count()
+}

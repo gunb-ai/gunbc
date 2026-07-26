@@ -396,3 +396,7 @@ test fn rust_record_construct_emit_host_wrong_field_refuses_holds() -> Bool {
   )
 }
 
+test fn rust_record_construct_emit_host_equals_eval_all_holds() -> Bool {
+  rust_record_construct_emit_host_equals_eval_holds()
+    && rust_record_construct_emit_host_wrong_field_refuses_holds()
+}

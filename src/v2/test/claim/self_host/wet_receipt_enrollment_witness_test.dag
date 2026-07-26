@@ -47,81 +47,97 @@ fn sample_self_emitted_row() -> CompilerModuleFrontierRow {
   }
 }
 
-test fn witness_seed_retained_row_enrolls_no_wet_entry() -> Bool {
+fn witness_seed_retained_row_enrolls_no_wet_entry() -> Bool {
   length(xs: frontier_row_wet_entries_if_enrolled(row: sample_seed_retained_row())) == 0
 }
 
-test fn witness_self_emitted_without_binding_enrolls_no_wet_entry() -> Bool {
+fn witness_self_emitted_without_binding_enrolls_no_wet_entry() -> Bool {
   length(xs: frontier_row_wet_entries_if_enrolled(row: sample_self_emitted_row())) == 0
 }
 
-test fn witness_parse_engine_hooks_self_emitted_enrolls_no_wet_while_revoked() -> Bool {
+fn witness_parse_engine_hooks_self_emitted_enrolls_no_wet_while_revoked() -> Bool {
   length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_parse_engine_hooks)) == 0
 }
 
-test fn witness_use_site_verdict_self_emitted_enrolls_no_wet_while_revoked() -> Bool {
+fn witness_use_site_verdict_self_emitted_enrolls_no_wet_while_revoked() -> Bool {
   length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_use_site_verdict)) == 0
 }
 
-test fn witness_discovery_enumeration_self_emitted_enrolls_no_wet_while_revoked() -> Bool {
+fn witness_discovery_enumeration_self_emitted_enrolls_no_wet_while_revoked() -> Bool {
   length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_discovery_enumeration)) == 0
 }
 
-test fn witness_target_carriers_self_emitted_enrolls_no_wet_while_revoked() -> Bool {
+fn witness_target_carriers_self_emitted_enrolls_no_wet_while_revoked() -> Bool {
   length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_07_target_carriers)) == 0
 }
 
-test fn witness_body_producer_self_emitted_enrolls_no_wet_while_revoked() -> Bool {
+fn witness_body_producer_self_emitted_enrolls_no_wet_while_revoked() -> Bool {
   length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_03_body_producer)) == 0
 }
 
 data wet_template_entry_count_note: String = "Eleven template rows: the Gate-4 std/logic per-module self-host receipt, the Gate-1 emit-class import-closure receipt (namespace_import_closure_witness_test), the seven emit-on-demand family aggregates (kernel, field_access, complement, match_loop_fold, meet_join, variant_construct, classical_not_ingested — the 2026-07-21 nightly Wet enrollment; complement + meet_join are pure-receipt residues after the family-grain migration), the family-crate aggregate (emit_on_demand_family_crate_witness_test — the executing consumer for the migrated complement/meet_join native legs, enrolled so the migration cannot orphan them), and the Kernel-D native-only-verdict real compile-and-run witness (emit_host_native_only_verdict_test.dag — KERNEL-D TESTING RE-STEER, 2026-07-24: moved off per-PR CommitCheckEnrollment onto this nightly wet cadence, the same lane as the other module-agnostic rows here). The non-Gate-4 rows are module-agnostic — no frontier row flips to gate them; they enroll as template rows rather than SelfHostWetReceiptBinding rows. See falsifier_self_host_wet_emit_class_note."
 
-test fn witness_nightly_enrollment_is_template_only_while_bindings_revoked() -> Bool {
+fn witness_nightly_enrollment_is_template_only_while_bindings_revoked() -> Bool {
   (length(xs: falsifier_self_host_wet_template_entries) == 11)
     && (length(xs: falsifier_self_host_wet_frontier_enrolled_entries()) == 0)
     && (length(xs: falsifier_self_host_wet_entries()) == 11)
 }
 
-test fn witness_parse_engine_hooks_binding_absent_while_revoked() -> Bool {
+fn witness_parse_engine_hooks_binding_absent_while_revoked() -> Bool {
   match find_wet_receipt_binding(module_path: "src/v2/compiler/parse_engine_hooks.dag") {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-test fn witness_use_site_verdict_binding_absent_while_revoked() -> Bool {
+fn witness_use_site_verdict_binding_absent_while_revoked() -> Bool {
   match find_wet_receipt_binding(module_path: "src/v2/compiler/use_site_verdict.dag") {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-test fn witness_discovery_enumeration_binding_absent_while_revoked() -> Bool {
+fn witness_discovery_enumeration_binding_absent_while_revoked() -> Bool {
   match find_wet_receipt_binding(module_path: "src/v2/compiler/discovery_enumeration.dag") {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-test fn witness_target_carriers_binding_absent_while_revoked() -> Bool {
+fn witness_target_carriers_binding_absent_while_revoked() -> Bool {
   match find_wet_receipt_binding(module_path: "src/v2/compiler/07_target_carriers.dag") {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-test fn witness_body_producer_binding_absent_while_revoked() -> Bool {
+fn witness_body_producer_binding_absent_while_revoked() -> Bool {
   match find_wet_receipt_binding(module_path: "src/v2/compiler/03_body_producer.dag") {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-test fn witness_unbound_module_path_has_no_binding() -> Bool {
+fn witness_unbound_module_path_has_no_binding() -> Bool {
   match find_wet_receipt_binding(module_path: "src/v2/compiler/06_translate.dag") {
     Absent => true
     Present { value: _ } => false
   }
 }
 
+test fn wet_receipt_enrollment_witnesses() -> Bool {
+  witness_seed_retained_row_enrolls_no_wet_entry()
+    && witness_self_emitted_without_binding_enrolls_no_wet_entry()
+    && witness_parse_engine_hooks_self_emitted_enrolls_no_wet_while_revoked()
+    && witness_use_site_verdict_self_emitted_enrolls_no_wet_while_revoked()
+    && witness_discovery_enumeration_self_emitted_enrolls_no_wet_while_revoked()
+    && witness_target_carriers_self_emitted_enrolls_no_wet_while_revoked()
+    && witness_body_producer_self_emitted_enrolls_no_wet_while_revoked()
+    && witness_nightly_enrollment_is_template_only_while_bindings_revoked()
+    && witness_parse_engine_hooks_binding_absent_while_revoked()
+    && witness_use_site_verdict_binding_absent_while_revoked()
+    && witness_discovery_enumeration_binding_absent_while_revoked()
+    && witness_target_carriers_binding_absent_while_revoked()
+    && witness_body_producer_binding_absent_while_revoked()
+    && witness_unbound_module_path_has_no_binding()
+}

@@ -1,5 +1,6 @@
 module test.claim.extdeps_git_diff_name_status_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn append_name_status_token(acc: String, token: String) -> String {
@@ -28,7 +29,7 @@ fn is_truncated(raw: String) -> Bool {
   }
 }
 
-test fn w_modified_single_entry() -> Bool {
+fn w_modified_single_entry() -> Bool {
   let raw = join_name_status_tokens(["M", "file.txt"])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 1
@@ -43,7 +44,7 @@ test fn w_modified_single_entry() -> Bool {
     }
 }
 
-test fn w_added_entry() -> Bool {
+fn w_added_entry() -> Bool {
   let raw = join_name_status_tokens(["A", "new_file.txt"])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 1
@@ -53,7 +54,7 @@ test fn w_added_entry() -> Bool {
     }
 }
 
-test fn w_deleted_entry() -> Bool {
+fn w_deleted_entry() -> Bool {
   let raw = join_name_status_tokens(["D", "gone.txt"])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 1
@@ -64,7 +65,7 @@ test fn w_deleted_entry() -> Bool {
     }
 }
 
-test fn w_renamed_entry_carries_similarity_and_old_path() -> Bool {
+fn w_renamed_entry_carries_similarity_and_old_path() -> Bool {
   let raw = join_name_status_tokens(["R100", "old_name.txt", "new_name.txt"])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 1
@@ -79,7 +80,7 @@ test fn w_renamed_entry_carries_similarity_and_old_path() -> Bool {
     }
 }
 
-test fn w_copied_entry_carries_similarity_and_old_path() -> Bool {
+fn w_copied_entry_carries_similarity_and_old_path() -> Bool {
   let raw = join_name_status_tokens(["C87", "source.txt", "copy.txt"])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 1
@@ -94,7 +95,7 @@ test fn w_copied_entry_carries_similarity_and_old_path() -> Bool {
     }
 }
 
-test fn w_mixed_multi_entry_blob_preserves_order_and_arity() -> Bool {
+fn w_mixed_multi_entry_blob_preserves_order_and_arity() -> Bool {
   let raw = join_name_status_tokens([
     "M", "a.txt",
     "A", "b.txt",
@@ -113,7 +114,7 @@ test fn w_mixed_multi_entry_blob_preserves_order_and_arity() -> Bool {
     }
 }
 
-test fn w_unrecognized_status_letter_is_typed_not_absorbed() -> Bool {
+fn w_unrecognized_status_letter_is_typed_not_absorbed() -> Bool {
   let raw = join_name_status_tokens(["X", "weird.txt"])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 1
@@ -124,7 +125,7 @@ test fn w_unrecognized_status_letter_is_typed_not_absorbed() -> Bool {
     && git_diff_status_entries_any_unknown(entries: entries)
 }
 
-test fn w_malformed_rename_score_is_typed_unknown_not_absorbed() -> Bool {
+fn w_malformed_rename_score_is_typed_unknown_not_absorbed() -> Bool {
   let raw = join_name_status_tokens(["Rxx", "old.txt", "new.txt"])
   let entries = well_formed_entries(raw: raw)
   match entries.first().status {
@@ -134,34 +135,34 @@ test fn w_malformed_rename_score_is_typed_unknown_not_absorbed() -> Bool {
     && git_diff_status_entries_any_unknown(entries: entries)
 }
 
-test fn w_malformed_rename_score_corruption_stays_fail_closed_downstream() -> Bool {
+fn w_malformed_rename_score_corruption_stays_fail_closed_downstream() -> Bool {
   let raw = join_name_status_tokens(["Rxx", "old.txt", "new.txt", "M", "trailing.txt"])
   let entries = well_formed_entries(raw: raw)
   git_diff_status_entries_any_unknown(entries: entries)
 }
 
-test fn w_recognized_entries_are_never_flagged_unknown() -> Bool {
+fn w_recognized_entries_are_never_flagged_unknown() -> Bool {
   let raw = join_name_status_tokens(["M", "a.txt", "A", "b.txt"])
   let entries = well_formed_entries(raw: raw)
   !git_diff_status_entries_any_unknown(entries: entries)
 }
 
-test fn w_lone_trailing_status_token_is_typed_truncated_not_empty() -> Bool {
+fn w_lone_trailing_status_token_is_typed_truncated_not_empty() -> Bool {
   let raw = join_name_status_tokens(["M"])
   is_truncated(raw: raw) && well_formed_entries(raw: raw).length() == 0
 }
 
-test fn w_rename_missing_new_path_is_typed_truncated_not_empty() -> Bool {
+fn w_rename_missing_new_path_is_typed_truncated_not_empty() -> Bool {
   let raw = join_name_status_tokens(["R100", "old.txt"])
   is_truncated(raw: raw) && well_formed_entries(raw: raw).length() == 0
 }
 
-test fn w_complete_stream_is_never_flagged_truncated() -> Bool {
+fn w_complete_stream_is_never_flagged_truncated() -> Bool {
   let raw = join_name_status_tokens(["M", "a.txt", "R100", "old.txt", "new.txt"])
   !is_truncated(raw: raw)
 }
 
-test fn w_truncated_outcome_is_a_distinct_variant_from_complete() -> Bool {
+fn w_truncated_outcome_is_a_distinct_variant_from_complete() -> Bool {
   let raw = join_name_status_tokens(["M"])
   match git_diff_name_status_parse(raw: raw) {
     GitDiffNameStatusTruncated { pending: _, entries: _ } => true
@@ -169,7 +170,7 @@ test fn w_truncated_outcome_is_a_distinct_variant_from_complete() -> Bool {
   }
 }
 
-test fn w_touched_paths_derives_both_sides_of_a_rename() -> Bool {
+fn w_touched_paths_derives_both_sides_of_a_rename() -> Bool {
   let raw = join_name_status_tokens(["M", "a.txt", "R100", "old_d.txt", "new_d.txt"])
   let entries = well_formed_entries(raw: raw)
   let touched = git_diff_status_entries_touched_paths(entries: entries)
@@ -179,7 +180,7 @@ test fn w_touched_paths_derives_both_sides_of_a_rename() -> Bool {
     && list_contains_string(xs: touched, needle: "new_d.txt")
 }
 
-test fn w_departed_paths_names_deletions_and_rename_sources_only() -> Bool {
+fn w_departed_paths_names_deletions_and_rename_sources_only() -> Bool {
   let raw = join_name_status_tokens([
     "M", "a.txt",
     "D", "gone.txt",
@@ -197,7 +198,26 @@ test fn w_departed_paths_names_deletions_and_rename_sources_only() -> Bool {
     && !list_contains_string(xs: departed, needle: "copy.txt")
 }
 
-test fn w_empty_raw_produces_no_entries() -> Bool {
+fn w_empty_raw_produces_no_entries() -> Bool {
   well_formed_entries(raw: "").length() == 0
 }
 
+test fn extdeps_git_diff_name_status_witnesses() -> Bool {
+  w_modified_single_entry()
+    && w_added_entry()
+    && w_deleted_entry()
+    && w_renamed_entry_carries_similarity_and_old_path()
+    && w_copied_entry_carries_similarity_and_old_path()
+    && w_mixed_multi_entry_blob_preserves_order_and_arity()
+    && w_unrecognized_status_letter_is_typed_not_absorbed()
+    && w_malformed_rename_score_is_typed_unknown_not_absorbed()
+    && w_malformed_rename_score_corruption_stays_fail_closed_downstream()
+    && w_recognized_entries_are_never_flagged_unknown()
+    && w_lone_trailing_status_token_is_typed_truncated_not_empty()
+    && w_rename_missing_new_path_is_typed_truncated_not_empty()
+    && w_complete_stream_is_never_flagged_truncated()
+    && w_truncated_outcome_is_a_distinct_variant_from_complete()
+    && w_touched_paths_derives_both_sides_of_a_rename()
+    && w_departed_paths_names_deletions_and_rename_sources_only()
+    && w_empty_raw_produces_no_entries()
+}

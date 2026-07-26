@@ -398,7 +398,7 @@ fn bind_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool 
   }
 }
 
-test fn bind_eval_counted_value_body_holds() -> Bool {
+fn bind_eval_counted_value_body_holds() -> Bool {
   bind_eval_run_passes(
     run: bind_eval_run(
       body: bind_eval_bind_node(
@@ -410,7 +410,7 @@ test fn bind_eval_counted_value_body_holds() -> Bool {
   )
 }
 
-test fn bind_eval_divergent_value_rejects_holds() -> Bool {
+fn bind_eval_divergent_value_rejects_holds() -> Bool {
   match bind_eval_run(
     body: bind_eval_bind_node(
       value: bind_eval_divergent(),
@@ -425,6 +425,10 @@ test fn bind_eval_divergent_value_rejects_holds() -> Bool {
       }
     Rejected { diagnostics: _ } => true
   }
+}
+
+test fn bind_demand_driven_eval_keystone_holds() -> Bool {
+  bind_eval_counted_value_body_holds() && bind_eval_divergent_value_rejects_holds()
 }
 
 fn bind_eval_minted_atom(s: Symbol, id: Int) -> Node {
@@ -447,7 +451,7 @@ fn bind_eval_bind_node_with_binder(binder: Node, value: Node, body: Node) -> Nod
   }
 }
 
-test fn bind_eval_bound_reference_reads_value_holds() -> Bool {
+fn bind_eval_bound_reference_reads_value_holds() -> Bool {
   bind_eval_run_passes(
     run: bind_eval_run(
       body: bind_eval_bind_node_with_binder(
@@ -460,7 +464,7 @@ test fn bind_eval_bound_reference_reads_value_holds() -> Bool {
   )
 }
 
-test fn bind_eval_parse_shaped_occurrence_distinct_reference_reads_holds() -> Bool {
+fn bind_eval_parse_shaped_occurrence_distinct_reference_reads_holds() -> Bool {
   bind_eval_run_passes(
     run: bind_eval_run(
       body: bind_eval_bind_node_with_binder(
@@ -475,7 +479,7 @@ test fn bind_eval_parse_shaped_occurrence_distinct_reference_reads_holds() -> Bo
 
 data bind_eval_occurrence_identity_defect_note: String = "The reference-binding witnesses below pin the FLAG D binding-key protocol (docs/plans/general-body-producer-design.md section 9, signed 2026-07-10). GREEN: a bound body reference reads its value through the environment when binder and reference atoms share binding identity regardless of occurrence (parse-shaped MintedOccurrence 1 vs 2 — exactly what 02_parse stamp_terminal mints for source text). GREEN: occurrence-normalized structural equals still read. Dissolved: FLAG D binding-key re-grounding merged — EnvironmentBindingKey keyed on identity, silent allocate_literal fall-through deleted for non-literals."
 
-test fn bind_eval_minted_occurrence_equal_reference_reads_holds() -> Bool {
+fn bind_eval_minted_occurrence_equal_reference_reads_holds() -> Bool {
   bind_eval_run_passes(
     run: bind_eval_run(
       body: bind_eval_bind_node_with_binder(
@@ -488,7 +492,7 @@ test fn bind_eval_minted_occurrence_equal_reference_reads_holds() -> Bool {
   )
 }
 
-test fn bind_eval_unbound_reference_refuses_holds() -> Bool {
+fn bind_eval_unbound_reference_refuses_holds() -> Bool {
   let ref_node = bind_eval_atom(s: ^bind_eval_unbound_ref_sym)
   let tree = bind_eval_admitted_tree(root: ref_node)
   match eval_with_context(
@@ -510,7 +514,7 @@ fn bind_eval_default_context() -> EvalContext {
   )
 }
 
-test fn bind_eval_unbound_reference_default_algebra_refuses_holds() -> Bool {
+fn bind_eval_unbound_reference_default_algebra_refuses_holds() -> Bool {
   let ref_node = bind_eval_atom(s: ^bind_eval_unbound_ref_sym)
   let tree = bind_eval_admitted_tree(root: ref_node)
   match eval_with_context(
@@ -524,3 +528,10 @@ test fn bind_eval_unbound_reference_default_algebra_refuses_holds() -> Bool {
   }
 }
 
+test fn bind_reference_binding_protocol_witnesses_hold() -> Bool {
+  bind_eval_bound_reference_reads_value_holds()
+    && bind_eval_minted_occurrence_equal_reference_reads_holds()
+    && bind_eval_parse_shaped_occurrence_distinct_reference_reads_holds()
+    && bind_eval_unbound_reference_refuses_holds()
+    && bind_eval_unbound_reference_default_algebra_refuses_holds()
+}

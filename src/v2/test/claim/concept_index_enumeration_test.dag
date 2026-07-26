@@ -1,5 +1,6 @@
 module v2.test.claim.concept_index_enumeration
 
+
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 type ConceptIndexWitnessRecord {
@@ -74,11 +75,11 @@ fn parse_only_concept_matches(
   })
 }
 
-test fn witness_enumeration_nonempty() -> Bool {
+fn witness_enumeration_nonempty() -> Bool {
   idx().length() > 0
 }
 
-test fn witness_fieldref_self_projection() -> Bool {
+fn witness_fieldref_self_projection() -> Bool {
   concept_matches(
     target_qn: "v2.std.concept_index.FieldRef",
     short_name: "FieldRef",
@@ -90,7 +91,7 @@ test fn witness_fieldref_self_projection() -> Bool {
   )
 }
 
-test fn witness_qualified_concept_self_projection() -> Bool {
+fn witness_qualified_concept_self_projection() -> Bool {
   concept_matches(
     target_qn: "v2.std.concept_index.QualifiedConcept",
     short_name: "QualifiedConcept",
@@ -102,7 +103,7 @@ test fn witness_qualified_concept_self_projection() -> Bool {
   )
 }
 
-test fn witness_local_record_enumerated() -> Bool {
+fn witness_local_record_enumerated() -> Bool {
   concept_matches(
     target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessRecord",
     short_name: "ConceptIndexWitnessRecord",
@@ -114,12 +115,12 @@ test fn witness_local_record_enumerated() -> Bool {
   )
 }
 
-test fn witness_absent_concept_is_false() -> Bool {
+fn witness_absent_concept_is_false() -> Bool {
   (idx_has_qn(target: "v2.std.concept_index.NoSuchConceptZZZ") == false)
     && (idx_has_qn(target: "std.concept_index.FieldRef") == false)
 }
 
-test fn witness_parse_only_extract_reflects_canonical_field_types() -> Bool {
+fn witness_parse_only_extract_reflects_canonical_field_types() -> Bool {
   parse_only_concept_matches(
     target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessRecord",
     short_name: "ConceptIndexWitnessRecord",
@@ -131,7 +132,7 @@ test fn witness_parse_only_extract_reflects_canonical_field_types() -> Bool {
   )
 }
 
-test fn witness_parse_only_extract_reflects_perturbed_field_type() -> Bool {
+fn witness_parse_only_extract_reflects_perturbed_field_type() -> Bool {
   parse_only_concept_matches(
     target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessRecordPerturb",
     short_name: "ConceptIndexWitnessRecordPerturb",
@@ -143,7 +144,7 @@ test fn witness_parse_only_extract_reflects_perturbed_field_type() -> Bool {
   )
 }
 
-test fn witness_parse_only_extract_stale_field_type_red_on_canonical() -> Bool {
+fn witness_parse_only_extract_stale_field_type_red_on_canonical() -> Bool {
   !parse_only_concept_matches(
     target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessRecord",
     short_name: "ConceptIndexWitnessRecord",
@@ -154,14 +155,14 @@ test fn witness_parse_only_extract_stale_field_type_red_on_canonical() -> Bool {
   )
 }
 
-test fn witness_parse_only_extract_nonempty_in_scoped_pool() -> Bool {
+fn witness_parse_only_extract_nonempty_in_scoped_pool() -> Bool {
   parse_only_idx().length() > 0
     && parse_only_idx_has_qn(
       target: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessRecord"
     )
 }
 
-test fn witness_coproduct_arms_live() -> Bool {
+fn witness_coproduct_arms_live() -> Bool {
   concept_matches(
     target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessCoproduct",
     short_name: "ConceptIndexWitnessCoproduct",
@@ -177,7 +178,7 @@ test fn witness_coproduct_arms_live() -> Bool {
   )
 }
 
-test fn witness_coproduct_arms_parse_only() -> Bool {
+fn witness_coproduct_arms_parse_only() -> Bool {
   parse_only_concept_matches(
     target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessCoproduct",
     short_name: "ConceptIndexWitnessCoproduct",
@@ -193,3 +194,16 @@ test fn witness_coproduct_arms_parse_only() -> Bool {
   )
 }
 
+test fn concept_index_enumeration_witnesses() -> Bool {
+  witness_enumeration_nonempty()
+    && witness_fieldref_self_projection()
+    && witness_qualified_concept_self_projection()
+    && witness_local_record_enumerated()
+    && witness_absent_concept_is_false()
+    && witness_parse_only_extract_nonempty_in_scoped_pool()
+    && witness_parse_only_extract_reflects_canonical_field_types()
+    && witness_parse_only_extract_reflects_perturbed_field_type()
+    && witness_parse_only_extract_stale_field_type_red_on_canonical()
+    && witness_coproduct_arms_live()
+    && witness_coproduct_arms_parse_only()
+}

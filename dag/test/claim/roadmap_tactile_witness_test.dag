@@ -60,7 +60,7 @@ fn js() -> String {
   dispatch_client_js_source()
 }
 
-test fn witness_settle_spring_mints_only_the_easing() -> Bool {
+fn witness_settle_spring_mints_only_the_easing() -> Bool {
   settle_spring.duration_ms == restore_gentle.duration_ms
     && !(settle_spring.easing == restore_gentle.easing)
     && string_contains(s: settle_spring.easing, pattern: "cubic-bezier(0.34, 1.56, 0.64, 1)")
@@ -71,7 +71,7 @@ fn timing_in_scale(t: TimingToken) -> Bool {
     acc || (s.duration_ms == t.duration_ms && s.easing == t.easing))
 }
 
-test fn witness_every_behavior_timing_comes_from_the_scale() -> Bool {
+fn witness_every_behavior_timing_comes_from_the_scale() -> Bool {
   all(roadmap_behaviors, r => timing_in_scale(t: r.timing))
 }
 
@@ -85,14 +85,14 @@ fn witness_press_preserves_family() -> Bool {
     && !string_contains(s: c, pattern: ".dispatch-btn.dispatch-refused:active { background: var(--band-invite-pressed)")
 }
 
-test fn witness_hover_runs_on_reveal_not_the_press_clock() -> Bool {
+fn witness_hover_runs_on_reveal_not_the_press_clock() -> Bool {
   let approach_rows = roadmap_behaviors |> filter(r => r.timing.duration_ms == reveal_deliberate.duration_ms)
   approach_rows.length() > 0
     && string_contains(s: css(), pattern: "transform 160ms ease-out")
     && string_contains(s: css(), pattern: "border-color 160ms ease-out")
 }
 
-test fn witness_register_vocabulary_is_consumed() -> Bool {
+fn witness_register_vocabulary_is_consumed() -> Bool {
   coverage_complete(elements: roadmap_elements, rows: roadmap_behaviors)
     && string_contains(s: css(), pattern: "translateY(var(--travel-lift))")
     && string_contains(s: css(), pattern: "translateY(var(--travel-press))")
@@ -101,7 +101,7 @@ test fn witness_register_vocabulary_is_consumed() -> Bool {
     && string_contains(s: css(), pattern: settle_spring.easing)
 }
 
-test fn witness_press_depresses_on_pointer_down() -> Bool {
+fn witness_press_depresses_on_pointer_down() -> Bool {
   string_contains(s: css(), pattern: ".dispatch-btn:active { background: var(--band-invite-pressed) }")
     && witness_press_preserves_family()
     && string_contains(
@@ -113,7 +113,7 @@ test fn witness_press_depresses_on_pointer_down() -> Bool {
       ], ""))
 }
 
-test fn witness_accept_settles_from_a_held_position() -> Bool {
+fn witness_accept_settles_from_a_held_position() -> Bool {
   let held = join([".dispatch-btn.", dispatch_class_requested, " { transform: ", scale_transform_wire(per_mille: hold_scale_per_mille), " }"], "")
   let settled = join([".dispatch-btn.", dispatch_class_ok, " { transform: ", scale_transform_wire(per_mille: rest_scale_per_mille), " }"], "")
   let spring = join([".dispatch-btn.", dispatch_class_ok, " { transition: transform 240ms ", settle_spring.easing, " }"], "")
@@ -122,12 +122,12 @@ test fn witness_accept_settles_from_a_held_position() -> Bool {
     && string_contains(s: css(), pattern: spring)
 }
 
-test fn witness_detent_edges_all_beat() -> Bool {
+fn witness_detent_edges_all_beat() -> Bool {
   roadmap_dispatch_detent_defects().length() == 0
     && detent_edges_all_beat(detents: roadmap_dispatch_detents, edges: roadmap_detent_edges)
 }
 
-test fn witness_inert_edge_reds_with_its_transform() -> Bool {
+fn witness_inert_edge_reds_with_its_transform() -> Bool {
   let inert = DetentEdge { from_state: detent_rest, to_state: detent_accepted }
   let defects = detent_edge_defects(detents: roadmap_dispatch_detents, edges: [inert])
   defects.length() == 1
@@ -138,7 +138,7 @@ test fn witness_inert_edge_reds_with_its_transform() -> Bool {
       })
 }
 
-test fn witness_undeclared_endpoint_reds_by_name() -> Bool {
+fn witness_undeclared_endpoint_reds_by_name() -> Bool {
   let typo = DetentEdge { from_state: detent_pressed, to_state: "requsted" }
   let defects = detent_edge_defects(detents: roadmap_dispatch_detents, edges: [typo])
   defects.length() == 1
@@ -148,7 +148,7 @@ test fn witness_undeclared_endpoint_reds_by_name() -> Bool {
     })
 }
 
-test fn witness_two_missing_endpoints_do_not_cancel() -> Bool {
+fn witness_two_missing_endpoints_do_not_cancel() -> Bool {
   let both_bad = DetentEdge { from_state: "nope-a", to_state: "nope-b" }
   let defects = detent_edge_defects(detents: roadmap_dispatch_detents, edges: [both_bad])
   defects.length() == 1
@@ -162,7 +162,7 @@ fn carrier_items_all_timed(c: TransitionCarrier) -> Bool {
   all(c.items, i => i.prop.length() > 0 && i.timing.duration_ms > 0)
 }
 
-test fn witness_every_transition_property_carries_its_own_duration() -> Bool {
+fn witness_every_transition_property_carries_its_own_duration() -> Bool {
   let carriers = all_transition_carriers(rules: roadmap_rules())
   carriers.length() > 0
     && all(carriers, c => carrier_items_all_timed(c: c))
@@ -172,20 +172,20 @@ test fn witness_every_transition_property_carries_its_own_duration() -> Bool {
     && !string_contains(s: css(), pattern: "transition: border-color, transform")
 }
 
-test fn witness_per_edge_weights_ride_their_own_selectors() -> Bool {
+fn witness_per_edge_weights_ride_their_own_selectors() -> Bool {
   string_contains(s: css(), pattern: ".dispatch-btn:active { transition: transform 90ms ease-out }")
     && string_contains(s: css(), pattern: join([".dispatch-btn.", dispatch_class_requested, " { transition: transform 90ms ease-out }"], ""))
     && string_contains(s: css(), pattern: join([".dispatch-btn.", dispatch_class_ok, " { transition: transform 240ms "], ""))
 }
 
-test fn witness_state_class_trigger_selects_by_class_not_pseudo() -> Bool {
+fn witness_state_class_trigger_selects_by_class_not_pseudo() -> Bool {
   trigger_selector_suffix(t: OnStateClass { class_name: dispatch_class_ok }) == join([".", dispatch_class_ok], "")
     && trigger_is_state_class(t: OnStateClass { class_name: dispatch_class_ok })
     && !trigger_is_state_class(t: OnHover)
     && trigger_selector_suffix(t: OnHover) == ":hover"
 }
 
-test fn witness_state_transitions_carry_on_the_state_selector() -> Bool {
+fn witness_state_transitions_carry_on_the_state_selector() -> Bool {
   let subject = ClassSelector { name: "dispatch-btn" }
   let on_state = transition_carrier_selector(
     subject: subject,
@@ -196,14 +196,14 @@ test fn witness_state_transitions_carry_on_the_state_selector() -> Bool {
     && on_pseudo == ".dispatch-btn"
 }
 
-test fn witness_keyframes_wall_holds_on_the_dashboard() -> Bool {
+fn witness_keyframes_wall_holds_on_the_dashboard() -> Bool {
   !string_contains(s: css(), pattern: "@keyframes")
     && !string_contains(s: css(), pattern: "animation")
     && !string_contains(s: js(), pattern: "requestAnimationFrame")
     && !string_contains(s: js(), pattern: "setInterval")
 }
 
-test fn witness_reduced_motion_neutralizes_every_carrier() -> Bool {
+fn witness_reduced_motion_neutralizes_every_carrier() -> Bool {
   let block = reduced_motion_block(rules: roadmap_rules())
   string_contains(s: block, pattern: ".dispatch-btn { transition: none }")
     && string_contains(s: block, pattern: join([".dispatch-btn.", dispatch_class_ok, " { transition: none }"], ""))
@@ -213,18 +213,18 @@ test fn witness_reduced_motion_neutralizes_every_carrier() -> Bool {
     && string_contains(s: css(), pattern: "@media (prefers-reduced-motion: reduce)")
 }
 
-test fn witness_declared_sounds_are_operation_sounds() -> Bool {
+fn witness_declared_sounds_are_operation_sounds() -> Bool {
   every_declared_sound_admissible()
     && sound_specs.length() > 0
     && operation_sound_envelope(s: engage_detent_click)
 }
 
-test fn witness_notification_chime_is_inadmissible() -> Bool {
+fn witness_notification_chime_is_inadmissible() -> Bool {
   !operation_sound_envelope(s: notification_chime_negative_control)
     && notification_chime_negative_control.decay > operation_sound_max_decay_ms
 }
 
-test fn witness_press_tick_is_derived_from_the_sound_row() -> Bool {
+fn witness_press_tick_is_derived_from_the_sound_row() -> Bool {
   let source = js()
   string_contains(s: source, pattern: sound_spec_frequency_wire(s: engage_detent_click))
     && string_contains(s: source, pattern: sound_spec_decay_seconds_wire(s: engage_detent_click))
@@ -233,7 +233,7 @@ test fn witness_press_tick_is_derived_from_the_sound_row() -> Bool {
     && !string_contains(s: source, pattern: sound_spec_frequency_wire(s: notification_chime_negative_control))
 }
 
-test fn witness_tick_is_synthesized_not_a_file() -> Bool {
+fn witness_tick_is_synthesized_not_a_file() -> Bool {
   let source = js()
   string_contains(s: source, pattern: "new AudioContext()")
     && string_contains(s: source, pattern: "createOscillator()")
@@ -243,13 +243,13 @@ test fn witness_tick_is_synthesized_not_a_file() -> Bool {
     && !string_contains(s: source, pattern: "new Audio(")
 }
 
-test fn witness_tick_fires_on_pointer_down_in_its_own_listener() -> Bool {
+fn witness_tick_fires_on_pointer_down_in_its_own_listener() -> Bool {
   let source = js()
   string_contains(s: source, pattern: "addEventListener('pointerdown'")
     && string_contains(s: source, pattern: "addEventListener('click'")
 }
 
-test fn witness_mute_is_persisted_and_defaults_to_sounding() -> Bool {
+fn witness_mute_is_persisted_and_defaults_to_sounding() -> Bool {
   let source = js()
   sound_default_sounding
     && string_contains(s: source, pattern: join(["localStorage.getItem('", sound_mute_storage_key, "')"], ""))
@@ -258,7 +258,7 @@ test fn witness_mute_is_persisted_and_defaults_to_sounding() -> Bool {
     && string_contains(s: source, pattern: sound_toggle_label_off)
 }
 
-test fn witness_button_morphs_into_the_session_chip() -> Bool {
+fn witness_button_morphs_into_the_session_chip() -> Bool {
   string_contains(s: js(), pattern: join(["ok ? '", dispatch_session_chip_prefix, "' + s"], ""))
 }
 
@@ -279,12 +279,12 @@ fn header_has_sound_toggle(h: Fragment) -> Bool {
   }
 }
 
-test fn witness_sound_toggle_ships_on_every_page_header() -> Bool {
+fn witness_sound_toggle_ships_on_every_page_header() -> Bool {
   header_has_sound_toggle(h: roadmap_header(title: "gunbc — roadmap"))
     && header_has_sound_toggle(h: roadmap_header(title: "gunbc — daily workspace"))
 }
 
-test fn witness_sound_toggle_label_is_painted_by_the_program_not_the_markup() -> Bool {
+fn witness_sound_toggle_label_is_painted_by_the_program_not_the_markup() -> Bool {
   match try_serialize_html_source(node: roadmap_page_for_authority()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -293,3 +293,30 @@ test fn witness_sound_toggle_label_is_painted_by_the_program_not_the_markup() ->
   }
 }
 
+test fn roadmap_tactile_keystone_holds() -> Bool {
+  witness_settle_spring_mints_only_the_easing()
+    && witness_every_behavior_timing_comes_from_the_scale()
+    && witness_hover_runs_on_reveal_not_the_press_clock()
+    && witness_register_vocabulary_is_consumed()
+    && witness_press_depresses_on_pointer_down()
+    && witness_accept_settles_from_a_held_position()
+    && witness_detent_edges_all_beat()
+    && witness_inert_edge_reds_with_its_transform()
+    && witness_undeclared_endpoint_reds_by_name()
+    && witness_two_missing_endpoints_do_not_cancel()
+    && witness_every_transition_property_carries_its_own_duration()
+    && witness_per_edge_weights_ride_their_own_selectors()
+    && witness_state_class_trigger_selects_by_class_not_pseudo()
+    && witness_state_transitions_carry_on_the_state_selector()
+    && witness_keyframes_wall_holds_on_the_dashboard()
+    && witness_reduced_motion_neutralizes_every_carrier()
+    && witness_declared_sounds_are_operation_sounds()
+    && witness_notification_chime_is_inadmissible()
+    && witness_press_tick_is_derived_from_the_sound_row()
+    && witness_tick_is_synthesized_not_a_file()
+    && witness_tick_fires_on_pointer_down_in_its_own_listener()
+    && witness_mute_is_persisted_and_defaults_to_sounding()
+    && witness_button_morphs_into_the_session_chip()
+    && witness_sound_toggle_ships_on_every_page_header()
+    && witness_sound_toggle_label_is_painted_by_the_program_not_the_markup()
+}

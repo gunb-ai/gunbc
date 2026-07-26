@@ -18,18 +18,18 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn witness_status_operation_argv_matches_authority() -> Bool {
+fn witness_status_operation_argv_matches_authority() -> Bool {
   systemctl_status_operation_argv_matches_authority(unit: "demo.service" as NonEmptyStr)
 }
 
-test fn witness_status_read_local_returns_text() -> Bool {
+fn witness_status_read_local_returns_text() -> Bool {
   match systemctl_status_read_local(unit: "demo.service" as NonEmptyStr) {
     UnitStatusCaptured { text: t } => t != ""
     UnitStatusCaptureRefused { reason: _ } => false
   }
 }
 
-test fn witness_dead_unit_status_capture_preserves_failed_text() -> Bool {
+fn witness_dead_unit_status_capture_preserves_failed_text() -> Bool {
   match unit_status_capture_from_stdout(
     stdout: "● gunbc-roadmap.service - Gunbc Roadmap\n     Loaded: loaded\n     Active: failed (Result: exit-code)",
     refusal: "",
@@ -39,14 +39,14 @@ test fn witness_dead_unit_status_capture_preserves_failed_text() -> Bool {
   }
 }
 
-test fn witness_dissolution_trigger_declared_on_capture_note() -> Bool {
+fn witness_dissolution_trigger_declared_on_capture_note() -> Bool {
   string_contains(
     s: live_deploy_unit_diagnosis_capture_exit_note,
     pattern: "dissolves-on: unit-diagnosis modeled as a typed systemd.Systemctl.Status observation",
   )
 }
 
-test fn witness_status_tail_scaffold_binds_dissolution_trigger() -> Bool {
+fn witness_status_tail_scaffold_binds_dissolution_trigger() -> Bool {
   match live_deploy_unit_status_tail_scaffold {
     Scaffold {
       dissolves_to: SingleAuthority,
@@ -62,3 +62,10 @@ test fn witness_status_tail_scaffold_binds_dissolution_trigger() -> Bool {
   }
 }
 
+test fn systemctl_status_read_scaffold_witnesses() -> Bool {
+  witness_status_operation_argv_matches_authority()
+    && witness_status_read_local_returns_text()
+    && witness_dead_unit_status_capture_preserves_failed_text()
+    && witness_dissolution_trigger_declared_on_capture_note()
+    && witness_status_tail_scaffold_binds_dissolution_trigger()
+}

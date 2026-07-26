@@ -1,5 +1,6 @@
 module v2.test.parse.parse_table_content_key
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn mk_table(grammar: Hash, tokens: Hash) -> ParseTable {
@@ -32,33 +33,40 @@ fn key_p0_a() -> ParsePositionKey { ParsePositionKey { position: 0, production: 
 fn key_p1_a() -> ParsePositionKey { ParsePositionKey { position: 1, production: ^ctk_prod_a } }
 fn key_p0_b() -> ParsePositionKey { ParsePositionKey { position: 0, production: ^ctk_prod_b } }
 
-test fn witness_subject_deterministic() -> Bool {
+fn witness_subject_deterministic() -> Bool {
   let a = parse_table_subject(table: table_g1_t1(), key: key_p0_a())
   let b = parse_table_subject(table: mk_table(grammar: grammar_one(), tokens: tokens_one()), key: key_p0_a())
   a == b
 }
 
-test fn witness_subject_position_sensitive() -> Bool {
+fn witness_subject_position_sensitive() -> Bool {
   let a = parse_table_subject(table: table_g1_t1(), key: key_p0_a())
   let b = parse_table_subject(table: table_g1_t1(), key: key_p1_a())
   a != b
 }
 
-test fn witness_subject_production_sensitive() -> Bool {
+fn witness_subject_production_sensitive() -> Bool {
   let a = parse_table_subject(table: table_g1_t1(), key: key_p0_a())
   let b = parse_table_subject(table: table_g1_t1(), key: key_p0_b())
   a != b
 }
 
-test fn witness_subject_grammar_scope_sensitive() -> Bool {
+fn witness_subject_grammar_scope_sensitive() -> Bool {
   let a = parse_table_subject(table: table_g1_t1(), key: key_p0_a())
   let b = parse_table_subject(table: table_g2_t1(), key: key_p0_a())
   a != b
 }
 
-test fn witness_subject_token_stream_scope_sensitive() -> Bool {
+fn witness_subject_token_stream_scope_sensitive() -> Bool {
   let a = parse_table_subject(table: table_g1_t1(), key: key_p0_a())
   let b = parse_table_subject(table: table_g1_t2(), key: key_p0_a())
   a != b
 }
 
+test fn parse_table_content_key_witnesses() -> Bool {
+  witness_subject_deterministic()
+    && witness_subject_position_sensitive()
+    && witness_subject_production_sensitive()
+    && witness_subject_grammar_scope_sensitive()
+    && witness_subject_token_stream_scope_sensitive()
+}

@@ -163,3 +163,9 @@ test fn c_add_emit_host_byte_width_mismatch_refuses_holds() -> Bool {
   }
 }
 
+test fn c_add_emit_host_run_all_holds() -> Bool {
+  c_add_emit_host_green_run_holds()
+    && c_add_emit_host_inject_fault_refuses_holds()
+    && c_add_emit_host_nonzero_exit_refuses_holds()
+    && c_add_emit_host_byte_width_mismatch_refuses_holds()
+}

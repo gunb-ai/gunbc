@@ -17,21 +17,26 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data ampere_altra_l1_data_kibibytes_per_core: Nat = 64
 data ampere_altra_l1_line_bytes: Nat = 64
 
-test fn w_ampere_l1_geometry_matches_datasheet() -> Bool {
+fn w_ampere_l1_geometry_matches_datasheet() -> Bool {
   let g = ampere_altra_l1_cache_geometry
   byte_size_count(b: g.data_capacity_per_core) == ampere_altra_l1_data_kibibytes_per_core * 1024
     && byte_size_count(b: g.instruction_capacity_per_core) == ampere_altra_l1_data_kibibytes_per_core * 1024
     && byte_size_count(b: g.line_size) == ampere_altra_l1_line_bytes
 }
 
-test fn w_ampere_catalog_rows_share_cited_l1_geometry() -> Bool {
+fn w_ampere_catalog_rows_share_cited_l1_geometry() -> Bool {
   altra_max_m12830_catalog.l1_cache == ampere_altra_l1_cache_geometry
     && altra_q6430_catalog.l1_cache == ampere_altra_l1_cache_geometry
 }
 
-test fn w_ampere_l1_citations_cover_all_fields() -> Bool {
+fn w_ampere_l1_citations_cover_all_fields() -> Bool {
   let citations = altra_max_m12830_catalog.l1_cache_citations
   list_length(items: citations) == 3
     && citations.first().authority == ampere_altra_rev_a1_datasheet_authority
 }
 
+test fn cpu_l1_cache_geometry_witnesses() -> Bool {
+  w_ampere_l1_geometry_matches_datasheet()
+    && w_ampere_catalog_rows_share_cited_l1_geometry()
+    && w_ampere_l1_citations_cover_all_fields()
+}

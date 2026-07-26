@@ -53,16 +53,16 @@ fn stmt_text(s: Node) -> Bool {
   }
 }
 
-test fn witness_single_artifact_produces_two_checks() -> Bool {
+fn witness_single_artifact_produces_two_checks() -> Bool {
   let stmts = probe_stmts()
   stmts.length() == 2 && witness_stmt_is_if(s: stmts.first())
 }
 
-test fn witness_existence_check_no_mtime() -> Bool {
+fn witness_existence_check_no_mtime() -> Bool {
   stmt_text(s: probe_stmts().first())
 }
 
-test fn witness_serialized_conjuncts_and_teeth() -> Bool {
+fn witness_serialized_conjuncts_and_teeth() -> Bool {
   match verifications_script(produces: [probe_artifact()]) {
     Accepted { value: script, diagnostics: _ } =>
       string_contains(s: script, pattern: "-x")
@@ -74,7 +74,7 @@ test fn witness_serialized_conjuncts_and_teeth() -> Bool {
   }
 }
 
-test fn witness_floor_covers_both_release_bins() -> Bool {
+fn witness_floor_covers_both_release_bins() -> Bool {
   let script = ci_floor_build_verify_script()
   string_contains(s: script, pattern: "--verify-build-artifacts")
     && string_contains(s: script, pattern: "/target/release/claim_executor")
@@ -82,3 +82,9 @@ test fn witness_floor_covers_both_release_bins() -> Bool {
     && !string_contains(s: script, pattern: "-newer")
 }
 
+test fn build_artifact_verification_holds() -> Bool {
+  witness_single_artifact_produces_two_checks()
+    && witness_existence_check_no_mtime()
+    && witness_serialized_conjuncts_and_teeth()
+    && witness_floor_covers_both_release_bins()
+}

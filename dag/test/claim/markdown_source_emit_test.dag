@@ -1,5 +1,6 @@
 module test.claim.markdown_source_emit
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample_doc() -> MarkdownDocument {
@@ -117,7 +118,7 @@ fn expected_markdown() -> String {
   ], "")
 }
 
-test fn witness_exact_bytes() -> Bool {
+fn witness_exact_bytes() -> Bool {
   serialize_markdown_source(doc: sample_doc()) == expected_markdown()
 }
 
@@ -125,7 +126,7 @@ fn code_only_doc(code: String) -> MarkdownDocument {
   MarkdownDocument { blocks: [ CodeBlock { code: code } ] }
 }
 
-test fn witness_code_block_closing_fence_on_own_line() -> Bool {
+fn witness_code_block_closing_fence_on_own_line() -> Bool {
   let no_nl = serialize_markdown_source(doc: code_only_doc(code: "let x = 1;"))
   let with_nl = serialize_markdown_source(doc: code_only_doc(code: "let x = 1;\n"))
   (no_nl == "```\nlet x = 1;\n```\n") && (no_nl == with_nl)
@@ -173,9 +174,14 @@ fn tiny_list_doc() -> MarkdownDocument {
   }
 }
 
-test fn witness_row_driven_bullet() -> Bool {
+fn witness_row_driven_bullet() -> Bool {
   let canonical = serialize_markdown_source_with(doc: tiny_list_doc(), sp: commonmark_gfm_spellings)
   let perturbed = serialize_markdown_source_with(doc: tiny_list_doc(), sp: perturbed_bullet_spellings())
   (canonical == "- x\n") && (perturbed == "+ x\n") && !(canonical == perturbed)
 }
 
+test fn markdown_source_emit_keystone_holds() -> Bool {
+  witness_exact_bytes()
+    && witness_row_driven_bullet()
+    && witness_code_block_closing_fence_on_own_line()
+}

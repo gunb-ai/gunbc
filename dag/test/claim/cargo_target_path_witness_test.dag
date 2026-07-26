@@ -1,5 +1,6 @@
 module test.claim.cargo_target_path
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn render_file_path(parts: FilePathParts) -> String {
@@ -18,29 +19,29 @@ fn render_candidates(stem: String) -> String {
   })
 }
 
-test fn lib_lands_on_src_lib() -> Bool {
+fn lib_lands_on_src_lib() -> Bool {
   render_target(target: Lib, package_name: "v1-compiler") == "src/lib.rs"
 }
 
-test fn package_bin_collapses_to_main() -> Bool {
+fn package_bin_collapses_to_main() -> Bool {
   render_target(target: Bin { name: "v1-compiler" }, package_name: "v1-compiler") == "src/main.rs"
 }
 
-test fn other_bin_lands_under_src_bin() -> Bool {
+fn other_bin_lands_under_src_bin() -> Bool {
   render_target(target: Bin { name: "helper" }, package_name: "v1-compiler") == "src/bin/helper.rs"
 }
 
-test fn test_example_bench_dirs() -> Bool {
+fn test_example_bench_dirs() -> Bool {
   render_target(target: CargoTest { name: "integration" }, package_name: "v1-compiler") == "tests/integration.rs"
     && render_target(target: Example { name: "demo" }, package_name: "v1-compiler") == "examples/demo.rs"
     && render_target(target: Bench { name: "throughput" }, package_name: "v1-compiler") == "benches/throughput.rs"
 }
 
-test fn module_stem_two_candidates() -> Bool {
+fn module_stem_two_candidates() -> Bool {
   render_candidates(stem: "parser") == "src/parser.rs;src/parser/mod.rs"
 }
 
-test fn edition_tokens_render() -> Bool {
+fn edition_tokens_render() -> Bool {
   rust_edition_str(edition: Edition2015) == "2015"
     && rust_edition_str(edition: Edition2018) == "2018"
     && rust_edition_str(edition: Edition2021) == "2021"
@@ -48,3 +49,11 @@ test fn edition_tokens_render() -> Bool {
     && rust_edition_str(edition: default_rust_edition) == "2021"
 }
 
+test fn cargo_target_path_witnesses() -> Bool {
+  lib_lands_on_src_lib()
+    && package_bin_collapses_to_main()
+    && other_bin_lands_under_src_bin()
+    && test_example_bench_dirs()
+    && module_stem_two_candidates()
+    && edition_tokens_render()
+}

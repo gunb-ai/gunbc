@@ -1,5 +1,6 @@
 module test.claim.config_record_emit_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data flat_proto: LayoutProtocol = LayoutProtocol { indent_unit: "" }
@@ -19,35 +20,35 @@ fn render_record(knobs: SerializationKnobs, fields: List<SerialField>) -> String
   render(doc: serialize_record_doc(knobs: knobs, fields: fields), proto: flat_proto)
 }
 
-test fn witness_yaml_field_uses_colon_separator() -> Bool {
+fn witness_yaml_field_uses_colon_separator() -> Bool {
   match yaml_format.record {
     null => false
     knobs => render_field(knobs: knobs, key: "name", value: "gunbc") == "name: gunbc"
   }
 }
 
-test fn witness_toml_field_uses_equals_and_double_quotes() -> Bool {
+fn witness_toml_field_uses_equals_and_double_quotes() -> Bool {
   match toml_format.record {
     null => false
     knobs => render_field(knobs: knobs, key: "name", value: "gunbc") == "name = \"gunbc\""
   }
 }
 
-test fn witness_makefile_field_uses_equals_no_quotes() -> Bool {
+fn witness_makefile_field_uses_equals_no_quotes() -> Bool {
   match makefile_format.record {
     null => false
     knobs => render_field(knobs: knobs, key: "CC", value: "gcc") == "CC = gcc"
   }
 }
 
-test fn witness_gitignore_has_no_record_knobs() -> Bool {
+fn witness_gitignore_has_no_record_knobs() -> Bool {
   match gitignore_format.record {
     null => true
     _ => false
   }
 }
 
-test fn witness_yaml_toml_fields_differ() -> Bool {
+fn witness_yaml_toml_fields_differ() -> Bool {
   match yaml_format.record {
     null => false
     yaml_knobs => match toml_format.record {
@@ -59,7 +60,7 @@ test fn witness_yaml_toml_fields_differ() -> Bool {
   }
 }
 
-test fn witness_yaml_two_fields_newline_joined() -> Bool {
+fn witness_yaml_two_fields_newline_joined() -> Bool {
   match yaml_format.record {
     null => false
     knobs =>
@@ -70,7 +71,7 @@ test fn witness_yaml_two_fields_newline_joined() -> Bool {
   }
 }
 
-test fn witness_manifest_knobs_space_separated() -> Bool {
+fn witness_manifest_knobs_space_separated() -> Bool {
   render_fields(
     knobs: manifest_record_knobs,
     fields: [
@@ -80,7 +81,7 @@ test fn witness_manifest_knobs_space_separated() -> Bool {
   ) == "host=srv1 runner_count=4"
 }
 
-test fn witness_json_knobs_produce_quoted_record() -> Bool {
+fn witness_json_knobs_produce_quoted_record() -> Bool {
   render_record(
     knobs: json_record_knobs,
     fields: [
@@ -90,7 +91,7 @@ test fn witness_json_knobs_produce_quoted_record() -> Bool {
   ) == "{\"host\": \"srv1\", \"runner_count\": \"4\"}"
 }
 
-test fn witness_same_fields_differ_across_knobs() -> Bool {
+fn witness_same_fields_differ_across_knobs() -> Bool {
   let fields = [
     serial_field(key: "host", value: serial_scalar(text: "srv1")),
     serial_field(key: "runner_count", value: serial_scalar(text: "4"))
@@ -99,3 +100,14 @@ test fn witness_same_fields_differ_across_knobs() -> Bool {
     render_record(knobs: json_record_knobs, fields: fields)
 }
 
+test fn config_record_emit_keystone_holds() -> Bool {
+  witness_yaml_field_uses_colon_separator() &&
+    witness_toml_field_uses_equals_and_double_quotes() &&
+    witness_makefile_field_uses_equals_no_quotes() &&
+    witness_gitignore_has_no_record_knobs() &&
+    witness_yaml_toml_fields_differ() &&
+    witness_yaml_two_fields_newline_joined() &&
+    witness_manifest_knobs_space_separated() &&
+    witness_json_knobs_produce_quoted_record() &&
+    witness_same_fields_differ_across_knobs()
+}

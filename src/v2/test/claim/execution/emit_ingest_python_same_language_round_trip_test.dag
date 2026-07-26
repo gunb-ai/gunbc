@@ -1,5 +1,6 @@
 module v2.test.execution.emit_ingest_python_same_language_round_trip
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn emit_ingest_python_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
@@ -35,7 +36,7 @@ fn emit_ingest_python_canonical_emitted() -> Node {
   python_emitted_add_fn_node()
 }
 
-test fn emit_python_backward_selects_canonical_row_holds() -> Bool {
+fn emit_python_backward_selects_canonical_row_holds() -> Bool {
   match grammar_relation_row_for_emitted(
     rules: emit_ingest_python_shared_rules(),
     emitted: emit_ingest_python_canonical_emitted()
@@ -46,7 +47,7 @@ test fn emit_python_backward_selects_canonical_row_holds() -> Bool {
   }
 }
 
-test fn ingest_python_forward_selects_canonical_emitted_holds() -> Bool {
+fn ingest_python_forward_selects_canonical_emitted_holds() -> Bool {
   match emit_ingest_python_row_token_spine_classes(row: emit_ingest_python_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(
@@ -61,7 +62,7 @@ test fn ingest_python_forward_selects_canonical_emitted_holds() -> Bool {
   }
 }
 
-test fn emit_then_ingest_python_selector_identity_holds() -> Bool {
+fn emit_then_ingest_python_selector_identity_holds() -> Bool {
   match grammar_relation_row_for_emitted(
     rules: emit_ingest_python_shared_rules(),
     emitted: emit_ingest_python_canonical_emitted()
@@ -83,7 +84,7 @@ test fn emit_then_ingest_python_selector_identity_holds() -> Bool {
   }
 }
 
-test fn ingest_then_emit_python_selector_identity_holds() -> Bool {
+fn ingest_then_emit_python_selector_identity_holds() -> Bool {
   match emit_ingest_python_row_token_spine_classes(row: emit_ingest_python_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(
@@ -105,7 +106,7 @@ test fn ingest_then_emit_python_selector_identity_holds() -> Bool {
   }
 }
 
-test fn emit_ingest_python_perturbed_frontier_fails_closed() -> Bool {
+fn emit_ingest_python_perturbed_frontier_fails_closed() -> Bool {
   match emit_ingest_python_row_token_spine_classes(row: emit_ingest_python_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(
@@ -119,7 +120,11 @@ test fn emit_ingest_python_perturbed_frontier_fails_closed() -> Bool {
   }
 }
 
-test fn ingest_python_forward_fails_closed_off_frontier_holds() -> Bool {
+fn emit_ingest_python_unperturbed_frontier_accepts() -> Bool {
+  ingest_python_forward_selects_canonical_emitted_holds()
+}
+
+fn ingest_python_forward_fails_closed_off_frontier_holds() -> Bool {
   match grammar_relation_row_forward_selection(
     frontier: Cons { head: ^emit_ingest_python_perturb_bogus_tok, tail: Empty },
     rules: emit_ingest_python_shared_rules()
@@ -129,7 +134,7 @@ test fn ingest_python_forward_fails_closed_off_frontier_holds() -> Bool {
   }
 }
 
-test fn emit_python_backward_fails_closed_on_foreign_emitted_holds() -> Bool {
+fn emit_python_backward_fails_closed_on_foreign_emitted_holds() -> Bool {
   match grammar_relation_row_for_emitted(
     rules: emit_ingest_python_shared_rules(),
     emitted: dag_fixture_emitted_add_fn
@@ -139,7 +144,17 @@ test fn emit_python_backward_fails_closed_on_foreign_emitted_holds() -> Bool {
   }
 }
 
-test fn python_same_language_parse_bridge_holds() -> Bool {
+test fn emit_ingest_python_selector_bijectivity_holds() -> Bool {
+  emit_python_backward_selects_canonical_row_holds()
+    && ingest_python_forward_selects_canonical_emitted_holds()
+    && emit_then_ingest_python_selector_identity_holds()
+    && ingest_then_emit_python_selector_identity_holds()
+    && emit_ingest_python_perturbed_frontier_fails_closed()
+    && ingest_python_forward_fails_closed_off_frontier_holds()
+    && emit_python_backward_fails_closed_on_foreign_emitted_holds()
+}
+
+fn python_same_language_parse_bridge_holds() -> Bool {
   match python_grammar_parse_fixture() {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_target_model_bridge(
@@ -185,7 +200,7 @@ fn python_same_language_discriminates_on_real_tree() -> Bool {
   }
 }
 
-test fn emit_ingest_python_same_language_round_trip_holds() -> Bool {
+fn emit_ingest_python_same_language_round_trip_holds() -> Bool {
   emit_ingest_python_selector_bijectivity_holds()
     && python_same_language_parse_bridge_holds()
     && python_same_language_source_emit_round_trip_holds()

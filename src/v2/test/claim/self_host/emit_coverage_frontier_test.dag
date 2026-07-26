@@ -17,11 +17,11 @@ import v2.std.algebra { length }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-test fn witness_roster_total_holds() -> Bool {
+fn witness_roster_total_holds() -> Bool {
   coverage_frontier_total_holds()
 }
 
-test fn witness_each_subject_has_exactly_one_row() -> Bool {
+fn witness_each_subject_has_exactly_one_row() -> Bool {
   fold(
     emit_coverage_frontier_roster,
     init: true,
@@ -31,7 +31,7 @@ test fn witness_each_subject_has_exactly_one_row() -> Bool {
   )
 }
 
-test fn witness_unlisted_subject_has_no_row() -> Bool {
+fn witness_unlisted_subject_has_no_row() -> Bool {
   length(
     xs: coverage_frontier_row_for_subject(
       subject: coverage_subject(
@@ -42,12 +42,12 @@ test fn witness_unlisted_subject_has_no_row() -> Bool {
   ) == 0
 }
 
-test fn witness_split_matches_expected() -> Bool {
+fn witness_split_matches_expected() -> Bool {
   (length(xs: self_emitted_native_rows()) == 1)
     && (length(xs: interpreter_retained_rows()) == 14)
 }
 
-test fn witness_only_classical_not_ingested_is_native() -> Bool {
+fn witness_only_classical_not_ingested_is_native() -> Bool {
   let natives = self_emitted_native_rows()
   (length(xs: natives) == 1)
     && fold(
@@ -57,7 +57,7 @@ test fn witness_only_classical_not_ingested_is_native() -> Bool {
     )
 }
 
-test fn witness_real_native_row_is_backed() -> Bool {
+fn witness_real_native_row_is_backed() -> Bool {
   fold(
     self_emitted_native_rows(),
     init: true,
@@ -65,7 +65,7 @@ test fn witness_real_native_row_is_backed() -> Bool {
   )
 }
 
-test fn witness_all_claims_backed_holds() -> Bool {
+fn witness_all_claims_backed_holds() -> Bool {
   coverage_frontier_all_native_claims_backed()
 }
 
@@ -86,8 +86,18 @@ fn synthetic_unbacked_native_row() -> EmitCoverageFrontierRow {
   }
 }
 
-test fn witness_synthetic_unbacked_claim_reds() -> Bool {
+fn witness_synthetic_unbacked_claim_reds() -> Bool {
   let probe = synthetic_unbacked_native_row()
   coverage_row_is_native(row: probe) && !coverage_row_backing_is_enrolled(row: probe)
 }
 
+test fn emit_coverage_frontier_witnesses() -> Bool {
+  witness_roster_total_holds()
+    && witness_each_subject_has_exactly_one_row()
+    && witness_unlisted_subject_has_no_row()
+    && witness_split_matches_expected()
+    && witness_only_classical_not_ingested_is_native()
+    && witness_real_native_row_is_backed()
+    && witness_all_claims_backed_holds()
+    && witness_synthetic_unbacked_claim_reds()
+}

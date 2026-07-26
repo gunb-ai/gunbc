@@ -1,8 +1,9 @@
 module test.claim.realization_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn witness_unknown_independence_never_reorders() -> Bool {
+fn witness_unknown_independence_never_reorders() -> Bool {
   let indep = std.realization.Unknown
   match indep {
     Independent => false
@@ -11,11 +12,11 @@ test fn witness_unknown_independence_never_reorders() -> Bool {
   }
 }
 
-test fn witness_read_read_independent() -> Bool {
+fn witness_read_read_independent() -> Bool {
   independence_from_effect_shapes(left: ReadEffect, right: ReadEffect) == Independent
 }
 
-test fn witness_create_unknown_not_independent() -> Bool {
+fn witness_create_unknown_not_independent() -> Bool {
   match independence_from_effect_shapes(
     left: CreateEffect { cause: PostAlways },
     right: ReadEffect
@@ -26,17 +27,24 @@ test fn witness_create_unknown_not_independent() -> Bool {
   }
 }
 
-test fn witness_upsert_same_key_dependent() -> Bool {
+fn witness_upsert_same_key_dependent() -> Bool {
   independence_from_effect_shapes(
     left: UpsertEffect { key_source: PathParam { param: "id" } },
     right: UpsertEffect { key_source: PathParam { param: "id" } }
   ) == Dependent
 }
 
-test fn witness_upsert_different_keys_independent() -> Bool {
+fn witness_upsert_different_keys_independent() -> Bool {
   independence_from_effect_shapes(
     left: UpsertEffect { key_source: InputField { field: "a" } },
     right: UpsertEffect { key_source: InputField { field: "b" } }
   ) == Independent
 }
 
+test fn realization_witnesses() -> Bool {
+  witness_unknown_independence_never_reorders()
+    && witness_read_read_independent()
+    && witness_create_unknown_not_independent()
+    && witness_upsert_same_key_dependent()
+    && witness_upsert_different_keys_independent()
+}

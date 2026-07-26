@@ -105,3 +105,12 @@ test fn bool_supplemental_impl_present() -> Bool {
   target_ok && predicate_ok && supplemental != "" && wrong_module == false && wrong_name == false
 }
 
+test fn trait_derive_seed_emit_binding_witness_holds() -> Bool {
+  nullary_coproduct_predicate_satisfied()
+    && payload_coproduct_predicate_satisfied()
+    && record_heap_attr_contains_serde()
+    && ord_carrier_shape_rejects_nullary_copy_traits()
+    && ord_carrier_attr_differs_from_nullary()
+    && group_completion_supplemental_impl_present()
+    && bool_supplemental_impl_present()
+}

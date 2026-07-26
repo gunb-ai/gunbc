@@ -41,14 +41,14 @@ fn cold_receipt(id: String) -> ParityWindowReceipt {
   }
 }
 
-test fn witness_three_greens_permit() -> Bool {
+fn witness_three_greens_permit() -> Bool {
   parity_flip_permitted(
     family: "add",
     receipts: [green_receipt(id: "w1"), green_receipt(id: "w2"), green_receipt(id: "w3")]
   )
 }
 
-test fn witness_red_resets_streak() -> Bool {
+fn witness_red_resets_streak() -> Bool {
   let refused = parity_flip_permitted(
     family: "add",
     receipts: [
@@ -61,7 +61,7 @@ test fn witness_red_resets_streak() -> Bool {
   refused == false
 }
 
-test fn witness_cold_divergence_resets_streak() -> Bool {
+fn witness_cold_divergence_resets_streak() -> Bool {
   let refused = parity_flip_permitted(
     family: "add",
     receipts: [
@@ -73,11 +73,11 @@ test fn witness_cold_divergence_resets_streak() -> Bool {
   refused == false
 }
 
-test fn witness_empty_receipts_refuse() -> Bool {
+fn witness_empty_receipts_refuse() -> Bool {
   parity_flip_permitted(family: "add", receipts: []) == false
 }
 
-test fn witness_refusal_carries_streak_and_required() -> Bool {
+fn witness_refusal_carries_streak_and_required() -> Bool {
   match parity_verdict_for(
     family: "add",
     receipts: [green_receipt(id: "w1"), green_receipt(id: "w2")]
@@ -88,7 +88,7 @@ test fn witness_refusal_carries_streak_and_required() -> Bool {
   }
 }
 
-test fn witness_streak_counts_trailing_only() -> Bool {
+fn witness_streak_counts_trailing_only() -> Bool {
   let streak = trailing_consecutive_green(
     receipts: [
       green_receipt(id: "w1"),
@@ -101,3 +101,11 @@ test fn witness_streak_counts_trailing_only() -> Bool {
   streak == 1
 }
 
+test fn parity_window_witnesses() -> Bool {
+  witness_three_greens_permit()
+    && witness_red_resets_streak()
+    && witness_cold_divergence_resets_streak()
+    && witness_empty_receipts_refuse()
+    && witness_refusal_carries_streak_and_required()
+    && witness_streak_counts_trailing_only()
+}

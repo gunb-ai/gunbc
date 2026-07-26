@@ -61,31 +61,37 @@ fn witness_if_control_flow_plan() -> HostEffectPlan {
   }
 }
 
-test fn witness_empty_plan_refuses_fail_closed() -> Bool {
+fn witness_empty_plan_refuses_fail_closed() -> Bool {
   !reconciliation_converged(r: host_effect_plan_apply(
     plan: witness_empty_plan(),
     ctx: witness_plan_ctx(),
   ))
 }
 
-test fn witness_control_flow_step_refuses_fail_closed() -> Bool {
+fn witness_control_flow_step_refuses_fail_closed() -> Bool {
   !reconciliation_converged(r: host_effect_plan_apply(
     plan: witness_if_control_flow_plan(),
     ctx: witness_plan_ctx(),
   ))
 }
 
-test fn witness_orchestration_to_effect_plan_dissolve_on_present() -> Bool {
+fn witness_orchestration_to_effect_plan_dissolve_on_present() -> Bool {
   string_contains(
     s: orchestration_to_effect_plan_dissolve_on,
     pattern: "dissolve-on: v2.std.orchestration",
   )
 }
 
-test fn witness_effect_plan_orchestration_succession_dissolve_on_present() -> Bool {
+fn witness_effect_plan_orchestration_succession_dissolve_on_present() -> Bool {
   string_contains(
     s: effect_plan_orchestration_succession_dissolve_on,
     pattern: "dissolve-on: v2.std.orchestration parallel",
   )
 }
 
+test fn host_effect_plan_witness_holds() -> Bool {
+  witness_empty_plan_refuses_fail_closed()
+    && witness_control_flow_step_refuses_fail_closed()
+    && witness_orchestration_to_effect_plan_dissolve_on_present()
+    && witness_effect_plan_orchestration_succession_dissolve_on_present()
+}

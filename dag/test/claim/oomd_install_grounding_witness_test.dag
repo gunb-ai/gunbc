@@ -1,5 +1,6 @@
 module test.claim.oomd_install_grounding_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn test_thresholds() -> OomdGroundingThresholds {
@@ -238,21 +239,21 @@ fn grounds(read: OomdEffectiveRead) -> Bool {
   grounding_is_enforced(g: ground_oomd_from_read(read: read, req: test_thresholds()))
 }
 
-test fn witness_full_conjunction_grounds_enforced() -> Bool {
+fn witness_full_conjunction_grounds_enforced() -> Bool {
   grounds(read: good_read())
 }
 
-test fn witness_slice_absent_fails_closed() -> Bool { !grounds(read: slice_absent_read()) }
-test fn witness_inactive_fails_closed() -> Bool { !grounds(read: inactive_read()) }
-test fn witness_disabled_fails_closed() -> Bool { !grounds(read: disabled_read()) }
-test fn witness_auto_pressure_fails_closed() -> Bool { !grounds(read: auto_pressure_read()) }
-test fn witness_wrong_per_session_cap_fails_closed() -> Bool { !grounds(read: wrong_per_session_cap_read()) }
-test fn witness_unbounded_per_session_cap_fails_closed() -> Bool { !grounds(read: unbounded_per_session_cap_read()) }
-test fn witness_wrong_parent_slice_cap_fails_closed() -> Bool { !grounds(read: wrong_parent_slice_cap_read()) }
-test fn witness_wrong_pressure_limit_fails_closed() -> Bool { !grounds(read: wrong_pressure_limit_read()) }
-test fn witness_oomctl_unmanaged_fails_closed() -> Bool { !grounds(read: oomctl_unmanaged_read()) }
+fn witness_slice_absent_fails_closed() -> Bool { !grounds(read: slice_absent_read()) }
+fn witness_inactive_fails_closed() -> Bool { !grounds(read: inactive_read()) }
+fn witness_disabled_fails_closed() -> Bool { !grounds(read: disabled_read()) }
+fn witness_auto_pressure_fails_closed() -> Bool { !grounds(read: auto_pressure_read()) }
+fn witness_wrong_per_session_cap_fails_closed() -> Bool { !grounds(read: wrong_per_session_cap_read()) }
+fn witness_unbounded_per_session_cap_fails_closed() -> Bool { !grounds(read: unbounded_per_session_cap_read()) }
+fn witness_wrong_parent_slice_cap_fails_closed() -> Bool { !grounds(read: wrong_parent_slice_cap_read()) }
+fn witness_wrong_pressure_limit_fails_closed() -> Bool { !grounds(read: wrong_pressure_limit_read()) }
+fn witness_oomctl_unmanaged_fails_closed() -> Bool { !grounds(read: oomctl_unmanaged_read()) }
 
-test fn witness_unmeasured_aggregate_fails_closed() -> Bool {
+fn witness_unmeasured_aggregate_fails_closed() -> Bool {
   !grounding_is_enforced(g: ground_oomd_from_read(read: good_read(), req: unmeasured_aggregate_thresholds()))
 }
 
@@ -267,39 +268,63 @@ fn is_enforced(e: OomdEnforcementEvidence) -> Bool {
   }
 }
 
-test fn witness_reconcile_good_read_enforces() -> Bool {
+fn witness_reconcile_good_read_enforces() -> Bool {
   is_enforced(e: oomd_evidence_from_reconciliation(r: reconcile_oomd(read: managed_observed_read(), req: test_thresholds())))
 }
 
-test fn witness_reconcile_good_read_converges() -> Bool {
+fn witness_reconcile_good_read_converges() -> Bool {
   reconciliation_converged(r: reconcile_oomd(read: managed_observed_read(), req: test_thresholds()))
 }
 
-test fn witness_absent_read_is_fail_closed() -> Bool {
+fn witness_absent_read_is_fail_closed() -> Bool {
   !is_enforced(e: gunbc_oomd_install_evidence())
 }
 
-test fn witness_fleet_evidence_seam_fail_closed() -> Bool {
+fn witness_fleet_evidence_seam_fail_closed() -> Bool {
   !is_enforced(e: gunbc_oomd_fleet_evidence(req: test_thresholds()))
 }
 
-test fn witness_membership_check_contract_passes_with_sessions_in_slice() -> Bool {
+fn witness_membership_check_contract_passes_with_sessions_in_slice() -> Bool {
   membership_check_passes(m: good_membership())
 }
 
-test fn witness_membership_check_contract_passes_partial_migration() -> Bool {
+fn witness_membership_check_contract_passes_partial_migration() -> Bool {
   membership_check_passes(m: partial_migration_membership())
 }
 
-test fn witness_membership_check_contract_fails_all_legacy() -> Bool {
+fn witness_membership_check_contract_fails_all_legacy() -> Bool {
   !membership_check_passes(m: all_legacy_membership())
 }
 
-test fn witness_membership_check_contract_fails_empty_host() -> Bool {
+fn witness_membership_check_contract_fails_empty_host() -> Bool {
   !membership_check_passes(m: empty_host_membership())
 }
 
-test fn witness_all_legacy_read_fails_closed() -> Bool { !grounds(read: all_legacy_read()) }
-test fn witness_empty_host_read_fails_closed() -> Bool { !grounds(read: empty_host_read()) }
-test fn witness_partial_migration_grounds() -> Bool { grounds(read: partial_migration_read()) }
+fn witness_all_legacy_read_fails_closed() -> Bool { !grounds(read: all_legacy_read()) }
+fn witness_empty_host_read_fails_closed() -> Bool { !grounds(read: empty_host_read()) }
+fn witness_partial_migration_grounds() -> Bool { grounds(read: partial_migration_read()) }
 
+test fn oomd_install_grounding_holds() -> Bool {
+  witness_full_conjunction_grounds_enforced()
+    && witness_slice_absent_fails_closed()
+    && witness_inactive_fails_closed()
+    && witness_disabled_fails_closed()
+    && witness_auto_pressure_fails_closed()
+    && witness_wrong_per_session_cap_fails_closed()
+    && witness_unbounded_per_session_cap_fails_closed()
+    && witness_wrong_parent_slice_cap_fails_closed()
+    && witness_wrong_pressure_limit_fails_closed()
+    && witness_oomctl_unmanaged_fails_closed()
+    && witness_unmeasured_aggregate_fails_closed()
+    && witness_reconcile_good_read_enforces()
+    && witness_reconcile_good_read_converges()
+    && witness_absent_read_is_fail_closed()
+    && witness_fleet_evidence_seam_fail_closed()
+    && witness_membership_check_contract_passes_with_sessions_in_slice()
+    && witness_membership_check_contract_passes_partial_migration()
+    && witness_membership_check_contract_fails_all_legacy()
+    && witness_membership_check_contract_fails_empty_host()
+    && witness_all_legacy_read_fails_closed()
+    && witness_empty_host_read_fails_closed()
+    && witness_partial_migration_grounds()
+}

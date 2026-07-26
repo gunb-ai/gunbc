@@ -114,3 +114,10 @@ test fn ci_floor_peak_pre_reset_if_has_teeth_holds() -> Bool {
   }
 }
 
+test fn ci_floor_peak_emit_band_holds() -> Bool {
+  ci_floor_peak_locate_emit_matches_golden_holds()
+    && ci_floor_peak_pre_emit_matches_golden_holds()
+    && ci_floor_peak_post_emit_matches_golden_holds()
+    && ci_floor_peak_pre_emit_has_teeth_holds()
+    && ci_floor_peak_pre_reset_if_has_teeth_holds()
+}

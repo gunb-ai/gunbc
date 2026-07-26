@@ -1,5 +1,6 @@
 module test.claim.markdown_markup_xss_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample_readme_doc() -> MarkdownDocument {
@@ -53,7 +54,7 @@ fn sample_readme_doc() -> MarkdownDocument {
   }
 }
 
-test fn witness_markdown_reduces_and_serializes() -> Bool {
+fn witness_markdown_reduces_and_serializes() -> Bool {
   match try_serialize_markdown_document(doc: sample_readme_doc()) {
     Serialized { html: h } =>
       h == concat(
@@ -73,7 +74,7 @@ test fn witness_markdown_reduces_and_serializes() -> Bool {
   }
 }
 
-test fn witness_markdown_uses_one_serialize_fragment_fold() -> Bool {
+fn witness_markdown_uses_one_serialize_fragment_fold() -> Bool {
   let via_consumer = serialize_markdown_document(doc: sample_readme_doc())
   let via_fold = serialize_fragment(
     frag: markdown_document_to_fragment(doc: sample_readme_doc())
@@ -81,7 +82,7 @@ test fn witness_markdown_uses_one_serialize_fragment_fold() -> Bool {
   via_consumer == via_fold
 }
 
-test fn witness_ordered_list_serializes() -> Bool {
+fn witness_ordered_list_serializes() -> Bool {
   let doc = MarkdownDocument {
     blocks: [
       OrderedListBlock {
@@ -110,7 +111,7 @@ test fn witness_ordered_list_serializes() -> Bool {
   }
 }
 
-test fn witness_image_serializes() -> Bool {
+fn witness_image_serializes() -> Bool {
   let doc = MarkdownDocument {
     blocks: [
       ParagraphBlock {
@@ -127,7 +128,7 @@ test fn witness_image_serializes() -> Bool {
   }
 }
 
-test fn witness_heading_levels_map_to_tags() -> Bool {
+fn witness_heading_levels_map_to_tags() -> Bool {
   let doc = MarkdownDocument {
     blocks: [
       HeadingBlock { level: H2, inlines: [ TextInline { text: "sub" } ] },
@@ -169,14 +170,14 @@ fn data_image_doc() -> MarkdownDocument {
   }
 }
 
-test fn witness_javascript_link_rejects() -> Bool {
+fn witness_javascript_link_rejects() -> Bool {
   match try_serialize_markdown_document(doc: javascript_link_doc()) {
     Rejected { reason: _ } => true
     Serialized { html: _ } => false
   }
 }
 
-test fn witness_data_image_rejects() -> Bool {
+fn witness_data_image_rejects() -> Bool {
   match try_serialize_markdown_document(doc: data_image_doc()) {
     Rejected { reason: _ } => true
     Serialized { html: _ } => false
@@ -187,14 +188,14 @@ fn witness_escape_url_passes_javascript_scheme() -> Bool {
   escape_url(s: "javascript:alert(1)") == "javascript:alert(1)"
 }
 
-test fn witness_javascript_link_reject_discriminates_from_char_escape() -> Bool {
+fn witness_javascript_link_reject_discriminates_from_char_escape() -> Bool {
   let unchecked = serialize_markdown_document(doc: javascript_link_doc())
   witness_javascript_link_rejects()
     && witness_escape_url_passes_javascript_scheme()
     && unchecked == "<div><p><a href=\"javascript:alert(1)\">click</a></p></div>"
 }
 
-test fn witness_data_image_reject_discriminates_from_char_escape() -> Bool {
+fn witness_data_image_reject_discriminates_from_char_escape() -> Bool {
   witness_data_image_rejects()
     && starts_with(
       s: serialize_markdown_document(doc: data_image_doc()),
@@ -202,28 +203,28 @@ test fn witness_data_image_reject_discriminates_from_char_escape() -> Bool {
     )
 }
 
-test fn witness_validate_href_javascript_rejects() -> Bool {
+fn witness_validate_href_javascript_rejects() -> Bool {
   match validate_href(url: "javascript:alert(1)") {
     RejectedHref { reason: DangerousScheme { scheme: JavascriptScheme } } => true
     _ => false
   }
 }
 
-test fn witness_validate_href_data_rejects() -> Bool {
+fn witness_validate_href_data_rejects() -> Bool {
   match validate_href(url: "data:text/html,x") {
     RejectedHref { reason: DangerousScheme { scheme: DataScheme } } => true
     _ => false
   }
 }
 
-test fn witness_relative_link_accepted() -> Bool {
+fn witness_relative_link_accepted() -> Bool {
   match validate_href(url: "/safe/path") {
     SafeHref { url: u } => u == "/safe/path"
     _ => false
   }
 }
 
-test fn witness_https_link_serializes() -> Bool {
+fn witness_https_link_serializes() -> Bool {
   let doc = MarkdownDocument {
     blocks: [
       ParagraphBlock {
@@ -243,7 +244,7 @@ test fn witness_https_link_serializes() -> Bool {
   }
 }
 
-test fn witness_req_a_hostile_href_still_emits_with_escaping() -> Bool {
+fn witness_req_a_hostile_href_still_emits_with_escaping() -> Bool {
   let doc = MarkdownDocument {
     blocks: [
       ParagraphBlock {
@@ -263,3 +264,19 @@ test fn witness_req_a_hostile_href_still_emits_with_escaping() -> Bool {
   }
 }
 
+test fn markdown_markup_xss_keystone_holds() -> Bool {
+  witness_markdown_reduces_and_serializes()
+    && witness_markdown_uses_one_serialize_fragment_fold()
+    && witness_ordered_list_serializes()
+    && witness_image_serializes()
+    && witness_heading_levels_map_to_tags()
+    && witness_javascript_link_rejects()
+    && witness_data_image_rejects()
+    && witness_javascript_link_reject_discriminates_from_char_escape()
+    && witness_data_image_reject_discriminates_from_char_escape()
+    && witness_validate_href_javascript_rejects()
+    && witness_validate_href_data_rejects()
+    && witness_relative_link_accepted()
+    && witness_https_link_serializes()
+    && witness_req_a_hostile_href_still_emits_with_escaping()
+}

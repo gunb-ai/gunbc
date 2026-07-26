@@ -16,7 +16,7 @@ fn seed_debt_witness_entries() -> List<ScheduleWitnessEntry> {
   [
     ScheduleWitnessEntry {
       entry: "dag/test/claim/compile_source_model_witness_test.dag",
-      function: "",
+      function: "compile_source_model_witnesses",
       kind: CorpusWitnessKind
     }
   ]

@@ -53,7 +53,7 @@ fn rust_record_construct_emit_from_tree(target: TargetModel) -> Outcome<Medium<S
   emit(tree: rust_record_construct_emit_inferred_tree, target: target)
 }
 
-test fn rust_record_construct_emit_mk_accepts() -> Bool {
+fn rust_record_construct_emit_mk_accepts() -> Bool {
   match rust_record_construct_emit_from_tree(target: rust_rec_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_rec_source_text) && (d == None)
@@ -61,7 +61,7 @@ test fn rust_record_construct_emit_mk_accepts() -> Bool {
   }
 }
 
-test fn rust_record_construct_emit_wrong_field_discriminates() -> Bool {
+fn rust_record_construct_emit_wrong_field_discriminates() -> Bool {
   match rust_record_construct_emit_from_tree(target: rust_rec_wrong_field_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_rec_wrong_value_source_text) &&
@@ -71,3 +71,7 @@ test fn rust_record_construct_emit_wrong_field_discriminates() -> Bool {
   }
 }
 
+test fn rust_record_construct_emit_holds() -> Bool {
+  rust_record_construct_emit_mk_accepts()
+    && rust_record_construct_emit_wrong_field_discriminates()
+}

@@ -15,11 +15,11 @@ import v2.std.algebra { length }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-test fn witness_roster_total_holds() -> Bool {
+fn witness_roster_total_holds() -> Bool {
   routing_frontier_total_holds()
 }
 
-test fn witness_each_subject_has_exactly_one_row() -> Bool {
+fn witness_each_subject_has_exactly_one_row() -> Bool {
   fold(
     native_routing_frontier_roster,
     init: true,
@@ -29,7 +29,7 @@ test fn witness_each_subject_has_exactly_one_row() -> Bool {
   )
 }
 
-test fn witness_unlisted_subject_has_no_row() -> Bool {
+fn witness_unlisted_subject_has_no_row() -> Bool {
   length(
     xs: routing_frontier_row_for_subject(
       subject: family_subject(
@@ -40,7 +40,7 @@ test fn witness_unlisted_subject_has_no_row() -> Bool {
   ) == 0
 }
 
-test fn witness_routed_and_retained_split() -> Bool {
+fn witness_routed_and_retained_split() -> Bool {
   (length(xs: native_routed_rows()) == 0)
     && (length(xs: interpreted_retained_rows()) == 11)
 }
@@ -62,14 +62,14 @@ fn family_crate_bound_subject(module_path: String) -> Bool {
   ) == 1
 }
 
-test fn witness_flips_cite_parity_evidence() -> Bool {
+fn witness_flips_cite_parity_evidence() -> Bool {
   parity_flip_permitted(family: "meet_join", receipts: meet_join_local_receipts())
     && parity_flip_permitted(family: "complement", receipts: complement_local_receipts())
     && family_crate_bound_subject(module_path: "v2.test.execution.emit_host_meet_join_equals_eval")
     && family_crate_bound_subject(module_path: "v2.test.execution.emit_host_complement_equals_eval")
 }
 
-test fn witness_retained_rows_carry_reason_and_trigger() -> Bool {
+fn witness_retained_rows_carry_reason_and_trigger() -> Bool {
   fold(
     interpreted_retained_rows(),
     init: true,
@@ -79,3 +79,11 @@ test fn witness_retained_rows_carry_reason_and_trigger() -> Bool {
   )
 }
 
+test fn native_routing_frontier_witnesses() -> Bool {
+  witness_roster_total_holds()
+    && witness_each_subject_has_exactly_one_row()
+    && witness_unlisted_subject_has_no_row()
+    && witness_routed_and_retained_split()
+    && witness_flips_cite_parity_evidence()
+    && witness_retained_rows_carry_reason_and_trigger()
+}

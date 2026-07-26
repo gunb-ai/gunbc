@@ -1,5 +1,6 @@
 module v2.test.long.cross_tree_real_ingest_activation
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data ct_real_v2_subject_source: Medium<String> = Medium {
@@ -83,7 +84,7 @@ fn ct_real_edge_decision(ingest: SourceRootIngest) -> CrossTreeEdgeDecision {
   }
 }
 
-test fn cross_tree_real_ingest_v2_to_dag_admitted_holds() -> Bool {
+fn cross_tree_real_ingest_v2_to_dag_admitted_holds() -> Bool {
   match ct_real_edge_decision(ingest: ct_real_v2_to_dag_ingest) {
     EdgeCrossAdmitted => true
     EdgeCrossDenied => false
@@ -92,7 +93,7 @@ test fn cross_tree_real_ingest_v2_to_dag_admitted_holds() -> Bool {
   }
 }
 
-test fn cross_tree_real_ingest_dag_to_v2_denied_holds() -> Bool {
+fn cross_tree_real_ingest_dag_to_v2_denied_holds() -> Bool {
   match ct_real_edge_decision(ingest: ct_real_dag_to_v2_ingest) {
     EdgeCrossDenied => true
     EdgeCrossAdmitted => false
@@ -101,3 +102,7 @@ test fn cross_tree_real_ingest_dag_to_v2_denied_holds() -> Bool {
   }
 }
 
+test fn cross_tree_real_ingest_activation_witnesses() -> Bool {
+  cross_tree_real_ingest_v2_to_dag_admitted_holds()
+    && cross_tree_real_ingest_dag_to_v2_denied_holds()
+}

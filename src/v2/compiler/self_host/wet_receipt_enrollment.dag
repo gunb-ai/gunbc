@@ -56,39 +56,39 @@ data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
   ),
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/emit_on_demand_kernel_witness_test.dag",
-    f: ""
+    f: "emit_on_demand_kernel_witnesses"
   ),
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/emit_on_demand_field_access_family_witness_test.dag",
-    f: ""
+    f: "emit_on_demand_field_access_family_witnesses"
   ),
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/emit_on_demand_complement_family_witness_test.dag",
-    f: ""
+    f: "emit_on_demand_complement_family_witnesses"
   ),
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/emit_on_demand_match_loop_fold_family_witness_test.dag",
-    f: ""
+    f: "emit_on_demand_match_loop_fold_family_witnesses"
   ),
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/emit_on_demand_meet_join_family_witness_test.dag",
-    f: ""
+    f: "emit_on_demand_meet_join_family_witnesses"
   ),
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/emit_on_demand_variant_construct_family_witness_test.dag",
-    f: ""
+    f: "emit_on_demand_variant_construct_family_witnesses"
   ),
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/emit_on_demand_classical_not_ingested_family_witness_test.dag",
-    f: ""
+    f: "emit_on_demand_classical_not_ingested_family_witnesses"
   ),
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
-    f: ""
+    f: "emit_on_demand_family_crate_witnesses"
   ),
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/emit_host_native_only_verdict_test.dag",
-    f: ""
+    f: "emit_host_native_only_verdict_all_holds"
   )
 ]
 

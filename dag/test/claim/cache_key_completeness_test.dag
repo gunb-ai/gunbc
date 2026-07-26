@@ -1,20 +1,21 @@
 module test.claim.cache_key_completeness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_module: String = "test.claim.cache_key_completeness"
 
-test fn witness_cav_toolchain_derives_transform() -> Bool {
+fn witness_cav_toolchain_derives_transform() -> Bool {
   let inputs = content_addressed_inputs(triggers: [ToolchainChange, ManualPurge])
   catalog_has_vendor_only_key_inputs(inputs: inputs) && (inputs.length() == 2)
 }
 
-test fn witness_cav_no_toolchain_derives_subject_only() -> Bool {
+fn witness_cav_no_toolchain_derives_subject_only() -> Bool {
   let inputs = content_addressed_inputs(triggers: [ManualPurge])
   !catalog_has_vendor_only_key_inputs(inputs: inputs) && (inputs.length() == 1)
 }
 
-test fn witness_live_resolved_graph_derives_toolchain() -> Bool {
+fn witness_live_resolved_graph_derives_toolchain() -> Bool {
   let inputs = catalog_inputs_considered(kd: resolved_graph_cache_facts.key_derivation)
   catalog_has_vendor_only_key_inputs(inputs: inputs) && (inputs.length() == 2)
 }
@@ -63,49 +64,64 @@ fn no_promise_native_facts() -> CatalogKeyDerivationFacts {
   }
 }
 
-test fn witness_complete_green_on_sound_cited() -> Bool {
+fn witness_complete_green_on_sound_cited() -> Bool {
   cache_key_derivation_complete(facts: sound_cited_facts())
 }
 
-test fn witness_complete_red_on_undercited() -> Bool {
+fn witness_complete_red_on_undercited() -> Bool {
   !cache_key_derivation_complete(facts: undercited_native_facts())
 }
 
-test fn witness_verdict_holds_on_sound_cited() -> Bool {
+fn witness_verdict_holds_on_sound_cited() -> Bool {
   match v2.extdeps.cache.key_completeness_verdict.cache_key_completeness_verdict(facts: sound_cited_facts(), module_name: witness_module) {
     Holds => true
     _ => false
   }
 }
 
-test fn witness_verdict_violation_on_undercited() -> Bool {
+fn witness_verdict_violation_on_undercited() -> Bool {
   match v2.extdeps.cache.key_completeness_verdict.cache_key_completeness_verdict(facts: undercited_native_facts(), module_name: witness_module) {
     Violation { diagnostic: _ } => true
     _ => false
   }
 }
 
-test fn witness_hand_authored_exempt() -> Bool {
+fn witness_hand_authored_exempt() -> Bool {
   cache_key_derivation_complete(facts: hand_authored_facts())
 }
 
-test fn witness_native_not_exempt() -> Bool {
+fn witness_native_not_exempt() -> Bool {
   !cache_key_derivation_complete(facts: undercited_native_facts())
 }
 
-test fn witness_no_promise_complete() -> Bool {
+fn witness_no_promise_complete() -> Bool {
   cache_key_derivation_complete(facts: no_promise_native_facts())
 }
 
-test fn witness_promise_without_input_incomplete() -> Bool {
+fn witness_promise_without_input_incomplete() -> Bool {
   !cache_key_derivation_complete(facts: undercited_native_facts())
 }
 
-test fn witness_live_catalog_holds() -> Bool {
+fn witness_live_catalog_holds() -> Bool {
   cache_catalog_key_completeness_holds(catalog: cache_catalog)
 }
 
-test fn witness_live_resolved_graph_complete() -> Bool {
+fn witness_live_resolved_graph_complete() -> Bool {
   cache_key_derivation_complete(facts: resolved_graph_cache_facts.key_derivation)
 }
 
+test fn cache_key_completeness_witnesses() -> Bool {
+  witness_cav_toolchain_derives_transform()
+    && witness_cav_no_toolchain_derives_subject_only()
+    && witness_live_resolved_graph_derives_toolchain()
+    && witness_complete_green_on_sound_cited()
+    && witness_complete_red_on_undercited()
+    && witness_verdict_holds_on_sound_cited()
+    && witness_verdict_violation_on_undercited()
+    && witness_hand_authored_exempt()
+    && witness_native_not_exempt()
+    && witness_no_promise_complete()
+    && witness_promise_without_input_incomplete()
+    && witness_live_catalog_holds()
+    && witness_live_resolved_graph_complete()
+}

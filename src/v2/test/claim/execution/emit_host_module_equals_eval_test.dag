@@ -1,5 +1,6 @@
 module v2.test.execution.emit_host_module_equals_eval
 
+
 import v2.compiler.emit_host { run_test_claim_module_emit_vs_eval }
 import v2.compiler.emit_module { emit_module, emit_module_decl_separator }
 import v2.compiler.eval { TestClaimRun }
@@ -84,3 +85,8 @@ test fn emit_module_join_concatenates_two_decls() -> Bool {
     && !emit_module_two_text_matches(golden: emit_module_expected_single_source())
 }
 
+test fn emit_host_module_all_holds() -> Bool {
+  emit_host_module_add_equals_eval_holds()
+    && emit_host_module_wrong_oracle_refuses_holds()
+    && emit_module_join_concatenates_two_decls()
+}

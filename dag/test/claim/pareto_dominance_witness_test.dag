@@ -1,5 +1,6 @@
 module test.claim.pareto_dominance
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn compare_axes(a_cap: Int, a_cost: Int, b_cap: Int, b_cost: Int) -> List<AxisComparison> {
@@ -13,24 +14,24 @@ fn verdict_of(a_cap: Int, a_cost: Int, b_cap: Int, b_cost: Int) -> DominanceVerd
   dominance_of_comparisons(comparisons: compare_axes(a_cap: a_cap, a_cost: a_cost, b_cap: b_cap, b_cost: b_cost))
 }
 
-test fn dominates_when_better_on_all_axes() -> Bool {
+fn dominates_when_better_on_all_axes() -> Bool {
   verdict_dominates(v: verdict_of(a_cap: 64, a_cost: 100, b_cap: 32, b_cost: 200))
 }
 
-test fn dominated_is_the_mirror() -> Bool {
+fn dominated_is_the_mirror() -> Bool {
   verdict_is_dominated(v: verdict_of(a_cap: 32, a_cost: 200, b_cap: 64, b_cost: 100))
 }
 
-test fn equivalent_when_identical() -> Bool {
+fn equivalent_when_identical() -> Bool {
   verdict_is_equivalent(v: verdict_of(a_cap: 48, a_cost: 150, b_cap: 48, b_cost: 150))
 }
 
-test fn incomparable_is_not_a_tie() -> Bool {
+fn incomparable_is_not_a_tie() -> Bool {
   let v = verdict_of(a_cap: 64, a_cost: 200, b_cap: 32, b_cost: 100)
   verdict_is_incomparable(v: v) && !verdict_is_equivalent(v: v)
 }
 
-test fn dominated_candidate_is_off_front() -> Bool {
+fn dominated_candidate_is_off_front() -> Bool {
 
   let pool = [
     verdict_of(a_cap: 64, a_cost: 100, b_cap: 32, b_cost: 200),
@@ -39,7 +40,7 @@ test fn dominated_candidate_is_off_front() -> Bool {
   any_dominates(verdicts: pool) && !on_pareto_front(verdicts: pool)
 }
 
-test fn undominated_candidate_stays_on_front() -> Bool {
+fn undominated_candidate_stays_on_front() -> Bool {
 
   let pool = [
     verdict_of(a_cap: 32, a_cost: 50, b_cap: 64, b_cost: 100),
@@ -48,3 +49,11 @@ test fn undominated_candidate_stays_on_front() -> Bool {
   on_pareto_front(verdicts: pool) && !any_dominates(verdicts: pool)
 }
 
+test fn pareto_dominance_holds() -> Bool {
+  dominates_when_better_on_all_axes()
+    && dominated_is_the_mirror()
+    && equivalent_when_identical()
+    && incomparable_is_not_a_tie()
+    && dominated_candidate_is_off_front()
+    && undominated_candidate_stays_on_front()
+}

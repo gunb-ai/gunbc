@@ -79,3 +79,8 @@ test fn emit_host_shell_exec_run_wrong_oracle_refuses_holds() -> Bool {
   shell_exec_run_native_run(expected_octet: 1 - shell_exec_run_eval_expected_octet()) == false
 }
 
+test fn emit_host_shell_exec_run_equals_eval_all_holds() -> Bool {
+  shell_exec_run_eval_argv_is_bash_dash_s()
+    && emit_host_shell_exec_run_equals_eval_holds()
+    && emit_host_shell_exec_run_wrong_oracle_refuses_holds()
+}

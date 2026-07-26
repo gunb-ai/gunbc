@@ -32,15 +32,15 @@ data chemed_fy2025_operating_margin_ratio_low: Float = 0.1336
 
 data chemed_fy2025_operating_margin_ratio_high: Float = 0.1337
 
-test fn w_rollins_cik_verified_on_edgar() -> Bool {
+fn w_rollins_cik_verified_on_edgar() -> Bool {
   cik_padded_digits(cik: rollins_cik) == "0000084839"
 }
 
-test fn w_chemed_cik_verified_on_edgar() -> Bool {
+fn w_chemed_cik_verified_on_edgar() -> Bool {
   cik_padded_digits(cik: chemed_cik) == "0000019584"
 }
 
-test fn w_rollins_operating_margin_derivation_matches_filed_facts() -> Bool {
+fn w_rollins_operating_margin_derivation_matches_filed_facts() -> Bool {
   match derive_gross_margin_ratio_from_facts(
     revenue: rollins_fy2025_revenue,
     gross_profit: rollins_fy2025_operating_income
@@ -55,7 +55,7 @@ test fn w_rollins_operating_margin_derivation_matches_filed_facts() -> Bool {
   }
 }
 
-test fn w_chemed_operating_margin_derivation_matches_filed_facts() -> Bool {
+fn w_chemed_operating_margin_derivation_matches_filed_facts() -> Bool {
   match derive_gross_margin_ratio_from_facts(
     revenue: chemed_fy2025_revenue,
     gross_profit: chemed_fy2025_operating_income
@@ -70,7 +70,7 @@ test fn w_chemed_operating_margin_derivation_matches_filed_facts() -> Bool {
   }
 }
 
-test fn w_rollins_operating_margin_red_on_perturbed_operating_income() -> Bool {
+fn w_rollins_operating_margin_red_on_perturbed_operating_income() -> Bool {
   match filed_amount(fact: rollins_fy2025_operating_income) {
     Present { value: oi } => {
       let perturbed = usd_whole_dollars(count: usd_whole_dollars_count(oi) + 1000000)
@@ -91,7 +91,7 @@ test fn w_rollins_operating_margin_red_on_perturbed_operating_income() -> Bool {
   }
 }
 
-test fn w_chemed_operating_margin_red_on_perturbed_operating_income() -> Bool {
+fn w_chemed_operating_margin_red_on_perturbed_operating_income() -> Bool {
   match filed_amount(fact: chemed_fy2025_operating_income) {
     Present { value: oi } => {
       let perturbed = usd_whole_dollars(count: usd_whole_dollars_count(oi) + 1000000)
@@ -112,3 +112,11 @@ test fn w_chemed_operating_margin_red_on_perturbed_operating_income() -> Bool {
   }
 }
 
+test fn sec_edgar_rollins_chemed_operating_margin_witness() -> Bool {
+  w_rollins_cik_verified_on_edgar()
+    && w_chemed_cik_verified_on_edgar()
+    && w_rollins_operating_margin_derivation_matches_filed_facts()
+    && w_chemed_operating_margin_derivation_matches_filed_facts()
+    && w_rollins_operating_margin_red_on_perturbed_operating_income()
+    && w_chemed_operating_margin_red_on_perturbed_operating_income()
+}

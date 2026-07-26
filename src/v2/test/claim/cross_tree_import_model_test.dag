@@ -1,5 +1,6 @@
 module v2.test.claim.cross_tree_import_model
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data both_roots: SourceRootSet = [V2Tree, DagTree]
@@ -27,7 +28,7 @@ data v2_workflow_to_dag_std_edge: CrossTreeImport = CrossTreeImport {
   to_module: "dag.std.types"
 }
 
-test fn witness_dag_std_to_v2_std_more_fundamental_admitted_holds() -> Bool {
+fn witness_dag_std_to_v2_std_more_fundamental_admitted_holds() -> Bool {
   match cross_tree_import_admitted(
     edge: dag_std_to_v2_std_edge,
     roots: both_roots,
@@ -38,7 +39,7 @@ test fn witness_dag_std_to_v2_std_more_fundamental_admitted_holds() -> Bool {
   }
 }
 
-test fn witness_dag_std_to_v2_std_co_fundamental_admitted_holds() -> Bool {
+fn witness_dag_std_to_v2_std_co_fundamental_admitted_holds() -> Bool {
   match cross_tree_import_admitted(
     edge: dag_std_to_v2_std_edge,
     roots: both_roots,
@@ -49,7 +50,7 @@ test fn witness_dag_std_to_v2_std_co_fundamental_admitted_holds() -> Bool {
   }
 }
 
-test fn witness_v2_workflow_to_dag_std_more_fundamental_admitted_holds() -> Bool {
+fn witness_v2_workflow_to_dag_std_more_fundamental_admitted_holds() -> Bool {
   match cross_tree_import_admitted(
     edge: v2_workflow_to_dag_std_edge,
     roots: both_roots,
@@ -60,7 +61,7 @@ test fn witness_v2_workflow_to_dag_std_more_fundamental_admitted_holds() -> Bool
   }
 }
 
-test fn witness_import_closure_all_admitted_holds() -> Bool {
+fn witness_import_closure_all_admitted_holds() -> Bool {
   let closure = [dag_std_to_v2_std_edge, v2_workflow_to_dag_std_edge]
   match cross_tree_import_closure_admitted(
     closure: closure,
@@ -72,7 +73,7 @@ test fn witness_import_closure_all_admitted_holds() -> Bool {
   }
 }
 
-test fn witness_layer_direction_deleted_now_admitted_holds() -> Bool {
+fn witness_layer_direction_deleted_now_admitted_holds() -> Bool {
   match cross_tree_import_admitted(
     edge: dag_std_to_v2_compiler_edge,
     roots: both_roots,
@@ -83,7 +84,7 @@ test fn witness_layer_direction_deleted_now_admitted_holds() -> Bool {
   }
 }
 
-test fn witness_fundamentality_unknown_denied_holds() -> Bool {
+fn witness_fundamentality_unknown_denied_holds() -> Bool {
   match cross_tree_import_admitted(
     edge: dag_std_to_v2_std_edge,
     roots: both_roots,
@@ -94,7 +95,7 @@ test fn witness_fundamentality_unknown_denied_holds() -> Bool {
   }
 }
 
-test fn witness_missing_root_denied_holds() -> Bool {
+fn witness_missing_root_denied_holds() -> Bool {
   match cross_tree_import_admitted(
     edge: dag_std_to_v2_std_edge,
     roots: dag_only_roots,
@@ -105,7 +106,7 @@ test fn witness_missing_root_denied_holds() -> Bool {
   }
 }
 
-test fn witness_less_fundamental_denied_holds() -> Bool {
+fn witness_less_fundamental_denied_holds() -> Bool {
   match cross_tree_import_admitted(
     edge: dag_std_to_v2_std_edge,
     roots: both_roots,
@@ -116,7 +117,7 @@ test fn witness_less_fundamental_denied_holds() -> Bool {
   }
 }
 
-test fn witness_closure_denied_on_less_fundamental_holds() -> Bool {
+fn witness_closure_denied_on_less_fundamental_holds() -> Bool {
   let closure = [dag_std_to_v2_std_edge, dag_std_to_v2_compiler_edge]
   match cross_tree_import_closure_admitted(
     closure: closure,
@@ -128,3 +129,14 @@ test fn witness_closure_denied_on_less_fundamental_holds() -> Bool {
   }
 }
 
+test fn cross_tree_import_model_witnesses() -> Bool {
+  witness_dag_std_to_v2_std_more_fundamental_admitted_holds()
+    && witness_dag_std_to_v2_std_co_fundamental_admitted_holds()
+    && witness_v2_workflow_to_dag_std_more_fundamental_admitted_holds()
+    && witness_import_closure_all_admitted_holds()
+    && witness_layer_direction_deleted_now_admitted_holds()
+    && witness_fundamentality_unknown_denied_holds()
+    && witness_missing_root_denied_holds()
+    && witness_less_fundamental_denied_holds()
+    && witness_closure_denied_on_less_fundamental_holds()
+}

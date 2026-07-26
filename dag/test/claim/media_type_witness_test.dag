@@ -12,7 +12,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data media_type_witness_note: String = "D1 keystone: the served stack's Content-Type wire strings are a SERIALIZATION of the modeled MediaType (RFC 9110 section 8.3 type/subtype/parameters), not hand-composed strings hiding the structure. The five preset labels are pinned byte-exact (browsers are the consumer — these must NEVER drift), and the RED controls perturb a parameter value and a subtype so the wire string changes and the pin reds, proving the pin discriminates. ApplicationOctetStream's charset-less form falls out of an EMPTY parameter list, not a special variant."
 
-test fn witness_preset_wire_strings_byte_exact() -> Bool {
+fn witness_preset_wire_strings_byte_exact() -> Bool {
   media_type_wire_label(m: text_html_utf8) == "text/html; charset=utf-8"
     && media_type_wire_label(m: text_plain_utf8) == "text/plain; charset=utf-8"
     && media_type_wire_label(m: application_json_utf8) == "application/json; charset=utf-8"
@@ -20,14 +20,14 @@ test fn witness_preset_wire_strings_byte_exact() -> Bool {
     && media_type_wire_label(m: application_octet_stream) == "application/octet-stream"
 }
 
-test fn witness_octet_stream_has_no_charset() -> Bool {
+fn witness_octet_stream_has_no_charset() -> Bool {
   count(application_octet_stream.parameters) == 0
     && !string_contains(s: media_type_wire_label(m: application_octet_stream), pattern: "charset")
     && count(text_html_utf8.parameters) == 1
     && string_contains(s: media_type_wire_label(m: text_html_utf8), pattern: "; charset=utf-8")
 }
 
-test fn witness_structure_projects() -> Bool {
+fn witness_structure_projects() -> Bool {
   text_html_utf8.top_level == TopLevelText
     && text_html_utf8.subtype == "html"
     && application_json_utf8.top_level == TopLevelApplication
@@ -45,14 +45,21 @@ fn perturbed_charset_media_type() -> MediaType {
 
 data perturbed_parameter_red_note: String = "RED control: perturb the charset parameter value; the wire string changes, so the byte-exact pin above no longer holds — a silent drift would go red here."
 
-test fn witness_perturbed_parameter_reds() -> Bool {
+fn witness_perturbed_parameter_reds() -> Bool {
   media_type_wire_label(m: perturbed_charset_media_type()) != "text/html; charset=utf-8"
     && media_type_wire_label(m: perturbed_charset_media_type()) == "text/html; charset=utf-16"
 }
 
-test fn witness_perturbed_subtype_reds() -> Bool {
+fn witness_perturbed_subtype_reds() -> Bool {
   let bad = MediaType { top_level: TopLevelText, subtype: "xml", parameters: [charset_utf8] }
   media_type_wire_label(m: bad) != media_type_wire_label(m: text_html_utf8)
     && media_type_wire_label(m: bad) == "text/xml; charset=utf-8"
 }
 
+test fn media_type_witnesses() -> Bool {
+  witness_preset_wire_strings_byte_exact()
+    && witness_octet_stream_has_no_charset()
+    && witness_structure_projects()
+    && witness_perturbed_parameter_reds()
+    && witness_perturbed_subtype_reds()
+}

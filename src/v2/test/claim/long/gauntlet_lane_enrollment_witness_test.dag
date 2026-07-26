@@ -65,7 +65,7 @@ fn substrate_long_lane_contains(f: String) -> Bool {
   any(falsifier_substrate_long_lane_rows, row => row.function == f)
 }
 
-test fn witness_rehomed_rows_are_cadence_enrolled() -> Bool {
+fn witness_rehomed_rows_are_cadence_enrolled() -> Bool {
   let entries = live_roster_falsifier_witness_entries()
   substrate_long_lane_contains(f: "wave1_gate1_d_census_subsumption_witness_holds")
     && falsifier_entries_contain(entries: entries, f: "wave1_gate1_d_ingested_bind_executes_witness_holds")
@@ -76,10 +76,15 @@ test fn witness_rehomed_rows_are_cadence_enrolled() -> Bool {
     && falsifier_entries_contain(entries: entries, f: "witness_parse_binding_fidelity_distinct_identifiers_holds")
 }
 
-test fn witness_split_entries_keep_cheap_half_per_pr() -> Bool {
+fn witness_split_entries_keep_cheap_half_per_pr() -> Bool {
   let cadence = live_roster_falsifier_witness_entries()
   !falsifier_entries_contain(entries: cadence, f: "lens_affected_set_provenance_producer_git_diff_wire_holds")
     && !falsifier_entries_contain(entries: cadence, f: "witness_resolve_distinct_param_bindings_holds")
+}
+
+test fn gauntlet_lane_rehomed_rows_are_cadence_enrolled_holds() -> Bool {
+  witness_rehomed_rows_are_cadence_enrolled()
+    && witness_split_entries_keep_cheap_half_per_pr()
 }
 
 test fn gauntlet_lane_rehome_is_never_bare_deenrollment_holds() -> Bool {

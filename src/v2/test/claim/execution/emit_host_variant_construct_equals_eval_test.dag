@@ -384,3 +384,6 @@ test fn emit_host_variant_construct_wrong_fixture_refuses_holds() -> Bool {
   )
 }
 
+test fn emit_host_variant_construct_equals_eval_all_holds() -> Bool {
+  emit_host_variant_construct_equals_eval_holds() && emit_host_variant_construct_wrong_fixture_refuses_holds()
+}

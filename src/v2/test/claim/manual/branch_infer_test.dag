@@ -1,5 +1,6 @@
 module v2.test.manual.branch_infer
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn branch_infer_atom(s: Symbol) -> Node {
@@ -101,7 +102,7 @@ fn branch_infer_branch_result_is_int(tree: InferredTree, body: Node) -> Bool {
   }
 }
 
-test fn branch_infer_bool_cond_accepts_holds() -> Bool {
+fn branch_infer_bool_cond_accepts_holds() -> Bool {
   match branch_infer_bool_if_else_body_node() {
     Accepted { value: body, diagnostics: _ } =>
       let tree = branch_infer_resolved_tree(root: body)
@@ -115,7 +116,7 @@ test fn branch_infer_bool_cond_accepts_holds() -> Bool {
   }
 }
 
-test fn branch_infer_arm_mismatch_red_holds() -> Bool {
+fn branch_infer_arm_mismatch_red_holds() -> Bool {
   match branch_infer_arm_mismatch_body_node() {
     Accepted { value: body, diagnostics: _ } =>
       match branch_infer_run(tree: branch_infer_resolved_tree(root: body)) {
@@ -126,7 +127,7 @@ test fn branch_infer_arm_mismatch_red_holds() -> Bool {
   }
 }
 
-test fn branch_infer_cond_not_bool_red_holds() -> Bool {
+fn branch_infer_cond_not_bool_red_holds() -> Bool {
   match branch_infer_cond_not_bool_body_node() {
     Accepted { value: body, diagnostics: _ } =>
       match branch_infer_run(tree: branch_infer_resolved_tree(root: body)) {
@@ -135,6 +136,12 @@ test fn branch_infer_cond_not_bool_red_holds() -> Bool {
       }
     Rejected { diagnostics: _ } => false
   }
+}
+
+test fn branch_infer_keystone_holds() -> Bool {
+  branch_infer_bool_cond_accepts_holds()
+    && branch_infer_arm_mismatch_red_holds()
+    && branch_infer_cond_not_bool_red_holds()
 }
 
 fn branch_infer_constraint_satisfaction_grounding_rejected() -> CanonicalGrounding {

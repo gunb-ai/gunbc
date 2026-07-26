@@ -24,28 +24,35 @@ fn movable_of(proof: OwnershipProof, name: String) -> Bool {
   set_contains(build_movable_set(proof: proof, param_names: set_insert(empty_set(), name)), name)
 }
 
-test fn witness_read_then_consume_param_is_movable() -> Bool {
+fn witness_read_then_consume_param_is_movable() -> Bool {
   let proof = proof_one(name: "acc", consumers: [edge(k: Projected, s: ".seen"), edge(k: Consumed, s: "return")])
   movable_of(proof: proof, name: "acc")
 }
 
-test fn witness_double_consume_is_not_movable() -> Bool {
+fn witness_double_consume_is_not_movable() -> Bool {
   let proof = proof_one(name: "x", consumers: [edge(k: Consumed, s: "a"), edge(k: Consumed, s: "b")])
   movable_of(proof: proof, name: "x") == false
 }
 
-test fn witness_zero_consume_is_not_movable() -> Bool {
+fn witness_zero_consume_is_not_movable() -> Bool {
   let proof = proof_one(name: "r", consumers: [edge(k: Read, s: "a"), edge(k: Projected, s: ".f")])
   movable_of(proof: proof, name: "r") == false
 }
 
-test fn witness_whole_read_then_consume_is_not_movable() -> Bool {
+fn witness_whole_read_then_consume_is_not_movable() -> Bool {
   let proof = proof_one(name: "x", consumers: [edge(k: Read, s: "read"), edge(k: Consumed, s: "return")])
   movable_of(proof: proof, name: "x") == false
 }
 
-test fn witness_threaded_then_consume_is_not_movable() -> Bool {
+fn witness_threaded_then_consume_is_not_movable() -> Bool {
   let proof = proof_one(name: "x", consumers: [edge(k: Threaded, s: "fold_init"), edge(k: Consumed, s: "return")])
   movable_of(proof: proof, name: "x") == false
 }
 
+test fn ownership_movable_witnesses() -> Bool {
+  witness_read_then_consume_param_is_movable()
+    && witness_double_consume_is_not_movable()
+    && witness_zero_consume_is_not_movable()
+    && witness_whole_read_then_consume_is_not_movable()
+    && witness_threaded_then_consume_is_not_movable()
+}

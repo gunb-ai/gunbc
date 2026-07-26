@@ -1,8 +1,9 @@
 module test.claim.interpreter_kernel_model_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn w_pure_eval_authority_modules() -> Bool {
+fn w_pure_eval_authority_modules() -> Bool {
   is_pure_eval_authority_module(path: "src/v2/compiler/05_eval.dag") &&
   is_pure_eval_authority_module(path: "src/v2/compiler/emit_host.dag") &&
   is_pure_eval_authority_module(path: "src/v2/extdeps/runtimes/v2_evaluator.dag") &&
@@ -11,7 +12,7 @@ test fn w_pure_eval_authority_modules() -> Bool {
   !is_pure_eval_authority_module(path: "src/v1/stage0/src/v1_interpreter.rs")
 }
 
-test fn w_pinned_host_physics_roster() -> Bool {
+fn w_pinned_host_physics_roster() -> Bool {
   is_pinned_host_physics_stage0_file(basename: "recorded_fixture.rs") &&
   is_pinned_host_physics_stage0_file(basename: "resolved_graph_cache.rs") &&
   !is_pinned_host_physics_stage0_file(basename: "cache_purity_oracle.rs") &&
@@ -20,16 +21,16 @@ test fn w_pinned_host_physics_roster() -> Bool {
   !is_pinned_host_physics_stage0_file(basename: "wire_value_serialize.rs")
 }
 
-test fn w_hybrid_interpreter_file_boundary() -> Bool {
+fn w_hybrid_interpreter_file_boundary() -> Bool {
   v1_interpreter_hybrid_seed_file == "v1_interpreter.rs" &&
   v1_interpreter_not_classified_as_pinned_host_physics()
 }
 
-test fn w_kernel_d_phase_pure_eval_emit_wired() -> Bool {
+fn w_kernel_d_phase_pure_eval_emit_wired() -> Bool {
   interpreter_kernel_d_phase_is_pure_eval_emit_wired()
 }
 
-test fn w_seam_class_authority_modules() -> Bool {
+fn w_seam_class_authority_modules() -> Bool {
   match seam_class_for_authority_module(path: "src/v2/compiler/05_eval.dag") {
     Present { value: PureEvalAuthority } => true
     _ => false
@@ -44,7 +45,7 @@ test fn w_seam_class_authority_modules() -> Bool {
   }
 }
 
-test fn w_hybrid_seed_seam_unclassified() -> Bool {
+fn w_hybrid_seed_seam_unclassified() -> Bool {
   hybrid_seed_file_is_seam_unclassified() &&
   match seam_class_for_pinned_basename(basename: v1_interpreter_hybrid_seed_file) {
     Absent => true
@@ -52,3 +53,11 @@ test fn w_hybrid_seed_seam_unclassified() -> Bool {
   }
 }
 
+test fn interpreter_kernel_model_witnesses() -> Bool {
+  w_pure_eval_authority_modules() &&
+  w_pinned_host_physics_roster() &&
+  w_hybrid_interpreter_file_boundary() &&
+  w_kernel_d_phase_pure_eval_emit_wired() &&
+  w_seam_class_authority_modules() &&
+  w_hybrid_seed_seam_unclassified()
+}

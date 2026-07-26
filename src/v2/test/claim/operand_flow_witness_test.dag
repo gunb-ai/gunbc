@@ -81,21 +81,21 @@ data operand_flow_missing_row_artifact: NodeKeyedGraphArtifact = NodeKeyedGraphA
   entries: []
 }
 
-test fn witness_operand_root_resolves_data_depends_on() -> Bool {
+fn witness_operand_root_resolves_data_depends_on() -> Bool {
   match operand_root(edge: operand_flow_edge_a) {
     OperandRoot { root: root } => root == operand_flow_shared_node
     OperandRootUnresolved { edge: _ } => false
   }
 }
 
-test fn witness_operand_root_refuses_non_data_kind() -> Bool {
+fn witness_operand_root_refuses_non_data_kind() -> Bool {
   match operand_root(edge: operand_flow_edge_non_data) {
     OperandRootUnresolved { edge: edge } => edge == operand_flow_edge_non_data
     OperandRoot { root: _ } => false
   }
 }
 
-test fn witness_shared_operand_consumers_agree() -> Bool {
+fn witness_shared_operand_consumers_agree() -> Bool {
   match operand_flow_for_edge(artifact: operand_flow_settled_artifact, edge: operand_flow_edge_a) {
     OperandFlow { edge: _, operand: operand_a, footprint: footprint_a } =>
       match operand_flow_for_edge(artifact: operand_flow_settled_artifact, edge: operand_flow_edge_b) {
@@ -109,7 +109,7 @@ test fn witness_shared_operand_consumers_agree() -> Bool {
   }
 }
 
-test fn witness_non_data_edge_refuses_typed() -> Bool {
+fn witness_non_data_edge_refuses_typed() -> Bool {
   match operand_flow_for_edge(artifact: operand_flow_settled_artifact, edge: operand_flow_edge_non_data) {
     OperandFlowRefused { edge: _, cause: OperandFlowNoOperand { edge: _ } } => true
     OperandFlowRefused { edge: _, cause: _ } => false
@@ -117,7 +117,7 @@ test fn witness_non_data_edge_refuses_typed() -> Bool {
   }
 }
 
-test fn witness_missing_row_refuses_typed() -> Bool {
+fn witness_missing_row_refuses_typed() -> Bool {
   match operand_flow_for_edge(artifact: operand_flow_missing_row_artifact, edge: operand_flow_edge_a) {
     OperandFlowRefused { edge: _, cause: OperandFlowFootprintMissingRow { missing: missing } } =>
       missing == operand_flow_shared_hash
@@ -126,7 +126,7 @@ test fn witness_missing_row_refuses_typed() -> Bool {
   }
 }
 
-test fn witness_operand_flows_is_total_over_edges() -> Bool {
+fn witness_operand_flows_is_total_over_edges() -> Bool {
   let rows = operand_flows(
     artifact: operand_flow_settled_artifact,
     edges: [operand_flow_edge_a, operand_flow_edge_b, operand_flow_edge_non_data]
@@ -134,3 +134,11 @@ test fn witness_operand_flows_is_total_over_edges() -> Bool {
   length(xs: rows) == 3
 }
 
+test fn operand_flow_witnesses() -> Bool {
+  witness_operand_root_resolves_data_depends_on()
+    && witness_operand_root_refuses_non_data_kind()
+    && witness_shared_operand_consumers_agree()
+    && witness_non_data_edge_refuses_typed()
+    && witness_missing_row_refuses_typed()
+    && witness_operand_flows_is_total_over_edges()
+}

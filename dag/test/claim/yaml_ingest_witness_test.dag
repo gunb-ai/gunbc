@@ -1,5 +1,6 @@
 module test.claim.yaml_ingest_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn round_trips(v: YamlValue) -> Bool {
@@ -10,7 +11,7 @@ fn round_trips(v: YamlValue) -> Bool {
   }
 }
 
-test fn witness_scalar_mapping_round_trips() -> Bool {
+fn witness_scalar_mapping_round_trips() -> Bool {
   round_trips(v: yaml_mapping(entries: [
     kv(key: "name", value: yaml_string(s: "ci")),
     kv(key: "fetch-depth", value: yaml_int(n: 0)),
@@ -18,7 +19,7 @@ test fn witness_scalar_mapping_round_trips() -> Bool {
   ]))
 }
 
-test fn witness_nested_sequence_of_mappings_round_trips() -> Bool {
+fn witness_nested_sequence_of_mappings_round_trips() -> Bool {
   round_trips(v: yaml_mapping(entries: [
     kv(key: "jobs", value: yaml_sequence(elements: [
       yaml_mapping(entries: [
@@ -31,34 +32,45 @@ test fn witness_nested_sequence_of_mappings_round_trips() -> Bool {
   ]))
 }
 
-test fn witness_block_literal_round_trips() -> Bool {
+fn witness_block_literal_round_trips() -> Bool {
   round_trips(v: yaml_mapping(entries: [
     kv(key: "run", value: yaml_string(s: "line one\nline two"))
   ]))
 }
 
-test fn witness_empty_string_scalar_round_trips() -> Bool {
+fn witness_empty_string_scalar_round_trips() -> Bool {
   round_trips(v: yaml_mapping(entries: [kv(key: "rustflags", value: yaml_string(s: ""))]))
 }
 
-test fn witness_real_ci_yml_parses() -> Bool {
+fn witness_real_ci_yml_parses() -> Bool {
   yaml_source_parses(src: expected_ci_yml())
 }
 
-test fn witness_empty_document_rejected() -> Bool {
+fn witness_empty_document_rejected() -> Bool {
   yaml_source_parses(src: "") == false
 }
 
-test fn witness_malformed_scalar_line_rejected() -> Bool {
+fn witness_malformed_scalar_line_rejected() -> Bool {
   yaml_source_parses(src: "just a bare word\n") == false
 }
 
-test fn witness_bad_nested_indent_rejected() -> Bool {
+fn witness_bad_nested_indent_rejected() -> Bool {
   yaml_source_parses(src: "a:\n   b: 1\n") == false
 }
 
-test fn witness_rejection_discriminates_from_valid() -> Bool {
+fn witness_rejection_discriminates_from_valid() -> Bool {
   yaml_source_parses(src: "a: 1\n") &&
     !yaml_source_parses(src: "just a bare word\n")
 }
 
+test fn yaml_ingest_keystone_holds() -> Bool {
+  witness_scalar_mapping_round_trips() &&
+    witness_nested_sequence_of_mappings_round_trips() &&
+    witness_block_literal_round_trips() &&
+    witness_empty_string_scalar_round_trips() &&
+    witness_real_ci_yml_parses() &&
+    witness_empty_document_rejected() &&
+    witness_malformed_scalar_line_rejected() &&
+    witness_bad_nested_indent_rejected() &&
+    witness_rejection_discriminates_from_valid()
+}

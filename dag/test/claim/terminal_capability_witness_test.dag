@@ -1,5 +1,6 @@
 module test.claim.terminal_capability_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data interactive_tty: TerminalEnvironment = TerminalEnvironment {
@@ -22,26 +23,26 @@ data demo_viewport: Viewport = Viewport { width: 80, height: 24, unit: Chars }
 
 data dynamic_frame: std.render.RenderFrame = std.render.RenderFrame { lines: [], cursor_action: Overwrite }
 
-test fn w_interactive_is_addressable_unicode_color() -> Bool {
+fn w_interactive_is_addressable_unicode_color() -> Bool {
   let cap = detect_capability(env: interactive_tty)
   cap.cursor_addressable == true &&
   cap.color == true &&
   match cap.tier { Unicode => true, _ => false }
 }
 
-test fn w_ci_is_append_only_ascii_but_colored() -> Bool {
+fn w_ci_is_append_only_ascii_but_colored() -> Bool {
   let cap = detect_capability(env: ci_log)
   cap.cursor_addressable == false &&
   cap.color == true &&
   match cap.tier { Ascii => true, _ => false }
 }
 
-test fn w_piped_drops_color_and_cursor() -> Bool {
+fn w_piped_drops_color_and_cursor() -> Bool {
   let cap = detect_capability(env: piped_file)
   cap.cursor_addressable == false && cap.color == false
 }
 
-test fn w_no_color_opt_out_wins() -> Bool {
+fn w_no_color_opt_out_wins() -> Bool {
   let cap = detect_capability(env: no_color_tty)
   cap.color == false && cap.cursor_addressable == true
 }
@@ -54,7 +55,7 @@ fn cursor_is_overwrite(a: CursorAction) -> Bool {
   match a { Overwrite => true, _ => false }
 }
 
-test fn w_ci_frame_cannot_carry_overwrite() -> Bool {
+fn w_ci_frame_cannot_carry_overwrite() -> Bool {
   let cap = detect_capability(env: ci_log)
   match project_frame(frame: dynamic_frame, viewport: demo_viewport, cap: cap) {
     Present { value: f } => cursor_is_append(a: f.cursor_action)
@@ -62,7 +63,7 @@ test fn w_ci_frame_cannot_carry_overwrite() -> Bool {
   }
 }
 
-test fn w_interactive_frame_keeps_overwrite() -> Bool {
+fn w_interactive_frame_keeps_overwrite() -> Bool {
   let cap = detect_capability(env: interactive_tty)
   match project_frame(frame: dynamic_frame, viewport: demo_viewport, cap: cap) {
     Present { value: f } => cursor_is_overwrite(a: f.cursor_action)
@@ -70,3 +71,11 @@ test fn w_interactive_frame_keeps_overwrite() -> Bool {
   }
 }
 
+test fn terminal_capability_witnesses() -> Bool {
+  w_interactive_is_addressable_unicode_color() &&
+  w_ci_is_append_only_ascii_but_colored() &&
+  w_piped_drops_color_and_cursor() &&
+  w_no_color_opt_out_wins() &&
+  w_ci_frame_cannot_carry_overwrite() &&
+  w_interactive_frame_keeps_overwrite()
+}

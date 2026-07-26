@@ -109,14 +109,14 @@ fn crawl_basis() -> AttentionBasis {
   AttentionBasis { average: millisecond(count: 1000), maximum: millisecond(count: 5000) }
 }
 
-test fn w_human_units_replace_raw_byte_dumps() -> Bool {
+fn w_human_units_replace_raw_byte_dumps() -> Bool {
   ci_human_bytes(b: byte_size(crawl_heartbeat_rss_bytes)) == "15.0 GiB" &&
   ci_human_bytes(b: byte_size(crawl_heartbeat_swap_bytes)) == "32.0 GiB" &&
   ci_human_percent(bp: basis_point(count: crawl_heartbeat_pressure_bp)) == "9.0%" &&
   ci_human_duration(d: millisecond(count: crawl_module_wall_ms)) == "10 minutes"
 }
 
-test fn w_heartbeat_names_its_subject_where_the_capture_was_silent() -> Bool {
+fn w_heartbeat_names_its_subject_where_the_capture_was_silent() -> Bool {
   let line = ci_heartbeat_line(sample: crawl_heartbeat())
   string_contains(s: line.text, pattern: crawl_quiet_module) &&
   string_contains(s: line.text, pattern: "entry 214 of 602") &&
@@ -124,18 +124,18 @@ test fn w_heartbeat_names_its_subject_where_the_capture_was_silent() -> Bool {
   !string_contains(s: line.text, pattern: to_string(crawl_heartbeat_rss_bytes))
 }
 
-test fn w_heartbeat_puts_identity_before_vitals() -> Bool {
+fn w_heartbeat_puts_identity_before_vitals() -> Bool {
   let line = ci_heartbeat_line(sample: crawl_heartbeat())
   starts_with(s: line.text, prefix: "33 minutes in — still in witness discovery") &&
   string_contains(s: line.text, pattern: "memory 15.0 GiB")
 }
 
-test fn w_heartbeat_uses_the_clock_pulse_glyph() -> Bool {
+fn w_heartbeat_uses_the_clock_pulse_glyph() -> Bool {
   let line = ci_heartbeat_line(sample: crawl_heartbeat())
   ci_render_line(line: line, tier: Emoji) == concat("🕐 ", line.text)
 }
 
-test fn w_escalation_surfaces_the_quiet_module_at_one_threshold() -> Bool {
+fn w_escalation_surfaces_the_quiet_module_at_one_threshold() -> Bool {
   let line = ci_escalation_line(
     quiet_subject: crawl_entry_subject(),
     active_leaf: crawl_leaf_subject(),
@@ -147,7 +147,7 @@ test fn w_escalation_surfaces_the_quiet_module_at_one_threshold() -> Bool {
   line.attention == Notable
 }
 
-test fn w_escalation_surfaces_the_cause_at_the_deeper_threshold() -> Bool {
+fn w_escalation_surfaces_the_cause_at_the_deeper_threshold() -> Bool {
   let line = ci_escalation_blocked_line(
     quiet_subject: crawl_entry_subject(),
     active_leaf: crawl_leaf_subject(),
@@ -160,12 +160,12 @@ test fn w_escalation_surfaces_the_cause_at_the_deeper_threshold() -> Bool {
   line.attention == Anomaly
 }
 
-test fn w_escalation_is_recursive_over_the_captured_window() -> Bool {
+fn w_escalation_is_recursive_over_the_captured_window() -> Bool {
   observation_escalation_depth(quiet: millisecond(count: 600000), t: observation_dwell_threshold) == 10 &&
   observation_escalation_depth(quiet: millisecond(count: 120000), t: observation_dwell_threshold) == 2
 }
 
-test fn w_outcome_lines_carry_durations() -> Bool {
+fn w_outcome_lines_carry_durations() -> Bool {
   let event = ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Done },
@@ -175,7 +175,7 @@ test fn w_outcome_lines_carry_durations() -> Bool {
   string_contains(s: ci_event_line(event: event, basis: crawl_basis()).text, pattern: "in 230ms")
 }
 
-test fn w_refusal_never_renders_inside_a_collapsed_group() -> Bool {
+fn w_refusal_never_renders_inside_a_collapsed_group() -> Bool {
   let refusal = ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as NonEmptyStr } },
@@ -187,7 +187,7 @@ test fn w_refusal_never_renders_inside_a_collapsed_group() -> Bool {
   ci_line_placement(attention: line.attention) == OutsideGroup
 }
 
-test fn w_routine_green_collapses_inside_a_group() -> Bool {
+fn w_routine_green_collapses_inside_a_group() -> Bool {
   let green = ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Done },
@@ -200,7 +200,7 @@ test fn w_routine_green_collapses_inside_a_group() -> Bool {
   ci_collapsed_summary(green_count: 213) == "… 213 more finished cleanly"
 }
 
-test fn w_failure_and_refusal_are_restated_at_the_end() -> Bool {
+fn w_failure_and_refusal_are_restated_at_the_end() -> Bool {
   let summary = ci_run_summary_line(summary: FloorRunSummary {
     entries_complete: 213,
     entries_total: 602,
@@ -215,7 +215,7 @@ test fn w_failure_and_refusal_are_restated_at_the_end() -> Bool {
   string_contains(s: restate.text, pattern: "FLOOR-BATCH-OVER-BUDGET")
 }
 
-test fn w_relayed_diagnostic_cannot_mint_workflow_commands() -> Bool {
+fn w_relayed_diagnostic_cannot_mint_workflow_commands() -> Bool {
   let restate = ci_refusal_restate_line(
     subject: crawl_entry_subject(),
     diagnostic: "budget exceeded\n::error::a child process said this" as NonEmptyStr
@@ -224,27 +224,27 @@ test fn w_relayed_diagnostic_cannot_mint_workflow_commands() -> Bool {
   !string_contains(s: restate.text, pattern: "\n::error::")
 }
 
-test fn w_group_markers_come_from_the_github_authority() -> Bool {
+fn w_group_markers_come_from_the_github_authority() -> Bool {
   ci_group_open(title: "witness discovery") == "::group::witness discovery" &&
   ci_group_close() == "::endgroup::"
 }
 
-test fn w_captured_window_would_have_spoken_four_times() -> Bool {
+fn w_captured_window_would_have_spoken_four_times() -> Bool {
   ci_escalation_emission_count(quiet: millisecond(count: 600000), t: observation_dwell_threshold) == 4 &&
   ci_escalation_emission_count(quiet: millisecond(count: 120000), t: observation_dwell_threshold) == 2 &&
   ci_escalation_emission_count(quiet: millisecond(count: 30000), t: observation_dwell_threshold) == 0
 }
 
-test fn w_a_silent_phase_past_the_threshold_is_not_responsive() -> Bool {
+fn w_a_silent_phase_past_the_threshold_is_not_responsive() -> Bool {
   ci_window_is_responsive(quiet: millisecond(count: 30000), t: observation_dwell_threshold) &&
   ci_window_is_responsive(quiet: millisecond(count: 600000), t: observation_dwell_threshold)
 }
 
-test fn w_escalation_emission_stays_bounded_under_unbounded_silence() -> Bool {
+fn w_escalation_emission_stays_bounded_under_unbounded_silence() -> Bool {
   ci_escalation_emission_count(quiet: millisecond(count: 999999999), t: observation_dwell_threshold) <= 13
 }
 
-test fn w_run_summary_keeps_refused_and_failed_apart() -> Bool {
+fn w_run_summary_keeps_refused_and_failed_apart() -> Bool {
   let refused_only = FloorRunSummary { entries_complete: 213, entries_total: 602, refusals: 1, failures: 0, wall: millisecond(count: 2472000) }
   let failed_only = FloorRunSummary { entries_complete: 601, entries_total: 602, refusals: 0, failures: 1, wall: millisecond(count: 600000) }
   let both = FloorRunSummary { entries_complete: 200, entries_total: 602, refusals: 2, failures: 3, wall: millisecond(count: 600000) }
@@ -256,7 +256,7 @@ test fn w_run_summary_keeps_refused_and_failed_apart() -> Bool {
   string_contains(s: ci_run_summary_line(summary: both).text, pattern: "2 refused and 3 failed")
 }
 
-test fn w_unmeasured_duration_names_its_cause_rather_than_vanishing() -> Bool {
+fn w_unmeasured_duration_names_its_cause_rather_than_vanishing() -> Bool {
   let event = ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Done },
@@ -267,3 +267,23 @@ test fn w_unmeasured_duration_names_its_cause_rather_than_vanishing() -> Bool {
   string_contains(s: line.text, pattern: "duration unmeasured: clock unavailable in this leg")
 }
 
+test fn observation_ci_render_witnesses() -> Bool {
+  w_run_summary_keeps_refused_and_failed_apart() &&
+  w_unmeasured_duration_names_its_cause_rather_than_vanishing() &&
+  w_captured_window_would_have_spoken_four_times() &&
+  w_a_silent_phase_past_the_threshold_is_not_responsive() &&
+  w_escalation_emission_stays_bounded_under_unbounded_silence() &&
+  w_human_units_replace_raw_byte_dumps() &&
+  w_heartbeat_names_its_subject_where_the_capture_was_silent() &&
+  w_heartbeat_puts_identity_before_vitals() &&
+  w_heartbeat_uses_the_clock_pulse_glyph() &&
+  w_escalation_surfaces_the_quiet_module_at_one_threshold() &&
+  w_escalation_surfaces_the_cause_at_the_deeper_threshold() &&
+  w_escalation_is_recursive_over_the_captured_window() &&
+  w_outcome_lines_carry_durations() &&
+  w_refusal_never_renders_inside_a_collapsed_group() &&
+  w_routine_green_collapses_inside_a_group() &&
+  w_failure_and_refusal_are_restated_at_the_end() &&
+  w_relayed_diagnostic_cannot_mint_workflow_commands() &&
+  w_group_markers_come_from_the_github_authority()
+}

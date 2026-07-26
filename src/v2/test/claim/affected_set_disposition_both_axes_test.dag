@@ -1,5 +1,6 @@
 module v2.test.claim.affected_set_disposition_both_axes
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data disposition_fixture_node: Node = Node {
@@ -10,7 +11,7 @@ data disposition_fixture_node: Node = Node {
 
 data disposition_fixture_changed_path: String = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag"
 
-test fn disposition_node_frontier_only_skips_holds() -> Bool {
+fn disposition_node_frontier_only_skips_holds() -> Bool {
   floor_kernel_would_skip(
     changed_paths: [disposition_fixture_changed_path],
     frontier_nodes: [disposition_fixture_node],
@@ -21,7 +22,7 @@ test fn disposition_node_frontier_only_skips_holds() -> Bool {
   )
 }
 
-test fn disposition_node_frontier_only_runs_holds() -> Bool {
+fn disposition_node_frontier_only_runs_holds() -> Bool {
   !floor_kernel_would_skip(
     changed_paths: [disposition_fixture_changed_path],
     frontier_nodes: [disposition_fixture_node],
@@ -32,7 +33,7 @@ test fn disposition_node_frontier_only_runs_holds() -> Bool {
   )
 }
 
-test fn disposition_function_edited_only_runs_holds() -> Bool {
+fn disposition_function_edited_only_runs_holds() -> Bool {
   !floor_kernel_would_skip(
     changed_paths: [disposition_fixture_changed_path],
     frontier_nodes: [disposition_fixture_node],
@@ -43,7 +44,7 @@ test fn disposition_function_edited_only_runs_holds() -> Bool {
   )
 }
 
-test fn disposition_both_axes_false_skips_holds() -> Bool {
+fn disposition_both_axes_false_skips_holds() -> Bool {
   match floor_witness_run_disposition(
     diff: DiffPathsProduced { changed_paths: [disposition_fixture_changed_path] },
     frontier: FrontierProduced { nodes: [disposition_fixture_node] },
@@ -58,7 +59,7 @@ test fn disposition_both_axes_false_skips_holds() -> Bool {
   }
 }
 
-test fn disposition_either_axis_runs_holds() -> Bool {
+fn disposition_either_axis_runs_holds() -> Bool {
   match floor_witness_run_disposition(
     diff: DiffPathsProduced { changed_paths: [disposition_fixture_changed_path] },
     frontier: FrontierProduced { nodes: [disposition_fixture_node] },
@@ -85,3 +86,10 @@ test fn disposition_either_axis_runs_holds() -> Bool {
     }
 }
 
+test fn affected_set_disposition_both_axes_witness_holds() -> Bool {
+  disposition_node_frontier_only_skips_holds()
+    && disposition_node_frontier_only_runs_holds()
+    && disposition_function_edited_only_runs_holds()
+    && disposition_both_axes_false_skips_holds()
+    && disposition_either_axis_runs_holds()
+}

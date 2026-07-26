@@ -141,7 +141,7 @@ fn rust_bind_let_emit_wrong_value_from_producer(target: TargetModel) -> Outcome<
   )
 }
 
-test fn rust_bind_let_emit_holds() -> Bool {
+fn rust_bind_let_emit_holds() -> Bool {
   match rust_bind_let_emit_from_producer(target: rust_bind_let_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_bind_let_expected_source_text) && (d == None)
@@ -149,7 +149,7 @@ test fn rust_bind_let_emit_holds() -> Bool {
   }
 }
 
-test fn rust_bind_let_emit_wrong_value_discriminates() -> Bool {
+fn rust_bind_let_emit_wrong_value_discriminates() -> Bool {
   match rust_bind_let_emit_from_producer(target: rust_bind_let_target_model()) {
     Accepted { value: canonical, diagnostics: dc } =>
       match rust_bind_let_emit_wrong_value_from_producer(target: rust_bind_let_target_model()) {
@@ -163,3 +163,6 @@ test fn rust_bind_let_emit_wrong_value_discriminates() -> Bool {
   }
 }
 
+test fn rust_bind_let_emit_keystone_holds() -> Bool {
+  rust_bind_let_emit_holds() && rust_bind_let_emit_wrong_value_discriminates()
+}
