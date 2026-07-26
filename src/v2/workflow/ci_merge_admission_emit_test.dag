@@ -3,7 +3,8 @@ module v2.workflow.ci_merge_admission_emit_test
 import v2.workflow.ci_merge_admission_emit {
   ci_floor_disposition_marker_init_script,
   ci_floor_disposition_marker_stamp_step,
-  ci_floor_disposition_stamp_echo_command
+  ci_floor_disposition_stamp_echo_command,
+  ci_floor_stamp_merge_admission_script
 }
 import v2.workflow.orchestration_bash_emit_support {
   orch_bash_comment_line,
@@ -14,6 +15,7 @@ import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_me
 import v2.std.orchestration {
   Comment,
   Do,
+  ExitStatus,
   FailFast,
   Pipeline,
   PipelineStep,
@@ -106,4 +108,66 @@ test fn orch_bash_comment_line_is_comment_step_holds() -> Bool {
     Comment { text: t } => t == "x"
     _ => false
   }
+}
+
+data orch_exit_status_capture_golden: String = "true\nSTAMP_EXIT=$?"
+
+fn orch_exit_status_capture_intent() -> PipelineStep {
+  Do {
+    run: Run {
+      command: "true",
+      env: [],
+      redirect: Absent,
+      capture: Present { value: ExitStatus { binder: "STAMP_EXIT" } }
+    }
+  }
+}
+
+fn orch_exit_status_capture_emit() -> String {
+  match orch_emit_step(s: orch_exit_status_capture_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => "__EXIT_STATUS_EMIT_REJECTED__"
+  }
+}
+
+test fn orch_exit_status_capture_emit_matches_golden_holds() -> Bool {
+  orch_exit_status_capture_emit() == orch_exit_status_capture_golden
+}
+
+test fn orch_exit_status_capture_emit_red_when_binder_wrong_holds() -> Bool {
+  let wrong = Do {
+    run: Run {
+      command: "true",
+      env: [],
+      redirect: Absent,
+      capture: Present { value: ExitStatus { binder: "WRONG_EXIT" } }
+    }
+  }
+  match orch_emit_step(s: wrong, medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: _ } =>
+      !(source.carried == orch_exit_status_capture_golden)
+      && string_contains(s: source.carried, pattern: "WRONG_EXIT=$?")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data ci_floor_stamp_merge_admission_golden: String = concat(
+  "FLOOR_EXIT=$?\n",
+  concat(
+    "ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)\n",
+    concat(
+      "CI_FLOOR_EXIT=$FLOOR_EXIT \"$ROOT/target/release/gunbc\" run --source-root dag --entry dag/tools/merge_admission_stamp.dag --function main\n",
+      concat(
+        "STAMP_EXIT=$?\n",
+        concat(
+          "if [ \"$FLOOR_EXIT\" -ne 0 ]; then exit \"$FLOOR_EXIT\"; fi\n",
+          "exit \"$STAMP_EXIT\""
+        )
+      )
+    )
+  )
+)
+
+test fn ci_floor_stamp_merge_admission_emit_matches_golden_holds() -> Bool {
+  ci_floor_stamp_merge_admission_script() == ci_floor_stamp_merge_admission_golden
 }

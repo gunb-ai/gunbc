@@ -1,5 +1,6 @@
 module test.claim.merge_admission_producer_witness
 
+import v2.workflow.ci_merge_admission_emit { ci_floor_stamp_merge_admission_script }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

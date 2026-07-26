@@ -302,21 +302,13 @@ fn stamp_floor_receipt_with_conclusion(
   )
 }
 
-fn ci_floor_stamp_merge_admission_script() -> String {
-  concat(
-    concat(
-      "FLOOR_EXIT=$?\n",
-      concat("ROOT=", ci_repo_root_shell(), "\n")
-    ),
-    concat(
-      concat(
-        concat("CI_FLOOR_EXIT=$FLOOR_EXIT ", merge_admission_stamp_invoke()),
-        "STAMP_EXIT=$?\n"
-      ),
-      concat(
-        "if [ \"$FLOOR_EXIT\" -ne 0 ]; then exit \"$FLOOR_EXIT\"; fi\n",
-        "exit \"$STAMP_EXIT\"\n"
-      )
-    )
-  )
+data ci_floor_stamp_merge_admission_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_merge_admission_emit",
+    decl_name: "ci_floor_stamp_merge_admission_script",
+    field: WholeDeclaration
+  }
 }
+
+data ci_floor_stamp_merge_admission_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_floor_stamp_merge_admission_script — floor-tail FLOOR_EXIT/STAMP_EXIT capture + merge-admission stamp; PR2a lands ExitStatus carrier for STAMP_EXIT; PR2b dissolves IntNe/Exit concat residue"

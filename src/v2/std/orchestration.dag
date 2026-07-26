@@ -22,12 +22,17 @@ type RedirectSpec
   | DiscardErr
   | ToFile { path: String }
 
+data redirect_spec_to_file_note: String = "ToFile \{ path \} is the stdout-to-path carrier (\"> path\"). Added with live consumer ci_merge_admission_floor_disposition_stamp (bucket D PR2a) — dissolves the echo++concat redirect. bash_redir_to_file_* rows already existed on the fold side; this variant is the intent-side authority orch_emit_redir_suffix matches."
+
 type CaptureSpec
   = TeeTo { log: String }
   | CmdSubst
   | IgnoreFail
+  | ExitStatus { binder: String }
 
-data redirect_spec_to_file_note: String = "ToFile \{ path \} is the stdout-to-path carrier (\"> path\"). Added with live consumer ci_merge_admission_floor_disposition_stamp (bucket D PR2) — dissolves the echo++concat redirect. bash_redir_to_file_* rows already existed on the fold side; this variant is the intent-side authority orch_emit_redir_suffix matches."
+data capture_spec_exit_status_note: String = "ExitStatus \{ binder \} captures $? into binder after a Run (emits \"\\nbinder=$?\"). Live consumer: ci_floor_stamp_merge_admission_script STAMP_EXIT (bucket D PR2a). FLOOR_EXIT=$? at fragment start stays a constant opaque Run.command — ambient prior-command capture outside this Pipeline; IntNe/Exit step carriers land in PR2b."
+
+data capture_spec_tee_cmdsubst_dead_carrier_finding: String = "FINDING (no fix in this PR): CaptureSpec.TeeTo and CaptureSpec.CmdSubst are declared but ordinary Run emit rejects them (^orch_emit_run_capture_unsupported). Retry special-cases TeeTo by stripping capture before emit. A declared variant no ordinary consumer can reach is coverage-by-illusion at the type level (§5/§6). Recorded for parent disposition; not fixed here."
 
 type Run {
   command: String

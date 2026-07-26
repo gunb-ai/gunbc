@@ -85,6 +85,7 @@ import v2.std.orchestration {
   StdoutAndStderr,
   ToFile,
   IgnoreFail,
+  ExitStatus,
   Comment,
   EnvBinding
 }
@@ -212,6 +213,34 @@ fn orch_emit_run_with_redir(stmt: String, redir: RedirectSpec) -> Outcome<String
   )
 }
 
+fn orch_emit_exit_status_bind(stmt: String, binder: String, medium: OrchestrationEmitMedium) -> Outcome<String> {
+  bind_outcome(
+    o: orch_emit_join2(left: stmt, right: concat(binder, "=$?"), medium: medium),
+    f: fn(m) { outcome_accepted(m.carried) }
+  )
+}
+
+fn orch_emit_apply_capture(stmt: String, capture: CaptureSpec, medium: OrchestrationEmitMedium) -> Outcome<String> {
+  match capture {
+    IgnoreFail =>
+      bind_outcome(
+        o: bash_stmt_or_ignore_fail_target_model(stmt: stmt),
+        f: fn(target) {
+          orch_emit_node_spelling(
+            emitted_root: bash_stmt_or_ignore_fail_emitted,
+            target: target
+          )
+        }
+      )
+    ExitStatus { binder: b } =>
+      orch_emit_exit_status_bind(stmt: stmt, binder: b, medium: medium)
+    TeeTo { log: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_run_capture_unsupported))
+    CmdSubst =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_run_capture_unsupported))
+  }
+}
+
 fn orch_emit_run_spelling(r: Run, medium: OrchestrationEmitMedium) -> Outcome<String> {
   bind_outcome(
     o: orch_emit_run_core(r: r, medium: medium),
@@ -220,18 +249,8 @@ fn orch_emit_run_spelling(r: Run, medium: OrchestrationEmitMedium) -> Outcome<St
         Absent =>
           match r.capture {
             Absent => outcome_accepted(core)
-            Present { value: IgnoreFail } =>
-              bind_outcome(
-                o: bash_stmt_or_ignore_fail_target_model(stmt: core),
-                f: fn(target) {
-                  orch_emit_node_spelling(
-                    emitted_root: bash_stmt_or_ignore_fail_emitted,
-                    target: target
-                  )
-                }
-              )
-            Present { value: _ } =>
-              outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_run_capture_unsupported))
+            Present { value: cap } =>
+              orch_emit_apply_capture(stmt: core, capture: cap, medium: medium)
           }
         Present { value: redir } =>
           bind_outcome(
@@ -239,18 +258,8 @@ fn orch_emit_run_spelling(r: Run, medium: OrchestrationEmitMedium) -> Outcome<St
             f: fn(with_redir) {
               match r.capture {
                 Absent => outcome_accepted(with_redir)
-                Present { value: IgnoreFail } =>
-                  bind_outcome(
-                    o: bash_stmt_or_ignore_fail_target_model(stmt: with_redir),
-                    f: fn(target) {
-                      orch_emit_node_spelling(
-                        emitted_root: bash_stmt_or_ignore_fail_emitted,
-                        target: target
-                      )
-                    }
-                  )
-                Present { value: _ } =>
-                  outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_run_capture_unsupported))
+                Present { value: cap } =>
+                  orch_emit_apply_capture(stmt: with_redir, capture: cap, medium: medium)
               }
             }
           )
