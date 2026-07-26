@@ -89,6 +89,18 @@ import v2.std.orchestration {
   Comment,
   EnvBinding
 }
+import v2.std.text {
+  CharAbsent,
+  CharFound,
+  string_head,
+  string_tail
+}
+import v2.std.algebra { TailAbsent, TailFound }
+import std.unicode.types {
+  IdentStart,
+  IdentContinue,
+  char_in_class
+}
 import std.algebra { FreeMonoid }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, is_empty, length }
 import v2.std.collection {
@@ -213,11 +225,45 @@ fn orch_emit_run_with_redir(stmt: String, redir: RedirectSpec) -> Outcome<String
   )
 }
 
+fn orch_shell_ident_continue_ok(rest: String) -> Bool {
+  match string_head(s: rest) {
+    CharAbsent => true
+    CharFound { value: c } =>
+      if !char_in_class(c: c, class: IdentContinue) {
+        false
+      } else {
+        match string_tail(s: rest) {
+          TailFound { tail: t } => orch_shell_ident_continue_ok(rest: t)
+          TailAbsent => true
+        }
+      }
+  }
+}
+
+fn orch_shell_ident_ok(binder: String) -> Bool {
+  match string_head(s: binder) {
+    CharAbsent => false
+    CharFound { value: c } =>
+      if !char_in_class(c: c, class: IdentStart) {
+        false
+      } else {
+        match string_tail(s: binder) {
+          TailFound { tail: t } => orch_shell_ident_continue_ok(rest: t)
+          TailAbsent => true
+        }
+      }
+  }
+}
+
 fn orch_emit_exit_status_bind(stmt: String, binder: String, medium: OrchestrationEmitMedium) -> Outcome<String> {
-  bind_outcome(
-    o: orch_emit_join2(left: stmt, right: concat(binder, "=$?"), medium: medium),
-    f: fn(m) { outcome_accepted(m.carried) }
-  )
+  if !orch_shell_ident_ok(binder: binder) {
+    outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_exit_status_binder_invalid))
+  } else {
+    bind_outcome(
+      o: orch_emit_join2(left: stmt, right: concat(binder, "=$?"), medium: medium),
+      f: fn(m) { outcome_accepted(m.carried) }
+    )
+  }
 }
 
 fn orch_emit_apply_capture(stmt: String, capture: CaptureSpec, medium: OrchestrationEmitMedium) -> Outcome<String> {
