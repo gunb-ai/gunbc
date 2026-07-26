@@ -510,6 +510,33 @@ test fn live_holds() -> Bool {
     }
 
     #[test]
+
+
+
+    #[test]
+    fn corpus_orphan_census_proud_wren() {
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let ws = manifest.join("../../..");
+        let roots = vec![
+            ws.join("dag").to_string_lossy().into_owned(),
+            ws.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        // collect_orphan_helpers joins roots onto cwd — chdir to workspace
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        match collect_orphan_helpers(&["dag".into(), "src/v2".into()]) {
+            Ok(o) if o.is_empty() => {}
+            Ok(o) => {
+                let mut lines: Vec<String> = o
+                    .iter()
+                    .map(|x| format!("{}::{}", x.entry, x.name))
+                    .collect();
+                lines.sort();
+                panic!("ORPHANS {}:\n{}", o.len(), lines.join("\n"));
+            }
+            Err(e) => panic!("orphan collect err: {e}"),
+        }
+    }
+
     fn file_grain_enumerate_yields_two_test_fns() {
         let dir = tmp_dir();
         let file = dir.join("two_fn_file_grain_test.dag");
