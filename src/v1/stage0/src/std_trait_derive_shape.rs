@@ -191,240 +191,240 @@ pub fn repr_grounding_derive_completeness_predicate(
 }
 
 pub fn record_derive_traits_heap() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
+    {
+        let mut __cons_v = (*{
+            let mut __cons_v = (*{
+                let mut __cons_v = (*{
+                    let mut __cons_v = (*{
                         let mut __cons_v = (*Rc::new(vec![])).clone();
                         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDeserialize);
                         __cons_v
-                    }))
+                    })
                     .clone();
                     __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveSerialize);
                     __cons_v
-                }))
+                })
                 .clone();
                 __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialEq);
                 __cons_v
-            }))
+            })
             .clone();
             __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
             __cons_v
-        }))
+        })
         .clone();
         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDebug);
         __cons_v
-    })
+    }
 }
 
 pub fn record_derive_traits_copy() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
-                        let mut __cons_v = (*Rc::new({
+    {
+        let mut __cons_v = (*{
+            let mut __cons_v = (*{
+                let mut __cons_v = (*{
+                    let mut __cons_v = (*{
+                        let mut __cons_v = (*{
                             let mut __cons_v = (*Rc::new(vec![])).clone();
                             __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDeserialize);
                             __cons_v
-                        }))
+                        })
                         .clone();
                         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveSerialize);
                         __cons_v
-                    }))
+                    })
                     .clone();
                     __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialEq);
                     __cons_v
-                }))
+                })
                 .clone();
                 __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveCopy);
                 __cons_v
-            }))
+            })
             .clone();
             __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
             __cons_v
-        }))
+        })
         .clone();
         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDebug);
         __cons_v
-    })
+    }
 }
 
 pub fn nullary_coproduct_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
-                        let mut __cons_v = (*Rc::new({
-                            let mut __cons_v = (*Rc::new({
-                                let mut __cons_v = (*Rc::new({
-                                    let mut __cons_v = (*Rc::new({
+    {
+        let mut __cons_v = (*{
+            let mut __cons_v = (*{
+                let mut __cons_v = (*{
+                    let mut __cons_v = (*{
+                        let mut __cons_v = (*{
+                            let mut __cons_v = (*{
+                                let mut __cons_v = (*{
+                                    let mut __cons_v = (*{
                                         let mut __cons_v = (*Rc::new(vec![])).clone();
                                         __cons_v.insert(
                                             0,
                                             ReprGroundingDeriveTrait::ReprDeriveDeserialize,
                                         );
                                         __cons_v
-                                    }))
+                                    })
                                     .clone();
                                     __cons_v
                                         .insert(0, ReprGroundingDeriveTrait::ReprDeriveSerialize);
                                     __cons_v
-                                }))
+                                })
                                 .clone();
                                 __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveOrd);
                                 __cons_v
-                            }))
+                            })
                             .clone();
                             __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialOrd);
                             __cons_v
-                        }))
+                        })
                         .clone();
                         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveEq);
                         __cons_v
-                    }))
+                    })
                     .clone();
                     __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialEq);
                     __cons_v
-                }))
+                })
                 .clone();
                 __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveCopy);
                 __cons_v
-            }))
+            })
             .clone();
             __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
             __cons_v
-        }))
+        })
         .clone();
         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDebug);
         __cons_v
-    })
+    }
 }
 
 pub fn symbol_wrapped_ord_carrier_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
-                        let mut __cons_v = (*Rc::new({
-                            let mut __cons_v = (*Rc::new({
-                                let mut __cons_v = (*Rc::new({
+    {
+        let mut __cons_v = (*{
+            let mut __cons_v = (*{
+                let mut __cons_v = (*{
+                    let mut __cons_v = (*{
+                        let mut __cons_v = (*{
+                            let mut __cons_v = (*{
+                                let mut __cons_v = (*{
                                     let mut __cons_v = (*Rc::new(vec![])).clone();
                                     __cons_v
                                         .insert(0, ReprGroundingDeriveTrait::ReprDeriveDeserialize);
                                     __cons_v
-                                }))
+                                })
                                 .clone();
                                 __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveSerialize);
                                 __cons_v
-                            }))
+                            })
                             .clone();
                             __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveOrd);
                             __cons_v
-                        }))
+                        })
                         .clone();
                         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialOrd);
                         __cons_v
-                    }))
+                    })
                     .clone();
                     __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveEq);
                     __cons_v
-                }))
+                })
                 .clone();
                 __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialEq);
                 __cons_v
-            }))
+            })
             .clone();
             __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
             __cons_v
-        }))
+        })
         .clone();
         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDebug);
         __cons_v
-    })
+    }
 }
 
 pub fn fn_field_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
+    {
         let mut __cons_v = (*Rc::new(vec![])).clone();
         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
         __cons_v
-    })
+    }
 }
 
 pub fn payload_coproduct_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
+    {
+        let mut __cons_v = (*{
+            let mut __cons_v = (*{
+                let mut __cons_v = (*{
+                    let mut __cons_v = (*{
                         let mut __cons_v = (*Rc::new(vec![])).clone();
                         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDeserialize);
                         __cons_v
-                    }))
+                    })
                     .clone();
                     __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveSerialize);
                     __cons_v
-                }))
+                })
                 .clone();
                 __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialEq);
                 __cons_v
-            }))
+            })
             .clone();
             __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
             __cons_v
-        }))
+        })
         .clone();
         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDebug);
         __cons_v
-    })
+    }
 }
 
 pub fn kernel_int_arithmetic_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
-                        let mut __cons_v = (*Rc::new({
-                            let mut __cons_v = (*Rc::new({
-                                let mut __cons_v = (*Rc::new({
+    {
+        let mut __cons_v = (*{
+            let mut __cons_v = (*{
+                let mut __cons_v = (*{
+                    let mut __cons_v = (*{
+                        let mut __cons_v = (*{
+                            let mut __cons_v = (*{
+                                let mut __cons_v = (*{
                                     let mut __cons_v = (*Rc::new(vec![])).clone();
                                     __cons_v
                                         .insert(0, ReprGroundingDeriveTrait::ReprDerivePartialOrd);
                                     __cons_v
-                                }))
+                                })
                                 .clone();
                                 __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialEq);
                                 __cons_v
-                            }))
+                            })
                             .clone();
                             __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveNeg);
                             __cons_v
-                        }))
+                        })
                         .clone();
                         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveRem);
                         __cons_v
-                    }))
+                    })
                     .clone();
                     __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDiv);
                     __cons_v
-                }))
+                })
                 .clone();
                 __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveMul);
                 __cons_v
-            }))
+            })
             .clone();
             __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveSub);
             __cons_v
-        }))
+        })
         .clone();
         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveAdd);
         __cons_v
-    })
+    }
 }
 
 pub fn pair_completion_shape_note() -> String {
@@ -516,82 +516,82 @@ pub fn pair_completion_factor(
     operand: PairCompletionOperand,
     component: PairCompletionComponent,
 ) -> Rc<PairCompletionFactor> {
-    Rc::new(PairCompletionFactor {
+    PairCompletionFactor {
         operand: operand.clone(),
         component: component.clone(),
-    })
+    }
 }
 
 pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
     Rc::new(vec![
-        Rc::new(PairCompletionOpRow {
+        PairCompletionOpRow {
             op: ReprGroundingDeriveTrait::ReprDeriveNeg,
-            body: Rc::new(PairCompletionBody::PairCompletionSumOfProducts {
-                pos: Rc::new(PairCompletionArm {
-                    terms: Rc::new(vec![Rc::new(PairCompletionTerm {
+            body: PairCompletionBody::PairCompletionSumOfProducts {
+                pos: PairCompletionArm {
+                    terms: Rc::new(vec![PairCompletionTerm {
                         factors: Rc::new(vec![pair_completion_factor(
                             PairCompletionOperand::PairCompletionSelf,
                             PairCompletionComponent::PairCompletionNeg,
                         )]),
-                    })]),
-                }),
-                neg: Rc::new(PairCompletionArm {
-                    terms: Rc::new(vec![Rc::new(PairCompletionTerm {
+                    }]),
+                },
+                neg: PairCompletionArm {
+                    terms: Rc::new(vec![PairCompletionTerm {
                         factors: Rc::new(vec![pair_completion_factor(
                             PairCompletionOperand::PairCompletionSelf,
                             PairCompletionComponent::PairCompletionPos,
                         )]),
-                    })]),
-                }),
-            }),
-        }),
-        Rc::new(PairCompletionOpRow {
+                    }]),
+                },
+            },
+        },
+        PairCompletionOpRow {
             op: ReprGroundingDeriveTrait::ReprDeriveAdd,
-            body: Rc::new(PairCompletionBody::PairCompletionSumOfProducts {
-                pos: Rc::new(PairCompletionArm {
+            body: PairCompletionBody::PairCompletionSumOfProducts {
+                pos: PairCompletionArm {
                     terms: Rc::new(vec![
-                        Rc::new(PairCompletionTerm {
+                        PairCompletionTerm {
                             factors: Rc::new(vec![pair_completion_factor(
                                 PairCompletionOperand::PairCompletionSelf,
                                 PairCompletionComponent::PairCompletionPos,
                             )]),
-                        }),
-                        Rc::new(PairCompletionTerm {
+                        },
+                        PairCompletionTerm {
                             factors: Rc::new(vec![pair_completion_factor(
                                 PairCompletionOperand::PairCompletionRhs,
                                 PairCompletionComponent::PairCompletionPos,
                             )]),
-                        }),
+                        },
                     ]),
-                }),
-                neg: Rc::new(PairCompletionArm {
+                },
+                neg: PairCompletionArm {
                     terms: Rc::new(vec![
-                        Rc::new(PairCompletionTerm {
+                        PairCompletionTerm {
                             factors: Rc::new(vec![pair_completion_factor(
                                 PairCompletionOperand::PairCompletionSelf,
                                 PairCompletionComponent::PairCompletionNeg,
                             )]),
-                        }),
-                        Rc::new(PairCompletionTerm {
+                        },
+                        PairCompletionTerm {
                             factors: Rc::new(vec![pair_completion_factor(
                                 PairCompletionOperand::PairCompletionRhs,
                                 PairCompletionComponent::PairCompletionNeg,
                             )]),
-                        }),
+                        },
                     ]),
-                }),
-            }),
-        }),
-        Rc::new(PairCompletionOpRow {
+                },
+            },
+        },
+        PairCompletionOpRow {
             op: ReprGroundingDeriveTrait::ReprDeriveSub,
-            body: Rc::new(PairCompletionBody::PairCompletionNegatedAddend),
-        }),
-        Rc::new(PairCompletionOpRow {
+            body: PairCompletionBody::PairCompletionNegatedAddend,
+        },
+        PairCompletionOpRow {
             op: ReprGroundingDeriveTrait::ReprDeriveMul,
-            body: Rc::new(PairCompletionBody::PairCompletionSumOfProducts {
-                pos: Rc::new(PairCompletionArm {
+            body: PairCompletionBody::PairCompletionSumOfProducts {
+                pos: PairCompletionArm {
                     terms: Rc::new(vec![
-                        Rc::new(PairCompletionTerm {
+                        PairCompletionTerm {
                             factors: Rc::new(vec![
                                 pair_completion_factor(
                                     PairCompletionOperand::PairCompletionSelf,
@@ -602,8 +602,8 @@ pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
                                     PairCompletionComponent::PairCompletionPos,
                                 ),
                             ]),
-                        }),
-                        Rc::new(PairCompletionTerm {
+                        },
+                        PairCompletionTerm {
                             factors: Rc::new(vec![
                                 pair_completion_factor(
                                     PairCompletionOperand::PairCompletionSelf,
@@ -614,12 +614,12 @@ pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
                                     PairCompletionComponent::PairCompletionNeg,
                                 ),
                             ]),
-                        }),
+                        },
                     ]),
-                }),
-                neg: Rc::new(PairCompletionArm {
+                },
+                neg: PairCompletionArm {
                     terms: Rc::new(vec![
-                        Rc::new(PairCompletionTerm {
+                        PairCompletionTerm {
                             factors: Rc::new(vec![
                                 pair_completion_factor(
                                     PairCompletionOperand::PairCompletionSelf,
@@ -630,8 +630,8 @@ pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
                                     PairCompletionComponent::PairCompletionNeg,
                                 ),
                             ]),
-                        }),
-                        Rc::new(PairCompletionTerm {
+                        },
+                        PairCompletionTerm {
                             factors: Rc::new(vec![
                                 pair_completion_factor(
                                     PairCompletionOperand::PairCompletionSelf,
@@ -642,15 +642,15 @@ pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
                                     PairCompletionComponent::PairCompletionPos,
                                 ),
                             ]),
-                        }),
+                        },
                     ]),
-                }),
-            }),
-        }),
-        Rc::new(PairCompletionOpRow {
+                },
+            },
+        },
+        PairCompletionOpRow {
             op: ReprGroundingDeriveTrait::ReprDeriveDiv,
-            body: Rc::new(PairCompletionBody::PairCompletionCanonicalQuotient),
-        }),
+            body: PairCompletionBody::PairCompletionCanonicalQuotient,
+        },
     ])
 }
 
@@ -663,7 +663,7 @@ pub fn pair_completion_uses_rhs_dissolve_on() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn pair_completion_arm_uses_rhs(arm: Rc<PairCompletionArm>) -> bool {
+pub fn pair_completion_arm_uses_rhs(arm: PairCompletionArm) -> bool {
     {
         let mut __found = false;
         for term in arm.terms.clone().iter().cloned() {
@@ -688,7 +688,7 @@ pub fn pair_completion_arm_uses_rhs(arm: Rc<PairCompletionArm>) -> bool {
     }
 }
 
-pub fn pair_completion_body_uses_rhs(body: Rc<PairCompletionBody>) -> bool {
+pub fn pair_completion_body_uses_rhs(body: PairCompletionBody) -> bool {
     match (*body.clone()).clone() {
         PairCompletionBody::PairCompletionSumOfProducts { pos, neg, .. } => {
             (pair_completion_arm_uses_rhs(pos.clone()) || pair_completion_arm_uses_rhs(neg.clone()))
