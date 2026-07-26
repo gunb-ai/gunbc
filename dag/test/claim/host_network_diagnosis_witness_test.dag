@@ -1,0 +1,157 @@
+module test.claim.host_network_diagnosis
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_srv4_hinge_note: String = "THE conjunct, and it is the srv4 outage of 2026-07-25 replayed on the readings taken live from the host. cloud-init disabled by the Ubuntu live installer, netplan present and correct, interface administratively up with no carrier. The fold must blame the PHYSICAL layer and name the interface and MAC an engineer needs in order to look at the right cable — and it must NOT blame configuration, which is the answer that was actually given at the time and that sent the diagnosis down a false path."
+
+fn witness_srv4_diagnoses_physical_not_config() -> Bool {
+  let d = diagnose_host_network(
+    config: Present { value: srv4_netplan_config },
+    observed: srv4_lan_interface,
+  )
+  diagnosis_blames_physical_layer(d: d)
+    && !diagnosis_blames_configuration(d: d)
+    && match d {
+      ConfiguredLinkAbsent { interface: i, mac: m } =>
+        (i as String) == "enP3p3s0f1" && (m as String) == "48:21:0b:87:2d:64"
+      NetworkConfigAbsent { detail: _ } => false
+      ConfiguredLinkPresent { interface: _ } => false
+      LinkStateUnobserved { interface: _ } => false
+    }
+}
+
+data witness_red_control_note: String = "The discriminating RED control. The perturbation is the inference actually drawn during the outage — generator disabled, therefore configuration absent — executed against srv4's own inputs. The sketch blames configuration, the authority blames the physical layer, and the gate rejects the sketch while accepting the authority. Both directions are asserted, and the gate's decision is computed from the OBSERVATION rather than from which function produced the diagnosis, so it cannot be satisfied by relabelling. This is the conjunct that makes the wrong answer unwritable rather than merely discouraged."
+
+fn witness_red_control_generator_state_inference_rejected() -> Bool {
+  let widened = diagnose_via_generator_state_widen_sketch(
+    generator: srv4_cloud_init_disposition,
+    config: Present { value: srv4_netplan_config },
+    observed: srv4_lan_interface,
+  )
+  let authority = diagnose_host_network(
+    config: Present { value: srv4_netplan_config },
+    observed: srv4_lan_interface,
+  )
+  diagnosis_blames_configuration(d: widened)
+    && diagnosis_blames_physical_layer(d: authority)
+    && !diagnosis_gate_accepts(d: widened, observed: srv4_lan_interface)
+    && diagnosis_gate_accepts(d: authority, observed: srv4_lan_interface)
+}
+
+data witness_disabled_is_normal_note: String = "Installer-disabled cloud-init is stock Ubuntu, so it must be representable WITHOUT implying anything is wrong. The marker's own text is the citation. The second half is the fact the outage needed and nobody had: a disabled generator freezes its output rather than voiding it, so the netplan file is hand-authoritative from that point — useful before editing it, and irrelevant to why a link is down."
+
+fn witness_installer_disable_is_normal_and_freezes_not_voids() -> Bool {
+  cloud_init_is_disabled(d: srv4_cloud_init_disposition)
+    && netplan_file_is_applied(f: srv4_netplan_config)
+    && match netplan_file_ownership(d: srv4_cloud_init_disposition) {
+      FrozenAtLastRun { because: _ } => true
+      RegeneratedEachBoot => false
+    }
+    && match netplan_file_ownership(d: CloudInitEnabled) {
+      RegeneratedEachBoot => true
+      FrozenAtLastRun { because: _ } => false
+    }
+}
+
+data witness_unused_port_note: String = "The two down-looking shapes must not be confused, because they mean opposite things about whether the model did its job. srv4's unused sibling port is administratively down and unconfigured — netplan never mentioned it — which is a CONFIGURATION statement, while the cabled port is configured with no carrier, which is a PHYSICAL statement. Reading the unused ports first is exactly the mistake that produced the wrong causal story during the outage, so the distinction is pinned here."
+
+fn witness_unconfigured_port_blames_config_not_physical() -> Bool {
+  let d = diagnose_host_network(
+    config: Present { value: srv4_netplan_config },
+    observed: srv4_unused_port,
+  )
+  diagnosis_blames_configuration(d: d)
+    && !diagnosis_blames_physical_layer(d: d)
+    && !interface_is_configured(o: srv4_unused_port)
+    && interface_is_configured(o: srv4_lan_interface)
+}
+
+data witness_non_vacuity_note: String = "The non-vacuity control: a healthy host must diagnose healthy, or every conjunct above is satisfied by a fold that never reports success. Same configuration, carrier present."
+
+fn witness_healthy_host_diagnoses_healthy() -> Bool {
+  let healthy = InterfaceObservation {
+    name: "enP3p3s0f1",
+    mac: "48:21:0b:87:2d:64",
+    admin: AdminUpConfigured,
+    carrier: CarrierPresent,
+  }
+  let d = diagnose_host_network(config: Present { value: srv4_netplan_config }, observed: healthy)
+  !diagnosis_blames_configuration(d: d)
+    && !diagnosis_blames_physical_layer(d: d)
+    && diagnosis_is_reboot_stable(config: Present { value: srv4_netplan_config }, observed: healthy)
+}
+
+data witness_unobserved_refuses_note: String = "A fleet-level reader that cannot reach the host must refuse rather than pick either decisive answer. Carrier is only knowable from the host, so an unobserved link is neither a configuration verdict nor a physical one — collapsing it into either would let an unreachable host be reported as a definite diagnosis, which is the absorbing fallback this lane keeps refusing."
+
+fn witness_unobserved_carrier_refuses_both_blames() -> Bool {
+  let unobserved = InterfaceObservation {
+    name: "enP3p3s0f1",
+    mac: "48:21:0b:87:2d:64",
+    admin: AdminUpConfigured,
+    carrier: CarrierUnobserved,
+  }
+  let d = diagnose_host_network(
+    config: Present { value: srv4_netplan_config },
+    observed: unobserved,
+  )
+  !diagnosis_blames_configuration(d: d)
+    && !diagnosis_blames_physical_layer(d: d)
+    && !diagnosis_is_reboot_stable(config: Present { value: srv4_netplan_config }, observed: unobserved)
+}
+
+data witness_persistence_bar_note: String = "The dry proof of the subsumption bar: a host whose configuration is present and applied diagnoses identically across a restart, because no input to the fold is runtime state. That is the property 'the network survives a power cycle' reduces to at the model layer, and it is dry-provable here precisely because the applier reads the file at boot rather than inheriting anything from the previous run. A host with NO configuration must fail the same bar — otherwise the bar would pass vacuously on the very case it exists to catch."
+
+fn witness_persistence_bar_discriminates() -> Bool {
+  let healthy = InterfaceObservation {
+    name: "enP3p3s0f1",
+    mac: "48:21:0b:87:2d:64",
+    admin: AdminUpConfigured,
+    carrier: CarrierPresent,
+  }
+  diagnosis_is_reboot_stable(config: Present { value: srv4_netplan_config }, observed: healthy)
+    && !diagnosis_is_reboot_stable(config: none, observed: healthy)
+    && !diagnosis_is_reboot_stable(config: Present { value: srv4_netplan_config }, observed: srv4_lan_interface)
+}
+
+data witness_axis_cell_note: String = "The axis conjunct: the fold is reachable as a per-host status cell, and the cell REFUSES rather than guessing while no producer exists. Every enrolled host answers UnknownRefused and the fleet tally equals the full fleet — a deficit that is counted, and therefore rankable, instead of one whose frequency is zero by construction. The tally is asserted against the enrolled host list rather than against a literal, so enrolling a host moves it without editing this witness. The last two conjuncts are the non-vacuity: the verdict projection is not constant — a healthy observation reaches Converged and a dead link reaches Drifted through the same projection the cell uses — so the all-UnknownRefused tally above is the producer's absence and not a fold that answers UnknownRefused to everything."
+
+fn witness_network_axis_cell_refuses_and_counts() -> Bool {
+  let unobserved = host_network_fleet_unobserved_count()
+  let enrolled = fleet_subsumption_hosts.length()
+  unobserved == enrolled
+    && enrolled > 0
+    && observation_verdict_eq(
+      a: network_diagnosis_verdict(
+        d: diagnose_host_network(
+          config: Present { value: srv4_netplan_config },
+          observed: InterfaceObservation {
+            name: "enP3p3s0f1",
+            mac: "48:21:0b:87:2d:64",
+            admin: AdminUpConfigured,
+            carrier: CarrierPresent,
+          },
+        ),
+      ),
+      b: std.upsert_decision.Converged,
+    )
+    && observation_verdict_eq(
+      a: network_diagnosis_verdict(
+        d: diagnose_host_network(
+          config: Present { value: srv4_netplan_config },
+          observed: srv4_lan_interface,
+        ),
+      ),
+      b: std.upsert_decision.Drifted,
+    )
+}
+
+test fn host_network_diagnosis_witnesses() -> Bool {
+  witness_srv4_diagnoses_physical_not_config()
+    && witness_red_control_generator_state_inference_rejected()
+    && witness_installer_disable_is_normal_and_freezes_not_voids()
+    && witness_unconfigured_port_blames_config_not_physical()
+    && witness_healthy_host_diagnoses_healthy()
+    && witness_unobserved_carrier_refuses_both_blames()
+    && witness_persistence_bar_discriminates()
+    && witness_network_axis_cell_refuses_and_counts()
+}

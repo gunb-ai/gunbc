@@ -255,8 +255,13 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "shell_materialize_argv_for_operation".to_string(),
-            list_of_element(string_type()),
+            "shell_materialize_operation_argv".to_string(),
+            type_variable_node("argv_materialization_result".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "shell_transport_operation_rows".to_string(),
+            list_of_type_variable("shell_transport_operation_row_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -434,6 +439,26 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "complexity_linearity_syntactic_site_fired".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "fallback_arm_census_facts".to_string(),
+            list_of_type_variable("fallback_arm_census_fact_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "fallback_arm_census_class_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "fallback_arm_census_total".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "fallback_arm_census_reconciliation_holds".to_string(),
             bool_type(),
         );
         let m = v1_rt::rc_map_insert(

@@ -1,0 +1,39 @@
+module v2.test.long.fallback_arm_census_witness
+
+import v2.lens.fallback_arm_census {
+  fallback_arm_census_class_count_live,
+  fallback_arm_census_lens_path_has_no_answers_on_open,
+  fallback_arm_census_reconciliation_holds_live,
+  fallback_arm_census_total_live,
+  fallback_arm_seed_inventory_count_is_24_holds
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fallback_arm_census_long_note: String = "W2 fallback-arm census corpus grain (docs/plans/fallback-arm-census.md, 2026-07-25): host-seamed MatchPattern::Wildcard walk over witness_layer_roots — Class C long-lane (decl_facts corpus walk exceeds per-PR 5s fast-lane budget). Enrolled on falsifier_substrate_long_lane_entries (nightly falsifier batch 6). Per-PR fixture-wall coverage: fallback_arm_census_planted_test.dag (AnswersOnOpen / Refuses / ClassifierUnknown / CompletesClosedTotal / DeclaredInterim). Zero production behavior change — register and route only."
+
+test fn fallback_arm_census_reconciliation_holds() -> Bool {
+  fallback_arm_census_reconciliation_holds_live()
+}
+
+test fn fallback_arm_census_total_nonempty_holds() -> Bool {
+  fallback_arm_census_total_live() > 0
+}
+
+test fn fallback_arm_census_class_counts_nonnegative_holds() -> Bool {
+  fallback_arm_census_class_count_live(class: "refuses") >= 0
+    && fallback_arm_census_class_count_live(class: "completes_closed_total") >= 0
+    && fallback_arm_census_class_count_live(class: "declared_interim") >= 0
+    && fallback_arm_census_class_count_live(class: "answers_on_open") >= 0
+    && fallback_arm_census_class_count_live(class: "unknown") >= 0
+}
+
+test fn fallback_arm_seed_inventory_count_holds() -> Bool {
+  fallback_arm_seed_inventory_count_is_24_holds()
+}
+
+test fn fallback_arm_census_self_applies_holds() -> Bool {
+  fallback_arm_census_lens_path_has_no_answers_on_open()
+}

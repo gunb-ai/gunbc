@@ -1,5 +1,6 @@
 module gunbc.roadmap_belt_actuate
 
+import gunbc.output_policy { OutcomeIsData }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath }
 import gunbc.roadmap_model { RoadmapNode }
 import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
@@ -91,8 +92,10 @@ type BeltExecOutcome
 
 data belt_program_available_note: String = "program-on-PATH probe via shell.Which.Check exit_success (Bool), NOT its .path field: the Which .path realization is a bare-stdout string wet (the Optional-over-Value::Null realization fork — DESIGN open thread), so the belt keys on the exit Bool and lets WitnessBin.Run's `env -C \{workdir\} \{bin_path\} args` resolve the bare program name via PATH (env execvp searches PATH). This keeps 'program missing' (refuse) distinct from 'program present, exited nonzero' (fail) without touching the Optional straddle."
 
+data belt_outcome_is_data_note: String = "The three probes in this module are annotated OutcomeIsData (operator ruling 2026-07-25): their exit codes are ANSWERS the belt adjudicates, not faults. belt_program_available's which-miss is the 'program missing' pole this module's belt_program_available_note already keeps deliberately distinct from 'present but exited nonzero'; belt_exec's nonzero exit becomes ExecFailed; belt_observe's becomes a typed BeltObserve arm. In every case the belt renders the fault loudly through its own per-variant status mapping, so the effect layer's anomaly glyph was a second, cruder judgment of an event that already has a real adjudicator. ADMISSIBILITY (§5 guard, gunbc.output_policy outcome_is_data_note): each annotated fn returns a typed value whose arms ARE the adjudication — Bool for the availability probe (consumed as the refuse/fail discriminator, never discarded), BeltExecOutcome, BeltObserve — never unit. Dispatch failure stays anomalous: it is not an exit code and does not travel this arm."
+
 fn belt_program_available(program: String) -> Bool {
-  shell.Which.Check(command: program as NonEmptyStr).exists
+  shell.Which.Check(command: program as NonEmptyStr, expect: OutcomeIsData).exists
 }
 
 fn belt_exec(cmd: HostExecArgv, workdir: String) -> BeltExecOutcome {
@@ -101,6 +104,7 @@ fn belt_exec(cmd: HostExecArgv, workdir: String) -> BeltExecOutcome {
       workdir: workdir as FilePath,
       bin_path: cmd.program as FilePath,
       args: cmd.args,
+      expect: OutcomeIsData,
     )
     if result.success {
       ExecOk { stdout: result.stdout }
@@ -362,6 +366,7 @@ fn belt_observe() -> BeltObserve {
       workdir: belt_observe_workdir,
       bin_path: ls.program as FilePath,
       args: ls.args,
+      expect: OutcomeIsData,
     )
     belt_observe_from_result(
       success: result.success,

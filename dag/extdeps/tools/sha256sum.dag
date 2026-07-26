@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, String, Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceCoreutils }
+import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import std.roster_frontier {
@@ -65,6 +66,8 @@ data sha256_verify_native_transport_frontier_rows: List<FrontierRow> = [
   )
 ]
 
+data sha256_check_outcome_is_data_note: String = "sha256sum --check exits non-zero on DIGEST MISMATCH, which is this fn's Sha256Mismatch answer, not a fault — so the check call is OutcomeIsData. The guard holds on the same evidence as the caller: Sha256VerifyVerdict already separates the two content answers (Matches / Mismatch) from Sha256VerifyInfraFailure, the arm for the verification machinery itself breaking, so annotating the content comparison cannot silence an infra failure — that arm is reached by different conditions entirely."
+
 fn sha256sum_verify_via_shell(path: NonEmptyStr, expected_digest: NonEmptyStr) -> Sha256VerifyVerdict {
   let checksum_dir = shell.Mktemp.Dir()
   if checksum_dir.success == false {
@@ -77,7 +80,7 @@ fn sha256sum_verify_via_shell(path: NonEmptyStr, expected_digest: NonEmptyStr) -
       let cleaned = shell.Remove.RecursiveForce(path: checksum_dir.path)
       Sha256VerifyInfraFailure { reason: "checksum file write failed" as NonEmptyStr }
     } else {
-      let checked = sha256sum.Sha256.CheckFile(checksum_file: checksum_path)
+      let checked = sha256sum.Sha256.CheckFile(checksum_file: checksum_path, expect: OutcomeIsData)
       let cleaned = shell.Remove.RecursiveForce(path: checksum_dir.path)
       if checked.matches {
         Sha256Matches

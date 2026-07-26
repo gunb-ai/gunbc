@@ -749,9 +749,53 @@ fn expect_hash_digest(s: &str, arg: &str) {
     }
 }
 
+/// Kept so `gunbc.observation_emit_census` roster hygiene cannot go stale after the
+/// raw gantt key=value shape (process-absolute millis and rss-mib fields) dissolves into the observation projection.
+#[allow(dead_code)]
+pub const GANTT_CENSUS_MARKER: &str = "[gantt]";
+
+/// Mirror of `gunbc.observation_ci_render.ci_minute_switch_seconds`.
+const OBS_MINUTE_SWITCH_SECONDS: u64 = 90;
+
+fn obs_human_duration(ms: u64) -> String {
+    if ms < 1_000 {
+        format!("{ms}ms")
+    } else if ms < OBS_MINUTE_SWITCH_SECONDS * 1_000 {
+        format!("{} seconds", ms / 1_000)
+    } else {
+        format!("{} minutes", ms / 60_000)
+    }
+}
+
+fn obs_phase_emoji() -> bool {
+    std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+}
+
+/// Pure Rust mirror of `gunbc.observation_seed_render.phase_begin_line` —
+/// `ci_event_line(Begin) ∘ ci_render_line`. Justified divergence from the
+/// interpreter seed boundary used by floor prelude marks: `trace_mark` runs
+/// inside compile itself (hand-synced path and interpreter intrinsic), and
+/// calling back into the interpreter to render would recurse. Proven
+/// byte-equal to the `.dag` oracle by the seed RED.
+pub fn render_phase_begin_line_mirror(phase: &str, emoji: bool) -> String {
+    let glyph = if emoji { "🔄" } else { "◐" };
+    format!("{glyph} started {phase}")
+}
+
+/// Pure Rust mirror of `gunbc.observation_seed_render.phase_concluded_line` —
+/// `ci_event_line(Concluded{Done}) ∘ ci_render_line`. Same justified-divergence
+/// note as `render_phase_begin_line_mirror`.
+pub fn render_phase_concluded_line_mirror(phase: &str, elapsed_ms: u64, emoji: bool) -> String {
+    let glyph = if emoji { "✅" } else { "✓" };
+    format!("{glyph} {phase} done in {}", obs_human_duration(elapsed_ms))
+}
+
 /// Stage-boundary trace mark — the v1-seed interim realization of the v2 per-RealizedStep
-/// CostAccount (std.realization_measurement). One stderr line per mark; consecutive marks
-/// define the segments of a natural Gantt read directly off any run log.
+/// CostAccount (std.realization_measurement). Wired (gantt flip): projects Begin/Concluded
+/// on a PhaseSegment via the observation mirrors of `ci_event_line`. Segment wall on
+/// Concluded (matched `.begin`→`.done`, else delta since last mark) — never the old
+/// process-absolute millis field. RSS stays on heartbeat/measurement (`ci_event_line` does
+/// not project `event.rss` — explicit divergence from the deleted rss-mib field).
 ///
 /// **Dissolution trigger (DESIGN §6):** delete this fn, the `trace_mark` registry row in
 /// `04_method.dag` (+ hand-synced twin `v1_compiler_infer_method.rs`), the nine
@@ -763,25 +807,54 @@ fn expect_hash_digest(s: &str, arg: &str) {
 /// § dissolution). Receipt = that witness green with these marks deleted and stage walls
 /// still attributable from the model path.
 pub fn trace_mark(label: String) {
-    use std::sync::OnceLock;
+    use std::sync::{Mutex, OnceLock};
     use std::time::Instant;
     static TRACE_T0: OnceLock<Instant> = OnceLock::new();
-    let ms = TRACE_T0.get_or_init(Instant::now).elapsed().as_millis();
-    let mut rss_mib = String::from("absent");
-    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
-        for line in status.lines() {
-            if let Some(rest) = line.strip_prefix("VmRSS:") {
-                if let Some(kib) = rest
-                    .split_whitespace()
-                    .next()
-                    .and_then(|k| k.parse::<i64>().ok())
-                {
-                    rss_mib = (kib / 1024).to_string();
+    static LAST_MARK: OnceLock<Mutex<Instant>> = OnceLock::new();
+    static OPENS: OnceLock<Mutex<std::collections::HashMap<String, Instant>>> = OnceLock::new();
+    let t0 = TRACE_T0.get_or_init(Instant::now);
+    let last = LAST_MARK.get_or_init(|| Mutex::new(*t0));
+    let opens = OPENS.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+    let emoji = obs_phase_emoji();
+    let now = Instant::now();
+    let _ = GANTT_CENSUS_MARKER;
+    if let Some(phase) = label.strip_suffix(".begin") {
+        if let Ok(mut map) = opens.lock() {
+            map.insert(phase.to_string(), now);
+        }
+        if let Ok(mut l) = last.lock() {
+            *l = now;
+        }
+        eprintln!("{}", render_phase_begin_line_mirror(phase, emoji));
+    } else if let Some(phase) = label.strip_suffix(".done") {
+        let elapsed_ms = {
+            let started = opens.lock().ok().and_then(|mut m| m.remove(phase));
+            match started {
+                Some(t) => now.saturating_duration_since(t).as_millis() as u64,
+                None => {
+                    let prev = last.lock().map(|l| *l).unwrap_or(*t0);
+                    now.saturating_duration_since(prev).as_millis() as u64
                 }
             }
+        };
+        if let Ok(mut l) = last.lock() {
+            *l = now;
         }
+        eprintln!(
+            "{}",
+            render_phase_concluded_line_mirror(phase, elapsed_ms, emoji)
+        );
+    } else {
+        let prev = last.lock().map(|l| *l).unwrap_or(*t0);
+        let elapsed_ms = now.saturating_duration_since(prev).as_millis() as u64;
+        if let Ok(mut l) = last.lock() {
+            *l = now;
+        }
+        eprintln!(
+            "{}",
+            render_phase_concluded_line_mirror(&label, elapsed_ms, emoji)
+        );
     }
-    eprintln!("[gantt] {} t_ms={} rss_mib={}", label, ms, rss_mib);
 }
 
 /// Content hash over raw bytes — the byte-level single authority. `atom_identity_hash`

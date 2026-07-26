@@ -80,6 +80,8 @@ Decomposing buys nothing; fix the cost-shape. Shrinks Classes C and F together.
 
 **Disposition:** route to cost-shape / #7205 residual lane. Explicit **non-work** for Class C children.
 
+**Ownership (2026-07-25):** Class F (fixture-shaped, slow-by-defect) ownership is split: the perturb-attribution half is owned and in flight (#7216 lane — the #7178/#7179 bisect + census-scoped-to-closure fix); the interpreter-defect half — the per-effect memo-drop (`v1_interpreter.rs:3211–3218`), the discarded content key (`:5218`), re-entrant cold gunbc compile spawns, and the `[assembly-split]` residue==parent instrument bug — is unowned; recommend one focused child, sequenced after the bisect lands since its result determines how much the census-scoping fix subsumes.
+
 ---
 
 ## 7. Future enrollment rule (dark `long/`)

@@ -1,10 +1,84 @@
 module v2.test.fixture.compiler_closure_scope_receipt
 
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
 
-data compiler_closure_scoped_module_count: Int = 65
+type ClosureScopeCountAuthority
+  = DerivedFromModulePathRoster
+  | ScalarReceiptWithdrawn {
+      hand_count_at_withdrawal: Int,
+      live_discovery_count_measured: Int,
+      inert_consumer: String,
+      dissolution_trigger: Symbol
+    }
+
+type CompilerClosureScopeReceiptFrontierRow {
+  entry_path: String
+  fact: String
+  authority: ClosureScopeCountAuthority
+  diagnosis: String
+}
+
+data compiler_closure_scoped_module_count_frontier_row: CompilerClosureScopeReceiptFrontierRow = CompilerClosureScopeReceiptFrontierRow {
+  entry_path: "src/v2/compiler/00_compile.dag",
+  fact: "v1 load_sources_for_entry scoped compiler-closure module count (src/v2 source root; excludes closure_deep_chain.dag per compiler_closure_excluded_module_path)",
+  authority: ScalarReceiptWithdrawn {
+    hand_count_at_withdrawal: 65,
+    live_discovery_count_measured: 88,
+    inert_consumer: "src/v1/tests/src/pipeline.rs::scoped_closure_fixture_scalar_receipt_matches_live_discovery (#[ignore])",
+    dissolution_trigger: ^dissolve_when_compiler_closure_scoped_module_path_roster_lands
+  },
+  diagnosis: "INERT + DRIFTED (class-5 wise-lynx-761): the scalar receipt was meaningful (hand count vs live discovery) but its only executing consumer is #[ignore]d in pipeline.rs, so drift did not red CI. Hand 65 vs live 88 (+23 modules, +35.4%). No structural module-path roster exists in this fixture to derive from; scalar withdraws as a declared row until roster lands."
+}
+
+data compiler_closure_scope_receipt_frontier: List<CompilerClosureScopeReceiptFrontierRow> = [
+  compiler_closure_scoped_module_count_frontier_row
+]
 
 data compiler_closure_excluded_module_path: String = "src/v2/lens/affected_set/closure_deep_chain.dag"
 
-fn scoped_closure_scope_scalar_receipt_holds() -> Bool {
-  compiler_closure_scoped_module_count == 65
+fn compiler_closure_scope_receipt_frontier_count() -> Int {
+  length(xs: compiler_closure_scope_receipt_frontier)
+}
+
+fn compiler_closure_scoped_module_count_hand_at_withdrawal() -> Int {
+  match compiler_closure_scoped_module_count_frontier_row.authority {
+    ScalarReceiptWithdrawn {
+      hand_count_at_withdrawal: hand,
+      live_discovery_count_measured: _,
+      inert_consumer: _,
+      dissolution_trigger: _
+    } => hand
+    DerivedFromModulePathRoster => 0
+  }
+}
+
+fn compiler_closure_scoped_module_count_live_measured() -> Int {
+  match compiler_closure_scoped_module_count_frontier_row.authority {
+    ScalarReceiptWithdrawn {
+      hand_count_at_withdrawal: _,
+      live_discovery_count_measured: live,
+      inert_consumer: _,
+      dissolution_trigger: _
+    } => live
+    DerivedFromModulePathRoster => 0
+  }
+}
+
+fn compiler_closure_scoped_module_count_drift_delta() -> Int {
+  compiler_closure_scoped_module_count_live_measured() - compiler_closure_scoped_module_count_hand_at_withdrawal()
+}
+
+fn scoped_closure_excluded_module_path_holds() -> Bool {
+  compiler_closure_excluded_module_path == "src/v2/lens/affected_set/closure_deep_chain.dag"
+}
+
+fn compiler_closure_scope_receipt_frontier_row_holds() -> Bool {
+  (compiler_closure_scope_receipt_frontier_count() == 1)
+    && (compiler_closure_scoped_module_count_hand_at_withdrawal() == 65)
+    && (compiler_closure_scoped_module_count_live_measured() == 88)
+    && (compiler_closure_scoped_module_count_drift_delta() == 23)
 }
