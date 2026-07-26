@@ -1,6 +1,7 @@
 module gunbc.roadmap_dispatch_actuator
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
+import std.content_hash { content_hash_atom }
 import std.upsert_decision {
   ObservationVerdict,
   Converged,
@@ -171,12 +172,18 @@ fn dispatch_tmux_session_name(node_id: RoadmapNodeId) -> String {
   concat(dispatch_tmux_session_prefix, node_id)
 }
 
-fn dispatch_worktree_path(node_id: RoadmapNodeId) -> String {
-  concat(concat(dispatch_worktree_root, "/"), node_id)
+data dispatch_attempt_note: String = "Dispatch is ATTEMPT-grain (U1, the redispatch fix, 2026-07-25; the operator's accidental spawn was the live receipt): branch, worktree, and claude session-id carry an attempt key derived from (node_id x the spawn's clock observation) through std.content_hash — so a stopped attempt's debris never collides with the next spawn, and NOTHING is deleted to make way (a stopped attempt's worktree may hold uncommitted work, and the rework discipline carries prior diffs forward; cleanup is separate explicit work, never an absorbing arm on spawn). The tmux session name deliberately STAYS node-grain: it is what observe/reconcile key on, so already-live detection, kill, and tick idempotency are untouched — the invariant remains one live session per node. Same-instant duplicate spawns for one node collide on the attempt key and refuse at the git step, typed — fail-closed, and honestly: a same-second double-press IS a refusal-worthy event. A clock refusal refuses the spawn (step attempt-clock), never an unknown-stamped attempt that would collide later."
+
+fn dispatch_attempt_key(node_id: RoadmapNodeId, probed_at: String) -> String {
+  content_hash_atom(value: join([node_id as String, "\n", probed_at], "") as NonEmptyStr) as String
 }
 
-fn dispatch_branch_name(node_id: RoadmapNodeId) -> String {
-  concat("dispatch/", node_id)
+fn dispatch_worktree_path(node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join([dispatch_worktree_root, "/", node_id as String, "-a", attempt_key], "")
+}
+
+fn dispatch_branch_name(node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join(["dispatch/", node_id as String, "-a", attempt_key], "")
 }
 
 fn dispatch_tmux_session_scope(node_id: RoadmapNodeId) -> TmuxSessionScope {
@@ -348,7 +355,7 @@ type DispatchSpawnCommands {
   tmux_spawn: HostExecArgv
 }
 
-fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String) -> DispatchSpawnCommands {
+fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key: String) -> DispatchSpawnCommands {
   let fields = dispatch_brief_fields(node: node)
   let brief = fill_dispatch_brief(template: dispatch_brief_template, fields: fields)
   let effort = match node.sizing {
@@ -356,8 +363,8 @@ fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String) -> DispatchS
     Unsized => "medium"
   }
   let session_name = dispatch_tmux_session_name(node_id: node.node)
-  let worktree_path = dispatch_worktree_path(node_id: node.node)
-  let branch_name = dispatch_branch_name(node_id: node.node)
+  let worktree_path = dispatch_worktree_path(node_id: node.node, attempt_key: attempt_key)
+  let branch_name = dispatch_branch_name(node_id: node.node, attempt_key: attempt_key)
   let worktree = git_worktree_add_argv(
     worktree_path: worktree_path,
     branch_name: branch_name,
@@ -527,7 +534,7 @@ fn node_repo_supported(node: RoadmapNode) -> Bool {
   }
 }
 
-fn dispatch_permitted_for_node(node: RoadmapNode) -> DispatchRequestGate {
+fn dispatch_permitted_for_node(node: RoadmapNode, attempt_key: String) -> DispatchRequestGate {
   let brief = filled_dispatch_brief_for_node(node: node)
   let effort = match node.sizing {
     Sized { intricacy, volume: _, repo: _, acceptance: _ } =>
@@ -536,8 +543,8 @@ fn dispatch_permitted_for_node(node: RoadmapNode) -> DispatchRequestGate {
   }
   DispatchPermitted {
     session_name: dispatch_tmux_session_name(node_id: node.node),
-    worktree_path: dispatch_worktree_path(node_id: node.node),
-    branch_name: dispatch_branch_name(node_id: node.node),
+    worktree_path: dispatch_worktree_path(node_id: node.node, attempt_key: attempt_key),
+    branch_name: dispatch_branch_name(node_id: node.node, attempt_key: attempt_key),
     brief: brief,
     claude_effort: effort,
   }
@@ -547,6 +554,7 @@ fn classify_dispatch_request(
   node: RoadmapNode,
   ready: List<RoadmapNode>,
   tmux_entries: List<TmuxLsEntry>,
+  attempt_key: String,
 ) -> DispatchRequestGate {
   if !node_in_ready(node_id: node.node, ready: ready) {
     DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
@@ -562,7 +570,7 @@ fn classify_dispatch_request(
         UpsertClassification { verdict: _, decision: Noop } =>
           DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
         UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
-          dispatch_permitted_for_node(node: node)
+          dispatch_permitted_for_node(node: node, attempt_key: attempt_key)
       }
     }
   }
@@ -634,8 +642,8 @@ fn argv_contains_token(argv: List<String>, token: String) -> Bool {
 }
 
 fn hostile_node_id_stays_single_argv_token(node_id: String) -> Bool {
-  let worktree_path = concat(concat(dispatch_worktree_root, "/"), node_id)
-  let branch_name = concat("dispatch/", node_id)
+  let worktree_path = dispatch_worktree_path(node_id: node_id, attempt_key: "feedfacefeedface")
+  let branch_name = dispatch_branch_name(node_id: node_id, attempt_key: "feedfacefeedface")
   let worktree = git_worktree_add_argv(
     worktree_path: worktree_path,
     branch_name: branch_name,

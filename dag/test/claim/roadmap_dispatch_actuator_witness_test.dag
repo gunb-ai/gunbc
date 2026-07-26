@@ -164,7 +164,7 @@ fn witness_not_ready_node_refused() -> Bool {
   let edges = [RoadmapEdge { child: nid(s: "child"), parent: nid(s: "parent") }]
   let doc = fixture_doc(nodes: [parent, child], edges: edges)
   let ready = next_spawnable(doc: doc, merged: [])
-  match classify_dispatch_request(node: child, ready: ready, tmux_entries: []) {
+  match classify_dispatch_request(node: child, ready: ready, tmux_entries: [], attempt_key: "feedfacefeedface") {
     DispatchRefused { reason: r } => string_contains(s: r as String, pattern: "not in ready frontier")
     _ => false
   }
@@ -174,11 +174,11 @@ fn witness_ready_node_permitted_without_live_session() -> Bool {
   let node = sized_derivable(id: "ready-node", prs: [10], title: "Ready")
   let doc = fixture_doc(nodes: [node], edges: [])
   let ready = next_spawnable(doc: doc, merged: [])
-  match classify_dispatch_request(node: node, ready: ready, tmux_entries: []) {
+  match classify_dispatch_request(node: node, ready: ready, tmux_entries: [], attempt_key: "feedfacefeedface") {
     DispatchPermitted { session_name: s, worktree_path: w, branch_name: b, brief: br, claude_effort: e } =>
       s == "gunbc-dispatch-ready-node"
-        && string_contains(s: w, pattern: "ready-node")
-        && b == "dispatch/ready-node"
+        && string_contains(s: w, pattern: "ready-node-afeedfacefeedface")
+        && b == "dispatch/ready-node-afeedfacefeedface"
         && string_contains(s: br, pattern: "Ready")
         && e == "high"
     _ => false
@@ -190,7 +190,7 @@ fn witness_live_lease_refused() -> Bool {
   let doc = fixture_doc(nodes: [node], edges: [])
   let ready = next_spawnable(doc: doc, merged: [])
   let entries = [TmuxLsEntry { session_name: "gunbc-dispatch-leased-node", windows: 1 }]
-  match classify_dispatch_request(node: node, ready: ready, tmux_entries: entries) {
+  match classify_dispatch_request(node: node, ready: ready, tmux_entries: entries, attempt_key: "feedfacefeedface") {
     DispatchRefused { reason: r } =>
       string_contains(s: r as String, pattern: "name occupied")
         && string_contains(s: r as String, pattern: "fingerprint unobserved")

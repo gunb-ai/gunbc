@@ -10,6 +10,8 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
 import gunbc.roadmap_dispatch_actuator {
+  dispatch_tmux_session_name,
+  dispatch_attempt_key, dispatch_branch_name, dispatch_worktree_path,
   HostExecArgv,
   host_exec_argv,
   DispatchLiveSession,
@@ -233,19 +235,19 @@ fn uuid_char(u: String, i: Int) -> String {
 }
 
 fn witness_uuid_deterministic() -> Bool {
-  let a = belt_spawn_session_uuid(node_id: "5-regen-cutover")
-  let b = belt_spawn_session_uuid(node_id: "5-regen-cutover")
+  let a = belt_spawn_session_uuid(node_id: "5-regen-cutover", probed_at: "2026-07-25T20:00:00Z")
+  let b = belt_spawn_session_uuid(node_id: "5-regen-cutover", probed_at: "2026-07-25T20:00:00Z")
   a == b
 }
 
 fn witness_uuid_distinct_nodes() -> Bool {
-  let a = belt_spawn_session_uuid(node_id: "node-a")
-  let b = belt_spawn_session_uuid(node_id: "node-b")
+  let a = belt_spawn_session_uuid(node_id: "node-a", probed_at: "2026-07-25T20:00:00Z")
+  let b = belt_spawn_session_uuid(node_id: "node-b", probed_at: "2026-07-25T20:00:00Z")
   !(a == b)
 }
 
 fn witness_uuid_rfc4122_shape() -> Bool {
-  let u = belt_spawn_session_uuid(node_id: "5-regen-cutover")
+  let u = belt_spawn_session_uuid(node_id: "5-regen-cutover", probed_at: "2026-07-25T20:00:00Z")
   string_length(s: u) == 36
     && uuid_char(u: u, i: 8) == "-"
     && uuid_char(u: u, i: 13) == "-"
@@ -481,6 +483,22 @@ fn witness_preflight_ok_on_enriched_entry() -> Bool {
   preflight_ok(p: preflight_with_config(
     config: "\{\"projects\":\{\"/opt/x/worktrees\":\{\"mcpServers\":\{\},\"allowedTools\":[\"a\}b\"],\"hasTrustDialogAccepted\":true\}\}\}",
   ))
+}
+
+data attempt_grain_note: String = "U1's own REDs: redispatch works exactly when a NEW attempt yields a NEW branch/worktree/uuid while the tmux name — the observe/reconcile key — stays node-grain. Fresh where debris collides, stable where identity reconciles."
+
+test fn belt_attempt_grain_holds() -> Bool {
+  let n = "5-regen-cutover"
+  let t1 = "2026-07-25T20:00:00Z"
+  let t2 = "2026-07-25T21:30:00Z"
+  let k1 = dispatch_attempt_key(node_id: n, probed_at: t1)
+  let k2 = dispatch_attempt_key(node_id: n, probed_at: t2)
+  return k1 != k2
+    && k1 == dispatch_attempt_key(node_id: n, probed_at: t1)
+    && dispatch_branch_name(node_id: n, attempt_key: k1) != dispatch_branch_name(node_id: n, attempt_key: k2)
+    && dispatch_worktree_path(node_id: n, attempt_key: k1) != dispatch_worktree_path(node_id: n, attempt_key: k2)
+    && belt_spawn_session_uuid(node_id: n, probed_at: t1) != belt_spawn_session_uuid(node_id: n, probed_at: t2)
+    && string_contains(s: dispatch_branch_name(node_id: n, attempt_key: k1), pattern: "dispatch/5-regen-cutover-a")
 }
 
 test fn roadmap_belt_actuate_witnesses() -> Bool {
