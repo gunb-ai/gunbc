@@ -27,8 +27,8 @@
 
 | Family | Count | Share | Emission consumer (where rustc sees the defect) | Modeled authority today |
 |---|---:|---:|---|---|
-| **R1** missing_method `clone` on type param | 261 | 41% | `emit_fn` bodies calling `.clone()` on bare `T`/`A`/`U`/`B`/`R` without `where` clause on enclosing generic item | **None** (no v2 predicate; fn sig path has narrow arm (a) only — see §3) |
-| **R2** bounds_unsatisfied `is_empty`/`iter` on `im::Vector` carriers | 168 | 27% | Same fn-body emit sites; method exists but `T: Clone` missing on signature | **None** |
+| **R1** missing_method `clone` on type param | 261 | 41% | `emit_fn` signature missing `T: Clone` that the **modeled** fn already requires | **Partial** — `v1_generic_params_needing_clone_bound` (structural rules on substrate `Node`s only; incomplete vs census) |
+| **R2** bounds_unsatisfied `is_empty`/`iter` on `im::Vector` carriers | 168 | 27% | Same — modeled collection witness requires `Clone` on element type param | **None** (witness row not yet authored) |
 | **R3** bounds_unsatisfied `clone` on `Outcome`/`Option`/`im::Vector` | 161 | 25% | Same | **None** |
 | **R4** GlobalBare* on `std::option::Option` | 24 | 4% | Match lowering: modeled `Optional::GlobalBare*` arms reach native `Option` pattern syntax | namespace-resolution / coproduct grounding lane (not Root-4 trait derive) |
 | **R5** `as_deref` on `()` | 12 | 2% | Projection site with unit receiver | separate tail; defer |
@@ -53,7 +53,7 @@
 
 | Arm | Scope | Current reach | Clean-salvage target |
 |---|---|---|---|
-| **(a)** clone bounds on generic params | fn signatures | `v1_generic_params_needing_clone_bound` → `emit_fn_def` only (`05_emit_rust.dag:5172`) | Extend predicate model; **do not** conflate with struct derives |
+| **(a)** clone bounds on generic params | fn signatures | `v1_generic_params_needing_clone_bound` → `emit_fn_def` only (`05_emit_rust.dag:5172`) | Extend `RequiredTraitWitness` / `trait_derive_completeness` rows from **modeled** fn generic usage; emit consumes witness list — **never** scan emitted Rust |
 | **(b)** supplemental `impl` blocks for coproduct-native arithmetic | `GroupCompletion`, kernel int carriers | `repr_grounding_derive_completeness_predicate` + `rust_supplemental_impls_group_completion` | E0369 / coproduct operator surface (gate1 Root 4 sub-wall 2) |
 | **(c)** serde/Debug/Ord `#[derive]` on named structs/enums | struct/enum declarations | capability table → `rust_trait_derive_attr_from_traits` | E0277 F3 (+ F1 serde/Debug limbs) with **per-derive-target** bounds |
 
@@ -63,20 +63,22 @@
 
 ## 3. Proposed predicates (separate — do not merge)
 
-### Predicate P-fn: `generic_fn_body_clone_bound` (E0599 R1–R3 candidate)
+### Predicate P-fn: `generic_fn_modeled_clone_witness` (E0599 R1–R3 candidate)
 
-**Intent:** When emitted **function** body (or inferred use-site on fn generic params) calls `.clone()`, `.is_empty()`, or `.iter()` on `T` or `im::Vector<T>` / `Rc<im::Vector<T>>`, emit `T: Clone` (and letter variants) on the **enclosing fn's** `where` clause.
+**Intent:** When a **modeled** generic function's signature/capabilities require `Clone` on type parameter `T` (or `A`/`U`/`B`/`R`) — because a `RequiredTraitWitness` row or `trait_derive_completeness` gate says the param is used as a collection element, return type, or other grounded witness site — emit `T: Clone` on the fn's generic/`where` clause. Emission **consumes** the witness list; it does not infer requirements from downstream Rust.
+
+**Anti-pattern (explicitly out of scope):** scanning emitted function bodies (or any target-language text) for `.clone()`, `.is_empty()`, or `.iter()` calls and retroactively adding bounds. That inverts facts-flow-forward and duplicates authority at the wrong layer.
 
 | Field | Value |
 |---|---|
-| **Modeled home (proposed)** | `v2.compiler.*` agnostic predicate row + `v1.compiler.trait_derive_emit` arm (a) export (extend `v1_type_param_needs_clone_bound` semantics to body-use scan, not only return-type/collection-element structural rules) |
-| **Production consumers** | `emit_fn_def` (`05_emit_rust.dag:5172`) — **only** until struct path has its own predicate |
-| **Does NOT consume** | `emit_type_def_from_connective` struct/enum generic lists |
+| **Modeled home (proposed)** | Extend `v2.std.compilers.target_model.RequiredTraitWitness` (or sibling row beside `TargetCollectionWitnessOrd`/`Hash`/`Eq`) with a `Clone` witness variant; classify generic-param sites in `v2.compiler.trait_derive_completeness` over substrate `Node`s (same forward read as existing `v1_type_param_needs_clone_bound`, but complete + v2-authoritative) |
+| **Production consumers** | `v1.compiler.trait_derive_emit` arm (a) → `v1_generic_params_needing_clone_bound` / `v1_emit_type_params_with_clone_bounds` → `emit_fn_def` (`05_emit_rust.dag:5172`) |
+| **Does NOT consume** | Emitted Rust text; `emit_type_def_from_connective` struct/enum derive path (that is P-derive) |
 | **Predicted effect** | E0599 −590 (R1+R2+R3); per-module clone/is_empty/iter histogram → 0 |
 | **E0277 collateral** | **Unknown — do not claim** until stamped binary proves Family 1 is not the dominant remaining E0277 mass |
 | **RED (green direction)** | Canonical-seven probe: R1+R2+R3 rows absent from `e0599_canonical_seven_census_*.tsv` |
-| **RED (refusal direction)** | Fixture: `.dag` generic fn with intentional absent Clone requirement in **source model** must still refuse to fabricate bound (v2 predicate gate) |
-| **Rollback boundary** | Revert predicate row + `trait_derive_emit` arm (a) extension; census TSV must match pre-fix receipt byte-for-key totals |
+| **RED (refusal direction)** | Fixture: modeled fn declares generic `T` with **no** `Clone` witness in source → emit refuses to fabricate `T: Clone` on the signature |
+| **Rollback boundary** | Revert witness rows + trait_derive_emit arm (a) extension; census TSV must match pre-fix receipt byte-for-key totals |
 
 **Fence:** `src/v1/05_emit_rust.dag` owned by witty-wolf-289 — P-fn wiring must route through existing `trait_derive_emit` imports or wait for operator sequencing.
 
@@ -112,7 +114,7 @@
 ```
 Phase 0 (now)     → this document + management acceptance of consumer graph
 Phase 1 (first)   → Root-4 clean salvage: P-derive (+ arm b arithmetic completeness)
-Phase 2           → P-fn fn-body Clone propagation (separate PR, separate receipt)
+Phase 2           → P-fn modeled Clone witness on fn signatures (separate PR, separate receipt)
 Phase 3           → P-optional (R4) when namespace lane ready
 Phase 4           → tails R5/R6 if still above noise floor
 ```
