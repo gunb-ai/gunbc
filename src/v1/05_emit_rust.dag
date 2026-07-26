@@ -890,13 +890,13 @@ fn rust_seed_inferred_type_rendered(value: Node, shared_types: Set<String>, scop
     Present { value: Resolved { node: rt } } => rt
     _ => resolved_type(n: value)
   }
-  render_rust_type_with_applied_binding(n: rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, use_site: OwnershipAtBindingProjection)
+  render_rust_type_with_applied_binding(n: rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, use_site: OwnershipWrapUseSiteAbsent)
 }
 
 fn rust_inferred_node_needs_rc_wrap(result_type: InferredNode?, shared_types: Set<String>, scope: InferScope, emit_info: EmitGraphInfo) -> Bool {
   match result_type {
     Present { value: Resolved { node: rt } } =>
-      rust_type_is_rc_wrapped(type_name: render_rust_type_with_applied_binding(n: rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, use_site: OwnershipAtBindingProjection))
+      rust_type_is_rc_wrapped(type_name: render_rust_type_with_applied_binding(n: rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, use_site: OwnershipWrapUseSiteAbsent))
     _ => false
   }
 }
@@ -10091,7 +10091,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   } else if data_def_annotation_is_named_refinement(annotation: annotation_type_node, source_indices: scope.type_env.source_indices) {
     coerce_primitive_type(target: Rust, dag_name: authored_name_at(source_indices: scope.type_env.source_indices, node: annotation_type_node))
   } else {
-    render_rust_type_with_applied_binding(n: render_type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, use_site: OwnershipAtFunctionReturn)
+    render_rust_type_with_applied_binding(n: render_type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, use_site: OwnershipWrapUseSiteAbsent)
   }
   let ty_str = if raw_ty_str == "BoundedLattice" || raw_ty_str == "Rc<BoundedLattice>" {
     match field_value_by_name(record: value, field_name: "top", source_indices: scope.type_env.source_indices) {
@@ -10104,9 +10104,12 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
     }
   } else { raw_ty_str }
   let fn_name = to_snake(name: name)
-  let carrier_name = authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)
-  let ty_str = apply_seed_wrap_decision(type_name: carrier_name, rendered: ty_str, use_site: OwnershipAtFunctionReturn)
-  let needs_rc = rust_type_is_rc_wrapped(type_name: ty_str)
+  let needs_rc = set_contains(shared_types, authored_name_at(source_indices: scope.type_env.source_indices, node: type_node))
+  let ty_str = if needs_rc && !rust_type_is_rc_wrapped(type_name: ty_str) {
+    wrap_shared_type(target: Rust, inner: ty_str)
+  } else {
+    ty_str
+  }
   if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) || rust_nominal_identity_carrier_type_eligible(type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)) {
     let val_str = match rust_nominal_identity_data_expr(type_node: type_node, value: value, source_indices: scope.type_env.source_indices) {
       Present { value: identity_expr } => identity_expr
