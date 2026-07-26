@@ -13,19 +13,20 @@ import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.host_run { HostLogicalRun }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.operation_argv { operation_argv_tokens_or_refusal_label }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data emit_host_shell_exec_run_equals_eval_note: String = "Agreement test shape for the shell_exec_run native family (neat-carp-312, Task 2), mirroring emit_host_filesystem_read_equals_eval_test.dag's shape. The 'eval' side is real interpreted execution of the same operation via shell_materialize_argv_for_operation + a direct string check, not a fabricated InterpretationAlgebra oracle (there is no .dag-authored arrow body being translated here). Both legs derive the same argv from dag/extdeps/shell/exec.dag's shell.Exec.Run operation -- the native leg's Command::new(...)/.arg(...) literals are baked at .dag construction time from that SAME shell_materialize_argv_for_operation call, so the two legs cannot silently drift apart (see rust_shell_exec_run_family_note in rust_test.dag)."
+data emit_host_shell_exec_run_equals_eval_note: String = "Agreement test shape for the shell_exec_run native family (neat-carp-312, Task 2), mirroring emit_host_filesystem_read_equals_eval_test.dag's shape. The 'eval' side is real interpreted execution of the same operation via shell_materialize_operation_argv + a direct string check, not a fabricated InterpretationAlgebra oracle (there is no .dag-authored arrow body being translated here). Both legs derive the same argv from dag/extdeps/shell/exec.dag's shell.Exec.Run operation -- the native leg's Command::new(...)/.arg(...) literals are baked at .dag construction time from that SAME shell_materialize_operation_argv call, so the two legs cannot silently drift apart (see rust_shell_exec_run_family_note in rust_test.dag)."
 
 fn shell_exec_run_witness_argv() -> List<String> {
-  shell_materialize_argv_for_operation(
-    "dag/extdeps/shell/exec.dag",
-    "shell.Exec",
-    "Run",
-    "",
-    "",
-    []
+  operation_argv_tokens_or_refusal_label(
+    m: shell_materialize_operation_argv(
+      "dag/extdeps/shell/exec.dag",
+      "shell.Exec",
+      "Run",
+      []
+    )
   )
 }
 

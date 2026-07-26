@@ -1,0 +1,257 @@
+module gunbc.observation_seed_render
+
+import std.types { String, NonEmptyStr, Bool }
+import std.nat { Nat }
+import std.symbols { Tier, Emoji, Unicode, StatusBlocked }
+import std.measure { millisecond, byte_size, basis_point }
+import std.disposition { Disposition, Terminal }
+import std.observation {
+  ObservationSubject,
+  BatchSegment,
+  PhaseSegment,
+  ModuleSegment,
+  MeasuredValue,
+  MeasuredUnavailable,
+  ObservationEvent,
+  Begin,
+  Concluded,
+  Done,
+  Failed,
+  AttentionBasis,
+  Anomaly,
+  SchedulerHold,
+  PsiPressure,
+  CurrentHighWater,
+}
+import gunbc.observation_ci_render {
+  ci_event_line,
+  ci_render_line,
+  ci_heartbeat_line,
+  ci_hold_cause_text,
+  ci_measurement_rss_line,
+  HeartbeatSample,
+  RenderedLine,
+}
+
+data observation_seed_render_note: String = "The seed to .dag render boundary. The v1 seed (claim_executor and its siblings) emits progress lines, but the FORMAT is a single authority in gunbc.observation_ci_render — a raw eprintln in the seed forks that format the way a hand-rolled duration string forks std.measure. This module is the boundary the seed calls across, exactly as cli_run.install_output_policy calls output_policy.resolve_channel_policy: primitive arguments in, a rendered line out, no format logic on the seed side. It constructs the ObservationEvent the seed's occurrence corresponds to (a phase concluding is a Concluded event on a PhaseSegment subject) and projects it through the existing renderer, so the seed cannot drift from the model. It holds no telemetry source and computes no facts of its own; every field it fills came in as an argument the seed already had (observation law 5)."
+
+data observation_seed_render_basis_note: String = "The attention basis governs PLACEMENT (ambient collapses, an anomaly surfaces), not the rendered string — ci_render_line reads only the glyph and text. It is supplied here, not omitted, so a future placement consumer reads a real level rather than a fabricated one, and it is grounded in the clamp overhead the floor already models (the non-per-unit floor time gunbc.ci_spec budgets as gunbc_ci_floor_batch_clamp_params overhead_seconds) rather than a threshold invented in a formatting helper: a prelude phase completing inside the whole overhead budget is routine, so it reads Ambient. The seed passes that overhead in as overhead_ms — this module does not reach for it, keeping the module a pure projection."
+
+fn seed_tier(emoji: Bool) -> Tier {
+  if emoji { Emoji } else { Unicode }
+}
+
+fn seed_phase_basis(overhead_ms: Nat) -> AttentionBasis {
+  AttentionBasis { average: millisecond(count: overhead_ms), maximum: millisecond(count: overhead_ms) }
+}
+
+fn seed_phase_subject(phase: NonEmptyStr) -> ObservationSubject {
+  ObservationSubject { segments: [ PhaseSegment { name: phase } ] }
+}
+
+data seed_phase_begin_note: String = "A phase Begin is the matched half of observation law 1 for phase-grain subjects. The floor prelude historically only printed Concluded (the mark fires when the phase ends); compile-path gantt marks already pair .begin/.done, so the seed boundary exposes both arms. Wall at Begin is unmeasured by construction — elapsed does not exist yet — and RSS stays on heartbeat/measurement (ci_event_line does not project event.rss). The compile-path seed renders through a Rust MIRROR of these fns rather than the interpreter: trace_mark runs inside compile itself, and calling back into the interpreter to render would recurse. The mirror is proven byte-equal to this oracle by the seed RED (same pattern as seed_heartbeat_line / render_heartbeat_line_mirror)."
+
+fn phase_begin_line(phase: NonEmptyStr, overhead_ms: Nat, emoji: Bool) -> String {
+  let event = ObservationEvent {
+    subject: seed_phase_subject(phase: phase),
+    transition: Begin,
+    wall: MeasuredUnavailable { cause: "begin has no elapsed yet" as NonEmptyStr },
+    rss: MeasuredUnavailable { cause: "not sampled at a phase boundary" as NonEmptyStr }
+  }
+  ci_render_line(
+    line: ci_event_line(event: event, basis: seed_phase_basis(overhead_ms: overhead_ms)),
+    tier: seed_tier(emoji: emoji)
+  )
+}
+
+fn phase_concluded_line(phase: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat, emoji: Bool) -> String {
+  let event = ObservationEvent {
+    subject: seed_phase_subject(phase: phase),
+    transition: Concluded { outcome: Done },
+    wall: MeasuredValue { value: millisecond(count: elapsed_ms) },
+    rss: MeasuredUnavailable { cause: "not sampled at a phase boundary" as NonEmptyStr }
+  }
+  ci_render_line(
+    line: ci_event_line(event: event, basis: seed_phase_basis(overhead_ms: overhead_ms)),
+    tier: seed_tier(emoji: emoji)
+  )
+}
+
+data seed_heartbeat_unreadable_cause: NonEmptyStr = "cgroup field unreadable" as NonEmptyStr
+
+data seed_heartbeat_note: String = "The floor-memory heartbeat's projection. The heartbeat runs on a detached liveness thread in a memory-constrained context, so the seed renders it through a Rust MIRROR of ci_heartbeat_line rather than calling the interpreter there — an interpreter render on that thread would build a duplicate module index, consuming the very memory the heartbeat watches (DESIGN section 2), and the thread's whole point is to stay alive when the main interpreter is busy. This fn is the ORACLE that keeps the mirror honest: the seed's Rust test runs this (through the interpreter) and its mirror on the same samples and asserts byte-equality, so the format authority stays here in the one renderer and any drift reds. The subject is batch-grain by construction — the floor walks entries in parallel, so there is no single active module to name; the primitive interface carries no module or phase, which is why the mirror is a COMPLETE reflection of this fn over the seed's real input space, never a fabricated per-module detail (observation law 2: identity, never invented). Wired (4b): claim_executor.render_heartbeat_line_mirror + HeartbeatFeed."
+
+fn seed_heartbeat_line(
+  elapsed_ms: Nat,
+  batch_index: Nat,
+  batch_label: NonEmptyStr,
+  entry_index: Nat,
+  entry_total: Nat,
+  rss_bytes: Nat,
+  rss_available: Bool,
+  swap_bytes: Nat,
+  swap_available: Bool,
+  pressure_bp: Nat,
+  pressure_available: Bool,
+  emoji: Bool
+) -> String {
+  ci_render_line(
+    line: ci_heartbeat_line(sample: HeartbeatSample {
+      elapsed: millisecond(count: elapsed_ms),
+      active: ObservationSubject { segments: [ BatchSegment { index: batch_index, label: batch_label } ] },
+      entry_index: entry_index,
+      entry_total: entry_total,
+      rss: if rss_available { MeasuredValue { value: byte_size(rss_bytes) } } else { MeasuredUnavailable { cause: seed_heartbeat_unreadable_cause } },
+      swap: if swap_available { MeasuredValue { value: byte_size(swap_bytes) } } else { MeasuredUnavailable { cause: seed_heartbeat_unreadable_cause } },
+      pressure: if pressure_available { MeasuredValue { value: basis_point(count: pressure_bp) } } else { MeasuredUnavailable { cause: seed_heartbeat_unreadable_cause } }
+    }),
+    tier: seed_tier(emoji: emoji)
+  )
+}
+
+data seed_governor_hold_note: String = "Governor hold projection (wiring flip): HoldReason is already lockstep with SchedulerHold; the emit side now projects through ci_hold_cause_text rather than a bespoke [governor] printer. Attention is Anomaly (a hold is never Ambient). The seed renders through a Rust MIRROR in memory_governor — the governor is host physics without a source-root resolve context, same class as the heartbeat mirror. Oracle RED: seed_psi_hold_line / seed_high_water_hold_line byte-equal to render_governor_hold_line_mirror."
+
+fn seed_governor_hold_line(hold: SchedulerHold, emoji: Bool) -> String {
+  ci_render_line(
+    line: RenderedLine {
+      glyph: StatusBlocked,
+      text: ci_hold_cause_text(hold: hold),
+      attention: Anomaly
+    },
+    tier: seed_tier(emoji: emoji)
+  )
+}
+
+fn seed_psi_hold_line(avg10_bp: Nat, emoji: Bool) -> String {
+  seed_governor_hold_line(
+    hold: PsiPressure { avg10: basis_point(count: avg10_bp) },
+    emoji: emoji
+  )
+}
+
+fn seed_high_water_hold_line(current_bytes: Nat, high_water_bytes: Nat, emoji: Bool) -> String {
+  seed_governor_hold_line(
+    hold: CurrentHighWater {
+      current: byte_size(current_bytes),
+      high_water: byte_size(high_water_bytes)
+    },
+    emoji: emoji
+  )
+}
+
+data seed_typecheck_attribution_note: String = "Per-module typecheck attribution (wiring flip): a Concluded event on ModuleSegment+PhaseSegment\{typecheck\} carrying the measured wall, rendered by ci_event_line — written as the module concludes rather than batched to walk end. The 2s threshold that kept the floor log quiet is preserved at the emit site (pathology lane only). Hot-path mirror in cli_run (interpreter render per module under resolve would dominate the wall); oracle RED keeps the mirror byte-equal to this seed."
+
+fn seed_typecheck_subject(module_path: NonEmptyStr) -> ObservationSubject {
+  ObservationSubject {
+    segments: [
+      ModuleSegment { module_path: module_path },
+      PhaseSegment { name: "typecheck" as NonEmptyStr }
+    ]
+  }
+}
+
+fn typecheck_begin_line(module_path: NonEmptyStr, overhead_ms: Nat, emoji: Bool) -> String {
+  let event = ObservationEvent {
+    subject: seed_typecheck_subject(module_path: module_path),
+    transition: Begin,
+    wall: MeasuredUnavailable { cause: "begin has no elapsed yet" as NonEmptyStr },
+    rss: MeasuredUnavailable { cause: "not sampled at a typecheck boundary" as NonEmptyStr }
+  }
+  ci_render_line(
+    line: ci_event_line(event: event, basis: seed_phase_basis(overhead_ms: overhead_ms)),
+    tier: seed_tier(emoji: emoji)
+  )
+}
+
+fn typecheck_concluded_line(module_path: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat, emoji: Bool) -> String {
+  let event = ObservationEvent {
+    subject: seed_typecheck_subject(module_path: module_path),
+    transition: Concluded { outcome: Done },
+    wall: MeasuredValue { value: millisecond(count: elapsed_ms) },
+    rss: MeasuredUnavailable { cause: "not sampled at a typecheck boundary" as NonEmptyStr }
+  }
+  ci_render_line(
+    line: ci_event_line(event: event, basis: seed_phase_basis(overhead_ms: overhead_ms)),
+    tier: seed_tier(emoji: emoji)
+  )
+}
+
+data seed_measurement_unreadable_cause: NonEmptyStr = "no /proc/self/status" as NonEmptyStr
+
+data seed_measurement_note: String = "Measurement-feed projection (wiring flip): peak-RSS samples become ci_measurement_rss_line — identity-first label, human GiB, MeasuredUnavailable names its cause. Hot-path mirrors in claim_executor / claim_batch (same class as heartbeat). The typed receipt consumers are unchanged; only the log dialect migrates."
+
+fn seed_peak_rss_line(label: NonEmptyStr, rss_bytes: Nat, rss_available: Bool, emoji: Bool) -> String {
+  ci_render_line(
+    line: ci_measurement_rss_line(
+      label: label,
+      rss: if rss_available {
+        MeasuredValue { value: byte_size(rss_bytes) }
+      } else {
+        MeasuredUnavailable { cause: seed_measurement_unreadable_cause }
+      }
+    ),
+    tier: seed_tier(emoji: emoji)
+  )
+}
+
+data seed_shell_effect_note: String = "Shell host-effect projection (operator live-log 2026-07-25 acceptance): subjects are NAMED INTENTS — the typed service.op key (`git.Core.HeadCommit`, `shell.Env.Get`), never raw `$ argv`. Argv is demoted to Failed.error (`$ <argv> (exit=N)`, whitespace-collapsed) and the Verbose/title channel. Routine Begin/Concluded\{Done\} are Ambient (ShellTrace-gated; Suppressed at Normal so scaffolding collapses); failing Concluded\{Failed\} is Anomaly (OutsideGroup by law 4), gated by divergence disposition alone — channel Suppressed must never silence a failure. Hot-path mirrors in v1_interpreter; oracle RED keeps them honest."
+
+fn seed_shell_subject(intent: NonEmptyStr) -> ObservationSubject {
+  ObservationSubject { segments: [ PhaseSegment { name: intent } ] }
+}
+
+fn shell_effect_begin_line(intent: NonEmptyStr, overhead_ms: Nat, emoji: Bool) -> String {
+  let event = ObservationEvent {
+    subject: seed_shell_subject(intent: intent),
+    transition: Begin,
+    wall: MeasuredUnavailable { cause: "begin has no elapsed yet" as NonEmptyStr },
+    rss: MeasuredUnavailable { cause: "not sampled at shell spawn" as NonEmptyStr }
+  }
+  ci_render_line(
+    line: ci_event_line(event: event, basis: seed_phase_basis(overhead_ms: overhead_ms)),
+    tier: seed_tier(emoji: emoji)
+  )
+}
+
+fn shell_effect_done_line(intent: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat, emoji: Bool) -> String {
+  let event = ObservationEvent {
+    subject: seed_shell_subject(intent: intent),
+    transition: Concluded { outcome: Done },
+    wall: MeasuredValue { value: millisecond(count: elapsed_ms) },
+    rss: MeasuredUnavailable { cause: "not sampled at shell completion" as NonEmptyStr }
+  }
+  ci_render_line(
+    line: ci_event_line(event: event, basis: seed_phase_basis(overhead_ms: overhead_ms)),
+    tier: seed_tier(emoji: emoji)
+  )
+}
+
+fn shell_effect_failed_line(
+  intent: NonEmptyStr,
+  argv_collapsed: NonEmptyStr,
+  exit_code: Nat,
+  elapsed_ms: Nat,
+  overhead_ms: Nat,
+  emoji: Bool
+) -> String {
+  let error = concat(
+    "$ ",
+    concat(argv_collapsed, concat(" (exit=", concat(to_string(exit_code), ")")))
+  ) as NonEmptyStr
+  let event = ObservationEvent {
+    subject: seed_shell_subject(intent: intent),
+    transition: Concluded {
+      outcome: Failed { error: error, output: "" }
+    },
+    wall: MeasuredValue { value: millisecond(count: elapsed_ms) },
+    rss: MeasuredUnavailable { cause: "not sampled at shell completion" as NonEmptyStr }
+  }
+  ci_render_line(
+    line: ci_event_line(event: event, basis: seed_phase_basis(overhead_ms: overhead_ms)),
+    tier: seed_tier(emoji: emoji)
+  )
+}
+
+data observation_seed_render_disposition: Disposition = Terminal {
+  reason: "The seed to .dag render boundary is Terminal, not a scaffold: a boundary the seed calls across to keep the format single-authority is the mechanism, not an interim stand-in. What dissolves is each raw eprintln the seed replaces with a call here — counted by gunbc.observation_emit_census — and, further out, the seed itself as v2 realizes the witnesses natively; neither changes what this module models, which is that a seed occurrence is an observation event projected by the one renderer."
+}

@@ -1,0 +1,99 @@
+module v2.test.claim.fallback_arm_census_planted
+
+import v2.lens.fallback_arm_census {
+  AnswersOnOpen,
+  ClassifierUnknown,
+  CompletesClosedTotal,
+  DeclaredInterim,
+  Refuses,
+  classify_fallback_arm,
+  classify_last_arm_of_planted_match,
+  fallback_arm_class_eq,
+  fallback_arm_class_is_defect,
+  fallback_arm_class_is_unknown,
+  fallback_unknown_undecidable_body,
+  planted_match_with_wildcard_answers,
+  planted_match_with_wildcard_opaque,
+  planted_match_with_wildcard_refuses,
+  FallbackArmClassifyInput
+}
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fallback_arm_planted_note: String = "W2 fallback-arm census planted fixtures (docs/plans/fallback-arm-census.md): AnswersOnOpen / Refuses / ClassifierUnknown mechanism REDs on synthetic Match nodes — no host, no corpus walk. Corpus grain enrolls separately on falsifier_substrate_long_lane."
+
+test fn planted_answers_on_open_is_defect_holds() -> Bool {
+  let c = classify_last_arm_of_planted_match(
+    match_node: planted_match_with_wildcard_answers(),
+    scrutinee_closed_total: false,
+    interim_declared: false
+  )
+  fallback_arm_class_eq(a: c, b: AnswersOnOpen) && fallback_arm_class_is_defect(c: c)
+}
+
+test fn planted_refuses_is_healthy_holds() -> Bool {
+  let c = classify_last_arm_of_planted_match(
+    match_node: planted_match_with_wildcard_refuses(),
+    scrutinee_closed_total: false,
+    interim_declared: false
+  )
+  fallback_arm_class_eq(a: c, b: Refuses) && !fallback_arm_class_is_defect(c: c)
+}
+
+test fn planted_opaque_is_unknown_counted_holds() -> Bool {
+  let c = classify_last_arm_of_planted_match(
+    match_node: planted_match_with_wildcard_opaque(),
+    scrutinee_closed_total: false,
+    interim_declared: false
+  )
+  fallback_arm_class_is_unknown(c: c)
+    && fallback_arm_class_eq(
+      a: c,
+      b: ClassifierUnknown { cause: fallback_unknown_undecidable_body }
+    )
+}
+
+test fn planted_closed_total_answers_holds() -> Bool {
+  let c = classify_last_arm_of_planted_match(
+    match_node: planted_match_with_wildcard_answers(),
+    scrutinee_closed_total: true,
+    interim_declared: false
+  )
+  fallback_arm_class_eq(a: c, b: CompletesClosedTotal)
+}
+
+test fn planted_interim_overrides_answers_holds() -> Bool {
+  let c = classify_last_arm_of_planted_match(
+    match_node: planted_match_with_wildcard_answers(),
+    scrutinee_closed_total: false,
+    interim_declared: true
+  )
+  fallback_arm_class_eq(a: c, b: DeclaredInterim)
+}
+
+test fn classifier_input_not_wildcard_is_unknown_holds() -> Bool {
+  let c = classify_fallback_arm(
+    input: FallbackArmClassifyInput {
+      pattern_is_wildcard: false,
+      body_refuses: false,
+      body_answers: true,
+      scrutinee_closed_total: false,
+      interim_declared: false
+    }
+  )
+  fallback_arm_class_is_unknown(c: c)
+}
+
+test fn classifier_class_eq_covers_all_variants_self_applies_holds() -> Bool {
+  fallback_arm_class_eq(a: Refuses, b: Refuses)
+    && fallback_arm_class_eq(a: CompletesClosedTotal, b: CompletesClosedTotal)
+    && fallback_arm_class_eq(a: DeclaredInterim, b: DeclaredInterim)
+    && fallback_arm_class_eq(a: AnswersOnOpen, b: AnswersOnOpen)
+    && fallback_arm_class_eq(
+      a: ClassifierUnknown { cause: fallback_unknown_undecidable_body },
+      b: ClassifierUnknown { cause: fallback_unknown_undecidable_body }
+    )
+    && !fallback_arm_class_eq(a: AnswersOnOpen, b: Refuses)
+}

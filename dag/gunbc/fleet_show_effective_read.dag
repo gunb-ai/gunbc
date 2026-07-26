@@ -79,11 +79,11 @@ fn fleet_runner_unit_memory_live_read(
   match fleet_host_ssh_transport(host: host) {
     Present { value: transport } =>
       match systemctl_show_property_read(transport: transport, unit: unit, property: MemoryMax) {
-        Present { value: memory_max_raw } =>
+        SystemdPropertyCaptured { value: memory_max_raw } =>
           match systemctl_show_property_read(transport: transport, unit: unit, property: MemorySwapMax) {
-            Present { value: memory_swap_max_raw } =>
+            SystemdPropertyCaptured { value: memory_swap_max_raw } =>
               match systemctl_show_property_read(transport: transport, unit: unit, property: MemoryHigh) {
-                Present { value: memory_high_raw } =>
+                SystemdPropertyCaptured { value: memory_high_raw } =>
                   Present {
                     value: runner_unit_live_read_typed(
                       row: RunnerUnitLiveReadRow {
@@ -96,11 +96,11 @@ fn fleet_runner_unit_memory_live_read(
                       }
                     )
                   }
-                Absent => none
+                SystemdPropertyCaptureRefused { reason: _ } => none
               }
-            Absent => none
+            SystemdPropertyCaptureRefused { reason: _ } => none
           }
-        Absent => none
+        SystemdPropertyCaptureRefused { reason: _ } => none
       }
     Absent => none
   }
@@ -112,7 +112,10 @@ fn fleet_runner_slice_cap_memory_max_raw(
 ) -> String? {
   match fleet_host_ssh_transport(host: host) {
     Present { value: transport } =>
-      systemctl_show_property_read(transport: transport, unit: slice_unit, property: MemoryMax)
+      match systemctl_show_property_read(transport: transport, unit: slice_unit, property: MemoryMax) {
+        SystemdPropertyCaptured { value: raw } => Present { value: raw }
+        SystemdPropertyCaptureRefused { reason: _ } => none
+      }
     Absent => none
   }
 }
@@ -162,20 +165,6 @@ fn per_slot_memory_cap_verdict_from_unit_read(
   target: ConvergeTarget,
 ) -> ConvergeVerdict? {
   converge_target_live_verdict(read: read, target: target)
-}
-
-fn fleet_runner_width_count_read_script(instance_glob: NonEmptyStr) -> String {
-  concat(
-    concat("systemctl list-units --type=service --state=active --no-legend \"", instance_glob),
-    "\" 2>/dev/null | wc -l | tr -d ' '"
-  )
-}
-
-fn fleet_runner_unit_memory_props_read_script(unit: NonEmptyStr) -> String {
-  concat(
-    concat("systemctl show -p MemoryMax -p MemorySwapMax -p MemoryHigh --value \"", unit),
-    "\" 2>/dev/null"
-  )
 }
 
 data gunbc_srv1_runner_slice_cap_fixture_row: RunnerSliceCapLiveReadRow = RunnerSliceCapLiveReadRow {

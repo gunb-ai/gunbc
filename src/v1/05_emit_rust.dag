@@ -4410,7 +4410,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
     } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
       emit_zero_param_phantom_opaque_struct(item: item, source_indices: env.source_indices)
     } else {
-      match rust_seed_host_numeric_alias(name: item_text, corpus_repr: emit_info.corpus_repr) {
+      match rust_scalar_checkpoint_render_base(dag_name: item_text, corpus_repr: emit_info.corpus_repr) {
         Present { value: host } =>
           concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", host, ";")
         Absent =>
@@ -10367,6 +10367,10 @@ fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool) 
     make_indent(level: depth + 2), "/// TestClaim / witness run: Bool false → exit 1; requires --entry\n",
     make_indent(level: depth + 2), "#[arg(long)]\n",
     make_indent(level: depth + 2), "claim_run: bool,\n",
+    make_indent(level: depth + 2), "/// Named argument for the entry function, repeatable: `--arg name=value`.\n",
+    make_indent(level: depth + 2), "/// Values enter as String; a missing `=` refuses rather than guessing.\n",
+    make_indent(level: depth + 2), "#[arg(long = \"arg\")]\n",
+    make_indent(level: depth + 2), "args: Vec<String>,\n",
     make_indent(level: depth + 1), "},"]
   let run_variant = if has_pipeline { run_variant_lines |> join(separator: "") } else { "" }
   let all_variants = if has_pipeline { concat(variants, [compile_variant, run_variant]) } else { variants }
@@ -10578,8 +10582,8 @@ fn emit_compile_match_arm(crate_name: String) -> String {
 
 fn emit_run_match_arm(crate_name: String) -> String {
   concat(
-    "\n        Commands::Run { source_roots, function, entry, claim_run } => {\n",
-    "            cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run);\n",
+    "\n        Commands::Run { source_roots, function, entry, claim_run, args } => {\n",
+    "            cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run, args);\n",
     "        },")
 }
 

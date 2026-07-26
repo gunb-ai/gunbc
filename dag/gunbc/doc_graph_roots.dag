@@ -169,6 +169,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "fallback-arm-census",
+    work: DeclarationRef { module_path: "v2.lens.fallback_arm_census", decl_name: "fallback_arm_census_law", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "W3 promotes the lens to a compile refusal (zero-false-positive corpus-wide) and/or the doc migrates into a registered gunbc.plan.Plan row — then this bind deletes with the md" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "dag-note-prose-census",
     work: DeclarationRef { module_path: "v2.lens.enforcement.standing_intent", decl_name: "StandingIntent", field: WholeDeclaration },
     dissolution: HasTrigger { text: "the typed annotation carriers land (ruling rows on StandingIntent, an event log keyed to the declaration, citation edges) and the annotation-budget lens counts ROWS — at which point a lexical census over prose is superseded by a fold over typed rows, and the doc plus its instrument delete together" },

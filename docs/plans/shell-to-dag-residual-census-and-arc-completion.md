@@ -13,6 +13,19 @@ So srv1/srv2 subsumption and srv3 bringup are the **same** work seen twice: gene
 
 ---
 
+## 0b. Finding — modeled ops whose ONLY realization is a shell escape where a NATIVE handler is correct (transport-decomposition lane; filed 2026-07-24, do-not-fix-here)
+
+A distinct axis from §1's *emission* census: these are ops whose **interface shape is right** but whose **single hardwired transport is wrong** — the verbatim §3(b) "single hardwired transport is the N×M-adapter trap" tell. The shape belongs to the dependency; the transport is a Realization *handler, one of N* (§2). Each of these has exactly one handler — `shell` — where a **native in-process handler** is the correct realization when locality is `OnTarget`, and `shell`/`ssh` is the handler only when the target is another process on another host.
+
+| op (extdeps) | modeled transport | native handler that's missing | receipt |
+| --- | --- | --- | --- |
+| `shell.Env.Get` (`extdeps/shell/shell.dag:42`) | `shell { argv: ["printenv", "{name}"] }` | `std::env::var` — reading an env var **the process already holds in its own environment**. Realized today as `wet_env_var` spawning `printenv` (`v1_interpreter.rs:5096`). Reading your own environment isn't a host effect at all. | floor diff-observation spawns 5 `printenv` children per pass (compile-clean scope + discovery selection), repeated per floor pass — pure log clutter; ~ms each, **not a floor-time lever** |
+| `shell.Which.Check` (`extdeps/shell/shell.dag:57`) | `command -v` (and the ssh `command -v <tool>` ×2 at §3's `host_effect_realize`) | native path-search when `OnTarget`; ssh `command -v` only for a remote host | sibling flagged in the transport review (2026-07-24); same root |
+
+**One root, three lanes** (operator, 2026-07-24): these two, the transport review's `test -x`/`command -v` hand-strings for ssh, and the wall worker's fight are all *modeled operations whose only realization is a shell escape*. The dissolution is the transport-decomposition Realization: **same operation, two handlers, native chosen when locality is `OnTarget`** — `Env.Get`'s native read is the lane's **cheapest first consumer** (a pure in-process read, no `host_effect_apply` even). Not scheduled here; recorded so the deficit is counted and prioritizable (§6), never absorbed into "it's only a few ms."
+
+---
+
 ## 1. Residual-shell census (current tree)
 
 Five categories. "Genuine emitter" = emits bash that actually runs; "oracle/scaffold" = `serialize_bash` retained only for a test.
@@ -151,19 +164,31 @@ Keyed on the **construction site (variant/fn name)** and the modeled op it *shou
 
 | construction site (file · variant/fn) | builder(s) — `*_script.dag` and/or inline | should call | sub-class |
 | --- | --- | --- | --- |
-| `fleet_show_effective_read.dag` · `SystemdUnitMemoryPropertiesRead`, `SystemdUnitMemoryMaxRead` | `fleet_show_effective_read_script.dag` relocated fns **+ inline** `fleet_runner_unit_property_read_script`, `fleet_runner_width_count_read_script` (`systemctl show`/`list-units`) | `extdeps.os.systemctl.ShowProperty` (exists) + a `list-units` op | **A1** modeled |
-| `host_converge_slice1.dag` (via `shell.Exec.Run`) | inline `…_memory_max_read_script`, `…_memory_max_set_script` (`systemctl set-property` concat), `…_enumerate_units_script` (`systemctl list-units` concat) | `systemctl.ShowProperty` / `SetProperty` / new `list-units` op | **A1** modeled |
+| ~~`fleet_show_effective_read.dag` · `SystemdUnitMemoryPropertiesRead`, `SystemdUnitMemoryMaxRead`~~ **LANDED** | ~~`fleet_show_effective_read_script.dag`~~ deleted; ~~inline `fleet_runner_width_count_read_script`, `fleet_runner_unit_memory_props_read_script`~~ deleted (census true-up, 2026-07-26) | `systemd.Systemctl.ShowProperty` via `gunbc.systemctl_show_read`; `list-units` via `gunbc.systemctl_list_units` | **A1 DONE** — see the dead-scaffold note below |
+| ~~`host_converge_slice1.dag` (via `shell.Exec.Run`)~~ **LANDED** | ~~inline `…_memory_max_read/set_script`, `…_enumerate_units_script`~~ deleted | `systemctl_show_read` + `systemctl_list_units_active_services` (both imported and called; `host_converge_slice1.dag:15,49,287`) | **A1 DONE** — verified 2026-07-26: zero `_script` fns, zero `shell.Exec.Run`, zero `systemctl` concats in the file |
 | ~~`host_identity_observation.dag` · `HostIdentityShortHostnameRead`~~ **LANDED** | ~~`host_identity_short_hostname_script`~~ deleted | `os.Hostname.ReadShort` · `dag/extdeps/tools/hostname.dag` | **A2 DONE** — realized through `gunbc.hostname_read` (LocalShell → op, SshShell → typed argv) |
 | ~~`host_effect.dag` · `SetHostnameCas`~~ **LANDED (#7194)** | ~~`host_effect_set_hostname_cas_script`~~ deleted (no such symbol anywhere in tree) | `os.Hostname.Set` · `dag/extdeps/tools/hostname.dag` | **A2 DONE** — `host_effect_realize.dag`'s `SetHostnameCas` arm calls `gunbc.hostname_set` `hostname_set_cas`, whose `hostname_set_local` is `os.Hostname.Set(desired:)`; the SSH arm goes through `typed_argv_exec_over_ssh`, and the CAS read reuses the landed `os.Hostname.ReadShort`. Verified on main 2026-07-25 (bucket A): zero concat builders, zero `shell.Exec` on the path. |
 | `host_effect.dag` · `ReadEffectivePosixPrincipal`, `SudoNopasswdExecuteProbe` | `host_effect_deploy_access_probe_script.dag` (whoami / `sudo -n` / `sudo -n -l`) | `access.PosixEffectivePrincipal`, `sudo.NopasswdExecuteProbe` (exist) | **A3** OWNED BY C5 #6946 — do not touch |
-| `live_deploy/` effect variants | `live_deploy/host_effect_script.dag` (`…apply`/`…retract`/`…ensure_dependency`/`…digest_readback`) | decompose (multi-op) | **A4** decompose |
+| ~~`live_deploy/` effect variants~~ **LANDED (D2 #7192)** | ~~`live_deploy/host_effect_script.dag`~~ **file deleted** — no such path in tree | decomposed (multi-op) | **A4 DONE** — verified 2026-07-26: `dag/gunbc/live_deploy/` is `apply · emit · intent · operations · readiness · service_ready · spec` only, and the directory contains **zero** `ShellCommand` occurrences. This closes do-not-miss item 1 below (the #7004/#7006 relocation debt) |
 | `host_effect_realize.dag` · `ProvisionBuildCache` | `host_build_cache_provision_script.dag` (6 `build_cache_*_body`) | decompose | **A5** srv* deprioritized |
 | hygiene reaper/liveness | `host_hygiene_reaper_script.dag` (4 `…_body`), `host_hygiene_liveness_script.dag` | decompose | **A5** srv* deprioritized |
 | `srv3_host_effect_apply.dag` · `Srv3*` variants, `srv3_install_diagnostic_checklist.dag` · `Srv3InstallDiagnosticObserve`, `nbd_proxy_virtual_media_install.dag` · `Srv3NbdProxyServe` | `srv3_host_effect_script.dag` (5 fns), `srv3_install_diagnostic_observe_script.dag` (5 fns) | typed observe/receipt effects | **A5** srv* deprioritized |
 
+**A1 dead-scaffold finding (census true-up, 2026-07-26).** The A1 typed migration (D2 #7192) dissolved the *live* read path onto `ShowProperty`/`ListUnits` but left two `systemctl` concat builders behind in `fleet_show_effective_read.dag`, orphaned:
+
+- `fleet_runner_unit_memory_props_read_script` — **zero references tree-wide** beyond its own definition. Pure dead code.
+- `fleet_runner_width_count_read_script` — **zero production callers**; its only other reference was a witness assertion.
+
+Both are deleted in this true-up (deletion is the receipt; a row claiming "done" beside a live concat is the relocation pattern this census exists to catch). Two things make this worth recording rather than quietly fixing:
+
+1. **The file's own note claimed the property the tree did not have.** `fleet_show_effective_read.dag:62` asserts "no per-command HostEffect nicknames, **no concat shell strings**" while two concat shell strings sat 110 lines below it. The note was true of the *live path* and false of the *file* — the §3 tell that a prose claim had drifted from its carrier.
+2. **A witness was pinning the dead scaffold as contract.** `fleet_show_effective_read_witness_test.dag` · `witness_transport_reads_use_show_property_authority` — a witness whose *name* asserts reads use the typed authority — carried a third conjunct asserting `fleet_runner_width_count_read_script(...)` contains `"list-units"`. That conjunct (a) is tautological (a `concat` of a literal containing `list-units` always contains `list-units`; it can only fail if someone edits the literal), (b) asserts nearly the **opposite** of the witness's stated purpose — that a shell-concat *bypass* still exists with the right shape, and (c) kept a dead symbol referenced, so it never read as dead code. Removing it leaves the witness asserting exactly what its name claims (typed argv match + local read), which is **stronger**, not weaker. This is the DESIGN §5 "tests *asserting the string* so the degradation was enshrined as the contract" shape, in the small.
+
 ### 4.B — DIRECT `ShellCommand{script}` still constructed in intent
 
-The relocation wave turned most direct construction into nickname variants (4.A), but **two live direct sites remain** on `origin/main` — the multiline form my first-draft single-line P1 missed (review 41467):
+**STATUS 2026-07-26 (census true-up): both rows below are DISCHARGED — there are now ZERO direct `ShellCommand{script}` construction sites in `dag/gunbc/live_deploy/`** (verified: `grep -rn ShellCommand dag/gunbc/live_deploy/` returns 0). `live_deploy_unit_diagnosis_command` and `live_deploy_healthz_probe_script_for_port` no longer exist anywhere in tree — D2 #7192 (tree_sync `| tail` + `exit 0` absorbing fallback, converted to a typed `Systemctl.Status` exit-as-data refusal) and D3 #7193 (readiness routed through `gunbc.systemctl_status_read` + `http.Client.Get`) closed them. The table is kept struck-through as the audit trail.
+
+~~The relocation wave turned most direct construction into nickname variants (4.A), but **two live direct sites remain** on `origin/main` — the multiline form my first-draft single-line P1 missed (review 41467):~~
 
 | site (file · construction) | builder (file · fn) | runs on | dissolve to |
 | --- | --- | --- | --- |
@@ -174,8 +199,9 @@ Residue only (not construction to migrate):
 
 | site (file · symbol) | what | action |
 | --- | --- | --- |
-| `host_effect_plan.dag` · `ShellCommand { script: "" }` | empty placeholder | delete with the type |
-| `host_effect.dag` · `ShellCommand { script: String }` | the **type variant** itself | delete at arc close (DESIGN §5, escalated) — terminal |
+| `host_effect_plan.dag:39` · `ShellCommand { script: "" }` | empty placeholder | delete with the type — **still present** (verified 2026-07-26) |
+| `host_effect.dag:28` · `ShellCommand { script: String }` | the **type variant** itself | delete at arc close (DESIGN §5, escalated) — terminal; **still present** |
+| `fleet_converge_cli.dag:57` · `ShellCommand { script: _ } => fallback` | a **match arm**, not a construction site — consumes the variant, builds no string | *(row added by the 2026-07-26 true-up; previously uncensused)* dissolves with the type variant above. Listed so the arc-close delete has a complete consumer list — a missed match arm is what turns the terminal delete into a non-exhaustive-match break |
 
 *(The first draft mis-grounded on a divergent worktree — `fleet_show`/`host_identity` corrected to 4.A per review 41399 — and then under-scoped P1 to single-line, missing these `readiness.dag` sites per review 41467. Both fixed.)*
 
@@ -192,7 +218,20 @@ Residue only (not construction to migrate):
 
 ### 4.D — `ssh.Session.Exec` command-string (vs typed `ExecArgv`)
 
-All in `host_effect_realize.dag`, via `ssh_session_exec(command:)` / `ssh_session_exec_script(script:)`:
+**RECLASSIFIED by the 2026-07-26 true-up — read before picking this up.** Every `ssh_session_exec(command:)` site in the table below sits inside an **`srv3_*` function**, i.e. inside the srv\* cluster the operator wound down 2026-07-22 and authorized for retirement 2026-07-24 (§5.D roadmap item). So 4.D is **not** an independently-dispatchable A1 bucket: dissolving these to `ExecArgv` would be typed-argv work on a subgraph slated for deletion — motion, not progress. **4.D inherits A5's deferred status** and should be picked up only as part of the srv3 retirement, or if that retirement is abandoned.
+
+Exhaustive site list, verified on `origin/main` @ `efe67794cd` (enclosing fn in bold — this is what the original table did not record):
+
+| line | enclosing fn | verb | disposition |
+| --- | --- | --- | --- |
+| `:731` | **`srv3_transport_witness_bin_success`** | arbitrary command (`cd … && bin args`) | A5-deferred (srv3) |
+| `:742` | **`srv3_transport_test_executable`** | `test -x <path>` | A5-deferred (srv3) |
+| `:752` | **`srv3_apt_tool_present`** | `command -v <tool>` | A5-deferred (srv3) |
+| `:775` | **`srv3_tool_bin_path`** | `command -v <tool>` | A5-deferred (srv3) |
+| `:821`, `:822` | **`srv3_chown_directory_to_current_user`** | `id -u` / `id -g` | A5-deferred (srv3) |
+| `:1169` | **`run_shell_transport`** | `ssh_session_exec_script(script: script.body)` | **NOT srv3** — this is the realization core's `RetainedShellScript` → SSH path, i.e. the §5.E counted frontier's own transport. It dissolves when the frontier empties, not by a per-site migration. Do not edit under a 4.D brief |
+
+The original table's rows are retained below for provenance:
 
 | construction | verb | should call | class |
 | --- | --- | --- | --- |
@@ -233,6 +272,17 @@ These are correct as shell (a GHA runner / cron / git / pre-runtime host only un
 ### 4.H — oracle / test retainers (NOT live construction — skip)
 
 `live_deploy/emit.dag:448,452` `expected_*_script` (drift-gate oracles), `*_test.dag` fixtures. These are test expectations, not runtime construction; they follow their subject's dissolution.
+
+### Ledger true-up @ 2026-07-26 (§4.A/4.B/4.D, snappy-moth-330) — read this FIRST
+
+Re-censused §4.A, §4.B and §4.D against `origin/main` @ `efe67794cd` by execution over the tree, not by trusting the rows. Four corrections, in descending order of how badly the stale row would mislead:
+
+1. **§4.D is not a dispatchable bucket — it is A5-deferred.** Every `ssh_session_exec(command:)` site is inside an **`srv3_*`** fn (the wound-down srv\* cluster), except `:1169` which is the realization core's own `RetainedShellScript` transport. The old table listed the verbs without the enclosing fns, which made it read like an independent typed-argv bucket. It is not; picking it up would be typed-argv work on a subgraph slated for retirement.
+2. **§4.A4 and §4.B are DONE.** `live_deploy/host_effect_script.dag` is deleted and `dag/gunbc/live_deploy/` contains zero `ShellCommand`. This closes "do-not-miss" item 1 (the #7004/#7006 relocation debt), which had been the loudest open warning in this doc.
+3. **§4.A1 is DONE, but left two dead concat builders behind** — deleted in this true-up, with the witness that was pinning one of them as contract. See the A1 dead-scaffold note in §4.A; the pattern (a file note claiming "no concat shell strings" while two sat below it, plus a tautological witness conjunct asserting the bypass still had the right shape) is the reusable finding.
+4. **One uncensused consumer added** — `fleet_converge_cli.dag:57`'s `ShellCommand` **match arm**, so the terminal type delete has a complete consumer list.
+
+**Net:** with bucket D (§4.E/§4.I) in flight, the non-deferred remainder of this arc is **§4.F wall-green only** (the `host_language_transport_script` lens promotion + meta-exec confinement) — and that is coupled to the node/subtree visibility-grants lane, not independently schedulable here. Everything else open is operator-deferred srv\*.
 
 ### Ledger true-up @ 2026-07-25 (bucket A, calm-pike-837) — read this before the 07-22 snapshot below
 
@@ -278,12 +328,12 @@ The state of every PR in this arc, so nothing is missed if work pauses here. **A
 **Not started — the remaining arc (bounded, fully specified in §5; safe to pause):**
 
 - **§5.A** — **COMPLETE.** All four ops landed on #7194 and are verified in tree at their post-#7231 homes: `os.Hostname.ReadShort`/`Set` (`dag/extdeps/tools/hostname.dag`), `systemd.Systemctl.ListUnits` and `.Status` (`dag/extdeps/systemd/systemctl.dag:185,219`), `os.Id.Uid` (`dag/extdeps/tools/id.dag:26`). (`ssh.Session.ExecArgv` landed via C5; `Clock.Now` in `dag/extdeps/clock/clock.dag` already existed and is now the single authority for every `date -Iseconds` site.) **The finite new-op list this whole arc needed is closed** — everything remaining in §5.B is calling ops that now exist.
-- **§5.B** — the call-the-op migrations, **UNPAUSED** (the wall landed, #7184). D1/D2/D3 (#7192/#7193/#7194) and this PR's bucket A discharged the hostname, systemctl-read and clock clusters; the srv\* cluster (4.A5) and `live_deploy` (4.A4) remain.
+- **§5.B** — the call-the-op migrations, **UNPAUSED** (the wall landed, #7184). D1/D2/D3 (#7192/#7193/#7194) and bucket A discharged the hostname, systemctl-read and clock clusters. **Updated 2026-07-26:** `live_deploy` (4.A4) and the `fleet_show`/`host_converge_slice1` systemctl cluster (4.A1) are **also done** — only the **operator-deferred srv\* cluster (4.A5, and 4.D which is inside it)** remains in §5.B. With bucket D (4.E/4.I foreign-executor emit) in flight, the non-deferred §5.B queue is **empty**.
 - **§5.E** — the **transport-script construction wall** — **LANDED #7184.** Built as a `RetainedShellScript` RECORD edge + free-minter deletion + counted bridges + lens activation + compile-fail REDs (see §5.E ruling block; "brand `TransportScript`" was found non-walling because the brand is transparent). The 2026-07-24 wall-first ruling that paused §5.A/§5.B is therefore discharged.
 
 **⚠ Do-not-miss for wind-down:**
 
-1. **#7004 and #7006 merged as "progress" but are relocations** — the concats were moved, not deleted, so those sites (live_deploy/apply, host_identity) are **not actually bash-free.** #7064 fixes `fleet_show`; the rest still need the proper dissolution.
+1. ~~**#7004 and #7006 merged as "progress" but are relocations**~~ — **CLOSED by the 2026-07-26 true-up.** Both relocation sites are now genuinely dissolved: `live_deploy/host_effect_script.dag` is **deleted** (D2 #7192) with zero `ShellCommand` left in the directory, and `host_identity`'s hostname path went typed on D1 #7194. The relocation debt this item tracked no longer exists on main.
 2. **Two open PRs to land:** #7065 (census/plan) and #7064 (exemplar).
 3. **Nothing is lost by pausing** — §5 is the durable, bounded plan (4 ops + call-existing-op + emit-roster + wall). Resume from §5 whenever.
 
@@ -327,7 +377,7 @@ This punch-list folds into the **`host_language_transport_script` lens going liv
 | new op | home file | covers verb | consumers |
 | --- | --- | --- | --- |
 | `extdeps.os.hostname` · ~~`Read`~~ **LANDED** + `Set` | `dag/extdeps/os/hostname.dag` (created) | ~~`hostname -s`~~ **done**; `hostnamectl set-hostname` remains | **Read done** — `os.Hostname.ReadShort` realized via typed cell `HostnameReadOnHost` + `gunbc.hostname_read` (LocalShell → op, SshShell → typed argv); both read consumers dissolved: `host_identity_observation` (`HostIdentityShortHostnameRead`, the `host_identity_short_hostname_script` concat DELETED) and `ci_deploy_target_host` (runtime-present read; the GHA preflight *block* stays E-emit). **Set** (`host_effect_hostname` `SetHostnameCas`, its own `host_effect_set_hostname_cas_script` concat) still pending — reuses this op file with a `SetHostname` op. |
-| `systemd.Systemctl.ListUnits` | **add to** `dag/extdeps/os/systemctl.dag` | `systemctl list-units --state=active` | `host_converge_slice1` (`_enumerate_units_script`), `fleet_show_effective_read` (`fleet_runner_width_count_read_script`) |
+| `systemd.Systemctl.ListUnits` | **add to** `dag/extdeps/os/systemctl.dag` | `systemctl list-units --state=active` | `host_converge_slice1` (was `_enumerate_units_script`; now calls `systemctl_list_units_active_services` at `:287`). *The `fleet_show_effective_read` consumer named here — `fleet_runner_width_count_read_script` — was never migrated: it was superseded and left dead, and is deleted by the 2026-07-26 true-up.* |
 | `extdeps.os.id` · `Read` (uid/gid/user) | **new** `dag/extdeps/os/id.dag` | `id -u`, `id -g`, `id <user>` | `host_effect_realize` (ssh probes), `fleet_posix_accounts` (`probe_command`) |
 | `ssh.Session.ExecArgv` | **add to** `dag/extdeps/diagnostic/ssh.dag` | typed argv over ssh (`ssh host -- argv`) | `host_effect_realize` ssh probes — **IN FLIGHT, C5 #6946** |
 | `systemd.Systemctl.Status` | **add to** `dag/extdeps/os/systemctl.dag` | `systemctl status --no-pager --full <unit>` (models exit-3-for-dead-unit — retires the `\| tail`+`exit 0` absorbing fallback) | `live_deploy/readiness.dag` unit diagnosis |
