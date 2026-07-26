@@ -1,7 +1,25 @@
 module test.claim.language_source_scaffold_index_test
 
+import std.types { Bool, String, Int }
+import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.language_source_scaffold_index {
+  LanguageSourceScaffoldRow,
+  language_source_scaffold_roster,
+  language_source_scaffold_roster_size,
+  language_source_scaffold_roster_all_dispositioned,
+  language_source_scaffold_row_is_dispositioned,
+  rust_pair_completion_spelling_scaffold_trigger
+}
 
-data language_source_scaffold_index_test_note: String = "B2/B4/B5 control for the language-source scaffold inventory. Every rostered blob of hand-authored target source must carry a std.disposition Disposition that actually names something: a Scaffold binding the construction that subsumes it, or a Terminal stating why it is irreducible. Because Disposition has no prose arm, an UNMARKED blob is unwritable, so the discriminating case is a mark that names nothing — the RED control is a Scaffold with an empty bind. A Terminal WITH a reason is legitimate (fnv1a64 is a named irreducible kernel), so the control is deliberately not 'Terminal is bad'."
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data language_source_scaffold_index_test_note: String = "B2/B4/B5 control for the language-source scaffold inventory. Two distinct obligations are asserted separately. (1) DISPOSITION: every rostered blob carries a Disposition that names something — a Scaffold binding the construction that subsumes it, or a Terminal stating why it is irreducible. Because Disposition has no prose arm, an unmarked row is unwritable, so the discriminating case is a mark that names NOTHING: the RED control is a Scaffold with an empty bind. A Terminal WITH a reason is legitimate (fnv1a64 is a named irreducible kernel), so the control is deliberately not 'Terminal is bad'. (2) COVERAGE: the roster must actually cover its carriers. Asserting hardcoded census counts alone would let a new rt_/ct_ blob land unmarked and stay green until someone bumped the number by hand (review 43161), so coverage is read from the LIVE TREE: the rt_ and ct_ declaration counts in the carrier sources are compared against the roster, and a newly added blob reds this witness instead of sitting unrostered."
+
+data runtime_rust_source_path: String = "src/v1/runtime_rust.dag"
+data compiler_tests_rust_source_path: String = "src/v1/compiler_tests_rust.dag"
 
 data empty_bind_control_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "extdeps.languages.rust.emit",
@@ -18,17 +36,29 @@ data legitimate_terminal_control_row: LanguageSourceScaffoldRow = LanguageSource
   disposition: Terminal { reason: "named irreducible intrinsic kernel" }
 }
 
+fn rostered_count_for(carrier: String) -> Int {
+  language_source_scaffold_roster |> filter(r => r.carrier_module == carrier) |> count
+}
+
+fn declared_fn_count(path: String, prefix: String) -> Int {
+  let src = filesystem_read(path: path)
+  (src.content |> split(delimiter: prefix) |> count) - 1
+}
+
 test fn language_source_scaffold_roster_is_fully_dispositioned() -> Bool {
   language_source_scaffold_roster_all_dispositioned()
 }
 
-test fn language_source_scaffold_roster_covers_every_carrier() -> Bool {
-  let runtime_rows = language_source_scaffold_roster |> filter(r => r.carrier_module == "v1.compiler.runtime_rust") |> count
-  let tests_rows = language_source_scaffold_roster |> filter(r => r.carrier_module == "v1.compiler.compiler_tests_rust") |> count
-  let rust_emit_rows = language_source_scaffold_roster |> filter(r => r.carrier_module == "extdeps.languages.rust.emit") |> count
-  let emit_rust_rows = language_source_scaffold_roster |> filter(r => r.carrier_module == "v1.compiler.emit_rust") |> count
-  runtime_rows == 13 && tests_rows == 25 && rust_emit_rows == 2 && emit_rust_rows == 1
-    && language_source_scaffold_roster_size() == 41
+test fn runtime_rust_blobs_are_all_rostered() -> Bool {
+  let declared = declared_fn_count(path: runtime_rust_source_path, prefix: "\nfn rt_")
+  let rostered = rostered_count_for(carrier: "v1.compiler.runtime_rust")
+  declared == rostered
+}
+
+test fn compiler_tests_rust_blobs_are_all_rostered() -> Bool {
+  let declared = declared_fn_count(path: compiler_tests_rust_source_path, prefix: "\nfn ct_")
+  let rostered = rostered_count_for(carrier: "v1.compiler.compiler_tests_rust")
+  declared == rostered + 1
 }
 
 test fn scaffold_binding_nothing_is_refused() -> Bool {

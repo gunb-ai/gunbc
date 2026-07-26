@@ -779,3 +779,7 @@ fn rt_accelerator_demo_kernel() -> String {
     "    out\n",
     "\}\n")
 }
+
+fn rt_synthetic_unrostered_blob() -> String {
+  concat("// a", "\n", "// b", "\n", "// c", "\n", "// d", "\n")
+}
