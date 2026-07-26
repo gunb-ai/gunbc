@@ -98,6 +98,13 @@ test fn bisect_parse_terminates() -> Bool {
   }
 }
 
+test fn bisect_normalize_terminates() -> Bool {
+  match bisect_through_normalize() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
+  }
+}
+
 fn bisect_through_grammar_validate() -> Outcome<ValidatedGrammarRoot> {
   let lm = dag_language_model()
   match lm.grammar {
