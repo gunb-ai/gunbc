@@ -22,12 +22,12 @@ use std::rc::Rc;
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+                ExternalAuthority {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "doc.rust-lang.org/cargo/".to_string(),
-    }),
-    })
+    },
+    }
             };
         }
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
@@ -124,56 +124,56 @@ pub fn cargo_target_source_path(
     package_name: String,
 ) -> Rc<FilePathParts> {
     match (*target.clone()).clone() {
-        CargoTarget::Lib => Rc::new(FilePathParts {
+        CargoTarget::Lib => FilePathParts {
             segments: Rc::new(vec!["src".to_string(), "lib.rs".to_string()]),
-        }),
+        },
         CargoTarget::Bin { name: name, .. } => {
             if (name.clone() == package_name.clone()) {
-                Rc::new(FilePathParts {
+                FilePathParts {
                     segments: Rc::new(vec!["src".to_string(), "main.rs".to_string()]),
-                })
+                }
             } else {
-                Rc::new(FilePathParts {
+                FilePathParts {
                     segments: Rc::new(vec![
                         "src".to_string(),
                         "bin".to_string(),
                         v1_rt::concat(name.clone(), ".rs".to_string()),
                     ]),
-                })
+                }
             }
         }
-        CargoTarget::CargoTest { name: name, .. } => Rc::new(FilePathParts {
+        CargoTarget::CargoTest { name: name, .. } => FilePathParts {
             segments: Rc::new(vec![
                 "tests".to_string(),
                 v1_rt::concat(name.clone(), ".rs".to_string()),
             ]),
-        }),
-        CargoTarget::Example { name: name, .. } => Rc::new(FilePathParts {
+        },
+        CargoTarget::Example { name: name, .. } => FilePathParts {
             segments: Rc::new(vec![
                 "examples".to_string(),
                 v1_rt::concat(name.clone(), ".rs".to_string()),
             ]),
-        }),
-        CargoTarget::Bench { name: name, .. } => Rc::new(FilePathParts {
+        },
+        CargoTarget::Bench { name: name, .. } => FilePathParts {
             segments: Rc::new(vec![
                 "benches".to_string(),
                 v1_rt::concat(name.clone(), ".rs".to_string()),
             ]),
-        }),
+        },
     }
 }
 
 pub fn rust_module_candidate_paths(stem: String) -> Rc<Vec<Rc<FilePathParts>>> {
     Rc::new(vec![
-        Rc::new(FilePathParts {
+        FilePathParts {
             segments: Rc::new(vec![
                 "src".to_string(),
                 v1_rt::concat(stem.clone(), ".rs".to_string()),
             ]),
-        }),
-        Rc::new(FilePathParts {
+        },
+        FilePathParts {
             segments: Rc::new(vec!["src".to_string(), stem.clone(), "mod.rs".to_string()]),
-        }),
+        },
     ])
 }
 

@@ -95,54 +95,54 @@ pub fn parse_href_scheme(url: String) -> Rc<ParsedHrefScheme> {
     {
         let s = v1_rt::trim(url.clone());
         if v1_rt::starts_with(s.clone(), "//".to_string()) {
-            Rc::new(ParsedHrefScheme::UnknownHref)
+            ParsedHrefScheme::UnknownHref
         } else {
             if href_is_relative_reference(s.clone()) {
-                Rc::new(ParsedHrefScheme::RelativeHref)
+                ParsedHrefScheme::RelativeHref
             } else {
                 if (v1_rt::starts_with(s.clone(), "javascript:".to_string())
                     || v1_rt::starts_with(s.clone(), "JAVASCRIPT:".to_string()))
                 {
-                    Rc::new(ParsedHrefScheme::HrefScheme {
+                    ParsedHrefScheme::HrefScheme {
                         scheme: UriScheme::Javascript,
-                    })
+                    }
                 } else {
                     if (v1_rt::starts_with(s.clone(), "data:".to_string())
                         || v1_rt::starts_with(s.clone(), "DATA:".to_string()))
                     {
-                        Rc::new(ParsedHrefScheme::HrefScheme {
+                        ParsedHrefScheme::HrefScheme {
                             scheme: UriScheme::Data,
-                        })
+                        }
                     } else {
                         if (v1_rt::starts_with(s.clone(), "vbscript:".to_string())
                             || v1_rt::starts_with(s.clone(), "VBSCRIPT:".to_string()))
                         {
-                            Rc::new(ParsedHrefScheme::HrefScheme {
+                            ParsedHrefScheme::HrefScheme {
                                 scheme: UriScheme::Vbscript,
-                            })
+                            }
                         } else {
                             if (v1_rt::starts_with(s.clone(), "https://".to_string())
                                 || v1_rt::starts_with(s.clone(), "HTTPS://".to_string()))
                             {
-                                Rc::new(ParsedHrefScheme::HrefScheme {
+                                ParsedHrefScheme::HrefScheme {
                                     scheme: UriScheme::Https,
-                                })
+                                }
                             } else {
                                 if (v1_rt::starts_with(s.clone(), "http://".to_string())
                                     || v1_rt::starts_with(s.clone(), "HTTP://".to_string()))
                                 {
-                                    Rc::new(ParsedHrefScheme::HrefScheme {
+                                    ParsedHrefScheme::HrefScheme {
                                         scheme: UriScheme::Http,
-                                    })
+                                    }
                                 } else {
                                     if (v1_rt::starts_with(s.clone(), "mailto:".to_string())
                                         || v1_rt::starts_with(s.clone(), "MAILTO:".to_string()))
                                     {
-                                        Rc::new(ParsedHrefScheme::HrefScheme {
+                                        ParsedHrefScheme::HrefScheme {
                                             scheme: UriScheme::Mailto,
-                                        })
+                                        }
                                     } else {
-                                        Rc::new(ParsedHrefScheme::UnknownHref)
+                                        ParsedHrefScheme::UnknownHref
                                     }
                                 }
                             }
