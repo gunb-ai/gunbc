@@ -747,17 +747,22 @@ fn run_batch_unit(
             // 600s self-host budget while batch walls stayed green — 2026-07-25).
             let (effective_fast_lane, wet_wall_budget_ms, wet_interp_budget_ms) =
                 if execution_mode.is_hermetic() {
-                    if discovery_entries_intersect_roster(
-                        &explicit_entries,
-                        &falsifier_self_host_wet_budgets.substrate_long_lane_entry_paths,
-                    ) {
-                        (
-                            falsifier_self_host_wet_budgets.substrate_long_lane_eval_budget_ms,
-                            None,
-                            None,
-                        )
-                    } else {
-                        (fast_lane_eval_budget_ms, None, None)
+                    // The declared ceiling is part of the condition, not the payload: a
+                    // rostered lane whose budget row is missing falls back to the fast
+                    // lane (a loud, named red) rather than to no budget at all (a silent
+                    // unbounded eval — the wedge the 5s rule exists to stop). The plan
+                    // read refuses first, so this arm is unreachable today; it is here so
+                    // the unreachable direction is the narrow one.
+                    match falsifier_self_host_wet_budgets.substrate_long_lane_eval_budget_ms {
+                        Some(ms)
+                            if discovery_entries_intersect_roster(
+                                &explicit_entries,
+                                &falsifier_self_host_wet_budgets.substrate_long_lane_entry_paths,
+                            ) =>
+                        {
+                            (Some(ms), None, None)
+                        }
+                        _ => (fast_lane_eval_budget_ms, None, None),
                     }
                 } else if discovery_entries_intersect_roster(
                     &explicit_entries,
@@ -2846,6 +2851,25 @@ fn falsifier_failure_mode(details: &[String]) -> &'static str {
     }
 }
 
+/// Projection of a failure mode into the `gunbc.ci_failure_class` vocabulary. `Structural`
+/// is `Structural { reason: String }`, so an arm printed WITHOUT its reason is a lossy
+/// rendering of the typed value, not the value: it collapses BudgetExceeded and WitnessRed
+/// — which have different remedies (re-basis the lane's dated ceiling vs. fix the witness)
+/// — into one indistinguishable string, discarding the `mode` computed beside it (receipt:
+/// run 30176416535 printed mode=BudgetExceeded next to arm=FloorFailed{class:Structural}).
+/// Both non-Infra modes stay Structural — an over-budget witness is a real, non-retryable
+/// failure that blocks merge — but the reason rides along. Enumerated, not defaulted, so a
+/// new mode cannot fall through into an unlabelled Structural (the OOM-reclassification
+/// consumer stays on its own design doc).
+fn ci_failure_class_arm(mode: &str) -> String {
+    match mode {
+        "Infra" => "FloorFailed{class:Infra}".to_string(),
+        "BudgetExceeded" => "FloorFailed{class:Structural{reason:BudgetExceeded}}".to_string(),
+        "WitnessRed" => "FloorFailed{class:Structural{reason:WitnessRed}}".to_string(),
+        other => format!("FloorFailed{{class:Structural{{reason:{other}}}}}"),
+    }
+}
+
 fn emit_falsifier_failure_class(details: &[String]) {
     let joined = details.join(" | ");
     let mode = falsifier_failure_mode(details);
@@ -2857,22 +2881,7 @@ fn emit_falsifier_failure_class(details: &[String]) {
             eprintln!("[falsifier-failure-class] {d}");
         }
     }
-    // Projection into the gunbc.ci_failure_class vocabulary. `Structural` is
-    // `Structural { reason: String }`, so an arm printed WITHOUT its reason is a lossy
-    // rendering of the typed value, not the value: it collapses BudgetExceeded and
-    // WitnessRed — which have different remedies (re-basis the lane's dated ceiling vs.
-    // fix the witness) — into one indistinguishable string, and it silently discarded the
-    // `mode` computed one line above (receipt: run 30176416535 printed mode=BudgetExceeded
-    // beside arm=FloorFailed{class:Structural}). Both non-Infra modes stay Structural —
-    // an over-budget witness is a real, non-retryable failure that blocks merge — but the
-    // reason rides along. Enumerated, not defaulted, so a new mode cannot fall through
-    // into an unlabelled Structural (OOM-reclassification consumer stays on its own doc).
-    let ci_arm = match mode {
-        "Infra" => "FloorFailed{class:Infra}".to_string(),
-        "BudgetExceeded" => "FloorFailed{class:Structural{reason:BudgetExceeded}}".to_string(),
-        "WitnessRed" => "FloorFailed{class:Structural{reason:WitnessRed}}".to_string(),
-        other => format!("FloorFailed{{class:Structural{{reason:{other}}}}}"),
-    };
+    let ci_arm = ci_failure_class_arm(mode);
     eprintln!(
         "[falsifier-failure-class] ci_failure_class_arm={ci_arm} reason_preview={}",
         {
@@ -3068,6 +3077,39 @@ mod tests {
                 "batch=2 BudgetExceeded{wall_ms=601000,budget_ms=600000}".into()
             ]),
             "BudgetExceeded"
+        );
+    }
+
+    // The mode must survive the projection into the ci_failure_class vocabulary. Before
+    // this, both non-Infra modes rendered as the reason-less `FloorFailed{class:Structural}`
+    // — the receipted mis-map (run 30176416535: mode=BudgetExceeded, arm=…Structural).
+    // Discriminating: a budget kill and a witness red must NOT print the same arm.
+    #[test]
+    fn ci_failure_class_arm_carries_the_structural_reason() {
+        assert_eq!(ci_failure_class_arm("Infra"), "FloorFailed{class:Infra}");
+        assert_eq!(
+            ci_failure_class_arm("BudgetExceeded"),
+            "FloorFailed{class:Structural{reason:BudgetExceeded}}"
+        );
+        assert_eq!(
+            ci_failure_class_arm("WitnessRed"),
+            "FloorFailed{class:Structural{reason:WitnessRed}}"
+        );
+        assert_ne!(
+            ci_failure_class_arm("BudgetExceeded"),
+            ci_failure_class_arm("WitnessRed"),
+            "a budget kill and a witness red must be distinguishable in the emitted arm"
+        );
+        // End-to-end through the mode classifier: the batch-6 eval-budget detail shape.
+        let detail: Vec<String> = vec![
+            "batch=6 fn=discovery-corpus detail=7 of 10 discovery witness(es) failed: \
+             lens_affected_set_provenance_producer_coverage_receipt_holds runtime error: \
+             eval budget exceeded: 5001ms elapsed > 5000ms fast-lane budget"
+                .into(),
+        ];
+        assert_eq!(
+            ci_failure_class_arm(falsifier_failure_mode(&detail)),
+            "FloorFailed{class:Structural{reason:BudgetExceeded}}"
         );
     }
 

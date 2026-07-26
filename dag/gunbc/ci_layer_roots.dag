@@ -903,14 +903,14 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
-    function: "edit_locus_source_provenance_affected_set_wire_holds",
-    reason: "Class C live-grain row (edit-locus provenance producer ×3 family): source_ir_node_artifact_provenance parse pipeline exceeds per-PR 5s budget",
+    function: "lens_edit_locus_source_provenance_affected_set_wire_holds",
+    reason: "Class C live-grain row (edit-locus provenance producer ×3 family): source_ir_node_artifact_provenance parse pipeline exceeds per-PR 5s budget. Renamed off the imported fn's own name 2026-07-26 — the same-name wrapper self-recursed instead of delegating (edit_locus_source_provenance_wrapper_shadowing_note); the row had never executed",
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
-    function: "edit_locus_source_provenance_producer_rejects_malformed_source_holds",
-    reason: "Class C live-grain row (edit-locus provenance producer ×3 family): malformed-source refusal through parse pipeline exceeds per-PR 5s budget",
+    function: "lens_edit_locus_source_provenance_producer_rejects_malformed_source_holds",
+    reason: "Class C live-grain row (edit-locus provenance producer ×3 family): malformed-source refusal through parse pipeline exceeds per-PR 5s budget. Renamed off the imported fn's own name 2026-07-26 — the same-name wrapper self-recursed instead of delegating (edit_locus_source_provenance_wrapper_shadowing_note); the row had never executed",
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
   }
 ]

@@ -52,6 +52,6 @@ test fn compiler_frontier_sweep_order_has_expected_length_holds() -> Bool {
   length(xs: compiler_frontier_sweep_order) == 27
 }
 
-test fn compiler_frontier_sweep_order_matches_tractability_rank_holds() -> Bool {
+test fn compiler_frontier_measured_sweep_order_matches_tractability_rank_holds() -> Bool {
   compiler_frontier_sweep_order_matches_tractability_rank_holds()
 }
