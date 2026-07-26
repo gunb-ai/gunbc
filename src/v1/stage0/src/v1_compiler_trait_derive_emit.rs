@@ -13,9 +13,8 @@ use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
 pub use crate::std_trait_derive_shape::{
     fn_field_derive_traits, kernel_int_arithmetic_traits, nullary_coproduct_derive_traits,
     payload_coproduct_derive_traits, record_derive_traits_copy, record_derive_traits_heap,
-    repr_grounding_derive_completeness_predicate,
-    repr_grounding_supplemental_bool_host_bridge_target,
-    repr_grounding_supplemental_group_completion_target, symbol_wrapped_ord_carrier_derive_traits,
+    repr_grounding_derive_completeness_predicate, repr_grounding_group_completion_carrier,
+    repr_grounding_supplemental_bool_host_bridge_target, symbol_wrapped_ord_carrier_derive_traits,
 };
 pub use crate::std_types::is_container_type;
 pub use crate::v1_compiler_emit::to_pascal;
@@ -33,7 +32,7 @@ use std::rc::Rc;
 pub fn trait_derive_emit_scope_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Root-4 arm (b): v1 seed emit wires supplemental impl blocks for coproduct-native arithmetic + PartialOrd/PartialEq (GroupCompletion<M> pos/neg pair Add/Sub/Mul/Div, Bool↔bool bridge) when repr_grounding_derive_completeness_predicate authorizes kernel-int traits. Also: (a) clone bounds on generic params; (c) serde/Debug/Ord #[derive] on named structs/enums.".to_string()
+            "Root-4 arm (b): v1 seed emit selects trait surface from the capability table — #[derive] attrs for shape-eligible traits, and (for GroupCompletion) pair-completion impl bodies as the realization of KernelInt arithmetic traits that cannot be #[derive]. Bool↔bool host bridge remains a separate enum-arm door (see bool dissolve-on). Also: (a) clone bounds on generic params; (c) serde/Debug/Ord #[derive] on named structs/enums.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -55,6 +54,21 @@ pub fn trait_derive_emit_symbol_ord_carrier_dissolve_on() -> String {
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn trait_derive_emit_bool_host_bridge_dissolve_on() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "dissolve-on: v1_emit_enum_supplemental_impls / rust_supplemental_impls_bool_coproduct — Bool↔host-bool bridge. Dissolves with the Value::Null-split / Bool True|False ↔ Value::Bool grounding lane (DESIGN open thread; gunbc.plans.value_null_split): when the modeled Bool coproduct and the native Value::Bool (and host bool) are one grounded carrier, the bridge deletes. Do not ground the bridge in an emitter cleanup — that forks the operator-tracked thread (§3).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StructCapabilityEmit {
+    pub derive_attr: String,
+    pub impl_bodies: String,
 }
 
 pub fn v1_trait_derive_refuse(message: String) -> String {
@@ -326,16 +340,37 @@ pub fn v1_emit_type_params_with_clone_bounds(
     }
 }
 
-pub fn v1_emit_struct_supplemental_impls(module_path: String, name: String) -> String {
-    if (repr_grounding_supplemental_group_completion_target(module_path.clone(), name.clone())
-        && repr_grounding_derive_completeness_predicate(
-            kernel_int_arithmetic_traits(),
-            ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt,
-        ))
+pub fn v1_emit_struct_from_capability_table(
+    module_path: String,
+    name: String,
+    children: Rc<Vec<Rc<Node>>>,
+    shared_types: Rc<BTreeSet<String>>,
+    has_fn_fields: bool,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<StructCapabilityEmit> {
     {
-        rust_supplemental_impls_group_completion()
-    } else {
-        "".to_string()
+        let derive_attr = v1_emit_struct_derives(
+            name.clone(),
+            children.clone(),
+            shared_types.clone(),
+            has_fn_fields.clone(),
+            source_indices.clone(),
+        );
+        let impl_bodies =
+            if (repr_grounding_group_completion_carrier(module_path.clone(), name.clone())
+                && repr_grounding_derive_completeness_predicate(
+                    kernel_int_arithmetic_traits(),
+                    ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt,
+                ))
+            {
+                rust_supplemental_impls_group_completion()
+            } else {
+                "".to_string()
+            };
+        Rc::new(StructCapabilityEmit {
+            derive_attr: derive_attr.clone(),
+            impl_bodies: impl_bodies.clone(),
+        })
     }
 }
 

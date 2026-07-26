@@ -471,7 +471,8 @@ fn rust_pair_completion_impl_render(row: PairCompletionOpRow) -> String {
 fn rust_supplemental_impls_group_completion() -> String {
   concat(
     "\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the\n",
-    "// pair-completion rows in std.trait_derive_shape (arithmetic is row data, not free text).\n",
+    "// pair-completion rows in std.trait_derive_shape (Add/Mul/Neg are row data; Sub/Div bodies\n",
+    "// remain keyed literals — see rust_pair_completion_nonpolynomial_body_dissolve_on).\n",
     pair_completion_op_rows()
       |> map(row => rust_pair_completion_impl_render(row))
       |> join(separator: "")
