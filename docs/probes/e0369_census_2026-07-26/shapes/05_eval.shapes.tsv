@@ -1,0 +1,20 @@
+count	message
+4	binary operation `==` cannot be applied to type `Rc<dyn Fn(Rc<Node>, Rc<EvaluationEnvironment>) -> Rc<Outcome<Rc<RuntimeValue>>>>`
+2	binary operation `==` cannot be applied to type `Rc<im::Vector<T>>`
+2	binary operation `<` cannot be applied to type `Rc<Nat>`
+2	binary operation `==` cannot be applied to type `Rc<dyn Fn(Rc<Node>, Rc<Vector<Rc<RuntimeValue>>>, Rc<...>) -> ...>`
+2	binary operation `==` cannot be applied to type `Rc<dyn Fn(Rc<Node>, Rc<RuntimeValue>, Rc<EvaluationEnvironment>) -> Rc<Outcome<Rc<Node>>>>`
+2	binary operation `==` cannot be applied to type `Rc<dyn Fn(Rc<Node>, Rc<EvaluationEnvironment>) -> Rc<Outcome<Rc<ControlTransfer>>>>`
+2	binary operation `==` cannot be applied to type `Rc<dyn Fn(Rc<EnvironmentBindingKey>, Rc<RuntimeValue>, ...) -> ...>`
+2	binary operation `==` cannot be applied to type `Rc<InterpretationAlgebra>`
+1	binary operation `==` cannot be applied to type `&Rc<im::Vector<T>>`
+1	cannot divide `Rc<Nat>` by `{integer}`
+1	binary operation `==` cannot be applied to type `Rc<im::HashMap<Rc<EnvironmentBindingKey>, Rc<RuntimeValue>>>`
+1	binary operation `==` cannot be applied to type `&Rc<ValueInterpreter>`
+1	binary operation `==` cannot be applied to type `&Rc<TransformInterpreter>`
+1	binary operation `==` cannot be applied to type `&Rc<BranchInterpreter>`
+1	binary operation `==` cannot be applied to type `&Rc<LoopInterpreter>`
+1	binary operation `==` cannot be applied to type `&Rc<BindInterpreter>`
+1	binary operation `==` cannot be applied to type `&Rc<MatchInterpreter>`
+1	binary operation `==` cannot be applied to type `Rc<im::HashMap<Rc<Node>, Rc<InferredFacts>>>`
+1	binary operation `==` cannot be applied to type `&Rc<EffectIoEvalBundle>`
