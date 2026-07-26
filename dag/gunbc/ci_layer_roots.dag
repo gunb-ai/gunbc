@@ -486,15 +486,15 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   },
   WitnessExclusionRow {
     pattern: "no_fake_anomalies_witness_test.dag",
-    classification: FalsifierRehomedBinWet,
-    reason: excl_rehomed_bin_wet_reason,
-    dissolve_on: excl_rehomed_bin_wet_dissolve
+    classification: BinWitnessWet,
+    reason: excl_no_fake_anomalies_reason,
+    dissolve_on: excl_no_fake_anomalies_dissolve
   },
   WitnessExclusionRow {
     pattern: "expectation_frontier_witness_test.dag",
-    classification: FalsifierRehomedBinWet,
-    reason: excl_rehomed_bin_wet_reason,
-    dissolve_on: excl_rehomed_bin_wet_dissolve
+    classification: BinWitnessWet,
+    reason: excl_expectation_frontier_reason,
+    dissolve_on: excl_expectation_frontier_dissolve
   },
   WitnessExclusionRow {
     pattern: "srv3_install_media_fetch_real_execution_witness_test.dag",
@@ -759,6 +759,8 @@ data excl_no_fake_anomalies_dissolve: String = "no dissolution is expected: read
 data install_media_real_execution_wet_note: String = "The four srv3_install_media_fetch_real_execution_witness_test.dag / srv3_seeded_install_media_real_execution_witness_test.dag entries at the tail of bin_witness_wet_entries below share this lane with the bin-execution witnesses (same RunnableDiscoveryBatch Wet mechanism, not a forked one - DESIGN §3) though they are not bin-execution: they drive real shell.Mktemp.Dir/Filesystem.Write/shell.Remove.RecursiveForce effects that dag/extdeps/shell/shell.dag has no mock_response for (only shell.Exec.Run/Check do), so the Hermetic discovery corpus refuses them by construction (typed 'no mock_response for operation Dir' error). Split out of their parent files (shell-to-dag B1, 2026-07-14) so the parent files' pure classification witnesses keep hermetic per-PR discovery undiminished. Dissolve-on: shell.dag's file-effect operations gain mock_response coverage AND these fns' assertions are re-checked for correctness under a fixed mock (some assert behavior-dependent outcomes, e.g. matched == false on a wrong hash, which a naive fixed mock would falsify) - then they re-enroll as ordinary hermetic discovery rows and these rows delete."
 
 data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
+  bin_wet(entry: "dag/test/claim/expectation_frontier_witness_test.dag", f: "undeclared_effects_emit_the_frontier_receipt_holds"),
+  bin_wet(entry: "dag/test/claim/expectation_frontier_witness_test.dag", f: "fully_declared_effects_emit_no_frontier_receipt_holds"),
   bin_wet(entry: "dag/test/claim/dag_collect_fingerprint_witness_test.dag", f: "dag_collect_fingerprint_witness_keystone_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag", f: "perturb_optional_skew_fixture_red_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag", f: "perturb_unresolved_import_fixture_red_holds"),
@@ -811,7 +813,9 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_roundtrip_by_real_execution"),
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_missing_target_red_control_by_real_execution"),
   bin_wet(entry: "dag/test/claim/host_build_cache_provision_real_execution_witness_test.dag", f: "provision_read_back_failure_not_converged_by_real_execution"),
-  bin_wet(entry: "dag/test/claim/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_witness_holds_by_real_execution")
+  bin_wet(entry: "dag/test/claim/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_witness_holds_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/no_fake_anomalies_witness_test.dag", f: "passing_run_shows_no_fake_anomaly_holds"),
+  bin_wet(entry: "dag/test/claim/no_fake_anomalies_witness_test.dag", f: "red_control_entry_with_real_anomaly_still_shows_glyph_holds")
 ]
 
 data bin_witness_wet_per_row_wall_budget_seconds: Int = 60
@@ -855,30 +859,6 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
     function: "compile_clean_shard_totality_holds_on_live_tree",
     reason: "Class C corpus-totality claim (docs/plans/test-decomposition-wcf-cut.md §5, criterion 2, session bright-newt-31 2026-07-25): shells out git.Core.Toplevel + shell.Find.Files over the whole live tree to prove the shard roster is total against the real corpus (~15s) — the claim is legitimately corpus-grain, not shrinkable, since the whole point is whether the REAL tree's partition is still total. The mechanism (orphan/duplicate/surplus verdict algebra) is proven per-PR on synthetic glob results by compile_clean_shard_totality_algebra_holds, which stays per-PR",
     dissolve_on: "re-priced only if the shard partition boundary itself changes shape enough that a fixture can stand in for the real tree without losing coverage — until then this is the honest corpus-grain residue, not a defect"
-  },
-  RehomedBinWetRow {
-    entry: "dag/test/claim/expectation_frontier_witness_test.dag",
-    function: "undeclared_effects_emit_the_frontier_receipt_holds",
-    reason: "138865ms measured eval on run 30217388856 @ 57f190b (2.3x bin_witness_wet_per_row_wall_budget_seconds): spawns claim_batch as a child to read a real stderr receipt — Wet by construction, not shrinkable without vacuous pass",
-    dissolve_on: "child stderr capture lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run; then re-enroll per-PR and delete this row"
-  },
-  RehomedBinWetRow {
-    entry: "dag/test/claim/expectation_frontier_witness_test.dag",
-    function: "fully_declared_effects_emit_no_frontier_receipt_holds",
-    reason: "78400ms measured eval on run 30217388856 @ 57f190b (1.3x the per-row budget): sibling negative control of the undeclared frontier receipt pair — same child stderr transport",
-    dissolve_on: "child stderr capture lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run; then re-enroll per-PR and delete this row"
-  },
-  RehomedBinWetRow {
-    entry: "dag/test/claim/no_fake_anomalies_witness_test.dag",
-    function: "passing_run_shows_no_fake_anomaly_holds",
-    reason: "97463ms measured eval on run 30217388856 @ 57f190b (1.6x the per-row budget): runs compile_clean_source_roots corpus in a child to scan stderr for anomaly glyphs — Wet by construction (excl_no_fake_anomalies_reason)",
-    dissolve_on: "corpus child stderr scan lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run; then re-enroll per-PR and delete this row"
-  },
-  RehomedBinWetRow {
-    entry: "dag/test/claim/no_fake_anomalies_witness_test.dag",
-    function: "red_control_entry_with_real_anomaly_still_shows_glyph_holds",
-    reason: "90100ms measured eval on run 30217388856 @ 57f190b (1.5x the per-row budget): sibling RED control of the no-fake-anomalies wall — same child corpus stderr transport",
-    dissolve_on: "corpus child stderr scan lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run; then re-enroll per-PR and delete this row"
   }
 ]
 
