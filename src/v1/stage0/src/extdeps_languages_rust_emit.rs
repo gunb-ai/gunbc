@@ -690,6 +690,15 @@ pub fn rust_pair_completion_spellings() -> Rc<Vec<Rc<RustPairCompletionSpelling>
     CACHED.with(|c: &Rc<Vec<Rc<RustPairCompletionSpelling>>>| c.clone())
 }
 
+pub fn rust_pair_completion_op_key_totality_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Total over ReprGroundingDeriveTrait by construction, with no wildcard arm (DESIGN §6 non-fold residue; caught by v2.lens.non_fold_residue on the first floor run that was not superseded). The first draft matched the five arithmetic variants and swept the other ten into `_ => \"\"`, which is two defects in one line: a new unrostered residue site, and a FABRICATED key — an empty string is not the key of any trait, it is the absence of an answer wearing a String. It also made the coproduct's growth silent, which is the actual cost: a sixteenth ReprGroundingDeriveTrait variant would have landed as \"\" and been read as a legitimate lookup that simply missed. Every variant now returns its own key. Ten of the fifteen have no pair-completion spelling row and are not expected to — a pair completion has no Debug or Ord operator, and Rem is arithmetic but is not one of the five Grothendieck ops — so they resolve to Absent in rust_pair_completion_spelling_for and surface through the compile_error! arm NAMED, which is strictly better than the empty key: the diagnostic says which trait was asked for. Adding a variant to the coproduct now forces an edit here rather than defaulting, and that is enforced rather than hoped for: with no wildcard the match is non-exhaustive the moment a sixteenth variant lands, which is a hard diagnostic from the batch-1 dag_compile_clean_gate_passes gate (extdeps/ is not one of the excluded paths). The wildcard was what made the coproduct extensible-in-silence; removing it is the construction, and the gate is the thing that notices.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn rust_pair_completion_op_key(op: ReprGroundingDeriveTrait) -> String {
     match op.clone() {
         ReprGroundingDeriveTrait::ReprDeriveAdd => "add".to_string(),
@@ -697,7 +706,16 @@ pub fn rust_pair_completion_op_key(op: ReprGroundingDeriveTrait) -> String {
         ReprGroundingDeriveTrait::ReprDeriveMul => "mul".to_string(),
         ReprGroundingDeriveTrait::ReprDeriveDiv => "div".to_string(),
         ReprGroundingDeriveTrait::ReprDeriveNeg => "neg".to_string(),
-        _ => "".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveRem => "rem".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveDebug => "debug".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveClone => "clone".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveCopy => "copy".to_string(),
+        ReprGroundingDeriveTrait::ReprDerivePartialEq => "partial_eq".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveEq => "eq".to_string(),
+        ReprGroundingDeriveTrait::ReprDerivePartialOrd => "partial_ord".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveOrd => "ord".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveSerialize => "serialize".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveDeserialize => "deserialize".to_string(),
     }
 }
 
