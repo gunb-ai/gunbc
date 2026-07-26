@@ -85,6 +85,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
+    slug: "e0599_diagnosis_2026-07-26",
+    work: DeclarationRef { module_path: "v2.compiler.trait_derive_completeness", decl_name: "trait_derive_completeness_note", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "Slice A Clone-bound propagation lands in v1 trait_derive_emit (where-clause + container bounds) and canonical-seven E0599 census reaches tails-only; or doc migrates into a registered gunbc.plan.Plan row" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
     slug: "rc-scalar-wrap-fresh-build-correction-2026-07-25",
     work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "value_inferred_type_is_rc_wrapped", field: WholeDeclaration },
     dissolution: HasTrigger { text: "the residual generic function return-type substitution RC_SCALAR_WRAP sub-class (materialization_carriers, flat at 15) lands via the shared Root-4 lane" },
@@ -94,6 +100,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     slug: "e0277_trait_bound_census_2026-07-26",
     work: DeclarationRef { module_path: "v1.compiler.trait_derive_emit", decl_name: "v1_generic_params_needing_clone_bound", field: WholeDeclaration },
     dissolution: HasTrigger { text: "the generic-parameter Clone-bound propagation gap (family 1, shared with E0599) lands a fix and the census is superseded by a measured before/after receipt" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
+    slug: "e0369_census_2026-07-26",
+    work: DeclarationRef { module_path: "v1.compiler.trait_derive_emit", decl_name: "v1_emit_struct_derives", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "R1 PartialEq-derive / binop-over-Rc and R2 Measure/Semiring-under-Rc roots land fixes on the witty-wolf #7223 emitter lane (or superseding before/after receipt); then this census bind deletes with the md" },
   },
   HandAuthoredDocBind {
     home: ProbeDoc,

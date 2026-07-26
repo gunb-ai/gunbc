@@ -125,6 +125,8 @@ mod node_keyed_graph_artifact_codec_test;
 #[cfg(test)]
 mod nodefold_generic_instantiation_test;
 #[cfg(test)]
+mod none_undetermined_carrier_refuse_test;
+#[cfg(test)]
 mod optional_carrier_signature_test;
 #[cfg(test)]
 mod optional_consumer_fail_closed_test;
