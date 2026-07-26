@@ -12235,6 +12235,23 @@ pub struct WitnessTimingRow {
 
 pub const DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N: usize = 15;
 
+/// Build entry → resolve_nanos. Duplicate receipts for one entry REFUSE (same cardinality
+/// rule as `project_witness_cost_receipt` — never silently overwrite / pick; review 43351).
+fn entry_resolve_nanos_by_entry(
+    receipts: &[EntryResolveReceipt],
+) -> Result<HashMap<String, u128>, String> {
+    let mut map: HashMap<String, u128> = HashMap::new();
+    for receipt in receipts {
+        if let Some(prev) = map.insert(receipt.entry.clone(), receipt.resolve_nanos) {
+            return Err(format!(
+                "[witness-row-cost] REFUSED: multiple entry resolve receipts for {} (walls {} and {}) — never silently pick (matches project_witness_cost_receipt)",
+                receipt.entry, prev, receipt.resolve_nanos
+            ));
+        }
+    }
+    Ok(map)
+}
+
 pub fn compute_witness_timing_rows(
     summary: &DiscoverySummary,
 ) -> Result<Vec<WitnessTimingRow>, String> {
@@ -12246,10 +12263,7 @@ pub fn compute_witness_timing_rows(
         ));
     }
 
-    let mut entry_resolve_map: HashMap<String, u128> = HashMap::new();
-    for receipt in &summary.entry_resolve_receipts {
-        entry_resolve_map.insert(receipt.entry.clone(), receipt.resolve_nanos);
-    }
+    let entry_resolve_map = entry_resolve_nanos_by_entry(&summary.entry_resolve_receipts)?;
 
     let mut rows: Vec<WitnessTimingRow> = Vec::new();
     let mut missing_entry_resolve: Vec<String> = Vec::new();
@@ -12314,10 +12328,10 @@ pub fn compute_histogram_data(summary: &DiscoverySummary) -> Result<HistogramDat
         ));
     }
 
-    let mut entry_resolve_map: HashMap<String, u128> = HashMap::new();
-    for receipt in &summary.entry_resolve_receipts {
-        entry_resolve_map.insert(receipt.entry.clone(), receipt.resolve_nanos);
-    }
+    // Same fail-closed duplicate rule as the receipt spine (review 43351) — observational
+    // percentiles must not silently pick among disagreeing/duplicate entry resolves.
+    let entry_resolve_map = entry_resolve_nanos_by_entry(&summary.entry_resolve_receipts)
+        .map_err(|e| e.replacen("[witness-row-cost]", "[histogram]", 1))?;
 
     let mut total_times: Vec<u128> = Vec::new();
     let mut resolve_times: Vec<u128> = Vec::new();
@@ -20409,6 +20423,26 @@ mod witness_timing_attribution_tests {
         assert!(
             err.contains("REFUSED") && err.contains("b.dag::slow"),
             "expected typed incomplete-coverage refusal, got: {err}"
+        );
+    }
+
+    #[test]
+    fn witness_timing_rows_refuse_duplicate_entry_resolve() {
+        // RED control for review 43351: HashMap overwrite would silently pick among
+        // duplicate entry resolves while project_witness_cost_receipt refuses.
+        let mut summary = sample_summary();
+        summary.entry_resolve_receipts.push(EntryResolveReceipt {
+            entry: "a.dag".to_string(),
+            closure_subject: "subj-a-dup".to_string(),
+            resolve_nanos: 999,
+            stage_nanos: ResolveStageNanos::default(),
+        });
+        let err = compute_witness_timing_rows(&summary).expect_err("must refuse");
+        assert!(
+            err.contains("REFUSED")
+                && err.contains("multiple entry resolve")
+                && err.contains("a.dag"),
+            "expected duplicate-resolve refusal, got: {err}"
         );
     }
 

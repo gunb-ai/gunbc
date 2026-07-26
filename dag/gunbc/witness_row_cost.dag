@@ -51,6 +51,8 @@ data witness_timing_row_seed_view_disposition: Disposition = Scaffold {
 
 data witness_timing_row_seed_view_note: String = "WitnessTimingRow in cli_run.rs is a seed MATERIALIZED VIEW of the ObservationEvent join projection only (Scaffold bound above) — not a lockstep authority type and not the #5 record. total_nanos is derived. Dissolve-on: seed produces the N+1 ObservationEvent values (or host bridge equivalent); receipt writer and drift path consume the complete projection; WitnessTimingRow is deleted. Nanos may remain internal seed units; Millisecond conversion is at the event boundary."
 
+data witness_cost_concluded_outcome_note: String = "Single extract surface over ObservationTransition for the placement-5 projection: returns Optional outcome, never a Bool predicate that erases which arm answered (std predicate-dissolution rule; review 43351). Consumers fold Present or Absent; they do not re-match Begin, Step, or Concluded into true or false helpers."
+
 type WitnessRowCostDatedBasis {
   eval: Millisecond
   run_ref: String
@@ -127,24 +129,6 @@ fn witness_cost_subject_has_resolve_phase(subject: ObservationSubject) -> Bool {
   )
 }
 
-fn witness_cost_is_entry_resolve_event(event: ObservationEvent) -> Bool {
-  witness_cost_subject_has_resolve_phase(subject: event.subject) &&
-  match event.transition {
-    Concluded { outcome: _ } => true
-    Begin => false
-    Step { k: _, n: _ } => false
-  }
-}
-
-fn witness_cost_is_declaration_witness_event(event: ObservationEvent) -> Bool {
-  observation_subject_grain(subject: event.subject) == DeclarationGrain &&
-  match event.transition {
-    Concluded { outcome: _ } => true
-    Begin => false
-    Step { k: _, n: _ } => false
-  }
-}
-
 fn witness_cost_measured_wall(wall: Measured<Millisecond>) -> Optional<Millisecond> {
   match wall {
     MeasuredValue { value: v } => Present { value: v }
@@ -162,15 +146,19 @@ fn witness_cost_concluded_outcome(event: ObservationEvent) -> Optional<Observati
 
 fn witness_cost_count_resolve_for_entry(events: List<ObservationEvent>, entry: NonEmptyStr) -> Nat {
   fold(events, init: 0, f: (acc, event) =>
-    if witness_cost_is_entry_resolve_event(event: event) {
-      match witness_cost_subject_entry(subject: event.subject) {
-        Present { value: p } =>
-          if p == entry {
-            acc + 1
-          } else {
-            acc
-          }
+    if witness_cost_subject_has_resolve_phase(subject: event.subject) {
+      match witness_cost_concluded_outcome(event: event) {
         Absent => acc
+        Present { value: _ } =>
+          match witness_cost_subject_entry(subject: event.subject) {
+            Present { value: p } =>
+              if p == entry {
+                acc + 1
+              } else {
+                acc
+              }
+            Absent => acc
+          }
       }
     } else {
       acc
@@ -184,15 +172,19 @@ fn witness_cost_unique_resolve_wall(
 ) -> Optional<Millisecond> {
   if witness_cost_count_resolve_for_entry(events: events, entry: entry) == 1 {
     fold(events, init: Absent, f: (acc, event) =>
-      if witness_cost_is_entry_resolve_event(event: event) {
-        match witness_cost_subject_entry(subject: event.subject) {
-          Present { value: p } =>
-            if p == entry {
-              witness_cost_measured_wall(wall: event.wall)
-            } else {
-              acc
-            }
+      if witness_cost_subject_has_resolve_phase(subject: event.subject) {
+        match witness_cost_concluded_outcome(event: event) {
           Absent => acc
+          Present { value: _ } =>
+            match witness_cost_subject_entry(subject: event.subject) {
+              Present { value: p } =>
+                if p == entry {
+                  witness_cost_measured_wall(wall: event.wall)
+                } else {
+                  acc
+                }
+              Absent => acc
+            }
         }
       } else {
         acc
@@ -300,11 +292,15 @@ fn witness_cost_any_entry_has_multiple_resolves(events: List<ObservationEvent>) 
   fold(events, init: false, f: (acc, event) =>
     if acc {
       true
-    } else if witness_cost_is_entry_resolve_event(event: event) {
-      match witness_cost_subject_entry(subject: event.subject) {
-        Present { value: entry } =>
-          witness_cost_count_resolve_for_entry(events: events, entry: entry) > 1
-        Absent => true
+    } else if witness_cost_subject_has_resolve_phase(subject: event.subject) {
+      match witness_cost_concluded_outcome(event: event) {
+        Absent => false
+        Present { value: _ } =>
+          match witness_cost_subject_entry(subject: event.subject) {
+            Present { value: entry } =>
+              witness_cost_count_resolve_for_entry(events: events, entry: entry) > 1
+            Absent => true
+          }
       }
     } else {
       false
@@ -319,11 +315,15 @@ fn project_witness_cost_receipt(events: List<ObservationEvent>) -> WitnessCostPr
     }
   } else {
     fold(events, init: WitnessCostProjectionComplete { rows: [] }, f: (acc, event) =>
-      if witness_cost_is_declaration_witness_event(event: event) {
-        witness_cost_append_projection(
-          left: acc,
-          right: witness_cost_project_one_witness(events: events, event: event)
-        )
+      if observation_subject_grain(subject: event.subject) == DeclarationGrain {
+        match witness_cost_concluded_outcome(event: event) {
+          Absent => acc
+          Present { value: _ } =>
+            witness_cost_append_projection(
+              left: acc,
+              right: witness_cost_project_one_witness(events: events, event: event)
+            )
+        }
       } else {
         acc
       }
