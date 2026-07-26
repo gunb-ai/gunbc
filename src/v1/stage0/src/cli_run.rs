@@ -698,6 +698,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn witness_admission_source_scan_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER,
+            "cli_run_witness_admission_source_scan"
+        );
+    }
+
+    #[test]
     fn declared_source_ref_selection_bridge_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_DECLARED_SOURCE_REF_SELECTION_BRIDGE_MARKER,
@@ -12737,6 +12745,14 @@ fn witness_admission_manifest_key(entry: &str, function: &str) -> String {
 // `witness_admission_manifest_key`, the file-grain expand arm, and the unit tests that pin it
 // (`file_grain_bin_wet_expands_admission_consumer_keys` and sibling form parsers) — host then
 // reads emitted manifest rows (file-grain expansion lives in the `.dag` authority, not here).
+// Receipt (declaration grain; bare token `cli_run_witness_admission_source_scan` is multi-hit
+// by design — scaffold header / string literal / unit test). Executable pin that does NOT
+// self-match this comment (IDENT and TYPE_ANN are on separate lines here; contiguous only
+// on the declaration):
+//   IDENT=CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER
+//   TYPE_ANN=: &str =
+//   rg -F "${IDENT}${TYPE_ANN}" src/v1/stage0/src/cli_run.rs   # == 1 until deletion
+// Not a compiler_frontier `.dag` row (seed-Rust, counted here not in module census).
 pub(crate) const CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER: &str =
     "cli_run_witness_admission_source_scan";
 
@@ -13353,8 +13369,8 @@ pub fn discover_floor_witness_roster(
     // U2 orphan enroll-or-refuse is implemented in test_module_hygiene (unit RED live) but
     // NOT wired into the naming walk on this PR: the live corpus still has dark helpers that
     // the companion sweep PR resolves. Wiring here before that sweep fail-closes the floor
-    // on ~75 pre-existing orphans. Dissolve-on: session/proud-wren-892-full-sweep merge
-    // (re-enable check_orphan_helpers_or_err here in the same commit as the corpus sweep).
+    // on ~75 pre-existing orphans. Dissolve-on: #7274 / session/proud-wren-892-sweep-b
+    // (re-enable check_orphan_helpers_or_err here in the same commit as the src/v2 corpus sweep).
     let mut rows = invoke_floor_discovery_producer(source_roots, scan_dirs, exclude_substrings)?;
     rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
     let FloorLensImportGraph {
