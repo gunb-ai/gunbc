@@ -61,10 +61,33 @@ fn operation_argv_bind_text_list(name: String, items: List<String>) -> Operation
   }
 }
 
-fn operation_argv_is_materialized(m: ArgvMaterialization) -> Bool {
+
+data operation_argv_classification_note: String = "ONE tagged classification, not a family of coproduct-to-Bool predicates (review 42972, the std/ predicate-dissolution rule: a Bool predicate erases WHICH arm answered and becomes a second surface over the coproduct). Consumers fold ArgvMaterialization through this in a single pass and match the tag; it also means a corpus row materializes ONCE per row rather than once per question asked about it."
+
+type ArgvRowClassification
+  = ArgvRowMaterialized
+  | ArgvRowExpressionResidue
+  | ArgvRowExecutablePositionRefused
+  | ArgvRowOtherRefusal
+
+fn operation_argv_classify_cause(cause: ArgvRefusalCause) -> ArgvRowClassification {
+  match cause {
+    ArgvExpressionUnsupported { detail: _ } => ArgvRowExpressionResidue
+    ExecutablePositionNotLiteral { detail: _ } => ArgvRowExecutablePositionRefused
+    OperationNotFound => ArgvRowOtherRefusal
+    ArgvEmpty => ArgvRowOtherRefusal
+    UndeclaredInputBound { name: _ } => ArgvRowOtherRefusal
+    DuplicateInputBinding { name: _ } => ArgvRowOtherRefusal
+    DeclaredInputUnbound { name: _ } => ArgvRowOtherRefusal
+    TokenListInStringPosition { name: _ } => ArgvRowOtherRefusal
+    BindingMalformed { detail: _ } => ArgvRowOtherRefusal
+  }
+}
+
+fn operation_argv_classify(m: ArgvMaterialization) -> ArgvRowClassification {
   match m {
-    ArgvMaterialized { argv: _ } => true
-    ArgvMaterializationRefused { at: _, cause: _ } => false
+    ArgvMaterialized { argv: _ } => ArgvRowMaterialized
+    ArgvMaterializationRefused { at: _, cause: c } => operation_argv_classify_cause(cause: c)
   }
 }
 
@@ -101,49 +124,9 @@ fn operation_argv_tokens_or_refusal_label(m: ArgvMaterialization) -> List<String
   }
 }
 
-fn operation_argv_cause_is_expression_unsupported(cause: ArgvRefusalCause) -> Bool {
-  match cause {
-    OperationNotFound => false
-    ArgvEmpty => false
-    UndeclaredInputBound { name: _ } => false
-    DuplicateInputBinding { name: _ } => false
-    DeclaredInputUnbound { name: _ } => false
-    ExecutablePositionNotLiteral { detail: _ } => false
-    TokenListInStringPosition { name: _ } => false
-    ArgvExpressionUnsupported { detail: _ } => true
-    BindingMalformed { detail: _ } => false
-  }
-}
 
-fn operation_argv_cause_is_executable_position(cause: ArgvRefusalCause) -> Bool {
-  match cause {
-    OperationNotFound => false
-    ArgvEmpty => false
-    UndeclaredInputBound { name: _ } => false
-    DuplicateInputBinding { name: _ } => false
-    DeclaredInputUnbound { name: _ } => false
-    ExecutablePositionNotLiteral { detail: _ } => true
-    TokenListInStringPosition { name: _ } => false
-    ArgvExpressionUnsupported { detail: _ } => false
-    BindingMalformed { detail: _ } => false
-  }
-}
 
-fn operation_argv_is_executable_position_refusal(m: ArgvMaterialization) -> Bool {
-  match m {
-    ArgvMaterialized { argv: _ } => false
-    ArgvMaterializationRefused { at: _, cause: c } =>
-      operation_argv_cause_is_executable_position(cause: c)
-  }
-}
 
-fn operation_argv_is_expression_residue(m: ArgvMaterialization) -> Bool {
-  match m {
-    ArgvMaterialized { argv: _ } => false
-    ArgvMaterializationRefused { at: _, cause: c } =>
-      operation_argv_cause_is_expression_unsupported(cause: c)
-  }
-}
 
 fn operation_argv_row_binding_for_input(name: String) -> OperationInputBinding {
   operation_argv_bind_text(name: name, text: concat("bound-", name))
