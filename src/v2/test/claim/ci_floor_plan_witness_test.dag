@@ -41,6 +41,7 @@ import v2.workflow.ci_floor_plan {
   gunbc_falsifier_self_host_wet_interp_eval_budget_ms,
   gunbc_falsifier_silent_pick_gate_receipt_wall_budget_ms,
   gunbc_ci_fast_lane_eval_budget_ms,
+  gunbc_falsifier_substrate_long_lane_eval_budget_ms,
   falsifier_self_host_wet_batch_enrolled,
   falsifier_known_red_probe_batch_enrolled,
   falsifier_silent_pick_gate_batch_enrolled,
@@ -489,6 +490,11 @@ fn falsifier_self_host_wet_budget_declared_holds() -> Bool {
     && gunbc_falsifier_self_host_wet_interp_eval_budget_ms() == 120000
     && gunbc_falsifier_silent_pick_gate_receipt_wall_budget_ms() == 900000
     && gunbc_ci_fast_lane_eval_budget_ms() == 5000
+    && gunbc_falsifier_substrate_long_lane_eval_budget_ms() == 180000
+}
+
+fn falsifier_substrate_long_lane_budget_exceeds_fast_lane_holds() -> Bool {
+  gunbc_falsifier_substrate_long_lane_eval_budget_ms() > gunbc_ci_fast_lane_eval_budget_ms()
 }
 
 fn falsifier_cadence_witness_batch_holds(r: Runnable) -> Bool {
@@ -626,6 +632,7 @@ test fn ci_floor_plan_witnesses() -> Bool {
     && witness_floor_batch_clamp_rate_all_nonneg()
     && falsifier_rehomed_bin_wet_batch_enrolled()
     && falsifier_substrate_long_lane_batch_enrolled()
+    && falsifier_substrate_long_lane_budget_exceeds_fast_lane_holds()
 }
 
 test fn ci_floor_optin_roster_witnesses() -> Bool {

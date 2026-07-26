@@ -31,15 +31,16 @@ use crate::v1_interpreter;
 use crate::v1_rt;
 use crate::v1_rt::SilentPickTelemetry;
 use crate::v1_std_core::{
-    arg_name_at, arg_value, arm_pattern, authored_name_at, block_stmts, build_newline_index,
-    byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
-    empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at, field_access_base,
-    field_access_field_at, field_init_node_name_at, field_init_node_value, has_child_named,
-    inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic, is_error_diagnostic,
-    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, match_arm_nodes,
-    match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span, param_node_name_at,
-    param_node_type_expr, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
-    ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex, Node,
+    arg_name_at, arg_value, arm_body, arm_pattern, authored_name_at, block_stmts,
+    build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
+    empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
+    field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
+    has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
+    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
+    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
+    Node,
 };
 use serde::Serialize;
 
@@ -13110,6 +13111,11 @@ pub fn discover_floor_witness_roster(
     discovery_scope_dirs: &[String],
 ) -> Result<Vec<DiscoveryRow>, String> {
     floor_filename_hygiene_refusal_via_producer(source_roots)?;
+    // U2 orphan enroll-or-refuse is implemented in test_module_hygiene (unit RED live) but
+    // NOT wired into the naming walk on this PR: the live corpus still has dark helpers that
+    // the companion sweep PR resolves. Wiring here before that sweep fail-closes the floor
+    // on ~75 pre-existing orphans. Dissolve-on: session/proud-wren-892-full-sweep merge
+    // (re-enable check_orphan_helpers_or_err here in the same commit as the corpus sweep).
     let mut rows = invoke_floor_discovery_producer(source_roots, scan_dirs, exclude_substrings)?;
     rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
     let FloorLensImportGraph {
@@ -15505,7 +15511,9 @@ fn run_discovery_corpus_with_options_inner(
         .iter()
         .map(|r| (r.entry.clone(), r.function.clone()))
         .collect();
-    for (entry, function) in explicit_entries {
+    // U3 — empty function = file-grain: enumerate via the same test-decl scan discovery uses.
+    let expanded_explicit = crate::test_module_hygiene::expand_explicit_entries(explicit_entries)?;
+    for (entry, function) in &expanded_explicit {
         if seen.insert((entry.clone(), function.clone())) {
             rows.push(DiscoveryRow {
                 label: function.clone(),
@@ -24375,7 +24383,12 @@ pub(crate) fn non_fold_residue_units_from_module_source(
                                 ),
                             }
                         }
-                        path = row_path;
+                        path = Some(row_path.unwrap_or_else(|| {
+                            panic!(
+                                "nfr frontier reader: `subject` in a `{data_name}` row of \
+                                 {module_rel_path} is `PathSubject` but carries no `path` field"
+                            )
+                        }));
                     }
                     _ => panic!(
                         "nfr frontier reader: `subject` in a `{data_name}` row of \
@@ -24960,6 +24973,28 @@ mod nfr_tests {
         assert!(
             refused,
             "a row without a `subject` field must refuse loudly (fail-closed)"
+        );
+    }
+
+    #[test]
+    fn nfr_frontier_reader_locates_path_subject_without_path() {
+        let synthetic = "module gunbc.non_fold_residue\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { subject: PathSubject { }, reason: \"r\", trigger: TriggerProse { text: \"d\" } }\n\
+             ]\n";
+        let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
+        }))
+        .expect_err("a PathSubject carrying no `path` field must refuse loudly (fail-closed)");
+        let message = refusal
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| refusal.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default();
+        assert!(
+            message.contains("`PathSubject` but carries no `path` field"),
+            "the refusal must LOCATE the missing `path` inside the present PathSubject, not \
+             report the row as having no `subject` field; got: {message}"
         );
     }
 }
@@ -25921,6 +25956,237 @@ fn cla_cached_wildcard_facts() -> &'static ClaWildcardFactsCache {
 
 pub fn complexity_linearity_wildcard_facts() -> &'static [ComplexityLinearityWildcardFactRaw] {
     &cla_cached_wildcard_facts().facts
+}
+
+// --- Fallback-arm census (W2, docs/plans/fallback-arm-census.md) ---
+// Per-arm structural wildcard walk over decl_facts. Classifies each MatchPattern::Wildcard
+// arm into exactly one of: refuses | completes_closed_total | declared_interim |
+// answers_on_open | unknown. Completeness: class counts sum to structural wildcard-arm
+// count (authority). Text `_ =>` grep is a measured over-approx, not the reconciliation
+// denominator. Zero production behavior change — register only.
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FallbackArmCensusFactRaw {
+    pub site: String,
+    pub fn_name: String,
+    pub rel_path: String,
+    pub class: String,
+    pub owning_lane: String,
+    pub closed_coproduct_scrutinee: bool,
+}
+
+#[derive(Default)]
+struct FacBodyMarks {
+    refuses: bool,
+    answers: bool,
+}
+
+fn fac_name_is_refuse(name: &str) -> bool {
+    name.contains("outcome_rejected")
+        || name.contains("Refused")
+        || name.ends_with("Rejected")
+        || name.contains("reject_")
+}
+
+fn fac_name_is_answer(name: &str) -> bool {
+    name.contains("outcome_accepted")
+        || name.contains("Accepted")
+        || name == "true"
+        || name == "True"
+}
+
+fn fac_walk_body_marks(
+    node: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    marks: &mut FacBodyMarks,
+) {
+    match node.expr_data.as_ref() {
+        ExprData::ExprCall { .. } => {
+            let fname = expr_call_func_at(node.clone(), si.clone());
+            if fac_name_is_refuse(&fname) {
+                marks.refuses = true;
+            }
+            if fac_name_is_answer(&fname) {
+                marks.answers = true;
+            }
+        }
+        ExprData::ExprVar { binding_kind: _ } => {
+            let name = authored_name_at(si.clone(), node.clone());
+            if fac_name_is_refuse(&name) {
+                marks.refuses = true;
+            }
+            if fac_name_is_answer(&name) {
+                marks.answers = true;
+            }
+        }
+        _ => {}
+    }
+    for child in node.children.iter() {
+        fac_walk_body_marks(child, si, marks);
+    }
+}
+
+fn fac_owning_lane(rel_path: &str) -> &'static str {
+    if rel_path.contains("/05_emit")
+        || rel_path.contains("/emit_")
+        || rel_path.contains("wrap_decision")
+        || rel_path.contains("06_translate")
+    {
+        "gate-1"
+    } else if rel_path.contains("/03_resolve")
+        || rel_path.contains("/04_infer")
+        || rel_path.contains("/01_tokenize")
+        || rel_path.contains("/02_parse")
+    {
+        "resolver"
+    } else if rel_path.contains("workflow")
+        || rel_path.contains("gunbc/")
+        || rel_path.contains("fleet")
+        || rel_path.contains("ci_floor")
+    {
+        "workflow-fleet"
+    } else {
+        "intake"
+    }
+}
+
+fn fac_classify_arm(
+    body: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    closed_scrutinee: bool,
+    interim_declared: bool,
+) -> &'static str {
+    if interim_declared {
+        return "declared_interim";
+    }
+    let mut marks = FacBodyMarks::default();
+    fac_walk_body_marks(body, si, &mut marks);
+    // Refuse wins when both marks fire (mirrors classify_fallback_arm in
+    // v2.lens.fallback_arm_census — a propagating refusal is not AnswersOnOpen).
+    if marks.refuses {
+        "refuses"
+    } else if marks.answers {
+        if closed_scrutinee {
+            "completes_closed_total"
+        } else {
+            "answers_on_open"
+        }
+    } else {
+        "unknown"
+    }
+}
+
+fn fac_collect_wildcard_arms(
+    node: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    param_types: &BTreeMap<String, String>,
+    closed: &BTreeSet<String>,
+    interim_declared: bool,
+    fn_name: &str,
+    rel_path: &str,
+    out: &mut Vec<FallbackArmCensusFactRaw>,
+) {
+    if let ExprData::ExprMatch = node.expr_data.as_ref() {
+        let scrutinee = match_scrutinee(node.clone());
+        let scrutinee_name = expr_var_name_at(scrutinee, si.clone());
+        let closed_scrutinee = !scrutinee_name.is_empty()
+            && cla_is_closed_coproduct_param_scrutinee(&scrutinee_name, param_types, closed);
+        for (arm_idx, arm) in match_arm_nodes(node.clone()).iter().enumerate() {
+            if !cla_is_wildcard_arm(arm) {
+                continue;
+            }
+            let body = arm_body(arm.clone());
+            let class = fac_classify_arm(&body, si, closed_scrutinee, interim_declared);
+            out.push(FallbackArmCensusFactRaw {
+                site: format!("{rel_path}::{fn_name}#arm{arm_idx}"),
+                fn_name: fn_name.to_string(),
+                rel_path: rel_path.to_string(),
+                class: class.to_string(),
+                owning_lane: fac_owning_lane(rel_path).to_string(),
+                closed_coproduct_scrutinee: closed_scrutinee,
+            });
+        }
+    }
+    for child in node.children.iter() {
+        fac_collect_wildcard_arms(
+            child,
+            si,
+            param_types,
+            closed,
+            interim_declared,
+            fn_name,
+            rel_path,
+            out,
+        );
+    }
+}
+
+fn fac_compute_census_facts(roots: &[String]) -> Vec<FallbackArmCensusFactRaw> {
+    let walk = decl_facts_corpus_walk(roots);
+    let closed = non_fold_residue_closed_coproduct_type_names();
+    let mut out = Vec::new();
+    for fact in &walk.facts {
+        if !matches!(fact.kind, ItemKind::FnItem | ItemKind::FuncItem) {
+            continue;
+        }
+        let Some(body) = fact.node.body.as_ref() else {
+            continue;
+        };
+        let param_types = cla_fn_param_type_heads(&fact.node, &fact.source_indices);
+        // DeclaredInterim requires a dissolve_on / FrontierRow marker beside the arm.
+        // Host cannot yet pair arms to FrontierRows reliably — leave false here; the
+        // planted DeclaredInterim fixture covers the class, and Unknown absorbs the
+        // undecided interim residue until a typed join lands.
+        let interim = false;
+        fac_collect_wildcard_arms(
+            body,
+            &fact.source_indices,
+            &param_types,
+            closed,
+            interim,
+            &fact.name,
+            &fact.rel_path,
+            &mut out,
+        );
+    }
+    out.sort();
+    out
+}
+
+struct FacCensusCache {
+    facts: Vec<FallbackArmCensusFactRaw>,
+}
+
+fn fac_cached_census_facts() -> &'static FacCensusCache {
+    static CACHE: OnceLock<FacCensusCache> = OnceLock::new();
+    CACHE.get_or_init(|| FacCensusCache {
+        facts: fac_compute_census_facts(&witness_layer_roots()),
+    })
+}
+
+pub fn fallback_arm_census_facts() -> &'static [FallbackArmCensusFactRaw] {
+    &fac_cached_census_facts().facts
+}
+
+pub fn fallback_arm_census_class_count(class: &str) -> i64 {
+    fallback_arm_census_facts()
+        .iter()
+        .filter(|f| f.class == class)
+        .count() as i64
+}
+
+pub fn fallback_arm_census_total() -> i64 {
+    fallback_arm_census_facts().len() as i64
+}
+
+pub fn fallback_arm_census_reconciliation_holds() -> bool {
+    let total = fallback_arm_census_total();
+    let sum = fallback_arm_census_class_count("refuses")
+        + fallback_arm_census_class_count("completes_closed_total")
+        + fallback_arm_census_class_count("declared_interim")
+        + fallback_arm_census_class_count("answers_on_open")
+        + fallback_arm_census_class_count("unknown");
+    total == sum && total > 0
 }
 
 #[cfg(test)]
@@ -27948,6 +28214,28 @@ pub struct ExtdepsShapeTransportPolicyModuleFacts {
     pub gist_create_files_keyed_by_filename: bool,
 }
 
+type ExtdepsParsedModule = (
+    Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
+    Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+);
+
+thread_local! {
+    /// Content-keyed memo for `parse_extdeps_module_items`. Keyed on the file's own
+    /// bytes (hashed), never on the path alone, so a mutated file re-parses and the
+    /// memo cannot serve a stale tree — the cache-purity rule DESIGN names (key on
+    /// declared-input content). The corpus argv census folds every operation row
+    /// through this reader, which without the memo re-parses one module per row.
+    static EXTDEPS_PARSE_MEMO: std::cell::RefCell<HashMap<String, (u64, ExtdepsParsedModule)>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+fn extdeps_source_content_hash(content: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    content.hash(&mut hasher);
+    hasher.finish()
+}
+
 pub fn parse_extdeps_module_items(
     path: &str,
 ) -> (
@@ -27971,6 +28259,16 @@ pub fn parse_extdeps_module_items(
     let path_str = resolved.to_string_lossy();
     let content = std::fs::read_to_string(&resolved)
         .unwrap_or_else(|e| panic!("parse_extdeps_module_items: failed to read {path_str}: {e}"));
+    let memo_key = resolved.to_string_lossy().to_string();
+    let content_hash = extdeps_source_content_hash(&content);
+    if let Some(hit) = EXTDEPS_PARSE_MEMO.with(|memo| {
+        memo.borrow()
+            .get(&memo_key)
+            .filter(|(hash, _)| *hash == content_hash)
+            .map(|(_, parsed)| parsed.clone())
+    }) {
+        return hit;
+    }
     let filename = resolved
         .file_name()
         .and_then(|s| s.to_str())
@@ -27991,18 +28289,50 @@ pub fn parse_extdeps_module_items(
         .module
         .as_ref()
         .expect("parse_extdeps_module_items: missing module");
-    (module.children.clone(), source_indices)
+    let parsed: ExtdepsParsedModule = (module.children.clone(), source_indices);
+    EXTDEPS_PARSE_MEMO.with(|memo| {
+        memo.borrow_mut()
+            .insert(memo_key, (content_hash, parsed.clone()));
+    });
+    parsed
 }
 
-pub fn shell_argv_nodes_for_operation(
-    path: String,
-    service: String,
-    operation: String,
-) -> (
-    Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
-    Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-) {
-    let (items, source_indices) = parse_extdeps_module_items(&path);
+/// One shell-transport operation's *declaration*: the argv expression nodes and the
+/// inputs the operation itself declares (name + optional default expression).
+///
+/// This is the single authority the generic argv materializer binds against
+/// (`v2.std.operation_argv`): the binding vocabulary is the operation's own
+/// `input { .. }` block, never a fixed list the seed happens to know.
+pub struct OperationArgvDeclaration {
+    pub argv: Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
+    pub declared_inputs: Vec<(String, Option<Rc<crate::v1_std_core::Node>>)>,
+    pub source_indices: Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+}
+
+fn operation_declared_inputs(
+    op: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Vec<(String, Option<Rc<crate::v1_std_core::Node>>)> {
+    op.params
+        .iter()
+        .map(|p| {
+            let name = crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone());
+            // `make_param_node` lays children out as [type_expr] or [type_expr, default].
+            let default = p.children.get(1).cloned();
+            (name, default)
+        })
+        .collect()
+}
+
+/// The declaration of `service.operation` in `path`, when it carries a shell transport.
+/// `None` when the module, service, operation, or shell transport is absent — the
+/// caller turns that into a typed refusal rather than a panic.
+pub fn shell_transport_operation_declaration(
+    path: &str,
+    service: &str,
+    operation: &str,
+) -> Option<OperationArgvDeclaration> {
+    let (items, source_indices) = parse_extdeps_module_items(path);
     for item in items.iter() {
         if item.name != service {
             continue;
@@ -28020,10 +28350,143 @@ pub fn shell_argv_nodes_for_operation(
                 op.clone(),
                 fallback_transport.clone(),
             );
-            return (eff.children.clone(), source_indices);
+            if !crate::v1_std_core::is_shell_transport(eff.clone()) {
+                return None;
+            }
+            return Some(OperationArgvDeclaration {
+                argv: eff.children.clone(),
+                declared_inputs: operation_declared_inputs(op, &source_indices),
+                source_indices,
+            });
         }
     }
-    panic!("shell_argv_nodes_for_operation: operation {service}.{operation} not found in {path}");
+    None
+}
+
+/// One row of the corpus's shell-transport operation census, derived from the
+/// declarations themselves. The witness corpus folds over these rows rather than a
+/// hand-authored roster, so a newly authored operation enrolls by existing and
+/// coverage is a corpus fact rather than a claim (DESIGN §3, §6).
+pub struct ShellTransportOperationCensusRow {
+    pub path: String,
+    pub service: String,
+    pub operation: String,
+    pub declared_inputs: Vec<String>,
+    pub argv_input_refs: Vec<String>,
+}
+
+fn collect_argv_input_refs(
+    node: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    out: &mut Vec<String>,
+) {
+    use crate::v1_std_core::{expr_var_name_at, ExprData, StringPart};
+    match node.expr_data.as_ref() {
+        ExprData::ExprVar { .. } => {
+            let name = expr_var_name_at(node.clone(), source_indices.clone());
+            if !name.is_empty() && !out.contains(&name) {
+                out.push(name);
+            }
+        }
+        ExprData::ExprStringInterp => {
+            for part in crate::v1_compiler_emit::extract_string_interp_parts(node.clone()).iter() {
+                if let StringPart::Interpolation { expr } = part.as_ref() {
+                    collect_argv_input_refs(expr, source_indices, out);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn dag_source_files_under(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    let mut paths: Vec<std::path::PathBuf> = entries.flatten().map(|e| e.path()).collect();
+    paths.sort();
+    for p in paths {
+        if p.is_dir() {
+            dag_source_files_under(&p, out);
+        } else if p.extension().and_then(|s| s.to_str()) == Some("dag") {
+            out.push(p);
+        }
+    }
+}
+
+/// Whether a source *could* declare a shell transport: the literal keyword `transport`
+/// followed, on the SAME line, by `shell`.
+///
+/// This is a sound necessary condition rather than a heuristic, and it is read off the
+/// parser rather than guessed: `parse_transport_binding` inspects the token
+/// immediately after `transport` with no `skip_newlines`, so the kind keyword cannot be
+/// on a following line. Horizontal whitespace between the two is admitted because the
+/// tokenizer skips it. A string literal mentioning the phrase makes this a superset,
+/// which costs one parse and misses nothing.
+fn source_may_declare_shell_transport(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut at = 0usize;
+    while let Some(found) = text[at..].find("transport") {
+        let mut i = at + found + "transport".len();
+        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+            i += 1;
+        }
+        if text[i..].starts_with("shell") {
+            return true;
+        }
+        at = at + found + "transport".len();
+    }
+    false
+}
+
+/// Every shell-transport operation declared under the corpus source roots.
+pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow> {
+    let root = workspace_root();
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    for sub in ["dag", "src/v2"] {
+        dag_source_files_under(&root.join(sub), &mut files);
+    }
+    let mut rows: Vec<ShellTransportOperationCensusRow> = Vec::new();
+    for file in files.iter() {
+        let Ok(text) = std::fs::read_to_string(file) else {
+            continue;
+        };
+        if !source_may_declare_shell_transport(&text) {
+            continue;
+        }
+        let Ok(rel) = file.strip_prefix(&root) else {
+            continue;
+        };
+        let rel = rel.to_string_lossy().to_string();
+        let (items, source_indices) = parse_extdeps_module_items(&rel);
+        for item in items.iter() {
+            for op in item.children.iter() {
+                let Some(transport) = op
+                    .transport
+                    .clone()
+                    .or_else(|| item.transport.clone())
+                    .filter(|t| crate::v1_std_core::is_shell_transport(t.clone()))
+                else {
+                    continue;
+                };
+                let mut argv_input_refs: Vec<String> = Vec::new();
+                for argv_node in transport.children.iter() {
+                    collect_argv_input_refs(argv_node, &source_indices, &mut argv_input_refs);
+                }
+                rows.push(ShellTransportOperationCensusRow {
+                    path: rel.clone(),
+                    service: item.name.clone(),
+                    operation: op.name.clone(),
+                    declared_inputs: operation_declared_inputs(op, &source_indices)
+                        .into_iter()
+                        .map(|(name, _)| name)
+                        .collect(),
+                    argv_input_refs,
+                });
+            }
+        }
+    }
+    rows
 }
 
 pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter::Value) -> bool {

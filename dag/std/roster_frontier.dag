@@ -108,13 +108,15 @@ fn frontier_rows_well_formed(rows: List<FrontierRow>) -> Bool {
   fold(rows, init: true, f: fn(acc, row) { acc && frontier_row_well_formed(row: row) })
 }
 
+fn frontier_subject_key(subject: FrontierSubject) -> String {
+  match subject {
+    PathSubject { path: p } => p
+    DeclSubject { ref: r } => concat(r.module_path as String, concat("::", r.decl_name as String))
+  }
+}
+
 fn frontier_path_subjects(rows: List<FrontierRow>) -> List<String> {
-  fold(rows, init: [], f: fn(acc, row) {
-    match row.subject {
-      PathSubject { path: p } => concat(acc, [p])
-      DeclSubject { ref: r } => concat(acc, [concat(r.module_path as String, concat("::", r.decl_name as String))])
-    }
-  })
+  map(rows, row => frontier_subject_key(subject: row.subject))
 }
 
 fn frontier_units(rows: List<FrontierRow>) -> List<String> {
@@ -122,7 +124,7 @@ fn frontier_units(rows: List<FrontierRow>) -> List<String> {
 }
 
 fn concat_frontier_row_groups(groups: List<List<FrontierRow>>) -> List<FrontierRow> {
-  fold(groups, init: [], f: fn(acc, group) { concat(acc, group) })
+  flat_map(groups, group => group)
 }
 
 type FrontierExpiryReport {

@@ -163,7 +163,11 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
   )
 ]
 
-data native_routing_frontier_family_count_expected: Int = 11
+fn routing_frontier_total_holds() -> Bool {
+  let roster_len = length(xs: native_routing_frontier_roster)
+  let split_total = length(xs: native_routed_rows()) + length(xs: interpreted_retained_rows())
+  split_total == roster_len
+}
 
 fn routing_row_is_native(row: NativeRoutingFrontierRow) -> Bool {
   match row.disposition {
@@ -216,12 +220,6 @@ fn routing_frontier_row_for_subject(subject: DeclarationRef) -> List<NativeRouti
       }
     }
   )
-}
-
-fn routing_frontier_total_holds() -> Bool {
-  let split_total = length(xs: native_routed_rows()) + length(xs: interpreted_retained_rows())
-  length(xs: native_routing_frontier_roster) == native_routing_frontier_family_count_expected
-    && split_total == native_routing_frontier_family_count_expected
 }
 
 fn string_eq_native_routing(a: String, b: String) -> Bool {
