@@ -174,7 +174,7 @@ test fn dag_add_emit_matches_serialize_holds() -> Bool {
   }
 }
 
-fn dag_add_grammar_inverse_holds() -> Bool {
+test fn dag_add_grammar_inverse_holds() -> Bool {
   match grammar_inverse_source_validated(
     target: dag_add_target_model,
     emitted: dag_add_emitted_root
@@ -184,7 +184,7 @@ fn dag_add_grammar_inverse_holds() -> Bool {
   }
 }
 
-fn dag_add_ingest_via_coerce_matches_canonical() -> Bool {
+test fn dag_add_ingest_via_coerce_matches_canonical() -> Bool {
   match coerce_grounded_node(
     source: dag_add_emitted_root,
     tree: dag_add_inferred_tree,
@@ -222,19 +222,14 @@ fn dag_add_domain_translate_accepts_holds() -> Bool {
   }
 }
 
-fn dag_add_translate_accepts_holds() -> Bool {
+test fn dag_add_translate_accepts_holds() -> Bool {
   match translate_emitted_node(tree: dag_add_inferred_tree, target: dag_add_target_model) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn dag_add_emit_add_fn_accepts_holds() -> Bool {
+test fn dag_add_emit_add_fn_accepts_holds() -> Bool {
   dag_add_emit_matches_serialize_holds()
 }
 
-test fn dag_add_emit_ingest_round_trip_holds() -> Bool {
-  dag_add_emit_add_fn_accepts_holds()
-    && dag_add_grammar_inverse_holds()
-    && dag_add_ingest_via_coerce_matches_canonical()
-}

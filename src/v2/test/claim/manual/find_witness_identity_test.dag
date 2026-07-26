@@ -116,7 +116,7 @@ fn mismatched_property_witness() -> StructuralPropertyWitness {
     evidence: identity_source_node()
   }
 }
-fn mismatched_evidence_witness() -> StructuralPropertyWitness {
+test fn mismatched_evidence_witness() -> StructuralPropertyWitness {
   StructuralPropertyWitness {
     property: ^preservation_rule_exact_structural_equality_zip_fold,
     evidence: identity_other_node()

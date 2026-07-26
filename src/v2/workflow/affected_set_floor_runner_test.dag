@@ -510,30 +510,3 @@ test fn floor_test_rust_run_implies_dag_run_superset_holds() -> Bool {
     )
 }
 
-test fn floor_runner_unaffected_assumed_green_skips_holds() -> Bool {
-  floor_test_untouched_skips_assumed_green_holds()
-    && floor_test_empty_diff_flows_general_skip_holds()
-    && floor_test_diff_fail_closed_refuses_holds()
-}
-
-test fn floor_runner_node_frontier_policy_holds() -> Bool {
-  floor_test_untouched_skips_assumed_green_holds()
-    && floor_test_touched_runs_holds()
-    && floor_test_function_edited_runs_holds()
-    && floor_test_entry_file_touched_runs_holds()
-    && floor_test_fn_declaration_edited_holds()
-    && floor_test_rust_run_implies_dag_run_superset_holds()
-    && floor_test_empty_diff_flows_general_skip_holds()
-    && floor_test_diff_fail_closed_refuses_holds()
-    && floor_test_frontier_fail_closed_refuses_holds()
-    && floor_test_claim_touch_discriminates_holds()
-    && floor_test_inner_frontier_discriminates_holds()
-    && floor_test_live_row_never_skips_when_kernel_would_holds()
-    && floor_test_live_row_runs_when_kernel_runs_holds()
-    && floor_test_runtime_data_dependency_touched_runs_holds()
-    && floor_test_precompute_skip_holds()
-    && floor_test_precompute_live_corpus_never_skips_holds()
-    && floor_test_eval_nodes_from_claims_holds()
-    && floor_test_any_claim_touch_holds()
-    && floor_test_diff_policy_matches_ci_spec_holds()
-}

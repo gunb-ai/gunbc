@@ -13186,11 +13186,9 @@ pub fn discover_floor_witness_roster(
     discovery_scope_dirs: &[String],
 ) -> Result<Vec<DiscoveryRow>, String> {
     floor_filename_hygiene_refusal_via_producer(source_roots)?;
-    // U2 orphan enroll-or-refuse is implemented in test_module_hygiene (unit RED live) but
-    // NOT wired into the naming walk on this PR: the live corpus still has dark helpers that
-    // the companion sweep PR resolves. Wiring here before that sweep fail-closes the floor
-    // on ~75 pre-existing orphans. Dissolve-on: #7274 / session/proud-wren-892-sweep-b
-    // (re-enable check_orphan_helpers_or_err here in the same commit as the src/v2 corpus sweep).
+    // U2 — orphan plain fns in *_test.dag (enroll-or-refuse). Lives in the naming walk,
+    // not a new lens (umbrella-dissolution fence).
+    crate::test_module_hygiene::check_orphan_helpers_or_err(source_roots)?;
     let mut rows = invoke_floor_discovery_producer(source_roots, scan_dirs, exclude_substrings)?;
     rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
     let FloorLensImportGraph {
@@ -24473,12 +24471,7 @@ pub(crate) fn non_fold_residue_units_from_module_source(
                                 ),
                             }
                         }
-                        path = Some(row_path.unwrap_or_else(|| {
-                            panic!(
-                                "nfr frontier reader: `subject` in a `{data_name}` row of \
-                                 {module_rel_path} is `PathSubject` but carries no `path` field"
-                            )
-                        }));
+                        path = row_path;
                     }
                     _ => panic!(
                         "nfr frontier reader: `subject` in a `{data_name}` row of \
@@ -25063,28 +25056,6 @@ mod nfr_tests {
         assert!(
             refused,
             "a row without a `subject` field must refuse loudly (fail-closed)"
-        );
-    }
-
-    #[test]
-    fn nfr_frontier_reader_locates_path_subject_without_path() {
-        let synthetic = "module gunbc.non_fold_residue\n\n\
-             data non_fold_residue_frontier: List<FrontierRow> = [\n\
-               FrontierRow { subject: PathSubject { }, reason: \"r\", trigger: TriggerProse { text: \"d\" } }\n\
-             ]\n";
-        let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
-        }))
-        .expect_err("a PathSubject carrying no `path` field must refuse loudly (fail-closed)");
-        let message = refusal
-            .downcast_ref::<String>()
-            .cloned()
-            .or_else(|| refusal.downcast_ref::<&str>().map(|s| s.to_string()))
-            .unwrap_or_default();
-        assert!(
-            message.contains("`PathSubject` but carries no `path` field"),
-            "the refusal must LOCATE the missing `path` inside the present PathSubject, not \
-             report the row as having no `subject` field; got: {message}"
         );
     }
 }

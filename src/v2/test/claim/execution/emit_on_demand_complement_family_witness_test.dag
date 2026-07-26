@@ -134,11 +134,3 @@ test fn emit_on_demand_complement_materialize_share_on_hit_holds() -> Bool {
   }
 }
 
-test fn emit_on_demand_complement_family_witnesses() -> Bool {
-  emit_on_demand_complement_grain_keys_differ_holds()
-    && emit_on_demand_complement_materialize_recompute_on_miss_holds()
-    && emit_on_demand_complement_interpreter_roles_bounded_holds()
-    && emit_on_demand_complement_schedule_refuses_unreadable_budget_holds()
-    && emit_on_demand_complement_closure_keys_differ_for_distinct_trees_holds()
-    && emit_on_demand_complement_materialize_share_on_hit_holds()
-}

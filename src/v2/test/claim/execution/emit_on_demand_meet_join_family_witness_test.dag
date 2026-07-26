@@ -150,12 +150,3 @@ test fn emit_on_demand_join_closure_keys_differ_for_distinct_trees_holds() -> Bo
   key_primary != key_alt
 }
 
-test fn emit_on_demand_meet_join_family_witnesses() -> Bool {
-  emit_on_demand_meet_join_grain_keys_differ_holds()
-    && emit_on_demand_meet_join_materialize_recompute_on_miss_holds()
-    && emit_on_demand_meet_join_interpreter_roles_bounded_holds()
-    && emit_on_demand_meet_join_schedule_refuses_unreadable_budget_holds()
-    && emit_on_demand_meet_closure_keys_differ_for_distinct_trees_holds()
-    && emit_on_demand_join_closure_keys_differ_for_distinct_trees_holds()
-    && emit_on_demand_meet_join_materialize_share_on_hit_holds()
-}

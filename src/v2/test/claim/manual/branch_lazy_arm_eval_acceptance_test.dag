@@ -554,7 +554,7 @@ fn lazy_arm_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
   }
 }
 
-fn lazy_arm_true_then_counted_else_divergent_holds() -> Bool {
+test fn lazy_arm_true_then_counted_else_divergent_holds() -> Bool {
   lazy_arm_run_passes(
     run: lazy_arm_run_branch(
       body: lazy_arm_branch_body(
@@ -567,7 +567,7 @@ fn lazy_arm_true_then_counted_else_divergent_holds() -> Bool {
   )
 }
 
-fn lazy_arm_false_then_divergent_else_counted_holds() -> Bool {
+test fn lazy_arm_false_then_divergent_else_counted_holds() -> Bool {
   lazy_arm_run_passes(
     run: lazy_arm_run_branch(
       body: lazy_arm_branch_body(
@@ -580,7 +580,7 @@ fn lazy_arm_false_then_divergent_else_counted_holds() -> Bool {
   )
 }
 
-fn lazy_arm_counted_literal_rejects_second_touch_holds() -> Bool {
+test fn lazy_arm_counted_literal_rejects_second_touch_holds() -> Bool {
   let env = empty_evaluation_environment()
   match lazy_arm_allocate_literal(node: lazy_arm_counted(), env: env) {
     Accepted { value: v, diagnostics: _ } =>
@@ -596,8 +596,3 @@ fn lazy_arm_counted_literal_rejects_second_touch_holds() -> Bool {
   }
 }
 
-test fn lazy_arm_eval_acceptance_keystone_holds() -> Bool {
-  lazy_arm_true_then_counted_else_divergent_holds()
-    && lazy_arm_false_then_divergent_else_counted_holds()
-    && lazy_arm_counted_literal_rejects_second_touch_holds()
-}

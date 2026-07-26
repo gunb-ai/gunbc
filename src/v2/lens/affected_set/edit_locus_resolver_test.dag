@@ -248,7 +248,7 @@ fn edit_locus_root_from_source_locus_holds(
   }
 }
 
-fn edit_locus_source_provenance_parse_root_span_holds() -> Bool {
+test fn edit_locus_source_provenance_parse_root_span_holds() -> Bool {
   match source_ir_artifact_provenance(
     source_read: edit_locus_source_producer_fixture_source_read
   ) {

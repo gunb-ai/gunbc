@@ -261,15 +261,15 @@ fn discovery_carries_exactly(r: Runnable, expected: ScheduleWitnessEntry) -> Boo
   }
 }
 
-fn witness_optin_corpus_carries_exactly_roster_rows() -> Bool {
+test fn witness_optin_corpus_carries_exactly_roster_rows() -> Bool {
   discovery_carries_exactly(r: corpus_runnable_for(spec: optin_spec), expected: synthetic_corpus_row)
 }
 
-fn witness_optin_execution_partition() -> Bool {
+test fn witness_optin_execution_partition() -> Bool {
   discovery_carries_exactly(r: execution_corpus_runnable_for(spec: optin_spec), expected: synthetic_execution_row)
 }
 
-fn witness_kind_wins_over_path() -> Bool {
+test fn witness_kind_wins_over_path() -> Bool {
   let spec = ci_spec_with_witness_entries(
     spec: gunbc_ci_spec,
     entries: [synthetic_exec_kind_nonexec_path_row]
@@ -282,13 +282,13 @@ fn witness_kind_wins_over_path() -> Bool {
     )
 }
 
-fn witness_optin_roster_drives_corpus_presence() -> Bool {
+test fn witness_optin_roster_drives_corpus_presence() -> Bool {
   (schedule_discovery_batch_count(batches: floor_schedule_for(spec: zero_roster_spec, serialize_heavy: true)) == 0) &&
     (schedule_discovery_batch_count(batches: floor_schedule_for(spec: corpus_only_spec, serialize_heavy: true)) == 1) &&
     (schedule_discovery_batch_count(batches: floor_schedule_for(spec: optin_spec, serialize_heavy: true)) == 2)
 }
 
-fn witness_optin_plan_gates_corpus_after_compile() -> Bool {
+test fn witness_optin_plan_gates_corpus_after_compile() -> Bool {
   let batches = floor_schedule_for(spec: optin_spec, serialize_heavy: true)
   !list_contains_str(xs: batch_functions(b: batches.first()), target: corpus_sentinel) &&
     (batch_index_of(batches: batches, target: "dag_compile_clean_gate_passes") == 1) &&
@@ -310,20 +310,20 @@ fn ci_spec_with_source_ingest_gate(spec: CiSpec) -> CiSpec {
 
 data source_ingest_ordering_spec: CiSpec = ci_spec_with_source_ingest_gate(spec: optin_spec)
 
-fn witness_optin_source_ingest_serialized_after_corpus() -> Bool {
+test fn witness_optin_source_ingest_serialized_after_corpus() -> Bool {
   let batches = floor_schedule_for(spec: source_ingest_ordering_spec, serialize_heavy: true)
   let corpus_idx = batch_index_of(batches: batches, target: corpus_sentinel)
   let ingest_idx = batch_index_of(batches: batches, target: "source_root_ingest_gate_passes")
   (corpus_idx >= 1) && (ingest_idx > corpus_idx)
 }
 
-fn witness_optin_exclusion_edges_track_roster() -> Bool {
+test fn witness_optin_exclusion_edges_track_roster() -> Bool {
   witness_floor_corpus_exclusion_edges_exist(spec: optin_spec) &&
     (length(xs: floor_corpus_exclusion_resource_edges(spec: zero_roster_spec)) == 0) &&
     witness_floor_no_corpus_resource_edge_to_compile_anchor(spec: optin_spec)
 }
 
-fn witness_optin_plan_serializes_heavy_resolves() -> Bool {
+test fn witness_optin_plan_serializes_heavy_resolves() -> Bool {
   floor_plan_serializes_heavy_resolves_for(spec: heavy_pair_spec) &&
     floor_plan_co_runs_heavy_without_serialization_for(spec: heavy_pair_spec)
 }
@@ -334,13 +334,13 @@ fn batch_has_both_emit_and_corpus(b: List<Runnable>) -> Bool {
     list_contains_str(xs: fns, target: corpus_sentinel)
 }
 
-fn witness_optin_emit_host_isolated_from_corpus() -> Bool {
+test fn witness_optin_emit_host_isolated_from_corpus() -> Bool {
   fold(floor_schedule_for(spec: optin_spec, serialize_heavy: true), init: true, f: fn(ok, b) {
     ok && !batch_has_both_emit_and_corpus(b: b)
   })
 }
 
-fn witness_optin_emit_host_co_runs_corpus_without_serialization() -> Bool {
+test fn witness_optin_emit_host_co_runs_corpus_without_serialization() -> Bool {
   fold(floor_schedule_for(spec: optin_spec, serialize_heavy: false), init: false, f: fn(found, b) {
     found || batch_has_both_emit_and_corpus(b: b)
   })
@@ -361,14 +361,13 @@ fn witness_hermetic_floor_posture_declared() -> Bool {
     && discovery_batch_declares_hermetic(r: gunbc_falsifier_batches().first().first())
 }
 
-fn witness_emit_host_profile_forbids_corpus_co_residence() -> Bool {
+test fn witness_emit_host_profile_forbids_corpus_co_residence() -> Bool {
   runnable_forbids_corpus_co_residence(r: gate_runnable(g: EmitHostGate))
 }
 
-fn witness_light_gate_profile_allows_corpus_co_residence() -> Bool {
+test fn witness_light_gate_profile_allows_corpus_co_residence() -> Bool {
   !runnable_forbids_corpus_co_residence(r: gate_runnable(g: ExtdepsExternalAuthorityGate))
 }
-
 
 fn falsifier_batch_selection(mode: NodeFrontierSelection) -> Bool {
   match mode {
@@ -633,21 +632,6 @@ test fn ci_floor_plan_witnesses() -> Bool {
     && falsifier_rehomed_bin_wet_batch_enrolled()
     && falsifier_substrate_long_lane_batch_enrolled()
     && falsifier_substrate_long_lane_budget_exceeds_fast_lane_holds()
-}
-
-test fn ci_floor_optin_roster_witnesses() -> Bool {
-  witness_optin_roster_drives_corpus_presence() &&
-    witness_optin_corpus_carries_exactly_roster_rows() &&
-    witness_optin_execution_partition() &&
-    witness_kind_wins_over_path() &&
-    witness_optin_plan_gates_corpus_after_compile() &&
-    witness_optin_source_ingest_serialized_after_corpus() &&
-    witness_optin_exclusion_edges_track_roster() &&
-    witness_optin_plan_serializes_heavy_resolves() &&
-    witness_optin_emit_host_isolated_from_corpus() &&
-    witness_optin_emit_host_co_runs_corpus_without_serialization() &&
-    witness_emit_host_profile_forbids_corpus_co_residence() &&
-    witness_light_gate_profile_allows_corpus_co_residence()
 }
 
 test fn ci_corpus_discovery_flip_witnesses() -> Bool {

@@ -360,17 +360,6 @@ test fn ci_runner_discovered_equals_selected_inner_frontier_holds() -> Bool {
   )
 }
 
-test fn ci_runner_node_frontier_four_phase_discrimination_holds() -> Bool {
-  ci_runner_narrow_selection_holds()
-    && ci_runner_fail_closed_superset_holds()
-    && ci_runner_shape_collision_holds()
-    && ci_runner_inner_frontier_holds()
-    && ci_runner_discovered_equals_selected_narrow_holds()
-    && ci_runner_discovered_equals_roster_on_fail_closed_holds()
-    && ci_runner_discovered_equals_selected_shape_collision_holds()
-    && ci_runner_discovered_equals_selected_inner_frontier_holds()
-}
-
 fn ci_runner_inner_frontier_rhs() -> Node {
   if ci_runner_inner_frontier_holds() {
     ci_runner_touched_node
