@@ -268,7 +268,9 @@ fn role_bool_filter_disposition_receipt_holds() -> Bool {
     Scaffold { dissolves_to: SingleAuthority, bind: bind } =>
       bind.module_path == ("gunbc.witness_row_cost" as NonEmptyStr) &&
       bind.decl_name == ("witness_cost_concluded_outcome" as NonEmptyStr) &&
-      string_contains(s: witness_cost_role_bool_filter_note, pattern: "review 43383")
+      string_contains(s: witness_cost_role_bool_filter_note, pattern: "review 43383") &&
+      string_contains(s: witness_cost_role_bool_filter_note, pattern: "review 43399") &&
+      string_contains(s: witness_cost_role_bool_filter_note, pattern: "has_resolve_phase deleted")
     _ => false
   }
 }

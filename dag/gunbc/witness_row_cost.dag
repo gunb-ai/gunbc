@@ -78,7 +78,7 @@ data witness_cost_role_bool_filter_disposition: Disposition = Scaffold {
   }
 }
 
-data witness_cost_role_bool_filter_note: String = "Scaffold receipt for review 43383 (typed Disposition above — prose alone does not discharge the gate): is_entry_resolve_event / is_declaration_witness_event are Bool filters over (subject facts × witness_cost_concluded_outcome Optional), not ObservationTransition→Bool. Dissolves when count/unique/project folds match that Optional Present/Absent (plus phase/grain facts) inline with no Bool nickname."
+data witness_cost_role_bool_filter_note: String = "Scaffold receipt for review 43383 / review 43399 (typed Disposition above — prose alone does not discharge the gate): is_entry_resolve_event / is_declaration_witness_event are Bool filters over (subject facts × witness_cost_concluded_outcome Optional), not ObservationTransition→Bool. witness_cost_subject_has_resolve_phase deleted — phase read is inlined via observation_subject_phase_name (canonical accessor) inside is_entry_resolve_event. Dissolves when count/unique/project folds match that Optional Present/Absent (plus phase/grain facts) inline with no Bool nickname."
 
 type WitnessRowCostDatedBasis {
   eval: Millisecond
@@ -125,13 +125,6 @@ fn witness_cost_subject_declaration(subject: ObservationSubject) -> Optional<Dec
   observation_subject_declaration(subject: subject)
 }
 
-fn witness_cost_subject_has_resolve_phase(subject: ObservationSubject) -> Bool {
-  match observation_subject_phase_name(subject: subject) {
-    Present { value: n } => n == ("resolve" as NonEmptyStr)
-    Absent => false
-  }
-}
-
 fn witness_cost_measured_wall(wall: Measured<Millisecond>) -> Optional<Millisecond> {
   match wall {
     MeasuredValue { value: v } => Present { value: v }
@@ -148,10 +141,17 @@ fn witness_cost_concluded_outcome(event: ObservationEvent) -> Optional<Observati
 }
 
 fn witness_cost_is_entry_resolve_event(event: ObservationEvent) -> Bool {
-  witness_cost_subject_has_resolve_phase(subject: event.subject) &&
-  match witness_cost_concluded_outcome(event: event) {
-    Present { value: _ } => true
+  match observation_subject_phase_name(subject: event.subject) {
     Absent => false
+    Present { value: n } =>
+      if n == ("resolve" as NonEmptyStr) {
+        match witness_cost_concluded_outcome(event: event) {
+          Present { value: _ } => true
+          Absent => false
+        }
+      } else {
+        false
+      }
   }
 }
 
