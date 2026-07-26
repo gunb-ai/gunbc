@@ -24,7 +24,11 @@ import gunbc.ci_release_bins {
 import gunbc.cli_invoke {
   claim_executor_verify_artifacts_shell
 }
-import v2.workflow.ci_release_build_emit { gunbc_ci_run_script, ci_release_build_script }
+import v2.workflow.ci_release_build_emit {
+  gunbc_ci_run_script,
+  ci_release_build_script,
+  ci_release_build_shell_emit_dissolution_trigger
+}
 import gunbc.repo_identity {
   gunbc_merge_target_ref,
   gunbc_default_remote_name,

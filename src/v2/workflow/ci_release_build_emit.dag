@@ -1,5 +1,7 @@
 module v2.workflow.ci_release_build_emit
 
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ci_spec {
   CiSpec,
   ci_floor_build_verify_script,
@@ -11,14 +13,28 @@ import v2.workflow.ci_retry_emit { ci_cargo_eagain_retry_script }
 
 data ci_release_build_emit_authority_note: String = "Release-build shell emission (retry + verify) lives here, separate from ci_workflow_run_emit, so gunbc.ci_materialization can import ci_release_build_script without a module cycle (ci_materialization ↔ ci_workflow_run_emit via ci_sccache_provider_shell_injection)."
 
+data ci_release_build_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_release_build_emit",
+    decl_name: "ci_release_build_script",
+    field: WholeDeclaration
+  }
+}
+
+data ci_release_build_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_release_build_script — concat-built foreign-executor (GitHub Actions run:) release-build runner (ROOT stamp + verify-artifacts + sccache stats wrapping the orch-emitted EAGAIN retry core); membership of --bin / verify paths is derived from gunbc.ci_release_bins, but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the release-build runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold"
+
 fn ci_release_build_script() -> String {
   concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    concat("# ", concat(ci_release_build_shell_emit_dissolution_trigger, "\n")),
     concat(
-      ci_cargo_eagain_retry_script(command: ci_release_build_line()),
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
       concat(
-        ci_floor_build_verify_script(),
-        "sccache --show-stats 2>/dev/null || true"
+        ci_cargo_eagain_retry_script(command: ci_release_build_line()),
+        concat(
+          ci_floor_build_verify_script(),
+          "sccache --show-stats 2>/dev/null || true"
+        )
       )
     )
   )

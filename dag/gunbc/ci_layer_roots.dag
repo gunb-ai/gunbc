@@ -749,7 +749,7 @@ fn bin_wet(entry: String, f: String) -> ScheduleWitnessEntry {
   ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
 }
 
-data excl_no_fake_anomalies_reason: String = "The expectation-backfill WALL spawns claim_batch as a child process to read a passing corpus's own stderr, so it is Wet BY CONSTRUCTION — its whole subject is what the observation layer prints, which only exists when the effects really run. The Hermetic discovery corpus refuses it exactly as install_media_real_execution_wet_note describes ('no mock_response for operation Run — refusing to fabricate Unit'), and that refusal is correct: a mocked child emits no real observation stream, so a hermetic version of this witness could only ever pass vacuously. Measured walls 91–93s on CI run 30212463696 blew FLOOR-BATCH-OVER-BUDGET on the per-PR wet batch, so both check_fns re-home to falsifier_rehomed_bin_wet_rows (FalsifierRehomedBinWet) rather than BinWitnessWet."
+data excl_no_fake_anomalies_reason: String = "The expectation-backfill WALL spawns claim_batch as a child process to read a passing corpus's own stderr, so it is Wet BY CONSTRUCTION — its whole subject is what the observation layer prints, which only exists when the effects really run. The Hermetic discovery corpus refuses it exactly as install_media_real_execution_wet_note describes ('no mock_response for operation Run — refusing to fabricate Unit'), and that refusal is correct: a mocked child emits no real observation stream, so a hermetic version of this witness could only ever pass vacuously. Measured walls on CI run 30212463696 (~91s green / ~93s RED while cargo was still in the child path) blew FLOOR-BATCH-OVER-BUDGET on the per-PR wet batch; after the RED re-point to cheap /bin/false the RED leg is ~49s (under the 60s per-row budget) but stays paired with the still-over-budget green sibling on falsifier_rehomed_bin_wet_rows (FalsifierRehomedBinWet) rather than BinWitnessWet."
 
 data excl_expectation_frontier_reason: String = "Reads the [expectation-frontier] receipt out of a real child run's stderr, so it is Wet BY CONSTRUCTION for the same reason the anomaly wall beside it is: the receipt only exists when effects actually dispatch, and a hermetic child emits no real observation stream, so a mocked version could only pass vacuously. Sibling mechanism, same lane, deliberately not a forked one (DESIGN §3)."
 
@@ -863,13 +863,13 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
   RehomedBinWetRow {
     entry: "dag/test/claim/no_fake_anomalies_witness_test.dag",
     function: "passing_run_shows_no_fake_anomaly_holds",
-    reason: "91497ms measured wall on CI run 30212463696 @ 4883541 (15x bin_witness_wet_per_row_wall_budget_seconds): spawns a cold claim_batch child to read a real observation stream — irreducible Wet cost of the anomaly-glyph wall, not shrinkable without losing the subject. Together with its RED sibling it blew FLOOR-BATCH-OVER-BUDGET on the per-PR wet batch (wall_ms=600540 clamp_ms=540000)",
+    reason: "91497ms measured wall on CI run 30212463696 @ 4883541 (~1.5x bin_witness_wet_per_row_wall_budget_seconds): spawns a cold claim_batch child to read a real observation stream — irreducible Wet cost of the anomaly-glyph wall, not shrinkable without losing the subject. Together with its RED sibling it blew FLOOR-BATCH-OVER-BUDGET on the per-PR wet batch (wall_ms=600540 clamp_ms=540000)",
     dissolve_on: "the wall gains a cheaper discrimination that still reads a real rendered stream under the per-row budget on a measured run — then re-enroll per-PR; until then falsifier cadence owns the coverage"
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/no_fake_anomalies_witness_test.dag",
     function: "red_control_entry_with_real_anomaly_still_shows_glyph_holds",
-    reason: "93069ms measured wall on CI run 30212463696 @ 4883541 (when the child still ran cargo) / ~49s after the child was re-pointed at cheap unannotated /bin/false — still above the 60s per-row budget because the cost is the cold claim_batch child resolve, not the failing effect. Sibling of passing_run_shows_no_fake_anomaly_holds; both leave the per-PR wet batch together",
+    reason: "93069ms measured wall on CI run 30212463696 @ 4883541 (when the child still ran cargo) / ~49s after the child was re-pointed at cheap unannotated /bin/false — under the 60s per-row budget on that cheap path, but stays falsifier-rehomed with its green sibling (passing_run_shows_no_fake_anomaly_holds remains ~91s / ~1.5x). Residual cost is the cold claim_batch child resolve, not the failing effect. Sibling of passing_run_shows_no_fake_anomaly_holds; both leave the per-PR wet batch together",
     dissolve_on: "paired with passing_run_shows_no_fake_anomaly_holds — re-enroll per-PR only when that sibling's dissolve_on fires"
   }
 ]
