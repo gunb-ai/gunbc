@@ -2199,7 +2199,7 @@ pub fn render_rust_decl_type_container_arg(
     arg: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    if rust_fn_sig_leaf_name(source_indices.clone(), arg.clone()) == "Measure".to_string() {
+    if (rust_fn_sig_leaf_name(source_indices.clone(), arg.clone()) == "Measure".to_string()) {
         child_type_node(arg.clone())
     } else {
         arg.clone()
