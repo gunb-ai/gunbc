@@ -18,11 +18,19 @@ data ownership_wrap_catalog_placement_note: String = "Layer catalog + use-site d
 
 data rust_sg_rc_wrap_catalog_note: String = "Single authority for rust_sg_rc_use_site_ownership_catalog rows (v1 seed emitter + v2.extdeps.languages.rust). Carrier is a closed enum (not a string tag). NonEmptyDiagnostics aliases Diagnostics at the lookup boundary only — dissolve-on: modeled alias row in the catalog when NonEmptyDiagnostics itself dissolves (§3 nickname; do not grow rust_sg_rc_wrap_carrier_key string branches)."
 
-data rust_seed_effective_reference_layer_note: String = "INERT-FIRST (OWNERSHIP-68 / sharp-bee-290): total v1 seed wrap authority — catalog lookup, use-site arm, legacy container fallback folded inside. Zero consumers until follow-up PRs flip type/value/deref deciders pairwise. Dissolve-on: first consumer-flip PR (see ownership_wrap_catalog_scaffold_note)."
+data rust_seed_effective_reference_layer_note: String = "INERT-FIRST (OWNERSHIP-68 / sharp-bee-290): v1 seed wrap projection — rust_seed_ownership_wrap_layer_disposition is the canonical decision; rust_seed_effective_reference_layer projects to OwnershipReferenceLayer? and returns none (fail-closed) on WrapLayerRefusedEnrolledRowMissing. Zero consumers until follow-up PRs flip deciders pairwise. Dissolve-on: first consumer-flip PR (see ownership_wrap_catalog_scaffold_note)."
 
 data rust_seed_legacy_container_blanket_dissolve_on: String = "wrap_catalog legacy container carriers covered — List/HashMap/BTreeMap rows land in rust_sg_rc_ownership_wrap_catalog_rows and rust_seed_legacy_container_blanket_rc deletes"
 
 data rust_seed_legacy_container_blanket_scaffold_note: String = "SCAFFOLD — dissolve-on: rust_seed_legacy_container_blanket_dissolve_on. Catalog MISS at an explicit use site may fall back to ReferenceLayerRc when rust_seed_legacy_container_blanket_rc matches rendered Vec, HashMap, or BTreeMap prefix text (string-prefix scan — ruled-out wrap-decision shape; become structural at dissolve)."
+
+data rust_sg_rc_wrap_carrier_from_type_name_scaffold_note: String = "SCAFFOLD — dissolve-on: carrier enrollment routes through the canonical substrate registry fold (wrap_decision_gate / SymbolIndex lane). String type_name rows are the witness-only enrollment table until the first consumer-flip PR."
+
+type OwnershipWrapLayerDisposition
+  = WrapLayerFromCatalog { layer: OwnershipReferenceLayer }
+  | WrapLayerDefaultOwnedUnenrolled
+  | WrapLayerLegacyContainerRc
+  | WrapLayerRefusedEnrolledRowMissing
 
 type OwnershipWrapUseSite
   = OwnershipWrapUseSiteAbsent
@@ -245,21 +253,6 @@ fn rust_sg_rc_wrap_row_lookup_for_carrier(carrier: OwnershipWrapCarrier, use_sit
     )
 }
 
-fn rust_sg_rc_carrier_enrolled_but_row_missing(type_name: String, use_site: OwnershipWrapUseSite) -> Bool {
-  match use_site {
-    OwnershipWrapUseSiteAbsent => false
-    _ =>
-      match rust_sg_rc_wrap_carrier_from_type_name(type_name: type_name) {
-        Present { value: carrier } =>
-          match rust_sg_rc_wrap_row_lookup_for_carrier(carrier: carrier, use_site: use_site) {
-            Present { value: _ } => false
-            Absent => true
-          }
-        Absent => false
-      }
-  }
-}
-
 fn rust_sg_rc_wrap_layer_lookup(type_name: String, use_site: OwnershipWrapUseSite) -> OwnershipReferenceLayer? {
   match use_site {
     OwnershipWrapUseSiteAbsent => none
@@ -271,19 +264,32 @@ fn rust_sg_rc_wrap_layer_lookup(type_name: String, use_site: OwnershipWrapUseSit
   }
 }
 
-fn rust_seed_effective_reference_layer(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> OwnershipReferenceLayer {
+fn rust_seed_ownership_wrap_layer_disposition(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> OwnershipWrapLayerDisposition {
   match use_site {
-    OwnershipWrapUseSiteAbsent => ReferenceLayerOwned
+    OwnershipWrapUseSiteAbsent => WrapLayerDefaultOwnedUnenrolled
     _ =>
       match rust_sg_rc_wrap_layer_lookup(type_name: type_name, use_site: use_site) {
-        Present { value: layer } => layer
+        Present { value: layer } => WrapLayerFromCatalog { layer: layer }
         Absent =>
-          if rust_seed_legacy_container_blanket_rc(rendered: rendered) {
-            ReferenceLayerRc
-          } else {
-            ReferenceLayerOwned
+          match rust_sg_rc_wrap_carrier_from_type_name(type_name: type_name) {
+            Present { value: _ } => WrapLayerRefusedEnrolledRowMissing
+            Absent =>
+              if rust_seed_legacy_container_blanket_rc(rendered: rendered) {
+                WrapLayerLegacyContainerRc
+              } else {
+                WrapLayerDefaultOwnedUnenrolled
+              }
           }
       }
+  }
+}
+
+fn rust_seed_effective_reference_layer(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> OwnershipReferenceLayer? {
+  match rust_seed_ownership_wrap_layer_disposition(type_name: type_name, rendered: rendered, use_site: use_site) {
+    WrapLayerFromCatalog { layer: layer } => Present { value: layer }
+    WrapLayerDefaultOwnedUnenrolled => Present { value: ReferenceLayerOwned }
+    WrapLayerLegacyContainerRc => Present { value: ReferenceLayerRc }
+    WrapLayerRefusedEnrolledRowMissing => none
   }
 }
 
@@ -299,28 +305,49 @@ fn rust_sg_rc_wrap_layer_lookup_witness_holds() -> Bool {
 }
 
 fn rust_sg_rc_carrier_enrolled_but_row_missing_witness_holds() -> Bool {
-  rust_sg_rc_carrier_enrolled_but_row_missing(type_name: "ProbeHeap", use_site: OwnershipAtFunctionParameter)
+  match rust_seed_ownership_wrap_layer_disposition(type_name: "ProbeHeap", rendered: "ProbeHeap", use_site: OwnershipAtFunctionParameter) {
+    WrapLayerRefusedEnrolledRowMissing => true
+    _ => false
+  }
 }
 
 fn rust_seed_effective_reference_layer_matches_catalog_witness_holds() -> Bool {
-  match rust_sg_rc_wrap_layer_lookup(type_name: "Node", use_site: OwnershipAtFunctionReturn) {
-    Present { value: catalog_layer } =>
-      rust_seed_effective_reference_layer(type_name: "Node", rendered: "Node", use_site: OwnershipAtFunctionReturn) == catalog_layer
-    Absent => false
+  match rust_seed_ownership_wrap_layer_disposition(type_name: "Node", rendered: "Node", use_site: OwnershipAtFunctionReturn) {
+    WrapLayerFromCatalog { layer: catalog_layer } =>
+      match rust_seed_effective_reference_layer(type_name: "Node", rendered: "Node", use_site: OwnershipAtFunctionReturn) {
+        Present { value: effective_layer } => effective_layer == catalog_layer
+        Absent => false
+      }
+    _ => false
   }
 }
 
 fn rust_seed_effective_reference_layer_miss_arm_owned_witness_holds() -> Bool {
-  match rust_seed_effective_reference_layer(type_name: "DigitStep", rendered: "DigitStep", use_site: OwnershipAtFunctionReturn) {
-    ReferenceLayerOwned => true
+  match rust_seed_ownership_wrap_layer_disposition(type_name: "DigitStep", rendered: "DigitStep", use_site: OwnershipAtFunctionReturn) {
+    WrapLayerDefaultOwnedUnenrolled =>
+      match rust_seed_effective_reference_layer(type_name: "DigitStep", rendered: "DigitStep", use_site: OwnershipAtFunctionReturn) {
+        Present { value: ReferenceLayerOwned } => true
+        Absent => false
+      }
     _ => false
   }
 }
 
 fn rust_seed_effective_reference_layer_legacy_container_witness_holds() -> Bool {
-  match rust_seed_effective_reference_layer(type_name: "Holder", rendered: "Vec<Int>", use_site: OwnershipAtBindingProjection) {
-    ReferenceLayerRc => true
+  match rust_seed_ownership_wrap_layer_disposition(type_name: "Holder", rendered: "Vec<Int>", use_site: OwnershipAtBindingProjection) {
+    WrapLayerLegacyContainerRc =>
+      match rust_seed_effective_reference_layer(type_name: "Holder", rendered: "Vec<Int>", use_site: OwnershipAtBindingProjection) {
+        Present { value: ReferenceLayerRc } => true
+        Absent => false
+      }
     _ => false
+  }
+}
+
+fn rust_seed_effective_reference_layer_refuses_enrolled_row_missing_witness_holds() -> Bool {
+  match rust_seed_effective_reference_layer(type_name: "ProbeHeap", rendered: "ProbeHeap", use_site: OwnershipAtFunctionParameter) {
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
@@ -328,6 +355,7 @@ fn rust_seed_effective_reference_layer_totality_witness_holds() -> Bool {
   rust_seed_effective_reference_layer_matches_catalog_witness_holds()
     && rust_seed_effective_reference_layer_miss_arm_owned_witness_holds()
     && rust_seed_effective_reference_layer_legacy_container_witness_holds()
+    && rust_seed_effective_reference_layer_refuses_enrolled_row_missing_witness_holds()
 }
 
 fn ownership_wrap_catalog_inert_authority_witness_holds() -> Bool {
