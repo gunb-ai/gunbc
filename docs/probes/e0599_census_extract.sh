@@ -3,8 +3,8 @@
 # (+ generic std-seed-link follow-up) retires this hand-shell log classifier; until then it
 # projects per-error E0599 census from PROBE_KEEP_LOG_DIR/*.cargo.log (probe-only).
 # dissolve-on alt: gunbc bash-emit #5828 / modeled cssl_probe transport in .dag.
-# Authority: dag/tools/e0599_probe_census.dag — patterns via e0599_message_pattern_rows_blob,
-# root-family labels via e0599_root_family_labels_from_blob (both fetched through gunbc).
+# Authority: dag/tools/e0599_probe_census.dag — patterns via e0599_write_message_pattern_rows_blob,
+# root-family labels via e0599_write_root_family_labels_from_blob (ProcessExit gunbc exports).
 # Witness: dag/test/claim/e0599_probe_census_witness_test.dag. Frozen output receipt (not authority):
 # docs/probes/e0599_canonical_seven_census_2026-07-26.tsv. Input logs from
 # docs/probes/curated_cargo_probe_one.sh PROBE_KEEP_LOG_DIR hook.
@@ -27,6 +27,11 @@ AGGREGATE=0
 if [[ "${1:-}" == "--aggregate" ]]; then
   AGGREGATE=1
   shift
+fi
+
+if [[ $# -lt 1 ]]; then
+  echo "error: no cargo.log paths provided" >&2
+  exit 2
 fi
 
 export E0599_CENSUS_ROOT="$ROOT"

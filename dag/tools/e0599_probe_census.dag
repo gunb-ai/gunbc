@@ -1,6 +1,8 @@
 module tools.e0599_probe_census
 
 import std.types { Bool, Int, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 type E0599FailureShape
   = MissingMethod
@@ -225,6 +227,37 @@ fn e0599_root_family_for(shape: E0599FailureShape, method: String, receiver: Str
     }
     Other => R6Other
   }
+}
+
+fn e0599_write_blob(path: String, content: String, label: String) -> ProcessExit {
+  if content == "" {
+    exit_failure(reason: concat(label, ": refused empty export"))
+  }
+  let w = Filesystem.Write(path: path, content: content)
+  if w.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error)))
+  }
+}
+
+fn e0599_write_message_pattern_rows_blob(out_path: String) -> ProcessExit {
+  e0599_write_blob(
+    path: out_path,
+    content: e0599_message_pattern_rows_blob(),
+    label: "e0599_message_pattern_rows_blob"
+  )
+}
+
+fn e0599_write_root_family_labels_from_blob(blob: String, out_path: String) -> ProcessExit {
+  if blob == "" {
+    exit_failure(reason: "e0599_root_family_labels_from_blob: refused empty input blob")
+  }
+  e0599_write_blob(
+    path: out_path,
+    content: e0599_root_family_labels_from_blob(blob: blob),
+    label: "e0599_root_family_labels_from_blob"
+  )
 }
 
 fn e0599_canonical_seven_module_count() -> Int {
