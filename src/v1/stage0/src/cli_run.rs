@@ -13111,6 +13111,11 @@ pub fn discover_floor_witness_roster(
     discovery_scope_dirs: &[String],
 ) -> Result<Vec<DiscoveryRow>, String> {
     floor_filename_hygiene_refusal_via_producer(source_roots)?;
+    // U2 orphan enroll-or-refuse is implemented in test_module_hygiene (unit RED live) but
+    // NOT wired into the naming walk on this PR: the live corpus still has dark helpers that
+    // the companion sweep PR resolves. Wiring here before that sweep fail-closes the floor
+    // on ~75 pre-existing orphans. Dissolve-on: session/proud-wren-892-full-sweep merge
+    // (re-enable check_orphan_helpers_or_err here in the same commit as the corpus sweep).
     let mut rows = invoke_floor_discovery_producer(source_roots, scan_dirs, exclude_substrings)?;
     rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
     let FloorLensImportGraph {
@@ -15506,7 +15511,9 @@ fn run_discovery_corpus_with_options_inner(
         .iter()
         .map(|r| (r.entry.clone(), r.function.clone()))
         .collect();
-    for (entry, function) in explicit_entries {
+    // U3 — empty function = file-grain: enumerate via the same test-decl scan discovery uses.
+    let expanded_explicit = crate::test_module_hygiene::expand_explicit_entries(explicit_entries)?;
+    for (entry, function) in &expanded_explicit {
         if seen.insert((entry.clone(), function.clone())) {
             rows.push(DiscoveryRow {
                 label: function.clone(),
