@@ -31,7 +31,7 @@ data corpus_ci_gate_row_dag_add_emit_ingest_round_trip: ClaimWitnessCorpusClaimR
 data corpus_ci_gate_row_english_emit_ingest_round_trip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "english emit ingest round trip",
   entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
-  function: "english_emit_add_emit_ingest_round_trip_holds",
+  function: "english_emit_add_ingest_round_trip_holds",
   expected: ExpectPass
 }
 
@@ -115,7 +115,7 @@ data corpus_ci_gate_row_branch_if_then_else_emit_keystone: ClaimWitnessCorpusCla
 data corpus_ci_gate_row_bind_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "bind eval by execution keystone",
   entry: "src/v2/test/claim/execution/bind_eval_by_execution_test.dag",
-  function: "bind_eval_by_execution_keystone_holds",
+  function: "",
   expected: ExpectPass
 }
 
@@ -136,7 +136,7 @@ data corpus_ci_gate_row_bind_round_trip_keystone: ClaimWitnessCorpusClaimRunRow 
 data corpus_ci_gate_row_loop_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "loop eval by execution keystone",
   entry: "src/v2/test/claim/execution/loop_eval_by_execution_test.dag",
-  function: "loop_eval_by_execution_keystone_holds",
+  function: "",
   expected: ExpectPass
 }
 
@@ -262,7 +262,7 @@ data corpus_ci_gate_row_witness_rust_wire_serde_naming_discriminates: ClaimWitne
 data corpus_ci_gate_row_cwc_nary_coproduct_normalize: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "n-ary coproduct type-alias RHS folds to kernel Disj",
   entry: "src/v2/test/claim/long/cwc_resolution_probe_test.dag",
-  function: "cwc_nary_coproduct_normalize_boundary_holds",
+  function: "cwc_norm_two_variant_accepts",
   expected: ExpectPass
 }
 
@@ -359,36 +359,36 @@ data corpus_ci_gate_row_probe_selector_cf_import_resolves: ClaimWitnessCorpusCla
 
 data corpus_ci_gate_row_markup_serializer_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "markup fragment-ir serializer keystone",
-  entry: "dag/test/claim/markup_serializer_witness.dag",
-  function: "markup_serializer_keystone_holds",
+  entry: "dag/test/claim/markup_serializer_witness_test.dag",
+  function: "",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_html_markup_xss_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "html markup xss reject keystone",
-  entry: "dag/test/claim/html_markup_xss_witness.dag",
-  function: "html_markup_xss_keystone_holds",
+  entry: "dag/test/claim/html_markup_xss_witness_test.dag",
+  function: "",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_html_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "html emit consumer + XSS reject keystone",
   entry: "dag/test/claim/html_emit_witness_test.dag",
-  function: "html_emit_keystone_holds",
+  function: "",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_markdown_markup_xss_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "markdown markup consumer + XSS reject keystone",
-  entry: "dag/test/claim/markdown_markup_xss_witness.dag",
-  function: "markdown_markup_xss_keystone_holds",
+  entry: "dag/test/claim/markdown_markup_xss_witness_test.dag",
+  function: "",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_gunbhub_serve_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "gunbhub serve render surface keystone",
-  entry: "dag/test/claim/gunbhub_serve_witness.dag",
-  function: "gunbhub_serve_keystone_holds",
+  entry: "dag/test/claim/gunbhub_serve_witness_test.dag",
+  function: "",
   expected: ExpectPass
 }
 
@@ -409,14 +409,14 @@ data corpus_ci_gate_row_gunbhub_react_browse_keystone: ClaimWitnessCorpusClaimRu
 data corpus_ci_gate_row_react_jsx_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "react JSX emit via TS fold keystone",
   entry: "dag/test/claim/react_jsx_emit_test.dag",
-  function: "react_jsx_emit_keystone_holds",
+  function: "",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_js_site_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "js site 3-page Fragment dual emit keystone",
   entry: "dag/test/claim/js_site_emit_test.dag",
-  function: "js_site_emit_keystone_holds",
+  function: "",
   expected: ExpectPass
 }
 

@@ -1,18 +1,17 @@
 module test.claim.extdeps_round2_grounding_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn w_sql_dialect_postgres_label() -> Bool {
+test fn w_sql_dialect_postgres_label() -> Bool {
   sql_dialect_wire_label(Postgres) == "postgres"
 }
 
-fn w_sql_dialect_mysql_not_postgres() -> Bool {
+test fn w_sql_dialect_mysql_not_postgres() -> Bool {
   sql_dialect_wire_label(Mysql) == "mysql"
     && sql_dialect_wire_label(Mysql) != sql_dialect_wire_label(Postgres)
 }
 
-fn w_sql_migration_step_carries_dialect_enum() -> Bool {
+test fn w_sql_migration_step_carries_dialect_enum() -> Bool {
   let step = SqlMigrationStep {
     name: "init",
     operation: CreateTable,
@@ -23,16 +22,16 @@ fn w_sql_migration_step_carries_dialect_enum() -> Bool {
   step.dialect == Sqlite
 }
 
-fn w_http_content_type_html_label() -> Bool {
+test fn w_http_content_type_html_label() -> Bool {
   media_type_wire_label(m: text_html_utf8) == "text/html; charset=utf-8"
 }
 
-fn w_http_content_type_plain_not_html() -> Bool {
+test fn w_http_content_type_plain_not_html() -> Bool {
   media_type_wire_label(m: text_plain_utf8) == "text/plain; charset=utf-8"
     && media_type_wire_label(m: text_plain_utf8) != media_type_wire_label(m: text_html_utf8)
 }
 
-fn w_served_static_route_content_type_media_type() -> Bool {
+test fn w_served_static_route_content_type_media_type() -> Bool {
   let row = ServedStaticRoute {
     method: GET,
     path_pattern: PathTemplate { tokens: [] },
@@ -45,12 +44,12 @@ fn w_served_static_route_content_type_media_type() -> Bool {
     && media_type_wire_label(m: row.content_type) == "text/html; charset=utf-8"
 }
 
-fn w_sigv4_grounded_region_service() -> Bool {
+test fn w_sigv4_grounded_region_service() -> Bool {
   aws_region_wire_label(UsEast1) == "us-east-1"
     && aws_service_wire_label(S3) == "s3"
 }
 
-fn w_sigv4_auth_scheme_carries_enums() -> Bool {
+test fn w_sigv4_auth_scheme_carries_enums() -> Bool {
   match SigV4 { region: UsEast1, service: S3 } {
     SigV4 => true
     Protocol => false
@@ -58,7 +57,7 @@ fn w_sigv4_auth_scheme_carries_enums() -> Bool {
   }
 }
 
-fn w_gcp_api_endpoint_service_enum() -> Bool {
+test fn w_gcp_api_endpoint_service_enum() -> Bool {
   let endpoint = GcpApiEndpoint {
     service: GcpStorage,
     base_url: "https://storage.googleapis.com/storage/v1",
@@ -69,7 +68,7 @@ fn w_gcp_api_endpoint_service_enum() -> Bool {
     && gcp_service_wire_label(GcpSts) == "sts"
 }
 
-fn w_gcp_project_id_refinement() -> Bool {
+test fn w_gcp_project_id_refinement() -> Bool {
   let project = GcpProject {
     project_id: "my-gcp-project",
     project_number: 123456789,
@@ -78,7 +77,7 @@ fn w_gcp_project_id_refinement() -> Bool {
   project.project_id == "my-gcp-project"
 }
 
-fn w_gcp_rpc_code_grounded_and_other() -> Bool {
+test fn w_gcp_rpc_code_grounded_and_other() -> Bool {
   let example_ok = match gcp_error_example.error.status {
     Present { value: c } => c == GcpRpcCodePermissionDenied
     Absent => false
@@ -96,7 +95,7 @@ fn w_gcp_rpc_code_grounded_and_other() -> Bool {
   example_ok && label_ok && known_routes_to_known && unknown_routes_to_other
 }
 
-fn w_service_account_email_grounded() -> Bool {
+test fn w_service_account_email_grounded() -> Bool {
   let sa_row = GcpServiceAccount {
     email: "runner@my-project.iam.gserviceaccount.com",
     unique_id: "123456789",
@@ -106,7 +105,7 @@ fn w_service_account_email_grounded() -> Bool {
   sa_row.email == "runner@my-project.iam.gserviceaccount.com"
 }
 
-fn w_gpu_compute_capability_sm_label() -> Bool {
+test fn w_gpu_compute_capability_sm_label() -> Bool {
   let cap = GpuComputeCapability { vendor: nvidia, major: 8, minor: 9 }
   match gpu_compute_capability_sm_label(cap) {
     GpuCapabilityLabelOk { label: label } => label == "sm_8_9"
@@ -114,7 +113,7 @@ fn w_gpu_compute_capability_sm_label() -> Bool {
   }
 }
 
-fn w_gpu_amd_label_distinct_from_nvidia() -> Bool {
+test fn w_gpu_amd_label_distinct_from_nvidia() -> Bool {
   let cap = GpuComputeCapability { vendor: amd, major: 11, minor: 0 }
   match gpu_compute_capability_sm_label(cap) {
     GpuCapabilityLabelOk { label: label } => label == "gfx110"
@@ -122,7 +121,7 @@ fn w_gpu_amd_label_distinct_from_nvidia() -> Bool {
   }
 }
 
-fn w_intel_capability_label_refuses_fail_closed() -> Bool {
+test fn w_intel_capability_label_refuses_fail_closed() -> Bool {
   let cap = GpuComputeCapability { vendor: intel, major: 1, minor: 0 }
   match gpu_compute_capability_sm_label(cap) {
     GpuCapabilityLabelOk { label: _ } => false
@@ -130,7 +129,7 @@ fn w_intel_capability_label_refuses_fail_closed() -> Bool {
   }
 }
 
-fn w_gpu_facts_structured_compute_capability() -> Bool {
+test fn w_gpu_facts_structured_compute_capability() -> Bool {
   let gpu = GpuFacts {
     vendor: nvidia,
     model: "H100",
@@ -150,7 +149,7 @@ fn w_gpu_facts_structured_compute_capability() -> Bool {
     }
 }
 
-fn w_ampere_capability_label_refuses_fail_closed() -> Bool {
+test fn w_ampere_capability_label_refuses_fail_closed() -> Bool {
   let cap = GpuComputeCapability { vendor: ampere, major: 1, minor: 0 }
   match gpu_compute_capability_sm_label(cap) {
     GpuCapabilityLabelOk { label: _ } => false
@@ -158,29 +157,9 @@ fn w_ampere_capability_label_refuses_fail_closed() -> Bool {
   }
 }
 
-fn w_hardware_vendor_single_authority() -> Bool {
+test fn w_hardware_vendor_single_authority() -> Bool {
   let accel = AcceleratorFacts { vendor: amd, model: "MI300X" }
   let gpu_cap = GpuComputeCapability { vendor: amd, major: 11, minor: 0 }
   accel.vendor == gpu_cap.vendor
 }
 
-test fn extdeps_round2_grounding_witnesses() -> Bool {
-  w_sql_dialect_postgres_label()
-    && w_sql_dialect_mysql_not_postgres()
-    && w_sql_migration_step_carries_dialect_enum()
-    && w_http_content_type_html_label()
-    && w_http_content_type_plain_not_html()
-    && w_served_static_route_content_type_media_type()
-    && w_sigv4_grounded_region_service()
-    && w_sigv4_auth_scheme_carries_enums()
-    && w_gcp_api_endpoint_service_enum()
-    && w_gcp_project_id_refinement()
-    && w_gcp_rpc_code_grounded_and_other()
-    && w_service_account_email_grounded()
-    && w_gpu_compute_capability_sm_label()
-    && w_gpu_amd_label_distinct_from_nvidia()
-    && w_intel_capability_label_refuses_fail_closed()
-    && w_gpu_facts_structured_compute_capability()
-    && w_ampere_capability_label_refuses_fail_closed()
-    && w_hardware_vendor_single_authority()
-}

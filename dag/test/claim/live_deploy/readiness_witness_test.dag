@@ -68,23 +68,23 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_ssh_mock_stdout: String = "mock ssh stdin script executed"
 
-fn witness_healthz_mock_body_groundable() -> Bool {
+test fn witness_healthz_mock_body_groundable() -> Bool {
   healthz_body_groundable(body: "{\"status\":\"ok\"}")
 }
 
-fn witness_healthz_trailing_lf_body_groundable() -> Bool {
+test fn witness_healthz_trailing_lf_body_groundable() -> Bool {
   healthz_body_groundable(body: concat("{\"status\":\"ok\"}", "\n"))
 }
 
-fn witness_healthz_malformed_extension_not_groundable() -> Bool {
+test fn witness_healthz_malformed_extension_not_groundable() -> Bool {
   !healthz_body_groundable(body: concat(roadmap_site_healthz_body(), "}"))
 }
 
-fn witness_healthz_bad_body_not_groundable() -> Bool {
+test fn witness_healthz_bad_body_not_groundable() -> Bool {
   !healthz_body_groundable(body: "")
 }
 
-fn witness_ssh_mock_stdout_is_discriminating_red() -> Bool {
+test fn witness_ssh_mock_stdout_is_discriminating_red() -> Bool {
   !healthz_body_groundable(body: witness_ssh_mock_stdout)
     && match ground_service_ready_from_healthz(
       read: HealthzEffectiveRead {
@@ -105,7 +105,7 @@ fn witness_argv_join(argv: List<String>) -> String {
   )
 }
 
-fn witness_transport_probe_targets_localhost_healthz() -> Bool {
+test fn witness_transport_probe_targets_localhost_healthz() -> Bool {
   let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
   let url = live_deploy_health_url_for_port(port: port)
   let argv = http_client_get_argv(url: url)
@@ -119,7 +119,7 @@ fn witness_transport_probe_targets_localhost_healthz() -> Bool {
     && string_contains(s: url as String, pattern: "/healthz")
 }
 
-fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
+test fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
   match ground_service_ready_from_healthz(
     read: HealthzEffectiveRead {
       body: "",
@@ -131,18 +131,18 @@ fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
   }
 }
 
-fn witness_transport_status_probe_uses_typed_systemctl_argv() -> Bool {
+test fn witness_transport_status_probe_uses_typed_systemctl_argv() -> Bool {
   systemctl_status_operation_argv_matches_authority(
     unit: live_deploy_service_ready_unit_authority
   )
 }
 
-fn witness_transport_status_probe_realizes_hermetically() -> Bool {
+test fn witness_transport_status_probe_realizes_hermetically() -> Bool {
   let r = systemd.Systemctl.Status(unit: live_deploy_service_ready_unit_authority)
   r.stdout != ""
 }
 
-fn witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout() -> Bool {
+test fn witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout() -> Bool {
   let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
   let read = live_deploy_healthz_get_for_port(
     port: port,
@@ -155,21 +155,21 @@ fn witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout() -> Bool {
   )
 }
 
-fn witness_service_ready_once_converges_on_healthy_fixture() -> Bool {
+test fn witness_service_ready_once_converges_on_healthy_fixture() -> Bool {
   reconciliation_converged(r: live_deploy_service_ready_once())
 }
 
-fn witness_reconcile_grounds_healthy_fixture_read() -> Bool {
+test fn witness_reconcile_grounds_healthy_fixture_read() -> Bool {
   reconciliation_converged(
     r: reconcile_service_ready_read(read: show_healthz_read_fixture_healthy())
   )
 }
 
-fn witness_sleep_second_carrier_projection_paces_poll() -> Bool {
+test fn witness_sleep_second_carrier_projection_paces_poll() -> Bool {
   sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence_seconds())
 }
 
-fn witness_sleep_flat_scalar_dissolution_trigger_tracked() -> Bool {
+test fn witness_sleep_flat_scalar_dissolution_trigger_tracked() -> Bool {
   match sleep_delay_seconds_flat_scalar_dissolution_trigger {
     Scaffold {
       dissolves_to: RealizationDispatch,
@@ -180,7 +180,7 @@ fn witness_sleep_flat_scalar_dissolution_trigger_tracked() -> Bool {
   }
 }
 
-fn witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep() -> Bool {
+test fn witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep() -> Bool {
   let spec = deployment_spec_srv1()
   let probe = live_deploy_service_ready_once_for_deploy(
     spec: spec,
@@ -191,13 +191,13 @@ fn witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep() -> Bool
   !reconciliation_converged(r: probe) && delay
 }
 
-fn witness_bounded_poll_early_exit_on_grounded_read() -> Bool {
+test fn witness_bounded_poll_early_exit_on_grounded_read() -> Bool {
   reconciliation_converged(
     r: reconcile_service_ready_read(read: show_healthz_read_fixture_healthy())
   )
 }
 
-fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
+test fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
   let max_attempts = live_deploy_service_ready_poll_max_attempts()
   let r = live_deploy_poll_service_ready_after_attempts(
     spec: deployment_spec_srv1(),
@@ -216,11 +216,11 @@ fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
   }
 }
 
-fn witness_bounded_poll_max_attempts_derived_from_bound_over_cadence() -> Bool {
+test fn witness_bounded_poll_max_attempts_derived_from_bound_over_cadence() -> Bool {
   live_deploy_service_ready_poll_max_attempts() == measure_fit_count_floor(capacity: live_deploy_service_ready_poll_bound, each: live_deploy_service_ready_poll_cadence_seconds())
 }
 
-fn witness_fresh_surface_read_grounds() -> Bool {
+test fn witness_fresh_surface_read_grounds() -> Bool {
   match ground_service_ready_from_healthz(
     read: HealthzEffectiveRead { body: roadmap_site_healthz_body(), probe_error: "" }
   ) {
@@ -229,7 +229,7 @@ fn witness_fresh_surface_read_grounds() -> Bool {
   }
 }
 
-fn witness_stale_surface_read_does_not_ground() -> Bool {
+test fn witness_stale_surface_read_does_not_ground() -> Bool {
   let stale = "{\"status\":\"ok\",\"service\":\"gunbc-roadmap\",\"artifacts\":{\"/roadmap\":\"stale-digest\"}}"
   roadmap_site_healthz_json_string_parses(body: stale)
     && !roadmap_site_healthz_surface_is_current(observed_body: stale)
@@ -244,11 +244,11 @@ fn witness_stale_surface_read_does_not_ground() -> Bool {
     }
 }
 
-fn witness_healthz_surface_tolerates_transport_trailing_lf() -> Bool {
+test fn witness_healthz_surface_tolerates_transport_trailing_lf() -> Bool {
   roadmap_site_healthz_surface_is_current(observed_body: concat(roadmap_site_healthz_body(), "\n"))
 }
 
-fn witness_healthz_publishes_every_served_surface_digest() -> Bool {
+test fn witness_healthz_publishes_every_served_surface_digest() -> Bool {
   let body = roadmap_site_healthz_body()
   string_contains(s: body, pattern: "\"/ROADMAP.md\":")
     && string_contains(s: body, pattern: "\"/target/roadmap-dispatch.json\":")
@@ -257,7 +257,7 @@ fn witness_healthz_publishes_every_served_surface_digest() -> Bool {
     && string_contains(s: body, pattern: "\"/assets/roadmap-dispatch.js\":")
 }
 
-fn witness_served_surface_digest_tracks_the_page() -> Bool {
+test fn witness_served_surface_digest_tracks_the_page() -> Bool {
   let published = roadmap_site_healthz_body()
   let page_digest = site_artifact_digest(body: served_page_body(page: roadmap_page_for_authority())) as String
   let js_digest = site_artifact_digest(body: dispatch_client_js_source()) as String
@@ -266,7 +266,7 @@ fn witness_served_surface_digest_tracks_the_page() -> Bool {
     && !(page_digest == js_digest)
 }
 
-fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
+test fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
   let reason = service_not_ready_reason(refusal: ServiceNotReady {
     unit: live_deploy_service_ready_unit_authority,
     endpoint: live_deploy_service_ready_endpoint_authority,
@@ -279,29 +279,3 @@ fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
     && string_contains(s: reason, pattern: "Active: failed (Result: exit-code)")
 }
 
-test fn live_deploy_readiness_witnesses() -> Bool {
-  witness_healthz_mock_body_groundable()
-    && witness_healthz_trailing_lf_body_groundable()
-    && witness_healthz_malformed_extension_not_groundable()
-    && witness_healthz_bad_body_not_groundable()
-    && witness_ssh_mock_stdout_is_discriminating_red()
-    && witness_transport_probe_targets_localhost_healthz()
-    && witness_transport_status_probe_uses_typed_systemctl_argv()
-    && witness_transport_status_probe_realizes_hermetically()
-    && witness_accept_no_response_probe_fails_fast_not_hangs()
-    && witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout()
-    && witness_service_ready_once_converges_on_healthy_fixture()
-    && witness_reconcile_grounds_healthy_fixture_read()
-    && witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep()
-    && witness_sleep_second_carrier_projection_paces_poll()
-    && witness_sleep_flat_scalar_dissolution_trigger_tracked()
-    && witness_bounded_poll_early_exit_on_grounded_read()
-    && witness_bounded_poll_max_attempts_derived_from_bound_over_cadence()
-    && witness_red_control_never_ready_refuses_at_poll_bound()
-    && witness_service_not_ready_refusal_shape_matches_contract()
-    && witness_fresh_surface_read_grounds()
-    && witness_stale_surface_read_does_not_ground()
-    && witness_healthz_surface_tolerates_transport_trailing_lf()
-    && witness_healthz_publishes_every_served_surface_digest()
-    && witness_served_surface_digest_tracks_the_page()
-}

@@ -42,12 +42,12 @@ fn census_marker_present(site: CensusedEmitSite) -> Bool {
   string_contains(s: census_source(path: site.source_file), pattern: site.marker)
 }
 
-fn w_every_rostered_marker_still_exists_in_the_seed() -> Bool {
+test fn w_every_rostered_marker_still_exists_in_the_seed() -> Bool {
   fold(observation_emit_roster, init: true, f: (acc, site) =>
     acc && census_marker_present(site: site))
 }
 
-fn w_roster_staleness_check_discriminates() -> Bool {
+test fn w_roster_staleness_check_discriminates() -> Bool {
   let bogus = CensusedEmitSite {
     marker: "[this-marker-does-not-exist-in-the-seed]" as NonEmptyStr,
     source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
@@ -59,7 +59,7 @@ fn w_roster_staleness_check_discriminates() -> Bool {
   !census_marker_present(site: bogus)
 }
 
-fn w_every_frontier_row_carries_a_real_dissolve_on() -> Bool {
+test fn w_every_frontier_row_carries_a_real_dissolve_on() -> Bool {
   fold(observation_emit_roster, init: true, f: (acc, site) =>
     if emit_site_is_frontier(site: site) {
       acc && emit_site_dissolve_on(site: site) != ""
@@ -68,14 +68,14 @@ fn w_every_frontier_row_carries_a_real_dissolve_on() -> Bool {
     })
 }
 
-fn w_the_named_negative_example_has_migrated() -> Bool {
+test fn w_the_named_negative_example_has_migrated() -> Bool {
   census_marker_present(site: floor_memory_site) &&
   !emit_site_is_frontier(site: floor_memory_site) &&
   string_contains(s: floor_memory_site.marker, pattern: "floor-memory") &&
   string_contains(s: emit_site_dissolve_on(site: floor_memory_site), pattern: "ci_heartbeat_line")
 }
 
-fn w_gantt_has_migrated() -> Bool {
+test fn w_gantt_has_migrated() -> Bool {
   census_marker_present(site: gantt_site) &&
   !emit_site_is_frontier(site: gantt_site) &&
   string_contains(s: gantt_site.marker, pattern: "gantt") &&
@@ -83,7 +83,7 @@ fn w_gantt_has_migrated() -> Bool {
   string_contains(s: emit_site_dissolve_on(site: gantt_site), pattern: "phase_begin_line")
 }
 
-fn w_governor_has_migrated() -> Bool {
+test fn w_governor_has_migrated() -> Bool {
   census_marker_present(site: governor_site) &&
   !emit_site_is_frontier(site: governor_site) &&
   string_contains(s: governor_site.marker, pattern: "governor") &&
@@ -91,7 +91,7 @@ fn w_governor_has_migrated() -> Bool {
   string_contains(s: emit_site_dissolve_on(site: governor_site), pattern: "render_governor_hold_line_mirror")
 }
 
-fn w_typecheck_attribution_has_migrated() -> Bool {
+test fn w_typecheck_attribution_has_migrated() -> Bool {
   census_marker_present(site: typecheck_attribution_site) &&
   !emit_site_is_frontier(site: typecheck_attribution_site) &&
   string_contains(s: typecheck_attribution_site.marker, pattern: "typecheck-attribution") &&
@@ -99,7 +99,7 @@ fn w_typecheck_attribution_has_migrated() -> Bool {
   string_contains(s: emit_site_dissolve_on(site: typecheck_attribution_site), pattern: "typecheck_concluded_line")
 }
 
-fn w_measurement_has_migrated() -> Bool {
+test fn w_measurement_has_migrated() -> Bool {
   census_marker_present(site: measurement_site) &&
   !emit_site_is_frontier(site: measurement_site) &&
   string_contains(s: measurement_site.marker, pattern: "measurement") &&
@@ -107,7 +107,7 @@ fn w_measurement_has_migrated() -> Bool {
   string_contains(s: emit_site_dissolve_on(site: measurement_site), pattern: "render_peak_rss_line_mirror")
 }
 
-fn w_shell_has_migrated() -> Bool {
+test fn w_shell_has_migrated() -> Bool {
   census_marker_present(site: shell_site) &&
   !emit_site_is_frontier(site: shell_site) &&
   string_contains(s: shell_site.marker, pattern: "shell") &&
@@ -115,14 +115,14 @@ fn w_shell_has_migrated() -> Bool {
   string_contains(s: emit_site_dissolve_on(site: shell_site), pattern: "render_shell_effect_")
 }
 
-fn w_the_census_states_post_snapshot_frontier_count() -> Bool {
+test fn w_the_census_states_post_snapshot_frontier_count() -> Bool {
   observation_emit_frontier_count() == 8 &&
   count(observation_emit_roster) == 14
 }
 
 data w_post_snapshot_live_tags_are_rostered_bidirectional_note: String = "Operator finding 3 (run 30142403230): hygiene is bidirectional — growth tags born after the initial census snapshot must appear on the roster, not only the reverse (rostered markers still exist). Extended for #7205 resolve/assembly split tags and #7284 witness-row-cost / witness-row-cost-drift."
 
-fn w_post_snapshot_live_tags_are_rostered_bidirectional() -> Bool {
+test fn w_post_snapshot_live_tags_are_rostered_bidirectional() -> Bool {
   census_marker_present(site: floor_drain_site) &&
   emit_site_is_frontier(site: floor_drain_site) &&
   census_marker_present(site: gate_warm_cost_site) &&
@@ -141,14 +141,14 @@ fn w_post_snapshot_live_tags_are_rostered_bidirectional() -> Bool {
   emit_site_is_frontier(site: witness_row_cost_drift_site)
 }
 
-fn w_the_raw_byte_dump_shape_is_gone_from_the_seed() -> Bool {
+test fn w_the_raw_byte_dump_shape_is_gone_from_the_seed() -> Bool {
   let executor = census_source(path: "src/v1/stage0/src/bin/claim_executor.rs")
   !string_contains(s: executor, pattern: "[floor-memory] t=") &&
   !string_contains(s: executor, pattern: "current={}") &&
   string_contains(s: executor, pattern: "render_heartbeat_line_mirror")
 }
 
-fn w_the_raw_gantt_shape_is_gone_from_the_seed() -> Bool {
+test fn w_the_raw_gantt_shape_is_gone_from_the_seed() -> Bool {
   let rt = census_source(path: "src/v1/stage0/src/v1_rt.rs")
   let executor = census_source(path: "src/v1/stage0/src/bin/claim_executor.rs")
   !string_contains(s: rt, pattern: "t_ms=") &&
@@ -159,7 +159,7 @@ fn w_the_raw_gantt_shape_is_gone_from_the_seed() -> Bool {
   string_contains(s: executor, pattern: "render_phase_concluded_line_mirror")
 }
 
-fn w_the_raw_governor_shape_is_gone_from_the_seed() -> Bool {
+test fn w_the_raw_governor_shape_is_gone_from_the_seed() -> Bool {
   let gov = census_source(path: "src/v1/stage0/src/memory_governor.rs")
   !string_contains(s: gov, pattern: "[governor] hard back-off:") &&
   !string_contains(s: gov, pattern: "[governor] creep back-off:") &&
@@ -169,14 +169,14 @@ fn w_the_raw_governor_shape_is_gone_from_the_seed() -> Bool {
   string_contains(s: gov, pattern: "GOVERNOR_CENSUS_MARKER")
 }
 
-fn w_the_raw_typecheck_attribution_shape_is_gone_from_the_seed() -> Bool {
+test fn w_the_raw_typecheck_attribution_shape_is_gone_from_the_seed() -> Bool {
   let cli = census_source(path: "src/v1/stage0/src/cli_run.rs")
   !string_contains(s: cli, pattern: "[typecheck-attribution] module=") &&
   string_contains(s: cli, pattern: "render_typecheck_concluded_line_mirror") &&
   string_contains(s: cli, pattern: "TYPECHECK_ATTRIBUTION_CENSUS_MARKER")
 }
 
-fn w_the_raw_measurement_shape_is_gone_from_the_seed() -> Bool {
+test fn w_the_raw_measurement_shape_is_gone_from_the_seed() -> Bool {
   let executor = census_source(path: "src/v1/stage0/src/bin/claim_executor.rs")
   let cli = census_source(path: "src/v1/stage0/src/cli_run.rs")
   !string_contains(s: executor, pattern: "bytes (VmHWM)") &&
@@ -186,7 +186,7 @@ fn w_the_raw_measurement_shape_is_gone_from_the_seed() -> Bool {
   string_contains(s: cli, pattern: "MEASUREMENT_CENSUS_MARKER")
 }
 
-fn w_the_raw_shell_shape_is_gone_from_the_seed() -> Bool {
+test fn w_the_raw_shell_shape_is_gone_from_the_seed() -> Bool {
   let interp = census_source(path: "src/v1/stage0/src/v1_interpreter.rs")
   !string_contains(s: interp, pattern: "[shell] done exit=") &&
   !string_contains(s: interp, pattern: "[shell] stderr (exit=") &&
@@ -194,22 +194,3 @@ fn w_the_raw_shell_shape_is_gone_from_the_seed() -> Bool {
   string_contains(s: interp, pattern: "SHELL_CENSUS_MARKER")
 }
 
-test fn observation_emit_census_witnesses() -> Bool {
-  w_every_rostered_marker_still_exists_in_the_seed() &&
-  w_roster_staleness_check_discriminates() &&
-  w_every_frontier_row_carries_a_real_dissolve_on() &&
-  w_the_named_negative_example_has_migrated() &&
-  w_gantt_has_migrated() &&
-  w_governor_has_migrated() &&
-  w_typecheck_attribution_has_migrated() &&
-  w_measurement_has_migrated() &&
-  w_shell_has_migrated() &&
-  w_the_census_states_post_snapshot_frontier_count() &&
-  w_post_snapshot_live_tags_are_rostered_bidirectional() &&
-  w_the_raw_byte_dump_shape_is_gone_from_the_seed() &&
-  w_the_raw_gantt_shape_is_gone_from_the_seed() &&
-  w_the_raw_governor_shape_is_gone_from_the_seed() &&
-  w_the_raw_typecheck_attribution_shape_is_gone_from_the_seed() &&
-  w_the_raw_measurement_shape_is_gone_from_the_seed() &&
-  w_the_raw_shell_shape_is_gone_from_the_seed()
-}

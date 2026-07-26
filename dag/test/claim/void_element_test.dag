@@ -22,37 +22,29 @@ fn div_node() -> Fragment {
   Element { tag: "div", attributes: [], children: [ FragmentText { content: "content" } ] }
 }
 
-fn witness_html_br_omits_close() -> Bool {
+test fn witness_html_br_omits_close() -> Bool {
   serialize_html_source(node: br_node()) == "<br>"
 }
 
-fn witness_html_meta_omits_close() -> Bool {
+test fn witness_html_meta_omits_close() -> Bool {
   serialize_html_source(node: meta_node()) == "<meta charset=\"utf-8\">"
 }
 
-fn witness_html_div_still_closes() -> Bool {
+test fn witness_html_div_still_closes() -> Bool {
   serialize_html_source(node: div_node()) == "<div>content</div>"
 }
 
-fn witness_jsx_br_self_closes() -> Bool {
+test fn witness_jsx_br_self_closes() -> Bool {
   serialize_jsx_component(fn_name: "F", node: br_node()) ==
     "export function F(): JSX.Element { return <br />; }"
 }
 
-fn witness_jsx_div_still_closes() -> Bool {
+test fn witness_jsx_div_still_closes() -> Bool {
   serialize_jsx_component(fn_name: "F", node: div_node()) ==
     "export function F(): JSX.Element { return <div>content</div>; }"
 }
 
-fn witness_html_br_differs_from_jsx_br() -> Bool {
+test fn witness_html_br_differs_from_jsx_br() -> Bool {
   !(serialize_html_source(node: br_node()) == serialize_jsx_component(fn_name: "F", node: br_node()))
 }
 
-test fn void_element_keystone_holds() -> Bool {
-  witness_html_br_omits_close()
-    && witness_html_meta_omits_close()
-    && witness_html_div_still_closes()
-    && witness_jsx_br_self_closes()
-    && witness_jsx_div_still_closes()
-    && witness_html_br_differs_from_jsx_br()
-}
