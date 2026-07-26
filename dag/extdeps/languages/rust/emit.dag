@@ -445,7 +445,13 @@ fn rust_pair_completion_impl_render(row: PairCompletionOpRow) -> String {
         rust_pair_completion_body_render(row.body),
         "}\n"
       )
-    Absent => ""
+    Absent =>
+      concat(
+        "compile_error!(\"gunbc: pair-completion row '",
+        rust_pair_completion_op_key(op: row.op),
+        "' has no rust_pair_completion_spellings entry — std.trait_derive_shape.pair_completion_op_rows ",
+        "and the Rust spelling table have drifted; the operator impl cannot be rendered.\");\n"
+      )
   }
 }
 
