@@ -1,6 +1,5 @@
 module test.claim.descent_evidence_lattice
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn rank_of_meet(a: DescentEvidence, b: DescentEvidence) -> Int {
@@ -11,7 +10,7 @@ fn rank_of_join(a: DescentEvidence, b: DescentEvidence) -> Int {
   evidence_rank(e: descent_evidence_lattice_join(a: a, b: b))
 }
 
-fn meet_agrees_with_lattice() -> Bool {
+test fn meet_agrees_with_lattice() -> Bool {
   rank_of_meet(a: Strict, b: Strict) == 2
     && rank_of_meet(a: Strict, b: NonIncreasing) == 1
     && rank_of_meet(a: Strict, b: DescentUnknown) == 0
@@ -20,27 +19,21 @@ fn meet_agrees_with_lattice() -> Bool {
     && rank_of_meet(a: DescentUnknown, b: DescentUnknown) == 0
 }
 
-fn join_agrees_with_lattice() -> Bool {
+test fn join_agrees_with_lattice() -> Bool {
   rank_of_join(a: DescentUnknown, b: DescentUnknown) == 0
     && rank_of_join(a: DescentUnknown, b: NonIncreasing) == 1
     && rank_of_join(a: NonIncreasing, b: Strict) == 2
     && rank_of_join(a: Strict, b: Strict) == 2
 }
 
-fn promote_never_fabricates_strict() -> Bool {
+test fn promote_never_fabricates_strict() -> Bool {
   evidence_rank(e: promote_to_strict(evidence: NonIncreasing)) == 1
     && evidence_rank(e: promote_to_strict(evidence: DescentUnknown)) == 0
     && evidence_rank(e: promote_to_strict(evidence: Strict)) == 2
 }
 
-fn meet_is_not_join_red_control() -> Bool {
+test fn meet_is_not_join_red_control() -> Bool {
   rank_of_meet(a: Strict, b: DescentUnknown) == 0
     && rank_of_join(a: Strict, b: DescentUnknown) == 2
 }
 
-test fn descent_evidence_lattice_witnesses() -> Bool {
-  meet_agrees_with_lattice()
-    && join_agrees_with_lattice()
-    && promote_never_fabricates_strict()
-    && meet_is_not_join_red_control()
-}

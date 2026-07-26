@@ -43,6 +43,8 @@ data realization_edge_path_prefixes: List<String> = [
   "src/v2/workflow/ci_release_build_emit",
   "src/v2/workflow/ci_retry_emit",
   "src/v2/workflow/ci_floor_peak_emit",
+  "src/v2/workflow/ci_materialization_emit",
+  "src/v2/workflow/ci_merge_admission_emit",
   "src/v2/workflow/orchestration_",
   "dag/gunbc/live_deploy/emit",
   "dag/gunbc/assimilate/bmc_token_federation"
@@ -113,21 +115,48 @@ fn path_is_realization_edge(path: String) -> Bool {
   path_has_any_prefix(prefixes: realization_edge_path_prefixes, path: path)
 }
 
-fn is_realization_vocab_leak(fact: LayerImportFact, roster: List<String>) -> Bool {
+fn is_realization_vocab_leak_under(
+  fact: LayerImportFact,
+  roster: List<String>,
+  edge_prefixes: List<String>
+) -> Bool {
   module_is_target_ast_vocab(module: fact.import_module)
-    && (path_is_realization_edge(path: fact.path) == false)
+    && (path_has_any_prefix(prefixes: edge_prefixes, path: fact.path) == false)
     && (list_contains_str(xs: roster, target: fact.path) == false)
 }
 
-fn scan_facts_for_leaks(
+fn is_realization_vocab_leak(fact: LayerImportFact, roster: List<String>) -> Bool {
+  is_realization_vocab_leak_under(
+    fact: fact,
+    roster: roster,
+    edge_prefixes: realization_edge_path_prefixes
+  )
+}
+
+fn realization_edge_path_prefixes_without(excluded: String) -> List<String> {
+  fold_list(
+    xs: realization_edge_path_prefixes,
+    empty: empty_realization_vocab_path_list,
+    cons: fn(acc, prefix) {
+      if prefix == excluded {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: prefix)
+      }
+    }
+  )
+}
+
+fn scan_facts_for_leaks_under(
   facts: List<LayerImportFact>,
-  roster: List<String>
+  roster: List<String>,
+  edge_prefixes: List<String>
 ) -> List<RealizationVocabularyLeak> {
   fold_list(
     xs: facts,
     empty: empty_realization_vocab_leaks,
     cons: fn(acc, fact) {
-      if is_realization_vocab_leak(fact: fact, roster: roster) {
+      if is_realization_vocab_leak_under(fact: fact, roster: roster, edge_prefixes: edge_prefixes) {
         list_snoc_item(
           xs: acc,
           item: RealizationVocabularyLeak {
@@ -146,14 +175,22 @@ fn realization_vocab_leak_count(
   facts: List<LayerImportFact>,
   roster: List<String>
 ) -> Int {
-  length(xs: scan_facts_for_leaks(facts: facts, roster: roster))
+  length(xs: scan_facts_for_leaks_under(facts: facts, roster: roster, edge_prefixes: realization_edge_path_prefixes))
+}
+
+fn realization_vocab_leak_count_with_edge_prefixes(
+  facts: List<LayerImportFact>,
+  roster: List<String>,
+  edge_prefixes: List<String>
+) -> Int {
+  length(xs: scan_facts_for_leaks_under(facts: facts, roster: roster, edge_prefixes: edge_prefixes))
 }
 
 fn realization_vocab_containment_holds(
   facts: List<LayerImportFact>,
   roster: List<String>
 ) -> Bool {
-  is_empty(xs: scan_facts_for_leaks(facts: facts, roster: roster))
+  is_empty(xs: scan_facts_for_leaks_under(facts: facts, roster: roster, edge_prefixes: realization_edge_path_prefixes))
 }
 
 fn realization_vocab_leak_count_canonical(facts: List<LayerImportFact>) -> Int {

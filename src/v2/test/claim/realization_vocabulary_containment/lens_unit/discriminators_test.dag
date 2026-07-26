@@ -4,10 +4,12 @@ import v2.std.layer { LayerImportFact }
 import v2.lens.realization_vocabulary_containment {
   realization_vocab_exception_paths,
   realization_vocab_leak_count,
-  realization_vocab_leak_count_canonical
+  realization_vocab_leak_count_canonical,
+  realization_vocab_leak_count_with_edge_prefixes,
+  realization_edge_path_prefixes_without
 }
 import v2.std.collection { List }
-import v2.std.layer { LayerPrefixStd, LayerPrefixExtdeps }
+import v2.std.layer { LayerPrefixStd, LayerPrefixExtdeps, LayerPrefixWorkflow }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -125,4 +127,43 @@ test fn node_http_server_emit_rostered_for_typescript_sidecar_holds() -> Bool {
     xs: realization_vocab_exception_paths(),
     target: "dag/gunbc/node_http_server_emit.dag"
   )
+}
+
+data bash_orchestration_emit_module: String = "v2.extdeps.languages.bash_orchestration_emit"
+
+data bucket_d_emit_edge_import_facts: List<LayerImportFact> = [
+  LayerImportFact {
+    layer: LayerPrefixWorkflow,
+    path: "src/v2/workflow/ci_materialization_emit.dag",
+    import_module: bash_orchestration_emit_module
+  },
+  LayerImportFact {
+    layer: LayerPrefixWorkflow,
+    path: "src/v2/workflow/ci_merge_admission_emit.dag",
+    import_module: bash_orchestration_emit_module
+  }
+]
+
+data bucket_d_emit_edge_discriminator_note: String = "Synthetic executing receipt for #7265 bucket-D emit modules: live-corpus containment is dark (pre-existing unrostered TS-AST consumers), so canonical live-tree scan cannot validate the two new realization_edge_path_prefixes rows. These facts mirror the actual imports; GREEN requires leak_count_canonical == 0."
+
+test fn bucket_d_emit_modules_on_edge_roster_are_not_leak_holds() -> Bool {
+  realization_vocab_leak_count_canonical(facts: bucket_d_emit_edge_import_facts) == 0
+}
+
+data ci_materialization_emit_edge_fact: List<LayerImportFact> = [
+  LayerImportFact {
+    layer: LayerPrefixWorkflow,
+    path: "src/v2/workflow/ci_materialization_emit.dag",
+    import_module: bash_orchestration_emit_module
+  }
+]
+
+test fn de_rostered_ci_materialization_emit_edge_is_leak_holds() -> Bool {
+  realization_vocab_leak_count_with_edge_prefixes(
+    facts: ci_materialization_emit_edge_fact,
+    roster: realization_vocab_exception_paths(),
+    edge_prefixes: realization_edge_path_prefixes_without(
+      excluded: "src/v2/workflow/ci_materialization_emit"
+    )
+  ) == 1
 }

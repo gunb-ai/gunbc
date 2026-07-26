@@ -1,15 +1,14 @@
 module test.claim.extdeps_git_versioning_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn w_git_2_0_anchor() -> Bool {
+test fn w_git_2_0_anchor() -> Bool {
   git_2_0_release.major == 2
     && git_2_0_release.minor == 0
     && git_2_0_release.patch == 0
 }
 
-fn w_release_version_compare_major_minor_patch() -> Bool {
+test fn w_release_version_compare_major_minor_patch() -> Bool {
   let older = GitReleaseVersion { major: 2, minor: 43, patch: 0 }
   let newer = GitReleaseVersion { major: 2, minor: 44, patch: 0 }
   let same = GitReleaseVersion { major: 2, minor: 43, patch: 1 }
@@ -31,7 +30,7 @@ fn w_release_version_compare_major_minor_patch() -> Bool {
   }
 }
 
-fn w_major_breaking_release_orders_above_prior_minor_series() -> Bool {
+test fn w_major_breaking_release_orders_above_prior_minor_series() -> Bool {
   let git_1_9 = GitReleaseVersion { major: 1, minor: 9, patch: 5 }
   match git_release_version_compare(a: git_1_9, b: git_2_0_release) {
     Less => true
@@ -39,7 +38,7 @@ fn w_major_breaking_release_orders_above_prior_minor_series() -> Bool {
   }
 }
 
-fn w_platform_suffix_is_structural_not_stringly() -> Bool {
+test fn w_platform_suffix_is_structural_not_stringly() -> Bool {
   let plain = GitCliReportedVersion {
     git_release: git_2_0_release,
     suffix: GitVersionPlain
@@ -51,15 +50,15 @@ fn w_platform_suffix_is_structural_not_stringly() -> Bool {
   plain.suffix != windows.suffix
 }
 
-fn w_spec_citation_points_at_breaking_changes_doc() -> Bool {
+test fn w_spec_citation_points_at_breaking_changes_doc() -> Bool {
   string_contains(s: git_release_versioning_spec_url, pattern: "BreakingChanges.html")
 }
 
-fn w_git_release_to_version_identity() -> Bool {
+test fn w_git_release_to_version_identity() -> Bool {
   git_release_to_version_identity(v: git_2_0_release) == "2.0.0"
 }
 
-fn w_git_release_version_scheme_equal() -> Bool {
+test fn w_git_release_version_scheme_equal() -> Bool {
   match git_release_version_scheme.compare(
     a: git_release_to_version_identity(v: git_2_0_release),
     b: "2.0.0"
@@ -69,17 +68,7 @@ fn w_git_release_version_scheme_equal() -> Bool {
   }
 }
 
-fn w_min_git_version_grounded() -> Bool {
+test fn w_min_git_version_grounded() -> Bool {
   min_git_version == ">= 2.0.0"
 }
 
-test fn extdeps_git_versioning_witnesses() -> Bool {
-  w_git_2_0_anchor()
-    && w_release_version_compare_major_minor_patch()
-    && w_major_breaking_release_orders_above_prior_minor_series()
-    && w_platform_suffix_is_structural_not_stringly()
-    && w_spec_citation_points_at_breaking_changes_doc()
-    && w_git_release_to_version_identity()
-    && w_git_release_version_scheme_equal()
-    && w_min_git_version_grounded()
-}

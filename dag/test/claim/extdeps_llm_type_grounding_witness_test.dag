@@ -1,9 +1,8 @@
 module test.claim.extdeps_llm_type_grounding_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn w_openai_tool_call_type_known() -> Bool {
+test fn w_openai_tool_call_type_known() -> Bool {
   let row = ToolCall {
     id: "call_1",
     type: OpenAiToolCallFunction,
@@ -13,14 +12,14 @@ fn w_openai_tool_call_type_known() -> Bool {
     && openai_tool_call_type_label(OpenAiToolCallFunction) == "function"
 }
 
-fn w_openai_tool_call_type_other_accepts_extension() -> Bool {
+test fn w_openai_tool_call_type_other_accepts_extension() -> Bool {
   match parse_openai_tool_call_type("custom_tool") {
     OpenAiToolCallTypeOther { raw: r } => r == "custom_tool"
     OpenAiToolCallFunction => false
   }
 }
 
-fn w_openai_responses_output_content_type() -> Bool {
+test fn w_openai_responses_output_content_type() -> Bool {
   let row = OpenAiResponses200OutputContent {
     type: OpenAiResponsesOutputText,
     text: "hello",
@@ -30,14 +29,14 @@ fn w_openai_responses_output_content_type() -> Bool {
     && openai_responses_output_content_type_label(OpenAiResponsesOutputText) == "output_text"
 }
 
-fn w_openai_responses_output_content_type_other() -> Bool {
+test fn w_openai_responses_output_content_type_other() -> Bool {
   match parse_openai_responses_output_content_type("refusal") {
     OpenAiResponsesOutputContentTypeOther { raw: r } => r == "refusal"
     OpenAiResponsesOutputText => false
   }
 }
 
-fn w_openai_responses_output_item_type() -> Bool {
+test fn w_openai_responses_output_item_type() -> Bool {
   let row = OpenAiResponses200OutputItem {
     id: Present { value: "msg_1" },
     type: OpenAiResponsesOutputMessage,
@@ -49,14 +48,14 @@ fn w_openai_responses_output_item_type() -> Bool {
     && openai_responses_output_item_type_label(OpenAiResponsesOutputMessage) == "message"
 }
 
-fn w_openai_responses_output_item_type_other() -> Bool {
+test fn w_openai_responses_output_item_type_other() -> Bool {
   match parse_openai_responses_output_item_type("reasoning") {
     OpenAiResponsesOutputItemTypeOther { raw: r } => r == "reasoning"
     OpenAiResponsesOutputMessage => false
   }
 }
 
-fn w_openai_responses_status_known_and_other() -> Bool {
+test fn w_openai_responses_status_known_and_other() -> Bool {
   let label_ok = openai_responses_status_label(OpenAiResponsesStatusCompleted) == "completed"
   let known_routes_to_known = match parse_openai_responses_status("incomplete") {
     OpenAiResponsesStatusIncomplete => true
@@ -70,7 +69,7 @@ fn w_openai_responses_status_known_and_other() -> Bool {
   label_ok && known_routes_to_known && unknown_routes_to_other
 }
 
-fn w_openai_responses_output_item_status_known_and_other() -> Bool {
+test fn w_openai_responses_output_item_status_known_and_other() -> Bool {
   let row = OpenAiResponses200OutputItem {
     id: Present { value: "msg_1" },
     type: OpenAiResponsesOutputMessage,
@@ -89,7 +88,7 @@ fn w_openai_responses_output_item_status_known_and_other() -> Bool {
   row_ok && unknown_routes_to_other
 }
 
-fn w_openai_error_type_known_and_other() -> Bool {
+test fn w_openai_error_type_known_and_other() -> Bool {
   let known = OpenAiErrorDetails {
     message: "bad",
     type: OpenAiInvalidRequestError,
@@ -110,7 +109,7 @@ fn w_openai_error_type_known_and_other() -> Bool {
     }
 }
 
-fn w_anthropic_image_media_type() -> Bool {
+test fn w_anthropic_image_media_type() -> Bool {
   let source = Base64Image { media_type: ImageJpeg, data: "abc" }
   match source {
     Base64Image { media_type: mt, data: _ } =>
@@ -120,7 +119,7 @@ fn w_anthropic_image_media_type() -> Bool {
   }
 }
 
-fn w_anthropic_image_media_type_other() -> Bool {
+test fn w_anthropic_image_media_type_other() -> Bool {
   match parse_anthropic_image_media_type("image/heic") {
     AnthropicImageMediaTypeOther { raw: r } => r == "image/heic"
     ImageJpeg => false
@@ -130,14 +129,14 @@ fn w_anthropic_image_media_type_other() -> Bool {
   }
 }
 
-fn w_cache_control_type() -> Bool {
+test fn w_cache_control_type() -> Bool {
   let row = CacheControl { type: CacheEphemeral {} }
   match row.type {
     CacheEphemeral {} => cache_control_type_label(CacheEphemeral {}) == "ephemeral"
   }
 }
 
-fn w_anthropic_messages_object_type() -> Bool {
+test fn w_anthropic_messages_object_type() -> Bool {
   let body = AnthropicMessages200Body {
     id: "msg_01",
     type: MessagesObjectMessage {},
@@ -161,7 +160,7 @@ fn w_anthropic_messages_object_type() -> Bool {
   }
 }
 
-fn w_anthropic_error_envelope_and_detail_types() -> Bool {
+test fn w_anthropic_error_envelope_and_detail_types() -> Bool {
   let envelope_ok = match anthropic_error_example.type {
     AnthropicErrorEnvelope {} =>
       anthropic_error_envelope_type_label(AnthropicErrorEnvelope {}) == "error"
@@ -180,19 +179,3 @@ fn w_anthropic_error_envelope_and_detail_types() -> Bool {
     }
 }
 
-test fn extdeps_llm_type_grounding_witnesses() -> Bool {
-  w_openai_tool_call_type_known()
-    && w_openai_tool_call_type_other_accepts_extension()
-    && w_openai_responses_output_content_type()
-    && w_openai_responses_output_content_type_other()
-    && w_openai_responses_output_item_type()
-    && w_openai_responses_output_item_type_other()
-    && w_openai_responses_status_known_and_other()
-    && w_openai_responses_output_item_status_known_and_other()
-    && w_openai_error_type_known_and_other()
-    && w_anthropic_image_media_type()
-    && w_anthropic_image_media_type_other()
-    && w_cache_control_type()
-    && w_anthropic_messages_object_type()
-    && w_anthropic_error_envelope_and_detail_types()
-}

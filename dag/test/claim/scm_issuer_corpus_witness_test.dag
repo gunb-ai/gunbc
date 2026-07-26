@@ -206,7 +206,7 @@ fn w_gross_margin_in_band(
   }
 }
 
-fn w_microsoft_all_four_years_cross_foot() -> Bool {
+test fn w_microsoft_all_four_years_cross_foot() -> Bool {
   w_cross_foots(
     revenue: microsoft_fy2023_revenue,
     cost_of_revenue: microsoft_fy2023_cost_of_goods_and_services,
@@ -239,7 +239,7 @@ fn w_microsoft_all_four_years_cross_foot() -> Bool {
     )
 }
 
-fn w_microsoft_fy2022_gross_profit_identity_holds() -> Bool {
+test fn w_microsoft_fy2022_gross_profit_identity_holds() -> Bool {
   match filed_amount(fact: microsoft_fy2022_revenue) {
     Present { value: rev } =>
       match filed_amount(fact: microsoft_fy2022_cost_of_goods_and_services) {
@@ -259,7 +259,7 @@ fn w_microsoft_fy2022_gross_profit_identity_holds() -> Bool {
   }
 }
 
-fn w_microsoft_fy2022_components_reach_operating_income() -> Bool {
+test fn w_microsoft_fy2022_components_reach_operating_income() -> Bool {
   match filed_amount(fact: microsoft_fy2022_gross_profit) {
     Present { value: gp } =>
       match filed_amount(fact: microsoft_fy2022_research_and_development) {
@@ -292,21 +292,21 @@ fn signed_usd_value_equals(v: SignedUsdWholeDollars, expected: Nat) -> Bool {
   }
 }
 
-fn w_microsoft_fy2022_operating_expenses_unfiled() -> Bool {
+test fn w_microsoft_fy2022_operating_expenses_unfiled() -> Bool {
   match filed_amount(fact: microsoft_fy2022_operating_expenses) {
     Present { value: _ } => false
     _ => true
   }
 }
 
-fn w_microsoft_profitable_every_modeled_year() -> Bool {
+test fn w_microsoft_profitable_every_modeled_year() -> Bool {
   w_signed_is_positive(fact: microsoft_fy2022_operating_income)
     && w_signed_is_positive(fact: microsoft_fy2023_operating_income)
     && w_signed_is_positive(fact: microsoft_fy2024_operating_income)
     && w_signed_is_positive(fact: microsoft_fy2025_operating_income)
 }
 
-fn w_atlassian_all_four_years_cross_foot() -> Bool {
+test fn w_atlassian_all_four_years_cross_foot() -> Bool {
   w_cross_foots(
     revenue: atlassian_fy2022_revenue,
     cost_of_revenue: atlassian_fy2022_cost_of_revenue,
@@ -349,21 +349,21 @@ fn w_atlassian_all_four_years_cross_foot() -> Bool {
     )
 }
 
-fn w_atlassian_turns_from_profit_to_losses() -> Bool {
+test fn w_atlassian_turns_from_profit_to_losses() -> Bool {
   w_signed_is_positive(fact: atlassian_fy2022_operating_income)
     && w_signed_is_negative(fact: atlassian_fy2023_operating_income_loss)
     && w_signed_is_negative(fact: atlassian_fy2024_operating_income_loss)
     && w_signed_is_negative(fact: atlassian_fy2025_operating_income_loss)
 }
 
-fn w_atlassian_cost_element_switches_mid_series() -> Bool {
+test fn w_atlassian_cost_element_switches_mid_series() -> Bool {
   (atlassian_fy2023_cost_of_revenue.element == us_gaap_cost_of_revenue)
     && (atlassian_fy2024_cost_of_revenue.element == us_gaap_cost_of_revenue)
     && (atlassian_fy2025_cost_of_goods_and_services.element == us_gaap_cost_of_goods_and_services_sold)
     && (microsoft_fy2025_cost_of_goods_and_services.element == us_gaap_cost_of_goods_and_services_sold)
 }
 
-fn w_serving_cost_ordering_pure_play_above_platform() -> Bool {
+test fn w_serving_cost_ordering_pure_play_above_platform() -> Bool {
   w_gross_margin_in_band(
     revenue: gitlab_fy2026_revenue,
     gross_profit: gitlab_fy2026_gross_profit,
@@ -384,13 +384,13 @@ fn w_serving_cost_ordering_pure_play_above_platform() -> Bool {
     )
 }
 
-fn w_gitlab_fact_families_share_one_entity() -> Bool {
+test fn w_gitlab_fact_families_share_one_entity() -> Bool {
   (gitlab_facts_subject.vendor.legal_name == gitlab_subscription_subject.legal_name)
     && (cik_padded_digits(cik: gitlab_facts_subject.cik) == "0001653482")
     && (gitlab_facts_subject.registrant_name == "Gitlab Inc.")
 }
 
-fn w_issuer_subjects_are_distinct_entities() -> Bool {
+test fn w_issuer_subjects_are_distinct_entities() -> Bool {
   !(microsoft_facts_subject.vendor.legal_name == gitlab_facts_subject.vendor.legal_name)
     && !(atlassian_facts_subject.vendor.legal_name == gitlab_facts_subject.vendor.legal_name)
     && !(cik_padded_digits(cik: microsoft_facts_subject.cik) == cik_padded_digits(cik: atlassian_facts_subject.cik))
@@ -398,16 +398,16 @@ fn w_issuer_subjects_are_distinct_entities() -> Bool {
     && (cik_padded_digits(cik: atlassian_facts_subject.cik) == "0001650372")
 }
 
-fn w_red_wrong_issuer_subject_fails_the_entity_edge() -> Bool {
+test fn w_red_wrong_issuer_subject_fails_the_entity_edge() -> Bool {
   !(microsoft_facts_subject.vendor.legal_name == gitlab_subscription_subject.legal_name)
 }
 
-fn w_red_atlassian_cost_element_is_not_normalized() -> Bool {
+test fn w_red_atlassian_cost_element_is_not_normalized() -> Bool {
   !(atlassian_fy2025_cost_of_goods_and_services.element == us_gaap_cost_of_revenue)
     && !(atlassian_fy2023_cost_of_revenue.element == us_gaap_cost_of_goods_and_services_sold)
 }
 
-fn w_red_microsoft_margin_not_in_pure_play_band() -> Bool {
+test fn w_red_microsoft_margin_not_in_pure_play_band() -> Bool {
   !w_gross_margin_in_band(
     revenue: microsoft_fy2025_revenue,
     gross_profit: microsoft_fy2025_gross_profit,
@@ -416,25 +416,8 @@ fn w_red_microsoft_margin_not_in_pure_play_band() -> Bool {
   )
 }
 
-fn w_red_positive_operating_income_is_not_negative() -> Bool {
+test fn w_red_positive_operating_income_is_not_negative() -> Bool {
   !w_signed_is_negative(fact: microsoft_fy2025_operating_income)
     && !w_signed_is_positive(fact: atlassian_fy2025_operating_income_loss)
 }
 
-test fn scm_issuer_corpus_witness() -> Bool {
-  w_microsoft_all_four_years_cross_foot()
-    && w_microsoft_fy2022_gross_profit_identity_holds()
-    && w_microsoft_fy2022_components_reach_operating_income()
-    && w_microsoft_fy2022_operating_expenses_unfiled()
-    && w_microsoft_profitable_every_modeled_year()
-    && w_atlassian_all_four_years_cross_foot()
-    && w_atlassian_turns_from_profit_to_losses()
-    && w_atlassian_cost_element_switches_mid_series()
-    && w_serving_cost_ordering_pure_play_above_platform()
-    && w_gitlab_fact_families_share_one_entity()
-    && w_issuer_subjects_are_distinct_entities()
-    && w_red_wrong_issuer_subject_fails_the_entity_edge()
-    && w_red_atlassian_cost_element_is_not_normalized()
-    && w_red_microsoft_margin_not_in_pure_play_band()
-    && w_red_positive_operating_income_is_not_negative()
-}

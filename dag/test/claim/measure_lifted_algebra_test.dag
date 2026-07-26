@@ -1,73 +1,57 @@
 module test.claim.measure_lifted_algebra
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn scale_fraction_exact_holds() -> Bool {
+test fn scale_fraction_exact_holds() -> Bool {
   byte_size_count(b: measure_scale_fraction_floor(m: byte_size(10), num: 4, den: 5)) == 8
 }
 
-fn scale_fraction_floors_not_rounds_holds() -> Bool {
+test fn scale_fraction_floors_not_rounds_holds() -> Bool {
   byte_size_count(b: measure_scale_fraction_floor(m: byte_size(7), num: 1, den: 2)) == 3
 }
 
-fn scale_fraction_zero_den_is_zero_holds() -> Bool {
+test fn scale_fraction_zero_den_is_zero_holds() -> Bool {
   byte_size_count(b: measure_scale_fraction_floor(m: byte_size(100), num: 4, den: 0)) == 0
 }
 
-fn fit_count_exact_holds() -> Bool {
+test fn fit_count_exact_holds() -> Bool {
   measure_fit_count_floor(capacity: byte_size(10), each: byte_size(5)) == 2
 }
 
-fn fit_count_floors_not_rounds_holds() -> Bool {
+test fn fit_count_floors_not_rounds_holds() -> Bool {
   measure_fit_count_floor(capacity: byte_size(7), each: byte_size(2)) == 3
 }
 
-fn fit_count_zero_divisor_is_zero_holds() -> Bool {
+test fn fit_count_zero_divisor_is_zero_holds() -> Bool {
   measure_fit_count_floor(capacity: byte_size(7), each: byte_size(0)) == 0
 }
 
-fn scale_fraction_generic_over_quantity_holds() -> Bool {
+test fn scale_fraction_generic_over_quantity_holds() -> Bool {
   hertz_count(h: measure_scale_fraction_floor(m: hertz(9), num: 2, den: 4)) == 4
 }
 
-fn fit_count_generic_over_quantity_holds() -> Bool {
+test fn fit_count_generic_over_quantity_holds() -> Bool {
   measure_fit_count_floor(capacity: hertz(9), each: hertz(4)) == 2
 }
 
-fn scale_fraction_ceil_exact_holds() -> Bool {
+test fn scale_fraction_ceil_exact_holds() -> Bool {
   byte_size_count(b: measure_scale_fraction_ceil(m: byte_size(8), num: 1, den: 4)) == 2
 }
 
-fn scale_fraction_ceil_rounds_up_holds() -> Bool {
+test fn scale_fraction_ceil_rounds_up_holds() -> Bool {
   byte_size_count(b: measure_scale_fraction_ceil(m: byte_size(7), num: 1, den: 2)) == 4
     && byte_size_count(b: measure_scale_fraction_floor(m: byte_size(7), num: 1, den: 2)) == 3
 }
 
-fn scale_fraction_ceil_remainder_to_one_holds() -> Bool {
+test fn scale_fraction_ceil_remainder_to_one_holds() -> Bool {
   byte_size_count(b: measure_scale_fraction_ceil(m: byte_size(10), num: 1, den: 4)) == 3
 }
 
-fn scale_fraction_ceil_zero_den_is_whole_holds() -> Bool {
+test fn scale_fraction_ceil_zero_den_is_whole_holds() -> Bool {
   byte_size_count(b: measure_scale_fraction_ceil(m: byte_size(100), num: 4, den: 0)) == 400
 }
 
-fn scale_fraction_ceil_generic_over_quantity_holds() -> Bool {
+test fn scale_fraction_ceil_generic_over_quantity_holds() -> Bool {
   hertz_count(h: measure_scale_fraction_ceil(m: hertz(9), num: 1, den: 2)) == 5
 }
 
-test fn measure_lifted_algebra_witnesses() -> Bool {
-  scale_fraction_exact_holds()
-    && scale_fraction_floors_not_rounds_holds()
-    && scale_fraction_zero_den_is_zero_holds()
-    && fit_count_exact_holds()
-    && fit_count_floors_not_rounds_holds()
-    && fit_count_zero_divisor_is_zero_holds()
-    && scale_fraction_generic_over_quantity_holds()
-    && fit_count_generic_over_quantity_holds()
-    && scale_fraction_ceil_exact_holds()
-    && scale_fraction_ceil_rounds_up_holds()
-    && scale_fraction_ceil_remainder_to_one_holds()
-    && scale_fraction_ceil_zero_den_is_whole_holds()
-    && scale_fraction_ceil_generic_over_quantity_holds()
-}

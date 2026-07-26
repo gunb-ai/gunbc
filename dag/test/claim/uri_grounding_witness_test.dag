@@ -1,25 +1,19 @@
 module test.claim.uri_grounding_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn w_uri_requires_scheme_and_locator() -> Bool {
+test fn w_uri_requires_scheme_and_locator() -> Bool {
   let uri = Uri { scheme: Https, locator: "api.example.com" }
   uri_is_url(uri: uri)
 }
 
-fn w_uri_wire_reconstructs_url() -> Bool {
+test fn w_uri_wire_reconstructs_url() -> Bool {
   let uri = Uri { scheme: Https, locator: "api.github.com" }
   uri_wire(uri: uri) == "https://api.github.com"
 }
 
-fn w_nonempty_str_html_url_holds() -> Bool {
+test fn w_nonempty_str_html_url_holds() -> Bool {
   let url = "https://github.com/gunb-ai/gunbc/pull/1"
   string_contains(url, pattern: "github.com")
 }
 
-test fn uri_grounding_witnesses() -> Bool {
-  w_uri_requires_scheme_and_locator()
-    && w_uri_wire_reconstructs_url()
-    && w_nonempty_str_html_url_holds()
-}

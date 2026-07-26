@@ -188,7 +188,7 @@ data ci_floor_resolve_receipt_gate_shell_emit_dissolution_trigger: Disposition =
 data ci_sccache_provider_shell_injection_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "gunbc.ci_materialization",
+    module_path: "v2.workflow.ci_materialization_emit",
     decl_name: "ci_sccache_provider_shell_injection",
     field: WholeDeclaration
   }
@@ -273,15 +273,3 @@ fn ci_floor_resolve_receipt_gate_script() -> String {
 }
 
 data ci_sccache_provider_skip_is_counted_note: String = "The skip arm is LOUD and COUNTED, not silent (§5: a degradation must be a typed, located, countable diagnostic so its frequency is observable and prioritizable). This guard was a bare `if` with no else until 2026-07-24 — when the daemon was down the release build simply ran uncached, and the deficit's frequency was zero by construction, so it never ranked for fixing (shell→dag census §4.I lists it as an absorbing fallback). It is NOT yet a refusal: STEP 2 of the srvN build-cache design flips this to fail-closed, and that flip is operator-sequenced AFTER a live T4 read-back proves P1b provisioning converges on srv1/srv2/srv4 — refusing before then would red the whole fleet, which is why the interim is loudness rather than a wall. The receipt line names the host, so a single misconfigured runner is attributable rather than fleet-wide noise."
-
-fn ci_sccache_provider_shell_injection() -> String {
-  join([
-    "if sccache --show-stats >/dev/null 2>&1; then",
-    "  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"",
-    "  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"",
-    "  printf '%s\\n' \"CiSccacheProviderReceipt: provider=bound catalog=sccache_local\"",
-    "else",
-    "  printf '%s\\n' \"CiSccacheProviderReceipt: provider=SKIPPED catalog=sccache_local host=$(hostname) cause=daemon-unavailable; the release build runs UNCACHED — a counted degradation, not a supported mode (host_build_cache_provision P1b should have converged this host)\"",
-    "fi",
-  ], "\n")
-}

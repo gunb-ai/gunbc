@@ -60,7 +60,7 @@ fn fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDoc
   }
 }
 
-fn witness_ready_matches_next_spawnable() -> Bool {
+test fn witness_ready_matches_next_spawnable() -> Bool {
   let node_a = sized_derivable(id: "parent-done", prs: [100], title: "Parent")
   let node_b = sized_derivable(id: "child-ready", prs: [200], title: "Child Ready")
   let edges = [RoadmapEdge { child: nid(s: "child-ready"), parent: nid(s: "parent-done") }]
@@ -71,7 +71,7 @@ fn witness_ready_matches_next_spawnable() -> Bool {
     && any(frontier.ready, n => n.node == nid(s: "child-ready"))
 }
 
-fn witness_upcoming_is_blocked_sized_node() -> Bool {
+test fn witness_upcoming_is_blocked_sized_node() -> Bool {
   let node_a = sized_derivable(id: "parent-open", prs: [100], title: "Parent Open")
   let node_b = sized_derivable(id: "child-blocked", prs: [200], title: "Child Blocked")
   let edges = [RoadmapEdge { child: nid(s: "child-blocked"), parent: nid(s: "parent-open") }]
@@ -81,7 +81,7 @@ fn witness_upcoming_is_blocked_sized_node() -> Bool {
     && !any(frontier.ready, n => n.node == nid(s: "child-blocked"))
 }
 
-fn witness_done_is_merged_sized_node() -> Bool {
+test fn witness_done_is_merged_sized_node() -> Bool {
   let node = sized_derivable(id: "done-node", prs: [999], title: "Done Node")
   let doc = fixture_doc(nodes: [node], edges: [])
   let frontier = spawn_frontier(doc: doc, merged: [999])
@@ -90,7 +90,7 @@ fn witness_done_is_merged_sized_node() -> Bool {
     && !any(frontier.upcoming, n => n.node == nid(s: "done-node"))
 }
 
-fn witness_unsized_excluded_from_frontier() -> Bool {
+test fn witness_unsized_excluded_from_frontier() -> Bool {
   let node = unsized_derivable(id: "unsized-open", prs: [], title: "Unsized")
   let doc = fixture_doc(nodes: [node], edges: [])
   let frontier = spawn_frontier(doc: doc, merged: [])
@@ -99,7 +99,7 @@ fn witness_unsized_excluded_from_frontier() -> Bool {
     && count(frontier.done) == 0
 }
 
-fn witness_buckets_are_disjoint() -> Bool {
+test fn witness_buckets_are_disjoint() -> Bool {
   let node_a = sized_derivable(id: "a-open", prs: [100], title: "A")
   let node_b = sized_derivable(id: "b-blocked", prs: [200], title: "B")
   let node_c = sized_derivable(id: "c-done", prs: [300], title: "C")
@@ -120,7 +120,7 @@ fn daily_workspace_html(doc: RoadmapDocument, merged: List<Int>) -> String {
   }
 }
 
-fn witness_page_renders_four_buckets() -> Bool {
+test fn witness_page_renders_four_buckets() -> Bool {
   let node_a = sized_derivable(id: "ready-node", prs: [10], title: "Ready Title")
   let doc = fixture_doc(nodes: [node_a], edges: [])
   let h = daily_workspace_html(doc: doc, merged: [])
@@ -147,7 +147,7 @@ fn superseded_node_fixture(id: String, by: String) -> RoadmapNode {
   }
 }
 
-fn witness_superseded_bucket_holds_superseded_only() -> Bool {
+test fn witness_superseded_bucket_holds_superseded_only() -> Bool {
   let node_old = superseded_node_fixture(id: "old-row", by: "successor-lane")
   let node_open = sized_derivable(id: "open-row", prs: [10], title: "Open Row")
   let doc = fixture_doc(nodes: [node_old, node_open], edges: [])
@@ -159,7 +159,7 @@ fn witness_superseded_bucket_holds_superseded_only() -> Bool {
     && !any(frontier.done, n => n.node == nid(s: "old-row"))
 }
 
-fn witness_page_places_superseded_node_in_superseded_bucket() -> Bool {
+test fn witness_page_places_superseded_node_in_superseded_bucket() -> Bool {
   let node_old = superseded_node_fixture(id: "old-row", by: "successor-lane")
   let doc = fixture_doc(nodes: [node_old], edges: [])
   let h = daily_workspace_html(doc: doc, merged: [])
@@ -169,7 +169,7 @@ fn witness_page_places_superseded_node_in_superseded_bucket() -> Bool {
     && !string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
 }
 
-fn witness_page_places_ready_node_in_ready_bucket() -> Bool {
+test fn witness_page_places_ready_node_in_ready_bucket() -> Bool {
   let node = sized_derivable(id: "spawn-me", prs: [42], title: "Spawn Me Now")
   let doc = fixture_doc(nodes: [node], edges: [])
   let h = daily_workspace_html(doc: doc, merged: [])
@@ -177,7 +177,7 @@ fn witness_page_places_ready_node_in_ready_bucket() -> Bool {
     && string_contains(s: h, pattern: "class=\"status status-open\"")
 }
 
-fn witness_authority_daily_workspace_serializes() -> Bool {
+test fn witness_authority_daily_workspace_serializes() -> Bool {
   match try_serialize_html_source(node: roadmap_daily_workspace_page_for_authority()) {
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "class=\"frontier-bucket frontier-ready\"")
@@ -186,15 +186,3 @@ fn witness_authority_daily_workspace_serializes() -> Bool {
   }
 }
 
-test fn roadmap_frontier_witnesses() -> Bool {
-  witness_ready_matches_next_spawnable()
-    && witness_upcoming_is_blocked_sized_node()
-    && witness_done_is_merged_sized_node()
-    && witness_unsized_excluded_from_frontier()
-    && witness_buckets_are_disjoint()
-    && witness_page_renders_four_buckets()
-    && witness_superseded_bucket_holds_superseded_only()
-    && witness_page_places_superseded_node_in_superseded_bucket()
-    && witness_page_places_ready_node_in_ready_bucket()
-    && witness_authority_daily_workspace_serializes()
-}
