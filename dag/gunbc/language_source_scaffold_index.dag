@@ -208,7 +208,170 @@ data runtime_rust_filesystem_row: LanguageSourceScaffoldRow = LanguageSourceScaf
   disposition: runtime_rust_filesystem_effect_trigger
 }
 
+
+data compiler_tests_harness_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.test.workflow.claim_witness_corpus_ci_runner",
+    decl_name: "ClaimWitnessCorpusClaimRunRow",
+    field: WholeDeclaration
+  }
+}
+
+data compiler_tests_profile_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "std.observation",
+    decl_name: "ObservationSubject",
+    field: WholeDeclaration
+  }
+}
+
+data ct_row_ct_module_header: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_module_header",
+  disposition: compiler_tests_harness_trigger
+}
+
+data ct_row_ct_module_footer: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_module_footer",
+  disposition: compiler_tests_harness_trigger
+}
+
+data ct_row_ct_workspace_helpers: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_workspace_helpers",
+  disposition: compiler_tests_harness_trigger
+}
+
+data ct_row_ct_file_discovery_helpers: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_file_discovery_helpers",
+  disposition: compiler_tests_harness_trigger
+}
+
+data ct_row_ct_source_builders: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_source_builders",
+  disposition: compiler_tests_harness_trigger
+}
+
+data ct_row_ct_self_compile_sources: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_self_compile_sources",
+  disposition: compiler_tests_harness_trigger
+}
+
+data ct_row_ct_profile_helpers: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_profile_helpers",
+  disposition: compiler_tests_harness_trigger
+}
+
+data ct_row_ct_tokenizer_tests: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_tokenizer_tests",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_parse_tests: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_parse_tests",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_pipeline_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_pipeline_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_self_parse_all_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_self_parse_all_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_self_resolve_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_self_resolve_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_self_compile_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_self_compile_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_self_compile_cargo_check_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_self_compile_cargo_check_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_type_size_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_type_size_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_diagnostics_carrier_grounding_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_diagnostics_carrier_grounding_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_rust_btree_set_ord_eligibility_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_rust_btree_set_ord_eligibility_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_unlisted_import_use_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_unlisted_import_use_witness_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_sole_constructor_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_sole_constructor_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_sole_constructor_fieldless_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_sole_constructor_fieldless_witness_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_contracts_sidecar_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_contracts_sidecar_witness_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_profile_self_compile_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_profile_self_compile_test",
+  disposition: compiler_tests_profile_trigger
+}
+
+data ct_row_ct_profile_full_pipeline_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_profile_full_pipeline_test",
+  disposition: compiler_tests_profile_trigger
+}
+
+data ct_row_ct_profile_reconcile_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_profile_reconcile_test",
+  disposition: compiler_tests_profile_trigger
+}
+
 data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
+  ct_row_ct_module_header,
+  ct_row_ct_module_footer,
+  ct_row_ct_workspace_helpers,
+  ct_row_ct_file_discovery_helpers,
+  ct_row_ct_source_builders,
+  ct_row_ct_self_compile_sources,
+  ct_row_ct_profile_helpers,
+  ct_row_ct_tokenizer_tests,
+  ct_row_ct_parse_tests,
+  ct_row_ct_pipeline_test,
+  ct_row_ct_self_parse_all_test,
+  ct_row_ct_self_resolve_test,
+  ct_row_ct_self_compile_test,
+  ct_row_ct_self_compile_cargo_check_test,
+  ct_row_ct_type_size_test,
+  ct_row_ct_diagnostics_carrier_grounding_test,
+  ct_row_ct_rust_btree_set_ord_eligibility_test,
+  ct_row_ct_unlisted_import_use_witness_test,
+  ct_row_ct_sole_constructor_test,
+  ct_row_ct_sole_constructor_fieldless_witness_test,
+  ct_row_ct_contracts_sidecar_witness_test,
+  ct_row_ct_profile_self_compile_test,
+  ct_row_ct_profile_full_pipeline_test,
+  ct_row_ct_profile_reconcile_test,
   runtime_rust_header_row,
   runtime_rust_work_counter_row,
   runtime_rust_concat_trait_row,
