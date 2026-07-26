@@ -1206,8 +1206,8 @@ mod compiler_tests {
         // verbatim — rustc reports 'expected one of `,` or `>`, found `.`' in generic position.
         // RED if render_rust_applied_type regresses to dotted verbatim emit.
         let source_indices = std::rc::Rc::new(HashMap::new());
-        let shared = std::rc::Rc::new(std::collections::BTreeSet::new());
-        let generics = std::rc::Rc::new(Vec::new());
+        let shared = std::rc::Rc::new(im::OrdSet::new());
+        let generics = std::rc::Rc::new(im::Vector::new());
         let variant_to_enum = std::rc::Rc::new(HashMap::new());
         let env = crate::v1_compiler_infer_env::empty_type_env();
         let arg = named_type_node("Int");
@@ -1225,7 +1225,7 @@ mod compiler_tests {
             !rendered.contains('.'),
             "applied-type base must not emit namespace dots in generic position"
         );
-        assert_eq!(rendered, "FreeMonoid<i64>");
+        assert_eq!(rendered, "Vec<i64>");
     }
 
     /// Return current process RSS in bytes (macOS via mach_task_basic_info).
