@@ -68,11 +68,11 @@ pub fn container_expected_arity(name: String) -> Option<i64> {
 
 pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
     if (kind_name.clone() == "Witness".to_string()) {
-        Rc::new(vec!["T".to_string()])
+        vec!["T".to_string()]
     } else {
         match v1_rt::map_get(&kernel_algebra_profile(), kind_name.clone()) {
             Some(p) => algebra_type_param_names(p.clone()),
-            None => Rc::new(vec![]),
+            None => vec![],
         }
     }
 }
@@ -182,7 +182,7 @@ pub fn container_template_alias_algebra(name: String) -> Option<String> {
 }
 
 pub fn canonical_container_names() -> Rc<Vec<String>> {
-    Rc::new(vec![
+    vec![
         "BooleanAlgebra".to_string(),
         "FreeMonoid".to_string(),
         "List".to_string(),
@@ -190,7 +190,7 @@ pub fn canonical_container_names() -> Rc<Vec<String>> {
         "PartialFunction".to_string(),
         "Set".to_string(),
         "Witness".to_string(),
-    ])
+    ]
 }
 
 #[derive(
@@ -219,9 +219,9 @@ pub type Char = i64;
 
 pub type List<Element> = Vec<Element>;
 
-pub type Set<Element> = Rc<crate::std_algebra::PointwisePower<Element>>;
+pub type Set<Element> = crate::std_algebra::PointwisePower<Element>;
 
-pub type Map<Key, Value> = Rc<crate::std_algebra::PartialFunction<Key, Value>>;
+pub type Map<Key, Value> = crate::std_algebra::PartialFunction<Key, Value>;
 
 pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
     items.clone().iter().fold(0, |acc: i64, _: _| (acc + 1))

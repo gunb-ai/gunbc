@@ -11,13 +11,13 @@ use std::rc::Rc;
 
 pub fn compute_in_graph_deps(
     all_names: Rc<Vec<String>>,
-    deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
+    deps_map: Rc<HashMap<String, Vec<String>>>,
     name_set: Rc<BTreeSet<String>>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+) -> Rc<HashMap<String, Vec<String>>> {
     {
         let result = all_names.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
+            v1_rt::rc_empty_map::<String, Vec<String>>(),
+            |acc: HashMap<String, Vec<String>>, name: String| match v1_rt::map_get(
                 &deps_map,
                 name.clone(),
             ) {
@@ -35,7 +35,7 @@ pub fn compute_in_graph_deps(
                     });
                     v1_rt::rc_map_insert(acc.clone(), name.clone(), local.clone())
                 }
-                None => v1_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(vec![])),
+                None => v1_rt::rc_map_insert(acc.clone(), name.clone(), vec![]),
             },
         );
         result
@@ -44,20 +44,20 @@ pub fn compute_in_graph_deps(
 
 pub fn build_reverse_adj(
     all_names: Rc<Vec<String>>,
-    local_deps: Rc<HashMap<String, Rc<Vec<String>>>>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    local_deps: Rc<HashMap<String, Vec<String>>>,
+) -> Rc<HashMap<String, Vec<String>>> {
     all_names.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
+        v1_rt::rc_empty_map::<String, Vec<String>>(),
+        |acc: HashMap<String, Vec<String>>, name: String| match v1_rt::map_get(
             &local_deps,
             name.clone(),
         ) {
             Some(deps) => deps.clone().iter().cloned().fold(
                 acc.clone(),
-                |inner_acc: Rc<HashMap<String, Rc<Vec<String>>>>, dep: String| {
+                |inner_acc: HashMap<String, Vec<String>>, dep: String| {
                     let existing = match v1_rt::map_get(&inner_acc, dep.clone()) {
                         Some(v) => v.clone(),
-                        None => Rc::new(vec![]),
+                        None => vec![],
                     };
                     v1_rt::rc_map_insert(
                         inner_acc.clone(),
@@ -73,11 +73,11 @@ pub fn build_reverse_adj(
 
 pub fn build_in_degree(
     all_names: Rc<Vec<String>>,
-    local_deps: Rc<HashMap<String, Rc<Vec<String>>>>,
+    local_deps: Rc<HashMap<String, Vec<String>>>,
 ) -> Rc<HashMap<String, i64>> {
     all_names.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, i64>(),
-        |acc: Rc<HashMap<String, i64>>, name: String| {
+        |acc: HashMap<String, i64>, name: String| {
             let deg = match v1_rt::map_get(&local_deps, name.clone()) {
                 Some(deps) => (deps.clone().len() as i64),
                 None => 0,
@@ -89,7 +89,7 @@ pub fn build_in_degree(
 
 pub fn kahn_remove_loop(
     remaining: Rc<Vec<String>>,
-    local_deps: Rc<HashMap<String, Rc<Vec<String>>>>,
+    local_deps: Rc<HashMap<String, Vec<String>>>,
 ) -> Rc<Vec<String>> {
     {
         let reverse_adj = build_reverse_adj(remaining.clone(), local_deps.clone());
@@ -114,7 +114,7 @@ pub fn kahn_remove_loop(
             (remaining.clone().len() as i64),
         );
         if (final_state.removed_count.clone() == (remaining.clone().len() as i64)) {
-            Rc::new(vec![])
+            vec![]
         } else {
             Rc::new({
                 let mut __result = Vec::new();
@@ -141,32 +141,34 @@ pub struct KahnState {
 pub fn kahn_cycle_drain(
     mut queue: Rc<Vec<String>>,
     mut in_degree: Rc<HashMap<String, i64>>,
-    mut reverse_adj: Rc<HashMap<String, Rc<Vec<String>>>>,
+    mut reverse_adj: Rc<HashMap<String, Vec<String>>>,
     mut removed_count: i64,
     mut fuel: i64,
 ) -> Rc<KahnState> {
     loop {
         if ((queue.clone().len() as i64) == 0) {
-            return Rc::new(KahnState {
-                in_degree: in_degree.clone(),
-                removed_count: removed_count.clone(),
-            });
+            Rc::new(
+                return KahnState {
+                    in_degree: in_degree.clone(),
+                    removed_count: removed_count.clone(),
+                },
+            )
         }
         let result = queue.clone().iter().cloned().fold(
-            Rc::new(KahnState {
+            KahnState {
                 in_degree: in_degree.clone(),
                 removed_count: removed_count.clone(),
-            }),
+            },
             |state: Rc<KahnState>, node: String| {
                 let state = v1_rt::take_owned(state);
                 {
                     let dependents = match v1_rt::map_get(&reverse_adj, node.clone()) {
                         Some(v) => v.clone(),
-                        None => Rc::new(vec![]),
+                        None => vec![],
                     };
                     let new_deg = dependents.clone().iter().cloned().fold(
                         state.in_degree,
-                        |deg_acc: Rc<HashMap<String, i64>>, dep: String| {
+                        |deg_acc: HashMap<String, i64>, dep: String| {
                             let old = match v1_rt::map_get(&deg_acc, dep.clone()) {
                                 Some(d) => d.clone(),
                                 None => 0,
@@ -174,39 +176,38 @@ pub fn kahn_cycle_drain(
                             v1_rt::rc_map_insert(deg_acc.clone(), dep.clone(), (old.clone() - 1))
                         },
                     );
-                    Rc::new(KahnState {
+                    KahnState {
                         in_degree: new_deg.clone(),
                         removed_count: (state.removed_count + 1),
-                    })
+                    }
                 }
             },
         );
-        let next_queue =
-            queue
-                .clone()
-                .iter()
-                .cloned()
-                .fold(Rc::new(vec![]), |acc: _, node: String| {
-                    let dependents = match v1_rt::map_get(&reverse_adj, node.clone()) {
-                        Some(v) => v.clone(),
-                        None => Rc::new(vec![]),
-                    };
-                    dependents
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .fold(acc, |inner_acc: _, dep: String| {
-                            let deg = match v1_rt::map_get(&result.in_degree.clone(), dep.clone()) {
-                                Some(d) => d.clone(),
-                                None => 0,
-                            };
-                            if (deg.clone() == 0) {
-                                v1_rt::rc_list_push(inner_acc.clone(), dep.clone())
-                            } else {
-                                inner_acc.clone()
-                            }
-                        })
-                });
+        let next_queue = queue
+            .clone()
+            .iter()
+            .cloned()
+            .fold(vec![], |acc: _, node: String| {
+                let dependents = match v1_rt::map_get(&reverse_adj, node.clone()) {
+                    Some(v) => v.clone(),
+                    None => vec![],
+                };
+                dependents
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .fold(acc, |inner_acc: _, dep: String| {
+                        let deg = match v1_rt::map_get(&result.in_degree.clone(), dep.clone()) {
+                            Some(d) => d.clone(),
+                            None => 0,
+                        };
+                        if (deg.clone() == 0) {
+                            v1_rt::rc_list_push(inner_acc.clone(), dep.clone())
+                        } else {
+                            inner_acc.clone()
+                        }
+                    })
+            });
         {
             let __tco_0 = next_queue.clone();
             let __tco_1 = result.in_degree.clone();
@@ -222,7 +223,7 @@ pub fn kahn_cycle_drain(
 }
 
 pub fn detect_type_cycles_kahn(
-    deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
+    deps_map: Rc<HashMap<String, Vec<String>>>,
     bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<Vec<String>> {
     {

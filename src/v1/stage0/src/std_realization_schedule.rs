@@ -36,34 +36,34 @@ pub enum CostBasis {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CostAccount<S> {
-    pub time: Rc<Measure<(), S, Nat>>,
+    pub time: Measure<(), S, Nat>,
     pub space: ByteSize,
     pub power: Watt,
     pub basis: CostBasis,
     pub _phantom: std::marker::PhantomData<S>,
 }
 
-pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
-    Rc::new(CostAccount {
+pub fn cost_account_predicted_zero<S>() -> CostAccount<S> {
+    CostAccount {
         time: time_measure(0),
         space: byte_size(0),
         power: watt(0),
         basis: CostBasis::Predicted,
         _phantom: std::marker::PhantomData,
-    })
+    }
 }
 
-pub fn cost_account_measured<S>(time: Rc<Measure<(), S, i64>>) -> Rc<CostAccount<S>> {
-    Rc::new(CostAccount {
+pub fn cost_account_measured<S>(time: Measure<(), S, i64>) -> CostAccount<S> {
+    CostAccount {
         time: time.clone(),
         space: byte_size(0),
         power: watt(0),
         basis: CostBasis::Measured,
         _phantom: std::marker::PhantomData,
-    })
+    }
 }
 
-pub fn cost_account_time_count<S>(account: Rc<CostAccount<S>>) -> Nat {
+pub fn cost_account_time_count<S>(account: CostAccount<S>) -> Nat {
     measure_count(account.time.clone())
 }
 
@@ -198,12 +198,12 @@ pub fn runnable_resource_profile_eq(
 }
 
 pub fn runnable_resource_profile_negligible() -> Rc<RunnableResourceProfile> {
-    Rc::new(RunnableResourceProfile {
+    RunnableResourceProfile {
         heavy_whole_tree_resolve: false,
         spawns_host_compiler: false,
         memory: runnable_memory_negligible(),
         execution_mode: ExecutionMode::Hermetic,
-    })
+    }
 }
 
 pub fn runnable_resource_profile(
@@ -212,12 +212,12 @@ pub fn runnable_resource_profile(
     memory: RunnableMemoryClass,
     execution_mode: ExecutionMode,
 ) -> Rc<RunnableResourceProfile> {
-    Rc::new(RunnableResourceProfile {
+    RunnableResourceProfile {
         heavy_whole_tree_resolve: heavy_whole_tree_resolve.clone(),
         spawns_host_compiler: spawns_host_compiler.clone(),
         memory: memory.clone(),
         execution_mode: execution_mode.clone(),
-    })
+    }
 }
 
 pub fn runnable_excludes_corpus_co_residence(profile: Rc<RunnableResourceProfile>) -> bool {
@@ -329,14 +329,14 @@ pub fn runnable_selection_applied(r: Rc<Runnable>) -> bool {
     }
 }
 
-pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
+pub type Schedule = Vec<Vec<Runnable>>;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RealizationPlan<S> {
     pub target: ContentHash,
-    pub objective: Rc<RealizationObjective>,
+    pub objective: RealizationObjective,
     pub schedule: Schedule,
-    pub total: Rc<CostAccount<S>>,
+    pub total: CostAccount<S>,
     pub _phantom: std::marker::PhantomData<S>,
 }
 
@@ -361,8 +361,8 @@ pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: Strin
 }
 
 pub fn schedule_generates_same_batch_count<S>(
-    left: Rc<RealizationPlan<S>>,
-    right: Rc<RealizationPlan<S>>,
+    left: RealizationPlan<S>,
+    right: RealizationPlan<S>,
 ) -> bool {
     ((left.schedule.clone().len() as i64) == (right.schedule.clone().len() as i64))
 }
@@ -548,7 +548,7 @@ continue;
 }
 
 pub fn schedule_generates_identical_schedule<S>(
-    plan: Rc<RealizationPlan<S>>,
+    plan: RealizationPlan<S>,
     schedule: Schedule,
 ) -> bool {
     schedule_eq(plan.schedule.clone(), schedule.clone())
