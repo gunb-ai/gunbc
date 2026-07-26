@@ -302,6 +302,7 @@ import extdeps.languages.rust.emit {
 import extdeps.languages.rust.wrap_catalog {
   rust_sg_rc_ownership_wrap_catalog_rows,
   RustSgRcOwnershipWrapCatalogRow,
+  OwnershipWrapCatalogRowKey,
   OwnershipWrapUseSite,
   OwnershipWrapUseSiteAbsent,
   OwnershipWrapSourceProjection,
@@ -4108,80 +4109,39 @@ fn rust_sg_rc_wrap_catalog_row_carrier_node(carrier: OwnershipWrapCarrier) -> No
   }
 }
 
-fn rust_sg_rc_wrap_catalog_row_display_name(row: RustSgRcOwnershipWrapCatalogRow) -> Optional<Symbol> {
-  match row.carrier {
-    WrapCarrierDiagnostics =>
-      match row.use_site {
-        OwnershipAtFunctionReturn => optional_present(value: ^rust_sg_rc_diagnostics_return)
-        OwnershipAtFunctionParameter => optional_present(value: ^rust_sg_rc_diagnostics_param)
-        OwnershipAtBindingProjection => optional_present(value: ^rust_sg_rc_diagnostics_binding)
-        OwnershipAtStructField => optional_absent()
-        OwnershipWrapUseSiteAbsent => optional_absent()
-      }
-    WrapCarrierNode =>
-      match row.use_site {
-        OwnershipAtFunctionReturn => optional_present(value: ^rust_sg_rc_node_return)
-        OwnershipAtFunctionParameter => optional_present(value: ^rust_sg_rc_node_param)
-        OwnershipAtStructField => optional_present(value: ^rust_sg_rc_node_return_box)
-        OwnershipAtBindingProjection => optional_present(value: ^rust_sg_rc_node_binding)
-        OwnershipWrapUseSiteAbsent => optional_absent()
-      }
-    WrapCarrierTestClaim =>
-      match row.use_site {
-        OwnershipAtFunctionReturn => optional_present(value: ^rust_sg_rc_test_claim_return)
-        OwnershipAtBindingProjection => optional_present(value: ^rust_sg_rc_test_claim_binding)
-        OwnershipAtFunctionParameter => optional_absent()
-        OwnershipAtStructField => optional_absent()
-        OwnershipWrapUseSiteAbsent => optional_absent()
-      }
-    WrapCarrierFreeMonoid =>
-      match row.use_site {
-        OwnershipAtFunctionReturn => optional_present(value: ^rust_sg_rc_free_monoid_return)
-        OwnershipAtBindingProjection => optional_present(value: ^rust_sg_rc_free_monoid_binding)
-        OwnershipAtFunctionParameter => optional_absent()
-        OwnershipAtStructField => optional_absent()
-        OwnershipWrapUseSiteAbsent => optional_absent()
-      }
-    WrapCarrierOutcome =>
-      match row.use_site {
-        OwnershipAtFunctionReturn => optional_present(value: ^rust_sg_rc_outcome_return)
-        OwnershipAtBindingProjection => optional_present(value: ^rust_sg_rc_outcome_binding)
-        OwnershipAtFunctionParameter => optional_absent()
-        OwnershipAtStructField => optional_absent()
-        OwnershipWrapUseSiteAbsent => optional_absent()
-      }
-    WrapCarrierModelCore =>
-      match row.use_site {
-        OwnershipAtFunctionReturn => optional_present(value: ^rust_sg_rc_model_core_return)
-        OwnershipAtBindingProjection => optional_present(value: ^rust_sg_rc_model_core_binding)
-        OwnershipAtFunctionParameter => optional_absent()
-        OwnershipAtStructField => optional_absent()
-        OwnershipWrapUseSiteAbsent => optional_absent()
-      }
-    WrapCarrierAlgebraInhabitanceDecl =>
-      match row.use_site {
-        OwnershipAtFunctionReturn => optional_present(value: ^rust_sg_rc_algebra_inhabitance_return)
-        OwnershipAtBindingProjection => optional_present(value: ^rust_sg_rc_algebra_inhabitance_binding)
-        OwnershipAtFunctionParameter => optional_absent()
-        OwnershipAtStructField => optional_absent()
-        OwnershipWrapUseSiteAbsent => optional_absent()
-      }
-    WrapCarrierProbeHeap =>
-      match row.use_site {
-        OwnershipAtFunctionReturn => optional_present(value: ^rust_sg_rc_probe_heap_return)
-        OwnershipAtBindingProjection => optional_present(value: ^rust_sg_rc_probe_heap_binding)
-        OwnershipAtFunctionParameter => optional_absent()
-        OwnershipAtStructField => optional_absent()
-        OwnershipWrapUseSiteAbsent => optional_absent()
-      }
-    WrapCarrierUseSiteVerdict =>
-      match row.use_site {
-        OwnershipAtFunctionReturn => optional_present(value: ^rust_sg_rc_use_site_verdict_return)
-        OwnershipAtFunctionParameter => optional_present(value: ^rust_sg_rc_use_site_verdict_param)
-        OwnershipAtBindingProjection => optional_present(value: ^rust_sg_rc_use_site_verdict_binding)
-        OwnershipAtStructField => optional_absent()
-        OwnershipWrapUseSiteAbsent => optional_absent()
-      }
+fn rust_sg_rc_wrap_catalog_row_display_name(key: OwnershipWrapCatalogRowKey) -> Symbol {
+  match key {
+    WrapRowDiagnosticsReturn => ^rust_sg_rc_diagnostics_return
+    WrapRowDiagnosticsParam => ^rust_sg_rc_diagnostics_param
+    WrapRowDiagnosticsBinding => ^rust_sg_rc_diagnostics_binding
+    WrapRowNodeReturn => ^rust_sg_rc_node_return
+    WrapRowNodeParam => ^rust_sg_rc_node_param
+    WrapRowNodeStructField => ^rust_sg_rc_node_return_box
+    WrapRowNodeBinding => ^rust_sg_rc_node_binding
+    WrapRowTestClaimReturn => ^rust_sg_rc_test_claim_return
+    WrapRowTestClaimBinding => ^rust_sg_rc_test_claim_binding
+    WrapRowFreeMonoidReturn => ^rust_sg_rc_free_monoid_return
+    WrapRowFreeMonoidBinding => ^rust_sg_rc_free_monoid_binding
+    WrapRowOutcomeReturn => ^rust_sg_rc_outcome_return
+    WrapRowOutcomeBinding => ^rust_sg_rc_outcome_binding
+    WrapRowModelCoreReturn => ^rust_sg_rc_model_core_return
+    WrapRowModelCoreBinding => ^rust_sg_rc_model_core_binding
+    WrapRowAlgebraInhabitanceReturn => ^rust_sg_rc_algebra_inhabitance_return
+    WrapRowAlgebraInhabitanceBinding => ^rust_sg_rc_algebra_inhabitance_binding
+    WrapRowProbeHeapReturn => ^rust_sg_rc_probe_heap_return
+    WrapRowProbeHeapBinding => ^rust_sg_rc_probe_heap_binding
+    WrapRowUseSiteVerdictReturn => ^rust_sg_rc_use_site_verdict_return
+    WrapRowUseSiteVerdictParam => ^rust_sg_rc_use_site_verdict_param
+    WrapRowUseSiteVerdictBinding => ^rust_sg_rc_use_site_verdict_binding
+  }
+}
+
+fn rust_sg_rc_wrap_catalog_row_target_use_site_from_key(key: OwnershipWrapCatalogRowKey) -> TargetOwnershipUseSite {
+  match key {
+    WrapRowDiagnosticsReturn | WrapRowNodeReturn | WrapRowTestClaimReturn | WrapRowFreeMonoidReturn | WrapRowOutcomeReturn | WrapRowModelCoreReturn | WrapRowAlgebraInhabitanceReturn | WrapRowProbeHeapReturn | WrapRowUseSiteVerdictReturn => OwnershipAtFunctionReturn
+    WrapRowDiagnosticsParam | WrapRowNodeParam | WrapRowUseSiteVerdictParam => OwnershipAtFunctionParameter
+    WrapRowNodeStructField => OwnershipAtStructField
+    WrapRowDiagnosticsBinding | WrapRowNodeBinding | WrapRowTestClaimBinding | WrapRowFreeMonoidBinding | WrapRowOutcomeBinding | WrapRowModelCoreBinding | WrapRowAlgebraInhabitanceBinding | WrapRowProbeHeapBinding | WrapRowUseSiteVerdictBinding => OwnershipAtBindingProjection
   }
 }
 
@@ -4191,16 +4151,6 @@ fn rust_sg_rc_wrap_catalog_row_source_projection(
   match projection {
     UseSiteOwnershipExactCarrier => UseSiteOwnershipExactCarrier
     UseSiteOwnershipInstantiationHeadCarrier => UseSiteOwnershipInstantiationHeadCarrier
-  }
-}
-
-fn rust_sg_rc_wrap_catalog_row_use_site(use_site: OwnershipWrapUseSite) -> Optional<TargetOwnershipUseSite> {
-  match use_site {
-    OwnershipAtFunctionReturn => optional_present(value: OwnershipAtFunctionReturn)
-    OwnershipAtFunctionParameter => optional_present(value: OwnershipAtFunctionParameter)
-    OwnershipAtStructField => optional_present(value: OwnershipAtStructField)
-    OwnershipAtBindingProjection => optional_present(value: OwnershipAtBindingProjection)
-    OwnershipWrapUseSiteAbsent => optional_absent()
   }
 }
 
@@ -4216,43 +4166,22 @@ fn rust_sg_rc_wrap_catalog_row_reference_layer(
 
 fn rust_sg_rc_wrap_catalog_row_to_realization(
   row: RustSgRcOwnershipWrapCatalogRow
-) -> Optional<TargetUseSiteOwnershipRealization> {
-  match rust_sg_rc_wrap_catalog_row_use_site(use_site: row.use_site) {
-    Present { value: use_site } =>
-      match rust_sg_rc_wrap_catalog_row_display_name(row: row) {
-        Present { value: display_name } =>
-          optional_present(
-            value: TargetUseSiteOwnershipRealization {
-              source_carrier: rust_sg_rc_wrap_catalog_row_carrier_node(carrier: row.carrier),
-              source_projection: rust_sg_rc_wrap_catalog_row_source_projection(
-                projection: row.source_projection
-              ),
-              use_site: use_site,
-              reference_layer: rust_sg_rc_wrap_catalog_row_reference_layer(layer: row.reference_layer),
-              display_name: display_name
-            }
-          )
-        Absent => optional_absent()
-      }
-    Absent => optional_absent()
+) -> TargetUseSiteOwnershipRealization {
+  TargetUseSiteOwnershipRealization {
+    source_carrier: rust_sg_rc_wrap_catalog_row_carrier_node(carrier: row.carrier),
+    source_projection: rust_sg_rc_wrap_catalog_row_source_projection(
+      projection: row.source_projection
+    ),
+    use_site: rust_sg_rc_wrap_catalog_row_target_use_site_from_key(key: row.key),
+    reference_layer: rust_sg_rc_wrap_catalog_row_reference_layer(layer: row.reference_layer),
+    display_name: rust_sg_rc_wrap_catalog_row_display_name(key: row.key)
   }
 }
 
 data rust_sg_rc_wrap_catalog_projection_row_count: Int = length(xs: rust_sg_rc_ownership_wrap_catalog_rows())
 
-fn rust_sg_rc_wrap_catalog_all_rows_project() -> Bool {
-  rust_sg_rc_ownership_wrap_catalog_rows()
-    |> all(row =>
-      match rust_sg_rc_wrap_catalog_row_to_realization(row: row) {
-        Present { value: _ } => true
-        Absent => false
-      }
-    )
-}
-
 fn rust_sg_rc_wrap_catalog_projection_complete() -> Bool {
-  rust_sg_rc_wrap_catalog_all_rows_project()
-    && length(xs: rust_sg_rc_use_site_ownership_catalog()) == rust_sg_rc_wrap_catalog_projection_row_count
+  length(xs: rust_sg_rc_use_site_ownership_catalog()) == rust_sg_rc_wrap_catalog_projection_row_count
 }
 
 fn rust_sg_rc_wrap_catalog_unknown_carrier_rejects() -> Bool {
@@ -4262,31 +4191,10 @@ fn rust_sg_rc_wrap_catalog_unknown_carrier_rejects() -> Bool {
   }
 }
 
-fn rust_sg_rc_wrap_catalog_row_to_realization_required(
-  row: RustSgRcOwnershipWrapCatalogRow
-) -> TargetUseSiteOwnershipRealization {
-  match rust_sg_rc_wrap_catalog_row_to_realization(row: row) {
-    Present { value: realization } => realization
-    Absent => rust_sg_rc_wrap_catalog_absent_row_refusal_trap()
-  }
-}
-
-fn rust_sg_rc_wrap_catalog_absent_row_refusal_trap() -> TargetUseSiteOwnershipRealization {
-  match pure_dag_seam_unreachable() {
-    _ => rust_sg_rc_wrap_catalog_absent_row_refusal_unreachable_tail()
-  }
-}
-
-fn rust_sg_rc_wrap_catalog_absent_row_refusal_unreachable_tail() -> TargetUseSiteOwnershipRealization {
-  match pure_dag_seam_unreachable() {
-    _ => rust_sg_rc_wrap_catalog_absent_row_refusal_unreachable_tail()
-  }
-}
-
 fn rust_sg_rc_use_site_ownership_catalog() -> List<TargetUseSiteOwnershipRealization> {
   list_map(
     xs: rust_sg_rc_ownership_wrap_catalog_rows(),
-    f: rust_sg_rc_wrap_catalog_row_to_realization_required
+    f: rust_sg_rc_wrap_catalog_row_to_realization
   )
 }
 

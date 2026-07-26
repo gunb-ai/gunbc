@@ -6,6 +6,7 @@
 // stale emit path still produces on full regen (dissolve-on: compile-green
 // stage0 regen; docs/plans/rc-ownership-wrap-decision-design.md §implementation).
 
+use self::OwnershipWrapCatalogRowKey::*;
 use self::OwnershipReferenceLayer::*;
 use self::OwnershipWrapCarrier::*;
 use self::OwnershipWrapSourceProjection::*;
@@ -74,8 +75,38 @@ pub enum OwnershipWrapCarrier {
     WrapCarrierUseSiteVerdict,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum OwnershipWrapCatalogRowKey {
+    WrapRowDiagnosticsReturn,
+    WrapRowDiagnosticsParam,
+    WrapRowDiagnosticsBinding,
+    WrapRowNodeReturn,
+    WrapRowNodeParam,
+    WrapRowNodeStructField,
+    WrapRowNodeBinding,
+    WrapRowTestClaimReturn,
+    WrapRowTestClaimBinding,
+    WrapRowFreeMonoidReturn,
+    WrapRowFreeMonoidBinding,
+    WrapRowOutcomeReturn,
+    WrapRowOutcomeBinding,
+    WrapRowModelCoreReturn,
+    WrapRowModelCoreBinding,
+    WrapRowAlgebraInhabitanceReturn,
+    WrapRowAlgebraInhabitanceBinding,
+    WrapRowProbeHeapReturn,
+    WrapRowProbeHeapBinding,
+    WrapRowUseSiteVerdictReturn,
+    WrapRowUseSiteVerdictParam,
+    WrapRowUseSiteVerdictBinding,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RustSgRcOwnershipWrapCatalogRow {
+    pub key: OwnershipWrapCatalogRowKey,
     pub carrier: OwnershipWrapCarrier,
     pub source_projection: OwnershipWrapSourceProjection,
     pub use_site: OwnershipWrapUseSite,
