@@ -2831,6 +2831,13 @@ fn run_walk(
                         sgr::ERROR
                     )
                 );
+                failure_details.push(format!(
+                    "batch={} BudgetExceeded{{wall_ms={},clamp_ms={},units={}}}",
+                    bi + 1,
+                    wall_ms,
+                    clamp_ms,
+                    batch_unit_count
+                ));
                 any_failed = true;
             }
         }
