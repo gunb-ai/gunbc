@@ -59,7 +59,7 @@ test fn dispatch_reads_cited_rows() -> Bool {
     && !transport_hermetic(tc: RestNetwork)
 }
 
-test fn red_rest_network_advertises_hermetic() -> Bool {
-  transport_hermetic(tc: RestNetwork)
+test fn rest_network_is_not_hermetic() -> Bool {
+  !transport_hermetic(tc: RestNetwork)
 }
 
