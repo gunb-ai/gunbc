@@ -654,13 +654,6 @@ pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
     ])
 }
 
-pub fn pair_completion_factor_is_rhs(factor: Rc<PairCompletionFactor>) -> bool {
-    match factor.operand.clone() {
-        PairCompletionOperand::PairCompletionRhs => true,
-        PairCompletionOperand::PairCompletionSelf => false,
-    }
-}
-
 pub fn pair_completion_arm_uses_rhs(arm: Rc<PairCompletionArm>) -> bool {
     {
         let mut __found = false;
@@ -668,7 +661,10 @@ pub fn pair_completion_arm_uses_rhs(arm: Rc<PairCompletionArm>) -> bool {
             if {
                 let mut __found = false;
                 for f in term.factors.clone().iter().cloned() {
-                    if pair_completion_factor_is_rhs(f.clone()) {
+                    if match f.operand.clone() {
+                        PairCompletionOperand::PairCompletionRhs => true,
+                        PairCompletionOperand::PairCompletionSelf => false,
+                    } {
                         __found = true;
                         break;
                     }
