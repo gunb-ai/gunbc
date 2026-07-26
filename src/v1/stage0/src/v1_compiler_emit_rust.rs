@@ -1871,7 +1871,7 @@ pub fn rust_seed_align_expr_rc_wrap(emitted: String, needs_rc: bool) -> String {
             )
         }
     } else {
-        rust_seed_demote_outer_rc_wrap(emitted)
+        emitted
     }
 }
 
@@ -18608,15 +18608,7 @@ pub fn emit_typed_expr(
             texpr.clone(),
             RenderTarget::Rust,
             scope.type_env.clone().source_indices.clone(),
-            |result| {
-                rust_seed_wrap_typed_expr_result(
-                    texpr.clone(),
-                    result,
-                    shared_types.clone(),
-                    scope.clone(),
-                    emit_info.clone(),
-                )
-            },
+            |result| result,
             |child| {
                 emit_typed_expr(
                     child.clone(),
