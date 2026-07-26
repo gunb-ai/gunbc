@@ -1,0 +1,40 @@
+module test.claim.root4_measure_missing_generics_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data root4_measure_missing_generics_witness_note: String = "Root-4 measure_missing_generics family: function-generic List<Measure<Time, S, Nat>> parameters must preserve applied arguments through render_rust_decl_type container-argument overlay resolution. The decision is structural (__applied_type_args or resolved-type children), never a Measure name check. Positive control: w_measure_list_param_preserves_applied_generics. RED controls: w_zero_param_alias_list_param_unchanged preserves the existing closed-alias realization; w_homonym_measure_zero_param_list_unchanged proves an unrelated zero-parameter Measure does not gain arguments."
+
+fn w_measure_list_param_preserves_applied_generics() -> Bool {
+  compile_dag_rust_emit_check(
+    "module root4_measure_list\nimport std.measure { Measure, Time, time_measure }\nimport std.nat { Nat }\nimport std.realization_measurement { time_measure_list_total }\n\nfn witness<S>(times: List<Measure<Time, S, Nat>>) -> Measure<Time, S, Nat> {\n  time_measure_list_total(times: times)\n}\n",
+    "src/root4_measure_list.rs",
+    ["Vec<Rc<Measure<(), S, Nat>>", "-> Rc<Measure<(), S, Nat>>"],
+    ["Vec<Rc<Measure>>", "Rc<Measure>>"]
+  )
+}
+
+fn w_zero_param_alias_list_param_unchanged() -> Bool {
+  compile_dag_rust_emit_check(
+    "module root4_zero_param_alias\nimport std.measure { ByteSize, byte_size }\n\nfn witness(spaces: List<ByteSize>) -> ByteSize {\n  byte_size(count: 0)\n}\n",
+    "src/root4_zero_param_alias.rs",
+    ["Rc<Vec<ByteSize<Memory, One, Nat>>"],
+    ["Vec<Rc<Measure"]
+  )
+}
+
+fn w_homonym_measure_zero_param_list_unchanged() -> Bool {
+  compile_dag_rust_emit_check(
+    "module root4.homonym_measure\nimport std.nat { Nat }\n\ntype Measure { count: Nat }\n\nfn witness(items: List<Measure>) -> Measure {\n  Measure { count: 0 }\n}\n",
+    "src/root4_homonym_measure.rs",
+    ["Vec<Rc<Measure>>"],
+    ["Measure<(),", "Measure<Time", "< S,", "<Memory"]
+  )
+}
+
+test fn root4_measure_missing_generics_witness_holds() -> Bool {
+  w_measure_list_param_preserves_applied_generics()
+    && w_zero_param_alias_list_param_unchanged()
+    && w_homonym_measure_zero_param_list_unchanged()
+}
