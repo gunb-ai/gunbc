@@ -64,8 +64,12 @@ pub struct AbelianGroup<T> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GroupCompletion<M>(pub std::marker::PhantomData<M>);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct FieldOfFractions<R>(pub std::marker::PhantomData<R>);
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FieldOfFractions<R> {
+    pub num: R,
+    pub denom: R,
+    pub _phantom: std::marker::PhantomData<R>,
+}
 
 #[derive(Clone)]
 pub struct Semiring<T> {
