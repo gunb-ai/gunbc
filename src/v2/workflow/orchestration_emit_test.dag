@@ -15,7 +15,7 @@ import v2.std.orchestration {
   Predicate,
   ExitZero
 }
-import v2.std.optional { Present }
+import v2.std.optional { Optional, Present }
 import v2.std.collection { Absent }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -184,9 +184,7 @@ test fn orch_if_multi_step_then_no_else_block_form_holds() -> Bool {
     medium: bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
-      (src.carried
-        == "if [ -z \"$1\" ]; then\nverdict=absent\necho \"$verdict\"\nfi")
-        && (dg == None)
+      (src.carried == "if [ -z \"$1\" ]; then\nverdict=absent\necho \"$verdict\"\nfi") && (dg == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -197,9 +195,7 @@ test fn orch_if_multi_step_then_and_else_block_form_holds() -> Bool {
     medium: bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
-      (src.carried
-        == "if [ -z \"$1\" ]; then\nverdict=absent\necho \"$verdict\"\nelse\nverdict=present\necho \"$verdict\"\nfi")
-        && (dg == None)
+      (src.carried == "if [ -z \"$1\" ]; then\nverdict=absent\necho \"$verdict\"\nelse\nverdict=present\necho \"$verdict\"\nfi") && (dg == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -210,9 +206,7 @@ test fn orch_if_multi_step_else_only_block_form_holds() -> Bool {
     medium: bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
-      (src.carried
-        == "if [ -z \"$1\" ]; then\nverdict=absent\nelse\nverdict=present\necho \"$verdict\"\nfi")
-        && (dg == None)
+      (src.carried == "if [ -z \"$1\" ]; then\nverdict=absent\nelse\nverdict=present\necho \"$verdict\"\nfi") && (dg == None)
     Rejected { diagnostics: _ } => false
   }
 }
