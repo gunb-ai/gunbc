@@ -620,11 +620,15 @@ fn orch_emit_step(s: PipelineStep, medium: OrchestrationEmitMedium) -> Outcome<e
   match s {
     Do { run: r } => orch_emit_run(r: r, medium: medium)
     Comment { text: t } =>
-      orch_emit_from_registry(
-        medium: medium,
-        construct_tag: orch_construct_run_rawline,
-        target: medium.realize_run_rawline(concat("# ", t))
-      )
+      if string_contains(s: t, pattern: "\n") || string_contains(s: t, pattern: "\r") {
+        outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_comment_multiline_refused))
+      } else {
+        orch_emit_from_registry(
+          medium: medium,
+          construct_tag: orch_construct_run_rawline,
+          target: medium.realize_run_rawline(concat("# ", t))
+        )
+      }
     If { cond: c, then_: t, else_: e } =>
       orch_emit_if_step(cond: c, then_: t, else_: e, medium: medium)
     For { binder: _, over: _, body: _ } =>

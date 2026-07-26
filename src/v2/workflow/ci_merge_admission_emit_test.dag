@@ -103,6 +103,29 @@ test fn orch_comment_step_emit_red_when_hash_dropped_holds() -> Bool {
   }
 }
 
+test fn orch_comment_multiline_refused_holds() -> Bool {
+  match orch_emit_step(
+    s: Comment { text: "note\nrm -rf /" },
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn orch_comment_multiline_refused_is_not_executable_second_line_holds() -> Bool {
+  match orch_emit_step(
+    s: Comment { text: "innocent\necho injected" },
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: source, diagnostics: _ } =>
+      string_contains(s: source.carried, pattern: "\necho injected")
+        && false
+    Rejected { diagnostics: _ } =>
+      orch_comment_step_emit() == orch_comment_step_golden
+  }
+}
+
 test fn orch_bash_comment_line_is_comment_step_holds() -> Bool {
   match orch_bash_comment_line(text: "x") {
     Comment { text: t } => t == "x"
