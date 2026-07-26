@@ -476,7 +476,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     pattern: "test/claim/emit/logic_ground_truth_test.dag",
     classification: QuarantineProbeExpectRed,
     reason: "known-red frontier: v1 resolver does not bind imported bare variant constructors in expression position; runs on the falsifier probe cadence expecting red (known_red_frontier_note)",
-    dissolve_on: "the namespace-only-resolution lane lands imported-variant value bindings, the four witnesses run green, the entry deletes"
+    dissolve_on: "the namespace-only-resolution lane lands imported-variant value bindings, the three witnesses run green, the entry deletes"
   },
   WitnessExclusionRow {
     pattern: "test/claim/manual/english_emit_add_test.dag",
