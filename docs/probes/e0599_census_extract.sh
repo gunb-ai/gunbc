@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# Extract E0599 census from curated-cargo probe build logs (PROBE_KEEP_LOG_DIR/*.cargo.log).
-# Inline python avoids a committed .py file (gitignore authority models *.py as local-dev-only).
+# SCAFFOLD — dissolve-on: tools.self_host_curated_seed_linked_harness on main post-#6782
+# (+ generic std-seed-link follow-up) retires this hand-shell log classifier; until then it
+# projects per-error E0599 census from PROBE_KEEP_LOG_DIR/*.cargo.log (probe-only).
+# dissolve-on alt: modeled cssl_probe transport in .dag (same spine as curated_cargo_probe_one.sh).
+# Authority: docs/probes/e0599_canonical_seven_census_2026-07-26.tsv (classifier receipt); input
+# logs from docs/probes/curated_cargo_probe_one.sh PROBE_KEEP_LOG_DIR hook.
+# Inline python avoids a committed .py file (gitignore_authority models *.py as local-dev-only).
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
