@@ -648,7 +648,10 @@ fn assert_bootstrap_emit_core_support(src_dir: &Path) -> Result<(), String> {
 /// on srv3-03 (`spawn rustfmt: No such file or directory`) after srv2-05 green on the same tip.
 fn rustup_bin_candidates() -> Vec<PathBuf> {
     let mut out = Vec::new();
-    if let Ok(output) = Command::new("sh").args(["-lc", "command -v rustup"]).output() {
+    if let Ok(output) = Command::new("sh")
+        .args(["-lc", "command -v rustup"])
+        .output()
+    {
         if output.status.success() {
             let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !p.is_empty() {
@@ -661,7 +664,12 @@ fn rustup_bin_candidates() -> Vec<PathBuf> {
     }
     out.push(PathBuf::from("/opt/cargo/bin/rustup"));
     if let Ok(home) = env::var("HOME") {
-        out.push(PathBuf::from(home).join(".cargo").join("bin").join("rustup"));
+        out.push(
+            PathBuf::from(home)
+                .join(".cargo")
+                .join("bin")
+                .join("rustup"),
+        );
     }
     out
 }
@@ -686,7 +694,10 @@ fn resolve_rustfmt_bin() -> Result<PathBuf, String> {
                     return Ok(PathBuf::from(p));
                 }
             }
-            if let Ok(output) = Command::new("sh").args(["-lc", "command -v rustfmt"]).output() {
+            if let Ok(output) = Command::new("sh")
+                .args(["-lc", "command -v rustfmt"])
+                .output()
+            {
                 if output.status.success() {
                     let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
                     if !p.is_empty() && Path::new(&p).is_file() {
@@ -844,7 +855,13 @@ fn rustfmt_normalize(content: &str, work_dir: &Path, tag: &str) -> Result<String
         .arg("stdout")
         .arg(&path)
         .output()
-        .map_err(|e| format!("spawn rustfmt for {} ({}): {e}", path.display(), rustfmt.display()))?;
+        .map_err(|e| {
+            format!(
+                "spawn rustfmt for {} ({}): {e}",
+                path.display(),
+                rustfmt.display()
+            )
+        })?;
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     } else {
