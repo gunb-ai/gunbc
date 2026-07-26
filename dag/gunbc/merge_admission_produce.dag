@@ -248,7 +248,7 @@ data ci_floor_disposition_marker_path: String = "target/ci-floor-disposition.txt
 data ci_floor_disposition_marker_init_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.merge_admission_produce",
+    module_path: "v2.workflow.ci_merge_admission_emit",
     decl_name: "ci_floor_disposition_marker_init_script",
     field: WholeDeclaration
   }
@@ -258,21 +258,6 @@ data ci_floor_disposition_marker_init_shell_emit_dissolution_trigger: String = "
 
 data ci_floor_disposition_marker_init_note: String = "Positive floor-running stamp at the start of every floor step clears stale documentation_only_skipped left in target/ on persistent self-hosted runners (review 37010 / operator ruling 2026-07-11). Receipt gates skip only on an exact documentation_only_skipped match — never on file presence alone."
 
-fn ci_floor_disposition_marker_init_script() -> String {
-  concat(
-    concat("# ", concat(ci_floor_disposition_marker_init_shell_emit_dissolution_trigger, "\n")),
-    concat(
-      concat("# ", concat(ci_floor_disposition_marker_init_note, "\n")),
-      concat(
-        concat("mkdir -p target\n"),
-        concat(
-          concat("echo ", merge_admission_floor_disposition_floor_running),
-          concat(" > ", concat(ci_floor_disposition_marker_path, "\n"))
-        )
-      )
-    )
-  )
-}
 
 data merge_admission_stamp_documentation_only_skip_policy: String = "CI_FLOOR_DISPOSITION=documentation_only_skipped stamps merge-admission conclusion Skipped (not Success) — floor-not-run ≠ floor-green per §5; distinct from CI_FLOOR_EXIT=0 laundering"
 
