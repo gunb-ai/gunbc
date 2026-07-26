@@ -99,7 +99,7 @@ fn parse_tree_to_target_model_bridge_fails_closed() -> Bool {
   }
 }
 
-fn cross_language_emit_inhabitant_neutralization_fails_closed() -> Bool {
+test fn cross_language_emit_inhabitant_neutralization_fails_closed() -> Bool {
   match infer(tree: python_emitted_add_fn_node()) {
     Accepted { value: inferred, diagnostics: _ } =>
       match emit(tree: inferred, target: ts_target_model()) {
@@ -110,7 +110,7 @@ fn cross_language_emit_inhabitant_neutralization_fails_closed() -> Bool {
   }
 }
 
-fn cross_language_emit_inhabitant_neutralization_holds() -> Bool {
+test fn cross_language_emit_inhabitant_neutralization_holds() -> Bool {
   match neutralize_core_for_target(
     core: python_emitted_add_fn_node(),
     target: ts_target_model()
@@ -128,7 +128,7 @@ fn cross_language_emit_inhabitant_neutralization_holds() -> Bool {
   }
 }
 
-fn cross_language_add_python_to_typescript_chain_status_holds() -> Bool {
+test fn cross_language_add_python_to_typescript_chain_status_holds() -> Bool {
 
   match python_grammar_parse_fixture() {
     Accepted { value: python_parse_tree, diagnostics: _ } =>

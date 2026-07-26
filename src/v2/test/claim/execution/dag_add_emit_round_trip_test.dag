@@ -198,7 +198,7 @@ test fn dag_add_ingest_via_coerce_matches_canonical() -> Bool {
   }
 }
 
-fn dag_add_domain_coerce_accepts_holds() -> Bool {
+test fn dag_add_domain_coerce_accepts_holds() -> Bool {
   match coerce_grounded_node(
     source: dag_arrow_domain_conj_node(),
     tree: dag_add_inferred_tree,
@@ -209,7 +209,7 @@ fn dag_add_domain_coerce_accepts_holds() -> Bool {
   }
 }
 
-fn dag_add_domain_translate_accepts_holds() -> Bool {
+test fn dag_add_domain_translate_accepts_holds() -> Bool {
   match translate_emitted_node(
     tree: InferredTree {
       root: dag_arrow_domain_conj_node(),

@@ -172,7 +172,7 @@ fn edit_locus_occurrence_textual_file_eq(
   }
 }
 
-fn edit_locus_source_provenance_producer_holds() -> Bool {
+test fn edit_locus_source_provenance_producer_holds() -> Bool {
   match source_ir_artifact_provenance(
     source_read: edit_locus_source_producer_fixture_source_read
   ) {

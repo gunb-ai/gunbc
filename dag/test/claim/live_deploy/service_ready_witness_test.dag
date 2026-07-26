@@ -57,7 +57,7 @@ test fn witness_readiness_poll_bound_grounded_on_std_measure_second() -> Bool {
     && second_count(s: live_deploy_readiness_poll_bound_seconds()) == 120
 }
 
-fn witness_poll_bound_strictly_exceeds_expected_startup() -> Bool {
+test fn witness_poll_bound_strictly_exceeds_expected_startup() -> Bool {
   let expected = second_count(s: live_deploy_roadmap_unit_expected_startup)
   let bound = second_count(s: live_deploy_service_ready_poll_bound)
   bound > expected
@@ -65,7 +65,7 @@ fn witness_poll_bound_strictly_exceeds_expected_startup() -> Bool {
     && bound == expected * live_deploy_service_ready_poll_bound_margin_factor
 }
 
-fn witness_expected_startup_covers_measured_srv1_observations() -> Bool {
+test fn witness_expected_startup_covers_measured_srv1_observations() -> Bool {
   let expected = second_count(s: live_deploy_roadmap_unit_expected_startup)
   expected >= 39
 }

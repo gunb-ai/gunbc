@@ -46,14 +46,14 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn inhabitant_neutralization_python_int_std_projection_holds() -> Bool {
+test fn inhabitant_neutralization_python_int_std_projection_holds() -> Bool {
   match inhabitant_std_projection_symbol(inhabitant: python_int_inhabitant_node()) {
     Accepted { value: proj, diagnostics: _ } => proj == ^std_projection_additive_numeric
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn inhabitant_neutralization_ts_target_lookup_holds() -> Bool {
+test fn inhabitant_neutralization_ts_target_lookup_holds() -> Bool {
   match target_inhabitant_for_std_projection(
     std_projection: ^std_projection_additive_numeric,
     target: ts_target_model()

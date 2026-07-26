@@ -84,14 +84,14 @@ fn bisect_through_normalize() -> Outcome<Node> {
   )
 }
 
-fn bisect_tokenize_terminates() -> Bool {
+test fn bisect_tokenize_terminates() -> Bool {
   match bisect_through_tokenize() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => true
   }
 }
 
-fn bisect_parse_terminates() -> Bool {
+test fn bisect_parse_terminates() -> Bool {
   match bisect_through_parse() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => true
@@ -108,7 +108,7 @@ fn bisect_through_grammar_validate() -> Outcome<ValidatedGrammarRoot> {
   }
 }
 
-fn bisect_grammar_validate_terminates() -> Bool {
+test fn bisect_grammar_validate_terminates() -> Bool {
   match bisect_through_grammar_validate() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => true
