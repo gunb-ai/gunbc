@@ -1,0 +1,15 @@
+=== probing src/v2/compiler/06_translate.dag ===
+06_translate: 14 E0369 across 12 shapes
+=== probing src/v2/compiler/04_infer.dag ===
+04_infer: 14 E0369 across 12 shapes
+=== probing src/v2/compiler/05_eval.dag ===
+05_eval: 29 E0369 across 19 shapes
+=== probing src/v2/compiler/05_emit.dag ===
+05_emit: 14 E0369 across 12 shapes
+=== probing src/v2/compiler/emit_host.dag ===
+emit_host: 81 E0369 across 37 shapes
+=== probing src/v2/compiler/emit_module.dag ===
+emit_module: 14 E0369 across 12 shapes
+=== probing src/v2/compiler/materialization_carriers.dag ===
+materialization_carriers: 62 E0369 across 22 shapes
+DONE

@@ -1,0 +1,13 @@
+count	message
+2	binary operation `==` cannot be applied to type `Rc<im::Vector<T>>`
+2	binary operation `<` cannot be applied to type `Rc<Nat>`
+1	binary operation `==` cannot be applied to type `&Rc<im::Vector<T>>`
+1	cannot divide `Rc<Nat>` by `{integer}`
+1	binary operation `==` cannot be applied to type `Rc<im::HashMap<Rc<EnvironmentBindingKey>, Rc<RuntimeValue>>>`
+1	binary operation `==` cannot be applied to type `&Rc<ValueInterpreter>`
+1	binary operation `==` cannot be applied to type `&Rc<TransformInterpreter>`
+1	binary operation `==` cannot be applied to type `&Rc<BranchInterpreter>`
+1	binary operation `==` cannot be applied to type `&Rc<LoopInterpreter>`
+1	binary operation `==` cannot be applied to type `&Rc<BindInterpreter>`
+1	binary operation `==` cannot be applied to type `&Rc<MatchInterpreter>`
+1	binary operation `==` cannot be applied to type `Rc<im::HashMap<Rc<Node>, Rc<InferredFacts>>>`

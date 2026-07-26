@@ -1,0 +1,15 @@
+message	path	line	col	left	right	single	code
+binary operation `==` cannot be applied to type `Rc<im::Vector<T>>`	src/v2_std_algebra.rs	48	5			Rc<im::Vector<T>>	#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+binary operation `==` cannot be applied to type `&Rc<im::Vector<T>>`	src/v2_std_algebra.rs	91	9	bool	bool	&Rc<im::Vector<T>>	#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+binary operation `==` cannot be applied to type `Rc<im::Vector<T>>`	src/v2_std_collection.rs	159	5	Rc<PrimitiveFactBundle>		Rc<im::Vector<T>>	#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+binary operation `<` cannot be applied to type `Rc<Nat>`	src/v2_std_nat.rs	58	23	Rc<DecimalDigitsStep>	Rc<DecimalDigitStep>	Rc<Nat>	if (a.clone() < b.clone()) {
+binary operation `<` cannot be applied to type `Rc<Nat>`	src/v2_std_integer.rs	1407	31			Rc<Nat>	if (value.clone() < 10) {
+cannot divide `Rc<Nat>` by `{integer}`	src/v2_std_integer.rs	1411	47				let rest = (value.clone() / 10);
+binary operation `==` cannot be applied to type `Rc<im::HashMap<Rc<EnvironmentBindingKey>, Rc<RuntimeValue>>>`	src/v2_std_runtime.rs	68	5			Rc<im::HashMap<Rc<EnvironmentBindingKey>, Rc<RuntimeValue>>>	#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+binary operation `==` cannot be applied to type `&Rc<ValueInterpreter>`	src/v2_std_runtime.rs	391	9			&Rc<ValueInterpreter>	#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+binary operation `==` cannot be applied to type `&Rc<TransformInterpreter>`	src/v2_std_runtime.rs	394	9			&Rc<TransformInterpreter>	#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+binary operation `==` cannot be applied to type `&Rc<BranchInterpreter>`	src/v2_std_runtime.rs	397	9			&Rc<BranchInterpreter>	#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+binary operation `==` cannot be applied to type `&Rc<LoopInterpreter>`	src/v2_std_runtime.rs	400	9			&Rc<LoopInterpreter>	#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+binary operation `==` cannot be applied to type `&Rc<BindInterpreter>`	src/v2_std_runtime.rs	403	9			&Rc<BindInterpreter>	#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+binary operation `==` cannot be applied to type `&Rc<MatchInterpreter>`	src/v2_std_runtime.rs	406	9	()	()	&Rc<MatchInterpreter>	#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+binary operation `==` cannot be applied to type `Rc<im::HashMap<Rc<Node>, Rc<InferredFacts>>>`	src/v2_compiler_infer.rs	86	5	()	()	Rc<im::HashMap<Rc<Node>, Rc<InferredFacts>>>	#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
