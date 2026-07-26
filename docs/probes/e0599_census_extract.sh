@@ -69,11 +69,10 @@ def normalize_receiver(raw: str) -> str:
     return " ".join(raw.strip().split())
 
 
-def root_family_for(shape: str, method: str, receiver: str) -> str:
-    key = (shape, method, receiver)
-    cached = _root_family_cache.get(key)
-    if cached is not None:
-        return cached
+def gunbc_root_family_labels(keys: list[tuple[str, str, str]]) -> dict[tuple[str, str, str], str]:
+    if not keys:
+        return {}
+    blob = "\n".join(f"{shape}\t{method}\t{receiver}" for shape, method, receiver in keys)
     proc = subprocess.run(
         [
             gunbc,
@@ -83,34 +82,49 @@ def root_family_for(shape: str, method: str, receiver: str) -> str:
             "--entry",
             "dag/tools/e0599_probe_census.dag",
             "--function",
-            "e0599_root_family_label_for_row",
+            "e0599_root_family_labels_from_blob",
             "--arg",
-            f"shape_str={shape}",
-            "--arg",
-            f"method={method}",
-            "--arg",
-            f"receiver={receiver}",
+            f"blob={blob}",
         ],
         capture_output=True,
         text=True,
         check=False,
     )
-    label = None
+    labels: list[str] = []
+    capture = False
     for line in proc.stdout.splitlines():
         if line.startswith("running "):
+            capture = True
             continue
         if line.startswith("error:"):
             break
-        if line.strip():
-            label = line.strip()
-            break
-    if label is None:
+        if capture and line.strip():
+            labels.append(line.strip())
+    if len(labels) != len(keys):
         raise RuntimeError(
-            f"e0599_root_family_label_for_row failed for {key!r}: "
+            f"e0599_root_family_labels_from_blob returned {len(labels)} labels for {len(keys)} keys: "
             f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
         )
+    return dict(zip(keys, labels))
+
+
+def root_family_for(shape: str, method: str, receiver: str) -> str:
+    key = (shape, method, receiver)
+    cached = _root_family_cache.get(key)
+    if cached is not None:
+        return cached
+    labels = gunbc_root_family_labels([key])
+    label = labels[key]
     _root_family_cache[key] = label
     return label
+
+
+def prefetch_root_families(keys: list[tuple[str, str, str]]) -> None:
+    missing = [key for key in keys if key not in _root_family_cache]
+    if not missing:
+        return
+    labels = gunbc_root_family_labels(missing)
+    _root_family_cache.update(labels)
 
 
 def classify_line(line: str):
@@ -153,6 +167,7 @@ if aggregate or len(paths) > 1:
         module_totals[mod] = len(rows)
         for shape, method, receiver in rows:
             global_counts[(shape, method, receiver)] += 1
+    prefetch_root_families(list(global_counts.keys()))
     print("# e0599_canonical_seven_census aggregate")
     print("module\ttotal_E0599")
     for mod in sorted(module_totals):
@@ -183,6 +198,7 @@ else:
     counts = collections.Counter()
     for shape, method, receiver in rows:
         counts[(shape, method, receiver)] += 1
+    prefetch_root_families(list(counts.keys()))
     print(f"# module={mod} total_E0599={len(rows)}")
     print("module\tfailure_shape\tmethod\treceiver_carrier\troot_family\tcount")
     for (shape, method, receiver), n in sorted(

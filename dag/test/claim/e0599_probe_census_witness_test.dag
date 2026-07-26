@@ -80,3 +80,9 @@ test fn e0599_root_family_label_for_row_log_shape_bridge() -> Bool {
     receiver: "struct `Rc<im::Vector<T>>`"
   ) == "R2VectorMethodBounds"
 }
+
+test fn e0599_root_family_labels_from_blob_batch() -> Bool {
+  e0599_root_family_labels_from_blob(
+    blob: "missing_method\tclone\ttype parameter `T`\nbounds_unsatisfied\tis_empty\tstruct `Rc<im::Vector<T>>`"
+  ) == "R1CloneBoundOnTypeParam\nR2VectorMethodBounds"
+}

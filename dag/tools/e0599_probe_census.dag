@@ -132,6 +132,36 @@ fn e0599_root_family_label_for_row(shape_str: String, method: String, receiver: 
   )
 }
 
+fn e0599_root_family_label_for_tuple_line(line: String) -> String {
+  let parts = line |> split(delimiter: "\t")
+  let shape_str = match parts |> first {
+    Present { value: v } => v
+    Absent => ""
+  }
+  let tail = parts |> skip(n: 1)
+  let method = match tail |> first {
+    Present { value: v } => v
+    Absent => ""
+  }
+  let receiver = match tail |> skip(n: 1) |> first {
+    Present { value: v } => v
+    Absent => ""
+  }
+  e0599_root_family_label_for_row(shape_str: shape_str, method: method, receiver: receiver)
+}
+
+fn e0599_root_family_labels_from_blob(blob: String) -> String {
+  let lines = if blob == "" { [] } else { blob |> split(delimiter: "\n") }
+  fold(lines, init: "", f: fn(acc, line) {
+    let label = e0599_root_family_label_for_tuple_line(line: line)
+    if acc == "" {
+      label
+    } else {
+      concat(acc, concat("\n", label))
+    }
+  })
+}
+
 fn e0599_root_family_for(shape: E0599FailureShape, method: String, receiver: String) -> E0599RootFamily {
   match shape {
     MissingMethod => {
