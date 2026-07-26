@@ -88,26 +88,44 @@ fn rust_sg_rc_ownership_wrap_catalog_rows() -> List<RustSgRcOwnershipWrapCatalog
   ]
 }
 
+fn rust_sg_rc_wrap_row_lookup_for_carrier(carrier: OwnershipWrapCarrier, use_site: OwnershipWrapUseSite) -> OwnershipReferenceLayer? {
+  rust_sg_rc_ownership_wrap_catalog_rows()
+    |> fold(
+      init: none,
+      f: (acc, row) =>
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            if row.carrier == carrier && row.use_site == use_site {
+              Present { value: row.reference_layer }
+            } else {
+              acc
+            }
+        }
+    )
+}
+
+fn rust_sg_rc_carrier_enrolled_but_row_missing(type_name: String, use_site: OwnershipWrapUseSite) -> Bool {
+  match use_site {
+    OwnershipWrapUseSiteAbsent => false
+    _ =>
+      match rust_sg_rc_wrap_carrier_from_type_name(type_name: type_name) {
+        Present { value: carrier } =>
+          match rust_sg_rc_wrap_row_lookup_for_carrier(carrier: carrier, use_site: use_site) {
+            Present { value: _ } => false
+            Absent => true
+          }
+        Absent => false
+      }
+  }
+}
+
 fn rust_sg_rc_wrap_layer_lookup(type_name: String, use_site: OwnershipWrapUseSite) -> OwnershipReferenceLayer? {
   match use_site {
     OwnershipWrapUseSiteAbsent => none
     _ =>
       match rust_sg_rc_wrap_carrier_from_type_name(type_name: type_name) {
-        Present { value: carrier } =>
-          rust_sg_rc_ownership_wrap_catalog_rows()
-            |> fold(
-              init: none,
-              f: (acc, row) =>
-                match acc {
-                  Present { value: _ } => acc
-                  Absent =>
-                    if row.carrier == carrier && row.use_site == use_site {
-                      Present { value: row.reference_layer }
-                    } else {
-                      acc
-                    }
-                }
-            )
+        Present { value: carrier } => rust_sg_rc_wrap_row_lookup_for_carrier(carrier: carrier, use_site: use_site)
         Absent => none
       }
   }
@@ -122,4 +140,8 @@ fn rust_sg_rc_wrap_layer_lookup_witness_holds() -> Bool {
       }
     _ => false
   }
+}
+
+fn rust_sg_rc_carrier_enrolled_but_row_missing_witness_holds() -> Bool {
+  rust_sg_rc_carrier_enrolled_but_row_missing(type_name: "ProbeHeap", use_site: OwnershipAtFunctionParameter)
 }

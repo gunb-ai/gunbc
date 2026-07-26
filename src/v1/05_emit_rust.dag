@@ -44,7 +44,7 @@ import extdeps.languages.rust.wrap_catalog {
   OwnershipWrapUseSite, OwnershipWrapUseSiteAbsent, OwnershipAtFunctionReturn,
   OwnershipAtFunctionParameter, OwnershipAtStructField, OwnershipAtBindingProjection,
   OwnershipReferenceLayer, ReferenceLayerOwned, ReferenceLayerRc, ReferenceLayerBox,
-  rust_sg_rc_wrap_layer_lookup
+  rust_sg_rc_wrap_layer_lookup, rust_sg_rc_carrier_enrolled_but_row_missing
 }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
 import gunbc.stage0_crate_layout_generated { generated_pub_mod_basenames }
@@ -789,7 +789,7 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
   }
 }
 
-data rust_seed_wrap_decision_note: String = "Construction wall replacing shared_types blanket Rc wrap (rc-ownership-wrap-decision-design.md). Single authority: rust_seed_effective_reference_layer — both type render and value wrap read the same effective OwnershipReferenceLayer. Catalog MISS is not conflated with Owned: legacy container fallback (Vec, HashMap, BTreeMap rendered-prefix scan) lives inside the decision as a named scaffold until catalog coverage is complete."
+data rust_seed_wrap_decision_note: String = "Construction wall replacing shared_types blanket Rc wrap (rc-ownership-wrap-decision-design.md). Single authority: rust_seed_resolve_wrap_outcome — type render and value wrap read the same SeedWrapOutcome. Enrolled carrier with no row at an explicit use site refuses (fail-closed). Unenrolled module-local types default Owned (partition-derived interim). Legacy container prefix scan remains a named scaffold until catalog rows land."
 
 data rust_seed_legacy_container_blanket_dissolve_on: String = "wrap_catalog legacy container carriers covered — List/HashMap/BTreeMap rows land in rust_sg_rc_ownership_wrap_catalog_rows and rust_seed_legacy_container_blanket_rc deletes"
 
@@ -803,37 +803,54 @@ fn rust_seed_legacy_container_blanket_rc(rendered: String) -> Bool {
   else { false }
 }
 
-fn rust_seed_effective_reference_layer(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> OwnershipReferenceLayer {
+type SeedWrapOutcome
+  = SeedWrapDecided { layer: OwnershipReferenceLayer }
+  | SeedWrapRefused { reason: String }
+
+fn rust_seed_wrap_use_site_label(use_site: OwnershipWrapUseSite) -> String {
   match use_site {
-    OwnershipWrapUseSiteAbsent => ReferenceLayerOwned
+    OwnershipWrapUseSiteAbsent => "Absent"
+    OwnershipAtFunctionReturn => "FunctionReturn"
+    OwnershipAtFunctionParameter => "FunctionParameter"
+    OwnershipAtStructField => "StructField"
+    OwnershipAtBindingProjection => "BindingProjection"
+  }
+}
+
+fn rust_seed_resolve_wrap_outcome(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> SeedWrapOutcome {
+  match use_site {
+    OwnershipWrapUseSiteAbsent => SeedWrapDecided { layer: ReferenceLayerOwned }
     _ =>
       match rust_sg_rc_wrap_layer_lookup(type_name: type_name, use_site: use_site) {
-        Present { value: layer } => layer
+        Present { value: layer } => SeedWrapDecided { layer: layer }
         Absent =>
-          if rust_seed_legacy_container_blanket_rc(rendered: rendered) {
-            ReferenceLayerRc
+          if rust_sg_rc_carrier_enrolled_but_row_missing(type_name: type_name, use_site: use_site) {
+            SeedWrapRefused { reason: concat("wrap-decision: enrolled carrier missing catalog row at use site ", rust_seed_wrap_use_site_label(use_site: use_site)) }
+          } else if rust_seed_legacy_container_blanket_rc(rendered: rendered) {
+            SeedWrapDecided { layer: ReferenceLayerRc }
           } else {
-            ReferenceLayerOwned
+            SeedWrapDecided { layer: ReferenceLayerOwned }
           }
       }
   }
 }
 
 fn apply_seed_wrap_decision(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> String {
-  match rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, use_site: use_site) {
-    ReferenceLayerOwned => rendered
-    ReferenceLayerRc =>
+  match rust_seed_resolve_wrap_outcome(type_name: type_name, rendered: rendered, use_site: use_site) {
+    SeedWrapDecided { layer: ReferenceLayerOwned } => rendered
+    SeedWrapDecided { layer: ReferenceLayerRc } =>
       if rust_type_is_rc_wrapped(type_name: rendered) {
         rendered
       } else {
         wrap_shared_type(target: Rust, inner: rendered)
       }
-    ReferenceLayerBox =>
+    SeedWrapDecided { layer: ReferenceLayerBox } =>
       if rust_type_is_box_wrapped(type_name: rendered) {
         rendered
       } else {
         concat("Box<", rendered, ">")
       }
+    SeedWrapRefused { reason } => emit_error_expr(message: reason, target: Rust)
   }
 }
 
