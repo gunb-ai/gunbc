@@ -8,7 +8,10 @@
 #
 # INVOCATION CONTRACT (2026-07-19, calm-boar-697 — durable; do not re-learn expensively):
 #   CSSL_STD_SEED_LINK=1  — required for std-seed-link closure assembly via cssl_assemble.
-#   PROBE_KEEP_LOG_DIR=<dir> — persist emitted crate + cargo.log for per-error census (e0599_census_extract.sh).
+#   PROBE_KEEP_LOG_DIR=<dir> — after each probe, copy cargo.log to <dir>/<module>.cargo.log
+#                           for per-error census (e0599_census_extract.sh). Emit/assemble always
+#                           use a fresh mktemp OUT per invocation — never reuse this dir as OUT
+#                           (gunbc compile does not clear stale emitted .rs across runs).
 #   shim_lib_rel (arg 2)  — ONLY the lane's own lib.rs from dag/tools/self_host_<lane>_shims/
 #                           when that lane provides one (see behavioral_transport shim_lib_rel).
 #   Empty = raw cssl-assembled lib.rs (correct default when no lane shim).
@@ -51,14 +54,13 @@ if [[ "$STD_SEED_LINK" == "1" && ! -x "$CSSL_ASSEMBLE" ]]; then
 fi
 export GUNBC
 
+KEEP_DIR=""
 if [[ -n "${PROBE_KEEP_LOG_DIR:-}" ]]; then
-  OUT="$PROBE_KEEP_LOG_DIR"
-  mkdir -p "$OUT"
-  cleanup() { :; }
-else
-  OUT="$(mktemp -d "${TMPDIR:-/tmp}/cssl-probe.XXXXXX")"
-  cleanup() { rm -rf "$OUT"; }
+  KEEP_DIR="$PROBE_KEEP_LOG_DIR"
+  mkdir -p "$KEEP_DIR"
 fi
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/cssl-probe.XXXXXX")"
+cleanup() { rm -rf "$OUT"; }
 trap cleanup EXIT
 
 EMIT_LOG="$OUT/emit.log"
@@ -204,9 +206,9 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
       MAPPED_GATE="UNKNOWN"
     fi
   fi
-  if [[ -n "${PROBE_KEEP_LOG_DIR:-}" && -f "${BUILD_LOG:-}" ]]; then
+  if [[ -n "$KEEP_DIR" && -f "${BUILD_LOG:-}" ]]; then
     mod_base="$(basename "$MODULE_PATH" .dag)"
-    cp "$BUILD_LOG" "$PROBE_KEEP_LOG_DIR/${mod_base}.cargo.log"
+    cp "$BUILD_LOG" "$KEEP_DIR/${mod_base}.cargo.log"
   fi
 fi
 
