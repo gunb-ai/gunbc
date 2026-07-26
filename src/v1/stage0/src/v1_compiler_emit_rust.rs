@@ -1834,21 +1834,18 @@ pub fn render_rust_decl_type(
                                                 let arg_list = Rc::new({
                                                     let mut __result = Vec::new();
                                                     for arg in n.children.clone().iter().cloned() {
-                                                        __result.push({
-                                            let typed_arg = render_rust_decl_type_container_arg(arg.clone(), source_indices.clone(), env.clone());
-if peel.clone() {
-                                                render_rust_phantom_opaque_applied_decl_arg(typed_arg.clone(), generic_param_names.clone(), shared_types.clone(), corpus_repr.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone())
+                                                        __result.push(if peel.clone() {
+                                            render_rust_phantom_opaque_applied_decl_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), corpus_repr.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone())
+                                        } else {
+                                            if rust_type_arg_renders_as_unit(arg.clone(), generic_param_names.clone(), variant_to_enum.clone(), source_indices.clone()) {
+                                                "()".to_string()
                                             } else {
-                                                if rust_type_arg_renders_as_unit(typed_arg.clone(), generic_param_names.clone(), variant_to_enum.clone(), source_indices.clone()) {
-                                                    "()".to_string()
-                                                } else {
-                                                    match rust_render_checkpoint_scalar_bare(typed_arg.clone(), corpus_repr.clone(), source_indices.clone(), shared_types.clone()) {
+                                                match rust_render_checkpoint_scalar_bare(arg.clone(), corpus_repr.clone(), source_indices.clone(), shared_types.clone()) {
     Some(scalar) => scalar.clone(),
-    None => render_rust_decl_type(typed_arg.clone(), generic_param_names.clone(), shared_types.clone(), corpus_repr.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone()),
+    None => render_rust_decl_type(arg.clone(), generic_param_names.clone(), shared_types.clone(), corpus_repr.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone()),
 }
-                                                }
                                             }
-});
+                                        });
                                                     }
                                                     __result
                                                 });
@@ -2192,52 +2189,6 @@ pub fn render_rust_fn_sig_type_applied_binding(
             corpus_repr.clone(),
             source_indices.clone(),
         ),
-    }
-}
-
-pub fn rust_decl_type_container_arg_needs_resolved_overlay(
-    arg: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> bool {
-    if ((arg.connective.clone() != Connective::NoConnective)
-        || ((arg.children.clone().len() as i64) != 0))
-    {
-        false
-    } else {
-        if rust_fn_sig_peel_closed_alias(env.clone(), arg.clone()) {
-            false
-        } else {
-            match find_property(
-                arg.properties.clone(),
-                "__applied_type_args".to_string(),
-                source_indices.clone(),
-            ) {
-                Some(applied) => ((applied.children.clone().len() as i64) > 0),
-                None => match arg.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved { node: rt, .. }) => {
-                        ((rt.children.clone().len() as i64) > 0)
-                    }
-                    _ => false,
-                },
-            }
-        }
-    }
-}
-
-pub fn render_rust_decl_type_container_arg(
-    arg: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Rc<Node> {
-    if rust_decl_type_container_arg_needs_resolved_overlay(
-        arg.clone(),
-        source_indices.clone(),
-        env.clone(),
-    ) {
-        child_type_node(arg.clone())
-    } else {
-        arg.clone()
     }
 }
 
@@ -16951,6 +16902,32 @@ pub fn emit_value_ref_ident(
     }
 }
 
+pub fn none_undetermined_carrier_refuse_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Fail-open closed (sharp-bee-290 msg_6317aebe / DESIGN §5): when none/None has no resolved variant_parent, the emitter previously emitted Rust null as a fabricated plausible default. variant_parent == none conflated (a) bare Optional none with a determined CardOptional carrier and (b) undetermined carrier. Split: CardOptional → None (type-directed); any other determined non-optional carrier → typed refuse; undetermined (Absent / non-Resolved inferred) → typed refuse. Never null as a default. The refuse surfaces as emit_error_expr (UNRESOLVED_… diagnostic text in emitted Rust) so the deficit is countable; if the refusal spike is corpus-red-large, fold a named counted interim INSIDE this single decision with an explicit dissolution trigger — never restore an escaping Optional default at callers.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn emit_none_keyword_for_resolved_type(resolved_type: Option<Rc<InferredNode>>) -> String {
+    match resolved_type.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => match rt.return_cardinality.clone() {
+            Cardinality::CardOptional => emit_keyword("null".to_string(), RenderTarget::Rust),
+            _ => emit_error_expr(
+                "none/None with non-optional resolved carrier — refuse fail-open null default"
+                    .to_string(),
+                RenderTarget::Rust,
+            ),
+        },
+        _ => emit_error_expr(
+            "none/None with undetermined carrier — refuse fail-open null default".to_string(),
+            RenderTarget::Rust,
+        ),
+    }
+}
+
 pub fn emit_var_ref(
     name: String,
     binding_kind: Option<Rc<VarBindingKind>>,
@@ -16973,7 +16950,7 @@ pub fn emit_var_ref(
             || (leaf_name.clone() == "None".to_string()))
             && (variant_parent.clone() == None))
         {
-            emit_keyword("null".to_string(), RenderTarget::Rust)
+            emit_none_keyword_for_resolved_type(resolved_type.clone())
         } else {
             if ((leaf_name.clone() == "true".to_string())
                 || (leaf_name.clone() == "false".to_string()))
@@ -17113,7 +17090,7 @@ pub fn emit_typed_expr_base(
                     || (leaf_name.clone() == "None".to_string()))
                     && (variant_parent.clone() == None))
                 {
-                    emit_keyword("null".to_string(), RenderTarget::Rust)
+                    emit_none_keyword_for_resolved_type(texpr.inferred.clone())
                 } else {
                     if ((leaf_name.clone() == "true".to_string())
                         || (leaf_name.clone() == "false".to_string()))
