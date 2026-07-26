@@ -56,9 +56,10 @@ test fn inhabitant_neutralization_python_to_go_discriminates_on_real_tree() -> B
       match cross_language_compile(
         parse_tree: python_parse_tree,
         source_model: python_target_model(),
-        target_model: ts_target_model()
+        target_model: go_target_model()
       ) {
-        Accepted { value: source, diagnostics: _ } => source.carried == ts_source_text
+        Accepted { value: source, diagnostics: _ } =>
+          (source.carried == go_source_text) && (source.carried != ts_source_text)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
