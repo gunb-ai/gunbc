@@ -1,5 +1,15 @@
 module extdeps.languages.rust.wrap_catalog
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/reference/types/pointer.html"
+  }
+}
+
 data ownership_wrap_catalog_scaffold_note: String = "SCAFFOLD (OWNERSHIP-68 / sharp-bee-290): zero production consumers as of this PR — deliberately, so each consumer flip is attributable on its own. Slice is not finished work until flips land. Dissolve-on: first PR that routes a 05_emit_rust.dag decider through rust_seed_effective_reference_layer (or a successor). Witness ownership_wrap_catalog_inert_authority_witness_holds executes the authority — not inert in the DESIGN §6 sense."
 
 data ownership_reference_layer_sharing_strategy_note: String = "Orthogonal to v1.languages.SharingStrategy (src/v1/languages.dag:104): SharingStrategy is target-parameterized HOW-to-render (wrap_template, deref_clone, clone_value, field_clone, iter_owned, clone_suffix, borrow_param_template, borrow_arg_template, needs_sharing). OwnershipReferenceLayer is WHICH layer a type at a given use-site is in. Not a §3 violation. Convergence (not this PR): SharingStrategy indexed BY OwnershipReferenceLayer — one rendering row per (layer, target) instead of flat sibling String fields; needs_sharing: Bool may conflate target-supports-sharing with value-is-shared — same convergence."
