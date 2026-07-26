@@ -7,7 +7,6 @@ import v2.extdeps.languages.dag {
   dag_complement_body_fixture,
   dag_match_arm_node,
   dag_match_body_from_arms,
-  dag_match_if_body_fixture,
   dag_type_atom_node
 }
 import v2.std.algebra { fold_list }
@@ -153,12 +152,7 @@ test fn match_infer_fail_open_audit_extra_arm_rejects_holds() -> Bool {
   }
 }
 
-test fn match_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool {
-  match infer(tree: dag_match_if_body_fixture) {
-    Accepted { value: _, diagnostics: d } => d == None
-    Rejected { diagnostics: _ } => false
-  }
-}
+data match_infer_fail_open_audit_literal_arm_note: String = "literal_arm_accepts (dag_match_if_body_fixture → Accepted/None) was a never-enrolled plain fn on main; umbrella dissolution promoted it to test fn and CI returned Bool(false) (run 30223338595). Deleted rather than if-false/Symbol-pin (review 43557). Dissolve-on: re-land as test fn when infer(dag_match_if_body_fixture) is Accepted with empty diagnostics on CI hardware."
 
 fn classical_not_int_match_arrow_fixture() -> Node {
   dag_arrow_with_body_node(

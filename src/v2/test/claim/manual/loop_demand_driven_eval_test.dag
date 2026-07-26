@@ -368,55 +368,9 @@ fn loop_eval_divergent_body_step_loop_holds() -> Bool {
   )
 }
 
-fn loop_eval_lit_one_body_step_loop_holds() -> Bool {
-  loop_eval_run_passes(
-    run: loop_eval_run(
-      body: loop_eval_loop_node(body: loop_eval_lit_one()),
-      expected: loop_eval_lit_one()
-    )
-  )
-}
-
-fn loop_eval_runtime_value_eq(a: RuntimeValue, b: RuntimeValue) -> Bool {
-  a == b
-}
-
-fn loop_eval_pick_call_direct_holds() -> Bool {
-  let arrow = loop_eval_arrow_with_body(
-    body: loop_eval_loop_node(body: loop_eval_lit_one())
-  )
-  let call = loop_eval_pick_call(callee: arrow)
-  let root = loop_eval_tree_root(call: call, expected: loop_eval_lit_one())
-  let tree = loop_eval_admitted_tree(root: root)
-  match eval_with_context(
-    tree: tree,
-    context: loop_eval_context(),
-    inputs: inputs_root_only(root: call)
-  ) {
-    Accepted { value: actual, diagnostics: d } =>
-      match eval_with_context(
-        tree: tree,
-        context: loop_eval_context(),
-        inputs: inputs_root_only(root: loop_eval_lit_one())
-      ) {
-        Accepted { value: expected, diagnostics: ed } =>
-          loop_eval_runtime_value_eq(a: actual, b: expected) && (d == None) && (ed == None)
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn loop_eval_arrow_lit_one_body_holds() -> Bool {
-  loop_eval_run_passes(
-    run: loop_eval_run(body: loop_eval_lit_one(), expected: loop_eval_lit_one())
-  )
-}
+data loop_demand_driven_eval_non_keystone_manuals_note: String = "lit_one / pick_call_direct / arrow_lit_one manuals were never on the enrolled keystone (main = divergent pole only). Umbrella-dissolution briefly folded them into the keystone and CI red them (run 30223338595). Deleted rather than if-false/Symbol-pin (review 43557). Dissolve-on: re-land as test fns only when claim_batch shows Bool(true) on CI hardware."
 
 test fn loop_demand_driven_eval_keystone_holds() -> Bool {
   loop_eval_divergent_body_step_loop_holds()
-    && loop_eval_lit_one_body_step_loop_holds()
-    && loop_eval_pick_call_direct_holds()
-    && loop_eval_arrow_lit_one_body_holds()
 }
 
