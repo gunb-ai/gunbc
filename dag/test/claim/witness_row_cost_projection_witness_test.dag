@@ -4,9 +4,15 @@ import gunbc.witness_row_cost {
   WitnessCostProjectionComplete,
   WitnessCostProjectionRefused,
   WitnessCostReceiptRow,
+  WitnessCostEventRole,
+  EntryResolveParent,
+  DeclarationWitness,
   project_witness_cost_receipt,
+  witness_cost_event_role,
   witness_cost_entry_resolve_event,
   witness_cost_declaration_event,
+  witness_cost_nested_resolve_under_declaration_event,
+  witness_cost_module_resolve_event,
   witness_cost_warm,
   witness_cost_rss_unavailable_cause,
   witness_timing_row_seed_view_disposition,
@@ -16,8 +22,7 @@ import gunbc.witness_row_cost {
   witness_timing_row_hand_rust_scaffold_deletion,
   witness_timing_row_hand_rust_loc_delta_net,
   witness_timing_row_hand_rust_test_discriminator,
-  witness_cost_role_bool_filter_disposition,
-  witness_cost_role_bool_filter_note,
+  witness_cost_event_role_note,
 }
 import std.logic { Bool }
 import std.nat { Nat }
@@ -46,7 +51,7 @@ import gunbc.observation_ci_render {
 }
 import v2.std.text { String }
 
-data witness_row_cost_projection_note: String = "Executing REDs for the #5 ObservationEvent join projection (N+1 per entry). (1) DeclarationSegment key/grain totality lives in observation_model_witness_test. (2) Two modeled events → one exact TSV row. (3) Missing or multiple parent resolve events REFUSE the row set. (4) W2 Ambient suppress does not delete the complete receipt row. Resolve wall is entry-level/shared — repeated as a column, never divided, never summed N times as a corpus total."
+data witness_row_cost_projection_note: String = "Executing REDs for the #5 ObservationEvent join projection (N+1 per entry). (1) DeclarationSegment key/grain totality lives in observation_model_witness_test. (2) Two modeled events → one exact TSV row. (3) Missing or multiple parent resolve events REFUSE the row set. (4) W2 Ambient suppress does not delete the complete receipt row. (5) Declaration-/module-nested resolve phases do NOT count as the entry-level parent (collision RED — review 43409). Resolve wall is entry-level/shared — repeated as a column, never divided, never summed N times as a corpus total. Role classification is witness_cost_event_role (typed extract), not is_* Bool filters."
 
 fn sample_decl(name: String) -> DeclarationRef {
   DeclarationRef {
@@ -241,6 +246,74 @@ fn rss_unavailable_carries_cause_on_modeled_events_holds() -> Bool {
   }
 }
 
+fn nested_resolve_phases_do_not_count_as_entry_parent_holds() -> Bool {
+  let entry = sample_entry()
+  let decl = sample_decl("nested")
+  let nested = witness_cost_nested_resolve_under_declaration_event(
+    entry: entry,
+    declaration: decl,
+    resolve: millisecond(count: 999)
+  )
+  let module_resolve = witness_cost_module_resolve_event(
+    entry: entry,
+    module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
+    resolve: millisecond(count: 888)
+  )
+  let events: List<ObservationEvent> = [
+    witness_cost_entry_resolve_event(entry: entry, resolve: millisecond(count: 100)),
+    nested,
+    module_resolve,
+    witness_cost_declaration_event(
+      entry: entry,
+      declaration: decl,
+      eval: millisecond(count: 5),
+      outcome: Done
+    )
+  ]
+  match witness_cost_event_role(event: nested) {
+    Present { value: _ } => false
+    Absent =>
+      match witness_cost_event_role(event: module_resolve) {
+        Present { value: _ } => false
+        Absent =>
+          match project_witness_cost_receipt(events: events) {
+            WitnessCostProjectionRefused { cause: _ } => false
+            WitnessCostProjectionComplete { rows: rows } =>
+              count(rows) == 1 &&
+              fold(rows, init: true, f: (acc, row) =>
+                acc &&
+                millisecond_count(m: row.resolve) == 100 &&
+                millisecond_count(m: row.eval) == 5
+              )
+          }
+      }
+  }
+}
+
+fn typed_event_role_extract_classifies_entry_and_declaration_holds() -> Bool {
+  let entry = sample_entry()
+  let decl = sample_decl("role")
+  let parent = witness_cost_entry_resolve_event(entry: entry, resolve: millisecond(count: 1))
+  let child = witness_cost_declaration_event(
+    entry: entry,
+    declaration: decl,
+    eval: millisecond(count: 2),
+    outcome: Done
+  )
+  match witness_cost_event_role(event: parent) {
+    Present { value: EntryResolveParent } =>
+      match witness_cost_event_role(event: child) {
+        Present { value: DeclarationWitness } =>
+          string_contains(s: witness_cost_event_role_note, pattern: "review 43409") &&
+          string_contains(s: witness_cost_event_role_note, pattern: "entry-level")
+        Present { value: EntryResolveParent } => false
+        Absent => false
+      }
+    Present { value: DeclarationWitness } => false
+    Absent => false
+  }
+}
+
 fn hand_rust_scaffold_receipts_are_checkable_holds() -> Bool {
   match witness_timing_row_seed_view_disposition {
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
@@ -263,18 +336,6 @@ fn hand_rust_scaffold_receipts_are_checkable_holds() -> Bool {
   )
 }
 
-fn role_bool_filter_disposition_receipt_holds() -> Bool {
-  match witness_cost_role_bool_filter_disposition {
-    Scaffold { dissolves_to: SingleAuthority, bind: bind } =>
-      bind.module_path == ("gunbc.witness_row_cost" as NonEmptyStr) &&
-      bind.decl_name == ("witness_cost_concluded_outcome" as NonEmptyStr) &&
-      string_contains(s: witness_cost_role_bool_filter_note, pattern: "review 43383") &&
-      string_contains(s: witness_cost_role_bool_filter_note, pattern: "review 43399") &&
-      string_contains(s: witness_cost_role_bool_filter_note, pattern: "has_resolve_phase deleted")
-    _ => false
-  }
-}
-
 test fn witness_row_cost_projection_holds() -> Bool {
   two_events_project_one_exact_tsv_row_holds() &&
   missing_parent_resolve_refuses_holds() &&
@@ -282,7 +343,8 @@ test fn witness_row_cost_projection_holds() -> Bool {
   resolve_wall_is_shared_not_divided_holds() &&
   refused_outcome_distinct_from_failed_in_projection_holds() &&
   w2_ambient_suppress_retains_complete_receipt_row_holds() &&
+  nested_resolve_phases_do_not_count_as_entry_parent_holds() &&
+  typed_event_role_extract_classifies_entry_and_declaration_holds() &&
   rss_unavailable_carries_cause_on_modeled_events_holds() &&
-  hand_rust_scaffold_receipts_are_checkable_holds() &&
-  role_bool_filter_disposition_receipt_holds()
+  hand_rust_scaffold_receipts_are_checkable_holds()
 }

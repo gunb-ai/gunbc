@@ -18,6 +18,11 @@ import std.observation {
   ModuleSegment,
   ObservationGrain,
   DeclarationGrain,
+  RunGrain,
+  BatchGrain,
+  EntryGrain,
+  ModuleGrain,
+  PhaseGrain,
   observation_subject_grain,
   observation_subject_entry_path,
   observation_subject_declaration,
@@ -131,43 +136,63 @@ fn witness_cost_concluded_outcome(event: ObservationEvent) -> Optional<Observati
   }
 }
 
-fn witness_cost_is_entry_resolve_event(event: ObservationEvent) -> Bool {
-  match observation_subject_phase_name(subject: event.subject) {
-    Absent => false
-    Present { value: n } =>
-      if n == ("resolve" as NonEmptyStr) {
-        match witness_cost_concluded_outcome(event: event) {
-          Present { value: _ } => true
-          Absent => false
-        }
-      } else {
-        false
+type WitnessCostEventRole
+  = EntryResolveParent
+  | DeclarationWitness
+
+fn witness_cost_event_role(event: ObservationEvent) -> Optional<WitnessCostEventRole> {
+  match witness_cost_concluded_outcome(event: event) {
+    Absent => Absent
+    Present { value: _ } =>
+      match witness_cost_subject_entry(subject: event.subject) {
+        Absent => Absent
+        Present { value: _ } =>
+          match observation_subject_grain(subject: event.subject) {
+            DeclarationGrain => Present { value: DeclarationWitness }
+            RunGrain => witness_cost_entry_resolve_role_if_shaped(subject: event.subject)
+            BatchGrain => witness_cost_entry_resolve_role_if_shaped(subject: event.subject)
+            EntryGrain => witness_cost_entry_resolve_role_if_shaped(subject: event.subject)
+            ModuleGrain => Absent
+            PhaseGrain => witness_cost_entry_resolve_role_if_shaped(subject: event.subject)
+          }
       }
   }
 }
 
-fn witness_cost_is_declaration_witness_event(event: ObservationEvent) -> Bool {
-  observation_subject_grain(subject: event.subject) == DeclarationGrain &&
-  match witness_cost_concluded_outcome(event: event) {
-    Present { value: _ } => true
-    Absent => false
+fn witness_cost_entry_resolve_role_if_shaped(subject: ObservationSubject) -> Optional<WitnessCostEventRole> {
+  match observation_subject_declaration(subject: subject) {
+    Present { value: _ } => Absent
+    Absent =>
+      match observation_subject_module_path(subject: subject) {
+        Present { value: _ } => Absent
+        Absent =>
+          match observation_subject_phase_name(subject: subject) {
+            Absent => Absent
+            Present { value: n } =>
+              match n == ("resolve" as NonEmptyStr) {
+                true => Present { value: EntryResolveParent }
+                false => Absent
+              }
+          }
+      }
   }
 }
 
 fn witness_cost_count_resolve_for_entry(events: List<ObservationEvent>, entry: NonEmptyStr) -> Nat {
   fold(events, init: 0, f: (acc, event) =>
-    if witness_cost_is_entry_resolve_event(event: event) {
-      match witness_cost_subject_entry(subject: event.subject) {
-        Present { value: p } =>
-          if p == entry {
-            acc + 1
-          } else {
-            acc
-          }
-        Absent => acc
-      }
-    } else {
-      acc
+    match witness_cost_event_role(event: event) {
+      Present { value: EntryResolveParent } =>
+        match witness_cost_subject_entry(subject: event.subject) {
+          Present { value: p } =>
+            if p == entry {
+              acc + 1
+            } else {
+              acc
+            }
+          Absent => acc
+        }
+      Present { value: DeclarationWitness } => acc
+      Absent => acc
     }
   )
 }
@@ -178,18 +203,19 @@ fn witness_cost_unique_resolve_wall(
 ) -> Optional<Millisecond> {
   if witness_cost_count_resolve_for_entry(events: events, entry: entry) == 1 {
     fold(events, init: Absent, f: (acc, event) =>
-      if witness_cost_is_entry_resolve_event(event: event) {
-        match witness_cost_subject_entry(subject: event.subject) {
-          Present { value: p } =>
-            if p == entry {
-              witness_cost_measured_wall(wall: event.wall)
-            } else {
-              acc
-            }
-          Absent => acc
-        }
-      } else {
-        acc
+      match witness_cost_event_role(event: event) {
+        Present { value: EntryResolveParent } =>
+          match witness_cost_subject_entry(subject: event.subject) {
+            Present { value: p } =>
+              if p == entry {
+                witness_cost_measured_wall(wall: event.wall)
+              } else {
+                acc
+              }
+            Absent => acc
+          }
+        Present { value: DeclarationWitness } => acc
+        Absent => acc
       }
     )
   } else {
@@ -294,14 +320,17 @@ fn witness_cost_any_entry_has_multiple_resolves(events: List<ObservationEvent>) 
   fold(events, init: false, f: (acc, event) =>
     if acc {
       true
-    } else if witness_cost_is_entry_resolve_event(event: event) {
-      match witness_cost_subject_entry(subject: event.subject) {
-        Present { value: entry } =>
-          witness_cost_count_resolve_for_entry(events: events, entry: entry) > 1
-        Absent => true
-      }
     } else {
-      false
+      match witness_cost_event_role(event: event) {
+        Present { value: EntryResolveParent } =>
+          match witness_cost_subject_entry(subject: event.subject) {
+            Present { value: entry } =>
+              witness_cost_count_resolve_for_entry(events: events, entry: entry) > 1
+            Absent => true
+          }
+        Present { value: DeclarationWitness } => false
+        Absent => false
+      }
     }
   )
 }
@@ -313,13 +342,14 @@ fn project_witness_cost_receipt(events: List<ObservationEvent>) -> WitnessCostPr
     }
   } else {
     fold(events, init: WitnessCostProjectionComplete { rows: [] }, f: (acc, event) =>
-      if witness_cost_is_declaration_witness_event(event: event) {
-        witness_cost_append_projection(
-          left: acc,
-          right: witness_cost_project_one_witness(events: events, event: event)
-        )
-      } else {
-        acc
+      match witness_cost_event_role(event: event) {
+        Present { value: DeclarationWitness } =>
+          witness_cost_append_projection(
+            left: acc,
+            right: witness_cost_project_one_witness(events: events, event: event)
+          )
+        Present { value: EntryResolveParent } => acc
+        Absent => acc
       }
     )
   }
@@ -337,6 +367,44 @@ fn witness_cost_entry_resolve_event(
     subject: ObservationSubject {
       segments: [
         EntrySegment { source_path: entry },
+        PhaseSegment { name: "resolve" as NonEmptyStr }
+      ]
+    },
+    transition: Concluded { outcome: Done },
+    wall: MeasuredValue { value: resolve },
+    rss: MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
+  }
+}
+
+fn witness_cost_nested_resolve_under_declaration_event(
+  entry: NonEmptyStr,
+  declaration: DeclarationRef,
+  resolve: Millisecond,
+) -> ObservationEvent {
+  ObservationEvent {
+    subject: ObservationSubject {
+      segments: [
+        EntrySegment { source_path: entry },
+        DeclarationSegment { declaration: declaration },
+        PhaseSegment { name: "resolve" as NonEmptyStr }
+      ]
+    },
+    transition: Concluded { outcome: Done },
+    wall: MeasuredValue { value: resolve },
+    rss: MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
+  }
+}
+
+fn witness_cost_module_resolve_event(
+  entry: NonEmptyStr,
+  module_path: NonEmptyStr,
+  resolve: Millisecond,
+) -> ObservationEvent {
+  ObservationEvent {
+    subject: ObservationSubject {
+      segments: [
+        EntrySegment { source_path: entry },
+        ModuleSegment { module_path: module_path },
         PhaseSegment { name: "resolve" as NonEmptyStr }
       ]
     },

@@ -45,6 +45,7 @@ import std.observation {
   observation_subject_entry_path,
   observation_subject_declaration,
   observation_subject_phase_name,
+  observation_subject_module_path,
   observation_grain_at_or_above_entry,
   observation_subject_contains,
   observation_subject_path,
@@ -438,6 +439,10 @@ test fn w_declaration_segment_key_and_grain_totality_holds() -> Bool {
     Absent => false
   } &&
   match observation_subject_phase_name(subject: decl_subject) {
+    Present { value: _ } => false
+    Absent => true
+  } &&
+  match observation_subject_module_path(subject: decl_subject) {
     Present { value: _ } => false
     Absent => true
   } &&
