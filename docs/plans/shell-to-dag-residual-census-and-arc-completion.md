@@ -58,7 +58,7 @@ These run before a gunbc runtime exists on the target, so shell is the honest lo
 | srv3 tails (9 files) | observe scripts, receipt echoes, token-extract, sleep glue; **2 heavy**: `srv3_install_diagnostic_checklist` (curl/redfish/sol probing, FROZEN/terminal), `srv3_os_install_actuator_toolchain_ensure` (apt/curl/websocat) | `shell_exec_via_bash` heredoc → `shell.Exec.Run` | typed observe/effect on `host_effect_apply` (their scaffolds already say so) |
 | `host_identity_converge.dag` | 1–2 line `sudo hostnamectl set-hostname` as `ShellCommand{script}` | **already** `host_effect_apply_gated` | typed hostname effect (drop the shell string) |
 | `floor_diff_observe.dag` | `git diff` observe as `ShellCommand{script}` | **already** `host_effect_apply` LocalShell | **this is the target pattern already realized** |
-| `nbd_proxy_serve.dag` | `nbd_proxy_serve_program` body is `RawLine` (`&`/`trap`/`$!` backgrounding) | typed `ShellProgram` → `serialize_bash` | first-class typed background/trap statements or a typed long-running-process effect |
+| `host_effect_nbd_proxy_serve.dag` | **`RawLine` body dissolved** (corrected 2026-07-26 — no nbd file carries `RawLine`/`ShellProgram`/`serialize_bash`). Operator ruled 2026-07-14 there is to be **no `trap`/`&`/`$!` `ShellStmt` vocabulary**, so the backgrounding became a systemd transient-unit realize transport | typed effect; residual `WitnessBin` `systemd-run` scaffolding | observe-side port/unit query grounded on cited `extdeps.systemd`/`systemctl` read-back + typed argv dispatch retiring the `systemd-run` scaffold (trigger in-file at `host_effect_nbd_proxy_serve.dag:39`) |
 
 The srv3 dissolution triggers are unanimous: `srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger` = *"DISSOLVES WHEN host_effect_apply binds Srv3InstallDiagnosticObserve without concat runner glue"*; the same shape repeats across the reconcile files. The common runner `gunbc.shell_bash_runner.shell_exec_via_bash` (the `bash <<'GUNBC_BASH_EOF'` heredoc framing) is itself a scaffold that *"dissolves when host_effect_apply … binds multiline shell transport without concat heredoc framing."*
 
@@ -123,7 +123,7 @@ Two tracks run in parallel; deletion is the join.
 
 - **P4 = the G1+G2+G3 keystone above** (srv1/srv2 subsumption).
 - **P5:** the srv3 tails follow the *same* interface. Each `srv3_*_observe_script` becomes a typed `…Observe` effect on `host_effect_apply` (their dissolution triggers already name this); the receipt echoes become typed receipts; `shell_exec_via_bash` (the heredoc runner) dissolves once no caller passes a raw script. The two heavy files: `srv3_install_diagnostic_checklist` is FROZEN/terminal (typed observe effect retires it), `srv3_os_install_actuator_toolchain_ensure` → typed `extdeps.apt`/`curl` argv effects.
-- **P6:** `host_identity_converge` drops its `sudo hostnamectl` script for a typed hostname effect (it's already on `apply_gated`); `nbd_proxy_serve_program`'s `RawLine` body gets first-class typed background/trap statements or a typed long-running-process effect.
+- **P6:** `host_identity_converge` drops its `sudo hostnamectl` script for a typed hostname effect (it's already on `apply_gated`). *(P6 Part 2 corrected 2026-07-26: `nbd_proxy_serve_program`'s `RawLine` body is **already gone** — the operator's 2026-07-14 no-`trap`/`&`/`$!` ruling routed it to a systemd transient-unit transport instead of "first-class typed background/trap statements", which are now explicitly **not** a target. What remains is the observe-side read-back grounding, §1.C.)*
 - **P7:** `build_step_transport` — **LANDED (#6565, 2026-07-14)**: corruption-probe harness reshaped onto typed `shell.Mktemp`/`Filesystem.Write`/`WitnessBin.Run`, dropping the `verifications_script` `serialize_bash` execution.
 
 ### The join — delete `program.dag`
@@ -293,7 +293,17 @@ These are correct as shell (GHA `run:`, cron, git hooks, pre-runtime bootstrap �
 
 ### 4.G — bash-AST emit vocab (emit-internal — NOT fraud, already confined)
 
-`serialize_bash`/`ShellProgram`/`RawLine`/`ShellStmt`/`bash_command_fold` in 11 files (the v2 emitter itself + the two ubuntu-media files + `nbd_proxy_serve` + `build_step`(+transport) + design/roadmap prose). Confined by `realization_vocabulary_containment` (LANDED #6854). No dissolution action — this is the replacement machinery. Tracked only so it isn't mistaken for a construction site.
+**Corrected @ 2026-07-26 (snappy-moth-330) — the row below previously read "in 11 files … + the two ubuntu-media files + `nbd_proxy_serve`", which was stale in the direction that misleads: it overstates the live surface, and it cost an audit a wrong prerequisite (see the trap note).** Re-censused by execution over `origin/main`:
+
+| vocabulary | live construction sites | where the remaining text occurrences are |
+| --- | --- | --- |
+| `RawLine` (bash-AST node) | **zero** — tree-wide | one prose string, `ubuntu_seeded_install_media_remaster.dag:43`, inside a dissolution `reason:` attesting to its own removal |
+| `ShellProgram` / `serialize_bash` | the v2 emitter itself (`bash_emit.dag`, `bash_program_fold_test.dag`), `build_step_emit`/`build_step_transport`, `dag_compile_clean_transport`, `host_prelude`, `lens_module_gate` | the two ubuntu-media files carry **prose only** (`…_fetch.dag:28`, `…_remaster.dag:31` — both `reason:` fields recording the dissolution); the rest is `plans/` + `design_document` prose |
+| `nbd_proxy_serve` | **none of it** — carries no `RawLine`/`ShellProgram`/`serialize_bash` today | (§1.C, §3 P6 and §5.D each carried a pre-dissolution copy of this row; all three corrected in the same pass) |
+
+Confined by `realization_vocabulary_containment` (LANDED #6854). No dissolution action — this is the replacement machinery. Tracked only so it isn't mistaken for a construction site.
+
+**⚠ Name-collision trap — do not read this section as covering the bare-line path.** The live "emit one raw line" path is `realize_run_rawline` (`src/v2/std/orchestration_emit.dag:35`), a **method on the `OrchestrationEmitMedium` interface**, realized by `bash_fold_raw_line_target_model` (`bash_command_fold.dag:922`) and reached from `05_emit_orchestration.dag:192` for env-free `Run`s. It merely *echoes the name* of the retired bash-AST `RawLine` node; it is a different thing at a different layer, and it is very much alive. Consequence, recorded because an audit hit it: a non-command `PipelineStep` (e.g. dissolving `orch_bash_comment_line`) needs **only** a new variant wired to this existing medium method — **not** a new grammar row, and **not** a restored `ShellProgram`. Reading §4.G's old "RawLine is confined emit-internal vocab" line as if it described this path is what produced the wrong prerequisite.
 
 ### 4.H — oracle / test retainers (NOT live construction — skip)
 
@@ -451,6 +461,17 @@ The per-symbol remaining work and batching plan for §4.E CI sites. **Load-beari
 | **PR 2** | merge-admission cluster completion + receipt gates (A/B remaining rows). |
 | **PR 3** | `ci_spec` composer migration + `ci_fmt_gate_line` → typed `cargo.Build.Fmt`. **Operator review required** — load-bearing CI generator. |
 
+**PR-2 scope change @ 2026-07-26 (operator ruling, relayed snappy-moth-330).** The two concats #7265 left standing were about to be recorded here as accepted residue with dissolution triggers. The operator ruled the opposite: *dissolve them now, along with all other instances*. So they are **dispatched work, not tracked residue** — owner `wise-crane-222`, folded into PR 2 above (cut as PR 2a/2b if it balloons; 2a carries these two):
+
+| residue | site | prerequisite carrier | why it was standing |
+| --- | --- | --- | --- |
+| `ci_merge_admission_floor_disposition_stamp_command` | `src/v2/workflow/ci_merge_admission_emit.dag:22` | a `RedirectSpec` to-file variant (`src/v2/std/orchestration.dag`) | `echo X > path` is unexpressible today — `RedirectSpec` has no to-file arm. The site itself is the live consumer, so the carrier lands **with** a consumer, never speculatively. |
+| `orch_bash_comment_line` | `src/v2/workflow/orchestration_bash_emit_support.dag:24` | a non-command `PipelineStep` variant wired to the **existing** `realize_run_rawline` medium method | a comment routed through `Do{Run{command}}` is a category error, not a missing grammar row — see the §4.G name-collision trap above. |
+
+The governing rule for the rest of the sweep, so "all other instances" stays decidable: **concat-assembled dissolves now; a constant command string waits for arc close.** `"test -f " ++ path` is a concat and earns a typed carrier; `"exit 0"` or `"mkdir -p target"` is a constant and belongs to the `Run.command` → `Do{effect}` migration, not here. Gold-plating constants now is the §6 purity trap.
+
+**Adjacent finding, filed not fixed (wise-crane-222, 2026-07-26):** `CaptureSpec.TeeTo` and `CmdSubst` are **declared but unreachable** through ordinary `Run` emit — rejected at `^orch_emit_run_capture_unsupported`, with `Retry` special-casing `TeeTo` by stripping capture. A declared variant no consumer can reach is coverage-by-illusion at the type level (§6). Not part of either dissolution above; currently unowned.
+
 ### Dissolution trigger for §4
 
 This punch-list folds into the **`host_language_transport_script` lens going live** (4.F): once a compile gate reds any raw-string `shell.Exec.Run` / hand-built transport, new instances are unwritable by construction (§5) and a prose punch-list is redundant. Until then, every row here is discharged by *deletion of the concat*, verified green-by-execution + an injection-RED — never by relocation.
@@ -513,7 +534,7 @@ Bash-as-target lives in one isolated backend: `src/v2/extdeps/languages/bash*` +
 | --- | --- | --- |
 | C5 access probes | `host_effect_deploy_access_probe_script` | C5 #6946 merges |
 | srv* cluster | `srv3_host_effect_script`, `srv3_install_diagnostic_observe_script`, `host_build_cache_provision_script`, `host_hygiene_*` | operator un-defers srv* — **see the srv3-retirement roadmap item below (audit-confirmed dead, 2026-07-24)** |
-| nbd backgrounding | `host_effect_nbd_proxy_serve` `RawLine` (`&`/trap/`$!`) | typed systemd transient-unit effect + `Filesystem.Read` token + typed argv (dissolution trigger already in-file; operator ruled no trap/&/$! vocab) |
+| nbd backgrounding | **`RawLine` already dissolved** (corrected 2026-07-26); now a systemd transient-unit transport with `WitnessBin` `systemd-run` scaffolding | observe-side port/unit read-back on cited `extdeps.systemd`/`systemctl` + typed argv retiring the scaffold (trigger in-file; operator ruled no trap/&/$! vocab) |
 
 #### Roadmap item — srv3 install/reconcile subgraph retirement (operator-authorized in principle 2026-07-24; gated on load-bearing coproduct surgery)
 
