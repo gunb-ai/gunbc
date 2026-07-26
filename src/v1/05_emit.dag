@@ -597,7 +597,15 @@ fn render_named_type_base(n: Node, target: RenderTarget, source_indices: Map<Str
 }
 
 fn render_node_type_shared_wrap(target: RenderTarget, shared: Bool, base: String) -> String {
-  if shared && target != Rust { wrap_shared_type(target: target, inner: base) } else { base }
+  match target {
+    Rust => base
+    _ =>
+      if shared {
+        wrap_shared_type(target: target, inner: base)
+      } else {
+        base
+      }
+  }
 }
 
 fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
