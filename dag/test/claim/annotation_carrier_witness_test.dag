@@ -1,0 +1,49 @@
+module test.claim.annotation_carrier
+
+import std.roster_frontier {
+  decl_ref,
+  fold_frontier_expiry,
+  frontier_expiry_clean,
+  frontier_rows_well_formed,
+}
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn census_closure_frontier_rows_count_is_twenty_one() -> Bool {
+  length(xs: census_closure_frontier_rows()) == 21
+}
+
+test fn census_closure_frontier_rows_well_formed() -> Bool {
+  frontier_rows_well_formed(rows: census_closure_frontier_rows())
+}
+
+test fn frontier_expiry_fold_reports_all_unfired_when_no_fired_registry() -> Bool {
+  let report = fold_frontier_expiry(
+    rows: census_closure_frontier_rows(),
+    prose_fired: [],
+    present_decls: [],
+  )
+  report.unfired_count == 21 && report.fired_still_present_count == 0 && frontier_expiry_clean(report: report)
+}
+
+test fn frontier_expiry_fired_row_still_present_reds() -> Bool {
+  let mac_trigger = decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address")
+  let report = fold_frontier_expiry(
+    rows: census_closure_frontier_rows(),
+    prose_fired: [],
+    present_decls: [mac_trigger],
+  )
+  report.fired_still_present_count == 1 && report.unfired_count == 20 && !frontier_expiry_clean(report: report)
+}
+
+test fn frontier_expiry_fired_trigger_absent_from_rows_is_clean() -> Bool {
+  let absent_trigger = decl_ref(module_path: "extdeps.network.mac", decl_name: "already_deleted_frontier_unit")
+  let report = fold_frontier_expiry(
+    rows: census_closure_frontier_rows(),
+    prose_fired: [],
+    present_decls: [absent_trigger],
+  )
+  report.fired_still_present_count == 0 && report.unfired_count == 21 && frontier_expiry_clean(report: report)
+}

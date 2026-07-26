@@ -7,6 +7,12 @@ import extdeps.tools { CliTool, SourceCoreutils }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
+import std.roster_frontier {
+  FrontierRow,
+  TriggerProse,
+  decl_ref,
+  frontier_row_decl,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -50,8 +56,14 @@ type Sha256VerifyVerdict
 
 data sha256_verify_infra_failure_doc: String = "Sha256VerifyInfraFailure is DESIGN §5 state-space de-conflation (cursor review, PR #6596): mktemp/checksum-file-write failures are environment/tooling failures, not evidence about path's digest, so they must not collapse into Sha256Mismatch alongside a genuine sha256sum mismatch - a caller that surfaces Sha256Mismatch as HashMismatchRefusal would otherwise mislabel a broken mktemp as a corrupted download."
 
-data structural_coverage_gap_sha256_verify_native_transport: List<String> = [
-  "closure:sha256_verify_native_transport|Sha256VerifyVerdict|transport:shell-only|trigger:a native/library SHA-256 realization lands and is bound as a second handler for the Sha256Verify shape"
+data sha256_verify_native_transport_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.tools.sha256sum", decl_name: "Sha256VerifyVerdict"),
+    reason: "Sha256VerifyVerdict|transport:shell-only",
+    trigger: TriggerProse {
+      text: "a native/library SHA-256 realization lands and is bound as a second handler for the Sha256Verify shape",
+    },
+  )
 ]
 
 data sha256_check_outcome_is_data_note: String = "sha256sum --check exits non-zero on DIGEST MISMATCH, which is this fn's Sha256Mismatch answer, not a fault — so the check call is OutcomeIsData. The guard holds on the same evidence as the caller: Sha256VerifyVerdict already separates the two content answers (Matches / Mismatch) from Sha256VerifyInfraFailure, the arm for the verification machinery itself breaking, so annotating the content comparison cannot silence an infra failure — that arm is reached by different conditions entirely."

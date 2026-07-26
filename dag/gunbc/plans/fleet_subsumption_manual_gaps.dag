@@ -110,6 +110,16 @@ fn fsmg_fresh_host_prereqs() -> List<MarkdownBlock> {
       li(text: "RunnerHostDeploy's prereq chain covers ALL install-actions-runner.sh preconditions: ctrl-jobserver, base dir + ownership, docker-ce (done), sccache (done) — each cited, each a modeled ensure, ordered before the installer."),
       li(text: "RED: a missing prereq reds a modeled preflight naming the exact missing precondition, not a mid-install installer refusal."),
     ]),
+    h3(text: "B3.1 — toolchain components: cell landed, APPLY ARM DEFERRED (2026-07-25)"),
+    p(text: "Operator routing after floor gates died with `spawn rustfmt: No such file or directory` on two hosts in two days: the component joins the modeled toolchain ensure and toolchain-completeness becomes a cell on the per-(host x phase) status axis. The CELL landed (gunbc.host_toolchain_components, cited components in extdeps.rustup), keyed on the RESOLVED toolchain of the job principal rather than on the host — srv2 carried rustfmt in 1.93.0 the whole time while ghrunner's default `stable` lacked it, so a host-keyed cell would have read green throughout the incident."),
+    p(text: "DEFERRED, and tracked here so it is not lost to an in-code scaffold nobody enumerates: the HostToolchainKind variant for the runner floor toolchain and the HostEffect apply arm that runs `rustup component add` against the resolved toolchain. Blocked on the argv materializer's hardcoded five-parameter vocabulary (path/service/operation/package/bin/args/unit), dispatched as its own work item. gunbc.host_effect is load-bearing with six match sites and the seed has no match exhaustiveness check, so a variant nothing can apply would fall through SILENTLY rather than refuse — which is why the arm waits rather than landing hollow. Until it lands, adding or removing a host dependency is a HAND action: srv2's rustfmt was installed by hand on operator instruction 2026-07-25."),
+    p(text: "SECOND CONDITION, found by execution and open: installing the component is necessary and NOT sufficient. srv2's runner unit declares no PATH, so it inherits systemd's default, which contains no cargo bin directory — a child spawned with it cannot find rustfmt whatever is installed, and a login shell resolves it while that environment does not. Which of the two the gate's spawn inherits is a property of the job step and is not observable from a host read at all. So the component cell is Converged on srv2 while `will the gate find it` is UnknownRefused, and the missing producer is a probe running INSIDE a job step that reports its resolved PATH and each required component's resolution — observing, never repairing."),
+    h3(text: "B3.1 acceptance"),
+    ol(items: [
+      li(text: "A modeled ensure adds/removes a rustup component on a named host's RESOLVED toolchain through host_effect_apply, with a read-back that is not the ensure itself. Retires the hand action."),
+      li(text: "An in-job probe supplies ComponentSpawnReachability for every enrolled host, so gate_finds_component_verdict stops answering UnknownRefused fleet-wide."),
+      li(text: "RED: a component present in a NON-resolving toolchain must not satisfy the requirement (already witnessed); and a complete toolchain that is unreachable on the spawn PATH must not produce a green combined verdict (already witnessed)."),
+    ]),
   ]
 }
 

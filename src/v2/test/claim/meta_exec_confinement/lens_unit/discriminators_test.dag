@@ -2,6 +2,7 @@ module v2.test.meta_exec_confinement.lens_unit.discriminators
 
 import v2.std.layer { LayerImportFact }
 import v2.lens.meta_exec_confinement {
+  meta_exec_leak_count,
   meta_exec_leak_count_canonical,
   meta_exec_roster_stale_count,
   meta_exec_roster_sound,
@@ -42,13 +43,22 @@ test fn realization_edge_import_is_not_leak_holds() -> Bool {
 data rostered_import_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixStd,
-    path: "dag/gunbc/ci_deploy_target_host.dag",
+    path: "dag/gunbc/_perturb_rostered_meta_exec.dag",
     import_module: target_meta_exec_module
   }
 ]
 
+data synthetic_roster: List<String> = ["dag/gunbc/_perturb_rostered_meta_exec.dag"]
+
+data rostered_discriminator_note: String = "Parameterized on a SYNTHETIC roster, not meta_exec_leak_count_canonical: the canonical roster is empty as of the 3 -> 0 shrink, so a canonical-roster spelling of this discriminator would pass for the wrong reason (no row to exempt) and would silently stop discriminating. The pair below is the real content — the same fact is exempt under a roster naming it and a leak under one that does not."
+
 test fn rostered_consumer_import_is_not_leak_holds() -> Bool {
-  meta_exec_leak_count_canonical(facts: rostered_import_facts) == 0
+  meta_exec_leak_count(facts: rostered_import_facts, roster: synthetic_roster) == 0
+    && meta_exec_leak_count(facts: rostered_import_facts, roster: []) == 1
+}
+
+test fn empty_canonical_roster_grants_no_exception_holds() -> Bool {
+  meta_exec_leak_count_canonical(facts: rostered_import_facts) == 1
 }
 
 data de_rostered_import_facts: List<LayerImportFact> = [
