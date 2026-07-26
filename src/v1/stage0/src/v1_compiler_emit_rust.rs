@@ -1664,7 +1664,7 @@ pub fn rust_seed_legacy_container_blanket_dissolve_on() -> String {
 pub fn rust_seed_legacy_container_blanket_scaffold_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "SCAFFOLD — dissolve-on: rust_seed_legacy_container_blanket_dissolve_on. Catalog MISS at an explicit use site may fall back to ReferenceLayerRc when rust_seed_legacy_container_blanket_rc matches rendered Vec</HashMap</BTreeMap< text (string-prefix scan — ruled-out wrap-decision shape; become structural at dissolve).".to_string()
+            "SCAFFOLD — dissolve-on: rust_seed_legacy_container_blanket_dissolve_on. Catalog MISS at an explicit use site may fall back to ReferenceLayerRc when rust_seed_legacy_container_blanket_rc matches rendered Vec, HashMap, or BTreeMap prefix text (string-prefix scan — ruled-out wrap-decision shape; become structural at dissolve).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
