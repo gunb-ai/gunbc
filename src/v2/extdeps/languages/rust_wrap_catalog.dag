@@ -1,0 +1,241 @@
+module v2.extdeps.languages.rust_wrap_catalog
+
+import v2.extdeps.languages.rust { rust_sg_rc_use_site_ownership_catalog }
+import v2.std.compilers.target_model {
+  TargetOwnershipUseSite,
+  TargetReferenceLayer,
+  TargetUseSiteOwnershipRealization,
+  OwnershipAtBindingProjection,
+  OwnershipAtFunctionParameter,
+  OwnershipAtFunctionReturn,
+  OwnershipAtStructField,
+  ReferenceLayerBox,
+  ReferenceLayerOwned,
+  ReferenceLayerRc,
+  target_carrier_algebra_inhabitance_decl_node,
+  target_carrier_diagnostics_node,
+  target_carrier_free_monoid_node,
+  target_carrier_model_core_node,
+  target_carrier_node_node,
+  target_carrier_outcome_node,
+  target_carrier_probe_heap_node,
+  target_carrier_test_claim_node,
+  target_carrier_use_site_verdict_node,
+  target_use_site_ownership_lookup_in_catalog
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.optional { Absent, Present }
+
+data ownership_wrap_catalog_scaffold_note: String = "SCAFFOLD (OWNERSHIP-68 / sharp-bee-290): zero production consumers as of this PR — deliberately, so each consumer flip is attributable on its own. Slice is not finished work until flips land. Dissolve-on: first PR that routes a 05_emit_rust.dag decider through rust_seed_effective_reference_layer (or a successor). Witness ownership_wrap_catalog_inert_authority_witness_holds executes the authority — not inert in the DESIGN §6 sense."
+
+data ownership_reference_layer_sharing_strategy_note: String = "Orthogonal to v1.languages.SharingStrategy (src/v1/languages.dag:104): SharingStrategy is target-parameterized HOW-to-render; TargetReferenceLayer is WHICH layer at a use-site. Convergence (not this PR): SharingStrategy indexed BY TargetReferenceLayer."
+
+data ownership_wrap_catalog_placement_note: String = "v1 seed disposition lives in v2.extdeps.languages.rust_wrap_catalog beside rust_sg_rc_use_site_ownership_catalog (v2.extdeps.languages.rust). Catalog rows are not duplicated — lookup consumes rust_sg_rc_use_site_ownership_catalog() via target_use_site_ownership_lookup_in_catalog. Whether the layer decision ultimately belongs in extdeps vs v1/compiler is unresolved — sharp-bee-290 call."
+
+data rust_sg_rc_wrap_catalog_note: String = "Consumes rust_sg_rc_use_site_ownership_catalog() from v2.extdeps.languages.rust — no parallel row table. v1 seed type_name → carrier Node bridge is scaffolded until SymbolIndex consumer-flip."
+
+data rust_seed_effective_reference_layer_note: String = "INERT-FIRST (OWNERSHIP-68 / sharp-bee-290): rust_seed_ownership_wrap_layer_disposition is canonical; rust_seed_effective_reference_layer projects to TargetReferenceLayer? and returns none on WrapLayerRefusedEnrolledRowMissing."
+
+data rust_seed_legacy_container_blanket_dissolve_on: String = "wrap_catalog legacy container carriers covered — List/HashMap/BTreeMap rows land in rust_sg_rc_use_site_ownership_catalog and rust_seed_legacy_container_blanket_rc deletes"
+
+data rust_seed_legacy_container_blanket_scaffold_note: String = "SCAFFOLD — dissolve-on: rust_seed_legacy_container_blanket_dissolve_on. Catalog MISS at an explicit use site may fall back to ReferenceLayerRc when rust_seed_legacy_container_blanket_rc matches rendered Vec, HashMap, or BTreeMap prefix text."
+
+data rust_seed_wrap_carrier_from_type_name_scaffold_note: String = "SCAFFOLD — dissolve-on: carrier enrollment routes through canonical substrate registry fold (wrap_decision_gate / SymbolIndex lane). String type_name → target_carrier_*_node bridge until first consumer-flip PR."
+
+type OwnershipWrapLayerDisposition
+  = WrapLayerFromCatalog { layer: TargetReferenceLayer }
+  | WrapLayerDefaultOwnedUnenrolled
+  | WrapLayerLegacyContainerRc
+  | WrapLayerRefusedEnrolledRowMissing
+
+fn rust_wrap_catalog_rendered_is_rc_wrapped(rendered: String) -> Bool {
+  string_length(s: rendered) >= 3 && substring(s: rendered, start: 0, end: 3) == "Rc<"
+}
+
+fn rust_seed_legacy_container_blanket_rc(rendered: String) -> Bool {
+  if rust_wrap_catalog_rendered_is_rc_wrapped(rendered: rendered) { false }
+  else if string_length(s: rendered) > 4 && substring(s: rendered, start: 0, end: 4) == "Vec<" { true }
+  else if string_length(s: rendered) > 8 && substring(s: rendered, start: 0, end: 8) == "HashMap<" { true }
+  else if string_length(s: rendered) > 9 && substring(s: rendered, start: 0, end: 9) == "BTreeMap<" { true }
+  else { false }
+}
+
+fn rust_seed_wrap_carrier_key(type_name: String) -> String {
+  if type_name == "NonEmptyDiagnostics" {
+    "Diagnostics"
+  } else {
+    type_name
+  }
+}
+
+fn rust_seed_wrap_carrier_node_from_type_name(type_name: String) -> Node? {
+  match rust_seed_wrap_carrier_key(type_name: type_name) {
+    "Diagnostics" => Present { value: target_carrier_diagnostics_node() }
+    "Node" => Present { value: target_carrier_node_node() }
+    "TestClaim" => Present { value: target_carrier_test_claim_node() }
+    "FreeMonoid" => Present { value: target_carrier_free_monoid_node() }
+    "Outcome" => Present { value: target_carrier_outcome_node() }
+    "ModelCore" => Present { value: target_carrier_model_core_node() }
+    "AlgebraInhabitanceDecl" => Present { value: target_carrier_algebra_inhabitance_decl_node() }
+    "ProbeHeap" => Present { value: target_carrier_probe_heap_node() }
+    "UseSiteVerdict" => Present { value: target_carrier_use_site_verdict_node() }
+    _ => none
+  }
+}
+
+fn rust_sg_rc_wrap_layer_lookup(type_name: String, use_site: TargetOwnershipUseSite) -> TargetReferenceLayer? {
+  match rust_seed_wrap_carrier_node_from_type_name(type_name: type_name) {
+    Present { value: carrier } =>
+      match target_use_site_ownership_lookup_in_catalog(
+        catalog: rust_sg_rc_use_site_ownership_catalog(),
+        source_carrier: carrier,
+        use_site: use_site
+      ) {
+        Accepted { value: row } => Present { value: row.reference_layer }
+        Rejected { diagnostics: _ } => none
+      }
+    Absent => none
+  }
+}
+
+fn rust_seed_ownership_wrap_layer_disposition(
+  type_name: String,
+  rendered: String,
+  use_site: TargetOwnershipUseSite?
+) -> OwnershipWrapLayerDisposition {
+  match use_site {
+    Absent => WrapLayerDefaultOwnedUnenrolled
+    Present { value: site } =>
+      match rust_sg_rc_wrap_layer_lookup(type_name: type_name, use_site: site) {
+        Present { value: layer } => WrapLayerFromCatalog { layer: layer }
+        Absent =>
+          match rust_seed_wrap_carrier_node_from_type_name(type_name: type_name) {
+            Present { value: _ } => WrapLayerRefusedEnrolledRowMissing
+            Absent =>
+              if rust_seed_legacy_container_blanket_rc(rendered: rendered) {
+                WrapLayerLegacyContainerRc
+              } else {
+                WrapLayerDefaultOwnedUnenrolled
+              }
+          }
+      }
+  }
+}
+
+fn rust_seed_effective_reference_layer(
+  type_name: String,
+  rendered: String,
+  use_site: TargetOwnershipUseSite?
+) -> TargetReferenceLayer? {
+  match rust_seed_ownership_wrap_layer_disposition(type_name: type_name, rendered: rendered, use_site: use_site) {
+    WrapLayerFromCatalog { layer: layer } => Present { value: layer }
+    WrapLayerDefaultOwnedUnenrolled => Present { value: ReferenceLayerOwned }
+    WrapLayerLegacyContainerRc => Present { value: ReferenceLayerRc }
+    WrapLayerRefusedEnrolledRowMissing => none
+  }
+}
+
+fn rust_sg_rc_wrap_layer_lookup_witness_holds() -> Bool {
+  match rust_sg_rc_wrap_layer_lookup(type_name: "Node", use_site: OwnershipAtStructField) {
+    Present { value: ReferenceLayerBox } =>
+      match rust_sg_rc_wrap_layer_lookup(type_name: "Node", use_site: OwnershipAtBindingProjection) {
+        Present { value: ReferenceLayerRc } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn rust_sg_rc_carrier_enrolled_but_row_missing_witness_holds() -> Bool {
+  match rust_seed_ownership_wrap_layer_disposition(
+    type_name: "ProbeHeap",
+    rendered: "ProbeHeap",
+    use_site: Present { value: OwnershipAtFunctionParameter }
+  ) {
+    WrapLayerRefusedEnrolledRowMissing => true
+    _ => false
+  }
+}
+
+fn rust_seed_effective_reference_layer_matches_catalog_witness_holds() -> Bool {
+  match rust_seed_ownership_wrap_layer_disposition(
+    type_name: "Node",
+    rendered: "Node",
+    use_site: Present { value: OwnershipAtFunctionReturn }
+  ) {
+    WrapLayerFromCatalog { layer: catalog_layer } =>
+      match rust_seed_effective_reference_layer(
+        type_name: "Node",
+        rendered: "Node",
+        use_site: Present { value: OwnershipAtFunctionReturn }
+      ) {
+        Present { value: effective_layer } => effective_layer == catalog_layer
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn rust_seed_effective_reference_layer_miss_arm_owned_witness_holds() -> Bool {
+  match rust_seed_ownership_wrap_layer_disposition(
+    type_name: "DigitStep",
+    rendered: "DigitStep",
+    use_site: Present { value: OwnershipAtFunctionReturn }
+  ) {
+    WrapLayerDefaultOwnedUnenrolled =>
+      match rust_seed_effective_reference_layer(
+        type_name: "DigitStep",
+        rendered: "DigitStep",
+        use_site: Present { value: OwnershipAtFunctionReturn }
+      ) {
+        Present { value: ReferenceLayerOwned } => true
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn rust_seed_effective_reference_layer_legacy_container_witness_holds() -> Bool {
+  match rust_seed_ownership_wrap_layer_disposition(
+    type_name: "Holder",
+    rendered: "Vec<Int>",
+    use_site: Present { value: OwnershipAtBindingProjection }
+  ) {
+    WrapLayerLegacyContainerRc =>
+      match rust_seed_effective_reference_layer(
+        type_name: "Holder",
+        rendered: "Vec<Int>",
+        use_site: Present { value: OwnershipAtBindingProjection }
+      ) {
+        Present { value: ReferenceLayerRc } => true
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn rust_seed_effective_reference_layer_refuses_enrolled_row_missing_witness_holds() -> Bool {
+  match rust_seed_effective_reference_layer(
+    type_name: "ProbeHeap",
+    rendered: "ProbeHeap",
+    use_site: Present { value: OwnershipAtFunctionParameter }
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn rust_seed_effective_reference_layer_totality_witness_holds() -> Bool {
+  rust_seed_effective_reference_layer_matches_catalog_witness_holds()
+    && rust_seed_effective_reference_layer_miss_arm_owned_witness_holds()
+    && rust_seed_effective_reference_layer_legacy_container_witness_holds()
+    && rust_seed_effective_reference_layer_refuses_enrolled_row_missing_witness_holds()
+}
+
+fn ownership_wrap_catalog_inert_authority_witness_holds() -> Bool {
+  rust_sg_rc_wrap_layer_lookup_witness_holds()
+    && rust_sg_rc_carrier_enrolled_but_row_missing_witness_holds()
+    && rust_seed_effective_reference_layer_totality_witness_holds()
+}

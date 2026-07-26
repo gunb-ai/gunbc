@@ -1,9 +1,9 @@
 module v2.test.claim.ownership_wrap_catalog_inert
 
-import extdeps.languages.rust.wrap_catalog { ownership_wrap_catalog_inert_authority_witness_holds }
+import v2.extdeps.languages.rust_wrap_catalog { ownership_wrap_catalog_inert_authority_witness_holds }
 import v2.std.logic { Bool }
 
-data ownership_wrap_catalog_inert_note: String = "INERT-FIRST (OWNERSHIP-68 / sharp-bee-290): wrap_catalog authority + rust_seed_effective_reference_layer total function + witnesses. Zero 05_emit_rust.dag consumers — regen output byte-identical to main. RED: delete rust_seed_effective_reference_layer -> witness fails."
+data ownership_wrap_catalog_inert_note: String = "INERT-FIRST (OWNERSHIP-68 / sharp-bee-290): v2.extdeps.languages.rust_wrap_catalog consumes rust_sg_rc_use_site_ownership_catalog — zero 05_emit_rust.dag consumers. RED: delete rust_seed_effective_reference_layer -> witness fails."
 
 test fn ownership_wrap_catalog_inert_witness_holds() -> Bool {
   ownership_wrap_catalog_inert_authority_witness_holds()
