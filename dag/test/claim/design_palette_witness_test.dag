@@ -24,7 +24,6 @@ import gunbc.roadmap_style {
   workspace_band_paints, pressed_stop,
 }
 import std.integer { uint8_channel_inclusive_max_value, uint8_channel_inclusive_max_value_derived }
-import std.measure { uint8_channel_inclusive_max }
 import extdeps.numeric.base16 { hex_digit_char_lower, base16_digit_refusal_sentinel }
 import gunbc.site.tokens { quiet_envelope_srgb8 }
 import gunbc.design.catalog {

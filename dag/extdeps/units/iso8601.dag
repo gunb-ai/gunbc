@@ -1,0 +1,22 @@
+module extdeps.units.iso8601
+
+import std.types { String, Nat }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iso.org/standard/70907.html"
+  }
+}
+
+data iso8601_duration_units_note: String = "ISO 8601-1:2019 duration and time-unit vocabulary: 60 seconds per minute, 60 minutes per hour."
+
+fn seconds_per_minute() -> Nat {
+  60
+}
+
+fn minutes_per_hour() -> Nat {
+  60
+}

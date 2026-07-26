@@ -1,14 +1,15 @@
 module std.process
 
 import std.types { NonEmptyStr }
+import extdeps.process.posix_exit {
+  exit_code_success,
+  exit_code_general_error,
+  exit_code_misuse,
+}
 
 type ProcessExit
   = ExitSuccess
   | ExitFailure { code: Int, reason: String }
-
-data exit_code_success: Int = 0
-data exit_code_general_error: Int = 1
-data exit_code_misuse: Int = 2
 
 fn exit_failure(reason: String) -> ProcessExit {
   ExitFailure { code: exit_code_general_error, reason: reason }
