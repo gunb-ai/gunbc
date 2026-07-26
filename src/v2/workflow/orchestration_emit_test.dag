@@ -211,6 +211,54 @@ test fn orch_if_multi_step_else_only_block_form_holds() -> Bool {
   }
 }
 
+fn orch_if_empty_pipeline() -> Pipeline {
+  Pipeline { steps: [], on_failure: FailFast }
+}
+
+test fn orch_if_empty_then_no_else_noop_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_empty_pipeline(), else_: Absent),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then :; fi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_empty_then_with_nonempty_else_noop_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_empty_pipeline(), else_: Present { value: orch_if_else_one_step() }),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then :; else verdict=present; fi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_nonempty_then_with_empty_else_noop_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: Present { value: orch_if_empty_pipeline() }),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then verdict=absent; else :; fi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_both_arms_empty_noop_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_empty_pipeline(), else_: Present { value: orch_if_empty_pipeline() }),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then :; else :; fi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn orch_run_env_unset_multi_binding_structured_holds() -> Bool {
   match orch_emit_run(
     r: Run {
