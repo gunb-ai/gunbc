@@ -35,20 +35,6 @@ pub fn basis_point_authority_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn percent_unity_authority() -> Rc<ExternalAuthority> {
-    thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
-        scheme: UriScheme::Https,
-        locator: "www.iso.org/standard/31887.html".to_string(),
-    }),
-    })
-            };
-        }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
-}
-
 pub fn percent_unity_note() -> String {
     thread_local! {
         static CACHED: String = {
