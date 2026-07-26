@@ -11,7 +11,17 @@ import v2.std.compilers.target_model {
   target_value_semantics_carriers_from_node
 }
 import std.algebra { Empty }
-import v2.std.collection { Absent, List, Optional, Present, Symbol, optional_absent, optional_present }
+import v2.std.collection {
+  List,
+  Symbol
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,

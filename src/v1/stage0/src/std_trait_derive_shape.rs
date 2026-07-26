@@ -5,8 +5,6 @@ use self::ReprGroundingDeriveElemShape::*;
 use self::ReprGroundingDeriveTrait::*;
 pub use crate::std_algebra::FreeMonoid;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -25,7 +23,7 @@ pub fn trait_derive_shape_note() -> String {
 pub fn trait_derive_shape_grounding_lane_handoff() -> String {
     thread_local! {
         static CACHED: String = {
-            "Root-4 arm (b): coproduct-native arithmetic + PartialOrd/PartialEq impl blocks for algebra carriers (GroupCompletion<Nat>, Vector, CommutativeSemiring<Magnitude>). Capability table + repr_grounding_derive_completeness_predicate remain the shared authority; v1.compiler.trait_derive_emit emits impl { … } from shape rows (not #[derive]) through the seed emitter. dissolve-on: four fail-closed unimplemented! stubs in extdeps.languages.rust.emit.rust_supplemental_impls_commutative_semiring_magnitude → std_algebra.rs (inventory: rust_repr_grounding_arm_b_stub_inventory); real bodies land via #7197 eager-crane numeric-tower lane.".to_string()
+            "Root-4 arm (b): coproduct-native arithmetic + PartialOrd/PartialEq impl blocks for algebra carriers (GroupCompletion<Nat>, Vector). Capability table + repr_grounding_derive_completeness_predicate remain the shared authority; v1.compiler.trait_derive_emit emits impl { … } from shape rows (not #[derive]) through the seed emitter. GroupCompletion<M> pos/neg pair Add/Sub/Mul/Div landed in #7197 (dissolves interim CommutativeSemiring<Magnitude> stubs).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -426,12 +424,12 @@ pub fn kernel_int_arithmetic_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
     })
 }
 
-pub fn repr_grounding_supplemental_commutative_semiring_target(
+pub fn repr_grounding_supplemental_group_completion_target(
     module_path: String,
     name: String,
 ) -> bool {
     ((module_path.clone() == "std.algebra".to_string())
-        && (name.clone() == "CommutativeSemiring".to_string()))
+        && (name.clone() == "GroupCompletion".to_string()))
 }
 
 pub fn repr_grounding_supplemental_bool_host_bridge_target(

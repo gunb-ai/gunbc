@@ -2,7 +2,6 @@ module v2.test.claim.self_host.emit_coverage_frontier_test
 
 import v2.compiler.self_host.emit_coverage_frontier {
   emit_coverage_frontier_roster,
-  emit_coverage_frontier_family_count_expected,
   self_emitted_native_rows,
   interpreter_retained_rows,
   coverage_frontier_row_for_subject,

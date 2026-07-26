@@ -1,6 +1,6 @@
 module v2.std.model_core
 
-import v2.std.collection { List, Map }
+import v2.std.collection { Absent, List, Map, Present }
 import v2.std.diagnostic {
   Diagnostic,
   Textual,
@@ -150,7 +150,10 @@ fn model_core_bool_fact_lookup(facts: BoolPrimitiveFacts, axis: Symbol) -> Witne
 fn model_core_bool_spec_facts(facts: BoolPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      model_core_bool_fact_lookup(facts: facts, axis: axis)
+      match model_core_bool_fact_lookup(facts: facts, axis: axis) {
+        Holds { value: v } => Present { value: v }
+        Violates { diagnostic: _ } => Absent
+      }
     }
   }
 }

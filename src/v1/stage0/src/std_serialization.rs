@@ -6,8 +6,6 @@ use self::VariantNaming::*;
 use self::WireFormat::*;
 pub use crate::std_decl_ref::DeclarationRef;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

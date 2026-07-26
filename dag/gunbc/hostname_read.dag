@@ -3,6 +3,12 @@ module gunbc.hostname_read
 import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.tools.hostname
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
+import v2.std.operation_argv {
+  ArgvMaterialization,
+  ArgvMaterialized,
+  ArgvMaterializationRefused,
+  operation_argv_cause_label,
+}
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
   typed_argv_shell_safe_refusal_argv,
@@ -10,63 +16,78 @@ import gunbc.typed_argv_exec {
   TypedArgvExecRefused,
 }
 
+data hostname_short_capture_note: String = "The read answers a two-armed capture, never a bare String?: an argv materialization that REFUSES is a typed, located fact about the declaration, and collapsing it into the same `none` that means empty stdout, a failed exec, or an unsupported transport is the state-space conflation DESIGN 5 names (review 42946). Every non-value arm carries WHY, mirroring gunbc.systemctl_status_read's UnitStatusCapture."
+
+type HostnameShortCapture =
+    HostnameShortCaptured { value: String }
+  | HostnameShortCaptureRefused { reason: String }
+
 data hostname_read_short_path: String = "dag/extdeps/tools/hostname.dag"
 data hostname_read_short_service: String = "os.Hostname"
 data hostname_read_short_operation: String = "ReadShort"
 
-fn hostname_short_read_operation_argv() -> List<String> {
-  shell_materialize_argv_for_operation(
+fn hostname_short_read_operation_argv() -> ArgvMaterialization {
+  shell_materialize_operation_argv(
     hostname_read_short_path,
     hostname_read_short_service,
     hostname_read_short_operation,
-    "",
-    "",
-    [],
-    ""
+    []
   )
 }
 
-fn hostname_short_value_from_stdout(success: Bool, stdout: String) -> String? {
+fn hostname_short_value_from_stdout(success: Bool, stdout: String) -> HostnameShortCapture {
   if success {
     let trimmed = trim(stdout)
     if trimmed == "" {
-      none
+      HostnameShortCaptureRefused { reason: "hostname -s returned empty stdout" }
     } else {
-      Present { value: trimmed }
+      HostnameShortCaptured { value: trimmed }
     }
   } else {
-    none
+    HostnameShortCaptureRefused { reason: "hostname -s exited unsuccessfully" }
   }
 }
 
-fn hostname_short_read_local() -> String? {
+fn hostname_short_read_local() -> HostnameShortCapture {
   let result = os.Hostname.ReadShort()
   hostname_short_value_from_stdout(success: result.success, stdout: result.value)
 }
 
-fn hostname_short_read_ssh(host: NonEmptyStr) -> String? {
-  let argv = hostname_short_read_operation_argv()
+fn hostname_short_read_ssh_argv(host: NonEmptyStr, argv: List<String>) -> HostnameShortCapture {
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
-    Present { value: _ } => none
+    Present { value: why } => HostnameShortCaptureRefused { reason: why }
     Absent =>
       match typed_argv_exec_over_ssh(host: host, argv: argv) {
         TypedArgvExecConverged { result: r } =>
           hostname_short_value_from_stdout(success: r.success, stdout: r.stdout)
-        TypedArgvExecRefused { reason: _ } => none
+        TypedArgvExecRefused { reason: why } => HostnameShortCaptureRefused { reason: why }
       }
   }
 }
 
-fn hostname_short_read(transport: HostEffectTransport) -> String? {
+fn hostname_short_read_ssh(host: NonEmptyStr) -> HostnameShortCapture {
+  match hostname_short_read_operation_argv() {
+    ArgvMaterialized { argv: argv } => hostname_short_read_ssh_argv(host: host, argv: argv)
+    ArgvMaterializationRefused { at: _, cause: c } =>
+      HostnameShortCaptureRefused { reason: operation_argv_cause_label(cause: c) }
+  }
+}
+
+fn hostname_short_read(transport: HostEffectTransport) -> HostnameShortCapture {
   match transport {
     LocalShell => hostname_short_read_local()
     SshShell { ssh_host: h } => hostname_short_read_ssh(host: h)
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => none
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      HostnameShortCaptureRefused {
+        reason: "hostname -s read refused EmitArtifactThenThinRun transport",
+      }
   }
 }
 
 fn hostname_short_read_operation_argv_matches_authority() -> Bool {
-  let materialized = hostname_short_read_operation_argv()
   let authority = hostname_short_read_argv()
-  join(materialized, " ") == join(authority, " ")
+  match hostname_short_read_operation_argv() {
+    ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  }
 }

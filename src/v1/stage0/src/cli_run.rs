@@ -3,7 +3,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
@@ -757,6 +757,65 @@ mod process_workspace_root_tests {
 
 /// Pins HAND-RUST `repo_relative_path` against `gunbc.cli_run_repo_grant` on the same
 /// fixture spellings. Witness: `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag`.
+#[cfg(test)]
+mod cli_run_arg_channel_tests {
+    use super::parse_run_args;
+    use crate::v1_interpreter::Value;
+
+    fn spec(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn named_arg_parses_to_a_named_string_value() {
+        let got = parse_run_args(&spec(&["node_id=roadmap-7"])).expect("well-formed --arg");
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].0.as_deref(), Some("node_id"));
+        assert!(matches!(&got[0].1, Value::Str(s) if s == "roadmap-7"));
+    }
+
+    #[test]
+    fn value_may_contain_further_equals_signs() {
+        let got = parse_run_args(&spec(&["diff=a=b=c"])).expect("split on the first `=` only");
+        assert!(matches!(&got[0].1, Value::Str(s) if s == "a=b=c"));
+    }
+
+    #[test]
+    fn empty_value_is_admitted_and_distinct_from_absent() {
+        let got = parse_run_args(&spec(&["flag="])).expect("empty value is a value");
+        assert!(matches!(&got[0].1, Value::Str(s) if s.is_empty()));
+    }
+
+    // RED controls: the refusals are the point of the channel (§5). A bare
+    // token has no defensible position to occupy, so it must not be guessed
+    // into one.
+    #[test]
+    fn bare_token_without_equals_refuses() {
+        let err = parse_run_args(&spec(&["node_id"])).expect_err("no `=` must refuse");
+        assert!(
+            err.contains("name=value"),
+            "diagnostic names the form: {err}"
+        );
+    }
+
+    #[test]
+    fn empty_parameter_name_refuses() {
+        let err = parse_run_args(&spec(&["=orphan"])).expect_err("empty name must refuse");
+        assert!(
+            err.contains("empty parameter name"),
+            "diagnostic locates the fault: {err}"
+        );
+    }
+
+    #[test]
+    fn one_malformed_spec_refuses_the_whole_list() {
+        assert!(
+            parse_run_args(&spec(&["ok=1", "broken", "also_ok=2"])).is_err(),
+            "a partial parse would silently drop a caller's argument"
+        );
+    }
+}
+
 #[cfg(test)]
 mod cli_run_repo_grant_equivalence_tests {
     use super::{process_workspace_root, repo_relative_path};
@@ -2975,6 +3034,9 @@ fn floor_compile_clean_emit_ok_via_index(
         sources,
         ResolveTypecheckGate::Strict,
         "floor-compile-clean-gate",
+        // Ephemeral: the whole-tree aggregate graph must NOT join the process share tier
+        // (D0.1) — it would pin every TypedModule in the tree for the process lifetime.
+        ResolvedGraphMemoShare::Ephemeral,
     ) {
         Ok(resolved) => resolved,
         Err(msg) => {
@@ -4180,19 +4242,6 @@ pub fn import_closure_live_paths_with_facts(
     facts: &ModuleGraphFactsLive,
 ) -> Vec<String> {
     import_closure_from_adjacency(entry_path, &facts.adjacency)
-}
-
-/// Like `import_closure_live_paths_with_facts` but over the WIDER `selection_adjacency`
-/// (import + strict reference edges) — so a module reached cross-entry only through a
-/// bare-reference edge is still refcounted by schedule-derived retention. Over-retaining
-/// (the safe direction: never premature-evict a reference-reached module into a
-/// recompute-on-miss) and equally cheap: a BFS over prebuilt adjacency, no per-entry
-/// source loading, no #6848 both-closure fixpoint.
-pub(crate) fn selection_closure_live_paths_with_facts(
-    entry_path: &str,
-    facts: &ModuleGraphFactsLive,
-) -> Vec<String> {
-    import_closure_from_adjacency(entry_path, &facts.selection_adjacency)
 }
 
 impl ModuleGraphFactsLive {
@@ -5958,6 +6007,30 @@ pub fn entry_closure_sources_len_for_test(index: &MultiEntryIndex) -> usize {
     index.entry_closure_sources.borrow().len()
 }
 
+/// Drop every assembled per-closure graph from the in-process share memo, leaving the
+/// per-module typed cache warm. Reproduces the production state after the compile-clean
+/// gate warms the shared index Ephemerally (D0.1): modules cached, no per-entry graph
+/// pin — so the next per-entry resolve misses the memo and takes reconcile's ALL-HITS
+/// probe, the path D0.2's schedule-key registration lives on.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn clear_resolved_graph_memo_for_test(index: &MultiEntryIndex) {
+    index.resolved_graph_memo.borrow_mut().clear();
+}
+
+/// Install a schedule retention armed over `per_entry` with an EXPLICIT eviction switch,
+/// bypassing the process-global `GUNBC_SCHEDULE_RETENTION_EVICT` env — so the D0.4
+/// retain-all (`evict_enabled=false`) baseline can be exercised on a real index without
+/// racing that env against concurrently-running tests.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn install_schedule_retention_for_test(
+    index: &MultiEntryIndex,
+    per_entry: Vec<(String, Vec<String>)>,
+    evict_enabled: bool,
+) {
+    *index.schedule_retention.borrow_mut() =
+        Some(ScheduleRetention::armed(per_entry, evict_enabled));
+}
+
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn both_closure_edges_initialized_for_test(index: &MultiEntryIndex) -> bool {
     index.both_closure_edges.borrow().is_some()
@@ -6587,6 +6660,14 @@ impl ScheduleRetention {
     pub fn resolved_graph_evictions(&self) -> u64 {
         self.resolved_graph_evictions
     }
+    /// The eviction switch this retention was armed with (false =
+    /// `GUNBC_SCHEDULE_RETENTION_EVICT=0`, the retain-all measurement pole). Consumers
+    /// outside the bookkeeper — the index's resolved-graph pin drop — gate on it so the
+    /// pole retains resolved graphs too, not just the per-module caches (D0.4: the pre-M2
+    /// baseline was invalid because it kept dropping graphs unconditionally).
+    pub fn evict_enabled(&self) -> bool {
+        self.evict_enabled
+    }
     pub fn note_graph_eviction(&mut self) {
         self.resolved_graph_evictions += 1;
     }
@@ -6619,16 +6700,33 @@ fn index_arm_schedule_retention(index: &MultiEntryIndex, rows: &[DiscoveryRow]) 
         if !seen.insert(row.entry.as_str()) {
             continue;
         }
-        // CHEAP closure: a BFS over the prebuilt selection adjacency (import + strict
-        // reference edges; no per-entry source loading, no #6848 both-closure fixpoint
-        // walk) — keyed by the repo-relative path the reconcile loop records
-        // (`decl_file`). The prior `collect_both_closure_module_names_for_entry`
-        // front-loaded the source-loading fixpoint for every distinct entry (the
-        // compiler-affected worst case is ~694), a cost the affected-set path otherwise
-        // skips or defers. The wider selection tier over-retains (never premature-evicts
-        // a reference-reached module into a recompute-on-miss); a module reached by no
-        // edge at all surfaces as counted RetentionUnknown at reconcile (retained, §5).
-        let paths = selection_closure_live_paths_with_facts(&row.entry, &index.module_graph_facts);
+        // Arm from the LOADER's EXACT closure — `load_sources_for_entry_with_pool`, the
+        // same function the discovery reconcile path runs (`resolve_entry_with_parse_cache`).
+        // This is the ONE closure authority the arming and the loader now share (D0.3 /
+        // the #6985 Class-B root, third appearance): the prior CHEAP
+        // `selection_closure_live_paths_with_facts` walked only `selection_adjacency`
+        // (import edges + strict reference edges for import-LESS files), so it OMITTED
+        // modules the loader reaches via qualified-projection references emitted by
+        // import-BEARING files. Such a module, being present in some OTHER entry's global
+        // refcount, was counted neither `RetentionUnknown` nor re-evicted after it was
+        // re-cached on load — an invisible resident leak. Consuming the loader's own output
+        // makes the armed closure ⊇ the reconciled set BY CONSTRUCTION, not by two closures
+        // happening to agree (the doc's "name the one closure authority, don't add a third
+        // adjacency"). Cost is neutral, not the front-load the old comment feared: the pool
+        // loader MEMOIZES into `entry_closure_sources`, so this pre-load is exactly what
+        // discovery would compute and is reused on the entry's resolve, never doubled. Keyed
+        // by `workspace_relative_repo_path(&sf.path)` — the identical form the reconcile
+        // record site derives from `resolved.module.span.file` (`decl_file`), so refcount
+        // keys and record keys still coincide. A closure that cannot be loaded is skipped:
+        // its modules become counted `RetentionUnknown` at reconcile (retained — §5
+        // fail-closed), so arming still never fails the run.
+        let paths = match load_sources_for_entry_with_pool(index, &row.entry) {
+            Ok(sources) => sources
+                .iter()
+                .map(|sf| workspace_relative_repo_path(&sf.path))
+                .collect::<Vec<String>>(),
+            Err(_) => continue,
+        };
         per_entry.push((row.entry.clone(), paths));
     }
     let evict_enabled = schedule_retention_evict_enabled();
@@ -6670,6 +6768,173 @@ fn index_record_schedule_module(
     }
 }
 
+/// Kept so `gunbc.observation_emit_census` roster hygiene cannot go stale after the
+/// raw `[typecheck-attribution]` key=value shape dissolves into the observation projection.
+#[allow(dead_code)]
+pub const TYPECHECK_ATTRIBUTION_CENSUS_MARKER: &str = "[typecheck-attribution]";
+
+/// Kept so `gunbc.observation_emit_census` roster hygiene cannot go stale after the
+/// raw `[measurement] … bytes (VmHWM)` dump dissolves into `ci_measurement_rss_line`.
+#[allow(dead_code)]
+pub const MEASUREMENT_CENSUS_MARKER: &str = "[measurement]";
+
+const MEASUREMENT_UNREADABLE_CAUSE: &str = "no /proc/self/status";
+
+fn measurement_emoji() -> bool {
+    std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+}
+
+fn measurement_human_bytes(bytes: u64) -> String {
+    // Mirror of ci_gibibyte_tenths: (bytes * 10) / gibibyte_scale_factor_bytes (2^30).
+    let tenths = (bytes.saturating_mul(10)) / 1_073_741_824;
+    format!("{}.{} GiB", tenths / 10, tenths % 10)
+}
+
+/// Mirror of `gunbc.observation_seed_render.seed_peak_rss_line` —
+/// `ci_measurement_rss_line ∘ ci_render_line`. Identity-first label, human GiB.
+/// When `rss_bytes` is `None`, `unreadable_cause` names the MeasuredUnavailable cause
+/// (seed default: `no /proc/self/status`).
+pub fn render_peak_rss_line_mirror(label: &str, rss_bytes: Option<u64>, emoji: bool) -> String {
+    render_peak_rss_line_mirror_with_cause(label, rss_bytes, MEASUREMENT_UNREADABLE_CAUSE, emoji)
+}
+
+pub fn render_peak_rss_line_mirror_with_cause(
+    label: &str,
+    rss_bytes: Option<u64>,
+    unreadable_cause: &str,
+    emoji: bool,
+) -> String {
+    let _ = MEASUREMENT_CENSUS_MARKER;
+    let glyph = if emoji { "🕐" } else { "◷" };
+    let rss = match rss_bytes {
+        Some(b) => measurement_human_bytes(b),
+        None => format!("unreadable ({unreadable_cause})"),
+    };
+    format!("{glyph} {label} — {rss}")
+}
+
+const TYPECHECK_MINUTE_SWITCH_SECONDS: u64 = 90;
+
+fn typecheck_emoji() -> bool {
+    std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+}
+
+fn typecheck_human_duration(ms: u64) -> String {
+    if ms < 1_000 {
+        format!("{ms}ms")
+    } else if ms < TYPECHECK_MINUTE_SWITCH_SECONDS * 1_000 {
+        format!("{} seconds", ms / 1_000)
+    } else {
+        format!("{} minutes", ms / 60_000)
+    }
+}
+
+/// Mirror of `gunbc.observation_seed_render.typecheck_begin_line` —
+/// leaf text is `typecheck <module>` (ModuleSegment + PhaseSegment).
+pub fn render_typecheck_begin_line_mirror(module_path: &str, emoji: bool) -> String {
+    let glyph = if emoji { "🔄" } else { "◐" };
+    format!("{glyph} started typecheck {module_path}")
+}
+
+/// Mirror of `gunbc.observation_seed_render.typecheck_concluded_line`.
+pub fn render_typecheck_concluded_line_mirror(
+    module_path: &str,
+    elapsed_ms: u64,
+    emoji: bool,
+) -> String {
+    let glyph = if emoji { "✅" } else { "✓" };
+    format!(
+        "{glyph} typecheck {module_path} done in {}",
+        typecheck_human_duration(elapsed_ms)
+    )
+}
+
+/// Snapshot of the floor's active-batch progress, sampled by the detached
+/// floor-memory heartbeat thread. Armed only when `entry_total` is known and
+/// non-zero — never a fabricated 0-of-0 (observation law 2 / §5).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HeartbeatFeedSnapshot {
+    pub batch_index: u64,
+    pub batch_label: String,
+    pub entry_done: u64,
+    pub entry_total: u64,
+}
+
+struct HeartbeatFeedState {
+    batch_index: u64,
+    batch_label: String,
+    /// `None` while a discovery batch has entered but its roster entry-count is
+    /// not yet known — the heartbeat thread skips emit until this is `Some(n>0)`.
+    entry_total: Option<u64>,
+    entry_done: AtomicU64,
+}
+
+/// Process-wide feed the floor-memory heartbeat samples. Updated at batch-enter
+/// (label + total when known) and at each `index_schedule_entry_completed` (and
+/// SingleClaim completion) — the existing per-entry point, never a parallel counter.
+static HEARTBEAT_FEED: Mutex<Option<HeartbeatFeedState>> = Mutex::new(None);
+
+/// Enter a floor batch. `entry_total = Some(n)` arms the feed when `n > 0`;
+/// `None` leaves it pending (discovery: total filled once the roster is known).
+/// Resets `entry_done` to 0. A zero total is refused (§5: never fabricate 0-of-0).
+pub fn heartbeat_feed_enter_batch(batch_index: u64, label: &str, entry_total: Option<u64>) {
+    let total = match entry_total {
+        Some(0) => None,
+        other => other,
+    };
+    let mut g = HEARTBEAT_FEED.lock().unwrap_or_else(|p| p.into_inner());
+    *g = Some(HeartbeatFeedState {
+        batch_index,
+        batch_label: label.to_string(),
+        entry_total: total,
+        entry_done: AtomicU64::new(0),
+    });
+}
+
+/// Fill the entry total once a discovery roster's entry-group count is known.
+/// No-op when `total == 0` (refuses to arm a 0-of-0). No-op when no batch is open.
+pub fn heartbeat_feed_set_entry_total(total: u64) {
+    if total == 0 {
+        return;
+    }
+    let mut g = HEARTBEAT_FEED.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(state) = g.as_mut() {
+        state.entry_total = Some(total);
+    }
+}
+
+/// Record one completed entry (discovery source-file grain, or one SingleClaim).
+/// Caps at `entry_total` when known so a late double-complete cannot invent
+/// "entry N+1 of N".
+pub fn heartbeat_feed_entry_completed() {
+    let g = HEARTBEAT_FEED.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(state) = g.as_ref() {
+        let prev = state.entry_done.fetch_add(1, Ordering::Relaxed);
+        if let Some(total) = state.entry_total {
+            if prev >= total {
+                // Undo the overshoot — saturating at total.
+                state.entry_done.store(total, Ordering::Relaxed);
+            }
+        }
+    }
+}
+
+/// The armed snapshot, or `None` when no batch is open / total still pending.
+/// The heartbeat thread skips emit on `None` rather than printing a fabricated
+/// progress line.
+pub fn heartbeat_feed_snapshot() -> Option<HeartbeatFeedSnapshot> {
+    let g = HEARTBEAT_FEED.lock().unwrap_or_else(|p| p.into_inner());
+    let state = g.as_ref()?;
+    let entry_total = state.entry_total?;
+    let entry_done = state.entry_done.load(Ordering::Relaxed).min(entry_total);
+    Some(HeartbeatFeedSnapshot {
+        batch_index: state.batch_index,
+        batch_label: state.batch_label.clone(),
+        entry_done,
+        entry_total,
+    })
+}
+
 /// Drive one entry-completion: decrement the entry's closure refcounts, drop the
 /// per-module state that reached zero from every per-module cache (typed, parse,
 /// normalize-diag, ownership-diag, source-hash), AND drop the entry's assembled
@@ -6684,13 +6949,19 @@ fn index_schedule_entry_completed(
     entry: &str,
     subject: Option<&str>,
 ) -> Result<(), String> {
-    let batch = {
+    let (batch, evict_enabled) = {
         let mut slot = index.schedule_retention.borrow_mut();
         match slot.as_mut() {
-            Some(sr) => sr.entry_completed(entry)?,
-            None => return Ok(()),
+            Some(sr) => (sr.entry_completed(entry)?, sr.evict_enabled()),
+            None => {
+                // Schedule unarmed — the drain still advanced an entry; feed the heartbeat.
+                heartbeat_feed_entry_completed();
+                return Ok(());
+            }
         }
     };
+    // The same per-entry point feeds the observation heartbeat — one counter, not a fork.
+    heartbeat_feed_entry_completed();
     if !batch.typed_keys.is_empty() {
         let mut cache = index.typed_module_cache.borrow_mut();
         for key in &batch.typed_keys {
@@ -6712,13 +6983,17 @@ fn index_schedule_entry_completed(
     // Drop the completed entry's assembled graph. The entry's own `InterpContext` still
     // holds it until the next resolve, so this only removes the memo's pin; a rare later
     // entry with the identical closure re-resolves (a memo miss, cost only).
+    // Gate the resolved-graph pin drop on the SAME eviction switch as the per-module drops
+    // above: with GUNBC_SCHEDULE_RETENTION_EVICT=0 the retain-all measurement pole must
+    // retain EVERYTHING — graphs included — so it faithfully reproduces pre-M2 peak
+    // retention (D0.4). Before this the pole understated peak by silently freeing graphs.
     let graph_evicted = match subject {
-        Some(subj) => index
+        Some(subj) if evict_enabled => index
             .resolved_graph_memo
             .borrow_mut()
             .remove(subj)
             .is_some(),
-        None => false,
+        _ => false,
     };
     let (sched_evictions, retention_unknown, graph_evictions) = {
         let mut slot = index.schedule_retention.borrow_mut();
@@ -6747,6 +7022,44 @@ fn index_schedule_entry_completed(
         index.resolved_graph_memo.borrow().len(),
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod heartbeat_feed_red_controls {
+    use super::{
+        heartbeat_feed_enter_batch, heartbeat_feed_entry_completed, heartbeat_feed_set_entry_total,
+        heartbeat_feed_snapshot,
+    };
+
+    #[test]
+    fn never_arms_a_fabricated_zero_of_zero() {
+        heartbeat_feed_enter_batch(0, "witness discovery", Some(0));
+        assert_eq!(
+            heartbeat_feed_snapshot(),
+            None,
+            "entry_total=0 must not arm the feed"
+        );
+        heartbeat_feed_enter_batch(0, "witness discovery", None);
+        assert_eq!(
+            heartbeat_feed_snapshot(),
+            None,
+            "pending total must not arm the feed"
+        );
+        heartbeat_feed_set_entry_total(0);
+        assert_eq!(
+            heartbeat_feed_snapshot(),
+            None,
+            "set_entry_total(0) must refuse to arm"
+        );
+        heartbeat_feed_set_entry_total(602);
+        let snap = heartbeat_feed_snapshot().expect("armed after real total");
+        assert_eq!(snap.batch_label, "witness discovery");
+        assert_eq!(snap.entry_done, 0);
+        assert_eq!(snap.entry_total, 602);
+        heartbeat_feed_entry_completed();
+        let snap = heartbeat_feed_snapshot().expect("still armed");
+        assert_eq!(snap.entry_done, 1);
+    }
 }
 
 #[cfg(test)]
@@ -6915,9 +7228,9 @@ mod schedule_retention_red_controls {
     }
 
     /// END-TO-END WIRING (real index, real closure computation, real cache eviction):
-    /// two entries sharing one library module. Arm from the schedule, resolve both
-    /// entries (populating the process-shared caches through the actual reconcile
-    /// path that records each module), then drive per-entry completion. The
+    /// two entries sharing one library module. PREWARM the caches, arm from the schedule
+    /// AFTER prewarming, then re-resolve both entries through reconcile's all-hits probe
+    /// (the D0.2 registration path), then drive per-entry completion. The
     /// shared module survives entry A's completion (still reachable by B) and drops
     /// only when B completes — proving the mechanism frees real per-module state on a
     /// live `MultiEntryIndex`, not just in the pure bookkeeper above.
@@ -6965,9 +7278,24 @@ mod schedule_retention_red_controls {
                 reads_live_tree: false,
             },
         ];
+        // PREWARM the per-module typed cache WITHOUT arming — the production order:
+        // compile-clean warms the shared index before discovery arms retention. Then clear
+        // the per-entry resolved-graph memo (D0.1 makes compile-clean's warming Ephemeral:
+        // modules cached, no per-entry graph pin) so the arm-time re-resolves MISS the memo
+        // and go through reconcile's ALL-HITS probe — the exact path D0.2 fixed. The
+        // pre-D0.4 order (arm, THEN first resolve) sent every module cold through the slow
+        // recording path and never exercised the probe, so the all-hit no-registration
+        // defect passed green: the §7 order-blindness this control now closes.
+        super::resolve_entry_with_index(&index, &entry_a).expect("prewarm a");
+        super::resolve_entry_with_index(&index, &entry_b).expect("prewarm b");
+        super::clear_resolved_graph_memo_for_test(&index);
+
+        // Arm AFTER prewarming, then re-resolve: per-module cache warm + graph memo cold ⇒
+        // reconcile takes `try_reconcile_all_cache_hits`, which MUST register each hit's
+        // schedule keys (D0.2) or the completions below evict nothing and this test reds.
         super::index_arm_schedule_retention(&index, &rows);
-        super::resolve_entry_with_index(&index, &entry_a).expect("resolve a");
-        super::resolve_entry_with_index(&index, &entry_b).expect("resolve b");
+        super::resolve_entry_with_index(&index, &entry_a).expect("resolve a (all-hit)");
+        super::resolve_entry_with_index(&index, &entry_b).expect("resolve b (all-hit)");
 
         // Both closures reconciled → all three modules cached, and each entry's
         // assembled ResolvedGraph is memoized (the strong-Rc pin Fact #4 drops).
@@ -7014,6 +7342,80 @@ mod schedule_retention_red_controls {
             "both entries' ResolvedGraphs evicted — the pin is released"
         );
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// RED (D0.4 retain-all baseline on a REAL index): with eviction DISABLED the pole
+    /// must retain EVERYTHING a completion would otherwise drop — the per-module caches
+    /// AND the assembled resolved graph. Before the D0.4 production fix the graph pin was
+    /// dropped UNCONDITIONALLY, so the "retain-all" baseline silently understated peak
+    /// retention (an invalid pre-M2 measurement pole). Installs a disabled retention
+    /// directly rather than racing the process-global `GUNBC_SCHEDULE_RETENTION_EVICT`.
+    #[test]
+    fn schedule_eviction_disabled_retains_resolved_graph_on_real_index() {
+        let dir = super::workspace_root()
+            .join("target")
+            .join(format!("sched_ret_probe_{}_retainall", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir probe corpus");
+        std::fs::write(
+            dir.join("shared_lib.dag"),
+            "module sched_ret_ra.shared_lib\n\ndata shared_val: Int = 7\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("entry_a.dag"),
+            "module sched_ret_ra.entry_a\n\nimport sched_ret_ra.shared_lib { shared_val }\n\ndata a_val: Int = shared_val\n",
+        )
+        .unwrap();
+        let root = dir.to_string_lossy().to_string();
+        let entry_a = dir.join("entry_a.dag").to_string_lossy().to_string();
+        let index = super::build_multi_entry_index(&[root]);
+
+        // Prewarm the per-module cache, then clear the graph memo (Ephemeral warming).
+        super::resolve_entry_with_index(&index, &entry_a).expect("prewarm a");
+        super::clear_resolved_graph_memo_for_test(&index);
+
+        // Arm with eviction DISABLED, keyed on the loader's exact closure (D0.3 authority).
+        let paths = super::load_sources_for_entry_with_pool(&index, &entry_a)
+            .unwrap()
+            .iter()
+            .map(|sf| super::workspace_relative_repo_path(&sf.path))
+            .collect::<Vec<String>>();
+        super::install_schedule_retention_for_test(&index, vec![(entry_a.clone(), paths)], false);
+
+        // Re-resolve so the all-hits probe records keys under the disabled retention, then
+        // snapshot the resident state right before completion.
+        super::resolve_entry_with_index(&index, &entry_a).expect("resolve a (all-hit)");
+        let typed_before = super::typed_module_cache_len_for_test(&index);
+        let graphs_before = super::index_retention_snapshot(&index).resolved_graph_memo_entries;
+        assert!(
+            graphs_before >= 1,
+            "entry_a's graph memoized before completion"
+        );
+        let subj_a = super::subject_digest_for_closure(
+            &super::load_sources_for_entry_with_pool(&index, &entry_a).unwrap(),
+        );
+
+        // Complete the entry: the disabled pole must drop NOTHING — not the per-module
+        // caches, not the resolved graph.
+        super::index_schedule_entry_completed(&index, &entry_a, Some(&subj_a)).expect("complete a");
+        assert_eq!(
+            super::typed_module_cache_len_for_test(&index),
+            typed_before,
+            "retain-all pole: per-module cache must be unchanged"
+        );
+        assert_eq!(
+            super::index_retention_snapshot(&index).resolved_graph_memo_entries,
+            graphs_before,
+            "retain-all pole: the resolved GRAPH must be retained too (D0.4) — before the \
+             production fix a completion dropped it unconditionally"
+        );
+        assert_eq!(
+            super::index_retention_snapshot(&index).schedule_evictions,
+            0,
+            "disabled pole counts zero evictions"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
@@ -7601,8 +8003,27 @@ fn resolve_entry_with_parse_cache(
     let load_started = std::time::Instant::now();
     let sources = load_sources_for_entry_with_pool(index, entry_file)?;
     resolve_stage_slot_add(|s| s.load += load_started.elapsed().as_nanos());
-    resolved_graph_from_sources_with_index(index, sources, typecheck_gate, entry_file)
-        .map(|(graph, si, _compile_clean_diags)| (graph, si))
+    resolved_graph_from_sources_with_index(
+        index,
+        sources,
+        typecheck_gate,
+        entry_file,
+        ResolvedGraphMemoShare::Memoize,
+    )
+    .map(|(graph, si, _compile_clean_diags)| (graph, si))
+}
+
+/// Whether an assembled closure graph joins the in-process share tier
+/// (`resolved_graph_memo`). Per-entry discovery resolves `Memoize` so a re-resolve of the
+/// same subject is served by reference (the ReferenceTier). The compile-clean whole-tree
+/// gate resolves `Ephemeral`: its aggregate graph strong-`Rc`-pins every `TypedModule` in
+/// the tree and is never re-hit by discovery's smaller per-entry subjects, so memoizing it
+/// is the 9.2GB-class resident-retention leak D0.1 removes (ci-two-tier §5). The per-module
+/// `typed_module_cache` warming that IS the gate's purpose happens in reconcile regardless.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResolvedGraphMemoShare {
+    Memoize,
+    Ephemeral,
 }
 
 fn compile_clean_diags_from_resolved_stages(
@@ -7647,6 +8068,7 @@ fn resolved_graph_from_sources_with_index(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     typecheck_gate: ResolveTypecheckGate,
     phase_label: &str,
+    memo_share: ResolvedGraphMemoShare,
 ) -> Result<
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
@@ -7868,15 +8290,22 @@ fn resolved_graph_from_sources_with_index(
         &ownership_diags,
     );
 
-    // Install into the in-process share so same-subject re-resolves skip assembly.
-    index.resolved_graph_memo.borrow_mut().insert(
-        subject.clone(),
-        (
-            typed.clone(),
-            source_indices.clone(),
-            compile_clean_diags.clone(),
-        ),
-    );
+    // Install into the in-process share so same-subject re-resolves skip assembly —
+    // UNLESS this is an Ephemeral gate resolve (the compile-clean whole-tree gate): its
+    // aggregate graph strong-Rc-pins every TypedModule in the tree and is never re-hit by
+    // discovery's per-entry subjects, so memoizing it is the 9.2GB-class resident-retention
+    // leak D0.1 removes (ci-two-tier §5). Per-module typed-cache warming already happened
+    // above, in reconcile, and is unaffected.
+    if memo_share == ResolvedGraphMemoShare::Memoize {
+        index.resolved_graph_memo.borrow_mut().insert(
+            subject.clone(),
+            (
+                typed.clone(),
+                source_indices.clone(),
+                compile_clean_diags.clone(),
+            ),
+        );
+    }
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         // A failed store write is a disclosed refusal, never a silent shrug —
         // the swallowed error hid that big closures never landed on disk (only
@@ -8216,6 +8645,15 @@ fn try_reconcile_all_cache_hits(
                 resolve_stage_slot_add(|s| s.assembly_probe += probe_started.elapsed().as_nanos());
                 return Ok(None);
             };
+            // Record this confirmed hit's cache keys with the armed schedule retention
+            // (idempotent; no-op when unarmed) — the all-hits PROBE must register keys just
+            // like the slow reconcile loop at `reconcile_with_typed_cache`, else a prewarmed
+            // all-hit run (compile-clean warms the index, deliberately making all-hit the
+            // common case) arms retention that references NOTHING: completion then reports
+            // evictions while removing nothing (D0.2 retention-truth fix, ci-two-tier §5).
+            // Same key forms as the slow path — `decl_file` for the schedule refcount, the
+            // raw `span.file` for the parse/normalize/ownership/source-hash caches.
+            index_record_schedule_module(index, &decl_file, &typed_key, &resolved.module.span.file);
             note_interface_hash(&mut interface_hash_by_name, mod_name, &tc_result);
             results[slot] = Some(tc_result);
             progressed = true;
@@ -8748,7 +9186,11 @@ fn reconcile_with_typed_cache(
                         // Once-per-node receipt (§6.2): count only genuine computes (cache misses).
                         bump_typecheck_compute_count();
                         if phase_profile::phase_profile_enabled() {
-                            eprintln!("[typecheck-attribution] module={mod_name} start");
+                            let _ = TYPECHECK_ATTRIBUTION_CENSUS_MARKER;
+                            eprintln!(
+                                "{}",
+                                render_typecheck_begin_line_mirror(&mod_name, typecheck_emoji())
+                            );
                         }
                         let module_tc_started = std::time::Instant::now();
                         // Same-tree bare underlay for the module being typechecked
@@ -8788,8 +9230,14 @@ fn reconcile_with_typed_cache(
                         });
                         let module_tc_ms = module_tc_elapsed.as_millis();
                         if module_tc_ms >= 2_000 {
+                            let _ = TYPECHECK_ATTRIBUTION_CENSUS_MARKER;
                             eprintln!(
-                                "[typecheck-attribution] module={mod_name} ms={module_tc_ms}"
+                                "{}",
+                                render_typecheck_concluded_line_mirror(
+                                    &mod_name,
+                                    module_tc_ms as u64,
+                                    typecheck_emoji(),
+                                )
                             );
                         }
                         let computed = index_insert_typed(index, typed_key.clone(), computed)?;
@@ -9085,11 +9533,13 @@ fn install_effect_stream_policy(ctx: &v1_interpreter::InterpContext, verbose: bo
     // otherwise be silently defaulted, which is the fabricated-plausible-output the
     // funnel exists to avoid. Leave the policy uninstalled instead — the documented
     // fallback table is honest about being a fallback.
-    let (Some(ess), Some(esf), Some(efs), Some(eff)) = (
+    let (Some(ess), Some(esf), Some(efs), Some(eff), Some(ods), Some(odf)) = (
         disposition("expect_success_observed_success"),
         disposition("expect_success_observed_failure"),
         disposition("expect_failure_observed_success"),
         disposition("expect_failure_observed_failure"),
+        disposition("outcome_is_data_observed_success"),
+        disposition("outcome_is_data_observed_failure"),
     ) else {
         return;
     };
@@ -9097,7 +9547,7 @@ fn install_effect_stream_policy(ctx: &v1_interpreter::InterpContext, verbose: bo
         return;
     };
     v1_interpreter::set_effect_stream_policy(InstalledEffectStreamPolicy {
-        dispositions: [ess, esf, efs, eff],
+        dispositions: [ess, esf, efs, eff, ods, odf],
         subject_line_guard: guard.to_string(),
     });
 }
@@ -10106,6 +10556,7 @@ pub fn handle_ci() {
         Some("dag/tools/gunbc_ci.dag".to_string()),
         false,
         false,
+        Vec::new(),
     );
 }
 
@@ -10190,7 +10641,14 @@ pub fn handle_run(
     entry_file: Option<String>,
     claim_run: bool,
 ) {
-    handle_run_with_options(source_roots, function, entry_file, false, claim_run);
+    handle_run_with_options(
+        source_roots,
+        function,
+        entry_file,
+        false,
+        claim_run,
+        Vec::new(),
+    );
 }
 
 /// adhoc-c328b166-bca residual-hunt instrumentation dump: printed periodically
@@ -10249,17 +10707,54 @@ fn dump_residual_hunt_instrumentation() {
     }
 }
 
+/// Parse repeated `--arg name=value` into the interpreter's named-argument
+/// channel (`run_in_context_with_args`, v1_interpreter.rs:1564 — already the
+/// channel `claim_executor` uses internally; `Commands::Run` simply never grew
+/// the flag, which is why every parameter-shaped value reached `.dag` entries
+/// through the process environment instead).
+///
+/// Named-only by construction: a `.dag` entry's parameters are named, so
+/// positional order across the CLI boundary would be an unchecked coincidence.
+/// A missing `=` refuses (§5) rather than guessing a position. Values enter as
+/// `Value::Str` — no coercion is fabricated here; a parameter wanting another
+/// type is the typed-argument follow-on, not a silent conversion.
+fn parse_run_args(raw: &[String]) -> Result<Vec<(Option<String>, v1_interpreter::Value)>, String> {
+    raw.iter()
+        .map(|spec| match spec.split_once('=') {
+            Some((name, value)) if !name.is_empty() => Ok((
+                Some(name.to_string()),
+                v1_interpreter::Value::Str(value.to_string()),
+            )),
+            Some(_) => Err(format!("--arg `{spec}`: empty parameter name before `=`")),
+            None => Err(format!(
+                "--arg `{spec}`: expected `name=value` (named arguments only)"
+            )),
+        })
+        .collect()
+}
+
 pub fn handle_run_with_options(
     source_roots: Vec<String>,
     function: String,
     entry_file: Option<String>,
     dry_run: bool,
     claim_run: bool,
+    args: Vec<String>,
 ) {
     if source_roots.is_empty() {
         eprintln!("error: provide at least one --source-root");
         std::process::exit(1);
     }
+
+    // Refuse a malformed --arg before the compile, so the diagnostic is the
+    // first thing printed rather than the last.
+    let run_args = match parse_run_args(&args) {
+        Ok(parsed) => parsed,
+        Err(message) => {
+            eprintln!("error: {message}");
+            std::process::exit(2);
+        }
+    };
 
     if claim_run && entry_file.is_none() {
         eprintln!(
@@ -10268,6 +10763,14 @@ pub fn handle_run_with_options(
         );
         std::process::exit(1);
     }
+
+    // Same install as claim_executor / claim_batch: without it, host-effect traces
+    // fall back to Full and the merge-admission stamp (`gunbc run … merge_admission_stamp`)
+    // dumps every Ambient Begin/Done as emoji shell noise (operator live-log
+    // 2026-07-25). Install before any Wet eval so ShellTrace Suppressed-at-Normal
+    // collapses Ambient scaffolding; Anomaly Failed still surfaces via disposition.
+    install_output_policy(&source_roots);
+    install_group_syntax(&source_roots);
 
     if let Ok(secs) = std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS") {
         if let Ok(secs) = secs.parse::<u64>() {
@@ -10346,7 +10849,10 @@ pub fn handle_run_with_options(
     let ctx =
         v1_interpreter::InterpContext::new(graph, result.source_indices.clone(), execution_mode);
     v1_interpreter::with_active_context(&ctx, || {
-        let run_outcome = v1_interpreter::run_in_context(&ctx, &function, !claim_run);
+        // One path, not two: with an empty `--arg` list this is byte-identical
+        // to `run_in_context`, which passes the same empty slice.
+        let run_outcome =
+            v1_interpreter::run_in_context_with_args(&ctx, &function, &run_args, !claim_run);
         v1_interpreter::print_eval_recompute_trace(&ctx);
         match run_outcome {
             Ok(val) => {
@@ -15234,6 +15740,12 @@ fn run_discovery_corpus_with_options_inner(
     // per worker — and width is adaptive, so "n is small here" is not a fact that stays
     // true (§6). One build covers the run; workers only read the process-wide memo.
     prime_witness_execution_legs(&index, rows.iter().map(|row| row.entry.as_str()));
+
+    // Arm the observation heartbeat's entry total at the same grain the drain walks
+    // (entry-groups), now that the roster is known — never a fabricated 0-of-0, and
+    // never earlier (batch-enter only had the opaque DiscoveryBatch runnable).
+    let discovery_entry_total = entry_row_groups(&rows).len() as u64;
+    heartbeat_feed_set_entry_total(discovery_entry_total);
 
     let floor_color = floor_color_enabled();
     let floor_stream = floor_stream_enabled();
@@ -23725,6 +24237,26 @@ pub fn non_fold_residue_synthetic_unrostered_red_holds() -> bool {
     sites.contains(&site.to_string()) && !non_fold_residue_site_is_rostered(site)
 }
 
+#[cfg(test)]
+mod nfr_observation_roster_test {
+    use super::non_fold_residue_site_is_rostered;
+
+    // Green-by-execution for the one observation-stack wildcard site
+    // (ci_hold_cause_text over SchedulerHold, merged via #7168): the roster now
+    // carries it, so the corpus nfr witness's unrostered count no longer counts it.
+    // Reds if the roster row's key drifts from the scan's `{rel}::{fn}` key, or if
+    // the hand edit malformed the frontier list (the reader panics on a bad list).
+    #[test]
+    fn observation_hold_cause_wildcard_is_rostered() {
+        assert!(
+            non_fold_residue_site_is_rostered(
+                "dag/gunbc/observation_ci_render.dag::ci_hold_cause_text"
+            ),
+            "the observation ci_hold_cause_text wildcard must be rostered after the fix"
+        );
+    }
+}
+
 // ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────
 //
 // Audits the corpus for `match` expressions whose scrutinee is a function parameter with a declared
@@ -27443,6 +27975,28 @@ pub struct ExtdepsShapeTransportPolicyModuleFacts {
     pub gist_create_files_keyed_by_filename: bool,
 }
 
+type ExtdepsParsedModule = (
+    Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
+    Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+);
+
+thread_local! {
+    /// Content-keyed memo for `parse_extdeps_module_items`. Keyed on the file's own
+    /// bytes (hashed), never on the path alone, so a mutated file re-parses and the
+    /// memo cannot serve a stale tree — the cache-purity rule DESIGN names (key on
+    /// declared-input content). The corpus argv census folds every operation row
+    /// through this reader, which without the memo re-parses one module per row.
+    static EXTDEPS_PARSE_MEMO: std::cell::RefCell<HashMap<String, (u64, ExtdepsParsedModule)>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+fn extdeps_source_content_hash(content: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    content.hash(&mut hasher);
+    hasher.finish()
+}
+
 pub fn parse_extdeps_module_items(
     path: &str,
 ) -> (
@@ -27466,6 +28020,16 @@ pub fn parse_extdeps_module_items(
     let path_str = resolved.to_string_lossy();
     let content = std::fs::read_to_string(&resolved)
         .unwrap_or_else(|e| panic!("parse_extdeps_module_items: failed to read {path_str}: {e}"));
+    let memo_key = resolved.to_string_lossy().to_string();
+    let content_hash = extdeps_source_content_hash(&content);
+    if let Some(hit) = EXTDEPS_PARSE_MEMO.with(|memo| {
+        memo.borrow()
+            .get(&memo_key)
+            .filter(|(hash, _)| *hash == content_hash)
+            .map(|(_, parsed)| parsed.clone())
+    }) {
+        return hit;
+    }
     let filename = resolved
         .file_name()
         .and_then(|s| s.to_str())
@@ -27486,18 +28050,50 @@ pub fn parse_extdeps_module_items(
         .module
         .as_ref()
         .expect("parse_extdeps_module_items: missing module");
-    (module.children.clone(), source_indices)
+    let parsed: ExtdepsParsedModule = (module.children.clone(), source_indices);
+    EXTDEPS_PARSE_MEMO.with(|memo| {
+        memo.borrow_mut()
+            .insert(memo_key, (content_hash, parsed.clone()));
+    });
+    parsed
 }
 
-pub fn shell_argv_nodes_for_operation(
-    path: String,
-    service: String,
-    operation: String,
-) -> (
-    Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
-    Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-) {
-    let (items, source_indices) = parse_extdeps_module_items(&path);
+/// One shell-transport operation's *declaration*: the argv expression nodes and the
+/// inputs the operation itself declares (name + optional default expression).
+///
+/// This is the single authority the generic argv materializer binds against
+/// (`v2.std.operation_argv`): the binding vocabulary is the operation's own
+/// `input { .. }` block, never a fixed list the seed happens to know.
+pub struct OperationArgvDeclaration {
+    pub argv: Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
+    pub declared_inputs: Vec<(String, Option<Rc<crate::v1_std_core::Node>>)>,
+    pub source_indices: Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+}
+
+fn operation_declared_inputs(
+    op: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Vec<(String, Option<Rc<crate::v1_std_core::Node>>)> {
+    op.params
+        .iter()
+        .map(|p| {
+            let name = crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone());
+            // `make_param_node` lays children out as [type_expr] or [type_expr, default].
+            let default = p.children.get(1).cloned();
+            (name, default)
+        })
+        .collect()
+}
+
+/// The declaration of `service.operation` in `path`, when it carries a shell transport.
+/// `None` when the module, service, operation, or shell transport is absent — the
+/// caller turns that into a typed refusal rather than a panic.
+pub fn shell_transport_operation_declaration(
+    path: &str,
+    service: &str,
+    operation: &str,
+) -> Option<OperationArgvDeclaration> {
+    let (items, source_indices) = parse_extdeps_module_items(path);
     for item in items.iter() {
         if item.name != service {
             continue;
@@ -27515,10 +28111,143 @@ pub fn shell_argv_nodes_for_operation(
                 op.clone(),
                 fallback_transport.clone(),
             );
-            return (eff.children.clone(), source_indices);
+            if !crate::v1_std_core::is_shell_transport(eff.clone()) {
+                return None;
+            }
+            return Some(OperationArgvDeclaration {
+                argv: eff.children.clone(),
+                declared_inputs: operation_declared_inputs(op, &source_indices),
+                source_indices,
+            });
         }
     }
-    panic!("shell_argv_nodes_for_operation: operation {service}.{operation} not found in {path}");
+    None
+}
+
+/// One row of the corpus's shell-transport operation census, derived from the
+/// declarations themselves. The witness corpus folds over these rows rather than a
+/// hand-authored roster, so a newly authored operation enrolls by existing and
+/// coverage is a corpus fact rather than a claim (DESIGN §3, §6).
+pub struct ShellTransportOperationCensusRow {
+    pub path: String,
+    pub service: String,
+    pub operation: String,
+    pub declared_inputs: Vec<String>,
+    pub argv_input_refs: Vec<String>,
+}
+
+fn collect_argv_input_refs(
+    node: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    out: &mut Vec<String>,
+) {
+    use crate::v1_std_core::{expr_var_name_at, ExprData, StringPart};
+    match node.expr_data.as_ref() {
+        ExprData::ExprVar { .. } => {
+            let name = expr_var_name_at(node.clone(), source_indices.clone());
+            if !name.is_empty() && !out.contains(&name) {
+                out.push(name);
+            }
+        }
+        ExprData::ExprStringInterp => {
+            for part in crate::v1_compiler_emit::extract_string_interp_parts(node.clone()).iter() {
+                if let StringPart::Interpolation { expr } = part.as_ref() {
+                    collect_argv_input_refs(expr, source_indices, out);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn dag_source_files_under(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    let mut paths: Vec<std::path::PathBuf> = entries.flatten().map(|e| e.path()).collect();
+    paths.sort();
+    for p in paths {
+        if p.is_dir() {
+            dag_source_files_under(&p, out);
+        } else if p.extension().and_then(|s| s.to_str()) == Some("dag") {
+            out.push(p);
+        }
+    }
+}
+
+/// Whether a source *could* declare a shell transport: the literal keyword `transport`
+/// followed, on the SAME line, by `shell`.
+///
+/// This is a sound necessary condition rather than a heuristic, and it is read off the
+/// parser rather than guessed: `parse_transport_binding` inspects the token
+/// immediately after `transport` with no `skip_newlines`, so the kind keyword cannot be
+/// on a following line. Horizontal whitespace between the two is admitted because the
+/// tokenizer skips it. A string literal mentioning the phrase makes this a superset,
+/// which costs one parse and misses nothing.
+fn source_may_declare_shell_transport(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut at = 0usize;
+    while let Some(found) = text[at..].find("transport") {
+        let mut i = at + found + "transport".len();
+        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+            i += 1;
+        }
+        if text[i..].starts_with("shell") {
+            return true;
+        }
+        at = at + found + "transport".len();
+    }
+    false
+}
+
+/// Every shell-transport operation declared under the corpus source roots.
+pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow> {
+    let root = workspace_root();
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    for sub in ["dag", "src/v2"] {
+        dag_source_files_under(&root.join(sub), &mut files);
+    }
+    let mut rows: Vec<ShellTransportOperationCensusRow> = Vec::new();
+    for file in files.iter() {
+        let Ok(text) = std::fs::read_to_string(file) else {
+            continue;
+        };
+        if !source_may_declare_shell_transport(&text) {
+            continue;
+        }
+        let Ok(rel) = file.strip_prefix(&root) else {
+            continue;
+        };
+        let rel = rel.to_string_lossy().to_string();
+        let (items, source_indices) = parse_extdeps_module_items(&rel);
+        for item in items.iter() {
+            for op in item.children.iter() {
+                let Some(transport) = op
+                    .transport
+                    .clone()
+                    .or_else(|| item.transport.clone())
+                    .filter(|t| crate::v1_std_core::is_shell_transport(t.clone()))
+                else {
+                    continue;
+                };
+                let mut argv_input_refs: Vec<String> = Vec::new();
+                for argv_node in transport.children.iter() {
+                    collect_argv_input_refs(argv_node, &source_indices, &mut argv_input_refs);
+                }
+                rows.push(ShellTransportOperationCensusRow {
+                    path: rel.clone(),
+                    service: item.name.clone(),
+                    operation: op.name.clone(),
+                    declared_inputs: operation_declared_inputs(op, &source_indices)
+                        .into_iter()
+                        .map(|(name, _)| name)
+                        .collect(),
+                    argv_input_refs,
+                });
+            }
+        }
+    }
+    rows
 }
 
 pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter::Value) -> bool {

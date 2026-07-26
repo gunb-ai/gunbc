@@ -77,8 +77,6 @@ pub use crate::v1_compiler_languages::{
     TestNameStyle, VariantPatternSyntax, VisibilitySpec,
 };
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::CardOptional;
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
@@ -4001,10 +3999,8 @@ pub fn apply_bridge_method_overrides(
     overrides: Rc<HashMap<String, String>>,
 ) -> String {
     match v1_rt::lookup(&overrides, name.clone()) {
-        v1_rt::Witness::Holds {
-            value: replacement, ..
-        } => replacement.clone(),
-        v1_rt::Witness::Violates { diagnostic: _, .. } => name.clone(),
+        Some(replacement) => replacement.clone(),
+        None => name.clone(),
     }
 }
 

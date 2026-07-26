@@ -12,10 +12,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data edit_locus_source_provenance_long_note: String = "Class C live-grain half (test-decomposition-wcf-cut, 2026-07-25): edit-locus source provenance ingest/parse pipeline witnesses exceed the per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note). Enrolled on falsifier_substrate_long_lane_entries (nightly falsifier batch 6). Per-PR fixture-wall coverage: affected_set_provenance_producer_test.dag + sg_claims_test.dag selectivity receipts."
 
-test fn edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
+data edit_locus_source_provenance_wrapper_shadowing_note: String = "The two wrappers below carry a lens_ prefix, NOT the imported fn's own name (the sibling long/affected_set_provenance_producer_witness_test.dag convention). A wrapper declared with the SAME name as the fn it imports does not delegate — the bare call binds to the local test fn and self-recurses until the interpreter's depth refusal (measured 2026-07-26: 'call depth exceeded 100000 ... a bare-name resolution cycle', ~350ms, both rows). Both rows shipped that way and had never executed: batch 6's affected-set selection skipped them on their first scheduled run (30176416535) and the fast-lane budget mis-scope reddened the batch for an unrelated reason, so the self-recursion stayed invisible. The failing shape is decidable — a bare self-call whose only in-scope binding is the enclosing test fn shadowing an import of the same name — so it is a construction-wall candidate rather than a naming convention; carried here as a located receipt until a lens claims it."
+
+test fn lens_edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
   edit_locus_source_provenance_affected_set_wire_holds()
 }
 
-test fn edit_locus_source_provenance_producer_rejects_malformed_source_holds() -> Bool {
+test fn lens_edit_locus_source_provenance_producer_rejects_malformed_source_holds() -> Bool {
   edit_locus_source_provenance_producer_rejects_malformed_source_holds()
 }

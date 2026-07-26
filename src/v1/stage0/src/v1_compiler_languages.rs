@@ -61,8 +61,6 @@ pub use crate::std_syntax::{AlgebraFieldKind, BinOp, ItemForm, ItemFormKind, Ope
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -1213,16 +1211,16 @@ pub fn language_spec_for_target(target: RenderTarget) -> Rc<LanguageSpec> {
 pub fn target_keyword(target: RenderTarget, key: String) -> String {
     match target.clone() {
         RenderTarget::Rust => match v1_rt::lookup(&rust_keywords(), key.clone()) {
-            v1_rt::Witness::Holds { value: kw, .. } => kw.clone(),
-            v1_rt::Witness::Violates { diagnostic: _, .. } => key.clone(),
+            Some(kw) => kw.clone(),
+            None => key.clone(),
         },
         RenderTarget::Go => match v1_rt::lookup(&go_keywords(), key.clone()) {
-            v1_rt::Witness::Holds { value: kw, .. } => kw.clone(),
-            v1_rt::Witness::Violates { diagnostic: _, .. } => key.clone(),
+            Some(kw) => kw.clone(),
+            None => key.clone(),
         },
         RenderTarget::Python => match v1_rt::lookup(&python_keywords(), key.clone()) {
-            v1_rt::Witness::Holds { value: kw, .. } => kw.clone(),
-            v1_rt::Witness::Violates { diagnostic: _, .. } => key.clone(),
+            Some(kw) => kw.clone(),
+            None => key.clone(),
         },
         RenderTarget::Dag => key.clone(),
     }

@@ -5,7 +5,11 @@ import v2.compiler.parse { parse_module }
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.collection { Absent, Optional, Present }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,

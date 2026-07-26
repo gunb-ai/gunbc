@@ -9,7 +9,15 @@ import v2.lens.cost {
   polynomial_degree_two
 }
 import v2.lens.cost.copied_port_citations { copied_port_index_of }
-import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
+import v2.std.collection {
+  List,
+  list_at_optional
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present
+}
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }

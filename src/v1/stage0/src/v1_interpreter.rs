@@ -5,6 +5,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use im::HashMap as HamtMap;
@@ -425,11 +426,34 @@ fn optional_absent(ctx: &InterpContext) -> Value {
     }
 }
 
-fn map_lookup_as_optional(raw: Value, ctx: &InterpContext) -> Value {
-    if matches!(raw, Value::Null) {
-        optional_absent(ctx)
-    } else {
-        optional_present(raw, ctx)
+/// Whether a `raw_map_lookup` result already carries the `Optional<V>` contract
+/// (a `.dag`-authored `Map.lookup` closure returns `Optional<V>` by construction)
+/// or is a bare storage read that still needs the `Optional` wrap applied
+/// (native `Value::Map`/field storage, where a miss is `Value::Null`).
+/// Distinguishing by the call site — not by sniffing the value's shape — is
+/// required so a stored `V = Optional<T>` payload isn't mistaken for an
+/// already-wrapped lookup result (DESIGN §5: construction, not validation).
+enum RawMapLookup {
+    AlreadyOptional(Value),
+    NeedsWrap(Value),
+}
+
+fn map_lookup_as_optional(raw: RawMapLookup, ctx: &InterpContext) -> Value {
+    match raw {
+        RawMapLookup::AlreadyOptional(v) => v,
+        RawMapLookup::NeedsWrap(Value::Null) => optional_absent(ctx),
+        RawMapLookup::NeedsWrap(v) => optional_present(v, ctx),
+    }
+}
+
+impl RawMapLookup {
+    /// Bare-value callers (field access, `[]` indexing, the raw `lookup`/`get`
+    /// builtins) don't observe the `Optional` contract at all — they want
+    /// exactly what was found, miss-as-`Null` included.
+    fn into_raw(self) -> Value {
+        match self {
+            RawMapLookup::AlreadyOptional(v) | RawMapLookup::NeedsWrap(v) => v,
+        }
     }
 }
 
@@ -2776,6 +2800,10 @@ fn match_pattern(
                     }
                     _ => None,
                 },
+                // GroupCompletion{pos,neg} destructuring against a native Value::Int is
+                // deliberately unhandled here (no corpus site exercises it yet, #5-scoped
+                // deferral) — an unmatched pattern name falls through to `_ => None` below,
+                // refusing rather than fabricating a wrong (pos, neg) pair.
                 Value::Int(n) if name_last == "Zero" || name_last == "Succ" => match name_last {
                     "Zero" => {
                         if *n == 0 {
@@ -4161,15 +4189,28 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
     if let Some(MethodSemantics::ServiceMethodSemantics { service_name, .. }) = semantics.as_deref()
     {
         let extra_args = method_arg_nodes(node.clone());
-        let named_args: Vec<(Option<String>, Value)> = extra_args
-            .iter()
-            .map(|a| {
-                let name = arg_name_at(a.clone(), ctx.si());
-                let val = eval_expr(&arg_value(a.clone()), env, ctx)?;
-                Ok((name, val))
-            })
-            .collect::<InterpResult<_>>()?;
-        return eval_service_call(service_name, &method_name, &named_args, env, ctx);
+        // The declared-expectation edge is read off THIS node — the call site — and
+        // partitioned out before anything becomes a bound param. See
+        // EFFECT_EXPECTATION_ARG for why the call node is the only correct home.
+        let mut named_args: Vec<(Option<String>, Value)> = Vec::new();
+        let mut declared_expectation: Option<ExpectedOutcome> = None;
+        for a in extra_args.iter() {
+            let name = arg_name_at(a.clone(), ctx.si());
+            let val = eval_expr(&arg_value(a.clone()), env, ctx)?;
+            if name.as_deref() == Some(EFFECT_EXPECTATION_ARG) {
+                declared_expectation = Some(expectation_from_declared_arg(&val)?);
+                continue;
+            }
+            named_args.push((name, val));
+        }
+        return eval_service_call(
+            service_name,
+            &method_name,
+            &named_args,
+            env,
+            ctx,
+            declared_expectation.unwrap_or(ExpectedOutcome::ExpectSuccess),
+        );
     }
 
     let receiver_val = eval_expr(&method_receiver(node.clone()), env, ctx)?;
@@ -4183,7 +4224,8 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
         let key = args.first().ok_or_else(|| InterpError::TypeError {
             msg: "lookup requires a key argument".to_string(),
         })?;
-        return raw_map_lookup_witness(&receiver_val, key, env, ctx);
+        let raw = raw_map_lookup(&receiver_val, key, env, ctx)?;
+        return Ok(map_lookup_as_optional(raw, ctx));
     }
 
     if let Value::Record { fields, .. } | Value::Variant { fields, .. } = &receiver_val {
@@ -4266,7 +4308,8 @@ fn extract_field(
                 type_name: ctx.resolve(*type_name).to_string(),
                 field: field.to_string(),
             }),
-        Value::Map(_) => raw_map_lookup(value, &Value::Str(field.to_string()), env, ctx),
+        Value::Map(_) => raw_map_lookup(value, &Value::Str(field.to_string()), env, ctx)
+            .map(RawMapLookup::into_raw),
         _ => Err(InterpError::TypeError {
             msg: format!("cannot access field '{}' on {}", field, value.type_label()),
         }),
@@ -4303,6 +4346,14 @@ fn eval_record_lit(
             fields: Rc::new(fields),
         })
     } else {
+        if type_name == "GroupCompletion" {
+            if let (Some(Value::Int(pos)), Some(Value::Int(neg))) = (
+                fields_get(&fields, ctx.sym("pos")),
+                fields_get(&fields, ctx.sym("neg")),
+            ) {
+                return Ok(Value::Int(pos - neg));
+            }
+        }
         Ok(Value::Record {
             type_name: ctx.sym(&type_name),
             fields: Rc::new(fields),
@@ -4493,7 +4544,9 @@ fn eval_index(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
             let i = *i as usize;
             Ok(items.get(i).cloned().unwrap_or(Value::Null))
         }
-        (base, key) if is_map_lookup_receiver(base) => raw_map_lookup(base, key, env, ctx),
+        (base, key) if is_map_lookup_receiver(base) => {
+            raw_map_lookup(base, key, env, ctx).map(RawMapLookup::into_raw)
+        }
         (Value::Str(s), Value::Int(i)) => {
             let i = *i as usize;
             Ok(s.chars()
@@ -4571,7 +4624,7 @@ fn eval_algebra_method_inner(
             let key = args.first().ok_or_else(|| InterpError::TypeError {
                 msg: "lookup requires a key argument".to_string(),
             })?;
-            raw_map_lookup(&receiver, key, env, ctx)
+            raw_map_lookup(&receiver, key, env, ctx).map(RawMapLookup::into_raw)
         }
 
         "map" => list_method_with_closure("map", receiver, args, env, ctx, |items, f, env, ctx| {
@@ -4898,7 +4951,7 @@ fn eval_algebra_method_inner(
                 let key = args.first().ok_or_else(|| InterpError::TypeError {
                     msg: "get requires a key argument".to_string(),
                 })?;
-                raw_map_lookup(&receiver, key, env, ctx)
+                raw_map_lookup(&receiver, key, env, ctx).map(RawMapLookup::into_raw)
             } else if let Ok(items) = expect_list(&receiver, "get") {
                 let idx = expect_int(args.first(), "get")?;
                 Ok(list_get_at_or_null(&items, idx))
@@ -4906,7 +4959,7 @@ fn eval_algebra_method_inner(
                 let key = args.first().ok_or_else(|| InterpError::TypeError {
                     msg: "get requires a key argument".to_string(),
                 })?;
-                raw_map_lookup(&receiver, key, env, ctx)
+                raw_map_lookup(&receiver, key, env, ctx).map(RawMapLookup::into_raw)
             }
         }
 
@@ -5108,7 +5161,18 @@ fn wet_service_call(
             msg: format!("no transport for service {}", key),
         })?;
     let param_env = build_service_param_env(op_node, args, env, ctx)?;
-    dispatch_service_wet(service_node, op_node, transport, &param_env, ctx)
+    // No call node here: this is the interpreter's own internal seam (Clock.UnixSecs
+    // and friends), not a .dag call site, so it declares the default explicitly
+    // rather than inheriting one.
+    dispatch_service_wet(
+        service_node,
+        op_node,
+        transport,
+        &param_env,
+        ctx,
+        &key,
+        ExpectedOutcome::ExpectSuccess,
+    )
 }
 
 fn unix_secs_from_clock_value(
@@ -5145,14 +5209,10 @@ fn realize_clock_unix_secs_transport() -> Result<u64, crate::recorded_fixture::F
         .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)
 }
 
-/// Native read of THIS process's own environment. Was a `printenv` subprocess: a modeled
-/// operation realized by spawning a shell tool to ask for a value the process already holds
-/// (§3(b) — the interface shape is name → value?; the shell argv is ONE handler, and the
-/// wrong one when the target is the reading process itself). Semantics preserved exactly:
-/// unset → None (printenv exited 1), empty → None (printenv exited 0 with empty stdout),
-/// value trimmed. The `shell.Env.Get` service declaration remains valid as the REMOTE
-/// handler; routing the corpus's local env reads onto a native transport is the named
-/// follow-on (a new `transport env` kind — parser + core predicate + dispatch arm).
+/// Native read of THIS process's own environment. Semantics match the former
+/// `printenv` subprocess exactly: unset → None, empty → None, value trimmed.
+/// `dispatch_service_wet` routes `shell.Env.Get` here for OnTarget locality
+/// (shell-to-dag residual census §0b); the shell argv remains the remote handler.
 fn wet_env_var(name: &str) -> Option<String> {
     let s = std::env::var(name).ok()?.trim().to_string();
     if s.is_empty() {
@@ -5165,7 +5225,14 @@ fn wet_env_var(name: &str) -> Option<String> {
 fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> {
     if ctx.service_ops.contains_key("shell.Env.Get") {
         let args = [(Some("name".to_string()), Value::Str(var_name.to_string()))];
-        match eval_service_call("shell.Env", "Get", &args, &Env::empty(), ctx) {
+        match eval_service_call(
+            "shell.Env",
+            "Get",
+            &args,
+            &Env::empty(),
+            ctx,
+            ExpectedOutcome::ExpectSuccess,
+        ) {
             Ok(Value::Record { fields, .. }) => ctx.field(&fields, "value").and_then(|v| match v {
                 Value::Str(s) if !s.is_empty() => Some(s.clone()),
                 _ => None,
@@ -5235,6 +5302,7 @@ fn eval_service_call(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
     ctx: &InterpContext,
+    expected: ExpectedOutcome,
 ) -> InterpResult<Value> {
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
@@ -5290,7 +5358,15 @@ fn eval_service_call(
                 .map(|requested| hermetic_checkout_read_disposition(&requested).is_ok())
                 .unwrap_or(false);
             if confirmed_checkout_input {
-                return dispatch_service_wet(service_node, op_node, transport, &param_env, ctx);
+                return dispatch_service_wet(
+                    service_node,
+                    op_node,
+                    transport,
+                    &param_env,
+                    ctx,
+                    &key,
+                    expected,
+                );
             }
         }
         let published = ctx.published_mock_keys()?;
@@ -5335,7 +5411,15 @@ fn eval_service_call(
         return eval_mock_response(op_node, ctx);
     }
 
-    let result = dispatch_service_wet(service_node, op_node, transport, &param_env, ctx)?;
+    let result = dispatch_service_wet(
+        service_node,
+        op_node,
+        transport,
+        &param_env,
+        ctx,
+        &key,
+        expected,
+    )?;
 
     if ctx.execution_mode.is_record() {
         let store = ctx
@@ -5364,9 +5448,21 @@ fn dispatch_service_wet(
     transport: &Rc<Node>,
     param_env: &Rc<Env>,
     ctx: &InterpContext,
+    intent: &str,
+    expected: ExpectedOutcome,
 ) -> InterpResult<Value> {
+    // Local Env.Get: reading THIS process's own environment is not a host effect
+    // (shell-to-dag residual census §0b / DESIGN §3(b)). `printenv` was the wrong
+    // single hardwired transport — unset vars exited 1 and, under ExpectSuccess,
+    // every optional floor_diff_observe injection (GUNBC_CI_DIFF_*) painted Anomaly
+    // Failed lines (operator live-log 2026-07-25). Native handler; shell printenv
+    // remains the remote-target realization.
+    if intent == "shell.Env.Get" {
+        return dispatch_env_get_native(op_node, param_env, ctx);
+    }
+
     if is_shell_transport(transport.clone()) {
-        let result = dispatch_shell(transport, param_env, ctx)?;
+        let result = dispatch_shell(transport, param_env, ctx, intent, expected)?;
         return map_shell_outputs(&result, op_node, ctx);
     }
 
@@ -5376,6 +5472,37 @@ fn dispatch_service_wet(
     }
 
     dispatch_rest(service_node, op_node, transport, param_env, ctx)
+}
+
+/// Native realization of `shell.Env.Get` for OnTarget locality — same Absent/Present
+/// semantics as printenv (unset/empty → Null optional; value trimmed), with no
+/// ObservationEvent and no child process.
+fn dispatch_env_get_native(
+    op_node: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let name = match param_env.lookup(ctx.sym("name")) {
+        Some(Value::Str(s)) => s.clone(),
+        Some(other) => {
+            return Err(InterpError::TypeError {
+                msg: format!("shell.Env.Get name must be String, got {other}"),
+            });
+        }
+        None => {
+            return Err(InterpError::TypeError {
+                msg: "shell.Env.Get missing name parameter".to_string(),
+            });
+        }
+    };
+    let value = match wet_env_var(&name) {
+        Some(s) => Value::Str(s),
+        None => Value::Null,
+    };
+    Ok(Value::Record {
+        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+        fields: Rc::new(vec![(ctx.sym("value"), value)]),
+    })
 }
 
 fn build_service_param_env(
@@ -5483,25 +5610,204 @@ fn value_to_host_string(val: &Value) -> String {
     value_as_host_string(val).unwrap_or_else(|| format!("{}", val))
 }
 
-fn materialize_argv_expr_for_bindings(
+/// Why a generic argv materialization refused. Mirrors `ArgvRefusalCause` in
+/// `src/v2/std/operation_argv.dag` arm for arm — the .dag module is the authority for
+/// the vocabulary, this enum is the seed realization of it. Every arm refuses; none
+/// widens, defaults, or sanitizes (DESIGN §5).
+#[derive(Debug, Clone)]
+pub enum ArgvRefusalCause {
+    OperationNotFound,
+    UndeclaredInputBound(String),
+    DuplicateInputBinding(String),
+    DeclaredInputUnbound(String),
+    ArgvEmpty,
+    ExecutablePositionNotLiteral(String),
+    TokenListInStringPosition(String),
+    ArgvExpressionUnsupported(String),
+    BindingMalformed(String),
+}
+
+fn argv_expr_kind_label(node: &Rc<Node>) -> &'static str {
+    match node.expr_data.as_ref() {
+        ExprData::NoExprData => "no-expr",
+        ExprData::ExprLiteral { .. } => "literal",
+        ExprData::ExprError { .. } => "error",
+        ExprData::ExprVar { .. } => "var",
+        ExprData::ExprFieldAccess { .. } => "field-access",
+        ExprData::ExprCall { .. } => "call",
+        ExprData::ExprMethodCall { .. } => "method-call",
+        ExprData::ExprMatch => "match",
+        ExprData::ExprIf => "if",
+        ExprData::ExprLet => "let",
+        ExprData::ExprRecordLit { .. } => "record-literal",
+        ExprData::ExprListLit => "list-literal",
+        ExprData::ExprBinOp { .. } => "binop",
+        ExprData::ExprUnaryOp { .. } => "unary-op",
+        ExprData::ExprLambda => "lambda",
+        ExprData::ExprStringInterp => "string-interpolation",
+        ExprData::ExprBlock => "block",
+        ExprData::ExprCast => "cast",
+        ExprData::ExprForEach => "for-each",
+        ExprData::ExprIndex => "index",
+        ExprData::ExprSlice => "slice",
+        ExprData::ExprReturn => "return",
+    }
+}
+
+/// A declared default, read from the declaration itself. Only shapes that are literal
+/// *data* are admitted (a string literal, or a list literal of string literals): a
+/// default that is a call or a reference is left UNBOUND, so an argv position that
+/// needs it refuses by name rather than being filled with a guess (DESIGN §5 — a
+/// fabricated plausible default is the failure this avoids).
+fn declared_default_value(node: &Rc<Node>) -> Option<Value> {
+    match node.expr_data.as_ref() {
+        ExprData::ExprLiteral { value } => match value.as_ref() {
+            LiteralValue::LitStr { value } => Some(Value::Str(value.clone())),
+            _ => None,
+        },
+        ExprData::ExprListLit => {
+            let mut items: Vec<Value> = Vec::new();
+            for child in node.children.iter() {
+                match child.expr_data.as_ref() {
+                    ExprData::ExprLiteral { value } => match value.as_ref() {
+                        LiteralValue::LitStr { value } => items.push(Value::Str(value.clone())),
+                        _ => return None,
+                    },
+                    _ => return None,
+                }
+            }
+            Some(list_value(items))
+        }
+        _ => None,
+    }
+}
+
+/// Read one `OperationInputBinding` record from the `.dag` side.
+fn operation_input_binding_entry(
+    item: &Value,
+    ctx: &InterpContext,
+) -> Result<(String, Value), ArgvRefusalCause> {
+    let Value::Record { fields, .. } = item else {
+        return Err(ArgvRefusalCause::BindingMalformed(format!(
+            "binding list element is {}, expected an OperationInputBinding record",
+            item.type_label()
+        )));
+    };
+    let Some(Value::Str(name)) = fields_get(fields, ctx.sym("name")).cloned() else {
+        return Err(ArgvRefusalCause::BindingMalformed(
+            "OperationInputBinding.name must be a String".to_string(),
+        ));
+    };
+    let Some(value) = fields_get(fields, ctx.sym("value")).cloned() else {
+        return Err(ArgvRefusalCause::BindingMalformed(format!(
+            "OperationInputBinding `{name}` carries no value"
+        )));
+    };
+    let bound = match &value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            if *variant_name == ctx.sym("InputText") {
+                match fields_get(fields, ctx.sym("text")).cloned() {
+                    Some(Value::Str(text)) => Value::Str(text),
+                    _ => {
+                        return Err(ArgvRefusalCause::BindingMalformed(format!(
+                            "InputText for `{name}` carries no String text"
+                        )))
+                    }
+                }
+            } else if *variant_name == ctx.sym("InputTextList") {
+                match fields_get(fields, ctx.sym("items")).cloned() {
+                    Some(items) => match free_monoid_to_vec(&items) {
+                        Some(vals) => list_value(vals),
+                        None => {
+                            return Err(ArgvRefusalCause::BindingMalformed(format!(
+                                "InputTextList for `{name}` carries no List<String> items"
+                            )))
+                        }
+                    },
+                    None => {
+                        return Err(ArgvRefusalCause::BindingMalformed(format!(
+                            "InputTextList for `{name}` carries no items field"
+                        )))
+                    }
+                }
+            } else {
+                return Err(ArgvRefusalCause::BindingMalformed(format!(
+                    "OperationInputValue for `{name}` is an unknown variant"
+                )));
+            }
+        }
+        other => {
+            return Err(ArgvRefusalCause::BindingMalformed(format!(
+                "OperationInputValue for `{name}` is {}, expected InputText | InputTextList",
+                other.type_label()
+            )))
+        }
+    };
+    Ok((name, bound))
+}
+
+/// Bindings ∪ declared defaults, validated against the operation's OWN declared inputs.
+/// A binding naming an input the operation does not declare is refused rather than
+/// injected — the seed's previous materializer unconditionally injected `package`,
+/// `bin`, `args`, `unit` and `property` into every operation, which is exactly the
+/// channel a generic binder must not keep open.
+fn operation_input_binding_env(
+    bindings: &Value,
+    declared: &[(String, Option<Rc<Node>>)],
+    ctx: &InterpContext,
+) -> Result<HashMap<String, Value>, ArgvRefusalCause> {
+    let Some(items) = free_monoid_to_vec(bindings) else {
+        return Err(ArgvRefusalCause::BindingMalformed(format!(
+            "bindings argument is {}, expected a List<OperationInputBinding>",
+            bindings.type_label()
+        )));
+    };
+    let mut env: HashMap<String, Value> = HashMap::new();
+    for item in items.iter() {
+        let (name, value) = operation_input_binding_entry(item, ctx)?;
+        if !declared
+            .iter()
+            .any(|(declared_name, _)| *declared_name == name)
+        {
+            return Err(ArgvRefusalCause::UndeclaredInputBound(name));
+        }
+        if env.contains_key(&name) {
+            return Err(ArgvRefusalCause::DuplicateInputBinding(name));
+        }
+        env.insert(name, value);
+    }
+    for (name, default) in declared.iter() {
+        if env.contains_key(name) {
+            continue;
+        }
+        if let Some(default_value) = default.as_ref().and_then(declared_default_value) {
+            env.insert(name.clone(), default_value);
+        }
+    }
+    Ok(env)
+}
+
+fn bind_argv_expr(
     node: &Rc<Node>,
-    bindings: &HashMap<String, Value>,
+    env: &HashMap<String, Value>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-) -> Result<Value, String> {
+) -> Result<Value, ArgvRefusalCause> {
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value } => match value.as_ref() {
             LiteralValue::LitStr { value } => Ok(Value::Str(value.clone())),
-            other => Err(format!(
-                "shell argv materialize: unsupported literal {:?}",
-                other
-            )),
+            other => Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
+                "argv element literal is {other:?}, expected a string literal"
+            ))),
         },
         ExprData::ExprVar { .. } => {
             let name = expr_var_name_at(node.clone(), source_indices.clone());
-            bindings
-                .get(&name)
+            env.get(&name)
                 .cloned()
-                .ok_or_else(|| format!("shell argv materialize: unbound param `{name}`"))
+                .ok_or(ArgvRefusalCause::DeclaredInputUnbound(name))
         }
         ExprData::ExprStringInterp => {
             let parts = extract_string_interp_parts(node.clone());
@@ -5510,35 +5816,149 @@ fn materialize_argv_expr_for_bindings(
                 match part.as_ref() {
                     StringPart::Text { value } => result.push_str(value),
                     StringPart::Interpolation { expr } => {
-                        let val =
-                            materialize_argv_expr_for_bindings(expr, bindings, source_indices)?;
-                        result.push_str(&value_to_host_string(&val));
+                        let val = bind_argv_expr(expr, env, source_indices)?;
+                        match &val {
+                            Value::List(_) => {
+                                return Err(ArgvRefusalCause::TokenListInStringPosition(
+                                    expr_var_name_at(expr.clone(), source_indices.clone()),
+                                ))
+                            }
+                            _ => result.push_str(&value_to_host_string(&val)),
+                        }
                     }
                 }
             }
             Ok(Value::Str(result))
         }
-        other => Err(format!(
-            "shell argv materialize: unsupported expr {:?}",
-            other
-        )),
+        _ => Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
+            "argv element is a {} expression; materialization binds declared inputs, it does not evaluate expressions",
+            argv_expr_kind_label(node)
+        ))),
     }
 }
 
-pub fn materialize_shell_argv_for_operation(
-    path: String,
-    service: String,
-    operation: String,
-    param_bindings: HashMap<String, Value>,
-) -> Result<Vec<String>, String> {
-    let (argv_nodes, source_indices) =
-        crate::cli_run::shell_argv_nodes_for_operation(path, service, operation);
+/// Materialize an operation's transport argv by binding its own declared inputs.
+///
+/// The executable position is a construction wall, not a check with a lenient arm:
+/// `argv[0]` must be a string literal in the declaration, so no binding — declared or
+/// not — can decide which program runs.
+pub fn materialize_operation_argv(
+    path: &str,
+    service: &str,
+    operation: &str,
+    bindings: &Value,
+    ctx: &InterpContext,
+) -> Result<Vec<String>, ArgvRefusalCause> {
+    let Some(declaration) =
+        crate::cli_run::shell_transport_operation_declaration(path, service, operation)
+    else {
+        return Err(ArgvRefusalCause::OperationNotFound);
+    };
+    let env = operation_input_binding_env(bindings, &declaration.declared_inputs, ctx)?;
+
+    let Some(executable) = declaration.argv.iter().next() else {
+        return Err(ArgvRefusalCause::ArgvEmpty);
+    };
+    let executable_is_literal = matches!(
+        executable.expr_data.as_ref(),
+        ExprData::ExprLiteral { value } if matches!(value.as_ref(), LiteralValue::LitStr { .. })
+    );
+    if !executable_is_literal {
+        return Err(ArgvRefusalCause::ExecutablePositionNotLiteral(format!(
+            "argv[0] is a {} expression; the executable must be a literal in the declaration",
+            argv_expr_kind_label(executable)
+        )));
+    }
+
     let mut argv: Vec<String> = Vec::new();
-    for node in argv_nodes.iter() {
-        let val = materialize_argv_expr_for_bindings(node, &param_bindings, &source_indices)?;
-        push_shell_argv_tokens(&mut argv, val).map_err(|e| format!("{e:?}"))?;
+    for node in declaration.argv.iter() {
+        let val = bind_argv_expr(node, &env, &declaration.source_indices)?;
+        push_shell_argv_tokens(&mut argv, val).map_err(|e| {
+            ArgvRefusalCause::ArgvExpressionUnsupported(format!("argv token flatten failed: {e:?}"))
+        })?;
     }
     Ok(argv)
+}
+
+fn argv_refusal_cause_value(cause: &ArgvRefusalCause, ctx: &InterpContext) -> Value {
+    let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
+        type_name: ctx.sym("ArgvRefusalCause"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(sorted_fields(fields)),
+    };
+    match cause {
+        ArgvRefusalCause::OperationNotFound => variant("OperationNotFound", vec![]),
+        ArgvRefusalCause::ArgvEmpty => variant("ArgvEmpty", vec![]),
+        ArgvRefusalCause::UndeclaredInputBound(name) => variant(
+            "UndeclaredInputBound",
+            vec![(ctx.sym("name"), Value::Str(name.clone()))],
+        ),
+        ArgvRefusalCause::DuplicateInputBinding(name) => variant(
+            "DuplicateInputBinding",
+            vec![(ctx.sym("name"), Value::Str(name.clone()))],
+        ),
+        ArgvRefusalCause::DeclaredInputUnbound(name) => variant(
+            "DeclaredInputUnbound",
+            vec![(ctx.sym("name"), Value::Str(name.clone()))],
+        ),
+        ArgvRefusalCause::TokenListInStringPosition(name) => variant(
+            "TokenListInStringPosition",
+            vec![(ctx.sym("name"), Value::Str(name.clone()))],
+        ),
+        ArgvRefusalCause::ExecutablePositionNotLiteral(detail) => variant(
+            "ExecutablePositionNotLiteral",
+            vec![(ctx.sym("detail"), Value::Str(detail.clone()))],
+        ),
+        ArgvRefusalCause::ArgvExpressionUnsupported(detail) => variant(
+            "ArgvExpressionUnsupported",
+            vec![(ctx.sym("detail"), Value::Str(detail.clone()))],
+        ),
+        ArgvRefusalCause::BindingMalformed(detail) => variant(
+            "BindingMalformed",
+            vec![(ctx.sym("detail"), Value::Str(detail.clone()))],
+        ),
+    }
+}
+
+fn operation_ref_value(path: &str, service: &str, operation: &str, ctx: &InterpContext) -> Value {
+    Value::Record {
+        type_name: ctx.sym("OperationRef"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("path"), Value::Str(path.to_string())),
+            (ctx.sym("service"), Value::Str(service.to_string())),
+            (ctx.sym("operation"), Value::Str(operation.to_string())),
+        ])),
+    }
+}
+
+fn argv_materialization_value(
+    result: Result<Vec<String>, ArgvRefusalCause>,
+    path: &str,
+    service: &str,
+    operation: &str,
+    ctx: &InterpContext,
+) -> Value {
+    match result {
+        Ok(argv) => Value::Variant {
+            type_name: ctx.sym("ArgvMaterialization"),
+            variant_name: ctx.sym("ArgvMaterialized"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("argv"),
+                list_value(argv.into_iter().map(Value::Str).collect::<Vec<_>>()),
+            )])),
+        },
+        Err(cause) => Value::Variant {
+            type_name: ctx.sym("ArgvMaterialization"),
+            variant_name: ctx.sym("ArgvMaterializationRefused"),
+            fields: Rc::new(sorted_fields(vec![
+                (
+                    ctx.sym("at"),
+                    operation_ref_value(path, service, operation, ctx),
+                ),
+                (ctx.sym("cause"), argv_refusal_cause_value(&cause, ctx)),
+            ])),
+        },
+    }
 }
 
 /// SGR foreground parameters per `SemanticColor`, mirroring the
@@ -5681,6 +6101,64 @@ pub fn output_decision(channel: OutputChannel) -> OutputDecision {
 pub enum ExpectedOutcome {
     ExpectSuccess,
     ExpectFailure,
+    /// The exit code is an OBSERVATION consumed by a typed downstream verdict, not a
+    /// pass/fail judgment of its own — a probe whose non-zero exit means "subject
+    /// absent" rather than "something broke". Renders ambient regardless of code;
+    /// only dispatch failure (the probe could not run) stays anomalous. Admissible
+    /// ONLY where the annotated helper returns a typed observation or verdict, never
+    /// unit — see `gunbc.output_policy` outcome_is_data_note for the guard.
+    OutcomeIsData,
+}
+
+/// The reserved call-site argument through which a caller DECLARES what it expects
+/// an effect to do — the sibling edge on the CALL node (operator decision
+/// 2026-07-25), resolving the open question this file carried at `dispatch_shell`.
+///
+/// It is stripped from the argument list before `build_service_param_env`, so it
+/// never becomes a bound param and therefore never reaches
+/// `content_hash_service_inputs` — which iterates `op_node.params` and looks each up
+/// in `param_env`. The exclusion is structural, not a remembered filter, which is
+/// exactly why a service-op `input {}` was the wrong home: that IS a param, so it
+/// would join the digest and two invocations differing only in what the caller
+/// expected would become different cache identities for the same request.
+///
+/// It is equally NOT a transport property, despite `transport_stdin` /
+/// `transport_response_format` being the nearest local precedent. `dispatch_service_wet`
+/// receives the transport from `op_node.transport.or(service_node.transport)` — the
+/// extdeps service-op DECLARATION, shared by every caller. Hanging the expectation
+/// there would make it a per-operation fact, so a red control and a genuine check
+/// both calling `shell.Test.IsFile` could not differ, and caller policy declared in
+/// extdeps is the DESIGN §3 layer inversion. That shape would have typechecked and
+/// read as green while being wrong in both directions.
+pub const EFFECT_EXPECTATION_ARG: &str = "expect";
+
+/// Read the caller's declared expectation off the reserved argument's value.
+///
+/// Absent is handled by the caller as `ExpectSuccess` — the DECLARED migration
+/// default, behaviour-identical to the untyped `exit != 0` proxy this replaces, so
+/// no existing call site changes meaning. A PRESENT but unreadable value REFUSES
+/// instead of falling back: `gunbc.output_policy` deliberately has no `ExpectAny`
+/// arm, so a value we cannot read is ignorance, and answering it with a default
+/// would be ⊤-as-answer conflated with ⊤-as-ignorance (DESIGN §5 — a failure arm
+/// refuses, never widens).
+fn expectation_from_declared_arg(val: &Value) -> InterpResult<ExpectedOutcome> {
+    match val {
+        Value::Variant { variant_name, .. } => match resolve_sym(*variant_name).as_str() {
+            "ExpectSuccess" => Ok(ExpectedOutcome::ExpectSuccess),
+            "ExpectFailure" => Ok(ExpectedOutcome::ExpectFailure),
+            "OutcomeIsData" => Ok(ExpectedOutcome::OutcomeIsData),
+            other => Err(InterpError::TypeError {
+                msg: format!(
+                    "`{EFFECT_EXPECTATION_ARG}:` must be an ExpectedOutcome (ExpectSuccess | ExpectFailure | OutcomeIsData), got variant `{other}`"
+                ),
+            }),
+        },
+        _ => Err(InterpError::TypeError {
+            msg: format!(
+                "`{EFFECT_EXPECTATION_ARG}:` must be an ExpectedOutcome (ExpectSuccess | ExpectFailure), got a non-variant value"
+            ),
+        }),
+    }
 }
 
 /// Carrier for `gunbc.output_policy.StreamDisposition` — what becomes of an effect's
@@ -5701,7 +6179,7 @@ pub enum StreamDisposition {
 #[derive(Clone)]
 pub struct InstalledEffectStreamPolicy {
     /// Indexed by `stream_policy_index(expected, observed_success)`.
-    pub dispositions: [StreamDisposition; 4],
+    pub dispositions: [StreamDisposition; 6],
     pub subject_line_guard: String,
 }
 
@@ -5714,11 +6192,14 @@ static EFFECT_STREAM_POLICY: std::sync::OnceLock<InstalledEffectStreamPolicy> =
 /// zero", exactly what this file did before the expectation axis existed.
 /// `effect_stream_policy_mirror_matches_dag_authority` pins it to the same golden
 /// the `.dag` witness asserts, so the two cannot drift silently.
-const EFFECT_STREAM_POLICY_FALLBACK: [StreamDisposition; 4] = [
+const EFFECT_STREAM_POLICY_FALLBACK: [StreamDisposition; 6] = [
     StreamDisposition::SummarizeCounts, // ExpectSuccess × observed success
     StreamDisposition::SurfaceContent,  // ExpectSuccess × observed failure
     StreamDisposition::SurfaceContent,  // ExpectFailure × observed success
     StreamDisposition::SummarizeCounts, // ExpectFailure × observed failure
+    StreamDisposition::SummarizeCounts, // OutcomeIsData × observed success
+    StreamDisposition::SummarizeCounts, // OutcomeIsData × observed failure — the exit is
+                                        // an answer, so neither pole is an anomaly
 ];
 
 /// Mirror of `extdeps.github.log_annotations.subject_text_line_guard`, used when no
@@ -5731,6 +6212,8 @@ fn stream_policy_index(expected: ExpectedOutcome, observed_success: bool) -> usi
         (ExpectedOutcome::ExpectSuccess, false) => 1,
         (ExpectedOutcome::ExpectFailure, true) => 2,
         (ExpectedOutcome::ExpectFailure, false) => 3,
+        (ExpectedOutcome::OutcomeIsData, true) => 4,
+        (ExpectedOutcome::OutcomeIsData, false) => 5,
     }
 }
 
@@ -5800,20 +6283,30 @@ pub fn host_trace_grouping_active() -> bool {
             || output_decision(OutputChannel::Instrumentation) != OutputDecision::Suppressed)
 }
 
+/// Tracks an open host-effect group so `group_end` is idempotent — law 4 closes the
+/// group before an Anomaly shell failure, and the batch-end `group_end` must not emit
+/// a second `::endgroup::`.
+static GROUP_OPEN: AtomicBool = AtomicBool::new(false);
+
 /// Open a titled group on stderr — the same stream the host-effect trace lines use,
 /// so the runner folds those lines under the marker. No-op when no syntax is
 /// installed. Pair with `group_end`; the caller must keep the bracket tight (open →
 /// run+join the effectful work → close) and defer non-trace output (PASS/FAIL) until
-/// after `group_end` so it stays OUTSIDE the collapsed section.
+/// after `group_end` so it stays outside the collapsed section.
 pub fn group_begin(title: &str) {
     if let Some(s) = GROUP_SYNTAX.get() {
         eprintln!("{}{}{}", s.open_prefix, title, s.open_suffix);
+        GROUP_OPEN.store(true, Ordering::SeqCst);
     }
 }
 
 /// Close the current group. Emits the close line only when the target defines one
-/// (GitHub Actions); a plain terminal closes implicitly and prints nothing.
+/// (GitHub Actions) and a group is actually open. Idempotent: a second call is a
+/// no-op (law 4 may have already closed for an Anomaly).
 pub fn group_end() {
+    if !GROUP_OPEN.swap(false, Ordering::SeqCst) {
+        return;
+    }
     if let Some(s) = GROUP_SYNTAX.get() {
         if let Some(close) = &s.close_line {
             eprintln!("{close}");
@@ -5832,90 +6325,134 @@ fn trace_emit(channel: OutputChannel, line: &str) {
     }
 }
 
-// The funnel for the ShellTrace channel. Consumes the installed
-// `gunbc.output_policy` ShellTrace decision (Suppressed / Condensed / Full)
-// rather than re-deriving it from verbosity — keeps CI logs readable instead of
-// dumping every `sh -c` script.
-fn render_shell_trace(argv: &[String]) {
-    match output_decision(OutputChannel::ShellTrace) {
-        OutputDecision::Suppressed => {}
-        OutputDecision::Full => eprintln!("[shell] {}", argv.join(" ")),
-        OutputDecision::Condensed => {
-            // Collapse newlines/runs of whitespace into a single readable line,
-            // then truncate so a multiline `sh -c` script is one tidy summary.
-            let collapsed: String = argv
-                .join(" ")
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ");
-            // Fallback column bound (no Viewport at the trace site); the single
-            // authority is `gunbc.output_policy.shell_trace_summary_max_columns`.
-            const MAX: usize = 100;
-            let summary = if collapsed.chars().count() > MAX {
-                let head: String = collapsed.chars().take(MAX).collect();
-                format!("{head}…")
-            } else {
-                collapsed
-            };
-            eprintln!("{}", paint(&format!("  $ {summary}"), sgr::DIM));
-        }
+/// Census hygiene marker for the `[shell]` emit family — kept after the wiring flip so
+/// the observation_emit_census roster cannot go stale.
+pub const SHELL_CENSUS_MARKER: &str = "[shell]";
+
+/// Collapse argv into one readable line — runs of whitespace become a single space —
+/// so a multiline `sh -c` script reads as one command. Used in Failed.error (uncapped:
+/// an anomaly expands fully). Ambient subjects are named intents, not argv.
+fn shell_argv_collapsed(argv: &[String]) -> String {
+    argv.join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn shell_obs_emoji() -> bool {
+    std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+}
+
+fn shell_obs_human_duration(ms: u64) -> String {
+    if ms < 1_000 {
+        format!("{ms}ms")
+    } else if ms < 60_000 {
+        format!("{} seconds", ms / 1_000)
+    } else {
+        format!("{} minutes", ms / 60_000)
     }
 }
 
-fn shell_completion_trace_line(
-    exit_code: i32,
-    stdout_bytes: usize,
-    stderr_bytes: usize,
-    wall: std::time::Duration,
-) -> String {
+/// Mirror of `gunbc.observation_seed_render.shell_effect_begin_line`.
+pub fn render_shell_effect_begin_line_mirror(intent: &str, emoji: bool) -> String {
+    let _ = SHELL_CENSUS_MARKER;
+    let glyph = if emoji { "🔄" } else { "◐" };
+    format!("{glyph} started {intent}")
+}
+
+/// Mirror of `gunbc.observation_seed_render.shell_effect_done_line`.
+pub fn render_shell_effect_done_line_mirror(intent: &str, elapsed_ms: u64, emoji: bool) -> String {
+    let _ = SHELL_CENSUS_MARKER;
+    let glyph = if emoji { "✅" } else { "✓" };
     format!(
-        "[shell] done exit={exit_code} stdout={stdout_bytes} stderr={stderr_bytes} bytes wall={:.3}s",
-        wall.as_secs_f64()
+        "{glyph} {intent} done in {}",
+        shell_obs_human_duration(elapsed_ms)
     )
 }
 
-/// Post-wait completion trace for every shell transport: exit, stdout/stderr bytes,
-/// spawn-to-wait wall seconds. Pairs with `render_shell_trace` (pre-spawn).
+/// Mirror of `gunbc.observation_seed_render.shell_effect_failed_line`.
+/// Subject is the named intent; `argv_collapsed` (WITHOUT `$ `) feeds Failed.error only.
+pub fn render_shell_effect_failed_line_mirror(
+    intent: &str,
+    argv_collapsed: &str,
+    exit_code: u64,
+    elapsed_ms: u64,
+    emoji: bool,
+) -> String {
+    let _ = SHELL_CENSUS_MARKER;
+    let glyph = if emoji { "❌" } else { "✗" };
+    format!(
+        "{glyph} {intent} failed: $ {argv_collapsed} (exit={exit_code}) in {}",
+        shell_obs_human_duration(elapsed_ms)
+    )
+}
+
+// Ambient shell Begin — named intent subject, ShellTrace-gated (Suppressed at Normal).
+fn render_shell_trace(intent: &str) {
+    if output_decision(OutputChannel::ShellTrace) == OutputDecision::Suppressed {
+        return;
+    }
+    let line = render_shell_effect_begin_line_mirror(intent, shell_obs_emoji());
+    trace_emit(OutputChannel::ShellTrace, &line);
+}
+
+/// Post-wait completion: Ambient Done via ShellTrace, or Anomaly Failed via
+/// `effect_stream_disposition` alone (never silenced by ShellTrace Suppressed).
+/// Law 4: `group_end` before an Anomaly so it lands OutsideGroup.
 ///
-/// Whether the captured stderr CONTENT is surfaced (tail-bounded) or left as a byte
-/// count is the `.dag` authority's `effect_stream_disposition`, keyed on what the
-/// caller DECLARED this effect would do: divergence surfaces, agreement counts. At
-/// the migration default `ExpectSuccess` that is the previous behaviour exactly —
-/// content on non-zero exit (a failing op whose error text is discarded is an
-/// undiagnosable failure, DESIGN §5; a whole self-host build failure was once
-/// invisible in CI because only `stderr=N bytes` was logged), counts on success so
-/// benign compiler warnings do not drown the trace. What the expectation axis adds
-/// is the other direction: an effect declared `ExpectFailure` that SUCCEEDS is
-/// divergence, and now surfaces instead of passing silently.
+/// Subject is the typed service.op intent. Failed.error carries self-describing
+/// `$ <argv> (exit=N)`; empty stderr still surfaces via the Failed line alone.
 fn render_shell_completion_trace(
     expected: ExpectedOutcome,
     exit_code: i32,
-    stdout_bytes: usize,
+    _stdout_bytes: usize,
     stderr: &[u8],
     wall: std::time::Duration,
+    argv: &[String],
+    intent: &str,
 ) {
-    trace_emit(
-        OutputChannel::ShellTrace,
-        &shell_completion_trace_line(exit_code, stdout_bytes, stderr.len(), wall),
-    );
     let disposition = effect_stream_disposition(expected, exit_code);
-    if let Some(block) = shell_completion_stderr_trace_block(disposition, exit_code, stderr) {
-        trace_emit(OutputChannel::ShellTrace, &block);
+    let emoji = shell_obs_emoji();
+    let elapsed_ms = wall.as_millis() as u64;
+    let collapsed = shell_argv_collapsed(argv);
+
+    if disposition == StreamDisposition::SurfaceContent {
+        group_end();
+        let code = if exit_code < 0 {
+            exit_code.unsigned_abs() as u64
+        } else {
+            exit_code as u64
+        };
+        let line =
+            render_shell_effect_failed_line_mirror(intent, &collapsed, code, elapsed_ms, emoji);
+        eprintln!("{line}");
+        if let Some(block) = shell_completion_stderr_content(stderr) {
+            eprintln!("{block}");
+        }
+        return;
     }
+
+    if output_decision(OutputChannel::ShellTrace) == OutputDecision::Suppressed {
+        return;
+    }
+    let line = render_shell_effect_done_line_mirror(intent, elapsed_ms, emoji);
+    trace_emit(OutputChannel::ShellTrace, &line);
 }
 
-/// Pure tail-bounding of captured stderr for the completion trace. Returns `None` when the
-/// disposition is not `SurfaceContent`, or when there is no stderr to surface; `Some(block)`
-/// is the `[shell] stderr` diagnostic, its content tail-bounded with a leading elision marker
-/// when it exceeds the cap and every subject line guarded so relayed text cannot mint workflow
-/// commands in the parent run. Kept pure (no `trace_emit`) so the surfacing decision is
-/// unit-testable with a RED control.
-fn shell_completion_stderr_trace_block(
-    disposition: StreamDisposition,
-    exit_code: i32,
-    stderr: &[u8],
-) -> Option<String> {
-    if disposition != StreamDisposition::SurfaceContent || stderr.is_empty() {
+/// Whether a SurfaceContent failure should emit a Failed observation line.
+/// Pure: disposition alone — never the ShellTrace channel. Empty stderr still
+/// returns true (the Failed line is the sole signal). RED control for the
+/// installed-policy path: pair with `effect_stream_disposition`.
+fn shell_failure_surfaces(disposition: StreamDisposition) -> bool {
+    disposition == StreamDisposition::SurfaceContent
+}
+
+/// Pure tail-bounding of captured stderr that follows a Failed observation line.
+/// Returns `None` when there is no stderr to surface; `Some(block)` is the content
+/// only (the Failed line already carries `$ argv (exit=N)`). Subject lines are
+/// guarded so relayed text cannot mint workflow commands in the parent run.
+fn shell_completion_stderr_content(stderr: &[u8]) -> Option<String> {
+    if stderr.is_empty() {
         return None;
     }
     const MAX_STDERR_TRACE: usize = 16384;
@@ -5933,11 +6470,9 @@ fn shell_completion_stderr_trace_block(
         String::new()
     };
     Some(format!(
-        "[shell] stderr (exit={exit_code}):\n{prefix}{}",
+        "{prefix}{}",
         // Trailing newlines are stripped before guarding so a subject whose stderr
         // ends in `\n` (almost all of them) does not render a stray guard-only line.
-        // This is presentation of the block, not a change to the guard rule: the
-        // .dag authority still prefixes every line of whatever text it is given.
         neutralize_workflow_commands(String::from_utf8_lossy(tail).trim_end_matches('\n'))
     ))
 }
@@ -6085,17 +6620,13 @@ fn dispatch_shell(
     transport: &Rc<Node>,
     param_env: &Rc<Env>,
     ctx: &InterpContext,
+    intent: &str,
+    expected: ExpectedOutcome,
 ) -> InterpResult<ShellResult> {
-    // Migration default: every effect issues as `ExpectSuccess`, which makes the
-    // dispatch below behaviour-identical to the untyped `exit != 0` proxy it
-    // replaces. This single binding is the seam a declared per-call-site
-    // expectation threads through, so probes can annotate `ExpectFailure`; where
-    // that declaration LIVES is still open (a service-op `input {}` would put it in
-    // `param_env` here, but it would also join `content_hash_service_inputs`, and
-    // two invocations differing only in what the caller expected are the same
-    // request — a cache-identity impurity, plus caller policy declared in extdeps
-    // is the layer inversion DESIGN §3 names).
-    let expected = ExpectedOutcome::ExpectSuccess;
+    // `expected` is the caller's DECLARED expectation, threaded from the sibling edge
+    // on the call node (EFFECT_EXPECTATION_ARG). Absent at the call site it is
+    // ExpectSuccess, which keeps every undeclared site behaviour-identical to the
+    // untyped `exit != 0` proxy this replaces.
     let argv_nodes = &transport.children;
     let mut argv: Vec<String> = Vec::new();
     for node in argv_nodes.iter() {
@@ -6109,7 +6640,7 @@ fn dispatch_shell(
         });
     }
 
-    render_shell_trace(&argv);
+    render_shell_trace(intent);
 
     // Arg-size wall: a single argv token over the host MAX_ARG_STRLEN would make
     // the spawn below die with an opaque `os error 7` (E2BIG). Refuse here with a
@@ -6167,6 +6698,8 @@ fn dispatch_shell(
             output.stdout.len(),
             &output.stderr,
             wall_start.elapsed(),
+            &argv,
+            intent,
         );
         output
     } else {
@@ -6188,6 +6721,8 @@ fn dispatch_shell(
             output.stdout.len(),
             &output.stderr,
             wall_start.elapsed(),
+            &argv,
+            intent,
         );
         output
     };
@@ -7254,7 +7789,14 @@ fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResu
     }
 
     let args = [(Some("path".to_string()), Value::Str(path))];
-    let result = eval_service_call("Filesystem", "Read", &args, &Env::empty(), ctx)?;
+    let result = eval_service_call(
+        "Filesystem",
+        "Read",
+        &args,
+        &Env::empty(),
+        ctx,
+        ExpectedOutcome::ExpectSuccess,
+    )?;
 
     let (content, success, error) = match result {
         Value::Record { fields, .. } => {
@@ -8359,7 +8901,10 @@ fn eval_builtin_inner(
         },
 
         "lookup" => match positional.as_slice() {
-            [map, key] => Ok(Some(raw_map_lookup(map, key, &Env::empty(), ctx)?)),
+            [map, key] => {
+                let raw = raw_map_lookup(map, key, &Env::empty(), ctx)?;
+                Ok(Some(map_lookup_as_optional(raw, ctx)))
+            }
             _ => Ok(None),
         },
 
@@ -8725,57 +9270,62 @@ fn eval_builtin_inner(
             )))
         }
 
-        "shell_materialize_argv_for_operation" => {
+        "shell_materialize_operation_argv" => {
             let path = expect_str(
                 positional.first().copied(),
-                "shell_materialize_argv_for_operation",
+                "shell_materialize_operation_argv",
             )?;
             let service = expect_str(
                 positional.get(1).copied(),
-                "shell_materialize_argv_for_operation",
+                "shell_materialize_operation_argv",
             )?;
             let operation = expect_str(
                 positional.get(2).copied(),
-                "shell_materialize_argv_for_operation",
+                "shell_materialize_operation_argv",
             )?;
-            let package = expect_str(
-                positional.get(3).copied(),
-                "shell_materialize_argv_for_operation",
-            )?;
-            let bin = expect_str(
-                positional.get(4).copied(),
-                "shell_materialize_argv_for_operation",
-            )?;
-            let extra_args = expect_str_list(
-                positional.get(5).copied(),
-                "shell_materialize_argv_for_operation",
-            )?;
-            let unit = positional
-                .get(6)
-                .and_then(|v| match v {
-                    Value::Str(s) => Some(s.clone()),
-                    _ => None,
-                })
-                .unwrap_or_default();
-            let mut param_bindings = HashMap::new();
-            param_bindings.insert("package".to_string(), Value::Str(package));
-            param_bindings.insert("bin".to_string(), Value::Str(bin.clone()));
-            param_bindings.insert(
-                "args".to_string(),
-                list_value(extra_args.into_iter().map(Value::Str).collect::<Vec<_>>()),
-            );
-            if !unit.is_empty() {
-                param_bindings.insert("unit".to_string(), Value::Str(unit));
-            }
-            if !bin.is_empty() {
-                param_bindings.insert("property".to_string(), Value::Str(bin));
-            }
-            let argv =
-                materialize_shell_argv_for_operation(path, service, operation, param_bindings)
-                    .map_err(|e| InterpError::TypeError { msg: e })?;
-            Ok(Some(list_value(
-                argv.into_iter().map(Value::Str).collect::<Vec<_>>(),
+            let bindings = positional
+                .get(3)
+                .copied()
+                .cloned()
+                .unwrap_or_else(|| list_value(Vec::<Value>::new()));
+            let result = materialize_operation_argv(&path, &service, &operation, &bindings, ctx);
+            Ok(Some(argv_materialization_value(
+                result, &path, &service, &operation, ctx,
             )))
+        }
+
+        "shell_transport_operation_rows" => {
+            let mut items: Vec<Value> = Vec::new();
+            for row in crate::cli_run::shell_transport_operation_rows() {
+                items.push(Value::Record {
+                    type_name: ctx.sym("ShellTransportOperationRow"),
+                    fields: Rc::new(sorted_fields(vec![
+                        (
+                            ctx.sym("at"),
+                            operation_ref_value(&row.path, &row.service, &row.operation, ctx),
+                        ),
+                        (
+                            ctx.sym("declared_inputs"),
+                            list_value(
+                                row.declared_inputs
+                                    .into_iter()
+                                    .map(Value::Str)
+                                    .collect::<Vec<_>>(),
+                            ),
+                        ),
+                        (
+                            ctx.sym("argv_input_refs"),
+                            list_value(
+                                row.argv_input_refs
+                                    .into_iter()
+                                    .map(Value::Str)
+                                    .collect::<Vec<_>>(),
+                            ),
+                        ),
+                    ])),
+                });
+            }
+            Ok(Some(list_value(items)))
         }
 
         "extdeps_qualified_name_resolves_in_derived_module_set" => {
@@ -9900,50 +10450,30 @@ fn is_map_lookup_receiver(val: &Value) -> bool {
     }
 }
 
-fn raw_map_lookup_witness(
-    map: &Value,
-    key: &Value,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
-    match map {
-        Value::Map(m) => match CanonKey::new(key.clone()) {
-            Some(ck) => match m.get(&ck) {
-                Some(v) => Ok(witness_holds(v.clone(), ctx)),
-                None => Ok(witness_violates(
-                    native_map_absent_diagnostic_value(ctx),
-                    ctx,
-                )),
-            },
-            None => Ok(witness_violates(
-                native_map_absent_diagnostic_value(ctx),
-                ctx,
-            )),
-        },
-        _ => raw_map_lookup(map, key, env, ctx),
-    }
-}
-
 fn raw_map_lookup(
     map: &Value,
     key: &Value,
     env: &Rc<Env>,
     ctx: &InterpContext,
-) -> InterpResult<Value> {
+) -> InterpResult<RawMapLookup> {
     match map {
         Value::Map(m) => match CanonKey::new(key.clone()) {
-            Some(ck) => Ok(m.get(&ck).cloned().unwrap_or(Value::Null)),
-            None => Ok(Value::Null),
+            Some(ck) => Ok(RawMapLookup::NeedsWrap(
+                m.get(&ck).cloned().unwrap_or(Value::Null),
+            )),
+            None => Ok(RawMapLookup::NeedsWrap(Value::Null)),
         },
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
             let lookup_sym = ctx.sym("lookup");
             match fields_get(fields, lookup_sym) {
-                Some(lookup @ Value::Closure { .. }) => {
-                    apply_closure(lookup, &[key.clone()], env, ctx)
-                }
+                Some(lookup @ Value::Closure { .. }) => Ok(RawMapLookup::AlreadyOptional(
+                    apply_closure(lookup, &[key.clone()], env, ctx)?,
+                )),
                 Some(Value::Fn { node }) => {
                     let named = vec![(None, key.clone())];
-                    call_function(ctx, node, &named, env)
+                    Ok(RawMapLookup::AlreadyOptional(call_function(
+                        ctx, node, &named, env,
+                    )?))
                 }
                 Some(_) => Err(InterpError::TypeError {
                     msg: "Map.lookup field is not callable".to_string(),
@@ -9951,9 +10481,11 @@ fn raw_map_lookup(
                 None => match key {
                     Value::Str(s) => {
                         let k = ctx.sym(s);
-                        Ok(fields_get(fields, k).cloned().unwrap_or(Value::Null))
+                        Ok(RawMapLookup::NeedsWrap(
+                            fields_get(fields, k).cloned().unwrap_or(Value::Null),
+                        ))
                     }
-                    _ => Ok(Value::Null),
+                    _ => Ok(RawMapLookup::NeedsWrap(Value::Null)),
                 },
             }
         }
@@ -10284,13 +10816,16 @@ mod dispatch_rest_decision_tests {
 mod shell_completion_trace_tests {
     use super::hermetic_checkout_read_disposition_under;
     use super::neutralize_workflow_commands;
-    use super::shell_completion_stderr_trace_block;
-    use super::shell_completion_trace_line;
+    use super::render_shell_effect_begin_line_mirror;
+    use super::render_shell_effect_done_line_mirror;
+    use super::render_shell_effect_failed_line_mirror;
+    use super::shell_argv_collapsed;
+    use super::shell_completion_stderr_content;
+    use super::shell_failure_surfaces;
     use super::{
         effect_stream_disposition, ExpectedOutcome, StreamDisposition,
         EFFECT_STREAM_POLICY_FALLBACK, SUBJECT_LINE_GUARD_FALLBACK,
     };
-    use std::time::Duration;
 
     /// Convenience for the tests below: the disposition a failing effect gets when
     /// its caller declared success — the migration default, and what every call
@@ -10299,61 +10834,95 @@ mod shell_completion_trace_tests {
         StreamDisposition::SurfaceContent
     }
 
+    fn av(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|s| s.to_string()).collect()
+    }
+
     #[test]
-    fn shell_completion_trace_line_formats_exit_stdout_stderr_wall() {
-        let line = shell_completion_trace_line(0, 1234, 56, Duration::from_millis(5150));
+    fn shell_effect_begin_mirror_formats_started_subject() {
+        let line = render_shell_effect_begin_line_mirror("shell.Exec.Run", true);
+        assert_eq!(line, "🔄 started shell.Exec.Run");
+        let unicode = render_shell_effect_begin_line_mirror("git.Core.HeadCommit", false);
+        assert_eq!(unicode, "◐ started git.Core.HeadCommit");
+    }
+
+    #[test]
+    fn shell_effect_done_mirror_formats_duration() {
+        let line = render_shell_effect_done_line_mirror("shell.Exec.Run", 5150, true);
+        assert_eq!(line, "✅ shell.Exec.Run done in 5 seconds");
+    }
+
+    #[test]
+    fn shell_effect_failed_mirror_is_self_describing() {
+        // Failed.error carries `$ <argv> (exit=N)` so the line stands alone when
+        // stderr is empty (the common CI miss).
+        let line =
+            render_shell_effect_failed_line_mirror("shell.Exec.Run", "echo hi", 1, 2000, true);
         assert_eq!(
             line,
-            "[shell] done exit=0 stdout=1234 stderr=56 bytes wall=5.150s"
+            "❌ shell.Exec.Run failed: $ echo hi (exit=1) in 2 seconds"
         );
     }
 
     #[test]
-    fn stderr_block_surfaces_content_on_nonzero_exit() {
-        let block =
-            shell_completion_stderr_trace_block(surfacing(), 101, b"error: manifest not found\n")
-                .expect("non-zero exit with stderr must surface a diagnostic block");
-        assert!(block.starts_with("[shell] stderr (exit=101):\n"));
+    fn shell_argv_collapsed_squeezes_whitespace() {
+        assert_eq!(
+            shell_argv_collapsed(&av(&["sh", "-c", "echo  hi\nthere"])),
+            "sh -c echo hi there"
+        );
+    }
+
+    #[test]
+    fn stderr_content_surfaces_body_on_nonzero_exit() {
+        let block = shell_completion_stderr_content(b"error: manifest not found\n")
+            .expect("non-empty stderr must surface a content block");
         assert!(block.contains("error: manifest not found"));
+        assert!(!block.contains("[shell]"));
     }
 
     #[test]
-    fn stderr_block_none_when_disposition_is_not_surface_content() {
-        // RED control: the block is gated on the .dag disposition, not on a local
-        // `exit != 0` re-derivation — a non-surfacing disposition yields nothing even
-        // with a non-zero exit and non-empty stderr, and an empty stderr yields
-        // nothing even when the disposition says surface.
-        assert_eq!(
-            shell_completion_stderr_trace_block(
-                StreamDisposition::SummarizeCounts,
-                1,
-                b"error: real failure\n"
-            ),
-            None
-        );
-        assert_eq!(
-            shell_completion_stderr_trace_block(
-                StreamDisposition::StreamSuppressed,
-                1,
-                b"error: real failure\n"
-            ),
-            None
-        );
-        assert_eq!(
-            shell_completion_stderr_trace_block(surfacing(), 1, b""),
-            None
-        );
+    fn stderr_content_none_when_empty() {
+        assert_eq!(shell_completion_stderr_content(b""), None);
     }
 
     #[test]
-    fn stderr_block_tail_bounds_and_marks_elision() {
+    fn failure_surfaces_from_disposition_alone_not_channel() {
+        // RED control: the Failed observation is gated on the .dag disposition, not
+        // on a local `exit != 0` re-derivation — and empty stderr does NOT suppress it
+        // (the Failed line is the sole signal once Ambient counts are observation Done).
+        assert!(shell_failure_surfaces(surfacing()));
+        assert!(!shell_failure_surfaces(StreamDisposition::SummarizeCounts));
+        assert!(!shell_failure_surfaces(StreamDisposition::StreamSuppressed));
+    }
+
+    #[test]
+    fn at_normal_a_failing_effect_surfaces_its_command_a_passing_one_is_silent() {
+        // Composes the .dag disposition (ExpectSuccess × exit → the Normal four
+        // corners via the uninstalled fallback that mirrors Normal) with the
+        // failure-surfaces predicate. GREEN: passing → SummarizeCounts → silent.
+        // Discriminating RED: failing → SurfaceContent → Failed line must fire
+        // even with empty stderr (self-describing `$ argv`).
+        assert!(!shell_failure_surfaces(effect_stream_disposition(
+            ExpectedOutcome::ExpectSuccess,
+            0
+        )));
+        assert!(shell_failure_surfaces(effect_stream_disposition(
+            ExpectedOutcome::ExpectSuccess,
+            1
+        )));
+        let collapsed = shell_argv_collapsed(&av(&["git", "rev-parse", "--show-toplevel"]));
+        let line =
+            render_shell_effect_failed_line_mirror("git.Core.Toplevel", &collapsed, 1, 0, false);
+        assert!(line.contains("failed: $ git rev-parse --show-toplevel (exit=1)"));
+        assert!(line.starts_with("✗ git.Core.Toplevel failed:"));
+        assert_eq!(shell_completion_stderr_content(b""), None);
+    }
+
+    #[test]
+    fn stderr_content_tail_bounds_and_marks_elision() {
         let big = vec![b'x'; 16384 + 500];
-        let block = shell_completion_stderr_trace_block(surfacing(), 1, &big)
-            .expect("oversized stderr surfaces");
+        let block = shell_completion_stderr_content(&big).expect("oversized stderr surfaces");
         assert!(block.contains("<500 earlier stderr bytes elided>"));
-        // Only the 16384-byte tail is carried, not the full 16884-byte body: the trailing
-        // contiguous run of stderr bytes is exactly the cap. The guard prefix is a
-        // line-initial insertion, so it does not disturb the trailing run.
         assert_eq!(block.chars().rev().take_while(|c| *c == 'x').count(), 16384);
     }
 
@@ -10362,13 +10931,11 @@ mod shell_completion_trace_tests {
         // The priced incident: a child's stderr legitimately carrying `::error::`
         // annotated the PARENT run as failing. Every relayed line is guarded, so no
         // subject text can occupy the line-initial `::` position GitHub parses.
-        let block = shell_completion_stderr_trace_block(
-            surfacing(),
-            1,
+        let block = shell_completion_stderr_content(
             b"::error::build verification: artifact absent\n::warning::next\n",
         )
         .expect("failing effect surfaces its stderr");
-        for line in block.lines().skip(1) {
+        for line in block.lines() {
             assert!(
                 !line.trim_start().starts_with("::"),
                 "relayed subject line is command-bearing: {line:?}"
@@ -10379,7 +10946,7 @@ mod shell_completion_trace_tests {
 
     #[test]
     fn effect_stream_policy_mirror_matches_dag_authority() {
-        // Mirror pin for the uninstalled fallback: these are the four corners the
+        // Mirror pin for the uninstalled fallback: these are the six corners the
         // .dag witness `w_shell_trace_stream_policy_projects_the_four_corners`
         // asserts at Normal verbosity, and the guard literal
         // `extdeps.github.log_annotations.subject_text_line_guard` publishes. If the
@@ -10391,6 +10958,9 @@ mod shell_completion_trace_tests {
                 StreamDisposition::SummarizeCounts,
                 StreamDisposition::SurfaceContent,
                 StreamDisposition::SurfaceContent,
+                StreamDisposition::SummarizeCounts,
+                // OutcomeIsData: neither pole is an anomaly — the exit is an answer.
+                StreamDisposition::SummarizeCounts,
                 StreamDisposition::SummarizeCounts,
             ]
         );
@@ -10418,15 +10988,6 @@ mod shell_completion_trace_tests {
         assert_eq!(
             effect_stream_disposition(ExpectedOutcome::ExpectFailure, 0),
             StreamDisposition::SurfaceContent
-        );
-    }
-
-    #[test]
-    fn shell_completion_trace_line_surfaces_nonzero_exit() {
-        let line = shell_completion_trace_line(1, 0, 4096, Duration::from_secs(2));
-        assert_eq!(
-            line,
-            "[shell] done exit=1 stdout=0 stderr=4096 bytes wall=2.000s"
         );
     }
 
@@ -10635,8 +11196,8 @@ mod argv_arg_limit_test {
     use crate::v1_std_core::{make_span, make_text_part_node, shell_transport_node, Node};
 
     use super::{
-        argv_arg_limit_refusal, dispatch_shell, Env, ExecutionMode, InterpContext, InterpError,
-        HOST_ARG_MAX_STRLEN_BYTES,
+        argv_arg_limit_refusal, dispatch_shell, Env, ExecutionMode, ExpectedOutcome, InterpContext,
+        InterpError, HOST_ARG_MAX_STRLEN_BYTES,
     };
 
     fn argv_limit_test_context() -> InterpContext {
@@ -10726,7 +11287,13 @@ mod argv_arg_limit_test {
         let ctx = argv_limit_test_context();
         let transport = shell_check_style_transport(&"x".repeat(HOST_ARG_MAX_STRLEN_BYTES + 1));
         let env = Env::empty();
-        match dispatch_shell(&transport, &env, &ctx) {
+        match dispatch_shell(
+            &transport,
+            &env,
+            &ctx,
+            "shell.Exec.Check",
+            ExpectedOutcome::ExpectSuccess,
+        ) {
             Err(InterpError::ArgvExceedsHostArgMax {
                 actual_bytes,
                 limit_bytes,
@@ -10750,7 +11317,13 @@ mod argv_arg_limit_test {
         let ctx = argv_limit_test_context();
         let transport = shell_check_style_transport("true");
         let env = Env::empty();
-        match dispatch_shell(&transport, &env, &ctx) {
+        match dispatch_shell(
+            &transport,
+            &env,
+            &ctx,
+            "shell.Exec.Check",
+            ExpectedOutcome::ExpectSuccess,
+        ) {
             Err(InterpError::ArgvExceedsHostArgMax { .. }) => {
                 panic!("small argv must not trip the arg-size wall")
             }

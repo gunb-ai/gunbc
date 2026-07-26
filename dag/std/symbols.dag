@@ -41,6 +41,17 @@ type SymbolId
   | StatusWarning
   | StatusInfo
 
+  | StatusRefused
+  | StatusBlocked
+  | StatusTimedOut
+  | StatusDwell
+  | StatusFinal
+  | StatusPulse
+
+  | ChangeAdded
+  | ChangeModified
+  | ChangeRemoved
+
   | DataList
   | DataMap
   | DataSecret

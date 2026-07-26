@@ -20,13 +20,18 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.std.collection {
-  Absent,
   List,
   Map,
-  Present,
   list_at_optional,
   map_get,
   map_insert
+}
+import v2.std.optional {
+  Optional,
+  Absent,
+  Present,
+  optional_present,
+  optional_absent
 }
 import v2.std.witness { Holds, Witness }
 import v2.std.diagnostic {
@@ -494,14 +499,12 @@ fn lazy_arm_tree_root(call: Node, expected: Node) -> Node {
   }
 }
 
-fn lazy_arm_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  Holds {
-    value: claim_inferred_facts_from_nodes(
+fn lazy_arm_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  optional_present(value: claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: lazy_arm_i64(),
       descent: termination_proof_witness_for_node(n: key)
-    )
-  }
+    ))
 }
 
 fn lazy_arm_admitted_tree(root: Node) -> InferredTree {

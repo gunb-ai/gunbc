@@ -6,7 +6,17 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.determinism { Determinism, Deterministic, NonDeterministic, determinism_compose }
 import std.algebra { Cons, Empty }
 import v2.std.determinism { DeterminismFact }
-import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
+import v2.std.collection {
+  List,
+  list_at_optional
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, NonEmptyDiagnostics, Outcome, Rejected, Unavailable, node_locus, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Edge, Node, NodeFold, Symbol, TypeNode, fold_node }

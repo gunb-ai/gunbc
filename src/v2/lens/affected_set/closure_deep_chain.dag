@@ -59,7 +59,20 @@ data closure_deep_chain_root: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data closure_deep_chain_vertex_count: Int = 8
+data closure_deep_chain_vertices: List<Node> = [
+  closure_deep_chain_root,
+  closure_deep_chain_n01,
+  closure_deep_chain_n02,
+  closure_deep_chain_n03,
+  closure_deep_chain_n04,
+  closure_deep_chain_n05,
+  closure_deep_chain_n06,
+  closure_deep_chain_leaf
+]
+
+fn closure_deep_chain_vertex_count() -> Int {
+  length(xs: closure_deep_chain_vertices)
+}
 
 data closure_deep_chain_dependency_reading: List<DependencyView> = dependency_lens(root: closure_deep_chain_root)
 
@@ -118,7 +131,7 @@ fn closure_deep_chain_root_marks_leaf_holds() -> Bool {
     item: closure_deep_chain_leaf,
     eq: fn(left, right) { left == right }
   )
-    && (length(xs: closure.frontier) == closure_deep_chain_vertex_count)
+    && (length(xs: closure.frontier) == closure_deep_chain_vertex_count())
 }
 
 fn closure_deep_chain_reverse_pass_order_marks_leaf_holds() -> Bool {
@@ -131,7 +144,7 @@ fn closure_deep_chain_reverse_pass_order_marks_leaf_holds() -> Bool {
     item: closure_deep_chain_leaf,
     eq: fn(left, right) { left == right }
   )
-    && (length(xs: closure.frontier) == closure_deep_chain_vertex_count)
+    && (length(xs: closure.frontier) == closure_deep_chain_vertex_count())
 }
 
 fn closure_deep_chain_claim_holds() -> Bool {
