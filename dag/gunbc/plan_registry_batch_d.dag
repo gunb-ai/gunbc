@@ -8,6 +8,7 @@ import gunbc.plans.fold_ergonomics { fold_ergonomics_plan }
 import gunbc.plans.m4_universal_hermetic_corpus { m4_universal_hermetic_corpus_plan }
 import gunbc.plans.wiring_liveness_preflight { wiring_liveness_preflight_plan }
 import gunbc.plans.interpreter_kernel_d { interpreter_kernel_d_plan }
+import gunbc.plans.v1_interpreter_deletion_architecture_audit { v1_interpreter_deletion_architecture_audit_plan }
 
 data batch_d_plans: List<Plan> = [
   emission_ingestion_inverse_plan,
@@ -16,5 +17,6 @@ data batch_d_plans: List<Plan> = [
   fold_ergonomics_plan,
   m4_universal_hermetic_corpus_plan,
   wiring_liveness_preflight_plan,
-  interpreter_kernel_d_plan
+  interpreter_kernel_d_plan,
+  v1_interpreter_deletion_architecture_audit_plan
 ]
