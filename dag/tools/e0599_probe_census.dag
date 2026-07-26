@@ -1,11 +1,41 @@
 module tools.e0599_probe_census
 
-import std.types { Bool, Int, String }
+import std.types { Bool, Int, String, list_length }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.error_primitives { Result, Ok, Err }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 type E0599LogShapeParseError = UnknownFailureShapeLabel { label: String }
+
+type E0599CensusError
+  = CensusPathsBlobEmpty
+  | CensusLogReadFailed { path: String, error: String }
+  | CensusRosterMismatch { missing: String, extra: String }
+  | CensusDuplicateModule { module: String }
+  | CensusShapeParse { inner: E0599LogShapeParseError }
+
+type E0599ClassifiedRow {
+  shape_str: String,
+  method: String,
+  receiver: String,
+}
+
+type E0599CountedTuple {
+  shape_str: String,
+  method: String,
+  receiver: String,
+  count: Int,
+}
+
+type E0599ModuleLogPathRow {
+  module: String,
+  path: String,
+}
+
+type E0599ModuleLogBundle {
+  module: String,
+  log_text: String,
+}
 
 type E0599FailureShape
   = MissingMethod
@@ -33,7 +63,7 @@ type E0599RootFamilyRow {
   description: String,
 }
 
-data e0599_probe_census_note: String = "Single authority for canonical-seven E0599 per-error census: failure-shape patterns (rustc message text), root-family rollup (three mechanistic roots + tails), and module roster. Realization: docs/probes/e0599_census_extract.sh (SCAFFOLD) calls e0599_write_message_pattern_rows_blob, e0599_write_canonical_seven_module_log_labels_blob, and e0599_write_root_family_labels_from_blob (ProcessExit exports) over PROBE_KEEP_LOG_DIR/*.cargo.log; aggregate output refuses unless inputs match e0599_canonical_seven_modules exactly. Frozen receipt docs/probes/e0599_canonical_seven_census_2026-07-26.tsv is output, not authority. dissolve-on: gunbc bash-emit #5828 / modeled cssl_probe transport or self_host_curated_seed_linked_harness probe classifier row."
+data e0599_probe_census_note: String = "Single authority for canonical-seven E0599 per-error census: failure-shape classification, module roster, root-family rollup, per-module and aggregate census folds, and TSV render. Realization: docs/probes/e0599_census_extract.sh (SCAFFOLD) transports module\\tlog_path rows to e0599_write_census_report_from_paths_file; aggregate refuses unless inputs match e0599_canonical_seven_modules exactly. Frozen receipt docs/probes/e0599_canonical_seven_census_2026-07-26.tsv is output, not authority. dissolve-on: gunbc bash-emit #5828 / modeled cssl_probe transport or self_host_curated_seed_linked_harness probe classifier row."
 
 data e0599_baseline_receipt: String = "docs/probes/refresh_canonical_seven_2026-07-26.tsv"
 
@@ -270,6 +300,612 @@ fn e0599_canonical_seven_module_log_labels_blob() -> String {
       concat(acc, concat("\n", line))
     }
   })
+}
+
+fn e0599_census_error_message(err: E0599CensusError) -> String {
+  match err {
+    CensusPathsBlobEmpty => "e0599_census: refused empty paths blob"
+    CensusLogReadFailed { path: path, error: error } =>
+      concat(concat("e0599_census: read failed for ", path), concat(": ", error))
+    CensusRosterMismatch { missing: missing, extra: extra } =>
+      concat(
+        "e0599_census: canonical-seven roster mismatch: missing=",
+        concat(missing, concat(" extra=", extra))
+      )
+    CensusDuplicateModule { module: module } =>
+      concat("e0599_census: duplicate cargo.log module label: ", module)
+    CensusShapeParse { inner: inner } => e0599_log_shape_parse_error_message(err: inner)
+  }
+}
+
+fn e0599_after_prefix(s: String, prefix: String) -> String {
+  match s |> split(delimiter: prefix) |> skip(n: 1) |> first {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+fn e0599_before_suffix(s: String, suffix: String) -> String {
+  match s |> split(delimiter: suffix) |> first {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+fn e0599_first_backtick_field(s: String) -> String {
+  match s |> split(delimiter: "`") |> skip(n: 1) |> first {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+fn e0599_normalize_receiver(raw: String) -> String {
+  join(split(s: raw, delimiter: " "), " ")
+}
+
+fn e0599_classified_row_eq(a: E0599ClassifiedRow, b: E0599ClassifiedRow) -> Bool {
+  a.shape_str == b.shape_str && a.method == b.method && a.receiver == b.receiver
+}
+
+fn e0599_try_classify_missing_method(line: String) -> E0599ClassifiedRow? {
+  if starts_with(s: line, prefix: "error[E0599]: no method named `") {
+    let rest = e0599_after_prefix(s: line, prefix: "error[E0599]: no method named `")
+    let method = e0599_first_backtick_field(s: rest)
+    let after_method = e0599_after_prefix(s: rest, prefix: concat(method, "` found for "))
+    let receiver = e0599_normalize_receiver(
+      raw: e0599_before_suffix(s: after_method, suffix: " in the current scope")
+    )
+    Present {
+      value: E0599ClassifiedRow {
+        shape_str: "missing_method",
+        method: method,
+        receiver: receiver,
+      }
+    }
+  } else {
+    none
+  }
+}
+
+fn e0599_try_classify_bounds_unsatisfied(line: String) -> E0599ClassifiedRow? {
+  if starts_with(s: line, prefix: "error[E0599]: the method `") {
+    let rest = e0599_after_prefix(s: line, prefix: "error[E0599]: the method `")
+    let method = e0599_first_backtick_field(s: rest)
+    let after_method = e0599_after_prefix(s: rest, prefix: concat(method, "` exists for "))
+    let receiver = e0599_normalize_receiver(
+      raw: e0599_before_suffix(s: after_method, suffix: ", but its trait bounds were not satisfied")
+    )
+    Present {
+      value: E0599ClassifiedRow {
+        shape_str: "bounds_unsatisfied",
+        method: method,
+        receiver: receiver,
+      }
+    }
+  } else {
+    none
+  }
+}
+
+fn e0599_try_classify_no_variant(line: String) -> E0599ClassifiedRow? {
+  if starts_with(s: line, prefix: "error[E0599]: no variant") {
+    let rest = e0599_after_prefix(s: line, prefix: "error[E0599]: no variant")
+    let after_named = e0599_after_prefix(s: rest, prefix: " named `")
+    let method = e0599_first_backtick_field(s: after_named)
+    let after_method = e0599_after_prefix(s: after_named, prefix: concat(method, "` found for "))
+    let receiver = e0599_normalize_receiver(
+      raw: e0599_before_suffix(s: after_method, suffix: " in the current scope")
+    )
+    Present {
+      value: E0599ClassifiedRow {
+        shape_str: "no_variant",
+        method: method,
+        receiver: receiver,
+      }
+    }
+  } else {
+    none
+  }
+}
+
+fn e0599_try_classify_no_assoc_fn(line: String) -> E0599ClassifiedRow? {
+  if starts_with(s: line, prefix: "error[E0599]: no function or associated item named `") {
+    let rest = e0599_after_prefix(
+      s: line,
+      prefix: "error[E0599]: no function or associated item named `"
+    )
+    let method = e0599_first_backtick_field(s: rest)
+    let after_method = e0599_after_prefix(s: rest, prefix: concat(method, "` found for "))
+    let receiver = e0599_normalize_receiver(
+      raw: e0599_before_suffix(s: after_method, suffix: " in the current scope")
+    )
+    Present {
+      value: E0599ClassifiedRow {
+        shape_str: "no_assoc_fn",
+        method: method,
+        receiver: receiver,
+      }
+    }
+  } else {
+    none
+  }
+}
+
+fn e0599_try_classify_other(line: String) -> E0599ClassifiedRow? {
+  if starts_with(s: line, prefix: "error[E0599]: ") {
+    let payload = e0599_after_prefix(s: line, prefix: "error[E0599]: ")
+    Present {
+      value: E0599ClassifiedRow {
+        shape_str: "other",
+        method: "?",
+        receiver: e0599_normalize_receiver(raw: payload),
+      }
+    }
+  } else {
+    none
+  }
+}
+
+fn e0599_classify_log_line(line: String) -> E0599ClassifiedRow? {
+  match e0599_try_classify_missing_method(line: line) {
+    Present { value: row } => Present { value: row }
+    Absent =>
+      match e0599_try_classify_bounds_unsatisfied(line: line) {
+        Present { value: row } => Present { value: row }
+        Absent =>
+          match e0599_try_classify_no_variant(line: line) {
+            Present { value: row } => Present { value: row }
+            Absent =>
+              match e0599_try_classify_no_assoc_fn(line: line) {
+                Present { value: row } => Present { value: row }
+                Absent => e0599_try_classify_other(line: line)
+              }
+          }
+      }
+  }
+}
+
+fn e0599_classify_log_text(log_text: String) -> List<E0599ClassifiedRow> {
+  let lines = if log_text == "" { [] } else { log_text |> split(delimiter: "\n") }
+  fold(lines, init: [], f: fn(acc, line) {
+    match e0599_classify_log_line(line: line) {
+      Absent => acc
+      Present { value: row } => concat(acc, [row])
+    }
+  })
+}
+
+fn e0599_counted_tuple_eq(a: E0599CountedTuple, b: E0599CountedTuple) -> Bool {
+  a.shape_str == b.shape_str && a.method == b.method && a.receiver == b.receiver
+}
+
+fn e0599_increment_counted_tuple(
+  counts: List<E0599CountedTuple>,
+  row: E0599ClassifiedRow,
+) -> List<E0599CountedTuple> {
+  let has_row = fold(counts, init: false, f: fn(found, c) {
+    found || (c.shape_str == row.shape_str && c.method == row.method && c.receiver == row.receiver)
+  })
+  if has_row {
+    fold(counts, init: [], f: fn(acc, c) {
+      if c.shape_str == row.shape_str && c.method == row.method && c.receiver == row.receiver {
+        concat(acc, [
+          E0599CountedTuple {
+            shape_str: c.shape_str,
+            method: c.method,
+            receiver: c.receiver,
+            count: c.count + 1,
+          }
+        ])
+      } else {
+        concat(acc, [c])
+      }
+    })
+  } else {
+    concat(counts, [
+      E0599CountedTuple {
+        shape_str: row.shape_str,
+        method: row.method,
+        receiver: row.receiver,
+        count: 1,
+      }
+    ])
+  }
+}
+
+fn e0599_count_rows(rows: List<E0599ClassifiedRow>) -> List<E0599CountedTuple> {
+  fold(rows, init: [], f: fn(acc, row) { e0599_increment_counted_tuple(counts: acc, row: row) })
+}
+
+fn e0599_root_family_label_for_classified_row(row: E0599ClassifiedRow) -> Result<String, E0599LogShapeParseError> {
+  e0599_root_family_label_for_row(
+    shape_str: row.shape_str,
+    method: row.method,
+    receiver: row.receiver
+  )
+}
+
+fn e0599_render_counted_tuple_line(module: String, counted: E0599CountedTuple) -> Result<String, E0599LogShapeParseError> {
+  match e0599_root_family_label_for_classified_row(
+    row: E0599ClassifiedRow {
+      shape_str: counted.shape_str,
+      method: counted.method,
+      receiver: counted.receiver,
+    }
+  ) {
+    Err { value: e } => Err { value: e }
+    Ok { value: family } =>
+      Ok {
+        value: concat(
+          module,
+          concat(
+            "\t",
+            concat(
+              counted.shape_str,
+              concat(
+                "\t",
+                concat(
+                  counted.method,
+                  concat(
+                    "\t",
+                    concat(
+                      counted.receiver,
+                      concat("\t", concat(family, concat("\t", to_string(counted.count))))
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      }
+  }
+}
+
+fn e0599_render_module_census(module: String, log_text: String) -> Result<String, E0599LogShapeParseError> {
+  let rows = e0599_classify_log_text(log_text: log_text)
+  let counts = e0599_count_rows(rows: rows)
+  let header = concat(
+    concat("# module=", module),
+    concat(" total_E0599=", concat(to_string(list_length(items: rows)), "\nmodule\tfailure_shape\tmethod\treceiver_carrier\troot_family\tcount"))
+  )
+  fold(counts, init: Ok { value: header }, f: fn(acc, counted) {
+    match acc {
+      Err { value: e } => Err { value: e }
+      Ok { value: prior } =>
+        match e0599_render_counted_tuple_line(module: module, counted: counted) {
+          Err { value: e } => Err { value: e }
+          Ok { value: line } => Ok { value: concat(prior, concat("\n", line)) }
+        }
+    }
+  })
+}
+
+fn e0599_module_log_path_row_from_line(line: String) -> E0599ModuleLogPathRow? {
+  let parts = line |> split(delimiter: "\t")
+  let module = match parts |> first {
+    Present { value: v } => v
+    Absent => ""
+  }
+  let path = match parts |> skip(n: 1) |> first {
+    Present { value: v } => v
+    Absent => ""
+  }
+  if module == "" || path == "" {
+    none
+  } else {
+    Present { value: E0599ModuleLogPathRow { module: module, path: path } }
+  }
+}
+
+fn e0599_module_log_path_rows_from_blob(blob: String) -> List<E0599ModuleLogPathRow> {
+  let lines = if blob == "" { [] } else { blob |> split(delimiter: "\n") }
+  fold(lines, init: [], f: fn(acc, line) {
+    if line == "" {
+      acc
+    } else {
+      match e0599_module_log_path_row_from_line(line: line) {
+        Absent => acc
+        Present { value: row } => concat(acc, [row])
+      }
+    }
+  })
+}
+
+fn e0599_roster_contains_module(roster: List<String>, module: String) -> Bool {
+  fold(roster, init: false, f: fn(found, label) { found || label == module })
+}
+
+fn e0599_observed_contains_module(observed: List<E0599ModuleLogPathRow>, module: String) -> Bool {
+  fold(observed, init: false, f: fn(found, row) { found || row.module == module })
+}
+
+fn e0599_validate_canonical_seven_rows(
+  rows: List<E0599ModuleLogPathRow>,
+) -> Result<List<E0599ModuleLogPathRow>, E0599CensusError> {
+  let roster =
+    if e0599_canonical_seven_module_log_labels_blob() == "" {
+      []
+    } else {
+      e0599_canonical_seven_module_log_labels_blob() |> split(delimiter: "\n")
+    }
+  let with_dupes = fold(rows, init: Ok { value: [] }, f: fn(acc, row) {
+    match acc {
+      Err { value: e } => Err { value: e }
+      Ok { value: prior } =>
+        if e0599_observed_contains_module(observed: prior, module: row.module) {
+          Err { value: CensusDuplicateModule { module: row.module } }
+        } else {
+          Ok { value: concat(prior, [row]) }
+        }
+    }
+  })
+  match with_dupes {
+    Err { value: e } => Err { value: e }
+    Ok { value: observed } =>
+      let missing = fold(roster, init: "", f: fn(acc, label) {
+        if e0599_observed_contains_module(observed: observed, module: label) {
+          acc
+        } else if acc == "" {
+          label
+        } else {
+          concat(acc, concat(",", label))
+        }
+      })
+      let extra = fold(observed, init: "", f: fn(acc, row) {
+        if e0599_roster_contains_module(roster: roster, module: row.module) {
+          acc
+        } else if acc == "" {
+          row.module
+        } else {
+          concat(acc, concat(",", row.module))
+        }
+      })
+      if missing != "" || extra != "" {
+        Err { value: CensusRosterMismatch { missing: missing, extra: extra } }
+      } else {
+        Ok { value: observed }
+      }
+  }
+}
+
+fn e0599_ordered_canonical_rows(
+  rows: List<E0599ModuleLogPathRow>,
+) -> List<E0599ModuleLogPathRow> {
+  let roster =
+    if e0599_canonical_seven_module_log_labels_blob() == "" {
+      []
+    } else {
+      e0599_canonical_seven_module_log_labels_blob() |> split(delimiter: "\n")
+    }
+  fold(roster, init: [], f: fn(acc, label) {
+    let matched = fold(rows, init: none, f: fn(found, row) {
+      if row.module == label {
+        Present { value: row }
+      } else {
+        found
+      }
+    })
+    match matched {
+      Absent => acc
+      Present { value: row } => concat(acc, [row])
+    }
+  })
+}
+
+fn e0599_read_log_text(path: String) -> Result<String, E0599CensusError> {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    Ok { value: read.content }
+  } else {
+    Err { value: CensusLogReadFailed { path: path, error: read.error } }
+  }
+}
+
+fn e0599_module_has_classified_row(rows: List<E0599ClassifiedRow>, key: E0599ClassifiedRow) -> Bool {
+  fold(rows, init: false, f: fn(found, row) { found || e0599_classified_row_eq(a: row, b: key) })
+}
+
+fn e0599_unique_classified_rows(rows: List<E0599ClassifiedRow>) -> List<E0599ClassifiedRow> {
+  fold(rows, init: [], f: fn(acc, row) {
+    if e0599_module_has_classified_row(rows: acc, key: row) {
+      acc
+    } else {
+      concat(acc, [row])
+    }
+  })
+}
+
+fn e0599_modules_hit_for_key(
+  module_rows: List<List<E0599ClassifiedRow>>,
+  key: E0599ClassifiedRow,
+) -> Int {
+  fold(module_rows, init: 0, f: fn(n, rows) {
+    if e0599_module_has_classified_row(rows: rows, key: key) {
+      n + 1
+    } else {
+      n
+    }
+  })
+}
+
+fn e0599_render_aggregate_rollup_line(counted: E0599CountedTuple, modules_hit: Int) -> Result<String, E0599LogShapeParseError> {
+  match e0599_root_family_label_for_classified_row(
+    row: E0599ClassifiedRow {
+      shape_str: counted.shape_str,
+      method: counted.method,
+      receiver: counted.receiver,
+    }
+  ) {
+    Err { value: e } => Err { value: e }
+    Ok { value: family } =>
+      Ok {
+        value: concat(
+          counted.shape_str,
+          concat(
+            "\t",
+            concat(
+              counted.method,
+              concat(
+                "\t",
+                concat(
+                  counted.receiver,
+                  concat(
+                    "\t",
+                    concat(
+                      family,
+                      concat("\t", concat(to_string(counted.count), concat("\t", to_string(modules_hit))))
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      }
+  }
+}
+
+fn e0599_render_aggregate_census(rows: List<E0599ModuleLogPathRow>) -> Result<String, E0599CensusError> {
+  let ordered = e0599_ordered_canonical_rows(rows: rows)
+  let loaded = fold(ordered, init: Ok { value: [] }, f: fn(acc, row) {
+    match acc {
+      Err { value: e } => Err { value: e }
+      Ok { value: prior } =>
+        match e0599_read_log_text(path: row.path) {
+          Err { value: e } => Err { value: e }
+          Ok { value: log_text } =>
+            Ok {
+              value: concat(
+                prior,
+                [E0599ModuleLogBundle { module: row.module, log_text: log_text }]
+              )
+            }
+        }
+    }
+  })
+  match loaded {
+    Err { value: e } => Err { value: e }
+    Ok { value: module_logs } =>
+      let all_rows = fold(module_logs, init: [], f: fn(acc, bundle) {
+        concat(acc, e0599_classify_log_text(log_text: bundle.log_text))
+      })
+      let global_counts = e0599_count_rows(rows: all_rows)
+      let module_row_lists = fold(module_logs, init: [], f: fn(acc, bundle) {
+        concat(acc, [e0599_classify_log_text(log_text: bundle.log_text)])
+      })
+      let totals_header = fold(module_logs, init: "# e0599_canonical_seven_census aggregate\nmodule\ttotal_E0599", f: fn(acc, bundle) {
+        let n = list_length(items: e0599_classify_log_text(log_text: bundle.log_text))
+        concat(acc, concat("\n", concat(bundle.module, concat("\t", to_string(n)))))
+      })
+      let total_n = list_length(items: all_rows)
+      let totals_block = concat(totals_header, concat("\nTOTAL\t", concat(to_string(total_n), "\n")))
+      let rollup_header = "\nfailure_shape\tmethod\treceiver_carrier\troot_family\ttotal_count\tmodules_hit"
+      let rollup_body = fold(global_counts, init: Ok { value: "" }, f: fn(acc, counted) {
+        match acc {
+          Err { value: e } => Err { value: e }
+          Ok { value: prior } =>
+            let key = E0599ClassifiedRow {
+              shape_str: counted.shape_str,
+              method: counted.method,
+              receiver: counted.receiver,
+            }
+            let modules_hit = e0599_modules_hit_for_key(module_rows: module_row_lists, key: key)
+            match e0599_render_aggregate_rollup_line(counted: counted, modules_hit: modules_hit) {
+              Err { value: e } => Err { value: CensusShapeParse { inner: e } }
+              Ok { value: line } =>
+                if prior == "" {
+                  Ok { value: line }
+                } else {
+                  Ok { value: concat(prior, concat("\n", line)) }
+                }
+            }
+        }
+      })
+      match rollup_body {
+        Err { value: e } => Err { value: e }
+        Ok { value: rollup } =>
+          let family_header = "\nroot_family\ttotal_count"
+          let family_body = fold(global_counts, init: Ok { value: "" }, f: fn(acc, counted) {
+            match acc {
+              Err { value: e } => Err { value: CensusShapeParse { inner: e } }
+              Ok { value: prior } =>
+                match e0599_root_family_label_for_classified_row(
+                  row: E0599ClassifiedRow {
+                    shape_str: counted.shape_str,
+                    method: counted.method,
+                    receiver: counted.receiver,
+                  }
+                ) {
+                  Err { value: e } => Err { value: CensusShapeParse { inner: e } }
+                  Ok { value: family } =>
+                    let line = concat(family, concat("\t", to_string(counted.count)))
+                    if prior == "" {
+                      Ok { value: line }
+                    } else {
+                      Ok { value: concat(prior, concat("\n", line)) }
+                    }
+                }
+            }
+          })
+          match family_body {
+            Err { value: e } => Err { value: e }
+            Ok { value: families } => Ok { value: concat(totals_block, concat(rollup_header, concat(rollup, concat(family_header, concat("\n", families))))) }
+          }
+  }
+}
+
+fn e0599_render_census_report(paths_blob: String, mode: String) -> Result<String, E0599CensusError> {
+  if paths_blob == "" {
+    Err { value: CensusPathsBlobEmpty }
+  } else {
+    let rows = e0599_module_log_path_rows_from_blob(blob: paths_blob)
+    if mode == "aggregate" {
+      match e0599_validate_canonical_seven_rows(rows: rows) {
+        Err { value: e } => Err { value: e }
+        Ok { value: validated } => e0599_render_aggregate_census(rows: validated)
+      }
+    } else {
+      match rows |> first {
+        Absent => Err { value: CensusPathsBlobEmpty }
+        Present { value: row } =>
+          match e0599_read_log_text(path: row.path) {
+            Err { value: e } => Err { value: e }
+            Ok { value: log_text } =>
+              match e0599_render_module_census(module: row.module, log_text: log_text) {
+                Err { value: inner } => Err { value: CensusShapeParse { inner: inner } }
+                Ok { value: rendered } => Ok { value: rendered }
+              }
+          }
+      }
+    }
+  }
+}
+
+fn e0599_write_census_report(paths_blob: String, mode: String, out_path: String) -> ProcessExit {
+  match e0599_render_census_report(paths_blob: paths_blob, mode: mode) {
+    Err { value: e } => exit_failure(reason: e0599_census_error_message(err: e))
+    Ok { value: rendered } =>
+      e0599_write_blob(path: out_path, content: rendered, label: "e0599_census_report")
+  }
+}
+
+fn e0599_write_census_report_from_paths_file(
+  paths_blob_path: String,
+  mode: String,
+  out_path: String,
+) -> ProcessExit {
+  let read = Filesystem.Read(path: paths_blob_path)
+  if read.success {
+    e0599_write_census_report(paths_blob: read.content, mode: mode, out_path: out_path)
+  } else {
+    exit_failure(
+      reason: concat(
+        "e0599_census: read failed for paths blob ",
+        concat(paths_blob_path, concat(": ", read.error))
+      )
+    )
+  }
 }
 
 fn e0599_write_blob(path: String, content: String, label: String) -> ProcessExit {
