@@ -35,8 +35,7 @@ import v2.extdeps.languages.bash {
   bash_stmt_with_redir_target_model,
   bash_redir_stdout_and_stderr_null_source_text,
   bash_redir_stderr_null_source_text,
-  bash_redir_stdout_to_stderr_source_text,
-  bash_redir_stdout_null_source_text
+  bash_redir_stdout_to_stderr_source_text
 }
 import v2.extdeps.languages.bash_orch_tier2 {
   bash_orch_call_emitted
@@ -82,7 +81,6 @@ import v2.std.orchestration {
   CaptureSpec,
   DiscardAll,
   DiscardErr,
-  DiscardOut,
   StdoutAndStderr,
   IgnoreFail,
   EnvBinding
@@ -180,7 +178,6 @@ fn orch_emit_redir_suffix(r: RedirectSpec) -> String {
   match r {
     DiscardAll => bash_redir_stdout_and_stderr_null_source_text
     DiscardErr => bash_redir_stderr_null_source_text
-    DiscardOut => bash_redir_stdout_null_source_text
     StdoutAndStderr => bash_redir_stdout_to_stderr_source_text
   }
 }
