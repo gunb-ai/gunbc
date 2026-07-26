@@ -308,7 +308,11 @@ import extdeps.languages.rust.wrap_catalog {
   OwnershipWrapSourceProjection,
   OwnershipReferenceLayer,
   OwnershipWrapCarrier,
-  rust_sg_rc_wrap_carrier_from_type_name
+  rust_sg_rc_wrap_carrier_from_type_name,
+  rust_sg_rc_wrap_catalog_row_carrier,
+  rust_sg_rc_wrap_catalog_row_use_site,
+  rust_sg_rc_wrap_catalog_row_source_projection,
+  rust_sg_rc_wrap_catalog_row_reference_layer
 }
 
 type RustIntKind
@@ -4136,34 +4140,17 @@ fn rust_sg_rc_wrap_catalog_row_display_name(key: OwnershipWrapCatalogRowKey) -> 
   }
 }
 
-fn rust_sg_rc_wrap_catalog_row_target_use_site_from_key(key: OwnershipWrapCatalogRowKey) -> TargetOwnershipUseSite {
-  match key {
-    WrapRowDiagnosticsReturn => OwnershipAtFunctionReturn
-    WrapRowNodeReturn => OwnershipAtFunctionReturn
-    WrapRowTestClaimReturn => OwnershipAtFunctionReturn
-    WrapRowFreeMonoidReturn => OwnershipAtFunctionReturn
-    WrapRowOutcomeReturn => OwnershipAtFunctionReturn
-    WrapRowModelCoreReturn => OwnershipAtFunctionReturn
-    WrapRowAlgebraInhabitanceReturn => OwnershipAtFunctionReturn
-    WrapRowProbeHeapReturn => OwnershipAtFunctionReturn
-    WrapRowUseSiteVerdictReturn => OwnershipAtFunctionReturn
-    WrapRowDiagnosticsParam => OwnershipAtFunctionParameter
-    WrapRowNodeParam => OwnershipAtFunctionParameter
-    WrapRowUseSiteVerdictParam => OwnershipAtFunctionParameter
-    WrapRowNodeStructField => OwnershipAtStructField
-    WrapRowDiagnosticsBinding => OwnershipAtBindingProjection
-    WrapRowNodeBinding => OwnershipAtBindingProjection
-    WrapRowTestClaimBinding => OwnershipAtBindingProjection
-    WrapRowFreeMonoidBinding => OwnershipAtBindingProjection
-    WrapRowOutcomeBinding => OwnershipAtBindingProjection
-    WrapRowModelCoreBinding => OwnershipAtBindingProjection
-    WrapRowAlgebraInhabitanceBinding => OwnershipAtBindingProjection
-    WrapRowProbeHeapBinding => OwnershipAtBindingProjection
-    WrapRowUseSiteVerdictBinding => OwnershipAtBindingProjection
+fn rust_sg_rc_wrap_catalog_row_target_use_site(key: OwnershipWrapCatalogRowKey) -> TargetOwnershipUseSite {
+  match rust_sg_rc_wrap_catalog_row_use_site(key: key) {
+    OwnershipAtFunctionReturn => OwnershipAtFunctionReturn
+    OwnershipAtFunctionParameter => OwnershipAtFunctionParameter
+    OwnershipAtStructField => OwnershipAtStructField
+    OwnershipAtBindingProjection => OwnershipAtBindingProjection
+    OwnershipWrapUseSiteAbsent => OwnershipAtFunctionReturn
   }
 }
 
-fn rust_sg_rc_wrap_catalog_row_source_projection(
+fn rust_sg_rc_wrap_catalog_row_source_projection_to_target(
   projection: OwnershipWrapSourceProjection
 ) -> TargetUseSiteOwnershipSourceProjection {
   match projection {
@@ -4172,7 +4159,7 @@ fn rust_sg_rc_wrap_catalog_row_source_projection(
   }
 }
 
-fn rust_sg_rc_wrap_catalog_row_reference_layer(
+fn rust_sg_rc_wrap_catalog_row_reference_layer_to_target(
   layer: OwnershipReferenceLayer
 ) -> TargetReferenceLayer {
   match layer {
@@ -4183,16 +4170,18 @@ fn rust_sg_rc_wrap_catalog_row_reference_layer(
 }
 
 fn rust_sg_rc_wrap_catalog_row_to_realization(
-  row: RustSgRcOwnershipWrapCatalogRow
+  key: RustSgRcOwnershipWrapCatalogRow
 ) -> TargetUseSiteOwnershipRealization {
   TargetUseSiteOwnershipRealization {
-    source_carrier: rust_sg_rc_wrap_catalog_row_carrier_node(carrier: row.carrier),
-    source_projection: rust_sg_rc_wrap_catalog_row_source_projection(
-      projection: row.source_projection
+    source_carrier: rust_sg_rc_wrap_catalog_row_carrier_node(carrier: rust_sg_rc_wrap_catalog_row_carrier(key: key)),
+    source_projection: rust_sg_rc_wrap_catalog_row_source_projection_to_target(
+      projection: rust_sg_rc_wrap_catalog_row_source_projection(key: key)
     ),
-    use_site: rust_sg_rc_wrap_catalog_row_target_use_site_from_key(key: row.key),
-    reference_layer: rust_sg_rc_wrap_catalog_row_reference_layer(layer: row.reference_layer),
-    display_name: rust_sg_rc_wrap_catalog_row_display_name(key: row.key)
+    use_site: rust_sg_rc_wrap_catalog_row_target_use_site(key: key),
+    reference_layer: rust_sg_rc_wrap_catalog_row_reference_layer_to_target(
+      layer: rust_sg_rc_wrap_catalog_row_reference_layer(key: key)
+    ),
+    display_name: rust_sg_rc_wrap_catalog_row_display_name(key: key)
   }
 }
 
