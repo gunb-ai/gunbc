@@ -50,8 +50,14 @@ if [[ "$STD_SEED_LINK" == "1" && ! -x "$CSSL_ASSEMBLE" ]]; then
 fi
 export GUNBC
 
-OUT="$(mktemp -d "${TMPDIR:-/tmp}/cssl-probe.XXXXXX")"
-cleanup() { rm -rf "$OUT"; }
+if [[ -n "${PROBE_KEEP_LOG_DIR:-}" ]]; then
+  OUT="$PROBE_KEEP_LOG_DIR"
+  mkdir -p "$OUT"
+  cleanup() { :; }
+else
+  OUT="$(mktemp -d "${TMPDIR:-/tmp}/cssl-probe.XXXXXX")"
+  cleanup() { rm -rf "$OUT"; }
+fi
 trap cleanup EXIT
 
 EMIT_LOG="$OUT/emit.log"
@@ -196,6 +202,10 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
     else
       MAPPED_GATE="UNKNOWN"
     fi
+  fi
+  if [[ -n "${PROBE_KEEP_LOG_DIR:-}" && -f "${BUILD_LOG:-}" ]]; then
+    mod_base="$(basename "$MODULE_PATH" .dag)"
+    cp "$BUILD_LOG" "$PROBE_KEEP_LOG_DIR/${mod_base}.cargo.log"
   fi
 fi
 
