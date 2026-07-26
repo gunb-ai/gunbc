@@ -1,0 +1,9 @@
+module test.retirement.value_resolution_unreachable_callee_retained
+
+
+data value_resolution_unreachable_callee_retention: TestModuleRetirement = TestModuleRetirement {
+  module: "value_resolution_unreachable_callee_test.rs",
+  disposition: RetainedNonMigratable {
+    reason: "Value-arm discriminating control for type-ref mask fail-closed (b): compiles probe_value_arm.dag with mask enabled and asserts pool-present ContentHash return type without import refuses via type_ref_mask_allows_binding (not global_bare fabrication). Mirrors the pool-coincidence fixture transport pattern but has no dag/test/claim floor witness yet — the floor counterpart will land when value-resolution transport is modeled beside tools.type_resolution_pool_coincidence_transport. Retained as cargo-only local control until then; not migration debt and not a delete candidate."
+  }
+}
