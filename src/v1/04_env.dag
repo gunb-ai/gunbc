@@ -4,7 +4,7 @@ import v1.std.core {
   Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str,
   source_text_at, authored_name_at, find_child_named,
   Cardinality, Connective, NoConnective, ExprData, InferredNode, TypeVariable, kernel_span, module_path_segments,
-  param_node_name_at, param_node_type_expr,
+  param_node_name_at, param_node_type_expr, is_type_variable,
   CompilerDiagnostic, AmbiguousReference, UnresolvedType
 }
 
@@ -701,8 +701,8 @@ fn type_ref_fn_type_param_bindable(env: TypeEnv, name: String) -> Bool {
   match lookup_binding_by_name_local(env: env, name: name) {
     Present { value: binding } =>
       match binding.resolved.inferred {
-        Present { value: TypeVariable { id: _ } } => true
-        _ => false
+        Present { value: inf } => is_type_variable(inferred: inf)
+        Absent => false
       }
     Absent =>
       fold(env.parents, init: false, f: (found, parent) =>
@@ -784,8 +784,8 @@ fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv,
   }
   let name = authored_name_at(source_indices: env.source_indices, node: n)
   let is_type_var = match n.inferred {
-    Present { value: TypeVariable { id: _ } } => true
-    _ => false
+    Present { value: inf } => is_type_variable(inferred: inf)
+    Absent => false
   }
   let rewrite = n.connective == NoConnective
     && name != ""

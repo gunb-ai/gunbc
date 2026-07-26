@@ -66,6 +66,13 @@ fn is_compiler_error(inferred: InferredNode) -> Bool {
   }
 }
 
+fn is_type_variable(inferred: InferredNode) -> Bool {
+  match inferred {
+    TypeVariable { id: _ } => true
+    _ => false
+  }
+}
+
 fn has_inferred(n: Node) -> Bool {
   n.inferred != none
 }
