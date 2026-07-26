@@ -496,12 +496,3 @@ test fn pick2_ingested_swapped_arms_red_holds() -> Bool {
   }
 }
 
-test fn pick_ingested_equals_eval_keystone_holds() -> Bool {
-  pick_ingested_normalized_arrow_has_branch_body(source: pick_ingested_source)
-    && pick_ingested_normalized_swapped_arms_structural_red_holds()
-    && pick_ingested_pipeline_resolves_holds()
-    && pick_ingested_pick_true_executes_holds()
-    && pick_ingested_pick_false_executes_holds()
-    && pick_ingested_swapped_arms_red_holds()
-}
-
