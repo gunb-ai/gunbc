@@ -16,10 +16,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "go.dev/ref/spec".to_string(),
-    },
+    }),
     })
             };
         }
@@ -218,7 +218,7 @@ pub fn go_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 pub fn go_method_templates_flat() -> Rc<HashMap<String, String>> {
     go_simple_method_specs().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: HashMap<String, String>, spec: _| {
+        |acc: Rc<HashMap<String, String>>, spec: _| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )

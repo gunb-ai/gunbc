@@ -152,7 +152,7 @@ pub struct FieldSummary {
 #[serde(tag = "_variant")]
 pub enum InferredNode {
     Resolved {
-        node: Box<Rc<Node>>,
+        node: Rc<Node>,
     },
     CompilerError {
         message: String,
@@ -163,7 +163,7 @@ pub enum InferredNode {
     },
 }
 
-pub fn inferred_to_node(inferred: InferredNode) -> Option<Rc<Node>> {
+pub fn inferred_to_node(inferred: Rc<InferredNode>) -> Option<Rc<Node>> {
     match (*inferred.clone()).clone() {
         InferredNode::Resolved { node: n, .. } => Some(n.clone()),
         InferredNode::CompilerError { .. } => None,
@@ -171,7 +171,7 @@ pub fn inferred_to_node(inferred: InferredNode) -> Option<Rc<Node>> {
     }
 }
 
-pub fn is_compiler_error(inferred: InferredNode) -> bool {
+pub fn is_compiler_error(inferred: Rc<InferredNode>) -> bool {
     match (*inferred.clone()).clone() {
         InferredNode::Resolved { node: _, .. } => false,
         InferredNode::CompilerError { .. } => true,
@@ -179,7 +179,7 @@ pub fn is_compiler_error(inferred: InferredNode) -> bool {
     }
 }
 
-pub fn has_inferred(n: Node) -> bool {
+pub fn has_inferred(n: Rc<Node>) -> bool {
     (n.inferred.clone() != None)
 }
 
@@ -218,8 +218,8 @@ pub enum CallSemantics {
 pub enum MethodSemantics {
     PlainMethodSemantics,
     AlgebraMethodSemantics {
-        method_def: Box<Rc<Node>>,
-        fold_accumulator_type: Box<Option<Rc<Node>>>,
+        method_def: Rc<Node>,
+        fold_accumulator_type: Option<Rc<Node>>,
         size_effect: Option<CollectionSizeEffect>,
         cost_shape: Option<CostShape>,
         algebra_template: Option<Rc<AlgebraFieldTemplate>>,
@@ -260,7 +260,7 @@ pub enum ExprData {
     },
     ExprCall {
         call_semantics: Option<CallSemantics>,
-        descent_evidence: Option<Vec<Rc<SubValueRelation>>>,
+        descent_evidence: Option<Rc<Vec<Rc<SubValueRelation>>>>,
     },
     ExprMethodCall {
         method_semantics: Option<Rc<MethodSemantics>>,
@@ -319,7 +319,7 @@ pub enum UnaryOpKind {
 #[serde(tag = "_variant")]
 pub enum StringPart {
     Text { value: String },
-    Interpolation { expr: Box<Rc<Node>> },
+    Interpolation { expr: Rc<Node> },
 }
 
 #[derive(
@@ -769,21 +769,21 @@ pub fn is_discovery_corpus_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> boo
 }
 
 pub fn make_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String) -> Rc<ErrorNode> {
-    ErrorNode {
+    Rc::new(ErrorNode {
         diagnostic: diagnostic.clone(),
         module_name: module_name.clone(),
-    }
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclaredFuncSig {
     pub name: String,
     pub params: Rc<Vec<Rc<Node>>>,
-    pub inferred: Box<Option<Rc<Node>>>,
+    pub inferred: Option<Rc<Node>>,
     pub is_async: bool,
-    pub output_provenance: Rc<Vec<HashMap<String, Rc<SubValueRelation>>>>,
+    pub output_provenance: Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>,
     pub variant_provenance:
-        Rc<HashMap<String, HashMap<String, HashMap<String, Rc<SubValueRelation>>>>>,
+        Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -803,10 +803,10 @@ pub struct Node {
     pub inferred: Option<Rc<InferredNode>>,
     pub return_cardinality: Cardinality,
     pub uses: Rc<Vec<Rc<Node>>>,
-    pub body: Box<Option<Rc<Node>>>,
-    pub transport: Box<Option<Rc<Node>>>,
+    pub body: Option<Rc<Node>>,
+    pub transport: Option<Rc<Node>>,
     pub properties: Rc<Vec<Rc<Node>>>,
-    pub type_annotation: Box<Option<Rc<Node>>>,
+    pub type_annotation: Option<Rc<Node>>,
     pub is_self_recursive: bool,
     pub has_non_tail_self_call: bool,
     pub match_pattern: Option<Rc<MatchPattern>>,
@@ -821,7 +821,7 @@ pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<Sourc
     }
 }
 
-pub fn node_name_span(n: Node) -> Rc<SourceSpan> {
+pub fn node_name_span(n: Rc<Node>) -> Rc<SourceSpan> {
     match n.ident_span.clone() {
         Some(s) => s.clone(),
         None => n.span.clone(),
@@ -829,65 +829,65 @@ pub fn node_name_span(n: Node) -> Rc<SourceSpan> {
 }
 
 pub fn empty_node_list() -> Rc<Vec<Rc<Node>>> {
-    vec![]
+    Rc::new(vec![])
 }
 
 pub fn make_expr_node(
     expr_data: Rc<ExprData>,
     children: Rc<Vec<Rc<Node>>>,
-    inferred: Option<InferredNode>,
+    inferred: Option<Rc<InferredNode>>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
-    Node {
+    Rc::new(Node {
         name: "".to_string(),
         span: span.clone(),
         ident_span: None,
         children: children.clone(),
         connective: Connective::NoConnective,
-        params: vec![],
+        params: Rc::new(vec![]),
         inferred: inferred.clone(),
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: expr_data.clone(),
         ident: None,
-    }
+    })
 }
 
 pub fn make_named_expr_node(
     name: String,
     expr_data: Rc<ExprData>,
     children: Rc<Vec<Rc<Node>>>,
-    inferred: Option<InferredNode>,
+    inferred: Option<Rc<InferredNode>>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
-    Node {
+    Rc::new(Node {
         name: name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
         children: children.clone(),
         connective: Connective::NoConnective,
-        params: vec![],
+        params: Rc::new(vec![]),
         inferred: inferred.clone(),
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: expr_data.clone(),
         ident: None,
-    }
+    })
 }
 
 pub fn make_expr_error_node(
@@ -895,37 +895,37 @@ pub fn make_expr_error_node(
     message: String,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
-    Node {
+    Rc::new(Node {
         name: "".to_string(),
         span: span.clone(),
         ident_span: None,
-        children: vec![],
+        children: Rc::new(vec![]),
         connective: Connective::NoConnective,
-        params: vec![],
-        inferred: Some(InferredNode::CompilerError {
+        params: Rc::new(vec![]),
+        inferred: Some(Rc::new(InferredNode::CompilerError {
             message: message.clone(),
             span: span.clone(),
-        }),
+        })),
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::ExprError {
+        expr_data: Rc::new(ExprData::ExprError {
             kind: kind.clone(),
             message: message.clone(),
-        },
+        }),
         ident: None,
-    }
+    })
 }
 
 pub fn make_arg_node(
     name: Option<String>,
-    value: Node,
+    value: Rc<Node>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
@@ -934,99 +934,99 @@ pub fn make_arg_node(
             Some(n) => n.clone(),
             None => "".to_string(),
         };
-        Node {
+        Rc::new(Node {
             name: arg_name.clone(),
             span: span.clone(),
             ident_span: default_ident_span(arg_name.clone(), name_span.clone()),
-            children: vec![value.clone()],
+            children: Rc::new(vec![value.clone()]),
             connective: Connective::NoConnective,
-            params: vec![],
+            params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: vec![],
-            body: Box::new(None),
-            transport: Box::new(None),
-            properties: vec![],
-            type_annotation: Box::new(None),
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: ExprData::NoExprData,
+            expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
-        }
+        })
     }
 }
 
 pub fn make_arm_node(
-    pattern: MatchPattern,
-    guard: Option<Node>,
-    body: Node,
+    pattern: Rc<MatchPattern>,
+    guard: Option<Rc<Node>>,
+    body: Rc<Node>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     {
         let children = match guard.clone() {
-            Some(g) => vec![g.clone(), body.clone()],
-            None => vec![body.clone()],
+            Some(g) => Rc::new(vec![g.clone(), body.clone()]),
+            None => Rc::new(vec![body.clone()]),
         };
-        Node {
+        Rc::new(Node {
             name: "".to_string(),
             span: span.clone(),
             ident_span: None,
             children: children.clone(),
             connective: Connective::NoConnective,
-            params: vec![],
+            params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: vec![],
-            body: Box::new(None),
-            transport: Box::new(None),
-            properties: vec![],
-            type_annotation: Box::new(None),
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: Some(pattern.clone()),
-            expr_data: ExprData::NoExprData,
+            expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
-        }
+        })
     }
 }
 
 pub fn make_resource_use_node(
     name: String,
-    resource: Node,
+    resource: Rc<Node>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
-    Node {
+    Rc::new(Node {
         name: name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
-        children: vec![resource.clone()],
+        children: Rc::new(vec![resource.clone()]),
         connective: Connective::NoConnective,
-        params: vec![],
+        params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::NoExprData,
+        expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-    }
+    })
 }
 
 pub fn resource_use_name_at(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     authored_name_at(source_indices.clone(), n.clone())
 }
 
-pub fn resource_use_resource(n: Node) -> Rc<Node> {
+pub fn resource_use_resource(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
         None => make_expr_error_node(
@@ -1039,206 +1039,206 @@ pub fn resource_use_resource(n: Node) -> Rc<Node> {
 
 pub fn make_field_init_node(
     name: String,
-    value: Node,
+    value: Rc<Node>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
-    Node {
+    Rc::new(Node {
         name: name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
-        children: vec![value.clone()],
+        children: Rc::new(vec![value.clone()]),
         connective: Connective::NoConnective,
-        params: vec![],
+        params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::NoExprData,
+        expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-    }
+    })
 }
 
 pub fn make_field_binding_node(
     field_name: String,
-    binding: MatchPattern,
+    binding: Rc<MatchPattern>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
-    Node {
+    Rc::new(Node {
         name: field_name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(field_name.clone(), name_span.clone()),
-        children: vec![],
+        children: Rc::new(vec![]),
         connective: Connective::NoConnective,
-        params: vec![],
+        params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: Some(binding.clone()),
-        expr_data: ExprData::NoExprData,
+        expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-    }
+    })
 }
 
 pub fn field_binding_name_at(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     authored_name_at(source_indices.clone(), n.clone())
 }
 
-pub fn field_binding_pattern(n: Node) -> MatchPattern {
+pub fn field_binding_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
     match n.match_pattern.clone() {
         Some(p) => p.clone(),
-        None => MatchPattern::Wildcard,
+        None => Rc::new(MatchPattern::Wildcard),
     }
 }
 
 pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {
-    Node {
+    Rc::new(Node {
         name: "".to_string(),
         span: span.clone(),
         ident_span: None,
-        children: vec![],
+        children: Rc::new(vec![]),
         connective: Connective::NoConnective,
-        params: vec![],
+        params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::ExprLiteral {
-            value: LiteralValue::LitStr {
+        expr_data: Rc::new(ExprData::ExprLiteral {
+            value: Rc::new(LiteralValue::LitStr {
                 value: text.clone(),
-            },
-        },
+            }),
+        }),
         ident: None,
-    }
+    })
 }
 
-pub fn make_interp_part_node(expr: Node, span: Rc<SourceSpan>) -> Rc<Node> {
-    Node {
+pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
+    Rc::new(Node {
         name: "".to_string(),
         span: span.clone(),
         ident_span: None,
-        children: vec![expr.clone()],
+        children: Rc::new(vec![expr.clone()]),
         connective: Connective::NoConnective,
-        params: vec![],
+        params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::NoExprData,
+        expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-    }
+    })
 }
 
 pub fn make_param_node(
     name: String,
-    type_expr: Node,
-    default_value: Option<Node>,
+    type_expr: Rc<Node>,
+    default_value: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     {
         let children = match default_value.clone() {
-            Some(dv) => vec![type_expr.clone(), dv.clone()],
-            None => vec![type_expr.clone()],
+            Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
+            None => Rc::new(vec![type_expr.clone()]),
         };
-        Node {
+        Rc::new(Node {
             name: name.clone(),
             span: span.clone(),
             ident_span: default_ident_span(name.clone(), name_span.clone()),
             children: children.clone(),
             connective: Connective::NoConnective,
-            params: vec![],
+            params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: vec![],
-            body: Box::new(None),
-            transport: Box::new(None),
-            properties: vec![],
-            type_annotation: Box::new(None),
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: ExprData::NoExprData,
+            expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
-        }
+        })
     }
 }
 
 pub fn make_resolved_param_node(
     name: String,
-    type_expr: Node,
-    default_value: Option<Node>,
+    type_expr: Rc<Node>,
+    default_value: Option<Rc<Node>>,
     properties: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     {
         let children = match default_value.clone() {
-            Some(dv) => vec![type_expr.clone(), dv.clone()],
-            None => vec![type_expr.clone()],
+            Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
+            None => Rc::new(vec![type_expr.clone()]),
         };
-        Node {
+        Rc::new(Node {
             name: name.clone(),
             span: span.clone(),
             ident_span: default_ident_span(name.clone(), name_span.clone()),
             children: children.clone(),
             connective: Connective::NoConnective,
-            params: vec![],
-            inferred: Some(InferredNode::Resolved {
-                node: Box::new(type_expr.clone()),
-            }),
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: type_expr.clone(),
+            })),
             return_cardinality: Cardinality::Required,
-            uses: vec![],
-            body: Box::new(None),
-            transport: Box::new(None),
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
             properties: properties.clone(),
-            type_annotation: Box::new(None),
+            type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: ExprData::NoExprData,
+            expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
-        }
+        })
     }
 }
 
 pub fn param_node_name_at(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     authored_name_at(source_indices.clone(), n.clone())
 }
 
 pub fn generic_param_name_at(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     authored_name_at(source_indices.clone(), n.clone())
@@ -1246,7 +1246,7 @@ pub fn generic_param_name_at(
 
 pub fn authored_name_at(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    node: Node,
+    node: Rc<Node>,
 ) -> String {
     match node.ident_span.clone() {
         Some(span) => match v1_rt::map_get(&source_indices, span.file.clone()) {
@@ -1277,7 +1277,7 @@ pub fn authored_name_at(
 }
 
 pub fn find_child_named(
-    n: Node,
+    n: Rc<Node>,
     name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
@@ -1299,7 +1299,7 @@ pub fn find_child_named(
 }
 
 pub fn has_child_named(
-    n: Node,
+    n: Rc<Node>,
     name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -1315,7 +1315,7 @@ pub fn has_child_named(
     }
 }
 
-pub fn param_node_type_expr(n: Node) -> Rc<Node> {
+pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
         None => make_expr_error_node(
@@ -1326,7 +1326,7 @@ pub fn param_node_type_expr(n: Node) -> Rc<Node> {
     }
 }
 
-pub fn param_node_default_value(n: Node) -> Option<Rc<Node>> {
+pub fn param_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
         n.children.clone().iter().cloned().skip(1 as usize).next()
     } else {
@@ -1334,83 +1334,83 @@ pub fn param_node_default_value(n: Node) -> Option<Rc<Node>> {
     }
 }
 
-pub fn param_node_span(n: Node) -> Rc<SourceSpan> {
+pub fn param_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
     n.span.clone()
 }
 
 pub fn make_field_node(
     name: String,
-    type_expr: Node,
+    type_expr: Rc<Node>,
     cardinality: Cardinality,
-    default_value: Option<Node>,
+    default_value: Option<Rc<Node>>,
     from_key: Option<String>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     {
         let children = match default_value.clone() {
-            Some(dv) => vec![type_expr.clone(), dv.clone()],
-            None => vec![type_expr.clone()],
+            Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
+            None => Rc::new(vec![type_expr.clone()]),
         };
         let props = match from_key.clone() {
-            Some(fk) => vec![make_field_init_node(
+            Some(fk) => Rc::new(vec![make_field_init_node(
                 "from_key".to_string(),
-                Node {
+                Rc::new(Node {
                     name: fk.clone(),
                     span: make_span(0, 0),
                     ident_span: default_ident_span(fk.clone(), make_span(0, 0)),
-                    children: vec![],
+                    children: Rc::new(vec![]),
                     connective: Connective::NoConnective,
-                    params: vec![],
+                    params: Rc::new(vec![]),
                     inferred: None,
                     return_cardinality: Cardinality::Required,
-                    uses: vec![],
-                    body: Box::new(None),
-                    transport: Box::new(None),
-                    properties: vec![],
-                    type_annotation: Box::new(None),
+                    uses: Rc::new(vec![]),
+                    body: None,
+                    transport: None,
+                    properties: Rc::new(vec![]),
+                    type_annotation: None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: None,
-                    expr_data: ExprData::NoExprData,
+                    expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
-                },
+                }),
                 make_span(0, 0),
                 make_span(0, 0),
-            )],
-            None => vec![],
+            )]),
+            None => Rc::new(vec![]),
         };
-        Node {
+        Rc::new(Node {
             name: name.clone(),
             span: span.clone(),
             ident_span: default_ident_span(name.clone(), name_span.clone()),
             children: children.clone(),
             connective: Connective::NoConnective,
-            params: vec![],
+            params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: cardinality.clone(),
-            uses: vec![],
-            body: Box::new(None),
-            transport: Box::new(None),
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
             properties: v1_rt::concat(props.clone(), type_expr.properties.clone()),
-            type_annotation: Box::new(None),
+            type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: ExprData::NoExprData,
+            expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
-        }
+        })
     }
 }
 
 pub fn field_node_name_at(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     authored_name_at(source_indices.clone(), n.clone())
 }
 
-pub fn field_node_type_expr(n: Node) -> Rc<Node> {
+pub fn field_node_type_expr(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
         None => make_expr_error_node(
@@ -1421,11 +1421,11 @@ pub fn field_node_type_expr(n: Node) -> Rc<Node> {
     }
 }
 
-pub fn field_node_cardinality(n: Node) -> Cardinality {
+pub fn field_node_cardinality(n: Rc<Node>) -> Cardinality {
     n.return_cardinality.clone()
 }
 
-pub fn field_node_default_value(n: Node) -> Option<Rc<Node>> {
+pub fn field_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
         n.children.clone().iter().cloned().skip(1 as usize).next()
     } else {
@@ -1434,7 +1434,7 @@ pub fn field_node_default_value(n: Node) -> Option<Rc<Node>> {
 }
 
 pub fn field_node_from_key(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match find_property(
@@ -1447,7 +1447,7 @@ pub fn field_node_from_key(
     }
 }
 
-pub fn field_node_span(n: Node) -> Rc<SourceSpan> {
+pub fn field_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
     n.span.clone()
 }
 
@@ -1457,40 +1457,40 @@ pub fn make_variant_node(
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
-    Node {
+    Rc::new(Node {
         name: name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
         children: fields.clone(),
         connective: Connective::NoConnective,
-        params: vec![],
+        params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::NoExprData,
+        expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-    }
+    })
 }
 
 pub fn variant_node_name_at(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     authored_name_at(source_indices.clone(), n.clone())
 }
 
-pub fn variant_node_fields(n: Node) -> Rc<Vec<Rc<Node>>> {
+pub fn variant_node_fields(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     n.children.clone()
 }
 
-pub fn variant_node_span(n: Node) -> Rc<SourceSpan> {
+pub fn variant_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
     n.span.clone()
 }
 
@@ -1502,24 +1502,24 @@ pub struct ChildRole {
     pub required: bool,
 }
 
-pub fn expr_child_roles() -> Rc<HashMap<String, Vec<Rc<ChildRole>>>> {
+pub fn expr_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, Vec<Rc<ChildRole>>>> = {
+        static CACHED: Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> = {
             serde_json::from_value(serde_json::json!({"ExprFieldAccess": [{"name": "base", "accessor": "field_access_base", "position": 0, "required": true}], "ExprBinOp": [{"name": "left", "accessor": "binop_left", "position": 0, "required": true}, {"name": "right", "accessor": "binop_right", "position": 1, "required": true}], "ExprUnaryOp": [{"name": "operand", "accessor": "unaryop_operand", "position": 0, "required": true}], "ExprIf": [{"name": "condition", "accessor": "if_condition", "position": 0, "required": true}, {"name": "then", "accessor": "if_then_branch", "position": 1, "required": true}, {"name": "else", "accessor": "if_else_branch", "position": 2, "required": false}], "ExprMatch": [{"name": "scrutinee", "accessor": "match_scrutinee", "position": 0, "required": true}], "ExprLet": [{"name": "value", "accessor": "let_value", "position": 0, "required": true}, {"name": "body", "accessor": "let_body", "position": 1, "required": false}], "ExprLambda": [{"name": "body", "accessor": "lambda_body", "position": 0, "required": true}], "ExprMethodCall": [{"name": "receiver", "accessor": "method_receiver", "position": 0, "required": true}], "ExprCast": [{"name": "expr", "accessor": "cast_expr", "position": 0, "required": true}, {"name": "target", "accessor": "cast_target", "position": 1, "required": true}], "ExprForEach": [{"name": "collection", "accessor": "foreach_collection", "position": 0, "required": true}, {"name": "body", "accessor": "foreach_body", "position": 1, "required": true}], "ExprIndex": [{"name": "base", "accessor": "index_base", "position": 0, "required": true}, {"name": "index", "accessor": "index_expr", "position": 1, "required": true}], "ExprSlice": [{"name": "base", "accessor": "slice_base", "position": 0, "required": true}, {"name": "start", "accessor": "slice_start", "position": 1, "required": true}, {"name": "end", "accessor": "slice_end", "position": 2, "required": true}], "ExprReturn": [{"name": "value", "accessor": "return_value", "position": 0, "required": true}]}))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, Vec<Rc<ChildRole>>>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>>| c.clone())
 }
 
-pub fn wrapper_child_roles() -> Rc<HashMap<String, Vec<Rc<ChildRole>>>> {
+pub fn wrapper_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, Vec<Rc<ChildRole>>>> = {
+        static CACHED: Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> = {
             serde_json::from_value(serde_json::json!({"Arg": [{"name": "value", "accessor": "arg_value", "position": 0, "required": true}], "Arm": [{"name": "guard", "accessor": "arm_guard", "position": 0, "required": false}, {"name": "body", "accessor": "arm_body", "position": -1, "required": true}], "FieldInit": [{"name": "value", "accessor": "field_init_node_value", "position": 0, "required": true}]}))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, Vec<Rc<ChildRole>>>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>>| c.clone())
 }
 
 pub fn is_child_accessor_in_model(name: String) -> bool {
@@ -1568,7 +1568,7 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
     })
 }
 
-pub fn child_roles_for_variant(variant_name: String) -> Option<Vec<Rc<ChildRole>>> {
+pub fn child_roles_for_variant(variant_name: String) -> Option<Rc<Vec<Rc<ChildRole>>>> {
     v1_rt::map_get(&expr_child_roles(), variant_name.clone())
 }
 
@@ -1635,15 +1635,15 @@ pub fn function_size_effects() -> Rc<HashMap<String, Rc<FunctionSizeEffect>>> {
     thread_local! {
             static CACHED: Rc<HashMap<String, Rc<FunctionSizeEffect>>> = {
                 let mut __m = HashMap::new();
-                __m.insert("with_required_cardinality".to_string(), FunctionSizeEffect::PropertyContraction {
+                __m.insert("with_required_cardinality".to_string(), Rc::new(FunctionSizeEffect::PropertyContraction {
         domain_size: 2,
-    });
-                __m.insert("resolved_type".to_string(), FunctionSizeEffect::TreeSizeReducing);
-                __m.insert("param_node_type_expr".to_string(), FunctionSizeEffect::TreeSizeReducing);
-                __m.insert("field_binding_pattern".to_string(), FunctionSizeEffect::TreeSizeReducing);
-                __m.insert("wrapper_inner_arg".to_string(), FunctionSizeEffect::TreeSizeReducing);
-                __m.insert("extractor_inner_arg".to_string(), FunctionSizeEffect::TreeSizeReducing);
-                __m.insert("child_type_node".to_string(), FunctionSizeEffect::TreeSizeReducing);
+    }));
+                __m.insert("resolved_type".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
+                __m.insert("param_node_type_expr".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
+                __m.insert("field_binding_pattern".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
+                __m.insert("wrapper_inner_arg".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
+                __m.insert("extractor_inner_arg".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
+                __m.insert("child_type_node".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
                 Rc::new(__m)
             };
         }
@@ -1681,7 +1681,7 @@ pub fn is_property_contraction(func_name: String) -> bool {
     }
 }
 
-pub fn expr_child_at(texpr: Node, index: i64, role: String) -> Rc<Node> {
+pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
     match texpr
         .children
         .clone()
@@ -1700,7 +1700,7 @@ pub fn expr_child_at(texpr: Node, index: i64, role: String) -> Rc<Node> {
 }
 
 pub fn arg_name_at(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     {
@@ -1713,7 +1713,7 @@ pub fn arg_name_at(
     }
 }
 
-pub fn arg_value(n: Node) -> Rc<Node> {
+pub fn arg_value(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
         None => make_expr_error_node(
@@ -1724,14 +1724,14 @@ pub fn arg_value(n: Node) -> Rc<Node> {
     }
 }
 
-pub fn arm_pattern(n: Node) -> MatchPattern {
+pub fn arm_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
     match n.match_pattern.clone() {
         Some(p) => p.clone(),
-        None => MatchPattern::Wildcard,
+        None => Rc::new(MatchPattern::Wildcard),
     }
 }
 
-pub fn arm_guard(n: Node) -> Option<Rc<Node>> {
+pub fn arm_guard(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) == 2) {
         n.children.clone().first().cloned()
     } else {
@@ -1739,7 +1739,7 @@ pub fn arm_guard(n: Node) -> Option<Rc<Node>> {
     }
 }
 
-pub fn arm_body(n: Node) -> Rc<Node> {
+pub fn arm_body(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().last().cloned() {
         Some(v) => v.clone(),
         None => make_expr_error_node(
@@ -1751,13 +1751,13 @@ pub fn arm_body(n: Node) -> Rc<Node> {
 }
 
 pub fn field_init_node_name_at(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     authored_name_at(source_indices.clone(), n.clone())
 }
 
-pub fn field_init_node_value(n: Node) -> Rc<Node> {
+pub fn field_init_node_value(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
         None => make_expr_error_node(
@@ -1768,15 +1768,15 @@ pub fn field_init_node_value(n: Node) -> Rc<Node> {
     }
 }
 
-pub fn if_condition(texpr: Node) -> Rc<Node> {
+pub fn if_condition(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 0, "if condition".to_string())
 }
 
-pub fn if_then_branch(texpr: Node) -> Rc<Node> {
+pub fn if_then_branch(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 1, "if then-branch".to_string())
 }
 
-pub fn if_else_branch(texpr: Node) -> Option<Rc<Node>> {
+pub fn if_else_branch(texpr: Rc<Node>) -> Option<Rc<Node>> {
     texpr
         .children
         .clone()
@@ -1786,11 +1786,11 @@ pub fn if_else_branch(texpr: Node) -> Option<Rc<Node>> {
         .next()
 }
 
-pub fn match_scrutinee(texpr: Node) -> Rc<Node> {
+pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 0, "match scrutinee".to_string())
 }
 
-pub fn match_arm_nodes(texpr: Node) -> Rc<Vec<Rc<Node>>> {
+pub fn match_arm_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     Rc::new(
         texpr
             .children
@@ -1802,37 +1802,37 @@ pub fn match_arm_nodes(texpr: Node) -> Rc<Vec<Rc<Node>>> {
     )
 }
 
-pub fn binop_left(texpr: Node) -> Rc<Node> {
+pub fn binop_left(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 0, "binop left".to_string())
 }
 
-pub fn binop_right(texpr: Node) -> Rc<Node> {
+pub fn binop_right(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 1, "binop right".to_string())
 }
 
-pub fn unaryop_operand(texpr: Node) -> Rc<Node> {
+pub fn unaryop_operand(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 0, "unaryop operand".to_string())
 }
 
 pub fn expr_var_name_at(
-    texpr: Node,
+    texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     authored_name_at(source_indices.clone(), texpr.clone())
 }
 
-pub fn field_access_base(texpr: Node) -> Rc<Node> {
+pub fn field_access_base(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 0, "field access base".to_string())
 }
 
 pub fn field_access_field_at(
-    texpr: Node,
+    texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     authored_name_at(source_indices.clone(), texpr.clone())
 }
 
-pub fn expr_field_access_summary(texpr: Node) -> Option<Rc<FieldSummary>> {
+pub fn expr_field_access_summary(texpr: Rc<Node>) -> Option<Rc<FieldSummary>> {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { summary: s, .. } => s.clone(),
         _ => None,
@@ -1846,7 +1846,7 @@ pub struct FieldAccessSpine {
 }
 
 pub fn field_access_spine(
-    texpr: Node,
+    texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<FieldAccessSpine>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -1855,20 +1855,20 @@ pub fn field_access_spine(
                 binding_kind: _, ..
             } => {
                 let name = expr_var_name_at(texpr.clone(), source_indices.clone());
-                Some(FieldAccessSpine {
+                Some(Rc::new(FieldAccessSpine {
                     root: name.clone(),
                     dotted: name.clone(),
-                })
+                }))
             }
             ExprData::ExprFieldAccess { summary: _, .. } => {
                 match field_access_spine(field_access_base(texpr.clone()), source_indices.clone()) {
-                    Some(base_spine) => Some(FieldAccessSpine {
+                    Some(base_spine) => Some(Rc::new(FieldAccessSpine {
                         root: base_spine.root.clone(),
                         dotted: v1_rt::concat(
                             v1_rt::concat(base_spine.dotted.clone(), ".".to_string()),
                             field_access_field_at(texpr.clone(), source_indices.clone()),
                         ),
-                    }),
+                    })),
                     None => None,
                 }
             }
@@ -1878,13 +1878,13 @@ pub fn field_access_spine(
 }
 
 pub fn expr_call_func_at(
-    texpr: Node,
+    texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     authored_name_at(source_indices.clone(), texpr.clone())
 }
 
-pub fn expr_call_descent_evidence(texpr: Node) -> Option<Vec<Rc<SubValueRelation>>> {
+pub fn expr_call_descent_evidence(texpr: Rc<Node>) -> Option<Rc<Vec<Rc<SubValueRelation>>>> {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprCall {
             descent_evidence: de,
@@ -1894,11 +1894,11 @@ pub fn expr_call_descent_evidence(texpr: Node) -> Option<Vec<Rc<SubValueRelation
     }
 }
 
-pub fn method_receiver(texpr: Node) -> Rc<Node> {
+pub fn method_receiver(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 0, "method receiver".to_string())
 }
 
-pub fn method_arg_nodes(texpr: Node) -> Rc<Vec<Rc<Node>>> {
+pub fn method_arg_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     Rc::new(
         texpr
             .children
@@ -1911,13 +1911,13 @@ pub fn method_arg_nodes(texpr: Node) -> Rc<Vec<Rc<Node>>> {
 }
 
 pub fn expr_method_name_at(
-    texpr: Node,
+    texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     authored_name_at(source_indices.clone(), texpr.clone())
 }
 
-pub fn expr_method_call_semantics(texpr: Node) -> Option<MethodSemantics> {
+pub fn expr_method_call_semantics(texpr: Rc<Node>) -> Option<Rc<MethodSemantics>> {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprMethodCall {
             method_semantics: ms,
@@ -1927,12 +1927,12 @@ pub fn expr_method_call_semantics(texpr: Node) -> Option<MethodSemantics> {
     }
 }
 
-pub fn lambda_body(texpr: Node) -> Rc<Node> {
+pub fn lambda_body(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 0, "lambda body".to_string())
 }
 
 pub fn lambda_param_names_at(
-    texpr: Node,
+    texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     Rc::new({
@@ -1955,11 +1955,11 @@ pub fn lambda_param_names_at(
     })
 }
 
-pub fn let_value(texpr: Node) -> Rc<Node> {
+pub fn let_value(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 0, "let value".to_string())
 }
 
-pub fn let_body(texpr: Node) -> Option<Rc<Node>> {
+pub fn let_body(texpr: Rc<Node>) -> Option<Rc<Node>> {
     texpr
         .children
         .clone()
@@ -1970,65 +1970,65 @@ pub fn let_body(texpr: Node) -> Option<Rc<Node>> {
 }
 
 pub fn let_binding_name_at(
-    texpr: Node,
+    texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     authored_name_at(source_indices.clone(), texpr.clone())
 }
 
-pub fn cast_expr(texpr: Node) -> Rc<Node> {
+pub fn cast_expr(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 0, "cast expr".to_string())
 }
 
-pub fn cast_target(texpr: Node) -> Rc<Node> {
+pub fn cast_target(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 1, "cast target".to_string())
 }
 
-pub fn foreach_collection(texpr: Node) -> Rc<Node> {
+pub fn foreach_collection(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 0, "foreach collection".to_string())
 }
 
-pub fn foreach_body(texpr: Node) -> Rc<Node> {
+pub fn foreach_body(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 1, "foreach body".to_string())
 }
 
 pub fn foreach_variable_at(
-    texpr: Node,
+    texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     authored_name_at(source_indices.clone(), texpr.clone())
 }
 
-pub fn index_base(texpr: Node) -> Rc<Node> {
+pub fn index_base(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 0, "index base".to_string())
 }
 
-pub fn index_expr(texpr: Node) -> Rc<Node> {
+pub fn index_expr(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 1, "index expression".to_string())
 }
 
-pub fn slice_base(texpr: Node) -> Rc<Node> {
+pub fn slice_base(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 0, "slice base".to_string())
 }
 
-pub fn slice_start(texpr: Node) -> Rc<Node> {
+pub fn slice_start(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 1, "slice start".to_string())
 }
 
-pub fn slice_end(texpr: Node) -> Rc<Node> {
+pub fn slice_end(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 2, "slice end".to_string())
 }
 
-pub fn return_value(texpr: Node) -> Rc<Node> {
+pub fn return_value(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 0, "return value".to_string())
 }
 
-pub fn block_stmts(texpr: Node) -> Rc<Vec<Rc<Node>>> {
+pub fn block_stmts(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     texpr.children.clone()
 }
 
 pub fn record_lit_type_name_at(
-    texpr: Node,
+    texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     {
@@ -2170,44 +2170,44 @@ pub fn transport_tls_key() -> String {
 pub fn make_transport_node(
     properties: Rc<Vec<Rc<Node>>>,
     children: Rc<Vec<Rc<Node>>>,
-    body: Option<Node>,
+    body: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
-    Node {
+    Rc::new(Node {
         name: "".to_string(),
         span: span.clone(),
         ident_span: None,
         children: children.clone(),
         connective: Connective::NoConnective,
-        params: vec![],
+        params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(body.clone()),
-        transport: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: body.clone(),
+        transport: None,
         properties: properties.clone(),
-        type_annotation: Box::new(None),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::NoExprData,
+        expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-    }
+    })
 }
 
 pub fn local_transport_node(span: Rc<SourceSpan>) -> Rc<Node> {
-    make_transport_node(vec![], vec![], None, span.clone())
+    make_transport_node(Rc::new(vec![]), Rc::new(vec![]), None, span.clone())
 }
 
 pub fn rest_transport_node(
-    base_url: Node,
+    base_url: Rc<Node>,
     auth_props: Rc<Vec<Rc<Node>>>,
     headers: Rc<Vec<Rc<Node>>>,
-    method: Option<Node>,
-    path: Option<Node>,
-    query: Option<Node>,
-    request_body: Option<Node>,
-    response_format: Option<Node>,
+    method: Option<Rc<Node>>,
+    path: Option<Rc<Node>>,
+    query: Option<Rc<Node>>,
+    request_body: Option<Rc<Node>>,
+    response_format: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     {
@@ -2219,49 +2219,49 @@ pub fn rest_transport_node(
             zero_span.clone(),
         );
         let method_props = match method.clone() {
-            Some(m) => vec![make_field_init_node(
+            Some(m) => Rc::new(vec![make_field_init_node(
                 transport_method_key(),
                 m.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
-            )],
-            None => vec![],
+            )]),
+            None => Rc::new(vec![]),
         };
         let path_props = match path.clone() {
-            Some(p) => vec![make_field_init_node(
+            Some(p) => Rc::new(vec![make_field_init_node(
                 transport_path_template_key(),
                 p.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
-            )],
-            None => vec![],
+            )]),
+            None => Rc::new(vec![]),
         };
         let query_props = match query.clone() {
-            Some(q) => vec![make_field_init_node(
+            Some(q) => Rc::new(vec![make_field_init_node(
                 transport_query_key(),
                 q.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
-            )],
-            None => vec![],
+            )]),
+            None => Rc::new(vec![]),
         };
         let body_props = match request_body.clone() {
-            Some(b) => vec![make_field_init_node(
+            Some(b) => Rc::new(vec![make_field_init_node(
                 transport_body_key(),
                 b.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
-            )],
-            None => vec![],
+            )]),
+            None => Rc::new(vec![]),
         };
         let rf_props = match response_format.clone() {
-            Some(rf) => vec![make_field_init_node(
+            Some(rf) => Rc::new(vec![make_field_init_node(
                 transport_response_format_key(),
                 rf.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
-            )],
-            None => vec![],
+            )]),
+            None => Rc::new(vec![]),
         };
         let props = v1_rt::concat(
             v1_rt::concat(
@@ -2269,7 +2269,10 @@ pub fn rest_transport_node(
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(vec![url_field.clone()], method_props.clone()),
+                                v1_rt::concat(
+                                    Rc::new(vec![url_field.clone()]),
+                                    method_props.clone(),
+                                ),
                                 path_props.clone(),
                             ),
                             query_props.clone(),
@@ -2282,72 +2285,76 @@ pub fn rest_transport_node(
             ),
             headers.clone(),
         );
-        make_transport_node(props.clone(), vec![], None, span.clone())
+        make_transport_node(props.clone(), Rc::new(vec![]), None, span.clone())
     }
 }
 
 pub fn shell_transport_node(
     argv: Rc<Vec<Rc<Node>>>,
     env: Rc<Vec<Rc<Node>>>,
-    stdin: Option<Node>,
+    stdin: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     {
-        let shell_marker = Node {
+        let shell_marker = Rc::new(Node {
             name: "".to_string(),
             span: span.clone(),
             ident_span: None,
-            children: vec![],
+            children: Rc::new(vec![]),
             connective: Connective::NoConnective,
-            params: vec![],
+            params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: vec![],
-            body: Box::new(None),
-            transport: Box::new(None),
-            properties: vec![],
-            type_annotation: Box::new(None),
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: ExprData::NoExprData,
+            expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
-        };
+        });
         let zero_span = make_span(0, 0);
         let stdin_props = match stdin.clone() {
-            Some(s) => vec![make_field_init_node(
+            Some(s) => Rc::new(vec![make_field_init_node(
                 transport_stdin_key(),
                 s.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
-            )],
-            None => vec![],
+            )]),
+            None => Rc::new(vec![]),
         };
         let all_props = v1_rt::concat(env.clone(), stdin_props.clone());
-        Node {
+        Rc::new(Node {
             name: "".to_string(),
             span: span.clone(),
             ident_span: None,
             children: argv.clone(),
             connective: Connective::NoConnective,
-            params: vec![],
+            params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: vec![],
-            body: Box::new(Some(shell_marker.clone())),
-            transport: Box::new(None),
+            uses: Rc::new(vec![]),
+            body: Some(shell_marker.clone()),
+            transport: None,
             properties: all_props.clone(),
-            type_annotation: Box::new(None),
+            type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: ExprData::NoExprData,
+            expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
-        }
+        })
     }
 }
 
-pub fn file_transport_node(base_path: Node, verb: Option<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn file_transport_node(
+    base_path: Rc<Node>,
+    verb: Option<Rc<Node>>,
+    span: Rc<SourceSpan>,
+) -> Rc<Node> {
     {
         let path_field = make_field_init_node(
             transport_path_key(),
@@ -2356,7 +2363,7 @@ pub fn file_transport_node(base_path: Node, verb: Option<Node>, span: Rc<SourceS
             make_span(0, 0),
         );
         let props = match verb.clone() {
-            Some(verb_expr) => vec![
+            Some(verb_expr) => Rc::new(vec![
                 path_field.clone(),
                 make_field_init_node(
                     "verb".to_string(),
@@ -2364,10 +2371,10 @@ pub fn file_transport_node(base_path: Node, verb: Option<Node>, span: Rc<SourceS
                     make_span(0, 0),
                     make_span(0, 0),
                 ),
-            ],
-            None => vec![path_field.clone()],
+            ]),
+            None => Rc::new(vec![path_field.clone()]),
         };
-        make_transport_node(props.clone(), vec![], None, span.clone())
+        make_transport_node(props.clone(), Rc::new(vec![]), None, span.clone())
     }
 }
 
@@ -2413,7 +2420,7 @@ pub fn find_property_string(
 }
 
 pub fn transport_base_path(
-    t: Node,
+    t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
@@ -2423,29 +2430,38 @@ pub fn transport_base_path(
     )
 }
 
-pub fn transport_has_argv(t: Node) -> bool {
+pub fn transport_has_argv(t: Rc<Node>) -> bool {
     ((t.children.clone().len() as i64) > 0)
 }
 
-pub fn is_rest_transport(t: Node, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+pub fn is_rest_transport(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     (transport_base_url(t.clone(), source_indices.clone()) != None)
 }
 
-pub fn is_shell_transport(t: Node) -> bool {
+pub fn is_shell_transport(t: Rc<Node>) -> bool {
     (t.body.clone() != None)
 }
 
-pub fn is_file_transport(t: Node, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+pub fn is_file_transport(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     (transport_base_path(t.clone(), source_indices.clone()) != None)
 }
 
-pub fn is_local_transport(t: Node, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+pub fn is_local_transport(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     ((!is_rest_transport(t.clone(), source_indices.clone()) && !is_shell_transport(t.clone()))
         && !is_file_transport(t.clone(), source_indices.clone()))
 }
 
 pub fn field_init_operation_modifier(
-    field_init: Node,
+    field_init: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<OperationModifier> {
     {
@@ -2475,7 +2491,7 @@ pub fn operation_modifier_name(modifier: OperationModifier) -> String {
 }
 
 pub fn transport_base_url(
-    t: Node,
+    t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
@@ -2486,7 +2502,7 @@ pub fn transport_base_url(
 }
 
 pub fn transport_auth_token(
-    t: Node,
+    t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
@@ -2497,7 +2513,7 @@ pub fn transport_auth_token(
 }
 
 pub fn transport_auth_header_name(
-    t: Node,
+    t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     find_property_string(
@@ -2507,7 +2523,10 @@ pub fn transport_auth_header_name(
     )
 }
 
-pub fn transport_has_auth(t: Node, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+pub fn transport_has_auth(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     match find_property(
         t.properties.clone(),
         transport_auth_token_key(),
@@ -2519,7 +2538,7 @@ pub fn transport_has_auth(t: Node, source_indices: Rc<HashMap<String, Rc<Newline
 }
 
 pub fn transport_method(
-    t: Node,
+    t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
@@ -2530,7 +2549,7 @@ pub fn transport_method(
 }
 
 pub fn transport_path_template(
-    t: Node,
+    t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
@@ -2541,7 +2560,7 @@ pub fn transport_path_template(
 }
 
 pub fn transport_query(
-    t: Node,
+    t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
@@ -2552,7 +2571,7 @@ pub fn transport_query(
 }
 
 pub fn transport_request_body(
-    t: Node,
+    t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
@@ -2563,7 +2582,7 @@ pub fn transport_request_body(
 }
 
 pub fn transport_stdin(
-    t: Node,
+    t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
@@ -2574,7 +2593,7 @@ pub fn transport_stdin(
 }
 
 pub fn transport_response_format(
-    t: Node,
+    t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
@@ -2602,7 +2621,7 @@ pub fn is_config_reserved_key(name: String) -> bool {
 }
 
 pub fn transport_auth_basic(
-    t: Node,
+    t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
@@ -2613,7 +2632,7 @@ pub fn transport_auth_basic(
 }
 
 pub fn transport_tls_posture(
-    t: Node,
+    t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match find_property(
@@ -2627,7 +2646,7 @@ pub fn transport_tls_posture(
 }
 
 pub fn transport_headers(
-    t: Node,
+    t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     Rc::new({
@@ -2642,7 +2661,7 @@ pub fn transport_headers(
 }
 
 pub fn transport_env(
-    t: Node,
+    t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     Rc::new({
@@ -2656,8 +2675,8 @@ pub fn transport_env(
     })
 }
 
-pub fn map_children(node: Node, transform: impl Fn(Node) -> Rc<Node> + Clone) -> Rc<Node> {
-    Node {
+pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + Clone) -> Rc<Node> {
+    Rc::new(Node {
         name: node.name.clone(),
         ident: node.ident.clone(),
         span: node.span.clone(),
@@ -2674,19 +2693,19 @@ pub fn map_children(node: Node, transform: impl Fn(Node) -> Rc<Node> + Clone) ->
         inferred: node.inferred.clone(),
         return_cardinality: node.return_cardinality.clone(),
         uses: node.uses.clone(),
-        body: Box::new(node.body.clone()),
-        transport: Box::new(node.transport.clone()),
+        body: node.body.clone(),
+        transport: node.transport.clone(),
         properties: node.properties.clone(),
-        type_annotation: Box::new(node.type_annotation.clone()),
+        type_annotation: node.type_annotation.clone(),
         is_self_recursive: node.is_self_recursive.clone(),
         has_non_tail_self_call: node.has_non_tail_self_call.clone(),
         match_pattern: node.match_pattern.clone(),
         expr_data: node.expr_data.clone(),
-    }
+    })
 }
 
 pub fn expr_has_self_call(
-    texpr: Node,
+    texpr: Rc<Node>,
     fn_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -2727,7 +2746,7 @@ pub fn expr_has_self_call(
 }
 
 pub fn expr_has_non_tail_self_call(
-    texpr: Node,
+    texpr: Rc<Node>,
     fn_name: String,
     in_tail: bool,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -2983,65 +3002,65 @@ pub fn expr_has_non_tail_self_call(
 }
 
 pub fn service_config_properties(
-    endpoint: Node,
-    auth: Option<Node>,
-    auth_input: Option<Node>,
-    auth_source: Option<Node>,
-    rate_limit: Option<Node>,
-    retry: Option<Node>,
+    endpoint: Rc<Node>,
+    auth: Option<Rc<Node>>,
+    auth_input: Option<Rc<Node>>,
+    auth_source: Option<Rc<Node>>,
+    rate_limit: Option<Rc<Node>>,
+    retry: Option<Rc<Node>>,
 ) -> Rc<Vec<Rc<Node>>> {
     {
         let zero_span = make_span(0, 0);
-        let ep_prop = vec![make_field_init_node(
+        let ep_prop = Rc::new(vec![make_field_init_node(
             "svc_endpoint".to_string(),
             endpoint.clone(),
             zero_span.clone(),
             zero_span.clone(),
-        )];
+        )]);
         let auth_prop = match auth.clone() {
-            Some(a) => vec![make_field_init_node(
+            Some(a) => Rc::new(vec![make_field_init_node(
                 "svc_auth".to_string(),
                 a.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
-            )],
-            None => vec![],
+            )]),
+            None => Rc::new(vec![]),
         };
         let auth_input_prop = match auth_input.clone() {
-            Some(ai) => vec![make_field_init_node(
+            Some(ai) => Rc::new(vec![make_field_init_node(
                 "svc_auth_input".to_string(),
                 ai.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
-            )],
-            None => vec![],
+            )]),
+            None => Rc::new(vec![]),
         };
         let auth_source_prop = match auth_source.clone() {
-            Some(src) => vec![make_field_init_node(
+            Some(src) => Rc::new(vec![make_field_init_node(
                 "svc_auth_source".to_string(),
                 src.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
-            )],
-            None => vec![],
+            )]),
+            None => Rc::new(vec![]),
         };
         let rate_prop = match rate_limit.clone() {
-            Some(r) => vec![make_field_init_node(
+            Some(r) => Rc::new(vec![make_field_init_node(
                 "svc_rate_limit".to_string(),
                 r.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
-            )],
-            None => vec![],
+            )]),
+            None => Rc::new(vec![]),
         };
         let retry_prop = match retry.clone() {
-            Some(r) => vec![make_field_init_node(
+            Some(r) => Rc::new(vec![make_field_init_node(
                 "svc_retry".to_string(),
                 r.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
-            )],
-            None => vec![],
+            )]),
+            None => Rc::new(vec![]),
         };
         v1_rt::concat(
             v1_rt::concat(
@@ -3059,7 +3078,10 @@ pub fn service_config_properties(
     }
 }
 
-pub fn has_service_config(n: Node, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+pub fn has_service_config(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     {
         let mut __found = false;
         for p in n.properties.clone().iter().cloned() {
@@ -3075,7 +3097,7 @@ pub fn has_service_config(n: Node, source_indices: Rc<HashMap<String, Rc<Newline
 }
 
 pub fn service_config_endpoint(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
@@ -3086,7 +3108,7 @@ pub fn service_config_endpoint(
 }
 
 pub fn service_config_auth(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
@@ -3097,7 +3119,7 @@ pub fn service_config_auth(
 }
 
 pub fn service_config_rate_limit(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
@@ -3108,7 +3130,7 @@ pub fn service_config_rate_limit(
 }
 
 pub fn service_config_retry(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
@@ -3119,7 +3141,7 @@ pub fn service_config_retry(
 }
 
 pub fn service_config_auth_input(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
@@ -3130,7 +3152,7 @@ pub fn service_config_auth_input(
 }
 
 pub fn service_config_auth_source(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
@@ -3146,7 +3168,7 @@ pub fn module_node(
     items: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
-    Node {
+    Rc::new(Node {
         name: name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), span.clone()),
@@ -3155,17 +3177,17 @@ pub fn module_node(
         params: imports.clone(),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::NoExprData,
+        expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-    }
+    })
 }
 
 pub fn import_node(
@@ -3177,58 +3199,58 @@ pub fn import_node(
 ) -> Rc<Node> {
     {
         let wildcard_marker = if is_all.clone() {
-            Some(Node {
+            Some(Rc::new(Node {
                 name: "".to_string(),
                 span: span.clone(),
                 ident_span: None,
-                children: vec![],
+                children: Rc::new(vec![]),
                 connective: Connective::NoConnective,
-                params: vec![],
+                params: Rc::new(vec![]),
                 inferred: None,
                 return_cardinality: Cardinality::Required,
-                uses: vec![],
-                body: Box::new(None),
-                transport: Box::new(None),
-                properties: vec![],
-                type_annotation: Box::new(None),
+                uses: Rc::new(vec![]),
+                body: None,
+                transport: None,
+                properties: Rc::new(vec![]),
+                type_annotation: None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
-                expr_data: ExprData::NoExprData,
+                expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
-            })
+            }))
         } else {
             None
         };
-        Node {
+        Rc::new(Node {
             name: module_path.clone(),
             span: span.clone(),
             ident_span: Some(name_span.clone()),
             children: specific_names.clone(),
             connective: Connective::NoConnective,
-            params: vec![],
+            params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: vec![],
-            body: Box::new(wildcard_marker.clone()),
-            transport: Box::new(None),
-            properties: vec![],
-            type_annotation: Box::new(None),
+            uses: Rc::new(vec![]),
+            body: wildcard_marker.clone(),
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: ExprData::NoExprData,
+            expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
-        }
+        })
     }
 }
 
-pub fn import_is_all(n: Node) -> bool {
+pub fn import_is_all(n: Rc<Node>) -> bool {
     (n.body.clone() != None)
 }
 
 pub fn import_specific_names_at(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     Rc::new({
@@ -3240,46 +3262,46 @@ pub fn import_specific_names_at(
     })
 }
 
-pub fn module_imports(n: Node) -> Rc<Vec<Rc<Node>>> {
+pub fn module_imports(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     n.params.clone()
 }
 
-pub fn module_items(n: Node) -> Rc<Vec<Rc<Node>>> {
+pub fn module_items(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     n.children.clone()
 }
 
 pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
-    Node {
+    Rc::new(Node {
         name: name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), span.clone()),
-        children: vec![],
+        children: Rc::new(vec![]),
         connective: Connective::NoConnective,
-        params: vec![],
+        params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::NoExprData,
+        expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-    }
+    })
 }
 
 pub fn kernel_span(name: String) -> Rc<SourceSpan> {
-    SourceSpan {
+    Rc::new(SourceSpan {
         file: v1_rt::concat(
             v1_rt::concat("<kernel:".to_string(), name.clone()),
             ">".to_string(),
         ),
         start: 0,
         end: v1_rt::string_length(&name),
-    }
+    })
 }
 
 pub fn unit_type() -> Rc<Node> {
@@ -3289,20 +3311,20 @@ pub fn unit_type() -> Rc<Node> {
         name: "Unit".to_string(),
         span: kernel_span("Unit".to_string()),
         ident_span: Some(kernel_span("Unit".to_string())),
-        children: vec![],
+        children: Rc::new(vec![]),
         connective: Connective::Conj,
-        params: vec![],
+        params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::NoExprData,
+        expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
             };
@@ -3317,20 +3339,20 @@ pub fn bool_type() -> Rc<Node> {
         name: "Bool".to_string(),
         span: kernel_span("Bool".to_string()),
         ident_span: Some(kernel_span("Bool".to_string())),
-        children: vec![],
+        children: Rc::new(vec![]),
         connective: Connective::NoConnective,
-        params: vec![],
+        params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::NoExprData,
+        expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
             };
@@ -3345,20 +3367,20 @@ pub fn string_type() -> Rc<Node> {
         name: "String".to_string(),
         span: kernel_span("String".to_string()),
         ident_span: Some(kernel_span("String".to_string())),
-        children: vec![],
+        children: Rc::new(vec![]),
         connective: Connective::NoConnective,
-        params: vec![],
+        params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::NoExprData,
+        expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
             };
@@ -3373,20 +3395,20 @@ pub fn hash_type() -> Rc<Node> {
         name: "Hash".to_string(),
         span: kernel_span("Hash".to_string()),
         ident_span: Some(kernel_span("Hash".to_string())),
-        children: vec![],
+        children: Rc::new(vec![]),
         connective: Connective::NoConnective,
-        params: vec![],
+        params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::NoExprData,
+        expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
             };
@@ -3401,20 +3423,20 @@ pub fn int_type() -> Rc<Node> {
         name: "Int".to_string(),
         span: kernel_span("Int".to_string()),
         ident_span: Some(kernel_span("Int".to_string())),
-        children: vec![],
+        children: Rc::new(vec![]),
         connective: Connective::NoConnective,
-        params: vec![],
+        params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::NoExprData,
+        expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
             };
@@ -3429,20 +3451,20 @@ pub fn float_type() -> Rc<Node> {
         name: "Float".to_string(),
         span: kernel_span("Float".to_string()),
         ident_span: Some(kernel_span("Float".to_string())),
-        children: vec![],
+        children: Rc::new(vec![]),
         connective: Connective::NoConnective,
-        params: vec![],
+        params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::NoExprData,
+        expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
             };
@@ -3457,20 +3479,20 @@ pub fn none_type() -> Rc<Node> {
         name: "None".to_string(),
         span: kernel_span("None".to_string()),
         ident_span: Some(kernel_span("None".to_string())),
-        children: vec![],
+        children: Rc::new(vec![]),
         connective: Connective::NoConnective,
-        params: vec![],
+        params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::NoExprData,
+        expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
             };
@@ -3494,26 +3516,26 @@ pub fn error_type() -> Rc<Node> {
         name: "".to_string(),
         span: make_span(0, 0),
         ident_span: None,
-        children: vec![],
+        children: Rc::new(vec![]),
         connective: Connective::NoConnective,
-        params: vec![],
-        inferred: Some(InferredNode::CompilerError {
+        params: Rc::new(vec![]),
+        inferred: Some(Rc::new(InferredNode::CompilerError {
         message: "unresolved type".to_string(),
         span: make_span(0, 0),
-    }),
+    })),
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::ExprError {
+        expr_data: Rc::new(ExprData::ExprError {
         kind: ExprErrorKind::SemanticExprError,
         message: "unresolved type".to_string(),
-    },
+    }),
         ident: None,
     })
             };
@@ -3522,19 +3544,19 @@ pub fn error_type() -> Rc<Node> {
 }
 
 pub fn make_span(start: i64, end: i64) -> Rc<SourceSpan> {
-    SourceSpan {
+    Rc::new(SourceSpan {
         file: "".to_string(),
         start: start.clone(),
         end: end.clone(),
-    }
+    })
 }
 
 pub fn make_file_span(file: String, start: i64, end: i64) -> Rc<SourceSpan> {
-    SourceSpan {
+    Rc::new(SourceSpan {
         file: file.clone(),
         start: start.clone(),
         end: end.clone(),
-    }
+    })
 }
 
 pub fn no_span() -> Rc<SourceSpan> {
@@ -3568,18 +3590,18 @@ pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
         )
         .iter()
         .cloned()
-        .fold(vec![], |acc: _, pair: (i64, i64)| {
+        .fold(Rc::new(vec![]), |acc: _, pair: (i64, i64)| {
             if (pair.1.clone() == 10) {
                 v1_rt::rc_list_push(acc.clone(), pair.0.clone())
             } else {
                 acc.clone()
             }
         });
-        NewlineIndex {
+        Rc::new(NewlineIndex {
             file: file.clone(),
             offsets: offsets.clone(),
             char_codes: char_codes.clone(),
-        }
+        })
     }
 }
 
@@ -3683,29 +3705,29 @@ pub struct InternResult {
 }
 
 pub fn empty_intern_table() -> Rc<InternTable> {
-    InternTable {
-        strings: vec!["".to_string()],
+    Rc::new(InternTable {
+        strings: Rc::new(vec!["".to_string()]),
         index: v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, i64>(), "".to_string(), 0),
         next_id: 1,
-    }
+    })
 }
 
 pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
     match v1_rt::map_get(&table.index.clone(), s.clone()) {
-        Some(id) => InternResult {
+        Some(id) => Rc::new(InternResult {
             table: table.clone(),
             id: id.clone(),
-        },
+        }),
         None => {
             let id = table.next_id.clone();
-            InternResult {
-                table: InternTable {
+            Rc::new(InternResult {
+                table: Rc::new(InternTable {
                     strings: v1_rt::rc_list_push(table.strings.clone(), s.clone()),
                     index: v1_rt::rc_map_insert(table.index.clone(), s.clone(), id.clone()),
                     next_id: (id.clone() + 1),
-                },
+                }),
                 id: id.clone(),
-            }
+            })
         }
     }
 }
@@ -3772,8 +3794,8 @@ pub fn pre_intern_tokens(tokens: Rc<Vec<Rc<Token>>>, table: Rc<InternTable>) -> 
         })
 }
 
-pub fn with_optional_cardinality(n: Node) -> Rc<Node> {
-    Node {
+pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
+    Rc::new(Node {
         name: n.name.clone(),
         ident: n.ident.clone(),
         span: n.span.clone(),
@@ -3784,19 +3806,19 @@ pub fn with_optional_cardinality(n: Node) -> Rc<Node> {
         inferred: n.inferred.clone(),
         return_cardinality: Cardinality::CardOptional,
         uses: n.uses.clone(),
-        body: Box::new(n.body.clone()),
-        transport: Box::new(n.transport.clone()),
+        body: n.body.clone(),
+        transport: n.transport.clone(),
         properties: n.properties.clone(),
-        type_annotation: Box::new(n.type_annotation.clone()),
+        type_annotation: n.type_annotation.clone(),
         is_self_recursive: n.is_self_recursive.clone(),
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
         expr_data: n.expr_data.clone(),
-    }
+    })
 }
 
-pub fn with_required_cardinality(n: Node) -> Rc<Node> {
-    Node {
+pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
+    Rc::new(Node {
         name: n.name.clone(),
         ident: n.ident.clone(),
         span: n.span.clone(),
@@ -3807,20 +3829,20 @@ pub fn with_required_cardinality(n: Node) -> Rc<Node> {
         inferred: n.inferred.clone(),
         return_cardinality: Cardinality::Required,
         uses: n.uses.clone(),
-        body: Box::new(n.body.clone()),
-        transport: Box::new(n.transport.clone()),
+        body: n.body.clone(),
+        transport: n.transport.clone(),
         properties: n.properties.clone(),
-        type_annotation: Box::new(n.type_annotation.clone()),
+        type_annotation: n.type_annotation.clone(),
         is_self_recursive: n.is_self_recursive.clone(),
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
         expr_data: n.expr_data.clone(),
-    }
+    })
 }
 
 pub fn module_path_segments(path: String) -> Rc<Vec<String>> {
     if (path.clone() == "".to_string()) {
-        vec![]
+        Rc::new(vec![])
     } else {
         Rc::new(
             path.clone()

@@ -19,26 +19,26 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
-    Node {
+    Rc::new(Node {
         name: "".to_string(),
         span: make_span(0, 0),
         ident_span: None,
-        children: vec![],
+        children: Rc::new(vec![]),
         connective: Connective::NoConnective,
-        params: vec![],
-        inferred: Some(InferredNode::TypeVariable { id: id.clone() }),
+        params: Rc::new(vec![]),
+        inferred: Some(Rc::new(InferredNode::TypeVariable { id: id.clone() })),
         return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: Box::new(None),
-        transport: Box::new(None),
-        properties: vec![],
-        type_annotation: Box::new(None),
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: ExprData::NoExprData,
+        expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-    }
+    })
 }
 
 pub fn map_of_type_variables() -> Rc<Node> {
@@ -56,13 +56,13 @@ pub fn list_of_type_variable(id: String) -> Rc<Node> {
         .clone()
 }
 
-pub fn list_of_element(element: Node) -> Rc<Node> {
+pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
     make_container_type("List".to_string(), element.clone())
         .ty
         .clone()
 }
 
-pub fn seed_node_map(key: String, value: Node) -> Rc<HashMap<String, Rc<Node>>> {
+pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
     v1_rt::rc_map_insert(
         v1_rt::rc_empty_map::<String, Rc<Node>>(),
         key.clone(),

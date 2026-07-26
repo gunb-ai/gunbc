@@ -26,10 +26,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::File,
         locator: "DESIGN.md#3-single-authority".to_string(),
-    },
+    }),
     })
             };
         }

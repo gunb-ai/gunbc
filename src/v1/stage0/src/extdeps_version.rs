@@ -18,10 +18,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "en.wikipedia.org/wiki/Software_versioning".to_string(),
-    },
+    }),
     })
             };
         }

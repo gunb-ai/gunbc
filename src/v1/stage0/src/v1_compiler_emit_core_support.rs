@@ -30,7 +30,7 @@ pub struct TestProjection {
     pub module_name: String,
     pub service_name: String,
     pub operation_name: String,
-    pub inferred: Box<Rc<Node>>,
+    pub inferred: Rc<Node>,
     pub params: Rc<Vec<Rc<Node>>>,
     pub mock_field_inits: Rc<Vec<Rc<Node>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -87,18 +87,18 @@ pub fn make_indent(level: i64) -> String {
 pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
         let result = items.clone().iter().cloned().fold(
-            UniqueAccum {
+            Rc::new(UniqueAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
-                result: vec![],
-            },
+                result: Rc::new(vec![]),
+            }),
             |acc: Rc<UniqueAccum>, item: String| {
                 if emit_map_has(acc.seen.clone(), item.clone()) {
                     acc.clone()
                 } else {
-                    UniqueAccum {
+                    Rc::new(UniqueAccum {
                         seen: v1_rt::rc_map_insert(acc.seen.clone(), item.clone(), true),
                         result: v1_rt::rc_list_push(acc.result.clone(), item.clone()),
-                    }
+                    })
                 }
             },
         );
@@ -115,7 +115,7 @@ pub fn to_string(value: i64) -> String {
                 "0".to_string()
             } else {
                 {
-                    let digit_chars = vec![
+                    let digit_chars = Rc::new(vec![
                         "0".to_string(),
                         "1".to_string(),
                         "2".to_string(),
@@ -126,8 +126,8 @@ pub fn to_string(value: i64) -> String {
                         "7".to_string(),
                         "8".to_string(),
                         "9".to_string(),
-                    ];
-                    to_string_helper(value.clone(), vec![]).join(&"".to_string())
+                    ]);
+                    to_string_helper(value.clone(), Rc::new(vec![])).join(&"".to_string())
                 }
             }
         }
@@ -141,7 +141,7 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
         } else {
             let rest = (value.clone() / 10);
             let digit = (value.clone() - (rest.clone() * 10));
-            let digit_chars = vec![
+            let digit_chars = Rc::new(vec![
                 "0".to_string(),
                 "1".to_string(),
                 "2".to_string(),
@@ -152,7 +152,7 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
                 "7".to_string(),
                 "8".to_string(),
                 "9".to_string(),
-            ];
+            ]);
             let ch = match Rc::new({
                 let mut __result = Vec::new();
                 for p in Rc::new(
@@ -181,7 +181,7 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
             };
             {
                 let __tco_0 = rest.clone();
-                let __tco_1 = v1_rt::concat(vec![ch.clone()], acc);
+                let __tco_1 = v1_rt::concat(Rc::new(vec![ch.clone()]), acc);
                 value = __tco_0;
                 acc = __tco_1;
                 continue;
@@ -613,7 +613,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                 .iter()
                                 .cloned()
                                 {
-                                    __result.push(TestProjection {
+                                    __result.push(Rc::new(TestProjection {
                                         module_name: authored_name_at(
                                             tm.type_env.clone().source_indices.clone(),
                                             tm.module.clone(),
@@ -626,7 +626,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                             tm.type_env.clone().source_indices.clone(),
                                             c.clone(),
                                         ),
-                                        inferred: Box::new(resolved_type(c.clone())),
+                                        inferred: resolved_type(c.clone()),
                                         params: c.params.clone(),
                                         mock_field_inits: Rc::new({
                                             let mut __result = Vec::new();
@@ -641,7 +641,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                             __result
                                         }),
                                         source_indices: tm.type_env.clone().source_indices.clone(),
-                                    });
+                                    }));
                                 }
                                 __result
                             }))
@@ -660,21 +660,21 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
 }
 
 pub fn is_type_alias_return_node(
-    n: Node,
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (authored_name_at(source_indices.clone(), n.clone()) != "Unit".to_string())
 }
 
-pub fn is_service_item(item: Node) -> bool {
+pub fn is_service_item(item: Rc<Node>) -> bool {
     ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0))
 }
 
-pub fn is_type_def_item(item: Node) -> bool {
+pub fn is_type_def_item(item: Rc<Node>) -> bool {
     ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None))
 }
 
-pub fn is_bare_leaf_item(item: Node) -> bool {
+pub fn is_bare_leaf_item(item: Rc<Node>) -> bool {
     (((((item.connective.clone() == Connective::NoConnective) && (item.body.clone() == None))
         && ((item.params.clone().len() as i64) == 0))
         && (item.transport.clone() == None))
@@ -682,7 +682,7 @@ pub fn is_bare_leaf_item(item: Node) -> bool {
 }
 
 pub fn is_type_alias_item(
-    item: Node,
+    item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (is_bare_leaf_item(item.clone())
@@ -690,7 +690,7 @@ pub fn is_type_alias_item(
 }
 
 pub fn is_type_decl_item(
-    item: Node,
+    item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((is_bare_leaf_item(item.clone())
@@ -700,19 +700,19 @@ pub fn is_type_decl_item(
             && ((item.children.clone().len() as i64) == 0)))
 }
 
-pub fn is_function_item(item: Node) -> bool {
+pub fn is_function_item(item: Rc<Node>) -> bool {
     ((item.body.clone() != None) && (item.type_annotation.clone() == None))
 }
 
-pub fn is_data_def_item(item: Node) -> bool {
+pub fn is_data_def_item(item: Rc<Node>) -> bool {
     ((item.body.clone() != None) && (item.type_annotation.clone() != None))
 }
 
-pub fn is_service_def_item(item: Node) -> bool {
+pub fn is_service_def_item(item: Rc<Node>) -> bool {
     ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0))
 }
 
-pub fn is_resource_def_item(item: Node) -> bool {
+pub fn is_resource_def_item(item: Rc<Node>) -> bool {
     (((item.transport.clone() == None) && ((item.children.clone().len() as i64) > 0))
         || ((((item.transport.clone() == None) && ((item.children.clone().len() as i64) == 0))
             && ((item.properties.clone().len() as i64) > 0))
