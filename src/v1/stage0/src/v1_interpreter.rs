@@ -2800,6 +2800,10 @@ fn match_pattern(
                     }
                     _ => None,
                 },
+                // GroupCompletion{pos,neg} destructuring against a native Value::Int is
+                // deliberately unhandled here (no corpus site exercises it yet, #5-scoped
+                // deferral) — an unmatched pattern name falls through to `_ => None` below,
+                // refusing rather than fabricating a wrong (pos, neg) pair.
                 Value::Int(n) if name_last == "Zero" || name_last == "Succ" => match name_last {
                     "Zero" => {
                         if *n == 0 {
@@ -4342,6 +4346,14 @@ fn eval_record_lit(
             fields: Rc::new(fields),
         })
     } else {
+        if type_name == "GroupCompletion" {
+            if let (Some(Value::Int(pos)), Some(Value::Int(neg))) = (
+                fields_get(&fields, ctx.sym("pos")),
+                fields_get(&fields, ctx.sym("neg")),
+            ) {
+                return Ok(Value::Int(pos - neg));
+            }
+        }
         Ok(Value::Record {
             type_name: ctx.sym(&type_name),
             fields: Rc::new(fields),
@@ -9623,6 +9635,43 @@ fn eval_builtin_inner(
             }
             Ok(Some(list_value(items)))
         }
+
+        "fallback_arm_census_facts" => {
+            let facts = crate::cli_run::fallback_arm_census_facts();
+            let mut items: Vec<Value> = Vec::new();
+            for f in facts {
+                items.push(Value::Record {
+                    type_name: ctx.sym("FallbackArmCensusFact"),
+                    fields: Rc::new(sorted_fields(vec![
+                        (
+                            ctx.sym("closed_coproduct_scrutinee"),
+                            Value::Bool(f.closed_coproduct_scrutinee),
+                        ),
+                        (ctx.sym("class"), Value::Str(f.class.clone())),
+                        (ctx.sym("fn_name"), Value::Str(f.fn_name.clone())),
+                        (ctx.sym("owning_lane"), Value::Str(f.owning_lane.clone())),
+                        (ctx.sym("rel_path"), Value::Str(f.rel_path.clone())),
+                        (ctx.sym("site"), Value::Str(f.site.clone())),
+                    ])),
+                });
+            }
+            Ok(Some(list_value(items)))
+        }
+        "fallback_arm_census_class_count" => {
+            let class = expect_str(
+                positional.first().copied(),
+                "fallback_arm_census_class_count",
+            )?;
+            Ok(Some(Value::Int(
+                crate::cli_run::fallback_arm_census_class_count(&class),
+            )))
+        }
+        "fallback_arm_census_total" => Ok(Some(Value::Int(
+            crate::cli_run::fallback_arm_census_total(),
+        ))),
+        "fallback_arm_census_reconciliation_holds" => Ok(Some(Value::Bool(
+            crate::cli_run::fallback_arm_census_reconciliation_holds(),
+        ))),
 
         "complexity_linearity_syntactic_site_fired" => {
             let site = expect_str(
