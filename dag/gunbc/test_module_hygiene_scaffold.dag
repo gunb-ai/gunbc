@@ -1,0 +1,24 @@
+module gunbc.test_module_hygiene_scaffold
+
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+
+data test_module_hygiene_orphan_gate_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.test_module_hygiene",
+    decl_name: "TEST_MODULE_HYGIENE_ORPHAN_GATE_SCAFFOLD_MARKER",
+    field: WholeDeclaration
+  }
+}
+
+data test_module_hygiene_orphan_gate_dissolve_trigger: String = "🟡 dissolve-on: test_module_hygiene — U1/U2/U3 seed-retained host (umbrella roster, orphan enroll-or-refuse, file-grain expand); DISSOLVES WHEN the hygiene fold is expressed in .dag and src/v1/stage0/src/test_module_hygiene.rs deletes (ROADMAP 5-dissolve-patches / DESIGN §7 seed shrink), with receipt rg -F TEST_MODULE_HYGIENE_ORPHAN_GATE_SCAFFOLD_MARKER: &str = src/v1/stage0/src/test_module_hygiene.rs == 1 until deletion"
+
+data test_module_hygiene_orphan_gate_receipt_lane_deferral: String = "ROADMAP 5-dissolve-patches / DESIGN §7 hand-Rust shrink-to-zero — explicit interim lane deferral (review 43330 receipt), not unmarked workaround"
+
+data test_module_hygiene_orphan_gate_test_discriminator_demotion: String = "zero_enrolled_plain_helpers_refuse_demotion"
+
+data test_module_hygiene_orphan_gate_test_discriminator_fixture_path: String = "cross_module_fixture_library_path_exempts_zero_enrolled_plains"
+
+data test_module_hygiene_orphan_gate_test_discriminator_test_data: String = "test_data_only_module_still_orphans_unreachable_plains"

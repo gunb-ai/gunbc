@@ -4,6 +4,27 @@
 //! U2 — plain fns in `*_test.dag` unreachable from test-fn / data-init roots refuse.
 //! U3 — empty `function` on an explicit entry means file-grain: enumerate test decls
 //!      through the same `scan_test_decl_names` path discovery uses.
+//!
+//! SCAFFOLD (§7 HAND-RUST — `test_module_hygiene_orphan_gate`):
+//! Seed-retained host for U1–U3. Naming-walk live via `check_orphan_helpers_or_err`
+//! (proud-wren-892 sweep B). Not a census shrink: HAND_MAINTAINED surface until the
+//! hygiene fold is expressed in `.dag` and this module deletes.
+//! DELETE WHEN dissolved: this module, the `cli_run` naming-walk call site, and the
+//! unit RED plants below — host then reads a modeled enroll-or-refuse lens.
+//! Receipt (declaration grain; bare token `test_module_hygiene_orphan_gate` is multi-hit
+//! by design — scaffold header / string literal / unit test). Executable pin that does
+//! NOT self-match this comment (IDENT and TYPE_ANN on separate lines; contiguous only
+//! on the declaration):
+//!   IDENT=TEST_MODULE_HYGIENE_ORPHAN_GATE_SCAFFOLD_MARKER
+//!   TYPE_ANN=: &str =
+//!   rg -F "${IDENT}${TYPE_ANN}" src/v1/stage0/src/test_module_hygiene.rs  # == 1 until deletion
+//! Lane deferral: ROADMAP 5-dissolve-patches / §7 seed shrink — no parallel `.dag`
+//! authority yet (explicit interim, not unmarked workaround).
+
+/// INTERIM hand-Rust scaffold marker (`test_module_hygiene_orphan_gate` / §7).
+/// Receipt: see module-level SCAFFOLD header (`rg -F` pin == 1 until deletion).
+pub const TEST_MODULE_HYGIENE_ORPHAN_GATE_SCAFFOLD_MARKER: &str =
+    "test_module_hygiene_orphan_gate";
 
 use im::HashMap;
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
@@ -58,6 +79,14 @@ fn is_test_dag_path(path: &str) -> bool {
         .and_then(|s| s.to_str())
         .map(|n| n.ends_with("_test.dag"))
         .unwrap_or(false)
+}
+
+/// Structural fixture-library paths: historical `*_test.dag` suffix, but the module is
+/// a cross-module export surface (language grammar / example), not an enrolled witness
+/// file. Local reachability cannot see importers. Dissolve-on: rename off `_test.dag`.
+fn is_cross_module_fixture_library_path(path: &str) -> bool {
+    let p = path.replace('\\', "/");
+    p.contains("/extdeps/languages/") || p.contains("/examples/")
 }
 
 fn scan_test_decl_names(content: &str) -> Vec<String> {
@@ -198,12 +227,15 @@ struct ModuleFns {
     fns: BTreeMap<String, (bool, usize, Option<Rc<Node>>)>,
     /// data/const initializer bodies (reachability roots for fixture constructors)
     data_bodies: Vec<Rc<Node>>,
+    /// `test fn` / `test data` decls present (enrollment surface — not inferred from path).
+    has_enrolled_test_decl: bool,
     si: Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 }
 
 fn analyze_test_module(path: &Path, content: &str) -> Option<ModuleFns> {
     let parsed = parse_dag_file(path)?;
     let test_names: HashSet<String> = scan_test_decl_names(content).into_iter().collect();
+    let has_enrolled_test_decl = !test_names.is_empty();
     let mut fns = BTreeMap::new();
     let mut data_bodies = Vec::new();
     for item in parsed.items.iter() {
@@ -229,6 +261,7 @@ fn analyze_test_module(path: &Path, content: &str) -> Option<ModuleFns> {
     Some(ModuleFns {
         fns,
         data_bodies,
+        has_enrolled_test_decl,
         si: parsed.source_indices,
     })
 }
@@ -266,16 +299,6 @@ fn umbrellas_in_module(entry: &str, module: &ModuleFns) -> Vec<UmbrellaRecord> {
 }
 
 fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
-    // U2 enroll-or-refuse is for test modules: plain helpers beside live `test fn`s.
-    // A `*_test.dag` with zero `test fn`s is a fixture/example library (e.g.
-    // `extdeps/languages/rust_test.dag` — cross-module consumers, module-local
-    // reachability cannot see them). Skip rather than false-red every export.
-    // Dissolve-on: rename fixture libraries off the `_test.dag` suffix, or lift
-    // reachability to the import graph.
-    let has_test_fn = module.fns.values().any(|(is_test, _, _)| *is_test);
-    if !has_test_fn {
-        return Vec::new();
-    }
     let plain: HashSet<String> = module
         .fns
         .iter()
@@ -285,10 +308,30 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
     if plain.is_empty() {
         return Vec::new();
     }
+
+    // Zero enrolled `test fn` / `test data` + plain helpers is the demotion failure
+    // mode (all witnesses accidentally plain) — refuse, never assume "fixture library"
+    // from path suffix alone (DESIGN §5 enroll-or-refuse; review 43330).
+    // Structural exemption: cross-module language/example libraries only.
+    if !module.has_enrolled_test_decl {
+        if is_cross_module_fixture_library_path(entry) {
+            return Vec::new();
+        }
+        let mut orphans: Vec<OrphanHelper> = plain
+            .into_iter()
+            .map(|name| OrphanHelper {
+                entry: entry.to_string(),
+                name,
+            })
+            .collect();
+        orphans.sort_by(|a, b| a.name.cmp(&b.name));
+        return orphans;
+    }
+
     let mut reachable: HashSet<String> = HashSet::new();
     let mut queue: VecDeque<String> = VecDeque::new();
 
-    // Roots: test fn bodies + data/const initializers (fixture surface).
+    // Roots: test fn bodies + data/const initializers (fixture / claim-row surface).
     for (name, (is_test, _, body)) in &module.fns {
         if *is_test {
             reachable.insert(name.clone());
@@ -303,7 +346,6 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
             }
         }
     }
-    // data + test data initializers (fixture / claim-row surface)
     for body in &module.data_bodies {
         let mut refs = HashSet::new();
         walk_refs(body, &module.si, &mut refs);
@@ -526,6 +568,90 @@ test fn live_holds() -> Bool {
         .unwrap();
         check_orphan_helpers_in_entries(&[entry]).expect("removing plant must green");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn zero_enrolled_plain_helpers_refuse_demotion() {
+        // review 43330: absence of `test fn` must not silently accept demoted witnesses.
+        let dir = tmp_dir();
+        let file = dir.join("demoted_witness_test.dag");
+        std::fs::write(
+            &file,
+            r#"module demoted_witness
+
+fn formerly_test_holds() -> Bool {
+  true
+}
+"#,
+        )
+        .unwrap();
+        let entry = file.to_string_lossy().into_owned();
+        let err = check_orphan_helpers_in_entries(&[entry])
+            .expect_err("zero enrolled decls + plain helper must refuse");
+        assert!(
+            err.contains("formerly_test_holds"),
+            "must name the demoted plain fn: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cross_module_fixture_library_path_exempts_zero_enrolled_plains() {
+        let dir = tmp_dir().join("extdeps").join("languages");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("fixture_lib_test.dag");
+        std::fs::write(
+            &file,
+            r#"module fixture_lib
+
+fn export_for_importers() -> Bool {
+  true
+}
+"#,
+        )
+        .unwrap();
+        let entry = file.to_string_lossy().into_owned();
+        check_orphan_helpers_in_entries(&[entry])
+            .expect("extdeps/languages *_test.dag is a structural fixture library");
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn test_data_only_module_still_orphans_unreachable_plains() {
+        let dir = tmp_dir();
+        let file = dir.join("test_data_only_test.dag");
+        std::fs::write(
+            &file,
+            r#"module test_data_only
+
+fn used_by_test_data() -> Bool { true }
+
+fn dark_plain() -> Bool { false }
+
+test data enrolled_row: Bool = used_by_test_data()
+"#,
+        )
+        .unwrap();
+        let entry = file.to_string_lossy().into_owned();
+        let err = check_orphan_helpers_in_entries(&[entry])
+            .expect_err("test data enrollment must still orphan unreachable plains");
+        assert!(
+            err.contains("dark_plain"),
+            "must name unreachable plain: {err}"
+        );
+        assert!(
+            !err.contains("used_by_test_data"),
+            "reachable-from-test-data must not red: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn orphan_gate_scaffold_marker_is_declared() {
+        assert_eq!(
+            TEST_MODULE_HYGIENE_ORPHAN_GATE_SCAFFOLD_MARKER,
+            "test_module_hygiene_orphan_gate"
+        );
     }
 
     #[test]
