@@ -1,6 +1,5 @@
 module test.claim.runner_unit_live_read_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fixture_host() -> String {
@@ -82,14 +81,14 @@ fn drift_memory_max_row() -> RunnerUnitLiveReadRow {
   }
 }
 
-fn witness_parse_infinity_is_unbounded() -> Bool {
+test fn witness_parse_infinity_is_unbounded() -> Bool {
   match parse_systemd_memory_limit_show(raw: "infinity") {
     MemoryLimitUnbounded => true
     _ => false
   }
 }
 
-fn witness_parse_bytes_is_typed() -> Bool {
+test fn witness_parse_bytes_is_typed() -> Bool {
   match parse_systemd_memory_limit_show(raw: "17179869184") {
     MemoryLimitBytes { bytes: b } =>
       byte_size_count(b: b) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
@@ -97,14 +96,14 @@ fn witness_parse_bytes_is_typed() -> Bool {
   }
 }
 
-fn witness_parse_empty_is_absent() -> Bool {
+test fn witness_parse_empty_is_absent() -> Bool {
   match parse_systemd_memory_limit_show(raw: "") {
     MemoryLimitAbsent => true
     _ => false
   }
 }
 
-fn witness_fixture_read_types_all_three_properties() -> Bool {
+test fn witness_fixture_read_types_all_three_properties() -> Bool {
   let read = fixture_live_read()
   match read.memory_max {
     MemoryLimitUnbounded => true
@@ -120,35 +119,35 @@ fn witness_fixture_read_types_all_three_properties() -> Bool {
     }
 }
 
-fn witness_fixture_memory_max_drifts_against_model_cap() -> Bool {
+test fn witness_fixture_memory_max_drifts_against_model_cap() -> Bool {
   runner_unit_memory_max_drifts_against_cap(
     read: fixture_live_read(),
     desired_cap: gunbc_ci_runner_cgroup_memory_cap
   )
 }
 
-fn witness_fixture_swap_max_drifts_against_desired() -> Bool {
+test fn witness_fixture_swap_max_drifts_against_desired() -> Bool {
   match converge_target_live_verdict(read: fixture_live_read(), target: fixture_swap_max_target()) {
     Present { value: Drifted } => true
     _ => false
   }
 }
 
-fn witness_matching_swap_read_converges_on_desired() -> Bool {
+test fn witness_matching_swap_read_converges_on_desired() -> Bool {
   runner_unit_swap_max_converged(
     read: runner_unit_live_read_typed(row: matching_swap_max_row()),
     target: fixture_swap_max_target()
   )
 }
 
-fn witness_fixture_high_drifts_against_desired() -> Bool {
+test fn witness_fixture_high_drifts_against_desired() -> Bool {
   match converge_target_live_verdict(read: fixture_live_read(), target: fixture_high_target()) {
     Present { value: Drifted } => true
     _ => false
   }
 }
 
-fn witness_matching_high_read_converges_on_desired() -> Bool {
+test fn witness_matching_high_read_converges_on_desired() -> Bool {
   match converge_target_live_verdict(
     read: runner_unit_live_read_typed(row: matching_high_row()),
     target: fixture_high_target()
@@ -158,7 +157,7 @@ fn witness_matching_high_read_converges_on_desired() -> Bool {
   }
 }
 
-fn witness_matching_read_converges_on_memory_max_target() -> Bool {
+test fn witness_matching_read_converges_on_memory_max_target() -> Bool {
   let read = runner_unit_live_read_typed(row: matching_memory_max_row())
   match converge_target_live_verdict(read: read, target: fixture_memory_max_target()) {
     Present { value: VerdictConverged } => true
@@ -166,7 +165,7 @@ fn witness_matching_read_converges_on_memory_max_target() -> Bool {
   }
 }
 
-fn witness_drift_read_fails_memory_max_target() -> Bool {
+test fn witness_drift_read_fails_memory_max_target() -> Bool {
   let read = runner_unit_live_read_typed(row: drift_memory_max_row())
   match converge_target_live_verdict(read: read, target: fixture_memory_max_target()) {
     Present { value: Drifted } => true
@@ -174,7 +173,7 @@ fn witness_drift_read_fails_memory_max_target() -> Bool {
   }
 }
 
-fn witness_target_bytes_value_is_single_authority() -> Bool {
+test fn witness_target_bytes_value_is_single_authority() -> Bool {
   let read = runner_unit_live_read_typed(row: drift_memory_max_row())
   let target = PerSlotMemoryCap {
     dropin_path: gunbc_runner_per_slot_dropin_path,
@@ -188,20 +187,14 @@ fn witness_target_bytes_value_is_single_authority() -> Bool {
   }
 }
 
-fn witness_perturbed_fixture_read_diff_red_on_memory_max() -> Bool {
-  witness_fixture_memory_max_drifts_against_model_cap()
-    && witness_matching_read_converges_on_memory_max_target()
-    && witness_drift_read_fails_memory_max_target()
-}
-
-fn witness_memory_limit_absent_routes_to_absent_verdict() -> Bool {
+test fn witness_memory_limit_absent_routes_to_absent_verdict() -> Bool {
   memory_limit_converge_verdict_for_bytes_value(
     observed: MemoryLimitAbsent,
     bytes_value: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
   ) == Absent
 }
 
-fn witness_cap_effectiveness_projection_matches_runner_slot_type() -> Bool {
+test fn witness_cap_effectiveness_projection_matches_runner_slot_type() -> Bool {
   let read = runner_unit_live_read_typed(row: matching_memory_max_row())
   match memory_limit_to_cap_effectiveness(lim: read.memory_max) {
     Present { value: CapEffective { bytes: b } } =>
@@ -214,18 +207,3 @@ fn witness_cap_effectiveness_projection_matches_runner_slot_type() -> Bool {
     }
 }
 
-test fn runner_unit_live_read_grounds_converge_target() -> Bool {
-  witness_parse_infinity_is_unbounded()
-    && witness_parse_bytes_is_typed()
-    && witness_parse_empty_is_absent()
-    && witness_fixture_read_types_all_three_properties()
-    && witness_fixture_memory_max_drifts_against_model_cap()
-    && witness_fixture_swap_max_drifts_against_desired()
-    && witness_matching_swap_read_converges_on_desired()
-    && witness_fixture_high_drifts_against_desired()
-    && witness_matching_high_read_converges_on_desired()
-    && witness_perturbed_fixture_read_diff_red_on_memory_max()
-    && witness_target_bytes_value_is_single_authority()
-    && witness_memory_limit_absent_routes_to_absent_verdict()
-    && witness_cap_effectiveness_projection_matches_runner_slot_type()
-}

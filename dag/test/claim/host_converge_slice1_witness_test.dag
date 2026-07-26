@@ -49,7 +49,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn witness_slice1_knob_is_per_slot_memory_max_on_srv1() -> Bool {
+test fn witness_slice1_knob_is_per_slot_memory_max_on_srv1() -> Bool {
   match host_converge_slice1_srv1_per_slot_memory_max_knob() {
     Present { value: knob } =>
       knob.name == host_converge_slice1_knob_name
@@ -62,7 +62,7 @@ fn witness_slice1_knob_is_per_slot_memory_max_on_srv1() -> Bool {
   }
 }
 
-fn witness_fixture_infinity_drifts_against_model_desired() -> Bool {
+test fn witness_fixture_infinity_drifts_against_model_desired() -> Bool {
   match host_converge_slice1_fixture_receipt() {
     Present { value: receipt } =>
       receipt.host == operator_host_srv1
@@ -72,7 +72,7 @@ fn witness_fixture_infinity_drifts_against_model_desired() -> Bool {
   }
 }
 
-fn witness_stdout_parse_grounds_memory_max() -> Bool {
+test fn witness_stdout_parse_grounds_memory_max() -> Bool {
   match runner_unit_live_read_row_from_stdout(
     unit: host_converge_slice1_probe_unit,
     stdout: "infinity\n0\ninfinity\n",
@@ -83,7 +83,7 @@ fn witness_stdout_parse_grounds_memory_max() -> Bool {
   }
 }
 
-fn witness_short_stdout_is_read_absent() -> Bool {
+test fn witness_short_stdout_is_read_absent() -> Bool {
   match runner_unit_memory_live_read_from_stdout(
     unit: host_converge_slice1_probe_unit,
     stdout: "infinity\n",
@@ -94,7 +94,7 @@ fn witness_short_stdout_is_read_absent() -> Bool {
   }
 }
 
-fn witness_verdict_uses_converge_target_not_string_flatten() -> Bool {
+test fn witness_verdict_uses_converge_target_not_string_flatten() -> Bool {
   match host_converge_slice1_srv1_per_slot_memory_max_knob() {
     Present { value: knob } =>
       match host_converge_slice1_memory_cap_verdict(
@@ -122,7 +122,7 @@ fn witness_slice1_show_property_local_read_holds() -> Bool {
   }
 }
 
-fn witness_transport_reads_use_show_property_authority() -> Bool {
+test fn witness_transport_reads_use_show_property_authority() -> Bool {
   systemctl_show_property_operation_argv_matches_transport(
     unit: host_converge_slice1_probe_unit,
     property: MemoryMax,
@@ -135,22 +135,13 @@ fn witness_transport_reads_use_show_property_authority() -> Bool {
     )
 }
 
-test fn host_converge_slice1_wires_srv1_memory_cap() -> Bool {
-  witness_slice1_knob_is_per_slot_memory_max_on_srv1()
-    && witness_fixture_infinity_drifts_against_model_desired()
-    && witness_stdout_parse_grounds_memory_max()
-    && witness_short_stdout_is_read_absent()
-    && witness_verdict_uses_converge_target_not_string_flatten()
-    && witness_transport_reads_use_show_property_authority()
-}
-
-fn witness_list_units_line_parser_takes_first_field_only() -> Bool {
+test fn witness_list_units_line_parser_takes_first_field_only() -> Bool {
   systemctl_list_units_line_as_unit(
     line: "actions-runner@srv3-01.service loaded active running GitHub Actions Runner",
   ) == "actions-runner@srv3-01.service" as NonEmptyStr
 }
 
-fn witness_enumerate_units_uses_typed_list_units_op() -> Bool {
+test fn witness_enumerate_units_uses_typed_list_units_op() -> Bool {
   match systemctl_list_units_active_services(instance_glob: "actions-runner@srv3-*.service" as NonEmptyStr) {
     Present { value: units } =>
       length(units) == 2
@@ -160,7 +151,7 @@ fn witness_enumerate_units_uses_typed_list_units_op() -> Bool {
   }
 }
 
-fn witness_cross_check_enumeration_none_iff_length_matches_declared() -> Bool {
+test fn witness_cross_check_enumeration_none_iff_length_matches_declared() -> Bool {
   let declared = declared_runner_count()
   let empty_units: List<NonEmptyStr> = []
   match host_converge_slice1_cross_check_enumeration(host: operator_host_srv3, units: empty_units) {
@@ -173,7 +164,7 @@ fn witness_cross_check_enumeration_none_iff_length_matches_declared() -> Bool {
   }
 }
 
-fn witness_usage_guard_refusal_routes_to_legacy_refused_with_retryable_reason() -> Bool {
+test fn witness_usage_guard_refusal_routes_to_legacy_refused_with_retryable_reason() -> Bool {
   let outcome: HostConvergeSlice1UnitOutcome = HostConvergeSlice1UnitUsageGuardRefused {
     unit: host_converge_slice1_probe_unit,
     current_bytes: byte_size(count: 200),
@@ -187,9 +178,3 @@ fn witness_usage_guard_refusal_routes_to_legacy_refused_with_retryable_reason() 
   }
 }
 
-test fn host_converge_slice1_wires_srv3_multi_unit_generalization() -> Bool {
-  witness_list_units_line_parser_takes_first_field_only()
-    && witness_enumerate_units_uses_typed_list_units_op()
-    && witness_cross_check_enumeration_none_iff_length_matches_declared()
-    && witness_usage_guard_refusal_routes_to_legacy_refused_with_retryable_reason()
-}

@@ -34,7 +34,7 @@ fn roundtrip_core_node() -> Fragment {
   }
 }
 
-fn witness_roundtrip_core() -> Bool {
+test fn witness_roundtrip_core() -> Bool {
   match ingest_html_source(src: serialize_html_source(node: roundtrip_core_node())) {
     IngestedNode { node } => node == roundtrip_core_node()
     IngestRejected { reason: _ } => false
@@ -60,7 +60,7 @@ fn perturbed_node() -> Fragment {
   }
 }
 
-fn witness_roundtrip_under_perturbed_rows() -> Bool {
+test fn witness_roundtrip_under_perturbed_rows() -> Bool {
   let sp = perturbed_spellings()
   match ingest_html_source_with(src: serialize_html_source_with(node: perturbed_node(), sp: sp), sp: sp) {
     IngestedNode { node } => node == perturbed_node()
@@ -76,7 +76,7 @@ fn attr_node() -> Fragment {
   }
 }
 
-fn witness_ingest_reads_attr_assign_row() -> Bool {
+test fn witness_ingest_reads_attr_assign_row() -> Bool {
   let emitted_perturbed = serialize_html_source_with(node: attr_node(), sp: perturbed_spellings())
   match ingest_html_source(src: emitted_perturbed) {
     IngestedNode { node } => !(node == attr_node())
@@ -84,7 +84,7 @@ fn witness_ingest_reads_attr_assign_row() -> Bool {
   }
 }
 
-fn witness_core_advertised_lossless() -> Bool {
+test fn witness_core_advertised_lossless() -> Bool {
   let node = roundtrip_core_node()
   let m = html_medium_lossless(node: node)
   match m.fidelity {
@@ -93,7 +93,7 @@ fn witness_core_advertised_lossless() -> Bool {
   }
 }
 
-fn witness_frontier_unsafe_href_rejected() -> Bool {
+test fn witness_frontier_unsafe_href_rejected() -> Bool {
   let serialized = serialize_html_source(node: Element {
     tag: "a",
     attributes: [attr(name: "href", value: "javascript:alert(1)" )],
@@ -116,18 +116,10 @@ fn adjacent_text_node() -> Fragment {
   }
 }
 
-fn witness_frontier_not_roundtripped() -> Bool {
+test fn witness_frontier_not_roundtripped() -> Bool {
   match ingest_html_source(src: serialize_html_source(node: adjacent_text_node())) {
     IngestedNode { node } => !(node == adjacent_text_node())
     IngestRejected { reason: _ } => false
   }
 }
 
-test fn html_roundtrip_keystone_holds() -> Bool {
-  witness_roundtrip_core()
-    && witness_roundtrip_under_perturbed_rows()
-    && witness_ingest_reads_attr_assign_row()
-    && witness_core_advertised_lossless()
-    && witness_frontier_unsafe_href_rejected()
-    && witness_frontier_not_roundtripped()
-}

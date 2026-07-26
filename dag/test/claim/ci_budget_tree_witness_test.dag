@@ -1,6 +1,5 @@
 module test.claim.ci_budget_tree_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn fitting_slice() -> Int {
@@ -11,18 +10,18 @@ fn oversized_slice() -> Int {
   214748364800
 }
 
-fn witness_live_trees_conserve() -> Bool {
+test fn witness_live_trees_conserve() -> Bool {
   node_conserves(node: srv1_budget_tree)
     && node_conserves(node: srv2_budget_tree)
     && node_conserves(node: srv3_budget_tree)
 }
 
-fn witness_live_is_fail_closed() -> Bool {
+test fn witness_live_is_fail_closed() -> Bool {
   byte_size_count(b: srv1_gha_runner_pool_budget()) == 0
     && byte_size_count(b: srv1_dashboard_session_pool_budget()) == byte_size_count(b: host_allocatable_bytes(offer: srv1_offer))
 }
 
-fn witness_measured_fixture_derives_positive_runner_pool() -> Bool {
+test fn witness_measured_fixture_derives_positive_runner_pool() -> Bool {
   let tree = host_budget_tree_at(name: "srv1", offer: srv1_offer, session_slice: byte_size(fitting_slice()))
   let runner_pool = match budget_tree_gha_runner_pool_node(tree: tree) {
     BudgetChildFound { node: n } => byte_size_count(b: n.appropriation.ceiling)
@@ -32,7 +31,7 @@ fn witness_measured_fixture_derives_positive_runner_pool() -> Bool {
   node_conserves(node: tree) && runner_pool > 0 && runner_pool == expected
 }
 
-fn witness_overcommit_fails_conservation() -> Bool {
+test fn witness_overcommit_fails_conservation() -> Bool {
   let tree = host_budget_tree_at(name: "srv1", offer: srv1_offer, session_slice: byte_size(oversized_slice()))
   let runner_pool = match budget_tree_gha_runner_pool_node(tree: tree) {
     BudgetChildFound { node: n } => byte_size_count(b: n.appropriation.ceiling)
@@ -41,14 +40,14 @@ fn witness_overcommit_fails_conservation() -> Bool {
   runner_pool == 0 && !node_conserves(node: tree)
 }
 
-fn witness_three_way_conservation_live() -> Bool {
+test fn witness_three_way_conservation_live() -> Bool {
   let overhead = byte_size_count(b: srv1_fixed_overhead_bytes())
   let gha = byte_size_count(b: srv1_gha_runner_pool_budget())
   let dash = byte_size_count(b: srv1_dashboard_session_pool_budget())
   overhead + gha + dash <= byte_size_count(b: srv1_host_ram())
 }
 
-fn witness_srv2_symmetric_to_srv1() -> Bool {
+test fn witness_srv2_symmetric_to_srv1() -> Bool {
   let s1 = host_budget_tree_at(name: "srv1", offer: srv1_offer, session_slice: byte_size(fitting_slice()))
   let s2 = host_budget_tree_at(name: "srv2", offer: srv2_offer, session_slice: byte_size(fitting_slice()))
   let p1 = match budget_tree_gha_runner_pool_node(tree: s1) {
@@ -62,7 +61,7 @@ fn witness_srv2_symmetric_to_srv1() -> Bool {
   p1 == p2 && p1 > 0
 }
 
-fn witness_two_pools_present() -> Bool {
+test fn witness_two_pools_present() -> Bool {
   let gha_found = match budget_tree_gha_runner_pool_node(tree: srv1_budget_tree) {
     BudgetChildFound { node: _ } => true
     BudgetChildMissing => false
@@ -74,14 +73,14 @@ fn witness_two_pools_present() -> Bool {
   return gha_found && dash_found
 }
 
-fn witness_unknown_child_is_absent() -> Bool {
+test fn witness_unknown_child_is_absent() -> Bool {
   match budget_child_named(node: srv1_budget_tree, name: "__no_such_child__") {
     BudgetChildFound { node: _ } => false
     BudgetChildMissing => true
   }
 }
 
-fn witness_spawn_width_budget_within_per_runner_cap() -> Bool {
+test fn witness_spawn_width_budget_within_per_runner_cap() -> Bool {
   let fleet_budget = byte_size_count(b: ci_runner_target_ram_speed_budget(target: FleetSelfHosted))
   byte_size_count(b: srv1_floor_memory_budget()) > 0
     && fleet_budget <= byte_size_count(b: gunbc_ci_runner_slot_memory_max_live)
@@ -89,20 +88,20 @@ fn witness_spawn_width_budget_within_per_runner_cap() -> Bool {
     && fleet_budget < byte_size_count(b: srv1_host_ram())
 }
 
-fn witness_hard_cap_is_runner_cgroup_cap() -> Bool {
+test fn witness_hard_cap_is_runner_cgroup_cap() -> Bool {
   byte_size_count(b: srv1_ci_run_container_hard_cap()) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
 }
 
-fn witness_cap_split_runner_lt_session() -> Bool {
+test fn witness_cap_split_runner_lt_session() -> Bool {
   witness_runner_cgroup_cap_lt_dashboard_session_cap()
     && byte_size_count(b: gunbc_ci_dashboard_session_container_cap) > byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
 }
 
-fn witness_floor_budget_equals_selected_target_budget_holds() -> Bool {
+test fn witness_floor_budget_equals_selected_target_budget_holds() -> Bool {
   witness_floor_budget_equals_selected_target_budget()
 }
 
-fn witness_srv3_symmetric_to_srv1() -> Bool {
+test fn witness_srv3_symmetric_to_srv1() -> Bool {
   let s1 = host_budget_tree_at(name: "srv1", offer: srv1_offer, session_slice: byte_size(fitting_slice()))
   let s3 = host_budget_tree_at(name: "srv3", offer: srv3_offer, session_slice: byte_size(fitting_slice()))
   let p1 = match budget_tree_gha_runner_pool_node(tree: s1) {
@@ -116,18 +115,3 @@ fn witness_srv3_symmetric_to_srv1() -> Bool {
   p1 == p3 && p3 > 0
 }
 
-test fn ci_budget_tree_holds() -> Bool {
-  witness_live_trees_conserve()
-    && witness_live_is_fail_closed()
-    && witness_measured_fixture_derives_positive_runner_pool()
-    && witness_overcommit_fails_conservation()
-    && witness_three_way_conservation_live()
-    && witness_srv2_symmetric_to_srv1()
-    && witness_srv3_symmetric_to_srv1()
-    && witness_two_pools_present()
-    && witness_unknown_child_is_absent()
-    && witness_spawn_width_budget_within_per_runner_cap()
-    && witness_hard_cap_is_runner_cgroup_cap()
-    && witness_cap_split_runner_lt_session()
-    && witness_floor_budget_equals_selected_target_budget_holds()
-}

@@ -1,6 +1,5 @@
 module test.claim.fleet_converge_apply_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fixture_srv3_host_converge() -> HostConverge {
@@ -29,7 +28,7 @@ fn fixture_srv3_host_converge() -> HostConverge {
   }
 }
 
-fn witness_unsound_policy_refused() -> Bool {
+test fn witness_unsound_policy_refused() -> Bool {
   match converge_apply(
     policy: ConvergePolicyUnsound { reason: "fixture" },
     transport: LocalShell
@@ -39,7 +38,7 @@ fn witness_unsound_policy_refused() -> Bool {
   }
 }
 
-fn witness_converge_apply_fail_closed_on_knob_frontier() -> Bool {
+test fn witness_converge_apply_fail_closed_on_knob_frontier() -> Bool {
   match converge_apply(
     policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
     transport: LocalShell
@@ -50,12 +49,12 @@ fn witness_converge_apply_fail_closed_on_knob_frontier() -> Bool {
   }
 }
 
-fn witness_thin_invocation_argv() -> Bool {
+test fn witness_thin_invocation_argv() -> Bool {
   let inv = fleet_converge_thin_invocation(host: operator_host_srv3)
   inv.argv.length() == 4
 }
 
-fn witness_emit_artifact_carriers_name_bash_emit_scaffolds() -> Bool {
+test fn witness_emit_artifact_carriers_name_bash_emit_scaffolds() -> Bool {
   match bootstrap_fragment_script_carrier_scaffold {
     Terminal { reason: _ } => true
     Scaffold { dissolves_to: _, bind: _ } => false
@@ -70,7 +69,7 @@ fn witness_emit_artifact_carriers_name_bash_emit_scaffolds() -> Bool {
     }
 }
 
-fn witness_emit_artifact_transport_rejects_shell_command() -> Bool {
+test fn witness_emit_artifact_transport_rejects_shell_command() -> Bool {
   !fleet_converge_apply_result_converged(r: converge_apply(
     policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
     transport: EmitArtifactThenThinRun {
@@ -80,10 +79,3 @@ fn witness_emit_artifact_transport_rejects_shell_command() -> Bool {
   ))
 }
 
-test fn fleet_converge_apply_holds() -> Bool {
-  witness_unsound_policy_refused()
-    && witness_converge_apply_fail_closed_on_knob_frontier()
-    && witness_thin_invocation_argv()
-    && witness_emit_artifact_carriers_name_bash_emit_scaffolds()
-    && witness_emit_artifact_transport_rejects_shell_command()
-}

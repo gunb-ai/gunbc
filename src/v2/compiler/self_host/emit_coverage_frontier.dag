@@ -65,7 +65,7 @@ data emit_coverage_frontier_roster: List<EmitCoverageFrontierRow> = [
     witness_function: "emit_host_classical_not_ingested_equals_eval_holds",
     disposition: SelfEmittedNative {
       backing_entry: "src/v2/test/claim/execution/emit_host_native_only_verdict_test.dag",
-      backing_function: "emit_host_native_only_verdict_all_holds"
+      backing_function: "emit_host_native_only_classical_not_holds"
     }
   },
   retained_via_eval_agreement(

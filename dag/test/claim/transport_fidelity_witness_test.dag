@@ -37,36 +37,29 @@ fn test_class_is_unit(c: TestClass) -> Bool {
   }
 }
 
-fn local_set_is_hermetic() -> Bool {
+test fn local_set_is_hermetic() -> Bool {
   let d = classify_transports(transports: [ShellLocal, FileBoundary, LocalDirect])
   test_class_is_hermetic(c: d.test_class) && d.hermetic && fermi_eq(lhs: d.depth, rhs: S)
 }
 
-fn network_set_is_integration() -> Bool {
+test fn network_set_is_integration() -> Bool {
   let d = classify_transports(transports: [ShellLocal, RestNetwork])
   test_class_is_integration(c: d.test_class) && !d.hermetic && fermi_eq(lhs: d.depth, rhs: L)
 }
 
-fn empty_set_is_unit() -> Bool {
+test fn empty_set_is_unit() -> Bool {
   let d = classify_transports(transports: [])
   test_class_is_unit(c: d.test_class) && d.hermetic && fermi_eq(lhs: d.depth, rhs: Xs)
 }
 
-fn dispatch_reads_cited_rows() -> Bool {
+test fn dispatch_reads_cited_rows() -> Bool {
   fermi_eq(lhs: transport_depth(tc: ShellLocal), rhs: S)
     && transport_hermetic(tc: ShellLocal)
     && fermi_eq(lhs: transport_depth(tc: RestNetwork), rhs: L)
     && !transport_hermetic(tc: RestNetwork)
 }
 
-fn red_rest_network_advertises_hermetic() -> Bool {
+test fn red_rest_network_advertises_hermetic() -> Bool {
   transport_hermetic(tc: RestNetwork)
 }
 
-test fn transport_fidelity_holds() -> Bool {
-  local_set_is_hermetic()
-    && network_set_is_integration()
-    && empty_set_is_unit()
-    && dispatch_reads_cited_rows()
-    && !red_rest_network_advertises_hermetic()
-}
