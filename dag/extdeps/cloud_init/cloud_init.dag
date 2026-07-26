@@ -1,0 +1,58 @@
+module extdeps.cloud_init.cloud_init
+
+import std.types { String, NonEmptyStr, Bool, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloudinit.readthedocs.io/en/latest/howto/disable_cloud_init.html"
+  }
+}
+
+data cloud_init_authority_note: String = "cloud-init is a DISTINCT upstream from Ubuntu and from subiquity, and it gets its own module for the same reason extdeps.os.ubuntu_autoinstall already cites cloudinit.readthedocs.io separately for the NoCloud datasource rather than folding it into the subiquity anchor: they are different projects with different release cadences and different documentation, and a fact about cloud-init's lifecycle is not a fact about the distribution that ships it. What this module owns is narrow and load-bearing: how cloud-init is turned OFF, and what that does and does not imply about the files it wrote while it was on."
+
+data cloud_init_disabled_marker_path: NonEmptyStr = "/etc/cloud/cloud-init.disabled"
+
+data cloud_init_reenable_argv_shape: List<NonEmptyStr> = ["cloud-init", "clean", "--machine-id"]
+
+type CloudInitDisposition
+  = CloudInitEnabled
+  | CloudInitDisabledByMarkerFile { path: NonEmptyStr, reason: NonEmptyStr }
+  | CloudInitDisabledByKernelCmdline
+
+data ubuntu_live_installer_disable_note: String = "THE quirk, cited to the marker file's own contents as observed on srv4 2026-07-25: after a desktop/server ISO install, the Ubuntu live installer writes /etc/cloud/cloud-init.disabled containing verbatim 'Disabled by Ubuntu live installer after first boot.' followed by the re-enable instruction 'sudo cloud-init clean --machine-id'. This is STOCK, EXPECTED BEHAVIOUR on every ISO-installed Ubuntu host — it is not a fault, not a misconfiguration, and not something the fleet did. Recording it matters because its absence from the model cost real diagnostic time: on a host that had lost networking, finding cloud-init disabled reads like a smoking gun to anyone who does not know the installer always does this, and the wrong causal story (generator off, therefore config never applied) survives exactly as long as nobody checks who actually applies the config. Every ISO-installed fleet host carries this marker; a host WITHOUT it was installed by a different path and that difference is the interesting signal, not the marker itself."
+
+data ubuntu_live_installer_disable_marker_text: NonEmptyStr = "Disabled by Ubuntu live installer after first boot."
+
+data cloud_init_installer_config_paths: List<NonEmptyStr> = [
+  "/etc/cloud/cloud.cfg.d/90-installer-network.cfg",
+  "/etc/cloud/cloud.cfg.d/99-installer.cfg",
+]
+
+data cloud_init_is_a_writer_not_an_applier_note: String = "THE fact this module exists to make unfusable. cloud-init GENERATES /etc/netplan/50-cloud-init.yaml; it does not APPLY it. Applying is netplan's job (extdeps.netplan.netplan), performed at every boot by the renderer, and the renderer neither knows nor cares which process wrote the file or whether that process still runs. So disabling cloud-init freezes the file — no future regeneration, and hand edits become authoritative because nothing will overwrite them — and changes NOTHING about whether the network comes up. The tempting inference, 'the generator is disabled, therefore its output is not in effect', is FALSE, and it is false in the direction that produces a confident wrong diagnosis rather than a visible error. It was drawn live on srv4 (2026-07-25) against a host whose netplan was present, correct, and applied, and whose actual fault was a dead physical link. gunbc.host_network_diagnosis carries that inference as an executable RED control so it cannot be drawn again unnoticed."
+
+fn cloud_init_is_disabled(d: CloudInitDisposition) -> Bool {
+  match d {
+    CloudInitEnabled => false
+    CloudInitDisabledByMarkerFile { path: _, reason: _ } => true
+    CloudInitDisabledByKernelCmdline => true
+  }
+}
+
+data cloud_init_generated_netplan_path: NonEmptyStr = "/etc/netplan/50-cloud-init.yaml"
+
+type CloudInitGeneratedFileState
+  = RegeneratedEachBoot
+  | FrozenAtLastRun { because: CloudInitDisposition }
+
+fn cloud_init_generated_file_state(d: CloudInitDisposition) -> CloudInitGeneratedFileState {
+  if cloud_init_is_disabled(d: d) {
+    FrozenAtLastRun { because: d }
+  } else {
+    RegeneratedEachBoot
+  }
+}
+
+data cloud_init_frozen_authority_note: String = "A frozen generated file is an AUTHORITY TRANSFER, not merely a stale artifact, and naming it that way is what makes it safe to edit. While cloud-init runs, /etc/netplan/50-cloud-init.yaml is derived and any hand edit is lost at the next boot. Once cloud-init is disabled, the same path is hand-authoritative — the generator that owned it will never run again — which is precisely the SelfEmitted-versus-SeedRetained distinction the self-host frontier draws for emitted sources, and the same question gunbc.generated_artifact answers for this repo's own generated files. The state must be derived from the disposition rather than assumed per-file, because the same path means opposite things on two hosts that differ only in whether an installer ran."

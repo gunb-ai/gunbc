@@ -9,6 +9,7 @@ import v2.lens.registry {
   lens_registry_v0_cost, lens_registry_v0_complexity,
   lens_registry_v0_complexity_accumulator_copy,
   lens_registry_v0_complexity_linearity_audit,
+  lens_registry_v0_fallback_arm_census,
   lens_registry_v0_complexity_lowering,
   lens_registry_v0_coverage,
   lens_registry_v0_dependency_fidelity,
@@ -151,6 +152,15 @@ data lens_contract_complexity_linearity_audit: LensContract = {
   consumer_witness: NoConsumerWitness,
   exemptions: [],
   boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
+}
+
+data lens_contract_fallback_arm_census: LensContract = {
+  entry: lens_registry_v0_fallback_arm_census,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
 }
 
 data lens_contract_complexity_lowering: LensContract = {
@@ -518,6 +528,7 @@ data lens_contract_registry: List<LensContract> = [
   lens_contract_complexity,
   lens_contract_complexity_accumulator_copy,
   lens_contract_complexity_linearity_audit,
+  lens_contract_fallback_arm_census,
   lens_contract_complexity_lowering,
   lens_contract_coverage,
   lens_contract_dependency_fidelity,
@@ -566,6 +577,7 @@ data lens_contracts_pending_fn_body_reflection_note: String = "W3.3 registry-enr
 data lens_contracts_pending_fn_body_reflection: List<LensIdV0> = [
   ComplexityAccumulatorCopy,
   ComplexityLinearityAudit,
+  FallbackArmCensus,
   ComplexityLowering,
   Coverage,
   DependencyFidelity,
