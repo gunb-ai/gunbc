@@ -138,7 +138,9 @@ Two tracks run in parallel.
 
 **Superseded 2026-07-26 (`review 43477`).** This section described the arc's terminal step as: importers drain → the `bash_program_importer_count` ratchet hits its floor → `program.dag` + `serialize_bash` delete. **None of that is pending.** The sidecar was deleted outright in #6831 Phase 0 and the ratchet was pruned with it as vacuous (resolve now fails before it could fire); the identifier survives nowhere but this document. So the join is not a deletion the tracks build toward — it already happened, ahead of them.
 
-The v2 bidirectional bash language **is** the single bash authority today. What actually remains as the arc's terminus is the **Phase-3 wall** (§4.F): brand `TransportScript` so shell text can only be *produced* by `emit(intent, Bash)`, and activate the inert `host_language_transport_script` lens — turning "no sidecar exists" into "a hand-built transport string is unwritable" (§5 construction over validation). Tracks 1 and 2 below feed that wall, not a deletion.
+The v2 bidirectional bash language **is** the single bash authority today. The **Phase-3 wall** that turns *"no sidecar exists"* into *"a hand-built transport string is unwritable"* (§5 construction over validation) has also **already landed** (#7184, operator acceptance 2026-07-24): the free minter is deleted and `RetainedShellScript` — a **record** — is the sole mint. So Tracks 1 and 2 feed neither a deletion nor a wall; both terminals are behind us. What genuinely remains is **meta-exec confinement** (§4.F, last row) plus the per-site migration itself.
+
+*(Corrected 2026-07-26, `review 43486`. The previous sentence here — written by me one round earlier while fixing the `program.dag` staleness — said the terminus was to "brand `TransportScript` … and activate the inert lens". Both were refuted by execution well before I wrote it, in §5.E's own ruling block. Fixing a stale directive by writing a differently-stale directive is the failure mode this document keeps reproducing; see §4.G's method note.)*
 
 **Critical-path summary:** everything non-foreign converges on **P4 (the `host_effect_apply` typed-effect + `EmitArtifactThenThinRun` mint)** — **P4 is LANDED** (#6572/#6585/#6598; FLAGs 2a(i)/2b/2c signed/discharged 2026-07-14, see §2). The critical path is now P5/P6 (mechanical on the landed interface) and the operator sign of roadmap `6-shell-slice2`; P1/P2 (emitter side) run independently. **Dispatch note (2026-07-20):** do not re-dispatch workers onto P4/slice 2 from the old ~275-line framing — that staleness produced two misdispatches onto finished work.
 
@@ -162,7 +164,7 @@ Every way a shell string is constructed or carried, over `dag/**` (excluding `*_
 | P3 | `command:` in `Run{}` / `Do{run:}` | `std.orchestration.Run.command` string |
 | P4 | `shell.Exec.Run` / `.Check` / `shell_exec_via_bash` | meta-exec bottom-transport calls |
 | P5 | `fn … -> String` builders — in `*_script.dag` **and inline** (e.g. `fleet_show_effective_read.dag`'s `fleet_runner_unit_property_read_script`/`fleet_runner_width_count_read_script`, `host_converge_slice1.dag`'s `…_memory_max_read_script`/`…_memory_max_set_script`/`…_enumerate_units_script`) — plus any `concat("systemctl …"/"…")` inline | the concat/relocation script builders, wherever they live (not only the `*_script.dag` glob) |
-| P6 | `transport_script_from_body` | the (porous) `TransportScript` brand boundary — 26 sites |
+| P6 | `transport_script_from_body` | the (then-porous) `TransportScript` boundary — 26 sites **at `78f43c38`**. *Historical: the minter is now deleted and the boundary is the `RetainedShellScript` record (§4.F). This row records what the probe found then, not a live count.* |
 | P7 | `serialize_bash`/`ShellProgram`/`RawLine`/`ShellStmt` | bash-AST emit vocab (emit-internal) |
 | P8 | `ssh.Session.Exec(` (non-`ExecArgv`) | ssh command-string transport |
 
@@ -626,7 +628,7 @@ Every §5.A/§5.B row can be **faked by joining argv back into a string** and fe
 ### Sequence
 
 1. **§5.A** — add the ~4 ops (each cited, typed `exit`, typed-argv transport). Small, finite.
-2. **§5.E** — brand `TransportScript` + typed-argv realization edge → §5.B becomes the *only* writable path.
+2. ~~**§5.E** — brand `TransportScript` + typed-argv realization edge~~ → **LANDED #7184.** Built as the `RetainedShellScript` **record** edge + free-minter deletion + counted bridges + compile-fail REDs; the branding half was refuted (transparent brand). §5.B is already the only writable path, so this step is discharged, not pending.
 3. **§5.B** — migrate by construction (call the op), green-by-execution + injection-RED, deleting each concat.
 4. **§5.C** — route foreign-executor sites through the bash backend (bounded roster).
 5. **§5.D** — un-defer per trigger.
