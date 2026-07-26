@@ -3,6 +3,12 @@ module std.measure
 import std.currency { CurrencyCode }
 import std.nat { Nat }
 import std.types { Int }
+import extdeps.units.iec_80000_13 { iec_kibi_factor, octet_bit_count }
+import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour }
+import extdeps.units.dimensionless {
+  parts_per_ten_thousand_unity_count,
+  percent_unity_hundred_count,
+}
 
 type Quantity =
     Time
@@ -78,23 +84,24 @@ fn scale_exponent(s: Scale) -> Int? {
 }
 
 fn gibibyte_scale_factor_bytes() -> Nat {
-  1073741824
+  let k = kibi_factor()
+  k * k * k
 }
 
 fn kibi_factor() -> Nat {
-  1024
+  iec_kibi_factor()
+}
+
+fn seconds_per_minute() -> Nat {
+  iso8601_seconds_per_minute()
+}
+
+fn minutes_per_hour() -> Nat {
+  iso8601_minutes_per_hour()
 }
 
 fn milliseconds_per_second() -> Nat {
   1000
-}
-
-fn seconds_per_minute() -> Nat {
-  60
-}
-
-fn minutes_per_hour() -> Nat {
-  60
 }
 
 fn time_scale_factor_seconds(s: Scale) -> Nat? {
@@ -210,7 +217,7 @@ fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
 type BitWidth = Measure<Information, One, Nat>
 
 fn bits_per_byte() -> Nat {
-  8
+  octet_bit_count()
 }
 
 type Hertz = Measure<Frequency, One, Nat>
@@ -452,19 +459,15 @@ fn percent_count(p: Percent) -> Nat {
   measure_count(p)
 }
 
-data permyriad_denominator: Int = 10000
-
-data uint8_channel_bit_width: Int = 8
-
-data uint8_channel_inclusive_max: Int = 255
-
-data permyriad_scale_note: String = "RgbScaled and sRGB<->HSL integer kernels use a permyriad (parts per 10000) channel scale — one std.measure row, census item 2."
+data permyriad_scale_note: String = "RgbScaled and sRGB<->HSL integer kernels use a permyriad (parts per 10000) channel scale — grounded on extdeps.units.dimensionless.parts_per_ten_thousand_unity_count (same authority as basis_point_unity_count)."
 
 fn permyriad_half_for_round_half_up() -> Int {
-  permyriad_denominator / 2
+  parts_per_ten_thousand_unity_count() / 2
 }
 
-data percent_scale_hundred: Int = 100
+fn percent_scale_hundred() -> Int {
+  percent_unity_hundred_count()
+}
 
 data percent_from_computed_int_frontier: String = "Percent = Measure<Dimensionless, One, Nat>; percent(n) accepts literal Nat only. Runtime eval refuses computed Int→Nat cast (runtime error: cannot cast Int to Nat) — so HSL projection returns bounded Int percent counts in extdeps.color.srgb.HslProjection; gunbc.design.material quiet_envelope_hsl_pct consumes Int at the (palette×register) binding. Dissolve when numeric-tower Int=Nat grounding extends to computed values (same lane as CrossRepresentationEquality guard removal)."
 
@@ -479,7 +482,7 @@ fn basis_point_count(bp: BasisPoint) -> Nat {
 }
 
 fn basis_point_unity_count() -> Nat {
-  10000
+  parts_per_ten_thousand_unity_count()
 }
 
 data basis_point_unit_note: String = "One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same Measure<Dimensionless, One, Nat> shape, different semantic axis for utilization ratios and filed margin envelopes."

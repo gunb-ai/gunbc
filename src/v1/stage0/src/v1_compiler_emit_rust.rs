@@ -1529,7 +1529,7 @@ pub fn render_rust_applied_type(
         if is_host_diagnostics_carrier_type(n.clone(), source_indices.clone()) {
             return render_rust_diagnostics_carrier_applied(shared_types.clone());
         }
-        let base_name = authored_name_at(source_indices.clone(), n.clone());
+        let base_name = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
         if ((n.children.clone().len() as i64) == 0) {
             match rust_seed_host_container_base(base_name.clone(), corpus_repr.clone()) {
                 Some(host) => host.clone(),

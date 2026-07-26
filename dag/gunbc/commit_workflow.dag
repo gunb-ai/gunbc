@@ -85,7 +85,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: SourceRootIngestGate },
-    surfaces: [GithubActionsCiJob]
+    surfaces: [FalsifierCadenceJob]
   },
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: RegenVerifyGate },
@@ -93,7 +93,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: SelfHostReadsRealBytesGate },
-    surfaces: [GithubActionsCiJob]
+    surfaces: [FalsifierCadenceJob]
   },
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: SelfHostStalenessGate },
@@ -563,7 +563,9 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       check_fns: [
         "gauntlet_lane_rehomed_rows_are_cadence_enrolled_holds",
         "gauntlet_lane_rehome_is_never_bare_deenrollment_holds",
-        "gauntlet_lane_rehome_bare_deenrollment_RED_control_holds"
+        "gauntlet_lane_rehome_bare_deenrollment_RED_control_holds",
+        "gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds",
+        "gauntlet_lane_gate_bare_deenrollment_RED_control_holds"
       ],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
@@ -646,6 +648,16 @@ fn project_ci_regen_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate>
   )
 }
 
+data gate_gauntlet_flip_basis_note: String = "THE MEASURED FLIPS (D3b, first application of the gate lane above). Basis is the per-run [gate-warm-cost] receipt the floor already emits — a real measurement at the grain the placement law requires for a GATE, which is why these three could be priced when the 36 CommitWitnessClaim rows still cannot: the TSV measures gates, and falsifier_cadence_surface_note's blocker is per-ROW receipts. Conflating the two grains would have been the fabrication that note forbids. Warm costs from the green composition run (30181042050, srv fleet arm64): source_root_ingest 427s as ONE opaque entry (its heartbeat reads 'entry 0 of 1' for ~8 minutes), self_host_realized_comparison 223s. Both are ORDERS above the 5s fast-lane budget (gunbc_ci_fast_lane_eval_budget_ms), so PrTier is inadmissible under ci_placement_law_note and Gauntlet is not a preference but the only admissible placement — no signature can make a 427s check fast-lane-eligible. THE COST, stated rather than elided: a regression in either now has up to a 4-hour detection window instead of one PR, and this is the same trade provenance_wall_cadence_rehome_risk accepted three days earlier, priced the same way. WHAT KEEPS IT FROM BEING A BARE NARROW is structural, not a promise: the gate lane's projector and batch land in the same change (falsifier_gate_projection_note), and gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds proves by execution that these rows reach an executing surface rather than vanishing. FOLLOW-ON TRIGGER, deliberately NOT taken here: a diff-proportional PR-tier proxy for source_root_ingest (ingest only the affected roots per-PR, full ingest on cadence) would return per-PR coverage at a cost that scales with the diff instead of the corpus — that is the real fix, and this flip is the interim that stops paying 427s per PR while it is built. THE THIRD GATE IS NOT FLIPPED, and the reason is a finding rather than caution: CheapClaimPoolGate (75s) is a declared member of v2.workflow.ci_floor_plan gunbc_ci_cheap_floor_gate_membership, which makes it BOTH a DataDependsOn predecessor of the compile root (floor_cheap_gates_precede_compile_edges) AND a floor_resource_anchor whose exclusion from corpus→gate serialization is what that list's own note says 'avoids a scheduler deadlock' (cheap→compile data order, corpus→cheap resource order, compile→corpus data order closing the cycle). Moving it is therefore a scheduler rewire, not a surface edit, for the smallest of the three prizes — 75s of the 725s measured. It stays per-PR pending an operator call on whether that rewire is worth 10 percent of the recovery."
+
+data falsifier_gate_projection_note: String = "The GATE half of the FalsifierCadenceJob lane, and it did not exist until 2026-07-26. FOUND BY AUDIT, not by a red: the lane shipped with a witness projector (project_falsifier_witness_entries) and no gate projector, while witness_entries_from_enrollments drops CommitSpecGate rows by construction (`CommitSpecGate { gate: _ } => acc`). So a gate row moved to surfaces: [FalsifierCadenceJob] projected into NOTHING — it left the per-PR floor and arrived on no lane — and bare_deenrollment_wall_note's wall could not catch it because that wall filters on enrollment_is_witness_claim, which answers false for exactly this row kind. A gate was therefore the one enrollment shape that could be silently de-enrolled by a one-line surface edit that reads, in the diff, identically to a legitimate re-home. This projector plus gate_enrollment_is_scheduled close that: the lane can now receive gates, and the wall now counts them. THE ORDER MATTERS AND IS NOT COSMETIC: this projector and its executing batch (v2.workflow.ci_floor_plan gunbc_falsifier_gate_batch) land in the SAME change as the wall extension, because a wall that credits FalsifierCadenceJob for gates before any batch reads them would bless precisely the enrollment-by-illusion it exists to forbid — the same 'a surface tag with no batch reading it' trap falsifier_cadence_witness_batch_note names for witnesses."
+
+fn project_falsifier_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
+  gates_from_enrollments(
+    rows: filter(roster, e => enrollment_has_surface(e: e, surface: FalsifierCadenceJob))
+  )
+}
+
 data ci_witness_optin_inversion: Disposition = Terminal {
   reason: "Opt-in inversion (operator, 2026-07-04) DISSOLVE FIRED at the discovery flip (operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10, see gunbc.ci_spec ci_spec_discovery_flip_note): the corpus re-enrolled through CiSpec.discovery_scan_dirs with SelectionApplied, so per-PR CI runs tree-wide discovery shrunk to the diff's affected set. The scaffold's dissolve-on (affected-set selection + floor memoization make per-PR selection-by-affectedness affordable) is satisfied at discovery width=1 under union-resolve S1. project_ci_floor_witness_entries is Terminal, not interim: CommitWitnessClaim rows remain live as the explicit-entry roster (execution-kind rows with their own resource profile, and any row that must run as declared) - only the roster's EXCLUSIVITY as witness source dissolved."
 }
@@ -698,9 +710,41 @@ fn witness_enrollment_is_scheduled(e: CommitCheckEnrollment) -> Bool {
     || enrollment_has_surface(e: e, surface: FalsifierCadenceJob)
 }
 
+fn enrollment_is_spec_gate(e: CommitCheckEnrollment) -> Bool {
+  match e.check {
+    CommitSpecGate { gate: _ } => true
+    CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => false
+    CommitCargoFmtCheck => false
+  }
+}
+
+data gate_enrollment_surface_asymmetry_note: String = "WHY GATES NEED THEIR OWN SCHEDULED-SURFACE PREDICATE rather than reusing witness_enrollment_is_scheduled: the two row kinds disagree about ONE surface, and the disagreement is a fact about which projector executes which kind, not a policy preference. GithubActionsCiRegenJob EXECUTES gates — project_ci_regen_job_gates reads it, and RegenVerifyGate/SelfHostStalenessGate ride it as their only surface — so for a gate it is a genuine enforcement authority. For a WITNESS it is not, and bare_deenrollment_wall_note says exactly why: 'the regen job projects GATES only', so a witness parked there executes nowhere. Folding both kinds into one predicate would therefore have to either wrongly credit witnesses on the regen job (re-opening the hole that note closed) or wrongly deny gates their real home (redding RegenVerifyGate, a correctly-enrolled row). GitPrePushHook counts for NEITHER, for the reason the standing ruling already gives: opt-in per clone, bypassable with --no-verify, absent in container worktrees, and PROVEN ineffective by #6658. So the shared law is 'a declared row must ride a surface that executes ITS kind', and the two predicates are that one law read against two projector sets — not two policies."
+
+fn gate_enrollment_is_scheduled(e: CommitCheckEnrollment) -> Bool {
+  enrollment_has_surface(e: e, surface: GithubActionsCiJob)
+    || enrollment_has_surface(e: e, surface: GithubActionsCiRegenJob)
+    || enrollment_has_surface(e: e, surface: FalsifierCadenceJob)
+}
+
+fn bare_deenrolled_gate_rows(roster: List<CommitCheckEnrollment>) -> List<CommitCheckEnrollment> {
+  filter(roster, e => enrollment_is_spec_gate(e: e) && !gate_enrollment_is_scheduled(e: e))
+}
+
+fn roster_has_no_bare_deenrolled_gate(roster: List<CommitCheckEnrollment>) -> Bool {
+  bare_deenrolled_gate_rows(roster: roster).count() == 0
+}
+
+fn live_roster_has_no_bare_deenrolled_gate() -> Bool {
+  roster_has_no_bare_deenrolled_gate(roster: commit_gate_roster)
+}
+
+fn live_roster_falsifier_gates() -> List<Gate> {
+  project_falsifier_gates(roster: commit_gate_roster)
+}
+
 data doc_reachability_cadence_enrollment_note: String = "FOUND BY THE WALL, on its first execution (2026-07-25). gauntlet_lane_rehome_is_never_bare_deenrollment_holds redded against the LIVE roster, not a synthetic fixture: the doc-reachability witness (doc_graph_has_no_orphan_docs, doc_graph_has_no_dangling_links) rode surfaces: [GitPrePushHook] alone — enforced only by a mechanism this repo has already ruled is NOT an enforcement authority (commit_gate_rust_suite_removed_disposition: opt-in per clone via core.hooksPath, bypassable with --no-verify, absent in container worktrees, and PROVEN ineffective — #6658 landed an unformatted .rs on main 2026-07-15 and nothing caught it). So orphaned docs and dangling doc links have had no wall on any CI path; they were one --no-verify from landing. FIXED by adding FalsifierCadenceJob rather than by widening witness_enrollment_is_scheduled to accept GitPrePushHook — widening the predicate until the failure disappears is the absorbing fallback §5 forbids, and it would have re-buried the finding in the same motion that surfaced it. The hook enrollment STAYS for fast local feedback; the cadence row is the authority. Kind is CorpusWitnessKind, not ExecutionWitnessKind: it reads the live doc graph, so per-PR admission would need a warm-cost receipt this change does not have — the same D2-probe gap falsifier_cadence_surface_note records. Promoting it to per-PR when that receipt exists is a strict improvement, not a requirement of this change."
 
-data bare_deenrollment_wall_note: String = "The construction wall behind falsifier_cadence_surface_note's 'a re-home is NEVER a bare de-enrollment'. A CommitWitnessClaim row must ride at least one EXECUTING witness surface — GithubActionsCiJob (per-PR floor) or FalsifierCadenceJob (4-hour cadence). GithubActionsCiRegenJob and GitPrePushHook do not count: the regen job projects GATES only (project_ci_regen_job_gates), and the pre-push hook is an escape hatch by the standing ruling (opt-in per clone, bypassable with --no-verify, absent in container worktrees — commit_gate_rust_suite_removed_disposition), so neither is an enforcement authority for a witness. A row satisfying neither is enrolled NOWHERE while still LOOKING enrolled, which is precisely the ~54-dark-file state test/claim/long/ is in and the shape a lazy re-home would add to. This is detection, not construction (the surface list is still writable as []) — the honest classification per DESIGN §5: it reds in the per-PR floor via gauntlet_lane_enrollment_witness_test with a synthetic RED control, and the construction form waits on the same D2-probe-gated placement wiring as falsifier_cadence_surface_note's dissolve-on, where Gauntlet-vs-PrTier is total over the coproduct and 'neither' becomes unwritable rather than merely counted."
+data bare_deenrollment_wall_note: String = "The construction wall behind falsifier_cadence_surface_note's 'a re-home is NEVER a bare de-enrollment'. A CommitWitnessClaim row must ride at least one EXECUTING witness surface — GithubActionsCiJob (per-PR floor) or FalsifierCadenceJob (4-hour cadence). GithubActionsCiRegenJob and GitPrePushHook do not count: the regen job projects GATES only (project_ci_regen_job_gates), and the pre-push hook is an escape hatch by the standing ruling (opt-in per clone, bypassable with --no-verify, absent in container worktrees — commit_gate_rust_suite_removed_disposition), so neither is an enforcement authority for a witness. A row satisfying neither is enrolled NOWHERE while still LOOKING enrolled, which is precisely the ~54-dark-file state test/claim/long/ is in and the shape a lazy re-home would add to. This is detection, not construction (the surface list is still writable as []) — the honest classification per DESIGN §5: it reds in the per-PR floor via gauntlet_lane_enrollment_witness_test with a synthetic RED control, and the construction form waits on the same D2-probe-gated placement wiring as falsifier_cadence_surface_note's dissolve-on, where Gauntlet-vs-PrTier is total over the coproduct and 'neither' becomes unwritable rather than merely counted. AMENDED 2026-07-26: this note described the witness half only, and that scoping was itself the gap — CommitSpecGate rows had NO such wall, so the one row kind whose de-enrollment nothing could catch was the one the Gauntlet lane was about to be used on. The gate half is now gate_enrollment_is_scheduled / roster_has_no_bare_deenrolled_gate, with the surface asymmetry (regen counts for gates, never for witnesses) reasoned in gate_enrollment_surface_asymmetry_note. Both halves are still DETECTION, not construction, and both dissolve on the same placement wiring."
 
 fn bare_deenrolled_witness_rows(roster: List<CommitCheckEnrollment>) -> List<CommitCheckEnrollment> {
   filter(roster, e => enrollment_is_witness_claim(e: e) && !witness_enrollment_is_scheduled(e: e))

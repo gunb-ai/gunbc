@@ -1199,6 +1199,35 @@ mod compiler_tests {
         );
     }
 
+    #[test]
+    fn render_rust_applied_type_routes_qualified_base_through_leaf_name() {
+        // Discriminating witness (PR #7269 / sharp-bee-290 msg_6c27c10b): namespace-qualified
+        // applied-type bases must route through rust_fn_sig_leaf_name, not authored_name_at
+        // verbatim — rustc reports 'expected one of `,` or `>`, found `.`' in generic position.
+        // RED if render_rust_applied_type regresses to dotted verbatim emit.
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        let shared = std::rc::Rc::new(im::OrdSet::new());
+        let generics = std::rc::Rc::new(im::Vector::new());
+        let variant_to_enum = std::rc::Rc::new(HashMap::new());
+        let env = crate::v1_compiler_infer_env::empty_type_env();
+        let arg = named_type_node("Int");
+        let applied = shaped_type_node("std.algebra.FreeMonoid", vec![arg]);
+        let rendered = crate::v1_compiler_emit_rust::render_rust_applied_type(
+            applied,
+            generics,
+            shared,
+            crate::v1_compiler_infer_emit_info::RustCorpusRepr::FaithfulFreeMonoid,
+            source_indices,
+            variant_to_enum,
+            env,
+        );
+        assert!(
+            !rendered.contains('.'),
+            "applied-type base must not emit namespace dots in generic position"
+        );
+        assert_eq!(rendered, "Vec<i64>");
+    }
+
     /// Return current process RSS in bytes (macOS via mach_task_basic_info).
     fn get_rss_bytes() -> u64 {
         #[cfg(target_os = "macos")]

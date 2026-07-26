@@ -4209,7 +4209,10 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
             &named_args,
             env,
             ctx,
-            declared_expectation.unwrap_or(ExpectedOutcome::ExpectSuccess),
+            match declared_expectation {
+                Some(e) => ExpectationDeclaration::Declared(e),
+                None => ExpectationDeclaration::UntracedDefault,
+            },
         );
     }
 
@@ -5222,6 +5225,23 @@ fn wet_env_var(name: &str) -> Option<String> {
     }
 }
 
+/// WHY THIS SEAM STAYS `ExpectSuccess` EVEN THOUGH ITS OUTCOME LOOKS LIKE DATA.
+///
+/// The consumer below swallows every failure arm into `None` (`_ => None`), which
+/// is the classic tell that an exit code is an observation rather than a verdict
+/// — the shape `OutcomeIsData` exists for. Re-arming it on that tell alone would
+/// be wrong, and the reason is a state-space conflation one level down: `None`
+/// here means BOTH "the variable is unset" (a legitimate answer) and "the
+/// `shell.Env.Get` dispatch itself failed" (a broken probe). Annotating
+/// `OutcomeIsData` would render the second case ambient, so a broken env service
+/// would become indistinguishable from an empty environment — trading a crude
+/// loud arm for a silent conflation, which is the worse of the two.
+///
+/// The correct fix is therefore a PAIR, not an annotation: split the consumer's
+/// `None` into probe-broken (refuses) versus answer-absent (`None`), and only
+/// then re-arm this site to `OutcomeIsData`. Recorded here rather than done here
+/// because the split changes this function's return type and every caller's
+/// handling, which is its own change with its own witnesses.
 fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> {
     if ctx.service_ops.contains_key("shell.Env.Get") {
         let args = [(Some("name".to_string()), Value::Str(var_name.to_string()))];
@@ -5231,7 +5251,11 @@ fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> 
             &args,
             &Env::empty(),
             ctx,
-            ExpectedOutcome::ExpectSuccess,
+            // Interpreter-own seam: no .dag call node exists to carry `expect:`,
+            // so the arm is stated here rather than defaulted. See
+            // `resolve_env_var_token_expectation_note` below for why this one is
+            // ExpectSuccess and not OutcomeIsData despite the swallowing consumer.
+            ExpectationDeclaration::Declared(ExpectedOutcome::ExpectSuccess),
         ) {
             Ok(Value::Record { fields, .. }) => ctx.field(&fields, "value").and_then(|v| match v {
                 Value::Str(s) if !s.is_empty() => Some(s.clone()),
@@ -5302,8 +5326,9 @@ fn eval_service_call(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
     ctx: &InterpContext,
-    expected: ExpectedOutcome,
+    declared: ExpectationDeclaration,
 ) -> InterpResult<Value> {
+    let expected = declared.resolve(service_name, op_name);
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
     let key = format!("{}.{}", service_name, op_name);
@@ -6091,6 +6116,70 @@ pub fn output_decision(channel: OutputChannel) -> OutputDecision {
         Some(p) => p[channel as usize],
         None => OutputDecision::Full,
     }
+}
+
+/// Whether a call site DECLARED its expectation, kept distinct from WHAT it declared.
+///
+/// The dispatch boundary takes this rather than a bare `ExpectedOutcome`, so
+/// "the site said nothing" is a value the caller must construct rather than a
+/// default the boundary manufactures. Before 2026-07-26 the boundary closed the
+/// gap itself with `declared_expectation.unwrap_or(ExpectSuccess)`, which is the
+/// shape DESIGN §5 names an absorbing fallback: the missing declaration was
+/// answered with a plausible one, and because the substitution happened inside
+/// the callee it left no trace, so the frequency of undeclared sites was zero by
+/// construction and could never rank for fixing.
+///
+/// `UntracedDefault` resolves to the SAME `ExpectSuccess` — this is deliberately
+/// not a behaviour change, and deliberately not a floor-time refusal (operator
+/// guardrail, 2026-07-26: the wall is construction at the boundary, not a
+/// refusal sweep that would red the corpus on sites nobody has looked at yet).
+/// What changes is that the substitution is now typed, located and COUNTED, so
+/// the frontier is observable and shrinks under trace evidence. A site re-arms
+/// to `Declared` only when someone has actually established what it expects —
+/// never speculatively, since a wrong `ExpectFailure` would silence a real fault.
+///
+/// 🟡 dissolve-on: when the counted frontier reaches zero corpus-wide, this arm
+/// is deleted and an undeclared site becomes a hard typed refusal at the
+/// boundary — at which point absence is unwritable rather than merely counted.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ExpectationDeclaration {
+    Declared(ExpectedOutcome),
+    UntracedDefault,
+}
+
+impl ExpectationDeclaration {
+    /// Resolve to the outcome the dispatch grades against, counting the untraced
+    /// case at its located call site. The count is the whole point: an absorbed
+    /// default that is tallied is a declared interim frontier; one that is not is
+    /// the fail-open this type exists to delete.
+    fn resolve(self, service_name: &str, op_name: &str) -> ExpectedOutcome {
+        match self {
+            ExpectationDeclaration::Declared(e) => e,
+            ExpectationDeclaration::UntracedDefault => {
+                record_untraced_expectation_site(service_name, op_name);
+                ExpectedOutcome::ExpectSuccess
+            }
+        }
+    }
+}
+
+thread_local! {
+    /// `service.op` -> times that site dispatched without a declared expectation.
+    static UNTRACED_EXPECTATION_SITES: std::cell::RefCell<std::collections::BTreeMap<String, u64>> =
+        const { std::cell::RefCell::new(std::collections::BTreeMap::new()) };
+}
+
+fn record_untraced_expectation_site(service_name: &str, op_name: &str) {
+    let key = format!("{}.{}", service_name, op_name);
+    UNTRACED_EXPECTATION_SITES.with(|m| {
+        *m.borrow_mut().entry(key).or_insert(0) += 1;
+    });
+}
+
+/// The frontier as `(service.op, dispatch_count)`, ascending by key. Empty means
+/// every effect that ran declared its expectation — the dissolution condition.
+pub fn untraced_expectation_frontier() -> Vec<(String, u64)> {
+    UNTRACED_EXPECTATION_SITES.with(|m| m.borrow().iter().map(|(k, v)| (k.clone(), *v)).collect())
 }
 
 /// Carrier for `gunbc.output_policy.ExpectedOutcome` — what the caller DECLARED an
@@ -7795,7 +7884,10 @@ fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResu
         &args,
         &Env::empty(),
         ctx,
-        ExpectedOutcome::ExpectSuccess,
+        // Interpreter-own seam (import resolution reading a source file): no
+        // .dag call node, and a failed read here IS a fault, so ExpectSuccess is
+        // the stated arm rather than an inherited default.
+        ExpectationDeclaration::Declared(ExpectedOutcome::ExpectSuccess),
     )?;
 
     let (content, success, error) = match result {

@@ -26,6 +26,14 @@ fn shape_tmux_kill_session_argv(session_name: String) -> List<String> {
   ["kill-session", "-t", session_name]
 }
 
+data tmux_list_panes_format_note: String = "The pane-fingerprint read (upstream: tmux FORMATS, man tmux — session_name and pane_current_command are cited format variables; pane_current_command is the name of the process running IN the pane, which is exactly the ownership evidence the dispatch lease classification needs). -a lists panes across all sessions in one read. Single-space separator: tmux session names in this system are single tokens (gunbc-dispatch-<node_id>) and pane_current_command is a process name — the parse splits on the FIRST space, so even a hypothetical spaced command survives as the fingerprint's head token, which is the token the classification compares."
+
+data tmux_list_panes_format: String = "#\{session_name\} #\{pane_current_command\}"
+
+fn shape_tmux_list_panes_argv() -> List<String> {
+  ["list-panes", "-a", "-F", tmux_list_panes_format]
+}
+
 service tmux.Session {
   operation New {
     input { session_name: String, working_dir: String, inner_argv: List<String> }

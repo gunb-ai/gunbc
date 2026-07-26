@@ -2910,8 +2910,66 @@ fn translate_apply_use_site_ownership_to_projected_boundary(
               )
             }
           )
+        TargetTypeExprInstantiation =>
+          translate_apply_use_site_ownership_to_instantiation_boundary(
+            projected: projected,
+            source_for_binding: source_for_binding,
+            target: target,
+            projection: projection,
+            use_site: use_site
+          )
         _ => outcome_accepted(projected)
       }
+    }
+  )
+}
+
+data translate_ownership_instantiation_boundary_note: String = "Instantiation-kind wire (Option<T>, Rc<T>, Witness<T>, List<T>) recurses ownership-wrap per positional type argument, zipped against the same-shape source_for_binding argument list, rather than bypassing the gate — the fix for the wrap_decision_predicate caller-side bypass named in v1_deletion_plan.dag ^wrap_decision_predicate (RE-OPENED 2026-07-24)."
+
+fn translate_apply_use_site_ownership_to_instantiation_boundary(
+  projected: Node,
+  source_for_binding: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<Node> {
+  bind_outcome(
+    o: serialize_type_expr_emitted_positional_head_tail(node: projected),
+    f: fn(projected_split) {
+      bind_outcome(
+        o: serialize_type_expr_emitted_positional_head_tail(node: source_for_binding),
+        f: fn(source_split) {
+          bind_outcome(
+            o: sequence_outcome(
+              xs: zip_map(
+                a: projected_split.tail,
+                b: source_split.tail,
+                f: fn(parg, sarg) {
+                  translate_apply_use_site_ownership_to_projected_boundary(
+                    projected: parg,
+                    source_for_binding: sarg,
+                    target: target,
+                    projection: projection,
+                    use_site: use_site
+                  )
+                }
+              ),
+              policy: StageDiagnosticPolicy { accumulation: ShortCircuit }
+            ),
+            f: fn(wrapped_args) {
+              outcome_accepted(
+                node_rebuild(
+                  n: projected,
+                  children: list_append(
+                    left: [Edge { label: Positional, target: projected_split.head }],
+                    right: list_map(xs: wrapped_args, f: fn(a) { Edge { label: Positional, target: a } })
+                  )
+                )
+              )
+            }
+          )
+        }
+      )
     }
   )
 }

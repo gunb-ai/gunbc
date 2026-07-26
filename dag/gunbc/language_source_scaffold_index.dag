@@ -1,0 +1,442 @@
+module gunbc.language_source_scaffold_index
+
+
+data language_source_scaffold_index_note: String = "B2 inventory for hand-authored target-language semantics in language files. Every blob of hand-written target source carries a row here whose disposition is a std.disposition Scaffold naming the construction that subsumes it, or a Terminal stating why it is irreducible. No string-content classifier is involved: the mark is a typed value, not prose to be parsed."
+
+data language_source_scaffold_enforcement_boundary: String = "What is actually enforced, stated precisely because the earlier wording overstated it (review 43129). CONSTRUCTION (real): Disposition has no prose and no absent arm, so a row cannot carry an unmarked or free-text disposition — Terminal-with-reason or Scaffold-with-bind are the only inhabitants, and 'unmarked' is genuinely unwritable. NOT CONSTRUCTION (validated here instead): DeclarationRef.module_path and decl_name are declared NonEmptyStr (String where non_empty) but that refinement is NOT enforced at construction — proven by execution, since the empty-bind control row in the witness typechecks and evaluates. So a Scaffold binding the empty string IS writable today, and language_source_scaffold_row_is_dispositioned is the only thing that catches it. That check is therefore load-bearing, not a second representation; it dissolves the day refinement predicates are construction-enforced, at which point the control row stops typechecking and the check can be deleted."
+
+type LanguageSourceScaffoldRow {
+  carrier_module: String
+  blob_decl: String
+  disposition: Disposition
+}
+
+data rust_pair_completion_spelling_scaffold_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.trait_derive_shape",
+    decl_name: "pair_completion_op_rows",
+    field: WholeDeclaration
+  }
+}
+
+data rust_bool_host_bridge_scaffold_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "std.trait_derive_shape",
+    decl_name: "ReprGroundingDeriveElemShape",
+    field: WholeDeclaration
+  }
+}
+
+data rust_dry_run_mode_scaffold_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v1.compiler.emit",
+    decl_name: "BackendCapability",
+    field: WholeDeclaration
+  }
+}
+
+data rust_pair_completion_spelling_scaffold_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "extdeps.languages.rust.emit",
+  blob_decl: "rust_pair_completion_spellings",
+  disposition: rust_pair_completion_spelling_scaffold_trigger
+}
+
+data rust_bool_host_bridge_scaffold_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "extdeps.languages.rust.emit",
+  blob_decl: "rust_supplemental_impls_bool_coproduct",
+  disposition: rust_bool_host_bridge_scaffold_trigger
+}
+
+data rust_dry_run_mode_scaffold_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.emit_rust",
+  blob_decl: "emit_dry_run_module",
+  disposition: rust_dry_run_mode_scaffold_trigger
+}
+
+data runtime_rust_trace_mark_scaffold_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "std.observation",
+    decl_name: "ObservationSubject",
+    field: WholeDeclaration
+  }
+}
+
+data runtime_rust_kernel_opcode_scaffold_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "std.realization_schedule",
+    decl_name: "RealizationPlan",
+    field: WholeDeclaration
+  }
+}
+
+data runtime_rust_fnv1a64_terminal: Disposition = Terminal {
+  reason: "named irreducible intrinsic kernel: fnv1a64 is the content-hash primitive std.content_hash is defined over, so it has no substrate decomposition to dissolve into"
+}
+
+data runtime_rust_trace_mark_scaffold_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust",
+  blob_decl: "rt_resolution_silent_pick_telemetry",
+  disposition: runtime_rust_trace_mark_scaffold_trigger
+}
+
+data runtime_rust_kernel_opcode_scaffold_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust",
+  blob_decl: "rt_accelerator_demo_kernel",
+  disposition: runtime_rust_kernel_opcode_scaffold_trigger
+}
+
+data runtime_rust_hash_ops_terminal_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust",
+  blob_decl: "rt_hash_ops",
+  disposition: runtime_rust_fnv1a64_terminal
+}
+
+data compiler_tests_rust_hand_assertion_scaffold_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1.compiler.coercion",
+    decl_name: "CoercionTestEntry",
+    field: WholeDeclaration
+  }
+}
+
+data compiler_tests_rust_hand_assertion_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust",
+  blob_decl: "ct_groupcompletion_checkpoint_fires_under_faithful_corpus_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data runtime_rust_host_intrinsic_kernel_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "std.realization_schedule",
+    decl_name: "RealizationPlan",
+    field: WholeDeclaration
+  }
+}
+
+data runtime_rust_instrumentation_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "std.observation",
+    decl_name: "ObservationSubject",
+    field: WholeDeclaration
+  }
+}
+
+data runtime_rust_freemonoid_bridge_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.algebra",
+    decl_name: "FreeMonoid",
+    field: WholeDeclaration
+  }
+}
+
+data runtime_rust_rc_container_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ownership",
+    decl_name: "Ownership",
+    field: WholeDeclaration
+  }
+}
+
+data runtime_rust_filesystem_effect_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "HostEffect",
+    field: WholeDeclaration
+  }
+}
+
+data runtime_rust_module_preamble_terminal: Disposition = Terminal {
+  reason: "emitted module preamble: a doc header carries no target-language semantics to derive, so it has no substrate decomposition to dissolve into"
+}
+
+data runtime_rust_header_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust", blob_decl: "rt_header",
+  disposition: runtime_rust_module_preamble_terminal
+}
+
+data runtime_rust_work_counter_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust", blob_decl: "rt_text_lookup_work_counter",
+  disposition: runtime_rust_instrumentation_trigger
+}
+
+data runtime_rust_concat_trait_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust", blob_decl: "rt_concat_trait",
+  disposition: runtime_rust_host_intrinsic_kernel_trigger
+}
+
+data runtime_rust_string_ops_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust", blob_decl: "rt_string_ops",
+  disposition: runtime_rust_host_intrinsic_kernel_trigger
+}
+
+data runtime_rust_collection_ops_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust", blob_decl: "rt_collection_ops",
+  disposition: runtime_rust_host_intrinsic_kernel_trigger
+}
+
+data runtime_rust_scanner_ops_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust", blob_decl: "rt_scanner_ops",
+  disposition: runtime_rust_host_intrinsic_kernel_trigger
+}
+
+data runtime_rust_unicode_ops_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust", blob_decl: "rt_unicode_ops",
+  disposition: runtime_rust_host_intrinsic_kernel_trigger
+}
+
+data runtime_rust_freemonoid_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust", blob_decl: "rt_freemonoid_host_ops",
+  disposition: runtime_rust_freemonoid_bridge_trigger
+}
+
+data runtime_rust_rc_container_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust", blob_decl: "rt_rc_container_ops",
+  disposition: runtime_rust_rc_container_trigger
+}
+
+data runtime_rust_filesystem_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust", blob_decl: "rt_filesystem",
+  disposition: runtime_rust_filesystem_effect_trigger
+}
+
+
+data compiler_tests_harness_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.test.workflow.claim_witness_corpus_ci_runner",
+    decl_name: "ClaimWitnessCorpusClaimRunRow",
+    field: WholeDeclaration
+  }
+}
+
+data compiler_tests_profile_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "std.observation",
+    decl_name: "ObservationSubject",
+    field: WholeDeclaration
+  }
+}
+
+data ct_row_ct_module_header: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_module_header",
+  disposition: compiler_tests_harness_trigger
+}
+
+data ct_row_ct_module_footer: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_module_footer",
+  disposition: compiler_tests_harness_trigger
+}
+
+data ct_row_ct_workspace_helpers: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_workspace_helpers",
+  disposition: compiler_tests_harness_trigger
+}
+
+data ct_row_ct_file_discovery_helpers: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_file_discovery_helpers",
+  disposition: compiler_tests_harness_trigger
+}
+
+data ct_row_ct_source_builders: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_source_builders",
+  disposition: compiler_tests_harness_trigger
+}
+
+data ct_row_ct_self_compile_sources: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_self_compile_sources",
+  disposition: compiler_tests_harness_trigger
+}
+
+data ct_row_ct_profile_helpers: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_profile_helpers",
+  disposition: compiler_tests_harness_trigger
+}
+
+data ct_row_ct_tokenizer_tests: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_tokenizer_tests",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_parse_tests: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_parse_tests",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_pipeline_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_pipeline_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_self_parse_all_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_self_parse_all_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_self_resolve_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_self_resolve_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_self_compile_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_self_compile_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_self_compile_cargo_check_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_self_compile_cargo_check_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_type_size_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_type_size_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_diagnostics_carrier_grounding_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_diagnostics_carrier_grounding_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_rust_btree_set_ord_eligibility_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_rust_btree_set_ord_eligibility_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_unlisted_import_use_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_unlisted_import_use_witness_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_sole_constructor_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_sole_constructor_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_sole_constructor_fieldless_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_sole_constructor_fieldless_witness_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_contracts_sidecar_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_contracts_sidecar_witness_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_render_rust_applied_type_qualified_base_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_render_rust_applied_type_qualified_base_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_profile_self_compile_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_profile_self_compile_test",
+  disposition: compiler_tests_profile_trigger
+}
+
+data ct_row_ct_profile_full_pipeline_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_profile_full_pipeline_test",
+  disposition: compiler_tests_profile_trigger
+}
+
+data ct_row_ct_profile_reconcile_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_profile_reconcile_test",
+  disposition: compiler_tests_profile_trigger
+}
+
+data compiler_tests_coercion_hybrid_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1.compiler.coercion",
+    decl_name: "CoercionTestEntry",
+    field: WholeDeclaration
+  }
+}
+
+data ct_row_ct_coercion_tests: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_coercion_tests",
+  disposition: compiler_tests_coercion_hybrid_trigger
+}
+
+data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
+  ct_row_ct_coercion_tests,
+  ct_row_ct_module_header,
+  ct_row_ct_module_footer,
+  ct_row_ct_workspace_helpers,
+  ct_row_ct_file_discovery_helpers,
+  ct_row_ct_source_builders,
+  ct_row_ct_self_compile_sources,
+  ct_row_ct_profile_helpers,
+  ct_row_ct_tokenizer_tests,
+  ct_row_ct_parse_tests,
+  ct_row_ct_pipeline_test,
+  ct_row_ct_self_parse_all_test,
+  ct_row_ct_self_resolve_test,
+  ct_row_ct_self_compile_test,
+  ct_row_ct_self_compile_cargo_check_test,
+  ct_row_ct_type_size_test,
+  ct_row_ct_diagnostics_carrier_grounding_test,
+  ct_row_ct_rust_btree_set_ord_eligibility_test,
+  ct_row_ct_unlisted_import_use_witness_test,
+  ct_row_ct_sole_constructor_test,
+  ct_row_ct_sole_constructor_fieldless_witness_test,
+  ct_row_ct_contracts_sidecar_witness_test,
+  ct_row_ct_render_rust_applied_type_qualified_base_test,
+  ct_row_ct_profile_self_compile_test,
+  ct_row_ct_profile_full_pipeline_test,
+  ct_row_ct_profile_reconcile_test,
+  runtime_rust_header_row,
+  runtime_rust_work_counter_row,
+  runtime_rust_concat_trait_row,
+  runtime_rust_string_ops_row,
+  runtime_rust_collection_ops_row,
+  runtime_rust_scanner_ops_row,
+  runtime_rust_unicode_ops_row,
+  runtime_rust_freemonoid_row,
+  runtime_rust_rc_container_row,
+  runtime_rust_filesystem_row,
+  rust_pair_completion_spelling_scaffold_row,
+  rust_bool_host_bridge_scaffold_row,
+  rust_dry_run_mode_scaffold_row,
+  runtime_rust_trace_mark_scaffold_row,
+  runtime_rust_kernel_opcode_scaffold_row,
+  runtime_rust_hash_ops_terminal_row,
+  compiler_tests_rust_hand_assertion_row
+]
+
+fn language_source_scaffold_row_is_dispositioned(row: LanguageSourceScaffoldRow) -> Bool {
+  match row.disposition {
+    Scaffold { dissolves_to: _, bind: bind } => bind.decl_name != "" && bind.module_path != ""
+    Terminal { reason: reason } => reason != ""
+  }
+}
+
+fn language_source_scaffold_roster_all_dispositioned() -> Bool {
+  all(language_source_scaffold_roster, row => language_source_scaffold_row_is_dispositioned(row: row))
+}
+
+fn language_source_scaffold_roster_size() -> Int {
+  language_source_scaffold_roster |> count
+}
+
+fn language_source_scaffold_pending_count() -> Int {
+  language_source_scaffold_roster
+    |> filter(row => match row.disposition { Scaffold { dissolves_to: _, bind: _ } => true  Terminal { reason: _ } => false })
+    |> count
+}
+
+fn language_source_scaffold_terminal_count() -> Int {
+  language_source_scaffold_roster
+    |> filter(row => match row.disposition { Scaffold { dissolves_to: _, bind: _ } => false  Terminal { reason: _ } => true })
+    |> count
+}
