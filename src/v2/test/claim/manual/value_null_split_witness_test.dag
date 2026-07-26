@@ -1,10 +1,10 @@
 module v2.test.manual.value_null_split_witness
 
-import v2.std.collection {
+import v2.std.collection { empty_map, map_insert }
+import v2.std.diagnostic { Accepted, None, Rejected }
+import v2.std.optional {
   Absent,
   Present,
-  empty_map,
-  map_insert,
   optional_absent,
   optional_present
 }
