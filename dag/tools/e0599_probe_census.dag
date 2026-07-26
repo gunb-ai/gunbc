@@ -1,0 +1,336 @@
+module tools.e0599_probe_census
+
+import std.types { Bool, Int, String, list_length }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.error_primitives { Result, Ok, Err }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+type E0599LogShapeParseError
+  = UnknownFailureShapeLabel { label: String }
+  | MalformedTupleLine { line: String, field_count: Int }
+
+type E0599FailureShape
+  = MissingMethod
+  | BoundsUnsatisfied
+  | NoVariant
+  | NoAssocFn
+  | Other
+
+type E0599RootFamily
+  = R1CloneBoundOnTypeParam
+  | R2VectorMethodBounds
+  | R3ContainerCloneBounds
+  | R4OptionalCoproductGrounding
+  | R5AsDerefUnit
+  | R6Other
+
+type E0599MessagePatternRow {
+  shape: E0599FailureShape,
+  pattern: String,
+  ordinal: Int,
+}
+
+type E0599RootFamilyRow {
+  family: E0599RootFamily,
+  description: String,
+}
+
+data e0599_probe_census_note: String = "Single authority for canonical-seven E0599 per-error census: failure-shape patterns (rustc message text), root-family rollup (three mechanistic roots + tails), and module roster. Realization: docs/probes/e0599_census_extract.sh (SCAFFOLD) calls e0599_write_message_pattern_rows_blob, e0599_write_canonical_seven_module_log_labels_blob, and e0599_write_root_family_labels_from_blob (ProcessExit exports) over PROBE_KEEP_LOG_DIR/*.cargo.log; aggregate output refuses unless inputs match e0599_canonical_seven_modules exactly. Frozen receipt docs/probes/e0599_canonical_seven_census_2026-07-26.tsv is output, not authority. dissolve-on: gunbc bash-emit #5828 / modeled cssl_probe transport or self_host_curated_seed_linked_harness probe classifier row."
+
+data e0599_baseline_receipt: String = "docs/probes/refresh_canonical_seven_2026-07-26.tsv"
+
+data e0599_canonical_seven_modules: List<String> = [
+  "src/v2/compiler/06_translate.dag",
+  "src/v2/compiler/04_infer.dag",
+  "src/v2/compiler/05_eval.dag",
+  "src/v2/compiler/05_emit.dag",
+  "src/v2/compiler/emit_host.dag",
+  "src/v2/compiler/emit_module.dag",
+  "src/v2/compiler/materialization_carriers.dag",
+]
+
+data e0599_message_pattern_rows: List<E0599MessagePatternRow> = [
+  E0599MessagePatternRow {
+    shape: MissingMethod,
+    pattern: "error\\[E0599\\]: no method named `([^`]+)` found for (.+?) in the current scope",
+    ordinal: 1,
+  },
+  E0599MessagePatternRow {
+    shape: BoundsUnsatisfied,
+    pattern: "error\\[E0599\\]: the method `([^`]+)` exists for (.+?), but its trait bounds were not satisfied",
+    ordinal: 2,
+  },
+  E0599MessagePatternRow {
+    shape: NoVariant,
+    pattern: "error\\[E0599\\]: no variant(?:, associated function, or constant)? named `([^`]+)` found for (.+?)(?: in the current scope)?$",
+    ordinal: 3,
+  },
+  E0599MessagePatternRow {
+    shape: NoAssocFn,
+    pattern: "error\\[E0599\\]: no function or associated item named `([^`]+)` found for (.+?)(?: in the current scope)?$",
+    ordinal: 4,
+  },
+  E0599MessagePatternRow {
+    shape: Other,
+    pattern: "error\\[E0599\\]: (.+)",
+    ordinal: 5,
+  },
+]
+
+data e0599_root_family_rows: List<E0599RootFamilyRow> = [
+  E0599RootFamilyRow {
+    family: R1CloneBoundOnTypeParam,
+    description: "missing_method clone on type parameter T/A/U/B/R — emitted body calls .clone() without where-clause",
+  },
+  E0599RootFamilyRow {
+    family: R2VectorMethodBounds,
+    description: "bounds_unsatisfied is_empty/iter on im::Vector/Rc<im::Vector> carriers",
+  },
+  E0599RootFamilyRow {
+    family: R3ContainerCloneBounds,
+    description: "bounds_unsatisfied clone on Outcome/Option/im::Vector containers",
+  },
+  E0599RootFamilyRow {
+    family: R4OptionalCoproductGrounding,
+    description: "GlobalBareUnique/GlobalBareAmbiguous matched on std::option::Option instead of modeled Optional",
+  },
+  E0599RootFamilyRow {
+    family: R5AsDerefUnit,
+    description: "as_deref called on unit type ()",
+  },
+  E0599RootFamilyRow {
+    family: R6Other,
+    description: "misc cache/verdict clone bounds",
+  },
+]
+
+fn e0599_failure_shape_log_label(shape: E0599FailureShape) -> String {
+  match shape {
+    MissingMethod => "missing_method"
+    BoundsUnsatisfied => "bounds_unsatisfied"
+    NoVariant => "no_variant"
+    NoAssocFn => "no_assoc_fn"
+    Other => "other"
+  }
+}
+
+fn e0599_message_pattern_row_line(row: E0599MessagePatternRow) -> String {
+  concat(e0599_failure_shape_log_label(shape: row.shape), concat("\t", row.pattern))
+}
+
+fn e0599_message_pattern_rows_blob() -> String {
+  fold(e0599_message_pattern_rows, init: "", f: fn(acc, row) {
+    let line = e0599_message_pattern_row_line(row: row)
+    if acc == "" {
+      line
+    } else {
+      concat(acc, concat("\n", line))
+    }
+  })
+}
+
+fn e0599_log_shape_parse_error_message(err: E0599LogShapeParseError) -> String {
+  match err {
+    UnknownFailureShapeLabel { label: label } =>
+      concat("e0599_failure_shape_from_log_shape: refused unknown label ", label)
+    MalformedTupleLine { line: line, field_count: field_count } =>
+      concat(
+        concat("e0599_root_family_label_for_tuple_line: refused malformed tuple (expected 3 tab fields, got ", to_string(value: field_count)),
+        concat("): ", line)
+      )
+  }
+}
+
+fn e0599_failure_shape_from_log_shape(shape_str: String) -> Result<E0599FailureShape, E0599LogShapeParseError> {
+  if shape_str == "missing_method" {
+    Ok { value: MissingMethod }
+  } else if shape_str == "bounds_unsatisfied" {
+    Ok { value: BoundsUnsatisfied }
+  } else if shape_str == "no_variant" {
+    Ok { value: NoVariant }
+  } else if shape_str == "no_assoc_fn" {
+    Ok { value: NoAssocFn }
+  } else if shape_str == "other" {
+    Ok { value: Other }
+  } else {
+    Err { value: UnknownFailureShapeLabel { label: shape_str } }
+  }
+}
+
+fn e0599_root_family_label(family: E0599RootFamily) -> String {
+  match family {
+    R1CloneBoundOnTypeParam => "R1CloneBoundOnTypeParam"
+    R2VectorMethodBounds => "R2VectorMethodBounds"
+    R3ContainerCloneBounds => "R3ContainerCloneBounds"
+    R4OptionalCoproductGrounding => "R4OptionalCoproductGrounding"
+    R5AsDerefUnit => "R5AsDerefUnit"
+    R6Other => "R6Other"
+  }
+}
+
+fn e0599_root_family_label_for_row(shape_str: String, method: String, receiver: String) -> Result<String, E0599LogShapeParseError> {
+  match e0599_failure_shape_from_log_shape(shape_str: shape_str) {
+    Err { value: e } => Err { value: e }
+    Ok { value: shape } =>
+      Ok {
+        value: e0599_root_family_label(
+          family: e0599_root_family_for(shape: shape, method: method, receiver: receiver)
+        )
+      }
+  }
+}
+
+fn e0599_root_family_label_for_tuple_line(line: String) -> Result<String, E0599LogShapeParseError> {
+  let parts = line |> split(delimiter: "\t")
+  let field_count = list_length(items: parts)
+  if field_count != 3 {
+    Err { value: MalformedTupleLine { line: line, field_count: field_count } }
+  } else {
+    let shape_str = match parts |> first {
+      Present { value: v } => v
+      Absent => ""
+    }
+    let tail = parts |> skip(n: 1)
+    let method = match tail |> first {
+      Present { value: v } => v
+      Absent => ""
+    }
+    let receiver = match tail |> skip(n: 1) |> first {
+      Present { value: v } => v
+      Absent => ""
+    }
+    e0599_root_family_label_for_row(shape_str: shape_str, method: method, receiver: receiver)
+  }
+}
+
+fn e0599_root_family_labels_from_blob(blob: String) -> Result<String, E0599LogShapeParseError> {
+  let lines = if blob == "" { [] } else { blob |> split(delimiter: "\n") }
+  fold(lines, init: Ok { value: "" }, f: fn(acc, line) {
+    match acc {
+      Err { value: e } => Err { value: e }
+      Ok { value: prior } =>
+        match e0599_root_family_label_for_tuple_line(line: line) {
+          Err { value: e } => Err { value: e }
+          Ok { value: label } =>
+            if prior == "" {
+              Ok { value: label }
+            } else {
+              Ok { value: concat(prior, concat("\n", label)) }
+            }
+        }
+    }
+  })
+}
+
+fn e0599_root_family_for(shape: E0599FailureShape, method: String, receiver: String) -> E0599RootFamily {
+  match shape {
+    MissingMethod => {
+      if method == "clone" && string_contains(s: receiver, pattern: "type parameter") {
+        R1CloneBoundOnTypeParam
+      } else if method == "as_deref" {
+        R5AsDerefUnit
+      } else if string_contains(s: receiver, pattern: "GlobalBare") || string_contains(s: method, pattern: "GlobalBare") {
+        R4OptionalCoproductGrounding
+      } else {
+        R6Other
+      }
+    }
+    BoundsUnsatisfied => {
+      if (method == "is_empty" || method == "iter") && string_contains(s: receiver, pattern: "im::Vector") {
+        R2VectorMethodBounds
+      } else if method == "clone" && (string_contains(s: receiver, pattern: "Outcome") || string_contains(s: receiver, pattern: "Option") || string_contains(s: receiver, pattern: "im::Vector")) {
+        R3ContainerCloneBounds
+      } else {
+        R6Other
+      }
+    }
+    NoVariant => {
+      if string_contains(s: receiver, pattern: "GlobalBare") || string_contains(s: method, pattern: "GlobalBare") {
+        R4OptionalCoproductGrounding
+      } else {
+        R6Other
+      }
+    }
+    NoAssocFn => {
+      if string_contains(s: receiver, pattern: "GlobalBare") || string_contains(s: method, pattern: "GlobalBare") {
+        R4OptionalCoproductGrounding
+      } else {
+        R6Other
+      }
+    }
+    Other => R6Other
+  }
+}
+
+fn e0599_module_log_label_from_path(path: String) -> String {
+  let file = match path |> split(delimiter: "/") |> last {
+    Present { value: v } => v
+    Absent => ""
+  }
+  match file |> split(delimiter: ".") |> first {
+    Present { value: stem } => stem
+    Absent => ""
+  }
+}
+
+fn e0599_canonical_seven_module_log_labels_blob() -> String {
+  fold(e0599_canonical_seven_modules, init: "", f: fn(acc, path) {
+    let line = e0599_module_log_label_from_path(path: path)
+    if acc == "" {
+      line
+    } else {
+      concat(acc, concat("\n", line))
+    }
+  })
+}
+
+fn e0599_write_blob(path: String, content: String, label: String) -> ProcessExit {
+  if content == "" {
+    exit_failure(reason: concat(label, ": refused empty export"))
+  }
+  let w = Filesystem.Write(path: path, content: content)
+  if w.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error)))
+  }
+}
+
+fn e0599_write_message_pattern_rows_blob(out_path: String) -> ProcessExit {
+  e0599_write_blob(
+    path: out_path,
+    content: e0599_message_pattern_rows_blob(),
+    label: "e0599_message_pattern_rows_blob"
+  )
+}
+
+fn e0599_write_root_family_labels_from_blob(blob: String, out_path: String) -> ProcessExit {
+  if blob == "" {
+    exit_failure(reason: "e0599_root_family_labels_from_blob: refused empty input blob")
+  }
+  match e0599_root_family_labels_from_blob(blob: blob) {
+    Err { value: e } => exit_failure(reason: e0599_log_shape_parse_error_message(err: e))
+    Ok { value: labels } =>
+      e0599_write_blob(
+        path: out_path,
+        content: labels,
+        label: "e0599_root_family_labels_from_blob"
+      )
+  }
+}
+
+fn e0599_write_canonical_seven_module_log_labels_blob(out_path: String) -> ProcessExit {
+  e0599_write_blob(
+    path: out_path,
+    content: e0599_canonical_seven_module_log_labels_blob(),
+    label: "e0599_canonical_seven_module_log_labels_blob"
+  )
+}
+
+fn e0599_canonical_seven_module_count() -> Int {
+  e0599_canonical_seven_modules.count()
+}
+
+fn e0599_message_pattern_row_count() -> Int {
+  e0599_message_pattern_rows.count()
+}
