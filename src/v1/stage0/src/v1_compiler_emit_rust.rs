@@ -1732,6 +1732,17 @@ pub fn rust_seed_catalog_wraps_rc_at_use_site(
     }
 }
 
+pub fn rust_seed_value_needs_rc_wrap(
+    type_name: String,
+    _shared_types: Rc<BTreeSet<String>>,
+    use_site: OwnershipWrapUseSite,
+) -> bool {
+    match use_site {
+        OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent => false,
+        _ => rust_seed_catalog_wraps_rc_at_use_site(type_name, use_site),
+    }
+}
+
 pub fn render_rust_shared_type_with_optional(
     n: Rc<Node>,
     type_name: String,
@@ -16957,8 +16968,18 @@ pub fn variant_ref_self_wraps(
     shared_types: Rc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
 ) -> bool {
-    (freemonoid_empty_from_variant_parent(name.clone(), enum_name.clone())
-        || v1_rt::set_contains(&shared_types, enum_name.clone()))
+    if freemonoid_empty_from_variant_parent(name.clone(), enum_name.clone()) {
+        rust_seed_catalog_wraps_rc_at_use_site(
+            "FreeMonoid".to_string(),
+            OwnershipWrapUseSite::OwnershipAtBindingProjection,
+        )
+    } else {
+        rust_seed_value_needs_rc_wrap(
+            enum_name,
+            shared_types,
+            OwnershipWrapUseSite::OwnershipAtBindingProjection,
+        )
+    }
 }
 
 pub fn value_ref_ident_dotted_fallback_note() -> String {
@@ -17199,7 +17220,11 @@ pub fn emit_typed_expr_base(
                                                     leaf_name.clone(),
                                                 )
                                             };
-                                        if v1_rt::set_contains(&shared_types, enum_name.clone()) {
+                                        if rust_seed_value_needs_rc_wrap(
+                                            enum_name.clone(),
+                                            shared_types.clone(),
+                                            OwnershipWrapUseSite::OwnershipAtBindingProjection,
+                                        ) {
                                             v1_rt::concat(
                                                 v1_rt::concat(
                                                     "Rc::new(".to_string(),
