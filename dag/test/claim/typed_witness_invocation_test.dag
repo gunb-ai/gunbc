@@ -4,6 +4,7 @@ import gunbc.output_policy { ExpectFailure }
 import extdeps.shell
 import extdeps.git
 import extdeps.gunbc
+import extdeps.cargo_build
 import gunbc.cli_services
 import tools.host_prelude { ClaimRun, claim_batch_claims_argv, run_witness_bin }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -53,6 +54,17 @@ test fn typed_witness_bin_run_workdir_anchors_root_control_holds() -> Bool {
 
 test fn typed_run_witness_bin_unbuildable_red_control_holds() -> Bool {
   run_witness_bin(var_name: "NO_SUCH", bin_name: "no_such_witness_bin_zzz", args: []) == false
+}
+
+data typed_cargo_build_loud_failure_red_control_note: String = "Deliberate unannotated cargo.Build.BuildInheritEnv failure (no ExpectFailure / OutcomeIsData). Kept as the observable anomaly-glyph producer after WitnessBinNotEnrolled closed the mid-floor cargo path that typed_run_witness_bin_unbuildable_red_control_holds used to exercise — that control still proves enrollment refusal, but no longer reaches cargo. Consumed by no_fake_anomalies_witness_test's RED control (re-pointed 2026-07-26)."
+
+test fn typed_cargo_build_loud_failure_red_control_holds() -> Bool {
+  let root = git.Core.Toplevel()
+  let built = cargo.Build.BuildInheritEnv(
+    workdir: root.path,
+    extra_args: ["-p", "v1-compiler", "--release", "--bin", "no_such_cargo_bin_zzz"]
+  )
+  built.success == false
 }
 
 test fn typed_is_nonempty_positive_holds() -> Bool {

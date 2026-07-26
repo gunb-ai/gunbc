@@ -48,12 +48,12 @@ test fn passing_run_shows_no_fake_anomaly_holds() -> Bool {
   !stderr_has_anomaly_glyph(stderr: stderr)
 }
 
-data no_fake_anomalies_red_control_note: String = "The RED control does not perturb anything: it points at an entry that STILL carries a deliberate anomaly — host_prelude's cargo.Build.BuildInheritEnv, left loud on purpose because a failing production build is a real fault, not an observation (witness_bin_ensure_built_probe_note). So the pair is genuine: an entry whose probes are all annotated shows no glyph, an entry with a real remaining one does. NOTE THE COUPLING, because it is load-bearing: if that cargo call is ever annotated, or the witness stops exercising it, THIS control goes vacuously green and the wall above loses its proof of discrimination. Re-point it at another entry carrying a deliberate anomaly at that moment — do not delete it, and do not let it pass by accident."
+data no_fake_anomalies_red_control_note: String = "The RED control does not perturb anything: it points at an entry that STILL carries a deliberate anomaly — typed_cargo_build_loud_failure_red_control_holds calls cargo.Build.BuildInheritEnv with a nonexistent --bin and leaves it unannotated, because a failing production build is a real fault, not an observation (witness_bin_ensure_built_probe_note). Re-pointed 2026-07-26 off typed_run_witness_bin_unbuildable_red_control_holds: WitnessBinNotEnrolled now refuses before cargo, so that entry no longer paints a glyph (it still proves enrollment refusal). So the pair is genuine: an entry whose probes are all annotated shows no glyph, an entry with a real remaining one does. NOTE THE COUPLING, because it is load-bearing: if that cargo call is ever annotated, or the witness stops exercising it, THIS control goes vacuously green and the wall above loses its proof of discrimination. Re-point it at another entry carrying a deliberate anomaly at that moment — do not delete it, and do not let it pass by accident."
 
 test fn red_control_entry_with_real_anomaly_still_shows_glyph_holds() -> Bool {
   let stderr = run_corpus_capturing_stderr(
     entry: "dag/test/claim/typed_witness_invocation_test.dag",
-    function: "typed_run_witness_bin_unbuildable_red_control_holds"
+    function: "typed_cargo_build_loud_failure_red_control_holds"
   )
   stderr_has_anomaly_glyph(stderr: stderr)
 }

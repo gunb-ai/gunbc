@@ -789,6 +789,7 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_witness_bin_run_workdir_anchors_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_witness_bin_run_workdir_anchors_root_control_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_run_witness_bin_unbuildable_red_control_holds"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_cargo_build_loud_failure_red_control_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_nonempty_positive_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_nonempty_zero_byte_red_control_holds"),
   bin_wet(entry: "dag/test/claim/roadmap_belt_actuate_witness_test.dag", f: "roadmap_belt_actuate_witnesses"),
