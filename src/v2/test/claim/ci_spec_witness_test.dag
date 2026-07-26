@@ -15,6 +15,10 @@ import gunbc.ci_spec {
   ci_release_features,
   scheduler_invoke, gunbc_ci_workflow_run, gunbc_ci_floor_only_script, git_fetch_script,
   ci_floor_build_verify_script,
+  ci_release_bins_pack_script,
+  ci_release_bins_unpack_verify_script,
+  ci_release_bins_pack_shell_emit_dissolution_trigger,
+  ci_release_bins_unpack_verify_shell_emit_dissolution_trigger,
   artifact_shell_path,
   ci_documentation_only_floor_shortcut_retired_note,
 }
@@ -207,6 +211,30 @@ fn witness_release_build_emits_dissolve_on_in_runner() -> Bool {
   string_contains(s: ci_release_build_script(), pattern: marker)
 }
 
+fn witness_release_bins_pack_shell_emit_dissolve_on_named() -> Bool {
+  string_contains(
+    s: ci_release_bins_pack_shell_emit_dissolution_trigger,
+    pattern: "dissolve-on: ci_release_bins_pack_script"
+  )
+}
+
+fn witness_release_bins_pack_emits_dissolve_on_in_runner() -> Bool {
+  let marker = concat("# ", ci_release_bins_pack_shell_emit_dissolution_trigger)
+  string_contains(s: ci_release_bins_pack_script(), pattern: marker)
+}
+
+fn witness_release_bins_unpack_verify_shell_emit_dissolve_on_named() -> Bool {
+  string_contains(
+    s: ci_release_bins_unpack_verify_shell_emit_dissolution_trigger,
+    pattern: "dissolve-on: ci_release_bins_unpack_verify_script"
+  )
+}
+
+fn witness_release_bins_unpack_verify_emits_dissolve_on_in_runner() -> Bool {
+  let marker = concat("# ", ci_release_bins_unpack_verify_shell_emit_dissolution_trigger)
+  string_contains(s: ci_release_bins_unpack_verify_script(), pattern: marker)
+}
+
 fn witness_floor_build_verify_script_matches_pack() -> Bool {
   let script = ci_floor_build_verify_script()
   script == claim_executor_verify_artifacts_shell(
@@ -314,6 +342,10 @@ test fn ci_spec_witnesses() -> Bool {
     witness_release_build_verifies_nonempty_artifacts() &&
     witness_release_build_shell_emit_dissolve_on_named() &&
     witness_release_build_emits_dissolve_on_in_runner() &&
+    witness_release_bins_pack_shell_emit_dissolve_on_named() &&
+    witness_release_bins_pack_emits_dissolve_on_in_runner() &&
+    witness_release_bins_unpack_verify_shell_emit_dissolve_on_named() &&
+    witness_release_bins_unpack_verify_emits_dissolve_on_in_runner() &&
     witness_floor_build_verify_script_matches_pack() &&
     witness_scheduler_uses_release_binary() &&
     witness_workflow_run_is_floor_only_script() &&

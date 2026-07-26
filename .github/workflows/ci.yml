@@ -126,6 +126,7 @@ jobs:
         timeout-minutes: 10
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         run: |
+          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
@@ -168,6 +169,7 @@ jobs:
         timeout-minutes: 10
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         run: |
+          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
@@ -266,6 +268,7 @@ jobs:
         timeout-minutes: 10
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         run: |
+          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
@@ -296,6 +299,7 @@ jobs:
         timeout-minutes: 10
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         run: |
+          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
