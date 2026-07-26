@@ -572,7 +572,14 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/long/gauntlet_lane_enrollment_witness_test.dag",
-      check_fns: [],
+      check_fns: [
+        "witness_rehomed_rows_are_cadence_enrolled",
+        "witness_split_entries_keep_cheap_half_per_pr",
+        "gauntlet_lane_rehome_is_never_bare_deenrollment_holds",
+        "gauntlet_lane_rehome_bare_deenrollment_RED_control_holds",
+        "gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds",
+        "gauntlet_lane_gate_bare_deenrollment_RED_control_holds"
+      ],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
