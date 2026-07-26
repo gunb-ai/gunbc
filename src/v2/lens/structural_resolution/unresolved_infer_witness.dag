@@ -1,4 +1,6 @@
 module v2.test.lens_structural_resolution.unresolved_infer_witness
+import v2.std.collection { Map, optional_absent, optional_present }
+import v2.std.optional { Optional, Absent, Present }
 
 
 data sr_infer_claim_hash: Hash = sr_infer_claim_hash
@@ -36,10 +38,8 @@ fn sr_infer_resolved_facts() -> InferredFacts {
   )
 }
 
-fn sr_infer_usage_site_witness() -> Witness<InferredFacts> {
-  Violates {
-    diagnostic: infer_descent_not_derived_diagnostic(at: node_locus(node: sr_infer_use))
-  }
+fn sr_infer_usage_site_witness() -> Optional<InferredFacts> {
+  optional_absent()
 }
 
 fn sr_infer_claim_fact_map() -> Map<Node, InferredFacts> {
@@ -47,9 +47,9 @@ fn sr_infer_claim_fact_map() -> Map<Node, InferredFacts> {
   Map {
     lookup: fn(key) {
       if key == sr_infer_use {
-        sr_infer_usage_site_witness()
+        optional_absent()
       } else {
-        Holds { value: resolved }
+        optional_present(value: resolved)
       }
     }
   }
@@ -68,7 +68,7 @@ data unresolved_infer_witness_claim: LensStructuralResolutionClaim = LensStructu
     dependencies: [
       ClassifiedDependencyView {
         dependency: sr_infer_dependency,
-        classification: UnresolvedInferWitness
+        classification: FactsLookupMiss
       }
     ]
   }
@@ -78,7 +78,7 @@ fn unresolved_infer_witness_claim_holds() -> Bool {
   match lens_structural_resolution_actual(claim: unresolved_infer_witness_claim) {
     Holds { value: actual } =>
       fact_eq(a: actual, b: unresolved_infer_witness_claim.expected)
-        && fact_single_dependency_projects_status(fact: actual, expected: UnresolvedInferWitness)
+        && fact_single_dependency_projects_status(fact: actual, expected: FactsLookupMiss)
     _ => false
   }
 }

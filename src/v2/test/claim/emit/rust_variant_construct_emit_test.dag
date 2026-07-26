@@ -11,7 +11,16 @@ import v2.extdeps.languages.rust_test {
   rust_variant_construct_target_model_staging
 }
 import extdeps.communication.medium { Medium }
-import v2.std.collection { Map }
+import v2.std.collection {
+  Map
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
   Accepted,
@@ -32,14 +41,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_variant_construct_emit_wrong_value_source_text: String = "fn one_or_two() -> i32 { match (Holds { value: 1 }) { Holds { value: v } => v, True => 2 } }"
 
-fn rust_variant_construct_emit_facts_miss(key: Node) -> Witness<InferredFacts> {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^rust_variant_construct_emit_facts_not_consulted,
-      at: node_locus(node: key),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
+fn rust_variant_construct_emit_facts_miss(key: Node) -> Optional<InferredFacts> {
+  optional_absent()
 }
 
 fn rust_variant_construct_emit_inferred_tree_for(root: Node) -> InferredTree {

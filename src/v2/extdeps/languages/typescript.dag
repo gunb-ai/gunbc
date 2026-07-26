@@ -52,14 +52,16 @@ import v2.std.compilers.lexing {
   TokenRule
 }
 import v2.std.collection {
-  Absent,
   List,
   Map,
-  Optional,
-  Present,
   Set,
   empty_map,
-  map_insert,
+  map_insert
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
   optional_absent,
   optional_present
 }
@@ -77,8 +79,7 @@ import v2.std.model_core {
   PrimitiveOperationRef,
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSurfaceSpelling,
-  ModelCoreFactAxisWidth,
-  primitive_fact_axis_unbound_diagnostic
+  ModelCoreFactAxisWidth
 }
 import v2.std.diagnostic {
   Accepted,
@@ -2132,15 +2133,13 @@ fn ts_number_spec_facts(facts: TsNumberPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: ts_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          Holds { value: ts_inhabitant_atom(id: ^ts_tag_bits64) }
+          v2.std.optional.Present { value: ts_inhabitant_atom(id: ^ts_tag_bits64) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: ts_inhabitant_atom(id: facts.ieee754_binary) }
+          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.ieee754_binary) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          v2.std.optional.Absent
       }
     }
   }
@@ -2150,13 +2149,11 @@ fn ts_bigint_spec_facts(facts: TsBigIntPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: ts_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: ts_inhabitant_atom(id: facts.encoding) }
+          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.encoding) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          v2.std.optional.Absent
       }
     }
   }
@@ -2166,13 +2163,11 @@ fn ts_bool_spec_facts(facts: TsBooleanPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: ts_inhabitant_atom(id: facts.surface_spelling) }
+          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: ts_inhabitant_atom(id: facts.encoding) }
+          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.encoding) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          v2.std.optional.Absent
       }
     }
   }

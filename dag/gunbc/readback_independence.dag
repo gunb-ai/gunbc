@@ -100,11 +100,18 @@ data proc_swaps_read_probe: ReadBackProbe = ReadBackProbe {
   effect_on_subject: ProbeInert,
 }
 
+data ip_link_carrier_read_probe: ReadBackProbe = ReadBackProbe {
+  label: "ip link show / sysfs carrier read",
+  subject: "whether a configured interface has a link partner",
+  effect_on_subject: ProbeInert,
+}
+
 data readback_probe_roster: List<ReadBackProbe> = [
   sccache_show_stats_probe,
   systemd_show_property_probe,
   systemd_is_active_probe,
   proc_swaps_read_probe,
+  ip_link_carrier_read_probe,
 ]
 
 fn readback_non_independent_probe_count() -> Int {

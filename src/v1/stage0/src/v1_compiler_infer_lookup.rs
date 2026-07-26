@@ -33,13 +33,11 @@ use crate::v1_compiler_infer_sigs::FuncSigLookup::{
 pub use crate::v1_compiler_infer_sigs::{FuncSigLookup, ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, enrich_kernel_type, is_declared_container_alias_spelling,
-    kernel_profile_lookup, make_container_type, method_receiver_element_node,
-    node_is_keyed_collection, node_is_set_collection, nominal_type_ref, normalize_access_type_node,
+    kernel_profile_lookup, method_receiver_element_node, node_is_keyed_collection,
+    node_is_set_collection, nominal_type_ref, normalize_access_type_node,
     reground_alias_carrier_identity,
 };
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
@@ -67,10 +65,6 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
         InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
     }
-}
-
-pub fn is_witness_type_name(name: String) -> bool {
-    ((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string()))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -341,14 +335,7 @@ pub fn lookup_field_type_node(
                                                 Some(child) => child_type_node(child.clone()),
                                                 None => nominal_type_ref("V".to_string()),
                                             };
-                                            Some(
-                                                make_container_type(
-                                                    "Witness".to_string(),
-                                                    value_child.clone(),
-                                                )
-                                                .ty
-                                                .clone(),
-                                            )
+                                            Some(with_optional_cardinality(value_child.clone()))
                                         }
                                     } else {
                                         Some(child_type_node(field_child.clone()))
@@ -723,14 +710,10 @@ pub fn map_lookup_result_type(
     if (authored_name_at(source_indices.clone(), product.clone()) == "Map".to_string()) {
         match product_field_result_type(field.clone()) {
             Some(raw) => {
-                if is_witness_type_name(authored_name_at(source_indices.clone(), raw.clone())) {
+                if (raw.return_cardinality.clone() == Cardinality::CardOptional) {
                     Some(raw.clone())
                 } else {
-                    Some(
-                        make_container_type("Witness".to_string(), raw.clone())
-                            .ty
-                            .clone(),
-                    )
+                    Some(with_optional_cardinality(raw.clone()))
                 }
             }
             None => None,

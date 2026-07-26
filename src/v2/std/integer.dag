@@ -1,9 +1,19 @@
 module v2.std.integer
 
-import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, OrderedRing, Ordering, Less, Equal, Greater }
+import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, OrderedRing, Ordering, Less, Equal, Greater }
 import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
 import v2.std.algebra { TailAbsent, TailFound, fold_list, fold_list_node, length }
-import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
+import v2.std.collection {
+  List,
+  list_at_optional
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, port_locus, Unavailable }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence, is_empty_conj_root }
 import v2.std.node_query { find_named_child }
@@ -19,7 +29,6 @@ import v2.std.machine {
 }
 import v2.std.nat { Nat }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
-type GroupCompletion<M>
 type Int = GroupCompletion<v2.std.nat.Nat>
 type UInt = v2.std.nat.Nat
 type Compose<carrier, dimension>

@@ -31,7 +31,11 @@ import v2.std.grammar {
   formal_production_to_node,
   grammar_relation_tokens_node
 }
-import v2.std.collection { Optional }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present
+}
 import v2.std.compilers.lexing {
   CharClassPattern,
   CharPattern,
@@ -60,10 +64,8 @@ import v2.std.model_core {
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
   ModelCoreFactAxisEncoding,
-  ModelCoreFactAxisSurfaceSpelling,
-  primitive_fact_axis_unbound_diagnostic
+  ModelCoreFactAxisSurfaceSpelling
 }
-import v2.std.witness { Holds, Violates }
 import v2.std.node {
   Arrow,
   Atom,
@@ -270,13 +272,11 @@ fn ecmascript_primitive_spec_facts(
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: ecmascript_inhabitant_atom(id: surface_spelling) }
+          v2.std.optional.Present { value: ecmascript_inhabitant_atom(id: surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: ecmascript_inhabitant_atom(id: encoding_value) }
+          v2.std.optional.Present { value: ecmascript_inhabitant_atom(id: encoding_value) }
       } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
+          v2.std.optional.Absent
       }
     }
   }

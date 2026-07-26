@@ -50,10 +50,28 @@ fn w_success_ansi_is_256_green() -> Bool {
   }
 }
 
+data ansi_escape_is_a_real_byte_note: String = "w_success_ansi_is_256_green above compares one \\x1b literal against another, so it agreed with itself for as long as the tokenizer left BOTH undecoded — it passed throughout the period when every colour this repo authored rendered as the literal text backslash-x-1-b (seen in CI run 30167957464's TOP SLOWEST WITNESSES table). Equality against a same-source literal can never discriminate a decode defect. The two witnesses below do: they read the CODE POINT of the first character (27 = ESC, never 92 = backslash) and pin the decoded length, both of which are properties of the decode rather than of the spelling."
+
+fn w_ansi_first_char_is_escape_byte() -> Bool {
+  match ansi_code(c: Success) {
+    Present { value: code } => code_point(char_at(s: code, pos: 0)) == 27
+    Absent => false
+  }
+}
+
+fn w_ansi_code_has_no_literal_backslash() -> Bool {
+  match ansi_code(c: Success) {
+    Present { value: code } => !string_contains(s: code, pattern: "\\")
+    Absent => false
+  }
+}
+
 test fn render_glyphs_ansi_witnesses() -> Bool {
   w_completed_ascii() &&
   w_completed_unicode_differs_from_ascii() &&
   w_glyph_at_selects_matching_tier_text() &&
   w_failed_color_is_error() &&
-  w_success_ansi_is_256_green()
+  w_success_ansi_is_256_green() &&
+  w_ansi_first_char_is_escape_byte() &&
+  w_ansi_code_has_no_literal_backslash()
 }

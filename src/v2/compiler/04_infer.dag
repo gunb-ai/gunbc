@@ -10,12 +10,14 @@ import v2.compiler.resolve { ResolvedTree }
 import v2.extdeps.languages.dag { dag_node_is_int_literal_atom }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v2.std.collection {
-  Absent,
   List,
   Map,
+  list_at_optional
+}
+import v2.std.optional {
+  Absent,
   Optional,
   Present,
-  list_at_optional,
   optional_absent,
   optional_present
 }
@@ -69,7 +71,7 @@ import v2.std.node {
   well_formed
 }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
-import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
 
 type AlgebraRef {
   algebra: Node
@@ -357,18 +359,16 @@ fn infer_node_facts(n: Node, partials: List<Node>) -> Outcome<InferredFacts> {
 fn lookup_inferred_facts_in_entries(
   entries: List<InferredFactsEntry>,
   key: Node,
-) -> Witness<InferredFacts> {
+) -> Optional<InferredFacts> {
   fold(
     entries,
-    init: Violates {
-      diagnostic: infer_facts_lookup_miss_diagnostic(key: key)
-    },
+    init: optional_absent(),
     f: fn(acc, entry) {
       match acc {
-        Holds { value: _ } => acc
-        Violates { diagnostic: _ } =>
+        Present { value: _ } => acc
+        Absent =>
           if entry.node == key {
-            Holds { value: entry.facts }
+            optional_present(value: entry.facts)
           } else {
             acc
           }
@@ -407,7 +407,7 @@ fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<Map<Node
 }
 
 fn inferred_facts_witness_for_node(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
-  tree.facts.lookup(node)
+  witness_from_optional(opt: tree.facts.lookup(node), absent: infer_facts_lookup_miss_diagnostic(key: node))
 }
 
 fn canonical_grounding_from_inferred_facts(
@@ -729,14 +729,14 @@ fn infer_branch_bool_if_else(
               Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
               Present { value: else_target } =>
                 match lookup_inferred_facts_in_entries(entries: entries, key: cond_target) {
-                  Violates { diagnostic: d } => outcome_rejected(d)
-                  Holds { value: cond_facts } =>
+                  Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: cond_target))
+                  Present { value: cond_facts } =>
                     match lookup_inferred_facts_in_entries(entries: entries, key: then_target) {
-                      Violates { diagnostic: d } => outcome_rejected(d)
-                      Holds { value: then_facts } =>
+                      Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: then_target))
+                      Present { value: then_facts } =>
                         match lookup_inferred_facts_in_entries(entries: entries, key: else_target) {
-                          Violates { diagnostic: d } => outcome_rejected(d)
-                          Holds { value: else_facts } =>
+                          Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: else_target))
+                          Present { value: else_facts } =>
                             match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
                               Rejected { diagnostics: r } => Rejected { diagnostics: r }
                               Accepted { value: _, diagnostics: cd } =>
@@ -888,8 +888,8 @@ fn infer_match_bool_arm_row(
                 _ =>
                   let coverage = infer_bool_literal_arm_coverage_from_pattern(pattern: pat)
                   match lookup_inferred_facts_in_entries(entries: entries, key: body_target) {
-                    Violates { diagnostic: diag } => outcome_rejected(diag)
-                    Holds { value: body_facts } =>
+                    Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: body_target))
+                    Present { value: body_facts } =>
                       Accepted {
                         value: InferMatchArmRow {
                           coverage: coverage,
@@ -929,8 +929,8 @@ fn infer_match_bool(
               Absent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
               Present { value: second_arm_target } =>
                 match lookup_inferred_facts_in_entries(entries: entries, key: scrutinee_target) {
-                  Violates { diagnostic: d } => outcome_rejected(d)
-                  Holds { value: scrutinee_facts } =>
+                  Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: scrutinee_target))
+                  Present { value: scrutinee_facts } =>
                     match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
                       Rejected { diagnostics: r } => Rejected { diagnostics: r }
                       Accepted { value: _, diagnostics: cd } =>
@@ -979,8 +979,8 @@ fn infer_loop_iteration_fold_child_targets(node: Node) -> List<Node> {
 
 fn infer_loop_body_type_at(target: Node, entries: List<InferredFactsEntry>) -> Outcome<Node> {
   match lookup_inferred_facts_in_entries(entries: entries, key: target) {
-    Violates { diagnostic: d } => outcome_rejected(d)
-    Holds { value: facts } =>
+    Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: target))
+    Present { value: facts } =>
       Accepted {
         value: infer_branch_operand_resolved_type(node: target, facts: facts),
         diagnostics: None

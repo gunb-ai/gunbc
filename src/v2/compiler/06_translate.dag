@@ -178,12 +178,14 @@ import v2.std.compilers.target_model {
   target_import_to_concrete_tokens
 }
 import v2.std.collection {
-  Absent,
   List,
+  list_at_optional,
+  map_get
+}
+import v2.std.optional {
+  Absent,
   Optional,
   Present,
-  list_at_optional,
-  map_get,
   optional_absent,
   optional_present
 }

@@ -27,7 +27,18 @@ import extdeps.communication.medium { Medium }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.algebra { length }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { List, Map, list_at_optional }
+import v2.std.collection {
+  List,
+  Map,
+  list_at_optional
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
   Accepted,
@@ -130,8 +141,8 @@ fn rust_rec_nine_eval_generic_facts(node: Node) -> InferredFacts {
   )
 }
 
-fn rust_rec_nine_eval_composed_facts(key: Node) -> Witness<InferredFacts> {
-  Holds { value: rust_rec_nine_eval_generic_facts(node: key) }
+fn rust_rec_nine_eval_composed_facts(key: Node) -> Optional<InferredFacts> {
+  optional_present(value: rust_rec_nine_eval_generic_facts(node: key))
 }
 
 fn rust_rec_nine_eval_inferred_tree() -> InferredTree {

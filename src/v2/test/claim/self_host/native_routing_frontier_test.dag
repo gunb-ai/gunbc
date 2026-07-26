@@ -2,7 +2,6 @@ module v2.test.claim.self_host.native_routing_frontier_test
 
 import v2.compiler.self_host.native_routing_frontier {
   native_routing_frontier_roster,
-  native_routing_frontier_family_count_expected,
   native_routed_rows,
   interpreted_retained_rows,
   routing_frontier_row_for_subject,

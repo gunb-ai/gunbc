@@ -26,8 +26,6 @@ pub use crate::gunbc_stage0_crate_partition_generated::{
 };
 pub use crate::v1_compiler_emit_rust::{emit_cargo_dep, emit_non_empty_wrappers};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::TextFile;
 use crate::NonEmptyBTreeSet;
