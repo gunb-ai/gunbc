@@ -23,10 +23,32 @@ import gunbc.cli_invoke {
 }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import std.types { NonEmptyStr }
+
+type FalsifierStepTimeoutBasisKind
+  = MeasuredEnvelopeNotComposed
+
+type FalsifierStepTimeoutBasis {
+  kind: FalsifierStepTimeoutBasisKind
+  single_step_cap_minutes: Int
+  prior_cap_minutes: Int
+  current_cap_minutes: Int
+  measurement_github_actions_run_id: NonEmptyStr
+  not_algebraically_closed_from: NonEmptyStr
+  dissolution_trigger: NonEmptyStr
+}
+
+data gunbc_falsifier_step_timeout_basis: FalsifierStepTimeoutBasis = FalsifierStepTimeoutBasis {
+  kind: MeasuredEnvelopeNotComposed,
+  single_step_cap_minutes: 170,
+  prior_cap_minutes: 120,
+  current_cap_minutes: 170,
+  measurement_github_actions_run_id: "29135185172",
+  not_algebraically_closed_from: "gunbc.ci_spec floor batch-clamp overheads (per-batch wall at execution time; no composed sum closes to the single-step cap)",
+  dissolution_trigger: "gunbc.ci_spec batch-clamp overheads algebraically compose to gunbc_falsifier_step_timeout_minutes, replacing the measured-envelope basis"
+}
 
 data gunbc_falsifier_step_timeout_minutes: Int = 170
-
-data gunbc_falsifier_step_timeout_derived_delta_note: String = "Class-4 alongside row (operator ruling 2026-07-26): gunbc_falsifier_step_timeout_minutes is the single-step cap on the predict-only cold claim_executor run (NOT the falsifier job backstop, which derives to gunbc_falsifier_job_backstop_timeout_minutes() = 290 today). This is a measured fleet-pressure envelope for the full hermetic corpus sweep (see gunbc_falsifier_step_timeout_note: 120 -> 170, run 29135185172), not the sum of gunbc.ci_spec batch-clamp overheads — those clamps bound per-batch wall at execution time and do not algebraically close to 170 minutes. Consumer stays on the hand value until operator rules a switch; this row makes the delta visible and countable."
 
 data gunbc_falsifier_step_timeout_note: String = "120 -> 170 (2026-07-11, run 29135185172 receipt): the first corpus-reaching cold run was TIME-killed at the 120-min step ceiling with the corpus incomplete (1970 rows, closure 1396 modules, width 1) and floor peak 16146612224 bytes against a 16GiB slot budget, still growing - so 120 censored the measurement without bounding anything real (the memory cap is the true wall). 170 lets a nightly run reach either completion (exact-labeled receipt) or the cap kill (censored-labeled receipt); both are the falsifier doing its measurement job, and the job backstop DERIVES from this value so it stretches in step. Revisit down when the resolver graph-major module split (S2a move 2) shrinks cold-resolve wall and residency."
 

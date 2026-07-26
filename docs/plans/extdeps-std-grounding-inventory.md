@@ -430,7 +430,7 @@ the width it encodes. Brief requires this class run over extdeps and gunbc too.
 | `cheap_gate_pool_max_claims_per_child` | `dag/tools/cheap_gate_pool.dag:13` | 16 | Add-basis-row | Slot memory envelope (`:11` note); sized-to-slot policy |
 | `roadmap_max_depth` | `dag/gunbc/roadmap_emit.dag:16` | 8 | Add-basis-row | Roadmap tree depth cap (matches `roadmap_page.dag:30`) |
 | `gunbc_ci_job_backstop_timeout_minutes()` | `dag/gunbc/ci_workflow.dag:459` | 115 (today) | **Landed composed** | **Inventory corrected:** deleted orphan `gunbc_ci_job_timeout_policy_minutes` (90, zero consumers). Live ci job reads composed step-sum + prelude; witness `ci_workflow_witness_test.dag` |
-| `gunbc_falsifier_step_timeout_minutes` | `dag/gunbc/falsifier_workflow.dag:27` | 170 | Add-basis-row (alongside) | **Inventory corrected:** single-step cap (NOT job backstop 290). Batch clamps do not algebraically close to 170; `gunbc_falsifier_step_timeout_derived_delta_note` states delta; consumer stays on hand 170 |
+| `gunbc_falsifier_step_timeout_minutes` | `dag/gunbc/falsifier_workflow.dag:27` | 170 | **Landed** | Typed `FalsifierStepTimeoutBasis` (`MeasuredEnvelopeNotComposed`; run 29135185172, 120→170); consumer stays on hand 170; witness `falsifier_step_timeout_basis_is_measured_not_composed` |
 
 ### Class 5 — Hand counts beside structure (14 rows)
 
