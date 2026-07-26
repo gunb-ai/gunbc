@@ -19,9 +19,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data ci_release_bins_witness_note: String = "Authority: gunbc.ci_release_bins. Pack membership is derived (floor ∪ witness-declared). Positives: measured gap bins cssl_assemble / frontier_probe_survey are enrolled and appear on the build line. RED: no_such_witness_bin_zzz is NOT enrolled, and ensure_built refuses WitnessBinNotEnrolled without cargo (construction wall). Per-claim test fns (no AND-umbrella)."
+data ci_release_bins_witness_note: String = "Authority: gunbc.ci_release_bins. Pack membership is derived (floor ∪ witness-declared). Positives: measured gap bins cssl_assemble / frontier_probe_survey are enrolled and appear on the build line. RED: no_such_witness_bin_zzz is NOT enrolled, and ensure_built refuses WitnessBinNotEnrolled without cargo (construction wall). Per-claim test fns (no AND-umbrella; #7287 pattern)."
 
-test fn pack_includes_every_floor_invoked_holds() -> Bool {
+test fn witness_pack_includes_every_floor_invoked() -> Bool {
   fold(
     ci_floor_invoked_bins,
     init: true,
@@ -29,7 +29,7 @@ test fn pack_includes_every_floor_invoked_holds() -> Bool {
   )
 }
 
-test fn pack_includes_every_witness_declared_holds() -> Bool {
+test fn witness_pack_includes_every_witness_declared() -> Bool {
   fold(
     witness_declared_release_bins,
     init: true,
@@ -37,23 +37,23 @@ test fn pack_includes_every_witness_declared_holds() -> Bool {
   )
 }
 
-test fn measured_gap_bins_enrolled_holds() -> Bool {
+test fn witness_measured_gap_bins_enrolled() -> Bool {
   release_bin_is_enrolled(bin_name: "cssl_assemble")
     && release_bin_is_enrolled(bin_name: "frontier_probe_survey")
 }
 
-test fn build_line_carries_gap_bins_holds() -> Bool {
+test fn witness_build_line_carries_gap_bins() -> Bool {
   let line = ci_release_build_line()
   string_contains(s: line, pattern: "--bin cssl_assemble")
     && string_contains(s: line, pattern: "--bin frontier_probe_survey")
     && string_contains(s: line, pattern: "--bin claim_executor")
 }
 
-test fn negative_control_not_enrolled_holds() -> Bool {
+test fn witness_negative_control_not_enrolled() -> Bool {
   !release_bin_is_enrolled(bin_name: "no_such_witness_bin_zzz")
 }
 
-test fn unenrolled_ensure_built_refuses_not_enrolled_holds() -> Bool {
+test fn witness_unenrolled_ensure_built_refuses_not_enrolled() -> Bool {
   let readiness = witness_bin_ensure_built_typed(
     root: "/tmp",
     bin: witness_bin(var_name: "NO_SUCH", bin_name: "no_such_witness_bin_zzz")
@@ -65,6 +65,6 @@ test fn unenrolled_ensure_built_refuses_not_enrolled_holds() -> Bool {
   }
 }
 
-test fn pack_count_floor_holds() -> Bool {
+test fn witness_pack_count_floor() -> Bool {
   ci_floor_required_artifact_names().length() >= 20
 }
