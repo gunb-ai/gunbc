@@ -1089,6 +1089,9 @@ type SeedRetainedScaffoldRegistration {
 data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistration> = [
   SeedRetainedIntrinsicRegistration { basename: "v1_interpreter", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "cli_run", has_pub_mod: true, is_dir: false },
+  // U1–U3 umbrella-dissolution hygiene (parse umbrella / orphan enroll-or-refuse / file-grain).
+  // Seed-retained intrinsic beside cli_run (the naming-walk consumer); not a SelfEmitted .dag module.
+  SeedRetainedIntrinsicRegistration { basename: "test_module_hygiene", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "coproduct_reflection", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "resolved_graph_cache", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "shared_typecheck_store", has_pub_mod: true, is_dir: false },
