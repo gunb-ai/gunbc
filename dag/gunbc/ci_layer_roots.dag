@@ -974,7 +974,7 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/type_resolution_pool_coincidence_test.dag",
-    function: "type_resolution_pool_coincidence_witness_holds",
+    function: "pool_coincidence_transport_witness_holds",
     reason: "21481ms measured eval on run 30215350084 (4.3x per-PR 5s fast-lane budget): four mask-on compile_dag_dag_fixture_witness_check passes over pool-coincidence probes — fixture-shaped compile transport, not corpus breadth; per-PR discovery correctly excludes test/claim/long/ at dir grain",
     dissolve_on: "fixture compile transport drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes when modeled substrate transport dissolves pool_coincidence_fixture_witness_check scaffold"
   }
