@@ -59,7 +59,7 @@ type Predicate
 
 data predicate_string_test_note: String = "StrEq is binary [ lhs = rhs ]. Unary empty/nonempty tests are StrEmpty (-z) and StrNonempty (-n); do not encode them as StrEq with a literal \"\" operand."
 
-data predicate_int_ne_note: String = "IntNe \{ lhs, rhs \} is the integer inequality test ([ lhs -ne rhs ]). Live consumer: ci_floor_stamp_merge_admission_intent floor-exit propagate If (bucket D PR2a expansion). Emitted via bash_test_int_ne_* grammar rows (sibling of StrEq)."
+data predicate_int_ne_note: String = "IntNe \{ lhs, rhs \} is the integer inequality test ([ lhs -ne rhs ]). Live consumer: ci_floor_stamp_merge_admission_intent floor-exit propagate If (bucket D PR2a expansion). Emitted via bash_test_int_ne_* grammar rows (sibling of StrEq). Operands are still String (interim): orch_emit_predicate refuses anything outside orch_shell_test_operand_alphabet before emit (^orch_emit_int_ne_operand_invalid) so bracket escape / metachar injection is unwritable-at-emit. 🟡 dissolve-on: typed shell-integer / test-operand carriers make the alphabet check unwritable-by-construction."
 
 type EscalationLevel {
   detect: Predicate

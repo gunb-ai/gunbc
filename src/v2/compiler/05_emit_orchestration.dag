@@ -422,15 +422,19 @@ fn orch_emit_predicate(p: Predicate, medium: OrchestrationEmitMedium) -> Outcome
         }
       )
     IntNe { lhs: lhs, rhs: rhs } =>
-      bind_outcome(
-        o: bash_test_int_ne_target_model(lhs: lhs, rhs: rhs),
-        f: fn(target) {
-          orch_emit_node_spelling(
-            emitted_root: bash_test_int_ne_emitted,
-            target: target
-          )
-        }
-      )
+      if !orch_shell_test_operand_ok(operand: lhs) || !orch_shell_test_operand_ok(operand: rhs) {
+        outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_int_ne_operand_invalid))
+      } else {
+        bind_outcome(
+          o: bash_test_int_ne_target_model(lhs: lhs, rhs: rhs),
+          f: fn(target) {
+            orch_emit_node_spelling(
+              emitted_root: bash_test_int_ne_emitted,
+              target: target
+            )
+          }
+        )
+      }
     LogMatches { source: source, pattern: pattern } =>
       bind_outcome(
         o: bash_log_matches_grep_target_model(
@@ -715,32 +719,36 @@ fn orch_emit_bounded_poll_step(
   )
 }
 
-data orch_shell_exit_status_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-@$\"{}"
+data orch_shell_test_operand_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-@$\"{}"
 
-fn orch_shell_exit_status_char_ok(ch: String) -> Bool {
-  string_length(s: ch) == 1 && string_contains(s: orch_shell_exit_status_alphabet, pattern: ch)
+fn orch_shell_test_operand_char_ok(ch: String) -> Bool {
+  string_length(s: ch) == 1 && string_contains(s: orch_shell_test_operand_alphabet, pattern: ch)
 }
 
-fn orch_shell_exit_status_ok_at(status: String, i: Int, n: Int) -> Bool {
+fn orch_shell_test_operand_ok_at(operand: String, i: Int, n: Int) -> Bool {
   if i >= n {
     true
   } else {
-    let ch = char_at(s: status, pos: i)
-    if !orch_shell_exit_status_char_ok(ch: ch) {
+    let ch = char_at(s: operand, pos: i)
+    if !orch_shell_test_operand_char_ok(ch: ch) {
       false
     } else {
-      orch_shell_exit_status_ok_at(status: status, i: i + 1, n: n)
+      orch_shell_test_operand_ok_at(operand: operand, i: i + 1, n: n)
     }
   }
 }
 
-fn orch_shell_exit_status_ok(status: String) -> Bool {
-  let n = string_length(s: status)
+fn orch_shell_test_operand_ok(operand: String) -> Bool {
+  let n = string_length(s: operand)
   if n == 0 {
     false
   } else {
-    orch_shell_exit_status_ok_at(status: status, i: 0, n: n)
+    orch_shell_test_operand_ok_at(operand: operand, i: 0, n: n)
   }
+}
+
+fn orch_shell_exit_status_ok(status: String) -> Bool {
+  orch_shell_test_operand_ok(operand: status)
 }
 
 fn orch_emit_exit_step(status: String) -> Outcome<extdeps.communication.medium.Medium<String>> {

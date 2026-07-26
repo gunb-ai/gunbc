@@ -437,6 +437,23 @@ test fn orch_int_ne_then_exit_emit_matches_inline_holds() -> Bool {
   }
 }
 
+test fn orch_int_ne_operand_injection_refused_holds() -> Bool {
+  match orch_emit_step(
+    s: If {
+      cond: IntNe { lhs: "0 ] || injected_command #", rhs: "0" },
+      then_: Pipeline {
+        steps: [Exit { status: "\"$FLOOR_EXIT\"" }],
+        on_failure: FailFast
+      },
+      else_: Absent
+    },
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
 test fn orch_exit_step_emit_matches_golden_holds() -> Bool {
   match orch_emit_step(s: Exit { status: "\"$STAMP_EXIT\"" }, medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: _ } => source.carried == "exit \"$STAMP_EXIT\""
