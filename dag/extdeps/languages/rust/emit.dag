@@ -311,6 +311,8 @@ data rust_pair_completion_spelling_note: String = "Rust spellings for the target
 
 data rust_pair_completion_dissolve_on: String = "Dissolves when the emitted-target operator surface is selected by the grammar-row inverse in extdeps.languages.rust rather than by this per-op spelling table, at which point trait_path/method/where_bounds become ordinary terminal rows on the Rust target model."
 
+data rust_pair_completion_nonpolynomial_body_dissolve_on: String = "dissolve-on: the Sub and Div bodies rendered below. Scope honesty (review 43189): only Add, Mul and Neg are fully row-data — their bodies are rendered from the PairCompletionSumOfProducts polynomial arms, so perturbing a row changes the emission. Sub and Div are NOT polynomials in the four operand components, so today they render as literals keyed by variant name: Sub is a DERIVED op (Add composed with Neg) and Div quotients the canonical representative (pos-neg). They dissolve when the row vocabulary gains the two constructions their shapes actually need — an op-composition arm, so Sub is expressed as Add(self, Neg(rhs)) and derived rather than spelled, and a canonical-representative projection for the fraction field — at which point every arm of PairCompletionBody renders from rows and the variant-keyed literals here delete. Deliberately NOT extended by widening the polynomial type: forcing a composition and a quotient into a sum-of-products would be a nickname for two constructions that are not sums of products."
+
 type RustPairCompletionSpelling {
   method: String
   trait_path: String
