@@ -329,8 +329,8 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
 
     // Zero enrolled `test fn` / `test data` + plain helpers is the demotion failure
     // mode (all witnesses accidentally plain) — refuse, never assume "fixture library"
-    // from path suffix alone (DESIGN §5 enroll-or-refuse; review 43330).
-    // Structural exemption: cross-module language/example libraries only.
+    // from path suffix or directory prefix alone (DESIGN §5; reviews 43330 / 43367).
+    // Exemption: explicit CROSS_MODULE_FIXTURE_LIBRARY_ENTRIES only.
     if !module.has_enrolled_test_decl {
         if is_cross_module_fixture_library_path(entry) {
             return Vec::new();
@@ -414,7 +414,7 @@ pub fn collect_umbrella_roster(roots: &[String]) -> Result<Vec<UmbrellaRecord>, 
     let ws = std::env::current_dir().map_err(|e| format!("cwd: {e}"))?;
     let mut files = Vec::new();
     for root in roots {
-        collect_dag_files(&ws.join(root), &mut files);
+        collect_dag_files(&ws.join(root), &mut files)?;
     }
     files.sort();
     let mut out = Vec::new();
@@ -437,10 +437,11 @@ pub fn collect_umbrella_roster(roots: &[String]) -> Result<Vec<UmbrellaRecord>, 
         };
         out.extend(umbrellas_in_module(&rel, &module));
     }
-    if !parse_failures.is_empty() && out.is_empty() {
+    if !parse_failures.is_empty() {
         return Err(format!(
-            "umbrella roster: no modules parsed ({})",
-            parse_failures.len()
+            "umbrella roster: {} read/parse failure(s) — refuse (DESIGN §5), never fabricate a partial roster:\n  {}",
+            parse_failures.len(),
+            parse_failures.join("\n  ")
         ));
     }
     out.sort_by(|a, b| (&a.entry, &a.umbrella_fn).cmp(&(&b.entry, &b.umbrella_fn)));
@@ -461,10 +462,11 @@ pub fn collect_orphan_helpers(roots: &[String]) -> Result<Vec<OrphanHelper>, Str
         } else {
             ws.join(root_path)
         };
-        collect_dag_files(&abs, &mut files);
+        collect_dag_files(&abs, &mut files)?;
     }
     files.sort();
     let mut out = Vec::new();
+    let mut failures = Vec::new();
     for path in files {
         let rel = repo_relative(&path, &ws);
         if !is_test_dag_path(&rel) {
@@ -472,12 +474,26 @@ pub fn collect_orphan_helpers(roots: &[String]) -> Result<Vec<OrphanHelper>, Str
         }
         let content = match std::fs::read_to_string(&path) {
             Ok(c) => c,
-            Err(_) => continue,
+            Err(e) => {
+                failures.push(format!("read {rel}: {e}"));
+                continue;
+            }
         };
         let Some(module) = analyze_test_module(&path, &content) else {
+            failures.push(format!("parse failed: {rel}"));
             continue;
         };
         out.extend(orphans_in_module(&rel, &module));
+    }
+    if !failures.is_empty() {
+        // review 43367: an enforcement gate must refuse on unknown input, never
+        // silently skip unreadable/unparsable `*_test.dag` and return Ok.
+        return Err(format!(
+            "test-module orphan-helper hygiene: {} read/parse failure(s) — refuse (DESIGN §5), \
+             never fabricate a clean result:\n  {}",
+            failures.len(),
+            failures.join("\n  ")
+        ));
     }
     out.sort_by(|a, b| (&a.entry, &a.name).cmp(&(&b.entry, &b.name)));
     Ok(out)
@@ -614,13 +630,45 @@ fn formerly_test_holds() -> Bool {
     }
 
     #[test]
-    fn cross_module_fixture_library_path_exempts_zero_enrolled_plains() {
+    fn directory_prefix_alone_does_not_exempt_zero_enrolled_plains() {
+        // review 43367: /extdeps/languages/ is not a bypass — only the explicit roster.
         let dir = tmp_dir().join("extdeps").join("languages");
         std::fs::create_dir_all(&dir).unwrap();
-        let file = dir.join("fixture_lib_test.dag");
+        let file = dir.join("not_on_allowlist_test.dag");
         std::fs::write(
             &file,
-            r#"module fixture_lib
+            r#"module not_on_allowlist
+
+fn export_for_importers() -> Bool {
+  true
+}
+"#,
+        )
+        .unwrap();
+        let entry = file.to_string_lossy().into_owned();
+        let err = check_orphan_helpers_in_entries(&[entry])
+            .expect_err("non-allowlisted path under extdeps/languages must refuse");
+        assert!(
+            err.contains("export_for_importers"),
+            "must name the demoted plain fn: {err}"
+        );
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn allowlisted_fixture_library_path_exempts_zero_enrolled_plains() {
+        let dir = tmp_dir();
+        // Path must end with an authority entry from CROSS_MODULE_FIXTURE_LIBRARY_ENTRIES.
+        let file = dir
+            .join("src")
+            .join("v2")
+            .join("extdeps")
+            .join("languages")
+            .join("rust_test.dag");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(
+            &file,
+            r#"module rust_test_fixture_probe
 
 fn export_for_importers() -> Bool {
   true
@@ -630,8 +678,23 @@ fn export_for_importers() -> Bool {
         .unwrap();
         let entry = file.to_string_lossy().into_owned();
         check_orphan_helpers_in_entries(&[entry])
-            .expect("extdeps/languages *_test.dag is a structural fixture library");
-        let _ = std::fs::remove_dir_all(dir.parent().unwrap().parent().unwrap());
+            .expect("allowlisted rust_test.dag path is a bounded fixture library");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn orphan_collect_refuses_unparsable_test_dag() {
+        // review 43367: parse failure must not fabricate Ok([]).
+        let dir = tmp_dir();
+        let file = dir.join("garbage_unparsable_test.dag");
+        std::fs::write(&file, "this is not valid dag {{{{").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+        let err = collect_orphan_helpers(&[root]).expect_err("unparsable *_test.dag must refuse");
+        assert!(
+            err.contains("parse failed") || err.contains("garbage_unparsable_test.dag"),
+            "must locate the parse failure: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
