@@ -4,7 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data root4_measure_missing_generics_witness_note: String = "Root-4 measure_missing_generics bucket (sharp-bee-290 / PR #7289): fn-generic List<Measure<Time, S, Nat>> params must forward applied Q/S/M through render_rust_decl_type container-arg rendering. Positive control (green when fixed, red when generics drop): w_measure_list_param_preserves_applied_generics. Negative control (wrong_generic_arity bucket must stay untouched): w_zero_param_alias_list_param_unchanged. Fixtures import std.measure / std.realization_measurement — never fork Quantity, Scale, Measure, or ByteSize."
+data root4_measure_missing_generics_witness_note: String = "Root-4 measure_missing_generics bucket (sharp-bee-290 / PR #7289): fn-generic List<Measure<Time, S, Nat>> params must forward applied Q/S/M through render_rust_decl_type container-arg rendering. Positive control (green when fixed, red when generics drop): w_measure_list_param_preserves_applied_generics. Negative control (wrong_generic_arity bucket must stay untouched — ByteSize list params must still emit the pre-fix phantom-arg spelling, not bare ByteSize): w_zero_param_alias_list_param_unchanged. Fixtures import std.measure — never fork Quantity, Scale, Measure, or ByteSize."
 
 fn w_measure_list_param_preserves_applied_generics() -> Bool {
   compile_dag_rust_emit_check(
@@ -19,8 +19,8 @@ fn w_zero_param_alias_list_param_unchanged() -> Bool {
   compile_dag_rust_emit_check(
     "module root4_zero_param_alias\nimport std.measure { ByteSize, byte_size }\n\nfn witness(spaces: List<ByteSize>) -> ByteSize {\n  byte_size(count: 0)\n}\n",
     "src/root4_zero_param_alias.rs",
-    ["witness(spaces: Rc<Vec<ByteSize>>)"],
-    ["ByteSize<", "Vec<Rc<Measure"]
+    ["Rc<Vec<ByteSize<Memory, One, Nat>>"],
+    ["Vec<Rc<Measure"]
   )
 }
 
