@@ -1,11 +1,13 @@
 module tools.e0599_probe_census
 
-import std.types { Bool, Int, String }
+import std.types { Bool, Int, String, list_length }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.error_primitives { Result, Ok, Err }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
-type E0599LogShapeParseError = UnknownFailureShapeLabel { label: String }
+type E0599LogShapeParseError
+  = UnknownFailureShapeLabel { label: String }
+  | MalformedTupleLine { line: String, field_count: Int }
 
 type E0599FailureShape
   = MissingMethod
@@ -131,6 +133,11 @@ fn e0599_log_shape_parse_error_message(err: E0599LogShapeParseError) -> String {
   match err {
     UnknownFailureShapeLabel { label: label } =>
       concat("e0599_failure_shape_from_log_shape: refused unknown label ", label)
+    MalformedTupleLine { line: line, field_count: field_count } =>
+      concat(
+        concat("e0599_root_family_label_for_tuple_line: refused malformed tuple (expected 3 tab fields, got ", to_string(value: field_count)),
+        concat("): ", line)
+      )
   }
 }
 
@@ -175,20 +182,25 @@ fn e0599_root_family_label_for_row(shape_str: String, method: String, receiver: 
 
 fn e0599_root_family_label_for_tuple_line(line: String) -> Result<String, E0599LogShapeParseError> {
   let parts = line |> split(delimiter: "\t")
-  let shape_str = match parts |> first {
-    Present { value: v } => v
-    Absent => ""
+  let field_count = list_length(items: parts)
+  if field_count != 3 {
+    Err { value: MalformedTupleLine { line: line, field_count: field_count } }
+  } else {
+    let shape_str = match parts |> first {
+      Present { value: v } => v
+      Absent => ""
+    }
+    let tail = parts |> skip(n: 1)
+    let method = match tail |> first {
+      Present { value: v } => v
+      Absent => ""
+    }
+    let receiver = match tail |> skip(n: 1) |> first {
+      Present { value: v } => v
+      Absent => ""
+    }
+    e0599_root_family_label_for_row(shape_str: shape_str, method: method, receiver: receiver)
   }
-  let tail = parts |> skip(n: 1)
-  let method = match tail |> first {
-    Present { value: v } => v
-    Absent => ""
-  }
-  let receiver = match tail |> skip(n: 1) |> first {
-    Present { value: v } => v
-    Absent => ""
-  }
-  e0599_root_family_label_for_row(shape_str: shape_str, method: method, receiver: receiver)
 }
 
 fn e0599_root_family_labels_from_blob(blob: String) -> Result<String, E0599LogShapeParseError> {

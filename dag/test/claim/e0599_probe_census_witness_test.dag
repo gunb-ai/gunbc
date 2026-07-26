@@ -126,6 +126,22 @@ test fn e0599_root_family_labels_from_blob_unknown_shape_refused() -> Bool {
   }
 }
 
+test fn e0599_root_family_labels_from_blob_malformed_tuple_two_fields_refused() -> Bool {
+  match e0599_root_family_labels_from_blob(blob: "missing_method\tclone") {
+    Err { value: _ } => true
+    Ok { value: _ } => false
+  }
+}
+
+test fn e0599_root_family_labels_from_blob_malformed_tuple_four_fields_refused() -> Bool {
+  match e0599_root_family_labels_from_blob(
+    blob: "missing_method\tclone\ttype parameter `T`\textra"
+  ) {
+    Err { value: _ } => true
+    Ok { value: _ } => false
+  }
+}
+
 test fn e0599_root_family_labels_from_blob_batch() -> Bool {
   match e0599_root_family_labels_from_blob(
     blob: "missing_method\tclone\ttype parameter `T`\nbounds_unsatisfied\tis_empty\tstruct `Rc<im::Vector<T>>`"
