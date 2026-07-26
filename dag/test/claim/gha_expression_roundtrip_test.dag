@@ -1,6 +1,5 @@
 module test.claim.gha_expression_roundtrip
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn core_expr() -> Expression {
@@ -27,14 +26,14 @@ fn core_template() -> ExpressionTemplate {
   }
 }
 
-fn witness_roundtrip_expression() -> Bool {
+test fn witness_roundtrip_expression() -> Bool {
   match ingest_expression(src: serialize_expression(expression: core_expr())) {
     Present { value: v } => v == core_expr()
     Absent => false
   }
 }
 
-fn witness_roundtrip_template() -> Bool {
+test fn witness_roundtrip_template() -> Bool {
   match ingest_template(src: serialize_template(template: core_template())) {
     Present { value: v } => v == core_template()
     Absent => false
@@ -69,7 +68,7 @@ fn roundtrips_under(sp: ExpressionSpellings) -> Bool {
   }
 }
 
-fn witness_roundtrip_under_perturbed_rows() -> Bool {
+test fn witness_roundtrip_under_perturbed_rows() -> Bool {
   roundtrips_under(sp: perturbed_path_sep()) && roundtrips_under(sp: perturbed_or_op())
 }
 
@@ -80,7 +79,7 @@ fn ingest_reads(sp: ExpressionSpellings) -> Bool {
   }
 }
 
-fn witness_ingest_reads_rows() -> Bool {
+test fn witness_ingest_reads_rows() -> Bool {
   ingest_reads(sp: perturbed_path_sep()) && ingest_reads(sp: perturbed_or_op())
 }
 
@@ -104,7 +103,7 @@ fn right_nested_or() -> Expression {
   }
 }
 
-fn witness_or_associativity_partition() -> Bool {
+test fn witness_or_associativity_partition() -> Bool {
   match ingest_expression(src: serialize_expression(expression: left_nested_or())) {
     Present { value: left_v } =>
       match ingest_expression(src: serialize_expression(expression: right_nested_or())) {
@@ -136,7 +135,7 @@ fn frontier_nested_multiarg_call() -> Expression {
   }
 }
 
-fn witness_frontier_not_roundtripped() -> Bool {
+test fn witness_frontier_not_roundtripped() -> Bool {
   match ingest_expression(src: serialize_expression(expression: right_nested_or())) {
     Present { value: v1 } =>
       match ingest_expression(src: serialize_expression(expression: frontier_string_with_or())) {
@@ -154,7 +153,7 @@ fn witness_frontier_not_roundtripped() -> Bool {
   }
 }
 
-fn witness_core_advertised_lossless() -> Bool {
+test fn witness_core_advertised_lossless() -> Bool {
   match ingest_expression(src: serialize_expression(expression: core_expr())) {
     Present { value: v } => {
       let m = source_medium_carried(carried: v, fidelity: Lossless)
@@ -167,7 +166,7 @@ fn witness_core_advertised_lossless() -> Bool {
   }
 }
 
-fn witness_emit_non_regression() -> Bool {
+test fn witness_emit_non_regression() -> Bool {
   let e = core_expr()
   let t = core_template()
   (serialize_expression(expression: e) == serialize_expression_with(expression: e, sp: default_expression_spellings))
@@ -176,13 +175,3 @@ fn witness_emit_non_regression() -> Bool {
     && (serialize_template(template: t) == "cargo-ci-${{ runner.os }}-${{ runner.arch }}")
 }
 
-test fn gha_expression_roundtrip_keystone_holds() -> Bool {
-  witness_roundtrip_expression()
-    && witness_roundtrip_template()
-    && witness_roundtrip_under_perturbed_rows()
-    && witness_ingest_reads_rows()
-    && witness_or_associativity_partition()
-    && witness_frontier_not_roundtripped()
-    && witness_core_advertised_lossless()
-    && witness_emit_non_regression()
-}

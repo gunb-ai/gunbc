@@ -1,58 +1,46 @@
 module test.claim.yaml_quoting_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn ser_kv(k: String, s: String) -> String {
   serialize_yaml(v: yaml_mapping(entries: [kv(key: k, value: yaml_string(s: s))]))
 }
 
-fn witness_reserved_word_is_quoted() -> Bool {
+test fn witness_reserved_word_is_quoted() -> Bool {
   (ser_kv(k: "v", s: "true") == "v: \"true\"\n") &&
     (ser_kv(k: "v", s: "yes") == "v: \"yes\"\n") &&
     (ser_kv(k: "v", s: "null") == "v: \"null\"\n")
 }
 
-fn witness_plain_word_not_quoted() -> Bool {
+test fn witness_plain_word_not_quoted() -> Bool {
   ser_kv(k: "v", s: "tru") == "v: tru\n"
 }
 
-fn witness_reserved_quoting_discriminates() -> Bool {
+test fn witness_reserved_quoting_discriminates() -> Bool {
   ser_kv(k: "v", s: "true") != ser_kv(k: "v", s: "tru")
 }
 
-fn witness_colon_space_forces_quotes() -> Bool {
+test fn witness_colon_space_forces_quotes() -> Bool {
   ser_kv(k: "v", s: "a: b") == "v: \"a: b\"\n"
 }
 
-fn witness_hash_after_space_forces_quotes() -> Bool {
+test fn witness_hash_after_space_forces_quotes() -> Bool {
   ser_kv(k: "v", s: "x #c") == "v: \"x #c\"\n"
 }
 
-fn witness_empty_string_is_single_quotes() -> Bool {
+test fn witness_empty_string_is_single_quotes() -> Bool {
   ser_kv(k: "v", s: "") == "v: ''\n"
 }
 
-fn witness_leading_indicator_quoted_and_escaped() -> Bool {
+test fn witness_leading_indicator_quoted_and_escaped() -> Bool {
   ser_kv(k: "v", s: "\"hi\"") == "v: \"\\\"hi\\\"\"\n"
 }
 
-fn witness_backslash_escaped_when_quoted() -> Bool {
+test fn witness_backslash_escaped_when_quoted() -> Bool {
   ser_kv(k: "v", s: "\": a\\b") == "v: \"\\\": a\\\\b\"\n"
 }
 
-fn witness_expression_passthrough_not_quoted() -> Bool {
+test fn witness_expression_passthrough_not_quoted() -> Bool {
   ser_kv(k: "v", s: "${{ runner.os }}") == "v: ${{ runner.os }}\n"
 }
 
-test fn yaml_quoting_keystone_holds() -> Bool {
-  witness_reserved_word_is_quoted() &&
-    witness_plain_word_not_quoted() &&
-    witness_reserved_quoting_discriminates() &&
-    witness_colon_space_forces_quotes() &&
-    witness_hash_after_space_forces_quotes() &&
-    witness_empty_string_is_single_quotes() &&
-    witness_leading_indicator_quoted_and_escaped() &&
-    witness_backslash_escaped_when_quoted() &&
-    witness_expression_passthrough_not_quoted()
-}

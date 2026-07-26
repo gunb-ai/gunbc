@@ -14,11 +14,26 @@ import extdeps.languages.html {
 import extdeps.uri_validation {
   find_first_rejected_url,
 }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "react.dev/learn/writing-markup-with-jsx"
+  }
+}
+
+data react_jsx_keep_mark_note: String = "KEEP with mark (#7272 A3; gpu/wgsl treatment). Live CI keystone corpus_ci_gate_row_react_jsx_emit_keystone + hostile-href XSS control + void_element_test consumer — not dead vocabulary. No production consumer today. Sole owner: gunb.ai site-subsumption. Dissolution is react_jsx_site_subsumption_jsx_page_emission below — not an already-landed HTML helper, not belt-B, not an unnamed census. If that lane closes without adopting JSX, delete the removal set: this module, dag/test/claim/react_jsx_emit_test.dag, corpus_ci_gate_row_react_jsx_emit_keystone enrollment (+ roster row at :580), and the void_element_test import of serialize_jsx_component."
+
+data react_jsx_site_subsumption_jsx_page_emission: String = "dissolve-on: gunb.ai site-subsumption emits ≥1 production page through serialize_jsx_component (a non-test import under gunbc.site.*). That call is the dissolution event for react_jsx_awaiting_production_consumer."
+
+data react_jsx_awaiting_production_consumer: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.react_jsx",
+    decl_name: "react_jsx_site_subsumption_jsx_page_emission",
+    field: WholeDeclaration
   }
 }
 

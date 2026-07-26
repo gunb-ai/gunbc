@@ -105,10 +105,19 @@ data interpreter_surviving_roles: List<InterpreterSurvivingRole> = [
   }
 ]
 
-data interpreter_surviving_roles_ceiling_note: String = "P3 ACCEPT (c) bootstrap ceiling until witness_family_fanout lands — cited in docs/plans/witness-realization-plan.md (interpreter surviving roles inventory)."
+data interpreter_surviving_roles_ceiling_note: String = "Policy ceiling (independent of current occupancy): bootstrap headroom for interpreter-surviving roles until witness_family_fanout lands (P3 ACCEPT (c); docs/plans/witness-realization-plan.md). Occupancy is count(interpreter_surviving_roles); the ceiling is an upper bound so roster growth is checked against declared headroom, never conflated with a hand count of current entries."
+
 data interpreter_surviving_roles_ceiling: Int = 8
 
+fn interpreter_surviving_roles_occupancy() -> Int {
+  list_length(items: interpreter_surviving_roles)
+}
+
+fn interpreter_surviving_roles_occupancy_within_ceiling() -> Bool {
+  interpreter_surviving_roles_occupancy() <= interpreter_surviving_roles_ceiling
+}
+
 fn interpreter_surviving_roles_bounded() -> Bool {
-  let count = list_length(items: interpreter_surviving_roles)
-  count > 0 && count <= interpreter_surviving_roles_ceiling
+  interpreter_surviving_roles_occupancy() > 0
+    && interpreter_surviving_roles_occupancy_within_ceiling()
 }

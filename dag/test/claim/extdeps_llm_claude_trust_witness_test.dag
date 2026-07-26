@@ -17,49 +17,49 @@ fn seeded(config: String) -> Bool {
   claude_workspace_trust_seeded(config_text: config, project_path: root())
 }
 
-fn w_trust_store_path_shape() -> Bool {
+test fn w_trust_store_path_shape() -> Bool {
   claude_trust_store_path(home: "/home/u") == "/home/u/.claude.json"
 }
 
-fn w_minimal_seeded_entry_accepts() -> Bool {
+test fn w_minimal_seeded_entry_accepts() -> Bool {
   seeded(config: "\{\"projects\":\{\"/opt/gunbc/dispatch-worktrees\":\{\"hasTrustDialogAccepted\":true\}\}\}")
 }
 
-fn w_whitespace_variant_accepts() -> Bool {
+test fn w_whitespace_variant_accepts() -> Bool {
   seeded(config: "\{\n  \"projects\": \{\n    \"/opt/gunbc/dispatch-worktrees\": \{\n      \"hasTrustDialogAccepted\" : true\n    \}\n  \}\n\}")
 }
 
-fn w_enriched_entry_with_nested_object_and_brace_in_string_accepts() -> Bool {
+test fn w_enriched_entry_with_nested_object_and_brace_in_string_accepts() -> Bool {
   seeded(config: "\{\"projects\":\{\"/opt/gunbc/dispatch-worktrees\":\{\"mcpServers\":\{\"a\":\{\}\},\"lastSessionFirstPrompt\":\"fix \} brace\",\"hasTrustDialogAccepted\":true\}\}\}")
 }
 
-fn w_flag_false_refuses() -> Bool {
+test fn w_flag_false_refuses() -> Bool {
   !seeded(config: "\{\"projects\":\{\"/opt/gunbc/dispatch-worktrees\":\{\"hasTrustDialogAccepted\":false\}\}\}")
 }
 
-fn w_flag_true_on_other_key_refuses() -> Bool {
+test fn w_flag_true_on_other_key_refuses() -> Bool {
   !seeded(config: "\{\"projects\":\{\"/opt/gunbc/dispatch-worktrees\":\{\"hasTrustDialogAccepted\":false,\"hasCompletedProjectOnboarding\":true\}\}\}")
 }
 
-fn w_absent_root_refuses() -> Bool {
+test fn w_absent_root_refuses() -> Bool {
   !seeded(config: "\{\"projects\":\{\"/opt/other\":\{\"hasTrustDialogAccepted\":true\}\}\}")
 }
 
-fn w_path_as_array_value_is_not_a_key() -> Bool {
+test fn w_path_as_array_value_is_not_a_key() -> Bool {
   !seeded(config: "\{\"githubRepoPaths\":\{\"o/r\":[\"/opt/gunbc/dispatch-worktrees\"]\}\}")
 }
 
-fn w_array_value_then_real_key_accepts() -> Bool {
+test fn w_array_value_then_real_key_accepts() -> Bool {
   seeded(config: "\{\"githubRepoPaths\":\{\"o/r\":[\"/opt/gunbc/dispatch-worktrees\"]\},\"projects\":\{\"/opt/gunbc/dispatch-worktrees\":\{\"hasTrustDialogAccepted\":true\}\}\}")
 }
 
-fn w_empty_and_garbage_refuse() -> Bool {
+test fn w_empty_and_garbage_refuse() -> Bool {
   !seeded(config: "")
     && !seeded(config: "not json at all")
     && !seeded(config: "\{\"projects\":\{\"/opt/gunbc/dispatch-worktrees\":")
 }
 
-fn w_argv_head_is_program_authority() -> Bool {
+test fn w_argv_head_is_program_authority() -> Bool {
   let argv = shape_claude_invoke_argv(
     session_id: "u",
     node_id: "n",
@@ -75,16 +75,3 @@ fn w_argv_head_is_program_authority() -> Bool {
   }
 }
 
-test fn extdeps_llm_claude_trust_witnesses() -> Bool {
-  w_trust_store_path_shape()
-    && w_minimal_seeded_entry_accepts()
-    && w_whitespace_variant_accepts()
-    && w_enriched_entry_with_nested_object_and_brace_in_string_accepts()
-    && w_flag_false_refuses()
-    && w_flag_true_on_other_key_refuses()
-    && w_absent_root_refuses()
-    && w_path_as_array_value_is_not_a_key()
-    && w_array_value_then_real_key_accepts()
-    && w_empty_and_garbage_refuse()
-    && w_argv_head_is_program_authority()
-}

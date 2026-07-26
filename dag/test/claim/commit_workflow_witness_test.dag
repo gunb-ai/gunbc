@@ -28,25 +28,25 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-fn witness_ci_spec_projects_from_roster() -> Bool {
+test fn witness_ci_spec_projects_from_roster() -> Bool {
   gate_lists_eq(left: gunbc_ci_floor_gates, right: commit_workflow_ci_floor_gates)
 }
 
-fn witness_local_tidy_spec_projects_from_roster() -> Bool {
+test fn witness_local_tidy_spec_projects_from_roster() -> Bool {
   local_tidy_lists_eq(left: local_tidy_checks, right: commit_workflow_local_tidy_checks)
 }
 
-fn witness_ci_jobs_share_yaml_handler() -> Bool {
+test fn witness_ci_jobs_share_yaml_handler() -> Bool {
   realization_handler_for_surface(surface: GithubActionsCiJob) == CiYamlHandler
     && realization_artifact_for_surface(surface: GithubActionsCiJob) == CiYamlArtifact
 }
 
-fn witness_pre_push_handler_binding() -> Bool {
+test fn witness_pre_push_handler_binding() -> Bool {
   realization_handler_for_surface(surface: GitPrePushHook) == GitPrePushScriptHandler
     && realization_artifact_for_surface(surface: GitPrePushHook) == GithooksPrePushArtifact
 }
 
-fn witness_realization_bindings_match_dispatch() -> Bool {
+test fn witness_realization_bindings_match_dispatch() -> Bool {
   fold(commit_workflow_realization_bindings, init: true, f: fn(acc, b) {
     acc
       && realization_handler_for_surface(surface: b.surface) == b.handler
@@ -54,37 +54,37 @@ fn witness_realization_bindings_match_dispatch() -> Bool {
   })
 }
 
-fn witness_realization_artifact_paths() -> Bool {
+test fn witness_realization_artifact_paths() -> Bool {
   realization_artifact_path(surface: GithubActionsCiJob) == artifact_path(a: CiYamlArtifact)
     && realization_artifact_path(surface: GitPrePushHook) == artifact_path(a: GithooksPrePushArtifact)
 }
 
-fn witness_roster_nonempty() -> Bool {
+test fn witness_roster_nonempty() -> Bool {
   length(commit_gate_roster) > 0
     && length(commit_workflow_realization_bindings) == 2
 }
 
-fn witness_roster_spans_wellformed() -> Bool {
+test fn witness_roster_spans_wellformed() -> Bool {
   roster_witness_spans_wellformed(roster: commit_gate_roster)
 }
 
-fn witness_span_undeclared_is_wellformed() -> Bool {
+test fn witness_span_undeclared_is_wellformed() -> Bool {
   witness_span_wellformed(span: SpanUndeclared)
 }
 
-fn witness_span_accepts_declared_seam() -> Bool {
+test fn witness_span_accepts_declared_seam() -> Bool {
   witness_span_wellformed(span: SpanSeams {
     seams: [WitnessSeam { producer: "v2.04_infer", consumer: "v2.06_translate" }]
   })
 }
 
-fn witness_span_rejects_self_seam() -> Bool {
+test fn witness_span_rejects_self_seam() -> Bool {
   !witness_span_wellformed(span: SpanSeams {
     seams: [WitnessSeam { producer: "v2.04_infer", consumer: "v2.04_infer" }]
   })
 }
 
-fn witness_span_rejects_duplicate_seams() -> Bool {
+test fn witness_span_rejects_duplicate_seams() -> Bool {
   !witness_span_wellformed(span: SpanSeams {
     seams: [
       WitnessSeam { producer: "v2.04_infer", consumer: "v2.06_translate" },
@@ -93,13 +93,13 @@ fn witness_span_rejects_duplicate_seams() -> Bool {
   })
 }
 
-fn witness_span_rejects_empty_seam_list() -> Bool {
+test fn witness_span_rejects_empty_seam_list() -> Bool {
   !witness_span_wellformed(span: SpanSeams { seams: [] })
 }
 
 data allowed_long_lane_explicit_entry: String = "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag"
 
-fn witness_floor_roster_has_no_slow_long_lane_entries() -> Bool {
+test fn witness_floor_roster_has_no_slow_long_lane_entries() -> Bool {
   !any(
     project_ci_floor_witness_entries(roster: commit_gate_roster),
     e =>
@@ -109,22 +109,3 @@ fn witness_floor_roster_has_no_slow_long_lane_entries() -> Bool {
   )
 }
 
-test fn commit_workflow_witnesses() -> Bool {
-  witness_roster_nonempty()
-    && witness_ci_spec_projects_from_roster()
-    && witness_local_tidy_spec_projects_from_roster()
-    && witness_ci_jobs_share_yaml_handler()
-    && witness_pre_push_handler_binding()
-    && witness_realization_bindings_match_dispatch()
-    && witness_realization_artifact_paths()
-    && witness_floor_roster_has_no_slow_long_lane_entries()
-}
-
-test fn commit_workflow_span_kind_witnesses() -> Bool {
-  witness_roster_spans_wellformed()
-    && witness_span_undeclared_is_wellformed()
-    && witness_span_accepts_declared_seam()
-    && witness_span_rejects_self_seam()
-    && witness_span_rejects_duplicate_seams()
-    && witness_span_rejects_empty_seam_list()
-}

@@ -17,6 +17,8 @@ import v2.std.orchestration_emit {
   orch_construct_seq2,
   orch_construct_if,
   orch_construct_if_else,
+  orch_construct_if_block,
+  orch_construct_if_else_block,
   orch_construct_while,
   orch_construct_bounded_poll,
   orch_construct_procedure,
@@ -84,7 +86,7 @@ import v2.std.orchestration {
   EnvBinding
 }
 import std.algebra { FreeMonoid }
-import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, is_empty }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, is_empty, length }
 import v2.std.collection {
   List,
   Map
@@ -453,26 +455,55 @@ fn orch_emit_procedure(
   )
 }
 
+data orch_if_block_form_note: String = "bash_stmt_if_(else_)_tokens (bash_orch_if.dag / bash.dag) spell their then/else bodies with no newline tokens, so a body is inherently a single line. orch_emit_pipeline newline-joins every step of a multi-step then_/else_ Pipeline (orch_seq2) before this fn binds .carried into the row; a >1-step body glued into the single-line row is bash-valid (newline is an ordinary statement separator inside a then/else arm — verified, not a carriage bug) but byte-diverges from a block-formatted expectation. Multi-statement then_/else_ arms are legitimate orchestration intent (if-ladders), so the fix is a second, block-spelled row (bash_stmt_if_block_tokens / bash_stmt_if_else_block_tokens) selected when either arm needs it — never a refusal of the legitimate shape. Single- and zero-step arms keep the original inline row byte-for-byte (orch_pipeline_needs_block_body is false), so every existing consumer's emitted bytes are unchanged."
+
+fn orch_pipeline_needs_block_body(then_: Pipeline, else_: Optional<Pipeline>) -> Bool {
+  if length(xs: then_.steps) > 1 {
+    true
+  } else {
+    match else_ {
+      Absent => false
+      Present { value: else_pipeline } => length(xs: else_pipeline.steps) > 1
+    }
+  }
+}
+
+data orch_if_empty_arm_note: String = "A Pipeline arm with zero steps emits \"\" (orch_emit_pipeline's HeadAbsent case); threaded raw into the if-body token slot that produces invalid bash (\"if COND; then ; fi\" -- then requires >=1 command before the closing separator). orch_if_arm_body_or_noop substitutes the bash no-op \":\" for an empty arm's body, uniformly across the inline and block dispatch and regardless of whether the OTHER arm is also empty -- see pipeline_steps_empty_arm_note (v2.std.orchestration) for why both-empty is real intent, not refused."
+
+fn orch_if_arm_body_or_noop(carried: String) -> String {
+  if carried == "" {
+    ":"
+  } else {
+    carried
+  }
+}
+
 fn orch_emit_if_step(
   cond: Predicate,
   then_: Pipeline,
   else_: Optional<Pipeline>,
   medium: OrchestrationEmitMedium
 ) -> Outcome<extdeps.communication.medium.Medium<String>> {
+  let block_body = orch_pipeline_needs_block_body(then_: then_, else_: else_)
   bind_outcome(
     o: orch_emit_predicate(p: cond, medium: medium),
     f: fn(cond_spelling) {
       bind_outcome(
         o: orch_emit_pipeline(p: then_, medium: medium),
         f: fn(then_medium) {
+          let then_body = orch_if_arm_body_or_noop(carried: then_medium.carried)
           match else_ {
             Absent =>
               bind_outcome(
-                o: medium.realize_if(cond_spelling, then_medium.carried),
+                o: if block_body {
+                  medium.realize_if_block(cond_spelling, then_body)
+                } else {
+                  medium.realize_if(cond_spelling, then_body)
+                },
                 f: fn(target) {
                   orch_emit_from_registry(
                     medium: medium,
-                    construct_tag: orch_construct_if,
+                    construct_tag: if block_body { orch_construct_if_block } else { orch_construct_if },
                     target: target
                   )
                 }
@@ -481,16 +512,25 @@ fn orch_emit_if_step(
               bind_outcome(
                 o: orch_emit_pipeline(p: else_pipeline, medium: medium),
                 f: fn(else_medium) {
+                  let else_body = orch_if_arm_body_or_noop(carried: else_medium.carried)
                   bind_outcome(
-                    o: medium.realize_if_else(
-                      cond_spelling,
-                      then_medium.carried,
-                      else_medium.carried
-                    ),
+                    o: if block_body {
+                      medium.realize_if_else_block(
+                        cond_spelling,
+                        then_body,
+                        else_body
+                      )
+                    } else {
+                      medium.realize_if_else(
+                        cond_spelling,
+                        then_body,
+                        else_body
+                      )
+                    },
                     f: fn(target) {
                       orch_emit_from_registry(
                         medium: medium,
-                        construct_tag: orch_construct_if_else,
+                        construct_tag: if block_body { orch_construct_if_else_block } else { orch_construct_if_else },
                         target: target
                       )
                     }

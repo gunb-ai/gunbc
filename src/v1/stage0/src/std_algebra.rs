@@ -65,7 +65,9 @@ pub struct GroupCompletion<M> {
     pub neg: M,
     pub _phantom: std::marker::PhantomData<M>,
 }
-// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic (v1 seed emit; GroupCompletion<M> pos/neg pair arithmetic (#7197): Grothendieck add (componentwise), ring-completion mul ((ac+bd, ad+bc)), div on canonical representative (pos-neg)/(rhs.pos-rhs.neg) with zero neg; no PartialEq<i64> cross-representation bridge.)
+// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the
+// pair-completion rows in std.trait_derive_shape (Add/Mul/Neg are row data; Sub/Div bodies
+// remain keyed literals — see rust_pair_completion_nonpolynomial_body_dissolve_on).
 impl<M> std::ops::Neg for GroupCompletion<M> {
     type Output = Self;
     fn neg(self) -> Self::Output {

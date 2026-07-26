@@ -41,7 +41,7 @@ data undeclared_subject_note: String = "generated_artifact_drift_test reaches Fi
 test fn undeclared_effects_emit_the_frontier_receipt_holds() -> Bool {
   let stderr = run_entry_capturing_stderr(
     entry: "dag/test/claim/generated_artifact_drift_test.dag",
-    function: "generated_artifact_drift_witnesses"
+    function: "witness_committed_is_fixed_point"
   )
   string_contains(s: stderr, pattern: frontier_marker)
 }
@@ -51,7 +51,7 @@ data declared_subject_note: String = "roadmap_belt_actuate's three probes (belt_
 test fn fully_declared_effects_emit_no_frontier_receipt_holds() -> Bool {
   let stderr = run_entry_capturing_stderr(
     entry: "dag/test/claim/roadmap_belt_actuate_witness_test.dag",
-    function: "roadmap_belt_actuate_witnesses"
+    function: "witness_exec_ok_runs_echo"
   )
   !string_contains(s: stderr, pattern: frontier_marker)
 }

@@ -1,0 +1,25 @@
+module extdeps.units.dimensionless
+
+import std.types { String }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iso.org/standard/31887.html"
+  }
+}
+
+data basis_point_authority_note: String = "Permyriad / basis-point unity: one part per ten thousand (1 bp = 0.01 percentage points = 1/10000 of unity). ISO 80000-1 quantity 'factor, unitless' applied to the ten-thousandth submultiple (permyriad, ‱); financial reporting convention names the same scale 'basis point'."
+
+data percent_unity_note: String = "Percent unity: parts per hundred (1% = 1/100 of unity). ISO 80000-1 quantity 'factor, unitless' applied to the hundredth submultiple."
+
+fn parts_per_ten_thousand_unity_count() -> Nat {
+  10000
+}
+
+fn percent_unity_hundred_count() -> Nat {
+  100
+}

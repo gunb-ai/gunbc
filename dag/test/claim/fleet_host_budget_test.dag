@@ -130,27 +130,27 @@ fn sound_plan() -> FleetHostPlan {
   full_plan(citation: fixture_citation(), runner: fixture_runner_measured(), session_slice: session_slice_fixture(), policy: fitting_headroom(), oomd: OomdEnforced)
 }
 
-fn witness_live_plan_fail_closed() -> Bool {
+test fn witness_live_plan_fail_closed() -> Bool {
   is_unsound(plan: fleet_host_plan())
 }
 
-fn witness_jobserver_absent_unsound() -> Bool {
+test fn witness_jobserver_absent_unsound() -> Bool {
   is_unsound(plan: full_plan(citation: JobserverAbsent, runner: fixture_runner_measured(), session_slice: session_slice_fixture(), policy: fitting_headroom(), oomd: OomdEnforced))
 }
 
-fn witness_runner_baseline_unmeasured_unsound() -> Bool {
+test fn witness_runner_baseline_unmeasured_unsound() -> Bool {
   is_unsound(plan: full_plan(citation: fixture_citation(), runner: fixture_runner_unmeasured(), session_slice: session_slice_fixture(), policy: fitting_headroom(), oomd: OomdEnforced))
 }
 
-fn witness_headroom_unset_unsound() -> Bool {
+test fn witness_headroom_unset_unsound() -> Bool {
   is_unsound(plan: full_plan(citation: fixture_citation(), runner: fixture_runner_measured(), session_slice: session_slice_fixture(), policy: HeadroomUnset, oomd: OomdEnforced))
 }
 
-fn witness_oomd_unverified_unsound() -> Bool {
+test fn witness_oomd_unverified_unsound() -> Bool {
   is_unsound(plan: full_plan(citation: fixture_citation(), runner: fixture_runner_measured(), session_slice: session_slice_fixture(), policy: fitting_headroom(), oomd: OomdUnverified))
 }
 
-fn witness_headroom_below_floor_unsound() -> Bool {
+test fn witness_headroom_below_floor_unsound() -> Bool {
   let floor = oomd_actuation_floor(host: host_125gib())
   match resolve_headroom(policy: HeadroomSet { bytes: byte_size(1073741824) }, floor: floor) {
     HeadroomUnsound { reason: _ } => true
@@ -158,7 +158,7 @@ fn witness_headroom_below_floor_unsound() -> Bool {
   }
 }
 
-fn witness_headroom_at_or_above_floor_resolved() -> Bool {
+test fn witness_headroom_at_or_above_floor_resolved() -> Bool {
   let floor = oomd_actuation_floor(host: host_125gib())
   match resolve_headroom(policy: HeadroomSet { bytes: floor }, floor: floor) {
     HeadroomResolved { bytes: b } => byte_size_count(b: b) == byte_size_count(b: floor)
@@ -166,7 +166,7 @@ fn witness_headroom_at_or_above_floor_resolved() -> Bool {
   }
 }
 
-fn witness_tokens_memory_bound_binds() -> Bool {
+test fn witness_tokens_memory_bound_binds() -> Bool {
   let cfg = fixture_cfg()
   let tokens = hardware_thread_count_value(t: derive_jobserver_tokens(nproc: hardware_thread_count(count: 128), mem_total: host_125gib(), cfg: cfg))
   tokens > 0 && tokens < 120
@@ -180,12 +180,12 @@ fn oversized_margin_cfg() -> JobserverConfig {
   }
 }
 
-fn witness_margin_exceeds_nproc_saturates() -> Bool {
+test fn witness_margin_exceeds_nproc_saturates() -> Bool {
   let tokens = hardware_thread_count_value(t: derive_jobserver_tokens(nproc: hardware_thread_count(count: 8), mem_total: host_125gib(), cfg: oversized_margin_cfg()))
   tokens == 0
 }
 
-fn witness_runner_cpu_cap_is_cores_minus_margin() -> Bool {
+test fn witness_runner_cpu_cap_is_cores_minus_margin() -> Bool {
   match sound_plan() {
     FleetHostPlanDerived { name: _, tree: _, runner_slice_cap: _, effective_build_tokens: _, effective_runner_cpu_cap: cpu, build_step: _ } =>
       hardware_thread_count_value(t: cpu) == 120
@@ -193,7 +193,7 @@ fn witness_runner_cpu_cap_is_cores_minus_margin() -> Bool {
   }
 }
 
-fn witness_plan_derives_and_conserves() -> Bool {
+test fn witness_plan_derives_and_conserves() -> Bool {
   match sound_plan() {
     FleetHostPlanDerived { name: _, tree: t, runner_slice_cap: slice, effective_build_tokens: tk, effective_runner_cpu_cap: cpu, build_step: _ } =>
       node_conserves(node: t)
@@ -204,13 +204,13 @@ fn witness_plan_derives_and_conserves() -> Bool {
   }
 }
 
-fn witness_runner_slice_is_session_worstcase_only() -> Bool {
+test fn witness_runner_slice_is_session_worstcase_only() -> Bool {
   let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes())
   let expected = byte_size_count(b: host_125gib()) - byte_size_count(b: overhead_16gib()) - byte_size_count(b: session_slice_fixture()) - byte_size_count(b: fitting_headroom_bytes())
   byte_size_count(b: slice) == expected
 }
 
-fn witness_runner_slice_excludes_build_pool() -> Bool {
+test fn witness_runner_slice_excludes_build_pool() -> Bool {
   let cfg = fixture_cfg()
   let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes())
   let build_pool_bytes = byte_size_count(b: cfg.mib_per_job) * hardware_thread_count_value(t: derive_jobserver_tokens(nproc: hardware_thread_count(count: 128), mem_total: host_125gib(), cfg: cfg))
@@ -219,47 +219,28 @@ fn witness_runner_slice_excludes_build_pool() -> Bool {
   byte_size_count(b: slice) > 0 && double_subtract_would_starve
 }
 
-fn witness_host_conserves_exactly() -> Bool {
+test fn witness_host_conserves_exactly() -> Bool {
   let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes())
   let whole = byte_size_count(b: overhead_16gib()) + byte_size_count(b: session_slice_fixture()) + byte_size_count(b: fitting_headroom_bytes()) + byte_size_count(b: slice)
   whole == byte_size_count(b: host_125gib())
 }
 
-fn witness_tree_conserves() -> Bool {
+test fn witness_tree_conserves() -> Bool {
   let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes())
   let tree = fleet_host_budget_tree(name: "fixture", host: host_125gib(), overhead: overhead_16gib(), runner_baseline: runner_idle_bytes(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), runner_slice: slice)
   node_conserves(node: tree)
 }
 
-fn witness_overcommit_tree_refused() -> Bool {
+test fn witness_overcommit_tree_refused() -> Bool {
   let bloated_slice = byte_size(byte_size_count(b: host_125gib()))
   let tree = fleet_host_budget_tree(name: "overcommit", host: host_125gib(), overhead: overhead_16gib(), runner_baseline: runner_idle_bytes(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), runner_slice: bloated_slice)
   !node_conserves(node: tree)
 }
 
-fn witness_runner_slice_cap_drift_red_receipt() -> Bool {
+test fn witness_runner_slice_cap_drift_red_receipt() -> Bool {
   let disk = byte_size(70391285350)
   runner_slice_cap_drifted(disk_cap: disk, effective: CapUnbounded)
     && !runner_slice_cap_drifted(disk_cap: disk, effective: CapEffective { bytes: disk })
     && runner_slice_cap_drifted(disk_cap: disk, effective: CapEffective { bytes: byte_size(55307438489) })
 }
 
-test fn fleet_model_holds() -> Bool {
-  witness_live_plan_fail_closed()
-    && witness_jobserver_absent_unsound()
-    && witness_runner_baseline_unmeasured_unsound()
-    && witness_headroom_unset_unsound()
-    && witness_oomd_unverified_unsound()
-    && witness_headroom_below_floor_unsound()
-    && witness_headroom_at_or_above_floor_resolved()
-    && witness_tokens_memory_bound_binds()
-    && witness_margin_exceeds_nproc_saturates()
-    && witness_runner_cpu_cap_is_cores_minus_margin()
-    && witness_plan_derives_and_conserves()
-    && witness_runner_slice_is_session_worstcase_only()
-    && witness_runner_slice_excludes_build_pool()
-    && witness_host_conserves_exactly()
-    && witness_tree_conserves()
-    && witness_overcommit_tree_refused()
-    && witness_runner_slice_cap_drift_red_receipt()
-}

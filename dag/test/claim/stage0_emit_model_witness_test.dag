@@ -1,36 +1,31 @@
 module test.claim.stage0_emit_model_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data stage0_emit_model_witness_note: String = "Authority: gunbc.stage0_emit_model.generated_stage0_files. Positives catch a missing generated basename (the #7258 drift class); negatives keep hand-maintained files out of the generated set. Floor: generated_stage0_file_count >= 101 (post-#7258 repaired length) so a silent list shrink reds. Host construction close: regen_stage0 reads this list via lens_string_list_data — Rust unit generated_stage0_files_read_from_dag_authority_not_rust_const refuses a reintroduced GENERATED_STAGE0_FILES const."
 
-fn w_hand_maintained_not_classified_generated() -> Bool {
+test fn w_hand_maintained_not_classified_generated() -> Bool {
   !is_generated_stage0_file(basename: "cli_run.rs") &&
   !is_generated_stage0_file(basename: "v1_interpreter.rs") &&
   !is_generated_stage0_file(basename: "main.rs")
 }
 
-fn w_generated_files_classified_generated() -> Bool {
+test fn w_generated_files_classified_generated() -> Bool {
   is_generated_stage0_file(basename: "std_execution_mode.rs") &&
   is_generated_stage0_file(basename: "v1_compiler_closure_stub_v2_std_integer_rust.rs") &&
   is_generated_stage0_file(basename: "v1_compiler_closure_stub_v2_std_text_rust.rs") &&
+  is_generated_stage0_file(basename: "extdeps_units_dimensionless.rs") &&
+  is_generated_stage0_file(basename: "extdeps_units_iec_80000_13.rs") &&
+  is_generated_stage0_file(basename: "extdeps_units_iso8601.rs") &&
   is_generated_stage0_file(basename: "lib.rs") &&
   is_generated_stage0_file(basename: "std_algebra.rs")
 }
 
-fn w_generated_file_count_floor_holds() -> Bool {
+test fn w_generated_file_count_floor_holds() -> Bool {
   generated_stage0_file_count() >= 101
 }
 
-fn w_emit_naming_rule() -> Bool {
+test fn w_emit_naming_rule() -> Bool {
   stage0_module_emit_basename(module_path: "v1.compiler.emit_rust") == "v1_compiler_emit_rust" &&
   stage0_module_emit_filename(module_path: "gunbc.stage0_emit_model") == "gunbc_stage0_emit_model.rs"
-}
-
-test fn stage0_emit_model_witnesses() -> Bool {
-  w_hand_maintained_not_classified_generated() &&
-  w_generated_files_classified_generated() &&
-  w_generated_file_count_floor_holds() &&
-  w_emit_naming_rule()
 }

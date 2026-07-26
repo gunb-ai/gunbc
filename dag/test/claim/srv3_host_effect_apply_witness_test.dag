@@ -1,6 +1,5 @@
 module test.claim.srv3_host_effect_apply_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn srv3_actuator_target() -> NodeControlPlane {
@@ -11,7 +10,7 @@ fn srv3_bmc_target() -> NodeControlPlane {
   BmcController { node: srv3_os_install_actuator_host }
 }
 
-fn witness_srv3_receipt_emit_apply_converges_in_process() -> Bool {
+test fn witness_srv3_receipt_emit_apply_converges_in_process() -> Bool {
   match host_effect_apply(
     target: srv3_actuator_target(),
     effect: Srv3ReceiptEmit { lines: ["line-one", "line-two"] },
@@ -31,7 +30,7 @@ fn witness_srv3_receipt_emit_apply_converges_in_process() -> Bool {
   }
 }
 
-fn witness_bmcweb_token_extract_ssh_transport_refuses_typed() -> Bool {
+test fn witness_bmcweb_token_extract_ssh_transport_refuses_typed() -> Bool {
   match host_effect_apply(
     target: srv3_actuator_target(),
     effect: Srv3BmcwebTokenExtract,
@@ -44,7 +43,7 @@ fn witness_bmcweb_token_extract_ssh_transport_refuses_typed() -> Bool {
   }
 }
 
-fn witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash() -> Bool {
+test fn witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash() -> Bool {
   let curl_args = bmcweb_session_login_curl_args(
     bmc_host: asrock_srv3_live_bmc_host,
     request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
@@ -72,7 +71,7 @@ fn witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash() ->
     && !string_contains(s: argv_surface, pattern: "serialize_bash")
 }
 
-fn witness_srv3_apply_shell_failure_refuses_typed() -> Bool {
+test fn witness_srv3_apply_shell_failure_refuses_typed() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: srv3_actuator_target(),
     effect: ShellCommand { script: "exit 1" },
@@ -81,7 +80,7 @@ fn witness_srv3_apply_shell_failure_refuses_typed() -> Bool {
   ))
 }
 
-fn witness_srv3_apply_failure_surfaces_captured_stdout_not_fabricated() -> Bool {
+test fn witness_srv3_apply_failure_surfaces_captured_stdout_not_fabricated() -> Bool {
   match host_effect_apply(
     target: srv3_actuator_target(),
     effect: ShellCommand { script: "echo srv3-apply-red-marker && exit 1" },
@@ -95,7 +94,7 @@ fn witness_srv3_apply_failure_surfaces_captured_stdout_not_fabricated() -> Bool 
   }
 }
 
-fn witness_srv3_apply_failure_no_fabricated_stdout() -> Bool {
+test fn witness_srv3_apply_failure_no_fabricated_stdout() -> Bool {
   let r = host_effect_apply(
     target: srv3_actuator_target(),
     effect: ShellCommand { script: "exit 1" },
@@ -105,7 +104,7 @@ fn witness_srv3_apply_failure_no_fabricated_stdout() -> Bool {
   !reconciliation_converged(r: r) && srv3_shell_stdout_from_apply(r: r) == none
 }
 
-fn witness_srv3_typed_effect_on_bmc_refuses_typed() -> Bool {
+test fn witness_srv3_typed_effect_on_bmc_refuses_typed() -> Bool {
   match host_effect_apply(
     target: srv3_bmc_target(),
     effect: Srv3InstallMediaFetch,
@@ -118,7 +117,7 @@ fn witness_srv3_typed_effect_on_bmc_refuses_typed() -> Bool {
   }
 }
 
-fn witness_srv3_typed_reconcile_ssh_transport_refuses_typed() -> Bool {
+test fn witness_srv3_typed_reconcile_ssh_transport_refuses_typed() -> Bool {
   match host_effect_apply(
     target: srv3_actuator_target(),
     effect: Srv3InstallMediaFetch,
@@ -131,7 +130,7 @@ fn witness_srv3_typed_reconcile_ssh_transport_refuses_typed() -> Bool {
   }
 }
 
-fn witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time() -> Bool {
+test fn witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time() -> Bool {
   let effect = srv3_nbd_proxy_serve_host_effect()
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } =>
@@ -152,7 +151,7 @@ fn witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time() -> Bool {
   }
 }
 
-fn witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill() -> Bool {
+test fn witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill() -> Bool {
   let effect = srv3_nbd_proxy_serve_host_effect()
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } => {
@@ -178,7 +177,7 @@ fn witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill() -> Bool
   }
 }
 
-fn witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_ref() -> Bool {
+test fn witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_ref() -> Bool {
   let effect = srv3_nbd_proxy_serve_host_effect()
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: _ } =>
@@ -190,7 +189,7 @@ fn witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_ref() -
   }
 }
 
-fn witness_srv3_nbd_proxy_apply_observe_unimplemented_refuses_fail_closed() -> Bool {
+test fn witness_srv3_nbd_proxy_apply_observe_unimplemented_refuses_fail_closed() -> Bool {
   let effect = srv3_nbd_proxy_serve_host_effect()
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } =>
@@ -202,7 +201,7 @@ fn witness_srv3_nbd_proxy_apply_observe_unimplemented_refuses_fail_closed() -> B
   }
 }
 
-fn witness_srv3_nbd_proxy_serve_session_binding_carries_lease() -> Bool {
+test fn witness_srv3_nbd_proxy_serve_session_binding_carries_lease() -> Bool {
   let effect = srv3_nbd_proxy_serve_host_effect()
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } =>
@@ -217,7 +216,7 @@ fn witness_srv3_nbd_proxy_serve_session_binding_carries_lease() -> Bool {
   }
 }
 
-fn witness_srv3_nbd_proxy_on_bmc_refuses_typed() -> Bool {
+test fn witness_srv3_nbd_proxy_on_bmc_refuses_typed() -> Bool {
   match host_effect_apply(
     target: srv3_bmc_target(),
     effect: srv3_nbd_proxy_serve_host_effect(),
@@ -249,22 +248,3 @@ test fn srv3_nbd_proxy_serve_realize_layer_dissolves_via_host_effect_nbd_proxy_s
     && string_contains(s: host_effect_nbd_proxy_serve_dissolution_trigger, pattern: "P6 Part 2")
 }
 
-test fn srv3_host_effect_apply_holds() -> Bool {
-  witness_srv3_receipt_emit_apply_converges_in_process()
-    && srv3_typed_receipt_carrier_holds_lines()
-    && shell_bash_runner_still_present_for_p5b()
-    && srv3_nbd_proxy_serve_realize_layer_dissolves_via_host_effect_nbd_proxy_serve()
-    && witness_srv3_nbd_proxy_serve_session_binding_carries_lease()
-    && witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time()
-    && witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill()
-    && witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_ref()
-    && witness_srv3_nbd_proxy_apply_observe_unimplemented_refuses_fail_closed()
-    && witness_srv3_nbd_proxy_on_bmc_refuses_typed()
-    && witness_srv3_apply_shell_failure_refuses_typed()
-    && witness_srv3_apply_failure_surfaces_captured_stdout_not_fabricated()
-    && witness_srv3_apply_failure_no_fabricated_stdout()
-    && witness_srv3_typed_effect_on_bmc_refuses_typed()
-    && witness_srv3_typed_reconcile_ssh_transport_refuses_typed()
-    && witness_bmcweb_token_extract_ssh_transport_refuses_typed()
-    && witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash()
-}

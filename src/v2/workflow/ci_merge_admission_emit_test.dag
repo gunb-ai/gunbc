@@ -1,0 +1,20 @@
+module v2.workflow.ci_merge_admission_emit_test
+
+import v2.workflow.ci_merge_admission_emit { ci_floor_disposition_marker_init_script }
+
+data ci_merge_admission_emit_golden_note: String = "Hand-authored golden independent of grammar row spellings; byte test compares emit output against this literal (#6467 pattern)."
+
+data ci_floor_disposition_marker_init_golden: String = concat(
+  concat("# 🟡 dissolve-on: ci_floor_disposition_marker_init_script — concat-built bash floor step opener stamping floor_running into target/ci-floor-disposition.txt (clears stale documentation_only_skipped on persistent self-hosted runners before docs-only branch); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes floor disposition initialization through orchestration emit and the marker init retires without a transport scaffold\n"),
+  concat(
+    concat("# Positive floor-running stamp at the start of every floor step clears stale documentation_only_skipped left in target/ on persistent self-hosted runners (review 37010 / operator ruling 2026-07-11). Receipt gates skip only on an exact documentation_only_skipped match — never on file presence alone.\n"),
+    concat(
+      "mkdir -p target\n",
+      "echo floor_running > target/ci-floor-disposition.txt"
+    )
+  )
+)
+
+test fn ci_floor_disposition_marker_init_emit_matches_golden_holds() -> Bool {
+  ci_floor_disposition_marker_init_script() == ci_floor_disposition_marker_init_golden
+}

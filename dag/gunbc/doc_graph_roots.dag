@@ -91,6 +91,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
+    slug: "e0277_trait_bound_census_2026-07-26",
+    work: DeclarationRef { module_path: "v1.compiler.trait_derive_emit", decl_name: "v1_generic_params_needing_clone_bound", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the generic-parameter Clone-bound propagation gap (family 1, shared with E0599) lands a fix and the census is superseded by a measured before/after receipt" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
     slug: "srv2-05-native-agreement-divergence-diagnosis",
     work: DeclarationRef { module_path: "v2.compiler.self_host.witness_entry_eligibility_census", decl_name: "witness_entry_eligibility_census_note", field: WholeDeclaration },
     dissolution: HasTrigger { text: "native re-flip greens on >=2 runner hosts with loud divergence receipts; diagnosis absorbed into frontier carrier" },

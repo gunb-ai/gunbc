@@ -21,7 +21,23 @@ import std.trait_derive_shape {
   record_derive_traits_heap,
   record_derive_traits_copy,
   payload_coproduct_derive_traits,
-  nullary_coproduct_derive_traits
+  nullary_coproduct_derive_traits,
+  PairCompletionOperand,
+  PairCompletionSelf,
+  PairCompletionRhs,
+  PairCompletionComponent,
+  PairCompletionPos,
+  PairCompletionNeg,
+  PairCompletionFactor,
+  PairCompletionTerm,
+  PairCompletionArm,
+  PairCompletionBody,
+  PairCompletionSumOfProducts,
+  PairCompletionNegatedAddend,
+  PairCompletionCanonicalQuotient,
+  PairCompletionOpRow,
+  pair_completion_op_rows,
+  pair_completion_body_uses_rhs
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -291,54 +307,175 @@ fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
   concat(rust_qualified_module_mod_basename(qualified_module: qualified_module), ".rs")
 }
 
-data rust_repr_grounding_arm_b_dissolve_on: String = "GroupCompletion<M> pos/neg pair arithmetic (#7197): Grothendieck add (componentwise), ring-completion mul ((ac+bd, ad+bc)), div on canonical representative (pos-neg)/(rhs.pos-rhs.neg) with zero neg; no PartialEq<i64> cross-representation bridge."
+data rust_pair_completion_spelling_note: String = "Rust spellings for the target-agnostic pair-completion rows in std.trait_derive_shape. Terminals only: trait paths, method names, where-bounds, carrier field syntax. The ARITHMETIC is not spelled here — each impl body is rendered from the row's polynomial arms, so a change to the Grothendieck construction is a row edit, never a string edit."
+
+data rust_pair_completion_dissolve_on: String = "Dissolves when the emitted-target operator surface is selected by the grammar-row inverse in extdeps.languages.rust rather than by this per-op spelling table, at which point trait_path/method/where_bounds become ordinary terminal rows on the Rust target model."
+
+data rust_pair_completion_nonpolynomial_body_dissolve_on: String = "dissolve-on: the Sub and Div bodies rendered below. Scope honesty (review 43189): only Add, Mul and Neg are fully row-data — their bodies are rendered from the PairCompletionSumOfProducts polynomial arms, so perturbing a row changes the emission. Sub and Div are NOT polynomials in the four operand components, so today they render as literals keyed by variant name: Sub is a DERIVED op (Add composed with Neg) and Div quotients the canonical representative (pos-neg). They dissolve when the row vocabulary gains the two constructions their shapes actually need — an op-composition arm, so Sub is expressed as Add(self, Neg(rhs)) and derived rather than spelled, and a canonical-representative projection for the fraction field — at which point every arm of PairCompletionBody renders from rows and the variant-keyed literals here delete. Deliberately NOT extended by widening the polynomial type: forcing a composition and a quotient into a sum-of-products would be a nickname for two constructions that are not sums of products."
+
+type RustPairCompletionSpelling {
+  method: String
+  trait_path: String
+  where_bounds: String
+}
+
+data rust_pair_completion_carrier: String = "GroupCompletion"
+
+data rust_pair_completion_spellings: List<RustPairCompletionSpelling> = [
+  { method: "neg", trait_path: "std::ops::Neg", where_bounds: "" },
+  { method: "add", trait_path: "std::ops::Add", where_bounds: "where M: std::ops::Add<Output = M>," },
+  { method: "sub", trait_path: "std::ops::Sub", where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Neg<Output = M>," },
+  { method: "mul", trait_path: "std::ops::Mul", where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Mul<Output = M> + Clone," },
+  { method: "div", trait_path: "std::ops::Div", where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Sub<Output = M> + std::ops::Div<Output = M> + Default," }
+]
+
+data rust_pair_completion_op_key_totality_note: String = "Total over ReprGroundingDeriveTrait by construction, with no wildcard arm (DESIGN §6 non-fold residue; caught by v2.lens.non_fold_residue on the first floor run that was not superseded). The first draft matched the five arithmetic variants and swept the other ten into `_ => \"\"`, which is two defects in one line: a new unrostered residue site, and a FABRICATED key — an empty string is not the key of any trait, it is the absence of an answer wearing a String. It also made the coproduct's growth silent, which is the actual cost: a sixteenth ReprGroundingDeriveTrait variant would have landed as \"\" and been read as a legitimate lookup that simply missed. Every variant now returns its own key. Ten of the fifteen have no pair-completion spelling row and are not expected to — a pair completion has no Debug or Ord operator, and Rem is arithmetic but is not one of the five Grothendieck ops — so they resolve to Absent in rust_pair_completion_spelling_for and surface through the compile_error! arm NAMED, which is strictly better than the empty key: the diagnostic says which trait was asked for. Adding a variant to the coproduct now forces an edit here rather than defaulting, and that is enforced rather than hoped for: with no wildcard the match is non-exhaustive the moment a sixteenth variant lands, which is a hard diagnostic from the batch-1 dag_compile_clean_gate_passes gate (extdeps/ is not one of the excluded paths). The wildcard was what made the coproduct extensible-in-silence; removing it is the construction, and the gate is the thing that notices."
+
+fn rust_pair_completion_op_key(op: ReprGroundingDeriveTrait) -> String {
+  match op {
+    ReprDeriveAdd => "add"
+    ReprDeriveSub => "sub"
+    ReprDeriveMul => "mul"
+    ReprDeriveDiv => "div"
+    ReprDeriveNeg => "neg"
+    ReprDeriveRem => "rem"
+    ReprDeriveDebug => "debug"
+    ReprDeriveClone => "clone"
+    ReprDeriveCopy => "copy"
+    ReprDerivePartialEq => "partial_eq"
+    ReprDeriveEq => "eq"
+    ReprDerivePartialOrd => "partial_ord"
+    ReprDeriveOrd => "ord"
+    ReprDeriveSerialize => "serialize"
+    ReprDeriveDeserialize => "deserialize"
+  }
+}
+
+fn rust_pair_completion_spelling_for(op: ReprGroundingDeriveTrait) -> RustPairCompletionSpelling? {
+  rust_pair_completion_spellings
+    |> filter(s => s.method == rust_pair_completion_op_key(op))
+    |> first
+}
+
+fn rust_pair_completion_factor_source(factor: PairCompletionFactor) -> String {
+  concat(
+    match factor.operand {
+      PairCompletionSelf => "self"
+      PairCompletionRhs => "rhs"
+    },
+    ".",
+    match factor.component {
+      PairCompletionPos => "pos"
+      PairCompletionNeg => "neg"
+    }
+  )
+}
+
+fn rust_pair_completion_arm_sources(arm: PairCompletionArm) -> List<String> {
+  arm.terms |> flat_map(term => term.factors |> map(f => rust_pair_completion_factor_source(f)))
+}
+
+fn rust_pair_completion_factor_render(
+  factor: PairCompletionFactor,
+  term: PairCompletionTerm,
+  later_sources: List<String>
+) -> String {
+  let src = rust_pair_completion_factor_source(factor)
+  let repeats_in_term = term.factors |> filter(f => rust_pair_completion_factor_source(f) == src) |> count
+  if repeats_in_term > 1 || (later_sources |> any(s => s == src)) {
+    concat(src, ".clone()")
+  } else {
+    src
+  }
+}
+
+fn rust_pair_completion_term_render(
+  term: PairCompletionTerm,
+  later_sources: List<String>
+) -> String {
+  term.factors
+    |> map(f => rust_pair_completion_factor_render(f, term, later_sources))
+    |> join(separator: " * ")
+}
+
+fn rust_pair_completion_arm_render(
+  arm: PairCompletionArm,
+  later_sources: List<String>
+) -> String {
+  arm.terms
+    |> map(t => rust_pair_completion_term_render(t, later_sources))
+    |> join(separator: " + ")
+}
+
+fn rust_pair_completion_no_later_sources() -> List<String> {
+  []
+}
+
+fn rust_pair_completion_body_render(body: PairCompletionBody) -> String {
+  match body {
+    PairCompletionSumOfProducts { pos: pos, neg: neg } =>
+      concat(
+        "{\n        ", rust_pair_completion_carrier, " {\n",
+        "            pos: ",
+        rust_pair_completion_arm_render(pos, rust_pair_completion_arm_sources(neg)),
+        ",\n",
+        "            neg: ",
+        rust_pair_completion_arm_render(neg, rust_pair_completion_no_later_sources()),
+        ",\n",
+        "            _phantom: std::marker::PhantomData,\n",
+        "        }\n",
+        "    }\n"
+      )
+    PairCompletionNegatedAddend => "{ self + (-rhs) }\n"
+    PairCompletionCanonicalQuotient =>
+      concat(
+        "{\n",
+        "        let q = (self.pos - self.neg) / (rhs.pos - rhs.neg);\n",
+        "        ", rust_pair_completion_carrier,
+        " { pos: q, neg: M::default(), _phantom: std::marker::PhantomData }\n",
+        "    }\n"
+      )
+  }
+}
+
+fn rust_pair_completion_impl_render(row: PairCompletionOpRow) -> String {
+  match rust_pair_completion_spelling_for(row.op) {
+    Present { value: spelling } =>
+      concat(
+        "impl<M> ", spelling.trait_path, " for ", rust_pair_completion_carrier, "<M>",
+        if spelling.where_bounds == "" {
+          " {\n"
+        } else {
+          concat("\n", spelling.where_bounds, "\n{\n")
+        },
+        "    type Output = Self;\n",
+        "    fn ", spelling.method,
+        if pair_completion_body_uses_rhs(row.body) {
+          "(self, rhs: Self) -> Self::Output "
+        } else {
+          "(self) -> Self::Output "
+        },
+        rust_pair_completion_body_render(row.body),
+        "}\n"
+      )
+    Absent =>
+      concat(
+        "compile_error!(\"gunbc: pair-completion row '",
+        rust_pair_completion_op_key(op: row.op),
+        "' has no rust_pair_completion_spellings entry — std.trait_derive_shape.pair_completion_op_rows ",
+        "and the Rust spelling table have drifted; the operator impl cannot be rendered.\");\n"
+      )
+  }
+}
 
 fn rust_supplemental_impls_group_completion() -> String {
   concat(
-    "\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic (v1 seed emit; ",
-    rust_repr_grounding_arm_b_dissolve_on,
-    ")\n",
-    "impl<M> std::ops::Neg for GroupCompletion<M> {\n",
-    "    type Output = Self;\n",
-    "    fn neg(self) -> Self::Output {\n",
-    "        GroupCompletion { pos: self.neg, neg: self.pos, _phantom: std::marker::PhantomData }\n",
-    "    }\n",
-    "}\n",
-    "impl<M> std::ops::Add for GroupCompletion<M>\n",
-    "where M: std::ops::Add<Output = M>,\n",
-    "{\n",
-    "    type Output = Self;\n",
-    "    fn add(self, rhs: Self) -> Self::Output {\n",
-    "        GroupCompletion { pos: self.pos + rhs.pos, neg: self.neg + rhs.neg, _phantom: std::marker::PhantomData }\n",
-    "    }\n",
-    "}\n",
-    "impl<M> std::ops::Sub for GroupCompletion<M>\n",
-    "where M: std::ops::Add<Output = M> + std::ops::Neg<Output = M>,\n",
-    "{\n",
-    "    type Output = Self;\n",
-    "    fn sub(self, rhs: Self) -> Self::Output { self + (-rhs) }\n",
-    "}\n",
-    "impl<M> std::ops::Mul for GroupCompletion<M>\n",
-    "where M: std::ops::Add<Output = M> + std::ops::Mul<Output = M> + Clone,\n",
-    "{\n",
-    "    type Output = Self;\n",
-    "    fn mul(self, rhs: Self) -> Self::Output {\n",
-    "        GroupCompletion {\n",
-    "            pos: self.pos.clone() * rhs.pos.clone() + self.neg.clone() * rhs.neg.clone(),\n",
-    "            neg: self.pos * rhs.neg + self.neg * rhs.pos,\n",
-    "            _phantom: std::marker::PhantomData,\n",
-    "        }\n",
-    "    }\n",
-    "}\n",
-    "impl<M> std::ops::Div for GroupCompletion<M>\n",
-    "where M: std::ops::Add<Output = M> + std::ops::Sub<Output = M> + std::ops::Div<Output = M> + Default,\n",
-    "{\n",
-    "    type Output = Self;\n",
-    "    fn div(self, rhs: Self) -> Self::Output {\n",
-    "        let q = (self.pos - self.neg) / (rhs.pos - rhs.neg);\n",
-    "        GroupCompletion { pos: q, neg: M::default(), _phantom: std::marker::PhantomData }\n",
-    "    }\n",
-    "}\n"
+    "\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the\n",
+    "// pair-completion rows in std.trait_derive_shape (Add/Mul/Neg are row data; Sub/Div bodies\n",
+    "// remain keyed literals — see rust_pair_completion_nonpolynomial_body_dissolve_on).\n",
+    pair_completion_op_rows()
+      |> map(row => rust_pair_completion_impl_render(row))
+      |> join(separator: "")
   )
 }
 
