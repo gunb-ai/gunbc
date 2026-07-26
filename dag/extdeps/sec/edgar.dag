@@ -77,7 +77,7 @@ fn cik_url_segment(cik: Cik) -> NonEmptyStr {
 }
 
 fn cik_padded_digits(cik: Cik) -> NonEmptyStr {
-  pad_cik_digits_loop(remaining: cik_digit_width - string_length(cik.digits), acc: cik.digits)
+  pad_cik_digits_loop(remaining: cik_digit_width() - string_length(cik.digits), acc: cik.digits)
 }
 
 fn pad_cik_digits_loop(remaining: Int, acc: NonEmptyStr) -> NonEmptyStr {
