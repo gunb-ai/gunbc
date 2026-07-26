@@ -698,6 +698,31 @@ fn run() -> Result<ExitCode, ExitCode> {
         "[resolve-summary] {} resolve(s) in {}ms; {} witness(es) in {}ms",
         timings.resolves, timings.resolve_ms, timings.witnesses, timings.witness_ms,
     );
+    // The expectation frontier: effect sites that dispatched WITHOUT declaring
+    // `expect:`, counted at their located `service.op`. This receipt is the whole
+    // reason `ExpectationDeclaration::UntracedDefault` is a value rather than a
+    // silent `unwrap_or` — an absorbed default that is tallied is a declared
+    // interim frontier that can be prioritised and shrunk; one that is not is the
+    // fail-open the type deletes. Silence here means every effect this run
+    // dispatched declared its arm, which is also the dissolution condition for
+    // the `UntracedDefault` arm itself.
+    {
+        let frontier = v1_compiler::v1_interpreter::untraced_expectation_frontier();
+        if !frontier.is_empty() {
+            let total: u64 = frontier.iter().map(|(_, n)| *n).sum();
+            let rendered = frontier
+                .iter()
+                .map(|(k, n)| format!("{k}={n}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            eprintln!(
+                "[expectation-frontier] {} site(s), {} dispatch(es) undeclared: {}",
+                frontier.len(),
+                total,
+                rendered,
+            );
+        }
+    }
     {
         let st = v1_compiler::cli_run::resolve_stage_totals();
         let ms = |n: u128| n as f64 / 1.0e6;

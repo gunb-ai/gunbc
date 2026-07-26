@@ -548,7 +548,40 @@ fn ct_coercion_tests() -> String {
     test_fns |> join(separator: "\n"),
     ct_rust_btree_set_ord_eligibility_test(),
     ct_diagnostics_carrier_grounding_test(),
-    ct_groupcompletion_checkpoint_fires_under_faithful_corpus_test())
+    ct_groupcompletion_checkpoint_fires_under_faithful_corpus_test(),
+    ct_render_rust_applied_type_qualified_base_test())
+}
+
+fn ct_render_rust_applied_type_qualified_base_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn render_rust_applied_type_routes_qualified_base_through_leaf_name() {\n",
+    "        // Discriminating witness (PR #7269 / sharp-bee-290 msg_6c27c10b): namespace-qualified\n",
+    "        // applied-type bases must route through rust_fn_sig_leaf_name, not authored_name_at\n",
+    "        // verbatim — rustc reports 'expected one of `,` or `>`, found `.`' in generic position.\n",
+    "        // RED if render_rust_applied_type regresses to dotted verbatim emit.\n",
+    "        let source_indices = std::rc::Rc::new(HashMap::new());\n",
+    "        let shared = std::rc::Rc::new(im::OrdSet::new());\n",
+    "        let generics = std::rc::Rc::new(im::Vector::new());\n",
+    "        let variant_to_enum = std::rc::Rc::new(HashMap::new());\n",
+    "        let env = crate::v1_compiler_infer_env::empty_type_env();\n",
+    "        let arg = named_type_node(\"Int\");\n",
+    "        let applied = shaped_type_node(\"std.algebra.FreeMonoid\", vec![arg]);\n",
+    "        let rendered = crate::v1_compiler_emit_rust::render_rust_applied_type(\n",
+    "            applied,\n",
+    "            generics,\n",
+    "            shared,\n",
+    "            crate::v1_compiler_infer_emit_info::RustCorpusRepr::FaithfulFreeMonoid,\n",
+    "            source_indices,\n",
+    "            variant_to_enum,\n",
+    "            env,\n",
+    "        );\n",
+    "        assert!(\n",
+    "            !rendered.contains('.'),\n",
+    "            \"applied-type base must not emit namespace dots in generic position\"\n",
+    "        );\n",
+    "        assert_eq!(rendered, \"Vec<i64>\");\n",
+    "    }\n\n")
 }
 
 fn ct_groupcompletion_checkpoint_fires_under_faithful_corpus_test() -> String {

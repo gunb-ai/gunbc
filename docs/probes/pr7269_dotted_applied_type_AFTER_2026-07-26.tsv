@@ -1,0 +1,18 @@
+label	AFTER_pr7269_dotted_applied_type
+class_message	expected one of `,` or `>`, found `.
+class_message_grep_literal	expected one of `,` or `>`, found `.
+pattern_validation	pr7269_pattern_validation_2026-07-26.tsv (grep -cF confirmed nonzero at pr7174 AFTER)
+elimination_attribution	#7197 (efe67794cd) took class to 0 in full closures; #7269 construction wall is latent here (0→0 cargo count) but unit witness RED on revert
+measurement_note	Class-scoped rustc message-text count per sharp-bee-290 msg_6c27c10b / msg_01e13896. NOT Gate-1 E0308 burn-down (baseline 837 unchanged).
+gunbc_sha	ea8cfe5f84cec28a8722912d055b35a44d12eedd7d65655602deb23b04dedbc3
+git_sha	071d3966b8b0a00f0f53be2e4621e9e147d9d454
+module	dotted_applied_type_count
+src/v2/compiler/06_translate.dag	0
+src/v2/compiler/04_infer.dag	0
+src/v2/compiler/05_eval.dag	0
+src/v2/compiler/05_emit.dag	0
+src/v2/compiler/emit_host.dag	0
+src/v2/compiler/emit_module.dag	0
+src/v2/compiler/materialization_carriers.dag	0
+TOTAL	0
+discriminating_witness	compiler_tests::render_rust_applied_type_routes_qualified_base_through_leaf_name GREEN (qualified std.algebra.FreeMonoid base -> Vec<i64>, no dots)
