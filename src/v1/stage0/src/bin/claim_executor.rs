@@ -1319,10 +1319,19 @@ fn discovery_claim_result(
         },
         Err(msg) => {
             eprintln!("[witness-row-cost] refused: {msg}");
+            // Preserve the caller's failure context (e.g. "N of M discovery witness(es)
+            // failed: …") — receipt refusal is an additional located cause, never a
+            // replacement that erases the discovery diagnostic (DESIGN §5 / review 43284).
+            let receipt = format!("witness row-cost receipt refused: {msg}");
+            let detail = if detail.is_empty() {
+                receipt
+            } else {
+                format!("{detail}; {receipt}")
+            };
             ClaimResult {
                 function,
                 ok: false,
-                detail: format!("witness row-cost receipt refused: {msg}"),
+                detail,
                 wall_nanos: 0,
                 resolve_nanos: 0,
                 corpus_resolve_nanos: summary.total_resolve_nanos,
@@ -2157,9 +2166,49 @@ fn write_witness_row_cost_receipt_at(
     true
 }
 
+/// Required `host_class` on every signed basis row (`witness_row_cost_basis_host_class_note`).
+const WITNESS_ROW_COST_BASIS_HOST_CLASS: &str = "srv_fleet_arm64";
+
 struct WitnessRowCostBasisRow {
     eval_ms_basis: u128,
     run_ref: String,
+}
+
+/// Parse one TSV body line from `witness_row_cost_basis.tsv`.
+/// Returns `Ok(None)` for blank/comment lines; `Err` for malformed or wrong-host-class rows
+/// (caller must not insert them — a wrong host class would poison the 2× comparator).
+fn parse_witness_row_cost_basis_line(
+    line: &str,
+) -> Result<Option<((String, String), WitnessRowCostBasisRow)>, String> {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return Ok(None);
+    }
+    let parts: Vec<&str> = line.split('\t').collect();
+    if parts.len() < 5 {
+        return Err(format!(
+            "malformed witness-row-cost basis line (need 5 cols: entry function eval_ms_basis run_ref host_class): {line}"
+        ));
+    }
+    let host_class = parts[4];
+    if host_class != WITNESS_ROW_COST_BASIS_HOST_CLASS {
+        return Err(format!(
+            "witness-row-cost basis row host_class={host_class:?} refused (required {WITNESS_ROW_COST_BASIS_HOST_CLASS}; wrong host class poisons the 2× comparator): {line}"
+        ));
+    }
+    let eval_ms_basis = parts[2].parse::<u128>().unwrap_or(0);
+    if eval_ms_basis == 0 {
+        return Err(format!(
+            "witness-row-cost basis row has zero eval_ms_basis (refused as basis): {line}"
+        ));
+    }
+    Ok(Some((
+        (parts[0].to_string(), parts[1].to_string()),
+        WitnessRowCostBasisRow {
+            eval_ms_basis,
+            run_ref: parts[3].to_string(),
+        },
+    )))
 }
 
 fn millisecond_value(ctx: &InterpContext, count_ms: u128) -> Result<Value, String> {
@@ -2229,31 +2278,17 @@ fn write_witness_row_cost_drift_receipt_at(
         std::collections::HashMap::new();
     if let Ok(text) = std::fs::read_to_string(basis_path) {
         for line in text.lines().skip(1) {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
+            match parse_witness_row_cost_basis_line(line) {
+                Ok(None) => {}
+                Ok(Some((key, row))) => {
+                    basis.insert(key, row);
+                }
+                Err(msg) => {
+                    // Skip — never insert a wrong-host / malformed / zero-eval row
+                    // (would poison the 2× comparator; review 43284). Loud + counted via log.
+                    eprintln!("claim_executor: {msg}");
+                }
             }
-            let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() < 5 {
-                eprintln!(
-                    "claim_executor: malformed witness-row-cost basis line (need 5 cols): {line}"
-                );
-                continue;
-            }
-            let eval_ms_basis = parts[2].parse::<u128>().unwrap_or(0);
-            if eval_ms_basis == 0 {
-                eprintln!(
-                    "claim_executor: witness-row-cost basis row has zero eval_ms_basis (refused as basis): {line}"
-                );
-                continue;
-            }
-            basis.insert(
-                (parts[0].to_string(), parts[1].to_string()),
-                WitnessRowCostBasisRow {
-                    eval_ms_basis,
-                    run_ref: parts[3].to_string(),
-                },
-            );
         }
     } else {
         eprintln!(
@@ -5126,6 +5161,88 @@ mod tests {
         assert_eq!(
             second[0].resolve_nanos, 0,
             "second call must cache-hit — resolve_entry_graph must NOT fire again"
+        );
+    }
+
+    #[test]
+    fn parse_witness_row_cost_basis_line_requires_srv_fleet_arm64() {
+        // RED control for review 43284: wrong/missing host_class must refuse, never load.
+        let ok = parse_witness_row_cost_basis_line(
+            "e.dag\tf\t10\trun-1\tsrv_fleet_arm64",
+        )
+        .expect("parse")
+        .expect("row");
+        assert_eq!(ok.0, ("e.dag".to_string(), "f".to_string()));
+        assert_eq!(ok.1.eval_ms_basis, 10);
+        assert_eq!(ok.1.run_ref, "run-1");
+
+        assert!(parse_witness_row_cost_basis_line("# comment")
+            .unwrap()
+            .is_none());
+        assert!(parse_witness_row_cost_basis_line("").unwrap().is_none());
+
+        let wrong = parse_witness_row_cost_basis_line(
+            "e.dag\tf\t10\trun-1\tlocal_x86",
+        )
+        .expect_err("wrong host_class must refuse");
+        assert!(
+            wrong.contains("host_class") && wrong.contains("srv_fleet_arm64"),
+            "expected host_class refusal, got: {wrong}"
+        );
+
+        let short =
+            parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1").expect_err("need 5 cols");
+        assert!(short.contains("need 5 cols"), "got: {short}");
+
+        let zero = parse_witness_row_cost_basis_line(
+            "e.dag\tf\t0\trun-1\tsrv_fleet_arm64",
+        )
+        .expect_err("zero eval must refuse");
+        assert!(zero.contains("zero eval_ms_basis"), "got: {zero}");
+    }
+
+    #[test]
+    fn discovery_claim_result_preserves_caller_detail_on_receipt_refuse() {
+        // RED control for review 43284: receipt refusal must append, never overwrite
+        // the discovery failure diagnostic.
+        use v1_compiler::cli_run::{
+            ClaimOutcome, DiscoverySummary, DiscoveryWitnessOutcome, EntryResolveReceipt,
+            ResolveStageNanos,
+        };
+        let summary = DiscoverySummary {
+            total: 1,
+            passed: 0,
+            skipped: 0,
+            deferred_rows: Vec::new(),
+            predicted_unaffected: Vec::new(),
+            divergences: Vec::new(),
+            failures: vec!["e.dag::f failed".into()],
+            witness_outcomes: vec![DiscoveryWitnessOutcome {
+                entry: "e.dag".into(),
+                function: "f".into(),
+                outcome: ClaimOutcome::Fail,
+                execution_leg: "InterpretedLeg".into(),
+            }],
+            // Empty entry_resolve_receipts → compute_witness_timing_rows refuses.
+            entry_resolve_receipts: Vec::<EntryResolveReceipt>::new(),
+            total_resolve_nanos: 0,
+            total_stage_nanos: ResolveStageNanos::default(),
+            performance_receipts: Vec::new(),
+            total_measured_nanos: 0,
+            roster_closure_nodes: 0,
+        };
+        let prior = "1 of 1 discovery witness(es) failed: e.dag::f failed";
+        let result = discovery_claim_result("probe".into(), false, prior.to_string(), &summary);
+        assert!(!result.ok);
+        assert!(
+            result.detail.contains(prior),
+            "caller discovery failure must be preserved, got: {}",
+            result.detail
+        );
+        assert!(
+            result.detail.contains("witness row-cost receipt refused"),
+            "receipt refusal must also be present, got: {}",
+            result.detail
         );
     }
 }
