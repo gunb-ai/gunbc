@@ -1750,13 +1750,16 @@ pub fn rust_seed_inferred_type_rendered(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match value.inferred.clone() {
-        Some(InferredNode::Resolved { node: rt }) => render_rust_type(
-            rt,
-            shared_types,
-            emit_info.corpus_repr.clone(),
-            scope.type_env.source_indices.clone(),
-            emit_info.clone(),
-        ),
+        Some(rc) => match (*rc).clone() {
+            InferredNode::Resolved { node: rt, .. } => render_rust_type(
+                rt,
+                shared_types,
+                emit_info.corpus_repr.clone(),
+                scope.type_env.source_indices.clone(),
+                emit_info.clone(),
+            ),
+            _ => "".to_string(),
+        },
         _ => "".to_string(),
     }
 }
@@ -1768,24 +1771,27 @@ pub fn rust_seed_inferred_type_needs_rc_wrap(
     emit_info: Rc<EmitGraphInfo>,
 ) -> bool {
     match value.inferred.clone() {
-        Some(InferredNode::Resolved { node: rt }) => rust_type_is_rc_wrapped(
-            render_rust_type_with_applied_binding(
-                rt,
-                shared_types,
-                emit_info.corpus_repr.clone(),
-                scope.type_env.source_indices.clone(),
-                OwnershipWrapUseSite::OwnershipAtFunctionReturn,
+        Some(rc) => match (*rc).clone() {
+            InferredNode::Resolved { node: rt, .. } => rust_type_is_rc_wrapped(
+                render_rust_type_with_applied_binding(
+                    rt,
+                    shared_types,
+                    emit_info.corpus_repr.clone(),
+                    scope.type_env.source_indices.clone(),
+                    OwnershipWrapUseSite::OwnershipAtFunctionReturn,
+                ),
             ),
-        ),
-        _ => {
-            let rendered =
-                rust_seed_inferred_type_rendered(value, shared_types, scope, emit_info);
-            if rendered.is_empty() {
-                false
-            } else {
-                rust_type_is_rc_wrapped(rendered)
+            _ => {
+                let rendered =
+                    rust_seed_inferred_type_rendered(value, shared_types, scope, emit_info);
+                if rendered.is_empty() {
+                    false
+                } else {
+                    rust_type_is_rc_wrapped(rendered)
+                }
             }
-        }
+        },
+        _ => false,
     }
 }
 
