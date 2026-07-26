@@ -17,7 +17,8 @@ import v2.extdeps.languages.bash {
   bash_conj_emitted_from_tokens,
   bash_relation_translation_rules_node,
   bash_make_bound_tokens_target_model,
-  bash_stmt_if_target_model
+  bash_stmt_if_target_model,
+  bash_stmt_if_block_target_model
 }
 
 fn bash_stmt_if_else_tokens() -> List<ConcreteSyntaxToken> {
@@ -88,6 +89,73 @@ fn bash_stmt_if_else_target_model(cond: String, then_body: String, else_body: St
           tokens: bash_stmt_if_else_tokens(),
           source_text: render_target_text(t: source_text),
           lex: bash_stmt_if_else_lex(),
+          binding_spellings: bash_stmt_if_else_binding_spellings(
+            cond: cond,
+            then_body: then_body,
+            else_body: else_body
+          )
+        )
+      )
+    }
+  )
+}
+
+data bash_stmt_if_else_block_note: String = "Same If/else semantics as bash_stmt_if_else_tokens, spelled with real newlines around each body instead of the single-line \"; then \"/\"; else \"/\"; fi\" join. Selected by orch_emit_if_step (05_emit_orchestration.dag) when either arm's Pipeline carries more than one step — see bash_stmt_if_block_note (bash.dag) for why this is a formatting realization, not a correctness fix. Reuses bash_stmt_if_cond/bash_stmt_if_body/bash_stmt_if_else_body as binding keys, same fields as the inline row."
+
+fn bash_stmt_if_else_block_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_if_kw },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_cond },
+    FixedToken { token_class: ^bash_token_if_then_block },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_body },
+    FixedToken { token_class: ^bash_token_if_else_block },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_else_body },
+    FixedToken { token_class: ^bash_token_if_fi_block }
+  ]
+}
+
+data bash_stmt_if_else_block_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_if_else_block_tokens()
+)
+
+fn bash_stmt_if_else_block_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "if ", class: ^bash_token_if_kw),
+    span(text: "; then\n", class: ^bash_token_if_then_block),
+    span(text: "\nelse\n", class: ^bash_token_if_else_block),
+    span(text: "\nfi", class: ^bash_token_if_fi_block)
+  ]))
+}
+
+fn bash_stmt_if_else_block_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_if_else_block,
+    lhs: ^bash_production_stmt_if_else_block,
+    tokens: bash_stmt_if_else_block_tokens(),
+    emitted: bash_stmt_if_else_block_emitted
+  )
+}
+
+fn bash_stmt_if_else_block_target_model(cond: String, then_body: String, else_body: String) -> Outcome<TargetModel> {
+  bind_outcome(
+    o: bound_tokens_source_text(
+      tokens: bash_stmt_if_else_block_tokens(),
+      lex: bash_stmt_if_else_block_lex(),
+      binding_spellings: bash_stmt_if_else_binding_spellings(
+        cond: cond,
+        then_body: then_body,
+        else_body: else_body
+      )
+    ),
+    f: fn(source_text) {
+      outcome_accepted(
+        bash_make_bound_tokens_target_model(
+          rules: bash_stmt_if_else_block_translation_rules_node(),
+          source_literal: ^bash_stmt_if_else_block_source_literal,
+          production_name: ^bash_production_stmt_if_else_block,
+          tokens: bash_stmt_if_else_block_tokens(),
+          source_text: render_target_text(t: source_text),
+          lex: bash_stmt_if_else_block_lex(),
           binding_spellings: bash_stmt_if_else_binding_spellings(
             cond: cond,
             then_body: then_body,
@@ -388,6 +456,14 @@ fn orch_if_target_model(cond: String, body: String) -> Outcome<TargetModel> {
 
 fn orch_if_else_target_model(cond: String, then_body: String, else_body: String) -> Outcome<TargetModel> {
   bash_stmt_if_else_target_model(cond: cond, then_body: then_body, else_body: else_body)
+}
+
+fn orch_if_block_target_model(cond: String, body: String) -> Outcome<TargetModel> {
+  bash_stmt_if_block_target_model(cond: cond, body: body)
+}
+
+fn orch_if_else_block_target_model(cond: String, then_body: String, else_body: String) -> Outcome<TargetModel> {
+  bash_stmt_if_else_block_target_model(cond: cond, then_body: then_body, else_body: else_body)
 }
 
 fn bash_stmt_while_tokens() -> List<ConcreteSyntaxToken> {
