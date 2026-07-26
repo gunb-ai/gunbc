@@ -1,5 +1,9 @@
 module test.claim.long.inert_lens_hygiene_witness
 
+<<<<<<< Updated upstream
+=======
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+>>>>>>> Stashed changes
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
