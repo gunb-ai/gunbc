@@ -1652,15 +1652,25 @@ pub fn rust_seed_wrap_decision_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_seed_legacy_container_blanket_scaffold_note() -> String {
+pub fn rust_seed_legacy_container_blanket_dissolve_on() -> String {
     thread_local! {
         static CACHED: String = {
-            "SCAFFOLD — dissolution trigger: catalog coverage complete for all legacy container carriers. Until then, catalog MISS at an explicit use site may fall back to ReferenceLayerRc when rust_seed_legacy_container_blanket_rc matches rendered text. That helper is a string-prefix scan on rendered types (the wrap-decision design's ruled-out shape); become structural when this scaffold dissolves.".to_string()
+            "wrap_catalog legacy container carriers covered — List/HashMap/BTreeMap rows land in rust_sg_rc_ownership_wrap_catalog_rows and rust_seed_legacy_container_blanket_rc deletes".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn rust_seed_legacy_container_blanket_scaffold_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "SCAFFOLD — dissolve-on: rust_seed_legacy_container_blanket_dissolve_on. Catalog MISS at an explicit use site may fall back to ReferenceLayerRc when rust_seed_legacy_container_blanket_rc matches rendered Vec</HashMap</BTreeMap< text (string-prefix scan — ruled-out wrap-decision shape; become structural at dissolve).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+// SCAFFOLD — dissolve-on: rust_seed_legacy_container_blanket_dissolve_on
 pub fn rust_seed_legacy_container_blanket_rc(rendered: String) -> bool {
     if rust_type_is_rc_wrapped(rendered.clone()) {
         false
@@ -1696,6 +1706,7 @@ pub fn rust_seed_effective_reference_layer(
         ) {
             Some(layer) => layer,
             None => {
+                // SCAFFOLD — dissolve-on: rust_seed_legacy_container_blanket_dissolve_on
                 if rust_seed_legacy_container_blanket_rc(rendered.clone()) {
                     OwnershipReferenceLayer::ReferenceLayerRc
                 } else {
