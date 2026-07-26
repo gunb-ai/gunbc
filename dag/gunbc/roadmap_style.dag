@@ -168,13 +168,11 @@ fn audition_ink_for(s: SwatchSet, fill: Swatch) -> Swatch? {
   match uint8_channel_inclusive_max_value_derived() {
     Absent => none
     Present { value: maxv } => Present {
-      value: fold(swatches_of(s: s), init: fill, f: (best, sw) =>
-        if srgb8_contrast_ratio_x100_for_max(a: sw.color, b: fill.color, maxv: maxv)
-           > srgb8_contrast_ratio_x100_for_max(a: best.color, b: fill.color, maxv: maxv) {
-          sw
-        } else {
-          best
-        })
+      value: fold(swatches_of(s: s), init: fill, f: (best, sw) => {
+        let r_sw = srgb8_contrast_ratio_x100_for_max(a: sw.color, b: fill.color, maxv: maxv)
+        let r_best = srgb8_contrast_ratio_x100_for_max(a: best.color, b: fill.color, maxv: maxv)
+        if r_sw > r_best { sw } else { best }
+      })
     }
   }
 }
