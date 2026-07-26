@@ -1,0 +1,15 @@
+label	AFTER_pr7269_dotted_applied_type
+class_message	expected one of `,` or `>`, found `.
+measurement_note	Class-scoped rustc message-text count per sharp-bee-290 msg_6c27c10b. Same sweep WITH render_rust_applied_type leaf routing (rust_fn_sig_leaf_name). Cargo message count unchanged at 0 on merged HEAD — class is latent in full-module closure today; discriminating unit witness proves the construction wall.
+gunbc_sha	ea8cfe5f84cec28a8722912d055b35a44d12eedd7d65655602deb23b04dedbc3
+git_sha	071d3966b8b0a00f0f53be2e4621e9e147d9d454
+module	dotted_applied_type_count
+src/v2/compiler/06_translate.dag	0
+src/v2/compiler/04_infer.dag	0
+src/v2/compiler/05_eval.dag	0
+src/v2/compiler/05_emit.dag	0
+src/v2/compiler/emit_host.dag	0
+src/v2/compiler/emit_module.dag	0
+src/v2/compiler/materialization_carriers.dag	0
+TOTAL	0
+discriminating_witness	compiler_tests::render_rust_applied_type_routes_qualified_base_through_leaf_name GREEN (qualified std.algebra.FreeMonoid base -> Vec<i64>, no dots)

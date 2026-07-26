@@ -1,0 +1,15 @@
+label	BEFORE_pr7269_dotted_applied_type
+class_message	expected one of `,` or `>`, found `.
+measurement_note	Class-scoped rustc message-text count per sharp-bee-290 msg_6c27c10b. first_error column no longer discriminates post-#7197 (rule-1 positional reorder); uncoded bucket conflates classes. Canonical-seven cargo sweep on merged HEAD 071d3966b8 WITHOUT applied-type leaf fix.
+gunbc_sha	a6d07de583315df19f7fb59223d7de5f794d6d2cfa398df608da4fa8c8c0ae62
+git_sha	071d3966b8b0a00f0f53be2e4621e9e147d9d454
+module	dotted_applied_type_count
+src/v2/compiler/06_translate.dag	0
+src/v2/compiler/04_infer.dag	0
+src/v2/compiler/05_eval.dag	0
+src/v2/compiler/05_emit.dag	0
+src/v2/compiler/emit_host.dag	0
+src/v2/compiler/emit_module.dag	0
+src/v2/compiler/materialization_carriers.dag	0
+TOTAL	0
+discriminating_witness	compiler_tests::render_rust_applied_type_routes_qualified_base_through_leaf_name RED when fix reverted (emits dotted base verbatim -> assertion fails)
