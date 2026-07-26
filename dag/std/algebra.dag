@@ -35,7 +35,10 @@ type AbelianGroup<T> {
 
 }
 
-type GroupCompletion<M>
+type GroupCompletion<M> {
+  pos: M
+  neg: M
+}
 
 type FieldOfFractions<R> {
   num: R

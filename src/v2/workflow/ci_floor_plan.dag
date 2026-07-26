@@ -17,9 +17,10 @@ import gunbc.ci_spec {
   floor_plan_function,
   plan_artifact_plan_function,
   FloorBatchStopPolicy,
-  gunbc_ci_floor_batch_wall_budget_seconds,
+  gunbc_ci_floor_batch_clamp_params,
 }
 import gunbc.falsifier_workflow { falsifier_plan_function }
+import gunbc.commit_workflow { commit_gate_roster, project_falsifier_witness_entries }
 import gunbc.ci_gate {
   Gate, EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
@@ -441,16 +442,24 @@ fn gunbc_ci_fast_lane_eval_budget_ms() -> v2.std.nat.Nat {
   second_count(s: gunbc_ci_fast_lane_witness_eval_budget) * 1000
 }
 
-fn gunbc_ci_floor_batch_wall_budgets_seconds() -> List<Int> {
-  gunbc_ci_floor_batch_wall_budget_seconds
+fn gunbc_ci_floor_batch_clamp_overhead_seconds() -> List<Int> {
+  map(gunbc_ci_floor_batch_clamp_params, c => c.overhead_seconds)
 }
 
-fn witness_floor_batch_wall_budgets_cover_schedule() -> Bool {
-  length(xs: gunbc_ci_floor_batch_wall_budgets_seconds()) == length(xs: gunbc_ci_floor_batches())
+fn gunbc_ci_floor_batch_clamp_per_unit_ms() -> List<Int> {
+  map(gunbc_ci_floor_batch_clamp_params, c => c.per_unit_ms)
 }
 
-fn witness_floor_batch_wall_budgets_all_positive() -> Bool {
-  fold(gunbc_ci_floor_batch_wall_budgets_seconds(), init: true, f: fn(ok, b) { ok && (b > 0) })
+fn witness_floor_batch_clamp_params_cover_schedule() -> Bool {
+  length(xs: gunbc_ci_floor_batch_clamp_params) == length(xs: gunbc_ci_floor_batches())
+}
+
+fn witness_floor_batch_clamp_overhead_all_positive() -> Bool {
+  fold(gunbc_ci_floor_batch_clamp_overhead_seconds(), init: true, f: fn(ok, b) { ok && (b > 0) })
+}
+
+fn witness_floor_batch_clamp_rate_all_nonneg() -> Bool {
+  fold(gunbc_ci_floor_batch_clamp_per_unit_ms(), init: true, f: fn(ok, b) { ok && (b >= 0) })
 }
 
 data gunbc_falsifier_self_host_wet_receipt_budget_note: String = "Whole-receipt wall-time budget for the nightly falsifier Wet self-host lane (operator ruling 2026-07-15, Wave 2 CI substrate STEP 3; kill-at-deadline 2026-07-25): bounds emit+cargo total wall time per witness — the wet receipt IS each module's Definition-of-Done, and cargo dominates (std/logic template ~101s wall, 06_translate ~52s measured Refinement-1). claim_executor arms this budget for discovery batches whose explicit entries intersect falsifier_self_host_wet_entries OR falsifier_self_host_wet_known_red_entries — never for silent-pick (owns gunbc_falsifier_silent_pick_gate_receipt_wall_budget) or rehomed bin. Primary refusal is WitnessWallBudgetExceeded: shell waits kill the process group at the ceiling (Finding 1 kill-at-deadline); wall_budget_completion_outcome remains the completion-side backstop. Secondary gunbc_falsifier_self_host_wet_interp_eval_budget arms the cooperative CPU eval deadline for interpreter-wedge detection only (subprocess cargo I/O is wall-counted, not CPU-counted). Receipted ceilings: logic template 101s, 06_translate 52s — 600s per receipt leaves headroom for larger modules while keeping 11-module upper bound (~9.5min measured) far under the 270m falsifier step budget. A raise requires a dated re-basis note (same discipline as floor batch walls) — never to absorb a cache-cold host."
@@ -473,6 +482,14 @@ data gunbc_falsifier_silent_pick_gate_receipt_wall_budget: Second = second(count
 
 fn gunbc_falsifier_silent_pick_gate_receipt_wall_budget_ms() -> v2.std.nat.Nat {
   second_count(s: gunbc_falsifier_silent_pick_gate_receipt_wall_budget) * 1000
+}
+
+data gunbc_falsifier_substrate_long_lane_budget_note: String = "Per-witness eval budget for the Hermetic substrate long lane (falsifier batch 6), dated 2026-07-26. WHY IT EXISTS: budgets are scoped by LANE, never by witness kind. claim_executor previously selected the eval ceiling by execution_mode.is_hermetic(), so every Hermetic batch inherited gunbc_ci_fast_lane_witness_eval_budget — including the one lane whose entire purpose is hosting rows OVER that budget. The lane's first scheduled execution (run 30176416535, 2026-07-25) reddened with 7 of 10 rows killed at 5001-5013ms by a refusal whose own text says the row 'lives in a long/ test dir and runs via its dedicated lane': the budget had followed it there. The executor now arms this row for discovery batches whose explicit entries intersect falsifier_substrate_long_lane_entries, and the residual (Hermetic, no lane roster) keeps the fast lane — so a future lane that forgets to declare a ceiling reds loudly at 5s rather than running unbounded (the arm narrows, never widens, DESIGN 5). BASIS (two-tier: worst row + host spread; all ten rows measured by execution, cold, local, 2026-07-26 — CI had never produced a green row on this lane). Seven affected_set_provenance_producer rows: 11906, 12213, 12229, 12714, 13032, 13654, 13770ms. Two edit_locus_source_provenance rows: 12384, 12558ms — measurable only after repair, since both were self-recursing wrappers that had never executed (edit_locus_source_provenance_wrapper_shadowing_note). One wave1_gate1_d census row: 126921ms here, 134526ms on the merry-ibex-306 cold run 2026-07-25 (the worst observed, and the row's declared basis). Worst observed 134.5s + host spread (the floor runs under adaptive-width memory pressure; the silent-pick lane's receipted spread was ~12% of an 815s row) -> 180s dated ceiling. Same shape as the wet lanes: one lane ceiling sized to its worst row, not per-row envelopes. A raise requires an appended dated re-basis — never a silent widen to absorb a slow host. Dissolve-on: per-witness declared cost envelopes (the witness-cost-locality admission law, the same trigger gunbc_ci_fast_lane_rule_note names) replace every blanket lane budget with declared per-row rows."
+
+data gunbc_falsifier_substrate_long_lane_witness_eval_budget: Second = second(count: 180)
+
+fn gunbc_falsifier_substrate_long_lane_eval_budget_ms() -> v2.std.nat.Nat {
+  second_count(s: gunbc_falsifier_substrate_long_lane_witness_eval_budget) * 1000
 }
 
 fn corpus_runnable_for(spec: CiSpec) -> Runnable {
@@ -1016,11 +1033,43 @@ fn gunbc_falsifier_batches() -> List<List<Runnable>> {
     enrolled: falsifier_rehomed_bin_wet_batch_enrolled(),
     batch: gunbc_falsifier_rehomed_bin_wet_batch()
   )
-  falsifier_batches_append_if_enrolled(
+  let with_substrate_long = falsifier_batches_append_if_enrolled(
     acc: with_rehomed,
     enrolled: falsifier_substrate_long_lane_batch_enrolled(),
     batch: gunbc_falsifier_substrate_long_lane_batch()
   )
+  falsifier_batches_append_if_enrolled(
+    acc: with_substrate_long,
+    enrolled: falsifier_cadence_witness_batch_enrolled(),
+    batch: gunbc_falsifier_cadence_witness_batch()
+  )
+}
+
+data falsifier_cadence_witness_batch_note: String = "The live consumer for gunbc.commit_workflow's FalsifierCadenceJob surface — the scheduled home for declared CommitWitnessClaim rows priced out of the per-PR floor (falsifier_cadence_surface_note). WHY THIS BATCH HAS TO EXIST IN THE SAME CHANGE that re-homes the rows: a surface tag with no batch reading it is enrollment-by-illusion, the exact ~54-dark-file state under test/claim/long/ that the re-home is supposed to stop adding to, and it would present as a clean green diff. So the enrollment predicate and this batch land together, and gauntlet_lane_enrollment_witness_test reds per-PR if a row ever sits on the surface without reaching here. Profile mirrors gunbc_falsifier_rehomed_bin_wet_batch (Wet, host compiler, substantial memory): the re-homed rows are execution-kind witnesses whose cost is exactly why they left the floor. SelectionApplied so the cadence run still records predictions — the falsifier's own divergence accounting stays intact for these rows rather than being exempted."
+
+fn falsifier_cadence_witness_entries() -> List<ScheduleWitnessEntry> {
+  project_falsifier_witness_entries(roster: commit_gate_roster)
+}
+
+fn falsifier_cadence_witness_batch_enrolled() -> Bool {
+  length(xs: falsifier_cadence_witness_entries()) > 0
+}
+
+fn gunbc_falsifier_cadence_witness_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: falsifier_cadence_witness_entries(),
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: true,
+      memory: runnable_memory_substantial(),
+      execution_mode: Wet
+    )
+  }
 }
 
 data gunbc_pr_native_batch_note: String = "Per-PR native batch (P6 routing consumption, 2026-07-22): explicit entries = the equals_eval agreement legs of families the native-routing frontier marks NativeRouted — nothing else. The frontier is the ONE authority for both sides of the floor (this batch enrolls exactly the routed set; nothing else changes), and flips are parity-window-gated data, so at landing the routed set is empty and this appends no batch: zero behavior change until receipts flip a family. Wet profile: the admitted transport cargo-builds cold or runs warm against GUNBC_NATIVE_CACHE_ROOT."

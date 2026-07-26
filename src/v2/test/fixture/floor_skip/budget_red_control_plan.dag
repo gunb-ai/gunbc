@@ -8,7 +8,7 @@ import std.realization_schedule {
 import v2.std.collection { List }
 import std.types { Int }
 
-data budget_red_control_plan_note: String = "THE COST WALL's by-execution RED-control fixture (endgame D5): a minimal plan whose fn is NAMED gunbc_ci_floor_batches so claim_executor arms the per-batch wall budgets against it — one tiny hermetic batch, one generous budget row. RED direction: GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS=0 tightens the budget to zero, the batch overruns by construction, and the run must exit nonzero with the typed FLOOR-BATCH-OVER-BUDGET refusal naming batch 1. GREEN direction: the same invocation without the env exits zero. The injection is tighten-only (min), so this fixture can force the refusal but can never widen a real budget — a fault injection, not an escape hatch. Recipe: target/release/claim_executor --source-root dag --source-root src/v2 --plan-entry src/v2/test/fixture/floor_skip/budget_red_control_plan.dag --plan-function gunbc_ci_floor_batches. Lives under test/fixture/floor_skip/ (discovery-excluded at dir grain) and declares no test fns, so it is invisible to the witness corpus — driven only by this recipe."
+data budget_red_control_plan_note: String = "THE COST WALL's by-execution RED-control fixture (endgame D5): a minimal plan whose fn is NAMED gunbc_ci_floor_batches so claim_executor arms the per-batch derived clamp against it — one tiny hermetic batch, one generous overhead row (600s) with rate 0, so the computed clamp is 600s. RED direction: GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS=0 tightens the budget to zero, the batch overruns by construction, and the run must exit nonzero with the typed FLOOR-BATCH-OVER-BUDGET refusal naming batch 1. GREEN direction: the same invocation without the env exits zero. The injection is tighten-only (min), so this fixture can force the refusal but can never widen a real budget — a fault injection, not an escape hatch. Recipe: target/release/claim_executor --source-root dag --source-root src/v2 --plan-entry src/v2/test/fixture/floor_skip/budget_red_control_plan.dag --plan-function gunbc_ci_floor_batches. Lives under test/fixture/floor_skip/ (discovery-excluded at dir grain) and declares no test fns, so it is invisible to the witness corpus — driven only by this recipe."
 
 fn budget_red_control_claim() -> Runnable {
   RunnableSingleClaim {
@@ -22,6 +22,10 @@ fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
   [[budget_red_control_claim()]]
 }
 
-fn gunbc_ci_floor_batch_wall_budgets_seconds() -> List<Int> {
+fn gunbc_ci_floor_batch_clamp_overhead_seconds() -> List<Int> {
   [600]
+}
+
+fn gunbc_ci_floor_batch_clamp_per_unit_ms() -> List<Int> {
+  [0]
 }

@@ -15,6 +15,8 @@ import gunbc.fleet_show_effective_read {
 }
 import gunbc.systemctl_show_read {
   systemctl_show_property_read_local,
+  SystemdPropertyCaptured,
+  SystemdPropertyCaptureRefused,
   systemctl_show_property_operation_argv_matches_transport,
 }
 import gunbc.systemctl_set_property { systemctl_set_property_operation_argv_matches_transport }
@@ -115,8 +117,8 @@ fn witness_verdict_uses_converge_target_not_string_flatten() -> Bool {
 
 fn witness_slice1_show_property_local_read_holds() -> Bool {
   match systemctl_show_property_read_local(unit: host_converge_slice1_probe_unit, property: MemoryMax) {
-    Present { value: v } => v == "8589934592"
-    Absent => false
+    SystemdPropertyCaptured { value: v } => v == "8589934592"
+    SystemdPropertyCaptureRefused { reason: _ } => false
   }
 }
 

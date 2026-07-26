@@ -1,0 +1,34 @@
+module v2.test.claim.ci_placement_witness
+
+import std.logic { Bool }
+import v2.workflow.ci_placement {
+  Placement, PrTier, Gauntlet,
+  PlacementClassification, Hermetic, Unclassified,
+  WarmCostReceipt,
+  placement_is_admissible
+}
+
+test fn ci_placement_gauntlet_always_admissible_holds() -> Bool {
+  placement_is_admissible(p: Gauntlet { reason: "awaiting D2 warm-cost measurement" })
+}
+
+test fn ci_placement_valid_pr_tier_admissible_holds() -> Bool {
+  placement_is_admissible(p: PrTier {
+    warm_cost: WarmCostReceipt { measured_ms: 1600, run_ref: "synthetic-warm-receipt" },
+    classification: Hermetic
+  })
+}
+
+test fn ci_placement_over_budget_pr_tier_refused_holds() -> Bool {
+  !placement_is_admissible(p: PrTier {
+    warm_cost: WarmCostReceipt { measured_ms: 6000, run_ref: "synthetic-over-budget" },
+    classification: Hermetic
+  })
+}
+
+test fn ci_placement_unclassified_pr_tier_refused_holds() -> Bool {
+  !placement_is_admissible(p: PrTier {
+    warm_cost: WarmCostReceipt { measured_ms: 100, run_ref: "synthetic-unclassified" },
+    classification: Unclassified
+  })
+}

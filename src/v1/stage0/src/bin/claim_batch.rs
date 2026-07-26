@@ -77,10 +77,11 @@ fn children_max_rss_bytes() -> Option<u64> {
 }
 
 fn emit_rss_measurement(label: &str) {
-    match peak_rss_bytes() {
-        Some(bytes) => eprintln!("[measurement] {label}: {bytes} bytes (VmHWM)"),
-        None => eprintln!("[measurement] {label}: unavailable (no /proc/self/status)"),
-    }
+    let emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
+    eprintln!(
+        "{}",
+        v1_compiler::cli_run::render_peak_rss_line_mirror(label, peak_rss_bytes(), emoji)
+    );
 }
 
 fn print_interp_stats(ctx: &InterpContext, flatten_baseline: (u64, u64)) {
@@ -578,7 +579,15 @@ fn run() -> Result<ExitCode, ExitCode> {
         Ok(keys) => {
             emit_rss_measurement("post-mock-precompute-rss");
             if let Some(bytes) = children_max_rss_bytes() {
-                eprintln!("[measurement] post-mock-precompute-children-max-rss: {bytes} bytes (getrusage RUSAGE_CHILDREN)");
+                let emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
+                eprintln!(
+                    "{}",
+                    v1_compiler::cli_run::render_peak_rss_line_mirror(
+                        "post-mock-precompute-children-max-rss",
+                        Some(bytes),
+                        emoji,
+                    )
+                );
             }
             if keys.is_empty() {
                 eprintln!(
@@ -720,7 +729,15 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     emit_rss_measurement("per-shard-peak-rss");
     if let Some(bytes) = children_max_rss_bytes() {
-        eprintln!("[measurement] children-max-rss: {bytes} bytes (getrusage RUSAGE_CHILDREN)");
+        let emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
+        eprintln!(
+            "{}",
+            v1_compiler::cli_run::render_peak_rss_line_mirror(
+                "children-max-rss",
+                Some(bytes),
+                emoji,
+            )
+        );
     }
 
     if any_failed {
