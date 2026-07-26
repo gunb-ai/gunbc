@@ -77,7 +77,7 @@ data ci_floor_stamp_propagate_floor_exit_command: String = "if [ \"$FLOOR_EXIT\"
 
 data ci_floor_stamp_exit_stamp_command: String = "exit \"$STAMP_EXIT\""
 
-data ci_floor_stamp_pr2b_residue_note: String = "PR2a leaves the IntNe/Exit concat lines as constant opaque Run.command (decision rule: carriers for those land in PR2b with FileExists). ExitStatus is live on the stamp invoke (STAMP_EXIT). FLOOR_EXIT=$? is ambient prior-command capture — constant opaque, not CaptureSpec-on-Run."
+data ci_floor_stamp_pr2b_residue_note: String = "DECLARED SCAFFOLD (not unmarked medium-as-string): lines ci_floor_stamp_propagate_floor_exit_command / ci_floor_stamp_exit_stamp_command (and ambient FLOOR_EXIT=$?) remain constant opaque Run.command under orch_bash_do. Decision rule for this PR: PR2a lands ToFile + Comment + ExitStatus (STAMP_EXIT live on the stamp invoke); IntNe / Exit / FileExists carriers + rewriting those concat lines land in PR2b — inventing them mid-PR2a is the scope-creep twin of leaving them unmarked. 🟡 dissolve-on: Predicate IntNe (or equivalent) + PipelineStep.Exit (and FileExists for batch-A surfaces) make the if/-ne/exit spellings unwritable as Run.command; until then these constants are counted residue, not authority. FLOOR_EXIT=$? is ambient prior-command capture outside this Pipeline (not CaptureSpec-on-Run)."
 
 fn ci_floor_stamp_merge_admission_intent() -> Pipeline {
   let _note = ci_floor_stamp_pr2b_residue_note
