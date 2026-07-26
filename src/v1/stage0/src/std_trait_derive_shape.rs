@@ -25,7 +25,7 @@ pub fn trait_derive_shape_note() -> String {
 pub fn trait_derive_shape_grounding_lane_handoff() -> String {
     thread_local! {
         static CACHED: String = {
-            "Root-4 arm (b): coproduct-native arithmetic + PartialOrd/PartialEq impl blocks for algebra carriers (GroupCompletion<Nat>, Vector, CommutativeSemiring<Magnitude>). Capability table + repr_grounding_derive_completeness_predicate remain the shared authority; v1.compiler.trait_derive_emit emits impl { … } from shape rows (not #[derive]) through the seed emitter. dissolve-on: GroupCompletion/FieldOfFractions body landing (#7197) replaces interim Magnitude-carrier stubs.".to_string()
+            "Root-4 arm (b): coproduct-native arithmetic + PartialOrd/PartialEq impl blocks for algebra carriers (GroupCompletion<Nat>, Vector, CommutativeSemiring<Magnitude>). Capability table + repr_grounding_derive_completeness_predicate remain the shared authority; v1.compiler.trait_derive_emit emits impl { … } from shape rows (not #[derive]) through the seed emitter. dissolve-on: four fail-closed unimplemented! stubs in extdeps.languages.rust.emit.rust_supplemental_impls_commutative_semiring_magnitude → std_algebra.rs (inventory: rust_repr_grounding_arm_b_stub_inventory); real bodies land via #7197 eager-crane numeric-tower lane.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

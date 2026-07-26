@@ -33,8 +33,6 @@ data item_in_computed_arg_snippet: String = "module hiddenitem\n\nfn f(xs: List<
 
 data computed_let_mention_snippet: String = "module hiddenlet\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let boxed = Wrapped { inner: acc }\n    mystery(box: boxed)\n  })\n}\n"
 
-data projection_call_residue_note: String = "DISSOLVED (Stage B cross-decl): projection-headed calls lower to canonical Transform nodes in v2.compiler.normalize.normalize; lowered_substrate_call_note arms classify them inside lowered Loop bodies. Witness: projection_call_carrier_is_classified."
-
 data projection_call_carrier_snippet: String = "module projcar\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    helper.step(a: acc, b: x)\n  })\n}\n"
 
 data multiline_unregistered_snippet: String = "module unreg\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    mystery_op(a: acc, b: x)\n  })\n}\n"
