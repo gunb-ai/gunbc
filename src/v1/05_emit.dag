@@ -596,6 +596,10 @@ fn render_named_type_base(n: Node, target: RenderTarget, source_indices: Map<Str
   }
 }
 
+fn render_node_type_shared_wrap(target: RenderTarget, shared: Bool, base: String) -> String {
+  if shared && target != Rust { wrap_shared_type(target: target, inner: base) } else { base }
+}
+
 fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   let tn = authored_name_at(source_indices: source_indices, node: n)
   let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
@@ -658,7 +662,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
       let spec = language_spec(target: target)
       apply_type_template1(template: spec.error_type_template, arg0: "ANONYMOUS_COPRODUCT")
     }
-    let disj_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
+    let disj_str = render_node_type_shared_wrap(target: target, shared: shared, base: base)
     return disj_str
   }
 
@@ -692,11 +696,11 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
         } else {
           emit_container(kind: snake, inner: "_", target: target)
         }
-        let conj_container_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
+        let conj_container_str = render_node_type_shared_wrap(target: target, shared: shared, base: base)
         return conj_container_str
       }
       let base = render_named_type_base(n: n, target: target, source_indices: source_indices)
-      let conj_named_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
+      let conj_named_str = render_node_type_shared_wrap(target: target, shared: shared, base: base)
       return conj_named_str
     }
     let parts = n.children |> map(child =>
@@ -730,7 +734,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     } else {
       coerce_primitive_type(target: target, dag_name: tn)
     }
-    let bare_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
+    let bare_str = render_node_type_shared_wrap(target: target, shared: shared, base: base)
     return bare_str
   }
 
@@ -745,7 +749,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
       Absent => "_"
     }
     let base = emit_map_type(key_type: k, val_type: v, target: target)
-    let map_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
+    let map_str = render_node_type_shared_wrap(target: target, shared: shared, base: base)
     return map_str
   }
   if n.children |> count == 1 {
@@ -761,7 +765,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
       let spec = language_spec(target: target)
       concat(type_base, spec.type_arg_open, child_str, spec.type_arg_close)
     }
-    let single_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
+    let single_str = render_node_type_shared_wrap(target: target, shared: shared, base: base)
     return single_str
   }
   let child_strs = n.children |> map(c => render_node_type(n: child_type_node(ch: c), target: target, shared_types: shared_types, source_indices: source_indices))
@@ -773,7 +777,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
   let args_joined = child_strs |> join(separator: ", ")
   let spec = language_spec(target: target)
   let base = concat(type_base, spec.type_arg_open, args_joined, spec.type_arg_close)
-  if shared { wrap_shared_type(target: target, inner: base) } else { base }
+  render_node_type_shared_wrap(target: target, shared: shared, base: base)
 }
 
 fn render_tuple_parts(parts: List<String>, target: RenderTarget) -> String {
