@@ -656,9 +656,13 @@ fn witness_entries_from_enrollments(rows: List<CommitCheckEnrollment>) -> List<S
   fold(rows, init: [], f: fn(acc, row) {
     match row.check {
       CommitWitnessClaim { entry, check_fns, kind, span: _ } =>
-        concat(acc, fold(check_fns, init: [], f: fn(fns, check_fn) {
-          concat(fns, [ScheduleWitnessEntry { entry: entry, function: check_fn, kind: kind }])
-        }))
+        if check_fns.count() == 0 {
+          concat(acc, [ScheduleWitnessEntry { entry: entry, function: "", kind: kind }])
+        } else {
+          concat(acc, fold(check_fns, init: [], f: fn(fns, check_fn) {
+            concat(fns, [ScheduleWitnessEntry { entry: entry, function: check_fn, kind: kind }])
+          }))
+        }
       CommitSpecGate { gate: _ } => acc
       CommitCargoFmtCheck => acc
     }
