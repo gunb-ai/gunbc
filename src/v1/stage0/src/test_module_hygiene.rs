@@ -58,19 +58,28 @@ pub struct OrphanHelper {
     pub name: String,
 }
 
-fn collect_dag_files(root: &Path, out: &mut Vec<PathBuf>) {
-    let entries = match std::fs::read_dir(root) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-    for ent in entries.flatten() {
+fn collect_dag_files(root: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
+    let entries = std::fs::read_dir(root).map_err(|e| {
+        format!(
+            "orphan/umbrella hygiene: cannot read_dir {}: {e}",
+            root.display()
+        )
+    })?;
+    for ent in entries {
+        let ent = ent.map_err(|e| {
+            format!(
+                "orphan/umbrella hygiene: read_dir entry under {}: {e}",
+                root.display()
+            )
+        })?;
         let path = ent.path();
         if path.is_dir() {
-            collect_dag_files(&path, out);
+            collect_dag_files(&path, out)?;
         } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
             out.push(path);
         }
     }
+    Ok(())
 }
 
 fn is_test_dag_path(path: &str) -> bool {
@@ -81,12 +90,21 @@ fn is_test_dag_path(path: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Structural fixture-library paths: historical `*_test.dag` suffix, but the module is
-/// a cross-module export surface (language grammar / example), not an enrolled witness
-/// file. Local reachability cannot see importers. Dissolve-on: rename off `_test.dag`.
+/// Explicit cross-module fixture-library entries (repo-relative, `/`-normalized).
+/// These keep the historical `*_test.dag` suffix while exporting plain helpers for
+/// cross-module import — local reachability cannot see importers. Bounded roster,
+/// never a directory-wide bypass (review 43367 / DESIGN §5). Dissolve-on: rename
+/// each off `_test.dag`.
+const CROSS_MODULE_FIXTURE_LIBRARY_ENTRIES: &[&str] = &[
+    "src/v2/extdeps/languages/rust_test.dag",
+    "dag/examples/interp_test/interp_test.dag",
+];
+
 fn is_cross_module_fixture_library_path(path: &str) -> bool {
     let p = path.replace('\\', "/");
-    p.contains("/extdeps/languages/") || p.contains("/examples/")
+    CROSS_MODULE_FIXTURE_LIBRARY_ENTRIES
+        .iter()
+        .any(|auth| p == *auth || p.ends_with(&format!("/{auth}")))
 }
 
 fn scan_test_decl_names(content: &str) -> Vec<String> {
