@@ -882,56 +882,17 @@ pub fn rust_pair_completion_body_render(body: Rc<PairCompletionBody>) -> String 
 
 pub fn rust_pair_completion_impl_render(row: Rc<PairCompletionOpRow>) -> String {
     match rust_pair_completion_spelling_for(row.op.clone()) {
-        Some(spelling) => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    "impl<M> ".to_string(),
-                                                    spelling.trait_path.clone(),
-                                                ),
-                                                " for ".to_string(),
-                                            ),
-                                            rust_pair_completion_carrier(),
-                                        ),
-                                        "<M>".to_string(),
-                                    ),
-                                    if (spelling.where_bounds.clone() == "".to_string()) {
-                                        " {\n".to_string()
-                                    } else {
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                "\n".to_string(),
-                                                spelling.where_bounds.clone(),
-                                            ),
-                                            "\n{\n".to_string(),
-                                        )
-                                    },
-                                ),
-                                "    type Output = Self;\n".to_string(),
-                            ),
-                            "    fn ".to_string(),
-                        ),
-                        spelling.method.clone(),
-                    ),
-                    if pair_completion_body_uses_rhs(row.body.clone()) {
-                        "(self, rhs: Self) -> Self::Output ".to_string()
-                    } else {
-                        "(self) -> Self::Output ".to_string()
-                    },
-                ),
-                rust_pair_completion_body_render(row.body.clone()),
-            ),
-            "}\n".to_string(),
-        ),
-        None => "".to_string(),
-    }
+    Some(spelling) => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("impl<M> ".to_string(), spelling.trait_path.clone()), " for ".to_string()), rust_pair_completion_carrier()), "<M>".to_string()), if (spelling.where_bounds.clone() == "".to_string()) {
+        " {\n".to_string()
+    } else {
+        v1_rt::concat(v1_rt::concat("\n".to_string(), spelling.where_bounds.clone()), "\n{\n".to_string())
+    }), "    type Output = Self;\n".to_string()), "    fn ".to_string()), spelling.method.clone()), if pair_completion_body_uses_rhs(row.body.clone()) {
+        "(self, rhs: Self) -> Self::Output ".to_string()
+    } else {
+        "(self) -> Self::Output ".to_string()
+    }), rust_pair_completion_body_render(row.body.clone())), "}\n".to_string()),
+    None => v1_rt::concat(v1_rt::concat(v1_rt::concat("compile_error!(\"gunbc: pair-completion row '".to_string(), rust_pair_completion_op_key(row.op.clone())), "' has no rust_pair_completion_spellings entry — std.trait_derive_shape.pair_completion_op_rows ".to_string()), "and the Rust spelling table have drifted; the operator impl cannot be rendered.\");\n".to_string()),
+}
 }
 
 pub fn rust_supplemental_impls_group_completion() -> String {

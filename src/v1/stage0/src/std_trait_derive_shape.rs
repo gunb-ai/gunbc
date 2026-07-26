@@ -654,6 +654,15 @@ pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
     ])
 }
 
+pub fn pair_completion_uses_rhs_dissolve_on() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "dissolve-on: std.trait_derive_shape.pair_completion_arm_uses_rhs / pair_completion_body_uses_rhs — variant-discriminating Bool predicates over PairCompletionOperand / PairCompletionBody, retained only because operand arity is DERIVED from the formula rather than stored (storing an arity field would be a second representation of what the arms already say). They dissolve into an arity projection carried on PairCompletionOpRow at construction the moment a second consumer needs arity, or the moment refinement predicates become construction-enforced so the projection can be made total by construction; until then the derivation is the single authority and these are its only readers.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn pair_completion_arm_uses_rhs(arm: Rc<PairCompletionArm>) -> bool {
     {
         let mut __found = false;
