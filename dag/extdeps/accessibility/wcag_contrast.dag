@@ -70,8 +70,25 @@ fn relative_luminance_scaled(hue: Int, sat_pct: Int, light_pct: Int) -> Int {
   rgb_scaled_luminance(rgb: hsl_to_rgb_scaled(hue: hue, sat_pct: sat_pct, light_pct: light_pct))
 }
 
-fn srgb8_relative_luminance_scaled(c: Srgb8) -> Int {
-  rgb_scaled_luminance(rgb: srgb8_to_scaled(c: c))
+fn srgb8_relative_luminance_scaled(c: Srgb8) -> Int? {
+  match srgb8_to_scaled(c: c) {
+    Present { value: rgb } => Present { value: rgb_scaled_luminance(rgb: rgb) }
+    Absent => none
+  }
+}
+
+fn srgb8_contrast_at_least(a: Srgb8, b: Srgb8, threshold_hundredths: Int) -> Bool {
+  match srgb8_relative_luminance_scaled(c: a) {
+    Present { value: lum_a } => match srgb8_relative_luminance_scaled(c: b) {
+      Present { value: lum_b } => contrast_at_least_hundredths(
+        lum_a_scaled: lum_a,
+        lum_b_scaled: lum_b,
+        threshold_hundredths: threshold_hundredths,
+      )
+      Absent => false
+    }
+    Absent => false
+  }
 }
 
 fn contrast_at_least_hundredths(lum_a_scaled: Int, lum_b_scaled: Int, threshold_hundredths: Int) -> Bool {
@@ -99,17 +116,16 @@ fn hsl_contrast_ratio_x100(hue_a: Int, sat_a: Int, light_a: Int, hue_b: Int, sat
     lum_b_scaled: relative_luminance_scaled(hue: hue_b, sat_pct: sat_b, light_pct: light_b))
 }
 
-fn srgb8_contrast_at_least(a: Srgb8, b: Srgb8, threshold_hundredths: Int) -> Bool {
-  contrast_at_least_hundredths(
-    lum_a_scaled: srgb8_relative_luminance_scaled(c: a),
-    lum_b_scaled: srgb8_relative_luminance_scaled(c: b),
-    threshold_hundredths: threshold_hundredths)
-}
-
-fn srgb8_contrast_ratio_x100(a: Srgb8, b: Srgb8) -> Int {
-  contrast_ratio_x100(
-    lum_a_scaled: srgb8_relative_luminance_scaled(c: a),
-    lum_b_scaled: srgb8_relative_luminance_scaled(c: b))
+fn srgb8_contrast_ratio_x100(a: Srgb8, b: Srgb8) -> Int? {
+  match srgb8_relative_luminance_scaled(c: a) {
+    Present { value: lum_a } => match srgb8_relative_luminance_scaled(c: b) {
+      Present { value: lum_b } => Present {
+        value: contrast_ratio_x100(lum_a_scaled: lum_a, lum_b_scaled: lum_b),
+      }
+      Absent => none
+    }
+    Absent => none
+  }
 }
 
 data wcag_aa_normal_text_hundredths: Int = 450

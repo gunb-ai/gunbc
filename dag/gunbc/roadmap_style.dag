@@ -165,10 +165,12 @@ fn swatch_named(s: SwatchSet, name: String) -> Swatch? {
 
 fn audition_ink_for(s: SwatchSet, fill: Swatch) -> Swatch {
   fold(swatches_of(s: s), init: fill, f: (best, sw) =>
-    if srgb8_contrast_ratio_x100(a: sw.color, b: fill.color) > srgb8_contrast_ratio_x100(a: best.color, b: fill.color) {
-      sw
-    } else {
-      best
+    match srgb8_contrast_ratio_x100(a: sw.color, b: fill.color) {
+      Absent => best
+      Present { value: r_sw } => match srgb8_contrast_ratio_x100(a: best.color, b: fill.color) {
+        Absent => sw
+        Present { value: r_best } => if r_sw > r_best { sw } else { best }
+      }
     })
 }
 

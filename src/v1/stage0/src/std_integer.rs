@@ -71,10 +71,3 @@ pub fn uint8_channel_inclusive_max_value_derived() -> Option<Int> {
         None => None,
     }
 }
-
-pub fn uint8_channel_inclusive_max_value() -> Int {
-    match uint8_channel_inclusive_max_value_derived() {
-        Some(maxv) => maxv.clone(),
-        None => (0 - 1),
-    }
-}

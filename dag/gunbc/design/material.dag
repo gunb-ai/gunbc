@@ -51,8 +51,13 @@ fn quiet_envelope(m: Material) -> Bool {
 }
 
 fn quiet_envelope_srgb8(c: Srgb8) -> Bool {
-  let proj = srgb8_to_hsl_projection(c: c)
-  quiet_envelope_hsl_pct(sat_pct: hsl_projection_s_pct(p: proj), light_pct: hsl_projection_l_pct(p: proj))
+  match srgb8_to_hsl_projection(c: c) {
+    Present { value: proj } => quiet_envelope_hsl_pct(
+      sat_pct: hsl_projection_s_pct(p: proj),
+      light_pct: hsl_projection_l_pct(p: proj),
+    )
+    Absent => false
+  }
 }
 
 fn area_exempt_from_quiet_envelope(area: AreaClass) -> Bool {

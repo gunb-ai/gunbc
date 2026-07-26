@@ -114,16 +114,30 @@ type GradedPairing {
   grade: PairingGrade
 }
 
-fn grade_pairing(figure: Swatch, ground: Swatch) -> GradedPairing {
-  let r = srgb8_contrast_ratio_x100(a: figure.color, b: ground.color)
-  GradedPairing { figure: figure, ground: ground, contrast_x100: r, grade: grade_of_contrast(contrast_x100: r) }
+fn grade_pairing(figure: Swatch, ground: Swatch) -> GradedPairing? {
+  match srgb8_contrast_ratio_x100(a: figure.color, b: ground.color) {
+    Present { value: r } => Present {
+      value: GradedPairing {
+        figure: figure,
+        ground: ground,
+        contrast_x100: r,
+        grade: grade_of_contrast(contrast_x100: r),
+      }
+    }
+    Absent => none
+  }
 }
 
 fn graded_pairings(s: SwatchSet) -> List<GradedPairing> {
   let swatches = swatches_of(s: s)
   fold(swatches, init: [], f: (acc, f) =>
     concat(acc, fold(swatches, init: [], f: (acc2, g) =>
-      if f.name == g.name { acc2 } else { concat(acc2, [grade_pairing(figure: f, ground: g)]) })))
+      if f.name == g.name { acc2 } else {
+        match grade_pairing(figure: f, ground: g) {
+          Present { value: p } => concat(acc2, [p])
+          Absent => acc2
+        }
+      })))
 }
 
 fn pairings_at_least(s: SwatchSet, min_rank: Int) -> List<GradedPairing> {

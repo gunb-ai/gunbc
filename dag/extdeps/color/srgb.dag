@@ -1,7 +1,7 @@
 module extdeps.color.srgb
 
 import std.types { Int, String, Bool }
-import std.integer { uint8_channel_inclusive_max_value }
+import std.integer { uint8_channel_inclusive_max_value_derived }
 import std.measure {
   basis_point_unity_count,
   permyriad_half_for_round_half_up,
@@ -20,7 +20,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data color_srgb_note: String = "Cited upstream: W3C CSS Color Module Level 4 (retrieved 2026-07-21) — the sRGB color space (whose normative definition CSS4 cites to IEC 61966-2-1), 8-bit component notation, hex serialization (#rrggbb, section 'The RGB hexadecimal notations'), and the HSL<->sRGB conversion algorithm (section 'HSL Colors'). This module owns COLOR-SPACE facts only: what a color value IS and how representations convert. Perceptual LAW over colors (relative luminance, contrast thresholds) is extdeps.accessibility.wcag_contrast, which imports this module — accessibility consumes the color space, it does not own it (DESIGN sect 3: the conversion previously lived inside wcag_contrast; re-homed 2026-07-21). Srgb8 is the authored identity for catalogued colors — a hex literal is a SERIALIZATION of Srgb8, never the stored fact (decompress the string, DESIGN sect 2). RgbScaled is the permyriad-scale integer representation (one unit = 0.0001 of a channel) shared by the integer kernels; conversions here are exact at the representation's precision, no floats, no host math. OKLCH coordinates are the named next representation (design-register-library.md sect 10 Class 2, phase A.2): the cube-root kernel follows the same integer-Newton pattern wcag_contrast proves for the 2.4 exponent."
 
-data color_census_frontier: String = "Staged leaf-census items dissolved in Phase-A arc (msg_e9cfe443): (1-4) srgb_byte_denominator / permyriad / hue_milli / percent-round — grounded on std.integer.uint8_channel_inclusive_max_value (derived from bits_per_byte), std.measure.basis_point_unity_count (extdeps.units.dimensionless), hue_angle facts below; (5) Achromatic HslProjection variant per CSS4 hue-is-none; (14) hex_digit deduped onto extdeps.numeric.base16. Remaining: OKLCH reground design-register-library.md sect 10 Class 2 (explicit trigger, excluded from this PR)."
+data color_census_frontier: String = "Staged leaf-census items dissolved in Phase-A arc (msg_e9cfe443): (1-4) srgb_byte_denominator / permyriad / hue_milli / percent-round — grounded on std.integer.uint8_channel_inclusive_max_value_derived (from bits_per_byte), std.measure.basis_point_unity_count (extdeps.units.dimensionless), hue_angle facts below; (5) Achromatic HslProjection variant per CSS4 hue-is-none; (14) hex_digit deduped onto extdeps.numeric.base16. Remaining: OKLCH reground design-register-library.md sect 10 Class 2 (explicit trigger, excluded from this PR)."
 
 type Srgb8 {
   r: Int
@@ -34,10 +34,13 @@ type CitedColorRow {
 }
 
 fn srgb8_admissible(c: Srgb8) -> Bool {
-  let maxv = uint8_channel_inclusive_max_value()
-  c.r >= 0 && c.r <= maxv
-    && c.g >= 0 && c.g <= maxv
-    && c.b >= 0 && c.b <= maxv
+  match uint8_channel_inclusive_max_value_derived() {
+    Present { value: maxv } =>
+      c.r >= 0 && c.r <= maxv
+        && c.g >= 0 && c.g <= maxv
+        && c.b >= 0 && c.b <= maxv
+    Absent => false
+  }
 }
 
 fn srgb8_hex(c: Srgb8) -> String {
@@ -50,13 +53,19 @@ type RgbScaled {
   b: Int
 }
 
-fn srgb8_to_scaled(c: Srgb8) -> RgbScaled {
-  let denom = basis_point_unity_count()
-  let maxv = uint8_channel_inclusive_max_value()
-  RgbScaled {
-    r: (c.r * denom) / maxv,
-    g: (c.g * denom) / maxv,
-    b: (c.b * denom) / maxv,
+fn srgb8_to_scaled(c: Srgb8) -> RgbScaled? {
+  match uint8_channel_inclusive_max_value_derived() {
+    Present { value: maxv } => {
+      let denom = basis_point_unity_count()
+      Present {
+        value: RgbScaled {
+          r: (c.r * denom) / maxv,
+          g: (c.g * denom) / maxv,
+          b: (c.b * denom) / maxv,
+        }
+      }
+    }
+    Absent => none
   }
 }
 
@@ -131,10 +140,17 @@ fn pct_round_from_scaled(v_scaled: Int) -> Int {
   (v_scaled * percent_scale_hundred() + permyriad_half_for_round_half_up()) / denom
 }
 
-fn srgb8_to_hsl_projection(c: Srgb8) -> HslProjection {
-  let denom = basis_point_unity_count()
-  let maxv = uint8_channel_inclusive_max_value()
-  srgb8_to_hsl_projection_for_max(c: c, maxv: maxv, denom: denom)
+fn srgb8_to_hsl_projection(c: Srgb8) -> HslProjection? {
+  match uint8_channel_inclusive_max_value_derived() {
+    Present { value: maxv } => Present {
+      value: srgb8_to_hsl_projection_for_max(
+        c: c,
+        maxv: maxv,
+        denom: basis_point_unity_count(),
+      )
+    }
+    Absent => none
+  }
 }
 
 fn srgb8_to_hsl_projection_for_max(c: Srgb8, maxv: Int, denom: Int) -> HslProjection {
