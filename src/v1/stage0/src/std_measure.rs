@@ -3,6 +3,11 @@
 
 use self::Quantity::*;
 use self::Scale::*;
+pub use crate::extdeps_units_dimensionless::{
+    parts_per_ten_thousand_unity_count, percent_unity_hundred_count,
+};
+pub use crate::extdeps_units_iec_80000_13::{iec_kibi_factor, octet_bit_count};
+pub use crate::extdeps_units_iso8601::{iso8601_minutes_per_hour, iso8601_seconds_per_minute};
 pub use crate::std_currency::CurrencyCode;
 use crate::std_currency::CurrencyCode::*;
 pub use crate::std_nat::Nat;
@@ -90,23 +95,26 @@ pub fn scale_exponent(s: Scale) -> Option<i64> {
 }
 
 pub fn gibibyte_scale_factor_bytes() -> Nat {
-    1073741824
+    {
+        let k = kibi_factor();
+        ((k.clone() * k.clone()) * k.clone())
+    }
 }
 
 pub fn kibi_factor() -> Nat {
-    1024
+    iec_kibi_factor()
+}
+
+pub fn seconds_per_minute() -> Nat {
+    iso8601_seconds_per_minute()
+}
+
+pub fn minutes_per_hour() -> Nat {
+    iso8601_minutes_per_hour()
 }
 
 pub fn milliseconds_per_second() -> Nat {
     1000
-}
-
-pub fn seconds_per_minute() -> Nat {
-    60
-}
-
-pub fn minutes_per_hour() -> Nat {
-    60
 }
 
 pub fn time_scale_factor_seconds(s: Scale) -> Option<Nat> {
@@ -267,7 +275,7 @@ pub fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
 pub type BitWidth = Rc<Measure<(), (), i64>>;
 
 pub fn bits_per_byte() -> Nat {
-    8
+    octet_bit_count()
 }
 
 pub type Hertz = Rc<Measure<(), (), i64>>;
@@ -598,33 +606,21 @@ pub fn percent_count(p: Percent) -> Nat {
     measure_count(p.clone())
 }
 
-pub fn permyriad_denominator() -> i64 {
-    10000
-}
-
-pub fn uint8_channel_bit_width() -> i64 {
-    8
-}
-
-pub fn uint8_channel_inclusive_max() -> i64 {
-    255
-}
-
 pub fn permyriad_scale_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "RgbScaled and sRGB<->HSL integer kernels use a permyriad (parts per 10000) channel scale — one std.measure row, census item 2.".to_string()
+            "RgbScaled and sRGB<->HSL integer kernels use a permyriad (parts per 10000) channel scale — grounded on extdeps.units.dimensionless.parts_per_ten_thousand_unity_count (same authority as basis_point_unity_count).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
 pub fn permyriad_half_for_round_half_up() -> i64 {
-    (permyriad_denominator() / 2)
+    (parts_per_ten_thousand_unity_count() / 2)
 }
 
 pub fn percent_scale_hundred() -> i64 {
-    100
+    percent_unity_hundred_count()
 }
 
 pub fn percent_from_computed_int_frontier() -> String {
@@ -650,7 +646,7 @@ pub fn basis_point_count(bp: BasisPoint) -> Nat {
 }
 
 pub fn basis_point_unity_count() -> Nat {
-    10000
+    parts_per_ten_thousand_unity_count()
 }
 
 pub fn basis_point_unit_note() -> String {
