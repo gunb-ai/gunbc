@@ -10,6 +10,8 @@ import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_
 
 data dcc_typed_transport_doc: String = "Compile-clean gate transports, typed. Each receipt is a composition of typed service operations (shell.Mktemp.Dir, Filesystem.Write, gunbc.WitnessBin.Run on the gunbc binary, shell.Remove.RecursiveForce) - no bash is serialized or executed. The former ShellProgram builders, their serialize-shape witnesses (shell_serializes_dcc_common_compile_invocation and the marker rows), and the two RealizationDispatch scaffold rows dissolved with the flip: the invocation facts are now carried by the typed args construction itself, so the spelling-drift class those witnesses validated is unwritable (DESIGN 5, construction over validation)."
 
+data dcc_perturb_class_c_attribute_note: String = "Class C attribution (test-decomposition-wcf-cut.md, session nimble-ibex-483, 2026-07-25): run 30009199696 measured dag_compile_clean_perturb_receipts_holds at 53s; measured head ~141s — both are the SAME shape (four serial gunbc compile invocations each pulling compile_clean_source_roots: dag + src/v2 + src/v1). Per-compile wall grew with corpus size and the namespace-flip compile wall, NOT the #7205 per-entry fixture pipeline (Class F: fixture-shaped + slow by defect). Disposition Class C: mechanism RED arms (optional_skew, unresolved_import) need only a single-module fixture closure (dcc_fixture_only_compile_args); cross_tree_import and dag_shell_primary_precedence need the live-tree pool and ride falsifier_rehomed_bin_wet_entries."
+
 fn dcc_source_root_args() -> List<String> {
   fold(compile_clean_source_roots(), init: [], f: (acc, r) => concat(acc, ["--source-root", r]))
 }
@@ -34,6 +36,16 @@ fn dcc_perturb_compile_args(tmp: String) -> List<String> {
     ["compile", "--source-root", tmp],
     dcc_compile_tail_args(out_dir: concat(tmp, "/out"))
   )
+}
+
+fn dcc_fixture_only_compile_args(tmp: String) -> List<String> {
+  [
+    "compile",
+    "--source-root", tmp,
+    "--output-dir", concat(tmp, "/out"),
+    "--target", "dag",
+    "--dependency-pool-index", "primary-precedence"
+  ]
 }
 
 fn dcc_gunbc_ready(root: String) -> Bool {
@@ -74,24 +86,65 @@ data cross_tree_green_module_source: String = "module test.perturb_compile_clean
 
 data dag_shell_primary_module_source: String = "module test.perturb_compile_clean_dag_shell_primary\nimport extdeps.shell\nfn probe() -> String? {\n  shell.Env.Get(name: \"PATH\")\n}"
 
+data perturb_fixture_green_module_source: String = "module test.perturb_compile_clean_fixture_green\nfn probe() -> Int { 42 }"
+
 data unresolved_import_perturb_source: String = "module test.perturb_compile_clean_unresolved_import\nimport totally.nonexistent.module { Foo }\nfn probe() -> Int { 42 }"
+
+fn dcc_perturb_compile_with_args(
+  tmp_path: String,
+  compile_args: List<String>,
+  module_file: String,
+  source: String,
+  expect_success: Bool
+) -> Bool {
+  let wrote = Filesystem.Write(
+    path: concat(tmp_path, concat("/", module_file)),
+    content: source
+  )
+  let root = git.Core.Toplevel()
+  let compile = gunbc.WitnessBin.Run(
+    workdir: root.path,
+    bin_path: dcc_gunbc_path(root: root.path),
+    args: compile_args
+  )
+  let cleaned = shell.Remove.RecursiveForce(path: tmp_path)
+  wrote.success && cleaned.success && (compile.success == expect_success)
+}
 
 fn dcc_perturb_compile_expecting(module_file: String, source: String, expect_success: Bool) -> Bool {
   let root = git.Core.Toplevel()
   if dcc_gunbc_ready(root: root.path) {
     let tmp = shell.Mktemp.Dir()
     if tmp.success {
-      let wrote = Filesystem.Write(
-        path: concat(tmp.path, concat("/", module_file)),
-        content: source
+      dcc_perturb_compile_with_args(
+        tmp_path: tmp.path,
+        compile_args: dcc_perturb_compile_args(tmp: tmp.path),
+        module_file: module_file,
+        source: source,
+        expect_success: expect_success
       )
-      let compile = gunbc.WitnessBin.Run(
-        workdir: root.path,
-        bin_path: dcc_gunbc_path(root: root.path),
-        args: dcc_perturb_compile_args(tmp: tmp.path)
+    } else {
+      false
+    }
+  } else {
+    false
+  }
+}
+
+fn dcc_fixture_perturb_compile_expecting(module_file: String, source: String, expect_success: Bool) -> Bool {
+  let root = git.Core.Toplevel()
+  if dcc_gunbc_ready(root: root.path) {
+    let tmp = shell.Mktemp.DirWithTemplate(
+      template: concat(root.path, "/target/dcc_perturb_fixture_XXXXXX")
+    )
+    if tmp.success {
+      dcc_perturb_compile_with_args(
+        tmp_path: tmp.path,
+        compile_args: dcc_fixture_only_compile_args(tmp: tmp.path),
+        module_file: module_file,
+        source: source,
+        expect_success: expect_success
       )
-      let cleaned = shell.Remove.RecursiveForce(path: tmp.path)
-      wrote.success && cleaned.success && (compile.success == expect_success)
     } else {
       false
     }
@@ -113,6 +166,30 @@ fn run_perturb_unresolved_import_red_receipt() -> Bool {
     module_file: "_perturb_compile_clean_unresolved_import.dag",
     source: unresolved_import_perturb_source,
     expect_success: false
+  )
+}
+
+fn run_perturb_optional_skew_fixture_red_receipt() -> Bool {
+  dcc_fixture_perturb_compile_expecting(
+    module_file: "_perturb_compile_clean_red.dag",
+    source: perturb_module_source,
+    expect_success: false
+  )
+}
+
+fn run_perturb_unresolved_import_fixture_red_receipt() -> Bool {
+  dcc_fixture_perturb_compile_expecting(
+    module_file: "_perturb_compile_clean_unresolved_import.dag",
+    source: unresolved_import_perturb_source,
+    expect_success: false
+  )
+}
+
+fn run_perturb_fixture_green_receipt() -> Bool {
+  dcc_fixture_perturb_compile_expecting(
+    module_file: "_perturb_compile_clean_fixture_green.dag",
+    source: perturb_fixture_green_module_source,
+    expect_success: true
   )
 }
 

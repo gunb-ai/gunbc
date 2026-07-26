@@ -9677,8 +9677,12 @@ fn failure_receipt_companion(function: &str) -> Option<String> {
 }
 
 /// Run a witness companion that returns `String` divergence detail (Lane B agreement loudness).
-/// Empty string = no divergence detail (clean companion). Non-empty refusal sentinel on
-/// interpreter error or wrong type — never silent None (review 41847, §5).
+/// Empty string = no divergence detail (clean companion **or** companion not declared).
+/// Non-empty refusal sentinel on wrong type / non-missing interpreter error — never silent
+/// None when a companion *is* declared (review 41847, §5). A missing companion
+/// (`NoSuchFunction` / `NoMainFunction` from the `_holds` → `_failure_receipt` naming
+/// convention) is "not declared", not a refused receipt — the auto-derived name must not
+/// invent a required loudness hook for every Bool(false) witness.
 pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: &str) -> String {
     match v1_interpreter::run_in_context(ctx, function, false) {
         Ok(v1_interpreter::Value::Str(s)) => s,
@@ -9686,6 +9690,8 @@ pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: 
             "failure_receipt_refused: {function} returned {}, expected String",
             ctx.format_value(&other)
         ),
+        Err(v1_interpreter::InterpError::NoSuchFunction { .. })
+        | Err(v1_interpreter::InterpError::NoMainFunction) => String::new(),
         Err(e) => format!("failure_receipt_refused: {function}: {e}"),
     }
 }
@@ -9883,6 +9889,11 @@ pub fn run_claim_measured(
     if let Some(budget_ms) = ctx.witness_eval_budget() {
         ctx.arm_eval_deadline(budget_ms);
     }
+    if let Some(budget_ms) = ctx.witness_wall_budget() {
+        // Kill-at-deadline: shell waits poll this and SIGKILL at the ceiling.
+        // Completion-side `wall_budget_completion_outcome` stays as the backstop.
+        ctx.arm_wall_deadline(budget_ms);
+    }
     let started = std::time::Instant::now();
     let cpu_started_nanos = v1_interpreter::thread_cpu_nanos();
     let outcome = run_claim(ctx, function);
@@ -9892,6 +9903,7 @@ pub fn run_claim_measured(
     let cpu_nanos = v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_started_nanos);
     let wall_nanos = started.elapsed().as_nanos();
     ctx.clear_eval_deadline();
+    ctx.clear_wall_deadline();
     v1_interpreter::eval_subject_clear();
     let outcome = budget_completion_outcome(ctx.witness_eval_budget(), outcome, cpu_nanos);
     let outcome = wall_budget_completion_outcome(ctx.witness_wall_budget(), outcome, wall_nanos);
@@ -10071,7 +10083,7 @@ mod budget_completion_tests {
         match wall_budget_completion_outcome(Some(600), ClaimOutcome::Pass, 601_000_000_000) {
             ClaimOutcome::RuntimeError { message } => {
                 assert!(
-                    message.contains("wet self-host receipt wall budget exceeded"),
+                    message.contains("witness receipt wall budget exceeded"),
                     "typed refusal expected; got {message}"
                 );
             }
@@ -12023,12 +12035,13 @@ fn witness_admission_entry_function_keys_from_source(
             keys.push(key);
         }
     }
-    let heads: [(&str, &str); 5] = [
+    let heads: [(&str, &str); 6] = [
         ("bin_wet(", "entry: String"),
         ("probe_red(", "entry: String"),
         ("self_host_wet_entry(", "entry: String"),
         ("SelfHostWetReceiptBinding {", ""),
         ("RehomedBinWetRow {", ""),
+        ("SubstrateLongLaneRow {", ""),
     ];
     for (head, def_sig) in heads {
         let mut search_from = 0;
@@ -23723,13 +23736,13 @@ pub fn non_fold_residue_synthetic_unrostered_red_holds() -> bool {
 const NON_FOLD_RESIDUE_AUTHORITY_REL: &str = "dag/gunbc/non_fold_residue.dag";
 const NON_FOLD_RESIDUE_FRONTIER_DATA_NAME: &str = "non_fold_residue_frontier";
 
-/// Project the `unit` site keys out of the typed `non_fold_residue_frontier` rows of the
+/// Project the path site keys out of the typed `non_fold_residue_frontier` rows of the
 /// `gunbc.non_fold_residue` authority SOURCE TEXT via the real front-end — the roster's
 /// re-home off this file's former `NON_FOLD_RESIDUE_ROSTER` const (group-of-units ruling,
 /// enrolled in `gunbc.roster_registry`). Per-row reasons and dissolution triggers are
 /// `.dag`-side facts the host does not consume. Fail-closed: a parse error, a missing data
-/// def, a non-record element, a missing/non-literal `unit` field, a duplicate unit, or an
-/// empty roster is a loud panic, never a silent fallback.
+/// def, a non-record element, a missing/non-literal `subject.path` field, a duplicate path,
+/// or an empty roster is a loud panic, never a silent fallback.
 // 🟡 dissolve-on: hand-Rust reader over the `.dag` authority — dissolves with
 // `witness_exclusion_rows_from_module_source` when the host consumes an emitted manifest of
 // the rows (module-binding supply-carrier pattern), and with the scan below into a pure
@@ -23783,44 +23796,75 @@ pub(crate) fn non_fold_residue_units_from_module_source(
                      not a record literal (refusing — rows must stay directly host-readable)"
                 );
             }
-            let mut unit: Option<String> = None;
+            let mut path: Option<String> = None;
             for field in el.children.iter() {
                 let fname = crate::v1_std_core::field_init_node_name_at(
                     field.clone(),
                     source_indices.clone(),
                 );
-                if fname != "unit" {
+                if fname != "subject" {
                     continue;
                 }
                 let value = crate::v1_std_core::field_init_node_value(field.clone());
                 match value.expr_data.as_ref() {
-                    ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
-                        LiteralValue::LitStr { value: s } => unit = Some(s.clone()),
-                        _ => panic!(
-                            "nfr frontier reader: `unit` in a `{data_name}` row of \
-                             {module_rel_path} is not a string literal"
-                        ),
-                    },
+                    ExprData::ExprRecordLit { .. } => {
+                        let variant_name = crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            value.clone(),
+                        );
+                        if variant_name != "PathSubject" {
+                            panic!(
+                                "nfr frontier reader: `subject` in a `{data_name}` row of \
+                                 {module_rel_path} is not PathSubject {{ ... }}"
+                            );
+                        }
+                        let mut row_path: Option<String> = None;
+                        for subfield in value.children.iter() {
+                            let subname = crate::v1_std_core::field_init_node_name_at(
+                                subfield.clone(),
+                                source_indices.clone(),
+                            );
+                            if subname != "path" {
+                                continue;
+                            }
+                            let path_value =
+                                crate::v1_std_core::field_init_node_value(subfield.clone());
+                            match path_value.expr_data.as_ref() {
+                                ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
+                                    LiteralValue::LitStr { value: s } => row_path = Some(s.clone()),
+                                    _ => panic!(
+                                        "nfr frontier reader: `path` in a `{data_name}` row \
+                                         of {module_rel_path} is not a string literal"
+                                    ),
+                                },
+                                _ => panic!(
+                                    "nfr frontier reader: `path` in a `{data_name}` row of \
+                                     {module_rel_path} is not a literal"
+                                ),
+                            }
+                        }
+                        path = row_path;
+                    }
                     _ => panic!(
-                        "nfr frontier reader: `unit` in a `{data_name}` row of \
-                         {module_rel_path} is not a literal"
+                        "nfr frontier reader: `subject` in a `{data_name}` row of \
+                         {module_rel_path} is not a record literal"
                     ),
                 }
             }
-            let unit = unit.unwrap_or_else(|| {
+            let path = path.unwrap_or_else(|| {
                 panic!(
                     "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
-                     `unit` field"
+                     `subject` field"
                 )
             });
-            if !seen.insert(unit.clone()) {
+            if !seen.insert(path.clone()) {
                 panic!(
-                    "nfr frontier reader: duplicate unit {unit:?} in `{data_name}` of \
+                    "nfr frontier reader: duplicate path {path:?} in `{data_name}` of \
                      {module_rel_path} (the const this replaced tolerated duplicates; the \
                      typed roster refuses them)"
                 );
             }
-            units.push(unit);
+            units.push(path);
         }
         if units.is_empty() {
             panic!(
@@ -24334,14 +24378,14 @@ mod nfr_tests {
         let synthetic = "module gunbc.non_fold_residue\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
                FrontierRow {\n\
-                 unit: \"synthetic/a.dag::f\",\n\
+                 subject: PathSubject { path: \"synthetic/a.dag::f\" },\n\
                  reason: shared_reason,\n\
-                 dissolve_on: \"synthetic trigger\"\n\
+                 trigger: TriggerProse { text: \"synthetic trigger\" }\n\
                },\n\
                FrontierRow {\n\
-                 unit: \"synthetic/b.dag::g\",\n\
+                 subject: PathSubject { path: \"synthetic/b.dag::g\" },\n\
                  reason: \"inline reason\",\n\
-                 dissolve_on: shared_trigger\n\
+                 trigger: TriggerProse { text: shared_trigger }\n\
                }\n\
              ]\n";
         assert_eq!(
@@ -24358,8 +24402,8 @@ mod nfr_tests {
     fn nfr_frontier_reader_refuses_duplicate_unit() {
         let synthetic = "module gunbc.non_fold_residue\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
-               FrontierRow { unit: \"synthetic/a.dag::f\", reason: \"r\", dissolve_on: \"d\" },\n\
-               FrontierRow { unit: \"synthetic/a.dag::f\", reason: \"r2\", dissolve_on: \"d2\" }\n\
+               FrontierRow { subject: PathSubject { path: \"synthetic/a.dag::f\" }, reason: \"r\", trigger: TriggerProse { text: \"d\" } },\n\
+               FrontierRow { subject: PathSubject { path: \"synthetic/a.dag::f\" }, reason: \"r2\", trigger: TriggerProse { text: \"d2\" } }\n\
              ]\n";
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
@@ -24367,7 +24411,7 @@ mod nfr_tests {
         .is_err();
         assert!(
             refused,
-            "a duplicate unit key must refuse loudly (fail-closed)"
+            "a duplicate path key must refuse loudly (fail-closed)"
         );
     }
 
@@ -24375,7 +24419,7 @@ mod nfr_tests {
     fn nfr_frontier_reader_refuses_missing_unit_field() {
         let synthetic = "module gunbc.non_fold_residue\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
-               FrontierRow { reason: \"r\", dissolve_on: \"d\" }\n\
+               FrontierRow { reason: \"r\", trigger: TriggerProse { text: \"d\" } }\n\
              ]\n";
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
@@ -24383,7 +24427,7 @@ mod nfr_tests {
         .is_err();
         assert!(
             refused,
-            "a row without a `unit` field must refuse loudly (fail-closed)"
+            "a row without a `subject` field must refuse loudly (fail-closed)"
         );
     }
 }
@@ -24668,7 +24712,16 @@ fn inert_carrier_type_carrier_blocks(content: &str) -> Vec<(String, String)> {
 // variant occurrences to the parent type or a live state machine reads as inert. Variant
 // names shared across coproducts merge their tallies — an approximation that errs toward
 // not flagging; the roster stays the per-name override.
-fn inert_carrier_variant_names(block: &str) -> Vec<String> {
+//
+// Nominal records (`type Foo = Foo { field: T }`) must NOT be read as a one-variant
+// coproduct: the repeated type name after `=` is the record constructor spelling, not a
+// variant. Treating it as one double-counts `self_block_refs` and can drive consumption
+// to ≤0 for a carrier that is actively constructed in the same file (HostToolchainReach
+// falsifier red 2026-07-25 — live consumer in gunbc.host_toolchain_ensure, falsely inert).
+fn inert_carrier_variant_names(type_name: &str, block: &str) -> Vec<String> {
+    if inert_carrier_block_is_nominal_record(type_name, block) {
+        return Vec::new();
+    }
     let mut out = Vec::new();
     for (idx, raw) in block.lines().enumerate() {
         let t = raw.trim_start();
@@ -24698,6 +24751,27 @@ fn inert_carrier_variant_names(block: &str) -> Vec<String> {
     out.sort();
     out.dedup();
     out
+}
+
+fn inert_carrier_block_is_nominal_record(type_name: &str, block: &str) -> bool {
+    let Some(first) = block.lines().next() else {
+        return false;
+    };
+    let trimmed = first.trim_start();
+    let Some(eq) = trimmed.find('=') else {
+        // `type Foo { ... }` brace-record form — no coproduct variants.
+        return trimmed.contains('{');
+    };
+    if trimmed[eq + 1..].contains('|') {
+        return false;
+    }
+    let after = trimmed[eq + 1..].trim_start();
+    after.starts_with(type_name)
+        && after
+            .as_bytes()
+            .get(type_name.len())
+            .is_some_and(|b| *b == b'{' || b.is_ascii_whitespace())
+        && after.contains('{')
 }
 
 const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
@@ -24780,7 +24854,7 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
             *decl_count.entry(name.clone()).or_insert(0) += 1;
             *self_block_refs.entry(name.clone()).or_insert(0) +=
                 inert_carrier_count_token(&block, &name);
-            for v in inert_carrier_variant_names(&block) {
+            for v in inert_carrier_variant_names(&name, &block) {
                 *self_block_refs.entry(v.clone()).or_insert(0) +=
                     inert_carrier_count_token(&block, &v);
                 type_variants.entry(name.clone()).or_default().push(v);
@@ -24919,6 +24993,27 @@ mod inert_carrier_tests {
         assert!(
             inert.contains(&"LonelyState".to_string()),
             "a coproduct whose variants are used nowhere outside its block must stay flagged; got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn nominal_record_spelling_is_not_a_coproduct_variant() {
+        // `type Foo = Foo { ... }` is a record carrier, not a one-variant sum. The
+        // repeated name after `=` must not inflate self_block_refs or the same-file
+        // constructor reads as consumption≤0 (HostToolchainReach false-inert).
+        let inert = inert_names_of(&[
+            (
+                "a.dag",
+                "module a\ntype Reach = Reach {\n  target: Int\n  access: Int\n}\nfn go(x: Int) -> Int {\n  let r = Reach { target: x, access: x }\n  r.target\n}\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { go(x: 1) == 1 }\nfn probe(s: Reach) -> Bool { true }\n",
+            ),
+        ]);
+        assert!(
+            !inert.contains(&"Reach".to_string()),
+            "nominal-record carrier with a same-file constructor must not be inert; got {inert:?}"
         );
     }
 
@@ -27162,6 +27257,29 @@ mod module_path_index_tests {
         assert!(
             keys.contains(&"dag/test/claim/x_test.dag::x_holds".to_string()),
             "a RehomedBinWetRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
+        );
+    }
+
+    #[test]
+    fn substrate_long_lane_rows_parse_as_explicit_consumer_keys() {
+        let synthetic = "module gunbc.ci_layer_roots\n\n\
+             type SubstrateLongLaneRow {\n\
+               entry: String\n\
+               function: String\n\
+             }\n\n\
+             data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [\n\
+               SubstrateLongLaneRow {\n\
+                 entry: \"dag/test/claim/y_test.dag\",\n\
+                 function: \"y_holds\",\n\
+                 reason: \"r\",\n\
+                 dissolve_on: \"d\"\n\
+               }\n\
+             ]\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.contains(&"dag/test/claim/y_test.dag::y_holds".to_string()),
+            "a SubstrateLongLaneRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
         );
     }
 

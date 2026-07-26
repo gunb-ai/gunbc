@@ -11,7 +11,6 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_row_parse_engine_hooks,
   compiler_frontier_row_discovery_enumeration,
   compiler_frontier_row_use_site_verdict,
-  compiler_frontier_self_emitted_baseline,
   SelfEmitted,
   ProbeStageEmit,
   CompilerModuleFrontierRow
@@ -27,6 +26,8 @@ import v2.std.algebra { length }
 import v2.std.collection { Absent, Present }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+
+data wet_binding_revocation_witness_note: String = "2026-07-25: module wet bindings revoked (empty list) after cadence run 30126573464 showed the six SelfEmitted wet receipts RED. Witnesses below pin the revoked state — SelfEmitted rows enroll nothing without a binding; nightly = template-only. Re-arm each binding witness when that module's wet receipt greens."
 
 fn sample_seed_retained_row() -> CompilerModuleFrontierRow {
   compiler_frontier_row_06_translate
@@ -54,76 +55,66 @@ fn witness_self_emitted_without_binding_enrolls_no_wet_entry() -> Bool {
   length(xs: frontier_row_wet_entries_if_enrolled(row: sample_self_emitted_row())) == 0
 }
 
-fn witness_parse_engine_hooks_self_emitted_enrolls_wet_entry() -> Bool {
-  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_parse_engine_hooks)) == 1
+fn witness_parse_engine_hooks_self_emitted_enrolls_no_wet_while_revoked() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_parse_engine_hooks)) == 0
 }
 
-fn witness_use_site_verdict_self_emitted_enrolls_wet_entry() -> Bool {
-  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_use_site_verdict)) == 1
+fn witness_use_site_verdict_self_emitted_enrolls_no_wet_while_revoked() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_use_site_verdict)) == 0
 }
 
-fn witness_discovery_enumeration_self_emitted_enrolls_wet_entry() -> Bool {
-  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_discovery_enumeration)) == 1
+fn witness_discovery_enumeration_self_emitted_enrolls_no_wet_while_revoked() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_discovery_enumeration)) == 0
 }
 
-fn witness_target_carriers_self_emitted_enrolls_wet_entry() -> Bool {
-  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_07_target_carriers)) == 1
+fn witness_target_carriers_self_emitted_enrolls_no_wet_while_revoked() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_07_target_carriers)) == 0
 }
 
-fn witness_body_producer_self_emitted_enrolls_wet_entry() -> Bool {
-  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_03_body_producer)) == 1
+fn witness_body_producer_self_emitted_enrolls_no_wet_while_revoked() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_03_body_producer)) == 0
 }
 
 data wet_template_entry_count_note: String = "Eleven template rows: the Gate-4 std/logic per-module self-host receipt, the Gate-1 emit-class import-closure receipt (namespace_import_closure_witness_test), the seven emit-on-demand family aggregates (kernel, field_access, complement, match_loop_fold, meet_join, variant_construct, classical_not_ingested — the 2026-07-21 nightly Wet enrollment; complement + meet_join are pure-receipt residues after the family-grain migration), the family-crate aggregate (emit_on_demand_family_crate_witness_test — the executing consumer for the migrated complement/meet_join native legs, enrolled so the migration cannot orphan them), and the Kernel-D native-only-verdict real compile-and-run witness (emit_host_native_only_verdict_test.dag — KERNEL-D TESTING RE-STEER, 2026-07-24: moved off per-PR CommitCheckEnrollment onto this nightly wet cadence, the same lane as the other module-agnostic rows here). The non-Gate-4 rows are module-agnostic — no frontier row flips to gate them; they enroll as template rows rather than SelfHostWetReceiptBinding rows. See falsifier_self_host_wet_emit_class_note."
 
-fn witness_nightly_enrollment_includes_template_plus_self_emitted_modules() -> Bool {
+fn witness_nightly_enrollment_is_template_only_while_bindings_revoked() -> Bool {
   (length(xs: falsifier_self_host_wet_template_entries) == 11)
-    && (length(xs: falsifier_self_host_wet_frontier_enrolled_entries()) == compiler_frontier_self_emitted_baseline)
-    && (length(xs: falsifier_self_host_wet_entries()) == compiler_frontier_self_emitted_baseline + 11)
+    && (length(xs: falsifier_self_host_wet_frontier_enrolled_entries()) == 0)
+    && (length(xs: falsifier_self_host_wet_entries()) == 11)
 }
 
-fn witness_parse_engine_hooks_binding_present() -> Bool {
+fn witness_parse_engine_hooks_binding_absent_while_revoked() -> Bool {
   match find_wet_receipt_binding(module_path: "src/v2/compiler/parse_engine_hooks.dag") {
-    Present { value: b } =>
-      b.entry == "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag"
-        && b.function == "self_host_parse_engine_hooks_behavioral_receipt_holds"
-    Absent => false
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
-fn witness_use_site_verdict_binding_present() -> Bool {
+fn witness_use_site_verdict_binding_absent_while_revoked() -> Bool {
   match find_wet_receipt_binding(module_path: "src/v2/compiler/use_site_verdict.dag") {
-    Present { value: b } =>
-      b.entry == "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag"
-        && b.function == "self_host_use_site_verdict_behavioral_receipt_holds"
-    Absent => false
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
-fn witness_discovery_enumeration_binding_present() -> Bool {
+fn witness_discovery_enumeration_binding_absent_while_revoked() -> Bool {
   match find_wet_receipt_binding(module_path: "src/v2/compiler/discovery_enumeration.dag") {
-    Present { value: b } =>
-      b.entry == "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag"
-        && b.function == "self_host_discovery_enumeration_behavioral_receipt_holds"
-    Absent => false
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
-fn witness_target_carriers_binding_present() -> Bool {
+fn witness_target_carriers_binding_absent_while_revoked() -> Bool {
   match find_wet_receipt_binding(module_path: "src/v2/compiler/07_target_carriers.dag") {
-    Present { value: b } =>
-      b.entry == "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag"
-        && b.function == "self_host_target_carriers_behavioral_receipt_holds"
-    Absent => false
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
-fn witness_body_producer_binding_present() -> Bool {
+fn witness_body_producer_binding_absent_while_revoked() -> Bool {
   match find_wet_receipt_binding(module_path: "src/v2/compiler/03_body_producer.dag") {
-    Present { value: b } =>
-      b.entry == "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag"
-        && b.function == "self_host_body_producer_behavioral_receipt_holds"
-    Absent => false
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
@@ -137,16 +128,16 @@ fn witness_unbound_module_path_has_no_binding() -> Bool {
 test fn wet_receipt_enrollment_witnesses() -> Bool {
   witness_seed_retained_row_enrolls_no_wet_entry()
     && witness_self_emitted_without_binding_enrolls_no_wet_entry()
-    && witness_parse_engine_hooks_self_emitted_enrolls_wet_entry()
-    && witness_use_site_verdict_self_emitted_enrolls_wet_entry()
-    && witness_discovery_enumeration_self_emitted_enrolls_wet_entry()
-    && witness_target_carriers_self_emitted_enrolls_wet_entry()
-    && witness_body_producer_self_emitted_enrolls_wet_entry()
-    && witness_nightly_enrollment_includes_template_plus_self_emitted_modules()
-    && witness_parse_engine_hooks_binding_present()
-    && witness_use_site_verdict_binding_present()
-    && witness_discovery_enumeration_binding_present()
-    && witness_target_carriers_binding_present()
-    && witness_body_producer_binding_present()
+    && witness_parse_engine_hooks_self_emitted_enrolls_no_wet_while_revoked()
+    && witness_use_site_verdict_self_emitted_enrolls_no_wet_while_revoked()
+    && witness_discovery_enumeration_self_emitted_enrolls_no_wet_while_revoked()
+    && witness_target_carriers_self_emitted_enrolls_no_wet_while_revoked()
+    && witness_body_producer_self_emitted_enrolls_no_wet_while_revoked()
+    && witness_nightly_enrollment_is_template_only_while_bindings_revoked()
+    && witness_parse_engine_hooks_binding_absent_while_revoked()
+    && witness_use_site_verdict_binding_absent_while_revoked()
+    && witness_discovery_enumeration_binding_absent_while_revoked()
+    && witness_target_carriers_binding_absent_while_revoked()
+    && witness_body_producer_binding_absent_while_revoked()
     && witness_unbound_module_path_has_no_binding()
 }

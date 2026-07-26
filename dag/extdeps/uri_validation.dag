@@ -8,7 +8,7 @@ import extdeps.uri {
   parse_href_scheme,
 }
 import std.markup {
-  MarkupNode, MarkupAttr, ElementNode, TextNode,
+  Fragment, Element, FragmentText, RawNode, Attribute, attr,
   attr_is_url_attr,
 }
 
@@ -55,11 +55,12 @@ type RejectedUrl {
   reason: RejectedUrlScheme
 }
 
-fn find_first_rejected_url(node: MarkupNode) -> RejectedUrl? {
+fn find_first_rejected_url(node: Fragment) -> RejectedUrl? {
   match node {
-    TextNode { text: _ } => Absent
-    ElementNode { tag: _, attrs, children } => {
-      let from_attr = fold(attrs,
+    FragmentText { content: _ } => Absent
+    RawNode { content: _ } => Absent
+    Element { tag: _, attributes, children } => {
+      let from_attr = fold(attributes,
         init: Absent,
         f: (acc, a) => match acc {
           Present { value: r } => Present { value: r }
