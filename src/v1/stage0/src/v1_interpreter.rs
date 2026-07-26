@@ -425,11 +425,34 @@ fn optional_absent(ctx: &InterpContext) -> Value {
     }
 }
 
-fn map_lookup_as_optional(raw: Value, ctx: &InterpContext) -> Value {
-    if matches!(raw, Value::Null) {
-        optional_absent(ctx)
-    } else {
-        optional_present(raw, ctx)
+/// Whether a `raw_map_lookup` result already carries the `Optional<V>` contract
+/// (a `.dag`-authored `Map.lookup` closure returns `Optional<V>` by construction)
+/// or is a bare storage read that still needs the `Optional` wrap applied
+/// (native `Value::Map`/field storage, where a miss is `Value::Null`).
+/// Distinguishing by the call site — not by sniffing the value's shape — is
+/// required so a stored `V = Optional<T>` payload isn't mistaken for an
+/// already-wrapped lookup result (DESIGN §5: construction, not validation).
+enum RawMapLookup {
+    AlreadyOptional(Value),
+    NeedsWrap(Value),
+}
+
+fn map_lookup_as_optional(raw: RawMapLookup, ctx: &InterpContext) -> Value {
+    match raw {
+        RawMapLookup::AlreadyOptional(v) => v,
+        RawMapLookup::NeedsWrap(Value::Null) => optional_absent(ctx),
+        RawMapLookup::NeedsWrap(v) => optional_present(v, ctx),
+    }
+}
+
+impl RawMapLookup {
+    /// Bare-value callers (field access, `[]` indexing, the raw `lookup`/`get`
+    /// builtins) don't observe the `Optional` contract at all — they want
+    /// exactly what was found, miss-as-`Null` included.
+    fn into_raw(self) -> Value {
+        match self {
+            RawMapLookup::AlreadyOptional(v) | RawMapLookup::NeedsWrap(v) => v,
+        }
     }
 }
 
@@ -732,7 +755,7 @@ impl fmt::Display for InterpError {
             } => {
                 write!(
                     f,
-                    "wet self-host receipt wall budget exceeded: {}ms elapsed > {}ms whole-receipt budget (emit+cargo wall time; nightly falsifier Wet lane 2026-07-15)",
+                    "witness receipt wall budget exceeded: {}ms elapsed > {}ms whole-receipt budget (falsifier wet/silent-pick lane; kill-at-deadline)",
                     elapsed_ms, budget_ms
                 )
             }
@@ -1288,6 +1311,12 @@ pub struct InterpContext {
     witness_eval_budget_ms: std::cell::Cell<Option<u64>>,
     // Whole-receipt wall budget for Wet self-host receipts (emit+cargo subprocess I/O included).
     witness_wall_budget_ms: std::cell::Cell<Option<u64>>,
+    // Kill-at-deadline arm for the wall budget (Finding 1, 2026-07-25): (start, budget_ms).
+    // Shell waits poll this and SIGKILL the process group at the ceiling — the completion-
+    // side `wall_budget_completion_outcome` remains a backstop for non-subprocess spend.
+    // Without this arm the refusal fires only after the overrun is fully spent (707s on a
+    // 600s budget; 21–34min receipts in the original finding).
+    witness_wall_deadline: std::cell::Cell<Option<(Instant, u64)>>,
 }
 
 impl InterpContext {
@@ -1443,6 +1472,7 @@ impl InterpContext {
             eval_deadline_stride: std::cell::Cell::new(0),
             witness_eval_budget_ms: std::cell::Cell::new(None),
             witness_wall_budget_ms: std::cell::Cell::new(None),
+            witness_wall_deadline: std::cell::Cell::new(None),
         }
     }
 
@@ -1470,6 +1500,36 @@ impl InterpContext {
 
     pub fn witness_wall_budget(&self) -> Option<u64> {
         self.witness_wall_budget_ms.get()
+    }
+
+    pub fn arm_wall_deadline(&self, budget_ms: u64) {
+        self.witness_wall_deadline
+            .set(Some((Instant::now(), budget_ms)));
+    }
+
+    pub fn clear_wall_deadline(&self) {
+        self.witness_wall_deadline.set(None);
+    }
+
+    /// Remaining wall-budget milliseconds, or `None` when no deadline is armed.
+    /// `Some(0)` means the ceiling is already past — callers must refuse now.
+    pub fn wall_deadline_remaining_ms(&self) -> Option<u64> {
+        let (start, budget_ms) = self.witness_wall_deadline.get()?;
+        let elapsed_ms = start.elapsed().as_millis() as u64;
+        Some(budget_ms.saturating_sub(elapsed_ms))
+    }
+
+    pub fn wall_deadline_exceeded_error(&self) -> Option<InterpError> {
+        let (start, budget_ms) = self.witness_wall_deadline.get()?;
+        let elapsed_ms = start.elapsed().as_millis() as u64;
+        if elapsed_ms > budget_ms {
+            Some(InterpError::WitnessWallBudgetExceeded {
+                elapsed_ms,
+                budget_ms,
+            })
+        } else {
+            None
+        }
     }
 
     fn published_mock_keys(&self) -> InterpResult<Rc<std::collections::HashSet<String>>> {
@@ -4146,7 +4206,8 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
         let key = args.first().ok_or_else(|| InterpError::TypeError {
             msg: "lookup requires a key argument".to_string(),
         })?;
-        return raw_map_lookup_witness(&receiver_val, key, env, ctx);
+        let raw = raw_map_lookup(&receiver_val, key, env, ctx)?;
+        return Ok(map_lookup_as_optional(raw, ctx));
     }
 
     if let Value::Record { fields, .. } | Value::Variant { fields, .. } = &receiver_val {
@@ -4229,7 +4290,8 @@ fn extract_field(
                 type_name: ctx.resolve(*type_name).to_string(),
                 field: field.to_string(),
             }),
-        Value::Map(_) => raw_map_lookup(value, &Value::Str(field.to_string()), env, ctx),
+        Value::Map(_) => raw_map_lookup(value, &Value::Str(field.to_string()), env, ctx)
+            .map(RawMapLookup::into_raw),
         _ => Err(InterpError::TypeError {
             msg: format!("cannot access field '{}' on {}", field, value.type_label()),
         }),
@@ -4456,7 +4518,9 @@ fn eval_index(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
             let i = *i as usize;
             Ok(items.get(i).cloned().unwrap_or(Value::Null))
         }
-        (base, key) if is_map_lookup_receiver(base) => raw_map_lookup(base, key, env, ctx),
+        (base, key) if is_map_lookup_receiver(base) => {
+            raw_map_lookup(base, key, env, ctx).map(RawMapLookup::into_raw)
+        }
         (Value::Str(s), Value::Int(i)) => {
             let i = *i as usize;
             Ok(s.chars()
@@ -4534,7 +4598,7 @@ fn eval_algebra_method_inner(
             let key = args.first().ok_or_else(|| InterpError::TypeError {
                 msg: "lookup requires a key argument".to_string(),
             })?;
-            raw_map_lookup(&receiver, key, env, ctx)
+            raw_map_lookup(&receiver, key, env, ctx).map(RawMapLookup::into_raw)
         }
 
         "map" => list_method_with_closure("map", receiver, args, env, ctx, |items, f, env, ctx| {
@@ -4861,7 +4925,7 @@ fn eval_algebra_method_inner(
                 let key = args.first().ok_or_else(|| InterpError::TypeError {
                     msg: "get requires a key argument".to_string(),
                 })?;
-                raw_map_lookup(&receiver, key, env, ctx)
+                raw_map_lookup(&receiver, key, env, ctx).map(RawMapLookup::into_raw)
             } else if let Ok(items) = expect_list(&receiver, "get") {
                 let idx = expect_int(args.first(), "get")?;
                 Ok(list_get_at_or_null(&items, idx))
@@ -4869,7 +4933,7 @@ fn eval_algebra_method_inner(
                 let key = args.first().ok_or_else(|| InterpError::TypeError {
                     msg: "get requires a key argument".to_string(),
                 })?;
-                raw_map_lookup(&receiver, key, env, ctx)
+                raw_map_lookup(&receiver, key, env, ctx).map(RawMapLookup::into_raw)
             }
         }
 
@@ -5942,6 +6006,108 @@ fn argv_arg_limit_refusal(argv: &[String], limit_bytes: usize) -> Option<InterpE
     }
 }
 
+/// When a whole-receipt wall deadline is armed, put the child in its own process
+/// group so a mid-wait kill reaps cargo→rustc descendants, not only the parent.
+fn configure_shell_process_group_for_wall_kill(
+    cmd: &mut std::process::Command,
+    ctx: &InterpContext,
+) {
+    if ctx.witness_wall_deadline.get().is_none() {
+        return;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // SAFETY: runs in the child after fork, before exec — setpgid(0,0) is the
+        // standard isolate-for-kill pattern; no shared mutable state is touched.
+        unsafe {
+            cmd.pre_exec(|| {
+                if libc::setpgid(0, 0) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (cmd, ctx);
+    }
+}
+
+fn kill_shell_process_group(pid: u32) {
+    #[cfg(unix)]
+    {
+        // SAFETY: kill the child itself, then its process group (set when a wall
+        // deadline is armed) so cargo→rustc descendants die with the parent.
+        // The direct pid kill covers the no-setpgid path (tests / non-unix fallbacks).
+        unsafe {
+            let _ = libc::kill(pid as i32, libc::SIGKILL);
+            let _ = libc::kill(-(pid as i32), libc::SIGKILL);
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+    }
+}
+
+/// Wait for a shell child, killing the process group when the whole-receipt wall
+/// deadline elapses. No-deadline path is a direct `wait_with_output` (zero poll
+/// overhead for the hermetic corpus).
+fn wait_child_honoring_wall_deadline(
+    child: std::process::Child,
+    ctx: &InterpContext,
+    argv0: &str,
+) -> InterpResult<std::process::Output> {
+    if ctx.witness_wall_deadline.get().is_none() {
+        return child
+            .wait_with_output()
+            .map_err(|e| InterpError::TypeError {
+                msg: format!("failed to wait on '{}': {}", argv0, e),
+            });
+    }
+
+    let pid = child.id();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let result = child.wait_with_output();
+        let _ = tx.send(result);
+    });
+
+    loop {
+        if let Some(err) = ctx.wall_deadline_exceeded_error() {
+            kill_shell_process_group(pid);
+            // Drain the waiter so we don't leak a join handle; ignore its I/O
+            // error (SIGKILL often surfaces as a wait failure).
+            let _ = rx.recv_timeout(std::time::Duration::from_secs(2));
+            let _ = worker.join();
+            return Err(err);
+        }
+        let remaining_ms = ctx.wall_deadline_remaining_ms().unwrap_or(0);
+        let poll = std::time::Duration::from_millis(remaining_ms.min(250).max(1));
+        match rx.recv_timeout(poll) {
+            Ok(Ok(output)) => {
+                let _ = worker.join();
+                return Ok(output);
+            }
+            Ok(Err(e)) => {
+                let _ = worker.join();
+                return Err(InterpError::TypeError {
+                    msg: format!("failed to wait on '{}': {}", argv0, e),
+                });
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                let _ = worker.join();
+                return Err(InterpError::TypeError {
+                    msg: format!("shell wait worker for '{}' disconnected", argv0),
+                });
+            }
+        }
+    }
+}
+
 fn dispatch_shell(
     transport: &Rc<Node>,
     param_env: &Rc<Env>,
@@ -5980,6 +6146,12 @@ fn dispatch_shell(
         return Err(err);
     }
 
+    // Refuse before spawn when the whole-receipt wall ceiling is already past
+    // (prior subprocess spent the budget; don't start another cargo).
+    if let Some(err) = ctx.wall_deadline_exceeded_error() {
+        return Err(err);
+    }
+
     let output = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
         use std::io::Write;
         use std::process::Stdio;
@@ -5988,26 +6160,22 @@ fn dispatch_shell(
         let stdin_bytes = shell_stdin_payload(&stdin_val)?;
 
         let wall_start = std::time::Instant::now();
-        let mut child = std::process::Command::new(&argv[0])
-            .args(&argv[1..])
+        let mut cmd = std::process::Command::new(&argv[0]);
+        cmd.args(&argv[1..])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| InterpError::TypeError {
-                msg: format!("failed to execute '{}': {}", argv[0], e),
-            })?;
+            .stderr(Stdio::piped());
+        configure_shell_process_group_for_wall_kill(&mut cmd, ctx);
+        let mut child = cmd.spawn().map_err(|e| InterpError::TypeError {
+            msg: format!("failed to execute '{}': {}", argv[0], e),
+        })?;
 
         let stdin_writer = child
             .stdin
             .take()
             .map(|mut stdin| std::thread::spawn(move || stdin.write_all(&stdin_bytes)));
 
-        let output = child
-            .wait_with_output()
-            .map_err(|e| InterpError::TypeError {
-                msg: format!("failed to wait on '{}': {}", argv[0], e),
-            })?;
+        let output = wait_child_honoring_wall_deadline(child, ctx, &argv[0])?;
 
         if let Some(writer) = stdin_writer {
             // A stdin-write error (e.g. broken pipe) here is not itself the
@@ -6029,13 +6197,18 @@ fn dispatch_shell(
         );
         output
     } else {
+        use std::process::Stdio;
         let wall_start = std::time::Instant::now();
-        let output = std::process::Command::new(&argv[0])
-            .args(&argv[1..])
-            .output()
-            .map_err(|e| InterpError::TypeError {
-                msg: format!("failed to execute '{}': {}", argv[0], e),
-            })?;
+        let mut cmd = std::process::Command::new(&argv[0]);
+        cmd.args(&argv[1..])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        configure_shell_process_group_for_wall_kill(&mut cmd, ctx);
+        let child = cmd.spawn().map_err(|e| InterpError::TypeError {
+            msg: format!("failed to execute '{}': {}", argv[0], e),
+        })?;
+        let output = wait_child_honoring_wall_deadline(child, ctx, &argv[0])?;
         render_shell_completion_trace(
             expected,
             output.status.code().unwrap_or(-1),
@@ -8213,7 +8386,10 @@ fn eval_builtin_inner(
         },
 
         "lookup" => match positional.as_slice() {
-            [map, key] => Ok(Some(raw_map_lookup(map, key, &Env::empty(), ctx)?)),
+            [map, key] => {
+                let raw = raw_map_lookup(map, key, &Env::empty(), ctx)?;
+                Ok(Some(map_lookup_as_optional(raw, ctx)))
+            }
             _ => Ok(None),
         },
 
@@ -9754,50 +9930,30 @@ fn is_map_lookup_receiver(val: &Value) -> bool {
     }
 }
 
-fn raw_map_lookup_witness(
-    map: &Value,
-    key: &Value,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
-    match map {
-        Value::Map(m) => match CanonKey::new(key.clone()) {
-            Some(ck) => match m.get(&ck) {
-                Some(v) => Ok(witness_holds(v.clone(), ctx)),
-                None => Ok(witness_violates(
-                    native_map_absent_diagnostic_value(ctx),
-                    ctx,
-                )),
-            },
-            None => Ok(witness_violates(
-                native_map_absent_diagnostic_value(ctx),
-                ctx,
-            )),
-        },
-        _ => raw_map_lookup(map, key, env, ctx),
-    }
-}
-
 fn raw_map_lookup(
     map: &Value,
     key: &Value,
     env: &Rc<Env>,
     ctx: &InterpContext,
-) -> InterpResult<Value> {
+) -> InterpResult<RawMapLookup> {
     match map {
         Value::Map(m) => match CanonKey::new(key.clone()) {
-            Some(ck) => Ok(m.get(&ck).cloned().unwrap_or(Value::Null)),
-            None => Ok(Value::Null),
+            Some(ck) => Ok(RawMapLookup::NeedsWrap(
+                m.get(&ck).cloned().unwrap_or(Value::Null),
+            )),
+            None => Ok(RawMapLookup::NeedsWrap(Value::Null)),
         },
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
             let lookup_sym = ctx.sym("lookup");
             match fields_get(fields, lookup_sym) {
-                Some(lookup @ Value::Closure { .. }) => {
-                    apply_closure(lookup, &[key.clone()], env, ctx)
-                }
+                Some(lookup @ Value::Closure { .. }) => Ok(RawMapLookup::AlreadyOptional(
+                    apply_closure(lookup, &[key.clone()], env, ctx)?,
+                )),
                 Some(Value::Fn { node }) => {
                     let named = vec![(None, key.clone())];
-                    call_function(ctx, node, &named, env)
+                    Ok(RawMapLookup::AlreadyOptional(call_function(
+                        ctx, node, &named, env,
+                    )?))
                 }
                 Some(_) => Err(InterpError::TypeError {
                     msg: "Map.lookup field is not callable".to_string(),
@@ -9805,9 +9961,11 @@ fn raw_map_lookup(
                 None => match key {
                     Value::Str(s) => {
                         let k = ctx.sym(s);
-                        Ok(fields_get(fields, k).cloned().unwrap_or(Value::Null))
+                        Ok(RawMapLookup::NeedsWrap(
+                            fields_get(fields, k).cloned().unwrap_or(Value::Null),
+                        ))
                     }
-                    _ => Ok(Value::Null),
+                    _ => Ok(RawMapLookup::NeedsWrap(Value::Null)),
                 },
             }
         }
@@ -10337,6 +10495,77 @@ mod shell_completion_trace_tests {
             "target read must refuse as non-commit-deterministic"
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[cfg(test)]
+mod wall_deadline_kill_tests {
+    use std::process::{Command, Stdio};
+    use std::rc::Rc;
+    use std::time::Instant;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+
+    use super::{wait_child_honoring_wall_deadline, ExecutionMode, InterpContext, InterpError};
+
+    fn wet_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Wet)
+    }
+
+    #[test]
+    fn wall_deadline_kills_sleep_before_completion_backstop() {
+        let ctx = wet_ctx();
+        // 200ms ceiling vs a 5s sleep: kill-at-deadline must refuse near the
+        // ceiling, not after the sleep finishes (the measure-after-spend defect).
+        ctx.arm_wall_deadline(200);
+        let started = Instant::now();
+        let child = Command::new("sleep")
+            .arg("5")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn sleep");
+        let err = wait_child_honoring_wall_deadline(child, &ctx, "sleep")
+            .expect_err("over-budget sleep must refuse");
+        let elapsed_ms = started.elapsed().as_millis() as u64;
+        match err {
+            InterpError::WitnessWallBudgetExceeded {
+                elapsed_ms: reported,
+                budget_ms,
+            } => {
+                assert_eq!(budget_ms, 200);
+                assert!(reported >= 200, "reported={reported}");
+            }
+            other => panic!("expected WitnessWallBudgetExceeded, got {other:?}"),
+        }
+        assert!(
+            elapsed_ms < 2000,
+            "kill-at-deadline must stop near the 200ms ceiling, spent {elapsed_ms}ms (measure-after-spend would burn ~5000ms)"
+        );
+    }
+
+    #[test]
+    fn no_wall_deadline_waits_to_completion() {
+        let ctx = wet_ctx();
+        let child = Command::new("true")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn true");
+        let output = wait_child_honoring_wall_deadline(child, &ctx, "true")
+            .expect("no-deadline wait must succeed");
+        assert!(output.status.success());
     }
 }
 

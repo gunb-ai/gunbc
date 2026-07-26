@@ -60,8 +60,6 @@ pub use crate::v1_compiler_languages::{
 pub use crate::v1_compiler_languages::{ItemKeywords, TestConventions, VisibilitySpec};
 pub use crate::v1_compiler_runtime_go::go_runtime_source;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::CardOptional;
 use crate::v1_std_core::Connective::{Conj, Disj};

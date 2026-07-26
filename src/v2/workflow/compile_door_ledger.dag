@@ -27,7 +27,16 @@ import v2.workflow.floor_diff_observe {
   floor_observe_git_diff_name_status_for_ci
 }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
+import v2.std.collection {
+  List
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }

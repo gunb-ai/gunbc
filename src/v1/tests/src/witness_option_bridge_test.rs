@@ -1,8 +1,7 @@
 //! RESIDUAL after 5-test-migration (2026-07-02): 3 of the original 6 tests are
 //! migrated to marker-discovered floor witnesses in
 //! src/v2/test/claim/manual/witness_option_bridge_test.dag (map_get hit->Present,
-//! miss->Absent, non-absent lookup failure -> Rejected fail-closed, plus the
-//! affected_set excluded-propagation proof smoke).
+//! miss->Absent, plus the affected_set excluded-propagation proof smoke).
 //! The 3 tests below stay:
 //! - match_pattern_does_not_bridge_witness_to_some_none: scans v1_interpreter.rs
 //!   source text — a pinned-harness fact, dissolving with the v1 interpreter.
@@ -140,7 +139,7 @@ fn rust_emitter_lowers_holds_violates_only_for_witness_parent() {
         info,
     );
     assert_eq!(
-        witness, "v1_rt::Witness::Holds",
-        "Witness Holds must lower to the runtime Witness enum"
+        witness, "Witness::Holds",
+        "Witness Holds must lower to the modeled std.witness.Witness enum, bare (no v1_rt:: alias)"
     );
 }

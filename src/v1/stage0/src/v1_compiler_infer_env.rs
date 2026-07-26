@@ -10,8 +10,6 @@ pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation}
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::{AmbiguousReference, UnresolvedType};
@@ -307,15 +305,6 @@ pub fn scope_push(scope: Rc<Scope>, binding: Rc<ScopeBinding>) -> Rc<Scope> {
     Rc::new(Scope {
         locals: v1_rt::rc_map_insert(scope.locals.clone(), binding.name.clone(), binding.clone()),
     })
-}
-
-pub fn ancestry_cache_sharing_dissolution_trigger() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "DISSOLVED (v1-run-stability-throughline, single-parent ancestry share): build_type_env / build_type_env_unresolved formerly recomputed ancestry_str_bindings as a fresh per-module map_merge(parent.interface.env.ancestry_str_bindings, parent.interface.env.str_bindings) in the single-import case — provably byte-identical to parent.interface.cache.str_bindings (interface.cache.str_bindings == map_merge(env.ancestry_str_bindings, env.str_bindings) by construction at both build sites, line 5973/6081), which is exactly ancestry_cache.str_bindings when count==1 (union of one parent cache is that cache, Rc-shared unchanged). So all three branches resolved to ancestry_cache.str_bindings and the conditional collapsed to `let ancestry_str_bindings = ancestry_cache.str_bindings` — one Rc-borrow, no fresh HAMT per module. Kills the O(M²) SipHash/map_merge churn on single-import chains and lets chains Rc-share the parent's already-retained str_bindings spine (§2 redundancy, §6 bare-minimum-cost; construction not validation — the recompute is now unwritable). Full SymbolIndex authority is the follow-on (type-env-single-authority-design.md).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

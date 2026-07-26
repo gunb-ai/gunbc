@@ -29,7 +29,7 @@ fn rung34_inferred_tree(root: Node) -> InferredTree {
     root: root,
     facts: Map {
       lookup: fn(n) {
-        Holds {
+        Present {
           value: claim_inferred_facts_from_nodes(
             resolved: n,
             algebra: rung34_algebra_evidence_node(),

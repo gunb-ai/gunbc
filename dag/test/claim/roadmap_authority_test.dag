@@ -103,7 +103,7 @@ fn witness_shelf_is_uncheckboxed() -> Bool {
 fn witness_audit_lane_present() -> Bool {
   let o = out()
   string_contains(s: o, pattern: "**Audit — green by execution, red by perturbation:**")
-    && string_contains(s: o, pattern: "**affected-set lens — discharged by a standing mechanism (audit 2026-07-23)**")
+    && string_contains(s: o, pattern: "**affected-set lens — discharged by a standing mechanism**")
     && string_contains(s: o, pattern: "A mechanism claim without a red-control is *unverified*")
     && string_contains(s: o, pattern: "**artifact-freshness gate**")
     && string_contains(s: o, pattern: "**one tree, one verdict**")

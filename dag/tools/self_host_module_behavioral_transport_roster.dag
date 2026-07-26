@@ -6,7 +6,16 @@ import tools.self_host_curated_seed_linked_harness {
   cssl_seed_linked_behavioral_receipt
 }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List, Optional, Absent, Present, optional_absent, optional_present }
+import v2.std.collection {
+  List
+}
+import v2.std.optional {
+  Optional,
+  Absent,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v2.std.logic { Bool }
 import v2.std.text { String }
 

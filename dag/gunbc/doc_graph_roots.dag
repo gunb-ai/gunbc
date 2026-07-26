@@ -49,12 +49,6 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
-    slug: "commit-workflow",
-    work: DeclarationRef { module_path: "gunbc.plans.commit_workflow", decl_name: "commit_workflow_plan", field: WholeDeclaration },
-    dissolution: HasTrigger { text: "commit_workflow_plan registers in gunbc.plan_registry (its deferred checkpoint 1); the registration becomes the binding" },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
     slug: "effect-namespace-grants",
     work: DeclarationRef { module_path: "gunbc.plans.host_effect_orchestration", decl_name: "host_effect_orchestration_plan", field: WholeDeclaration },
     dissolution: HasTrigger { text: "the grant/envelope model lands (the doc's FLAG-A §6 interim is its only near-term consumer)" },
@@ -184,6 +178,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     slug: "extdeps-positioning-restructure",
     work: DeclarationRef { module_path: "v2.lens.extdeps_shape_transport_policy", decl_name: "extdeps_shape_transport_policy_clean_holds", field: WholeDeclaration },
     dissolution: HasTrigger { text: "the extdeps positioning restructure PR (pure git mv + import repoint: os/ de-grab-bag + findings 1-4 hub-loose, all under the §3 extdeps discipline this lens enforces) lands and the extdeps directories are §3-congruent — the brief's scope is discharged; delete this row and the doc together" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "v1rt-witness-diagnostic-carrier-decouple-design",
+    work: DeclarationRef { module_path: "v2.std.witness", decl_name: "witness_from_optional", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "Stage-4 Gate-1 E0308 burn-down probe receipt lands (design note §3 — measurement only); doc archives or registers as a gunbc.plan.Plan row" },
   },
 ]
 

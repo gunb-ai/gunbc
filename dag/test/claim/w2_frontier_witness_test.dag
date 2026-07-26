@@ -1,0 +1,38 @@
+module test.claim.w2_frontier_witness
+
+import gunbc.roadmap_authority { roadmap_authority, w2_bulk_resweep_held_ids }
+import gunbc.roadmap_spawner { doc_all_nodes }
+import gunbc.roadmap_model { RoadmapNode }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data w2_frontier_witness_note: String = "The W2-bulk frontier's typed hold, kept honest by execution (management ruling 2026-07-25): every held id must resolve to a node that EXISTS and is STILL an AuthoredLine — a held id whose row has been migrated to a ticket, superseded, or deleted is a red carrying the id, because the hold has outlived its state and the roster is lying to the re-sweep that consumes it as a worklist. The planted RED feeds the same predicates an id no row carries."
+
+fn held_id_is_live_prose(nodes: List<RoadmapNode>, id: String) -> Bool {
+  fold(nodes, init: false, f: (acc, n) => acc ||
+    ((n.node as String) == id && match n.line {
+      AuthoredLine { done: _, content: _ } => true
+      DerivableLine { prs: _, title: _, description: _ } => false
+      PlainLine { content: _ } => false
+      SupersededLine { by: _, content: _ } => false
+      TicketLine { done: _, ticket: _ } => false
+    }))
+}
+
+fn held_ids_all_live_prose() -> List<String> {
+  let nodes = doc_all_nodes(doc: roadmap_authority())
+  w2_bulk_resweep_held_ids() |> filter(id => !held_id_is_live_prose(nodes: nodes, id: id))
+}
+
+test fn w2_resweep_hold_matches_the_tree() -> Bool {
+  return count(w2_bulk_resweep_held_ids()) == 13
+    && count(held_ids_all_live_prose()) == 0
+}
+
+test fn w2_resweep_hold_reds_on_stale_id() -> Bool {
+  let nodes = doc_all_nodes(doc: roadmap_authority())
+  return !held_id_is_live_prose(nodes: nodes, id: "no-such-row")
+    && !held_id_is_live_prose(nodes: nodes, id: "ts-wf-node-schema")
+}

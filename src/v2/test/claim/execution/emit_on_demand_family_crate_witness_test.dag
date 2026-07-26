@@ -50,7 +50,14 @@ import v2.test.execution.emit_host_complement_equals_eval {
   emit_complement_eval_subject,
 }
 import v2.std.algebra { Cons, Empty, length, list_append }
-import v2.std.collection { List, Optional, Present, Absent }
+import v2.std.collection {
+  List
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent
+}
 import v2.std.diagnostic { Accepted, Rejected, Outcome }
 import v2.std.host_run { HostLogicalRun }
 import v2.compiler.self_host.native_agreement_support {
