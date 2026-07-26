@@ -1,7 +1,7 @@
 # Spine: CSSL_STD_SEED_LINK=1 PROBE_KEEP_LOG_DIR=.../logs \
 #   docs/probes/curated_cargo_probe_one.sh <module.dag>
-# Post-pass: docs/probes/e0369_extract_shapes.sh .../shapes
-# (forked e0369_census_probe.sh deleted — review 43515 / HAND-SHELL GATE)
+# Shape tables: one-shot fold over kept *.cargo.log (E0277-style recipe-in-md;
+# no committed hand-shell post-pass — review 43525 / HAND-SHELL GATE)
 === extract 06_translate ===
 06_translate: 14 E0369 across 12 shapes
 === extract 04_infer ===
