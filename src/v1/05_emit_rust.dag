@@ -44,7 +44,7 @@ import extdeps.languages.rust.wrap_catalog {
   OwnershipWrapUseSite, OwnershipWrapUseSiteAbsent, OwnershipAtFunctionReturn,
   OwnershipAtFunctionParameter, OwnershipAtStructField, OwnershipAtBindingProjection,
   OwnershipReferenceLayer, ReferenceLayerOwned, ReferenceLayerRc, ReferenceLayerBox,
-  rust_sg_rc_wrap_layer_lookup, rust_sg_rc_wrap_carrier_key
+  rust_sg_rc_wrap_layer_lookup
 }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
 import gunbc.stage0_crate_layout_generated { generated_pub_mod_basenames }
@@ -205,7 +205,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
         let val_str = render_rust_type(n: val_node, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info)
         let tn = authored_name_at(source_indices: source_indices, node: n)
         let base = emit_map_type(key_type: key_str, val_type: val_str, target: Rust)
-        render_rust_shared_type_with_optional(n: n, type_name: tn, rendered: base, use_site: OwnershipWrapUseSiteAbsent)
+        render_rust_shared_type_with_optional(n: n, type_name: tn, rendered: base, use_site: OwnershipWrapUseSiteAbsent, shared_types: shared_types)
       Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
     }
   } else if node_is_element_collection(n: n, source_indices: source_indices) {
@@ -215,7 +215,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
         let inner_str = render_rust_type(n: elem_node, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info)
         let tn = authored_name_at(source_indices: source_indices, node: n)
         let base = emit_container(kind: to_snake(name: tn), inner: inner_str, target: Rust)
-        render_rust_shared_type_with_optional(n: n, type_name: tn, rendered: base, use_site: OwnershipWrapUseSiteAbsent)
+        render_rust_shared_type_with_optional(n: n, type_name: tn, rendered: base, use_site: OwnershipWrapUseSiteAbsent, shared_types: shared_types)
       Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
     }
   } else {
@@ -275,7 +275,7 @@ fn is_host_diagnostics_carrier_type(n: Node, source_indices: Map<String, Newline
 }
 
 fn render_rust_diagnostics_carrier_applied(use_site: OwnershipWrapUseSite) -> String {
-  concat("Option<", render_rust_shared_type_if_needed(type_name: "NonEmptyDiagnostics", rendered: "NonEmptyDiagnostics", use_site: use_site), ">")
+  concat("Option<", render_rust_shared_type_if_needed(type_name: "NonEmptyDiagnostics", rendered: "NonEmptyDiagnostics", use_site: use_site, shared_types: empty_set()), ">")
 }
 
 fn render_rust_optional_carrier_inner(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, use_site: OwnershipWrapUseSite) -> String {
@@ -290,7 +290,7 @@ fn render_rust_optional_carrier_applied(n: Node, generic_param_names: List<Strin
   concat("Option<", render_rust_optional_carrier_inner(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, use_site: use_site), ">")
 }
 fn render_rust_text_carrier(use_site: OwnershipWrapUseSite) -> String {
-  render_rust_shared_type_if_needed(type_name: "String", rendered: "String", use_site: use_site)
+  render_rust_shared_type_if_needed(type_name: "String", rendered: "String", use_site: use_site, shared_types: empty_set())
 }
 
 fn rust_string_grounded_type_alias_decl_line() -> String {
@@ -441,7 +441,7 @@ fn rust_render_checkpoint_scalar_bare(n: Node, corpus_repr: RustCorpusRepr, sour
     let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
     match rust_scalar_checkpoint_render_base(dag_name: leaf, corpus_repr: corpus_repr) {
       Present { value: scalar } =>
-        Present { value: apply_seed_wrap_decision(type_name: leaf, rendered: scalar, use_site: use_site) }
+        Present { value: apply_seed_wrap_decision(type_name: leaf, rendered: scalar, use_site: use_site, shared_types: empty_set()) }
       Absent => none
     }
   }
@@ -769,7 +769,7 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
         Present { value: host } => host
         Absent => rust_applied_type_base(name: base_name, corpus_repr: corpus_repr)
       }
-      render_rust_shared_type_if_needed(type_name: base_name, rendered: bare, use_site: use_site)
+      render_rust_shared_type_if_needed(type_name: base_name, rendered: bare, use_site: use_site, shared_types: shared_types)
     } else {
     let base = match rust_seed_host_container_base(name: base_name, corpus_repr: corpus_repr) {
       Present { value: host } => host
@@ -795,6 +795,10 @@ data rust_seed_legacy_container_blanket_dissolve_on: String = "wrap_catalog lega
 
 data rust_seed_legacy_container_blanket_scaffold_note: String = "SCAFFOLD — dissolve-on: rust_seed_legacy_container_blanket_dissolve_on. Catalog MISS at an explicit use site may fall back to ReferenceLayerRc when rust_seed_legacy_container_blanket_rc matches rendered Vec, HashMap, or BTreeMap prefix text (string-prefix scan — ruled-out wrap-decision shape; become structural at dissolve)."
 
+data rust_seed_shared_types_blanket_dissolve_on: String = "render_node_type shared_types blanket deleted — every carrier row lives in rust_sg_rc_ownership_wrap_catalog_rows and rust_seed_shared_types_blanket_rc_fallback deletes"
+
+data rust_seed_shared_types_blanket_scaffold_note: String = "SCAFFOLD — dissolve-on: rust_seed_shared_types_blanket_dissolve_on. Catalog MISS at an explicit use site may fall back to ReferenceLayerRc when set_contains(shared_types, type_name) — bridges render_node_type's surviving shared_types blanket until that authority migrates to the catalog."
+
 fn rust_seed_legacy_container_blanket_rc(rendered: String) -> Bool {
   if rust_type_is_rc_wrapped(type_name: rendered) { false }
   else if string_length(s: rendered) > 4 && substring(s: rendered, start: 0, end: 4) == "Vec<" { true }
@@ -803,14 +807,16 @@ fn rust_seed_legacy_container_blanket_rc(rendered: String) -> Bool {
   else { false }
 }
 
-fn rust_seed_effective_reference_layer(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> OwnershipReferenceLayer {
+fn rust_seed_effective_reference_layer(type_name: String, rendered: String, use_site: OwnershipWrapUseSite, shared_types: Set<String>) -> OwnershipReferenceLayer {
   match use_site {
     OwnershipWrapUseSiteAbsent => ReferenceLayerOwned
     _ =>
-      match rust_sg_rc_wrap_layer_lookup(carrier: rust_sg_rc_wrap_carrier_key(type_name: type_name), use_site: use_site) {
+      match rust_sg_rc_wrap_layer_lookup(type_name: type_name, use_site: use_site) {
         Present { value: layer } => layer
         Absent =>
           if rust_seed_legacy_container_blanket_rc(rendered: rendered) {
+            ReferenceLayerRc
+          } else if set_contains(shared_types, type_name) {
             ReferenceLayerRc
           } else {
             ReferenceLayerOwned
@@ -819,8 +825,8 @@ fn rust_seed_effective_reference_layer(type_name: String, rendered: String, use_
   }
 }
 
-fn apply_seed_wrap_decision(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> String {
-  match rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, use_site: use_site) {
+fn apply_seed_wrap_decision(type_name: String, rendered: String, use_site: OwnershipWrapUseSite, shared_types: Set<String>) -> String {
+  match rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, use_site: use_site, shared_types: shared_types) {
     ReferenceLayerOwned => rendered
     ReferenceLayerRc =>
       if rust_type_is_rc_wrapped(type_name: rendered) {
@@ -837,18 +843,18 @@ fn apply_seed_wrap_decision(type_name: String, rendered: String, use_site: Owner
   }
 }
 
-fn render_rust_shared_type_if_needed(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> String {
-  apply_seed_wrap_decision(type_name: type_name, rendered: rendered, use_site: use_site)
+fn render_rust_shared_type_if_needed(type_name: String, rendered: String, use_site: OwnershipWrapUseSite, shared_types: Set<String>) -> String {
+  apply_seed_wrap_decision(type_name: type_name, rendered: rendered, use_site: use_site, shared_types: shared_types)
 }
 
-fn rust_seed_catalog_wraps_rc_at_use_site(type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> Bool {
-  rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, use_site: use_site) == ReferenceLayerRc
+fn rust_seed_catalog_wraps_rc_at_use_site(type_name: String, rendered: String, use_site: OwnershipWrapUseSite, shared_types: Set<String>) -> Bool {
+  rust_seed_effective_reference_layer(type_name: type_name, rendered: rendered, use_site: use_site, shared_types: shared_types) == ReferenceLayerRc
 }
 
 fn rust_seed_value_needs_rc_wrap(type_name: String, rendered: String, shared_types: Set<String>, use_site: OwnershipWrapUseSite) -> Bool {
   match use_site {
     OwnershipWrapUseSiteAbsent => false
-    _ => rust_seed_catalog_wraps_rc_at_use_site(type_name: type_name, rendered: rendered, use_site: use_site)
+    _ => rust_seed_catalog_wraps_rc_at_use_site(type_name: type_name, rendered: rendered, use_site: use_site, shared_types: shared_types)
   }
 }
 
@@ -914,14 +920,14 @@ fn emit_freemonoid_empty_rc_value() -> String {
   emit_freemonoid_empty_value(wrap_in_rc: true)
 }
 
-fn render_rust_shared_type_with_optional(n: Node, type_name: String, rendered: String, use_site: OwnershipWrapUseSite) -> String {
-  rust_carrier_optional_wrap(n: n, rendered: render_rust_shared_type_if_needed(type_name: type_name, rendered: rendered, use_site: use_site))
+fn render_rust_shared_type_with_optional(n: Node, type_name: String, rendered: String, use_site: OwnershipWrapUseSite, shared_types: Set<String>) -> String {
+  rust_carrier_optional_wrap(n: n, rendered: render_rust_shared_type_if_needed(type_name: type_name, rendered: rendered, use_site: use_site, shared_types: shared_types))
 }
 
 fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, use_site: OwnershipWrapUseSite) -> String {
   let rendered = render_rust_applied_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, use_site: use_site)
   let type_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
-  render_rust_shared_type_with_optional(n: n, type_name: type_name, rendered: rendered, use_site: use_site)
+  render_rust_shared_type_with_optional(n: n, type_name: type_name, rendered: rendered, use_site: use_site, shared_types: shared_types)
 }
 
 fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, use_site: OwnershipWrapUseSite) -> String {
@@ -942,7 +948,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
     Present { value: applied } =>
       let outer_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
       if outer_name != "" && outer_name != "fn" && !is_container_type(name: outer_name) && n.connective == NoConnective && (n.children |> count) == 0 && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, corpus_repr: corpus_repr) {
-        render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, use_site: use_site)
+        render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, use_site: use_site, shared_types: shared_types)
       } else {
         render_rust_applied_type_shared(n: applied, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, use_site: use_site)
       }
@@ -954,13 +960,13 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(use_site: use_site))
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && set_contains(shared_types, name) {
         let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
-        render_rust_shared_type_with_optional(n: n, type_name: name, rendered: rendered, use_site: use_site)
+        render_rust_shared_type_with_optional(n: n, type_name: name, rendered: rendered, use_site: use_site, shared_types: shared_types)
       } else if n.connective == NoConnective && n.children |> count > 0 {
         match rust_render_checkpoint_scalar_bare(n: n, corpus_repr: corpus_repr, source_indices: source_indices, use_site: use_site) {
-          Present { value: scalar } => render_rust_shared_type_with_optional(n: n, type_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), rendered: scalar, use_site: use_site)
+          Present { value: scalar } => render_rust_shared_type_with_optional(n: n, type_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), rendered: scalar, use_site: use_site, shared_types: shared_types)
           Absent =>
         if !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
-          render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, use_site: use_site)
+          render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, use_site: use_site, shared_types: shared_types)
         } else {
         let base = rust_applied_type_base(name: name, corpus_repr: corpus_repr)
         let peel = is_parametric_opaque_type_by_name(env: env, type_name: name)
@@ -994,7 +1000,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         } else {
           concat(base, "<", arg_list |> join(separator: ", "), ">")
         }
-        render_rust_shared_type_with_optional(n: n, type_name: name, rendered: applied_ty, use_site: use_site)
+        render_rust_shared_type_with_optional(n: n, type_name: name, rendered: applied_ty, use_site: use_site, shared_types: shared_types)
         }
         }
       } else if type_node_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices) {
@@ -1058,9 +1064,9 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
   if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(use_site: use_site))
   } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, corpus_repr: corpus_repr) {
-    render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, use_site: use_site)
+    render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, use_site: use_site, shared_types: shared_types)
   } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
-    render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, use_site: use_site)
+    render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, use_site: use_site, shared_types: shared_types)
   } else if generic_param_names |> count > 0 {
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, use_site: use_site)
   } else {
@@ -1074,7 +1080,7 @@ fn render_rust_fn_sig_type_applied_binding(n: Node, shared_types: Set<String>, c
       if applied.children |> count > 0 {
         let outer_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
         if outer_name != "" && outer_name != "fn" && !is_container_type(name: outer_name) && n.connective == NoConnective && (n.children |> count) == 0 && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, corpus_repr: corpus_repr) {
-          render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, use_site: use_site)
+          render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, use_site: use_site, shared_types: shared_types)
         } else {
           render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, use_site: use_site)
         }
@@ -1134,7 +1140,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
         Present { value: carrier } => carrier
         Absent => {
           let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
-          render_rust_shared_type_if_needed(type_name: name, rendered: rendered, use_site: OwnershipWrapUseSiteAbsent)
+          render_rust_shared_type_if_needed(type_name: name, rendered: rendered, use_site: OwnershipWrapUseSiteAbsent, shared_types: empty_set())
         }
       }
     }
@@ -1159,7 +1165,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     }
     let base_is_zero_param = rust_seed_host_container_base(name: leaf, corpus_repr: corpus_repr) == none && alias_base_is_zero_param_decl(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     if base_is_zero_param {
-      return apply_seed_wrap_decision(type_name: leaf, rendered: base, use_site: OwnershipWrapUseSiteAbsent)
+      return apply_seed_wrap_decision(type_name: leaf, rendered: base, use_site: OwnershipWrapUseSiteAbsent, shared_types: empty_set())
     }
     let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let args = n.children |> map(arg =>
@@ -1170,7 +1176,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
       }
     ) |> join(separator: ", ")
     let applied_ty = concat(base, "<", args, ">")
-    apply_seed_wrap_decision(type_name: leaf, rendered: applied_ty, use_site: OwnershipWrapUseSiteAbsent)
+    apply_seed_wrap_decision(type_name: leaf, rendered: applied_ty, use_site: OwnershipWrapUseSiteAbsent, shared_types: empty_set())
   } else {
     render_rust_type(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
   }
@@ -4879,7 +4885,7 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, cor
         let applied_name = authored_name_at(source_indices: source_indices, node: applied)
         if outer_name != "" && n.connective == NoConnective && (n.children |> count) == 0 {
           if outer_name != applied_name {
-            render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, use_site: use_site)
+            render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, use_site: use_site, shared_types: shared_types)
           } else {
             render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() }, use_site: use_site)
           }
@@ -4888,11 +4894,11 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, cor
         }
       } else {
         let rendered = render_rust_type(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
-        apply_seed_wrap_decision(type_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), rendered: rendered, use_site: use_site)
+        apply_seed_wrap_decision(type_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), rendered: rendered, use_site: use_site, shared_types: shared_types)
       }
     Absent =>
       let rendered = render_rust_type(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
-      apply_seed_wrap_decision(type_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), rendered: rendered, use_site: use_site)
+      apply_seed_wrap_decision(type_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), rendered: rendered, use_site: use_site, shared_types: shared_types)
   }
 }
 
@@ -4930,7 +4936,7 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
           let base = coerce_primitive_type(target: Rust, dag_name: rt_child_name)
           let param_names = resolved.params |> map(p => to_pascal(name: generic_param_name_at(n: p, source_indices: env.source_indices)))
           let with_params = concat(base, "<", param_names |> join(separator: ", "), ">")
-          render_rust_shared_type_if_needed(type_name: rt_child_name, rendered: with_params, use_site: OwnershipAtStructField)
+          render_rust_shared_type_if_needed(type_name: rt_child_name, rendered: with_params, use_site: OwnershipAtStructField, shared_types: shared_types)
         } else {
           render_rust_type(n: rt_child, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, emit_info: emit_info)
         }
@@ -4947,7 +4953,7 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
   let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
     concat("Box<", generic_ty, ">")
   } else {
-    apply_seed_wrap_decision(type_name: rust_fn_sig_leaf_name(source_indices: env.source_indices, n: rt_child), rendered: generic_ty, use_site: OwnershipAtStructField)
+    apply_seed_wrap_decision(type_name: rust_fn_sig_leaf_name(source_indices: env.source_indices, n: rt_child), rendered: generic_ty, use_site: OwnershipAtStructField, shared_types: shared_types)
   }
   let needs_serde = struct_needs_serde(name: struct_name, emit_info: emit_info)
   let rename_attr = if !needs_serde { "" } else {
@@ -6353,7 +6359,7 @@ fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolve
 
 fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<String>, corpus_repr: RustCorpusRepr) -> Bool {
   if freemonoid_empty_from_variant_parent(leaf_name: name, enum_name: enum_name) {
-    rust_seed_catalog_wraps_rc_at_use_site(type_name: "FreeMonoid", rendered: "FreeMonoid", use_site: OwnershipAtBindingProjection)
+    rust_seed_catalog_wraps_rc_at_use_site(type_name: "FreeMonoid", rendered: "FreeMonoid", use_site: OwnershipAtBindingProjection, shared_types: shared_types)
   } else {
     rust_seed_value_needs_rc_wrap(type_name: enum_name, rendered: enum_name, shared_types: shared_types, use_site: OwnershipAtBindingProjection)
   }
@@ -6369,7 +6375,7 @@ fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>, emit_info
         concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
       Absent =>
         if freemonoid_empty_from_emit_info(leaf_name: leaf, emit_info: emit_info) {
-          emit_freemonoid_empty_value(wrap_in_rc: rust_seed_catalog_wraps_rc_at_use_site(type_name: "FreeMonoid", rendered: "FreeMonoid", use_site: OwnershipAtBindingProjection))
+          emit_freemonoid_empty_value(wrap_in_rc: rust_seed_catalog_wraps_rc_at_use_site(type_name: "FreeMonoid", rendered: "FreeMonoid", use_site: OwnershipAtBindingProjection, shared_types: empty_set()))
         }
         else { emit_ident(name: leaf, target: Rust) }
     }
@@ -6448,7 +6454,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
         match variant_parent {
           Present { value: enum_name } =>
             if freemonoid_empty_from_variant_parent(leaf_name: leaf_name, enum_name: enum_name) {
-              emit_freemonoid_empty_value(wrap_in_rc: rust_seed_catalog_wraps_rc_at_use_site(type_name: "FreeMonoid", rendered: "FreeMonoid", use_site: OwnershipAtBindingProjection))
+              emit_freemonoid_empty_value(wrap_in_rc: rust_seed_catalog_wraps_rc_at_use_site(type_name: "FreeMonoid", rendered: "FreeMonoid", use_site: OwnershipAtBindingProjection, shared_types: empty_set()))
             } else {
             let qualified = if is_optional_variant_name(name: leaf_name) && is_optional_like_parent_name(name: enum_name) {
               if is_some_like_variant_name(name: leaf_name) { "Some" } else { "None" }
@@ -8573,7 +8579,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         }
       } else if fields |> count == 0 {
         let host_freemonoid_carrier = authored_name_at(source_indices: si, node: resolved_type)
-        let wrap_freemonoid = rust_seed_catalog_wraps_rc_at_use_site(type_name: host_freemonoid_carrier, rendered: host_freemonoid_carrier, use_site: OwnershipAtBindingProjection) || rust_seed_catalog_wraps_rc_at_use_site(type_name: "FreeMonoid", rendered: "FreeMonoid", use_site: OwnershipAtBindingProjection)
+        let wrap_freemonoid = rust_seed_catalog_wraps_rc_at_use_site(type_name: host_freemonoid_carrier, rendered: host_freemonoid_carrier, use_site: OwnershipAtBindingProjection, shared_types: shared_types) || rust_seed_catalog_wraps_rc_at_use_site(type_name: "FreeMonoid", rendered: "FreeMonoid", use_site: OwnershipAtBindingProjection, shared_types: shared_types)
         match rust_seed_host_freemonoid_empty(carrier_name: host_freemonoid_carrier, corpus_repr: emit_info.corpus_repr, wrap_in_rc: wrap_freemonoid) {
           Present { value: grounded } => grounded
           Absent => concat(display_tn, " {}")
@@ -10054,8 +10060,8 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   } else { raw_ty_str }
   let fn_name = to_snake(name: name)
   let carrier_name = authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)
-  let ty_str = apply_seed_wrap_decision(type_name: carrier_name, rendered: ty_str, use_site: OwnershipAtFunctionReturn)
-  let needs_rc = rust_seed_catalog_wraps_rc_at_use_site(type_name: carrier_name, rendered: raw_ty_str, use_site: OwnershipAtFunctionReturn)
+  let ty_str = apply_seed_wrap_decision(type_name: carrier_name, rendered: ty_str, use_site: OwnershipAtFunctionReturn, shared_types: shared_types)
+  let needs_rc = rust_seed_catalog_wraps_rc_at_use_site(type_name: carrier_name, rendered: raw_ty_str, use_site: OwnershipAtFunctionReturn, shared_types: shared_types)
   if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) || rust_nominal_identity_carrier_type_eligible(type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)) {
     let val_str = match rust_nominal_identity_data_expr(type_node: type_node, value: value, source_indices: scope.type_env.source_indices) {
       Present { value: identity_expr } => identity_expr
