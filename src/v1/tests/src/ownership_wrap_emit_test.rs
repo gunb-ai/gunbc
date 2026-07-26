@@ -128,3 +128,27 @@ fn data_def_non_catalog_shared_type_stays_bare() {
         "non-catalog data def return must emit bare DigitStep, got:\n{sig}"
     );
 }
+
+#[test]
+fn non_catalog_variant_value_no_blanket_rc_new() {
+    let source = "module ownwrap.fixture\n\ntype Color = Red | Green\n\nfn red() -> Color {\n  Red\n}\n";
+    let emitted = emit(source);
+    assert!(
+        !emitted.contains("Rc::new(Red)") && !emitted.contains("Rc::new(Color::"),
+        "non-catalog enum variant value must not blanket-wrap Rc::new, got:\n{emitted}"
+    );
+    assert!(
+        emitted.contains("Red") || emitted.contains("Color::Red"),
+        "enum variant value must emit bare variant, got:\n{emitted}"
+    );
+}
+
+#[test]
+fn catalog_node_variant_value_wraps_rc_new() {
+    let source = "module ownwrap.fixture\n\ntype Node { child: Node? }\n\ntype Color = Red | Green\n\nfn leaf() -> Node {\n  Node { child: none }\n}\n";
+    let emitted = emit(source);
+    assert!(
+        emitted.contains("Rc::new(Node {") || emitted.contains("Rc::new("),
+        "catalog Node construction at binding projection must Rc-wrap, got:\n{emitted}"
+    );
+}

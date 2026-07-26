@@ -18157,7 +18157,11 @@ pub fn emit_rust_expr_record_lit(
                 },
             };
             if ((rc_name.clone() != "".to_string())
-                && v1_rt::set_contains(&shared_types, rc_name.clone()))
+                && rust_seed_value_needs_rc_wrap(
+                    rc_name.clone(),
+                    shared_types.clone(),
+                    OwnershipWrapUseSite::OwnershipAtStructField,
+                ))
             {
                 v1_rt::concat(
                     v1_rt::concat("Rc::new(".to_string(), raw.clone()),
@@ -18752,7 +18756,11 @@ pub fn emit_discriminant_call_lowering(
                             }
                             __result
                         });
-                        let scrut_ref = if v1_rt::set_contains(&shared_types, ty_name.clone()) {
+                        let scrut_ref = if rust_seed_value_needs_rc_wrap(
+                            ty_name.clone(),
+                            shared_types.clone(),
+                            OwnershipWrapUseSite::OwnershipAtBindingProjection,
+                        ) {
                             v1_rt::concat(
                                 v1_rt::concat("&*(".to_string(), scrutinee.clone()),
                                 ")".to_string(),
@@ -23125,7 +23133,11 @@ pub fn emit_field_value_with_context(
                         None => variant_name.clone(),
                     };
                     if ((rc_name.clone() != "".to_string())
-                        && v1_rt::set_contains(&shared_types, rc_name.clone()))
+                        && rust_seed_value_needs_rc_wrap(
+                            rc_name.clone(),
+                            shared_types.clone(),
+                            OwnershipWrapUseSite::OwnershipAtStructField,
+                        ))
                     {
                         v1_rt::concat(
                             v1_rt::concat("Rc::new(".to_string(), raw.clone()),
@@ -23402,8 +23414,11 @@ pub fn emit_typed_record_lit(
                                                     ),
                                                     ",\n}".to_string(),
                                                 );
-                                                if v1_rt::set_contains(&shared_types, r_sn.clone())
-                                                {
+                                                if rust_seed_value_needs_rc_wrap(
+                                                    r_sn.clone(),
+                                                    shared_types.clone(),
+                                                    OwnershipWrapUseSite::OwnershipAtBindingProjection,
+                                                ) {
                                                     v1_rt::concat(
                                                         v1_rt::concat(
                                                             "Rc::new(".to_string(),
@@ -23512,7 +23527,11 @@ pub fn emit_typed_record_lit(
                                         ),
                                         "\n}".to_string(),
                                     );
-                                    if v1_rt::set_contains(&shared_types, resolved_sn.clone()) {
+                                    if rust_seed_value_needs_rc_wrap(
+                                        resolved_sn.clone(),
+                                        shared_types.clone(),
+                                        OwnershipWrapUseSite::OwnershipAtBindingProjection,
+                                    ) {
                                         v1_rt::concat(
                                             v1_rt::concat(
                                                 "Rc::new(".to_string(),
@@ -24044,7 +24063,11 @@ Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_s
                                         "\n}".to_string(),
                                     );
                                     if (ctor_alias_resolved.clone()
-                                        && v1_rt::set_contains(&shared_types, ctor_name.clone()))
+                                        && rust_seed_value_needs_rc_wrap(
+                                            ctor_name.clone(),
+                                            shared_types.clone(),
+                                            OwnershipWrapUseSite::OwnershipAtBindingProjection,
+                                        ))
                                     {
                                         v1_rt::concat(
                                             v1_rt::concat("Rc::new(".to_string(), raw.clone()),
