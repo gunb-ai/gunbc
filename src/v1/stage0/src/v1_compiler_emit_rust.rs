@@ -1700,10 +1700,7 @@ pub fn rust_seed_effective_reference_layer(
         OwnershipWrapUseSite::OwnershipWrapUseSiteAbsent => {
             OwnershipReferenceLayer::ReferenceLayerOwned
         }
-        _ => match rust_sg_rc_wrap_layer_lookup(
-            rust_sg_rc_wrap_carrier_key(type_name.clone()),
-            use_site.clone(),
-        ) {
+        _ => match rust_sg_rc_wrap_layer_lookup(type_name.clone(), use_site.clone()) {
             Some(layer) => layer,
             None => {
                 // SCAFFOLD — dissolve-on: rust_seed_legacy_container_blanket_dissolve_on
