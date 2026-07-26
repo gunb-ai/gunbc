@@ -169,6 +169,19 @@ fn observation_subject_phase_name(subject: ObservationSubject) -> NonEmptyStr? {
   )
 }
 
+fn observation_subject_module_path(subject: ObservationSubject) -> NonEmptyStr? {
+  fold(subject.segments, init: Absent, f: (acc, seg) =>
+    match seg {
+      ModuleSegment { module_path: p } => Present { value: p }
+      RunSegment { id: _ } => acc
+      BatchSegment { index: _, label: _ } => acc
+      EntrySegment { source_path: _ } => acc
+      DeclarationSegment { declaration: _ } => acc
+      PhaseSegment { name: _ } => acc
+    }
+  )
+}
+
 fn observation_grain_at_or_above_entry(g: ObservationGrain) -> Bool {
   observation_grain_depth(g: g) <= observation_grain_depth(g: EntryGrain)
 }
@@ -649,7 +662,7 @@ data observation_outcome_predicate_contract: Disposition = Terminal {
 }
 
 data observation_subject_predicate_contract: Disposition = Terminal {
-  reason: "Structural readers over ObservationSegment, ObservationGrain and SchedulerHold (observation_grain_of_segment, observation_grain_depth, observation_subject_grain, observation_subject_entry_path, observation_subject_declaration, observation_subject_phase_name, observation_grain_at_or_above_entry, observation_hold_resource) — closed by declared variants. The hold reader is Terminal on the .dag side and additionally pinned to its realization: the lockstep witness reads the seed governor by execution, so a variant added on one side without the other reds rather than drifting."
+  reason: "Structural readers over ObservationSegment, ObservationGrain and SchedulerHold (observation_grain_of_segment, observation_grain_depth, observation_subject_grain, observation_subject_entry_path, observation_subject_declaration, observation_subject_phase_name, observation_subject_module_path, observation_grain_at_or_above_entry, observation_hold_resource) — closed by declared variants. The hold reader is Terminal on the .dag side and additionally pinned to its realization: the lockstep witness reads the seed governor by execution, so a variant added on one side without the other reds rather than drifting."
 }
 
 data observation_selection_predicate_contract: Disposition = Terminal {

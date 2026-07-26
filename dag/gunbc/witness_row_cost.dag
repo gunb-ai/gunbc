@@ -22,6 +22,7 @@ import std.observation {
   observation_subject_entry_path,
   observation_subject_declaration,
   observation_subject_phase_name,
+  observation_subject_module_path,
   Measured,
   MeasuredValue,
   MeasuredUnavailable,
@@ -66,19 +67,9 @@ data witness_timing_row_hand_rust_test_discriminator: String = "witness_timing_r
 
 data witness_timing_row_seed_view_note: String = "WitnessTimingRow in cli_run.rs is a seed MATERIALIZED VIEW of the ObservationEvent join projection only (Scaffold bound above) — not a lockstep authority type and not the #5 record. total_nanos is derived. Hand-Rust receipts: dissolve_trigger, deferral (lane + ROADMAP 5-dissolve-patches), scaffold_deletion, loc_delta_net, test_discriminator, plan_anchor — see progress-observation-design.md#interim-witness-timing-row-scaffold. Nanos may remain internal seed units; Millisecond conversion is at the event boundary."
 
-data witness_cost_transition_extract_note: String = "ObservationTransition is read only through witness_cost_concluded_outcome (Optional extract). reusable Begin|Step|Concluded-to-Bool predicates are dissolved (review 43351); is_entry_resolve / is_declaration_witness compose subject facts with that extract and never match the transition coproduct. Subject segment fields are read through std.observation observation_subject_entry_path / observation_subject_declaration / observation_subject_phase_name (canonical accessors; review 43361) — no local ObservationSegment walkers."
+data witness_cost_transition_extract_note: String = "ObservationTransition is read only through witness_cost_concluded_outcome (Optional extract). reusable Begin|Step|Concluded-to-Bool predicates are dissolved (review 43351). Event role (entry resolve parent vs declaration witness) is witness_cost_event_role — a typed Optional<WitnessCostEventRole> extract, not is_* Bool nicknames (review 43409 dissolves the review 43383/43399 Bool-filter Scaffold). Subject segment fields are read through std.observation observation_subject_entry_path / observation_subject_declaration / observation_subject_phase_name / observation_subject_module_path (canonical accessors; review 43361/43409) — no local ObservationSegment walkers."
 
-
-data witness_cost_role_bool_filter_disposition: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.witness_row_cost",
-    decl_name: "witness_cost_concluded_outcome",
-    field: WholeDeclaration
-  }
-}
-
-data witness_cost_role_bool_filter_note: String = "Scaffold receipt for review 43383 / review 43399 (typed Disposition above — prose alone does not discharge the gate): is_entry_resolve_event / is_declaration_witness_event are Bool filters over (subject facts × witness_cost_concluded_outcome Optional), not ObservationTransition→Bool. witness_cost_subject_has_resolve_phase deleted — phase read is inlined via observation_subject_phase_name (canonical accessor) inside is_entry_resolve_event. Dissolves when count/unique/project folds match that Optional Present/Absent (plus phase/grain facts) inline with no Bool nickname."
+data witness_cost_event_role_note: String = "WitnessCostEventRole is the single classification authority for the N+1 join (review 43409). EntryResolveParent requires entry-level subject shape: EntrySegment present, ModuleSegment Absent, DeclarationSegment Absent, PhaseSegment name=resolve, Concluded — so a declaration- or module-nested resolve phase cannot corrupt the parent count. DeclarationWitness requires DeclarationGrain + Concluded. Folds match the Optional role extract directly."
 
 type WitnessRowCostDatedBasis {
   eval: Millisecond
