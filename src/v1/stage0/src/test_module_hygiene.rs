@@ -528,7 +528,6 @@ test fn live_holds() -> Bool {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-
     #[test]
     fn file_grain_enumerate_yields_two_test_fns() {
         let dir = tmp_dir();
