@@ -415,13 +415,8 @@ fn loop_eval_arrow_lit_one_body_holds() -> Bool {
 
 test fn loop_demand_driven_eval_keystone_holds() -> Bool {
   loop_eval_divergent_body_step_loop_holds()
-}
-
-data loop_eval_non_keystone_manual_orphan_pins: Bool = if false {
-  loop_eval_lit_one_body_step_loop_holds()
+    && loop_eval_lit_one_body_step_loop_holds()
     && loop_eval_pick_call_direct_holds()
     && loop_eval_arrow_lit_one_body_holds()
-} else {
-  true
 }
 

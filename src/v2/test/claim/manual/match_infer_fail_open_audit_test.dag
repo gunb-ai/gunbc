@@ -153,7 +153,7 @@ test fn match_infer_fail_open_audit_extra_arm_rejects_holds() -> Bool {
   }
 }
 
-fn match_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool {
+test fn match_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool {
   match infer(tree: dag_match_if_body_fixture) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
@@ -248,9 +248,4 @@ test fn complement_arrow_real_infer_refuses_unsupported_pattern_holds() -> Bool 
 
 data complement_arrow_post_exit_wave1_breadth_note: String = "complement infer refuses because match patterns use dag_complement_lit_* (unsupported by infer_bool_literal_pattern_classify — only dag_token_kw_true/false). Refuse is fail-closed-correct for that unsupported shape. Counted deficit: ground complement_lit on the bool-literal authority (post-exit breadth); target witness is then complement_arrow_real_infer_holds."
 
-data match_infer_fail_open_audit_manual_orphan_pins: Bool = if false {
-  match_infer_fail_open_audit_literal_arm_accepts_holds()
-} else {
-  true
-}
 
