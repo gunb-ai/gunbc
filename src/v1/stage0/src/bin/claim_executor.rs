@@ -2169,6 +2169,7 @@ fn write_witness_row_cost_receipt_at(
 /// Required `host_class` on every signed basis row (`witness_row_cost_basis_host_class_note`).
 const WITNESS_ROW_COST_BASIS_HOST_CLASS: &str = "srv_fleet_arm64";
 
+#[derive(Debug)]
 struct WitnessRowCostBasisRow {
     eval_ms_basis: u128,
     run_ref: String,
@@ -5167,11 +5168,9 @@ mod tests {
     #[test]
     fn parse_witness_row_cost_basis_line_requires_srv_fleet_arm64() {
         // RED control for review 43284: wrong/missing host_class must refuse, never load.
-        let ok = parse_witness_row_cost_basis_line(
-            "e.dag\tf\t10\trun-1\tsrv_fleet_arm64",
-        )
-        .expect("parse")
-        .expect("row");
+        let ok = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64")
+            .expect("parse")
+            .expect("row");
         assert_eq!(ok.0, ("e.dag".to_string(), "f".to_string()));
         assert_eq!(ok.1.eval_ms_basis, 10);
         assert_eq!(ok.1.run_ref, "run-1");
@@ -5181,10 +5180,8 @@ mod tests {
             .is_none());
         assert!(parse_witness_row_cost_basis_line("").unwrap().is_none());
 
-        let wrong = parse_witness_row_cost_basis_line(
-            "e.dag\tf\t10\trun-1\tlocal_x86",
-        )
-        .expect_err("wrong host_class must refuse");
+        let wrong = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tlocal_x86")
+            .expect_err("wrong host_class must refuse");
         assert!(
             wrong.contains("host_class") && wrong.contains("srv_fleet_arm64"),
             "expected host_class refusal, got: {wrong}"
@@ -5194,10 +5191,8 @@ mod tests {
             parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1").expect_err("need 5 cols");
         assert!(short.contains("need 5 cols"), "got: {short}");
 
-        let zero = parse_witness_row_cost_basis_line(
-            "e.dag\tf\t0\trun-1\tsrv_fleet_arm64",
-        )
-        .expect_err("zero eval must refuse");
+        let zero = parse_witness_row_cost_basis_line("e.dag\tf\t0\trun-1\tsrv_fleet_arm64")
+            .expect_err("zero eval must refuse");
         assert!(zero.contains("zero eval_ms_basis"), "got: {zero}");
     }
 
