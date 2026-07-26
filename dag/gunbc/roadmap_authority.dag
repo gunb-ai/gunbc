@@ -80,32 +80,6 @@ fn ticket_row(id: String, done: Bool, t: TicketFields) -> RoadmapNode {
   RoadmapNode { node: nid(s: id), line: TicketLine { done: done, ticket: t }, carriers: [], sizing: Unsized, owner: "", signoff: Unsigned }
 }
 
-data w2_bulk_resweep_hold_note: String = "The typed hold (management ruling 2026-07-25, ratifying the migration-side finding and sharpening it into a counted state): the ts-pr-audit children are one-fact PR-disposition snapshots — a ticket around a one-liner is nine empty fields of costume, the exact dual of the anemic-String defect (schema over-fit), and the fused-fields defect W2 kills is absent in them, so migrating displaces no cost. They are HELD, not forgotten: this roster is the mechanical worklist the operator's re-sweep consumes, and the legacy frontier decomposes honestly into not-yet-migrated vs held-for-disposition. DISSOLVE-ON: ts-pr-audit's re-sweep after the merge wave settles — each child merges, folds, or closes there; a child the sweep keeps open either migrates on its merits or, if a second one-fact family has appeared by then, earns the lighter row species at its second consumer (deliberately not minted now — the hold is what makes deferring that call cheap). A held id whose row has been migrated or deleted is a red: the hold outlived its state."
-
-type HeldForOperatorResweep {
-  node_id: String
-}
-
-data w2_bulk_resweep_held: List<HeldForOperatorResweep> = [
-  HeldForOperatorResweep { node_id: "ts-pr-7008" },
-  HeldForOperatorResweep { node_id: "ts-pr-7027" },
-  HeldForOperatorResweep { node_id: "ts-pr-7050" },
-  HeldForOperatorResweep { node_id: "ts-pr-7058" },
-  HeldForOperatorResweep { node_id: "ts-pr-7066" },
-  HeldForOperatorResweep { node_id: "ts-pr-7068" },
-  HeldForOperatorResweep { node_id: "ts-pr-7069" },
-  HeldForOperatorResweep { node_id: "ts-pr-7072" },
-  HeldForOperatorResweep { node_id: "ts-pr-7074" },
-  HeldForOperatorResweep { node_id: "ts-pr-7076" },
-  HeldForOperatorResweep { node_id: "ts-pr-7077" },
-  HeldForOperatorResweep { node_id: "ts-pr-7078" },
-  HeldForOperatorResweep { node_id: "ts-pr-7080" },
-]
-
-fn w2_bulk_resweep_held_ids() -> List<String> {
-  map(w2_bulk_resweep_held, h => h.node_id)
-}
-
 data ticket_write_interface_note: String = "Recorded at the operator's question mid-bulk (2026-07-25): is the migration a consumer for a programmatic read/write interface? Assessed — the READ side exists and is proven at this grain (non_fold_residue_units_from_module_source reads typed record rows from module source; ingest parses any module to a Node tree), the WRITE side exists only as emission (authority -> projection via main_wet; dag is a registered emit target), and there is no in-place source editor — the Node-tree read/write seam is what gunbc#5364 gates. VERDICT: the one-time migration is NOT the right first consumer (its hard half is editorial judgment no interface removes; its mechanical half is already execution-verified per tranche — a harness for the remainder is the purity trap, section 6). The RECURRING consumer is typed TicketUpdate APPEND: belt verdicts landing on the sheet (ts-wf-shape / ts-dispatch-verdict), sessions writing back at close (ts-doc-anchor), typed dissolution triggers firing (ts-group-dissolve-typed) — bounded, typed, append-only writes to the updates axis the migration created. When the write interface lands, the updates axis is its first API and those three rows are its first consumers."
 
 
@@ -365,22 +339,6 @@ fn section_2() -> RoadmapSection {
             authored_on: "",
             last_verified_on: "",
           }, intricacy: IntricacyHigh, volume: VolumeSmall, repo: "gunbc"), owner: "dispatched 2026-07-01 · adhoc-75790c4c-4e0"),
-          with_plan(rn: ticket_wi(id: "2-dispatch-actuator", done: false, t: TicketFields {
-            headline: "roadmap dispatch actuator",
-            brief: "The dispatch machinery is landed and live: the first end-to-end dispatch ran on srv1 by execution, the button reads the belt-B status contract, claude preflight refuses typed, and tmux read-back is the independent witness.",
-            displaced_cost: "a ready roadmap row becomes a working session in one click, with refusals typed instead of mystery hangs",
-            current_state: "live since the #7096 go-live receipt: belt A #6942, belt B gunbc serve #6940, single dispatch authority #6914, spawn/observe/reap #6836",
-            first_slice: "(landed) — remaining work tracks the T4 accept",
-            red_control: "a bogus node id answers node_not_found live; a missing claude dies behind typed spawn_failed preflight steps",
-            out_of_scope: "Stop verb and GET /sessions (PR-B); re-dispatch after Stop (ts-dispatch-redispatch)",
-            handback: "T4 accept rows that need operator signoff",
-            updates: [
-              TicketUpdate { on: "2026-07-23", note: "go-live receipt collected on srv1" },
-              TicketUpdate { on: "2026-07-24", note: "remaining vs T4 accept named: no Stop verb, no GET /sessions surface, re-dispatch one-shot-broken" },
-            ],
-            authored_on: "2026-07-20",
-            last_verified_on: "2026-07-23",
-          }, intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"), path: "docs/plans/dispatch-maintain-cc.md"),
           ticket_wi(id: "2-admission-model", done: false, t: TicketFields {
             headline: "workload-class admission model",
             brief: "Runners are capacity surfaces, not concurrency proof. Define CI workload classes (floor_light · rust_heavy · deploy · session) with measured RAM/swap/pids/CPU-token demand; admitted concurrency per host DERIVES from HostSupply × WorkloadClassDemand, never from runner-slot count. Initial 128c/125GiB policy: ~42 build tokens per host (≈1 core : 3 GiB), with intentionally-stranded cores reserved for sessions and low-memory work — stranded is not wasted. Measured anchors: ci ~11GiB · rust_tests ~37GiB peaks vs the old 8G slot caps.",
@@ -1546,41 +1504,6 @@ fn task_sheet_lead_lane() -> RoadmapSection {
       section_group(
         label: "1 · Main to actual green (audit receipts, 2026-07-22)",
         nodes: [
-          ticket_row(id: "ts-falsifier-nfr", done: true, t: TicketFields {
-            headline: "falsifier dark since 2026-07-16 — roster burn-down",
-            brief: "Every 4-hourly cold run red on non_fold_residue_clean_holds + no_unrostered_or_stale, logged as predicted=unaffected / actual=red divergences.",
-            displaced_cost: "a dark falsifier — the cold control not controlling",
-            current_state: "LANDED: the 3 roster rows (reason + dissolution trigger each, the #6691 shape) in cli_run.rs; receipt nfr_roster_receipt unrostered=0 stale=0; the lens fn evaluates true by execution",
-            first_slice: "",
-            red_control: "if the next scheduled run reds on anything else, that is a NEW find, not this one",
-            out_of_scope: "",
-            handback: "",
-            updates: [
-              TicketUpdate { on: "2026-07-22", note: "root-caused by local receipt: 3 unrostered sites, 0 stale — host_converge_slice1 (landed #7009) and host_hygiene_reaper (landed #7026); the falsifier goes green on its next scheduled run and #7032 auto-closes" },
-              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 10)" },
-            ],
-            authored_on: "",
-            last_verified_on: "2026-07-22",
-          }),
-          ticket_row(id: "ts-deploy-tail", done: true, t: TicketFields {
-            headline: "srv1 deploy keeps breaking and reds main while the floor is green",
-            brief: "13 of the day's 21 main-run failures were deploy_dashboard_srv1, not the floor. Two halves: converge the srv1 units, and decide whether the deploy verdict should share the ci run's conclusion — main-green must mean code-green. The deeper fix is §2's CD-transport node; gunbc-roadmap.service is also the dispatch surface, so this fix is its prerequisite.",
-            displaced_cost: "main redding daily on host state independent of code health",
-            current_state: "RESOLVED — the construction fix (whitelist .git sync: HEAD, objects minus fetch transients, packed-refs, refs, terminal exclude wall) MERGED with #7086, making both failure classes unwritable; the dashboard STAYS on srv1 (operator decision 2026-07-22; the srv3 move assessed and parked)",
-            first_slice: "",
-            red_control: "",
-            out_of_scope: "the verdict-sharing question stays open; the CD-transport root rides its own node",
-            handback: "",
-            updates: [
-              TicketUpdate { on: "2026-07-22", note: "unit fixes in: tree-sync fix (16:34) + #7077's measured readiness bound (30s→120s; four srv1 starts at 35–39s prove the old bound red every SUCCESSFUL start)" },
-              TicketUpdate { on: "2026-07-22", note: "first executions 21:49–21:50, both red, DIFFERENT causes: (a) tree-sync rsync exit 23 with a SECOND concurrent deploy out of commit order (no concurrency group — newer commit deployed first; serialize + stop rsyncing .git/ from a live runner checkout); (b) the known old-bound class, already fixed" },
-              TicketUpdate { on: "2026-07-22", note: "third execution 22:51: floor green a third consecutive time, deploy red at the same .git rsync exit 23 with NO concurrent deploy — RECLASSIFIED from race to deterministic per-source-checkout condition (succeeded from srv1-03's checkout, failed twice from srv1-05's). Loudness gap named: exit 23 without the per-file rsync errors — extend capture to a journalctl tail so failing paths are NAMED" },
-              TicketUpdate { on: "2026-07-22", note: "RESOLUTION (late): journal receipt named the root — one ghrunner-owned 0600 fetch marker unreadable to the unit principal, deterministic on srv1-05; AND /opt/gunbc/gunbc/.git/config was carrying an actions extraheader auth token from the blanket sync — a REAL credential leak. Operator hand-scrubbed the token and removed the stale marker; #7086 made both classes unwritable" },
-              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 9); the update chain above IS the old blob's concatenated history, now on the time axis it lacked" },
-            ],
-            authored_on: "2026-07-22",
-            last_verified_on: "2026-07-22",
-          }),
           ticket_row(id: "ts-native-flip-revert", done: false, t: TicketFields {
             headline: "first NativeRouted flip reverted by receipt — the frontier working as designed",
             brief: "Main run 29963619401 (#7069 merge, srv2-05) redded the family-crate agreement WARM (compile_skipped=true ×3, false in 496ms): a genuine native-vs-eval divergence or member-run failure, NOT cold cache. Remedy per design: complement + meet_join back to InterpretedRetained agreement_red_on_main — a two-row data edit, receipt on the carrier, investigation off the merge-critical path, the falsifier cold control still exercising both legs.",
@@ -1596,41 +1519,6 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             ],
             authored_on: "",
             last_verified_on: "",
-          }),
-          ticket_row(id: "ts-queue", done: false, t: TicketFields {
-            headline: "queue + zombie hygiene",
-            brief: "~18 runs/hour arriving against a 60–97-min green wall; main pushes queue behind PR traffic.",
-            displaced_cost: "",
-            current_state: "",
-            first_slice: "cancel zombie queued run 50073 (session/clever-hawk-862, queued 2026-07-13); revisit main-push priority",
-            red_control: "",
-            out_of_scope: "",
-            handback: "",
-            updates: [
-              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 11)" },
-            ],
-            authored_on: "",
-            last_verified_on: "",
-          }),
-          authored(id: "ts-overnight", done: true, content: "**overnight main floor breakage healed** — the 00:44–02:04 cluster (DAG compile failure + ci_deploy_sudoers typecheck) was fixed on main by ~02:04; recorded so the day's red accounting separates it from the deploy-tail reds."),
-          authored(id: "ts-roadmap-drift", done: true, content: "**ROADMAP.md hand-edit drift healed** — #7071 hand-added its §0 lane-snapshot paragraph to the generated ROADMAP.md without touching `roadmap_authority.dag`, leaving main committed ≠ expected (the drift gate reds whenever it executes). Re-homed verbatim into the authority in this change; the open question — why the per-PR floor let a generated-artifact hand edit through — folds into the predict-skip row in item 2."),
-          ticket_row(id: "ts-wave-reds", done: true, t: TicketFields {
-            headline: "merge-wave floor reds root-caused and hotfixed",
-            brief: "The 16:11–17:31 wall of 15 main failures had two roots, plus a third collision found in the healing itself.",
-            displaced_cost: "",
-            current_state: "all three closed; the residue pointers (deploy tail verification, the nfr roster burn-down) landed in their own rows",
-            first_slice: "",
-            red_control: "",
-            out_of_scope: "",
-            handback: "",
-            updates: [
-              TicketUpdate { on: "2026-07-22", note: "root (a): generated_artifact_drift_gate red from #7071 hand-editing the generated ROADMAP.md — healed by #7081 re-homing the paragraph into the authority" },
-              TicketUpdate { on: "2026-07-22", note: "root (b): a stale CommitWitnessClaim roster row still enrolling the witness #7060 had moved to the long lane — every main run from 16:33Z failed no-main-function-found; hotfixed #7079 (also cleared #7064 orphaned import)" },
-              TicketUpdate { on: "2026-07-22", note: "THIRD collision: #7079 (branch cut before #7081) hand-deleted the same paragraph from the generated md as its own drift cleanup, so post-merge main drifted the OPPOSITE way; #7082 closed it by regeneration — the freshness-block class exactly: green-on-branch is not green-on-main" },
-              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 12); the collision chain above is the blob's history on its time axis" },
-            ],
-            authored_on: "2026-07-22",
-            last_verified_on: "2026-07-22",
           }),
         ],
         edges: [],
@@ -2209,7 +2097,7 @@ fn task_sheet_lead_lane() -> RoadmapSection {
       section_group(
         label: "2d · Progress & observation — process→outcome discipline, one event model, N renderers (operator, 2026-07-23)",
         nodes: [
-          ticket_row(id: "ts-obs-anchor", done: false, t: TicketFields {
+          ticket_row(id: "ts-obs-anchor", done: true, t: TicketFields {
             headline: "process output as a designed surface",
             brief: "The register thesis (quiet at arm's length; responsive up close; every response true) applied to logs: a progress line is a projection of a fact the process already has, never a hand-authored string with a hand-chosen level. Five operator-signed laws: (1) process→outcome, no orphan Begins — a watchdog converts quiet-past-budget into a typed line; (2) the heartbeat carries identity, not just vitals; (3) attention escalates by dwell time, recursively down the containment tree (T a measured data row); (4) quiet at arm's length — green collapses, red/refused expands fully, bounded; (5) every rendered number is a receipt fact.",
             displaced_cost: "the 10-min silent crawl window (run 30044816605); the burned triage cycle from walk-end-only receipts; workers hand-rolling the discipline ad hoc (#7129 b295aa6)",
@@ -2221,11 +2109,12 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             updates: [
               TicketUpdate { on: "2026-07-25", note: "branch state verified this session: the observation lane's implementation lives on #7216's unmerged branch (supersedes #7162); this row lands at its merge" },
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 3); design: docs/plans/progress-observation-design.md — per-context format contracts for CI log, TTY, receipt/JSONL, dashboard, pipe" },
+              TicketUpdate { on: "2026-07-26", note: "MERGED #7216; completion reconciled from the merged PR" },
             ],
             authored_on: "",
             last_verified_on: "2026-07-25",
           }),
-          ticket_wi(id: "ts-obs-model", done: false, t: TicketFields {
+          ticket_wi(id: "ts-obs-model", done: true, t: TicketFields {
             headline: "P0 — the observation model as carriers",
             brief: "ObservationEvent (subject = containment path × Begin|Step|Outcome × measured facts; outcomes a closed sum with REFUSED DISTINCT FROM FAILED — §5's typed refusals get their own glyph); BlockedOn facts DERIVED from governor/scheduler state, never hand-set; AttentionLevel derived, event-class→presentation a TOTAL assignment censused like unthemed colors; the five laws + T thresholds as data rows with a Rust-emitter lockstep witness; ONE glyph/material authority.",
             displaced_cost: "",
@@ -2237,11 +2126,12 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             updates: [
               TicketUpdate { on: "2026-07-25", note: "branch state verified this session: the observation lane's implementation lives on #7216's unmerged branch (supersedes #7162); this row lands at its merge — dag/std/observation.dag carries exactly this model" },
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 3); the Accept line became red_control" },
+              TicketUpdate { on: "2026-07-26", note: "MERGED #7216; completion reconciled from the merged PR" },
             ],
             authored_on: "",
             last_verified_on: "2026-07-25",
           }, intricacy: IntricacyMedium, volume: VolumeMedium, repo: "gunbc"),
-          ticket_wi(id: "ts-obs-ci-renderer", done: false, t: TicketFields {
+          ticket_wi(id: "ts-obs-ci-renderer", done: true, t: TicketFields {
             headline: "P1 — the CI renderer on the floor (the pain point, built first)",
             brief: "Append-only contract: matched Begin/Outcome pairs with durations at entry grain and above; per-minute heartbeat carrying identity (phase/entry/module k-of-n + vitals); dwell escalation appends deeper-subject lines at T/2T; anomalies render immediately and never inside a collapsed group; concurrency attributed by subject path; final summary table + failed/refused boxes re-rendered at end. Enrolls through the D5 batch wall (rendering cost-negligible by receipt). The #7129 arm-line + early-drain emissions are the first two migrations, not exceptions.",
             displaced_cost: "",
@@ -2253,11 +2143,12 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             updates: [
               TicketUpdate { on: "2026-07-25", note: "branch state verified this session: the observation lane's implementation lives on #7216's unmerged branch (supersedes #7162); this row lands at its merge" },
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 3); REDs became red_control, the flagship accept became first_slice" },
+              TicketUpdate { on: "2026-07-26", note: "MERGED #7216; completion reconciled from the merged PR" },
             ],
             authored_on: "",
             last_verified_on: "2026-07-25",
           }, intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"),
-          ticket_row(id: "ts-obs-tty", done: false, t: TicketFields {
+          ticket_row(id: "ts-obs-tty", done: true, t: TicketFields {
             headline: "P2 — the interactive TTY renderer",
             brief: "gunbc CLI local runs. The reference implementation's strengths kept (preamble box, in-place repaint, group k-of-n + current subject, contention inline with holder + remaining, failure boxes, reward animal on Final), upgraded per the contracts: durations on outcomes, Refused distinct, escalation recursive not one-level. Same carriers as P1 — a second realization, zero model edits (the §2 proof).",
             displaced_cost: "",
@@ -2269,11 +2160,12 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             updates: [
               TicketUpdate { on: "2026-07-25", note: "branch state verified this session: the observation lane's implementation lives on #7216's unmerged branch (supersedes #7162); this row lands at its merge" },
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 3)" },
+              TicketUpdate { on: "2026-07-26", note: "MERGED #7216; completion reconciled from the merged PR" },
             ],
             authored_on: "",
             last_verified_on: "2026-07-25",
           }),
-          ticket_row(id: "ts-obs-census-wall", done: false, t: TicketFields {
+          ticket_row(id: "ts-obs-census-wall", done: true, t: TicketFields {
             headline: "P3 — emit-site census + wall",
             brief: "Every existing print site ([floor-memory], [typecheck-attribution], [gantt], claim_executor prints, shell echoes) classified event-projection or counted frontier row (the unthemed-color-census pattern); existing receipt FILE formats unchanged — they have consumers and become derived views of the event stream, dissolving on their own triggers; then the lens walls new bare prints outside the projection.",
             displaced_cost: "",
@@ -2285,6 +2177,7 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             updates: [
               TicketUpdate { on: "2026-07-25", note: "branch state verified this session: the observation lane's implementation lives on #7216's unmerged branch (supersedes #7162); this row lands at its merge" },
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 3); the terminal receipt became red_control" },
+              TicketUpdate { on: "2026-07-26", note: "MERGED #7216; completion reconciled from the merged PR" },
             ],
             authored_on: "",
             last_verified_on: "2026-07-25",
@@ -2318,11 +2211,11 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             authored_on: "2026-07-22",
             last_verified_on: "2026-07-23",
           }),
-          ticket_wi(id: "ts-dispatch-redispatch", done: false, t: TicketFields {
+          ticket_wi(id: "ts-dispatch-redispatch", done: true, t: TicketFields {
             headline: "re-dispatch after Stop is broken — the dispatch loop is one-shot per node",
             brief: "Two failure classes, both proven live on srv1. Debris: Stop leaves the worktree and `dispatch/<node_id>` branch behind, so the next POST is a typed spawn_failed at the git step. Session-id reuse: even after hand-cleaning, claude exits 1 because the deterministic per-node UUID collides with the archived transcript — one-shot at the claude layer too.",
             displaced_cost: "a stopped node becomes dispatchable again without a human cleaning worktrees and branches on srv1",
-            current_state: "fix on PR #7266 (U1), green by execution; both classes dissolved at the source rather than cleaned up after — awaiting the operator verdict, so NOT done",
+            current_state: "LANDED #7266: dispatch identity is attempt-grain while tmux observation remains node-grain; re-dispatch after Stop is green by execution",
             first_slice: "teardown/spawn own the worktree+branch lifecycle observe-then-decide (the session_lease upsert shape); a worktree with uncommitted work REFUSES removal, never silently deletes",
             red_control: "re-POST after Stop must not answer spawn_failed; a worktree with uncommitted changes must refuse teardown",
             out_of_scope: "the sessions panel (PR-B P2a) — this row is only the re-dispatch loop",
@@ -2330,9 +2223,40 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             updates: [
               TicketUpdate { on: "2026-07-23", note: "both failure classes reproduced live on srv1; dedup shown independent of UUID determinism (observe keys on the tmux session name)" },
               TicketUpdate { on: "2026-07-25", note: "U1 (#7266): dispatch became ATTEMPT-grain — branch, worktree, and claude session-id all derive from content_hash(node_id x clock probed_at), so the debris class cannot collide and the archived-transcript class cannot recur. The tmux session name stays NODE-grain because it is the observe/reconcile key: fresh where debris collides, stable where identity reconciles. The handback is resolved fresh-per-attempt, not --resume: a resumed session inherits the prior attempt's context, which is exactly what ts-wf-belt-refusals rules out for NeedsRework (a fresh session carrying brief + prior diff, never the producing context unwinding its own work) — the two rows would otherwise disagree about the same question" },
+              TicketUpdate { on: "2026-07-26", note: "MERGED #7266 with U1 redispatch plus U2 sessions, U3 attempts, and U4 Stop; completion reconciled from the merged PR" },
             ],
             authored_on: "2026-07-23",
             last_verified_on: "2026-07-25",
+          }, intricacy: IntricacyMedium, volume: VolumeSmall, repo: "gunbc"),
+          ticket_wi(id: "ts-wf-lamps-v0", done: false, t: TicketFields {
+            headline: "Workflow lamps v0 — Live and Attempted render independently on every row",
+            brief: "The page separately renders tmux sessions and attempt branches, forcing operators to join them. Add a modeled workflow strip to every roadmap row with Live and Attempted lamps. Each lamp is an independent projection of its existing observation route, never persisted or inferred from the other. Client state is pending, observed-off, observed-on, or refused; refusal marks that source unknown and keeps the loud banner while the other source still resolves. Existing dispatch, stop, and branch-evidence behavior stays unchanged.",
+            displaced_cost: "operators stop refreshing and mentally joining the session button, stop chip, and attempt line to answer whether a node is live or has been attempted",
+            current_state: "U2 /sessions.json and U3 /attempts.json are live, fail-closed observations, but both clients anchor through the dispatch button's data-node; done and superseded rows have no button, and the row archetype has no workflow observation region",
+            first_slice: "one workflow-controls wrapper realizes the existing ActuatorRegion on every row and carries a two-lamp strip plus the optional dispatch button. Live and Attempted each fold their existing fetch independently through the shared client observation-state authority; no new route and no stored workflow status",
+            red_control: "both directions: sessions refused + attempts observed-on renders Live refused/dark and Attempted lit; attempts refused + sessions observed-on renders Attempted refused/dark and Live lit. A same-node observed pair lights both, proving no exclusive state machine",
+            out_of_scope: "latch behavior and depth styling (ts-dispatch-latch); polling; Proposed and Landed, which wait for typed PR/handback observations; removal of the existing stop chip or attempt-branch evidence",
+            handback: "strip visible on the local server with one live session and one attempt branch; stable on rows without an actuator; witness battery green; roadmap_css_lift_parity_digest re-pinned by derivation; PR body carries the live-drive receipt",
+            updates: [
+              TicketUpdate { on: "2026-07-26", note: "operator adjudication after tree verification: adopted the review recut; workflow-controls belongs in v0; the shared four-state client observation authority has both workflow lamps and the future floor-verdict rollup as consumers; symmetric refusal RED required" },
+            ],
+            authored_on: "2026-07-26",
+            last_verified_on: "2026-07-26",
+          }, intricacy: IntricacyMedium, volume: VolumeSmall, repo: "gunbc"),
+          ticket_wi(id: "ts-dispatch-latch", done: false, t: TicketFields {
+            headline: "the dispatch control latches from observed Live, and release stays fail-closed",
+            brief: "Once the Live lamp is authoritative, the dispatch control may consume it as a latch: raised dispatches; pressed releases only through R5. The control never infers Live from its last click. Every start, stop, or refusal re-observes before changing the latch. A refused teardown leaves it pressed because teardown did not happen; an unknowable read renders refused, never off. Release must remain explicit: either a two-step gesture or the existing stop chip.",
+            displaced_cost: "the live button currently looks settled but still dispatches again, while Stop is a separate dynamically-created control; the action and its observed state disagree",
+            current_state: "U4 /stop/\{node\} is ownership-gated, but sessions are observed once at load. R5 prevents killing an unproven process, not an accidental stop of an owned session; the sandbox program also shares the production dispatch handler and needs the same modeled action split",
+            first_slice: "sandbox the two admissible release shapes — aria-pressed with a visible dispatch/stop label and a two-step release, or a pressed state display that retains the explicit stop chip — then sign one before production rewiring. Actuation success and every refusal trigger Live re-observation",
+            red_control: "a foreign-process or fingerprint-unobserved stop refusal leaves aria-pressed true and surfaces the reason; an observe_refused response renders the latch unknown/refused; no response arm fabricates off. A planted one-click release must refuse under the two-step variant",
+            out_of_scope: "Proposed/Landed lamps and cross-session messaging; bevel, chamfer, inset shadow, and motion material, which land with the depth study from cited Norman/latching-toggle/elevation sources",
+            handback: "operator chooses two-step latch release or explicit stop chip after both sandbox specimens; accessible name and visible label agree; start/stop/refusal re-observation witnessed; mobile actuator cluster does not overflow",
+            updates: [
+              TicketUpdate { on: "2026-07-26", note: "filed from lamps adjudication: a refusal pops nothing out; once-at-load is insufficient for an actuator edge; R5 is an ownership wall, not accidental-stop confirmation; visible label plus aria-pressed are required because depth alone cannot carry state" },
+            ],
+            authored_on: "2026-07-26",
+            last_verified_on: "2026-07-26",
           }, intricacy: IntricacyMedium, volume: VolumeSmall, repo: "gunbc"),
           ticket_row(id: "ts-ui-model", done: false, t: TicketFields {
             headline: "UI modeling migration — kill the hand layer; unlock the component register; land /sandbox",
@@ -2415,6 +2339,7 @@ fn task_sheet_lead_lane() -> RoadmapSection {
           }, intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"),
         ],
         edges: [
+          RoadmapEdge { child: nid(s: "ts-dispatch-latch"), parent: nid(s: "ts-wf-lamps-v0") },
           RoadmapEdge { child: nid(s: "ts-dispatch-verdict"), parent: nid(s: "ts-dispatch-lifecycle") },
           RoadmapEdge { child: nid(s: "ts-dispatch-rework"), parent: nid(s: "ts-dispatch-lifecycle") },
           RoadmapEdge { child: nid(s: "ts-dispatch-ownership-mint"), parent: nid(s: "ts-dispatch-redispatch") },
@@ -2494,7 +2419,7 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             authored_on: "2026-07-23",
             last_verified_on: "",
           }),
-          ticket_wi(id: "ts-wf-node-schema", done: false, t: TicketFields {
+          ticket_wi(id: "ts-wf-node-schema", done: true, t: TicketFields {
             headline: "node schema decomposition — kill the prose blob at the model grain",
             brief: "RoadmapNode content decomposes into typed ticket fields, so the page, the generated ROADMAP.md, and the dispatch brief all project from fields instead of dumping one string. Freshness falls out later: a row whose receipts predate its lane's last landing revalidates before dispatch. This row is itself migrated — the schema's first recursive consumer.",
             displaced_cost: "briefs become readable tickets; dispatch briefs stop stuffing the title into every slot; updates stop concatenating into an immortal blob",
@@ -2678,22 +2603,6 @@ fn task_sheet_lead_lane() -> RoadmapSection {
       section_group(
         label: "4 · Antagonistic product review — the last two weeks of merges",
         nodes: [
-          ticket_row(id: "ts-review-sweep", done: false, t: TicketFields {
-            headline: "sweep the ~300 PRs merged since 2026-07-15 with the operator's checklist",
-            brief: "Does this PR accomplish what it was supposed to? if not, what remains? what issues happened? what context should pass to the next session? Output = per-PR disposition rows (finish · consume · revert · accept).",
-            displaced_cost: "",
-            current_state: "",
-            first_slice: "prioritize merges whose mechanisms have zero executing consumers, and merges landed while the falsifier was dark (2026-07-16 onward — the whole wave)",
-            red_control: "",
-            out_of_scope: "",
-            handback: "",
-            updates: [
-              TicketUpdate { on: "2026-07-22", note: "checklist authored" },
-              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 12)" },
-            ],
-            authored_on: "2026-07-22",
-            last_verified_on: "",
-          }),
           ticket_row(id: "ts-concat-class", done: false, t: TicketFields {
             headline: "the concat-composition class — shortcuts that calcify and spread",
             brief: "String-building concat chains as the easiest path to the objective: 2,798 concat( sites in dag+src/v2, 112 nested concat(concat( in dag/** alone, densest in host/shell-adjacent modules — exactly where the shell→intent rework fights them. The ruling already exists (operator 2026-07-14, #6656: a string literal is an ATOM, never a COMPOSITION; TargetText carrier at the emit seam). The work is the census + wall: classify each chain (emit-seam-internal = fine · smuggled composition = migrate to its typed carrier) and gate new ones at the boundary.",
@@ -2724,57 +2633,8 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             authored_on: "",
             last_verified_on: "",
           }),
-          authored(id: "ts-sustainable-close", done: false, content: "**redefine done for PRs — finishing the task is not finishing the work**: a PR closes sustainably when the antagonistic review passes AND the modeling audit (item 5) passes AND its context-for-next-session lands on the carrier (item 6), not in the chat."),
         ],
         edges: [],
-      ),
-      section_group(
-        label: "4a · Open-PR audit — disposition every open PR (12 at snapshot)",
-        nodes: [
-          ticket_row(id: "ts-pr-audit", done: false, t: TicketFields {
-            headline: "audit the remaining open PRs and decide each one's disposition",
-            brief: "merge · review-then-merge · fold into another lane · close; the PRs open at snapshot (16:30 UTC) are the children beneath. Each child is a one-fact disposition snapshot, not a blob — they are HELD from the W2-bulk migration on the typed roster (w2_bulk_resweep_held) awaiting this row's sweep, never guessed into ticket costume.",
-            displaced_cost: "",
-            current_state: "children on the typed hold roster; several already carry MERGED marks from the wave",
-            first_slice: "re-sweep after the merge wave settles, applying item 4's checklist and item 5's modeling audit to each child",
-            red_control: "",
-            out_of_scope: "",
-            handback: "the sweep itself — each child's disposition is the operator's call",
-            updates: [
-              TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk); children held on the typed roster per the management ruling — the hold is a counted state with this row's sweep as its dissolve-on" },
-            ],
-            authored_on: "",
-            last_verified_on: "",
-          }),
-          authored(id: "ts-pr-7080", done: true, content: "#7080 layering gate false edges — the reference-derived producer misattributed prelude bare names, binders, and record-literal labels as cross-layer import edges (the one floor red left after #7082); fix verified pre-merge by a local red/green pair (gate witness false on main's tree, true with the PR applied, same tree same witness) — MERGED 2026-07-22 (7c222fc). Also the enabler for closure-derived Group<U> membership (group 5a)."),
-          authored(id: "ts-pr-7078", done: true, content: "#7078 §13 alias APPLY — CLOSED unmerged 2026-07-23 by the namespace lane as premature: dispatched off the design doc's stale import→alias sequencing; the fresh execution receipt shows the flip is a cheap safe substitution that goes first, making the alias tooling premature. Disposition executed; the doc reconcile rides the namespace lane."),
-          authored(id: "ts-pr-7077", done: true, content: "#7077 srv1 deploy readiness fix (was mistitled `dag roadmap work`) — poll bound 30s→120s grounded in measurement: four srv1 starts listening at 35–39s against a 30s bound, so every prior deploy red was the probe quitting ~4s early on a successful start; expectation (40s) and bound (×3 margin) split into separate decls with the demand-scoped-load dissolution trigger — MERGED 2026-07-22 (fec005aa). Residual: `witness_poll_max_attempts_is_thirty` now asserts 120 — rename on next touch."),
-          authored(id: "ts-pr-7076", done: true, content: "#7076 right-size the emitted pre-push hook — CI-scale artifact drift gate dropped from GitPrePushHook — MERGED 2026-07-22 (d50e25b)."),
-          authored(id: "ts-pr-7074", done: true, content: "#7074 cli_run.rs hollowing ledger — CLOSED by operator 2026-07-22, reframed as roadmap description: the census stands as the drain map (867 fns; LensHostBridge 225 + NamespaceResolutionSymbolIndex 214 + AffectedSetSelection 141 = 580/867 — two-thirds of the file on two v2 lanes), while the Python generator and its §3 second-producer question dissolve with the PR. Seed management continues in group 7."),
-          authored(id: "ts-pr-7072", done: true, content: "#7072 finish #7043 floor budget refusal on FloorOutcome + plan-roster fact (`session/tidy-ibex-424`) — MERGED 2026-07-22 (44e538d)."),
-          authored(id: "ts-pr-7069", done: true, content: "#7069 CI onto v2 — routing frontier + parity gate + consumption P4/P2/R1/R2 (`session/native-routing-consumption`) — operator merging 2026-07-22 after rebase+regen (ci.yml drift collision with the heal merges). Parity windows DEMOTED from flip-precondition to post-flip monitoring (operator re-pricing 2026-07-22: no customers — prefer immediate loud divergence over drip-feed); R2 toolchain-identity key rides its commit 4. Immediate follow-on so it does not pile up: the family re-key row (group 5a); opens the bulk-native arc (group 2a)."),
-          authored(id: "ts-pr-7068", done: true, content: "#7068 dissolve cssl_emit_artifact_sanitize v1_rt-strip — dead rule deleted, pub-use-dedupe gap named for crisp-fox-839 — MERGED 2026-07-22 (46127b9)."),
-          authored(id: "ts-pr-7066", done: true, content: "#7066 Gate-1 receipt lane B1 — MERGED 2026-07-23: landed as the full per-module behavioral-receipt producer (one roster + one dispatch; 16 hand-authored transports dissolved)."),
-          authored(id: "ts-pr-7058", done: true, content: "#7058 post-merge honest frontier re-sweep — generic-T dead, type-ref-import-missing named successor class (`session/sharp-bee-290-roadmap-converge`) — MERGED 2026-07-22 (e89f076); its main run is the first to exercise the deploy tail with both unit fixes in tree."),
-          authored(id: "ts-pr-7050", done: false, content: "#7050 computation-identity de-fork census R1–R8 (`session/computation-identity-defork`) — doc + bind row only, clean vs main; merge. R2 (durable native cache toolchain identity) now lands via #7069 commit 4 — the census row stays as its receipt."),
-          authored(id: "ts-pr-7027", done: false, content: "#7027 srv4 BMC onboarding G1–G4 — parameterize per-host, gcloud self-provision, operator-token handler (`session/srv4-onboarding-credential-rotation-gap`) — ready; unblocks srv4."),
-          authored(id: "ts-pr-7008", done: true, content: "#7008 Phase-A design-library lift — gunbc.design.* extraction + census frontier — MERGED 2026-07-22 (cadb472)."),
-        ],
-        edges: [
-          RoadmapEdge { child: nid(s: "ts-pr-7080"), parent: nid(s: "ts-pr-audit") },
-          RoadmapEdge { child: nid(s: "ts-pr-7078"), parent: nid(s: "ts-pr-audit") },
-          RoadmapEdge { child: nid(s: "ts-pr-7077"), parent: nid(s: "ts-pr-audit") },
-          RoadmapEdge { child: nid(s: "ts-pr-7076"), parent: nid(s: "ts-pr-audit") },
-          RoadmapEdge { child: nid(s: "ts-pr-7074"), parent: nid(s: "ts-pr-audit") },
-          RoadmapEdge { child: nid(s: "ts-pr-7072"), parent: nid(s: "ts-pr-audit") },
-          RoadmapEdge { child: nid(s: "ts-pr-7069"), parent: nid(s: "ts-pr-audit") },
-          RoadmapEdge { child: nid(s: "ts-pr-7068"), parent: nid(s: "ts-pr-audit") },
-          RoadmapEdge { child: nid(s: "ts-pr-7066"), parent: nid(s: "ts-pr-audit") },
-          RoadmapEdge { child: nid(s: "ts-pr-7058"), parent: nid(s: "ts-pr-audit") },
-          RoadmapEdge { child: nid(s: "ts-pr-7050"), parent: nid(s: "ts-pr-audit") },
-          RoadmapEdge { child: nid(s: "ts-pr-7027"), parent: nid(s: "ts-pr-audit") },
-          RoadmapEdge { child: nid(s: "ts-pr-7008"), parent: nid(s: "ts-pr-audit") },
-        ],
       ),
       section_group(
         label: "5 · Modeling audit — a standing pass, not a one-off",
@@ -2977,13 +2837,6 @@ fn task_sheet_lead_lane() -> RoadmapSection {
           RoadmapEdge { child: nid(s: "ts-seed-data-out"), parent: nid(s: "ts-seed-interim") },
           RoadmapEdge { child: nid(s: "ts-seed-intake"), parent: nid(s: "ts-seed-interim") },
         ],
-      ),
-      section_group(
-        label: "Session branches running CI with no open PR at snapshot",
-        nodes: [
-          authored(id: "ts-branches", done: true, content: "**each should end as a PR row above or be abandoned deliberately** — all 8 dispositioned: 7 merged same-day (#7075 · #7060 · #7061 · #7064 · #7059 · #7062 · #7067); fix/tidy-ibex-merge closed via #7073 as a deliberate duplicate-close of the merged #7072 (both pointed at the identical commit; operator-confirmed 2026-07-23)."),
-        ],
-        edges: [],
       ),
     ],
   }

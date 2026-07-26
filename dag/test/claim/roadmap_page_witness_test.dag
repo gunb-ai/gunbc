@@ -209,7 +209,7 @@ fn witness_ticket_rows_render_structured() -> Bool {
     && string_contains(s: h, pattern: "class=\"ticket-brief\"")
     && string_contains(s: h, pattern: ">displaced cost</span>")
     && string_contains(s: h, pattern: "class=\"ticket-updates\"")
-    && string_contains(s: h, pattern: "href=\"https://github.com/gunb-ai/gunbc/blob/main/docs/plans/dispatch-maintain-cc.md\"")
+    && string_contains(s: h, pattern: "href=\"https://github.com/gunb-ai/gunbc/blob/main/docs/plans/node-subtree-visibility-grants.md\"")
 }
 
 fn long_brief_fixture() -> RoadmapNode {
