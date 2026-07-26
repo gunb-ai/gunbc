@@ -43,9 +43,17 @@ import pathlib
 import re
 import subprocess
 import sys
+import tempfile
 
 aggregate = sys.argv[1] == "1"
 paths = [pathlib.Path(p) for p in sys.argv[2:]]
+if not paths:
+    print("error: no cargo.log paths provided", file=sys.stderr)
+    sys.exit(2)
+for path in paths:
+    if not path.is_file():
+        print(f"error: cargo.log not found: {path}", file=sys.stderr)
+        sys.exit(2)
 
 root = pathlib.Path(__import__("os").environ["E0599_CENSUS_ROOT"])
 gunbc = __import__("os").environ["E0599_CENSUS_GUNBC"]
@@ -53,7 +61,7 @@ gunbc = __import__("os").environ["E0599_CENSUS_GUNBC"]
 _root_family_cache: dict[tuple[str, str, str], str] = {}
 
 
-def gunbc_run(function: str, blob_arg: str | None = None) -> str:
+def gunbc_write(function: str, out_path: str, **kwargs: str) -> str:
     cmd = [
         gunbc,
         "run",
@@ -63,29 +71,27 @@ def gunbc_run(function: str, blob_arg: str | None = None) -> str:
         "dag/tools/e0599_probe_census.dag",
         "--function",
         function,
+        "--arg",
+        f"out_path={out_path}",
     ]
-    if blob_arg is not None:
-        cmd.extend(["--arg", f"blob={blob_arg}"])
+    for key, value in kwargs.items():
+        cmd.extend(["--arg", f"{key}={value}"])
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    lines: list[str] = []
-    capture = False
-    for line in proc.stdout.splitlines():
-        if line.startswith("running "):
-            capture = True
-            continue
-        if line.startswith("error:"):
-            break
-        if capture and line.strip():
-            lines.append(line)
-    if not lines and proc.returncode not in (0, 2):
+    if proc.returncode != 0:
         raise RuntimeError(
-            f"gunbc {function} failed: stdout={proc.stdout!r} stderr={proc.stderr!r}"
+            f"gunbc {function} failed (exit {proc.returncode}): "
+            f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
         )
-    return "\n".join(lines)
+    return pathlib.Path(out_path).read_text(encoding="utf-8")
 
 
 def load_message_patterns() -> list[tuple[str, re.Pattern[str]]]:
-    blob = gunbc_run("e0599_message_pattern_rows_blob")
+    with tempfile.NamedTemporaryFile(prefix="e0599_patterns_", delete=False) as tmp:
+        out_path = tmp.name
+    try:
+        blob = gunbc_write("e0599_write_message_pattern_rows_blob", out_path)
+    finally:
+        pathlib.Path(out_path).unlink(missing_ok=True)
     patterns: list[tuple[str, re.Pattern[str]]] = []
     for line in blob.splitlines():
         if not line.strip():
@@ -108,7 +114,12 @@ def gunbc_root_family_labels(keys: list[tuple[str, str, str]]) -> dict[tuple[str
     if not keys:
         return {}
     blob = "\n".join(f"{shape}\t{method}\t{receiver}" for shape, method, receiver in keys)
-    out = gunbc_run("e0599_root_family_labels_from_blob", blob_arg=blob)
+    with tempfile.NamedTemporaryFile(prefix="e0599_labels_", delete=False) as tmp:
+        out_path = tmp.name
+    try:
+        out = gunbc_write("e0599_write_root_family_labels_from_blob", out_path, blob=blob)
+    finally:
+        pathlib.Path(out_path).unlink(missing_ok=True)
     labels = out.splitlines() if out else []
     if len(labels) != len(keys):
         raise RuntimeError(

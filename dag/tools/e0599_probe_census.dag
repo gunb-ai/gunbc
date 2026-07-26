@@ -30,7 +30,7 @@ type E0599RootFamilyRow {
   description: String,
 }
 
-data e0599_probe_census_note: String = "Single authority for canonical-seven E0599 per-error census: failure-shape patterns (rustc message text), root-family rollup (three mechanistic roots + tails), and module roster. Realization: docs/probes/e0599_census_extract.sh (SCAFFOLD) fetches e0599_message_pattern_rows_blob and e0599_root_family_labels_from_blob via gunbc over PROBE_KEEP_LOG_DIR/*.cargo.log; frozen receipt docs/probes/e0599_canonical_seven_census_2026-07-26.tsv is output, not authority. dissolve-on: gunbc bash-emit #5828 / modeled cssl_probe transport or self_host_curated_seed_linked_harness probe classifier row."
+data e0599_probe_census_note: String = "Single authority for canonical-seven E0599 per-error census: failure-shape patterns (rustc message text), root-family rollup (three mechanistic roots + tails), and module roster. Realization: docs/probes/e0599_census_extract.sh (SCAFFOLD) calls e0599_write_message_pattern_rows_blob and e0599_write_root_family_labels_from_blob (ProcessExit exports) over PROBE_KEEP_LOG_DIR/*.cargo.log; frozen receipt docs/probes/e0599_canonical_seven_census_2026-07-26.tsv is output, not authority. dissolve-on: gunbc bash-emit #5828 / modeled cssl_probe transport or self_host_curated_seed_linked_harness probe classifier row."
 
 data e0599_baseline_receipt: String = "docs/probes/refresh_canonical_seven_2026-07-26.tsv"
 
