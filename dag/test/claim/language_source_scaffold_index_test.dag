@@ -1,0 +1,30 @@
+module test.claim.language_source_scaffold_index_test
+
+
+data language_source_scaffold_index_test_note: String = "B2 control for the language-source scaffold inventory. The positive families assert every rostered hand-authored target-source blob carries a Scaffold disposition binding the construction that subsumes it. The RED control is a synthetic Terminal-dispositioned row: because Disposition has no prose arm, an untriggered mark is a TYPED state, so the check discriminates without classifying string content."
+
+data untriggered_control_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "extdeps.languages.rust.emit",
+  blob_decl: "synthetic_untriggered_blob",
+  disposition: Terminal { reason: "synthetic negative control — no dissolution named" }
+}
+
+test fn language_source_scaffold_roster_is_fully_triggered() -> Bool {
+  language_source_scaffold_roster_all_triggered()
+}
+
+test fn language_source_scaffold_roster_is_non_empty() -> Bool {
+  language_source_scaffold_roster_size() > 0
+}
+
+test fn untriggered_scaffold_row_is_refused() -> Bool {
+  language_source_scaffold_row_has_trigger(row: untriggered_control_row) == false
+}
+
+test fn pair_completion_spelling_binds_the_derivation_authority() -> Bool {
+  match rust_pair_completion_spelling_scaffold_trigger {
+    Scaffold { dissolves_to: _, bind: bind } =>
+      bind.module_path == "std.trait_derive_shape" && bind.decl_name == "pair_completion_op_rows"
+    Terminal { reason: _ } => false
+  }
+}
