@@ -68,6 +68,18 @@ data witness_timing_row_seed_view_note: String = "WitnessTimingRow in cli_run.rs
 
 data witness_cost_transition_extract_note: String = "ObservationTransition is read only through witness_cost_concluded_outcome (Optional extract). reusable Begin|Step|Concluded-to-Bool predicates are dissolved (review 43351); is_entry_resolve / is_declaration_witness compose subject facts with that extract and never match the transition coproduct. Subject segment fields are read through std.observation observation_subject_entry_path / observation_subject_declaration / observation_subject_phase_name (canonical accessors; review 43361) — no local ObservationSegment walkers."
 
+
+data witness_cost_role_bool_filter_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.witness_row_cost",
+    decl_name: "witness_cost_concluded_outcome",
+    field: WholeDeclaration
+  }
+}
+
+data witness_cost_role_bool_filter_note: String = "Scaffold (review 43383): is_entry_resolve_event / is_declaration_witness_event remain Bool filters over (subject facts x concluded Optional), not ObservationTransition->Bool. Dissolve-on: count/project folds match witness_cost_entry_resolve_entry / witness_cost_declaration_witness_concluded Present/Absent inline (no Bool nickname)."
+
 type WitnessRowCostDatedBasis {
   eval: Millisecond
   run_ref: String
