@@ -6778,6 +6778,15 @@ fn contextual_variant_parent(variant_name: String, parent_enum: String?, resolve
   }
 }
 
+fn contextual_variant_parent_when_unparented(variant_name: String, resolved_type: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+  if is_optional_variant_name(name: variant_name) && resolved_type.return_cardinality == CardOptional { Present { value: "Optional" } } else { contextual_variant_parent_from_resolved_type(variant_name: variant_name, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices) }
+}
+
+fn contextual_variant_parent_from_resolved_type(variant_name: String, resolved_type: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+  let rt_name = authored_name_at(source_indices: source_indices, node: resolved_type)
+  if resolved_type.ident_span != none && rt_name != variant_name && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: rt_name) { Present { value: rt_name } } else { none }
+}
+
 fn is_map_typed_expr(texpr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match texpr.inferred {
     Present { value: Resolved { node: n } } => node_is_keyed_collection(n: n, source_indices: source_indices)
@@ -8344,7 +8353,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         }
         return concat("{ let mut __cons_v = (*", tail_val, ").clone(); __cons_v.insert(0, ", head_val, "); __cons_v }")
       }
-      let optional_variant = is_optional_variant_name(name: tn) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent))
+      let optional_variant = is_optional_variant_name(name: tn) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent) || resolved_type.return_cardinality == CardOptional)
       let rust_tn = if optional_variant {
         if is_some_like_variant_name(name: tn) { "Some" } else { "None" }
       } else { tn }
