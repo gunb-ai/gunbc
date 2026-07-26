@@ -6190,7 +6190,8 @@ fn effective_variant_parent_from_enum_lookup(leaf_name: String, rt: Node, bindin
 
 fn effective_variant_parent_from_resolved(leaf_name: String, rt: Node, binding_kind: VarBindingKind?, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
   match rt.return_cardinality {
-    CardOptional => Present { value: "Optional" }
+    CardOptional =>
+      if is_optional_variant_name(name: leaf_name) { Present { value: "Optional" } } else { effective_variant_parent_from_enum_lookup(leaf_name: leaf_name, rt: rt, binding_kind: binding_kind, emit_info: emit_info, source_indices: source_indices) }
     _ => effective_variant_parent_from_enum_lookup(leaf_name: leaf_name, rt: rt, binding_kind: binding_kind, emit_info: emit_info, source_indices: source_indices)
   }
 }
@@ -6752,17 +6753,30 @@ fn is_enum_type_name(type_name: String, type_summaries: Map<String, TypeSummary>
   is_enum_in_summaries(type_summaries: type_summaries, type_name: type_name)
 }
 
+fn contextual_variant_parent_from_type_name(variant_name: String, resolved_type: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+  let rt_name = authored_name_at(source_indices: source_indices, node: resolved_type)
+  if resolved_type.ident_span != none && rt_name != variant_name && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: rt_name) {
+    Present { value: rt_name }
+  } else {
+    none
+  }
+}
+
+fn contextual_variant_parent_absent(variant_name: String, resolved_type: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+  match resolved_type.return_cardinality {
+    CardOptional =>
+      if is_optional_variant_name(name: variant_name) { Present { value: "Optional" } } else { contextual_variant_parent_from_type_name(variant_name: variant_name, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices) }
+    _ => contextual_variant_parent_from_type_name(variant_name: variant_name, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
+  }
+}
+
 fn contextual_variant_parent(variant_name: String, parent_enum: String?, resolved_type: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
   match parent_enum {
     Present { value: explicit_parent } =>
       if variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: explicit_parent) {
         Present { value: explicit_parent }
       } else { none }
-    Absent =>
-      let rt_name = authored_name_at(source_indices: source_indices, node: resolved_type)
-      if resolved_type.ident_span != none && rt_name != variant_name && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: rt_name) {
-        Present { value: rt_name }
-      } else { none }
+    Absent => contextual_variant_parent_absent(variant_name: variant_name, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
   }
 }
 
