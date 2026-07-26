@@ -1,13 +1,17 @@
 module test.claim.long.gauntlet_lane_enrollment_witness
 
 import gunbc.ci_layer_roots { SubstrateLongLaneRow, falsifier_substrate_long_lane_rows }
+import gunbc.ci_gate { Gate, CheapClaimPoolGate, RegenVerifyGate }
 import gunbc.commit_workflow {
   CommitCheckEnrollment, CommitCheckKind, CommitWitnessClaim, CommitCargoFmtCheck,
+  CommitSpecGate,
   CommitWorkflowSurface, GithubActionsCiJob, GithubActionsCiRegenJob,
   GitPrePushHook, FalsifierCadenceJob,
   roster_has_no_bare_deenrolled_witness,
   live_roster_has_no_bare_deenrolled_witness,
-  live_roster_falsifier_witness_entries
+  live_roster_falsifier_witness_entries,
+  roster_has_no_bare_deenrolled_gate,
+  live_roster_has_no_bare_deenrolled_gate
 }
 import std.realization_schedule {
   ScheduleWitnessEntry, ExecutionWitnessKind, SpanUndeclared
@@ -97,5 +101,41 @@ test fn gauntlet_lane_rehome_is_never_bare_deenrollment_holds() -> Bool {
 test fn gauntlet_lane_rehome_bare_deenrollment_RED_control_holds() -> Bool {
   !roster_has_no_bare_deenrolled_witness(
     roster: [synthetic_pr_row(), synthetic_rehomed_row(), synthetic_bare_deenrolled_row()]
+  )
+}
+
+data gate_half_of_the_wall_note: String = "The GATE half, added 2026-07-26 when an audit found the wall above covers only CommitWitnessClaim rows. A CommitSpecGate could be moved to surfaces: [FalsifierCadenceJob] — or to [] outright — and execute nowhere with nothing red, because roster_has_no_bare_deenrolled_witness filters on enrollment_is_witness_claim, which answers false for a gate. That made the gate the single enrollment shape whose de-enrollment was invisible, in a lane about to be used to re-home three of them. The claims below mirror the witness half exactly, INCLUDING the surface asymmetry that makes them two predicates rather than one: the regen-job row is a POSITIVE control here (a gate on GithubActionsCiRegenJob is correctly enrolled — project_ci_regen_job_gates executes it) where the byte-identical witness row is the NEGATIVE control above. If those two ever agree, one of them is wrong; gate_enrollment_surface_asymmetry_note carries the reasoning."
+
+fn synthetic_cadence_gate_row() -> CommitCheckEnrollment {
+  CommitCheckEnrollment {
+    check: CommitSpecGate { gate: CheapClaimPoolGate },
+    surfaces: [FalsifierCadenceJob]
+  }
+}
+
+fn synthetic_regen_gate_row() -> CommitCheckEnrollment {
+  CommitCheckEnrollment {
+    check: CommitSpecGate { gate: RegenVerifyGate },
+    surfaces: [GithubActionsCiRegenJob]
+  }
+}
+
+fn synthetic_bare_deenrolled_gate_row() -> CommitCheckEnrollment {
+  CommitCheckEnrollment {
+    check: CommitSpecGate { gate: CheapClaimPoolGate },
+    surfaces: [GitPrePushHook]
+  }
+}
+
+test fn gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds() -> Bool {
+  live_roster_has_no_bare_deenrolled_gate()
+    && roster_has_no_bare_deenrolled_gate(
+         roster: [synthetic_cadence_gate_row(), synthetic_regen_gate_row()]
+       )
+}
+
+test fn gauntlet_lane_gate_bare_deenrollment_RED_control_holds() -> Bool {
+  !roster_has_no_bare_deenrolled_gate(
+    roster: [synthetic_cadence_gate_row(), synthetic_bare_deenrolled_gate_row()]
   )
 }
