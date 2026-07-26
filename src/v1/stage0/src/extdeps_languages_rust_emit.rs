@@ -5,15 +5,25 @@ pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_emit_model::SimpleMethodSpec;
-pub use crate::std_trait_derive_shape::ReprGroundingDeriveTrait;
+use crate::std_trait_derive_shape::PairCompletionBody::{
+    PairCompletionCanonicalQuotient, PairCompletionNegatedAddend, PairCompletionSumOfProducts,
+};
+use crate::std_trait_derive_shape::PairCompletionComponent::{
+    PairCompletionNeg, PairCompletionPos,
+};
+use crate::std_trait_derive_shape::PairCompletionOperand::{PairCompletionRhs, PairCompletionSelf};
 use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::{
     ReprDeriveAdd, ReprDeriveClone, ReprDeriveCopy, ReprDeriveDebug, ReprDeriveDeserialize,
     ReprDeriveDiv, ReprDeriveEq, ReprDeriveMul, ReprDeriveNeg, ReprDeriveOrd, ReprDerivePartialEq,
     ReprDerivePartialOrd, ReprDeriveRem, ReprDeriveSerialize, ReprDeriveSub,
 };
 pub use crate::std_trait_derive_shape::{
-    nullary_coproduct_derive_traits, payload_coproduct_derive_traits, record_derive_traits_copy,
-    record_derive_traits_heap,
+    nullary_coproduct_derive_traits, pair_completion_body_uses_rhs, pair_completion_op_rows,
+    payload_coproduct_derive_traits, record_derive_traits_copy, record_derive_traits_heap,
+};
+pub use crate::std_trait_derive_shape::{
+    PairCompletionArm, PairCompletionBody, PairCompletionComponent, PairCompletionFactor,
+    PairCompletionOpRow, PairCompletionOperand, PairCompletionTerm, ReprGroundingDeriveTrait,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -627,17 +637,305 @@ pub fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
     )
 }
 
-pub fn rust_repr_grounding_arm_b_dissolve_on() -> String {
+pub fn rust_pair_completion_spelling_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "GroupCompletion<M> pos/neg pair arithmetic (#7197): Grothendieck add (componentwise), ring-completion mul ((ac+bd, ad+bc)), div on canonical representative (pos-neg)/(rhs.pos-rhs.neg) with zero neg; no PartialEq<i64> cross-representation bridge.".to_string()
+            "Rust spellings for the target-agnostic pair-completion rows in std.trait_derive_shape. Terminals only: trait paths, method names, where-bounds, carrier field syntax. The ARITHMETIC is not spelled here — each impl body is rendered from the row's polynomial arms, so a change to the Grothendieck construction is a row edit, never a string edit.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn rust_pair_completion_dissolve_on() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Dissolves when the emitted-target operator surface is selected by the grammar-row inverse in extdeps.languages.rust rather than by this per-op spelling table, at which point trait_path/method/where_bounds become ordinary terminal rows on the Rust target model.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RustPairCompletionSpelling {
+    pub method: String,
+    pub trait_path: String,
+    pub where_bounds: String,
+}
+
+pub fn rust_pair_completion_carrier() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "GroupCompletion".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_pair_completion_spellings() -> Rc<Vec<Rc<RustPairCompletionSpelling>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<RustPairCompletionSpelling>>> = {
+            serde_json::from_value(serde_json::json!([{"method": "neg", "trait_path": "std::ops::Neg", "where_bounds": ""}, {"method": "add", "trait_path": "std::ops::Add", "where_bounds": "where M: std::ops::Add<Output = M>,"}, {"method": "sub", "trait_path": "std::ops::Sub", "where_bounds": "where M: std::ops::Add<Output = M> + std::ops::Neg<Output = M>,"}, {"method": "mul", "trait_path": "std::ops::Mul", "where_bounds": "where M: std::ops::Add<Output = M> + std::ops::Mul<Output = M> + Clone,"}, {"method": "div", "trait_path": "std::ops::Div", "where_bounds": "where M: std::ops::Add<Output = M> + std::ops::Sub<Output = M> + std::ops::Div<Output = M> + Default,"}]))
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<RustPairCompletionSpelling>>>| c.clone())
+}
+
+pub fn rust_pair_completion_op_key(op: ReprGroundingDeriveTrait) -> String {
+    match op.clone() {
+        ReprGroundingDeriveTrait::ReprDeriveAdd => "add".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveSub => "sub".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveMul => "mul".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveDiv => "div".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveNeg => "neg".to_string(),
+        _ => "".to_string(),
+    }
+}
+
+pub fn rust_pair_completion_spelling_for(
+    op: ReprGroundingDeriveTrait,
+) -> Option<Rc<RustPairCompletionSpelling>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for s in rust_pair_completion_spellings().iter().cloned() {
+            if (s.method.clone() == rust_pair_completion_op_key(op.clone())) {
+                __result.push(s);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+}
+
+pub fn rust_pair_completion_factor_source(factor: Rc<PairCompletionFactor>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            match factor.operand.clone() {
+                PairCompletionOperand::PairCompletionSelf => "self".to_string(),
+                PairCompletionOperand::PairCompletionRhs => "rhs".to_string(),
+            },
+            ".".to_string(),
+        ),
+        match factor.component.clone() {
+            PairCompletionComponent::PairCompletionPos => "pos".to_string(),
+            PairCompletionComponent::PairCompletionNeg => "neg".to_string(),
+        },
+    )
+}
+
+pub fn rust_pair_completion_arm_sources(arm: Rc<PairCompletionArm>) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for term in arm.terms.clone().iter().cloned() {
+            __result.extend(
+                (*Rc::new({
+                    let mut __result = Vec::new();
+                    for f in term.factors.clone().iter().cloned() {
+                        __result.push(rust_pair_completion_factor_source(f.clone()));
+                    }
+                    __result
+                }))
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+pub fn rust_pair_completion_factor_render(
+    factor: Rc<PairCompletionFactor>,
+    term: Rc<PairCompletionTerm>,
+    later_sources: Rc<Vec<String>>,
+) -> String {
+    {
+        let src = rust_pair_completion_factor_source(factor.clone());
+        let repeats_in_term = (Rc::new({
+            let mut __result = Vec::new();
+            for f in term.factors.clone().iter().cloned() {
+                if (rust_pair_completion_factor_source(f.clone()) == src.clone()) {
+                    __result.push(f);
+                }
+            }
+            __result
+        })
+        .len() as i64);
+        if ((repeats_in_term.clone() > 1) || {
+            let mut __found = false;
+            for s in later_sources.clone().iter().cloned() {
+                if (s.clone() == src.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }) {
+            v1_rt::concat(src.clone(), ".clone()".to_string())
+        } else {
+            src.clone()
+        }
+    }
+}
+
+pub fn rust_pair_completion_term_render(
+    term: Rc<PairCompletionTerm>,
+    later_sources: Rc<Vec<String>>,
+) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for f in term.factors.clone().iter().cloned() {
+            __result.push(rust_pair_completion_factor_render(
+                f.clone(),
+                term.clone(),
+                later_sources.clone(),
+            ));
+        }
+        __result
+    })
+    .join(&" * ".to_string())
+}
+
+pub fn rust_pair_completion_arm_render(
+    arm: Rc<PairCompletionArm>,
+    later_sources: Rc<Vec<String>>,
+) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for t in arm.terms.clone().iter().cloned() {
+            __result.push(rust_pair_completion_term_render(
+                t.clone(),
+                later_sources.clone(),
+            ));
+        }
+        __result
+    })
+    .join(&" + ".to_string())
+}
+
+pub fn rust_pair_completion_no_later_sources() -> Rc<Vec<String>> {
+    Rc::new(vec![])
+}
+
+pub fn rust_pair_completion_body_render(body: Rc<PairCompletionBody>) -> String {
+    match (*body.clone()).clone() {
+        PairCompletionBody::PairCompletionSumOfProducts { pos, neg, .. } => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "{\n        ".to_string(),
+                                                    rust_pair_completion_carrier(),
+                                                ),
+                                                " {\n".to_string(),
+                                            ),
+                                            "            pos: ".to_string(),
+                                        ),
+                                        rust_pair_completion_arm_render(
+                                            pos.clone(),
+                                            rust_pair_completion_arm_sources(neg.clone()),
+                                        ),
+                                    ),
+                                    ",\n".to_string(),
+                                ),
+                                "            neg: ".to_string(),
+                            ),
+                            rust_pair_completion_arm_render(
+                                neg.clone(),
+                                rust_pair_completion_no_later_sources(),
+                            ),
+                        ),
+                        ",\n".to_string(),
+                    ),
+                    "            _phantom: std::marker::PhantomData,\n".to_string(),
+                ),
+                "        }\n".to_string(),
+            ),
+            "    }\n".to_string(),
+        ),
+        PairCompletionBody::PairCompletionNegatedAddend => "{ self + (-rhs) }\n".to_string(),
+        PairCompletionBody::PairCompletionCanonicalQuotient => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "{\n".to_string(),
+                            "        let q = (self.pos - self.neg) / (rhs.pos - rhs.neg);\n"
+                                .to_string(),
+                        ),
+                        "        ".to_string(),
+                    ),
+                    rust_pair_completion_carrier(),
+                ),
+                " { pos: q, neg: M::default(), _phantom: std::marker::PhantomData }\n".to_string(),
+            ),
+            "    }\n".to_string(),
+        ),
+    }
+}
+
+pub fn rust_pair_completion_impl_render(row: Rc<PairCompletionOpRow>) -> String {
+    match rust_pair_completion_spelling_for(row.op.clone()) {
+        Some(spelling) => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "impl<M> ".to_string(),
+                                                    spelling.trait_path.clone(),
+                                                ),
+                                                " for ".to_string(),
+                                            ),
+                                            rust_pair_completion_carrier(),
+                                        ),
+                                        "<M>".to_string(),
+                                    ),
+                                    if (spelling.where_bounds.clone() == "".to_string()) {
+                                        " {\n".to_string()
+                                    } else {
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                "\n".to_string(),
+                                                spelling.where_bounds.clone(),
+                                            ),
+                                            "\n{\n".to_string(),
+                                        )
+                                    },
+                                ),
+                                "    type Output = Self;\n".to_string(),
+                            ),
+                            "    fn ".to_string(),
+                        ),
+                        spelling.method.clone(),
+                    ),
+                    if pair_completion_body_uses_rhs(row.body.clone()) {
+                        "(self, rhs: Self) -> Self::Output ".to_string()
+                    } else {
+                        "(self) -> Self::Output ".to_string()
+                    },
+                ),
+                rust_pair_completion_body_render(row.body.clone()),
+            ),
+            "}\n".to_string(),
+        ),
+        None => "".to_string(),
+    }
+}
+
 pub fn rust_supplemental_impls_group_completion() -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic (v1 seed emit; ".to_string(), rust_repr_grounding_arm_b_dissolve_on()), ")\n".to_string()), "impl<M> std::ops::Neg for GroupCompletion<M> {\n".to_string()), "    type Output = Self;\n".to_string()), "    fn neg(self) -> Self::Output {\n".to_string()), "        GroupCompletion { pos: self.neg, neg: self.pos, _phantom: std::marker::PhantomData }\n".to_string()), "    }\n".to_string()), "}\n".to_string()), "impl<M> std::ops::Add for GroupCompletion<M>\n".to_string()), "where M: std::ops::Add<Output = M>,\n".to_string()), "{\n".to_string()), "    type Output = Self;\n".to_string()), "    fn add(self, rhs: Self) -> Self::Output {\n".to_string()), "        GroupCompletion { pos: self.pos + rhs.pos, neg: self.neg + rhs.neg, _phantom: std::marker::PhantomData }\n".to_string()), "    }\n".to_string()), "}\n".to_string()), "impl<M> std::ops::Sub for GroupCompletion<M>\n".to_string()), "where M: std::ops::Add<Output = M> + std::ops::Neg<Output = M>,\n".to_string()), "{\n".to_string()), "    type Output = Self;\n".to_string()), "    fn sub(self, rhs: Self) -> Self::Output { self + (-rhs) }\n".to_string()), "}\n".to_string()), "impl<M> std::ops::Mul for GroupCompletion<M>\n".to_string()), "where M: std::ops::Add<Output = M> + std::ops::Mul<Output = M> + Clone,\n".to_string()), "{\n".to_string()), "    type Output = Self;\n".to_string()), "    fn mul(self, rhs: Self) -> Self::Output {\n".to_string()), "        GroupCompletion {\n".to_string()), "            pos: self.pos.clone() * rhs.pos.clone() + self.neg.clone() * rhs.neg.clone(),\n".to_string()), "            neg: self.pos * rhs.neg + self.neg * rhs.pos,\n".to_string()), "            _phantom: std::marker::PhantomData,\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "}\n".to_string()), "impl<M> std::ops::Div for GroupCompletion<M>\n".to_string()), "where M: std::ops::Add<Output = M> + std::ops::Sub<Output = M> + std::ops::Div<Output = M> + Default,\n".to_string()), "{\n".to_string()), "    type Output = Self;\n".to_string()), "    fn div(self, rhs: Self) -> Self::Output {\n".to_string()), "        let q = (self.pos - self.neg) / (rhs.pos - rhs.neg);\n".to_string()), "        GroupCompletion { pos: q, neg: M::default(), _phantom: std::marker::PhantomData }\n".to_string()), "    }\n".to_string()), "}\n".to_string())
+    v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the\n".to_string(), "// pair-completion rows in std.trait_derive_shape (arithmetic is row data, not free text).\n".to_string()), Rc::new({ let mut __result = Vec::new(); for row in pair_completion_op_rows().iter().cloned() { __result.push(rust_pair_completion_impl_render(row.clone())); } __result }).join(&"".to_string()))
 }
 
 pub fn rust_supplemental_impls_bool_coproduct() -> String {
