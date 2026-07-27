@@ -12,8 +12,6 @@ import v2.std.orchestration_emit {
   orch_construct_run_rawline,
   orch_construct_retry,
   orch_construct_retry_1level,
-  orch_construct_retry_escalation_final,
-  orch_construct_retry_escalation_step,
   orch_construct_seq2,
   orch_construct_if,
   orch_construct_if_else,
@@ -996,160 +994,7 @@ fn orch_emit_retry_1level(
   }
 }
 
-fn orch_emit_retry_run_spelling(
-  command: String,
-  env: FreeMonoid<EnvBinding>,
-  redirect: Optional<RedirectSpec>,
-  capture: Optional<CaptureSpec>,
-  medium: OrchestrationEmitMedium
-) -> Outcome<String> {
-  bind_outcome(
-    o: orch_emit_retry_run(
-      command: command,
-      env: env,
-      redirect: redirect,
-      capture: capture,
-      medium: medium
-    ),
-    f: fn(m) { outcome_accepted(m.carried) }
-  )
-}
-
-fn orch_emit_retry_escalation_final(
-  command: String,
-  env: FreeMonoid<EnvBinding>,
-  redirect: Optional<RedirectSpec>,
-  capture: Optional<CaptureSpec>,
-  exhausted: String,
-  medium: OrchestrationEmitMedium
-) -> Outcome<String> {
-  bind_outcome(
-    o: orch_emit_retry_run_spelling(
-      command: command,
-      env: env,
-      redirect: redirect,
-      capture: capture,
-      medium: medium
-    ),
-    f: fn(occ) {
-      bind_outcome(
-        o: orch_emit_from_registry(
-          medium: medium,
-          construct_tag: orch_construct_retry_escalation_final,
-          target: medium.realize_retry_escalation_final(occ, exhausted)
-        ),
-        f: fn(m) { outcome_accepted(m.carried) }
-      )
-    }
-  )
-}
-
-fn orch_emit_retry_escalation_step_for_level(
-  command: String,
-  redirect: Optional<RedirectSpec>,
-  capture: Optional<CaptureSpec>,
-  level: EscalationLevel,
-  grep_pat: String,
-  inner: String,
-  exhausted: String,
-  medium: OrchestrationEmitMedium
-) -> Outcome<String> {
-  bind_outcome(
-    o: orch_emit_retry_run_spelling(
-      command: command,
-      env: level.env,
-      redirect: redirect,
-      capture: capture,
-      medium: medium
-    ),
-    f: fn(occ) {
-      bind_outcome(
-        o: orch_emit_from_registry(
-          medium: medium,
-          construct_tag: orch_construct_retry_escalation_step,
-          target: medium.realize_retry_escalation_step(
-            occ,
-            grep_pat,
-            level.warning.message,
-            inner,
-            exhausted
-          )
-        ),
-        f: fn(m) { outcome_accepted(m.carried) }
-      )
-    }
-  )
-}
-
-fn orch_emit_retry_escalation_tail(
-  command: String,
-  redirect: Optional<RedirectSpec>,
-  capture: Optional<CaptureSpec>,
-  levels: List<EscalationLevel>,
-  exhausted: String,
-  medium: OrchestrationEmitMedium
-) -> Outcome<String> {
-  match list_head(xs: levels) {
-    HeadAbsent => outcome_accepted(exhausted)
-    HeadFound { value: level } =>
-      match level.detect {
-        LogMatches { source: src, pattern: grep_pat } =>
-          bind_outcome(
-            o: orch_emit_retry_require_log_source(source: src, expected: orch_retry_nested_log_var),
-            f: fn(_) {
-              match list_tail(xs: levels) {
-                TailAbsent =>
-                  orch_emit_retry_escalation_final(
-                    command: command,
-                    env: level.env,
-                    redirect: redirect,
-                    capture: capture,
-                    exhausted: exhausted,
-                    medium: medium
-                  )
-                TailFound { tail: rest } =>
-                  match is_empty(rest) {
-                    true =>
-                      orch_emit_retry_escalation_final(
-                        command: command,
-                        env: level.env,
-                        redirect: redirect,
-                        capture: capture,
-                        exhausted: exhausted,
-                        medium: medium
-                      )
-                    false =>
-                      bind_outcome(
-                        o: orch_emit_retry_escalation_tail(
-                          command: command,
-                          redirect: redirect,
-                          capture: capture,
-                          levels: rest,
-                          exhausted: exhausted,
-                          medium: medium
-                        ),
-                        f: fn(inner) {
-                          orch_emit_retry_escalation_step_for_level(
-                            command: command,
-                            redirect: redirect,
-                            capture: capture,
-                            level: level,
-                            grep_pat: grep_pat,
-                            inner: inner,
-                            exhausted: exhausted,
-                            medium: medium
-                          )
-                        }
-                      )
-                  }
-              }
-            }
-          )
-        _ =>
-          outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
-      }
-  }
-}
+data orch_emit_retry_multilevel_unsupported_note: String = "Three-or-more escalation levels previously reused realize_retry_1level and stuffed rest into occ2 via escalation_tail — silently dropping level1.env (3level golden had E2=1 after w1, never E1=1) and the final level's LogMatches.pattern. Same DESIGN §5 class as the PR2b silent drops. Refuse (^orch_emit_retry_multilevel_unsupported) until a faithful N-level template threads env_i with detect_{i+1} like orch_emit_retry_2level. 🟡 dissolve-on: that template + reclaim of escalation_step/final rows under a correct cross-level fold."
 
 fn orch_emit_retry_multilevel(
   command: String,
@@ -1160,50 +1005,7 @@ fn orch_emit_retry_multilevel(
   exhausted: String,
   medium: OrchestrationEmitMedium
 ) -> Outcome<extdeps.communication.medium.Medium<String>> {
-  match level1.detect {
-    LogMatches { source: src, pattern: grep_pat1 } =>
-      bind_outcome(
-        o: orch_emit_retry_require_log_source(source: src, expected: orch_retry_outer_log_var),
-        f: fn(_) {
-          bind_outcome(
-            o: orch_emit_retry_run(
-              command: command,
-              env: [],
-              redirect: redirect,
-              capture: capture,
-              medium: medium
-            ),
-            f: fn(m1) {
-              bind_outcome(
-                o: orch_emit_retry_escalation_tail(
-                  command: command,
-                  redirect: redirect,
-                  capture: capture,
-                  levels: rest,
-                  exhausted: exhausted,
-                  medium: medium
-                ),
-                f: fn(tail) {
-                  orch_emit_from_registry(
-                    medium: medium,
-                    construct_tag: orch_construct_retry_1level,
-                    target: medium.realize_retry_1level(
-                      m1.carried,
-                      tail,
-                      grep_pat1,
-                      level1.warning.message,
-                      exhausted
-                    )
-                  )
-                }
-              )
-            }
-          )
-        }
-      )
-    _ =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
-  }
+  outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_multilevel_unsupported))
 }
 
 fn orch_emit_retry_levels(

@@ -432,89 +432,23 @@ fn orch_retry_3level_intent() -> PipelineStep {
   }
 }
 
-fn orch_retry_3level_golden() -> String {
-  concat(
-    concat(
-      concat("BUILD_LOG=$(mktemp)\n", "if ! ("),
-      concat(orch_retry_1level_probe_command, ") 2>&1 | tee \"$BUILD_LOG\"; then\n")
-    ),
-    concat(
-      concat(
-        concat(concat("  if grep -qiE 'PAT1' \"$BUILD_LOG\"; then\n", "    echo \"::warning::w1\"\n"),
-        concat(
-          concat("    RETRY_LOG=$(mktemp)\n", "    if ! ( "),
-          concat(
-            concat("E2=1 ", concat(orch_retry_1level_probe_command, " ) 2>&1 | tee \"$RETRY_LOG\"; then\n")),
-            concat(
-              concat(
-                concat(concat("      if grep -qiE 'PAT2' \"$RETRY_LOG\"; then\n", "        echo \"::warning::w2\"\n"),
-                concat("        E3=1 ", concat(orch_retry_1level_probe_command, " || ")))
-              ),
-              concat(
-                concat(orch_retry_1level_exhausted_command, "\n"),
-                concat(
-                  concat("      else\n        ", orch_retry_1level_exhausted_command),
-                  concat(
-                    concat("\n      fi\n    fi\n", "    rm -f \"$RETRY_LOG\""),
-                    concat(
-                      concat("\n  else\n    ", orch_retry_1level_exhausted_command),
-                      concat("\n  fi\nfi\nrm -f \"$BUILD_LOG\"\n", "")
-                    )
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
-    )
-  ))
-}
+data orch_retry_3level_refuse_note: String = "Three-level Retry previously emitted via orch_emit_retry_multilevel, which silently dropped level1.env (E1) and the final level's LogMatches.pattern. review 43629 — refuse (^orch_emit_retry_multilevel_unsupported) until a faithful N-level template lands."
 
-fn orch_retry_3level_perturbed_intent() -> PipelineStep {
-  match orch_retry_3level_intent() {
-    Retry { body: b, escalations: e, on_exhausted: x } =>
-      Retry {
-        body: b,
-        escalations: [
-          orch_retry_1level_escalation(),
-          orch_retry_level2_escalation(),
-          EscalationLevel {
-            detect: LogMatches { source: "RETRY_LOG", pattern: "PAT3" },
-            warning: EmitDirective {
-              severity: SeverityWarning,
-              message: "w3"
-            },
-            env: [EnvSet { name: "E3", value: "9" }]
-          }
-        ],
-        on_exhausted: x
-      }
-    Do { run: _ } => orch_retry_3level_intent()
-    Comment { text: _ } => orch_retry_3level_intent()
-    Exit { status: _ } => orch_retry_3level_intent()
-    If { cond: _, then_: _, else_: _ } => orch_retry_3level_intent()
-    For { binder: _, over: _, body: _ } => orch_retry_3level_intent()
-    While { cond: _, body: _ } => orch_retry_3level_intent()
-    BoundedPoll { max_attempts: _, body: _, success: _ } => orch_retry_3level_intent()
-    Let { name: _, value: _ } => orch_retry_3level_intent()
-    Call { callee: _, args: _ } => orch_retry_3level_intent()
-  }
-}
-
-test fn orch_retry_3level_emit_matches_golden_holds() -> Bool {
+test fn orch_retry_3level_refused_holds() -> Bool {
   match orch_emit_step(s: orch_retry_3level_intent(), medium: bash_orchestration_emit_medium()) {
-    Accepted { value: source, diagnostics: dg } =>
-      (source.carried == orch_retry_3level_golden()) && (dg == None)
-    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^orch_emit_retry_multilevel_unsupported
   }
 }
 
-test fn orch_retry_3level_emit_has_teeth_holds() -> Bool {
-  match orch_emit_step(s: orch_retry_3level_perturbed_intent(), medium: bash_orchestration_emit_medium()) {
+test fn orch_retry_3level_level1_env_not_silently_emitted_holds() -> Bool {
+  match orch_emit_step(s: orch_retry_3level_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: _ } =>
-      source.carried != orch_retry_3level_golden()
-    Rejected { diagnostics: _ } => false
+      string_contains(s: source.carried, pattern: "E2=1")
+        && !string_contains(s: source.carried, pattern: "E1=1")
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^orch_emit_retry_multilevel_unsupported
   }
 }
 
