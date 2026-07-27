@@ -1,10 +1,11 @@
 module test.claim.pattern_binder_declaration_span_witness_test
 
 import v1.compiler.compile { SourceFile, compile_to_resolved }
+import v1.compiler.infer_items { TypedModule }
 import v1.compiler.parse { parse_with_table }
 import v1.compiler.tokenize { tokenize }
 import v1.std.core {
-  ExprData, MatchPattern, NewlineIndex, VarBindingKind, arm_body, arm_pattern, build_newline_index,
+  ExprData, MatchPattern, Node, VarBindingKind, arm_body, arm_pattern, build_newline_index,
   empty_intern_table, field_binding_pattern, match_arm_nodes, module_items, node_name_span
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -12,7 +13,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn pattern_binder_source() -> String {
-  "module pattern_spans\n\ntype Boxed { value: Int }\ntype Nest { value: Boxed }\n\na fn direct(x: Int) -> Int {\n  match x {\n    direct_bind => direct_bind\n  }\n}\n\nfn aliased(x: Boxed) -> Int {\n  match x {\n    Boxed { value: alias_bind } => alias_bind\n  }\n}\n\nfn shorthand(x: Boxed) -> Int {\n  match x {\n    Boxed { value } => value\n  }\n}\n\nfn nested(x: Nest) -> Int {\n  match x {\n    Nest { value: Boxed { value: nested_bind } } => nested_bind\n  }\n}\n".to_string()
+  "module pattern_spans\n\ntype Boxed { value: Int }\ntype Nest { value: Boxed }\n\nfn direct(x: Int) -> Int {\n  match x {\n    direct_bind => direct_bind\n  }\n}\n\nfn aliased(x: Boxed) -> Int {\n  match x {\n    Boxed { value: alias_bind } => alias_bind\n  }\n}\n\nfn shorthand(x: Boxed) -> Int {\n  match x {\n    Boxed { value } => value\n  }\n}\n\nfn nested(x: Nest) -> Int {\n  match x {\n    Nest { value: Boxed { value: nested_bind } } => nested_bind\n  }\n}\n".to_string()
 }
 
 fn typed_pattern_binder_source() -> String {
@@ -37,22 +38,15 @@ fn source_index(haystack: String, needle: String) -> Int? {
   source_index_from(haystack: haystack, needle: needle, pos: 0)
 }
 
-fn item_named(items: List<Node>, name: String) -> Node? {
-  fold(items, init: none, f: fn(acc, item) {
-    match acc {
-      Present { value: found } => Present { value: found }
-      Absent =>
-        if item.name == name {
-          Present { value: item }
-        } else {
-          none
-        }
-    }
-  })
+fn item_body_named(module: Node, name: String) -> Node? {
+  match module_items(n: module) |> filter(item => item.name == name) |> first() {
+    Present { value: item } => item.body
+    Absent => none
+  }
 }
 
-fn item_body_named(module: Node, name: String) -> Node? {
-  match item_named(items: module_items(n: module), name: name) {
+fn typed_item_body_named(typed_module: TypedModule, name: String) -> Node? {
+  match typed_module.items |> filter(item => item.name == name) |> first() {
     Present { value: item } => item.body
     Absent => none
   }
@@ -89,180 +83,229 @@ fn nested_binder_start(source: String) -> Int? {
   }
 }
 
-test fn parse_match_binder_declaration_spans_are_exact() -> Bool {
+fn match_first_arm(body: Node) -> Node? {
+  first(match_arm_nodes(texpr: body))
+}
+
+fn typed_resolved_module() -> TypedModule? {
+  let source = typed_pattern_binder_source()
+  let resolved = compile_to_resolved(
+    sources: [SourceFile { path: "typed_pattern_spans.dag".to_string(), content: source }]
+  )
+  match resolved.graph {
+    Present { value: graph } => first(graph.modules)
+    Absent => none
+  }
+}
+
+test fn parse_direct_bind_uses_binder_token_span() -> Bool {
   let source = pattern_binder_source()
+  let file = "pattern_binder_spans.dag".to_string()
   let parsed = parse_with_table(
-    tokens: tokenize(source: source, file: "pattern_binder_spans.dag".to_string()),
-    source_indices: {
-      let si = build_newline_index(file: "pattern_binder_spans.dag".to_string(), source: source.clone())
-      map_insert(empty_map(), si.file, si)
-    },
+    tokens: tokenize(source: source, file: file.clone()),
+    source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source.clone())),
     intern_table: empty_intern_table()
   )
-
   match parsed.result.module {
     Present { value: module } =>
-      match (
-        item_body_named(module: module.clone(), name: "direct".to_string()),
-        item_body_named(module: module.clone(), name: "aliased".to_string()),
-        item_body_named(module: module.clone(), name: "shorthand".to_string()),
-        item_body_named(module: module.clone(), name: "nested".to_string())
-      ) {
-        (Present { value: direct_body }, Present { value: alias_body }, Present { value: shorthand_body }, Present { value: nested_body }) =>
-          match (
-            direct_binder_start(source: source.clone()),
-            alias_binder_start(source: source.clone()),
-            shorthand_binder_start(source: source.clone()),
-            nested_binder_start(source: source.clone())
-          ) {
-            (Present { value: direct_start }, Present { value: alias_start }, Present { value: shorthand_start }, Present { value: nested_start }) =>
-              match match_arm_nodes(direct_body).first() {
-                Present { value: direct_arm } =>
-                  match arm_pattern(direct_arm).as_ref() {
-                    MatchPattern::Bind { declaration_span, .. } =>
-                      match match_arm_nodes(alias_body).first() {
-                        Present { value: alias_arm } =>
-                          match arm_pattern(alias_arm).as_ref() {
-                            MatchPattern::VariantPattern { field_bindings, .. } =>
-                              match field_bindings.first() {
-                                Present { value: alias_field_binding } =>
-                                  match field_binding_pattern(alias_field_binding).as_ref() {
-                                    MatchPattern::Bind { declaration_span: alias_decl, .. } =>
-                                      match match_arm_nodes(shorthand_body).first() {
-                                        Present { value: shorthand_arm } =>
-                                          match arm_pattern(shorthand_arm).as_ref() {
-                                            MatchPattern::VariantPattern { field_bindings: shorthand_fields, .. } =>
-                                              match shorthand_fields.first() {
-                                                Present { value: shorthand_field_binding } =>
-                                                  match field_binding_pattern(shorthand_field_binding).as_ref() {
-                                                    MatchPattern::Bind { declaration_span: shorthand_decl, .. } =>
-                                                      match match_arm_nodes(nested_body).first() {
-                                                        Present { value: nested_arm } =>
-                                                          match arm_pattern(nested_arm).as_ref() {
-                                                            MatchPattern::VariantPattern { field_bindings: outer_nested_fields, .. } =>
-                                                              match outer_nested_fields.first() {
-                                                                Present { value: outer_nested_field_binding } =>
-                                                                  match field_binding_pattern(outer_nested_field_binding).as_ref() {
-                                                                    MatchPattern::VariantPattern { field_bindings: inner_nested_fields, .. } =>
-                                                                      match inner_nested_fields.first() {
-                                                                        Present { value: inner_nested_field_binding } =>
-                                                                          match field_binding_pattern(inner_nested_field_binding).as_ref() {
-                                                                            MatchPattern::Bind { declaration_span: nested_decl, .. } =>
-                                                                              declaration_span.start == direct_start
-                                                                                && alias_decl.start == alias_start
-                                                                                && alias_decl.start != node_name_span(n: alias_field_binding.clone()).start
-                                                                                && shorthand_decl.start == shorthand_start
-                                                                                && shorthand_decl.start == node_name_span(n: shorthand_field_binding.clone()).start
-                                                                                && nested_decl.start == nested_start
-                                                                            _ => false
-                                                                          }
-                                                                        _ => false
-                                                                      }
-                                                                    _ => false
-                                                                  }
-                                                                _ => false
-                                                              }
-                                                            _ => false
-                                                          }
-                                                        _ => false
-                                                      }
-                                                    _ => false
-                                                  }
-                                                _ => false
-                                              }
-                                            _ => false
-                                          }
-                                        _ => false
-                                      }
-                                    _ => false
-                                  }
-                                _ => false
-                              }
-                            _ => false
-                          }
-                        _ => false
-                      }
-                    _ => false
+      match item_body_named(module: module, name: "direct".to_string()) {
+        Present { value: body } =>
+          match match_first_arm(body: body) {
+            Present { value: arm } =>
+              match arm_pattern(n: arm) {
+                MatchPattern::Bind { declaration_span, .. } =>
+                  match direct_binder_start(source: source) {
+                    Present { value: expected } => declaration_span.start == expected
+                    Absent => false
                   }
                 _ => false
               }
-            _ => false
+            Absent => false
           }
-        _ => false
+        Absent => false
       }
     Absent => false
   }
 }
 
-fn typed_match_bound_binding_spans_use_each_arm_declaration() -> Bool {
-  let source = typed_pattern_binder_source()
-  let resolved = compile_to_resolved(
-    sources: [SourceFile { path: "typed_pattern_spans.dag".to_string(), content: source.clone() }]
+test fn parse_explicit_alias_uses_binder_span_not_label_span() -> Bool {
+  let source = pattern_binder_source()
+  let file = "pattern_binder_spans.dag".to_string()
+  let parsed = parse_with_table(
+    tokens: tokenize(source: source, file: file.clone()),
+    source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source.clone())),
+    intern_table: empty_intern_table()
   )
-
-  match resolved.graph {
-    Present { value: graph } =>
-      match graph.modules.first() {
-        Present { value: typed_module } =>
-          match item_body_named(module: typed_module.module.clone(), name: "separate_arms".to_string()) {
-            Present { value: separate_body } =>
-              match (
-                source_index(haystack: source.clone(), needle: "value: y".to_string()),
-                source_index_from(haystack: source.clone(), needle: "Right { value: y }".to_string(), pos: 0)
-              ) {
-                (Present { value: left_value_start }, Present { value: right_value_start }) =>
-                  let arms = match_arm_nodes(separate_body.clone())
-                  let expr_vars = arms |> map(arm => arm_body(arm))
-                  let expected = arms |> map(arm =>
-                    match arm_pattern(arm).as_ref() {
-                      MatchPattern::VariantPattern { field_bindings, .. } =>
-                        match field_bindings.first() {
-                          Present { value: binding } =>
-                            match field_binding_pattern(binding).as_ref() {
-                              MatchPattern::Bind { declaration_span, .. } => declaration_span.start
-                              _ => -1
-                            }
-                          _ => -1
-                        }
-                      _ => -1
-                    }
-                  )
-                  (count(expected) == 2)
-                    && (first(expected).value != last(expected).value)
-                    && (count(expr_vars) == 2)
-                    && match expr_vars.first() {
-                      Present { value: expr_var_0 } =>
-                        match expr_var_0.expr_data.as_ref() {
-                          ExprData::ExprVar { binding_kind } =>
-                            match binding_kind {
-                              Present { value: VarBindingKind::MatchBoundBinding { declaration_span } } =>
-                                declaration_span.start == first(expected).value
-                              _ => false
-                            }
-                          _ => false
-                        }
-                      _ => false
-                    }
-                    && match expr_vars.last() {
-                      Present { value: expr_var_1 } =>
-                        match expr_var_1.expr_data.as_ref() {
-                          ExprData::ExprVar { binding_kind } =>
-                            match binding_kind {
-                              Present { value: VarBindingKind::MatchBoundBinding { declaration_span } } =>
-                                declaration_span.start == last(expected).value
-                                  && declaration_span.start != left_value_start
-                                  && declaration_span.start == right_value_start + string_length(s: "Right { value: ") - string_length(s: "y }")
-                              _ => false
-                            }
-                          _ => false
-                        }
-                      _ => false
-                    }
+  match parsed.result.module {
+    Present { value: module } =>
+      match item_body_named(module: module, name: "aliased".to_string()) {
+        Present { value: body } =>
+          match match_first_arm(body: body) {
+            Present { value: arm } =>
+              match arm_pattern(n: arm) {
+                MatchPattern::VariantPattern { field_bindings, .. } =>
+                  match first(field_bindings) {
+                    Present { value: field_binding } =>
+                      match field_binding_pattern(n: field_binding) {
+                        MatchPattern::Bind { declaration_span, .. } =>
+                          match alias_binder_start(source: source) {
+                            Present { value: expected } =>
+                              declaration_span.start == expected
+                                && declaration_span.start != node_name_span(n: field_binding).start
+                            Absent => false
+                          }
+                        _ => false
+                      }
+                    Absent => false
+                  }
                 _ => false
               }
             Absent => false
           }
-        _ => false
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn parse_shorthand_uses_field_label_span() -> Bool {
+  let source = pattern_binder_source()
+  let file = "pattern_binder_spans.dag".to_string()
+  let parsed = parse_with_table(
+    tokens: tokenize(source: source, file: file.clone()),
+    source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source.clone())),
+    intern_table: empty_intern_table()
+  )
+  match parsed.result.module {
+    Present { value: module } =>
+      match item_body_named(module: module, name: "shorthand".to_string()) {
+        Present { value: body } =>
+          match match_first_arm(body: body) {
+            Present { value: arm } =>
+              match arm_pattern(n: arm) {
+                MatchPattern::VariantPattern { field_bindings, .. } =>
+                  match first(field_bindings) {
+                    Present { value: field_binding } =>
+                      match field_binding_pattern(n: field_binding) {
+                        MatchPattern::Bind { declaration_span, .. } =>
+                          declaration_span.start == node_name_span(n: field_binding).start
+                        _ => false
+                      }
+                    Absent => false
+                  }
+                _ => false
+              }
+            Absent => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn parse_nested_bind_uses_innermost_binder_span() -> Bool {
+  let source = pattern_binder_source()
+  let file = "pattern_binder_spans.dag".to_string()
+  let parsed = parse_with_table(
+    tokens: tokenize(source: source, file: file.clone()),
+    source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source.clone())),
+    intern_table: empty_intern_table()
+  )
+  match parsed.result.module {
+    Present { value: module } =>
+      match item_body_named(module: module, name: "nested".to_string()) {
+        Present { value: body } =>
+          match match_first_arm(body: body) {
+            Present { value: arm } =>
+              match arm_pattern(n: arm) {
+                MatchPattern::VariantPattern { field_bindings, .. } =>
+                  match first(field_bindings) {
+                    Present { value: outer_field_binding } =>
+                      match field_binding_pattern(n: outer_field_binding) {
+                        MatchPattern::VariantPattern { field_bindings: inner_field_bindings, .. } =>
+                          match first(inner_field_bindings) {
+                            Present { value: inner_field_binding } =>
+                              match field_binding_pattern(n: inner_field_binding) {
+                                MatchPattern::Bind { declaration_span, .. } =>
+                                  match nested_binder_start(source: source) {
+                                    Present { value: expected } => declaration_span.start == expected
+                                    Absent => false
+                                  }
+                                _ => false
+                              }
+                            Absent => false
+                          }
+                        _ => false
+                      }
+                    Absent => false
+                  }
+                _ => false
+              }
+            Absent => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn typed_match_bound_binding_span_from_arm(arm: Node) -> Int {
+  match arm_pattern(n: arm) {
+    MatchPattern::VariantPattern { field_bindings, .. } =>
+      match first(field_bindings) {
+        Present { value: field_binding } =>
+          match field_binding_pattern(n: field_binding) {
+            MatchPattern::Bind { declaration_span, .. } => declaration_span.start
+            _ => -1
+          }
+        Absent => -1
+      }
+    _ => -1
+  }
+}
+
+fn typed_expr_var_binding_span(expr: Node) -> Int {
+  match expr.expr_data {
+    ExprData::ExprVar { binding_kind } =>
+      match binding_kind {
+        Present { value: VarBindingKind::MatchBoundBinding { declaration_span } } => declaration_span.start
+        _ => -1
+      }
+    _ => -1
+  }
+}
+
+test fn typed_separate_arms_carry_each_own_binding_span() -> Bool {
+  let source = typed_pattern_binder_source()
+  match typed_resolved_module() {
+    Present { value: typed_module } =>
+      match typed_item_body_named(typed_module: typed_module, name: "separate_arms".to_string()) {
+        Present { value: body } =>
+          let arms = match_arm_nodes(texpr: body)
+          let expected = arms |> map(arm => typed_match_bound_binding_span_from_arm(arm: arm))
+          let expr_spans = arms |> map(arm => typed_expr_var_binding_span(expr: arm_body(n: arm)))
+          match first(expected) {
+            Present { value: expected_left } =>
+              match last(expected) {
+                Present { value: expected_right } =>
+                  match first(expr_spans) {
+                    Present { value: expr_left } =>
+                      match last(expr_spans) {
+                        Present { value: expr_right } =>
+                          expected_left != -1
+                            && expected_right != -1
+                            && expr_left == expected_left
+                            && expr_right == expected_right
+                            && expected_left != expected_right
+                        Absent => false
+                      }
+                    Absent => false
+                  }
+                Absent => false
+              }
+            Absent => false
+          }
+        Absent => false
       }
     Absent => false
   }
