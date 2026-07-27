@@ -9609,9 +9609,6 @@ fn eval_builtin_inner(
         }
 
         "compile_dag_dag_fixture_witness_check" => {
-            // Scaffold: pool_coincidence_fixture_witness_check_dissolution_trigger in
-            // dag/tools/type_resolution_pool_coincidence_transport.dag — dissolves when
-            // fixture compile witnesses are pure .dag transport without this interpreter bridge.
             let entry_path = expect_str(
                 Some(builtin_named_arg(args, &["entry_path"], 0, name)?),
                 name,
@@ -9653,14 +9650,6 @@ fn eval_builtin_inner(
                     &forbidden,
                 ),
             )))
-        }
-
-        "hand_import_gate_passes" => {
-            let base_ref =
-                expect_str(Some(builtin_named_arg(args, &["base_ref"], 0, name)?), name)?;
-            Ok(Some(Value::Bool(crate::cli_run::hand_import_gate_passes(
-                &base_ref,
-            ))))
         }
 
         "witness_layer_roots_compile_clean_check" => Ok(Some(Value::Bool(

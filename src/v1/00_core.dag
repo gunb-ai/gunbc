@@ -66,14 +66,6 @@ fn is_compiler_error(inferred: InferredNode) -> Bool {
   }
 }
 
-fn is_type_variable(inferred: InferredNode) -> Bool {
-  match inferred {
-    TypeVariable { id: _ } => true
-    Resolved { node: _ } => false
-    CompilerError { message: _, span: _ } => false
-  }
-}
-
 fn has_inferred(n: Node) -> Bool {
   n.inferred != none
 }
@@ -1400,10 +1392,6 @@ fn qualified_last_segment(name: String) -> String {
     Present { value: s } => s
     Absent => name
   }
-}
-
-fn is_witness_type_name(name: String) -> Bool {
-  name == "Witness" || name == "witness" || qualified_last_segment(name: name) == "Witness"
 }
 
 fn type_name_compatible(a: String, b: String) -> Bool {

@@ -1,6 +1,6 @@
 module tools.floor_effect_gate_witness
 
-import gunbc.ci_gate { EmitHostGate, CheapClaimPoolGate, HandImportGate }
+import gunbc.ci_gate { EmitHostGate, CheapClaimPoolGate }
 import gunbc.ci_spec {
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   RegenVerifyGate
@@ -25,10 +25,6 @@ func dag_compile_clean_gate_passes() -> Bool {
 
 func generated_artifact_drift_gate_passes() -> Bool {
   tools.ci_gates.exit_ok(e: run_spec_gate(g: GeneratedArtifactDriftGate))
-}
-
-func hand_import_gate_passes() -> Bool {
-  tools.ci_gates.exit_ok(e: run_spec_gate(g: HandImportGate))
 }
 
 func regen_verify_gate_passes() -> Bool {

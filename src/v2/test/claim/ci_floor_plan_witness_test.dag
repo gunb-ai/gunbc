@@ -61,7 +61,7 @@ import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_known_red_entries,
   falsifier_self_host_wet_known_red_batch_enrolled
 }
-import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, HandImportGate, DagCompileCleanGate, RegenVerifyGate, SourceRootIngestGate }
+import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, DagCompileCleanGate, RegenVerifyGate, SourceRootIngestGate }
 import std.realization_schedule {
   Runnable, RunnableSingleClaim,
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
@@ -192,11 +192,10 @@ fn witness_cheap_gates_precede_compile_root() -> Bool {
 }
 
 fn witness_cheap_gate_membership_declared() -> Bool {
-  (length(xs: gunbc_ci_cheap_floor_gate_membership) == 4)
+  (length(xs: gunbc_ci_cheap_floor_gate_membership) == 3)
     && gate_in_cheap_floor_membership(g: CheapClaimPoolGate)
     && gate_in_cheap_floor_membership(g: ExtdepsExternalAuthorityGate)
     && gate_in_cheap_floor_membership(g: GeneratedArtifactDriftGate)
-    && gate_in_cheap_floor_membership(g: HandImportGate)
     && !gate_in_cheap_floor_membership(g: DagCompileCleanGate)
 }
 

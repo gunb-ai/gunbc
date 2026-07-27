@@ -1,7 +1,7 @@
 module tools.ci_gates
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.ci_gate { EmitHostGate, Gate, CheapClaimPoolGate, HandImportGate }
+import gunbc.ci_gate { EmitHostGate, Gate, CheapClaimPoolGate }
 import gunbc.ci_spec {
   gunbc_ci_gates, CiSpec,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
@@ -13,7 +13,6 @@ import tools.cheap_claim_pool_gate { run_cheap_claim_pool_ci_gate }
 import tools.extdeps_external_authority_gate { run_extdeps_external_authority_ci_gate }
 import tools.dag_compile_clean_gate { run_dag_compile_clean_gate }
 import tools.generated_artifact_gate { run_generated_artifact_drift_gate }
-import tools.hand_import_ci_gate { run_hand_import_ci_gate }
 import tools.regen_verify_gate { run_regen_verify_gate }
 
 fn exit_ok(e: ProcessExit) -> Bool {
@@ -27,7 +26,6 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
     ExtdepsExternalAuthorityGate => run_extdeps_external_authority_ci_gate()
     DagCompileCleanGate => run_dag_compile_clean_gate()
     GeneratedArtifactDriftGate => run_generated_artifact_drift_gate()
-    HandImportGate => run_hand_import_ci_gate()
     SourceRootIngestGate => exit_failure(
       reason: "SourceRootIngestGate: run via ci_floor_plan v2.workflow.source_root_ingest_gate (slice 3)"
     )

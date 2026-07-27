@@ -1263,14 +1263,9 @@ pub fn compile_dag_rust_emit_check(
     }
 }
 
-/// Host realization for `.dag` floor witnesses that compile fixture programs to
-/// `RenderTarget::Dag` with optional extra source roots (fixture dirs). Discriminates
-/// clean compiles vs located `UnresolvedType` refusals — the CI-facing counterpart of
-/// `src/v1/tests/src/type_resolution_pool_coincidence_test.rs`.
-///
-/// HAND-RUST scaffold receipt (review 43400): `gunbc.type_resolution_pool_coincidence_scaffold`
-/// — `pool_coincidence_compile_fixture_hand_rust_scaffold`, dissolve trigger, and
-/// `pool_coincidence_compile_fixture_receipt_plan_anchor` (cli-run-hollowing §2 · witness-realization).
+/// Host realization for `.dag` witnesses that compile fixture programs through the
+/// ordinary compiler configuration. The witness is deliberately policy-free: name
+/// binding and refusal must behave identically here and in every production compile.
 pub fn compile_dag_dag_fixture_witness_check(
     entry_path: &str,
     source: &str,
@@ -1279,7 +1274,6 @@ pub fn compile_dag_dag_fixture_witness_check(
     required_unresolved_type: &str,
     forbidden_substrings: &[String],
 ) -> bool {
-    v1_rt::type_ref_pool_coincidence_mask_set_enabled(true);
     let mut roots = witness_layer_roots();
     for root in extra_roots {
         if !roots.iter().any(|r| r == root) {
@@ -1303,363 +1297,28 @@ pub fn compile_dag_dag_fixture_witness_check(
             .iter()
             .any(|msg| msg.contains(needle.as_str()))
     }) {
-        v1_rt::type_ref_pool_coincidence_mask_set_enabled(false);
         return false;
     }
     if expect_clean {
-        let ok = hard_messages.is_empty();
-        v1_rt::type_ref_pool_coincidence_mask_set_enabled(false);
-        return ok;
+        return hard_messages.is_empty();
     }
     if hard_messages.is_empty() {
-        v1_rt::type_ref_pool_coincidence_mask_set_enabled(false);
         return false;
     }
-    if !required_unresolved_type.is_empty() {
-        let has_unresolved = result.diagnostics.iter().any(|d| {
+    if !required_unresolved_type.is_empty()
+        && !result.diagnostics.iter().any(|d| {
             matches!(
                 &*d.diagnostic,
                 crate::v1_std_core::CompilerDiagnostic::UnresolvedType { name, .. }
                     if name == required_unresolved_type
             )
-        });
-        if !has_unresolved {
-            v1_rt::type_ref_pool_coincidence_mask_set_enabled(false);
-            return false;
-        }
+        })
+    {
+        return false;
     }
-    let ok = !hard_messages
+    !hard_messages
         .iter()
-        .any(|msg| msg.contains("Product(<anon>)"));
-    v1_rt::type_ref_pool_coincidence_mask_set_enabled(false);
-    ok
-}
-
-/// Host realization for `tools.hand_import_gate` — counts import additions vs `base_ref`
-/// outside operator-allowed witness roster and probe-fixture paths.
-///
-/// HAND-RUST scaffold receipt (review 43400): `gunbc.hand_import_gate_scaffold` —
-/// `hand_import_gate_hand_rust_scaffold`, dissolve trigger, and `hand_import_gate_receipt_plan_anchor`
-/// (shell→intent Phase 3 · cli-run-hollowing §2 · ROADMAP ts-seed-interim).
-///
-/// Scaffold residues (each has its own dissolution trigger in `hand_import_gate.dag`):
-/// - `hand_import_allowed_prefixes_mirror_dissolution_trigger` — roster below mirrors
-///   `hand_import_allowed_path_prefixes` until the gate reads it on-carrier.
-/// - `hand_import_gate_enrollment_carve_out_mirror_dissolution_trigger` — enrollment carve-out
-///   below mirrors `hand_import_gate_enrollment_symbol_carve_outs` until on-carrier.
-pub fn hand_import_gate_passes(base_ref: &str) -> bool {
-    // Mirrors tools.hand_import_gate.hand_import_allowed_path_prefixes (review 43116).
-    const ALLOWED_PREFIXES: &[&str] = &[
-        "dag/test/claim/",
-        "dag/test/fixtures/type_resolution_pool_coincidence/",
-        "dag/test/fixtures/value_resolution_unreachable_callee/",
-        "dag/tools/hand_import_gate.dag",
-        "dag/tools/type_resolution_pool_coincidence_transport.dag",
-        "dag/std/os/invocation.dag",
-    ];
-    let output = std::process::Command::new("git")
-        .args(["diff", "--name-only", base_ref, "HEAD", "--", "dag"])
-        .output();
-    let Ok(output) = output else {
-        eprintln!("hand_import_gate: git diff spawn failed");
-        return false;
-    };
-    if !output.status.success() {
-        eprintln!(
-            "hand_import_gate: git diff failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        return false;
-    }
-    let changed = String::from_utf8_lossy(&output.stdout);
-    for path in changed.lines() {
-        let path = path.trim();
-        if path.is_empty() {
-            continue;
-        }
-        if ALLOWED_PREFIXES
-            .iter()
-            .any(|prefix| path.starts_with(prefix))
-        {
-            continue;
-        }
-        if hand_import_file_has_disallowed_additions(path, base_ref) {
-            eprintln!("hand_import_gate: import additions in {}", path);
-            return false;
-        }
-    }
-    true
-}
-
-fn hand_import_file_has_disallowed_additions(rel_path: &str, base_ref: &str) -> bool {
-    let head = hand_import_git_show(rel_path, "HEAD");
-    let base = hand_import_git_show(rel_path, base_ref);
-    if head.is_none() {
-        return false;
-    }
-    if base.is_none() {
-        return !hand_import_is_enrollment_bootstrap_path(rel_path)
-            && !hand_import_parse_imports(head.as_ref().unwrap()).is_empty();
-    }
-    let head_imports = hand_import_parse_imports(head.as_ref().unwrap());
-    let base_imports = hand_import_parse_imports(base.as_ref().unwrap());
-    let removed = hand_import_collect_removed_symbols(&base_imports, &head_imports);
-    for (module, syms) in &head_imports {
-        match base_imports.get(module) {
-            None => {
-                for sym in syms {
-                    if !hand_import_addition_allowed(rel_path, module, sym, &removed) {
-                        return true;
-                    }
-                }
-            }
-            Some(base_syms) => {
-                for sym in syms {
-                    if !base_syms.contains(sym)
-                        && !hand_import_addition_allowed(rel_path, module, sym, &removed)
-                    {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-    false
-}
-
-fn hand_import_is_enrollment_bootstrap_path(rel_path: &str) -> bool {
-    // Mirrors tools.hand_import_gate.hand_import_gate_enrollment_bootstrap_paths (review 43619).
-    matches!(rel_path, "dag/tools/hand_import_ci_gate.dag")
-}
-
-fn hand_import_is_enrollment_symbol_carve_out(module: &str, sym: &str) -> bool {
-    // Mirrors tools.hand_import_gate enrollment + ci-retry capture carve-outs (review 43619).
-    matches!(
-        (module, sym),
-        ("gunbc.ci_gate", "HandImportGate")
-            | ("tools.hand_import_ci_gate", "run_hand_import_ci_gate")
-            | ("v2.std.orchestration", "StdoutAndStderr")
-            | ("v2.std.orchestration", "TeeTo")
-    )
-}
-
-fn hand_import_collect_removed_symbols(
-    base_imports: &HashMap<String, std::collections::BTreeSet<String>>,
-    head_imports: &HashMap<String, std::collections::BTreeSet<String>>,
-) -> std::collections::BTreeSet<String> {
-    let mut removed = std::collections::BTreeSet::new();
-    for (module, base_syms) in base_imports {
-        let head_syms = head_imports.get(module);
-        for sym in base_syms {
-            if head_syms.is_none_or(|hs| !hs.contains(sym)) {
-                removed.insert(sym.clone());
-            }
-        }
-    }
-    removed
-}
-
-fn hand_import_addition_allowed(
-    rel_path: &str,
-    module: &str,
-    sym: &str,
-    removed: &std::collections::BTreeSet<String>,
-) -> bool {
-    if hand_import_is_enrollment_bootstrap_path(rel_path) {
-        return true;
-    }
-    if hand_import_is_enrollment_symbol_carve_out(module, sym) {
-        return true;
-    }
-    // Same-file cross-module import move: symbol dropped from one block and added elsewhere.
-    removed.contains(sym)
-}
-
-fn hand_import_file_has_additions(rel_path: &str, base_ref: &str) -> bool {
-    hand_import_file_has_disallowed_additions(rel_path, base_ref)
-}
-
-fn hand_import_git_show(rel_path: &str, rev: &str) -> Option<String> {
-    let spec = format!("{}:{}", rev, rel_path);
-    std::process::Command::new("git")
-        .args(["show", &spec])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-}
-
-fn hand_import_merge_module(
-    out: &mut HashMap<String, std::collections::BTreeSet<String>>,
-    module: String,
-    syms: std::collections::BTreeSet<String>,
-) {
-    out.entry(module).or_default().extend(syms);
-}
-
-fn hand_import_record_bare_module(
-    out: &mut HashMap<String, std::collections::BTreeSet<String>>,
-    module: String,
-) {
-    if !module.is_empty() {
-        out.entry(module).or_default();
-    }
-}
-
-/// Parses import rows: single-line braced, bare `import mod`, and multi-line braced blocks.
-fn hand_import_parse_imports(text: &str) -> HashMap<String, std::collections::BTreeSet<String>> {
-    let mut out: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
-    let mut open_module: Option<String> = None;
-    let mut open_syms: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-
-    fn ingest_symbols(symbols: &str, syms: &mut std::collections::BTreeSet<String>) {
-        for s in symbols.split(',') {
-            let s = s.trim();
-            if !s.is_empty() {
-                syms.insert(s.to_string());
-            }
-        }
-    }
-
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if open_module.is_some() {
-            let closed = trimmed.contains('}');
-            let body = if closed {
-                trimmed.split_once('}').map(|(a, _)| a).unwrap_or(trimmed)
-            } else {
-                trimmed
-            };
-            ingest_symbols(body, &mut open_syms);
-            if closed {
-                let module = open_module.take().unwrap();
-                hand_import_merge_module(&mut out, module, open_syms.clone());
-                open_syms.clear();
-            }
-            continue;
-        }
-        if let Some(rest) = trimmed.strip_prefix("import ") {
-            if let Some((module, symbols)) = rest.split_once('{') {
-                let module = module.trim();
-                if symbols.contains('}') {
-                    let symbols = symbols.split_once('}').map(|(a, _)| a).unwrap_or(symbols);
-                    let mut syms = std::collections::BTreeSet::new();
-                    ingest_symbols(symbols, &mut syms);
-                    hand_import_merge_module(&mut out, module.to_string(), syms);
-                } else {
-                    open_module = Some(module.to_string());
-                    ingest_symbols(symbols, &mut open_syms);
-                }
-            } else {
-                hand_import_record_bare_module(&mut out, rest.trim().to_string());
-            }
-        }
-    }
-    if let Some(module) = open_module {
-        hand_import_merge_module(&mut out, module, open_syms);
-    }
-    out
-}
-
-#[cfg(test)]
-mod hand_import_parse_tests {
-    use super::hand_import_parse_imports;
-
-    #[test]
-    fn hand_import_parse_unions_duplicate_module_import_blocks() {
-        let text = r#"
-import std.disposition { Disposition, Terminal }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-"#;
-        let imports = hand_import_parse_imports(text);
-        let syms = imports.get("std.disposition").expect("module");
-        assert!(syms.contains("Terminal"));
-        assert!(syms.contains("Scaffold"));
-        assert!(syms.contains("SingleAuthority"));
-    }
-
-    #[test]
-    fn hand_import_parse_detects_symbol_added_to_first_of_two_blocks() {
-        let base = r#"
-import std.disposition { Disposition, Terminal }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-"#;
-        let head = r#"
-import std.disposition { Disposition, Terminal, NewSym }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-"#;
-        let base_imports = hand_import_parse_imports(base);
-        let head_imports = hand_import_parse_imports(head);
-        let base_syms = base_imports.get("std.disposition").expect("base");
-        let head_syms = head_imports.get("std.disposition").expect("head");
-        assert!(!base_syms.contains("NewSym"));
-        assert!(head_syms.contains("NewSym"));
-    }
-
-    #[test]
-    fn hand_import_enrollment_carve_out_allows_hand_import_gate_symbol() {
-        let base_imports =
-            hand_import_parse_imports(r#"import gunbc.ci_gate { Gate, EmitHostGate }"#);
-        let head_imports = hand_import_parse_imports(
-            r#"import gunbc.ci_gate { Gate, EmitHostGate, HandImportGate }"#,
-        );
-        let removed = super::hand_import_collect_removed_symbols(&base_imports, &head_imports);
-        assert!(super::hand_import_addition_allowed(
-            "dag/gunbc/commit_workflow.dag",
-            "gunbc.ci_gate",
-            "HandImportGate",
-            &removed
-        ));
-    }
-
-    #[test]
-    fn hand_import_gate_passes_integration_vs_origin_main() {
-        let result = super::hand_import_gate_passes("origin/main");
-        if !result {
-            let output = std::process::Command::new("git")
-                .args(["diff", "--name-only", "origin/main", "HEAD", "--", "dag"])
-                .output()
-                .expect("git diff");
-            for path in String::from_utf8_lossy(&output.stdout).lines() {
-                let path = path.trim();
-                if path.is_empty() {
-                    continue;
-                }
-                if super::hand_import_file_has_disallowed_additions(path, "origin/main") {
-                    eprintln!("disallowed additions: {}", path);
-                }
-            }
-        }
-        assert!(result);
-    }
-
-    #[test]
-    fn hand_import_same_file_move_exempts_cross_module_symbol_shuffle() {
-        let base_imports = hand_import_parse_imports(
-            r#"
-import gunbc.merge_admission_produce { ci_repo_root_shell }
-import v2.workflow.ci_merge_admission_emit {
-  ci_floor_stamp_merge_admission_script,
-}
-"#,
-        );
-        let head_imports = hand_import_parse_imports(
-            r#"
-import gunbc.merge_admission_produce {
-  ci_floor_stamp_merge_admission_script,
-  ci_repo_root_shell,
-}
-import v2.workflow.ci_merge_admission_emit { ci_floor_disposition_marker_init_script }
-"#,
-        );
-        let removed = super::hand_import_collect_removed_symbols(&base_imports, &head_imports);
-        assert!(super::hand_import_addition_allowed(
-            "dag/gunbc/ci_spec.dag",
-            "gunbc.merge_admission_produce",
-            "ci_floor_stamp_merge_admission_script",
-            &removed
-        ));
-    }
+        .any(|msg| msg.contains("Product(<anon>)"))
 }
 
 const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";

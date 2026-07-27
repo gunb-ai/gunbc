@@ -137,7 +137,7 @@ fn expand_scrut_from_type_name(scrut_node: Node, env: TypeEnv) -> Node {
 fn expand_scrut_type_for_variant_lookup(scrut_node: Node, env: TypeEnv) -> Node {
   let name = authored_name_at(source_indices: env.source_indices, node: scrut_node)
   let is_disj = scrut_node.connective == Disj
-  let is_witness = v1.std.core.is_witness_type_name(name: name)
+  let is_witness = is_witness_type_name(name: name)
   let is_optional = scrut_node.return_cardinality == CardOptional
   if is_optional || is_disj || is_witness {
     scrut_node
@@ -148,6 +148,10 @@ fn expand_scrut_type_for_variant_lookup(scrut_node: Node, env: TypeEnv) -> Node 
       _ => expand_scrut_from_type_name(scrut_node: scrut_node, env: env)
     }
   }
+}
+
+fn is_witness_type_name(name: String) -> Bool {
+  name == "Witness" || name == "witness"
 }
 
 type NodeLookupResult {
@@ -280,7 +284,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
         node_lookup_failed(diagnostics: [])
       } else {
         let optional_cardinality_subject = scrut_opt && authored_name_at(source_indices: source_indices, node: scrut_node) != "Optional"
-        let witness_subject = v1.std.core.is_witness_type_name(name: authored_name_at(source_indices: source_indices, node: scrut_node)) && scrut_node.children |> count == 1
+        let witness_subject = is_witness_type_name(name: authored_name_at(source_indices: source_indices, node: scrut_node)) && scrut_node.children |> count == 1
         if optional_cardinality_subject && variant_name == "Present" {
           node_lookup_resolved(node: synthesize_optional_present_variant(scrut: scrut_node))
         } else if optional_cardinality_subject && variant_name == "Absent" {
@@ -359,7 +363,7 @@ fn check_match_exhaustiveness(
   let resolved = if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
   let is_coproduct = resolved.connective == Disj
   let resolved_is_optional = resolved.return_cardinality == CardOptional
-  let resolved_is_witness = v1.std.core.is_witness_type_name(name: authored_name_at(source_indices: env.source_indices, node: resolved)) && resolved.children |> count == 1
+  let resolved_is_witness = is_witness_type_name(name: authored_name_at(source_indices: env.source_indices, node: resolved)) && resolved.children |> count == 1
   if is_coproduct || resolved_is_optional || resolved_is_witness {
     let variant_names = if resolved_is_optional {
       ["Present", "Absent"]

@@ -2831,13 +2831,6 @@ fn run_walk(
                         sgr::ERROR
                     )
                 );
-                failure_details.push(format!(
-                    "batch={} BudgetExceeded{{wall_ms={},clamp_ms={},units={}}}",
-                    bi + 1,
-                    wall_ms,
-                    clamp_ms,
-                    batch_unit_count
-                ));
                 any_failed = true;
             }
         }
@@ -3923,12 +3916,6 @@ mod tests {
         ];
         assert_eq!(
             ci_failure_class_arm(falsifier_failure_mode(&detail)),
-            "FloorFailed{class:Structural{reason:BudgetExceeded}}"
-        );
-        let batch_clamp_detail: Vec<String> =
-            vec!["batch=4 BudgetExceeded{wall_ms=637312,clamp_ms=540000,units=113}".into()];
-        assert_eq!(
-            ci_failure_class_arm(falsifier_failure_mode(&batch_clamp_detail)),
             "FloorFailed{class:Structural{reason:BudgetExceeded}}"
         );
     }

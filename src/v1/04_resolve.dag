@@ -45,7 +45,7 @@ import std.induction { SubValueUnknown }
 
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
-  env_with_type_variable_bindings, bare_name_miss_diagnostic, type_ref_mask_allows_binding
+  env_with_type_variable_bindings, bare_name_miss_diagnostic
 }
 
 fn is_unit_variant_node(variant: Node) -> Bool {
@@ -572,13 +572,6 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
     } else {
       match lookup_type_for(env: env, node: n) {
         Present { value: resolved } =>
-          let type_name = authored_name(env: env, node: n)
-          if masked && type_ref_mask_allows_binding(env: env, name: type_name) == false {
-            NodeResolveResult {
-              resolved: n,
-              diagnostics: [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: type_name, span: n.span), module_name: module_name)]
-            }
-          } else {
           let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
             match resolved.inferred {
               Present { value: Resolved { node: target } } =>
@@ -595,7 +588,6 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
             [make_error_node(diagnostic: UnlistedImportUse { name: authored_name(env: env, node: n), span: n.span }, module_name: module_name)]
           } else { [] }
           NodeResolveResult { resolved: final_resolved, diagnostics: unlisted_diags }
-          }
         Absent =>
           let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
           let n_is_callable = n.params |> count > 0

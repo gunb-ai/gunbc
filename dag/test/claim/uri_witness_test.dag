@@ -1,7 +1,5 @@
 module test.claim.uri_witness
 
-import extdeps.uri { Uri, Https, File, uri_scheme_is_http, uri_is_url }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn uri_scheme_is_http_matches_https_holds() -> Bool {
