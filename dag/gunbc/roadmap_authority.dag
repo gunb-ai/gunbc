@@ -409,6 +409,21 @@ fn section_2() -> RoadmapSection {
       section_group(
         label: "SCM — source-intent integration, visibility-first (operator-directed 2026-07-25; premise revised 2026-07-27)",
         nodes: [
+          with_plan(rn: ticket_row(id: "2-scm-product-strategy", done: false, t: TicketFields {
+            headline: "product/adoption gate — prove agent landing before hosted SCM",
+            brief: "Preserve the hosted Daglang developer-substrate destination while shrinking the first adoption ask: Git-compatible agent landing first, existing forge/Git target/editor/CI retained. Promotion is evidence-ordered: A0 gunbc benchmark → A1 read-only design-partner shadow → A2 managed Git target → A3 native agent proposals → A4 explicit hosted-native authority → A5 separately opted-in adjacent products.",
+            displaced_cost: "Asking an unproven ecosystem to replace language, SCM, forge, editor, CI, and hosting at once; and spending reliability/privacy/compliance work on hosted authority before the integration advantage or customer pull is proven.",
+            current_state: "DRAFT for operator ruling 2026-07-27. The semantic design and C0 interaction-carrier implementation may advance, but no hosted source authority or forge replacement is authorized by this strategy draft.",
+            first_slice: "A0: replay one real gunbc high-concurrency proposal workload through the Git baseline and bounded Daglang path under the same safety contract; measure normative questions, wrong results, invalidated validation, wall time, human minutes, and agent tokens. In parallel, recruit one receipt-literate design partner for workload discovery and read-only placement requirements.",
+            red_control: "The benchmark must include nearby always-apply and always-refuse falsifiers, attribute ordinary queue/cache/refresh wins separately from semantic wins, and publish refusals as well as successes. A1 writes no source ref; raw customer source cannot leave its declared placement or become training/secondary-use data by default.",
+            out_of_scope: "No native object store, forge UI, hosted-authority flip, general-language semantic merge, customer-code data moat, or assumption that word of mouth removes design-partner/sales work. Calendar, sunk code, cheap serving, and conflict-count reduction cannot promote a stage.",
+            handback: "Operator rules the eight decisions in the strategy plan: first forge surface, open/checkable boundary, partner count, pricing unit, language scope, authority-flip gate, customer-data rule, and review surface.",
+            updates: [
+              TicketUpdate { on: "2026-07-27", note: "operator preserved hosted SCM as the long-term vertical-integration route, accepted a design-partner wedge, and requested an explicit strategy/milestone document before deciding what happens when" },
+            ],
+            authored_on: "2026-07-27",
+            last_verified_on: "",
+          }), path: "docs/plans/dag-scm-product-strategy.md"),
           with_plan(rn: ticket_wi(id: "2-scm-visibility-stage0", done: false, t: TicketFields {
             headline: "repo visibility NOW — the Publish/Reference grant model implemented properly, realized over git public/private roots",
             brief: "Land the real grant algebra (visibility design P-A model + P-B enforcement), with today's realization = two git storage roots (public + private overlay), file-grain Publish declarations, the push-time guard wall, and the one-time bulk stamp (Publish audience: World) of the already-public corpus so the narrowest default only ever bites new content. The SAME grant interface is later carried unchanged by the source-intent SCM — a git repo is one storage realization of the grants, never the model.",
@@ -474,6 +489,36 @@ fn section_2() -> RoadmapSection {
             authored_on: "",
             last_verified_on: "",
           }, intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"), path: "docs/plans/dag-scm-design.md"),
+          with_plan(rn: ticket_wi(id: "2-scm-design-partner-shadow", done: false, t: TicketFields {
+            headline: "design-partner shadow — read-only Git-in/Git-out agent landing",
+            brief: "Run the source-intent assessment beside one qualified agent-heavy team's existing GitHub/GitLab workflow without source-ref write authority. Import ordinary proposals at honest fidelity, compare would-land/question/refusal with the actual integration path, and retain only audience-authorized receipts. The partner keeps its forge, target, editor, CI, and exit.",
+            displaced_cost: "Building a hosted SCM before proving that the semantic path displaces a real team's judgment, replay, and validation cost; asking a customer to trust mutations before it can compare the system with its existing workflow.",
+            current_state: "Not dispatched. Partner discovery and workload-shape collection may begin during A0; a production shadow adapter waits on the bounded semantic core and selected partner's forge/fidelity/placement requirements.",
+            first_slice: "Select one partner by measured same-repo agent concurrency, target-advance replay, and CI cost. Agree the no-write/no-training/source-placement boundary; ingest one proposal stream locally or through a read-only app; show plain would-land/choice/could-not-land projections beside internal receipts and the team's actual outcome.",
+            red_control: "Shadow credentials have no ref-write scope; a planted write attempt refuses before transport. A machine deficit never synthesizes a preference question. The identical proposal imported without native metadata downgrades fidelity rather than inventing intent. Partner-visible receipts cannot disclose unauthorized source or hidden-node existence.",
+            out_of_scope: "No production auto-land, native source authority, customer-wide rollout, general-language promise, raw-source telemetry moat, or requirement that developers learn proof/rebase/merge vocabulary.",
+            handback: "Return the partner's measured baseline, supported-fidelity gaps, plain-language question review, false-positive/negative audit, placement constraints, and explicit yes/no request for a narrow managed write path.",
+            updates: [
+              TicketUpdate { on: "2026-07-27", note: "strategy separates early customer discovery from write authority: design partnership starts read-only and promotes only on the partner's own receipts" },
+            ],
+            authored_on: "2026-07-27",
+            last_verified_on: "",
+          }, intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"), path: "docs/plans/dag-scm-product-strategy.md"),
+          with_plan(rn: ticket_wi(id: "2-scm-managed-git-target", done: false, t: TicketFields {
+            headline: "managed Git landing — opt-in exact-parent target, no rebase ritual",
+            brief: "After a shadow partner explicitly requests it, grant the admission service a narrow compare-and-advance capability over one named Git target. Git remains source authority; the service owns replay against current target, exact-parent CAS, independent read-back, one-parent/squash output, and projection repair. The normal journey is still edit → submit → Landed or one genuine choice.",
+            displaced_cost: "Green proposals invalidated by target movement, repeated full CI, agent/human rebase and conflict-marker work, and the trust cost of jumping directly from read-only assessment to a native hosted source authority.",
+            current_state: "Promotion-gated on a successful design-partner shadow and explicit write request. P3 exact-parent transition and P4 Git-fidelity receipts are technical prerequisites; no Git target authority has been granted.",
+            first_slice: "One protected non-critical target, one-parent commit projection, update-ref old-OID compare-and-swap, independent read-back, silent stale-parent retry, explicit approval/retract path, and an export/exit drill using an ordinary Git client.",
+            red_control: "A target advance between validation and CAS returns stale-parent retry without user rebase; denied authority never mutates; read-back failure never returns Landed; projection failure repairs without replaying semantics; a normal journey requiring conflict-marker edit or force-push reds the interaction contract.",
+            out_of_scope: "No native object store, implicit target-authority flip, user-authored merge topology, customer-wide default enablement, or weakening of semantic/visibility policy to improve auto-land rate.",
+            handback: "Return reliability and incident receipts, exit-drill result, auto-land/question/refusal distribution at the fixed contract, validation reuse, partner keep/disable decision, and whether native proposal metadata would displace additional measured cost.",
+            updates: [
+              TicketUpdate { on: "2026-07-27", note: "strategy makes managed Git the reversible trust bridge between read-only shadow and any future native hosted authority" },
+            ],
+            authored_on: "2026-07-27",
+            last_verified_on: "",
+          }, intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"), path: "docs/plans/dag-scm-product-strategy.md"),
           ticket_row(id: "2-scm-remote-realization", done: false, t: TicketFields {
             headline: "remote realization of withheld nodes — the SCM's CI",
             brief: "A withheld implementation may execute through an admitted remote realization and public or coarsened interface, but outputs, errors, timing, resources, and effects are information-flow channels. Policy declares permitted declassification and audience-safe diagnostics; metering prices use but never proves secrecy. The execution envelope names authority, placement, bounds, and read-back.",
