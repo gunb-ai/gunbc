@@ -724,6 +724,11 @@ lane's; the semantics are ruled. This section **supersedes** the nearest-wins re
 seed still carries (§7.5, §12) and tightens §3/§6 from "exactly one *nearest*" to "exactly one, full
 stop."
 
+**Operational companion.** The lexical-binder witness matrix, production-consumer boundary, and
+codebase-wide dual-authority cleanup census are maintained in
+[namespace unique-on-chain — operational plan](namespace-unique-on-chain-operational-plan.md).
+That plan derives from this ratified rule and does not gate its execution.
+
 **The rule.** Resolve a reference's **first segment** to the **unique binder on its ancestor chain**:
 
 - **zero** binders → `Unresolved` — a loud, located refusal, never a fabricated bind;

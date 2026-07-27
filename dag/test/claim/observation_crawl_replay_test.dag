@@ -2,7 +2,7 @@ module test.claim.observation_crawl_replay_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, NonEmptyStr, Bool, List }
-import std.measure { millisecond, byte_size, basis_point }
+import std.measure { millisecond, millisecond_to_nanosecond, byte_size, basis_point }
 import std.symbols { Emoji }
 import std.observation {
   ObservationSubject,
@@ -84,7 +84,9 @@ fn observation_crawl_after_block() -> String {
     ci_render_line(line: ci_event_line(event: ObservationEvent {
       subject: crawl_entry(),
       transition: Concluded { outcome: Done },
-      wall: MeasuredValue { value: millisecond(count: 230) },
+      wall: MeasuredValue {
+        value: millisecond_to_nanosecond(m: millisecond(count: 230))
+      },
       rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
     }, basis: crawl_basis()), tier: Emoji),
     ci_collapsed_summary(green_count: 213),
@@ -125,4 +127,3 @@ test fn w_replay_ends_in_a_refusal_summary_not_a_silent_timeout() -> Bool {
   string_contains(s: block, pattern: "1 refused and 0 failed") &&
   string_contains(s: block, pattern: "FLOOR-BATCH-OVER-BUDGET")
 }
-
