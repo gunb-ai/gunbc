@@ -284,10 +284,126 @@ rules.
 
 ---
 
-## 7. Sequencing and ownership
+## 7. Codebase-wide dual-authority census
+
+The shadowing defect is one instance of a broader migration problem: the compiler
+still contains several structures that can independently answer “what does this
+name mean?” A map or cache is not automatically a second authority. It becomes one
+when a consumer can use it to choose a declaration without consuming the accepted
+`OccurrenceBindingResult`.
+
+Every naming-related surface is classified into one of four dispositions:
+
+1. **Authority** — the containment graph supplies exact declaration candidates and
+   `OccurrenceBindingResult` supplies the one cardinality decision.
+2. **Projection** — data computed only after `OccurrenceBound`, unable to choose or
+   recover a declaration.
+3. **Transitional scaffold** — import/dependency machinery still needed to load the
+   corpus, with an explicit dissolve-on.
+4. **Competing decision mechanism** — a second lookup, fallback, priority tier, or
+   name-keyed identity that must dissolve.
+
+The initial authored-source census follows. Generated stage0 Rust is an execution
+projection of these `.dag` sources and is not a separate row or repair surface.
+
+### 7.1 Binding-decision mechanisms that must converge
+
+| Surface | Current independent decision | Terminal disposition / dissolve-on |
+| --- | --- | --- |
+| `src/v1/04_env.dag` — `TypeEnv.bindings`, `str_bindings`, `ancestry_str_bindings`, and `parents` | Ordered map/parent lookup can select a type declaration before the containment population is known | Retain only representation/index data needed to enumerate exact declaration paths. Delete their declaration-choice role when P1 type occurrences consume the one full-chain fold. |
+| `src/v1/04_env.dag` — `SymbolIndex.global_bare`, `GlobalBareLookupState`, LCP/nearest helpers, strict-policy branch | A bare-name pool plus policy chooses or refuses independently of lexical candidates | Delete `global_bare` as a resolution mechanism when all ordinary v1 type/value/callee occurrences enumerate from containment. No nearest or global-unique compatibility arm remains. |
+| `src/v1/04_env.dag` — `Scope`, `ScopeBinding`, `scope_lookup`, `scope_push` | A second lexical abstraction exists without an executing consumer | Do not expand it into another resolver. Delete it if the consumer census confirms it remains hollow; otherwise convert its sole use to candidate enumeration and give it the same P1 dissolve-on. |
+| `src/v1/04_sigs.dag` and `04_lookup.dag` — `ResolvedFuncEnv`, `FuncSigLookup`, global-bare callable fallback | Function/value lookup has its own local/parent/global 0/1/many and fallback behavior | Function signatures become post-`OccurrenceBound` projections from the accepted declaration path. Delete the independent lookup result and fallback after all call/value consumers cross that seam. |
+| `src/v1/04_infer.dag` — `InferScope.locals`, `body_locals`, `match_bound_names`, `call_locals_shadow_note` | Separate name maps and an explicit locals-before-functions-before-global priority can select a value | Preserve scope facts only to enumerate exact on-chain declarations. Delete raw-name winner selection when value/callee P1 witnesses execute the full-chain fold. |
+| `src/v1/04_infer.dag` — variant-local/census helpers and `VariantCollision` selection | Constructor ownership and collision handling can be inferred through a variant-name side population | Enumerate constructor declaration paths in the applicable syntactic category. Keep collision text only as a diagnostic projection of an ambiguous typed result. |
+| `src/v1/04_resolve.dag` — `parameterized_use_site_prefers_parameterized_decl` | Type arguments trigger a second direct-import retry after the primary lookup chose a declaration | Delete when generic type occurrences bind once by containment and project arity only after `OccurrenceBound`. |
+| `src/v1/04_resolve.dag` — `source_visible_names`, `masked`, `UnlistedImportUse` family | An import-derived side map independently filters whether an otherwise resolved name is admitted | Delete when namespace binding is wholly structural and accepted binding edges drive dependency loading. This is already required by the parent namespace design §7. |
+| `src/v1` runtime policy — `NameResolutionPolicy` and silent-pick census recording | A compatibility gate permits both namespace-only and legacy nearest/import-scoped answers | Delete the policy fork and legacy instrumentation when the strict consumer and corpus repair are green; the terminal language has one policy. |
+| `src/v2/std/symbol_index.dag` — `LexicalLookup` | A separate bound/unbound/ambiguous result is produced without exact reference-occurrence identity | Keep `SymbolIndex.entries` as materialized containment storage. Once the v2 resolver carries exact occurrences, project candidates from the index and fold through `OccurrenceBindingResult`; then dissolve `LexicalLookup` as a parallel result carrier. Do not fabricate an occurrence during the interim. |
+| `src/v2/std/symbol_index.dag` and `src/v2/compiler/03_resolve.dag` — `global_bare`, `GlobalBareLookup`, `SymbolIndexAtomLookup` fallback | Lexical unbound can widen into global-unique resolution | Delete the global-unique fallback when the v2 exact-occurrence consumer lands. An empty on-chain population is unbound, not permission to search a second universe. |
+| `src/v2/compiler/03_name_resolve.dag` — `Namespace.bindings`, `canonical_symbols`, import admission | These maps currently mix canonical storage, import admission, and possible declaration choice | Audit each consumer. Canonical-symbol storage may remain, but no map read may select a declaration independently; import admission dissolves with Dispatch 2. |
+
+This inventory is intentionally by semantic entry point rather than by type name.
+Renaming a lookup or moving it into a registry does not retire an authority.
+
+### 7.2 Dependency/loading representations with a separate dissolve-on
+
+These rows do not decide declaration identity in the intended model, but they still
+duplicate the evidence used to decide which modules and Rust `use` lines are needed:
+
+| Surface | Transitional role | Dissolve-on |
+| --- | --- | --- |
+| `ResolvedModule.resolved_imports` and import overlays | Load/admit modules from authored import declarations | Reference-derived loading reaches closure without imports and the Dispatch 2 refusal matrix is green. |
+| `src/v2/lens/module_graph.dag` — `ImportResolutionFact` | Import-derived module dependency evidence | Every required module edge is projected from accepted reference binding or another explicitly typed non-reference dependency. |
+| `src/v2/lens/reference_deps.dag` — `ReferenceResolutionFact` | Qualified-name approximation of reference dependencies | Exact accepted binding paths directly project the reference dependency edge; parsed-name approximation is deleted. |
+| `src/v2/lens/module_graph.dag` — union of import and reference facts | Compatibility closure over two evidence sources | Reference-only closure is complete, deterministic, and witnessed; the import half and union disappear together. |
+| `src/v1/05_emit_rust.dag` — reference-derived/import-derived `use` synthesis and registry provider lookup | Keeps emitted Rust compiling while authored imports and approximate reference facts coexist | Emission consumes the accepted declaration/module edge and cannot choose a provider by bare registry name. Import extraction and compatibility synthesis then delete. |
+| host loader/runtime registries, including any bare `fn_nodes` or item-provider map | Load or dispatch by a name-derived provider | Dispatch is keyed by the accepted declaration identity from the same SymbolIndex/containment authority. A metadata cache may remain only if it cannot choose among declarations. |
+
+This separation matters: deleting import syntax before reference-derived loading is
+complete would break execution, while retaining import facts as naming evidence
+would preserve the dual authority that Dispatch 2 is meant to remove.
+
+### 7.3 Legitimate projections that must not become resolvers
+
+The following data may remain, subject to a construction wall:
+
+- `TypeBinding`, `DeclaredFuncSig`, and `ResolvedFuncSig` are semantic payloads
+  derived directly from the accepted declaration terminal/path.
+- `AmbiguousReference` strings and other diagnostic labels are exhaustive ordered
+  renderings of typed candidates, never identity or input to another lookup.
+- `DependencyView.BindsTo` is a downstream projection:
+  `source = candidate.containment.terminal` and
+  `dependent/usage_site = occurrence.containment.terminal`.
+- intern tables, emitter registries, method tables, and caches may accelerate
+  representation lookup only when keyed from an accepted declaration identity and
+  incapable of choosing a declaration.
+- genuinely grounded builtin operations may retain their separate typed authority;
+  a same-spelled user declaration cannot enter or be displaced by that operation
+  rung. Declaration-like builtins instead live at the namespace root.
+
+If any projection performs a raw-name fallback, priority pick, provider guess, or
+candidate dedupe weaker than full containment-path equality, it is reclassified as
+a competing decision mechanism.
+
+### 7.4 Census and cleanup gate
+
+Before the namespace migration is declared complete, an executing source-graph
+census must classify every function that:
+
+- reads a name-keyed declaration map;
+- walks lexical parents or module ancestors;
+- chooses a type, value, function, constructor, alias, or provider;
+- falls back after a lookup miss;
+- converts import or registry data into visibility;
+- emits an unbound/ambiguous/collision diagnostic.
+
+For every such function, the census records its authored `.dag` location, occurrence
+category, input identity, output type, callers, disposition, and named dissolve-on.
+The gate fails on an unclassified entry point. It also fails if two classified
+entries can both decide the same occurrence, even when their current corpus answers
+happen to agree.
+
+The terminal call graph has a simple shape:
+
+```text
+containment/index storage
+  → complete category-admissible candidate population
+  → occurrence_binding_from_candidates (exactly once)
+  → Bound-only semantic projections
+  → diagnostics / dependency edges / emission / runtime dispatch
+```
+
+No cleanup row is satisfied merely by deleting a type. Its executing callers must
+either consume the accepted edge or disappear, and a RED witness must prove that
+restoring the old fallback or priority changes the verdict.
+
+---
+
+## 8. Sequencing and ownership
 
 1. **This docs-only plan** is reviewed against §13 and the operator's no-parallel-
-   subsystem requirement.
+   subsystem requirement, including the dual-authority census and dispositions.
 2. **#7328 exact identity prerequisite** is rebased/reworked to its narrow boundary:
    exact span flow, `.dag` witnesses, no silent shadowing, no handwritten Rust.
 3. **Generic-match ownership prerequisite** consumes the exact uniquely bound edge
@@ -295,19 +411,21 @@ rules.
 4. **P-derive authority/consumer prerequisites** land independently.
 5. **#7321 P1** rebases current main and implements the single full-chain
    occurrence-binding consumer, including the shadowing ambiguity matrix.
-6. **Corpus census and generated repair** eliminate unbound/ambiguous residues by
+6. **Executing dual-authority census** classifies every naming decision entry point
+   and turns the table above into checked cleanup rows with named consumers.
+7. **Corpus census and generated repair** eliminate unbound/ambiguous residues by
    qualification/alias/rename, with no import additions.
-7. **Reference-derived dependency/loading convergence** consumes accepted binding
-   edges.
-8. **Dispatch 2** deletes import lines and grammar only after the reference-only
-   authority and full refusal matrix are green.
+8. **Reference-derived dependency/loading convergence** consumes accepted binding
+   edges and deletes the transitional import/reference union.
+9. **Dispatch 2** deletes import lines and grammar only after the reference-only
+   authority, authority census, and full refusal matrix are green.
 
 No step may use a default-off escape, nearest-wins compatibility arm, raw-name
 identity, hand-generated Rust, or a second resolution carrier.
 
 ---
 
-## 8. Done lines
+## 9. Done lines
 
 This plan is implemented when all of the following are true:
 
@@ -319,6 +437,12 @@ This plan is implemented when all of the following are true:
 - Ambiguity diagnostics carry all exact candidates in deterministic order.
 - Type/value/callee consumers continue only from `OccurrenceBound` and never
   re-resolve.
+- Every naming-decision entry point is classified, and every competing mechanism
+  has dissolved at its executing callers rather than merely being renamed.
+- Dependency, diagnostic, emitter, and runtime projections are constructed from the
+  accepted declaration edge and cannot choose or recover a declaration.
+- `global_bare`, import visibility, generic retry, local/function priority, and v2
+  lexical/global fallback no longer exist as resolution mechanisms.
 - The generic-match ownership consumer reads the accepted binding edge and has no
   name or clone heuristic fallback.
 - The ordinary-compile matrix, v1 build, regen fixed point, diagnostic accounting,
