@@ -13,7 +13,7 @@ The decision authority is `dag/gunbc/rust_decl_type_overlay.dag`; `src/v1/05_emi
 The full rows and binary stamps are in `root4_measure_missing_generics_canonical_seven_2026-07-26.tsv`.
 
 - Parent: `9a112a30975be5b8e0203b4d2216459572b3c818`, one release `gunbc` binary with SHA-256 `1380ec700e49d3378230831f0d84a8d0bd6a65c143cdc4a3c2143f2617a40df2`.
-- Child probe tree: `41e5ce2b4678a5db2a6c39bfd85b9d3e9b512452`, one release `gunbc` binary with SHA-256 `0019ffa282960ad36283866626c7fed9c3ece90d1e3ae0b21ba699ec194691c0`.
+- Child probe tree: `3cf95d68ef1d400eeeb0fade307918fd439a3408`, one release `gunbc` binary with SHA-256 `fa6390f3461a00d978884e3cd4674bf1dad748d1816758976302e4acc0c18e21`.
 - Both sweeps used the same `cssl_assemble` binary, `CSSL_STD_SEED_LINK=1`, one empty shim, `docs/probes/curated_cargo_probe_one.sh`, a fresh temporary crate per module, and retained full cargo logs.
 - Every coded rustc error plus uncoded `unreachable pattern` and `UNRESOLVED_CompilerError` row is counted.
 

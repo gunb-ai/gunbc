@@ -4,9 +4,9 @@ protocol	CSSL_STD_SEED_LINK=1; one empty shim; docs/probes/curated_cargo_probe_o
 parent_git_sha	9a112a30975be5b8e0203b4d2216459572b3c818
 parent_gunbc_sha256	1380ec700e49d3378230831f0d84a8d0bd6a65c143cdc4a3c2143f2617a40df2
 parent_cssl_assemble_sha256	2cd17c5040afb470ea3af631d5d773e5e7028c4691341b50187d186abfee3720
-child_probe_tree_sha	41e5ce2b4678a5db2a6c39bfd85b9d3e9b512452
-child_emitter_change_sha	c8e1a23a8190e06efea3a75aa7f2949478e971ac
-child_gunbc_sha256	0019ffa282960ad36283866626c7fed9c3ece90d1e3ae0b21ba699ec194691c0
+child_probe_tree_sha	3cf95d68ef1d400eeeb0fade307918fd439a3408
+child_emitter_change_sha	3cf95d68ef1d400eeeb0fade307918fd439a3408
+child_gunbc_sha256	fa6390f3461a00d978884e3cd4674bf1dad748d1816758976302e4acc0c18e21
 child_cssl_assemble_sha256	2cd17c5040afb470ea3af631d5d773e5e7028c4691341b50187d186abfee3720
 phase	module	cargo	total_errors	distinct_live_root_families	residual_histogram
 BEFORE	src/v2/compiler/06_translate.dag	refuse	386	unclassified	error[E0308]:114 error[E0599]:93 error[E0277]:76 error[E0063]:18 error[E0369]:14 error[E0107]:13 error[E0597]:13 error[E0282]:9 error[E0609]:6 error[E0614]:3 error[E0392]:2 error[E0004]:1 error[E0061]:1 error[E0560]:1 uncoded_unreachable_pattern:21 uncoded_UNRESOLVED_CompilerError:1
