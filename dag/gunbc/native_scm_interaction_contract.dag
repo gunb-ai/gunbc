@@ -1,0 +1,500 @@
+module gunbc.native_scm_interaction_contract
+
+import std.types { Bool, Int, List, String }
+import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
+
+data native_scm_interaction_contract_note: String = "Model-first contract carrier for the native SCM interaction slice. The model stays on the presentation side of the split: a proposal has a stable identity, the user-facing primary outcome is Landed | ChoiceRequired | CouldNotLand, review/access/check/operational remain orthogonal fields, and workspace/target/git projections stay optional. No engine, transport, or CLI lives here; the witnesses exercise the contract as a black-box surface."
+
+type NativeScmProposalIdentity {
+  name: String
+  attempt_key: String
+}
+
+type NativeScmCommitTransition
+  = NativeScmCommitTransitionUncommitted
+  | NativeScmCommitTransitionCommitted
+
+type NativeScmLifecycle
+  = NativeScmLifecyclePending
+  | NativeScmLifecycleReady
+  | NativeScmLifecycleRefused { reason: String }
+
+type NativeScmProjection {
+  workspace: Optional<String>
+  target: Optional<String>
+  git: Optional<String>
+}
+
+type NativeScmContinuation {
+  proposal: NativeScmProposalIdentity
+  resume_choice: String
+  resume_preview: String
+}
+
+type NativeScmRefusal {
+  plain_reason: String
+  responsible_party: String
+  next_action: String
+  refusal_receipt: String
+}
+
+type NativeScmPrimaryOutcome
+  = Landed {
+      result_preview: String
+    }
+  | ChoiceRequired {
+      question: String
+      previews: List<String>
+      continuation: NativeScmContinuation
+    }
+  | InProgress {
+      progress_preview: String
+    }
+  | CouldNotLand {
+      refusal: NativeScmRefusal
+    }
+
+type NativeScmReceipt {
+  identity: NativeScmProposalIdentity
+  transition: NativeScmCommitTransition
+  review: NativeScmLifecycle
+  access: NativeScmLifecycle
+  check: NativeScmLifecycle
+  operational: NativeScmLifecycle
+  projections: NativeScmProjection
+  primary: NativeScmPrimaryOutcome
+  receipt_details: Optional<String>
+}
+
+type NativeScmSubmissionLedger {
+  applied: List<String>
+}
+
+type NativeScmScenario
+  = TwoIndependentChangesLand
+  | StaleTargetAutoResync
+  | DuplicateSubmissionAppliesOnce
+  | RenameReferenceUniqueMeaning
+  | TwoLegitimateMeaningsNeedChoice
+  | IncompatibleGoalsNeedAuthorizedDecider
+  | EvidenceGatheredInternally
+  | ToolModelProofDeficitRoutesInternally
+  | GitExportFailureRepairsWithoutReinterpretation
+  | ConventionalGitImportWithoutRebase
+  | VisibilityAuthorizedDetails
+
+fn native_scm_identity_for(scenario: NativeScmScenario) -> NativeScmProposalIdentity {
+  match scenario {
+    TwoIndependentChangesLand => NativeScmProposalIdentity {
+      name: "two-independent-changes",
+      attempt_key: "attempt-two-independent-changes",
+    }
+    StaleTargetAutoResync => NativeScmProposalIdentity {
+      name: "stale-target-auto-resync",
+      attempt_key: "attempt-stale-target-auto-resync",
+    }
+    DuplicateSubmissionAppliesOnce => NativeScmProposalIdentity {
+      name: "duplicate-submission-applies-once",
+      attempt_key: "attempt-duplicate-submission",
+    }
+    RenameReferenceUniqueMeaning => NativeScmProposalIdentity {
+      name: "rename-reference-unique-meaning",
+      attempt_key: "attempt-rename-reference",
+    }
+    TwoLegitimateMeaningsNeedChoice => NativeScmProposalIdentity {
+      name: "two-legitimate-meanings-need-choice",
+      attempt_key: "attempt-two-legitimate-meanings",
+    }
+    IncompatibleGoalsNeedAuthorizedDecider => NativeScmProposalIdentity {
+      name: "incompatible-goals-need-authorized-decider",
+      attempt_key: "attempt-incompatible-goals",
+    }
+    EvidenceGatheredInternally => NativeScmProposalIdentity {
+      name: "evidence-gathered-internally",
+      attempt_key: "attempt-evidence-gathered-internally",
+    }
+    ToolModelProofDeficitRoutesInternally => NativeScmProposalIdentity {
+      name: "tool-model-proof-deficit-routes-internally",
+      attempt_key: "attempt-tool-model-proof-deficit",
+    }
+    GitExportFailureRepairsWithoutReinterpretation => NativeScmProposalIdentity {
+      name: "git-export-failure-repairs-without-reinterpretation",
+      attempt_key: "attempt-git-export-failure",
+    }
+    ConventionalGitImportWithoutRebase => NativeScmProposalIdentity {
+      name: "conventional-git-import-without-rebase",
+      attempt_key: "attempt-conventional-git-import",
+    }
+    VisibilityAuthorizedDetails => NativeScmProposalIdentity {
+      name: "visibility-authorized-details",
+      attempt_key: "attempt-visibility-authorized-details",
+    }
+  }
+}
+
+fn native_scm_lifecycle_ready() -> NativeScmLifecycle {
+  NativeScmLifecycleReady
+}
+
+fn native_scm_transition_for(scenario: NativeScmScenario) -> NativeScmCommitTransition {
+  match scenario {
+    ToolModelProofDeficitRoutesInternally => NativeScmCommitTransitionUncommitted
+    TwoLegitimateMeaningsNeedChoice => NativeScmCommitTransitionUncommitted
+    IncompatibleGoalsNeedAuthorizedDecider => NativeScmCommitTransitionUncommitted
+    TwoIndependentChangesLand => NativeScmCommitTransitionCommitted
+    StaleTargetAutoResync => NativeScmCommitTransitionCommitted
+    DuplicateSubmissionAppliesOnce => NativeScmCommitTransitionCommitted
+    RenameReferenceUniqueMeaning => NativeScmCommitTransitionCommitted
+    EvidenceGatheredInternally => NativeScmCommitTransitionCommitted
+    GitExportFailureRepairsWithoutReinterpretation => NativeScmCommitTransitionCommitted
+    ConventionalGitImportWithoutRebase => NativeScmCommitTransitionCommitted
+    VisibilityAuthorizedDetails => NativeScmCommitTransitionCommitted
+  }
+}
+
+fn native_scm_projection(workspace: String, target: String, git: String) -> NativeScmProjection {
+  NativeScmProjection {
+    workspace: optional_present(value: workspace),
+    target: optional_present(value: target),
+    git: optional_present(value: git),
+  }
+}
+
+fn native_scm_primary_for(scenario: NativeScmScenario, identity: NativeScmProposalIdentity) -> NativeScmPrimaryOutcome {
+  match scenario {
+    TwoIndependentChangesLand => Landed {
+      result_preview: "two independent changes both land on the same accepted target",
+    }
+    StaleTargetAutoResync => Landed {
+      result_preview: "stale target is replayed against the current target, then lands",
+    }
+    DuplicateSubmissionAppliesOnce => Landed {
+      result_preview: "duplicate submission reuses the stable proposal identity and applies once",
+    }
+    RenameReferenceUniqueMeaning => Landed {
+      result_preview: "rename plus reference resolves to one unique meaning",
+    }
+    TwoLegitimateMeaningsNeedChoice => ChoiceRequired {
+      question: "The call can follow the rename or stay separate. Which meaning should land?",
+      previews: [
+        "follow the rename: keep the new spelling and move the call",
+        "keep a separate name: preserve the old spelling as a distinct meaning",
+      ],
+      continuation: NativeScmContinuation {
+        proposal: identity,
+        resume_choice: "follow the rename",
+        resume_preview: "follow the rename: keep the new spelling and move the call",
+      },
+    }
+    IncompatibleGoalsNeedAuthorizedDecider => ChoiceRequired {
+      question: "Two requested goals cannot both be retained. Which one should the authorized decider keep?",
+      previews: [
+        "retain goal A and drop goal B",
+        "retain goal B and drop goal A",
+      ],
+      continuation: NativeScmContinuation {
+        proposal: identity,
+        resume_choice: "retain goal A",
+        resume_preview: "retain goal A and drop goal B",
+      },
+    }
+    EvidenceGatheredInternally => Landed {
+      result_preview: "support was gathered internally, so the proposal lands without a user question",
+    }
+    ToolModelProofDeficitRoutesInternally => InProgress {
+      progress_preview: "tool, model, and proof work remain internal; the proposal is still progressing",
+    }
+    GitExportFailureRepairsWithoutReinterpretation => Landed {
+      result_preview: "accepted result remains landed while the Git export projection is repaired separately",
+    }
+    ConventionalGitImportWithoutRebase => Landed {
+      result_preview: "a conventional Git branch import lands as an ordinary import with no manual rewrite",
+    }
+    VisibilityAuthorizedDetails => Landed {
+      result_preview: "details stay optional and can be projected only when visibility authorizes them",
+    }
+  }
+}
+
+fn native_scm_receipt_details_for(scenario: NativeScmScenario) -> Optional<String> {
+  match scenario {
+    TwoIndependentChangesLand => Present {
+      value: "details: both changes are independently grounded and both land",
+    }
+    StaleTargetAutoResync => Present {
+      value: "details: the stale receipt is replayed against the current target before landing",
+    }
+    DuplicateSubmissionAppliesOnce => Present {
+      value: "details: stable proposal identity deduplicates repeated submission",
+    }
+    RenameReferenceUniqueMeaning => Present {
+      value: "details: rename transport preserves the unique meaning of the reference",
+    }
+    TwoLegitimateMeaningsNeedChoice => Present {
+      value: "details: one stored continuation resumes automatically after the answer",
+    }
+    IncompatibleGoalsNeedAuthorizedDecider => Present {
+      value: "details: the authorized decider chooses which incompatible goal to retain",
+    }
+    EvidenceGatheredInternally => Present {
+      value: "details: obtainable evidence is gathered inside the machine before the user sees a result",
+    }
+    ToolModelProofDeficitRoutesInternally => Present {
+      value: "details: internal progress stays internal until the machine finishes its own continuation",
+    }
+    GitExportFailureRepairsWithoutReinterpretation => Present {
+      value: "details: Git export repair updates only the projection, not the semantic result",
+    }
+    ConventionalGitImportWithoutRebase => Present {
+      value: "details: import is accepted as a normal branch import with the ordinary projection",
+    }
+    VisibilityAuthorizedDetails => Present {
+      value: "details: this text is only available when visibility authorizes it",
+    }
+  }
+}
+
+fn native_scm_review_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
+  match scenario {
+    ToolModelProofDeficitRoutesInternally => NativeScmLifecycleReady
+    TwoIndependentChangesLand => NativeScmLifecycleReady
+    StaleTargetAutoResync => NativeScmLifecycleReady
+    DuplicateSubmissionAppliesOnce => NativeScmLifecycleReady
+    RenameReferenceUniqueMeaning => NativeScmLifecycleReady
+    TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
+    IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
+    EvidenceGatheredInternally => NativeScmLifecycleReady
+    GitExportFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
+    ConventionalGitImportWithoutRebase => NativeScmLifecycleReady
+    VisibilityAuthorizedDetails => NativeScmLifecycleReady
+  }
+}
+
+fn native_scm_access_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
+  match scenario {
+    ToolModelProofDeficitRoutesInternally => NativeScmLifecycleReady
+    TwoIndependentChangesLand => NativeScmLifecycleReady
+    StaleTargetAutoResync => NativeScmLifecycleReady
+    DuplicateSubmissionAppliesOnce => NativeScmLifecycleReady
+    RenameReferenceUniqueMeaning => NativeScmLifecycleReady
+    TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
+    IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
+    EvidenceGatheredInternally => NativeScmLifecycleReady
+    GitExportFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
+    ConventionalGitImportWithoutRebase => NativeScmLifecycleReady
+    VisibilityAuthorizedDetails => NativeScmLifecycleReady
+  }
+}
+
+fn native_scm_check_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
+  match scenario {
+    ToolModelProofDeficitRoutesInternally => NativeScmLifecyclePending
+    TwoIndependentChangesLand => NativeScmLifecycleReady
+    StaleTargetAutoResync => NativeScmLifecycleReady
+    DuplicateSubmissionAppliesOnce => NativeScmLifecycleReady
+    RenameReferenceUniqueMeaning => NativeScmLifecycleReady
+    TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
+    IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
+    EvidenceGatheredInternally => NativeScmLifecycleReady
+    GitExportFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
+    ConventionalGitImportWithoutRebase => NativeScmLifecycleReady
+    VisibilityAuthorizedDetails => NativeScmLifecycleReady
+  }
+}
+
+fn native_scm_operational_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
+  match scenario {
+    GitExportFailureRepairsWithoutReinterpretation => NativeScmLifecyclePending
+    ToolModelProofDeficitRoutesInternally => NativeScmLifecyclePending
+    TwoIndependentChangesLand => NativeScmLifecycleReady
+    StaleTargetAutoResync => NativeScmLifecycleReady
+    DuplicateSubmissionAppliesOnce => NativeScmLifecycleReady
+    RenameReferenceUniqueMeaning => NativeScmLifecycleReady
+    TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
+    IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
+    EvidenceGatheredInternally => NativeScmLifecycleReady
+    ConventionalGitImportWithoutRebase => NativeScmLifecycleReady
+    VisibilityAuthorizedDetails => NativeScmLifecycleReady
+  }
+}
+
+fn native_scm_receipt_for(scenario: NativeScmScenario) -> NativeScmReceipt {
+  let identity = native_scm_identity_for(scenario: scenario)
+  NativeScmReceipt {
+    identity: identity,
+    transition: native_scm_transition_for(scenario: scenario),
+    review: native_scm_review_for(scenario: scenario),
+    access: native_scm_access_for(scenario: scenario),
+    check: native_scm_check_for(scenario: scenario),
+    operational: native_scm_operational_for(scenario: scenario),
+    projections: match scenario {
+      GitExportFailureRepairsWithoutReinterpretation => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-export-repair"),
+        target: optional_present(value: "main"),
+        git: optional_absent(),
+      }
+      ConventionalGitImportWithoutRebase => native_scm_projection(
+        workspace: "/workspaces/native-scm-import",
+        target: "main",
+        git: "origin/session/native-scm-import",
+      )
+      TwoIndependentChangesLand => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
+      }
+      StaleTargetAutoResync => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
+      }
+      DuplicateSubmissionAppliesOnce => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
+      }
+      RenameReferenceUniqueMeaning => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
+      }
+      TwoLegitimateMeaningsNeedChoice => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
+      }
+      IncompatibleGoalsNeedAuthorizedDecider => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
+      }
+      EvidenceGatheredInternally => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
+      }
+      ToolModelProofDeficitRoutesInternally => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
+      }
+      VisibilityAuthorizedDetails => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
+      }
+    },
+    primary: native_scm_primary_for(scenario: scenario, identity: identity),
+    receipt_details: native_scm_receipt_details_for(scenario: scenario),
+  }
+}
+
+fn native_scm_submission_ledger() -> NativeScmSubmissionLedger {
+  NativeScmSubmissionLedger { applied: [] }
+}
+
+fn native_scm_apply_once(
+  ledger: NativeScmSubmissionLedger,
+  receipt: NativeScmReceipt,
+) -> NativeScmSubmissionLedger {
+  if all(ledger.applied, applied => applied != receipt.identity.attempt_key) {
+    NativeScmSubmissionLedger { applied: concat(ledger.applied, [receipt.identity.attempt_key]) }
+  } else {
+    ledger
+  }
+}
+
+fn native_scm_rekey_receipt(receipt: NativeScmReceipt, attempt_key: String) -> NativeScmReceipt {
+  NativeScmReceipt {
+    identity: NativeScmProposalIdentity {
+      name: receipt.identity.name,
+      attempt_key: attempt_key,
+    },
+    transition: receipt.transition,
+    review: receipt.review,
+    access: receipt.access,
+    check: receipt.check,
+    operational: receipt.operational,
+    projections: receipt.projections,
+    primary: receipt.primary,
+    receipt_details: receipt.receipt_details,
+  }
+}
+
+fn native_scm_applied_count(ledger: NativeScmSubmissionLedger) -> Int {
+  count(ledger.applied)
+}
+
+fn native_scm_primary_label(primary: NativeScmPrimaryOutcome) -> String {
+  match primary {
+    Landed { result_preview: _ } => "Landed"
+    ChoiceRequired { question: _, previews: _, continuation: _ } => "ChoiceRequired"
+    InProgress { progress_preview: _ } => "InProgress"
+    CouldNotLand { refusal: _ } => "CouldNotLand"
+  }
+}
+
+fn native_scm_resolve_choice(
+  receipt: NativeScmReceipt,
+  choice: String,
+) -> NativeScmPrimaryOutcome {
+  match receipt.primary {
+    ChoiceRequired { question: _, previews: _, continuation } =>
+      if choice == continuation.resume_choice {
+        Landed { result_preview: continuation.resume_preview }
+      } else {
+        CouldNotLand {
+          refusal: NativeScmRefusal {
+            plain_reason: "the answer did not match the stored continuation",
+            responsible_party: "authorized decider",
+            next_action: "select one of the stored previews",
+            refusal_receipt: continuation.proposal.attempt_key,
+          },
+        }
+      }
+    Landed { result_preview: p } => Landed { result_preview: p }
+    InProgress { progress_preview } => InProgress { progress_preview: progress_preview }
+    CouldNotLand { refusal } => CouldNotLand { refusal: refusal }
+  }
+}
+
+fn native_scm_repair_git_projection(receipt: NativeScmReceipt, git_ref: String) -> NativeScmReceipt {
+  NativeScmReceipt {
+    identity: receipt.identity,
+    transition: receipt.transition,
+    review: receipt.review,
+    access: receipt.access,
+    check: receipt.check,
+    operational: NativeScmLifecycleReady,
+    projections: NativeScmProjection {
+      workspace: receipt.projections.workspace,
+      target: receipt.projections.target,
+      git: optional_present(value: git_ref),
+    },
+    primary: receipt.primary,
+    receipt_details: receipt.receipt_details,
+  }
+}
+
+fn native_scm_inspect_receipt(receipt: NativeScmReceipt, authorized: Bool) -> Optional<String> {
+  if authorized {
+    match receipt.receipt_details {
+      Present { value: details } =>
+        optional_present(
+          value: concat(
+            "proposal=",
+            concat(
+              receipt.identity.name,
+              concat(
+                "; attempt=",
+                concat(receipt.identity.attempt_key, concat("; ", details)),
+              ),
+            ),
+          ),
+        )
+      Absent => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
+}

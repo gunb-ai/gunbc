@@ -1,0 +1,193 @@
+module test.claim.native_scm_interaction_contract_witness
+
+import std.types { Bool, String }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.native_scm_interaction_contract {
+  NativeScmScenario,
+  NativeScmReceipt,
+  TwoIndependentChangesLand,
+  StaleTargetAutoResync,
+  DuplicateSubmissionAppliesOnce,
+  RenameReferenceUniqueMeaning,
+  TwoLegitimateMeaningsNeedChoice,
+  IncompatibleGoalsNeedAuthorizedDecider,
+  EvidenceGatheredInternally,
+  ToolModelProofDeficitRoutesInternally,
+  GitExportFailureRepairsWithoutReinterpretation,
+  ConventionalGitImportWithoutRebase,
+  VisibilityAuthorizedDetails,
+  native_scm_receipt_for,
+  native_scm_primary_label,
+  native_scm_resolve_choice,
+  native_scm_repair_git_projection,
+  native_scm_inspect_receipt,
+  native_scm_submission_ledger,
+  native_scm_apply_once,
+  native_scm_applied_count,
+  native_scm_rekey_receipt,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn receipt_for(scenario: NativeScmScenario) -> NativeScmReceipt {
+  native_scm_receipt_for(scenario: scenario)
+}
+
+fn primary_label(receipt: NativeScmReceipt) -> String {
+  native_scm_primary_label(primary: receipt.primary)
+}
+
+test fn witness_two_independent_changes_both_land() -> Bool {
+  let r = receipt_for(scenario: TwoIndependentChangesLand)
+  primary_label(receipt: r) == "Landed"
+    && match r.primary {
+      Landed { result_preview } =>
+        string_contains(s: result_preview, pattern: "both land")
+      _ => false
+    }
+}
+
+test fn witness_stale_target_auto_resynchronizes() -> Bool {
+  let r = receipt_for(scenario: StaleTargetAutoResync)
+  primary_label(receipt: r) == "Landed"
+    && match r.projections.target {
+      Present { value: t } => t == "main"
+      Absent => false
+    }
+    && match r.primary {
+      Landed { result_preview } =>
+        string_contains(s: result_preview, pattern: "current target")
+      _ => false
+    }
+}
+
+test fn witness_duplicate_submission_applies_once() -> Bool {
+  let receipt = receipt_for(scenario: DuplicateSubmissionAppliesOnce)
+  let ledger0 = native_scm_submission_ledger()
+  let ledger1 = native_scm_apply_once(ledger: ledger0, receipt: receipt)
+  let ledger2 = native_scm_apply_once(ledger: ledger1, receipt: receipt)
+  native_scm_applied_count(ledger: ledger1) == 1
+    && native_scm_applied_count(ledger: ledger2) == 1
+}
+
+test fn witness_same_name_distinct_attempts_apply_separately() -> Bool {
+  let receipt_a = receipt_for(scenario: DuplicateSubmissionAppliesOnce)
+  let receipt_b = native_scm_rekey_receipt(
+    receipt: receipt_a,
+    attempt_key: "attempt-duplicate-submission-second",
+  )
+  let ledger0 = native_scm_submission_ledger()
+  let ledger1 = native_scm_apply_once(ledger: ledger0, receipt: receipt_a)
+  let ledger2 = native_scm_apply_once(ledger: ledger1, receipt: receipt_b)
+  native_scm_applied_count(ledger: ledger2) == 2
+}
+
+test fn witness_rename_and_reference_unique_meaning_lands() -> Bool {
+  let r = receipt_for(scenario: RenameReferenceUniqueMeaning)
+  primary_label(receipt: r) == "Landed"
+    && match r.primary {
+      Landed { result_preview } =>
+        string_contains(s: result_preview, pattern: "unique meaning")
+      _ => false
+    }
+}
+
+test fn witness_two_legitimate_meanings_ask_local_choice() -> Bool {
+  let r = receipt_for(scenario: TwoLegitimateMeaningsNeedChoice)
+  primary_label(receipt: r) == "ChoiceRequired"
+    && match r.primary {
+      ChoiceRequired { question, previews, continuation } =>
+        string_contains(s: question, pattern: "rename")
+          && count(previews) == 2
+          && continuation.resume_choice == "follow the rename"
+          && match native_scm_resolve_choice(receipt: r, choice: "follow the rename") {
+            Landed { result_preview } =>
+              string_contains(s: result_preview, pattern: "follow the rename")
+            _ => false
+          }
+      _ => false
+    }
+}
+
+test fn witness_incompatible_goals_ask_authorized_decider() -> Bool {
+  let r = receipt_for(scenario: IncompatibleGoalsNeedAuthorizedDecider)
+  primary_label(receipt: r) == "ChoiceRequired"
+    && match r.primary {
+      ChoiceRequired { question, previews, continuation } =>
+        string_contains(s: question, pattern: "authorized decider")
+          && count(previews) == 2
+          && continuation.resume_choice == "retain goal A"
+          && match native_scm_resolve_choice(receipt: r, choice: "retain goal A") {
+            Landed { result_preview } =>
+              string_contains(s: result_preview, pattern: "retain goal A")
+            _ => false
+          }
+      _ => false
+    }
+}
+
+test fn witness_obtainable_evidence_is_gathered_internally() -> Bool {
+  let r = receipt_for(scenario: EvidenceGatheredInternally)
+  primary_label(receipt: r) == "Landed"
+    && match r.receipt_details {
+      Present { value: d } => string_contains(s: d, pattern: "obtainable evidence")
+      Absent => false
+    }
+}
+
+test fn witness_tool_model_proof_deficits_stay_internal() -> Bool {
+  let r = receipt_for(scenario: ToolModelProofDeficitRoutesInternally)
+  primary_label(receipt: r) == "InProgress"
+    && match r.transition {
+      NativeScmCommitTransitionUncommitted => true
+      _ => false
+    }
+    && match r.primary {
+      InProgress { progress_preview } =>
+        string_contains(s: progress_preview, pattern: "internal")
+      _ => false
+    }
+    && match native_scm_inspect_receipt(receipt: r, authorized: false) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+test fn witness_git_export_failure_repairs_without_reinterpretation() -> Bool {
+  let r = receipt_for(scenario: GitExportFailureRepairsWithoutReinterpretation)
+  let repaired = native_scm_repair_git_projection(receipt: r, git_ref: "origin/main")
+  primary_label(receipt: r) == "Landed"
+    && primary_label(receipt: repaired) == "Landed"
+    && match r.projections.git {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match repaired.projections.git {
+      Present { value: git_ref } => git_ref == "origin/main"
+      Absent => false
+    }
+}
+
+test fn witness_conventional_git_import_without_rebase() -> Bool {
+  let r = receipt_for(scenario: ConventionalGitImportWithoutRebase)
+  primary_label(receipt: r) == "Landed"
+    && match r.primary {
+      Landed { result_preview } =>
+        !string_contains(s: result_preview, pattern: "rebase")
+      _ => false
+    }
+}
+
+test fn witness_visibility_authorized_details_only_when_allowed() -> Bool {
+  let r = receipt_for(scenario: VisibilityAuthorizedDetails)
+  match native_scm_inspect_receipt(receipt: r, authorized: false) {
+    Absent => true
+    Present { value: _ } => false
+  }
+    && match native_scm_inspect_receipt(receipt: r, authorized: true) {
+      Present { value: details } =>
+        string_contains(s: details, pattern: "visibility-authorized-details")
+      Absent => false
+    }
+}
