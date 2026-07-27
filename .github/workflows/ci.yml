@@ -77,23 +77,23 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
           BUILD_LOG=$(mktemp)
-          if ! ("$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin compile_clean_floor_skip_witness --bin regen_floor_skip_witness --bin floor_skip_discovery_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness --bin resolution_divergence_census --bin cssl_assemble --bin frontier_probe_survey) 2>&1 | tee "$BUILD_LOG"; then
+          if ! ("$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_floor_skip_witness --bin floor_skip_discovery_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness --bin resolution_divergence_census --bin cssl_assemble --bin frontier_probe_survey) 2>&1 | tee "$BUILD_LOG"; then
             if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
               echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
-              CARGO_BUILD_JOBS=1 "$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin compile_clean_floor_skip_witness --bin regen_floor_skip_witness --bin floor_skip_discovery_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness --bin resolution_divergence_census --bin cssl_assemble --bin frontier_probe_survey
+              CARGO_BUILD_JOBS=1 "$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_floor_skip_witness --bin floor_skip_discovery_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness --bin resolution_divergence_census --bin cssl_assemble --bin frontier_probe_survey
             else
               exit 1
             fi
           fi
           rm -f "$BUILD_LOG"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/compile_clean_floor_skip_witness" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/resolution_divergence_census" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/frontier_probe_survey"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/resolution_divergence_census" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/frontier_probe_survey"
           sccache --show-stats 2>/dev/null || true
         timeout-minutes: 45
       - name: Pack release bins for cross-job handoff (tar keeps exec bits)
         run: |
           # 🟡 dissolve-on: ci_release_bins_pack_script — concat-built foreign-executor (GitHub Actions run:) release-bins tar pack runner; membership of archived bin names is derived from gunbc.ci_release_bins, but the pack transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the pack runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          tar -czf "$ROOT/release-bins.tgz" -C "$ROOT/target/release" "claim_executor" "gunbc" "compile_clean_floor_skip_witness" "regen_floor_skip_witness" "floor_skip_discovery_witness" "discover_source_root_ingest" "claim_batch" "regen_stage0" "interp_recorded_fixture_witness" "v1_src_dag_parse" "auth_declared_but_unwired_witness" "bootstrap_witness" "dag_collect_fingerprint_witness" "diagnostics_witness" "effects_rest_transport_witness" "infer_semantics_witness" "parse_witness" "resolution_divergence_census" "cssl_assemble" "frontier_probe_survey"
+          tar -czf "$ROOT/release-bins.tgz" -C "$ROOT/target/release" "claim_executor" "gunbc" "regen_floor_skip_witness" "floor_skip_discovery_witness" "discover_source_root_ingest" "claim_batch" "regen_stage0" "interp_recorded_fixture_witness" "v1_src_dag_parse" "auth_declared_but_unwired_witness" "bootstrap_witness" "dag_collect_fingerprint_witness" "diagnostics_witness" "effects_rest_transport_witness" "infer_semantics_witness" "parse_witness" "resolution_divergence_census" "cssl_assemble" "frontier_probe_survey"
         timeout-minutes: 5
       - name: Upload release-bins artifact
         uses: actions/upload-artifact@v4
@@ -131,7 +131,7 @@ jobs:
           mkdir -p "$ROOT/target/release"
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
           rm -f "$ROOT/release-bins.tgz"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/compile_clean_floor_skip_witness" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/resolution_divergence_census" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/frontier_probe_survey"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/resolution_divergence_census" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/frontier_probe_survey"
         timeout-minutes: 5
       - name: gunbc ci regen (self-host fixed-point — required)
         run: |
@@ -190,7 +190,7 @@ jobs:
           mkdir -p "$ROOT/target/release"
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
           rm -f "$ROOT/release-bins.tgz"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/compile_clean_floor_skip_witness" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/resolution_divergence_census" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/frontier_probe_survey"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/resolution_divergence_census" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/frontier_probe_survey"
         timeout-minutes: 5
       - name: Floor cgroup peak pre-read (calibration; reset if permitted)
         run: |
@@ -202,12 +202,8 @@ jobs:
         id: floor
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          # REMOVED 2026-07-21 (gunbc#7023 / proud-cat-517): the documentation_only_skip shell shortcut exited before claim_executor, bypassing the witness corpus entirely on docs-only PRs. That bypassed the existing ReadsLiveTree never-predict-skip lane — doc_reachability_witness_test.dag already declared ReadsLiveTree since #6654, but the shell never reached selection. Docs-only PRs now run the normal floor (SelectionApplied): import-closure skips non-live-tree witnesses cheaply; ReadsLiveTree rows (doc-graph wall, corpus-read host-fed lenses) always run. compile_clean_floor_skip_witness remains for dag_compile_clean_scope disposition only — it no longer gates floor admission.
+          # REMOVED 2026-07-21 (gunbc#7023 / proud-cat-517): the documentation_only_skip shell shortcut exited before claim_executor, bypassing the witness corpus entirely on docs-only PRs. That bypassed the existing ReadsLiveTree never-predict-skip lane — doc_reachability_witness_test.dag already declared ReadsLiveTree since #6654, but the shell never reached selection. Docs-only PRs now run the normal floor (SelectionApplied): import-closure skips non-live-tree witnesses cheaply; ReadsLiveTree rows (doc-graph wall, corpus-read host-fed lenses) always run. The isolated pre-executor skip-label binary and its unreachable persistent disposition transport retired afterward; compile-clean docs-universe scoping remains independently exercised on the live floor path.
           git fetch --no-tags origin main 2>/dev/null || true
-          # 🟡 dissolve-on: ci_floor_disposition_marker_init_script — concat-built bash floor step opener stamping floor_running into target/ci-floor-disposition.txt (clears stale documentation_only_skipped on persistent self-hosted runners before docs-only branch); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes floor disposition initialization through orchestration emit and the marker init retires without a transport scaffold
-          # Positive floor-running stamp at the start of every floor step clears stale documentation_only_skipped left in target/ on persistent self-hosted runners (review 37010 / operator ruling 2026-07-11). Receipt gates skip only on an exact documentation_only_skipped match — never on file presence alone.
-          mkdir -p target
-          echo floor_running > target/ci-floor-disposition.txt
           set +e
           "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"
           FLOOR_EXIT=$?
@@ -226,9 +222,6 @@ jobs:
         timeout-minutes: 5
       - name: Floor resolve receipt gate (declared cold-resolve count)
         run: |
-          # 🟡 dissolve-on: ci_documentation_only_gate_skip_prefix — concat-built bash receipt-gate skip predicate over target/ci-floor-disposition.txt (documentation-only floor-not-run); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes documentation-only disposition through orchestration emit and receipt gates read CI_FLOOR_DISPOSITION without a transport scaffold
-          if test -f target/ci-floor-disposition.txt; then _disp=$(cat target/ci-floor-disposition.txt)
-          if test "$_disp" = "documentation_only_skipped"; then echo "floor resolve receipt gate: skipped — CI_FLOOR_DISPOSITION=$_disp (floor not run; no receipt debt incurred)"; exit 0; fi; fi
           if ! test -f target/floor-resolve-receipt.txt; then echo "floor resolve receipt missing - fail closed"; exit 1; fi
           n=$(sed -n 's/^resolves_total=//p' target/floor-resolve-receipt.txt)
           if test -z "$n"; then echo "floor resolve receipt malformed - fail closed"; exit 1; fi
@@ -237,9 +230,6 @@ jobs:
         timeout-minutes: 5
       - name: Floor materialization receipt gate (demand ledger; disclosure gate — count pins retracted, walls tracked in ci_materialization.dag)
         run: |
-          # 🟡 dissolve-on: ci_documentation_only_gate_skip_prefix — concat-built bash receipt-gate skip predicate over target/ci-floor-disposition.txt (documentation-only floor-not-run); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes documentation-only disposition through orchestration emit and receipt gates read CI_FLOOR_DISPOSITION without a transport scaffold
-          if test -f target/ci-floor-disposition.txt; then _disp=$(cat target/ci-floor-disposition.txt)
-          if test "$_disp" = "documentation_only_skipped"; then echo "floor materialization receipt gate: skipped — CI_FLOOR_DISPOSITION=$_disp (floor not run; no receipt debt incurred)"; exit 0; fi; fi
           if ! test -f target/floor-materialization-receipt.txt; then echo "floor materialization receipt missing - fail closed"; exit 1; fi
           k=$(sed -n 's/^keyed_calls=//p' target/floor-materialization-receipt.txt)
           u=$(sed -n 's/^unkeyed_calls=//p' target/floor-materialization-receipt.txt)
@@ -253,18 +243,12 @@ jobs:
       - name: Affected-set selection control (floor_skip_discovery_witness)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          # 🟡 dissolve-on: ci_documentation_only_gate_skip_prefix — concat-built bash receipt-gate skip predicate over target/ci-floor-disposition.txt (documentation-only floor-not-run); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes documentation-only disposition through orchestration emit and receipt gates read CI_FLOOR_DISPOSITION without a transport scaffold
-          if test -f target/ci-floor-disposition.txt; then _disp=$(cat target/ci-floor-disposition.txt)
-          if test "$_disp" = "documentation_only_skipped"; then echo "Affected-set selection control: skipped — CI_FLOOR_DISPOSITION=$_disp (floor not run; hermetic selection suite requires full floor context)"; exit 0; fi; fi
           "$ROOT/target/release/floor_skip_discovery_witness"
         timeout-minutes: 15
       - name: Merge-admission gate (receipt required; freshness block held until GatingEnforced)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main
-          # 🟡 dissolve-on: ci_documentation_only_gate_skip_prefix — concat-built bash receipt-gate skip predicate over target/ci-floor-disposition.txt (documentation-only floor-not-run); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes documentation-only disposition through orchestration emit and receipt gates read CI_FLOOR_DISPOSITION without a transport scaffold
-          if test -f target/ci-floor-disposition.txt; then _disp=$(cat target/ci-floor-disposition.txt)
-          if test "$_disp" = "documentation_only_skipped"; then echo "merge-admission gate: skipped — CI_FLOOR_DISPOSITION=$_disp (floor not run; merge-admission stamp already recorded Skipped disposition)"; exit 0; fi; fi
           "$ROOT/target/release/gunbc" run --source-root dag --entry dag/tools/merge_admission_gate.dag --function main
         timeout-minutes: 5
   deploy_dashboard_srv1:
@@ -289,7 +273,7 @@ jobs:
           mkdir -p "$ROOT/target/release"
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
           rm -f "$ROOT/release-bins.tgz"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/compile_clean_floor_skip_witness" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/resolution_divergence_census" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/frontier_probe_survey"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/resolution_divergence_census" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/frontier_probe_survey"
         timeout-minutes: 5
       - name: Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)
         run: |
@@ -320,7 +304,7 @@ jobs:
           mkdir -p "$ROOT/target/release"
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
           rm -f "$ROOT/release-bins.tgz"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/compile_clean_floor_skip_witness" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/resolution_divergence_census" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/frontier_probe_survey"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/resolution_divergence_census" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/frontier_probe_survey"
         timeout-minutes: 5
       - name: Regenerate drifted generated artifacts (main_wet — writes each authority projection to the worktree)
         run: |
