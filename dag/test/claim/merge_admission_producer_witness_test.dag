@@ -22,13 +22,13 @@ data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
 
 test fn floor_stamp_exports_ci_floor_exit_on_gunbc_line() -> Bool {
   string_contains(
-    s: ci_floor_stamp_merge_admission_script(),
+    s: v2.workflow.ci_merge_admission_emit.ci_floor_stamp_merge_admission_script(),
     pattern: "CI_FLOOR_EXIT=$FLOOR_EXIT \"$ROOT/target/release/gunbc\" run"
   )
 }
 
 test fn floor_stamp_propagates_stamp_failure_after_green_floor() -> Bool {
-  let script = ci_floor_stamp_merge_admission_script()
+  let script = v2.workflow.ci_merge_admission_emit.ci_floor_stamp_merge_admission_script()
   string_contains(s: script, pattern: "STAMP_EXIT=$?")
     && string_contains(s: script, pattern: "exit \"$STAMP_EXIT\"")
     && string_contains(s: script, pattern: "if [ \"$FLOOR_EXIT\" -ne 0 ]; then exit \"$FLOOR_EXIT\"; fi")

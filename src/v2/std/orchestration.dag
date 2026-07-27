@@ -20,11 +20,20 @@ type RedirectSpec
   = StdoutAndStderr
   | DiscardAll
   | DiscardErr
+  | DiscardOut
+  | ToFile { path: String }
+
+data redirect_spec_to_file_note: String = "ToFile \{ path \} is the stdout-to-path carrier (\"> path\"). Added with live consumer ci_merge_admission_floor_disposition_stamp (bucket D PR2a) — dissolves the echo++concat redirect. bash_redir_to_file_* rows already existed on the fold side; this variant is the intent-side authority orch_emit_redir_suffix matches. path is emitted unquoted, so orch_emit_redir_suffix refuses anything outside the portable unquoted-word alphabet carried by orch_shell_unquoted_path_alphabet (explicit literal chars A–Z/a–z/0–9/_/./-/@ — membership via string_contains, NOT a regex character-class range) (^orch_emit_to_file_path_invalid) — same fail-closed emit-time wall as ExitStatus binder / Comment multiline (spaces, newlines, and shell metacharacters cannot change meaning or inject a second command). 🟡 dissolve-on: ToFile.path / ExitStatus.binder / Comment.text take typed carriers that make injecting spellings unwritable-by-construction (path word / shell ident / single-line comment body); until then these alphabet/contains checks are the fail-closed interim validation scaffold (§5 construction preferred; §6 named trigger)."
 
 type CaptureSpec
   = TeeTo { log: String }
   | CmdSubst
   | IgnoreFail
+  | ExitStatus { binder: String }
+
+data capture_spec_exit_status_note: String = "ExitStatus \{ binder \} captures $? into binder after a Run (emits \"\\nbinder=$?\"). binder must be a POSIX-ish shell identifier ([A-Za-z_][A-Za-z0-9_]*) — orch_emit_exit_status_bind refuses otherwise (^orch_emit_exit_status_binder_invalid), so newline injection cannot open an executable second line (same fail-closed wall as Comment multiline). Live consumer: ci_floor_stamp_merge_admission_script STAMP_EXIT (bucket D PR2a). FLOOR_EXIT=$? at fragment start stays a constant opaque Run.command — ambient prior-command capture outside this Pipeline; IntNe/Exit step carriers land in PR2b. 🟡 dissolve-on: shared with redirect_spec_to_file_note — typed shell-ident carrier makes the emit-time alphabet check unwritable-by-construction."
+
+data capture_spec_tee_cmdsubst_finding: String = "FINDING (filed, unowned, not fully dissolved here): CaptureSpec.CmdSubst is declared with zero constructors tree-wide — genuinely dead (ExprCmdSubst / CmdSubstLines are different types). CaptureSpec.TeeTo remains declared; its former live constructor on ci_retry_body_run was REMOVED in PR2a (review 43497) because orch_emit_retry_run always rebuilt with redirect/capture Absent while tee semantics stayed hardcoded in bash.dag orch_retry rows (~1093-1133) — admitting TeeTo would have codified silent semantic loss (§3/§5). Retry body extraction (orch_retry_step_command) matches redirect/capture directly into Optional<String> — Absent+Absent yields the command, any Present yields Absent→^orch_emit_retry_body_not_run (no Bool predicate over the coproduct; review 43510). Ordinary Run emit still refuses TeeTo/CmdSubst (^orch_emit_run_capture_unsupported). Remaining dissolve-on: thread redirect/capture through the retry path and retire the hardcoded tee tokens so a live TeeTo constructor can return without dual authority."
 
 type Run {
   command: String
@@ -44,11 +53,14 @@ type Predicate
   | StrEq { lhs: String, rhs: String }
   | StrEmpty { operand: String }
   | StrNonempty { operand: String }
+  | IntNe { lhs: String, rhs: String }
   | Not { inner: Predicate }
   | And { lhs: Predicate, rhs: Predicate }
   | Or { lhs: Predicate, rhs: Predicate }
 
 data predicate_string_test_note: String = "StrEq is binary [ lhs = rhs ]. Unary empty/nonempty tests are StrEmpty (-z) and StrNonempty (-n); do not encode them as StrEq with a literal \"\" operand."
+
+data predicate_int_ne_note: String = "IntNe \{ lhs, rhs \} is the integer inequality test ([ lhs -ne rhs ]). Live consumer: ci_floor_stamp_merge_admission_intent floor-exit propagate If (bucket D PR2a expansion). Emitted via bash_test_int_ne_* grammar rows (sibling of StrEq). Operands are still String (interim): orch_emit_predicate refuses anything outside orch_shell_test_operand_alphabet before emit (^orch_emit_int_ne_operand_invalid) so bracket escape / metachar injection is unwritable-at-emit. 🟡 dissolve-on: typed shell-integer / test-operand carriers make the alphabet check unwritable-by-construction."
 
 type EscalationLevel {
   detect: Predicate
@@ -70,6 +82,8 @@ type Procedure {
 
 type PipelineStep
   = Do { run: Run }
+  | Comment { text: String }
+  | Exit { status: String }
   | If { cond: Predicate, then_: Pipeline, else_: Optional<Pipeline> }
   | For { binder: Symbol, over: ValueSource, body: Pipeline }
   | While { cond: Predicate, body: Pipeline }
@@ -85,6 +99,10 @@ type PipelineStep
     }
   | Let { name: String, value: Expr }
   | Call { callee: String, args: List<String> }
+
+data pipeline_step_comment_note: String = "Comment \{ text \} is a non-command PipelineStep (comment body WITHOUT the leading \"# \"). Emission reuses the existing orch_construct_run_rawline / realize_run_rawline path (bash_fold_raw_line_target_model) — no new grammar row (operator PR2a ruling). Multiline text is REFUSED (^orch_emit_comment_multiline_refused): a newline would start an executable shell line after the \"# \" prefix, so the non-command invariant holds by construction (fail-closed), not by hoping authors stay single-line. 🟡 dissolve-on: shared with redirect_spec_to_file_note — typed single-line comment-body carrier makes the emit-time newline refuse unwritable-by-construction."
+
+data pipeline_step_exit_note: String = "Exit \{ status \} emits exit <status> via bash_stmt_exit_* grammar rows (not opaque Run.command). status is the operand spelling (live consumers pass quoted expansions like \"\\$FLOOR_EXIT\"). Refuse empty / newline / shell metacharacters (^orch_emit_exit_status_operand_invalid). Live consumer: ci_floor_stamp_merge_admission_intent (propagate + final stamp exit). Retry body with Exit → Absent → ^orch_emit_retry_body_not_run (no silent drop)."
 
 type Pipeline {
   steps: FreeMonoid<PipelineStep>
