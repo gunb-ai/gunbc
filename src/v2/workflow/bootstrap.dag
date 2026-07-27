@@ -79,6 +79,9 @@ type DiverseCompilationRun {
   output_hash: BootstrapHashPin
 }
 
+type IndependentCompilerEvidence
+  = IndependentCompilerEvidenceUnavailable { correction: Unavailable }
+
 type IndependentCompilerPair {
   primary: Symbol
   secondary: Symbol
@@ -111,9 +114,6 @@ type SeedHonestyDischarge {
   seed_honesty_axiom: Symbol
   diverse_double_compilation: DiverseCompilationAgreement
 }
-
-type IndependentCompilerEvidence
-  = IndependentCompilerEvidenceUnavailable { correction: Unavailable }
 
 data independent_compiler_evidence_dissolve_on_note: String = "Dissolve-on: a future Available arm requires grounded independent-compiler provenance plus executed output bytes/digests under a separately ruled DDC/reference-compiler slice. Until then the evidence carrier is Unavailable-only, and the bootstrap discharge wall must refuse every current construction."
 
