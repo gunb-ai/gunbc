@@ -1,6 +1,5 @@
 module v2.test.manual.map_lookup_miss_witness_violates
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 type LookupKey {
   id: Int
@@ -16,20 +15,17 @@ fn one_entry_table() -> LookupTable {
   map_insert(m: empty_map(), key: LookupKey { id: 1 }, value: 100)
 }
 
-fn map_miss_is_absent() -> Bool {
+test fn map_miss_is_absent() -> Bool {
   match lookup_table(table: one_entry_table(), key: LookupKey { id: 2 }) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
-fn map_hit_is_present() -> Bool {
+test fn map_hit_is_present() -> Bool {
   match lookup_table(table: one_entry_table(), key: LookupKey { id: 1 }) {
     Present { value: v } => v == 100
     Absent => false
   }
 }
 
-test fn map_lookup_miss_absent_and_hit_present() -> Bool {
-  map_miss_is_absent() && map_hit_is_present()
-}

@@ -1,6 +1,5 @@
 module v2.test.manual.medium_source_serializer_determinism_fidelity
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data serializer_determinism_probe_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"
@@ -13,7 +12,7 @@ fn serializer_determinism_lossy_probe() -> Medium<String> {
   Medium { carried: serializer_determinism_probe_text, fidelity: Lossy }
 }
 
-fn serializer_determinism_holds_despite_fidelity_mismatch() -> Bool {
+test fn serializer_determinism_holds_despite_fidelity_mismatch() -> Bool {
   match deterministic_dag_source_serializer_witness(
     first: serializer_determinism_lossless_probe(),
     second: serializer_determinism_lossy_probe()
@@ -25,7 +24,7 @@ fn serializer_determinism_holds_despite_fidelity_mismatch() -> Bool {
   }
 }
 
-fn red_naive_medium_equality_rejects_fidelity_mismatch() -> Bool {
+test fn red_naive_medium_equality_rejects_fidelity_mismatch() -> Bool {
   medium_section_equal(
     left: serializer_determinism_lossless_probe(),
     right: serializer_determinism_lossy_probe()
@@ -33,7 +32,3 @@ fn red_naive_medium_equality_rejects_fidelity_mismatch() -> Bool {
     && serializer_determinism_lossless_probe() != serializer_determinism_lossy_probe()
 }
 
-test fn medium_source_serializer_determinism_fidelity_holds() -> Bool {
-  serializer_determinism_holds_despite_fidelity_mismatch()
-    && red_naive_medium_equality_rejects_fidelity_mismatch()
-}

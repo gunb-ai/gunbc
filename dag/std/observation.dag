@@ -3,7 +3,7 @@ module std.observation
 import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
 import std.measure { Millisecond, ByteSize, BasisPoint, measure_le, millisecond, millisecond_count }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
 import std.symbols {
   SymbolId,
   NodeRunning,
@@ -46,12 +46,30 @@ type ObservationSegment
   | BatchSegment { index: Nat, label: NonEmptyStr }
   | EntrySegment { source_path: NonEmptyStr }
   | ModuleSegment { module_path: NonEmptyStr }
+  | DeclarationSegment { declaration: DeclarationRef }
   | PhaseSegment { name: NonEmptyStr }
 
-data observation_segment_grounding_note: String = "The subject is a CONTAINMENT PATH — run contains batch contains entry contains module contains phase, the tree the floor already walks — decomposed into typed segments rather than carried as one opaque string (DESIGN section 2 deep decomposition). Two segments name identities other authorities own, and are carried here in the same representation std already uses for them, not in a fresh one: module_path matches std.decl_ref.DeclarationRef.module_path, and source_path is a repo-relative source path. Convergence, not fork: module_path becomes v2.std.qualified_name.QualifiedName and source_path becomes the typed SourceRef when the namespace and module-identity lanes land those carriers (DESIGN open threads). Until then the representation is std's existing one, so there is nothing new to migrate."
+data observation_segment_grounding_note: String = "The subject is a CONTAINMENT PATH — run contains batch contains entry contains module contains declaration contains phase, the tree the floor already walks — decomposed into typed segments rather than carried as one opaque string (DESIGN section 2 deep decomposition). DeclarationSegment carries std.decl_ref.DeclarationRef (already imported), the single declaration-identity authority — never a parallel function String. Two other segments name identities other authorities own, and are carried here in the same representation std already uses for them, not in a fresh one: module_path matches DeclarationRef.module_path, and source_path is a repo-relative source path. Convergence, not fork: module_path becomes v2.std.qualified_name.QualifiedName and source_path becomes the typed SourceRef when the namespace and module-identity lanes land those carriers (DESIGN open threads). Until then the representation is std's existing one, so there is nothing new to migrate."
 
 type ObservationSubject {
   segments: List<ObservationSegment>
+}
+
+fn observation_decl_field_key(field: DeclField) -> String {
+  match field {
+    WholeDeclaration => "whole"
+    NamedField { field_name: f } => concat("field=", f)
+  }
+}
+
+fn observation_declaration_key(d: DeclarationRef) -> String {
+  concat(
+    "decl=",
+    concat(
+      d.module_path,
+      concat("::", concat(d.decl_name, concat("#", observation_decl_field_key(field: d.field))))
+    )
+  )
 }
 
 fn observation_segment_key(seg: ObservationSegment) -> String {
@@ -60,6 +78,7 @@ fn observation_segment_key(seg: ObservationSegment) -> String {
     BatchSegment { index: n, label: l } => concat("batch=", concat(to_string(n), concat(":", l)))
     EntrySegment { source_path: p } => concat("entry=", p)
     ModuleSegment { module_path: m } => concat("module=", m)
+    DeclarationSegment { declaration: d } => observation_declaration_key(d: d)
     PhaseSegment { name: n } => concat("phase=", n)
   }
 }
@@ -82,6 +101,7 @@ type ObservationGrain
   | BatchGrain
   | EntryGrain
   | ModuleGrain
+  | DeclarationGrain
   | PhaseGrain
 
 fn observation_grain_of_segment(seg: ObservationSegment) -> ObservationGrain {
@@ -90,6 +110,7 @@ fn observation_grain_of_segment(seg: ObservationSegment) -> ObservationGrain {
     BatchSegment { index: _, label: _ } => BatchGrain
     EntrySegment { source_path: _ } => EntryGrain
     ModuleSegment { module_path: _ } => ModuleGrain
+    DeclarationSegment { declaration: _ } => DeclarationGrain
     PhaseSegment { name: _ } => PhaseGrain
   }
 }
@@ -100,12 +121,65 @@ fn observation_grain_depth(g: ObservationGrain) -> Nat {
     BatchGrain => 1
     EntryGrain => 2
     ModuleGrain => 3
-    PhaseGrain => 4
+    DeclarationGrain => 4
+    PhaseGrain => 5
   }
 }
 
 fn observation_subject_grain(subject: ObservationSubject) -> ObservationGrain {
   fold(subject.segments, init: RunGrain, f: (acc, seg) => observation_grain_of_segment(seg: seg))
+}
+
+fn observation_subject_entry_path(subject: ObservationSubject) -> NonEmptyStr? {
+  fold(subject.segments, init: Absent, f: (acc, seg) =>
+    match seg {
+      EntrySegment { source_path: p } => Present { value: p }
+      RunSegment { id: _ } => acc
+      BatchSegment { index: _, label: _ } => acc
+      ModuleSegment { module_path: _ } => acc
+      DeclarationSegment { declaration: _ } => acc
+      PhaseSegment { name: _ } => acc
+    }
+  )
+}
+
+fn observation_subject_declaration(subject: ObservationSubject) -> DeclarationRef? {
+  fold(subject.segments, init: Absent, f: (acc, seg) =>
+    match seg {
+      DeclarationSegment { declaration: d } => Present { value: d }
+      RunSegment { id: _ } => acc
+      BatchSegment { index: _, label: _ } => acc
+      EntrySegment { source_path: _ } => acc
+      ModuleSegment { module_path: _ } => acc
+      PhaseSegment { name: _ } => acc
+    }
+  )
+}
+
+fn observation_subject_phase_name(subject: ObservationSubject) -> NonEmptyStr? {
+  fold(subject.segments, init: Absent, f: (acc, seg) =>
+    match seg {
+      PhaseSegment { name: n } => Present { value: n }
+      RunSegment { id: _ } => acc
+      BatchSegment { index: _, label: _ } => acc
+      EntrySegment { source_path: _ } => acc
+      ModuleSegment { module_path: _ } => acc
+      DeclarationSegment { declaration: _ } => acc
+    }
+  )
+}
+
+fn observation_subject_module_path(subject: ObservationSubject) -> NonEmptyStr? {
+  fold(subject.segments, init: Absent, f: (acc, seg) =>
+    match seg {
+      ModuleSegment { module_path: p } => Present { value: p }
+      RunSegment { id: _ } => acc
+      BatchSegment { index: _, label: _ } => acc
+      EntrySegment { source_path: _ } => acc
+      DeclarationSegment { declaration: _ } => acc
+      PhaseSegment { name: _ } => acc
+    }
+  )
 }
 
 fn observation_grain_at_or_above_entry(g: ObservationGrain) -> Bool {
@@ -588,7 +662,7 @@ data observation_outcome_predicate_contract: Disposition = Terminal {
 }
 
 data observation_subject_predicate_contract: Disposition = Terminal {
-  reason: "Structural readers over ObservationSegment, ObservationGrain and SchedulerHold (observation_grain_of_segment, observation_grain_depth, observation_subject_grain, observation_grain_at_or_above_entry, observation_hold_resource) — closed by declared variants. The hold reader is Terminal on the .dag side and additionally pinned to its realization: the lockstep witness reads the seed governor by execution, so a variant added on one side without the other reds rather than drifting."
+  reason: "Structural readers over ObservationSegment, ObservationGrain and SchedulerHold (observation_grain_of_segment, observation_grain_depth, observation_subject_grain, observation_subject_entry_path, observation_subject_declaration, observation_subject_phase_name, observation_subject_module_path, observation_grain_at_or_above_entry, observation_hold_resource) — closed by declared variants. The hold reader is Terminal on the .dag side and additionally pinned to its realization: the lockstep witness reads the seed governor by execution, so a variant added on one side without the other reds rather than drifting."
 }
 
 data observation_selection_predicate_contract: Disposition = Terminal {

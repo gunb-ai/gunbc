@@ -1,6 +1,5 @@
 module test.claim.reviewer_source_witness_test
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_policy_id: NonEmptyStr = "sec-1"
@@ -61,12 +60,4 @@ fn all_reviewer_source_witnesses() -> Bool {
 
 test fn reviewer_source_witnesses() -> Bool {
   all_reviewer_source_witnesses()
-}
-
-func reviewer_source_witness_gate() -> ProcessExit {
-  return if all_reviewer_source_witnesses() {
-    ExitSuccess
-  } else {
-    exit_failure(reason: "reviewer_source witness failed")
-  }
 }

@@ -295,17 +295,17 @@ fn witness_partition_fold_two_units() -> List<CompilationUnit> {
   }
 }
 
-fn witness_r3_header_source_object_paths() -> Bool {
+test fn witness_r3_header_source_object_paths() -> Bool {
   c_unit_header_path(unit_id: witness_unit_one) == "cu-one.h"
     && c_unit_source_path(unit_id: witness_unit_one) == "cu-one.c"
     && c_unit_object_path(artifact: compilation_unit_artifact_id(unit_id: witness_unit_one)) == "cu-one.o"
 }
 
-fn witness_r3_include_directive_per_dep() -> Bool {
+test fn witness_r3_include_directive_per_dep() -> Bool {
   c_include_directive_for_dep(dep_id: witness_unit_two) == "#include \"cu-two.h\""
 }
 
-fn witness_r3_spelling_from_partition_fold() -> Bool {
+test fn witness_r3_spelling_from_partition_fold() -> Bool {
   let units = witness_partition_fold_two_units()
   let point_def = witness_point_struct_conj_body()
   match partition_unit_by_id(units: units, unit_id: witness_unit_two) {
@@ -320,7 +320,7 @@ fn witness_r3_spelling_from_partition_fold() -> Bool {
   }
 }
 
-fn witness_r3_unit_one_spelling_paths() -> Bool {
+test fn witness_r3_unit_one_spelling_paths() -> Bool {
   let units = witness_partition_fold_two_units()
   match partition_unit_by_id(units: units, unit_id: witness_unit_one) {
     Present { value: unit } =>
@@ -334,7 +334,7 @@ fn witness_r3_unit_one_spelling_paths() -> Bool {
   }
 }
 
-fn witness_r4_accepts_link_cyclic_unit_graph() -> Bool {
+test fn witness_r4_accepts_link_cyclic_unit_graph() -> Bool {
   let dag = witness_link_cyclic_dag()
   let assignment = witness_link_cyclic_assignment()
   match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
@@ -352,7 +352,7 @@ fn witness_r4_accepts_link_cyclic_unit_graph() -> Bool {
   }
 }
 
-fn witness_r4_accepts_module_scc_split_across_units() -> Bool {
+test fn witness_r4_accepts_module_scc_split_across_units() -> Bool {
   let dag = witness_mutual_recursive_dag()
   let assignment = witness_module_scc_split_assignment()
   match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
@@ -371,7 +371,7 @@ fn witness_r4_accepts_module_scc_split_across_units() -> Bool {
   }
 }
 
-fn witness_r4_accepts_triangle_module_scc_split() -> Bool {
+test fn witness_r4_accepts_triangle_module_scc_split() -> Bool {
   let dag = witness_triangle_dag()
   let assignment = witness_two_unit_assignment()
   match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
@@ -388,7 +388,7 @@ fn witness_r4_accepts_triangle_module_scc_split() -> Bool {
   }
 }
 
-fn witness_r4_refuses_by_value_type_cycle_across_units() -> Bool {
+test fn witness_r4_refuses_by_value_type_cycle_across_units() -> Bool {
   let dag = witness_by_value_type_cycle_dag()
   let assignment = witness_by_value_type_cycle_assignment()
   match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
@@ -406,7 +406,7 @@ fn witness_r4_refuses_by_value_type_cycle_across_units() -> Bool {
   }
 }
 
-fn witness_r4_accepts_pointer_type_cycle_across_units() -> Bool {
+test fn witness_r4_accepts_pointer_type_cycle_across_units() -> Bool {
   let dag = witness_pointer_type_cycle_dag()
   let assignment = witness_pointer_type_cycle_assignment()
   match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
@@ -423,7 +423,7 @@ fn witness_r4_accepts_pointer_type_cycle_across_units() -> Bool {
   }
 }
 
-fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
+test fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
   match partition_fold_outcome_with_closure_fuel(
     module_dag: witness_triangle_dag(),
     assignment: witness_two_unit_assignment(),
@@ -436,7 +436,7 @@ fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
   }
 }
 
-fn witness_partition_fold_compat_wrapper_not_receipt_path() -> Bool {
+test fn witness_partition_fold_compat_wrapper_not_receipt_path() -> Bool {
   match partition_fold_outcome(
     module_dag: witness_triangle_dag(),
     assignment: witness_two_unit_assignment()
@@ -446,16 +446,3 @@ fn witness_partition_fold_compat_wrapper_not_receipt_path() -> Bool {
   }
 }
 
-test fn c_compilation_unit_witnesses() -> Bool {
-  witness_partition_fold_compat_wrapper_not_receipt_path()
-    && witness_partition_fold_outcome_refuses_zero_closure_fuel()
-    && witness_r3_header_source_object_paths()
-    && witness_r3_include_directive_per_dep()
-    && witness_r3_unit_one_spelling_paths()
-    && witness_r3_spelling_from_partition_fold()
-    && witness_r4_accepts_link_cyclic_unit_graph()
-    && witness_r4_accepts_module_scc_split_across_units()
-    && witness_r4_accepts_triangle_module_scc_split()
-    && witness_r4_refuses_by_value_type_cycle_across_units()
-    && witness_r4_accepts_pointer_type_cycle_across_units()
-}

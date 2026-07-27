@@ -133,13 +133,6 @@ fn distinct_target_nested_node() -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-fn distinct_fail_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-}
-}
 fn distinct_closedness() -> StructuralPropertyWitness {
   StructuralPropertyWitness {
     property: ^distinct_zip_closed_candidates,
@@ -271,69 +264,4 @@ test data witness_coercion_fold_distinct_node_accepts: Bool = match coercion_fol
   Accepted { value: r, diagnostics: _ } =>
     (r.target == distinct_target_add_node()) && (quality_is_exact(q: r.quality) || quality_is_identity(q: r.quality))
   Rejected { diagnostics: _ } => false
-}
-fn distinct_witness_claim_input(ok: Bool) -> Node {
-  if ok {
-    distinct_source_add_node()
-  } else {
-    distinct_fail_node()
-  }
-}
-fn distinct_witness_expected() -> Node {
-  distinct_source_add_node()
-}
-data claim_find_witness_distinct_node_zip_fold_compiles: TestClaim = CompilesClaim {
-  label: "manual/find_witness_distinct_node_zip_fold: distinct-node anchors compile",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: distinct_source_add_node(),
-  expected_value: distinct_witness_expected(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_find_witness_distinct_node_accepts: TestClaim = CompilesClaim {
-  label: "manual/find_witness_distinct_node_zip_fold: distinct-node candidate accepts",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: distinct_witness_claim_input(ok: witness_find_witness_distinct_node_accepts),
-  expected_value: distinct_witness_expected(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_verify_witness_distinct_node_accepts: TestClaim = CompilesClaim {
-  label: "manual/find_witness_distinct_node_zip_fold: distinct-node witness verifies",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: distinct_witness_claim_input(ok: witness_verify_witness_distinct_node_accepts),
-  expected_value: distinct_witness_expected(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_find_witness_wrong_arity_rejects: TestClaim = CompilesClaim {
-  label: "manual/find_witness_distinct_node_zip_fold: wrong arity rejects",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: distinct_witness_claim_input(ok: witness_find_witness_wrong_arity_rejects),
-  expected_value: distinct_witness_expected(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_find_witness_wrong_subtree_rejects: TestClaim = CompilesClaim {
-  label: "manual/find_witness_distinct_node_zip_fold: same root arity wrong subtree rejects",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: distinct_witness_claim_input(ok: witness_find_witness_wrong_subtree_rejects),
-  expected_value: distinct_witness_expected(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_find_witness_nested_distinct_node_accepts: TestClaim = CompilesClaim {
-  label: "manual/find_witness_distinct_node_zip_fold: nested distinct-node candidate accepts",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: distinct_witness_claim_input(ok: witness_find_witness_nested_distinct_node_accepts),
-  expected_value: distinct_witness_expected(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_coercion_fold_distinct_node_accepts: TestClaim = CompilesClaim {
-  label: "manual/find_witness_distinct_node_zip_fold: coercion_fold returns Exact",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: distinct_witness_claim_input(ok: witness_coercion_fold_distinct_node_accepts),
-  expected_value: distinct_witness_expected(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
 }

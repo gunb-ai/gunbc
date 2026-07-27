@@ -89,7 +89,7 @@ fn memo_amort_single_root_content_hash(ingest: SourceRootIngest) -> Outcome<Hash
   }
 }
 
-fn memo_amort_parse_one_file_holds() -> Bool {
+test fn memo_amort_parse_one_file_holds() -> Bool {
   match module_roots_from_source_root_ingest(
     ingest: memo_amort_ingest_one_file,
     lm: dag_language_model()
@@ -109,7 +109,7 @@ fn memo_amort_parse_two_files_holds() -> Bool {
   }
 }
 
-fn memo_amort_parse_two_files_twice_holds() -> Bool {
+test fn memo_amort_parse_two_files_twice_holds() -> Bool {
   memo_amort_parse_two_files_holds() && memo_amort_parse_two_files_holds()
 }
 

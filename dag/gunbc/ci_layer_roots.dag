@@ -492,7 +492,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   },
   WitnessExclusionRow {
     pattern: "expectation_frontier_witness_test.dag",
-    classification: BinWitnessWet,
+    classification: FalsifierRehomedBinWet,
     reason: excl_expectation_frontier_reason,
     dissolve_on: excl_expectation_frontier_dissolve
   },
@@ -748,9 +748,9 @@ fn bin_wet(entry: String, f: String) -> ScheduleWitnessEntry {
   ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
 }
 
-data excl_no_fake_anomalies_reason: String = "The expectation-backfill WALL spawns claim_batch as a child process to read a passing corpus's own stderr, so it is Wet BY CONSTRUCTION — its whole subject is what the observation layer prints, which only exists when the effects really run. The Hermetic discovery corpus refuses it exactly as install_media_real_execution_wet_note describes ('no mock_response for operation Run — refusing to fabricate Unit'), and that refusal is correct: a mocked child emits no real observation stream, so a hermetic version of this witness could only ever pass vacuously. Measured walls on CI run 30212463696 (~91s green / ~93s RED while cargo was still in the child path) blew FLOOR-BATCH-OVER-BUDGET on the per-PR wet batch; after the RED re-point to cheap /bin/false the RED leg is ~49s (under the 60s per-row budget) but stays paired with the still-over-budget green sibling on falsifier_rehomed_bin_wet_rows (FalsifierRehomedBinWet) rather than BinWitnessWet."
+data excl_no_fake_anomalies_reason: String = "The expectation-backfill WALL spawns claim_batch as a child process to read a passing corpus's own stderr, so it is Wet BY CONSTRUCTION — its whole subject is what the observation layer prints, which only exists when the effects really run. The Hermetic discovery corpus refuses it exactly as install_media_real_execution_wet_note describes ('no mock_response for operation Run — refusing to fabricate Unit'), and that refusal is correct: a mocked child emits no real observation stream, so a hermetic version of this witness could only ever pass vacuously. Landed into hermetic discovery by filename convention on first authoring (run 30178544618 @ b2411f0, batch 3) and re-homed to BinWitnessWet; then D6-rehomed to FalsifierRehomedBinWet (run 30220304152: ~85–90s/row vs bin_witness_wet_per_row_wall_budget_seconds=60, batch-4 FLOOR-BATCH-OVER-BUDGET)."
 
-data excl_expectation_frontier_reason: String = "Reads the [expectation-frontier] receipt out of a real child run's stderr, so it is Wet BY CONSTRUCTION for the same reason the anomaly wall beside it is: the receipt only exists when effects actually dispatch, and a hermetic child emits no real observation stream, so a mocked version could only pass vacuously. Sibling mechanism, same lane, deliberately not a forked one (DESIGN §3)."
+data excl_expectation_frontier_reason: String = "Reads the [expectation-frontier] receipt out of a real child run's stderr, so it is Wet BY CONSTRUCTION for the same reason the anomaly wall beside it is: the receipt only exists when effects actually dispatch, and a hermetic child emits no real observation stream, so a mocked version could only pass vacuously. Sibling mechanism, same lane, deliberately not a forked one (DESIGN §3). D6-rehomed to FalsifierRehomedBinWet with its anomaly sibling (run 30220304152: ~89–136s/row vs the 60s per-row budget)."
 
 data excl_expectation_frontier_dissolve: String = "fires with the UntracedDefault arm itself: when the counted frontier reaches zero corpus-wide, an undeclared expectation becomes a hard typed refusal at the dispatch boundary, the receipt has nothing left to report, and this witness plus these rows delete together. Until then the frontier is the thing being shrunk, so the receipt that measures it must keep executing."
 
@@ -759,8 +759,6 @@ data excl_no_fake_anomalies_dissolve: String = "paired with falsifier_rehomed_bi
 data install_media_real_execution_wet_note: String = "The four srv3_install_media_fetch_real_execution_witness_test.dag / srv3_seeded_install_media_real_execution_witness_test.dag entries at the tail of bin_witness_wet_entries below share this lane with the bin-execution witnesses (same RunnableDiscoveryBatch Wet mechanism, not a forked one - DESIGN §3) though they are not bin-execution: they drive real shell.Mktemp.Dir/Filesystem.Write/shell.Remove.RecursiveForce effects that dag/extdeps/shell/shell.dag has no mock_response for (only shell.Exec.Run/Check do), so the Hermetic discovery corpus refuses them by construction (typed 'no mock_response for operation Dir' error). Split out of their parent files (shell-to-dag B1, 2026-07-14) so the parent files' pure classification witnesses keep hermetic per-PR discovery undiminished. Dissolve-on: shell.dag's file-effect operations gain mock_response coverage AND these fns' assertions are re-checked for correctness under a fixed mock (some assert behavior-dependent outcomes, e.g. matched == false on a wrong hash, which a naive fixed mock would falsify) - then they re-enroll as ordinary hermetic discovery rows and these rows delete."
 
 data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
-  bin_wet(entry: "dag/test/claim/expectation_frontier_witness_test.dag", f: "undeclared_effects_emit_the_frontier_receipt_holds"),
-  bin_wet(entry: "dag/test/claim/expectation_frontier_witness_test.dag", f: "fully_declared_effects_emit_no_frontier_receipt_holds"),
   bin_wet(entry: "dag/test/claim/dag_collect_fingerprint_witness_test.dag", f: "dag_collect_fingerprint_witness_keystone_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag", f: "perturb_optional_skew_fixture_red_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag", f: "perturb_unresolved_import_fixture_red_holds"),
@@ -860,16 +858,28 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
     dissolve_on: "re-priced only if the shard partition boundary itself changes shape enough that a fixture can stand in for the real tree without losing coverage — until then this is the honest corpus-grain residue, not a defect"
   },
   RehomedBinWetRow {
+    entry: "dag/test/claim/expectation_frontier_witness_test.dag",
+    function: "undeclared_effects_emit_the_frontier_receipt_holds",
+    reason: "135556ms measured eval on run 30220304152 (2.3x bin_witness_wet_per_row_wall_budget_seconds): child claim_batch read of a real [expectation-frontier] receipt. Sibling fully_declared arm is the same cost class; together they were ~224s of the batch-4 wall that blew FLOOR-BATCH-OVER-BUDGET (wall_ms=589718 vs clamp_ms=540000) once a broad-diff PR selected the full ExecutionWitnessKind first corpus",
+    dissolve_on: "child-run receipt read lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR consciously, or keep on falsifier cadence if the wall stays corpus-grain"
+  },
+  RehomedBinWetRow {
+    entry: "dag/test/claim/expectation_frontier_witness_test.dag",
+    function: "fully_declared_effects_emit_no_frontier_receipt_holds",
+    reason: "88779ms measured eval on run 30220304152 (1.5x the per-row budget): complementary pole of undeclared_effects_emit_the_frontier_receipt_holds — same child-run receipt subject, re-homed with its sibling so the pair stays together on one cadence",
+    dissolve_on: "fires with undeclared_effects_emit_the_frontier_receipt_holds dissolve_on (same file, same mechanism)"
+  },
+  RehomedBinWetRow {
     entry: "dag/test/claim/no_fake_anomalies_witness_test.dag",
     function: "passing_run_shows_no_fake_anomaly_holds",
-    reason: "91497ms measured wall on CI run 30212463696 @ 4883541 (~1.5x bin_witness_wet_per_row_wall_budget_seconds): spawns a cold claim_batch child to read a real observation stream — irreducible Wet cost of the anomaly-glyph wall, not shrinkable without losing the subject. Together with its RED sibling it blew FLOOR-BATCH-OVER-BUDGET on the per-PR wet batch (wall_ms=600540 clamp_ms=540000)",
-    dissolve_on: "the wall gains a cheaper discrimination that still reads a real rendered stream under the per-row budget on a measured run — then re-enroll per-PR; until then falsifier cadence owns the coverage"
+    reason: "89722ms measured eval on run 30220304152 (1.5x the per-row budget): child claim_batch stderr glyph scan. With its RED-control sibling (~85s) this pair was ~174s of the same batch-4 over-budget wall",
+    dissolve_on: "child-run glyph scan lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR consciously; wall stays Wet as long as the anomaly-glyph mechanism exists (excl_no_fake_anomalies_dissolve)"
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/no_fake_anomalies_witness_test.dag",
     function: "red_control_entry_with_real_anomaly_still_shows_glyph_holds",
-    reason: "93069ms measured wall on CI run 30212463696 @ 4883541 (when the child still ran cargo) / ~49s after the child was re-pointed at cheap unannotated /bin/false — under the 60s per-row budget on that cheap path, but stays falsifier-rehomed with its green sibling (passing_run_shows_no_fake_anomaly_holds remains ~91s / ~1.5x). Residual cost is the cold claim_batch child resolve, not the failing effect. Sibling of passing_run_shows_no_fake_anomaly_holds; both leave the per-PR wet batch together",
-    dissolve_on: "paired with passing_run_shows_no_fake_anomaly_holds — re-enroll per-PR only when that sibling's dissolve_on fires"
+    reason: "84785ms measured eval on run 30220304152 (1.4x the per-row budget): RED-control pole of passing_run_shows_no_fake_anomaly_holds — re-homed with its sibling so the discriminating pair stays together",
+    dissolve_on: "fires with passing_run_shows_no_fake_anomaly_holds dissolve_on (same file, same mechanism)"
   }
 ]
 
@@ -951,6 +961,18 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
     function: "lens_edit_locus_source_provenance_producer_rejects_malformed_source_holds",
     reason: "Class C live-grain row (edit-locus provenance producer ×3 family): malformed-source refusal through parse pipeline exceeds per-PR 5s budget. Renamed off the imported fn's own name 2026-07-26 — the same-name wrapper self-recursed instead of delegating (edit_locus_source_provenance_wrapper_shadowing_note); the row had never executed",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
+    function: "lens_edit_locus_source_provenance_producer_holds",
+    reason: "Class C live-grain edit-locus provenance producer (review 43557): was if-false-pinned in the lens module; now a real long/ wrapper on the substrate long lane with its siblings",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
+    function: "lens_edit_locus_source_provenance_parse_root_span_holds",
+    reason: "Class C live-grain edit-locus parse-root-span pole (review 43557); pair with producer_holds",
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
   },
   SubstrateLongLaneRow {

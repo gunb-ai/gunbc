@@ -150,15 +150,6 @@ fn ingested_arrow_from_source(source: String) -> Outcome<Node> {
     }
   )
 }
-
-fn ingested_match_body_from_source(source: String) -> Outcome<Node> {
-  bind_outcome(
-    o: ingested_arrow_from_source(source: source),
-    f: fn(arrow) {
-      find_arrow_body_child(root: arrow)
-    }
-  )
-}
 fn ingested_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
   bind_outcome(
     o: ingested_arrow_from_source(source: source),
@@ -196,20 +187,6 @@ fn ingested_classical_not_eval_subgraph_canonical() -> Node {
     false_arm: dag_match_arm_node(
       pattern_lit: ^dag_token_kw_false,
       body_lit: ^dag_token_kw_true
-    )
-  )
-}
-
-fn ingested_classical_not_eval_subgraph_swapped() -> Node {
-  dag_match_body_from_arms(
-    scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
-    true_arm: dag_match_arm_node(
-      pattern_lit: ^dag_token_kw_true,
-      body_lit: ^dag_token_kw_true
-    ),
-    false_arm: dag_match_arm_node(
-      pattern_lit: ^dag_token_kw_false,
-      body_lit: ^dag_token_kw_false
     )
   )
 }
@@ -598,18 +575,5 @@ test fn ingested_classical_not_arrow_empty_domain_infer_refuses_holds() -> Bool 
   )
 }
 
-test fn emit_host_classical_not_ingested_all_holds() -> Bool {
-  ingested_classical_not_resolves_holds()
-    && ingested_classical_not_arrow_has_match_holds()
-    && emit_host_classical_not_ingested_equals_eval_holds()
-    && emit_host_classical_not_ingested_swapped_refuses_holds()
-}
-
 data ingested_classical_not_emit_mock_shape_note: String = "KERNEL-D TESTING RE-STEER (operator direction, 2026-07-24): per-PR layer-boundary mock proof for the classical_not cutover's emit-to-text half — mocked/synthetically-ingested inferred tree -> assert emitted Rust TEXT (string compare, no compile), the shape src/v2/test/claim/emit/rust_binop_emit_test.dag already uses for direct emit() assertions. Aggregates only the pure parse/normalize/resolve/infer/emit legs (no host build/run, no eval): resolves_holds, arrow_has_match_holds, and the two source-shape assertions already in this module. Deliberately excludes emit_host_classical_not_ingested_equals_eval_holds/_swapped_refuses_holds, which run a real emit-vs-eval agreement leg — those stay off the per-PR enrollment."
 
-test fn ingested_classical_not_emit_mock_shape_all_holds() -> Bool {
-  ingested_classical_not_resolves_holds()
-    && ingested_classical_not_arrow_has_match_holds()
-    && ingested_classical_not_emit_octet_bridge_shape_holds()
-    && ingested_classical_not_emit_source_arm_shape_holds()
-}

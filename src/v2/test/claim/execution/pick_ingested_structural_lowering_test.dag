@@ -120,12 +120,19 @@ fn pick_eval_int_literal_optional(lexeme: String) -> Optional<Node> {
   }
 }
 
-fn pick_eval_kw_true_node() -> Node {
-  pick_eval_atom(s: ^dag_token_kw_true)
-}
-
-fn pick_eval_kw_false_node() -> Node {
-  pick_eval_atom(s: ^dag_token_kw_false)
+fn pick_ingested_normalized_module_from_source(source: String) -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(text: source, file: ^pick_ingested_source_file, rules: lm.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: parse_module(tokens: tokens, grammar: lm.grammar),
+        f: fn(artifact) {
+          normalize(parse_tree: artifact.tree)
+        }
+      )
+    }
+  )
 }
 
 fn pick_ingested_parsed_module_from_source(source: String) -> Outcome<Node> {
@@ -137,21 +144,6 @@ fn pick_ingested_parsed_module_from_source(source: String) -> Outcome<Node> {
         o: parse_module(tokens: tokens, grammar: lm.grammar),
         f: fn(artifact) {
           outcome_accepted(value: artifact.tree)
-        }
-      )
-    }
-  )
-}
-
-fn pick_ingested_normalized_module_from_source(source: String) -> Outcome<Node> {
-  let lm = dag_language_model()
-  bind_outcome(
-    o: tokenize(text: source, file: ^pick_ingested_source_file, rules: lm.lex),
-    f: fn(tokens) {
-      bind_outcome(
-        o: parse_module(tokens: tokens, grammar: lm.grammar),
-        f: fn(artifact) {
-          normalize(parse_tree: artifact.tree)
         }
       )
     }
@@ -257,7 +249,7 @@ fn pick_ingested_normalized_branch_arms_magnitude_holds(
   }
 }
 
-fn pick_ingested_normalized_swapped_arms_structural_red_holds() -> Bool {
+test fn pick_ingested_normalized_swapped_arms_structural_red_holds() -> Bool {
   pick_ingested_normalized_branch_arms_magnitude_holds(
     source: pick_ingested_source,
     then_mag: 1,
@@ -411,7 +403,7 @@ fn pick_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool 
   }
 }
 
-fn pick_ingested_pick_true_executes_holds() -> Bool {
+test fn pick_ingested_pick_true_executes_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick_ingested_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
@@ -424,7 +416,7 @@ fn pick_ingested_pick_true_executes_holds() -> Bool {
   }
 }
 
-fn pick_ingested_pick_false_executes_holds() -> Bool {
+test fn pick_ingested_pick_false_executes_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick_ingested_false_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
@@ -437,7 +429,7 @@ fn pick_ingested_pick_false_executes_holds() -> Bool {
   }
 }
 
-fn pick_ingested_swapped_arms_red_holds() -> Bool {
+test fn pick_ingested_swapped_arms_red_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick_ingested_swapped_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
@@ -450,14 +442,25 @@ fn pick_ingested_swapped_arms_red_holds() -> Bool {
   }
 }
 
-fn pick_ingested_pipeline_resolves_holds() -> Bool {
+test fn pick_ingested_pipeline_resolves_holds() -> Bool {
   match pick_ingested_resolved_module_from_source(source: pick_ingested_source) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn pick2_ingested_pick_true_executes_holds() -> Bool {
+test fn pick_ingested_normalized_arrow_has_branch_body_holds() -> Bool {
+  pick_ingested_normalized_arrow_has_branch_body(source: pick_ingested_source)
+}
+
+test fn pick_ingested_parsed_module_from_source_holds() -> Bool {
+  match pick_ingested_parsed_module_from_source(source: pick_ingested_source) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn pick2_ingested_pick_true_executes_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick2_ingested_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
@@ -470,7 +473,7 @@ fn pick2_ingested_pick_true_executes_holds() -> Bool {
   }
 }
 
-fn pick2_ingested_pick_false_executes_holds() -> Bool {
+test fn pick2_ingested_pick_false_executes_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick2_ingested_false_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
@@ -483,7 +486,7 @@ fn pick2_ingested_pick_false_executes_holds() -> Bool {
   }
 }
 
-fn pick2_ingested_swapped_arms_red_holds() -> Bool {
+test fn pick2_ingested_swapped_arms_red_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick2_ingested_swapped_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
@@ -496,17 +499,3 @@ fn pick2_ingested_swapped_arms_red_holds() -> Bool {
   }
 }
 
-test fn pick_ingested_equals_eval_keystone_holds() -> Bool {
-  pick_ingested_normalized_arrow_has_branch_body(source: pick_ingested_source)
-    && pick_ingested_normalized_swapped_arms_structural_red_holds()
-    && pick_ingested_pipeline_resolves_holds()
-    && pick_ingested_pick_true_executes_holds()
-    && pick_ingested_pick_false_executes_holds()
-    && pick_ingested_swapped_arms_red_holds()
-}
-
-test fn pick2_ingested_equals_eval_generality_holds() -> Bool {
-  pick2_ingested_pick_true_executes_holds()
-    && pick2_ingested_pick_false_executes_holds()
-    && pick2_ingested_swapped_arms_red_holds()
-}

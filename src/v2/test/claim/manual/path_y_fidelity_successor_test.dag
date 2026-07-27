@@ -1,6 +1,5 @@
 module v2.test.manual.path_y_fidelity_successor
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn path_y_core_expr() -> Expression {
