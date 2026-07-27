@@ -49,7 +49,11 @@ fn cursor_action_under(requested: CursorAction, cap: RenderCapability) -> Cursor
   if cap.cursor_addressable {
     requested
   } else {
-    Append
+    match requested {
+      Overwrite => Append
+      Append => Append
+      Clear => Clear
+    }
   }
 }
 
