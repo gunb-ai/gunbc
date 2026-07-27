@@ -7,7 +7,6 @@ use self::TcoExprShape::*;
 pub use crate::extdeps_languages_go_emit::go_method_templates_flat;
 pub use crate::extdeps_languages_python_emit::python_method_templates_flat;
 pub use crate::extdeps_languages_rust_emit::rust_method_templates;
-pub use crate::std_algebra::FreeMonoid;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 use crate::std_syntax::AlgebraFieldKind::*;
@@ -38,9 +37,7 @@ pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{build_params_scope, extend_scope};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
-pub use crate::v1_compiler_infer_env::{
-    authored_name, empty_lexical_candidate_index, empty_symbol_index,
-};
+pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_lookup::{func_sig_if_resolved, lookup_func_sig};
@@ -576,8 +573,6 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             parents: Rc::new(vec![]),
         }),
         locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        lexical_candidates: empty_lexical_candidate_index(),
-        containment_ancestors: Rc::new(vec![]),
         body_locals: v1_rt::rc_empty_map::<String, bool>(),
         match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
         module_name: "".to_string(),
@@ -592,8 +587,6 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
         type_env: typed_module.type_env.clone(),
         func_env: typed_module.func_env.clone(),
         locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        lexical_candidates: empty_lexical_candidate_index(),
-        containment_ancestors: Rc::new(vec![]),
         body_locals: v1_rt::rc_empty_map::<String, bool>(),
         match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
         module_name: authored_name_at(

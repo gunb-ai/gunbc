@@ -13,7 +13,6 @@ use self::FunctionSizeEffect::*;
 use self::InferredNode::*;
 use self::MatchPattern::*;
 use self::MethodSemantics::*;
-use self::NodeBindingIdentity::*;
 use self::NodeFieldRole::*;
 use self::OperationModifier::*;
 use self::StringPart::*;
@@ -22,10 +21,9 @@ use self::UnaryOpKind::*;
 use self::VarBindingKind::*;
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
-pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape, FreeMonoid};
+pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
-pub use crate::std_occurrence_binding::{BindingCandidate, BindingOccurrence};
 use crate::std_syntax::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };
@@ -794,18 +792,6 @@ pub struct DeclaredFuncEnv {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum NodeBindingIdentity {
-    DeclarationBindingIdentity {
-        candidate: Rc<BindingCandidate<Rc<Node>>>,
-    },
-    ReferenceBindingIdentity {
-        occurrence: Rc<BindingOccurrence<Rc<Node>>>,
-        lexical_candidates: Rc<Vec<Rc<BindingCandidate<Rc<Node>>>>>,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Node {
     pub name: String,
     pub ident: Option<i64>,
@@ -825,7 +811,6 @@ pub struct Node {
     pub has_non_tail_self_call: bool,
     pub match_pattern: Option<Rc<MatchPattern>>,
     pub expr_data: Rc<ExprData>,
-    pub binding_identity: Option<Rc<NodeBindingIdentity>>,
 }
 
 pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<SourceSpan>> {
@@ -871,7 +856,6 @@ pub fn make_expr_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: expr_data.clone(),
-        binding_identity: None,
         ident: None,
     })
 }
@@ -902,7 +886,6 @@ pub fn make_named_expr_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: expr_data.clone(),
-        binding_identity: None,
         ident: None,
     })
 }
@@ -916,52 +899,6 @@ pub fn make_pattern_binder_declaration_node(name: String, span: Rc<SourceSpan>) 
         span.clone(),
         span.clone(),
     )
-}
-
-pub fn pattern_bind_declaration(pattern: Rc<MatchPattern>) -> Option<Rc<Node>> {
-    match (*pattern.clone()).clone() {
-        MatchPattern::Bind {
-            declaration: declaration,
-            ..
-        } => Some(declaration.clone()),
-        _ => None,
-    }
-}
-
-pub fn pattern_bind_name(pattern: Rc<MatchPattern>) -> String {
-    match (*pattern.clone()).clone() {
-        MatchPattern::Bind {
-            declaration: declaration,
-            ..
-        } => declaration.name.clone(),
-        _ => "".to_string(),
-    }
-}
-
-pub fn node_with_declaration_binding_identity(
-    node: Rc<Node>,
-    candidate: Rc<BindingCandidate<Rc<Node>>>,
-) -> Rc<Node> {
-    Rc::new(Node {
-        binding_identity: Some(Rc::new(NodeBindingIdentity::DeclarationBindingIdentity {
-            candidate: candidate.clone(),
-        })),
-        ..(*node.clone()).clone()
-    })
-}
-
-pub fn node_with_reference_binding_identity(
-    node: Rc<Node>,
-    occurrence: Rc<BindingOccurrence<Rc<Node>>>,
-    lexical_candidates: Rc<Vec<Rc<BindingCandidate<Rc<Node>>>>>,
-) -> Rc<Node> {
-    Rc::new(Node {
-        binding_identity: Some(Rc::new(NodeBindingIdentity::ReferenceBindingIdentity {
-            occurrence: occurrence.clone(),
-            lexical_candidates: lexical_candidates.clone(),
-        })),
-        ..(*node.clone()).clone()
-    })
 }
 
 pub fn make_expr_error_node(
@@ -993,7 +930,6 @@ pub fn make_expr_error_node(
             kind: kind.clone(),
             message: message.clone(),
         }),
-        binding_identity: None,
         ident: None,
     })
 }
@@ -1027,7 +963,6 @@ pub fn make_arg_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            binding_identity: None,
             ident: None,
         })
     }
@@ -1062,7 +997,6 @@ pub fn make_arm_node(
             has_non_tail_self_call: false,
             match_pattern: Some(pattern.clone()),
             expr_data: Rc::new(ExprData::NoExprData),
-            binding_identity: None,
             ident: None,
         })
     }
@@ -1092,7 +1026,6 @@ pub fn make_resource_use_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        binding_identity: None,
         ident: None,
     })
 }
@@ -1139,7 +1072,6 @@ pub fn make_field_init_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        binding_identity: None,
         ident: None,
     })
 }
@@ -1168,7 +1100,6 @@ pub fn make_field_binding_node(
         has_non_tail_self_call: false,
         match_pattern: Some(binding.clone()),
         expr_data: Rc::new(ExprData::NoExprData),
-        binding_identity: None,
         ident: None,
     })
 }
@@ -1210,7 +1141,6 @@ pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {
                 value: text.clone(),
             }),
         }),
-        binding_identity: None,
         ident: None,
     })
 }
@@ -1234,7 +1164,6 @@ pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        binding_identity: None,
         ident: None,
     })
 }
@@ -1269,7 +1198,6 @@ pub fn make_param_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            binding_identity: None,
             ident: None,
         })
     }
@@ -1308,7 +1236,6 @@ pub fn make_resolved_param_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            binding_identity: None,
             ident: None,
         })
     }
@@ -1457,7 +1384,6 @@ pub fn make_field_node(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    binding_identity: None,
                     ident: None,
                 }),
                 make_span(0, 0),
@@ -1483,7 +1409,6 @@ pub fn make_field_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            binding_identity: None,
             ident: None,
         })
     }
@@ -1561,7 +1486,6 @@ pub fn make_variant_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        binding_identity: None,
         ident: None,
     })
 }
@@ -2278,7 +2202,6 @@ pub fn make_transport_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        binding_identity: None,
         ident: None,
     })
 }
@@ -2402,7 +2325,6 @@ pub fn shell_transport_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            binding_identity: None,
             ident: None,
         });
         let zero_span = make_span(0, 0);
@@ -2434,7 +2356,6 @@ pub fn shell_transport_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            binding_identity: None,
             ident: None,
         })
     }
@@ -2791,7 +2712,6 @@ pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + C
         has_non_tail_self_call: node.has_non_tail_self_call.clone(),
         match_pattern: node.match_pattern.clone(),
         expr_data: node.expr_data.clone(),
-        binding_identity: node.binding_identity.clone(),
     })
 }
 
@@ -3277,7 +3197,6 @@ pub fn module_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        binding_identity: None,
         ident: None,
     })
 }
@@ -3309,7 +3228,6 @@ pub fn import_node(
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                binding_identity: None,
                 ident: None,
             }))
         } else {
@@ -3333,7 +3251,6 @@ pub fn import_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            binding_identity: None,
             ident: None,
         })
     }
@@ -3383,7 +3300,6 @@ pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        binding_identity: None,
         ident: None,
     })
 }
@@ -3420,7 +3336,6 @@ pub fn unit_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        binding_identity: None,
         ident: None,
     })
             };
@@ -3449,7 +3364,6 @@ pub fn bool_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        binding_identity: None,
         ident: None,
     })
             };
@@ -3478,7 +3392,6 @@ pub fn string_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        binding_identity: None,
         ident: None,
     })
             };
@@ -3507,7 +3420,6 @@ pub fn hash_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        binding_identity: None,
         ident: None,
     })
             };
@@ -3536,7 +3448,6 @@ pub fn int_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        binding_identity: None,
         ident: None,
     })
             };
@@ -3565,7 +3476,6 @@ pub fn float_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        binding_identity: None,
         ident: None,
     })
             };
@@ -3594,7 +3504,6 @@ pub fn none_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        binding_identity: None,
         ident: None,
     })
             };
@@ -3638,7 +3547,6 @@ pub fn error_type() -> Rc<Node> {
         kind: ExprErrorKind::SemanticExprError,
         message: "unresolved type".to_string(),
     }),
-        binding_identity: None,
         ident: None,
     })
             };
@@ -3917,7 +3825,6 @@ pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
         expr_data: n.expr_data.clone(),
-        binding_identity: n.binding_identity.clone(),
     })
 }
 
@@ -3941,7 +3848,6 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
         expr_data: n.expr_data.clone(),
-        binding_identity: n.binding_identity.clone(),
     })
 }
 

@@ -8,7 +8,6 @@ use crate::std_induction::RecursionShape::{
 };
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
-pub use crate::std_occurrence_binding::BindingCandidate;
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
 use crate::v1_rt;
@@ -118,109 +117,59 @@ pub struct SymbolIndex {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct LexicalCandidatePopulation {
-    pub candidates: Rc<Vec<Rc<BindingCandidate<Rc<Node>>>>>,
+pub struct V1NodeContainmentPathCapture {
+    pub ancestors: Rc<Vec<Rc<Node>>>,
+    pub terminal: Rc<Node>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct LexicalCandidateIndex {
-    pub by_short_name: Rc<HashMap<String, Rc<LexicalCandidatePopulation>>>,
-}
-
-pub fn lexical_candidate_index_invariant() -> String {
+pub fn v1_node_containment_path_capture_adapter_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Declaration identity is the authored Node occurrence at its full ContainmentPath<Node>. The short-name map is only a population index: insertion appends every active same-name candidate and never selects, overwrites, or deduplicates by SourceSpan or structural Node equality. Inference reaches each lexical declaration once per scope construction; repeated traversal starts from the parent scope instead of merging duplicate discoveries.".to_string()
+            "Temporary v1 target adapter for the canonical std.occurrence_binding ContainmentPath<Node> fact. It preserves authored Node ancestry and the terminal Node. It defines no identifier, equality, candidate population, selection, deduplication, or resolution semantics.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn empty_lexical_candidate_index() -> Rc<LexicalCandidateIndex> {
-    Rc::new(LexicalCandidateIndex {
-        by_short_name: v1_rt::rc_empty_map::<String, Rc<LexicalCandidatePopulation>>(),
-    })
-}
-
-pub fn lexical_candidate_population_snoc(
-    candidates: Rc<Vec<Rc<BindingCandidate<Rc<Node>>>>>,
-    candidate: Rc<BindingCandidate<Rc<Node>>>,
-) -> Rc<Vec<Rc<BindingCandidate<Rc<Node>>>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let __fm = candidates.clone();
-        if __fm.is_empty() {
-            Rc::new({
-                let mut __cons_v = (*Rc::new(vec![])).clone();
-                __cons_v.insert(0, candidate.clone());
-                __cons_v
-            })
-        } else {
-            let head = (*__fm)[0].clone();
-            let tail: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
-            Rc::new({
-                let mut __cons_v =
-                    (*lexical_candidate_population_snoc(tail.clone(), candidate.clone())).clone();
-                __cons_v.insert(0, head.clone());
-                __cons_v
-            })
-        }
-    })
-}
-
-pub fn lexical_candidate_index_insert(
-    index: Rc<LexicalCandidateIndex>,
-    short_name: String,
-    candidate: Rc<BindingCandidate<Rc<Node>>>,
-) -> Rc<LexicalCandidateIndex> {
-    {
-        let existing = match v1_rt::map_get(&index.by_short_name.clone(), short_name.clone()) {
-            Some(population) => population.candidates.clone(),
-            None => Rc::new(vec![]),
+pub fn v1_node_containment_path_capture_adapter_dissolve_on() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "DISSOLVE-ON: when generic-carrier target emission can compile std.occurrence_binding.ContainmentPath<Node> directly, replace V1NodeContainmentPathCapture with that canonical specialization and delete this adapter without changing captured paths.".to_string()
         };
-        Rc::new(LexicalCandidateIndex {
-            by_short_name: v1_rt::rc_map_insert(
-                index.by_short_name.clone(),
-                short_name.clone(),
-                Rc::new(LexicalCandidatePopulation {
-                    candidates: lexical_candidate_population_snoc(
-                        existing.clone(),
-                        candidate.clone(),
-                    ),
-                }),
-            ),
-        })
     }
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn lexical_candidate_index_lookup(
-    index: Rc<LexicalCandidateIndex>,
-    short_name: String,
-) -> Rc<Vec<Rc<BindingCandidate<Rc<Node>>>>> {
-    match v1_rt::map_get(&index.by_short_name.clone(), short_name.clone()) {
-        Some(population) => population.candidates.clone(),
-        None => Rc::new(vec![]),
-    }
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NamespaceIdentityCapture {
+    pub occurrences: Rc<Vec<Rc<V1NodeContainmentPathCapture>>>,
 }
 
-pub fn lexical_candidate_population_count(
-    candidates: Rc<Vec<Rc<BindingCandidate<Rc<Node>>>>>,
-) -> i64 {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let __fm = candidates.clone();
-        if __fm.is_empty() {
-            0
-        } else {
-            let tail: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
-            (1 + lexical_candidate_population_count(tail.clone()))
-        }
+pub fn empty_namespace_identity_capture() -> Rc<NamespaceIdentityCapture> {
+    Rc::new(NamespaceIdentityCapture {
+        occurrences: Rc::new(vec![]),
     })
 }
 
-pub fn lexical_candidate_index_count(index: Rc<LexicalCandidateIndex>, short_name: String) -> i64 {
-    lexical_candidate_population_count(lexical_candidate_index_lookup(
-        index.clone(),
-        short_name.clone(),
-    ))
+pub fn concat_namespace_identity_capture(
+    left: Rc<NamespaceIdentityCapture>,
+    right: Rc<NamespaceIdentityCapture>,
+) -> Rc<NamespaceIdentityCapture> {
+    Rc::new(NamespaceIdentityCapture {
+        occurrences: v1_rt::concat(left.occurrences.clone(), right.occurrences.clone()),
+    })
+}
+
+pub fn namespace_identity_capture_singleton(
+    containment: Rc<V1NodeContainmentPathCapture>,
+) -> Rc<NamespaceIdentityCapture> {
+    Rc::new(NamespaceIdentityCapture {
+        occurrences: Rc::new({
+            let mut __cons_v = (*Rc::new(vec![])).clone();
+            __cons_v.insert(0, containment.clone());
+            __cons_v
+        }),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1364,7 +1313,6 @@ pub fn qualify_borrowed_type_names(
                             has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                             match_pattern: n.match_pattern.clone(),
                             expr_data: n.expr_data.clone(),
-                            binding_identity: n.binding_identity.clone(),
                             ident: None,
                         })
                     }
@@ -1395,7 +1343,6 @@ pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> 
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
         expr_data: n.expr_data.clone(),
-        binding_identity: n.binding_identity.clone(),
     })
 }
 
@@ -1419,7 +1366,6 @@ pub fn node_with_inferred(n: Rc<Node>, inferred: Option<Rc<InferredNode>>) -> Rc
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
         expr_data: n.expr_data.clone(),
-        binding_identity: n.binding_identity.clone(),
     })
 }
 
@@ -1925,7 +1871,6 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    binding_identity: None,
                     ident: None,
                 }),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),

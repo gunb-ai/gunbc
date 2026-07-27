@@ -340,14 +340,10 @@ fn namespace_identity_capture_node(
       )
     Absent => empty_namespace_identity_capture()
   }
-  let pattern_capture = match node.match_pattern {
-    Present { value: pattern } =>
-      namespace_identity_capture_pattern(
-        match_pattern_value: pattern,
-        ancestors: child_ancestors
-      )
-    Absent => empty_namespace_identity_capture()
-  }
+  let pattern_capture = namespace_identity_capture_pattern(
+    match_pattern_value: arm_pattern(n: node),
+    ancestors: child_ancestors
+  )
   concat_namespace_identity_capture(
     left: current,
     right: concat_namespace_identity_capture(

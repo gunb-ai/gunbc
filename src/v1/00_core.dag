@@ -112,7 +112,7 @@ type ExprData
   | ExprReturn
 
 type MatchPattern
-  = Bind { declaration: Node? }
+  = Bind { declaration: Node }
   | LitPattern { value: LiteralValue }
   | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
   | Wildcard

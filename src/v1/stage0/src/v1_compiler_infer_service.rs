@@ -374,7 +374,6 @@ pub fn check_service_method_call_node(
                                                 has_non_tail_self_call: false,
                                                 match_pattern: None,
                                                 expr_data: Rc::new(ExprData::NoExprData),
-                                                binding_identity: None,
                                                 ident: None,
                                             }));
                                         }
@@ -393,7 +392,6 @@ pub fn check_service_method_call_node(
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
-                                    binding_identity: None,
                                     ident: None,
                                 }),
                                 op_params: op.params.clone(),
