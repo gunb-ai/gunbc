@@ -189,14 +189,20 @@ data host_standup_spine: List<HostStandupStep> = [
     label: "prefix:bmc-credential-converge",
     authorities: [
       decl_ref(module_path: "gunbc.bmc_onboarding", decl_name: "bmc_credential_probe_to_phase"),
+      decl_ref(module_path: "gunbc.auth.access_token_source", decl_name: "ensure_access_token"),
+      decl_ref(module_path: "gunbc.auth.secret_ref_credential", decl_name: "fetch_secret_ref_credential"),
+      decl_ref(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_probe_credential_phase"),
+      decl_ref(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv3_managed_credential_probe_check"),
+      decl_ref(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv4_managed_credential_probe_check"),
       decl_ref(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv3_converge_credential"),
+      decl_ref(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv4_converge_credential"),
       decl_ref(module_path: "gunbc.auth.materialized_secret", decl_name: "with_materialized_secret"),
     ],
     gaps: [
       PhaseGap {
         gap_id: "bmc-managed-credential-binding",
         missing: "scoped SecretRef-to-netrc and SecretRef-to-BMC-SSH credential binding with liveness proof and teardown",
-        refusal: "host_standup:prefix:bmc-credential-converge:binding-unrealized — operator-supplied credentials can support a probe but cannot become a managed subsumption transport",
+        refusal: "host_standup:prefix:bmc-credential-converge:binding-unrealized — when a selected BMC operation demands Secret Manager, the gcloud handler can unlock it and support a probe, but the fetched BMC credential cannot yet become a scoped managed subsumption transport",
       },
     ],
     effect_evidence: host_effect_identity_evidence

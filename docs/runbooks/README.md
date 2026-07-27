@@ -10,6 +10,8 @@ A new runbook must be linked from this index in the same PR that adds it — the
 
 ## Index
 
+- [ALTRAD8UD BMC firmware and fan control](altrad8ud-bmc-fan-control.md) — observed srv3/srv4
+  firmware and thermal-policy state, safe convergence boundaries, and the remaining live-actuation gaps.
 - [BMC Redfish operator access (srv1 / srv2)](bmc-redfish-operator-access.md) — enable and verify
   out-of-band Redfish telemetry on the self-hosted CI fleet hosts.
 - [BMC assimilator: keyless GCP token via Workload Identity Federation](bmc-assimilator-wif-setup.md) —

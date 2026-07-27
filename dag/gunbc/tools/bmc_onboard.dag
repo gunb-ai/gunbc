@@ -16,13 +16,26 @@ import gunbc.bmc_onboarding {
 }
 import gunbc.auth.access_token_source {
   AccessTokenSource,
+  AccessTokenReady,
+  AccessTokenEnsureRefused,
+  AccessTokenUpsertRequired,
   GcloudPrintToken,
-  resolve_access_token,
+  access_token_upsert_required_reason,
+  ensure_access_token,
 }
+import gunbc.auth.secret_ref_credential {
+  SecretCredentialAccessUpsertRequired,
+  SecretCredentialFetchRefused,
+  SecretCredentialReady,
+  fetch_secret_ref_credential,
+}
+import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
 import std.types { NonEmptyStr, Secret, String }
 import std.logic { Bool }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.encoding { Standard, base64_encode }
 import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.languages.json.emit {
@@ -56,6 +69,23 @@ data bmc_credential_length_chars_unit_debt: Disposition = Scaffold {
 
 data bmc_credential_length_chars: Int = 16
 
+type BmcCredentialProbeAccessNeed
+  = FactoryCredentialSufficient
+  | StoredCredentialReadRequired { secret_ref: SecretRef }
+
+fn bmc_credential_probe_access_need(
+  plan: BmcOnboardingPlan,
+  factory_credential_active: Bool,
+) -> BmcCredentialProbeAccessNeed {
+  if factory_credential_active {
+    FactoryCredentialSufficient
+  } else {
+    StoredCredentialReadRequired {
+      secret_ref: onboarding_secret_ref(plan: plan),
+    }
+  }
+}
+
 fn netrc_content(host: String, account: String, password: String) -> String {
   concat("machine ", concat(host, concat(" login ", concat(account, concat(" password ", concat(password, "\n"))))))
 }
@@ -86,8 +116,24 @@ fn gcp_secret_full_name(project: String, secret_id: String) -> String {
   concat("projects/", concat(project, concat("/secrets/", secret_id)))
 }
 
+fn gcp_secret_payload_b64(credential: Secret) -> Secret {
+  base64_encode(
+    octets: bytes_octets(b: utf8_encode_bytes(s: credential as String)),
+    variant: Standard,
+  ) as Secret
+}
+
 fn onboarding_secret_id(plan: BmcOnboardingPlan) -> NonEmptyStr {
   plan.secret_name
+}
+
+fn onboarding_secret_ref(plan: BmcOnboardingPlan) -> SecretRef {
+  SecretRef {
+    project: fleet_secrets_gcp_project,
+    secret: onboarding_secret_id(plan: plan),
+    version: "latest",
+    hash_state: HashPending,
+  }
 }
 
 fn mint_bmc_credential() -> Secret {
@@ -137,26 +183,43 @@ func bmc_rotate_credential(plan: BmcOnboardingPlan, new_credential: Secret) -> P
 func bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSource, credential: Secret) -> ProcessExit
   uses net: Network
 {
-  let payload_b64 = credential as String
+  let payload_b64 = gcp_secret_payload_b64(credential: credential)
   let secret_id = onboarding_secret_id(plan: plan)
 
-  let token = resolve_access_token(source: token_source)
-  stored = gcp.SecretManager.AddVersion(
-    access_token: token,
-    secret_name: gcp_secret_full_name(project: fleet_secrets_gcp_project, secret_id: secret_id),
-    payload_b64: payload_b64
-  )
-  readback = gcp.SecretManager.AccessVersion(
-    access_token: token,
-    project_id: fleet_secrets_gcp_project,
-    secret: secret_id,
-    version: "latest"
-  )
-  if readback.data_b64 != payload_b64 {
-    return exit_failure(reason: concat(concat(concat("store: GCP durability read-back mismatch — refusing to rotate (would lock out ", plan.bmc.host), concat("); stored version ", stored.name)), ""))
-  }
+  match ensure_access_token(source: token_source) {
+    AccessTokenUpsertRequired { plan: plan } =>
+      return exit_failure(
+        reason: access_token_upsert_required_reason(plan: plan),
+      )
+    AccessTokenEnsureRefused { reason: reason } =>
+      return exit_failure(reason: reason as String)
+    AccessTokenReady { token: token } => {
+      stored = gcp.SecretManager.AddVersion(
+        access_token: token,
+        secret_name: gcp_secret_full_name(project: fleet_secrets_gcp_project, secret_id: secret_id),
+        payload_b64: payload_b64
+      )
+      readback = gcp.SecretManager.AccessVersion(
+        access_token: token,
+        project_id: fleet_secrets_gcp_project,
+        secret: secret_id,
+        version: "latest"
+      )
+      match decode_secret_access_data_b64(data_b64: readback.data_b64) {
+        SecretAccessPayloadDecodeRefused { reason: reason } =>
+          return exit_failure(
+            reason: concat("store: could not decode GCP durability read-back — refusing to rotate: ", reason as String),
+          )
+        SecretAccessPayloadDecoded { secret: readback_credential } => {
+          if readback_credential != credential {
+            return exit_failure(reason: concat(concat(concat("store: GCP durability read-back mismatch — refusing to rotate (would lock out ", plan.bmc.host), concat("); stored version ", stored.name)), ""))
+          }
 
-  return bmc_rotate_credential(plan: plan, new_credential: credential)
+          return bmc_rotate_credential(plan: plan, new_credential: credential)
+        }
+      }
+    }
+  }
 }
 
 func bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> ProcessExit
@@ -192,26 +255,36 @@ func bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTok
     username: account,
     password: plan.factory_login.published_password as Secret
   )
-  if factory_check.success {
-    return FactoryCredentialActive
-  }
-
-  let token = resolve_access_token(source: token_source)
-  secret_resp = gcp.SecretManager.AccessVersion(
-    access_token: token,
-    project_id: fleet_secrets_gcp_project,
-    secret: onboarding_secret_id(plan: plan),
-    version: "latest"
-  )
-  rotated_verify = redfish.Http.GetSystem(
-    bmc_host: host,
-    username: account,
-    password: secret_resp.data_b64 as Secret
-  )
-  return if rotated_verify.success {
-    RotatedCredentialActive
-  } else {
-    CredentialStateUnknown { reason: "stored credential rejected by BMC" }
+  match bmc_credential_probe_access_need(
+    plan: plan,
+    factory_credential_active: factory_check.success,
+  ) {
+    FactoryCredentialSufficient => return FactoryCredentialActive
+    StoredCredentialReadRequired { secret_ref: secret_ref } => {
+      match fetch_secret_ref_credential(
+        secret_ref: secret_ref,
+        token_source: token_source,
+      ) {
+        SecretCredentialAccessUpsertRequired { plan: access_plan } =>
+          return CredentialStateUnknown {
+            reason: access_token_upsert_required_reason(plan: access_plan),
+          }
+        SecretCredentialFetchRefused { reason: reason } =>
+          return CredentialStateUnknown { reason: reason as String }
+        SecretCredentialReady { credential: stored_credential } => {
+          rotated_verify = redfish.Http.GetSystem(
+            bmc_host: host,
+            username: account,
+            password: stored_credential
+          )
+          return if rotated_verify.success {
+            RotatedCredentialActive
+          } else {
+            CredentialStateUnknown { reason: "stored credential rejected by BMC" }
+          }
+        }
+      }
+    }
   }
 }
 
@@ -232,20 +305,62 @@ func bmc_converge_credential(plan: BmcOnboardingPlan, token_source: AccessTokenS
   }
 }
 
+data bmc_gcloud_auth_is_access_demand_derived_note: String = "The srv3/srv4 wrappers select GcloudPrintToken as a handler value but do not execute it as a preflight. bmc_probe_credential_phase first tries the factory BMC credential; only its rotated-credential branch demands SecretManager.AccessVersion and therefore evaluates the access ensure. bmc_store_and_rotate evaluates it only after convergence selects the store-before-rotate branch. This keeps the causal order selected BMC operation -> Secret Manager effect -> access ensure observation -> Noop or Upsert -> current human realizer. Do not reintroduce a via-gcloud wrapper that resolves the token before the operation proves it needs GCP."
+
 func srv3_probe_credential_phase() -> BmcCredentialProbeResult
   uses net: Network
 {
-  bmc_probe_credential_phase(plan: srv3_onboarding_plan, token_source: GcloudPrintToken)
+  bmc_probe_credential_phase(
+    plan: srv3_onboarding_plan,
+    token_source: GcloudPrintToken,
+  )
+}
+
+func srv4_probe_credential_phase() -> BmcCredentialProbeResult
+  uses net: Network
+{
+  bmc_probe_credential_phase(
+    plan: srv4_onboarding_plan,
+    token_source: GcloudPrintToken,
+  )
+}
+
+fn managed_credential_probe_check(probe: BmcCredentialProbeResult) -> ProcessExit {
+  match probe {
+    RotatedCredentialActive => ExitSuccess
+    FactoryCredentialActive =>
+      exit_failure(reason: "managed credential probe found the factory credential active")
+    CredentialStateUnknown { reason: reason } =>
+      exit_failure(reason: concat("managed credential probe could not establish credential state: ", reason))
+  }
+}
+
+func srv3_managed_credential_probe_check() -> ProcessExit
+  uses net: Network
+{
+  managed_credential_probe_check(probe: srv3_probe_credential_phase())
+}
+
+func srv4_managed_credential_probe_check() -> ProcessExit
+  uses net: Network
+{
+  managed_credential_probe_check(probe: srv4_probe_credential_phase())
 }
 
 func srv3_converge_credential() -> ProcessExit
   uses net: Network
 {
-  bmc_converge_credential(plan: srv3_onboarding_plan, token_source: GcloudPrintToken)
+  bmc_converge_credential(
+    plan: srv3_onboarding_plan,
+    token_source: GcloudPrintToken,
+  )
 }
 
 func srv4_converge_credential() -> ProcessExit
   uses net: Network
 {
-  bmc_converge_credential(plan: srv4_onboarding_plan, token_source: GcloudPrintToken)
+  bmc_converge_credential(
+    plan: srv4_onboarding_plan,
+    token_source: GcloudPrintToken,
+  )
 }

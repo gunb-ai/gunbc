@@ -37,10 +37,10 @@ fn fsmg_secret_materialization() -> List<MarkdownBlock> {
 fn fsmg_reach_secrets() -> List<MarkdownBlock> {
   [
     h2(text: "A2 — Reach-secrets bootstrap (ADC / workload identity)"),
-    p(text: "The GCP access token is pasted by the operator every ~1h because the workflow has NO modeled way to authenticate to Secret Manager itself. This is the credential that unlocks A1, so it is the deeper enabler. It is already a typed PhaseGap in host_standup (P0:reach-secrets-network; note: full WIF SecretAccessGrant modeling is follow-up) and in fleet_ssh_access (secretAccessor bound out-of-band 2026-07-21; full WIF SecretAccessGrant modeling is follow-up)."),
+    p(text: "CURRENT INTERIM: no token is pasted into the workflow. A selected operation that actually needs Secret Manager invokes the shared access ensure: `gcloud auth print-access-token` observes the capability; success is Converged/Noop; an absent or expired session is Absent/Apply(HumanGcloudLogin), after which the operator re-drives the same convergent operation. No Secret Manager demand means no auth check and no human pause. This closes the raw hourly-token handoff but not A2's terminal state: the dashboard/orchestrator still lacks a modeled keyless OAuth/workload identity, so a human may have to realize that upsert. This is the deeper enabler for A1 and remains a typed PhaseGap in host_standup (P0:reach-secrets-network; full WIF SecretAccessGrant modeling is follow-up) and in fleet_ssh_access."),
     h3(text: "Acceptance"),
     ol(items: [
-      li(text: "A modeled SecretAccessGrant / ADC identity the workflow assumes on the host it runs from (the dashboard/orchestrator), so reaching Secret Manager needs no operator-pasted token."),
+      li(text: "A modeled SecretAccessGrant / ADC or workload identity on the host that runs the workflow (the dashboard/orchestrator), so the access ensure converges without a human login upsert."),
       li(text: "The grant is least-privilege and per-secret (mirrors the fleet-automation SA secretAccessor binding already done by hand), modeled as the accessor of each SecretRef."),
       li(text: "RED: a workflow step that reads a SecretRef the running identity is not granted reds at plan time, not at a runtime 403."),
     ]),
@@ -170,7 +170,7 @@ fn fsmg_priority() -> List<MarkdownBlock> {
       li(text: "B2 (runner user) + B3 (fresh-host prereqs) are small and make a fresh host provisionable end-to-end."),
       li(text: "A2 (reach-secrets ADC) is the deeper enabler of A1 but a bigger project; B4 (install actuator) is the most involved and can follow."),
     ]),
-    p(text: "Test for done, per item: subsume srv5 with ZERO hand-run shell and zero operator-pasted token past the initial ADC — every step above driven and read-back-verified through the model."),
+    p(text: "Test for done, per item: subsume srv5 with ZERO hand-run shell, zero pasted token, and no human login upsert — every step above driven and read-back-verified through the model."),
   ]
 }
 

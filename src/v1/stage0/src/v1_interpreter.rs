@@ -30,11 +30,11 @@ use crate::v1_std_core::{
     foreach_variable_at, if_condition, if_else_branch, if_then_branch, index_base, index_expr,
     is_file_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
     let_binding_name_at, let_body, let_value, match_arm_nodes, match_scrutinee, method_arg_nodes,
-    method_receiver, param_node_default_value, param_node_name_at, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_stdin, unaryop_operand,
-    CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
-    FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan,
-    StringPart, UnaryOpKind, VarBindingKind,
+    method_receiver, param_node_default_value, param_node_name_at, param_node_type_expr,
+    record_lit_type_name_at, return_value, slice_base, slice_end, slice_start, transport_stdin,
+    unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle,
+    FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
+    SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -5487,7 +5487,7 @@ fn dispatch_service_wet(
     }
 
     if is_shell_transport(transport.clone()) {
-        let result = dispatch_shell(transport, param_env, ctx, intent, expected)?;
+        let result = dispatch_shell(transport, op_node, param_env, ctx, intent, expected)?;
         return map_shell_outputs(&result, op_node, ctx);
     }
 
@@ -6428,6 +6428,46 @@ fn shell_argv_collapsed(argv: &[String]) -> String {
         .join(" ")
 }
 
+const SHELL_SECRET_REDACTION: &str = "<redacted-secret>";
+
+fn shell_secret_param_values(
+    op_node: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> Vec<String> {
+    op_node
+        .params
+        .iter()
+        .filter_map(|param| {
+            let type_name = authored_name_at(ctx.si(), param_node_type_expr(param.clone()));
+            if type_name != "Secret" && type_name != "SecretValue" {
+                return None;
+            }
+            let name = param_node_name_at(param.clone(), ctx.si());
+            param_env
+                .lookup(ctx.sym(&name))
+                .and_then(|value| value_as_host_string(&value))
+                .filter(|value| !value.is_empty())
+        })
+        .collect()
+}
+
+fn redact_shell_trace_text(text: &str, secrets: &[String]) -> String {
+    secrets.iter().fold(text.to_string(), |redacted, secret| {
+        if secret.is_empty() {
+            redacted
+        } else {
+            redacted.replace(secret, SHELL_SECRET_REDACTION)
+        }
+    })
+}
+
+fn redact_shell_trace_argv(argv: &[String], secrets: &[String]) -> Vec<String> {
+    argv.iter()
+        .map(|arg| redact_shell_trace_text(arg, secrets))
+        .collect()
+}
+
 fn shell_obs_emoji() -> bool {
     std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
 }
@@ -6498,12 +6538,16 @@ fn render_shell_completion_trace(
     stderr: &[u8],
     wall: std::time::Duration,
     argv: &[String],
+    secrets: &[String],
     intent: &str,
 ) {
     let disposition = effect_stream_disposition(expected, exit_code);
     let emoji = shell_obs_emoji();
     let elapsed_ms = wall.as_millis() as u64;
-    let collapsed = shell_argv_collapsed(argv);
+    let trace_argv = redact_shell_trace_argv(argv, secrets);
+    let collapsed = shell_argv_collapsed(&trace_argv);
+    let stderr_text = String::from_utf8_lossy(stderr);
+    let trace_stderr = redact_shell_trace_text(&stderr_text, secrets);
 
     if disposition == StreamDisposition::SurfaceContent {
         group_end();
@@ -6515,7 +6559,7 @@ fn render_shell_completion_trace(
         let line =
             render_shell_effect_failed_line_mirror(intent, &collapsed, code, elapsed_ms, emoji);
         eprintln!("{line}");
-        if let Some(block) = shell_completion_stderr_content(stderr) {
+        if let Some(block) = shell_completion_stderr_content(trace_stderr.as_bytes()) {
             eprintln!("{block}");
         }
         return;
@@ -6707,6 +6751,7 @@ fn wait_child_honoring_wall_deadline(
 
 fn dispatch_shell(
     transport: &Rc<Node>,
+    op_node: &Rc<Node>,
     param_env: &Rc<Env>,
     ctx: &InterpContext,
     intent: &str,
@@ -6722,6 +6767,7 @@ fn dispatch_shell(
         let val = eval_expr(node, param_env, ctx)?;
         push_shell_argv_tokens(&mut argv, val)?;
     }
+    let trace_secrets = shell_secret_param_values(op_node, param_env, ctx);
 
     if argv.is_empty() {
         return Err(InterpError::TypeError {
@@ -6788,6 +6834,7 @@ fn dispatch_shell(
             &output.stderr,
             wall_start.elapsed(),
             &argv,
+            &trace_secrets,
             intent,
         );
         output
@@ -6811,6 +6858,7 @@ fn dispatch_shell(
             &output.stderr,
             wall_start.elapsed(),
             &argv,
+            &trace_secrets,
             intent,
         );
         output
@@ -10945,6 +10993,8 @@ mod dispatch_rest_decision_tests {
 mod shell_completion_trace_tests {
     use super::hermetic_checkout_read_disposition_under;
     use super::neutralize_workflow_commands;
+    use super::redact_shell_trace_argv;
+    use super::redact_shell_trace_text;
     use super::render_shell_effect_begin_line_mirror;
     use super::render_shell_effect_done_line_mirror;
     use super::render_shell_effect_failed_line_mirror;
@@ -10953,7 +11003,7 @@ mod shell_completion_trace_tests {
     use super::shell_failure_surfaces;
     use super::{
         effect_stream_disposition, ExpectedOutcome, StreamDisposition,
-        EFFECT_STREAM_POLICY_FALLBACK, SUBJECT_LINE_GUARD_FALLBACK,
+        EFFECT_STREAM_POLICY_FALLBACK, SHELL_SECRET_REDACTION, SUBJECT_LINE_GUARD_FALLBACK,
     };
 
     /// Convenience for the tests below: the disposition a failing effect gets when
@@ -10999,6 +11049,33 @@ mod shell_completion_trace_tests {
             shell_argv_collapsed(&av(&["sh", "-c", "echo  hi\nthere"])),
             "sh -c echo hi there"
         );
+    }
+
+    #[test]
+    fn shell_trace_redacts_secret_values_inside_argv_and_stderr() {
+        let secret = "test-only-secret-value".to_string();
+        let secrets = vec![secret.clone()];
+        let argv = vec![
+            "curl".to_string(),
+            format!("root:{secret}"),
+            "https://bmc.example/redfish/v1/Systems/Self".to_string(),
+        ];
+        let redacted_argv = redact_shell_trace_argv(&argv, &secrets);
+        assert_eq!(redacted_argv[1], format!("root:{SHELL_SECRET_REDACTION}"));
+        assert!(
+            redacted_argv.iter().all(|arg| !arg.contains(&secret)),
+            "trace argv must not retain a Secret-typed input"
+        );
+
+        let redacted_stderr = redact_shell_trace_text(
+            &format!("authentication failed for root:{secret}"),
+            &secrets,
+        );
+        assert_eq!(
+            redacted_stderr,
+            format!("authentication failed for root:{SHELL_SECRET_REDACTION}")
+        );
+        assert!(!redacted_stderr.contains(&secret));
     }
 
     #[test]
@@ -11322,11 +11399,14 @@ mod argv_arg_limit_test {
 
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
-    use crate::v1_std_core::{make_span, make_text_part_node, shell_transport_node, Node};
+    use crate::v1_std_core::{
+        leaf_node_with_span, make_param_node, make_span, make_text_part_node, shell_transport_node,
+        Node,
+    };
 
     use super::{
-        argv_arg_limit_refusal, dispatch_shell, Env, ExecutionMode, ExpectedOutcome, InterpContext,
-        InterpError, HOST_ARG_MAX_STRLEN_BYTES,
+        argv_arg_limit_refusal, dispatch_shell, shell_secret_param_values, Env, ExecutionMode,
+        ExpectedOutcome, InterpContext, InterpError, Value, HOST_ARG_MAX_STRLEN_BYTES,
     };
 
     fn argv_limit_test_context() -> InterpContext {
@@ -11352,6 +11432,33 @@ mod argv_arg_limit_test {
             None,
             span,
         )
+    }
+
+    #[test]
+    fn secret_typed_operation_input_is_selected_for_trace_redaction() {
+        let ctx = argv_limit_test_context();
+        let span = make_span(0, 0);
+        let secret_param = make_param_node(
+            "password".to_string(),
+            leaf_node_with_span("Secret".to_string(), span.clone()),
+            None,
+            span.clone(),
+            span,
+        );
+        let transport = shell_check_style_transport("true");
+        let mut operation = (*transport).clone();
+        operation.params = Rc::new(im_vec![secret_param]);
+        let operation = Rc::new(operation);
+        let env = Env::with_binding(
+            &Env::empty(),
+            ctx.sym("password"),
+            Value::Str("test-only-secret-value".to_string()),
+        );
+
+        assert_eq!(
+            shell_secret_param_values(&operation, &env, &ctx),
+            vec!["test-only-secret-value".to_string()]
+        );
     }
 
     // Pin the Rust seed mirror to the single authority modeled in
@@ -11418,6 +11525,7 @@ mod argv_arg_limit_test {
         let env = Env::empty();
         match dispatch_shell(
             &transport,
+            &transport,
             &env,
             &ctx,
             "shell.Exec.Check",
@@ -11447,6 +11555,7 @@ mod argv_arg_limit_test {
         let transport = shell_check_style_transport("true");
         let env = Env::empty();
         match dispatch_shell(
+            &transport,
             &transport,
             &env,
             &ctx,

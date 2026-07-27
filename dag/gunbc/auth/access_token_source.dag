@@ -1,7 +1,15 @@
 module gunbc.auth.access_token_source
 
-import std.types { Secret }
+import std.types { Secret, NonEmptyStr, Bool, String }
 import std.resources { Network }
+import std.upsert_decision {
+  Absent,
+  Apply,
+  Converged,
+  Noop,
+  Refuse,
+  UpsertClassification,
+}
 import extdeps.shell
 import extdeps.cloud.gcp.gcp
 
@@ -9,11 +17,82 @@ type AccessTokenSource
   = GcloudPrintToken
   | OperatorSuppliedToken { token: Secret }
 
-func resolve_access_token(source: AccessTokenSource) -> Secret
+type AccessEnsurePlan
+  = HumanGcloudLogin {
+      authenticate_command: NonEmptyStr
+      retry_instruction: NonEmptyStr
+    }
+
+type AccessTokenResolution
+  = AccessTokenReady { token: Secret }
+  | AccessTokenUpsertRequired { plan: AccessEnsurePlan }
+  | AccessTokenEnsureRefused { reason: NonEmptyStr }
+
+data gcloud_human_authenticate_command: NonEmptyStr = "gcloud auth login"
+
+data gcloud_human_auth_retry_instruction: NonEmptyStr = "complete gcloud authentication with an account authorized for the fleet secrets project, then re-run the same command"
+
+data gcloud_human_auth_pause_note: String = "Human gcloud authentication is the current REALIZER of an access ENSURE upsert, never a fleet phase or unconditional preflight. A selected operation first has to require a Secret Manager read/write; that effect requires an access token; only then does GcloudPrintToken OBSERVE the access capability. A successful print classifies Converged/Noop and continues without exposing the token. A missing or expired session classifies Absent/Apply(HumanGcloudLogin), and re-driving after the upsert resumes the same operation. A path that never demands GCP access never evaluates this ensure and never asks the human to authenticate. OperatorSuppliedToken remains an explicit compatibility handler, but srv3/srv4 entrypoints default to gcloud rather than requiring a pasted token. A future workload-identity/OAuth handler can realize the same ensure without changing BMC convergence."
+
+fn gcloud_access_ensure_classification(
+  success: Bool,
+) -> UpsertClassification<AccessEnsurePlan> {
+  if success {
+    UpsertClassification {
+      verdict: Converged,
+      decision: Noop,
+    }
+  } else {
+    UpsertClassification {
+      verdict: Absent,
+      decision: Apply {
+        plan: HumanGcloudLogin {
+          authenticate_command: gcloud_human_authenticate_command,
+          retry_instruction: gcloud_human_auth_retry_instruction,
+        },
+      },
+    }
+  }
+}
+
+fn gcloud_access_token_resolution(success: Bool, token: Secret) -> AccessTokenResolution {
+  match gcloud_access_ensure_classification(success: success) {
+    UpsertClassification { verdict: _, decision: Noop } =>
+      AccessTokenReady { token: token }
+    UpsertClassification { verdict: _, decision: Apply { plan: plan } } =>
+      AccessTokenUpsertRequired { plan: plan }
+    UpsertClassification { verdict: _, decision: Refuse { reason: reason } } =>
+      AccessTokenEnsureRefused { reason: reason }
+  }
+}
+
+fn access_token_upsert_required_reason(plan: AccessEnsurePlan) -> String {
+  match plan {
+    HumanGcloudLogin {
+      authenticate_command: authenticate_command,
+      retry_instruction: retry_instruction,
+    } =>
+      concat(
+        "access ensure requires an upsert by the human gcloud handler; run `",
+        concat(
+          authenticate_command as String,
+          concat("`, then ", retry_instruction as String),
+        ),
+      )
+  }
+}
+
+func ensure_access_token(source: AccessTokenSource) -> AccessTokenResolution
   uses net: Network
 {
   match source {
-    GcloudPrintToken => shell.GCloud.AuthPrintAccessToken().access_token
-    OperatorSuppliedToken { token: t } => t
+    GcloudPrintToken => {
+      let printed = shell.GCloud.AuthPrintAccessToken()
+      gcloud_access_token_resolution(
+        success: printed.success,
+        token: printed.access_token,
+      )
+    }
+    OperatorSuppliedToken { token: t } => AccessTokenReady { token: t }
   }
 }
