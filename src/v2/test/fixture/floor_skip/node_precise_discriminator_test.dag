@@ -51,7 +51,7 @@ data floor_disc_helper_conj: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-test fn floor_disc_helper_fn() -> Bool {
+fn floor_disc_helper_fn() -> Bool {
   floor_disc_shared_helper()
 }
 
@@ -80,10 +80,11 @@ data floor_disc_claim_transitive: TestClaim = EqualsClaim {
 }
 
 test fn floor_disc_witness_a_only_holds() -> Bool {
-  floor_claim_touches_rerun_frontier(
-    claim: floor_disc_claim_on_a,
-    frontier: [floor_disc_node_a]
-  )
+  floor_disc_helper_fn()
+    && floor_claim_touches_rerun_frontier(
+      claim: floor_disc_claim_on_a,
+      frontier: [floor_disc_node_a]
+    )
     && !floor_claim_touches_rerun_frontier(
       claim: floor_disc_claim_on_a,
       frontier: [floor_disc_node_b]
