@@ -9095,18 +9095,12 @@ type TargetRepresentation {
   apply: TargetGenericApply
 }
 
-data target_generic_apply_field_surface: Symbol = ^target_generic_apply_field_surface
-data target_generic_apply_field_open: Symbol = ^target_generic_apply_field_open
-data target_generic_apply_field_separator: Symbol = ^target_generic_apply_field_separator
-data target_generic_apply_field_field_label_separator: Symbol = ^target_generic_apply_field_field_label_separator
-data target_generic_apply_field_field_label_separator_present: Symbol = ^target_generic_apply_field_field_label_separator_present
-data target_generic_apply_field_field_label_separator_absent: Symbol = ^target_generic_apply_field_field_label_separator_absent
-data target_generic_apply_field_close: Symbol = ^target_generic_apply_field_close
 data target_representation_field_kind: Symbol = ^target_representation_field_kind
 data target_representation_kind_btree_set: Symbol = ^target_representation_kind_btree_set
 data target_representation_kind_hash_set: Symbol = ^target_representation_kind_hash_set
 data target_representation_kind_vec: Symbol = ^target_representation_kind_vec
 data target_representation_field_apply: Symbol = ^target_representation_field_apply
+data target_collection_choice_field_supplemental_generic_bound_contracts: Symbol = ^target_collection_choice_field_supplemental_generic_bound_contracts
 
 type RequiredTraitWitness
   = TargetCollectionWitnessOrd { type_param: Symbol }
@@ -9133,7 +9127,6 @@ type TargetCollectionRealization {
 }
 
 type TargetDeriveSupplementalGenericBoundContract {
-  source_carrier: Node
   derive_trait: ReprGroundingDeriveTrait
   requirements: List<TargetDeriveSupplementalGenericBoundRequirement>
 }
@@ -9173,21 +9166,16 @@ type TargetDeriveSupplementalGenericBoundContractLookup
 fn target_derive_supplemental_generic_bound_contract_lookup_step(
   acc: TargetDeriveSupplementalGenericBoundContractLookup,
   row: TargetDeriveSupplementalGenericBoundContract,
-  source_carrier: Node,
   derive_trait: ReprGroundingDeriveTrait
 ) -> TargetDeriveSupplementalGenericBoundContractLookup {
-  if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
-    if row.derive_trait == derive_trait {
-      match acc {
-        TargetDeriveSupplementalGenericBoundContractMissing =>
-          TargetDeriveSupplementalGenericBoundContractUnique { row: row }
-        TargetDeriveSupplementalGenericBoundContractUnique { row: _ } =>
-          TargetDeriveSupplementalGenericBoundContractAmbiguous
-        TargetDeriveSupplementalGenericBoundContractAmbiguous =>
-          TargetDeriveSupplementalGenericBoundContractAmbiguous
-      }
-    } else {
-      acc
+  if row.derive_trait == derive_trait {
+    match acc {
+      TargetDeriveSupplementalGenericBoundContractMissing =>
+        TargetDeriveSupplementalGenericBoundContractUnique { row: row }
+      TargetDeriveSupplementalGenericBoundContractUnique { row: _ } =>
+        TargetDeriveSupplementalGenericBoundContractAmbiguous
+      TargetDeriveSupplementalGenericBoundContractAmbiguous =>
+        TargetDeriveSupplementalGenericBoundContractAmbiguous
     }
   } else {
     acc
@@ -9206,7 +9194,6 @@ fn target_derive_supplemental_generic_bound_contract_lookup_in_choice(
       target_derive_supplemental_generic_bound_contract_lookup_step(
         acc: acc,
         row: row,
-        source_carrier: source_carrier,
         derive_trait: derive_trait
       )
     }
@@ -9363,6 +9350,26 @@ fn target_collection_repr_from_node(node: Node) -> Outcome<TargetRepresentation>
       )
     }
   )
+}
+
+fn target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+  row: TargetCollectionRealization,
+  elem: Node,
+  derive_trait: ReprGroundingDeriveTrait
+) -> Outcome<TargetDeriveSupplementalGenericBoundContract> {
+  match target_collection_select_choice(
+    primary: row.primary,
+    alternatives: row.alternatives,
+    elem: elem
+  ) {
+    Present { value: choice } =>
+      target_derive_supplemental_generic_bound_contract_lookup_in_choice(
+        choice: choice,
+        source_carrier: row.source_carrier,
+        derive_trait: derive_trait
+      )
+    Absent => outcome_rejected(row.fallback_diagnostic)
+  }
 }
 
 fn target_collection_witness_from_node(node: Node) -> Outcome<RequiredTraitWitness> {

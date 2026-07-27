@@ -1353,7 +1353,8 @@ fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentatio
                   outcome_accepted(
                     TargetRepresentationChoice {
                       form: form,
-                      constraints: constraints
+                      constraints: constraints,
+                      supplemental_generic_bound_contracts: Empty
                     }
                   )
                 }

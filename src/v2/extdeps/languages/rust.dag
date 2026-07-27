@@ -1549,7 +1549,8 @@ fn rust_set_collection_primary_choice() -> TargetRepresentationChoice {
     },
     constraints: [
       TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t }
-    ]
+    ],
+    supplemental_generic_bound_contracts: Empty
   }
 }
 
@@ -1562,7 +1563,8 @@ fn rust_set_collection_hash_choice() -> TargetRepresentationChoice {
     constraints: [
       TargetCollectionWitnessHash { type_param: ^target_collection_type_param_t },
       TargetCollectionWitnessEq { type_param: ^target_collection_type_param_t }
-    ]
+    ],
+    supplemental_generic_bound_contracts: Empty
   }
 }
 
@@ -1579,7 +1581,8 @@ fn rust_free_monoid_collection_primary_choice() -> TargetRepresentationChoice {
       kind: TargetCollectionReprVec,
       apply: rust_free_monoid_collection_apply_vec()
     },
-    constraints: []
+    constraints: [],
+    supplemental_generic_bound_contracts: Empty
   }
 }
 
