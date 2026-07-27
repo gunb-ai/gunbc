@@ -37,26 +37,26 @@ pub struct ContainmentPath<N: Clone> {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct BindingOccurrence<N> {
+pub struct BindingOccurrence<N: Clone> {
     pub containment: Rc<ContainmentPath<N>>,
     pub _phantom: std::marker::PhantomData<N>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct BindingCandidate<N> {
+pub struct BindingCandidate<N: Clone> {
     pub containment: Rc<ContainmentPath<N>>,
     pub _phantom: std::marker::PhantomData<N>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct OccurrenceBinding<N> {
+pub struct OccurrenceBinding<N: Clone> {
     pub occurrence: Rc<BindingOccurrence<N>>,
     pub candidate: Rc<BindingCandidate<N>>,
     pub _phantom: std::marker::PhantomData<N>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct AmbiguousBindingCandidates<N> {
+pub struct AmbiguousBindingCandidates<N: Clone> {
     pub first: Rc<BindingCandidate<N>>,
     pub second: Rc<BindingCandidate<N>>,
     pub rest: Rc<Vec<Rc<BindingCandidate<N>>>>,
@@ -65,7 +65,7 @@ pub struct AmbiguousBindingCandidates<N> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum OccurrenceBindingResult<N> {
+pub enum OccurrenceBindingResult<N: Clone> {
     OccurrenceBound {
         binding: Rc<OccurrenceBinding<N>>,
     },
@@ -80,7 +80,7 @@ pub enum OccurrenceBindingResult<N> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum OccurrenceBindingFoldState<N> {
+pub enum OccurrenceBindingFoldState<N: Clone> {
     OccurrenceBindingFoldZero,
     OccurrenceBindingFoldOne {
         first: Rc<BindingCandidate<N>>,
@@ -91,7 +91,7 @@ pub enum OccurrenceBindingFoldState<N> {
         rest_reversed: Rc<Vec<Rc<BindingCandidate<N>>>>,
     },
 }
-impl<N> OccurrenceBindingFoldState<N> {
+impl<N: Clone> OccurrenceBindingFoldState<N> {
     pub fn first(&self) -> Rc<BindingCandidate<N>> {
         match self {
             OccurrenceBindingFoldState::OccurrenceBindingFoldZero => {
