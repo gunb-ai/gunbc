@@ -6,6 +6,7 @@ import std.symbols { Ascii }
 import std.render { RenderCapability, Overwrite, Append, Clear }
 import std.perturbation { BackwardDiffInDiffOut, perturbation_consistent }
 import extdeps.render.ansi {
+  ansi_c0_controls,
   ansi_escape,
   ansi_carriage_return,
   ansi_line_feed,
@@ -50,6 +51,48 @@ fn rendered_control_refuses(rendered: String) -> Bool {
     TerminalWriteProjected { bytes: _, next: _ } => false
     TerminalWriteRefused { cause: c } =>
       c == "rendered text cannot contain terminal cursor-control bytes"
+  }
+}
+
+type TerminalControlScan {
+  next_index: Int
+  first_failure: Int
+  carriage_return_refuses: Bool
+  line_feed_refuses: Bool
+  escape_refuses: Bool
+}
+
+fn terminal_control_scan() -> TerminalControlScan {
+  let roster_scan = fold(
+    ansi_c0_controls,
+    init: TerminalControlScan {
+      next_index: 0,
+      first_failure: -1,
+      carriage_return_refuses: true,
+      line_feed_refuses: true,
+      escape_refuses: true
+    },
+    f: (acc, control) => {
+      let failure = if acc.first_failure >= 0 || rendered_control_refuses(rendered: concat("forged", control)) {
+        acc.first_failure
+      } else {
+        acc.next_index
+      }
+      TerminalControlScan {
+        next_index: acc.next_index + 1,
+        first_failure: failure,
+        carriage_return_refuses: acc.carriage_return_refuses,
+        line_feed_refuses: acc.line_feed_refuses,
+        escape_refuses: acc.escape_refuses
+      }
+    }
+  )
+  TerminalControlScan {
+    next_index: roster_scan.next_index,
+    first_failure: roster_scan.first_failure,
+    carriage_return_refuses: rendered_control_refuses(rendered: concat("forged", ansi_carriage_return)),
+    line_feed_refuses: rendered_control_refuses(rendered: concat("forged", ansi_line_feed)),
+    escape_refuses: rendered_control_refuses(rendered: concat("forged", ansi_escape))
   }
 }
 
@@ -141,9 +184,12 @@ test fn w_clear_with_text_refuses() -> Bool {
 }
 
 test fn w_rendered_text_cannot_smuggle_cursor_control_bytes() -> Bool {
-  rendered_control_refuses(rendered: concat("forged", ansi_carriage_return)) &&
-  rendered_control_refuses(rendered: concat("forged", ansi_line_feed)) &&
-  rendered_control_refuses(rendered: concat("forged", ansi_escape))
+  let scan = terminal_control_scan()
+  scan.carriage_return_refuses &&
+  scan.line_feed_refuses &&
+  scan.escape_refuses &&
+  scan.next_index == 33 &&
+  scan.first_failure == -1
 }
 
 test fn w_nonaddressable_overwrite_downgrades_and_clear_noops() -> Bool {

@@ -15,17 +15,53 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data csi_esc: String = "\x1b["
 data csi_end: String = "m"
 data ansi_escape: String = "\x1b"
-data ansi_carriage_return: String = "\r"
+data ansi_carriage_return: String = "\x0d"
 data ansi_line_feed: String = "\n"
+
+data ansi_c0_controls: List<String> = [
+  "\x00",
+  "\x01",
+  "\x02",
+  "\x03",
+  "\x04",
+  "\x05",
+  "\x06",
+  "\x07",
+  "\x08",
+  "\x09",
+  "\x0a",
+  "\x0b",
+  "\x0c",
+  "\x0d",
+  "\x0e",
+  "\x0f",
+  "\x10",
+  "\x11",
+  "\x12",
+  "\x13",
+  "\x14",
+  "\x15",
+  "\x16",
+  "\x17",
+  "\x18",
+  "\x19",
+  "\x1a",
+  "\x1b",
+  "\x1c",
+  "\x1d",
+  "\x1e",
+  "\x1f",
+  "\x7f",
+]
 
 fn ansi_erase_entire_line() -> String {
   concat(csi_esc, "2K")
 }
 
 fn ansi_text_contains_terminal_control(text: String) -> Bool {
-  string_contains(s: text, pattern: ansi_escape) ||
-  string_contains(s: text, pattern: ansi_carriage_return) ||
-  string_contains(s: text, pattern: ansi_line_feed)
+  fold(ansi_c0_controls, init: false, f: (found, control) =>
+    found || string_contains(s: text, pattern: control)
+  )
 }
 
 type PaletteIndex = Int
