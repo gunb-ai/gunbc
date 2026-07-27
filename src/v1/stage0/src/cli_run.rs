@@ -1613,6 +1613,27 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
     }
 
     #[test]
+    fn hand_import_gate_passes_integration_vs_origin_main() {
+        let result = super::hand_import_gate_passes("origin/main");
+        if !result {
+            let output = std::process::Command::new("git")
+                .args(["diff", "--name-only", "origin/main", "HEAD", "--", "dag"])
+                .output()
+                .expect("git diff");
+            for path in String::from_utf8_lossy(&output.stdout).lines() {
+                let path = path.trim();
+                if path.is_empty() {
+                    continue;
+                }
+                if super::hand_import_file_has_disallowed_additions(path, "origin/main") {
+                    eprintln!("disallowed additions: {}", path);
+                }
+            }
+        }
+        assert!(result);
+    }
+
+    #[test]
     fn hand_import_same_file_move_exempts_cross_module_symbol_shuffle() {
         let base_imports = hand_import_parse_imports(
             r#"
