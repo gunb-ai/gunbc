@@ -111,7 +111,8 @@ fn occurrence_binding_from_candidates<N>(
           first: first,
           second: second,
           rest: reverse(rest_reversed),
-      },
+        },
+      }
   }
 }
 
@@ -142,5 +143,4 @@ fn containment_path_parent_from_rest<N>(
 
 fn containment_path_parent<N>(path: ContainmentPath<N>) -> Optional<ContainmentPath<N>> {
   containment_path_parent_from_rest(prefix_reversed: Empty, rest: path.ancestors)
-}
 }
