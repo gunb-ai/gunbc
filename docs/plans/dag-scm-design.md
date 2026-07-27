@@ -15,6 +15,48 @@ grounding: DESIGN open thread “SCM economics — the GitLab 10-K corpus.” Vi
 [node/subtree visibility grants](node-subtree-visibility-grants.md). Storage/surface authority:
 [module identity vs storage](module-identity-storage-binding-design.md).
 
+## 0. User contract — edit, submit, answer at most one real question
+
+The proof machinery below is an implementation contract, not product vocabulary. A developer
+should not need to understand candidate closure, evidence lattices, patch transport,
+linearizability, or even three-way merge. The ordinary loop is:
+
+1. start from the named accepted target;
+2. edit through a supported worktree/editor surface;
+3. submit the change; and
+4. receive either **Landed** or one localized, plain-language question about a genuinely normative
+   choice.
+
+Everything mechanical stays behind that surface: capture, rebasing/transport, target refresh,
+evidence collection, validation reuse, stale-parent retry, atomic advance, and projection repair.
+An epistemic deficit is not dumped onto the user as “candidate closure failed.” The system first
+tries the declared mechanical observations and bounded proof procedures. If it still cannot prove
+safety, it makes no change and reports the smallest useful next action in ordinary language, with
+the formal receipt available under an explicit inspect/debug view.
+
+Illustrative presentation:
+
+```text
+Landed: update both arguments to foo(c, d).
+
+or
+
+One choice is still yours:
+When foo was renamed to bar, should this new call follow that rename,
+or should a separate foo remain?
+```
+
+The compatibility surface may look like an ordinary Git worktree and accept ordinary commits or
+PRs, but the streamlined path does not require users to merge, rebase, choose a merge strategy, or
+understand distributed-ref topology. A submit operation imports the pending Git delta/proposal,
+reconciles it against the current accepted target, and emits an ordinary one-parent/squash commit
+when it lands. Expert Git plumbing remains available for compatibility; it is not the conceptual
+front door.
+
+The first scenario design therefore includes both the internal layered receipt and this minimal
+presentation projection. No internal state may disappear, but no internal terminology leaks into
+the default UI merely because it exists.
+
 ## 1. Product objective — minimize judgment without pricing safety
 
 The product is not “Git with smaller conflict markers.” It is:
@@ -233,9 +275,10 @@ Git commits and trees are a third thing: compatibility projections of those fact
 
 This is not “last writer wins with a nicer log.” Before a stale-parent proposal can advance current
 state, the system re-evaluates its transformation against current modeled state. Arrival order is
-not intent. If two compatible proposals commute, validation may run in parallel and either
-serialization must yield the same declared-equivalent result. If order changes meaning and no
-policy declares an order, the system asks rather than letting queue timing choose.
+not intent. If two compatible proposals admit witnessed transports that form a commuting square,
+validation may run in parallel and either serialization must yield the same declared-equivalent
+result. If order changes meaning and no policy declares an order, the system asks rather than
+letting queue timing choose.
 
 Native transactions therefore do not require three endpoint snapshots as their primitive. The
 authored parent remains necessary causal evidence; the operation is replayed and verified on the
@@ -530,7 +573,7 @@ that:
 - effects and resource claims remain admissible; and
 - every required behavioral claim holds within its declared bound,
 
-then P and Q commute and the sole grounded result is:
+then witnessed transports can form a commuting square and the sole grounded semantic result is:
 
 ```dag
 foo(c, d)
@@ -552,8 +595,8 @@ different line or file. Git can merge this cleanly while leaving a broken refere
 
 With binding provenance, the native possibilities are explicit:
 
-- Q targeted the same declaration and the rename transports the reference → `Applied`, emitting
-  `bar()`;
+- Q targeted the same declaration and the rename transports the reference → `ClosedOne`, and after
+  authorization plus exact-parent commit, `Applied`, emitting `bar()`;
 - Q explicitly requires a distinct/public name `foo` to remain → `Contradictory`; or
 - endpoint import cannot establish which declaration Q meant → `Ambiguous` or `Unknown`.
 
@@ -575,8 +618,9 @@ modeled policy defines placement, the result is `Ambiguous`, not a deterministic
 ### 6.5 Surface-only change
 
 A formatter reorders declarations, a module moves between files, or namespace-derived imports
-disappear while the graph stays identical. The semantic transformation is a no-op; storage binding
-or projection provenance changes separately. No semantic conflict exists.
+disappear while the graph stays identical **under the declared language model and equivalence
+witness**. The semantic transformation is a no-op only under that observation model; storage
+binding or projection provenance changes separately.
 
 ## 7. The safety quadrants and the real bar
 
@@ -590,8 +634,8 @@ and bounds—not unknowable private thoughts:
 
 Daglang's opportunity is not merely moving cases from the right column to the left. It is:
 
-- prove more compatible cases and return `Applied`;
-- prove more incompatible cases and return a small `Contradictory` witness;
+- prove more compatible cases as `ClosedOne`, admit them, and return `Applied` only after commit;
+- prove more incompatible cases and return a bounded subset-minimal `Contradictory` witness;
 - expose genuinely normative choices as `Ambiguous`; and
 - keep incomplete modeling visible as `Unknown`.
 
@@ -603,22 +647,30 @@ The strongest honest “true final intent” guarantee is:
 No SCM can guarantee an unexpressed mental preference. Claiming that would convert missing
 information into a silent decision.
 
-### Evidence ladder
+### Evidence profile — a product, not a ladder
 
-Evidence composes from weaker to stronger scopes:
+The evidence dimensions are orthogonal. A fresh independent behavioral probe with lossy operation
+recovery is neither globally above nor below an exact structural parse with no behavioral
+evidence. An admission policy sets minimum requirements **per axis**:
 
-1. **capture fidelity:** exact authored transformation, lossless structural recovery, ambiguous
-   recovery, or unknown;
-2. **structural preservation:** well-formed graph; every captured edit represented once; no
-   invented structural edit;
-3. **resolution and typing:** bindings, inhabitance, refinements, and namespace claims hold;
-4. **cross-unit claims:** invariants over derived groups and dependency closures hold;
-5. **effects/resources:** interference, grants, resource bounds, and temporal preconditions hold;
-6. **behavioral evidence:** required observables agree within an explicit bound; and
-7. **normative intent:** only what the author explicitly supplied—never inferred from plausibility.
+| profile axis | honest states / question |
+|---|---|
+| authored-operation recovery | native authored operation · exact endpoint delta only · structurally recovered operation · ambiguous recovery · unknown recovery |
+| capture completeness | which declared input surface and construct set were closed? |
+| structure | well formed; each captured delta represented once; no invented structural delta |
+| resolution and typing | bindings, inhabitance, refinements, and namespace claims under a named model/version |
+| cross-unit claims | which invariants hold over which affected relation and bound? |
+| effects/resources/interference | grants, frame/rely/guarantee, bounds, temporal preconditions |
+| behavior | which observables agree, under which environment and bound? |
+| provenance/authority | who or what produced the fact, and may the actor submit/approve this scope? |
+| freshness | at what provider/target generation and domain-time bound is the evidence applicable? |
+| probe independence | could collecting the evidence establish the state it claims to observe? |
+| normative input | only authenticated authored transformations, contracts, dependencies, and explicit answers |
 
-An admission surface may require a particular rung. The receipt must name the rung; lower evidence
-cannot masquerade as higher.
+`DecodeFidelity = Lossless` can establish exact endpoint decoding for its construct set. It cannot
+reconstruct an authored operation that was never retained. Likewise a passing typecheck cannot
+stand in for behavioral or authorization evidence. Each receipt carries the profile and policy
+requirements; a UI may summarize it, but no dimension masquerades as another.
 
 ### Comparison evidence, not design authority
 
@@ -650,20 +702,23 @@ The first modeling pass must try to compose these authorities:
 
 | existing carrier | contribution | limit for this lane |
 |---|---|---|
-| `gunbc.roster_registry.GroupMembership` | how membership in a group of units is known | provenance of membership, not yet the whole integration value |
+| `gunbc.roster_registry.GroupMembership` | containment/derivation/frontier provenance for an enrolled roster | not a group carrier, member relation, or closure algebra |
 | `std.change.keyed_two_way_diff` | exact keyed endpoint observation | observes change; does not infer or reconcile peer proposals |
 | `std.change.keyed_three_way_fold` | conservative base/observed/desired reconciliation | asymmetric desired-state/infrastructure shape; key overlap currently collapses to conflict |
 | `gunbc.membership_reconcile` | one generic desired-vs-observed fold with stable member identity and an un-emittable ownership-unknown arm | infrastructure convergence and an epistemic precedent, not concurrent author intent |
 | `v2.std.find_witness.CandidateSet` + `UniqueOnly` | finite closed candidate selection with no/unique/ambiguous outcomes | supplied structural candidates only; does not generate the SCM candidate space or prove behavioral completeness |
-| `v2.std.constraints.ConstraintGraph` + `solve_constraints` | existing structural “find what satisfies” authority | extend/compose after DFS; do not mint an SCM-local solver nickname |
-| `std.realization_reconcile` | apply → read-back → grounding evidence | receipt shape, not source integration semantics |
+| `v2.std.constraints.ConstraintGraph` + `solve_constraints` | existing structural “find what satisfies” scaffold | currently supplies the well-formed root as a singleton candidate and uses its structural witness as closedness; not SCM candidate-generation authority |
+| `std.realization_reconcile` | apply → read-back → grounding receipt shape | `Grounds | DoesNotGround` collapses challenge and insufficiency; not the shared evidence relation |
+| `gunbc.readback_independence` | positive self-establishing probe is insufficient while negative evidence may survive | one inference-validity rule, not a general assessment carrier |
+| `std.upsert_decision.ObservationVerdict` | preserves conflict/inaccessible/unknown world-state distinctions | desired-vs-observed specific; not a claim-indexed evidence relation |
+| `std.observation` | process-progress event authority | reserves “observation” for that domain; do not overload it |
 | `std.temporal_effect` | exact snapshots, intent hashes, idempotency, prior receipts, generations | effect-attempt vocabulary; do not rename it into generic source intent |
 | `std.computation_identity` | structural/normalized/bounded-extensional evidence plus typed unknown | identity evidence, not user-intent identity |
 | `std.perturbation` | response to changed inputs | a building block for bounded noninterference evidence |
 | `std.realization.Independence` | `Independent | Dependent | Unknown` | currently effect-shape-specific and deliberately coarse |
 | `std.pareto` + `std.realization_schedule.CostAccount` | dominance without hidden scalar weights; grounded time/space/power accounting | chooses among realizations of one semantic result by default; cannot trade cost for safety or supply missing semantic intent |
-| `gunbc.os_install_deduction` | evidence-graded deduction where timestamps remain provenance and weak observations stay weak | domain-specific precedent, not an SCM outcome or solver |
-| `v2.compiler.source_authority` + `DecodeFidelity` | ingest/emit authority and honesty boundary | only lossless fragments may recover exact proposals |
+| `gunbc.os_install_deduction` | evidence-graded deduction where timestamps remain provenance and weak observations stay weak | discriminating consumer of the shared evidence relation, not an SCM outcome or solver |
+| `v2.compiler.source_authority` + `DecodeFidelity` | ingest/emit authority and endpoint-decode honesty boundary | `Lossless | Lossy` says nothing about whether the authored operation survived |
 | affected-set and materialization lanes | dependency-scoped validation and content-keyed receipt reuse | selection/caching must not decide semantic compatibility |
 | `extdeps.git` + `extdeps.git.object_store` | cited Git operation, object, tree, commit, ref, and diff interface shapes | external compatibility authority; Git transport/policy and source integration stay separate |
 | GitLab/Atlassian/Microsoft SEC, pricing, and `gunbc.econ.scm_*` carriers | grounded distribution/serving/agentic-stress economics | price the product and store; they do not imply integration semantics |
@@ -678,29 +733,58 @@ existing finite-candidate, structural-constraint, Pareto, closure, and diagnosti
 compose. It must not land a generic `ScmSolver`, `ReconciliationConstraint`, or interaction-rule
 registry beside them merely because the SCM is the first demanding consumer.
 
+### Objective external concepts for P−1/P0 DFS
+
+These are comparison authorities, not instructions to implement eleven subsystems before P0:
+
+| concern | primary authority | immediate use |
+|---|---|---|
+| fact becomes evidence only for a claim | [OMG SACM](https://www.omg.org/spec/SACM/) | claim-indexed support/counterevidence rather than truthy fact bags |
+| who/what produced a fact | [W3C PROV-DM](https://www.w3.org/TR/prov-dm/) | entity/activity/agent provenance, derivation, responsibility |
+| support, challenge, conflict, absence | [Belnap, *A Useful Four-Valued Logic*](https://doi.org/10.1007/978-94-010-1161-7_2) | two independent support/challenge bits; preserve both and neither |
+| sound maximum answer under abstraction | [Cousot & Cousot](https://cs.nyu.edu/~pcousot/COUSOTpapers/POPL77.shtml); [Giacobazzi–Ranzato–Scozzari](https://doi.org/10.1145/333979.333989) | sound approximation and query-relative completeness |
+| proposal pre/post/frame | [Hoare](https://doi.org/10.1145/363235.363259) | requires/ensures plus the explicit frame |
+| environmental interference | [Jones](https://doi.org/10.1145/69575.69577) | relies/guarantees for concurrent composition |
+| context-sensitive concurrent operations | [Darcs patch theory](https://darcs.net/Theory/MergersDocumentation) | proposal context, transport, commuting squares |
+| safe coordination avoidance | [CRDTs](https://inria.hal.science/inria-00609399); [invariant confluence](https://arxiv.org/abs/1402.2237) | convergence is separate from application-invariant preservation |
+| two-way source/view maintenance | [lenses](https://www.cis.upenn.edu/~bcpierce/papers/lenses.pdf); [quotient lenses](https://www.cs.cornell.edu/~jnfoster/papers/quotient-lenses.pdf); [delta lenses](https://doi.org/10.5381/jot.2011.10.1.a6) | law-governed `BothWays` and declared equivalence |
+| exact-parent atomic effect | [Herlihy & Wing](https://www.cs.cmu.edu/~wing/publications/HerlihyWing90.pdf); [Git `update-ref`](https://git-scm.com/docs/git-update-ref) | linearizable commit point and first Git CAS realization |
+| safe diagnostics/remote execution | [Sabelfeld & Sands](https://doi.org/10.3233/JCS-2009-0352) | information flow, noninterference, explicit declassification |
+| locked artifacts and erasure | [NIST SP 800-38D](https://csrc.nist.gov/pubs/sp/800/38/d/final), [SP 800-38F](https://csrc.nist.gov/pubs/sp/800/38/f/final), [SP 800-88r2](https://csrc.nist.gov/pubs/sp/800/88/r2/final) | AEAD, authenticated key wrap, conditional cryptographic erase |
+| Git fidelity boundary | [Git object model](https://git-scm.com/docs/user-manual), [`gitattributes`](https://git-scm.com/docs/gitattributes), [partial clone](https://git-scm.com/docs/partial-clone) | complete import/export inventory, unavailable-object states |
+
 ## 9. Admission and CI — linear history without serial work
 
 The native fast path:
 
-1. Read target `T` at accepted state `S_n`, its admission contract, and validation receipts.
-2. Observe required current facts with explicit authority/fidelity; missing observation stays
-   missing.
-3. Author a modeled transformation directly, or capture one from a declared lossless surface.
+1. Read target `T` at accepted state `S_n`; freeze its generation, model/schema, claim set,
+   inference rules, equivalence, admission policy, and validation receipts.
+2. Observe required current facts and assess them against named claims with explicit
+   authority/provenance/fidelity/freshness/independence; missing evidence stays missing.
+3. Author a modeled transformation directly, or capture an endpoint delta/operation from a
+   declared surface at its honest recovery fidelity.
 4. Select and record the proposal set at an explicit admission frontier. An authorized actor or
    declared policy may select it; transport arrival, timestamps, and scheduler iteration may not.
-5. Derive the affected group and required claims, then fold the selected proposals into grounded
-   obligations.
-6. Derive and classify minimal admissible candidates against `S_n`.
+5. Derive the affected group and required claims, then compose proposal contracts and the
+   dependency/atomicity graph.
+6. Generate the bounded candidate closure, check the eight certificates in §4, and classify the
+   semantic result space against `S_n`.
 7. Reuse receipts whose content-addressed model/contract/dependency inputs are unchanged; validate
    only newly affected obligations.
-8. If `Applied`, atomically advance `T` only while its current state is still `S_n`; otherwise
-   restart from step 1. For any other outcome, return the smallest
-   `Contradictory`/`Ambiguous`/`Unknown` handoff.
-9. Project the new state to all declared surfaces, including Git.
+8. Apply the accepted-parent admission policy and actor/effect authority. A unique semantic result
+   can still be unauthorized, approval-required, or policy-refused.
+9. For the first P3 realization, write the proposed Git tree and ordinary one-parent commit, then
+   execute `git update-ref <target-ref> <new-oid> <old-oid>`. Git verifies the exact old object ID
+   before updating; a mismatch returns `RetryStaleParent` and restarts from step 1, never `Unknown`.
+10. Independently read back the target ref/result. Only a committed and grounded read-back returns
+    `Applied`.
+11. Project or enqueue every other declared surface. Projection is idempotent and records
+    `Projected | ProjectionPending | ProjectionFailed`; it does not replay or roll back the
+    semantic transition.
 
 Linear accepted history does not imply serial validation. Compatible proposals and their affected
 claims can evaluate in parallel; the acceptance log serializes receipts only after their
-commutativity and current-parent conditions are established.
+commuting-square and current-parent conditions are established.
 
 The frontier solves a finite coordination question without pretending to know the future. A
 proposal not yet observed cannot block progress. But if two known proposals are order-dependent,
@@ -714,6 +798,19 @@ still at this SHA.” If the target advances outside those inputs, the green rec
 grounded. If it advances inside them, the system revalidates the affected claim before acceptance.
 A blanket rerun is an `Unknown`/modeling deficit, not a silent “fail-closed” success.
 
+The Git-ref compare-and-swap is the minimal **transition realization**, not a claim that Git trees
+become the program authority. [`git update-ref`](https://git-scm.com/docs/git-update-ref) supplies
+the exact-old-object check needed for a linearizable commit point. When a later native target
+becomes authoritative and Git is asynchronous projection, an idempotent outbox binds the committed
+native transition to its Git projection and repairs `ProjectionPending`/`ProjectionFailed` without
+reapplying the semantic change.
+
+Every transition receipt binds at least target + generation, parent/result state hashes, proposal
+occurrence-set hash, admission-contract hash, model/schema + inference-rule versions, equivalence
+definition + bound, evidence set + freshness, and affected-set derivation version. The generation
+and policy/evidence hashes prevent an ABA-shaped acceptance in which the visible state hash returns
+to an old value while the authority under which it was validated has changed.
+
 ## 10. Git is a compatibility realization, not the semantic authority
 
 Compatibility is non-negotiable for adoption, but it is downstream:
@@ -722,6 +819,9 @@ Compatibility is non-negotiable for adoption, but it is downstream:
 
 - Each accepted native transition can emit an ordinary one-parent/squash Git commit and source
   tree. A team using squash-to-main sees the history shape it already expects.
+- The streamlined submit path treats a branch/PR as a proposal inbox, not a peer authority. Users
+  do not need to merge or rebase it onto the target; the admission service transports and
+  re-evaluates the proposal against the current accepted target.
 - Native proposal/evidence receipts may travel as optional metadata; a normal Git client can ignore
   them and still clone/build the projected tree.
 - Files, paths, formatting, opaque blobs, and derived artifacts follow the storage-binding and
@@ -733,13 +833,41 @@ External Git work supplies base and endpoint snapshots. Ingest recovers graph tr
 an explicit fidelity result:
 
 ```text
-ExactAuthored | StructurallyRecovered | AmbiguousRecovery | UnknownRecovery
+NativeAuthoredOperation
+| ExactEndpointDelta
+| StructurallyRecoveredOperation
+| AmbiguousOperationRecovery
+| UnknownOperationRecovery
 ```
 
-Those labels are illustrative roles pending DFS. Rename similarity, matching content, and
-three-way ancestry are evidence. They never become invented identity. A textual merge driver may
-remain as a compatibility fallback, but its clean result carries only textual evidence and cannot
-claim the native safety grade.
+Those labels are illustrative roles pending DFS. `NativeAuthoredOperation` is possible only when
+the operation or equivalent authenticated metadata survived. A lossless endpoint decode can prove
+`ExactEndpointDelta`; it cannot recover the operation that produced the endpoint. Rename
+similarity, matching content, and three-way ancestry are claim-indexed evidence. They never become
+invented identity. A textual merge driver may remain as a compatibility fallback, but its clean
+result carries only textual evidence and cannot claim the native safety profile.
+
+The current `extdeps.git.object_store` is intentionally not treated as complete: `TreeEntry` omits
+Git modes, and `StoreObject` omits tag objects even though `extdeps.git.ObjectType` has `TagObj`.
+P4's import/export DFS must cover:
+
+- tree-entry mode/type, including regular vs executable blobs, symlink blobs, subtrees, and
+  gitlinks/submodules;
+- annotated tag objects as distinct from lightweight tag refs;
+- raw path representation and invalid/non-text path handling;
+- repository object/hash format rather than assuming one OID width;
+- `.gitattributes` text conversions, encodings, clean/smudge filters, and merge/diff drivers;
+- opaque/binary content whose semantics are outside a declared ingester;
+- unavailable objects in shallow/partial clones and unfetched submodules; and
+- removal of native proposal metadata, which downgrades authored-operation evidence without
+  changing the emitted program.
+
+Git's own [object model](https://git-scm.com/docs/user-manual),
+[`gitattributes`](https://git-scm.com/docs/gitattributes), [partial-clone
+contract](https://git-scm.com/docs/partial-clone), and [hash-format
+transition](https://git-scm.com/docs/hash-function-transition) are the external boundary. Ordinary
+clone/build compatibility is not established until these fidelity axes round-trip or refuse
+honestly.
 
 The first product can therefore be a Git-compatible semantic admission tool rather than a new
 hosted object store. It proves the integration advantage while keeping clone, editor, CI, and forge
@@ -749,8 +877,9 @@ cost.
 ## 11. Visibility, locked realizations, and customer trust
 
 The [visibility-grants authority](node-subtree-visibility-grants.md) §11 owns the publication
-rungs, ciphertext/interface cut, admission/refusal rules, hole residues, placement limits, churn
-blinding, and crypto-shred semantics. This plan neither abbreviates nor redefines them.
+capability profile, ciphertext/interface cut, admission/refusal rules, hole residues, placement
+limits, residual-channel threat model, and conditional crypto-erase semantics. This plan neither
+abbreviates nor redefines them.
 
 The only integration consequences carried here are:
 
@@ -759,15 +888,25 @@ The only integration consequences carried here are:
 - the same grant interface later constrains native history, storage, projection, and remote
   execution without becoming an integration/conflict predicate.
 
-No `Applied` integration outcome can widen a publication grant, and no secrecy or publication
-claim can be inferred from structural compatibility. The concerns compose through explicit grants
-and realization bindings only.
+No proposal or successful transition can widen a publication grant merely because its program is
+structurally or behaviorally valid, and no secrecy/publication claim can be inferred from semantic
+compatibility. Grant/policy changes require separate authority and the parent-policy transition
+rule in §4. The concerns compose through explicit grants and realization bindings only.
+
+Diagnostics are themselves publication projections. A full internal proof may mention a locked
+node, counterexample, affected closure, or alternate result that an audience is not authorized to
+know exists. The default response must therefore be an audience-authorized projection—possibly a
+redaction or commitment to hidden evidence—with no error, timing, size, or alternative-count
+distinction that bypasses the visibility model. The same
+[information-flow/declassification](https://doi.org/10.3233/JCS-2009-0352) rule governs remote
+execution: metering prices an oracle; it does not prove that outputs, failures, effects, timing, or
+resource use reveal only what policy authorizes.
 
 Vertical integration can bring the product closer to real compiler/use-case failures. It must not
 turn “visibility into customer code” into an undeclared surveillance business model. Raw source
-stays governed by `Publish`/effect grants; telemetry is derived, consented, and minimal—fidelity
-bucket, outcome bucket, cost, and anonymized mechanism gap where possible. Trust is part of the
-safety product, not a growth shortcut.
+stays governed by `Publish`/effect grants; telemetry is derived, consented, and minimal—evidence
+profile, layered outcome summary, cost, and anonymized mechanism gap where possible. Trust is part
+of the safety product, not a growth shortcut.
 
 ## 12. Product thesis and falsification
 
@@ -781,10 +920,11 @@ The product advantage is therefore not “the language knows what the user meant
 > **More modeled information produces more mechanical deductions, while every missing closure,
 > fidelity, or normative fact remains visible as `Unknown` or `Ambiguous`.**
 
-The user-facing operation stays simple: reconcile proposals and observations against the accepted
-target, apply the unique safe minimal result when it is grounded, and otherwise ask the smallest
-question. The internal model can deepen for decades without turning that operation into a catalog
-of language-feature interactions.
+The user-facing operation stays the §0 loop: edit, submit, then receive **Landed** or one localized
+plain-language normative question. The system retries stale targets and seeks missing mechanical
+evidence itself. Internal `BothConflicted`, `Unclosed`, policy, transition, and projection states
+remain inspectable receipts, never default error prose. The model can deepen for decades without
+changing that public operation or growing a catalog of language-feature interactions.
 
 The initial wedge is narrow and credible:
 
@@ -801,12 +941,15 @@ therefore part of the product, not marketing afterthoughts.
 
 Track at least:
 
-- automatic `Applied` rate by evidence rung;
-- `Contradictory`, `Ambiguous`, and `Unknown` rates and causes;
+- automatic `Applied` rate by evidence profile and admission contract;
+- semantic zero/one/many/unclosed, admission, transition, and projection rates and causes
+  separately;
+- default-surface Landed/question/no-change rates, question count and time-to-answer;
 - judgment requests, human minutes, and LLM tokens per accepted proposal;
 - false-conflict rate relative to the required contract;
 - detected and escaped wrong integrations;
 - CI minutes and wall-clock delay invalidated, rerun, and reused;
+- safe partial assessments and independent proposal groups preserved when a batch cannot commit;
 - proposal queue latency under the 50-agent/10-overlap stress profile;
 - Git-import fidelity distribution and round-trip fidelity; and
 - storage operations/bytes/egress under the landed packing and provider models.
@@ -818,27 +961,41 @@ wrong results.
 ## 13. Discriminating scenario corpus
 
 Before storage or forge work, land a model-level corpus whose expected outcomes separate the
-designs:
+designs. Each scenario asserts both the layered internal receipt and the §0 plain-language
+projection:
 
-| scenario | textual/key-overlap baseline | required native outcome |
+| scenario | required internal result | default surface |
 |---|---|---|
-| `foo` arguments changed independently | textual conflict / call-key overlap | `Applied foo(c,d)` only with binding + joint-obligation evidence |
-| rename plus concurrent old-spelling call | often textually clean | transported binding, `Contradictory`, `Ambiguous`, or `Unknown`; never broken-clean |
-| disjoint policy changes violate one claim | textually clean | `Contradictory` with minimal claim counterexample |
-| two valid order-dependent transformations | deterministic queue result | `Ambiguous` with the two material alternatives |
-| duplicate proposal delivery | duplicate patch/application risk | idempotent `Applied` |
-| formatting/reorder/file move, same graph | large textual diff | semantic no-op; storage/projection change only |
-| lossy Git import | plausible inferred delta | `Unknown`/`AmbiguousRecovery`, never exact-intent claim |
-| absent required behavioral bound | structurally clean | structural evidence only; admission `Unknown` if behavior is required |
-| identical facts/proposals with timestamps and arrival order permuted | first/last arrival often becomes operational order | identical native outcome and result evidence |
-| one plausible result but relevant candidate/dependency closure unproved | clean-looking candidate | `Unknown`, never “unique because nothing else was modeled” |
-| new modeled invariant contributed through the shared claim relation | new merge-driver case | outcome changes through the same fold; no integrator branch changes |
+| `foo` arguments changed independently | `ClosedOne foo(c,d)` only with binding + joint-obligation + closure evidence; then admitted, committed, read back | `Landed: update both arguments to foo(c,d)` |
+| rename plus concurrent old-spelling call | witnessed transport, closed-zero/many, or unclosed; never broken-clean | land, or ask whether the call follows the rename or names a separate `foo` |
+| disjoint policy changes violate one claim | `ClosedZero` with a subset-minimal-within-bound claim core | plain statement that the two requirements cannot both hold; no solver vocabulary |
+| two valid order-dependent transformations | `ClosedMany` with the two material alternatives | one localized placement/order question |
+| non-idempotent append/increment delivered twice with one proposal occurrence ID | one contribution/application | `Landed`; no duplicate-work explanation required |
+| formatting/reorder/file move | semantic no-op only under the named model/equivalence; projection delta separate | `Landed` or `No program change`; never universal no-op claim |
+| login status says logged in; live request proves refresh invalid | `CredentialRecorded` supported; `ProviderReady` challenged/not supported | provider not ready; request authentication only if needed |
+| positive probe can establish the state it observes | positive evidence is neither/insufficient; negative may remain evidence | system seeks an independent check; no “evidence lattice” prose |
+| three proposals are pairwise compatible but jointly violate a cardinality/resource/security bound | `ClosedZero` with an n-way core | plain joint-requirement explanation |
+| proposal removes the policy that would reject it | `PolicyRefused` under frozen parent policy | not landed; policy change must land separately first |
+| exactly one semantic result but proposer lacks authority | `ClosedOne + Unauthorized`, never Applied | request the required approval; do not ask semantic intent |
+| contradiction would cite a locked node to an unauthorized audience | full internal proof + audience-authorized redacted/commitment-bearing projection | no hidden existence/content leak through wording, timing, or alternatives |
+| target advances after validation | `RetryStaleParent`; automatic re-evaluation | no rebase request and normally no user-visible interruption |
+| native transition commits but Git export fails | committed/read-back transition + `ProjectionFailed/Pending` outbox state | `Landed; Git sync retrying` only when the projection state matters |
+| endpoint decodes losslessly but authored operation is absent | `ExactEndpointDelta + UnknownOperationRecovery`, never native-authored evidence | system continues only if the admission contract can prove the endpoint delta sufficient |
+| lossy Git import | ambiguous/unknown recovery profile | no invented “exact intent”; ask only if a normative choice remains |
+| absent required behavioral bound | structural assessment survives; semantic space/admission remains unclosed | system seeks evidence; if unavailable, no change and a plain next action |
+| timestamps/arrival order are erased or permuted | identical semantic result and evidence assessments | identical outcome |
+| one plausible result but candidate/dependency closure unproved | `Unclosed` with the plausible candidate retained as partial information | never “landed because nothing else was modeled” |
+| authorized prior transition adds a new invariant as ordinary data | later outcome changes through the same kernel | no new merge mode or user workflow |
+| one batch has unique, contradictory, unknown, and ambiguous independent groups | all four partial assessments retained; partial commit only with declared atomicity + proven independence | one summary and at most one current user question, details on inspect |
+| ordinary Git branch is stale but proposal transport is provable | target refresh/transport/CAS happens internally | submit succeeds without asking the user to merge or rebase |
 
-Every `Applied` case needs a perturbation that makes one obligation false and turns the outcome
-red. Every refusal needs a nearby compatible control, so “always refuse” cannot satisfy the suite.
-The timestamp case must permute and erase incidental time metadata. The model-extension case must
-add its invariant as data while holding the reconciliation implementation fixed; otherwise the
-claimed general algorithm has become a disguised interaction registry.
+Every committed/Applied case needs a perturbation that breaks one obligation or certificate and
+turns the appropriate semantic/admission/transition layer red. Every refusal needs a nearby
+compatible control, so “always refuse” cannot satisfy the suite. The timestamp case permutes and
+erases incidental time metadata. The model-extension case adds its invariant as data through an
+authorized earlier transition while holding the kernel fixed. The presentation witnesses reject
+internal type/logic/proof vocabulary on the default surface and reject more than one simultaneous
+normative question.
 
 Git's default merge, the current keyed-diff adapter, and at least one structural merge baseline
 should run on the same corpus. The comparison is evidence, not the design authority.
@@ -850,42 +1007,55 @@ does not wait for a native store:
 
 1. **Visibility Stage 0 (already first):** `Publish`/`Reference` model, public/private Git roots,
    file-grain declarations, push guard, and existing-public-corpus stamp.
-2. **P0 — cost and scenario model:** carry the agent/CI stress profile, the four outcome roles,
-   target scope, candidate closedness, evidence rungs, timestamp non-authority, and the scenario
-   corpus as `.dag` facts/witnesses after concept DFS.
-   **Accept T1:** every scenario produces its named outcome; compatible/incompatible RED controls
-   prevent always-apply and always-refuse; timestamp/arrival permutations cannot change a semantic
-   verdict, while removal of required closedness evidence changes `Applied` to `Unknown`.
-3. **P1 — pure source integration fold:** one generic fold integrates directly authored
-   transformations over a small modeled program, using group-membership provenance and existing
-   constraint/witness/identity/change/evidence/Pareto carriers. Scenarios supply facts; they do not
-   add fold arms.
-   **Accept T1:** idempotence, compatible commutativity/associativity, grounding,
-   order-dependence, and no-extra-change witnesses execute; adding a new invariant through the
-   shared claim relation changes its scenario outcome without editing the fold.
-4. **P2 — lossless authoring capture:** one daglang surface recovers the same transformation as
-   direct submission.
-   **Accept T2:** edit → ingest → proposal → integrate → emit round-trips; a lossy edit refuses
-   without mutation.
-5. **P3 — target-scoped atomic admission + receipt reuse:** pending proposals re-evaluate against
-   the target's current accepted state; an explicit frontier selects known proposals; affected
-   validation receipts survive unrelated advances.
-   **Accept T2/T3:** two real concurrent proposals accept without full CI replay; a changed required
-   input or closedness/model authority invalidates the receipt and reds before acceptance; a
-   compare-and-advance race re-evaluates rather than mutating a stale target.
-6. **P4 — Git compatibility realization:** import an ordinary Git branch/PR with fidelity, export
-   accepted transitions as ordinary squash/one-parent commits.
-   **Accept T3:** unmodified Git clone/build works; native metadata removal lowers evidence but
-   never changes the emitted program; ambiguous recovery refuses.
-7. **P5 — publication ladder and remote realization:** after visibility Stage 0, land the ladder
-   and execute withheld nodes through declared interfaces/effect grants where a consumer prices it.
-8. **P6 — native store/serving:** only after the semantic path is a named consumer; use the landed
+2. **P−1 — shared claim-indexed evidence carrier, separate PR:** after DFS, model recorded facts,
+   scoped claims, support/challenge evidence links, maximum conclusions, assessments, and readiness
+   policy once for Codex provider readiness, `os_install_deduction`, and SCM.
+   **Accept T1:** login-status/live-request and self-establishing-probe scenarios preserve
+   credential-vs-provider and support/challenge/neither distinctions; the three consumers use the
+   same carrier rather than local enums.
+3. **P0 — user contract, cost, and layered scenario model:** carry the §0 edit/submit/Landed-or-one-
+   question surface, stress profile, proposal contract roles, evidence profiles, semantic
+   zero/one/many/unclosed space, admission, transition, projection, closure certificates,
+   timestamp non-authority, and scenario corpus as `.dag` facts/witnesses.
+   **Accept T1:** every scenario produces its internal receipt and plain-language projection;
+   nearby REDs prevent always-apply/refuse; removing a closure certificate changes `ClosedOne` to
+   `Unclosed`; self-amendment and unauthorized-unique scenarios refuse in the correct layer; no
+   internal logic vocabulary or multi-question dump reaches the default UI.
+4. **P1 — bounded source-integration proof kernel:** one public operation composes directly
+   authored transformations over a small decidable program fragment. Domains contribute facts,
+   claims, procedures, and checkable certificates; scenarios never add feature-pair arms.
+   **Accept T1:** occurrence-ID dedup, context validity/transport, commuting squares,
+   batch-partition invariance, grounded/frame-preserving deltas, n-way invariants, order honesty,
+   and each closure certificate execute. Adding a new invariant as data changes a later outcome
+   without editing the kernel.
+5. **P2 — law-governed authoring capture:** one daglang surface supplies a quotient-delta-lens
+   projection. Native authored operation and exact endpoint delta remain distinct.
+   **Accept T2:** unchanged-view write-back, supported edit round-trip, sequential edit coherence,
+   source-only information retention/declared canonicalization, and unsupported/ambiguous refusal
+   all execute without mutation on refusal.
+6. **P3 — target-scoped atomic admission + receipt reuse:** first realize the commit point with
+   Git `update-ref <ref> <new> <old>`; pending proposals re-evaluate against the accepted target,
+   and affected receipts survive unrelated advances.
+   **Accept T2/T3:** two concurrent proposals accept without full CI replay; changed
+   model/policy/evidence/affected inputs invalidate the receipt; a race returns
+   `RetryStaleParent` and retries without user rebase; independent read-back gates Applied; a
+   committed transition plus projection failure enters the idempotent outbox.
+7. **P4 — complete Git compatibility realization:** import an ordinary branch/PR with the §10
+   fidelity inventory; export accepted transitions as ordinary squash/one-parent commits.
+   **Accept T3:** unmodified Git clone/build works across modes/symlinks/gitlinks/tags/attributes/
+   opaque data/object formats; unavailable objects remain typed; native metadata removal lowers
+   authored-operation evidence but never changes the emitted program.
+8. **P5 — publication capability profile and remote realization:** after visibility Stage 0, land
+   the capability product and execute withheld nodes through declared interfaces/effect grants
+   where a consumer prices it, with audience-safe diagnostics and explicit declassification.
+9. **P6 — native store/serving:** only after the semantic path is a named consumer; use the landed
    object-storage, packing, reliability, and regional-compute carriers. Never one stored object per
    semantic node by default.
 
-The publication ladder may advance independently after visibility Stage 0; it is not a semantic
-integration prerequisite. No phase is complete at T0 algebra alone: each names an executing
-consumer and a discriminating red.
+The publication capability profile may advance independently after visibility Stage 0; it is not a
+semantic-integration prerequisite. P−1 is a shared substrate prerequisite for P0/P1, not an
+SCM-local prelude. No phase is complete at T0 algebra alone: each names an executing consumer and a
+discriminating red.
 
 ## 15. Non-goals
 
@@ -893,6 +1063,12 @@ consumer and a discriminating red.
 - Reducing conflict count by silently choosing a plausible result.
 - A weighted “likely intent” score, timestamp/arrival tie-break, or pairwise interaction catalog
   standing where the general reconciliation fold and an honest ambiguity belong.
+- A total evidence ladder, truthy fact bag, or last-observation Boolean collapse.
+- Treating arbitrary transformations as idempotent/commutative, or treating pairwise compatibility
+  as n-way safety.
+- Arbitrary program synthesis or unbounded proof/equivalence search in the first fragment.
+- Letting a proposal amend the policy, claim set, inference rules, or equivalence used to admit
+  itself.
 - Claiming the modeled program is globally complete; every automatic result is scoped to explicit
   closedness, fidelity, equivalence, and proof bounds.
 - Making node identity, module identity, a file path, or a universal durable entity ID the
@@ -902,15 +1078,19 @@ consumer and a discriminating red.
 - General arbitrary-language semantic merge outside a declared `DecodeFidelity` boundary.
 - Unbounded behavioral equivalence; every such claim names a bound.
 - Centralized access to customer source as an assumed business advantage.
+- Requiring ordinary users to understand proof terminology, merge strategies, rebase, or
+  distributed-ref topology; those remain inspect/debug and compatibility concerns.
 
 ## Dissolution trigger (DESIGN §6)
 
 This document is the one design seed for the SCM lane, not a second status ledger. Its sections
 dissolve as follows:
 
-- outcome/evidence/group roles → the DFS-selected `std/` and plan carriers plus executing witnesses;
+- claim/evidence roles → the P−1 shared carrier and three executing consumers;
+- semantic/admission/transition/projection/group roles → the DFS-selected `std/` and plan carriers
+  plus executing witnesses;
 - capture/storage content → `v2.compiler.source_authority` and the module-storage design;
-- visibility/ladder content → the visibility-grants authority;
+- visibility/capability-profile content → the visibility-grants authority;
 - admission/receipt content → the temporal-effect, affected-set, realization, and roadmap rows;
 - Git shapes → `extdeps.git` interface operations plus peripheral handlers; and
 - economics → the already-landed cited extdeps/econ carriers.
