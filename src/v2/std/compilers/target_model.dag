@@ -9095,51 +9095,103 @@ type TargetRepresentation {
   apply: TargetGenericApply
 }
 
-fn target_generic_apply_equal(left: TargetGenericApply, right: TargetGenericApply) -> Bool {
-  match left.field_label_separator {
-    Present { value: left_label_separator } =>
-      match right.field_label_separator {
-        Present { value: right_label_separator } =>
-          left.surface == right.surface
-            && left.open == right.open
-            && left.separator == right.separator
-            && left_label_separator == right_label_separator
-            && left.close == right.close
-        Absent => false
+fn target_generic_apply_key_node(apply: TargetGenericApply) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^target_generic_apply_field_surface },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: apply.surface } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      },
+      Edge {
+        label: Named { name: ^target_generic_apply_field_open },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: apply.open } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      },
+      Edge {
+        label: Named { name: ^target_generic_apply_field_separator },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: apply.separator } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      },
+      Edge {
+        label: Named { name: ^target_generic_apply_field_field_label_separator },
+        target: match apply.field_label_separator {
+          Present { value: label_separator } => Node {
+            kind: TypeNode { connective: Conj },
+            children: [
+              Edge {
+                label: Named { name: ^target_generic_apply_field_field_label_separator_present },
+                target: Node {
+                  kind: TypeNode { connective: Atom { identity: label_separator } },
+                  children: [],
+                  occurrence_id: SyntheticOccurrence
+                }
+              }
+            ],
+            occurrence_id: SyntheticOccurrence
+          }
+          Absent => Node {
+            kind: TypeNode { connective: Atom { identity: ^target_generic_apply_field_field_label_separator_absent } },
+            children: [],
+            occurrence_id: SyntheticOccurrence
+          }
+        }
+      },
+      Edge {
+        label: Named { name: ^target_generic_apply_field_close },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: apply.close } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
       }
-    Absent =>
-      match right.field_label_separator {
-        Present { value: _ } => false
-        Absent =>
-          left.surface == right.surface
-            && left.open == right.open
-            && left.separator == right.separator
-            && left.close == right.close
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn target_representation_key_node(repr: TargetRepresentation) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^target_representation_field_kind },
+        target: Node {
+          kind: TypeNode {
+            connective: Atom {
+              identity: match repr.kind {
+                TargetCollectionReprBTreeSet => ^target_representation_kind_btree_set
+                TargetCollectionReprHashSet => ^target_representation_kind_hash_set
+                TargetCollectionReprVec => ^target_representation_kind_vec
+              }
+            }
+          },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      },
+      Edge {
+        label: Named { name: ^target_representation_field_apply },
+        target: target_generic_apply_key_node(apply: repr.apply)
       }
+    ],
+    occurrence_id: SyntheticOccurrence
   }
 }
 
 fn target_representation_equal(left: TargetRepresentation, right: TargetRepresentation) -> Bool {
-  match left.kind {
-    TargetCollectionReprBTreeSet =>
-      match right.kind {
-        TargetCollectionReprBTreeSet => target_generic_apply_equal(left: left.apply, right: right.apply)
-        TargetCollectionReprHashSet => false
-        TargetCollectionReprVec => false
-      }
-    TargetCollectionReprHashSet =>
-      match right.kind {
-        TargetCollectionReprBTreeSet => false
-        TargetCollectionReprHashSet => target_generic_apply_equal(left: left.apply, right: right.apply)
-        TargetCollectionReprVec => false
-      }
-    TargetCollectionReprVec =>
-      match right.kind {
-        TargetCollectionReprBTreeSet => false
-        TargetCollectionReprHashSet => false
-        TargetCollectionReprVec => target_generic_apply_equal(left: left.apply, right: right.apply)
-      }
-  }
+  content_hash(n: target_representation_key_node(repr: left))
+    == content_hash(n: target_representation_key_node(repr: right))
 }
 
 type RequiredTraitWitness
@@ -9169,7 +9221,12 @@ type TargetDeriveSupplementalGenericBoundContract {
   source_carrier: Node
   emitted_representation: TargetRepresentation
   derive_trait: ReprGroundingDeriveTrait
-  requirements: List<ReprGroundingDeriveTrait>
+  requirements: List<TargetDeriveSupplementalGenericBoundRequirement>
+}
+
+type TargetDeriveSupplementalGenericBoundRequirement {
+  type_param: Symbol
+  derive_trait: ReprGroundingDeriveTrait
 }
 
 fn target_derive_supplemental_generic_bound_contract_lookup_miss_diagnostic(
