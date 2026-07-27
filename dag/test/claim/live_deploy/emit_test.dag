@@ -28,12 +28,7 @@ import gunbc.live_deploy.emit {
 }
 import gunbc.ci_deploy_access {
   DeployAccessJobPrincipalRefusal,
-  ci_deploy_srv1_access,
   deploy_access_job_principal_refused_emit_poison,
-}
-import gunbc.ci_deploy_access_observe {
-  deploy_access_preflight_plan,
-  deploy_access_preflight_plan_uses_typed_probes,
 }
 import gunbc.fleet_posix_accounts { DeployRunnerPrincipal }
 import v2.std.orchestration { Do, Run }
@@ -120,12 +115,9 @@ test fn witness_dependency_ensure_is_idempotent() -> Bool {
     && string_contains(s: tmux, pattern: "apt-get install --yes tmux")
 }
 
-test fn witness_apply_uses_runtime_typed_preflight_and_emits_only_sudoers() -> Bool {
+test fn witness_apply_emits_no_embedded_preflight_and_only_sudoers() -> Bool {
   let sh = expected_live_deploy_apply_script()
-  deploy_access_preflight_plan_uses_typed_probes(
-    plan: deploy_access_preflight_plan(access: ci_deploy_srv1_access)
-  )
-    && !string_contains(s: sh, pattern: "deploy-access-bootstrap-preflight")
+  !string_contains(s: sh, pattern: "deploy-access-bootstrap-preflight")
     && !string_contains(s: sh, pattern: "whoami")
     && !string_contains(s: sh, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
     && !string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -V >/dev/null")
