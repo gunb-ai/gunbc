@@ -14,7 +14,6 @@ import gunbc.merge_admission_produce {
   render_receipt_wire,
   shell_stdout_line,
   floor_exit_to_check_conclusion,
-  floor_disposition_to_check_conclusion,
   observe_merge_target_tree_hash,
   merge_target_tree_hash_refusal_reason,
   MergeTargetTreeHashOk,
@@ -62,17 +61,6 @@ fn floor_exit_code_from_env() -> Int {
   }
 }
 
-fn conclusion_from_env() -> CheckConclusion {
-  match env_var(name: "CI_FLOOR_DISPOSITION") {
-    Present { value: disposition } =>
-      match floor_disposition_to_check_conclusion(disposition: disposition) {
-        Present { value: conclusion } => conclusion
-        Absent => floor_exit_to_check_conclusion(exit_code: floor_exit_code_from_env())
-      }
-    Absent => floor_exit_to_check_conclusion(exit_code: floor_exit_code_from_env())
-  }
-}
-
 func main() -> ProcessExit {
   let head = git.Core.HeadCommit()
   if !head.success {
@@ -93,7 +81,7 @@ func main() -> ProcessExit {
     pr_number: pr_number_from_event(),
     head_sha: head.sha,
     base_tree_hash: base_tree,
-    conclusion: conclusion_from_env(),
+    conclusion: floor_exit_to_check_conclusion(exit_code: floor_exit_code_from_env()),
   )
   let root = git.Core.Toplevel().path as String
   let path = merge_admission_receipt_path(root: root)
