@@ -7,7 +7,7 @@ import gunbc.roadmap_model {
   Acceptance, PrsMerged, ManualAcceptance,
   NodeSizing, Unsized, Sized,
   SectionElement, Prose, Group, SectionGroup,
-  RoadmapParent, TopLevel, UnderParent, roadmap_parent,
+  roadmap_parent_ids,
 }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_superseded_by, signoff_accepts }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
@@ -57,10 +57,6 @@ fn doc_all_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
   fold(doc.sections, init: lane_edges, f: (acc, s) => concat(acc, section_edges(s: s)))
 }
 
-fn node_parent_ids(edges: List<RoadmapEdge>, id: RoadmapNodeId) -> List<RoadmapNodeId> {
-  edges |> filter(e => e.child == id) |> map(e => e.parent)
-}
-
 data spawn_frontier_completion_note: String = "Work-item acceptance is separate from implementation evidence. A merged PR or authored/ticket checkbox moves the page status to review, but never completes the node, removes its dispatch action, or unblocks a dependent node. Only an accepting operator sign-off completes work. Supersession is a separate terminal disposition: it never enters the done bucket, but it closes dependency edges because the named successor owns the work. The same acceptance and dependency-closure predicates drive ready, upcoming, done, and unmet-parent projections."
 
 fn node_is_accepted(n: RoadmapNode) -> Bool {
@@ -80,7 +76,7 @@ fn node_closes_dependency(n: RoadmapNode) -> Bool {
 }
 
 fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId) -> Bool {
-  all(node_parent_ids(edges: edges, id: id), pid =>
+  all(roadmap_parent_ids(edges: edges, node: id), pid =>
     any(nodes, n => n.node == pid && node_closes_dependency(n: n)))
 }
 

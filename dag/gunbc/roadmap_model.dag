@@ -60,19 +60,23 @@ type RoadmapParent
 fn under_parent(p: RoadmapNodeId) -> RoadmapParent { UnderParent { parent: p } }
 fn top_level() -> RoadmapParent { TopLevel }
 
-fn edge_parent_for(e: RoadmapEdge, node: RoadmapNodeId) -> RoadmapParent {
-  if e.child == node { under_parent(p: e.parent) } else { top_level() }
+data roadmap_dependency_projection_note: String = "RoadmapEdge is the complete dependency DAG. Markdown and HTML are trees, so roadmap_primary_parent selects the first declared dependency for presentation placement only; roadmap_parent_ids preserves every prerequisite for admission and the projections render the complete set whenever there is more than one. Edge order never weakens, prioritizes, or discharges a dependency."
+
+fn roadmap_parent_ids(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> List<RoadmapNodeId> {
+  edges |> filter(e => e.child == node) |> map(e => e.parent)
 }
 
-fn roadmap_parent(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> RoadmapParent {
-  fold(edges, init: TopLevel, f: (acc, e) => match acc {
-    UnderParent { parent: p } => UnderParent { parent: p }
-    TopLevel => edge_parent_for(e: e, node: node)
-  })
+fn roadmap_primary_parent(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> RoadmapParent {
+  let parents = roadmap_parent_ids(edges: edges, node: node)
+  if count(parents) == 0 {
+    top_level()
+  } else {
+    under_parent(p: first(parents).value)
+  }
 }
 
 fn is_top_level(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> Bool {
-  match roadmap_parent(edges: edges, node: node) {
+  match roadmap_primary_parent(edges: edges, node: node) {
     TopLevel => true
     UnderParent { parent: _ } => false
   }
