@@ -39,6 +39,7 @@ import gunbc.typed_argv_exec {
   TypedArgvExecConverged,
   TypedArgvExecRefused,
   typed_argv_exec_over_ssh,
+  typed_argv_probe_over_ssh,
 }
 import gunbc.roadmap_dashboard_instance {
   DashboardProvisionTransport,
@@ -141,6 +142,35 @@ fn dashboard_target_exec(
   }
 }
 
+fn dashboard_target_probe(
+  instance: HostDashboardInstance,
+  program: FilePath,
+  args: List<String>,
+) -> DashboardExecResult {
+  match instance.provision_transport {
+    DashboardLocalProvision =>
+      dashboard_local_exec(
+        workdir: dashboard_instance_controller_workdir(instance: instance),
+        program: program,
+        args: args,
+      )
+    DashboardSshProvision { host } =>
+      match typed_argv_probe_over_ssh(
+        host: host,
+        argv: concat([program as String], args),
+      ) {
+        TypedArgvExecConverged { result } =>
+          DashboardExecResult {
+            success: result.success,
+            stdout: result.stdout,
+            stderr: result.stderr,
+          }
+        TypedArgvExecRefused { reason } =>
+          dashboard_exec_refused(detail: reason)
+      }
+  }
+}
+
 type DashboardArgv {
   program: FilePath
   args: List<String>
@@ -171,7 +201,7 @@ fn dashboard_target_path_present(
   flag: String,
   path: FilePath,
 ) -> Bool {
-  dashboard_target_exec(
+  dashboard_target_probe(
     instance: instance,
     program: "/usr/bin/test" as FilePath,
     args: [flag, path as String],
@@ -358,7 +388,7 @@ fn dashboard_ensure_service(
   instance: HostDashboardInstance,
 ) -> DashboardExecResult {
   let service_session = dashboard_instance_service_session_name(instance: instance)
-  let present = dashboard_target_exec(
+  let present = dashboard_target_probe(
     instance: instance,
     program: "/usr/bin/tmux" as FilePath,
     args: shape_tmux_has_session_argv_for(
@@ -404,7 +434,7 @@ fn dashboard_instance_health_url(instance: HostDashboardInstance) -> String {
 fn dashboard_read_instance_health(
   instance: HostDashboardInstance,
 ) -> DashboardExecResult {
-  dashboard_target_exec(
+  dashboard_target_probe(
     instance: instance,
     program: "/usr/bin/curl" as FilePath,
     args: ["-fsS", dashboard_instance_health_url(instance: instance)],
@@ -610,7 +640,7 @@ type DashboardProductionSnapshot {
 fn dashboard_production_snapshot(
   production: HostDashboardInstance,
 ) -> DashboardProductionSnapshot {
-  let head = dashboard_target_exec(
+  let head = dashboard_target_probe(
     instance: production,
     program: "/usr/bin/git" as FilePath,
     args: shape_git_rev_parse_argv(
@@ -618,7 +648,7 @@ fn dashboard_production_snapshot(
       target: "HEAD" as GitRef,
     ),
   )
-  let health = dashboard_target_exec(
+  let health = dashboard_target_probe(
     instance: production,
     program: "/usr/bin/curl" as FilePath,
     args: [
@@ -653,7 +683,7 @@ fn dashboard_source_anchor_matches(
   ) {
     false
   } else {
-    let head = dashboard_target_exec(
+    let head = dashboard_target_probe(
       instance: instance,
       program: "/usr/bin/git" as FilePath,
       args: shape_git_rev_parse_argv(
@@ -661,7 +691,7 @@ fn dashboard_source_anchor_matches(
         target: "HEAD" as GitRef,
       ),
     )
-    let base = dashboard_target_exec(
+    let base = dashboard_target_probe(
       instance: instance,
       program: "/usr/bin/git" as FilePath,
       args: shape_git_rev_parse_argv(
@@ -678,7 +708,7 @@ fn dashboard_instance_observe(
   production_untouched: Bool,
 ) -> DashboardInstanceObserved {
   let health = dashboard_read_instance_health(instance: instance)
-  let provider = dashboard_target_exec(
+  let provider = dashboard_target_probe(
     instance: instance,
     program: "/usr/bin/env" as FilePath,
     args: shape_codex_login_status_env_args_for_program(
@@ -686,7 +716,7 @@ fn dashboard_instance_observe(
       codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
     ),
   )
-  let service = dashboard_target_exec(
+  let service = dashboard_target_probe(
     instance: instance,
     program: "/usr/bin/tmux" as FilePath,
     args: shape_tmux_has_session_argv_for(
@@ -890,7 +920,7 @@ fn dashboard_instance_apply_preflight(
                       detail: reason as String,
                     )
                   _ => {
-                    let listener = dashboard_target_exec(
+                    let listener = dashboard_target_probe(
                       instance: instance,
                       program: "/usr/bin/nc" as FilePath,
                       args: [
