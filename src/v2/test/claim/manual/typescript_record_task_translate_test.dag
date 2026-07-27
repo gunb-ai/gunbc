@@ -185,7 +185,7 @@ fn typescript_record_task_emit_claim_outcome() -> Outcome<Node> {
   }
 }
 
-data claim_typescript_record_task_type_alias_emit_accepts: TestClaim = CompilesClaim {
+test data claim_typescript_record_task_type_alias_emit_accepts: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: Task type_alias emit round-trips via derive grammar-relation row",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: typescript_record_task_emitted_root,
@@ -193,7 +193,7 @@ data claim_typescript_record_task_type_alias_emit_accepts: TestClaim = CompilesC
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_typescript_record_task_type_alias_compile_accepts: TestClaim = CompilesClaim {
+test data claim_typescript_record_task_type_alias_compile_accepts: TestClaim = CompilesClaim {
   label: "manual/G2: compile_inferred emits canonical Task type_alias source through grammar inverse production ts_production_type_alias_decl and type_annotation family",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: typescript_record_task_emitted_root,
@@ -201,7 +201,7 @@ data claim_typescript_record_task_type_alias_compile_accepts: TestClaim = Compil
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data run_typescript_record_task_type_alias_emit_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+test data run_typescript_record_task_type_alias_emit_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(
     subject: TestClaimEvalSubject {
       claim: claim_typescript_record_task_type_alias_emit_accepts,

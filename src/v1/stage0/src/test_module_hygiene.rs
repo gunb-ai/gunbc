@@ -21,7 +21,7 @@
 //!   `directory_prefix_alone_does_not_exempt_zero_enrolled_plains`
 //!   `orphan_collect_refuses_unparsable_test_dag`
 //!   `test_data_only_module_still_orphans_unreachable_plains`
-//!   `plain_data_claim_rows_count_as_enrollment_surface`
+//!   `plain_data_alone_does_not_enroll_demoted_holds`
 //! Authority row: `dag/gunbc/test_module_hygiene_scaffold.dag`.
 
 /// INTERIM hand-Rust scaffold marker (`test_module_hygiene_orphan_gate` / §7).
@@ -265,12 +265,11 @@ fn umbrella_conjuncts(
 struct ModuleFns {
     /// name -> (is_test, param_count, body)
     fns: BTreeMap<String, (bool, usize, Option<Rc<Node>>)>,
-    /// data/const initializer bodies (reachability roots for fixture constructors)
+    /// data/const initializer bodies (reachability roots for fixture constructors).
+    /// Walked only when executable enrollment (`test fn` / `test data`) is present —
+    /// plain `data` alone is not an enrollment surface (review 43610 / DESIGN §5).
     data_bodies: Vec<Rc<Node>>,
-    /// Enrollment surface present: `test fn` / `test data` *or* plain `data` claim rows.
-    /// Plain `data` is a legacy/manual enrollment grain (e.g. CompilesClaim receipts) —
-    /// treating "no test fn" alone as total demotion falsely orphans helpers reached
-    /// only from those rows (regen red after orphan-gate wire).
+    /// Executable enrollment: `test fn` / `test data` only (not plain `data`).
     has_enrollment_surface: bool,
     si: Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 }
@@ -280,7 +279,6 @@ fn analyze_test_module(path: &Path, content: &str) -> Option<ModuleFns> {
     let test_names: HashSet<String> = scan_test_decl_names(content).into_iter().collect();
     let mut fns = BTreeMap::new();
     let mut data_bodies = Vec::new();
-    let mut data_item_count = 0usize;
     for item in parsed.items.iter() {
         let name = authored_name_at(parsed.source_indices.clone(), item.clone());
         if name.is_empty() {
@@ -294,7 +292,6 @@ fn analyze_test_module(path: &Path, content: &str) -> Option<ModuleFns> {
                 fns.insert(name, (is_test, param_count, item.body.clone()));
             }
             ItemKind::DataItem => {
-                data_item_count += 1;
                 if let Some(body) = item.body.clone() {
                     data_bodies.push(body);
                 }
@@ -302,7 +299,7 @@ fn analyze_test_module(path: &Path, content: &str) -> Option<ModuleFns> {
             _ => {}
         }
     }
-    let has_enrollment_surface = !test_names.is_empty() || data_item_count > 0;
+    let has_enrollment_surface = !test_names.is_empty();
     Some(ModuleFns {
         fns,
         data_bodies,
@@ -359,11 +356,11 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
         .map(|s| (*s).to_string())
         .collect();
 
-    // Zero enrollment surface + plain helpers is the demotion failure mode
-    // (all witnesses accidentally plain) — refuse (DESIGN §5; reviews 43330 / 43367).
-    // Enrollment surface = `test fn` / `test data` OR plain `data` claim rows.
-    // Cross-module export names alone are NOT an enrollment surface: they only
-    // seed reachability below (review 43604 — no whole-file clean return).
+    // Zero executable enrollment + plain helpers is the demotion failure mode
+    // (all witnesses accidentally plain) — refuse (DESIGN §5; reviews 43330 / 43367 / 43610).
+    // Enrollment = `test fn` / `test data` only. Plain `data` is fixture/claim shape,
+    // not execution (specification-without-execution). Cross-module export names alone
+    // are NOT enrollment: they only seed reachability below (review 43604).
     if !module.has_enrollment_surface && cross_exports.is_empty() {
         let mut orphans: Vec<OrphanHelper> = plain
             .into_iter()
@@ -379,8 +376,8 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
     let mut reachable: HashSet<String> = HashSet::new();
     let mut queue: VecDeque<String> = VecDeque::new();
 
-    // Roots: test fn bodies + data/const initializers (fixture / claim-row surface)
-    // + explicitly exported plains (cross-module importers invisible locally).
+    // Roots: test fn / test data bodies + (only when executable enrollment exists)
+    // plain data/const initializers as fixture reachability + export roster seeds.
     for (name, (is_test, _, body)) in &module.fns {
         if *is_test {
             reachable.insert(name.clone());
@@ -395,12 +392,14 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
             }
         }
     }
-    for body in &module.data_bodies {
-        let mut refs = HashSet::new();
-        walk_refs(body, &module.si, &mut refs);
-        for c in refs {
-            if plain.contains(&c) {
-                queue.push_back(c);
+    if module.has_enrollment_surface {
+        for body in &module.data_bodies {
+            let mut refs = HashSet::new();
+            walk_refs(body, &module.si, &mut refs);
+            for c in refs {
+                if plain.contains(&c) {
+                    queue.push_back(c);
+                }
             }
         }
     }
@@ -544,8 +543,8 @@ pub fn check_orphan_helpers_or_err(roots: &[String]) -> Result<(), String> {
     let mut lines: Vec<String> = Vec::new();
     lines.push(format!(
         "test-module orphan-helper hygiene (DESIGN §5/§6 enroll-or-refuse): {} plain fn(s) in `*_test.dag` \
-         are unreachable from every test fn and data/const initializer in their module — silent \
-         de-enrollment. Promote to `test fn` or delete:",
+         are unreachable from every `test fn` / `test data` (fixture data only when those exist) — silent \
+         de-enrollment. Promote to `test fn`/`test data` or delete:",
         orphans.len()
     ));
     // Cap the printed list so the diagnostic stays usable; full count is in the header.
@@ -805,32 +804,27 @@ test data enrolled_row: Bool = used_by_test_data()
     }
 
     #[test]
-    fn plain_data_claim_rows_count_as_enrollment_surface() {
-        // Manual/CompilesClaim modules enroll via plain `data`, not `test fn`.
+    fn plain_data_alone_does_not_enroll_demoted_holds() {
+        // review 43610: `data fixture = formerly_test_holds()` must not certify a
+        // zero-test module clean (specification-without-execution / DESIGN §5).
         let dir = tmp_dir();
-        let file = dir.join("plain_data_enroll_test.dag");
+        let file = dir.join("plain_data_demotion_test.dag");
         std::fs::write(
             &file,
-            r#"module plain_data_enroll
+            r#"module plain_data_demotion
 
-fn helper_holds() -> Bool { true }
+fn formerly_test_holds() -> Bool { true }
 
-fn dark_plain() -> Bool { false }
-
-data receipt: Bool = helper_holds()
+data fixture: Bool = formerly_test_holds()
 "#,
         )
         .unwrap();
         let entry = file.to_string_lossy().into_owned();
         let err = check_orphan_helpers_in_entries(&[entry])
-            .expect_err("plain data enrollment must still orphan unreachable plains");
+            .expect_err("plain data alone must not enroll demoted holds");
         assert!(
-            err.contains("dark_plain"),
-            "must name unreachable plain: {err}"
-        );
-        assert!(
-            !err.contains("helper_holds"),
-            "reachable-from-plain-data must not red: {err}"
+            err.contains("formerly_test_holds"),
+            "must name the demoted plain fn: {err}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
