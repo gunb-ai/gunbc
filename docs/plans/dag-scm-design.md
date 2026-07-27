@@ -987,7 +987,8 @@ Track at least:
 - automatic `Applied` rate by evidence profile and admission contract;
 - semantic zero/one/many/unclosed, admission, transition, and projection rates and causes
   separately;
-- default-surface Landed/question/no-change rates, question count and time-to-answer;
+- default-surface `Landed | ChoiceRequired` rates, question count, time-to-answer, and automatic
+  continuation success;
 - judgment requests, human minutes, and LLM tokens per accepted proposal;
 - false-conflict rate relative to the required contract;
 - detected and escaped wrong integrations;
