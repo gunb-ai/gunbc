@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-data codex_cli_lifecycle_external_authority: ExternalAuthority = ExternalAuthority {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "learn.chatgpt.com/docs/agent-approvals-security"
