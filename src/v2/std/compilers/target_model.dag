@@ -9201,6 +9201,62 @@ fn target_grounding_derive_trait_from_atom(id: Symbol) -> Optional<ReprGrounding
   }
 }
 
+fn target_collection_subtree_count(n: Node) -> Int {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(_) { 1 },
+      step: fn(acc, _edge, child_count) { acc + child_count }
+    }
+  )
+}
+
+fn target_collection_fold_list_from_node<T>(
+  remaining: Int,
+  node: Node,
+  decode_item: fn(Node) -> Outcome<T>
+) -> Outcome<List<T>> {
+  if remaining <= 0 {
+    outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
+  } else {
+    match node.kind {
+      TypeNode { connective: Conj } =>
+        if is_empty(xs: node.children) {
+          outcome_accepted(Empty)
+        } else {
+          bind_outcome(
+            o: find_named_child(root: node, name: ^fold_list_node_head),
+            f: fn(head_node) {
+              bind_outcome(
+                o: decode_item(node: head_node),
+                f: fn(head_item) {
+                  bind_outcome(
+                    o: find_named_child(root: node, name: ^fold_list_node_tail),
+                    f: fn(tail_node) {
+                      bind_outcome(
+                        o: target_collection_fold_list_from_node(
+                          remaining: remaining - 1,
+                          node: tail_node,
+                          decode_item: decode_item
+                        ),
+                        f: fn(tail_items) {
+                          outcome_accepted(
+                            Cons { head: head_item, tail: tail_items }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      _ => outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
+    }
+  }
+}
+
 fn target_representation_choice_has_parameter(
   choice: TargetRepresentationChoice,
   representation_parameter: Symbol
