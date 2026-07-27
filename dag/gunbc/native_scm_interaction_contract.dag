@@ -1,7 +1,7 @@
 module gunbc.native_scm_interaction_contract
 
-import std.types { Bool, List, String }
-import v2.std.optional { Optional, Present, Absent }
+import std.types { Bool, Int, List, String }
+import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
 
 data native_scm_interaction_contract_note: String = "Model-first contract carrier for the native SCM interaction slice. The model stays on the presentation side of the split: a proposal has a stable identity, the user-facing primary outcome is Landed | ChoiceRequired | CouldNotLand, review/access/check/operational remain orthogonal fields, and workspace/target/git projections stay optional. No engine, transport, or CLI lives here; the witnesses exercise the contract as a black-box surface."
 
@@ -126,9 +126,9 @@ fn native_scm_lifecycle_ready() -> NativeScmLifecycle {
 
 fn native_scm_projection(workspace: String, target: String, git: String) -> NativeScmProjection {
   NativeScmProjection {
-    workspace: Present { value: workspace },
-    target: Present { value: target },
-    git: Present { value: git },
+    workspace: optional_present(value: workspace),
+    target: optional_present(value: target),
+    git: optional_present(value: git),
   }
 }
 
@@ -144,7 +144,7 @@ fn native_scm_primary_for(scenario: NativeScmScenario, identity: NativeScmPropos
       result_preview: "duplicate submission reuses the stable proposal identity and applies once",
     }
     RenameReferenceUniqueMeaning => Landed {
-      result_preview: "rename plus reference resolves to one transported meaning",
+      result_preview: "rename plus reference resolves to one unique meaning",
     }
     TwoLegitimateMeaningsNeedChoice => ChoiceRequired {
       question: "The call can follow the rename or stay separate. Which meaning should land?",
@@ -171,19 +171,19 @@ fn native_scm_primary_for(scenario: NativeScmScenario, identity: NativeScmPropos
       },
     }
     EvidenceGatheredInternally => Landed {
-      result_preview: "obtainable evidence was gathered internally, so the proposal lands without a user question",
+      result_preview: "support was gathered internally, so the proposal lands without a user question",
     }
     ToolModelProofDeficitRoutesInternally => CouldNotLand {
       plain_reason: "tool, model, or proof gaps remain internal work and do not become a preference question",
       responsible_party: "machine owner",
-      next_action: "continue internal evidence gathering or proof repair",
+      next_action: "continue internal proof repair",
       refusal_receipt: "native-scm-deficit-refusal",
     }
     GitExportFailureRepairsWithoutReinterpretation => Landed {
       result_preview: "accepted result remains landed while the Git export projection is repaired separately",
     }
     ConventionalGitImportWithoutRebase => Landed {
-      result_preview: "a conventional Git branch import lands without requiring the user to rebase",
+      result_preview: "a conventional Git branch import lands as an ordinary import with no manual rewrite",
     }
     VisibilityAuthorizedDetails => Landed {
       result_preview: "details stay optional and can be projected only when visibility authorizes them",
@@ -219,7 +219,7 @@ fn native_scm_receipt_details_for(scenario: NativeScmScenario) -> Optional<Strin
       value: "details: Git export repair updates only the projection, not the semantic result",
     }
     ConventionalGitImportWithoutRebase => Present {
-      value: "details: import is accepted as a normal branch import, not as a rebase request",
+      value: "details: import is accepted as a normal branch import with the ordinary projection",
     }
     VisibilityAuthorizedDetails => Present {
       value: "details: this text is only available when visibility authorizes it",
@@ -266,9 +266,9 @@ fn native_scm_receipt_for(scenario: NativeScmScenario) -> NativeScmReceipt {
     operational: native_scm_operational_for(scenario: scenario),
     projections: match scenario {
       GitExportFailureRepairsWithoutReinterpretation => NativeScmProjection {
-        workspace: Present { value: "/workspaces/native-scm-export-repair" },
-        target: Present { value: "main" },
-        git: Absent,
+        workspace: optional_present(value: "/workspaces/native-scm-export-repair"),
+        target: optional_present(value: "main"),
+        git: optional_absent(),
       }
       ConventionalGitImportWithoutRebase => native_scm_projection(
         workspace: "/workspaces/native-scm-import",
@@ -276,9 +276,9 @@ fn native_scm_receipt_for(scenario: NativeScmScenario) -> NativeScmReceipt {
         git: "origin/session/native-scm-import",
       )
       _ => NativeScmProjection {
-        workspace: Present { value: "/workspaces/native-scm-contract" },
-        target: Present { value: "main" },
-        git: Present { value: "origin/main" },
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
       },
     },
     primary: native_scm_primary_for(scenario: scenario, identity: identity),
@@ -355,7 +355,7 @@ fn native_scm_repair_git_projection(receipt: NativeScmReceipt, git_ref: String) 
     projections: NativeScmProjection {
       workspace: receipt.projections.workspace,
       target: receipt.projections.target,
-      git: Present { value: git_ref },
+      git: optional_present(value: git_ref),
     },
     primary: receipt.primary,
     receipt_details: receipt.receipt_details,
@@ -366,7 +366,7 @@ fn native_scm_inspect_receipt(receipt: NativeScmReceipt, authorized: Bool) -> Op
   if authorized {
     match receipt.receipt_details {
       Present { value: details } =>
-        Present {
+        optional_present(
           value: concat(
             "proposal=",
             concat(
@@ -377,10 +377,10 @@ fn native_scm_inspect_receipt(receipt: NativeScmReceipt, authorized: Bool) -> Op
               ),
             ),
           ),
-        }
-      Absent => Absent
+        )
+      Absent => optional_absent()
     }
   } else {
-    Absent
+    optional_absent()
   }
 }
