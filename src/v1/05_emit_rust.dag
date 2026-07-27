@@ -6234,10 +6234,23 @@ fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>, emit_info
   }
 }
 
+data none_undetermined_carrier_refuse_note: String = "Fail-open closed (sharp-bee-290 msg_6317aebe / DESIGN §5): when none/None has no resolved variant_parent, the emitter previously emitted Rust null as a fabricated plausible default. variant_parent == none conflated (a) bare Optional none with a determined CardOptional carrier and (b) undetermined carrier. Split: CardOptional → None (type-directed); any other determined non-optional carrier → typed refuse; undetermined (Absent / non-Resolved inferred) → typed refuse. Never null as a default. The refuse surfaces as emit_error_expr (UNRESOLVED_… diagnostic text in emitted Rust) so the deficit is countable; if the refusal spike is corpus-red-large, fold a named counted interim INSIDE this single decision with an explicit dissolution trigger — never restore an escaping Optional default at callers."
+
+fn emit_none_keyword_for_resolved_type(resolved_type: InferredNode?) -> String {
+  match resolved_type {
+    Present { value: Resolved { node: rt } } =>
+      match rt.return_cardinality {
+        CardOptional => emit_keyword(key: "null", target: Rust)
+        _ => emit_error_expr(message: "none/None with non-optional resolved carrier — refuse fail-open null default", target: Rust)
+      }
+    _ => emit_error_expr(message: "none/None with undetermined carrier — refuse fail-open null default", target: Rust)
+  }
+}
+
 fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Set<String>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   let leaf_name = value_ref_qualified_leaf(name: name)
   let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
-  if (leaf_name == "none" || leaf_name == "None") && variant_parent == none { emit_keyword(key: "null", target: Rust) }
+  if (leaf_name == "none" || leaf_name == "None") && variant_parent == none { emit_none_keyword_for_resolved_type(resolved_type: resolved_type) }
   else if leaf_name == "true" || leaf_name == "false" { emit_keyword(key: leaf_name, target: Rust) }
   else {
 
@@ -6298,7 +6311,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
       let n = expr_var_name_at(texpr: texpr, source_indices: si)
       let leaf_name = value_ref_qualified_leaf(name: n)
       let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info, source_indices: si)
-      if (leaf_name == "none" || leaf_name == "None") && variant_parent == none { emit_keyword(key: "null", target: Rust) }
+      if (leaf_name == "none" || leaf_name == "None") && variant_parent == none { emit_none_keyword_for_resolved_type(resolved_type: texpr.inferred) }
       else if leaf_name == "true" || leaf_name == "false" { emit_keyword(key: leaf_name, target: Rust) }
       else {
         match variant_parent {

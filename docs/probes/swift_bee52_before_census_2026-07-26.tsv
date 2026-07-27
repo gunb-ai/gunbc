@@ -1,0 +1,201 @@
+label	swift_bee52_before_probe
+gunbc_sha	2901267968f5b02c496a97db96d350d336aa1dc6ff2939062fa1eec294e3942a
+cssl_assemble_sha	2cd17c5040afb470ea3af631d5d773e5e7028c4691341b50187d186abfee3720
+git_sha	50401e40c3aceb2d827129038e069b28ff8de7ad
+baseline_authority	docs/probes/refresh_canonical_seven_2026-07-26.tsv
+
+# per-module residual_histogram (from curated_cargo_probe_one)
+06_translate	E0599_lines	93
+06_translate	E0277_lines	76
+04_infer	E0599_lines	88
+04_infer	E0277_lines	75
+05_eval	E0599_lines	91
+05_eval	E0277_lines	81
+05_emit	E0599_lines	93
+05_emit	E0277_lines	76
+emit_host	E0599_lines	96
+emit_host	E0277_lines	129
+emit_module	E0599_lines	93
+emit_module	E0277_lines	76
+materialization_carriers	E0599_lines	81
+materialization_carriers	E0277_lines	90
+
+# E0277 trait-bound census (PR 7285 sed)
+# module=04_infer
+        1 A: Clone
+        1 B: Clone
+        3 BindInterpreter: serde::Deserialize<'de>
+        1 BindInterpreter: serde::Serialize
+        3 BranchInterpreter: serde::Deserialize<'de>
+        1 BranchInterpreter: serde::Serialize
+        5 EnvironmentBindingKey: std::hash::Hash
+        3 LoopInterpreter: serde::Deserialize<'de>
+        1 LoopInterpreter: serde::Serialize
+        3 MatchInterpreter: serde::Deserialize<'de>
+        1 MatchInterpreter: serde::Serialize
+        5 Node: Eq
+        5 Node: std::hash::Hash
+       26 T: Clone
+        3 TransformInterpreter: serde::Deserialize<'de>
+        1 TransformInterpreter: serde::Serialize
+        2 U: Clone
+        3 ValueInterpreter: serde::Deserialize<'de>
+        1 ValueInterpreter: serde::Serialize
+# module=05_emit
+        1 A: Clone
+        1 B: Clone
+        3 BindInterpreter: serde::Deserialize<'de>
+        1 BindInterpreter: serde::Serialize
+        3 BranchInterpreter: serde::Deserialize<'de>
+        1 BranchInterpreter: serde::Serialize
+        5 EnvironmentBindingKey: std::hash::Hash
+        3 LoopInterpreter: serde::Deserialize<'de>
+        1 LoopInterpreter: serde::Serialize
+        3 MatchInterpreter: serde::Deserialize<'de>
+        1 MatchInterpreter: serde::Serialize
+        5 Node: Eq
+        5 Node: std::hash::Hash
+       27 T: Clone
+        3 TransformInterpreter: serde::Deserialize<'de>
+        1 TransformInterpreter: serde::Serialize
+        2 U: Clone
+        3 ValueInterpreter: serde::Deserialize<'de>
+        1 ValueInterpreter: serde::Serialize
+# module=05_eval
+        1 A: Clone
+        1 B: Clone
+        3 BindInterpreter: serde::Deserialize<'de>
+        1 BindInterpreter: serde::Serialize
+        3 BranchInterpreter: serde::Deserialize<'de>
+        1 BranchInterpreter: serde::Serialize
+        3 EffectIoEvalBundle: serde::Deserialize<'de>
+        1 EffectIoEvalBundle: serde::Serialize
+        6 EnvironmentBindingKey: std::hash::Hash
+        3 LoopInterpreter: serde::Deserialize<'de>
+        1 LoopInterpreter: serde::Serialize
+        3 MatchInterpreter: serde::Deserialize<'de>
+        1 MatchInterpreter: serde::Serialize
+        5 Node: Eq
+        5 Node: std::hash::Hash
+       26 T: Clone
+        3 TransformInterpreter: serde::Deserialize<'de>
+        1 TransformInterpreter: serde::Serialize
+        2 U: Clone
+        3 ValueInterpreter: serde::Deserialize<'de>
+        1 ValueInterpreter: serde::Serialize
+# module=06_translate
+        1 A: Clone
+        1 B: Clone
+        3 BindInterpreter: serde::Deserialize<'de>
+        1 BindInterpreter: serde::Serialize
+        3 BranchInterpreter: serde::Deserialize<'de>
+        1 BranchInterpreter: serde::Serialize
+        5 EnvironmentBindingKey: std::hash::Hash
+        3 LoopInterpreter: serde::Deserialize<'de>
+        1 LoopInterpreter: serde::Serialize
+        3 MatchInterpreter: serde::Deserialize<'de>
+        1 MatchInterpreter: serde::Serialize
+        5 Node: Eq
+        5 Node: std::hash::Hash
+       27 T: Clone
+        3 TransformInterpreter: serde::Deserialize<'de>
+        1 TransformInterpreter: serde::Serialize
+        2 U: Clone
+        3 ValueInterpreter: serde::Deserialize<'de>
+        1 ValueInterpreter: serde::Serialize
+# module=emit_host
+        1 A: Clone
+        1 B: Clone
+        3 BindInterpreter: serde::Deserialize<'de>
+        1 BindInterpreter: serde::Serialize
+        3 BranchInterpreter: serde::Deserialize<'de>
+        1 BranchInterpreter: serde::Serialize
+       30 CommutativeSemiring<Magnitude>: serde::Deserialize<'de>
+        6 CommutativeSemiring<Magnitude>: serde::Serialize
+        3 EffectIoEvalBundle: serde::Deserialize<'de>
+        1 EffectIoEvalBundle: serde::Serialize
+        6 EnvironmentBindingKey: std::hash::Hash
+        3 LoopInterpreter: serde::Deserialize<'de>
+        1 LoopInterpreter: serde::Serialize
+        3 MatchInterpreter: serde::Deserialize<'de>
+        1 MatchInterpreter: serde::Serialize
+        5 Node: Eq
+        5 Node: std::hash::Hash
+       27 T: Clone
+        3 TransformInterpreter: serde::Deserialize<'de>
+        1 TransformInterpreter: serde::Serialize
+        6 U: Clone
+        3 ValueInterpreter: serde::Deserialize<'de>
+        1 ValueInterpreter: serde::Serialize
+# module=emit_module
+        1 A: Clone
+        1 B: Clone
+        3 BindInterpreter: serde::Deserialize<'de>
+        1 BindInterpreter: serde::Serialize
+        3 BranchInterpreter: serde::Deserialize<'de>
+        1 BranchInterpreter: serde::Serialize
+        5 EnvironmentBindingKey: std::hash::Hash
+        3 LoopInterpreter: serde::Deserialize<'de>
+        1 LoopInterpreter: serde::Serialize
+        3 MatchInterpreter: serde::Deserialize<'de>
+        1 MatchInterpreter: serde::Serialize
+        5 Node: Eq
+        5 Node: std::hash::Hash
+       27 T: Clone
+        3 TransformInterpreter: serde::Deserialize<'de>
+        1 TransformInterpreter: serde::Serialize
+        2 U: Clone
+        3 ValueInterpreter: serde::Deserialize<'de>
+        1 ValueInterpreter: serde::Serialize
+# module=materialization_carriers
+        1 A: Clone
+        1 B: Clone
+       45 CommutativeSemiring<Magnitude>: serde::Deserialize<'de>
+        9 CommutativeSemiring<Magnitude>: serde::Serialize
+       21 T: Clone
+        2 U: Clone
+
+# E0599 aggregate (e0599_census_extract.sh)
+  # e0599_canonical_seven_census aggregate
+  module	total_E0599
+  04_infer	88
+  05_emit	93
+  05_eval	91
+  06_translate	93
+  emit_host	96
+  emit_module	93
+  materialization_carriers	81
+  TOTAL	635
+  
+  failure_shape	method	receiver_carrier	root_family	total_count	modules_hit
+  missing_method	clone	type parameter `T`	R1CloneBoundOnTypeParam	206	7
+  bounds_unsatisfied	is_empty	struct `Rc<im::Vector<T>>`	R2VectorMethodBounds	84	7
+  bounds_unsatisfied	clone	enum `Outcome<T>`	R3ContainerCloneBounds	63	7
+  bounds_unsatisfied	iter	struct `im::Vector<T>`	R2VectorMethodBounds	56	7
+  bounds_unsatisfied	clone	enum `Outcome<U>`	R3ContainerCloneBounds	28	7
+  bounds_unsatisfied	clone	struct `im::Vector<T>`	R3ContainerCloneBounds	25	7
+  bounds_unsatisfied	clone	enum `std::option::Option<T>`	R3ContainerCloneBounds	24	6
+  missing_method	clone	type parameter `A`	R1CloneBoundOnTypeParam	22	7
+  bounds_unsatisfied	clone	struct `im::Vector<U>`	R3ContainerCloneBounds	14	7
+  missing_method	clone	type parameter `U`	R1CloneBoundOnTypeParam	14	7
+  missing_method	as_deref	unit type `()`	R5AsDerefUnit	12	6
+  missing_method	clone	type parameter `R`	R1CloneBoundOnTypeParam	12	4
+  no_variant	GlobalBareAmbiguous	enum `std::option::Option<T>`	R4OptionalCoproductGrounding	12	6
+  no_variant	GlobalBareUnique	enum `std::option::Option<_>`	R4OptionalCoproductGrounding	12	6
+  bounds_unsatisfied	clone	struct `im::Vector<C>`	R3ContainerCloneBounds	7	7
+  bounds_unsatisfied	is_empty	struct `Rc<im::Vector<A>>`	R2VectorMethodBounds	7	7
+  bounds_unsatisfied	is_empty	struct `Rc<im::Vector<B>>`	R2VectorMethodBounds	7	7
+  bounds_unsatisfied	iter	struct `im::Vector<A>`	R2VectorMethodBounds	7	7
+  bounds_unsatisfied	iter	struct `im::Vector<B>`	R2VectorMethodBounds	7	7
+  missing_method	clone	type parameter `B`	R1CloneBoundOnTypeParam	7	7
+  bounds_unsatisfied	clone	enum `Verdict<Subj, T>`	R6Other	6	2
+  bounds_unsatisfied	clone	enum `CacheLookupResult<T>`	R6Other	2	1
+  bounds_unsatisfied	clone	enum `CacheProbe<B>`	R6Other	1	1
+  
+  root_family	total_count
+  R1CloneBoundOnTypeParam	261
+  R2VectorMethodBounds	168
+  R3ContainerCloneBounds	161
+  R4OptionalCoproductGrounding	24
+  R5AsDerefUnit	12
+  R6Other	9
