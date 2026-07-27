@@ -5,7 +5,12 @@ import std.types { String, Bool }
 import std.symbols { Ascii }
 import std.render { RenderCapability, Overwrite, Append, Clear }
 import std.perturbation { BackwardDiffInDiffOut, perturbation_consistent }
-import extdeps.render.ansi { csi_esc }
+import extdeps.render.ansi {
+  ansi_escape,
+  ansi_carriage_return,
+  ansi_line_feed,
+  ansi_erase_entire_line,
+}
 import extdeps.render.terminal {
   DynamicLineState,
   DynamicLineClosed,
@@ -35,6 +40,19 @@ fn projected_is(p: TerminalWriteProjection, bytes: String, next: DynamicLineStat
   }
 }
 
+fn rendered_control_refuses(rendered: String) -> Bool {
+  match project_terminal_write(
+    prior: DynamicLineClosed,
+    requested: Append,
+    capability: addressable(),
+    rendered: rendered
+  ) {
+    TerminalWriteProjected { bytes: _, next: _ } => false
+    TerminalWriteRefused { cause: c } =>
+      c == "rendered text cannot contain terminal cursor-control bytes"
+  }
+}
+
 test fn w_overwrite_projects_exact_bytes_and_opens_line() -> Bool {
   projected_is(
     p: project_terminal_write(
@@ -43,7 +61,7 @@ test fn w_overwrite_projects_exact_bytes_and_opens_line() -> Bool {
       capability: addressable(),
       rendered: "working"
     ),
-    bytes: concat("\r", concat(csi_esc, concat("2K", "working"))),
+    bytes: concat(ansi_carriage_return, concat(ansi_erase_entire_line(), "working")),
     next: DynamicLineOpen
   ) &&
   projected_is(
@@ -53,7 +71,7 @@ test fn w_overwrite_projects_exact_bytes_and_opens_line() -> Bool {
       capability: addressable(),
       rendered: "still working"
     ),
-    bytes: concat("\r", concat(csi_esc, concat("2K", "still working"))),
+    bytes: concat(ansi_carriage_return, concat(ansi_erase_entire_line(), "still working")),
     next: DynamicLineOpen
   )
 }
@@ -66,7 +84,10 @@ test fn w_append_from_open_erases_then_closes() -> Bool {
       capability: addressable(),
       rendered: "done"
     ),
-    bytes: concat("\r", concat(csi_esc, concat("2K", "done\n"))),
+    bytes: concat(
+      ansi_carriage_return,
+      concat(ansi_erase_entire_line(), concat("done", ansi_line_feed))
+    ),
     next: DynamicLineClosed
   )
 }
@@ -79,7 +100,7 @@ test fn w_append_from_closed_is_plain_line() -> Bool {
       capability: addressable(),
       rendered: "done"
     ),
-    bytes: "done\n",
+    bytes: concat("done", ansi_line_feed),
     next: DynamicLineClosed
   )
 }
@@ -92,7 +113,7 @@ test fn w_clear_open_erases_and_clear_closed_is_noop() -> Bool {
       capability: addressable(),
       rendered: ""
     ),
-    bytes: concat("\r", concat(csi_esc, "2K")),
+    bytes: concat(ansi_carriage_return, ansi_erase_entire_line()),
     next: DynamicLineClosed
   ) &&
   projected_is(
@@ -120,29 +141,9 @@ test fn w_clear_with_text_refuses() -> Bool {
 }
 
 test fn w_rendered_text_cannot_smuggle_cursor_control_bytes() -> Bool {
-  match project_terminal_write(
-    prior: DynamicLineClosed,
-    requested: Append,
-    capability: addressable(),
-    rendered: concat("forged", concat("\r", concat(csi_esc, "2K")))
-  ) {
-    TerminalWriteProjected { bytes: _, next: _ } => false
-    TerminalWriteRefused { cause: c } =>
-      c == "rendered text cannot contain terminal cursor-control bytes"
-  }
-}
-
-test fn w_rendered_text_cannot_smuggle_line_feed() -> Bool {
-  match project_terminal_write(
-    prior: DynamicLineClosed,
-    requested: Append,
-    capability: addressable(),
-    rendered: "forged\nsecond line"
-  ) {
-    TerminalWriteProjected { bytes: _, next: _ } => false
-    TerminalWriteRefused { cause: c } =>
-      c == "rendered text cannot contain terminal cursor-control bytes"
-  }
+  rendered_control_refuses(rendered: concat("forged", ansi_carriage_return)) &&
+  rendered_control_refuses(rendered: concat("forged", ansi_line_feed)) &&
+  rendered_control_refuses(rendered: concat("forged", ansi_escape))
 }
 
 test fn w_nonaddressable_overwrite_downgrades_and_clear_noops() -> Bool {
@@ -153,7 +154,7 @@ test fn w_nonaddressable_overwrite_downgrades_and_clear_noops() -> Bool {
       capability: nonaddressable(),
       rendered: "working"
     ),
-    bytes: "working\n",
+    bytes: concat("working", ansi_line_feed),
     next: DynamicLineClosed
   ) &&
   projected_is(
@@ -182,8 +183,8 @@ test fn w_nonaddressable_open_state_refuses_as_contradictory() -> Bool {
 }
 
 test fn w_ecma48_csi_perturbation_changes_wire_bytes() -> Bool {
-  let authoritative = concat("\r", concat(csi_esc, concat("2K", "working")))
-  let perturbed = concat("\r", concat("\x1b]", concat("2K", "working")))
+  let authoritative = concat(ansi_carriage_return, concat(ansi_erase_entire_line(), "working"))
+  let perturbed = concat(ansi_carriage_return, concat(ansi_escape, concat("]2K", "working")))
   perturbation_consistent(
     reading: BackwardDiffInDiffOut,
     output_responded: authoritative != perturbed
@@ -198,4 +199,16 @@ test fn w_ecma48_csi_perturbation_changes_wire_bytes() -> Bool {
     bytes: authoritative,
     next: DynamicLineOpen
   )
+}
+
+fn terminal_wire_projection_matrix_holds() -> Bool {
+  w_overwrite_projects_exact_bytes_and_opens_line() &&
+  w_append_from_open_erases_then_closes() &&
+  w_append_from_closed_is_plain_line() &&
+  w_clear_open_erases_and_clear_closed_is_noop() &&
+  w_clear_with_text_refuses() &&
+  w_rendered_text_cannot_smuggle_cursor_control_bytes() &&
+  w_nonaddressable_overwrite_downgrades_and_clear_noops() &&
+  w_nonaddressable_open_state_refuses_as_contradictory() &&
+  w_ecma48_csi_perturbation_changes_wire_bytes()
 }

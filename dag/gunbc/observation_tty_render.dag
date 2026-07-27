@@ -175,32 +175,35 @@ type TtyEmissionProjection
   = TtyEmissionProjected { emission: TtyEmission }
   | TtyEmissionRefused { cause: NonEmptyStr }
 
+fn tty_emission_at_attention(
+  event: ObservationEvent,
+  attention: AttentionLevel,
+  cap: RenderCapability
+) -> TtyEmission {
+  let density = observation_class_density(c: observation_event_class(event: event))
+  let line = ci_event_line_at_attention(event: event, attention: attention)
+  TtyEmission {
+    line: line,
+    cursor: tty_cursor_action(density: density, attention: attention, cap: cap)
+  }
+}
+
 fn tty_event_emission_under(event: ObservationEvent, basis: Measured<AttentionBasis>, cap: RenderCapability) -> TtyEmissionProjection {
   match observation_attention_under(event: event, basis: basis) {
     AttentionRefused { cause: c } => TtyEmissionRefused { cause: c }
     AttentionAssigned { level: attention } =>
-      let density = observation_class_density(c: observation_event_class(event: event))
-      let line = ci_event_line_at_attention(event: event, attention: attention)
       TtyEmissionProjected {
-        emission: TtyEmission {
-          line: line,
-          cursor: tty_cursor_action(density: density, attention: attention, cap: cap)
-        }
+        emission: tty_emission_at_attention(event: event, attention: attention, cap: cap)
       }
   }
 }
 
 fn tty_event_emission(event: ObservationEvent, basis: AttentionBasis, cap: RenderCapability) -> TtyEmission {
-  match tty_event_emission_under(event: event, basis: MeasuredValue { value: basis }, cap: cap) {
-    TtyEmissionProjected { emission: e } => e
-    TtyEmissionRefused { cause: _ } =>
-      let line = ci_event_line(event: event, basis: basis)
-      let density = observation_class_density(c: observation_event_class(event: event))
-      TtyEmission {
-        line: line,
-        cursor: tty_cursor_action(density: density, attention: line.attention, cap: cap)
-      }
-  }
+  tty_emission_at_attention(
+    event: event,
+    attention: observation_attention(event: event, basis: basis),
+    cap: cap
+  )
 }
 
 fn tty_render_emission(emission: TtyEmission, tier: Tier) -> String {

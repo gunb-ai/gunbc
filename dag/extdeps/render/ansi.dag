@@ -14,6 +14,19 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data csi_esc: String = "\x1b["
 data csi_end: String = "m"
+data ansi_escape: String = "\x1b"
+data ansi_carriage_return: String = "\r"
+data ansi_line_feed: String = "\n"
+
+fn ansi_erase_entire_line() -> String {
+  concat(csi_esc, "2K")
+}
+
+fn ansi_text_contains_terminal_control(text: String) -> Bool {
+  string_contains(s: text, pattern: ansi_escape) ||
+  string_contains(s: text, pattern: ansi_carriage_return) ||
+  string_contains(s: text, pattern: ansi_line_feed)
+}
 
 type PaletteIndex = Int
 
