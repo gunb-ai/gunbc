@@ -2705,6 +2705,61 @@ fn typed_match_bound_binding_spans_stay_local_across_arms_and_shadowing() {
         shadow_outer_expected,
         "outer reference after the nested match must use the outer binder span"
     );
+
+    let let_shadow_source = "module typed_pattern_let_shadow\n\ntype Duo = Left { value: Int } | Right { value: Int }\n\nfn let_shadow(x: Duo) -> Int {\n  match x {\n    Left { value: y } => {\n      let y = 1\n      y\n    }\n    Right { value: _ } => 0\n  }\n}\n";
+    let let_shadow_frontend = v1_compiler::v1_compiler_compile::front_end_sources(Rc::new(
+        im::vector![Rc::new(SourceFile {
+            path: "typed_pattern_let_shadow.dag".to_string(),
+            content: let_shadow_source.to_string(),
+        },)],
+    ));
+    let let_shadow_graph = let_shadow_frontend.graph.clone().expect("let shadow graph");
+    let let_shadow_source_indices = let_shadow_frontend
+        .newline_indices
+        .clone()
+        .iter()
+        .cloned()
+        .fold(v1_compiler::v1_rt::rc_empty_map(), |acc, si| {
+            v1_compiler::v1_rt::rc_map_insert(acc, si.file.clone(), si)
+        });
+    let let_shadow_typed = v1_compiler::v1_compiler_infer::typecheck_with_census_extra(
+        let_shadow_graph,
+        let_shadow_source_indices.clone(),
+        let_shadow_frontend.intern_table.clone(),
+        Rc::new(im::vector![]),
+        let_shadow_source_indices.clone(),
+    );
+    let let_shadow_module = let_shadow_typed
+        .modules
+        .first()
+        .cloned()
+        .expect("let shadow module");
+    let let_shadow_body = let_shadow_module
+        .items
+        .iter()
+        .find(|item| item.name == "let_shadow")
+        .and_then(|item| item.body.clone())
+        .expect("let shadow body");
+    let let_shadow_arm = match_arm_nodes(let_shadow_body)
+        .first()
+        .cloned()
+        .expect("let shadow arm");
+    let let_shadow_block = arm_body(let_shadow_arm);
+    let let_shadow_stmts = block_stmts(let_shadow_block);
+    let let_shadow_use = let_shadow_stmts
+        .last()
+        .cloned()
+        .expect("let shadow final statement");
+    let let_shadow_kind = match let_shadow_use.expr_data.as_ref() {
+        ExprData::ExprVar { binding_kind } => binding_kind
+            .clone()
+            .expect("let-shadow ExprVar should carry binding_kind"),
+        other => panic!("expected let-shadow ExprVar body node, got {:?}", other),
+    };
+    assert!(
+        matches!(let_shadow_kind.as_ref(), VarBindingKind::LocalValueBinding),
+        "ordinary let shadowing must clear the stale match-bound identity"
+    );
 }
 
 #[test]
