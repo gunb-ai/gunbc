@@ -17,6 +17,8 @@ import v2.extdeps.languages.bash {
   bash_redir_stderr_null_target_model,
   bash_redir_stdout_and_stderr_null_emitted,
   bash_redir_stdout_and_stderr_null_target_model,
+  bash_redir_stdout_null_emitted,
+  bash_redir_stdout_null_target_model,
   bash_redir_stdout_to_stderr_emitted,
   bash_redir_stdout_to_stderr_target_model,
   bash_redir_to_file_emitted,
@@ -409,6 +411,10 @@ fn bash_fold_with_redir_rhs_alternatives() -> List<List<FormalGrammarSymbol>> {
       redir_token: ^bash_fold_redir_stdout_and_stderr_null
     ),
     bash_fold_with_redir_fixed_rhs(
+      redir_binding: ^bash_production_fold_redir_stdout_null,
+      redir_token: ^bash_fold_redir_stdout_null
+    ),
+    bash_fold_with_redir_fixed_rhs(
       redir_binding: ^bash_production_fold_redir_stdout_to_stderr,
       redir_token: ^bash_fold_redir_stdout_to_stderr
     ),
@@ -794,6 +800,7 @@ fn bash_fold_lex_rules() -> LexRuleSet {
       bash_fold_lex_rule(token_class: ^bash_fold_cmdsubst_close, text: ")"),
       bash_fold_lex_rule(token_class: ^bash_fold_redir_stderr_null, text: " 2>/dev/null"),
       bash_fold_lex_rule(token_class: ^bash_fold_redir_stdout_and_stderr_null, text: " >/dev/null 2>&1"),
+      bash_fold_lex_rule(token_class: ^bash_fold_redir_stdout_null, text: " >/dev/null"),
       bash_fold_lex_rule(token_class: ^bash_fold_redir_stdout_to_stderr, text: " >&2"),
       bash_fold_lex_rule(token_class: ^bash_fold_redir_to_file, text: " > ")
     ]

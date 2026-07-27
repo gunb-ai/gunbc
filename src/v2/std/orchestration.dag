@@ -20,6 +20,7 @@ type RedirectSpec
   = StdoutAndStderr
   | DiscardAll
   | DiscardErr
+  | DiscardOut
   | ToFile { path: String }
 
 data redirect_spec_to_file_note: String = "ToFile \{ path \} is the stdout-to-path carrier (\"> path\"). Added with live consumer ci_merge_admission_floor_disposition_stamp (bucket D PR2a) — dissolves the echo++concat redirect. bash_redir_to_file_* rows already existed on the fold side; this variant is the intent-side authority orch_emit_redir_suffix matches. path is emitted unquoted, so orch_emit_redir_suffix refuses anything outside the portable unquoted-word alphabet carried by orch_shell_unquoted_path_alphabet (explicit literal chars A–Z/a–z/0–9/_/./-/@ — membership via string_contains, NOT a regex character-class range) (^orch_emit_to_file_path_invalid) — same fail-closed emit-time wall as ExitStatus binder / Comment multiline (spaces, newlines, and shell metacharacters cannot change meaning or inject a second command). 🟡 dissolve-on: ToFile.path / ExitStatus.binder / Comment.text take typed carriers that make injecting spellings unwritable-by-construction (path word / shell ident / single-line comment body); until then these alphabet/contains checks are the fail-closed interim validation scaffold (§5 construction preferred; §6 named trigger)."
