@@ -8,7 +8,7 @@ pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 pub use crate::v1_compiler_infer_env::empty_type_env_cache;
-pub use crate::v1_compiler_infer_env::{TypeEnv, TypeEnvCache};
+pub use crate::v1_compiler_infer_env::{NamespaceIdentityCapture, TypeEnv, TypeEnvCache};
 pub use crate::v1_compiler_infer_sigs::ResolvedFuncEnv;
 pub use crate::v1_compiler_infer_types::child_type_node;
 use crate::v1_rt;
@@ -73,6 +73,7 @@ pub fn typed_module_interface_body_dual_field_dissolution_trigger() -> String {
 pub struct TypedModule {
     pub module: Rc<Node>,
     pub items: Rc<Vec<Rc<Node>>>,
+    pub namespace_identity: Rc<NamespaceIdentityCapture>,
     pub type_env: Rc<TypeEnv>,
     pub type_env_cache: Rc<TypeEnvCache>,
     pub interface: Rc<ModuleInterface>,

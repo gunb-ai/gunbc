@@ -3203,8 +3203,9 @@ pub fn collect_field_binding_names(
         2 * 1024 * 1024,
         || match (*field_binding_pattern(fb.clone())).clone() {
             MatchPattern::Bind {
-                name: binding_name, ..
-            } => v1_rt::rc_map_insert(vars.clone(), binding_name.clone(), true),
+                declaration: declaration,
+                ..
+            } => v1_rt::rc_map_insert(vars.clone(), declaration.name.clone(), true),
             MatchPattern::VariantPattern {
                 field_bindings: nested,
                 ..
@@ -3555,38 +3556,42 @@ pub fn collect_descent_vars(
                     }
                     _ => false,
                 };
-                let with_patterns = if (scrut_is_descent.clone() || scrut_is_param.clone()) {
-                    match_arm_nodes(body.clone()).iter().cloned().fold(
-                        vars.clone(),
-                        |acc: Rc<HashMap<String, bool>>, arm_node: Rc<Node>| match (*arm_pattern(
-                            arm_node.clone(),
-                        ))
-                        .clone()
-                        {
-                            MatchPattern::VariantPattern {
-                                field_bindings: bindings,
-                                ..
-                            } => bindings.clone().iter().cloned().fold(
-                                acc.clone(),
-                                |inner: Rc<HashMap<String, bool>>, fb: Rc<Node>| {
-                                    collect_field_binding_names(fb.clone(), inner)
-                                },
-                            ),
-                            MatchPattern::Bind {
-                                name: binding_name, ..
-                            } => {
-                                if scrut_is_descent.clone() {
-                                    v1_rt::rc_map_insert(acc.clone(), binding_name.clone(), true)
-                                } else {
-                                    acc.clone()
+                let with_patterns =
+                    if (scrut_is_descent.clone() || scrut_is_param.clone()) {
+                        match_arm_nodes(body.clone()).iter().cloned().fold(
+                            vars.clone(),
+                            |acc: Rc<HashMap<String, bool>>, arm_node: Rc<Node>| {
+                                match (*arm_pattern(arm_node.clone())).clone() {
+                                    MatchPattern::VariantPattern {
+                                        field_bindings: bindings,
+                                        ..
+                                    } => bindings.clone().iter().cloned().fold(
+                                        acc.clone(),
+                                        |inner: Rc<HashMap<String, bool>>, fb: Rc<Node>| {
+                                            collect_field_binding_names(fb.clone(), inner)
+                                        },
+                                    ),
+                                    MatchPattern::Bind {
+                                        declaration: declaration,
+                                        ..
+                                    } => {
+                                        if scrut_is_descent.clone() {
+                                            v1_rt::rc_map_insert(
+                                                acc.clone(),
+                                                declaration.name.clone(),
+                                                true,
+                                            )
+                                        } else {
+                                            acc.clone()
+                                        }
+                                    }
+                                    _ => acc.clone(),
                                 }
-                            }
-                            _ => acc.clone(),
-                        },
-                    )
-                } else {
-                    vars.clone()
-                };
+                            },
+                        )
+                    } else {
+                        vars.clone()
+                    };
                 match_arm_nodes(body.clone()).iter().cloned().fold(
                     with_patterns.clone(),
                     |acc: Rc<HashMap<String, bool>>, arm_node: Rc<Node>| {
@@ -3806,12 +3811,13 @@ pub fn all_self_calls_descend_inc(
                                         },
                                     ),
                                     MatchPattern::Bind {
-                                        name: binding_name, ..
+                                        declaration: declaration,
+                                        ..
                                     } => {
                                         if scrut_is_descent.clone() {
                                             v1_rt::rc_map_insert(
                                                 vars.clone(),
-                                                binding_name.clone(),
+                                                declaration.name.clone(),
                                                 true,
                                             )
                                         } else {
@@ -4692,12 +4698,13 @@ pub fn collect_evidence_incremental(
                                                 },
                                             ),
                                             MatchPattern::Bind {
-                                                name: binding_name, ..
+                                                declaration: declaration,
+                                                ..
                                             } => {
                                                 if scrut_is_descent.clone() {
                                                     v1_rt::rc_map_insert(
                                                         vars.clone(),
-                                                        binding_name.clone(),
+                                                        declaration.name.clone(),
                                                         true,
                                                     )
                                                 } else {
