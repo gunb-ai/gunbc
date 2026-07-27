@@ -3,9 +3,13 @@ module gunbc.observation_ci_render
 import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
 import std.measure {
+  Nanosecond,
   Millisecond,
   ByteSize,
   BasisPoint,
+  nanosecond_count,
+  nanoseconds_per_millisecond,
+  nanosecond_to_millisecond_floor,
   millisecond,
   millisecond_count,
   byte_size,
@@ -122,7 +126,18 @@ fn ci_human_duration(d: Millisecond) -> String {
   }
 }
 
+fn ci_human_elapsed(d: Nanosecond) -> String {
+  let ns = nanosecond_count(n: d)
+  if ns < nanoseconds_per_millisecond() {
+    concat(to_string(ns), "ns")
+  } else {
+    ci_human_duration(d: nanosecond_to_millisecond_floor(n: d))
+  }
+}
+
 data ci_human_duration_note: String = "A second duration projection beside gunbc.ci_render.format_duration is deliberate and is not a fork: that one is the COMPACT technical form for receipt boxes and timing tables (230ms, 41s), this one is the SENTENCE form for arm's-length prose (10 minutes). Same fact, two surfaces, chosen by the tone contract rather than by taste. If a third caller wants a third spelling, that is the signal to unify them behind one carrier with a declared style axis rather than to add a fourth."
+
+data ci_human_elapsed_note: String = "ObservationEvent retains exact Nanosecond wall time through classification and ordering. Arm's-length lines keep existing millisecond-and-larger spelling byte-stable, while a sub-millisecond event prints its exact nanosecond count instead of fabricating 0ms. The floor conversion is confined to this named presentation boundary."
 
 fn ci_measured_bytes_text(m: Measured<ByteSize>) -> String {
   match m {
@@ -260,9 +275,9 @@ fn ci_outcome_text(o: ObservationOutcome) -> String {
   }
 }
 
-fn ci_duration_suffix(wall: Measured<Millisecond>) -> String {
+fn ci_duration_suffix(wall: Measured<Nanosecond>) -> String {
   match wall {
-    MeasuredValue { value: w } => concat(" in ", ci_human_duration(d: w))
+    MeasuredValue { value: w } => concat(" in ", ci_human_elapsed(d: w))
     MeasuredUnavailable { cause: c } => concat(" (duration unmeasured: ", concat(c, ")"))
   }
 }
