@@ -1425,6 +1425,23 @@ fn hand_import_git_show(rel_path: &str, rev: &str) -> Option<String> {
         .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
 }
 
+fn hand_import_merge_module(
+    out: &mut HashMap<String, std::collections::BTreeSet<String>>,
+    module: String,
+    syms: std::collections::BTreeSet<String>,
+) {
+    out.entry(module).or_default().extend(syms);
+}
+
+fn hand_import_record_bare_module(
+    out: &mut HashMap<String, std::collections::BTreeSet<String>>,
+    module: String,
+) {
+    if !module.is_empty() {
+        out.entry(module).or_default();
+    }
+}
+
 /// Parses import rows: single-line braced, bare `import mod`, and multi-line braced blocks.
 fn hand_import_parse_imports(text: &str) -> HashMap<String, std::collections::BTreeSet<String>> {
     let mut out: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
@@ -1452,7 +1469,7 @@ fn hand_import_parse_imports(text: &str) -> HashMap<String, std::collections::BT
             ingest_symbols(body, &mut open_syms);
             if closed {
                 let module = open_module.take().unwrap();
-                out.insert(module, open_syms.clone());
+                hand_import_merge_module(&mut out, module, open_syms.clone());
                 open_syms.clear();
             }
             continue;
@@ -1464,23 +1481,56 @@ fn hand_import_parse_imports(text: &str) -> HashMap<String, std::collections::BT
                     let symbols = symbols.split_once('}').map(|(a, _)| a).unwrap_or(symbols);
                     let mut syms = std::collections::BTreeSet::new();
                     ingest_symbols(symbols, &mut syms);
-                    out.insert(module.to_string(), syms);
+                    hand_import_merge_module(&mut out, module.to_string(), syms);
                 } else {
                     open_module = Some(module.to_string());
                     ingest_symbols(symbols, &mut open_syms);
                 }
             } else {
-                let module = rest.trim();
-                if !module.is_empty() {
-                    out.insert(module.to_string(), std::collections::BTreeSet::new());
-                }
+                hand_import_record_bare_module(&mut out, rest.trim().to_string());
             }
         }
     }
     if let Some(module) = open_module {
-        out.insert(module, open_syms);
+        hand_import_merge_module(&mut out, module, open_syms);
     }
     out
+}
+
+#[cfg(test)]
+mod hand_import_parse_tests {
+    use super::hand_import_parse_imports;
+
+    #[test]
+    fn hand_import_parse_unions_duplicate_module_import_blocks() {
+        let text = r#"
+import std.disposition { Disposition, Terminal }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+"#;
+        let imports = hand_import_parse_imports(text);
+        let syms = imports.get("std.disposition").expect("module");
+        assert!(syms.contains("Terminal"));
+        assert!(syms.contains("Scaffold"));
+        assert!(syms.contains("SingleAuthority"));
+    }
+
+    #[test]
+    fn hand_import_parse_detects_symbol_added_to_first_of_two_blocks() {
+        let base = r#"
+import std.disposition { Disposition, Terminal }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+"#;
+        let head = r#"
+import std.disposition { Disposition, Terminal, NewSym }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+"#;
+        let base_imports = hand_import_parse_imports(base);
+        let head_imports = hand_import_parse_imports(head);
+        let base_syms = base_imports.get("std.disposition").expect("base");
+        let head_syms = head_imports.get("std.disposition").expect("head");
+        assert!(!base_syms.contains("NewSym"));
+        assert!(head_syms.contains("NewSym"));
+    }
 }
 
 const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
