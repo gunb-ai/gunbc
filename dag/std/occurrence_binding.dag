@@ -1,0 +1,49 @@
+module std.occurrence_binding
+
+import std.algebra { FreeMonoid, Empty, Cons }
+
+type ContainmentPath<N> = FreeMonoid<N>
+
+type BindingOccurrence<N> {
+  node: N
+  containment: ContainmentPath<N>
+}
+
+type BindingCandidate<N> {
+  declaration: N
+  containment: ContainmentPath<N>
+}
+
+type OccurrenceBinding<N> {
+  occurrence: BindingOccurrence<N>
+  candidate: BindingCandidate<N>
+}
+
+type OccurrenceBindingResult<N>
+  = OccurrenceBound { binding: OccurrenceBinding<N> }
+  | OccurrenceUnbound { occurrence: BindingOccurrence<N> }
+  | OccurrenceAmbiguous {
+      occurrence: BindingOccurrence<N>
+      candidates: FreeMonoid<BindingCandidate<N>>
+    }
+
+fn occurrence_binding_from_candidates<N>(
+  occurrence: BindingOccurrence<N>,
+  candidates: FreeMonoid<BindingCandidate<N>>
+) -> OccurrenceBindingResult<N> {
+  match candidates {
+    Empty => OccurrenceUnbound { occurrence: occurrence }
+    Cons { head: candidate, tail: Empty } =>
+      OccurrenceBound {
+        binding: OccurrenceBinding {
+          occurrence: occurrence,
+          candidate: candidate,
+        },
+      }
+    Cons { head: _, tail: Cons { head: _, tail: _ } } =>
+      OccurrenceAmbiguous {
+        occurrence: occurrence,
+        candidates: candidates,
+      }
+  }
+}

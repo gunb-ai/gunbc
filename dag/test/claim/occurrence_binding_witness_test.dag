@@ -1,0 +1,205 @@
+module test.claim.occurrence_binding_witness_test
+
+import std.types { Bool }
+import std.symbols { Symbol }
+import std.algebra { FreeMonoid, Empty, Cons }
+import std.occurrence_binding {
+  BindingOccurrence,
+  BindingCandidate,
+  OccurrenceBinding,
+  OccurrenceBindingResult,
+  OccurrenceBound,
+  OccurrenceUnbound,
+  OccurrenceAmbiguous,
+  occurrence_binding_from_candidates,
+}
+
+fn ob_path_one(node: Symbol) -> FreeMonoid<Symbol> {
+  Cons { head: node, tail: Empty }
+}
+
+fn ob_path_two(root: Symbol, node: Symbol) -> FreeMonoid<Symbol> {
+  Cons {
+    head: root,
+    tail: Cons { head: node, tail: Empty },
+  }
+}
+
+fn ob_occurrence() -> BindingOccurrence<Symbol> {
+  BindingOccurrence {
+    node: ^use_site,
+    containment: ob_path_two(root: ^consumer, node: ^use_site),
+  }
+}
+
+fn ob_candidate(
+  declaration: Symbol,
+  containment: FreeMonoid<Symbol>
+) -> BindingCandidate<Symbol> {
+  BindingCandidate {
+    declaration: declaration,
+    containment: containment,
+  }
+}
+
+fn ob_path_is(
+  path: FreeMonoid<Symbol>,
+  root: Symbol,
+  node: Symbol
+) -> Bool {
+  match path {
+    Cons {
+      head: observed_root,
+      tail: Cons { head: observed_node, tail: Empty },
+    } => observed_root == root && observed_node == node
+    _ => false
+  }
+}
+
+test fn occurrence_binding_zero_candidates_is_unbound_holds() -> Bool {
+  match occurrence_binding_from_candidates(
+    occurrence: ob_occurrence(),
+    candidates: Empty,
+  ) {
+    OccurrenceUnbound { occurrence: observed } =>
+      observed.node == ^use_site
+        && ob_path_is(
+          path: observed.containment,
+          root: ^consumer,
+          node: ^use_site,
+        )
+    _ => false
+  }
+}
+
+test fn occurrence_binding_one_candidate_is_bound_holds() -> Bool {
+  let candidate = ob_candidate(
+    declaration: ^declaration,
+    containment: ob_path_two(root: ^provider, node: ^declaration),
+  )
+  match occurrence_binding_from_candidates(
+    occurrence: ob_occurrence(),
+    candidates: Cons { head: candidate, tail: Empty },
+  ) {
+    OccurrenceBound {
+      binding: OccurrenceBinding {
+        occurrence: observed_occurrence,
+        candidate: observed_candidate,
+      },
+    } =>
+      observed_occurrence.node == ^use_site
+        && observed_candidate.declaration == ^declaration
+        && ob_path_is(
+          path: observed_candidate.containment,
+          root: ^provider,
+          node: ^declaration,
+        )
+    _ => false
+  }
+}
+
+test fn occurrence_binding_many_candidates_preserves_population_holds() -> Bool {
+  let first = ob_candidate(
+    declaration: ^first_declaration,
+    containment: ob_path_one(node: ^first_declaration),
+  )
+  let second = ob_candidate(
+    declaration: ^second_declaration,
+    containment: ob_path_one(node: ^second_declaration),
+  )
+  match occurrence_binding_from_candidates(
+    occurrence: ob_occurrence(),
+    candidates: Cons {
+      head: first,
+      tail: Cons { head: second, tail: Empty },
+    },
+  ) {
+    OccurrenceAmbiguous {
+      occurrence: _,
+      candidates: Cons {
+        head: observed_first,
+        tail: Cons { head: observed_second, tail: Empty },
+      },
+    } =>
+      observed_first.declaration == ^first_declaration
+        && observed_second.declaration == ^second_declaration
+    _ => false
+  }
+}
+
+test fn occurrence_binding_duplicate_candidates_remain_ambiguous_holds() -> Bool {
+  let duplicate = ob_candidate(
+    declaration: ^duplicate_declaration,
+    containment: ob_path_two(
+      root: ^provider,
+      node: ^duplicate_declaration,
+    ),
+  )
+  match occurrence_binding_from_candidates(
+    occurrence: ob_occurrence(),
+    candidates: Cons {
+      head: duplicate,
+      tail: Cons { head: duplicate, tail: Empty },
+    },
+  ) {
+    OccurrenceAmbiguous {
+      occurrence: _,
+      candidates: Cons {
+        head: observed_first,
+        tail: Cons { head: observed_second, tail: Empty },
+      },
+    } =>
+      observed_first.declaration == ^duplicate_declaration
+        && observed_second.declaration == ^duplicate_declaration
+        && ob_path_is(
+          path: observed_first.containment,
+          root: ^provider,
+          node: ^duplicate_declaration,
+        )
+        && ob_path_is(
+          path: observed_second.containment,
+          root: ^provider,
+          node: ^duplicate_declaration,
+        )
+    _ => false
+  }
+}
+
+test fn occurrence_binding_same_name_different_containment_is_ambiguous_holds() -> Bool {
+  let left = ob_candidate(
+    declaration: ^same_name,
+    containment: ob_path_two(root: ^left_scope, node: ^same_name),
+  )
+  let right = ob_candidate(
+    declaration: ^same_name,
+    containment: ob_path_two(root: ^right_scope, node: ^same_name),
+  )
+  match occurrence_binding_from_candidates(
+    occurrence: ob_occurrence(),
+    candidates: Cons {
+      head: left,
+      tail: Cons { head: right, tail: Empty },
+    },
+  ) {
+    OccurrenceAmbiguous {
+      occurrence: _,
+      candidates: Cons {
+        head: observed_left,
+        tail: Cons { head: observed_right, tail: Empty },
+      },
+    } =>
+      observed_left.declaration == ^same_name
+        && observed_right.declaration == ^same_name
+        && ob_path_is(
+          path: observed_left.containment,
+          root: ^left_scope,
+          node: ^same_name,
+        )
+        && ob_path_is(
+          path: observed_right.containment,
+          root: ^right_scope,
+          node: ^same_name,
+        )
+    _ => false
+  }
+}
