@@ -1,0 +1,19 @@
+# Spine: CSSL_STD_SEED_LINK=1 PROBE_KEEP_LOG_DIR=.../logs \
+#   docs/probes/curated_cargo_probe_one.sh <module.dag>
+# Shape tables: one-shot fold over kept *.cargo.log (E0277-style recipe-in-md;
+# no committed hand-shell post-pass — review 43525 / HAND-SHELL GATE)
+=== extract 06_translate ===
+06_translate: 14 E0369 across 12 shapes
+=== extract 04_infer ===
+04_infer: 14 E0369 across 12 shapes
+=== extract 05_eval ===
+05_eval: 29 E0369 across 19 shapes
+=== extract 05_emit ===
+05_emit: 14 E0369 across 12 shapes
+=== extract emit_host ===
+emit_host: 81 E0369 across 37 shapes
+=== extract emit_module ===
+emit_module: 14 E0369 across 12 shapes
+=== extract materialization_carriers ===
+materialization_carriers: 62 E0369 across 22 shapes
+DONE

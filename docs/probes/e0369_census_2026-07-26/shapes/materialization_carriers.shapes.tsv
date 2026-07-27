@@ -1,0 +1,23 @@
+count	message
+16	binary operation `==` cannot be applied to type `Rc<Measure<(), (), Rc<CommutativeSemiring<Magnitude>>>>`
+11	binary operation `==` cannot be applied to type `Rc<CommutativeSemiring<Magnitude>>`
+6	cannot multiply `Rc<CommutativeSemiring<Magnitude>>` by `Rc<CommutativeSemiring<Magnitude>>`
+4	binary operation `>` cannot be applied to type `Rc<CommutativeSemiring<Magnitude>>`
+3	cannot multiply `CommutativeSemiring<Magnitude>` by `Rc<CommutativeSemiring<Magnitude>>`
+2	binary operation `<` cannot be applied to type `Rc<CommutativeSemiring<Magnitude>>`
+2	binary operation `>=` cannot be applied to type `Rc<CommutativeSemiring<Magnitude>>`
+2	cannot add `Rc<CommutativeSemiring<Magnitude>>` to `Rc<CommutativeSemiring<Magnitude>>`
+2	binary operation `!=` cannot be applied to type `Rc<CommutativeSemiring<Magnitude>>`
+2	cannot subtract `Rc<CommutativeSemiring<Magnitude>>` from `Rc<CommutativeSemiring<Magnitude>>`
+1	binary operation `==` cannot be applied to type `Rc<im::Vector<T>>`
+1	binary operation `==` cannot be applied to type `&Rc<im::Vector<T>>`
+1	binary operation `==` cannot be applied to type `CommutativeSemiring<Magnitude>`
+1	cannot divide `CommutativeSemiring<Magnitude>` by `CommutativeSemiring<Magnitude>`
+1	cannot subtract `{integer}` from `Rc<CommutativeSemiring<Magnitude>>`
+1	cannot add `CommutativeSemiring<Magnitude>` to `CommutativeSemiring<Magnitude>`
+1	binary operation `<=` cannot be applied to type `CommutativeSemiring<Magnitude>`
+1	cannot divide `Rc<CommutativeSemiring<Magnitude>>` by `Rc<CommutativeSemiring<Magnitude>>`
+1	cannot divide `Rc<CommutativeSemiring<Magnitude>>` by `{integer}`
+1	binary operation `==` cannot be applied to type `Rc<Measure<(), S, Rc<CommutativeSemiring<Magnitude>>>>`
+1	binary operation `<=` cannot be applied to type `Rc<CommutativeSemiring<Magnitude>>`
+1	binary operation `==` cannot be applied to type `&Rc<Measure<(), (), Rc<CommutativeSemiring<Magnitude>>>>`
