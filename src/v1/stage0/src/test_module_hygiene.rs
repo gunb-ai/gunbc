@@ -667,7 +667,7 @@ fn formerly_test_holds() -> Bool {
 
     #[test]
     fn directory_prefix_alone_does_not_exempt_zero_enrolled_plains() {
-        // review 43367: /extdeps/languages/ is not a bypass — only the explicit roster.
+        // review 43367 / 43604: /extdeps/languages/ is not a bypass.
         let dir = tmp_dir().join("extdeps").join("languages");
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("not_on_allowlist_test.dag");
@@ -692,29 +692,70 @@ fn export_for_importers() -> Bool {
     }
 
     #[test]
-    fn allowlisted_fixture_library_path_exempts_zero_enrolled_plains() {
+    fn cross_module_export_roster_seeds_named_plain_not_whole_file() {
+        // review 43604: declaration-grain export seed, never whole-file clean.
         let dir = tmp_dir();
-        // Path must end with an authority entry from CROSS_MODULE_FIXTURE_LIBRARY_ENTRIES.
         let file = dir
             .join("src")
             .join("v2")
-            .join("extdeps")
-            .join("languages")
-            .join("rust_test.dag");
+            .join("lens")
+            .join("no_dual_representation_test.dag");
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
         std::fs::write(
             &file,
-            r#"module rust_test_fixture_probe
+            r#"module no_dual_representation_test
 
-fn export_for_importers() -> Bool {
+fn no_dual_representation_test_clean_holds() -> Bool {
+  true
+}
+
+fn accidental_demotion_holds() -> Bool {
+  false
+}
+"#,
+        )
+        .unwrap();
+        let entry = file.to_string_lossy().into_owned();
+        let err = check_orphan_helpers_in_entries(&[entry])
+            .expect_err("non-exported plain beside an export roster must refuse");
+        assert!(
+            err.contains("accidental_demotion_holds"),
+            "must name the non-exported orphan: {err}"
+        );
+        assert!(
+            !err.contains("no_dual_representation_test_clean_holds"),
+            "exported plain must not orphan: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cross_module_export_roster_alone_does_not_green_empty_file() {
+        // Export roster without the named decls present still refuses unknowns.
+        let dir = tmp_dir();
+        let file = dir
+            .join("src")
+            .join("v2")
+            .join("lens")
+            .join("no_dual_representation_test.dag");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(
+            &file,
+            r#"module no_dual_representation_test
+
+fn unrelated_dark_holds() -> Bool {
   true
 }
 "#,
         )
         .unwrap();
         let entry = file.to_string_lossy().into_owned();
-        check_orphan_helpers_in_entries(&[entry])
-            .expect("allowlisted rust_test.dag path is a bounded fixture library");
+        let err = check_orphan_helpers_in_entries(&[entry])
+            .expect_err("path on export roster must not whole-file green");
+        assert!(
+            err.contains("unrelated_dark_holds"),
+            "must name the orphan: {err}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
