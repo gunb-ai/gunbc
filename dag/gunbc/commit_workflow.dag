@@ -1085,52 +1085,60 @@ fn project_one_enrollment_witness_demand(
           cause: "witness enrollment has duplicate discovery entries" as NonEmptyStr
         }
       } else {
-        match matching.first() {
-          DiscoveryIncomplete { entry: _, cause } =>
-            SingleDemandIncomplete { cause: cause }
-          DiscoveryComplete { entry: _, module_path, declarations } =>
-            if complete_discovery_module_count(
-              module_path: module_path,
-              discoveries: discoveries
-            ) > 1 {
-              SingleDemandAmbiguous {
-                cause: "complete discoveries repeat one module identity" as NonEmptyStr
-              }
-            } else if declarations.count() == 0 {
-              SingleDemandMissing {
-                cause: "complete witness discovery contains no declarations" as NonEmptyStr
-              }
-            } else if !discovery_declarations_well_formed(
-              module_path: module_path,
-              declarations: declarations
-            ) {
-              SingleDemandAmbiguous {
-                cause: "complete discovery contains invalid or duplicate declaration identities" as NonEmptyStr
-              }
-            } else if check_fns.count() == 0 {
-              SingleDemandQualified {
-                row: EnrollmentWitnessDemand {
-                  check: check,
+        fold(
+          matching,
+          init: SingleDemandMissing {
+            cause: "singleton discovery fold produced no row" as NonEmptyStr
+          },
+          f: fn(_prior, discovery) {
+            match discovery {
+              DiscoveryIncomplete { entry: _, cause } =>
+                SingleDemandIncomplete { cause: cause }
+              DiscoveryComplete { entry: _, module_path, declarations } =>
+                if complete_discovery_module_count(
+                  module_path: module_path,
+                  discoveries: discoveries
+                ) > 1 {
+                  SingleDemandAmbiguous {
+                    cause: "complete discoveries repeat one module identity" as NonEmptyStr
+                  }
+                } else if declarations.count() == 0 {
+                  SingleDemandMissing {
+                    cause: "complete witness discovery contains no declarations" as NonEmptyStr
+                  }
+                } else if !discovery_declarations_well_formed(
+                  module_path: module_path,
                   declarations: declarations
-                }
-              }
-            } else {
-              match project_named_declaration_demands(
-                names: check_fns,
-                declarations: declarations
-              ) {
-                NamedDeclarationMissing { cause } => SingleDemandMissing { cause: cause }
-                NamedDeclarationAmbiguous { cause } => SingleDemandAmbiguous { cause: cause }
-                NamedDeclarationsQualified { declarations: selected } =>
+                ) {
+                  SingleDemandAmbiguous {
+                    cause: "complete discovery contains invalid or duplicate declaration identities" as NonEmptyStr
+                  }
+                } else if check_fns.count() == 0 {
                   SingleDemandQualified {
                     row: EnrollmentWitnessDemand {
                       check: check,
-                      declarations: selected
+                      declarations: declarations
                     }
                   }
-              }
+                } else {
+                  match project_named_declaration_demands(
+                    names: check_fns,
+                    declarations: declarations
+                  ) {
+                    NamedDeclarationMissing { cause } => SingleDemandMissing { cause: cause }
+                    NamedDeclarationAmbiguous { cause } => SingleDemandAmbiguous { cause: cause }
+                    NamedDeclarationsQualified { declarations: selected } =>
+                      SingleDemandQualified {
+                        row: EnrollmentWitnessDemand {
+                          check: check,
+                          declarations: selected
+                        }
+                      }
+                  }
+                }
             }
-        }
+          }
+        )
       }
   }
 }
