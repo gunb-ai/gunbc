@@ -2,10 +2,8 @@ module gunbc.test_module_hygiene
 
 import std.types { String, Bool, List }
 
-data test_module_hygiene_authority_note: String = "Phase-0 dissolve authority for U2 orphan enroll-or-refuse (proud-wren-892). Pure fold over ModuleSurface — host still parses Node→surface and walks the corpus (src/v1/stage0/src/test_module_hygiene.rs). Equivalence: dag/test/claim/test_module_hygiene_hand_rust_equivalence_witness_test.dag pins the same fixture spellings as the HAND-RUST unit RED plants. Dissolve-on (full peel): host consumes this fold (or an equivalent Node-tree reader), then test_module_hygiene.rs leaves HAND_MAINTAINED / seed_retained_intrinsic_registrations (ROADMAP 5-dissolve-patches; v1_deletion_plan ^hand_queue_drain)."
+data test_module_hygiene_authority_note: String = "Phase-0 dissolve authority for U2 orphan enroll-or-refuse (proud-wren-892). Pure fold over ModuleSurface — refs are already-extracted local names (call + bare-var), so the fold is parse-free; host still parses Node→surface and walks the corpus (src/v1/stage0/src/test_module_hygiene.rs). Host projection from ModuleFns is Phase 1. Equivalence: dag/test/claim/test_module_hygiene_hand_rust_equivalence_witness_test.dag pins the same fixture spellings as the HAND-RUST unit RED plants. Dissolve-on (full peel): host consumes this fold (or an equivalent Node-tree reader), then test_module_hygiene.rs leaves HAND_MAINTAINED / seed_retained_intrinsic_registrations (ROADMAP 5-dissolve-patches; v1_deletion_plan ^hand_queue_drain)."
 
-// Abstract module surface: refs are already-extracted local names (call + bare-var),
-// so the fold is parse-free. Host projection from ModuleFns is Phase 1.
 type DeclSurface {
   name: String
   refs: List<String>
@@ -24,8 +22,8 @@ type CrossModuleExportRow {
   exports: List<String>
 }
 
-// Declaration-grain seeds (review 43604) — single authority for the interim roster.
-// Dissolve-on: rename each file off *_test.dag, or import-graph reachability supersedes.
+data cross_module_exported_plains_note: String = "Declaration-grain seeds (review 43604) — single authority for the interim roster. Dissolve-on: rename each file off *_test.dag, or import-graph reachability supersedes."
+
 data cross_module_exported_plains: List<CrossModuleExportRow> = [
   CrossModuleExportRow {
     entry_path: "src/v2/lens/no_dual_representation_test.dag",
@@ -65,16 +63,6 @@ fn unique_snoc(xs: List<String>, item: String) -> List<String> {
   } else {
     concat(xs, [item])
   }
-}
-
-fn unique_concat(left: List<String>, right: List<String>) -> List<String> {
-  fold(
-    right,
-    init: left,
-    f: fn(acc, item) {
-      unique_snoc(xs: acc, item: item)
-    }
-  )
 }
 
 fn entry_path_matches(entry: String, auth: String) -> Bool {
@@ -217,7 +205,6 @@ fn reach_fixpoint_pass(
   bodies: List<DeclSurface>,
   state: ReachState
 ) -> ReachState {
-  // Fuel: one step per frontier head; outer rounds bound diameter.
   reach_step(
     module: module,
     plains: plains,
@@ -228,8 +215,6 @@ fn reach_fixpoint_pass(
 }
 
 fn reach_convergence_fuel(module: ModuleSurface) -> List<String> {
-  // Two full sweeps over every decl name — enough for fixture diameters; Phase 1
-  // host may tighten once Node projection is wired.
   let names = fold(
     all_decl_bodies(module: module),
     init: [],
@@ -248,7 +233,6 @@ fn seed_reach_state(module: ModuleSurface, plains: List<String>, exports: List<S
       concat(acc, [d.name])
     }
   )
-  let bodies = all_decl_bodies(module: module)
   let from_tests = fold(
     module.test_fns,
     init: ReachState {
@@ -349,7 +333,7 @@ fn orphan_plain_names(module: ModuleSurface) -> List<String> {
   }
 }
 
-// --- Synthetic fixtures (same spellings as HAND-RUST unit RED plants) ---
+data fixture_spellings_note: String = "Synthetic fixtures — same spellings as HAND-RUST unit RED plants in src/v1/stage0/src/test_module_hygiene.rs."
 
 data fixture_zero_enrolled_demotion: ModuleSurface = ModuleSurface {
   entry: "demoted_witness_test.dag",
