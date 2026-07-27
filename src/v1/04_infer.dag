@@ -44,7 +44,6 @@ import v1.std.core {
   UnaryOpKind, Not, Neg, unaryop_operand,
   MatchPattern, Bind, VariantPattern, Wildcard, StringPart,
   make_field_binding_node, field_binding_name_at, field_binding_pattern,
-  node_with_declaration_binding_identity, node_with_reference_binding_identity,
   let_value, let_body, lambda_body,
   foreach_collection, foreach_body, method_receiver, method_arg_nodes,
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch,
@@ -96,7 +95,13 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, binding_declares_name
+  lookup_binding_by_name, binding_declares_name,
+  V1NodeContainmentPathCapture,
+  ReferenceCaptureCategory,
+  ValueReferenceCapture, CallReferenceCapture, FieldReferenceCapture, MethodReferenceCapture,
+  NamespaceIdentityCapture, empty_namespace_identity_capture,
+  concat_namespace_identity_capture, concat_namespace_identity_captures,
+  declaration_identity_capture, reference_identity_capture
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
@@ -125,7 +130,6 @@ import std.termination {
   OneStep
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons }
-import std.occurrence_binding { ContainmentPath, BindingOccurrence, BindingCandidate }
 import v1.compiler.infer_resolve {
   resolve_node, resolve_item_types, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl,
@@ -249,23 +253,21 @@ fn containment_ancestors_snoc(
 fn containment_path_at(
   ancestors: FreeMonoid<Node>,
   terminal: Node
-) -> ContainmentPath<Node> {
-  ContainmentPath {
+) -> V1NodeContainmentPathCapture {
+  V1NodeContainmentPathCapture {
     ancestors: ancestors,
     terminal: terminal
   }
 }
 
-fn binding_candidate_at(
+fn declaration_path_at(
   ancestors: FreeMonoid<Node>,
   declaration: Node
-) -> BindingCandidate<Node> {
-  BindingCandidate {
-    containment: containment_path_at(
-      ancestors: ancestors,
-      terminal: declaration
-    )
-  }
+) -> V1NodeContainmentPathCapture {
+  containment_path_at(
+    ancestors: ancestors,
+    terminal: declaration
+  )
 }
 
 fn infer_scope_descend(scope: InferScope, parent: Node) -> InferScope {
@@ -290,20 +292,24 @@ fn infer_scope_descend(scope: InferScope, parent: Node) -> InferScope {
 type InferResult {
   typed: Node
   diagnostics: List<ErrorNode>
+  identity: NamespaceIdentityCapture
 }
 
 type BlockInferState {
   scope: InferScope
   diag_chunks: List<List<ErrorNode>>
+  identity_chunks: List<NamespaceIdentityCapture>
   last_type: Node
   typed_stmts: List<Node>
 }
 
 fn infer_block_stmts(remaining: List<Node>, remaining_count: Int, scope: InferScope,
     typed_stmts: List<Node>, diag_chunks: List<List<ErrorNode>>,
+    identity_chunks: List<NamespaceIdentityCapture>,
     last_type: Node, expected: Node?) -> BlockInferState {
   match remaining |> first {
     Absent => BlockInferState { scope: scope, diag_chunks: diag_chunks,
+                              identity_chunks: identity_chunks,
                               last_type: last_type, typed_stmts: typed_stmts }
     Present { value: stmt } =>
       let is_last = remaining_count == 1
@@ -323,6 +329,7 @@ fn infer_block_stmts(remaining: List<Node>, remaining_count: Int, scope: InferSc
         scope: next_scope,
         typed_stmts: list_push(typed_stmts, stmt_typed),
         diag_chunks: list_push(diag_chunks, stmt_diags),
+        identity_chunks: list_push(identity_chunks, stmt_result.identity),
         last_type: stmt_rt,
         expected: expected
       )
@@ -332,45 +339,53 @@ fn infer_block_stmts(remaining: List<Node>, remaining_count: Int, scope: InferSc
 type TypedItemResult {
   item: Node
   diagnostics: List<ErrorNode>
+  identity: NamespaceIdentityCapture
 }
 
 type ArmInferResult {
   typed_arm: Node
   diagnostics: List<ErrorNode>
   body_type: Node
+  identity: NamespaceIdentityCapture
 }
 
 type PatternScopeResult {
   scope: InferScope
   diagnostics: List<ErrorNode>
   pattern: MatchPattern
+  identity: NamespaceIdentityCapture
 }
 
 type PatternBindingsScopeResult {
   scope: InferScope
   diagnostics: List<ErrorNode>
   bindings: List<Node>
+  identity: NamespaceIdentityCapture
 }
 
 type StringPartInferResult {
   typed_part: StringPart
   diagnostics: List<ErrorNode>
+  identity: NamespaceIdentityCapture
 }
 
 type InterpPartInferResult {
   typed_part: Node
   diagnostics: List<ErrorNode>
+  identity: NamespaceIdentityCapture
 }
 
 type ArgInferResult {
   typed_arg: Node
   diagnostics: List<ErrorNode>
+  identity: NamespaceIdentityCapture
 }
 
 type FieldInferResult {
   typed_field: Node
   infer_result: InferResult
   diagnostics: List<ErrorNode>
+  identity: NamespaceIdentityCapture
 }
 
 type BuildTypeEnvResult {
@@ -587,7 +602,8 @@ fn expr_span(texpr: Node) -> SourceSpan {
 fn ok_infer(texpr: Node) -> InferResult {
   InferResult {
     typed: texpr,
-    diagnostics: []
+    diagnostics: [],
+    identity: empty_namespace_identity_capture()
   }
 }
 
@@ -664,7 +680,8 @@ fn inference_error(message: String, span: SourceSpan, module_name: String) -> Er
 fn ambiguous_reference_refusal(name: String, candidates: List<String>, span: SourceSpan, scope: InferScope) -> InferResult {
   InferResult {
     typed: semantic_expr_error_node(message: concat("ambiguous reference '", name, "'"), span: span),
-    diagnostics: [make_error_node(diagnostic: AmbiguousReference { name: name, candidates: candidates, span: span }, module_name: scope.module_name)]
+    diagnostics: [make_error_node(diagnostic: AmbiguousReference { name: name, candidates: candidates, span: span }, module_name: scope.module_name)],
+    identity: empty_namespace_identity_capture()
   }
 }
 
@@ -1334,7 +1351,7 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
       ),
       resolved: param_node_type_expr(n: p),
       provenance: PreservedValue,
-      candidate: binding_candidate_at(
+      declaration: declaration_path_at(
         ancestors: scope.containment_ancestors,
         declaration: p
       )
@@ -1381,7 +1398,7 @@ fn extend_scope_with_candidate(
   name: String,
   resolved: Node,
   provenance: SubValueRelation,
-  candidate: BindingCandidate<Node>
+  declaration: V1NodeContainmentPathCapture
 ) -> InferScope {
   let extended = extend_scope(
     scope: scope,
@@ -1396,7 +1413,7 @@ fn extend_scope_with_candidate(
     lexical_candidates: lexical_candidate_index_insert(
       index: extended.lexical_candidates,
       short_name: name,
-      candidate: candidate
+      declaration: declaration
     ),
     containment_ancestors: extended.containment_ancestors,
     body_locals: extended.body_locals,
@@ -1413,7 +1430,7 @@ fn extend_scope_match_bound(
   name: String,
   resolved: Node,
   provenance: SubValueRelation,
-  candidate: BindingCandidate<Node>
+  declaration: V1NodeContainmentPathCapture
 ) -> InferScope {
   InferScope {
     type_env: scope.type_env,
@@ -1422,7 +1439,7 @@ fn extend_scope_match_bound(
     lexical_candidates: lexical_candidate_index_insert(
       index: scope.lexical_candidates,
       short_name: name,
-      candidate: candidate
+      declaration: declaration
     ),
     containment_ancestors: scope.containment_ancestors,
     body_locals: map_insert(scope.body_locals, name, true),
@@ -1445,7 +1462,7 @@ fn extend_scope_with_params(scope: InferScope, params: List<Node>) -> InferScope
       name: name,
       resolved: type_variable_node(id: "lambda_param"),
       provenance: SubValueUnknown,
-      candidate: binding_candidate_at(
+      declaration: declaration_path_at(
         ancestors: scope.containment_ancestors,
         declaration: p
       )
@@ -1469,7 +1486,7 @@ fn scope_after_stmt_node(stmt: Node, stmt_type: Node, scope: InferScope) -> Infe
           ),
           resolved: stmt_type,
           provenance: classify_binding_provenance(val: val, scope: scope),
-          candidate: binding_candidate_at(
+          declaration: declaration_path_at(
             ancestors: scope.containment_ancestors,
             declaration: stmt
           )
@@ -1515,7 +1532,7 @@ fn extend_scope_with_pattern_node(
         Bind { declaration: authored } => authored
         _ => declaration
       }
-      let candidate = binding_candidate_at(
+      let declaration_path = declaration_path_at(
         ancestors: ancestors,
         declaration: authored_declaration
       )
@@ -1525,27 +1542,29 @@ fn extend_scope_with_pattern_node(
           name: declaration.name,
           resolved: pattern_binding_type(subject: scrutinee_subject),
           provenance: scrutinee_provenance,
-          candidate: candidate
+          declaration: declaration_path
         ),
         diagnostics: [],
         pattern: Bind {
-          declaration: node_with_declaration_binding_identity(
-            node: declaration,
-            candidate: candidate
-          )
-        }
+          declaration: declaration
+        },
+        identity: declaration_identity_capture(
+          containment: declaration_path
+        )
       }
     Wildcard =>
       PatternScopeResult {
         scope: scope,
         diagnostics: [],
-        pattern: Wildcard
+        pattern: Wildcard,
+        identity: empty_namespace_identity_capture()
       }
     LitPattern { value: value } =>
       PatternScopeResult {
         scope: scope,
         diagnostics: [],
-        pattern: LitPattern { value: value }
+        pattern: LitPattern { value: value },
+        identity: empty_namespace_identity_capture()
       }
     VariantPattern { name: vname, parent_enum: parent_enum, field_bindings: bindings } =>
       let authored_bindings = match authored_pattern {
@@ -1563,7 +1582,8 @@ fn extend_scope_with_pattern_node(
       let result = fold(bindings |> enumerate, init: PatternBindingsScopeResult {
         scope: scope,
         diagnostics: variant_diags,
-        bindings: []
+        bindings: [],
+        identity: empty_namespace_identity_capture()
       }, f: (acc, pair) =>
         let fb = pair.second
         let authored_fb = match authored_bindings |> skip(pair.first) |> first {
@@ -1591,6 +1611,10 @@ fn extend_scope_with_pattern_node(
             acc.diagnostics,
             concat(field_lookup.diagnostics, nested.diagnostics)
           ),
+          identity: concat_namespace_identity_capture(
+            left: acc.identity,
+            right: nested.identity
+          ),
           bindings: concat(acc.bindings, [
             make_field_binding_node(
               field_name: field_name,
@@ -1608,7 +1632,8 @@ fn extend_scope_with_pattern_node(
           name: vname,
           parent_enum: parent_enum,
           field_bindings: result.bindings
-        }
+        },
+        identity: result.identity
       }
   }
 }
@@ -1636,7 +1661,11 @@ fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_arg
           scope: infer_scope_descend(scope: scope, parent: ia),
           expected: expected
         )
-        Present { value: ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: ia, source_indices: scope.type_env.source_indices), value: init_result.typed, span: ia.span, name_span: ia.span), diagnostics: init_result.diagnostics } }
+        Present { value: ArgInferResult {
+          typed_arg: make_arg_node(name: arg_name_at(n: ia, source_indices: scope.type_env.source_indices), value: init_result.typed, span: ia.span, name_span: ia.span),
+          diagnostics: init_result.diagnostics,
+          identity: init_result.identity
+        } }
       Absent => none
     }
   } else { none }
@@ -1702,7 +1731,11 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         lambda_param_provenance: prov_map
       }
       let ar = infer_expr(texpr: lam_value, scope: fold_scope, expected: Present { value: fold_callable })
-      ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
+      ArgInferResult {
+        typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span),
+        diagnostics: ar.diagnostics,
+        identity: ar.identity
+      }
     } else {
       let nf_lam_value = arg_value(n: a)
       let nf_prov_map = match elem_provenance {
@@ -1761,7 +1794,11 @@ fn infer_arg_with_element_type(arg: Node, element_type: Node, scope: InferScope)
     scope: infer_scope_descend(scope: scope, parent: arg),
     expected: Present { value: element_type }
   )
-  ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: ar.typed, span: arg.span, name_span: arg.span), diagnostics: ar.diagnostics }
+  ArgInferResult {
+    typed_arg: make_arg_node(name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: ar.typed, span: arg.span, name_span: arg.span),
+    diagnostics: ar.diagnostics,
+    identity: ar.identity
+  }
 }
 
 fn binding_is_namespace_root_nominal(binding: TypeBinding) -> Bool {
@@ -1825,97 +1862,56 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
     expected: expected,
     current_containment: current_containment
   )
-  let binding_identity = match texpr.expr_data {
+  let identity = match texpr.expr_data {
     ExprVar { binding_kind: _ } =>
-      Present {
-        value: node_with_reference_binding_identity(
-          node: result.typed,
-          occurrence: BindingOccurrence {
-            containment: current_containment
-          },
-          lexical_candidates: lexical_candidate_index_lookup(
-            index: scope.lexical_candidates,
-            short_name: expr_var_name_at(
-              texpr: texpr,
-              source_indices: scope.type_env.source_indices
-            )
-          )
-        )
-      }
+      reference_identity_capture(
+        containment: current_containment,
+        short_name: expr_var_name_at(
+          texpr: texpr,
+          source_indices: scope.type_env.source_indices
+        ),
+        category: ValueReferenceCapture
+      )
     ExprCall { call_semantics: _, descent_evidence: _ } =>
-      Present {
-        value: node_with_reference_binding_identity(
-          node: result.typed,
-          occurrence: BindingOccurrence {
-            containment: current_containment
-          },
-          lexical_candidates: lexical_candidate_index_lookup(
-            index: scope.lexical_candidates,
-            short_name: expr_call_func_at(
-              texpr: texpr,
-              source_indices: scope.type_env.source_indices
-            )
-          )
-        )
-      }
+      reference_identity_capture(
+        containment: current_containment,
+        short_name: expr_call_func_at(
+          texpr: texpr,
+          source_indices: scope.type_env.source_indices
+        ),
+        category: CallReferenceCapture
+      )
     ExprFieldAccess { summary: _ } =>
-      Present {
-        value: node_with_reference_binding_identity(
-          node: result.typed,
-          occurrence: BindingOccurrence {
-            containment: current_containment
-          },
-          lexical_candidates: lexical_candidate_index_lookup(
-            index: scope.lexical_candidates,
-            short_name: field_access_field_at(
-              texpr: texpr,
-              source_indices: scope.type_env.source_indices
-            )
-          )
-        )
-      }
+      reference_identity_capture(
+        containment: current_containment,
+        short_name: field_access_field_at(
+          texpr: texpr,
+          source_indices: scope.type_env.source_indices
+        ),
+        category: FieldReferenceCapture
+      )
     ExprMethodCall { method_semantics: _ } =>
-      Present {
-        value: node_with_reference_binding_identity(
-          node: result.typed,
-          occurrence: BindingOccurrence {
-            containment: current_containment
-          },
-          lexical_candidates: lexical_candidate_index_lookup(
-            index: scope.lexical_candidates,
-            short_name: expr_method_name_at(
-              texpr: texpr,
-              source_indices: scope.type_env.source_indices
-            )
-          )
-        )
-      }
+      reference_identity_capture(
+        containment: current_containment,
+        short_name: expr_method_name_at(
+          texpr: texpr,
+          source_indices: scope.type_env.source_indices
+        ),
+        category: MethodReferenceCapture
+      )
     ExprLet =>
-      Present {
-        value: node_with_declaration_binding_identity(
-          node: result.typed,
-          candidate: BindingCandidate {
-            containment: current_containment
-          }
-        )
-      }
+      declaration_identity_capture(containment: current_containment)
     ExprForEach =>
-      Present {
-        value: node_with_declaration_binding_identity(
-          node: result.typed,
-          candidate: BindingCandidate {
-            containment: current_containment
-          }
-        )
-      }
-    _ => none
+      declaration_identity_capture(containment: current_containment)
+    _ => empty_namespace_identity_capture()
   }
   InferResult {
-    typed: match binding_identity {
-      Present { value: typed } => typed
-      Absent => result.typed
-    },
-    diagnostics: result.diagnostics
+    typed: result.typed,
+    diagnostics: result.diagnostics,
+    identity: concat_namespace_identity_capture(
+      left: identity,
+      right: result.identity
+    )
   }
 }
 
@@ -1923,7 +1919,7 @@ fn infer_expr_descended(
   texpr: Node,
   scope: InferScope,
   expected: Node?,
-  current_containment: ContainmentPath<Node>
+  current_containment: V1NodeContainmentPathCapture
 ) -> InferResult {
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
