@@ -913,7 +913,9 @@ fn declaration_refs_unique(declarations: List<DeclarationRef>) -> Bool {
 }
 
 fn declaration_ref_lists_eq(left: List<DeclarationRef>, right: List<DeclarationRef>) -> Bool {
-  left.count() == right.count()
+  declaration_refs_unique(declarations: left)
+    && declaration_refs_unique(declarations: right)
+    && left.count() == right.count()
     && fold(left, init: true, f: fn(acc, declaration) {
       acc && declaration_ref_in_list(target: declaration, declarations: right)
     })
@@ -1198,9 +1200,9 @@ fn project_enrollment_witness_demands_unchecked(
 }
 
 fn project_enrollment_witness_demands(
-  roster: List<CommitCheckEnrollment>,
   discoveries: List<EntryDeclarationDiscovery>,
 ) -> EnrollmentDemandOutcome {
+  let roster = commit_gate_roster
   if !discoveries_are_roster_scoped(roster: roster, discoveries: discoveries) {
     DemandRosterAmbiguous {
       cause: "declaration discovery has no owning witness enrollment" as NonEmptyStr
