@@ -47,9 +47,9 @@ fn seed_honesty_fabricated_agreement(
       },
       independent_compilers: IndependentCompilerPair {
         primary: primary_compiler,
-        secondary: secondary_compiler,
-        evidence: independent_compiler_evidence_unavailable()
+        secondary: secondary_compiler
       },
+      evidence: independent_compiler_evidence_unavailable(),
       agreed_hash: BootstrapHashPin {
         digest: pinned_v4_fixed_point_hash,
         pin: ^pinned_v4_fixed_point_hash_pin
@@ -68,7 +68,6 @@ fn seed_honesty_discharge_refuses_when_unavailable() -> Bool {
 fn seed_honesty_discharge_witness_refuses_holds_agreement() -> Bool {
   match bootstrap_seed_honesty_discharge_witness(
     axiom: ^seed_honesty_axiom,
-    evidence: independent_compiler_evidence_unavailable(),
     diverse_double_compilation: seed_honesty_fabricated_agreement(
       primary_compiler: seed_honesty_primary_compiler,
       secondary_compiler: seed_honesty_secondary_compiler
@@ -82,7 +81,6 @@ fn seed_honesty_discharge_witness_refuses_holds_agreement() -> Bool {
 fn seed_honesty_discharge_witness_refuses_old_magic_atom() -> Bool {
   match bootstrap_seed_honesty_discharge_witness(
     axiom: ^seed_honesty_axiom,
-    evidence: independent_compiler_evidence_unavailable(),
     diverse_double_compilation: seed_honesty_fabricated_agreement(
       primary_compiler: ^independent_compiler_witness,
       secondary_compiler: ^independent_compiler_witness

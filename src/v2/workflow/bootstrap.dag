@@ -85,13 +85,13 @@ type IndependentCompilerEvidence
 type IndependentCompilerPair {
   primary: Symbol
   secondary: Symbol
-  evidence: IndependentCompilerEvidence
 }
 
 type DiverseCompilationAgreement {
   primary: DiverseCompilationRun
   secondary: DiverseCompilationRun
   independent_compilers: IndependentCompilerPair
+  evidence: IndependentCompilerEvidence
   agreed_hash: BootstrapHashPin
 }
 
@@ -601,6 +601,7 @@ fn diverse_compilation_agreement_witness(
             primary: primary,
             secondary: secondary,
             independent_compilers: pair,
+            evidence: evidence,
             agreed_hash: agreed_hash
           }
         }
@@ -613,12 +614,15 @@ fn diverse_compilation_agreement_witness(
 
 fn bootstrap_seed_honesty_discharge_witness(
   axiom: Symbol,
-  evidence: IndependentCompilerEvidence,
   diverse_double_compilation: Witness<DiverseCompilationAgreement>
 ) -> Witness<SeedHonestyDischarge> {
-  match evidence {
-    IndependentCompilerEvidenceUnavailable { correction: _ } =>
-      Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
+  match diverse_double_compilation {
+    Holds { value: agreement } =>
+      match agreement.evidence {
+        IndependentCompilerEvidenceUnavailable { correction: _ } =>
+          Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
 
@@ -696,7 +700,6 @@ data bootstrap_physical_axiom: PhysicalExecutionAxiom = PhysicalExecutionAxiom {
 
 data bootstrap_seed_honesty_discharge: Witness<SeedHonestyDischarge> = bootstrap_seed_honesty_discharge_witness(
   axiom: ^seed_honesty_axiom,
-  evidence: independent_compiler_evidence_unavailable(),
   diverse_double_compilation: diverse_compilation_agreement_witness(
     primary: DiverseCompilationRun {
       source: ^v2_dag_source,
@@ -715,6 +718,7 @@ data bootstrap_seed_honesty_discharge: Witness<SeedHonestyDischarge> = bootstrap
       secondary: ^independent_compiler_witness,
       evidence: independent_compiler_evidence_unavailable()
     ),
+    evidence: independent_compiler_evidence_unavailable(),
     agreed_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: ^pinned_v4_fixed_point_hash_pin }
   )
 )
