@@ -134,8 +134,8 @@ test fn test_module_hygiene_equivalence_orphan_plant_holds() -> Bool {
   orphans_are(module: fixture_orphan_plant, expected: ["dark_unreachable_check"])
 }
 
-// RED control: if plain data were wrongly treated as enrollment, this fixture
-// would go green with zero orphans — keep the refuse countable.
+data test_module_hygiene_red_plain_data_control_note: String = "RED control: if plain data were wrongly treated as enrollment, fixture_plain_data_not_enrollment would go green with zero orphans — keep the refuse countable."
+
 test fn test_module_hygiene_red_plain_data_must_not_green_demotion() -> Bool {
   length(xs: orphan_plain_names(module: fixture_plain_data_not_enrollment)) > 0
 }
