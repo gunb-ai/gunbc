@@ -547,6 +547,24 @@ fn shape_git_bundle_verify_argv(bundle: FilePath) -> List<String> {
   ["bundle", "verify", bundle as String]
 }
 
+fn shape_git_is_shallow_repository_argv(repo: FilePath) -> List<String> {
+  ["-C", repo as String, "rev-parse", "--is-shallow-repository"]
+}
+
+fn shape_git_remote_get_url_argv(
+  repo: FilePath,
+  remote: NonEmptyStr,
+) -> List<String> {
+  ["-C", repo as String, "remote", "get-url", remote as String]
+}
+
+fn shape_git_fetch_unshallow_argv(
+  repo: FilePath,
+  remote: NonEmptyStr,
+) -> List<String> {
+  ["-C", repo as String, "fetch", "--no-tags", "--unshallow", remote as String]
+}
+
 fn shape_git_init_bare_argv(path: FilePath) -> List<String> {
   ["init", "--bare", path as String]
 }

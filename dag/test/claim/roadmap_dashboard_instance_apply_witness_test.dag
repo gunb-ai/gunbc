@@ -3,6 +3,9 @@ module test.claim.roadmap_dashboard_instance_apply_witness
 import std.types { Bool, String, FilePath, GitRef }
 import extdeps.git {
   shape_git_bundle_create_argv,
+  shape_git_is_shallow_repository_argv,
+  shape_git_remote_get_url_argv,
+  shape_git_fetch_unshallow_argv,
   shape_git_init_bare_argv,
   shape_git_bare_fetch_argv,
   shape_git_bare_update_ref_argv,
@@ -64,6 +67,35 @@ test fn dashboard_source_transport_argv_is_exact_and_atomic() -> Bool {
     "/tmp/dashboard-source.bundle",
     "refs/heads/session/codex-provider-feedback-v0",
   ]
+    && shape_git_is_shallow_repository_argv(
+      repo: "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath,
+    ) == [
+      "-C",
+      "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0",
+      "rev-parse",
+      "--is-shallow-repository",
+    ]
+    && shape_git_remote_get_url_argv(
+      repo: "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath,
+      remote: "origin",
+    ) == [
+      "-C",
+      "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0",
+      "remote",
+      "get-url",
+      "origin",
+    ]
+    && shape_git_fetch_unshallow_argv(
+      repo: "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath,
+      remote: "origin",
+    ) == [
+      "-C",
+      "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0",
+      "fetch",
+      "--no-tags",
+      "--unshallow",
+      "origin",
+    ]
     && next == concat(staged as String, ".next")
     && shape_scp_copy_to_argv(
       host: "srv1",
@@ -207,8 +239,10 @@ test fn dashboard_health_requires_intended_instance_identity() -> Bool {
 test fn dashboard_plan_is_end_to_end_and_production_disjoint() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let rows = dashboard_instance_provision_plan_rows(instance: lab)
-  count(rows) == 10
-    && any(rows, row => row.kind == "materialize-git-bundle")
+  count(rows) == 12
+    && any(rows, row => row.kind == "hydrate-controller-history")
+    && any(rows, row => row.kind == "prepare-git-bundle")
+    && any(rows, row => row.kind == "stage-git-bundle")
     && any(rows, row => row.kind == "verify-provider-auth")
     && any(rows, row => row.kind == "verify-health")
     && dashboard_instances_have_disjoint_owned_paths(
@@ -252,6 +286,16 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
       stdout: " M dag/gunbc/roadmap_dashboard_instance.dag",
       stderr: "",
     },
+    shallow_read: DashboardExecResult {
+      success: true,
+      stdout: "true",
+      stderr: "",
+    },
+    history_remote_read: DashboardExecResult {
+      success: true,
+      stdout: "configured",
+      stderr: "",
+    },
   )
   let clean = dashboard_source_preflight_decision(
     instance: lab,
@@ -265,6 +309,39 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
       stdout: "",
       stderr: "",
     },
+    shallow_read: DashboardExecResult {
+      success: true,
+      stdout: "false",
+      stderr: "",
+    },
+    history_remote_read: DashboardExecResult {
+      success: false,
+      stdout: "",
+      stderr: "unused when history is complete",
+    },
+  )
+  let missing_remote = dashboard_source_preflight_decision(
+    instance: lab,
+    ref_read: DashboardExecResult {
+      success: true,
+      stdout: "deadbeef",
+      stderr: "",
+    },
+    status_read: DashboardExecResult {
+      success: true,
+      stdout: "",
+      stderr: "",
+    },
+    shallow_read: DashboardExecResult {
+      success: true,
+      stdout: "true",
+      stderr: "",
+    },
+    history_remote_read: DashboardExecResult {
+      success: false,
+      stdout: "",
+      stderr: "No such remote",
+    },
   )
   let dirty_ok = match dirty {
     DashboardApplyPreflightRefused { instance_id: _, step, detail } =>
@@ -277,8 +354,15 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
       instance_id == lab.instance_id
     DashboardApplyPreflightRefused { instance_id: _, step: _, detail: _ } => false
   }
+  let missing_remote_ok = match missing_remote {
+    DashboardApplyPreflightRefused { instance_id: _, step, detail } =>
+      step == "controller-history-remote"
+        && string_contains(s: detail, pattern: "modeled hydration remote")
+    DashboardApplyPreflightReady { instance_id: _ } => false
+  }
   dirty_ok
     && clean_ok
+    && missing_remote_ok
     && string_contains(
       s: serialize_json(v: dashboard_apply_preflight_json_value(result: dirty)),
       pattern: "\"status\": \"refused\"",

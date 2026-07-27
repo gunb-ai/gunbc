@@ -7,7 +7,9 @@ import gunbc.roadmap_dashboard_instance {
   DashboardObserveOnly,
   DashboardActuating,
   DashboardInstanceProvisionOp,
-  DashboardMaterializeGitBundle,
+  DashboardHydrateControllerHistory,
+  DashboardPrepareGitBundle,
+  DashboardStageGitBundle,
   DashboardEnsureDirectory,
   DashboardEnsureOwnershipMarker,
   DashboardEnsureLocalOrigin,
@@ -157,7 +159,7 @@ fn plan_binds_source_ref_translation(
 test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 10
+  count(plan) == 12
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
 }
@@ -266,16 +268,32 @@ test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
   any(plan, op => match op {
-    DashboardMaterializeGitBundle {
+    DashboardHydrateControllerHistory {
       controller_repo,
-      staged_bundle,
+      history_remote,
+    } =>
+      controller_repo == dashboard_feedback_controller_repo
+        && history_remote == "origin"
+    _ => false
+  })
+    && any(plan, op => match op {
+    DashboardPrepareGitBundle {
+      controller_repo,
       anchor_ref,
     } =>
       controller_repo == dashboard_feedback_controller_repo
-        && staged_bundle == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/inbox/source.bundle"
         && anchor_ref == "refs/heads/session/codex-provider-feedback-v0"
     _ => false
   })
+    && any(plan, op => match op {
+      DashboardStageGitBundle {
+        controller_repo,
+        staged_bundle,
+      } =>
+        controller_repo == dashboard_feedback_controller_repo
+          && staged_bundle == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/inbox/source.bundle"
+      _ => false
+    })
 }
 
 test fn dashboard_reconcile_refuses_unmarked_existing_source() -> Bool {

@@ -9,6 +9,9 @@ import extdeps.filesystem.filesystem_io
 import extdeps.git {
   shape_git_bundle_create_argv,
   shape_git_bundle_verify_argv,
+  shape_git_is_shallow_repository_argv,
+  shape_git_remote_get_url_argv,
+  shape_git_fetch_unshallow_argv,
   shape_git_init_bare_argv,
   shape_git_bare_fetch_argv,
   shape_git_bare_update_ref_argv,
@@ -50,7 +53,9 @@ import gunbc.roadmap_dashboard_instance {
   DashboardGitBundle,
   HostDashboardInstance,
   DashboardInstanceProvisionOp,
-  DashboardMaterializeGitBundle,
+  DashboardHydrateControllerHistory,
+  DashboardPrepareGitBundle,
+  DashboardStageGitBundle,
   DashboardEnsureDirectory,
   DashboardEnsureOwnershipMarker,
   DashboardEnsureLocalOrigin,
@@ -79,7 +84,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_reconcile,
 }
 
-data dashboard_instance_apply_note: String = "The wet path is an interpreter of HostDashboardInstance, not a parallel provisioning script. Its high-level provision plan is pure and browser-visible; this module projects each operation to typed argv, executes locally or through the instance's explicit SSH transport, records a typed receipt, and performs a second independent observation before claiming convergence. Source transport has no handoff gap: mktemp directory -> git bundle -> bundle verify -> scp to .next -> target mv -> local cleanup. A matching ownership-marker filename gates every mutation of an existing isolated source clone. Production is read before mutation and again after; repo HEAD plus /healthz must remain byte-identical. No recursive delete exists in apply."
+data dashboard_instance_apply_note: String = "The wet path is an interpreter of HostDashboardInstance, not a parallel provisioning script. Its high-level provision plan is pure and browser-visible; this module projects each operation to typed argv, executes locally or through the instance's explicit SSH transport, records a typed receipt, and performs a second independent observation before claiming convergence. Source transport has no handoff gap: inspect shallow state -> hydrate from the modeled remote when needed -> mktemp directory -> git bundle -> metadata verify -> import into a new empty bare repository -> scp to .next -> target mv -> local cleanup. The empty-repository import is the closure proof; target mutation does not begin until it succeeds. A matching ownership-marker filename gates every mutation of an existing isolated source clone. Production is read before mutation and again after; repo HEAD plus /healthz must remain byte-identical. No recursive delete exists in apply."
 
 type DashboardExecResult {
   success: Bool
@@ -262,12 +267,42 @@ fn dashboard_copy_to_target_atomically(
   }
 }
 
-fn dashboard_materialize_bundle(
-  instance: HostDashboardInstance,
+fn dashboard_hydrate_controller_history(
   controller_repo: FilePath,
-  staged_bundle: FilePath,
+  history_remote: NonEmptyStr,
+) -> DashboardExecResult {
+  let shallow = dashboard_local_exec(
+    workdir: controller_repo,
+    program: "/usr/bin/git" as FilePath,
+    args: shape_git_is_shallow_repository_argv(repo: controller_repo),
+  )
+  if !shallow.success {
+    shallow
+  } else if trim(shallow.stdout) == "false" {
+    dashboard_exec_ok(stdout: "controller history already complete")
+  } else if trim(shallow.stdout) == "true" {
+    dashboard_local_exec(
+      workdir: controller_repo,
+      program: "/usr/bin/git" as FilePath,
+      args: shape_git_fetch_unshallow_argv(
+        repo: controller_repo,
+        remote: history_remote,
+      ),
+    )
+  } else {
+    dashboard_exec_refused(detail: join([
+      "git returned an unknown shallow-repository state: ",
+      shallow.stdout,
+      shallow.stderr,
+    ], ""))
+  }
+}
+
+fn dashboard_prepare_bundle(
+  controller_repo: FilePath,
   anchor_ref: NonEmptyStr,
   temp_bundle: FilePath,
+  temp_verify_repo: FilePath,
 ) -> DashboardExecResult {
   let created = dashboard_local_exec(
     workdir: controller_repo,
@@ -281,22 +316,59 @@ fn dashboard_materialize_bundle(
   if !created.success {
     created
   } else {
-    let verified = dashboard_local_exec(
+    let metadata_verified = dashboard_local_exec(
       workdir: controller_repo,
       program: "/usr/bin/git" as FilePath,
       args: shape_git_bundle_verify_argv(bundle: temp_bundle),
     )
-    if verified.success {
-      dashboard_copy_to_target_atomically(
-        instance: instance,
-        controller_workdir: controller_repo,
-        local_path: temp_bundle,
-        remote_path: staged_bundle,
-      )
+    if !metadata_verified.success {
+      metadata_verified
     } else {
-      verified
+      let verifier_initialized = dashboard_local_exec(
+        workdir: controller_repo,
+        program: "/usr/bin/git" as FilePath,
+        args: shape_git_init_bare_argv(path: temp_verify_repo),
+      )
+      if !verifier_initialized.success {
+        verifier_initialized
+      } else {
+        let imported = dashboard_local_exec(
+          workdir: controller_repo,
+          program: "/usr/bin/git" as FilePath,
+          args: shape_git_bare_fetch_argv(
+            repo: temp_verify_repo,
+            bundle: temp_bundle,
+            source_ref: anchor_ref as GitRef,
+          ),
+        )
+        if imported.success {
+          dashboard_exec_ok(
+            stdout: "bundle imported into a new empty bare repository",
+          )
+        } else {
+          dashboard_exec_refused(detail: join([
+            "bundle failed empty-repository import closure proof: ",
+            imported.stderr,
+            imported.stdout,
+          ], ""))
+        }
+      }
     }
   }
+}
+
+fn dashboard_stage_bundle(
+  instance: HostDashboardInstance,
+  controller_repo: FilePath,
+  staged_bundle: FilePath,
+  temp_bundle: FilePath,
+) -> DashboardExecResult {
+  dashboard_copy_to_target_atomically(
+    instance: instance,
+    controller_workdir: controller_repo,
+    local_path: temp_bundle,
+    remote_path: staged_bundle,
+  )
 }
 
 fn dashboard_ensure_local_origin(
@@ -509,14 +581,26 @@ fn dashboard_apply_provision_op(
   instance: HostDashboardInstance,
   op: DashboardInstanceProvisionOp,
   temp_bundle: FilePath,
+  temp_verify_repo: FilePath,
 ) -> DashboardExecResult {
   match op {
-    DashboardMaterializeGitBundle { controller_repo, staged_bundle, anchor_ref } =>
-      dashboard_materialize_bundle(
+    DashboardHydrateControllerHistory { controller_repo, history_remote } =>
+      dashboard_hydrate_controller_history(
+        controller_repo: controller_repo,
+        history_remote: history_remote,
+      )
+    DashboardPrepareGitBundle { controller_repo, anchor_ref } =>
+      dashboard_prepare_bundle(
+        controller_repo: controller_repo,
+        anchor_ref: anchor_ref,
+        temp_bundle: temp_bundle,
+        temp_verify_repo: temp_verify_repo,
+      )
+    DashboardStageGitBundle { controller_repo, staged_bundle } =>
+      dashboard_stage_bundle(
         instance: instance,
         controller_repo: controller_repo,
         staged_bundle: staged_bundle,
-        anchor_ref: anchor_ref,
         temp_bundle: temp_bundle,
       )
     DashboardEnsureDirectory { path } =>
@@ -588,6 +672,7 @@ fn dashboard_apply_plan(
   instance: HostDashboardInstance,
   plan: List<DashboardInstanceProvisionOp>,
   temp_bundle: FilePath,
+  temp_verify_repo: FilePath,
 ) -> DashboardApplyFold {
   fold(
     plan,
@@ -606,6 +691,7 @@ fn dashboard_apply_plan(
           instance: instance,
           op: op,
           temp_bundle: temp_bundle,
+          temp_verify_repo: temp_verify_repo,
         )
         let detail = if result.success {
           trim(result.stdout)
@@ -726,7 +812,12 @@ fn dashboard_instance_observe(
   )
   let bundle_present = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => true
-    DashboardGitBundle { controller_repo: _, staged_bundle, anchor_ref: _ } =>
+    DashboardGitBundle {
+      controller_repo: _,
+      staged_bundle,
+      anchor_ref: _,
+      history_remote: _,
+    } =>
       dashboard_target_file_present(instance: instance, path: staged_bundle)
   }
   DashboardInstanceObserved {
@@ -783,6 +874,8 @@ fn dashboard_source_preflight_decision(
   instance: HostDashboardInstance,
   ref_read: DashboardExecResult,
   status_read: DashboardExecResult,
+  shallow_read: DashboardExecResult,
+  history_remote_read: DashboardExecResult,
 ) -> DashboardApplyPreflightResult {
   if !ref_read.success {
     dashboard_apply_preflight_refused(
@@ -811,6 +904,36 @@ fn dashboard_source_preflight_decision(
       detail: join([
         "git bundle carries committed objects only; commit or otherwise model these source changes before apply: ",
         status_read.stdout,
+      ], ""),
+    )
+  } else if !shallow_read.success {
+    dashboard_apply_preflight_refused(
+      instance: instance,
+      step: "controller-history-state",
+      detail: join([
+        "could not determine whether controller history is shallow: ",
+        shallow_read.stderr,
+        shallow_read.stdout,
+      ], ""),
+    )
+  } else if trim(shallow_read.stdout) != "true"
+      && trim(shallow_read.stdout) != "false" {
+    dashboard_apply_preflight_refused(
+      instance: instance,
+      step: "controller-history-state",
+      detail: join([
+        "git returned an unknown shallow-repository state: ",
+        shallow_read.stdout,
+      ], ""),
+    )
+  } else if trim(shallow_read.stdout) == "true"
+      && !history_remote_read.success {
+    dashboard_apply_preflight_refused(
+      instance: instance,
+      step: "controller-history-remote",
+      detail: join([
+        "controller history is shallow but the modeled hydration remote is unavailable: ",
+        history_remote_read.stderr,
       ], ""),
     )
   } else {
@@ -943,7 +1066,12 @@ fn dashboard_instance_apply_preflight(
             step: "source-seed",
             detail: "isolated instance apply requires a modeled Git-bundle seed",
           )
-        DashboardGitBundle { controller_repo, staged_bundle: _, anchor_ref } => {
+        DashboardGitBundle {
+          controller_repo,
+          staged_bundle: _,
+          anchor_ref,
+          history_remote,
+        } => {
           let source = dashboard_source_preflight_decision(
             instance: instance,
             ref_read: dashboard_local_exec(
@@ -958,6 +1086,19 @@ fn dashboard_instance_apply_preflight(
               workdir: controller_repo,
               program: "/usr/bin/git" as FilePath,
               args: shape_git_status_porcelain_argv(repo: controller_repo),
+            ),
+            shallow_read: dashboard_local_exec(
+              workdir: controller_repo,
+              program: "/usr/bin/git" as FilePath,
+              args: shape_git_is_shallow_repository_argv(repo: controller_repo),
+            ),
+            history_remote_read: dashboard_local_exec(
+              workdir: controller_repo,
+              program: "/usr/bin/git" as FilePath,
+              args: shape_git_remote_get_url_argv(
+                repo: controller_repo,
+                remote: history_remote,
+              ),
             ),
           )
           match source {
@@ -1168,10 +1309,12 @@ fn dashboard_instance_apply_after_preflight(
             )
           } else {
             let temp_bundle = join([temp.path as String, "/source.bundle"], "") as FilePath
+            let temp_verify_repo = join([temp.path as String, "/verify.git"], "") as FilePath
             let applied = dashboard_apply_plan(
               instance: instance,
               plan: plan,
               temp_bundle: temp_bundle,
+              temp_verify_repo: temp_verify_repo,
             )
             let cleaned = shell.Remove.RecursiveForce(path: temp.path)
             if !applied.running {

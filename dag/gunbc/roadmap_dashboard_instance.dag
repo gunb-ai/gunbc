@@ -23,6 +23,7 @@ type DashboardSourceSeed
       controller_repo: FilePath,
       staged_bundle: FilePath,
       anchor_ref: NonEmptyStr,
+      history_remote: NonEmptyStr,
     }
 
 type DashboardProviderStateBinding
@@ -100,7 +101,12 @@ fn dashboard_instance_checkout_branch(instance: HostDashboardInstance) -> NonEmp
 fn dashboard_instance_controller_workdir(instance: HostDashboardInstance) -> FilePath {
   match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => instance.repo_root
-    DashboardGitBundle { controller_repo, staged_bundle: _, anchor_ref: _ } =>
+    DashboardGitBundle {
+      controller_repo,
+      staged_bundle: _,
+      anchor_ref: _,
+      history_remote: _,
+    } =>
       controller_repo
   }
 }
@@ -202,6 +208,7 @@ fn isolated_dashboard_instance(
       controller_repo: dashboard_feedback_controller_repo,
       staged_bundle: dashboard_instance_child(root: root, child: "inbox/source.bundle"),
       anchor_ref: "refs/heads/session/codex-provider-feedback-v0" as NonEmptyStr,
+      history_remote: "origin" as NonEmptyStr,
     },
   }
 }
@@ -266,10 +273,17 @@ fn dashboard_instances_have_disjoint_owned_paths(
 }
 
 type DashboardInstanceProvisionOp
-  = DashboardMaterializeGitBundle {
+  = DashboardHydrateControllerHistory {
+      controller_repo: FilePath,
+      history_remote: NonEmptyStr,
+    }
+  | DashboardPrepareGitBundle {
+      controller_repo: FilePath,
+      anchor_ref: NonEmptyStr,
+    }
+  | DashboardStageGitBundle {
       controller_repo: FilePath,
       staged_bundle: FilePath,
-      anchor_ref: NonEmptyStr,
     }
   | DashboardEnsureDirectory { path: FilePath }
   | DashboardEnsureOwnershipMarker {
@@ -303,6 +317,24 @@ type DashboardInstanceProvisionOp
   | DashboardVerifyHealth { host: NonEmptyStr, port: Int }
 
 fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<DashboardInstanceProvisionOp> {
+  let controller_source_ops = match instance.source_seed {
+    DashboardExistingRepo { anchor_ref: _ } => []
+    DashboardGitBundle {
+      controller_repo,
+      staged_bundle: _,
+      anchor_ref,
+      history_remote,
+    } => [
+      DashboardHydrateControllerHistory {
+        controller_repo: controller_repo,
+        history_remote: history_remote,
+      },
+      DashboardPrepareGitBundle {
+        controller_repo: controller_repo,
+        anchor_ref: anchor_ref,
+      },
+    ]
+  }
   let common = [
     DashboardEnsureDirectory { path: instance.instance_root },
     DashboardEnsureDirectory { path: instance.dispatch_worktree_root },
@@ -313,14 +345,18 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
   ]
   let source_ops = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => []
-    DashboardGitBundle { controller_repo, staged_bundle, anchor_ref } => [
+    DashboardGitBundle {
+      controller_repo,
+      staged_bundle,
+      anchor_ref,
+      history_remote: _,
+    } => [
       DashboardEnsureDirectory {
         path: dashboard_instance_child(root: instance.instance_root, child: "inbox"),
       },
-      DashboardMaterializeGitBundle {
+      DashboardStageGitBundle {
         controller_repo: controller_repo,
         staged_bundle: staged_bundle,
-        anchor_ref: anchor_ref,
       },
       DashboardEnsureLocalOrigin {
         bundle: staged_bundle,
@@ -335,7 +371,7 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
       },
     ]
   }
-  concat(common, concat(source_ops, [
+  concat(controller_source_ops, concat(common, concat(source_ops, [
     DashboardVerifyProviderAuth {
       executable: dashboard_instance_provider_executable(instance: instance),
       state_root: dashboard_instance_provider_state_root(instance: instance),
@@ -350,7 +386,7 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
       tmux_server: instance.tmux_server,
     },
     DashboardVerifyHealth { host: instance.listen_host, port: instance.listen_port },
-  ]))
+  ])))
 }
 
 type DashboardInstanceProvisionPlanRow {
@@ -363,16 +399,30 @@ fn dashboard_instance_provision_op_row(
   op: DashboardInstanceProvisionOp,
 ) -> DashboardInstanceProvisionPlanRow {
   match op {
-    DashboardMaterializeGitBundle { controller_repo, staged_bundle, anchor_ref } =>
+    DashboardHydrateControllerHistory { controller_repo, history_remote } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "materialize-git-bundle" as NonEmptyStr,
-        target: staged_bundle as String,
+        kind: "hydrate-controller-history" as NonEmptyStr,
+        target: controller_repo as String,
         detail: join([
-          controller_repo as String,
-          " @ ",
-          anchor_ref as String,
-          " -> temporary bundle -> atomic target staging",
+          "complete shallow history from named remote ",
+          history_remote as String,
+          "; no-op when already complete",
         ], ""),
+      }
+    DashboardPrepareGitBundle { controller_repo, anchor_ref } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "prepare-git-bundle" as NonEmptyStr,
+        target: controller_repo as String,
+        detail: join([
+          anchor_ref as String,
+          " -> temporary bundle -> empty bare repository import proof",
+        ], ""),
+      }
+    DashboardStageGitBundle { controller_repo: _, staged_bundle } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "stage-git-bundle" as NonEmptyStr,
+        target: staged_bundle as String,
+        detail: "copy proven temporary bundle to .next, then atomically rename",
       }
     DashboardEnsureDirectory { path } =>
       DashboardInstanceProvisionPlanRow {
@@ -472,7 +522,12 @@ fn dashboard_source_seed_ready(
 ) -> Bool {
   match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => true
-    DashboardGitBundle { controller_repo: _, staged_bundle: _, anchor_ref: _ } =>
+    DashboardGitBundle {
+      controller_repo: _,
+      staged_bundle: _,
+      anchor_ref: _,
+      history_remote: _,
+    } =>
       observed.bundle_present
   }
 }
@@ -548,7 +603,12 @@ fn dashboard_instance_retract_plan(
         DashboardInstanceRetractRefused {
           reason: "existing-repo dashboard instances are not owned by the isolated-instance retractor" as NonEmptyStr,
         }
-      DashboardGitBundle { controller_repo: _, staged_bundle, anchor_ref: _ } =>
+      DashboardGitBundle {
+        controller_repo: _,
+        staged_bundle,
+        anchor_ref: _,
+        history_remote: _,
+      } =>
         DashboardInstanceRetractPlan { plan: [
           DashboardStopService {
             instance_id: instance.instance_id,
