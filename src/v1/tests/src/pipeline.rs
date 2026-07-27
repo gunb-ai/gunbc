@@ -2539,10 +2539,6 @@ fn typed_match_bound_binding_spans_stay_local_across_arms_and_shadowing() {
         .iter()
         .find(|item| item.name == "separate_arms")
         .and_then(|item| item.body.clone())
-        .expect("separate_arms body")
-        .iter()
-        .cloned()
-        .next()
         .expect("separate_arms body");
     let separate_arms = match_arm_nodes(separate_body.clone());
     let separate_expected: Vec<i64> = separate_arms
@@ -2628,10 +2624,6 @@ fn typed_match_bound_binding_spans_stay_local_across_arms_and_shadowing() {
         .iter()
         .find(|item| item.name == "shadow")
         .and_then(|item| item.body.clone())
-        .expect("shadow body")
-        .iter()
-        .cloned()
-        .next()
         .expect("shadow body");
     let shadow_outer_arm = match_arm_nodes(shadow_body.clone())
         .first()
