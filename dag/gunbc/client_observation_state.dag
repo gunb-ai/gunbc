@@ -8,76 +8,7 @@ type ClientObservationState
 
 data client_observation_state_note: String = "The shared presentation-grain state of an asynchronous observation, first consumed by roadmap workflow lamps and reserved for the floor-verdict rollup on the same belt-B surface. Pending means no answer has arrived. Off means a successful observation asserted absence. On means a successful observation asserted presence. Refused carries why the set is unknowable. These four states may not collapse: dark cannot mean both observed-absent and unknowable, just as a missing floor verdict cannot render as checks-passing. This is transient client read state, never a persisted workflow status."
 
-type WorkItemWorkflowFact
-  = WorkItemReady
-  | WorkItemLive
-  | WorkItemAttempted
-  | WorkItemProposed
-  | WorkItemLanded
-  | WorkItemDone
-  | WorkItemSuperseded
-
-type WorkItemWorkflowJoin
-  = JoinedOnRoadmapNode
-  | BlockedOnAttemptPrNodeBinding
-
-type WorkItemWorkflowFactRow {
-  fact: WorkItemWorkflowFact
-  authority: String
-  join: WorkItemWorkflowJoin
-}
-
-data work_item_workflow_fact_rows: List<WorkItemWorkflowFactRow> = [
-  WorkItemWorkflowFactRow {
-    fact: WorkItemReady,
-    authority: "gunbc.roadmap_spawner.node_is_spawnable",
-    join: JoinedOnRoadmapNode,
-  },
-  WorkItemWorkflowFactRow {
-    fact: WorkItemLive,
-    authority: "gunbc.roadmap_dispatch_actuator.DispatchLiveSession via node-grain tmux session name",
-    join: JoinedOnRoadmapNode,
-  },
-  WorkItemWorkflowFactRow {
-    fact: WorkItemAttempted,
-    authority: "gunbc.roadmap_dispatch_actuator.dispatch_attempt_refs via attempt branch name",
-    join: JoinedOnRoadmapNode,
-  },
-  WorkItemWorkflowFactRow {
-    fact: WorkItemProposed,
-    authority: "extdeps.github.pulls.PullRequest open/draft observation",
-    join: BlockedOnAttemptPrNodeBinding,
-  },
-  WorkItemWorkflowFactRow {
-    fact: WorkItemLanded,
-    authority: "extdeps.github.pulls.PullRequest.merged_at",
-    join: BlockedOnAttemptPrNodeBinding,
-  },
-  WorkItemWorkflowFactRow {
-    fact: WorkItemDone,
-    authority: "gunbc.roadmap_status.Signoff on RoadmapNode",
-    join: JoinedOnRoadmapNode,
-  },
-  WorkItemWorkflowFactRow {
-    fact: WorkItemSuperseded,
-    authority: "gunbc.roadmap_status.SupersededLine.by",
-    join: JoinedOnRoadmapNode,
-  },
-]
-
-data work_item_workflow_fact_note: String = "In roadmap context, workflow means the work item's lifecycle. Compiler and CI execution workflow remains namespaced under v2.workflow and is not this vocabulary. The seven rows above are independent facts with per-fact authorities joined on RoadmapNodeId, not states in a stored machine and not a total order. Several may be true at once: a node can be Live and Landed, Attempted and Superseded, or Landed but not Done. A UI may order or group facts for presentation only; the rightmost lamp never becomes status. Live and Attempted already preserve node identity through the node-grain session name and attempt branch. Proposed and Landed remain blocked until one typed attempt-keyed carrier joins RoadmapNodeId, attempt key, branch, and PullRequest identity; that is the shared durable carrier already required by ts-wf-stage-artifacts and ts-wf-messaging. Done remains RoadmapNode.signoff, separate from PR evidence."
-
-fn work_item_workflow_fact_key(fact: WorkItemWorkflowFact) -> String {
-  match fact {
-    WorkItemReady => "ready"
-    WorkItemLive => "live"
-    WorkItemAttempted => "attempted"
-    WorkItemProposed => "proposed"
-    WorkItemLanded => "landed"
-    WorkItemDone => "done"
-    WorkItemSuperseded => "superseded"
-  }
-}
+data work_item_workflow_fact_note: String = "In roadmap context, workflow means the work item's lifecycle. Compiler and CI execution workflow remains namespaced under v2.workflow and is not this vocabulary. The ruling names seven independent facts, each still owned by its existing typed authority: Ready by gunbc.roadmap_spawner.node_is_spawnable; Live by gunbc.roadmap_dispatch_actuator.DispatchLiveSession keyed through the node-grain tmux session name; Attempted by dispatch_attempt_refs keyed through the attempt branch; Proposed and Landed by extdeps.github.pulls.PullRequest observations once the missing typed binding exists; Done by RoadmapNode.signoff; Superseded by SupersededLine.by. This note records the join ruling only. It is not an executable roster, does not re-declare those domain facts, and must not be enumerated as workflow status data. The facts have no total order and several may be true at once: a node can be Live and Landed, Attempted and Superseded, or Landed but not Done. A UI may order or group observations for presentation only; the rightmost lamp never becomes status. Proposed and Landed remain blocked until one typed attempt-keyed carrier joins RoadmapNodeId, attempt key, branch, and PullRequest identity; that is the shared durable carrier already required by ts-wf-stage-artifacts and ts-wf-messaging."
 
 fn client_observation_state_from(
   refused: Bool,
