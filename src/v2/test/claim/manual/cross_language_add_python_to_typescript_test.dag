@@ -185,26 +185,4 @@ data cross_language_emit_matrix: List<CrossLanguageEmitMatrixRow> = [
   }
 ]
 
-fn cross_language_bridge_realized_input(ok: Bool) -> Symbol {
-  if ok {
-    ^cross_language_bridge_realized
-  } else {
-    ^cross_language_bridge_not_realized
-  }
-}
 
-data claim_cross_language_add_python_to_typescript_module_compiles: TestClaim = CompilesClaim {
-  label: "manual/cross_language: python->ts add-slice end-to-end matrix claim compiles",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: atom_node(s: ^ingest_bridge_hermetic_fixture_parse_tree),
-  expected_value: atom_node(s: ^ingest_bridge_hermetic_fixture_parse_tree),
-  classification: TestClassification { tier: Tier1, layer: Integration }
-}
-
-data claim_cross_language_parse_tree_bridge_realized: TestClaim = CompilesClaim {
-  label: "manual/cross_language: ParseTree->TargetModel bridge realized (#4801) — typed check Holds (was fail-closed)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: cross_language_bridge_realized_input(ok: parse_tree_to_target_model_bridge_realized()),
-  expected_value: atom_node(s: ^cross_language_bridge_realized),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}

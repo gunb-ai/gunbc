@@ -6,29 +6,9 @@ import v2.lens.testgen {
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClassification,
-  TestClaim,
-  Tier1,
-  Unit,
-  manual_claim_anchor,
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-fn lens_testgen_shadow_ci_marker_node(marker: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: marker } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-}
-}
 
 test fn lens_testgen_shadow_ci_run_receipt_holds() -> Bool {
   match testgen_run_receipt_outcome(profile_ref: ^testgen_default_profile_ref) {
@@ -37,7 +17,3 @@ test fn lens_testgen_shadow_ci_run_receipt_holds() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
-
-
-
-data witness_lens_testgen_shadow_ci_run_receipt_green: Bool = lens_testgen_shadow_ci_run_receipt_holds()

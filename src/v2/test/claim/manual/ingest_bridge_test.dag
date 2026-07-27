@@ -264,7 +264,7 @@ test fn ingest_cross_language_compile_holds() -> Bool {
   }
 }
 
-fn ingest_bridge_realized() -> Bool {
+test fn ingest_bridge_realized() -> Bool {
   ingest_recovers_emitted_holds()
     && ingest_bridge_to_canonical_holds()
     && ingest_fails_closed_off_frontier_holds()
@@ -273,22 +273,4 @@ fn ingest_bridge_realized() -> Bool {
     && ingest_cross_language_compile_holds()
 }
 
-fn ingest_bridge_realized_input(ok: Bool) -> Symbol {
-  if ok { ^ingest_bridge_realized } else { ^ingest_bridge_not_realized }
-}
 
-data claim_ingest_bridge_module_compiles: TestClaim = CompilesClaim {
-  label: "manual/ingest_bridge: forward interpreter bridge claim compiles",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: atom_node(s: ^ingest_fixture_start),
-  expected_value: atom_node(s: ^ingest_fixture_start),
-  classification: TestClassification { tier: Tier1, layer: Integration }
-}
-
-data claim_ingest_bridge_realized: TestClaim = CompilesClaim {
-  label: "manual/ingest_bridge: ParseTree frontier -> forward-selected emit-side core node -> canonical IR by execution (Option A; row-driven, fail-closed, forward-deterministic)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: ingest_bridge_realized_input(ok: ingest_bridge_realized()),
-  expected_value: atom_node(s: ^ingest_bridge_realized),
-  classification: TestClassification { tier: Tier1, layer: Integration }
-}

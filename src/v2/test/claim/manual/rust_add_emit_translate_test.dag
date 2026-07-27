@@ -93,42 +93,12 @@ import v2.std.node {
   TypeNode,
   SyntheticOccurrence
 }
-import v2.std.verification {
-  DiagnosticClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  CompilesClaim,
-  manual_claim_anchor,
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data rust_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 
-fn add_int_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: ^add_int_atom } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-}
-}
-
-data add_arrow_node: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge { label: Positional, target: add_int_node() },
-    Edge { label: Positional, target: add_int_node() },
-    Edge { label: Positional, target: add_int_node() }
-  ],
-  occurrence_id: SyntheticOccurrence
-}
 
 data rust_add_emitted_root: Node = rust_fixture_emitted_add_fn
 
@@ -387,109 +357,8 @@ test fn rust_add_compile_inferred_receipt_holds() -> Bool {
 
 
 
-fn rust_add_coercion_quality_is_exact(q: CoercionQuality) -> Bool {
-  match q {
-    Exact => true
-    Identity => false
-    Widened => false
-  }
-}
 
 
-data claim_rust_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: anchor_rust_add_emit_accepts Accepted with canonical rust_add add-fn source",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: rust_add_emitted_root,
-  expected_value: rust_add_emitted_root,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_rust_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: compile_inferred emits canonical rust_add add-fn source through grammar inverse",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: rust_add_emitted_root,
-  expected_value: rust_add_emitted_root,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_rust_add_coerce_grounded_node_exact_structural_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: coerce_grounded_node accepts rust_add add-fn through exact-structural find_witness",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: rust_add_emitted_root,
-  expected_value: rust_add_emitted_root,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data subject_rust_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
-  claim: claim_rust_add_emit_add_fn_accepts,
-  context: infer_receipt_context(),
-  tree: rust_add_inferred_tree,
-  input: test_claim_typed_input_node(
-    evaluator_input: rust_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add
-  )
-}
 
 
-data subject_rust_add_coerce_grounded_node_exact_structural_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
-  claim: claim_rust_add_coerce_grounded_node_exact_structural_accepts,
-  context: infer_receipt_context(),
-  tree: rust_add_inferred_tree,
-  input: test_claim_typed_input_node(
-    evaluator_input: rust_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add
-  )
-}
-
-
-data subject_rust_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
-  claim: claim_rust_add_compile_inferred_add_fn_accepts,
-  context: infer_receipt_context(),
-  tree: rust_add_inferred_tree,
-  input: test_claim_typed_input_node(
-    evaluator_input: rust_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add
-  )
-}
-
-
-data claim_rust_add_translate_module_compiles: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: translate stage module + coercion_fold call-site compiles",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: add_arrow_node,
-  expected_value: add_arrow_node,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_rust_add_emit_module_compiles: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: emit stage module (serialize_target o translate) compiles",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: add_arrow_node,
-  expected_value: add_arrow_node,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_rust_add_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
-  label: "manual/rust_add_emit: target_serialize_source_from_model rejects bundle missing translation_rules",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: rust_add_emitted_root,
-  expected_rejection: diagnostics_singleton(
-    d: Diagnostic {
-      reason: ^translate_target_bundle_malformed,
-      at: node_locus(node: rust_add_empty_translation_rules_bundle),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  ),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data subject_rust_add_serialize_rejects_missing_translation_rules: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
-  claim: claim_rust_add_serialize_rejects_missing_translation_rules,
-  context: infer_receipt_context(),
-  tree: rust_add_inferred_tree,
-  input: test_claim_typed_input_node(
-    evaluator_input: rust_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add
-  )
-}
 

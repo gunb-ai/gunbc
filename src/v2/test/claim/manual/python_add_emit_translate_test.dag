@@ -74,19 +74,6 @@ import v2.std.node {
   TypeNode,
   SyntheticOccurrence
 }
-import v2.std.verification {
-  DiagnosticClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  CompilesClaim,
-  manual_claim_anchor,
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -288,65 +275,5 @@ test fn python_add_compile_inferred_receipt_holds() -> Bool {
 
 
 
-data claim_python_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: anchor_python_add_emit_accepts with canonical python_add add-fn source",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: python_add_emitted_root,
-  expected_value: python_add_emitted_root,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
 
-data claim_python_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: compile_inferred emits canonical python_add add-fn source through grammar inverse",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: python_add_emitted_root,
-  expected_value: python_add_emitted_root,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data subject_python_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
-  claim: claim_python_add_emit_add_fn_accepts,
-  context: infer_receipt_context(),
-  tree: python_add_inferred_tree,
-  input: test_claim_typed_input_node(
-    evaluator_input: python_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add
-  )
-}
-
-
-data subject_python_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
-  claim: claim_python_add_compile_inferred_add_fn_accepts,
-  context: infer_receipt_context(),
-  tree: python_add_inferred_tree,
-  input: test_claim_typed_input_node(
-    evaluator_input: python_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add
-  )
-}
-
-
-data claim_python_add_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
-  label: "manual/rust_add_emit: target_serialize_source_from_model rejects python bundle missing translation_rules",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: python_add_emitted_root,
-  expected_rejection: diagnostics_singleton(
-    d: Diagnostic {
-      reason: ^translate_target_bundle_malformed,
-      at: node_locus(node: python_add_empty_translation_rules_bundle),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  ),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data subject_python_add_serialize_rejects_missing_translation_rules: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
-  claim: claim_python_add_serialize_rejects_missing_translation_rules,
-  context: infer_receipt_context(),
-  tree: python_add_inferred_tree,
-  input: test_claim_typed_input_node(
-    evaluator_input: python_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add
-  )
-}
 

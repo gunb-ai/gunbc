@@ -10,13 +10,6 @@ fn ts_g2_claim_fail_node() -> Node {
 }
 }
 
-fn ts_g2_executable_claim_input(ok: Bool) -> Node {
-  if ok {
-    eval_add_subgraph()
-  } else {
-    ts_g2_claim_fail_node()
-  }
-}
 
 fn ts_g2_source_carrier_eq(a: Node, b: Node) -> Bool {
   content_hash(n: a) == content_hash(n: b)
@@ -113,7 +106,7 @@ fn ts_g2_sg1_atom_lookup_accepts(source_carrier: Node) -> Bool {
   }
 }
 
-fn ts_g2_sg1_atom_realizations_hold() -> Bool {
+test fn ts_g2_sg1_atom_realizations_hold() -> Bool {
   ts_g2_sg1_symbol_evidence_targets_canonical_carrier()
     && ts_g2_sg1_bool_evidence_targets_canonical_carrier()
     && ts_g2_sg1_text_string_evidence_targets_canonical_carrier()
@@ -122,7 +115,7 @@ fn ts_g2_sg1_atom_realizations_hold() -> Bool {
     && ts_g2_sg1_atom_lookup_accepts(source_carrier: ts_std_text_string_type_node())
 }
 
-fn ts_g2_g14_fact_registry_accepts() -> Bool {
+test fn ts_g2_g14_fact_registry_accepts() -> Bool {
   match ts_build_per_language_fact_bundle_registry() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -145,7 +138,7 @@ fn ts_g2_sg2_instantiation_projection_matches_golden() -> Bool {
     content_hash(n: ts_sg2_foobar_xy_emitted())
 }
 
-fn ts_g2_sg2_type_expression_projection_holds() -> Bool {
+test fn ts_g2_sg2_type_expression_projection_holds() -> Bool {
   ts_g2_sg2_evidence_targets_canonical_carrier()
     && match target_bundle_child_optional_type_expr_projection(
       target: ts_sg2_type_expr_target_model()
@@ -157,7 +150,7 @@ fn ts_g2_sg2_type_expression_projection_holds() -> Bool {
     && ts_g2_sg2_instantiation_projection_matches_golden()
 }
 
-fn ts_g2_sg5_collection_realization_absence_holds() -> Bool {
+test fn ts_g2_sg5_collection_realization_absence_holds() -> Bool {
   ts_g2_sg5_set_absence_evidence_targets_canonical_carrier()
     && ts_g2_sg5_free_monoid_absence_evidence_targets_canonical_carrier()
     && match collection_realization_from_target(target: ts_sg2_type_expr_target_model()) {
@@ -171,82 +164,6 @@ fn ts_g2_sg5_collection_realization_absence_holds() -> Bool {
       Rejected { diagnostics: _ } => true
     }
 }
-
-data claim_ts_g2_sg1_atom_realizations_executable: TestClaim = EqualsClaim {
-  label: "TypeScript G.2 SG-1 atom realization evidence is executable through run_test_claim",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: ts_g2_executable_claim_input(ok: ts_g2_sg1_atom_realizations_hold()),
-  rhs: eval_add_subgraph(),
-  classification: TestClassification { tier: Tier1, layer: Integration }
-}
-
-data subject_ts_g2_sg1_atom_realizations: TestClaimEvalSubject<Node> = eval_test_claim_subject(
-  claim: claim_ts_g2_sg1_atom_realizations_executable,
-  context: eval_context(),
-  tree: eval_inferred_tree(),
-  evaluator_pin: ^eval_evaluator_pin
-)
-
-data run_ts_g2_sg1_atom_realizations: TestClaimRun<Node, RuntimeValue> = run_test_claim(
-  subject: subject_ts_g2_sg1_atom_realizations
-)
-
-data claim_ts_g2_g14_fact_registry_executable: TestClaim = EqualsClaim {
-  label: "TypeScript G.2 G.1.4 fact bundle registry folds through fail-closed insert",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: ts_g2_executable_claim_input(ok: ts_g2_g14_fact_registry_accepts()),
-  rhs: eval_add_subgraph(),
-  classification: TestClassification { tier: Tier1, layer: Integration }
-}
-
-data subject_ts_g2_g14_fact_registry: TestClaimEvalSubject<Node> = eval_test_claim_subject(
-  claim: claim_ts_g2_g14_fact_registry_executable,
-  context: eval_context(),
-  tree: eval_inferred_tree(),
-  evaluator_pin: ^eval_evaluator_pin
-)
-
-data run_ts_g2_g14_fact_registry: TestClaimRun<Node, RuntimeValue> = run_test_claim(
-  subject: subject_ts_g2_g14_fact_registry
-)
-
-data claim_ts_g2_sg2_type_expression_projection_executable: TestClaim = EqualsClaim {
-  label: "TypeScript G.2 SG-2 evidence records present type-expression projection edge and golden instantiation",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: ts_g2_executable_claim_input(ok: ts_g2_sg2_type_expression_projection_holds()),
-  rhs: eval_add_subgraph(),
-  classification: TestClassification { tier: Tier1, layer: Integration }
-}
-
-data subject_ts_g2_sg2_type_expression_projection: TestClaimEvalSubject<Node> = eval_test_claim_subject(
-  claim: claim_ts_g2_sg2_type_expression_projection_executable,
-  context: eval_context(),
-  tree: eval_inferred_tree(),
-  evaluator_pin: ^eval_evaluator_pin
-)
-
-data run_ts_g2_sg2_type_expression_projection: TestClaimRun<Node, RuntimeValue> = run_test_claim(
-  subject: subject_ts_g2_sg2_type_expression_projection
-)
-
-data claim_ts_g2_sg5_collection_absence_executable: TestClaim = EqualsClaim {
-  label: "TypeScript G.2 SG-5 evidence records absent collection realization edge fail-closed",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: ts_g2_executable_claim_input(ok: ts_g2_sg5_collection_realization_absence_holds()),
-  rhs: eval_add_subgraph(),
-  classification: TestClassification { tier: Tier1, layer: Integration }
-}
-
-data subject_ts_g2_sg5_collection_absence: TestClaimEvalSubject<Node> = eval_test_claim_subject(
-  claim: claim_ts_g2_sg5_collection_absence_executable,
-  context: eval_context(),
-  tree: eval_inferred_tree(),
-  evaluator_pin: ^eval_evaluator_pin
-)
-
-data run_ts_g2_sg5_collection_absence: TestClaimRun<Node, RuntimeValue> = run_test_claim(
-  subject: subject_ts_g2_sg5_collection_absence
-)
 
 test fn ts_g2_sg1_symbol_carrier_holds() -> Bool {
   ts_g2_sg1_symbol_evidence_targets_canonical_carrier()
