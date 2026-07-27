@@ -655,19 +655,19 @@ fn dispatch_live_sessions(tmux_ls_output: String) -> List<DispatchLiveSession> {
   entries |> map(e => dispatch_live_session_for_entry(entry: e))
 }
 
-data dispatch_attempt_refs_note: String = "U3 (result surfacing): the attempt branches ARE the results ledger — every spawn mints dispatch/<node>-a<key> (U1), so listing refs/heads/dispatch/ observes every attempt ever made, including pre-attempt-grain LEGACY branches (attempt_key empty — the operator's accidental ts-authority-converge spawn is one), which are real attempts and render as such, never filtered as noise. Parse discriminates by the LAST -a segment being exactly 16 chars (the content-hash key width); a node id that itself ends in -a<16 chars> would misparse — accepted and named, not papered over: node ids are roadmap-authored and none has that shape. v0 renders branch NAMES (copyable, true), never tree links that would be dead until a push — a dead link is a fabricated result; the PR half lands when push/PR state is observed, not guessed."
+data dispatch_attempt_refs_note: String = "U3 (result surfacing): the attempt branches ARE the results ledger — every spawn mints dispatch/<node>-a<key> (U1), so listing refs/heads/dispatch/ observes every attempt ever made, including pre-attempt-grain LEGACY branches (attempt_key empty — the operator's accidental ts-authority-converge spawn is one), which are real attempts and render as such, never filtered as noise. Parse discriminates by the LAST -a segment being exactly 16 chars (the content-hash key width); a node id that itself ends in -a<16 chars> would misparse — accepted and named, not papered over: node ids are roadmap-authored and none has that shape. Empty-node branches are rejected before constructing DispatchAttemptRef, whose node and branch are non-empty by construction; malformed debris cannot invalidate the whole attempts projection. v0 renders branch NAMES (copyable, true), never tree links that would be dead until a push — a dead link is a fabricated result; the PR half lands when push/PR state is observed, not guessed."
 
 type DispatchAttemptRef {
-  node_id: String
-  branch: String
+  node_id: NonEmptyStr
+  branch: NonEmptyStr
   attempt_key: String
 }
 
 fn dispatch_attempt_evidence(attempt: DispatchAttemptRef) -> AttemptEvidence {
   AttemptEvidence {
-    node_id: attempt.node_id as NonEmptyStr,
+    node_id: attempt.node_id,
     attempt_key: attempt.attempt_key,
-    branch: attempt.branch as NonEmptyStr,
+    branch: attempt.branch,
     worktree: WorktreeUnobserved {
       reason: "branch observation does not inspect the attempt worktree" as NonEmptyStr,
     },
@@ -695,13 +695,22 @@ fn parse_dispatch_attempt_branch(line: String) -> DispatchAttemptRef? {
       let segs = split(s: rest, delimiter: "-a")
       let last = segs |> fold(init: "", f: (acc, x) => x)
       if count(segs) >= 2 && string_length(s: last) == 16 {
-        Present { value: DispatchAttemptRef {
-          node_id: substring(s: rest, start: 0, end: string_length(s: rest) - 18),
-          branch: line,
-          attempt_key: last,
-        } }
+        let node_id = substring(s: rest, start: 0, end: string_length(s: rest) - 18)
+        if node_id == "" {
+          none
+        } else {
+          Present { value: DispatchAttemptRef {
+            node_id: node_id as NonEmptyStr,
+            branch: line as NonEmptyStr,
+            attempt_key: last,
+          } }
+        }
       } else {
-        Present { value: DispatchAttemptRef { node_id: rest, branch: line, attempt_key: "" } }
+        Present { value: DispatchAttemptRef {
+          node_id: rest as NonEmptyStr,
+          branch: line as NonEmptyStr,
+          attempt_key: "",
+        } }
       }
     }
   } else {
