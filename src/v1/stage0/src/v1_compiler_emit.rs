@@ -579,6 +579,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
         service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
         item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
         lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
+        occurrence_ancestors: Rc::new(vec![]),
     })
 }
 
@@ -596,6 +597,7 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
         service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
         item_registry: typed_module.item_registry.clone(),
         lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
+        occurrence_ancestors: Rc::new(vec![typed_module.module.clone()]),
     })
 }
 

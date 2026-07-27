@@ -790,13 +790,21 @@ fn containment_path_diagnostic_label(
     concat(
       authored_name_at(source_indices: source_indices, node: node),
       "@",
-      to_string(value: node.span)
+      node.span.file,
+      ":",
+      to_string(i: node.span.start),
+      "..",
+      to_string(i: node.span.end)
     )
   )
   let terminal_label = concat(
     authored_name_at(source_indices: source_indices, node: path.terminal),
     "@",
-    to_string(value: path.terminal.span)
+    path.terminal.span.file,
+    ":",
+    to_string(i: path.terminal.span.start),
+    "..",
+    to_string(i: path.terminal.span.end)
   )
   join(concat(ancestor_labels, [terminal_label]), separator: ".")
 }

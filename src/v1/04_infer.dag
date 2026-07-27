@@ -125,8 +125,9 @@ import std.termination {
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect }
 import std.occurrence_binding {
-  ContainmentPath, BindingOccurrence,
-  OccurrenceBound, OccurrenceUnbound, OccurrenceAmbiguous
+  ContainmentPath, BindingOccurrence, BindingCandidate,
+  OccurrenceBound, OccurrenceUnbound, OccurrenceAmbiguous,
+  occurrence_binding_from_candidates
 }
 import v1.compiler.infer_resolve {
   resolve_node, resolve_item_types, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
@@ -615,6 +616,108 @@ fn ambiguous_reference_refusal(name: String, candidates: List<String>, span: Sou
     typed: semantic_expr_error_node(message: concat("ambiguous reference '", name, "'"), span: span),
     diagnostics: [make_error_node(diagnostic: AmbiguousReference { name: name, candidates: candidates, span: span }, module_name: scope.module_name)]
   }
+}
+
+fn unbound_value_refusal(name: String, span: SourceSpan, scope: InferScope) -> InferResult {
+  InferResult {
+    typed: semantic_expr_error_node(message: concat("unbound value '", name, "'"), span: span),
+    diagnostics: [make_error_node(
+      diagnostic: UnresolvedType { name: name, span: span },
+      module_name: scope.module_name
+    )]
+  }
+}
+
+fn infer_bound_declaration_value(
+  texpr: Node,
+  name: String,
+  path: ContainmentPath<Node>,
+  scope: InferScope
+) -> InferResult {
+  let span = texpr.span
+  match resolved_func_sig_from_declaration_path(path: path, type_env: scope.type_env) {
+    Present { value: fsig } =>
+      if (fsig.params |> count) == 0 {
+        ok_infer(texpr: make_named_expr_node(
+          name: name,
+          expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+          children: [],
+          inferred: Present { value: Resolved { node: fsig.inferred } },
+          span: span,
+          name_span: span
+        ))
+      } else {
+        ok_infer(texpr: make_named_expr_node(
+          name: name,
+          expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding } },
+          children: [],
+          inferred: Present { value: Resolved { node: resolved_callable_type(func_params: fsig.params, ret: fsig.inferred) } },
+          span: span,
+          name_span: span
+        ))
+      }
+    Absent =>
+      match type_binding_from_declaration_path(path: path, source_indices: scope.type_env.source_indices) {
+        Present { value: binding } =>
+          let binding_kind = if type_binding_from_declaration(declaration: path.terminal, source_indices: scope.type_env.source_indices) == none {
+            match path.ancestors |> reverse |> first {
+              Present { value: owner } =>
+                VariantValueBinding {
+                  parent_enum: authored_name_at(source_indices: scope.type_env.source_indices, node: owner)
+                }
+              Absent => LocalValueBinding
+            }
+          } else { LocalValueBinding }
+          ok_infer(texpr: make_named_expr_node(
+            name: name,
+            expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
+            children: [],
+            inferred: Present { value: Resolved { node: binding.resolved } },
+            span: span,
+            name_span: span
+          ))
+        Absent => unbound_value_refusal(name: name, span: span, scope: scope)
+      }
+  }
+}
+
+type LexicalParamPathScan {
+  prefix: List<Node>
+  nearest: List<ContainmentPath<Node>>
+}
+
+fn lexical_param_declaration_paths(
+  ancestors: List<Node>,
+  name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> List<ContainmentPath<Node>> {
+  let scan = fold(ancestors, init: LexicalParamPathScan { prefix: [], nearest: [] }, f: (acc, ancestor) =>
+    let matches = ancestor.params
+      |> filter(param => param_node_name_at(n: param, source_indices: source_indices) == name)
+      |> map(param => ContainmentPath { ancestors: concat(acc.prefix, [ancestor]), terminal: param })
+    LexicalParamPathScan {
+      prefix: concat(acc.prefix, [ancestor]),
+      nearest: if (matches |> count) > 0 { matches } else { acc.nearest }
+    }
+  )
+  scan.nearest
+}
+
+fn infer_bound_lexical_param(
+  texpr: Node,
+  name: String,
+  path: ContainmentPath<Node>,
+  scope: InferScope
+) -> InferResult {
+  let param_type = param_node_type_expr(n: path.terminal)
+  ok_infer(texpr: make_named_expr_node(
+    name: name,
+    expr_data: ExprVar { binding_kind: Present { value: LocalValueBinding } },
+    children: [],
+    inferred: Present { value: Resolved { node: param_type } },
+    span: texpr.span,
+    name_span: texpr.span
+  ))
 }
 
 fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_name: String) -> ErrorNode {
@@ -1628,6 +1731,38 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
     ExprVar { binding_kind: _ } =>
       let name = expr_var_name_at(texpr: texpr, source_indices: scope.type_env.source_indices)
       let span = texpr.span
+      let lexical_param_paths = lexical_param_declaration_paths(
+        ancestors: occurrence.containment.ancestors,
+        name: name,
+        source_indices: scope.type_env.source_indices
+      )
+      if (lexical_param_paths |> count) > 0 {
+        let lexical_result = occurrence_binding_from_candidates(
+          occurrence: occurrence,
+          candidates: lexical_param_paths |> map(path => BindingCandidate { containment: path })
+        )
+        match lexical_result {
+          OccurrenceBound { binding: accepted } =>
+            infer_bound_lexical_param(
+              texpr: texpr,
+              name: name,
+              path: accepted.candidate.containment,
+              scope: scope
+            )
+          OccurrenceUnbound { occurrence: _ } =>
+            unbound_value_refusal(name: name, span: span, scope: scope)
+          OccurrenceAmbiguous { occurrence: _, candidates: candidates } =>
+            ambiguous_reference_refusal(
+              name: name,
+              candidates: ambiguous_binding_candidate_labels(
+                candidates: candidates,
+                source_indices: scope.type_env.source_indices
+              ),
+              span: span,
+              scope: scope
+            )
+        }
+      } else {
       match map_get(scope.locals, name) {
         Present { value: binding } =>
           let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
@@ -1653,99 +1788,28 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               ))
           }
         Absent =>
-          match lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name) {
-            FuncSigResolved { sig: fsig } =>
-              if (fsig.params |> count) == 0 {
-                ok_infer(texpr: make_named_expr_node(
-                  name: name,
-                  expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
-                  children: [],
-                  inferred: Present { value: Resolved { node: fsig.inferred } },
-                  span: span,
-                  name_span: span
-                ))
-              } else {
-                ok_infer(texpr: make_named_expr_node(
-                  name: name,
-                  expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding } },
-                  children: [],
-                  inferred: Present { value: Resolved { node: resolved_callable_type(func_params: fsig.params, ret: fsig.inferred) } },
-                  span: span,
-                  name_span: span
-                ))
-              }
-            FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
-              ambiguous_reference_refusal(name: name, candidates: ambiguous_fn_candidates, span: span, scope: scope)
-            FuncSigUnresolved =>
-              match lookup_binding_by_name(env: scope.type_env, name: name) {
-                Present { value: gbinding } =>
-                  let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
-                  match scope_parent {
-                    Present { value: scope_enum } =>
-                      ok_infer(texpr: make_named_expr_node(
-                        name: name,
-                        expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum } } },
-                        children: [],
-                        inferred: Present { value: Resolved { node: gbinding.resolved } },
-                        span: span,
-                        name_span: span
-                      ))
-                    Absent =>
-                      let binding_kind = infer_var_binding_kind(scope: scope, name: name)
-                      ok_infer(texpr: make_named_expr_node(
-                        name: name,
-                        expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
-                        children: [],
-                        inferred: Present { value: Resolved { node: gbinding.resolved } },
-                        span: span,
-                        name_span: span
-                      ))
-                  }
-                Absent =>
-                  let expected_variant_enum = match expected {
-                    Present { value: exp } =>
-                      let exp_enum = expand_scrut_type_for_variant_lookup(scrut_node: exp, env: scope.type_env)
-                      match find_child_named(n: exp_enum, name: name, source_indices: scope.type_env.source_indices) {
-                        Present { value: _ } => Present { value: exp_enum }
-                        Absent => none
-                      }
-                    Absent => none
-                  }
-                  match expected_variant_enum {
-                    Present { value: exp_enum } =>
-                      ok_infer(texpr: make_named_expr_node(
-                        name: name,
-                        expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) } } },
-                        children: [],
-                        inferred: Present { value: Resolved { node: exp_enum } },
-                        span: span,
-                        name_span: span
-                      ))
-                    Absent =>
-                      let var_ambiguity_cands = global_bare_strict_ambiguity_candidates(env: scope.type_env, name: name)
-                      if (var_ambiguity_cands |> count) > 0 {
-                        ambiguous_reference_refusal(name: name, candidates: var_ambiguity_cands, span: span, scope: scope)
-                      } else {
-                      let err_texpr = make_named_expr_node(
-                        name: name,
-                        expr_data: ExprVar { binding_kind: none },
-                        children: [],
-                        inferred: Present { value: Resolved { node: error_type } },
-                        span: span,
-                        name_span: span
-                      )
-                      InferResult {
-                        typed: err_texpr,
-                        diagnostics: [inference_error(
-                          message: concat("undefined variable '", name, "'"),
-                          span: span,
-                          module_name: scope.module_name
-                        )]
-                      }
-                      }
-                  }
-              }
+          match declaration_binding_result(env: scope.type_env, occurrence: occurrence, name: name) {
+            OccurrenceBound { binding: accepted } =>
+              infer_bound_declaration_value(
+                texpr: texpr,
+                name: name,
+                path: accepted.candidate.containment,
+                scope: scope
+              )
+            OccurrenceUnbound { occurrence: _ } =>
+              unbound_value_refusal(name: name, span: span, scope: scope)
+            OccurrenceAmbiguous { occurrence: _, candidates: candidates } =>
+              ambiguous_reference_refusal(
+                name: name,
+                candidates: ambiguous_binding_candidate_labels(
+                  candidates: candidates,
+                  source_indices: scope.type_env.source_indices
+                ),
+                span: span,
+                scope: scope
+              )
           }
+      }
       }
 
     ExprFieldAccess { summary: _ } =>
@@ -1844,12 +1908,20 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let span = texpr.span
       let call_args = texpr.children
 
-      let call_sig_lookup = body_shadow_aware_func_sig(scope: scope, func_name: func_name)
-      match call_sig_lookup {
-      FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
+      let call_declaration = declaration_call_lookup(scope: scope, occurrence: occurrence, func_name: func_name)
+      match call_declaration {
+      DeclarationCallAmbiguous { candidates: ambiguous_fn_candidates } =>
         ambiguous_reference_refusal(name: func_name, candidates: ambiguous_fn_candidates, span: span, scope: scope)
       _ =>
-      let sig = func_sig_if_resolved(lookup: call_sig_lookup)
+      let sig = match call_declaration {
+        DeclarationCallSig { path: _, sig: resolved_sig } => Present { value: resolved_sig }
+        _ => none
+      }
+      let bound_call_path = match call_declaration {
+        DeclarationCallSig { path: path, sig: _ } => Present { value: path }
+        DeclarationCallNonCallable { path: path } => Present { value: path }
+        _ => none
+      }
       let sig_params = match sig {
         Present { value: s } => s.params
         Absent => []
@@ -2206,49 +2278,40 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               diagnostics: arg_diags
             }
           } else {
-          match infer_variant_constructor_call(func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope) {
-            Present { value: ctor_result } => ctor_result
+          match bound_call_path {
+            Present { value: declaration_path } =>
+              match type_binding_from_declaration_path(
+                path: declaration_path,
+                source_indices: scope.type_env.source_indices
+              ) {
+                Present { value: binding } =>
+                  InferResult {
+                    typed: make_named_expr_node(
+                      name: func_name,
+                      expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                      children: typed_arg_nodes,
+                      inferred: Present { value: Resolved { node: binding.resolved } },
+                      span: span,
+                      name_span: node_name_span(n: texpr)
+                    ),
+                    diagnostics: arg_diags
+                  }
+                Absent =>
+                  InferResult {
+                    typed: semantic_expr_error_node(message: concat("declaration '", func_name, "' is not callable"), span: span),
+                    diagnostics: concat(arg_diags, [make_error_node(
+                      diagnostic: UnresolvedType { name: func_name, span: span },
+                      module_name: scope.module_name
+                    )])
+                  }
+              }
             Absent =>
-              let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
-              let global_bare_callable = match type_match {
-                Present { value: _ } => none
-                Absent => global_bare_callable_node(type_env: scope.type_env, name: func_name)
-              }
-              let resolved_type = match type_match {
-                Present { value: tn } => tn
-                Absent => match global_bare_callable {
-                  Present { value: gnode } =>
-                    if (gnode.params |> count) > 0 { borrowed_callable_call_type(gnode: gnode, typed_args: typed_arg_nodes, scope: scope) }
-                    else { callable_return_type(n: gnode) }
-                  Absent => error_type
-                }
-              }
-              let call_diags = match type_match {
-                Present { value: _ } => []
-                Absent => match global_bare_callable {
-                  Present { value: _ } => []
-                  Absent =>
-                    let call_ambiguity_cands = global_bare_strict_ambiguity_candidates(env: scope.type_env, name: func_name)
-                    if (call_ambiguity_cands |> count) > 0 {
-                      [make_error_node(diagnostic: AmbiguousReference { name: func_name, candidates: call_ambiguity_cands, span: span }, module_name: scope.module_name)]
-                    } else {
-                      [inference_error(
-                        message: concat("function '", func_name, "' not found in scope"),
-                        span: span,
-                        module_name: scope.module_name
-                      )]
-                    }
-                }
-              }
               InferResult {
-                typed: make_named_expr_node(
-                  name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
-                  children: typed_arg_nodes,
-                  inferred: Present { value: Resolved { node: resolved_type } },
-                  span: span,
-                  name_span: node_name_span(n: texpr)
-                ),
-                diagnostics: concat(arg_diags, call_diags)
+                typed: semantic_expr_error_node(message: concat("function '", func_name, "' not found in scope"), span: span),
+                diagnostics: concat(arg_diags, [make_error_node(
+                  diagnostic: UnresolvedType { name: func_name, span: span },
+                  module_name: scope.module_name
+                )])
               }
           }
         }
@@ -5831,13 +5894,19 @@ fn body_shadow_aware_func_sig(scope: InferScope, func_name: String) -> FuncSigLo
   }
 }
 
-fn declaration_func_sig_lookup(
+type DeclarationCallLookup
+  = DeclarationCallSig { path: ContainmentPath<Node>, sig: ResolvedFuncSig }
+  | DeclarationCallNonCallable { path: ContainmentPath<Node> }
+  | DeclarationCallUnbound
+  | DeclarationCallAmbiguous { candidates: List<String> }
+
+fn declaration_call_lookup(
   scope: InferScope,
   occurrence: BindingOccurrence<Node>,
   func_name: String
-) -> FuncSigLookup {
+) -> DeclarationCallLookup {
   if map_get(scope.body_locals, func_name) != none || infer_builtin_call_type(name: func_name) != none {
-    FuncSigUnresolved
+    DeclarationCallUnbound
   } else {
     match declaration_binding_result(env: scope.type_env, occurrence: occurrence, name: func_name) {
       OccurrenceBound { binding: accepted } =>
@@ -5845,12 +5914,14 @@ fn declaration_func_sig_lookup(
           path: accepted.candidate.containment,
           type_env: scope.type_env
         ) {
-          Present { value: sig } => FuncSigResolved { sig: sig }
-          Absent => FuncSigUnresolved
+          Present { value: sig } =>
+            DeclarationCallSig { path: accepted.candidate.containment, sig: sig }
+          Absent =>
+            DeclarationCallNonCallable { path: accepted.candidate.containment }
         }
-      OccurrenceUnbound { occurrence: _ } => FuncSigUnresolved
+      OccurrenceUnbound { occurrence: _ } => DeclarationCallUnbound
       OccurrenceAmbiguous { occurrence: _, candidates: candidates } =>
-        FuncSigAmbiguous {
+        DeclarationCallAmbiguous {
           candidates: ambiguous_binding_candidate_labels(
             candidates: candidates,
             source_indices: scope.type_env.source_indices

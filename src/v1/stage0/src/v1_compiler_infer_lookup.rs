@@ -13,14 +13,16 @@ pub use crate::std_algebra::{
 };
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+pub use crate::std_occurrence_binding::ContainmentPath;
 pub use crate::v1_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{
-    authored_name, borrowed_generic_param_names, global_bare_policy_candidate, is_recursive_type,
-    lookup_binding_by_name, lookup_binding_by_name_local, lookup_type, lookup_type_for,
-    qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
+    authored_name, borrowed_generic_param_names, declaration_path_owner_module,
+    global_bare_policy_candidate, is_recursive_type, lookup_binding_by_name,
+    lookup_binding_by_name_local, lookup_type, lookup_type_for, qualified_all_but_last,
+    qualify_borrowed_type_names, symbol_index_lookup,
 };
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
@@ -167,6 +169,61 @@ pub fn census_reserved_method_name_note() -> String {
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn resolved_func_sig_from_declaration_path(
+    path: Rc<ContainmentPath<Rc<Node>>>,
+    type_env: Rc<TypeEnv>,
+) -> Option<Rc<ResolvedFuncSig>> {
+    {
+        let declaration = path.terminal.clone();
+        let is_callable = (((((declaration.params.clone().len() as i64) > 0)
+            || (declaration.body.clone() != None))
+            || (declaration.inferred.clone() != None))
+            || (declaration.type_annotation.clone() != None));
+        if (is_callable.clone() == false) {
+            None
+        } else {
+            {
+                let name = authored_name_at(type_env.source_indices.clone(), declaration.clone());
+                let owner_module_path =
+                    declaration_path_owner_module(path.clone(), type_env.source_indices.clone());
+                let excluded = borrowed_generic_param_names(
+                    declaration.params.clone(),
+                    type_env.source_indices.clone(),
+                );
+                let raw_return = match declaration.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: inferred, .. }) => inferred.clone(),
+                    _ => match declaration.type_annotation.clone() {
+                        Some(ann) => ann.clone(),
+                        None => error_type(),
+                    },
+                };
+                let resolved_return = if (owner_module_path.clone() == type_env.module_path.clone())
+                {
+                    raw_return.clone()
+                } else {
+                    qualify_borrowed_type_names(
+                        raw_return.clone(),
+                        owner_module_path.clone(),
+                        type_env.clone(),
+                        excluded.clone(),
+                    )
+                };
+                Some(Rc::new(ResolvedFuncSig {
+                    name: name.clone(),
+                    params: declaration.params.clone(),
+                    inferred: resolved_return.clone(),
+                    is_async: ((declaration.uses.clone().len() as i64) > 0),
+                    output_provenance: Rc::new(vec![]),
+                    variant_provenance: v1_rt::rc_empty_map::<
+                        String,
+                        Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+                    >(),
+                }))
+            }
+        }
+    }
 }
 
 pub fn func_sig_from_global_bare(

@@ -259,7 +259,8 @@ fn empty_emit_scope() -> InferScope {
     module_name: "",
     service_registry: empty_map(),
     item_registry: empty_map(),
-    lambda_param_provenance: empty_map()
+    lambda_param_provenance: empty_map(),
+    occurrence_ancestors: []
   }
 }
 
@@ -273,7 +274,8 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
     module_name: authored_name_at(source_indices: typed_module.type_env.source_indices, node: typed_module.module),
     service_registry: empty_map(),
     item_registry: typed_module.item_registry,
-    lambda_param_provenance: empty_map()
+    lambda_param_provenance: empty_map(),
+    occurrence_ancestors: [typed_module.module]
   }
 }
 

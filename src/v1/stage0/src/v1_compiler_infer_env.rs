@@ -7,14 +7,22 @@ use crate::std_induction::RecursionShape::{
 };
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
+pub use crate::std_occurrence_binding::occurrence_binding_from_candidates;
+use crate::std_occurrence_binding::OccurrenceBindingResult::{
+    OccurrenceAmbiguous, OccurrenceBound, OccurrenceUnbound,
+};
+pub use crate::std_occurrence_binding::{
+    AmbiguousBindingCandidates, BindingCandidate, BindingOccurrence, ContainmentPath,
+    OccurrenceBindingResult,
+};
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::{AmbiguousReference, UnresolvedType};
-use crate::v1_std_core::Connective::*;
-use crate::v1_std_core::ExprData::*;
+use crate::v1_std_core::Connective::NoConnective;
+use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::InferredNode::*;
 pub use crate::v1_std_core::{
     authored_name_at, empty_intern_table, find_child_named, intern, intern_find, intern_str,
@@ -113,6 +121,9 @@ pub struct SymbolIndex {
     pub entries: Rc<HashMap<String, Rc<Node>>>,
     pub global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     pub services: Rc<HashMap<String, Rc<ServiceCensusEntry>>>,
+    pub declaration_entries: Rc<HashMap<String, Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>>>>,
+    pub declaration_bare: Rc<HashMap<String, Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>>>>,
+    pub module_roots: Rc<HashMap<String, Rc<Node>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -125,6 +136,10 @@ pub fn empty_symbol_index() -> Rc<SymbolIndex> {
         entries: v1_rt::rc_empty_map::<String, Rc<Node>>(),
         global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
         services: v1_rt::rc_empty_map::<String, Rc<ServiceCensusEntry>>(),
+        declaration_entries: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>>>(
+        ),
+        declaration_bare: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>>>(),
+        module_roots: v1_rt::rc_empty_map::<String, Rc<Node>>(),
     })
 }
 
@@ -245,6 +260,9 @@ pub fn symbol_index_insert(
         ),
         global_bare: index.global_bare.clone(),
         services: index.services.clone(),
+        declaration_entries: index.declaration_entries.clone(),
+        declaration_bare: index.declaration_bare.clone(),
+        module_roots: index.module_roots.clone(),
     })
 }
 
@@ -268,6 +286,9 @@ pub fn symbol_index_insert_decl(
             binding.clone(),
         ),
         services: index.services.clone(),
+        declaration_entries: index.declaration_entries.clone(),
+        declaration_bare: index.declaration_bare.clone(),
+        module_roots: index.module_roots.clone(),
     })
 }
 
@@ -288,7 +309,315 @@ pub fn symbol_index_insert_service(
                 item: item.clone(),
             }),
         ),
+        declaration_entries: index.declaration_entries.clone(),
+        declaration_bare: index.declaration_bare.clone(),
+        module_roots: index.module_roots.clone(),
     })
+}
+
+pub fn containment_paths_insert_unique(
+    paths: Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>>,
+    path: Rc<ContainmentPath<Rc<Node>>>,
+) -> Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>> {
+    if {
+        let mut __found = false;
+        for existing in paths.clone().iter().cloned() {
+            if (existing.clone() == path.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    } {
+        paths.clone()
+    } else {
+        v1_rt::concat(paths.clone(), Rc::new(vec![path.clone()]))
+    }
+}
+
+pub fn containment_path_map_insert_unique(
+    entries: Rc<HashMap<String, Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>>>>,
+    key: String,
+    path: Rc<ContainmentPath<Rc<Node>>>,
+) -> Rc<HashMap<String, Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>>>> {
+    {
+        let existing = match v1_rt::map_get(&entries, key.clone()) {
+            Some(paths) => paths.clone(),
+            None => Rc::new(vec![]),
+        };
+        v1_rt::rc_map_insert(
+            entries.clone(),
+            key.clone(),
+            containment_paths_insert_unique(existing.clone(), path.clone()),
+        )
+    }
+}
+
+pub fn symbol_index_insert_declaration_path(
+    index: Rc<SymbolIndex>,
+    module_path: String,
+    declaration_name: String,
+    path: Rc<ContainmentPath<Rc<Node>>>,
+) -> Rc<SymbolIndex> {
+    Rc::new(SymbolIndex {
+        entries: index.entries.clone(),
+        global_bare: index.global_bare.clone(),
+        services: index.services.clone(),
+        declaration_entries: containment_path_map_insert_unique(
+            index.declaration_entries.clone(),
+            v1_rt::concat(
+                v1_rt::concat(module_path.clone(), ".".to_string()),
+                declaration_name.clone(),
+            ),
+            path.clone(),
+        ),
+        declaration_bare: containment_path_map_insert_unique(
+            index.declaration_bare.clone(),
+            declaration_name.clone(),
+            path.clone(),
+        ),
+        module_roots: index.module_roots.clone(),
+    })
+}
+
+pub fn symbol_index_insert_module_root(
+    index: Rc<SymbolIndex>,
+    module_path: String,
+    module: Rc<Node>,
+) -> Rc<SymbolIndex> {
+    Rc::new(SymbolIndex {
+        entries: index.entries.clone(),
+        global_bare: index.global_bare.clone(),
+        services: index.services.clone(),
+        declaration_entries: index.declaration_entries.clone(),
+        declaration_bare: index.declaration_bare.clone(),
+        module_roots: v1_rt::rc_map_insert(
+            index.module_roots.clone(),
+            module_path.clone(),
+            module.clone(),
+        ),
+    })
+}
+
+pub fn type_binding_from_declaration(
+    declaration: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<TypeBinding>> {
+    {
+        let declaration_name = authored_name_at(source_indices.clone(), declaration.clone());
+        let has_structure = (declaration.connective.clone() != Connective::NoConnective);
+        if has_structure.clone() {
+            {
+                let type_node = Rc::new(Node {
+                    name: declaration.name.clone(),
+                    span: declaration.span.clone(),
+                    ident_span: declaration.ident_span.clone(),
+                    children: declaration.children.clone(),
+                    connective: declaration.connective.clone(),
+                    params: declaration.params.clone(),
+                    inferred: None,
+                    return_cardinality: declaration.return_cardinality.clone(),
+                    uses: Rc::new(vec![]),
+                    body: None,
+                    transport: None,
+                    properties: declaration.properties.clone(),
+                    type_annotation: None,
+                    is_self_recursive: false,
+                    has_non_tail_self_call: false,
+                    match_pattern: None,
+                    expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
+                });
+                Some(Rc::new(TypeBinding {
+                    name: declaration_name.clone(),
+                    resolved: type_node.clone(),
+                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                }))
+            }
+        } else {
+            if ((declaration.body.clone() != None) && (declaration.transport.clone() == None)) {
+                {
+                    let fn_node = Rc::new(Node {
+                        name: declaration.name.clone(),
+                        span: declaration.span.clone(),
+                        ident_span: declaration.ident_span.clone(),
+                        children: Rc::new(vec![]),
+                        connective: Connective::NoConnective,
+                        params: declaration.params.clone(),
+                        inferred: declaration.inferred.clone(),
+                        return_cardinality: declaration.return_cardinality.clone(),
+                        uses: Rc::new(vec![]),
+                        body: None,
+                        transport: None,
+                        properties: Rc::new(vec![]),
+                        type_annotation: declaration.type_annotation.clone(),
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: None,
+                        expr_data: Rc::new(ExprData::NoExprData),
+                        ident: None,
+                    });
+                    Some(Rc::new(TypeBinding {
+                        name: declaration_name.clone(),
+                        resolved: fn_node.clone(),
+                        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                    }))
+                }
+            } else {
+                if (((declaration.inferred.clone() != None)
+                    && ((declaration.params.clone().len() as i64) == 0))
+                    && (declaration.body.clone() == None))
+                {
+                    {
+                        let alias_node = Rc::new(Node {
+                            name: declaration.name.clone(),
+                            span: declaration.span.clone(),
+                            ident_span: declaration.ident_span.clone(),
+                            children: Rc::new(vec![]),
+                            connective: Connective::NoConnective,
+                            params: Rc::new(vec![]),
+                            inferred: declaration.inferred.clone(),
+                            return_cardinality: declaration.return_cardinality.clone(),
+                            uses: Rc::new(vec![]),
+                            body: None,
+                            transport: None,
+                            properties: Rc::new(vec![]),
+                            type_annotation: None,
+                            is_self_recursive: false,
+                            has_non_tail_self_call: false,
+                            match_pattern: None,
+                            expr_data: Rc::new(ExprData::NoExprData),
+                            ident: None,
+                        });
+                        Some(Rc::new(TypeBinding {
+                            name: declaration_name.clone(),
+                            resolved: alias_node.clone(),
+                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                        }))
+                    }
+                } else {
+                    if ((declaration.transport.clone() == None)
+                        && ((declaration.children.clone().len() as i64) > 0))
+                    {
+                        {
+                            let ref_node = Rc::new(Node {
+                                name: declaration.name.clone(),
+                                span: declaration.span.clone(),
+                                ident_span: declaration.ident_span.clone(),
+                                children: Rc::new(vec![]),
+                                connective: Connective::NoConnective,
+                                params: Rc::new(vec![]),
+                                inferred: None,
+                                return_cardinality: declaration.return_cardinality.clone(),
+                                uses: Rc::new(vec![]),
+                                body: None,
+                                transport: None,
+                                properties: Rc::new(vec![]),
+                                type_annotation: None,
+                                is_self_recursive: false,
+                                has_non_tail_self_call: false,
+                                match_pattern: None,
+                                expr_data: Rc::new(ExprData::NoExprData),
+                                ident: None,
+                            });
+                            Some(Rc::new(TypeBinding {
+                                name: declaration_name.clone(),
+                                resolved: ref_node.clone(),
+                                provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                            }))
+                        }
+                    } else {
+                        if (((((declaration.params.clone().len() as i64) > 0)
+                            && (declaration.connective.clone() == Connective::NoConnective))
+                            && (declaration.body.clone() == None))
+                            && (declaration.transport.clone() == None))
+                        {
+                            {
+                                let bare_node = Rc::new(Node {
+                                    name: declaration.name.clone(),
+                                    span: declaration.span.clone(),
+                                    ident_span: declaration.ident_span.clone(),
+                                    children: Rc::new(vec![]),
+                                    connective: Connective::NoConnective,
+                                    params: declaration.params.clone(),
+                                    inferred: declaration.inferred.clone(),
+                                    return_cardinality: declaration.return_cardinality.clone(),
+                                    uses: Rc::new(vec![]),
+                                    body: None,
+                                    transport: None,
+                                    properties: Rc::new(vec![]),
+                                    type_annotation: None,
+                                    is_self_recursive: false,
+                                    has_non_tail_self_call: false,
+                                    match_pattern: None,
+                                    expr_data: Rc::new(ExprData::NoExprData),
+                                    ident: None,
+                                });
+                                Some(Rc::new(TypeBinding {
+                                    name: declaration_name.clone(),
+                                    resolved: bare_node.clone(),
+                                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                                }))
+                            }
+                        } else {
+                            if ((((((declaration.properties.clone().len() as i64) > 0)
+                                && (declaration.connective.clone() == Connective::NoConnective))
+                                && (declaration.transport.clone() == None))
+                                && (declaration.inferred.clone() == None))
+                                && ((declaration.params.clone().len() as i64) == 0))
+                            {
+                                {
+                                    let nominal = Rc::new(Node {
+                                        name: declaration.name.clone(),
+                                        span: declaration.span.clone(),
+                                        ident_span: declaration.ident_span.clone(),
+                                        children: Rc::new(vec![]),
+                                        connective: Connective::NoConnective,
+                                        params: Rc::new(vec![]),
+                                        inferred: None,
+                                        return_cardinality: declaration.return_cardinality.clone(),
+                                        uses: Rc::new(vec![]),
+                                        body: None,
+                                        transport: None,
+                                        properties: declaration.properties.clone(),
+                                        type_annotation: None,
+                                        is_self_recursive: false,
+                                        has_non_tail_self_call: false,
+                                        match_pattern: None,
+                                        expr_data: Rc::new(ExprData::NoExprData),
+                                        ident: None,
+                                    });
+                                    Some(Rc::new(TypeBinding {
+                                        name: declaration_name.clone(),
+                                        resolved: nominal.clone(),
+                                        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                                    }))
+                                }
+                            } else {
+                                None
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn type_binding_from_declaration_path(
+    path: Rc<ContainmentPath<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<TypeBinding>> {
+    match type_binding_from_declaration(path.terminal.clone(), source_indices.clone()) {
+        Some(binding) => Some(binding.clone()),
+        None => v1_rt::reverse(path.ancestors.clone()).iter().cloned().fold(
+            None,
+            |acc: _, ancestor: Rc<Node>| match acc.clone() {
+                Some(_) => acc.clone(),
+                None => type_binding_from_declaration(ancestor.clone(), source_indices.clone()),
+            },
+        ),
+    }
 }
 
 pub fn empty_scope() -> Rc<Scope> {
@@ -891,6 +1220,269 @@ pub fn segment_lcp_len(a: Rc<Vec<String>>, b: Rc<Vec<String>>) -> i64 {
         );
         scan.matched.clone()
     }
+}
+
+pub fn declaration_path_owner_module(
+    path: Rc<ContainmentPath<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match path.ancestors.clone().first().cloned() {
+        Some(root) => authored_name_at(source_indices.clone(), root.clone()),
+        None => "".to_string(),
+    }
+}
+
+pub fn declaration_paths_for_qualified(
+    index: Rc<SymbolIndex>,
+    qualified_name: String,
+) -> Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>> {
+    match v1_rt::map_get(&index.declaration_entries.clone(), qualified_name.clone()) {
+        Some(paths) => paths.clone(),
+        None => Rc::new(vec![]),
+    }
+}
+
+pub fn declaration_paths_for_bare(
+    index: Rc<SymbolIndex>,
+    name: String,
+) -> Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>> {
+    match v1_rt::map_get(&index.declaration_bare.clone(), name.clone()) {
+        Some(paths) => paths.clone(),
+        None => Rc::new(vec![]),
+    }
+}
+
+pub fn declaration_paths_on_chain(
+    env: Rc<TypeEnv>,
+    paths: Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>>,
+) -> Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>> {
+    {
+        let env_segs = module_path_segments(env.module_path.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for path in paths.clone().iter().cloned() {
+                if {
+                    let owner_segs = module_path_segments(declaration_path_owner_module(
+                        path.clone(),
+                        env.source_indices.clone(),
+                    ));
+                    (segment_lcp_len(owner_segs.clone(), env_segs.clone())
+                        == (owner_segs.clone().len() as i64))
+                } {
+                    __result.push(path);
+                }
+            }
+            __result
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DeclarationPathLcpScan {
+    pub best_lcp: i64,
+    pub paths: Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>>,
+}
+
+pub fn declaration_paths_nearest_rung(
+    env: Rc<TypeEnv>,
+    paths: Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>>,
+) -> Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>> {
+    {
+        let env_segs = module_path_segments(env.module_path.clone());
+        let scan = paths.clone().iter().cloned().fold(
+            Rc::new(DeclarationPathLcpScan {
+                best_lcp: (0 - 1),
+                paths: Rc::new(vec![]),
+            }),
+            |acc: Rc<DeclarationPathLcpScan>, path: Rc<ContainmentPath<Rc<Node>>>| {
+                let owner = declaration_path_owner_module(path.clone(), env.source_indices.clone());
+                let lcp = segment_lcp_len(module_path_segments(owner.clone()), env_segs.clone());
+                if (lcp.clone() > acc.best_lcp.clone()) {
+                    Rc::new(DeclarationPathLcpScan {
+                        best_lcp: lcp.clone(),
+                        paths: Rc::new(vec![path.clone()]),
+                    })
+                } else {
+                    if (lcp.clone() == acc.best_lcp.clone()) {
+                        Rc::new(DeclarationPathLcpScan {
+                            best_lcp: acc.best_lcp.clone(),
+                            paths: containment_paths_insert_unique(acc.paths.clone(), path.clone()),
+                        })
+                    } else {
+                        acc.clone()
+                    }
+                }
+            },
+        );
+        scan.paths.clone()
+    }
+}
+
+pub fn declaration_paths_from_visible_parents(
+    env: Rc<TypeEnv>,
+    name: String,
+) -> Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>> {
+    env.parents.clone().iter().cloned().fold(
+        Rc::new(vec![]),
+        |paths: Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>>, parent: Rc<TypeEnv>| {
+            if (v1_rt::map_get(&parent.str_bindings.clone(), name.clone()) == None) {
+                paths.clone()
+            } else {
+                declaration_paths_for_qualified(
+                    env.symbol_index.clone(),
+                    v1_rt::concat(
+                        v1_rt::concat(parent.module_path.clone(), ".".to_string()),
+                        name.clone(),
+                    ),
+                )
+                .iter()
+                .cloned()
+                .fold(
+                    paths.clone(),
+                    |acc: Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>>,
+                     path: Rc<ContainmentPath<Rc<Node>>>| {
+                        containment_paths_insert_unique(acc, path.clone())
+                    },
+                )
+            }
+        },
+    )
+}
+
+pub fn structurally_visible_declaration_paths(
+    env: Rc<TypeEnv>,
+    name: String,
+) -> Rc<Vec<Rc<ContainmentPath<Rc<Node>>>>> {
+    if v1_rt::contains(name.clone(), ".".to_string()) {
+        declaration_paths_for_qualified(env.symbol_index.clone(), name.clone())
+    } else {
+        {
+            let local = declaration_paths_for_qualified(
+                env.symbol_index.clone(),
+                v1_rt::concat(
+                    v1_rt::concat(env.module_path.clone(), ".".to_string()),
+                    name.clone(),
+                ),
+            );
+            if ((local.clone().len() as i64) > 0) {
+                local.clone()
+            } else {
+                {
+                    let imported =
+                        declaration_paths_from_visible_parents(env.clone(), name.clone());
+                    if ((imported.clone().len() as i64) > 0) {
+                        imported.clone()
+                    } else {
+                        {
+                            let all =
+                                declaration_paths_for_bare(env.symbol_index.clone(), name.clone());
+                            if ((all.clone().len() as i64) <= 1) {
+                                all.clone()
+                            } else {
+                                if v1_rt::name_resolution_policy_is_namespace_only() {
+                                    {
+                                        let chain =
+                                            declaration_paths_on_chain(env.clone(), all.clone());
+                                        if ((chain.clone().len() as i64) > 0) {
+                                            chain.clone()
+                                        } else {
+                                            all.clone()
+                                        }
+                                    }
+                                } else {
+                                    declaration_paths_nearest_rung(env.clone(), all.clone())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn declaration_binding_result(
+    env: Rc<TypeEnv>,
+    occurrence: Rc<BindingOccurrence<Rc<Node>>>,
+    name: String,
+) -> Rc<OccurrenceBindingResult<Rc<Node>>> {
+    {
+        let candidates = Rc::new({
+            let mut __result = Vec::new();
+            for path in structurally_visible_declaration_paths(env.clone(), name.clone())
+                .iter()
+                .cloned()
+            {
+                __result.push(Rc::new(BindingCandidate {
+                    containment: path.clone(),
+                    _phantom: std::marker::PhantomData,
+                }));
+            }
+            __result
+        });
+        occurrence_binding_from_candidates(occurrence.clone(), candidates.clone())
+    }
+}
+
+pub fn containment_path_diagnostic_label(
+    path: Rc<ContainmentPath<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let ancestor_labels = Rc::new({
+            let mut __result = Vec::new();
+            for node in path.ancestors.clone().iter().cloned() {
+                __result.push(v1_rt::concat(
+                    v1_rt::concat(
+                        authored_name_at(source_indices.clone(), node.clone()),
+                        "@".to_string(),
+                    ),
+                    (node.span.clone()).to_string(),
+                ));
+            }
+            __result
+        });
+        let terminal_label = v1_rt::concat(
+            v1_rt::concat(
+                authored_name_at(source_indices.clone(), path.terminal.clone()),
+                "@".to_string(),
+            ),
+            (path.terminal.clone().span.clone()).to_string(),
+        );
+        v1_rt::concat(
+            ancestor_labels.clone(),
+            Rc::new(vec![terminal_label.clone()]),
+        )
+        .join(&".".to_string())
+    }
+}
+
+pub fn ambiguous_binding_candidate_labels(
+    candidates: Rc<AmbiguousBindingCandidates<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    v1_rt::concat(
+        Rc::new(vec![
+            containment_path_diagnostic_label(
+                candidates.first.clone().containment.clone(),
+                source_indices.clone(),
+            ),
+            containment_path_diagnostic_label(
+                candidates.second.clone().containment.clone(),
+                source_indices.clone(),
+            ),
+        ]),
+        Rc::new({
+            let mut __result = Vec::new();
+            for candidate in candidates.rest.clone().iter().cloned() {
+                __result.push(containment_path_diagnostic_label(
+                    candidate.containment.clone(),
+                    source_indices.clone(),
+                ));
+            }
+            __result
+        }),
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
