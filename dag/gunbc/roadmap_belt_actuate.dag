@@ -32,10 +32,20 @@ import gunbc.roadmap_dispatch_actuator {
   HostExecArgv,
   DispatchLiveSession,
   DispatchSpawnCommands,
-  dispatch_spawn_commands,
   dispatch_spawn_commands_for_instance,
+  dispatch_capability_program,
   dispatch_attempt_key,
+  dispatch_attempt_key_path_for_instance,
+  dispatch_attempt_admission_path_for_instance,
+  dispatch_attempt_events_path_for_instance,
+  dispatch_attempt_spawn_failure_path_for_instance,
+  dispatch_current_attempt_key_path_for_instance,
+  dispatch_current_attempt_admission_path_for_instance,
+  dispatch_current_attempt_events_path_for_instance,
+  dispatch_current_attempt_spawn_failure_path_for_instance,
+  dispatch_branch_name,
   DispatchAttemptRef, dispatch_attempt_refs, git_for_each_ref_dispatch_argv,
+  git_for_each_ref_dispatch_argv_for_instance,
   TmuxPaneEntry, parse_tmux_panes_output, tmux_list_panes_argv,
   tmux_list_panes_argv_for_instance,
   tmux_session_observation_with_panes, dispatch_tmux_session_scope,
@@ -50,6 +60,11 @@ import gunbc.roadmap_dispatch_actuator {
   tmux_kill_session_argv,
   tmux_kill_session_argv_for_instance,
   dispatch_live_sessions,
+  TmuxAttemptPaneEntry,
+  AttemptPanesParsed,
+  AttemptPanesParseRefused,
+  parse_tmux_attempt_panes_output,
+  tmux_attempt_panes_argv_for_instance,
 }
 import gunbc.host_layout { srv1_gunbc_repo_root }
 import gunbc.roadmap_dashboard_instance {
@@ -61,11 +76,34 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_provider_executable,
   dashboard_instance_can_actuate,
 }
+import gunbc.roadmap_dispatch_environment {
+  EnvironmentAdmitted,
+  EnvironmentRefused,
+  dispatch_environment_admit,
+  dispatch_environment_admission_json,
+}
+import gunbc.roadmap_execution_contract {
+  EnvironmentBindingCapability,
+  execution_contract_validation_summary,
+}
+import gunbc.roadmap_workflow_progress {
+  AttemptProcessObservation,
+  AttemptProcessAlive,
+  AttemptProcessExited,
+  AttemptProcessAbsent,
+  AttemptProcessObservationRefused,
+  WorkflowAttemptEvidence,
+  WorkflowAttemptProgress,
+  workflow_attempt_progress,
+  workflow_attempt_progress_json_value,
+}
 import extdeps.gunbc
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.llm.cli {
   shape_codex_login_status_env_args_for_program,
+  shape_codex_version_env_args_for_program,
+  codex_cli_identity_contains,
   claude_cli_program,
   claude_trust_store_path,
   claude_workspace_trust_seeded,
@@ -145,6 +183,150 @@ fn belt_exec_all(cmds: List<HostExecArgv>, workdir: String) -> BeltExecOutcome {
       ExecRefused { program: _, reason: _ } => acc
     }
   })
+}
+
+type BeltExecStep {
+  step: String
+  command: HostExecArgv
+}
+
+type BeltExecStepsOutcome
+  = ExecStepsOk
+  | ExecStepFailed { step: String, detail: String }
+
+fn belt_exec_steps(
+  steps: List<BeltExecStep>,
+  workdir: String,
+) -> BeltExecStepsOutcome {
+  fold(steps, init: ExecStepsOk, f: fn(acc, step) {
+    match acc {
+      ExecStepFailed { step: _, detail: _ } => acc
+      ExecStepsOk =>
+        match belt_exec(cmd: step.command, workdir: workdir) {
+          ExecOk { stdout: _ } => ExecStepsOk
+          ExecFailed { program: _, exit_code, stderr } =>
+            ExecStepFailed {
+              step: step.step,
+              detail: join([
+                "exit ", to_string(exit_code), ": ", stderr,
+              ], ""),
+            }
+          ExecRefused { program: _, reason } =>
+            ExecStepFailed { step: step.step, detail: reason }
+        }
+    }
+  })
+}
+
+type AttemptStateInitialization
+  = AttemptStateInitialized
+  | AttemptStateInitializationFailed { step: String, detail: String }
+
+data attempt_state_publication_note: String = "A modeled attempt publishes an immutable evidence prefix before provider launch. After worktree and state-directory creation, the serve process writes the attempt key, the exact grounded environment-admission JSON receipt, and an empty provider-events.jsonl file through typed Filesystem.Write operations. Only then does it replace the node-current symlink. The replace may have a brief unreadable interval, which the observer reports as refusal and retries on its next poll; no atomicity is claimed for `ln -sfnT`. A readable current attempt is constructive proof that admission, workspace creation, and event capture initialization preceded provider launch; the progress route validates the admitted receipt rather than inferring those stages from a tmux name."
+
+fn belt_attempt_state_initialize_for_instance(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  attempt_key: String,
+  admission_receipt: String,
+) -> AttemptStateInitialization {
+  let key_write = Filesystem.Write(
+    path: dispatch_attempt_key_path_for_instance(
+      instance: instance,
+      node_id: node.node,
+      attempt_key: attempt_key,
+    ),
+    content: attempt_key,
+  )
+  if !key_write.success {
+    AttemptStateInitializationFailed {
+      step: "attempt-key-write",
+      detail: key_write.error,
+    }
+  } else {
+    let admission_write = Filesystem.Write(
+      path: dispatch_attempt_admission_path_for_instance(
+        instance: instance,
+        node_id: node.node,
+        attempt_key: attempt_key,
+      ),
+      content: admission_receipt,
+    )
+    if !admission_write.success {
+      AttemptStateInitializationFailed {
+        step: "attempt-admission-write",
+        detail: admission_write.error,
+      }
+    } else {
+      let events_write = Filesystem.Write(
+        path: dispatch_attempt_events_path_for_instance(
+          instance: instance,
+          node_id: node.node,
+          attempt_key: attempt_key,
+        ),
+        content: "",
+      )
+      if events_write.success {
+        AttemptStateInitialized
+      } else {
+        AttemptStateInitializationFailed {
+          step: "attempt-events-initialize",
+          detail: events_write.error,
+        }
+      }
+    }
+  }
+}
+
+fn belt_created_session_cleanup_detail(
+  instance: HostDashboardInstance,
+  session_name: String,
+) -> String {
+  match belt_exec(
+    cmd: tmux_kill_session_argv_for_instance(
+      instance: instance,
+      session_name: session_name,
+    ),
+    workdir: belt_observe_workdir as String,
+  ) {
+    ExecOk { stdout: _ } => "created session reaped"
+    ExecFailed { program: _, exit_code, stderr } =>
+      join([
+        "created-session cleanup failed with exit ",
+        to_string(exit_code),
+        ": ",
+        stderr,
+      ], "")
+    ExecRefused { program: _, reason } =>
+      join(["created-session cleanup refused: ", reason], "")
+  }
+}
+
+fn belt_persist_spawn_failure_for_instance(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  attempt_key: String,
+  step: String,
+  detail: String,
+) -> String {
+  let evidence = join([step, ": ", detail], "")
+  let write = Filesystem.Write(
+    path: dispatch_attempt_spawn_failure_path_for_instance(
+      instance: instance,
+      node_id: node.node,
+      attempt_key: attempt_key,
+    ),
+    content: evidence,
+  )
+  if write.success {
+    detail
+  } else {
+    join([
+      detail,
+      "; additionally failed to persist spawn evidence: ",
+      write.error,
+    ], "")
+  }
 }
 
 type BeltSpawnOutcome
@@ -233,16 +415,24 @@ type BeltCodexPreflight
   = CodexPreflightOk { auth_method: String }
   | CodexPreflightRefused { step: String, detail: String }
 
-data belt_codex_preflight_note: String = "Codex preflight owns only facts decidable before actuation. It requires both codex and env on PATH, then executes `env CODEX_HOME=<dedicated-root> codex login status`; exit 0 is the CLI's active-auth verdict and its stdout is retained as the method receipt, while every nonzero is codex-auth refusal carrying stdout+stderr. It never parses auth.json and never treats file presence as authentication. Subscription exhaustion and upstream/rate failures occur only after `codex exec` starts; those belong to the provider JSONL event stream (`turn.failed` / `error`) and exit status, not this preflight. Until that event observer lands, a tmux spawn is only Spawned and session presence is only Present."
+data belt_codex_preflight_note: String = "Codex preflight owns only facts decidable before actuation. Exact env and codex executable paths are admitted first. It then executes `env CODEX_HOME=<dedicated-root> codex --version` and requires the provider identity marker before separately executing `codex login status`; this distinguishes a broken npm launcher/runtime dependency from unauthenticated OAuth. Login exit 0 is the CLI's active-auth verdict and stdout is retained as the method receipt; it never parses auth.json or treats file presence as authentication. Subscription exhaustion and upstream/rate failures occur only after codex exec starts; those belong to provider JSONL (`turn.failed` / `error`) plus retained process exit."
 
-fn belt_codex_preflight_decision_for_home(
+fn belt_codex_preflight_decision_observed_for_home(
   codex_home: String,
   codex_on_path: Bool,
   env_on_path: Bool,
+  identity_command_success: Bool,
+  identity_stdout: String,
+  identity_stderr: String,
   login_status_success: Bool,
   login_status_stdout: String,
   login_status_stderr: String,
 ) -> BeltCodexPreflight {
+  let identity_realized = identity_command_success
+    && string_contains(
+      s: join([identity_stdout, "\n", identity_stderr], ""),
+      pattern: codex_cli_identity_contains,
+    )
   if !codex_on_path {
     CodexPreflightRefused {
       step: "codex-cli",
@@ -252,6 +442,18 @@ fn belt_codex_preflight_decision_for_home(
     CodexPreflightRefused {
       step: "codex-env",
       detail: "env not found on PATH; cannot bind the dedicated CODEX_HOME for auth or execution",
+    }
+  } else if !identity_realized {
+    CodexPreflightRefused {
+      step: "codex-identity",
+      detail: join([
+        "codex --version did not realize ",
+        codex_cli_identity_contains,
+        "; stdout: ",
+        identity_stdout,
+        "; stderr: ",
+        identity_stderr,
+      ], ""),
     }
   } else if !login_status_success {
     CodexPreflightRefused {
@@ -270,55 +472,76 @@ fn belt_codex_preflight_decision_for_home(
   }
 }
 
-fn belt_codex_preflight_decision(
-  codex_on_path: Bool,
-  env_on_path: Bool,
-  login_status_success: Bool,
-  login_status_stdout: String,
-  login_status_stderr: String,
-) -> BeltCodexPreflight {
-  belt_codex_preflight_decision_for_home(
-    codex_home: dispatch_codex_home,
-    codex_on_path: codex_on_path,
-    env_on_path: env_on_path,
-    login_status_success: login_status_success,
-    login_status_stdout: login_status_stdout,
-    login_status_stderr: login_status_stderr,
-  )
-}
-
 fn belt_codex_preflight_for_instance(instance: HostDashboardInstance) -> BeltCodexPreflight {
   let codex_home = dashboard_instance_provider_state_root(instance: instance) as String
   let codex_program = dashboard_instance_provider_executable(instance: instance) as String
+  let env_program = dispatch_capability_program(
+    environment: instance.execution_environment,
+    cap: EnvironmentBindingCapability,
+  )
   let codex_ok = belt_program_available(program: codex_program)
-  let env_ok = belt_program_available(program: "env")
+  let env_ok = belt_program_available(program: env_program)
   if !codex_ok || !env_ok {
-    belt_codex_preflight_decision_for_home(
+    belt_codex_preflight_decision_observed_for_home(
       codex_home: codex_home,
       codex_on_path: codex_ok,
       env_on_path: env_ok,
+      identity_command_success: false,
+      identity_stdout: "",
+      identity_stderr: "",
       login_status_success: false,
       login_status_stdout: "",
       login_status_stderr: "",
     )
   } else {
+    let identity = gunbc.WitnessBin.Run(
+      workdir: belt_observe_workdir,
+      bin_path: env_program as FilePath,
+      args: shape_codex_version_env_args_for_program(
+        program: codex_program,
+        codex_home: codex_home,
+      ),
+      expect: OutcomeIsData,
+    )
+    let identity_realized = identity.success
+      && string_contains(
+        s: join([identity.stdout, "\n", identity.stderr], ""),
+        pattern: codex_cli_identity_contains,
+      )
+    if !identity_realized {
+      belt_codex_preflight_decision_observed_for_home(
+        codex_home: codex_home,
+        codex_on_path: codex_ok,
+        env_on_path: env_ok,
+        identity_command_success: identity.success,
+        identity_stdout: identity.stdout,
+        identity_stderr: identity.stderr,
+        login_status_success: false,
+        login_status_stdout: "",
+        login_status_stderr: "",
+      )
+    } else {
     let result = gunbc.WitnessBin.Run(
       workdir: belt_observe_workdir,
-      bin_path: "env" as FilePath,
+      bin_path: env_program as FilePath,
       args: shape_codex_login_status_env_args_for_program(
         program: codex_program,
         codex_home: codex_home,
       ),
       expect: OutcomeIsData,
     )
-    belt_codex_preflight_decision_for_home(
+    belt_codex_preflight_decision_observed_for_home(
       codex_home: codex_home,
       codex_on_path: codex_ok,
       env_on_path: env_ok,
+      identity_command_success: identity.success,
+      identity_stdout: identity.stdout,
+      identity_stderr: identity.stderr,
       login_status_success: result.success,
       login_status_stdout: result.stdout,
       login_status_stderr: result.stderr,
     )
+    }
   }
 }
 
@@ -362,18 +585,42 @@ fn belt_actuate_spawn_for_instance(
   node: RoadmapNode,
   probed_at: String,
 ) -> BeltSpawnOutcome {
-  match belt_provider_preflight_for_instance(
-    instance: instance,
-    provider: dispatch_cli_provider,
+  match dispatch_environment_admit(
+    contract: node.execution,
+    environment: instance.execution_environment,
   ) {
-    ProviderPreflightRefused { step: st, detail: d } =>
-      SpawnFailed { node_id: node.node as String, step: st, detail: d }
-    ProviderPreflightOk =>
-      belt_actuate_spawn_exec_for_instance(
+    EnvironmentRefused { receipts, validation_summary, reason } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "environment-admission",
+        detail: dispatch_environment_admission_json(
+          admission: EnvironmentRefused {
+            receipts: receipts,
+            validation_summary: validation_summary,
+            reason: reason,
+          },
+        ),
+      }
+    EnvironmentAdmitted { receipts, validation_summary } =>
+      match belt_provider_preflight_for_instance(
         instance: instance,
-        node: node,
-        probed_at: probed_at,
-      )
+        provider: dispatch_cli_provider,
+      ) {
+        ProviderPreflightRefused { step: st, detail: d } =>
+          SpawnFailed { node_id: node.node as String, step: st, detail: d }
+        ProviderPreflightOk =>
+          belt_actuate_spawn_exec_for_instance(
+            instance: instance,
+            node: node,
+            probed_at: probed_at,
+            admission_receipt: dispatch_environment_admission_json(
+              admission: EnvironmentAdmitted {
+                receipts: receipts,
+                validation_summary: validation_summary,
+              },
+            ),
+          )
+      }
   }
 }
 
@@ -381,55 +628,212 @@ fn belt_actuate_spawn_exec_for_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
   probed_at: String,
+  admission_receipt: String,
 ) -> BeltSpawnOutcome {
+  belt_actuate_spawn_exec_modeled(
+    instance: instance,
+    node: node,
+    probed_at: probed_at,
+    workdir: instance.repo_root as String,
+    admission_receipt: admission_receipt,
+  )
+}
+
+data belt_staged_spawn_cleanup_note: String = "The tmux creation boundary is explicit. Worktree/state publication happens before tmux; tmux new-session runs alone; only after its success do session configuration, pipe attachment, and provider respawn run. A later staging failure reaps exactly the session this same request just created, without relying on a name-only ownership guess. Worktree, branch, and attempt evidence are deliberately retained for diagnosis and user work. The original located failure plus cleanup receipt is persisted under the published attempt before SpawnFailed returns."
+
+fn belt_actuate_spawn_exec_modeled(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  probed_at: String,
+  workdir: String,
+  admission_receipt: String,
+) -> BeltSpawnOutcome {
+  let attempt_key = dispatch_attempt_key(
+    node_id: node.node,
+    probed_at: probed_at,
+  )
+  let session_name = dispatch_tmux_session_name(node_id: node.node)
   let cmds = dispatch_spawn_commands_for_instance(
     instance: instance,
     node: node,
     session_uuid: belt_spawn_session_uuid(node_id: node.node as String, probed_at: probed_at),
-    attempt_key: dispatch_attempt_key(node_id: node.node, probed_at: probed_at),
+    attempt_key: attempt_key,
     provider: dispatch_cli_provider,
   )
-  match belt_exec_all(
-    cmds: [cmds.worktree_add, cmds.tmux_spawn],
-    workdir: instance.repo_root as String,
+  match belt_exec_steps(
+    steps: [
+      BeltExecStep { step: "worktree-add", command: cmds.worktree_add },
+      BeltExecStep {
+        step: "attempt-state-prepare",
+        command: cmds.attempt_state_prepare,
+      },
+    ],
+    workdir: workdir,
   ) {
-    ExecOk { stdout: _ } =>
-      Spawned {
+    ExecStepFailed { step, detail } =>
+      SpawnFailed {
         node_id: node.node as String,
-        session_name: dispatch_tmux_session_name(node_id: node.node),
+        step: step,
+        detail: detail,
       }
-    ExecFailed { program: p, exit_code: _, stderr: e } =>
-      SpawnFailed { node_id: node.node as String, step: p, detail: e }
-    ExecRefused { program: p, reason: r } =>
-      SpawnFailed { node_id: node.node as String, step: p, detail: r }
+    ExecStepsOk =>
+      match belt_attempt_state_initialize_for_instance(
+        instance: instance,
+        node: node,
+        attempt_key: attempt_key,
+        admission_receipt: admission_receipt,
+      ) {
+        AttemptStateInitializationFailed { step, detail } =>
+          SpawnFailed {
+            node_id: node.node as String,
+            step: step,
+            detail: detail,
+          }
+        AttemptStateInitialized =>
+          match belt_exec_steps(
+            steps: [
+              BeltExecStep {
+                step: "attempt-current-publish",
+                command: cmds.attempt_current_pointer,
+              },
+            ],
+            workdir: workdir,
+          ) {
+            ExecStepFailed { step, detail } =>
+              SpawnFailed {
+                node_id: node.node as String,
+                step: step,
+                detail: detail,
+              }
+            ExecStepsOk =>
+              match belt_exec_steps(
+                steps: [
+                  BeltExecStep {
+                    step: "tmux-session-create",
+                    command: cmds.tmux_spawn,
+                  },
+                ],
+                workdir: workdir,
+              ) {
+                ExecStepFailed { step, detail } =>
+                  SpawnFailed {
+                    node_id: node.node as String,
+                    step: step,
+                    detail: belt_persist_spawn_failure_for_instance(
+                      instance: instance,
+                      node: node,
+                      attempt_key: attempt_key,
+                      step: step,
+                      detail: detail,
+                    ),
+                  }
+                ExecStepsOk =>
+                  match belt_exec_steps(
+                    steps: [
+                      BeltExecStep {
+                        step: "tmux-default-shell",
+                        command: cmds.tmux_default_shell,
+                      },
+                      BeltExecStep {
+                        step: "tmux-remain-on-exit",
+                        command: cmds.tmux_remain_on_exit,
+                      },
+                      BeltExecStep {
+                        step: "tmux-event-pipe",
+                        command: cmds.tmux_event_pipe,
+                      },
+                      BeltExecStep {
+                        step: "provider-start",
+                        command: cmds.provider_start,
+                      },
+                    ],
+                    workdir: workdir,
+                  ) {
+                    ExecStepsOk =>
+                      Spawned {
+                        node_id: node.node as String,
+                        session_name: session_name,
+                      }
+                    ExecStepFailed { step, detail } => {
+                      let cleanup = belt_created_session_cleanup_detail(
+                        instance: instance,
+                        session_name: session_name,
+                      )
+                      let full_detail = join([
+                        detail,
+                        "; ",
+                        cleanup,
+                      ], "")
+                      SpawnFailed {
+                        node_id: node.node as String,
+                        step: step,
+                        detail: belt_persist_spawn_failure_for_instance(
+                          instance: instance,
+                          node: node,
+                          attempt_key: attempt_key,
+                          step: step,
+                          detail: full_detail,
+                        ),
+                      }
+                    }
+                  }
+              }
+          }
+      }
   }
 }
 
 fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String) -> BeltSpawnOutcome {
-  match belt_provider_preflight(provider: dispatch_cli_provider) {
-    ProviderPreflightRefused { step: st, detail: d } =>
-      SpawnFailed { node_id: node.node as String, step: st, detail: d }
-    ProviderPreflightOk =>
-      belt_actuate_spawn_exec(node: node, probed_at: probed_at, workdir: workdir)
+  let instance = srv1_live_dashboard_instance()
+  match dispatch_environment_admit(
+    contract: node.execution,
+    environment: instance.execution_environment,
+  ) {
+    EnvironmentRefused { receipts, validation_summary, reason } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "environment-admission",
+        detail: dispatch_environment_admission_json(
+          admission: EnvironmentRefused {
+            receipts: receipts,
+            validation_summary: validation_summary,
+            reason: reason,
+          },
+        ),
+      }
+    EnvironmentAdmitted { receipts, validation_summary } =>
+      match belt_provider_preflight(provider: dispatch_cli_provider) {
+        ProviderPreflightRefused { step: st, detail: d } =>
+          SpawnFailed { node_id: node.node as String, step: st, detail: d }
+        ProviderPreflightOk =>
+          belt_actuate_spawn_exec(
+            node: node,
+            probed_at: probed_at,
+            workdir: workdir,
+            admission_receipt: dispatch_environment_admission_json(
+              admission: EnvironmentAdmitted {
+                receipts: receipts,
+                validation_summary: validation_summary,
+              },
+            ),
+          )
+      }
   }
 }
 
-fn belt_actuate_spawn_exec(node: RoadmapNode, probed_at: String, workdir: String) -> BeltSpawnOutcome {
-  let cmds = dispatch_spawn_commands(
+fn belt_actuate_spawn_exec(
+  node: RoadmapNode,
+  probed_at: String,
+  workdir: String,
+  admission_receipt: String,
+) -> BeltSpawnOutcome {
+  belt_actuate_spawn_exec_modeled(
+    instance: srv1_live_dashboard_instance(),
     node: node,
-    session_uuid: belt_spawn_session_uuid(node_id: node.node as String, probed_at: probed_at),
-    attempt_key: dispatch_attempt_key(node_id: node.node, probed_at: probed_at))
-  match belt_exec_all(cmds: [cmds.worktree_add, cmds.tmux_spawn], workdir: workdir) {
-    ExecOk { stdout: _ } =>
-      Spawned {
-        node_id: node.node as String,
-        session_name: dispatch_tmux_session_name(node_id: node.node),
-      }
-    ExecFailed { program: p, exit_code: _, stderr: e } =>
-      SpawnFailed { node_id: node.node as String, step: p, detail: e }
-    ExecRefused { program: p, reason: r } =>
-      SpawnFailed { node_id: node.node as String, step: p, detail: r }
-  }
+    probed_at: probed_at,
+    workdir: workdir,
+    admission_receipt: admission_receipt,
+  )
 }
 
 type BeltTeardownOutcome
@@ -750,7 +1154,7 @@ type BeltAttempts
 data belt_attempts_observe_note: String = "U3: the attempts observation mirrors belt_observe's fail-closed grammar — git absent or a non-zero for-each-ref is an UNKNOWABLE attempts set (AttemptsRefused, typed, carries stderr), never widened to zero attempts; exit 0 with empty output IS a genuine zero (for-each-ref's documented no-match behavior). Runs in belt_actuate_workdir — the same repo-root authority the spawn's worktree add uses, because the attempt branches live exactly where spawns mint them."
 
 fn belt_attempts_observe_for_instance(instance: HostDashboardInstance) -> BeltAttempts {
-  let cmd = git_for_each_ref_dispatch_argv()
+  let cmd = git_for_each_ref_dispatch_argv_for_instance(instance: instance)
   if belt_program_available(program: cmd.program) {
     let result = gunbc.WitnessBin.Run(
       workdir: instance.repo_root,
@@ -801,6 +1205,265 @@ fn belt_attempts_http_status(a: BeltAttempts) -> Int {
   match a {
     AttemptsRefused { reason: _ } => 503
     AttemptsObserved { attempts: _ } => 200
+  }
+}
+
+type BeltAttemptPanes
+  = BeltAttemptPanesObserved { panes: List<TmuxAttemptPaneEntry> }
+  | BeltAttemptPanesRefused { reason: String }
+
+type BeltWorkflowAttempts
+  = WorkflowAttemptsObserved { attempts: List<WorkflowAttemptProgress> }
+  | WorkflowAttemptsRefused { reason: String }
+
+data belt_workflow_attempts_note: String = "The workflow route joins the latest published attempt state to process evidence at node grain. Git refs determine which nodes have attempts; the node-current pointer selects the latest modeled attempt without guessing chronology from content-hash keys; Filesystem.Read observes the immutable key/admission prefix plus the append-only Codex JSONL; one exact tmux list-panes read observes alive/dead/exit for all attempts. A git refusal refuses the route. A pane-command or parse refusal stays located inside each attempt so already-terminal provider evidence remains usable while incomplete attempts become refused."
+
+fn belt_attempt_panes_observe_for_instance(
+  instance: HostDashboardInstance,
+) -> BeltAttemptPanes {
+  let cmd = tmux_attempt_panes_argv_for_instance(instance: instance)
+  if belt_program_available(program: cmd.program) {
+    let result = gunbc.WitnessBin.Run(
+      workdir: belt_observe_workdir,
+      bin_path: cmd.program as FilePath,
+      args: cmd.args,
+      expect: OutcomeIsData,
+    )
+    if result.success {
+      match parse_tmux_attempt_panes_output(output: result.stdout) {
+        AttemptPanesParsed { panes } =>
+          BeltAttemptPanesObserved { panes: panes }
+        AttemptPanesParseRefused { line_number, raw, reason } =>
+          BeltAttemptPanesRefused {
+            reason: join([
+              "tmux attempt-pane parse refused at line ",
+              to_string(line_number),
+              ": ",
+              reason,
+              "; raw=",
+              raw,
+            ], ""),
+          }
+      }
+    } else if tmux_ls_stderr_reports_empty(stderr: result.stderr) {
+      BeltAttemptPanesObserved { panes: [] }
+    } else {
+      BeltAttemptPanesRefused {
+        reason: join([
+          "tmux attempt-pane observation failed: ",
+          result.stderr,
+        ], ""),
+      }
+    }
+  } else {
+    BeltAttemptPanesRefused {
+      reason: "tmux realization is not executable; process state is unknowable",
+    }
+  }
+}
+
+fn attempt_process_for_node(
+  panes: BeltAttemptPanes,
+  node_id: String,
+) -> AttemptProcessObservation {
+  match panes {
+    BeltAttemptPanesRefused { reason } =>
+      AttemptProcessObservationRefused { reason: reason }
+    BeltAttemptPanesObserved { panes: observed } => {
+      let session_name = dispatch_tmux_session_name(
+        node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+      )
+      let matched = observed |> filter(pane =>
+        pane.session_name == session_name)
+      match matched.first() {
+        Absent => AttemptProcessAbsent
+        Present { value: pane } =>
+          if pane.dead {
+            match pane.exit_code {
+              Present { value: code } =>
+                AttemptProcessExited {
+                  exit_code: code,
+                  command: pane.command,
+                }
+              Absent =>
+                AttemptProcessObservationRefused {
+                  reason: "dead tmux pane lacked pane_dead_status after parsing",
+                }
+            }
+          } else {
+            AttemptProcessAlive { command: pane.command }
+          }
+      }
+    }
+  }
+}
+
+fn dispatch_attempt_ref_first_per_node(
+  attempts: List<DispatchAttemptRef>,
+) -> List<DispatchAttemptRef> {
+  fold(attempts, init: [], f: fn(acc, attempt) {
+    if any(acc, existing => existing.node_id == attempt.node_id) {
+      acc
+    } else {
+      append(acc, [attempt])
+    }
+  })
+}
+
+fn belt_validation_summary_for_node(
+  instance: HostDashboardInstance,
+  node_id: String,
+) -> String {
+  match belt_lookup_node(node_id: node_id) {
+    NodeMissing => ""
+    NodeFound { node } =>
+      execution_contract_validation_summary(
+        contract: node.execution,
+        environment: instance.execution_environment,
+      )
+  }
+}
+
+fn belt_workflow_progress_for_attempt_ref(
+  instance: HostDashboardInstance,
+  panes: BeltAttemptPanes,
+  attempt: DispatchAttemptRef,
+) -> WorkflowAttemptProgress {
+  let key_read = Filesystem.Read(
+    path: dispatch_current_attempt_key_path_for_instance(
+      instance: instance,
+      node_id: attempt.node_id as gunbc.roadmap_model.RoadmapNodeId,
+    ),
+  )
+  if !key_read.success || trim(key_read.content) == "" {
+    workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+      node_id: attempt.node_id,
+      attempt_key: attempt.attempt_key,
+      branch: attempt.branch,
+      modeled_state_present: false,
+      admission_receipt_readable: false,
+      admission_receipt: "",
+      spawn_failure_present: false,
+      spawn_failure: "",
+      provider_events_readable: false,
+      provider_events: "",
+      provider_events_error: key_read.error,
+      process: attempt_process_for_node(
+        panes: panes,
+        node_id: attempt.node_id,
+      ),
+      validation_summary: belt_validation_summary_for_node(
+        instance: instance,
+        node_id: attempt.node_id,
+      ),
+    })
+  } else {
+    let current_key = trim(key_read.content)
+    let node_id = attempt.node_id as gunbc.roadmap_model.RoadmapNodeId
+    let admission = Filesystem.Read(
+      path: dispatch_current_attempt_admission_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+      ),
+    )
+    let events = Filesystem.Read(
+      path: dispatch_current_attempt_events_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+      ),
+    )
+    let spawn_failure = Filesystem.Read(
+      path: dispatch_current_attempt_spawn_failure_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+      ),
+    )
+    workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+      node_id: attempt.node_id,
+      attempt_key: current_key,
+      branch: dispatch_branch_name(
+        node_id: node_id,
+        attempt_key: current_key,
+      ),
+      modeled_state_present: true,
+      admission_receipt_readable: admission.success,
+      admission_receipt: admission.content,
+      spawn_failure_present: spawn_failure.success,
+      spawn_failure: spawn_failure.content,
+      provider_events_readable: events.success,
+      provider_events: events.content,
+      provider_events_error: events.error,
+      process: attempt_process_for_node(
+        panes: panes,
+        node_id: attempt.node_id,
+      ),
+      validation_summary: belt_validation_summary_for_node(
+        instance: instance,
+        node_id: attempt.node_id,
+      ),
+    })
+  }
+}
+
+fn belt_workflow_attempts_observe_for_instance(
+  instance: HostDashboardInstance,
+) -> BeltWorkflowAttempts {
+  match belt_attempts_observe_for_instance(instance: instance) {
+    AttemptsRefused { reason } =>
+      WorkflowAttemptsRefused { reason: reason }
+    AttemptsObserved { attempts } => {
+      let panes = belt_attempt_panes_observe_for_instance(instance: instance)
+      WorkflowAttemptsObserved {
+        attempts: dispatch_attempt_ref_first_per_node(attempts: attempts)
+          |> map(attempt => belt_workflow_progress_for_attempt_ref(
+            instance: instance,
+            panes: panes,
+            attempt: attempt,
+          )),
+      }
+    }
+  }
+}
+
+fn belt_workflow_attempts_json_value(
+  observed: BeltWorkflowAttempts,
+) -> JsonValue {
+  match observed {
+    WorkflowAttemptsRefused { reason } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-workflow/v1")),
+        json_kv(key: "observe_refused", value: json_bool(b: true)),
+        json_kv(key: "reason", value: json_string(s: reason)),
+      ])
+    WorkflowAttemptsObserved { attempts } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-workflow/v1")),
+        json_kv(key: "observe_refused", value: json_bool(b: false)),
+        json_kv(
+          key: "attempts",
+          value: json_array(elements: map(
+            attempts,
+            progress => workflow_attempt_progress_json_value(
+              progress: progress,
+            ),
+          )),
+        ),
+      ])
+  }
+}
+
+fn belt_workflow_attempts_observed_json(
+  observed: BeltWorkflowAttempts,
+) -> String {
+  serialize_json(v: belt_workflow_attempts_json_value(observed: observed))
+}
+
+fn belt_workflow_attempts_http_status(
+  observed: BeltWorkflowAttempts,
+) -> Int {
+  match observed {
+    WorkflowAttemptsRefused { reason: _ } => 503
+    WorkflowAttemptsObserved { attempts: _ } => 200
   }
 }
 

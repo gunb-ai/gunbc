@@ -1,0 +1,144 @@
+module test.claim.roadmap_execution_contract_witness_test
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import gunbc.ensure { EnsureObserveOnly }
+import gunbc.roadmap_execution_contract {
+  GitWorkspaceCapability,
+  GunbcClaimRunnerCapability,
+  CargoCapability,
+  CargoFmtValidation,
+  GunbcClaimValidation,
+  CargoTestValidation,
+  ExecutionContract,
+  ExecutionContractUnspecified,
+  CapabilityRealization,
+  DispatchHostEnvironment,
+  execution_capability_label,
+  execution_contract_required_capabilities,
+  dispatch_required_capabilities,
+  execution_contract_is_specified,
+  gunbc_claim_execution_contract,
+  validation_operation_command,
+}
+
+fn claim_runner_environment() -> DispatchHostEnvironment {
+  DispatchHostEnvironment {
+    realizations: [
+      CapabilityRealization {
+        capability: GitWorkspaceCapability,
+        executable: "/usr/bin/git" as FilePath,
+        identity_args: ["--version"],
+        identity_contains: "git version" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
+      },
+      CapabilityRealization {
+        capability: GunbcClaimRunnerCapability,
+        executable: "/opt/gunbc/bin/gunbc" as FilePath,
+        identity_args: ["--help"],
+        identity_contains: "A causal compiler" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
+      },
+    ],
+  }
+}
+
+test fn dag_claim_derives_only_the_claim_runner() -> Bool {
+  let capabilities = execution_contract_required_capabilities(
+    contract: gunbc_claim_execution_contract(
+      entry: "dag/test/claim/example_test.dag" as FilePath,
+      function: "example_holds" as NonEmptyStr,
+    ),
+  )
+  count(capabilities) == 1
+    && execution_capability_label(capability: capabilities.first().value) == "gunbc-claim-runner"
+}
+
+test fn cargo_test_derives_cargo_and_rustc_once() -> Bool {
+  let capabilities = execution_contract_required_capabilities(
+    contract: ExecutionContract {
+      validations: [
+        CargoTestValidation { filter: "one" as NonEmptyStr },
+        CargoTestValidation { filter: "two" as NonEmptyStr },
+      ],
+      extra_capabilities: [CargoCapability],
+    },
+  )
+  count(capabilities) == 2
+    && any(
+      capabilities,
+      cap => execution_capability_label(capability: cap) == "cargo",
+    )
+    && any(
+      capabilities,
+      cap => execution_capability_label(capability: cap) == "rustc",
+    )
+}
+
+test fn cargo_fmt_derives_cargo_and_rustfmt_not_rustc() -> Bool {
+  let caps = execution_contract_required_capabilities(
+    contract: ExecutionContract {
+      validations: [CargoFmtValidation],
+      extra_capabilities: [],
+    },
+  )
+  count(caps) == 2
+    && count(caps |> filter(cap =>
+      execution_capability_label(capability: cap) == "cargo")) == 1
+    && count(caps |> filter(cap =>
+      execution_capability_label(capability: cap) == "rustfmt")) == 1
+    && count(caps |> filter(cap =>
+      execution_capability_label(capability: cap) == "rustc")) == 0
+}
+
+test fn dispatch_platform_capabilities_join_at_admission_only() -> Bool {
+  let contract = gunbc_claim_execution_contract(
+    entry: "dag/test/claim/example_test.dag" as FilePath,
+    function: "example_holds" as NonEmptyStr,
+  )
+  let task = execution_contract_required_capabilities(contract: contract)
+  let dispatch = dispatch_required_capabilities(contract: contract)
+  count(task) == 1
+    && count(dispatch) == 8
+    && any(
+      dispatch,
+      cap => execution_capability_label(capability: cap) == "git-workspace",
+    )
+    && any(
+      dispatch,
+      cap => execution_capability_label(capability: cap) == "gunbc-claim-runner",
+    )
+}
+
+test fn claim_validation_projects_exact_typed_argv() -> Bool {
+  match validation_operation_command(
+    validation: GunbcClaimValidation {
+      entry: "dag/test/claim/example_test.dag" as FilePath,
+      function: "example_holds" as NonEmptyStr,
+    },
+    environment: claim_runner_environment(),
+  ) {
+    Present { value: command } =>
+      command.program == ("/opt/gunbc/bin/gunbc" as FilePath)
+        && join(command.args, " ") == "run --source-root dag --source-root src/v2 --entry dag/test/claim/example_test.dag --function example_holds --claim-run"
+    Absent => false
+  }
+}
+
+test fn unspecified_contract_is_an_admission_refusal_state() -> Bool {
+  !execution_contract_is_specified(contract: ExecutionContractUnspecified)
+    && execution_contract_is_specified(
+      contract: gunbc_claim_execution_contract(
+        entry: "dag/test/claim/example_test.dag" as FilePath,
+        function: "example_holds" as NonEmptyStr,
+      ),
+    )
+}
+
+test fn roadmap_execution_contract_keystone_holds() -> Bool {
+  dag_claim_derives_only_the_claim_runner()
+    && cargo_test_derives_cargo_and_rustc_once()
+    && cargo_fmt_derives_cargo_and_rustfmt_not_rustc()
+    && dispatch_platform_capabilities_join_at_admission_only()
+    && claim_validation_projects_exact_typed_argv()
+    && unspecified_contract_is_an_admission_refusal_state()
+}

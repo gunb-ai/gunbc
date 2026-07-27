@@ -1,0 +1,229 @@
+module test.claim.roadmap_workflow_progress_witness_test
+
+import std.types { Bool, List }
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.roadmap_provider_events {
+  ProviderCompleted,
+  ProviderFailed,
+  ProviderEventsRefused,
+}
+import gunbc.roadmap_workflow_progress {
+  AttemptProcessAlive,
+  AttemptProcessExited,
+  AttemptProcessAbsent,
+  WorkflowAttemptEvidence,
+  WorkflowSegment,
+  WorkflowSegmentComplete,
+  WorkflowSegmentPending,
+  WorkflowSegmentRefused,
+  EnvironmentWorkflowSegment,
+  WorkspaceWorkflowSegment,
+  AgentWorkflowSegment,
+  VerificationWorkflowSegment,
+  workflow_attempt_progress,
+  workflow_attempt_progress_json_value,
+  workflow_segment_kind_key,
+  workflow_segment_state_key,
+}
+
+fn fixture_evidence(
+  events: String,
+  process: gunbc.roadmap_workflow_progress.AttemptProcessObservation,
+) -> WorkflowAttemptEvidence {
+  WorkflowAttemptEvidence {
+    node_id: "node-1",
+    attempt_key: "feedfacefeedface",
+    branch: "dispatch/node-1-afeedfacefeedface",
+    modeled_state_present: true,
+    admission_receipt_readable: true,
+    admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
+    spawn_failure_present: false,
+    spawn_failure: "",
+    provider_events_readable: true,
+    provider_events: events,
+    provider_events_error: "",
+    process: process,
+    validation_summary: "gunbc run --claim-run",
+  }
+}
+
+fn segment_state(
+  segments: List<WorkflowSegment>,
+  key: String,
+) -> String {
+  fold(segments, init: "", f: fn(acc, segment) {
+    if acc == "" && workflow_segment_kind_key(kind: segment.kind) == key {
+      workflow_segment_state_key(state: segment.state)
+    } else {
+      acc
+    }
+  })
+}
+
+test fn admitted_running_attempt_projects_ordered_evidence() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"thread.started\",\"thread_id\":\"t\"}\n{\"type\":\"turn.started\"}\n",
+    process: AttemptProcessAlive { command: "node" },
+  ))
+  count(progress.segments) == 5
+    && segment_state(progress.segments, "environment") == "complete"
+    && segment_state(progress.segments, "workspace") == "complete"
+    && segment_state(progress.segments, "agent") == "active"
+    && segment_state(progress.segments, "verify") == "pending"
+    && segment_state(progress.segments, "review") == "pending"
+}
+
+test fn provider_completion_cannot_fabricate_verification() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: AttemptProcessExited { exit_code: 0, command: "node" },
+  ))
+  match progress.provider {
+    ProviderCompleted { activity: _ } =>
+      segment_state(progress.segments, "agent") == "complete"
+        && segment_state(progress.segments, "verify") == "pending"
+    _ => false
+  }
+}
+
+test fn nonzero_exit_without_terminal_event_is_failed() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"thread.started\",\"thread_id\":\"t\"}\n",
+    process: AttemptProcessExited { exit_code: 7, command: "node" },
+  ))
+  match progress.provider {
+    ProviderFailed { activity: _, detail } =>
+      string_contains(s: detail, pattern: "exited 7")
+    _ => false
+  }
+}
+
+test fn zero_exit_without_terminal_event_is_refused() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"thread.started\",\"thread_id\":\"t\"}\n",
+    process: AttemptProcessExited { exit_code: 0, command: "node" },
+  ))
+  match progress.provider {
+    ProviderEventsRefused { activity: _, detail } =>
+      string_contains(s: detail, pattern: "without turn.completed")
+    _ => false
+  }
+}
+
+test fn completed_event_and_nonzero_exit_refuse_contradiction() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: AttemptProcessExited { exit_code: 1, command: "node" },
+  ))
+  match progress.provider {
+    ProviderEventsRefused { activity: _, detail } =>
+      string_contains(s: detail, pattern: "conflicts")
+    _ => false
+  }
+}
+
+test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
+  let base = fixture_evidence(
+    events: "",
+    process: AttemptProcessAbsent,
+  )
+  let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    node_id: base.node_id,
+    attempt_key: base.attempt_key,
+    branch: base.branch,
+    modeled_state_present: base.modeled_state_present,
+    admission_receipt_readable: base.admission_receipt_readable,
+    admission_receipt: base.admission_receipt,
+    spawn_failure_present: true,
+    spawn_failure: "tmux-event-pipe: permission denied",
+    provider_events_readable: base.provider_events_readable,
+    provider_events: base.provider_events,
+    provider_events_error: base.provider_events_error,
+    process: base.process,
+    validation_summary: base.validation_summary,
+  })
+  match progress.provider {
+    ProviderFailed { activity: "dispatch staging failed", detail } =>
+      string_contains(s: detail, pattern: "tmux-event-pipe")
+    _ => false
+  }
+}
+
+test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
+  let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    node_id: "legacy",
+    attempt_key: "",
+    branch: "dispatch/legacy",
+    modeled_state_present: false,
+    admission_receipt_readable: false,
+    admission_receipt: "",
+    spawn_failure_present: false,
+    spawn_failure: "",
+    provider_events_readable: false,
+    provider_events: "",
+    provider_events_error: "not found",
+    process: AttemptProcessAbsent,
+    validation_summary: "",
+  })
+  match progress.provider {
+    ProviderEventsRefused { activity: "legacy attempt", detail: _ } =>
+      segment_state(progress.segments, "environment") == "refused"
+        && segment_state(progress.segments, "workspace") == "refused"
+    _ => false
+  }
+}
+
+test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
+  let base = fixture_evidence(
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: AttemptProcessExited { exit_code: 0, command: "node" },
+  )
+  let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    node_id: base.node_id,
+    attempt_key: base.attempt_key,
+    branch: base.branch,
+    modeled_state_present: base.modeled_state_present,
+    admission_receipt_readable: true,
+    admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"refused\"}",
+    spawn_failure_present: base.spawn_failure_present,
+    spawn_failure: base.spawn_failure,
+    provider_events_readable: base.provider_events_readable,
+    provider_events: base.provider_events,
+    provider_events_error: base.provider_events_error,
+    process: base.process,
+    validation_summary: base.validation_summary,
+  })
+  match progress.provider {
+    ProviderEventsRefused { activity: "environment admission refused", detail: _ } =>
+      segment_state(progress.segments, "environment") == "refused"
+        && segment_state(progress.segments, "agent") == "refused"
+    _ => false
+  }
+}
+
+test fn workflow_json_exposes_segment_and_provider_facts() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: AttemptProcessExited { exit_code: 0, command: "node" },
+  ))
+  let wire = serialize_json(
+    v: workflow_attempt_progress_json_value(progress: progress),
+  )
+  string_contains(s: wire, pattern: "\"provider_status\": \"completed\"")
+    && string_contains(s: wire, pattern: "\"kind\": \"environment\"")
+    && string_contains(s: wire, pattern: "\"state\": \"complete\"")
+    && string_contains(s: wire, pattern: "\"kind\": \"verify\"")
+    && string_contains(s: wire, pattern: "\"state\": \"pending\"")
+}
+
+test fn roadmap_workflow_progress_keystone_holds() -> Bool {
+  admitted_running_attempt_projects_ordered_evidence()
+    && provider_completion_cannot_fabricate_verification()
+    && nonzero_exit_without_terminal_event_is_failed()
+    && zero_exit_without_terminal_event_is_refused()
+    && completed_event_and_nonzero_exit_refuse_contradiction()
+    && persisted_staging_failure_precedes_empty_event_stream()
+    && legacy_attempt_refuses_unobserved_early_stages()
+    && readable_but_invalid_admission_receipt_refuses_progress()
+    && workflow_json_exposes_segment_and_provider_facts()
+}

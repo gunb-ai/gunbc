@@ -1,0 +1,137 @@
+module test.claim.roadmap_provider_events_witness_test
+
+import std.types { Bool }
+import gunbc.roadmap_provider_events {
+  CodexEventsParsed,
+  CodexEventsRefused,
+  ProviderRunning,
+  ProviderCompleted,
+  ProviderFailed,
+  ProviderEventsRefused,
+  parse_codex_jsonl,
+  provider_execution_state,
+  provider_execution_state_label,
+  provider_execution_detail,
+}
+
+data successful_codex_jsonl: String = "{\"type\":\"thread.started\",\"thread_id\":\"thread-1\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item-1\",\"type\":\"file_change\",\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item-1\",\"type\":\"file_change\",\"status\":\"completed\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":3}}\n"
+
+test fn codex_stream_classifies_running_activity() -> Bool {
+  let parsed = parse_codex_jsonl(
+    text: "{\"type\":\"thread.started\",\"thread_id\":\"thread-1\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.started\",\"item\":{\"type\":\"command_execution\"}}\n",
+  )
+  match provider_execution_state(parsed: parsed) {
+    ProviderRunning { activity } => activity == "running command"
+    _ => false
+  }
+}
+
+test fn codex_completed_is_terminal_only_from_provider_event() -> Bool {
+  match provider_execution_state(parsed: parse_codex_jsonl(text: successful_codex_jsonl)) {
+    ProviderCompleted { activity } => activity == "agent turn completed"
+    _ => false
+  }
+}
+
+test fn codex_completed_state_is_terminal() -> Bool {
+  match provider_execution_state(
+    parsed: parse_codex_jsonl(
+      text: join([
+        successful_codex_jsonl,
+        "{\"type\":\"item.started\",\"item\":{\"type\":\"command_execution\"}}\n",
+      ], ""),
+    ),
+  ) {
+    ProviderCompleted { activity } => activity == "agent turn completed"
+    _ => false
+  }
+}
+
+test fn codex_turn_failed_preserves_raw_provider_evidence() -> Bool {
+  let failed = "{\"type\":\"turn.failed\",\"error\":{\"message\":\"usage exhausted\"}}"
+  match provider_execution_state(parsed: parse_codex_jsonl(text: failed)) {
+    ProviderFailed { activity, detail } =>
+      activity == "agent turn failed"
+        && string_contains(s: detail, pattern: "usage exhausted")
+    _ => false
+  }
+}
+
+test fn codex_error_is_not_absorbed_into_spawned() -> Bool {
+  let state = provider_execution_state(
+    parsed: parse_codex_jsonl(
+      text: "{\"type\":\"thread.started\",\"thread_id\":\"thread-1\"}\n{\"type\":\"error\",\"message\":\"upstream unavailable\"}\n",
+    ),
+  )
+  provider_execution_state_label(state: state) == "failed"
+    && string_contains(
+      s: provider_execution_detail(state: state),
+      pattern: "upstream unavailable",
+    )
+}
+
+test fn truncated_line_refuses_with_location_and_raw() -> Bool {
+  let truncated = "{\"type\":\"thread.started\",\"thread_id\":\"thread-1\"}\n{\"type\":\"item.started\""
+  match parse_codex_jsonl(text: truncated) {
+    CodexEventsParsed { events: _ } => false
+    CodexEventsRefused {
+      events_before_refusal,
+      line_number,
+      raw,
+      reason,
+    } =>
+      count(events_before_refusal) == 1
+        && line_number == 2
+        && raw == "{\"type\":\"item.started\""
+        && string_contains(s: reason, pattern: "truncated")
+  }
+}
+
+test fn unknown_event_refuses_instead_of_guessing_progress() -> Bool {
+  let parsed = parse_codex_jsonl(text: "{\"type\":\"future.event\",\"value\":1}\n")
+  match provider_execution_state(parsed: parsed) {
+    ProviderEventsRefused { activity: _, detail } =>
+      string_contains(s: detail, pattern: "unknown Codex JSONL event type")
+        && string_contains(s: detail, pattern: "future.event")
+    _ => false
+  }
+}
+
+test fn nested_type_token_cannot_fabricate_terminal_success() -> Bool {
+  let parsed = parse_codex_jsonl(
+    text: "{\"kind\":\"future.event\",\"payload\":{\"type\":\"turn.completed\"}}\n",
+  )
+  match provider_execution_state(parsed: parsed) {
+    ProviderEventsRefused { activity: _, detail } =>
+      string_contains(s: detail, pattern: "unknown Codex JSONL event type")
+    _ => false
+  }
+}
+
+test fn braced_but_invalid_json_cannot_fabricate_terminal_success() -> Bool {
+  match parse_codex_jsonl(text: "{\"type\":\"turn.completed\",}\n") {
+    CodexEventsParsed { events: _ } => false
+    CodexEventsRefused {
+      events_before_refusal,
+      line_number,
+      raw,
+      reason,
+    } =>
+      count(events_before_refusal) == 0
+        && line_number == 1
+        && raw == "{\"type\":\"turn.completed\",}"
+        && string_contains(s: reason, pattern: "malformed")
+  }
+}
+
+test fn roadmap_provider_events_keystone_holds() -> Bool {
+  codex_stream_classifies_running_activity()
+    && codex_completed_is_terminal_only_from_provider_event()
+    && codex_completed_state_is_terminal()
+    && codex_turn_failed_preserves_raw_provider_evidence()
+    && codex_error_is_not_absorbed_into_spawned()
+    && truncated_line_refuses_with_location_and_raw()
+    && unknown_event_refuses_instead_of_guessing_progress()
+    && nested_type_token_cannot_fabricate_terminal_success()
+    && braced_but_invalid_json_cannot_fabricate_terminal_success()
+}

@@ -292,7 +292,12 @@ fn json_text_parse_array_values(s: String, i: Int) -> JsonTextParseResult {
         if char_at(s: s, i: q) == "]" {
           json_text_parse_ok(end: q + 1)
         } else if char_at(s: s, i: q) == "," {
-          json_text_parse_array_values(s: s, i: q + 1)
+          let next = json_text_skip_ws(s: s, i: q + 1)
+          if char_at(s: s, i: next) == "]" {
+            json_text_parse_fail(end: next)
+          } else {
+            json_text_parse_array_values(s: s, i: next)
+          }
         } else {
           json_text_parse_fail(end: q)
         }
@@ -328,7 +333,12 @@ fn json_text_parse_object_members(s: String, i: Int) -> JsonTextParseResult {
               if char_at(s: s, i: q) == "}" {
                 json_text_parse_ok(end: q + 1)
               } else if char_at(s: s, i: q) == "," {
-                json_text_parse_object_members(s: s, i: q + 1)
+                let next = json_text_skip_ws(s: s, i: q + 1)
+                if char_at(s: s, i: next) == "}" {
+                  json_text_parse_fail(end: next)
+                } else {
+                  json_text_parse_object_members(s: s, i: next)
+                }
               } else {
                 json_text_parse_fail(end: q)
               }

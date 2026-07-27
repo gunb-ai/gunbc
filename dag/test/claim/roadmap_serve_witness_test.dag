@@ -6,6 +6,7 @@ import gunbc.roadmap_serve {
   DispatchJsonHandler, HealthzHandler, DashboardInstanceHandler,
   BeltDispatchHandler, DispatchAssetHandler,
   SandboxPageHandler, SandboxAssetHandler, SandboxEchoHandler,
+  SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
   RoadmapServeRouteSpec,
   RoadmapServeTableBuild, RoadmapServeTable, RoadmapServeTableRefused,
   roadmap_serve_route_table_build,
@@ -60,11 +61,15 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: GET, path: "/target/roadmap-dispatch.json", want: DispatchJsonHandler)
     && selects(method: GET, path: "/healthz", want: HealthzHandler)
     && selects(method: GET, path: "/instance.json", want: DashboardInstanceHandler)
+    && selects(method: GET, path: "/sessions.json", want: SessionsJsonHandler)
+    && selects(method: GET, path: "/attempts.json", want: AttemptsJsonHandler)
+    && selects(method: GET, path: "/workflow.json", want: WorkflowJsonHandler)
     && selects(method: GET, path: roadmap_dispatch_asset_path, want: DispatchAssetHandler)
     && selects(method: GET, path: "/sandbox", want: SandboxPageHandler)
     && selects(method: GET, path: sandbox_asset_path, want: SandboxAssetHandler)
     && selects(method: POST, path: "/sandbox/echo", want: SandboxEchoHandler)
     && selects(method: POST, path: "/dispatch/some-node", want: BeltDispatchHandler)
+    && selects(method: POST, path: "/stop/some-node", want: BeltStopHandler)
 }
 
 test fn witness_asset_route_serves_modeled_js() -> Bool {
@@ -78,6 +83,7 @@ test fn witness_asset_route_serves_modeled_js() -> Bool {
     && r.body == dispatch_client_js_source()
     && string_contains(s: r.body, pattern: "s === 'spawned' ? 'ok'")
     && string_contains(s: r.body, pattern: "fetch('/instance.json')")
+    && string_contains(s: r.body, pattern: "fetch('/workflow.json')")
     && string_contains(s: r.body, pattern: "'dispatch · disabled'")
     && string_contains(s: r.body, pattern: "posture === 'observe-only'")
     && !string_contains(s: r.body, pattern: "j.ok")
@@ -158,11 +164,12 @@ test fn witness_instance_route_names_posture_and_paths() -> Bool {
     && string_contains(s: r.body, pattern: "\"kind\": \"prepare-git-bundle\"")
     && string_contains(s: r.body, pattern: "\"kind\": \"stage-git-bundle\"")
     && string_contains(s: r.body, pattern: "\"dispatch_worktree_root\": \"/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-preview-v0/attempts\"")
+    && string_contains(s: r.body, pattern: "\"dispatch_attempt_state_root\": \"/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-preview-v0/attempt-state\"")
 }
 
-test fn witness_live_table_builds_ready_ten_routes() -> Bool {
+test fn witness_live_table_builds_ready_routes() -> Bool {
   match roadmap_serve_route_table_build() {
-    RoadmapServeTable { table: t } => count(t.routes) == 14
+    RoadmapServeTable { table: t } => count(t.routes) == 15
     RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => false
   }
 }
@@ -211,7 +218,7 @@ test fn roadmap_serve_instance_keystone_holds() -> Bool {
     && witness_dispatch_status_total()
     && witness_preview_dispatch_refuses_before_effects()
     && witness_instance_route_names_posture_and_paths()
-    && witness_live_table_builds_ready_ten_routes()
+    && witness_live_table_builds_ready_routes()
     && witness_malformed_route_literal_refuses_table()
     && witness_unknown_method_folds_501_response()
 }

@@ -33,6 +33,10 @@ import gunbc.roadmap_component {
   workflow_lamp_indicator_class, workflow_lamp_label_class,
   workflow_lamp_data_attribute, workflow_observation_data_attribute,
   workflow_lamp_label_data_attribute,
+  WorkflowProgressStage, workflow_progress_stages,
+  workflow_progress_stage_key, workflow_progress_stage_label,
+  workflow_progress_class, workflow_stage_class, workflow_activity_class,
+  workflow_stage_data_attribute, workflow_segment_state_data_attribute,
   dashboard_instance_class, dashboard_instance_label_class,
 }
 import gunbc.client_observation_state { client_observation_state_key }
@@ -488,9 +492,36 @@ fn workflow_strip_node() -> Fragment {
   ], map(workflow_lamps_v0, lamp => workflow_lamp_node(lamp: lamp)))
 }
 
+fn workflow_progress_stage_node(stage: WorkflowProgressStage) -> Fragment {
+  let key = workflow_progress_stage_key(stage: stage)
+  let label = workflow_progress_stage_label(stage: stage)
+  el_attrs("span", [
+    attr(name: "class", value: workflow_stage_class),
+    attr(name: workflow_stage_data_attribute, value: key),
+    attr(name: workflow_segment_state_data_attribute, value: "pending"),
+    attr(name: "role", value: "status"),
+    attr(name: "aria-label", value: join([label, ": pending"], "")),
+  ], [txt(label)])
+}
+
+fn workflow_progress_node() -> Fragment {
+  el_attrs("span", [
+    attr(name: "class", value: workflow_progress_class),
+    attr(name: "hidden", value: ""),
+    attr(name: "role", value: "group"),
+    attr(name: "aria-label", value: "attempt workflow"),
+  ], concat(
+    map(
+      workflow_progress_stages,
+      stage => workflow_progress_stage_node(stage: stage),
+    ),
+    [el_class("span", workflow_activity_class, [txt("waiting")])],
+  ))
+}
+
 fn workflow_controls_nodes(rn: RoadmapNode, dispatchable: Bool) -> List<Fragment> {
   [ el_class("div", workflow_controls_class, concat(
-      [ workflow_strip_node() ],
+      [ workflow_progress_node(), workflow_strip_node() ],
       dispatch_button_nodes(rn: rn, dispatchable: dispatchable))) ]
 }
 

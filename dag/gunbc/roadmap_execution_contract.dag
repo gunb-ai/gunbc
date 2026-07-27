@@ -1,0 +1,299 @@
+module gunbc.roadmap_execution_contract
+
+import std.types { String, NonEmptyStr, List, FilePath, Bool }
+import gunbc.ensure { EnsurePolicy }
+
+type ExecutionCapability
+  = GitWorkspaceCapability
+  | TmuxSessionCapability
+  | TmuxPipeShellCapability
+  | TeeEventCaptureCapability
+  | EnvironmentBindingCapability
+  | AttemptStateDirectoryCapability
+  | AttemptCurrentPointerCapability
+  | GunbcClaimRunnerCapability
+  | CargoCapability
+  | RustcCapability
+  | RustfmtCapability
+
+type ValidationOperation
+  = GunbcClaimValidation {
+      entry: FilePath,
+      function: NonEmptyStr,
+    }
+  | CargoTestValidation { filter: NonEmptyStr }
+  | CargoFmtValidation
+
+type WorkItemExecutionContract
+  = ExecutionContractUnspecified
+  | ExecutionContract {
+      validations: List<ValidationOperation>,
+      extra_capabilities: List<ExecutionCapability>,
+    }
+
+type CapabilityRealization {
+  capability: ExecutionCapability
+  executable: FilePath
+  identity_args: List<String>
+  identity_contains: NonEmptyStr
+  ensure_policy: EnsurePolicy
+}
+
+type DispatchHostEnvironment {
+  realizations: List<CapabilityRealization>
+}
+
+type ModeledValidationCommand {
+  label: NonEmptyStr
+  program: FilePath
+  args: List<String>
+}
+
+data work_item_execution_contract_note: String = "A work item names semantic validation operations, never an opaque prompt fragment. Task capabilities derive from those closed variants; the provider prompt and the post-provider verifier are projections of the same operations. The dispatch platform separately contributes its fixed workspace/session/capture capabilities at admission, so those mechanics do not leak into every work-item contract. HostDashboardInstance resolves every joined semantic capability to an exact executable plus identity probe and Ensure policy. ExecutionContractUnspecified is an explicit migration state and dispatch refusal, never a repository-wide guessed default. In particular, a DAG task does not acquire Cargo merely because the repository is implemented in Rust."
+
+fn execution_capability_label(capability: ExecutionCapability) -> String {
+  match capability {
+    GitWorkspaceCapability => "git-workspace"
+    TmuxSessionCapability => "tmux-session"
+    TmuxPipeShellCapability => "tmux-pipe-shell"
+    TeeEventCaptureCapability => "tee-event-capture"
+    EnvironmentBindingCapability => "environment-binding"
+    AttemptStateDirectoryCapability => "attempt-state-directory"
+    AttemptCurrentPointerCapability => "attempt-current-pointer"
+    GunbcClaimRunnerCapability => "gunbc-claim-runner"
+    CargoCapability => "cargo"
+    RustcCapability => "rustc"
+    RustfmtCapability => "rustfmt"
+  }
+}
+
+fn execution_capability_equal(
+  a: ExecutionCapability,
+  b: ExecutionCapability,
+) -> Bool {
+  execution_capability_label(capability: a) == execution_capability_label(capability: b)
+}
+
+fn capability_append_unique(
+  capabilities: List<ExecutionCapability>,
+  capability: ExecutionCapability,
+) -> List<ExecutionCapability> {
+  if any(
+    capabilities,
+    existing => execution_capability_equal(a: existing, b: capability),
+  ) {
+    capabilities
+  } else {
+    append(capabilities, [capability])
+  }
+}
+
+fn validation_required_capabilities(
+  validation: ValidationOperation,
+) -> List<ExecutionCapability> {
+  match validation {
+    GunbcClaimValidation { entry: _, function: _ } =>
+      [GunbcClaimRunnerCapability]
+    CargoTestValidation { filter: _ } =>
+      [CargoCapability, RustcCapability]
+    CargoFmtValidation =>
+      [CargoCapability, RustfmtCapability]
+  }
+}
+
+fn execution_contract_required_capabilities(
+  contract: WorkItemExecutionContract,
+) -> List<ExecutionCapability> {
+  match contract {
+    ExecutionContractUnspecified => []
+    ExecutionContract { validations, extra_capabilities } =>
+      let required = fold(
+        validations,
+        init: extra_capabilities,
+        f: fn(acc, validation) {
+          concat(
+            acc,
+            validation_required_capabilities(validation: validation),
+          )
+        },
+      )
+      fold(
+        required,
+        init: [],
+        f: fn(acc, cap) {
+          capability_append_unique(
+            capabilities: acc,
+            capability: cap,
+          )
+        },
+      )
+  }
+}
+
+fn dispatch_platform_required_capabilities() -> List<ExecutionCapability> {
+  [
+    GitWorkspaceCapability,
+    TmuxSessionCapability,
+    TmuxPipeShellCapability,
+    TeeEventCaptureCapability,
+    EnvironmentBindingCapability,
+    AttemptStateDirectoryCapability,
+    AttemptCurrentPointerCapability,
+  ]
+}
+
+fn dispatch_required_capabilities(
+  contract: WorkItemExecutionContract,
+) -> List<ExecutionCapability> {
+  match contract {
+    ExecutionContractUnspecified => []
+    ExecutionContract { validations: _, extra_capabilities: _ } =>
+      fold(
+        concat(
+          dispatch_platform_required_capabilities(),
+          execution_contract_required_capabilities(contract: contract),
+        ),
+        init: [],
+        f: fn(acc, cap) {
+          capability_append_unique(
+            capabilities: acc,
+            capability: cap,
+          )
+        },
+      )
+  }
+}
+
+fn execution_contract_is_specified(
+  contract: WorkItemExecutionContract,
+) -> Bool {
+  match contract {
+    ExecutionContractUnspecified => false
+    ExecutionContract { validations, extra_capabilities: _ } =>
+      count(validations) > 0
+  }
+}
+
+fn gunbc_claim_execution_contract(
+  entry: FilePath,
+  function: NonEmptyStr,
+) -> WorkItemExecutionContract {
+  ExecutionContract {
+    validations: [
+      GunbcClaimValidation {
+        entry: entry,
+        function: function,
+      },
+    ],
+    extra_capabilities: [],
+  }
+}
+
+fn cargo_test_execution_contract(
+  filter: NonEmptyStr,
+) -> WorkItemExecutionContract {
+  ExecutionContract {
+    validations: [CargoTestValidation { filter: filter }],
+    extra_capabilities: [],
+  }
+}
+
+fn dispatch_host_realization(
+  environment: DispatchHostEnvironment,
+  capability: ExecutionCapability,
+) -> CapabilityRealization? {
+  environment.realizations
+    |> filter(realization =>
+      execution_capability_equal(
+        a: realization.capability,
+        b: capability,
+      ))
+    |> first
+}
+
+fn validation_operation_command(
+  validation: ValidationOperation,
+  environment: DispatchHostEnvironment,
+) -> ModeledValidationCommand? {
+  match validation {
+    GunbcClaimValidation { entry, function } =>
+      match dispatch_host_realization(
+        environment: environment,
+        capability: GunbcClaimRunnerCapability,
+      ) {
+        Present { value: realization } =>
+          Present { value: ModeledValidationCommand {
+            label: "gunbc-claim" as NonEmptyStr,
+            program: realization.executable,
+            args: [
+              "run",
+              "--source-root", "dag",
+              "--source-root", "src/v2",
+              "--entry", entry as String,
+              "--function", function as String,
+              "--claim-run",
+            ],
+          } }
+        Absent => none
+      }
+    CargoTestValidation { filter } =>
+      match dispatch_host_realization(
+        environment: environment,
+        capability: CargoCapability,
+      ) {
+        Present { value: realization } =>
+          Present { value: ModeledValidationCommand {
+            label: "cargo-test" as NonEmptyStr,
+            program: realization.executable,
+            args: ["test", filter as String],
+          } }
+        Absent => none
+      }
+    CargoFmtValidation =>
+      match dispatch_host_realization(
+        environment: environment,
+        capability: CargoCapability,
+      ) {
+        Present { value: realization } =>
+          Present { value: ModeledValidationCommand {
+            label: "cargo-fmt" as NonEmptyStr,
+            program: realization.executable,
+            args: ["fmt", "--all", "--check"],
+          } }
+        Absent => none
+      }
+  }
+}
+
+fn modeled_validation_command_wire(command: ModeledValidationCommand) -> String {
+  join(
+    concat([command.program as String], command.args),
+    " ",
+  )
+}
+
+fn execution_contract_validation_summary(
+  contract: WorkItemExecutionContract,
+  environment: DispatchHostEnvironment,
+) -> String {
+  match contract {
+    ExecutionContractUnspecified => "execution contract unspecified"
+    ExecutionContract { validations, extra_capabilities: _ } =>
+      join(
+        map(
+          validations,
+          validation =>
+            match validation_operation_command(
+              validation: validation,
+              environment: environment,
+            ) {
+              Present { value: command } =>
+                modeled_validation_command_wire(command: command)
+              Absent =>
+                "validation command has no host capability realization"
+            },
+        ),
+        "\n",
+      )
+  }
+}

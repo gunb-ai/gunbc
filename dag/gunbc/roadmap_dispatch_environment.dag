@@ -1,0 +1,350 @@
+module gunbc.roadmap_dispatch_environment
+
+import std.types { String, Bool, List, FilePath }
+import std.upsert_decision {
+  UpsertDecision,
+  Noop,
+  Apply,
+  Refuse,
+}
+import std.realization_reconcile { reconciliation_converged }
+import gunbc.output_policy { OutcomeIsData }
+import gunbc.ensure {
+  EnsureObservation,
+  EnsureObserved,
+  EnsureAbsent,
+  EnsureInaccessible,
+  EnsurePlan,
+  EnsurePlanUnavailable,
+  ensure_decide,
+  ensure_readback,
+}
+import gunbc.roadmap_execution_contract {
+  ExecutionCapability,
+  WorkItemExecutionContract,
+  CapabilityRealization,
+  DispatchHostEnvironment,
+  execution_capability_label,
+  execution_capability_equal,
+  dispatch_required_capabilities,
+  execution_contract_is_specified,
+  dispatch_host_realization,
+  execution_contract_validation_summary,
+}
+import extdeps.languages.json.emit {
+  JsonValue,
+  serialize_json,
+  json_string,
+  json_bool,
+  json_array,
+  json_object,
+  json_kv,
+}
+import extdeps.gunbc
+import extdeps.shell
+
+type CapabilityEnsureReceipt {
+  capability: ExecutionCapability
+  capability_label: String
+  executable: String
+  decision: String
+  grounded: Bool
+  evidence: String
+  reason: String
+}
+
+type DispatchEnvironmentAdmission
+  = EnvironmentAdmitted {
+      receipts: List<CapabilityEnsureReceipt>,
+      validation_summary: String,
+    }
+  | EnvironmentRefused {
+      receipts: List<CapabilityEnsureReceipt>,
+      validation_summary: String,
+      reason: String,
+    }
+
+data dispatch_environment_admission_note: String = "Dispatch admission is requirements -> Ensure -> grounded receipts -> actuation. The work item's typed validation operations derive semantic capabilities; HostDashboardInstance resolves those to exact executable paths and identity probes; one generic Ensure decision is evaluated independently per capability; only independently grounded Noop receipts admit worktree/session effects. Generic Ensure never installs a named package. An EnsureMayApply realization still needs a capability-specific typed plan and adapter; this module supplies no ambient package manager fallback, so no-plan refuses. ExecutionContractUnspecified is an explicit migration refusal. Provider authentication remains a separate provider preflight after environment admission because cached OAuth and upstream quota are provider protocol facts, not executable identity."
+
+fn no_capability_plan(reason: String) -> EnsurePlan<String> {
+  EnsurePlanUnavailable { reason: reason }
+}
+
+fn capability_ensure_decision(
+  realization: CapabilityRealization,
+  observation: EnsureObservation<String>,
+  identity_matches: Bool,
+) -> UpsertDecision<String> {
+  ensure_decide(
+    policy: realization.ensure_policy,
+    observation: observation,
+    observation_satisfies: identity_matches,
+    mismatch_reason: join([
+      execution_capability_label(capability: realization.capability),
+      " identity probe did not match ",
+      realization.identity_contains as String,
+    ], ""),
+    plan: no_capability_plan(
+      reason: join([
+        "no capability-specific provisioner is modeled for ",
+        execution_capability_label(capability: realization.capability),
+        "; generic Ensure cannot choose an installer",
+      ], ""),
+    ),
+  )
+}
+
+fn ensure_observation_evidence(observation: EnsureObservation<String>) -> String {
+  match observation {
+    EnsureObserved { evidence } => evidence
+    EnsureAbsent { reason } => reason
+    EnsureInaccessible { reason } => reason
+  }
+}
+
+fn capability_ensure_receipt(
+  realization: CapabilityRealization,
+  observation: EnsureObservation<String>,
+  identity_matches: Bool,
+) -> CapabilityEnsureReceipt {
+  let decision = capability_ensure_decision(
+    realization: realization,
+    observation: observation,
+    identity_matches: identity_matches,
+  )
+  let readback = ensure_readback(
+    applied: false,
+    observation: observation,
+    observation_satisfies: identity_matches,
+    mismatch_reason: join([
+      execution_capability_label(capability: realization.capability),
+      " identity readback did not ground the requirement",
+    ], ""),
+  )
+  match decision {
+    Noop =>
+      CapabilityEnsureReceipt {
+        capability: realization.capability,
+        capability_label: execution_capability_label(capability: realization.capability),
+        executable: realization.executable as String,
+        decision: "noop",
+        grounded: reconciliation_converged(r: readback),
+        evidence: ensure_observation_evidence(observation: observation),
+        reason: if reconciliation_converged(r: readback) {
+          ""
+        } else {
+          "independent Ensure readback did not ground the capability"
+        },
+      }
+    Apply { plan: _ } =>
+      CapabilityEnsureReceipt {
+        capability: realization.capability,
+        capability_label: execution_capability_label(capability: realization.capability),
+        executable: realization.executable as String,
+        decision: "apply",
+        grounded: false,
+        evidence: ensure_observation_evidence(observation: observation),
+        reason: "capability-specific apply is required before admission; no effect ran in the decision layer",
+      }
+    Refuse { reason } =>
+      CapabilityEnsureReceipt {
+        capability: realization.capability,
+        capability_label: execution_capability_label(capability: realization.capability),
+        executable: realization.executable as String,
+        decision: "refuse",
+        grounded: false,
+        evidence: ensure_observation_evidence(observation: observation),
+        reason: reason as String,
+      }
+  }
+}
+
+fn missing_capability_receipt(
+  cap: ExecutionCapability,
+) -> CapabilityEnsureReceipt {
+  CapabilityEnsureReceipt {
+    capability: cap,
+    capability_label: execution_capability_label(capability: cap),
+    executable: "",
+    decision: "refuse",
+    grounded: false,
+    evidence: "",
+    reason: join([
+      "host environment has no realization for required capability ",
+      execution_capability_label(capability: cap),
+    ], ""),
+  }
+}
+
+fn capability_ensure_observe(
+  realization: CapabilityRealization,
+) -> CapabilityEnsureReceipt {
+  let executable = shell.Test.IsExecutable(
+    path: realization.executable,
+    expect: OutcomeIsData,
+  )
+  if !executable.executable {
+    capability_ensure_receipt(
+      realization: realization,
+      observation: EnsureAbsent {
+        reason: join([
+          "required executable is absent or not executable: ",
+          realization.executable as String,
+        ], ""),
+      },
+      identity_matches: false,
+    )
+  } else {
+    let result = gunbc.WitnessBin.Run(
+      workdir: "/" as FilePath,
+      bin_path: realization.executable,
+      args: realization.identity_args,
+      expect: OutcomeIsData,
+    )
+    let evidence = join([
+      "exit=", to_string(result.exit_code),
+      " stdout=", result.stdout,
+      " stderr=", result.stderr,
+    ], "")
+    capability_ensure_receipt(
+      realization: realization,
+      observation: EnsureObserved { evidence: evidence },
+      identity_matches: result.success
+        && string_contains(
+          s: join([result.stdout, "\n", result.stderr], ""),
+          pattern: realization.identity_contains as String,
+        ),
+    )
+  }
+}
+
+fn capability_receipt_for_requirement(
+  environment: DispatchHostEnvironment,
+  cap: ExecutionCapability,
+) -> CapabilityEnsureReceipt {
+  match dispatch_host_realization(environment: environment, capability: cap) {
+    Present { value: realization } =>
+      capability_ensure_observe(realization: realization)
+    Absent =>
+      missing_capability_receipt(cap: cap)
+  }
+}
+
+fn receipt_matches_requirement(
+  receipt: CapabilityEnsureReceipt,
+  cap: ExecutionCapability,
+) -> Bool {
+  execution_capability_equal(a: receipt.capability, b: cap)
+}
+
+fn first_ungrounded_reason(receipts: List<CapabilityEnsureReceipt>) -> String {
+  fold(receipts, init: "", f: fn(reason, receipt) {
+    if reason != "" {
+      reason
+    } else if !receipt.grounded {
+      join([receipt.capability_label, ": ", receipt.reason], "")
+    } else {
+      ""
+    }
+  })
+}
+
+fn dispatch_environment_admission_decision(
+  contract: WorkItemExecutionContract,
+  receipts: List<CapabilityEnsureReceipt>,
+  validation_summary: String,
+) -> DispatchEnvironmentAdmission {
+  let required = dispatch_required_capabilities(contract: contract)
+  let exact_coverage = count(receipts) == count(required)
+    && all(
+      required,
+      cap =>
+        count(
+          receipts
+            |> filter(receipt =>
+              receipt_matches_requirement(receipt: receipt, cap: cap)),
+        ) == 1,
+    )
+  if !execution_contract_is_specified(contract: contract) {
+    EnvironmentRefused {
+      receipts: receipts,
+      validation_summary: validation_summary,
+      reason: "work item execution contract is unspecified; dispatch will not guess validation or dependencies",
+    }
+  } else if !exact_coverage {
+    EnvironmentRefused {
+      receipts: receipts,
+      validation_summary: validation_summary,
+      reason: "Ensure receipt set does not exactly cover the execution contract",
+    }
+  } else if !all(receipts, receipt => receipt.grounded) {
+    EnvironmentRefused {
+      receipts: receipts,
+      validation_summary: validation_summary,
+      reason: first_ungrounded_reason(receipts: receipts),
+    }
+  } else {
+    EnvironmentAdmitted {
+      receipts: receipts,
+      validation_summary: validation_summary,
+    }
+  }
+}
+
+fn dispatch_environment_admit(
+  contract: WorkItemExecutionContract,
+  environment: DispatchHostEnvironment,
+) -> DispatchEnvironmentAdmission {
+  let receipts = dispatch_required_capabilities(contract: contract)
+    |> map(cap =>
+      capability_receipt_for_requirement(environment: environment, cap: cap))
+  dispatch_environment_admission_decision(
+    contract: contract,
+    receipts: receipts,
+    validation_summary: execution_contract_validation_summary(
+      contract: contract,
+      environment: environment,
+    ),
+  )
+}
+
+fn capability_ensure_receipt_json(receipt: CapabilityEnsureReceipt) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "capability", value: json_string(s: receipt.capability_label)),
+    json_kv(key: "executable", value: json_string(s: receipt.executable)),
+    json_kv(key: "decision", value: json_string(s: receipt.decision)),
+    json_kv(key: "grounded", value: json_bool(b: receipt.grounded)),
+    json_kv(key: "evidence", value: json_string(s: receipt.evidence)),
+    json_kv(key: "reason", value: json_string(s: receipt.reason)),
+  ])
+}
+
+fn dispatch_environment_admission_json(
+  admission: DispatchEnvironmentAdmission,
+) -> String {
+  match admission {
+    EnvironmentAdmitted { receipts, validation_summary } =>
+      serialize_json(v: json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-dispatch-environment/v1")),
+        json_kv(key: "status", value: json_string(s: "admitted")),
+        json_kv(key: "validation", value: json_string(s: validation_summary)),
+        json_kv(
+          key: "receipts",
+          value: json_array(elements: map(receipts, receipt =>
+            capability_ensure_receipt_json(receipt: receipt))),
+        ),
+      ]))
+    EnvironmentRefused { receipts, validation_summary, reason } =>
+      serialize_json(v: json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-dispatch-environment/v1")),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "reason", value: json_string(s: reason)),
+        json_kv(key: "validation", value: json_string(s: validation_summary)),
+        json_kv(
+          key: "receipts",
+          value: json_array(elements: map(receipts, receipt =>
+            capability_ensure_receipt_json(receipt: receipt))),
+        ),
+      ]))
+  }
+}

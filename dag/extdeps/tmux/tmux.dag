@@ -46,6 +46,69 @@ fn shape_tmux_new_session_argv(session_name: String, working_dir: String, inner_
   )
 }
 
+type TmuxPipeCommand {
+  body: NonEmptyStr
+}
+
+data tmux_staged_provider_start_note: String = "Provider attempts use a staged pane rather than asking tmux to start the provider in the same call that creates the session: create an idle shell pane; select its exact default shell; enable remain-on-exit; attach the event pipe; then respawn the pane with typed provider argv. That ordering makes event capture and terminal exit observation active before the provider can emit or exit. tmux pipe-pane is itself a foreign executor whose API requires one shell-command string, so TmuxPipeCommand is an explicit carrier for that bounded residue. Callers must construct dynamic argv tokens with the shared POSIX shell_quote authority; tmux set-environment is not a transport for pipe commands (live readback showed pipe processes do not inherit session environment updates)."
+
+fn shape_tmux_new_idle_session_argv_for(
+  scope: TmuxServerScope,
+  session_name: String,
+  working_dir: String,
+) -> List<String> {
+  concat(
+    tmux_server_scope_argv(scope: scope),
+    ["new-session", "-d", "-s", session_name, "-c", working_dir],
+  )
+}
+
+fn shape_tmux_set_remain_on_exit_argv_for(
+  scope: TmuxServerScope,
+  session_name: String,
+) -> List<String> {
+  concat(
+    tmux_server_scope_argv(scope: scope),
+    ["set-option", "-t", session_name, "remain-on-exit", "on"],
+  )
+}
+
+fn shape_tmux_set_default_shell_argv_for(
+  scope: TmuxServerScope,
+  session_name: String,
+  shell_path: String,
+) -> List<String> {
+  concat(
+    tmux_server_scope_argv(scope: scope),
+    ["set-option", "-t", session_name, "default-shell", shell_path],
+  )
+}
+
+fn shape_tmux_pipe_pane_argv_for(
+  scope: TmuxServerScope,
+  session_name: String,
+  command: TmuxPipeCommand,
+) -> List<String> {
+  concat(
+    tmux_server_scope_argv(scope: scope),
+    ["pipe-pane", "-o", "-t", join([session_name, ":0.0"], ""), command.body as String],
+  )
+}
+
+fn shape_tmux_respawn_pane_argv_for(
+  scope: TmuxServerScope,
+  session_name: String,
+  inner_argv: List<String>,
+) -> List<String> {
+  concat(
+    tmux_server_scope_argv(scope: scope),
+    concat(
+      ["respawn-pane", "-k", "-t", join([session_name, ":0.0"], ""), "--"],
+      inner_argv,
+    ),
+  )
+}
+
 fn shape_tmux_ls_argv_for(scope: TmuxServerScope) -> List<String> {
   concat(tmux_server_scope_argv(scope: scope), ["ls"])
 }
@@ -92,6 +155,15 @@ fn shape_tmux_list_panes_argv_for(scope: TmuxServerScope) -> List<String> {
 
 fn shape_tmux_list_panes_argv() -> List<String> {
   shape_tmux_list_panes_argv_for(scope: DefaultTmuxServer)
+}
+
+data tmux_attempt_panes_format: String = "#\{session_name\}\t#\{pane_dead\}\t#\{pane_dead_status\}\t#\{pane_current_command\}"
+
+fn shape_tmux_attempt_panes_argv_for(scope: TmuxServerScope) -> List<String> {
+  concat(
+    tmux_server_scope_argv(scope: scope),
+    ["list-panes", "-a", "-F", tmux_attempt_panes_format],
+  )
 }
 
 service tmux.Session {

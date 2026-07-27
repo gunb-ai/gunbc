@@ -4,6 +4,7 @@ import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap_emit { project_roadmap_section }
 import gunbc.roadmap_model { RoadmapNodeId, RoadmapNode, RoadmapEdge, Pointer, NodeSizing, Unsized, SectionElement, section_group }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, SupersededLine, Signoff, Unsigned, SignedOff }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -17,6 +18,7 @@ fn parent_node() -> RoadmapNode {
     line: AuthoredLine { done: false, content: "**invert hand-maintained**" },
     carriers: [Pointer { label: "plan", path: "docs/plans/invert-hand-maintained.md" }],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -28,6 +30,7 @@ fn child_node() -> RoadmapNode {
     line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -39,6 +42,7 @@ fn signed_child_node() -> RoadmapNode {
     line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: SignedOff { by: "operator", works: true, scope_equivalent: true, as_expected: true },
   }
@@ -93,6 +97,7 @@ fn superseded_child_node() -> RoadmapNode {
     line: SupersededLine { by: "successor-lane", content: "**PR-checkbox status**" },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -103,4 +108,3 @@ test fn witness_superseded_checked_struck_no_signoff_suffix() -> Bool {
   string_contains(s: out, pattern: "[x] ~~**PR-checkbox status**~~ **superseded →** successor-lane")
     && !string_contains(s: out, pattern: "⏳ awaiting sign-off")
 }
-

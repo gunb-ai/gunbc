@@ -1,0 +1,372 @@
+module gunbc.roadmap_provider_events
+
+import std.types { String, Int, Bool, List }
+import extdeps.languages.json.grammar {
+  json_text_parseable,
+  json_text_skip_ws,
+  json_text_starts_with_at,
+}
+
+type CodexProviderEventKind
+  = CodexThreadStarted
+  | CodexTurnStarted
+  | CodexItemStarted { activity: String }
+  | CodexItemCompleted { activity: String }
+  | CodexTurnCompleted
+  | CodexTurnFailed
+  | CodexError
+
+type CodexProviderEvent {
+  line_number: Int
+  raw: String
+  kind: CodexProviderEventKind
+}
+
+type CodexEventParse
+  = CodexEventsParsed { events: List<CodexProviderEvent> }
+  | CodexEventsRefused {
+      events_before_refusal: List<CodexProviderEvent>,
+      line_number: Int,
+      raw: String,
+      reason: String,
+    }
+
+type CodexParseFold {
+  events: List<CodexProviderEvent>
+  next_line_number: Int
+  total_lines: Int
+  refused: Bool
+  refused_line_number: Int
+  refused_raw: String
+  refused_reason: String
+}
+
+type ProviderExecutionState
+  = ProviderNotStarted
+  | ProviderStarting { activity: String }
+  | ProviderRunning { activity: String }
+  | ProviderCompleted { activity: String }
+  | ProviderFailed { activity: String, detail: String }
+  | ProviderEventsRefused { activity: String, detail: String }
+
+data codex_jsonl_classifier_note: String = "Codex --json is the provider protocol authority: one JSON object per line with thread.started, turn.started, item.*, turn.completed, turn.failed, and error event types. This module is deliberately a bounded total envelope classifier, not a second general JSON implementation: the shared RFC 8259 grammar first proves the entire line parseable, then the classifier requires Codex's emitted top-level `type` member to be the first object member before selecting a closed event variant. That fail-closed envelope rule prevents a nested item or user-authored string containing `type: turn.completed` from fabricating terminal success. It preserves every raw line and refuses the first unknown, reordered, malformed, or truncated line with its 1-based location plus the parsed prefix. A refusal is a workflow fact, never dropped as console noise. Item activity is only a presentation projection from nested item text; terminal success/failure comes only from the anchored top-level turn.completed, turn.failed, or error envelope, never from tmux Spawned."
+
+fn codex_line_contains_type_token(raw: String, event_type: String) -> Bool {
+  string_contains(
+    s: raw,
+    pattern: join(["\"type\":\"", event_type, "\""], ""),
+  )
+    || string_contains(
+      s: raw,
+      pattern: join(["\"type\": \"", event_type, "\""], ""),
+    )
+}
+
+fn codex_line_has_top_level_type(raw: String, event_type: String) -> Bool {
+  let object_start = json_text_skip_ws(s: raw, i: 0)
+  if !json_text_starts_with_at(s: raw, i: object_start, lit: "{") {
+    false
+  } else {
+    let key = "\"type\""
+    let key_start = json_text_skip_ws(s: raw, i: object_start + 1)
+    if !json_text_starts_with_at(s: raw, i: key_start, lit: key) {
+      false
+    } else {
+      let colon = json_text_skip_ws(
+        s: raw,
+        i: key_start + string_length(s: key),
+      )
+      if !json_text_starts_with_at(s: raw, i: colon, lit: ":") {
+        false
+      } else {
+        let value_start = json_text_skip_ws(s: raw, i: colon + 1)
+        let token = join(["\"", event_type, "\""], "")
+        let after_value = json_text_skip_ws(
+          s: raw,
+          i: value_start + string_length(s: token),
+        )
+        json_text_starts_with_at(s: raw, i: value_start, lit: token)
+          && (
+            json_text_starts_with_at(s: raw, i: after_value, lit: ",")
+              || json_text_starts_with_at(s: raw, i: after_value, lit: "}")
+          )
+      }
+    }
+  }
+}
+
+fn codex_item_activity(raw: String) -> String {
+  if codex_line_contains_type_token(raw: raw, event_type: "command_execution") {
+    "running command"
+  } else if codex_line_contains_type_token(raw: raw, event_type: "file_change") {
+    "editing files"
+  } else if codex_line_contains_type_token(raw: raw, event_type: "mcp_tool_call") {
+    "using connected tool"
+  } else if codex_line_contains_type_token(raw: raw, event_type: "web_search") {
+    "searching"
+  } else if codex_line_contains_type_token(raw: raw, event_type: "plan_update") {
+    "updating plan"
+  } else if codex_line_contains_type_token(raw: raw, event_type: "reasoning") {
+    "reasoning"
+  } else if codex_line_contains_type_token(raw: raw, event_type: "agent_message") {
+    "reporting"
+  } else {
+    "provider item"
+  }
+}
+
+fn codex_event_from_complete_line(
+  raw: String,
+  line_number: Int,
+) -> CodexProviderEvent? {
+  if codex_line_has_top_level_type(raw: raw, event_type: "thread.started") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: CodexThreadStarted,
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.started") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: CodexTurnStarted,
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "item.started") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: CodexItemStarted { activity: codex_item_activity(raw: raw) },
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "item.completed") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: CodexItemCompleted { activity: codex_item_activity(raw: raw) },
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.completed") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: CodexTurnCompleted,
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.failed") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: CodexTurnFailed,
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "error") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: CodexError,
+    } }
+  } else {
+    none
+  }
+}
+
+fn codex_parse_fold_line(
+  state: CodexParseFold,
+  line: String,
+) -> CodexParseFold {
+  if state.refused {
+    CodexParseFold {
+      events: state.events,
+      next_line_number: state.next_line_number + 1,
+      total_lines: state.total_lines,
+      refused: state.refused,
+      refused_line_number: state.refused_line_number,
+      refused_raw: state.refused_raw,
+      refused_reason: state.refused_reason,
+    }
+  } else {
+    let raw = trim(line)
+    let is_trailing_empty = raw == ""
+      && state.next_line_number == state.total_lines
+    if is_trailing_empty {
+      CodexParseFold {
+        events: state.events,
+        next_line_number: state.next_line_number + 1,
+        total_lines: state.total_lines,
+        refused: false,
+        refused_line_number: 0,
+        refused_raw: "",
+        refused_reason: "",
+      }
+    } else if raw == "" {
+      CodexParseFold {
+        events: state.events,
+        next_line_number: state.next_line_number + 1,
+        total_lines: state.total_lines,
+        refused: true,
+        refused_line_number: state.next_line_number,
+        refused_raw: line,
+        refused_reason: "empty line inside Codex JSONL stream",
+      }
+    } else if !json_text_parseable(s: raw) {
+      CodexParseFold {
+        events: state.events,
+        next_line_number: state.next_line_number + 1,
+        total_lines: state.total_lines,
+        refused: true,
+        refused_line_number: state.next_line_number,
+        refused_raw: line,
+        refused_reason: "malformed or truncated Codex JSONL object",
+      }
+    } else {
+      match codex_event_from_complete_line(
+        raw: raw,
+        line_number: state.next_line_number,
+      ) {
+        Present { value: event } =>
+          CodexParseFold {
+            events: append(state.events, [event]),
+            next_line_number: state.next_line_number + 1,
+            total_lines: state.total_lines,
+            refused: false,
+            refused_line_number: 0,
+            refused_raw: "",
+            refused_reason: "",
+          }
+        Absent =>
+          CodexParseFold {
+            events: state.events,
+            next_line_number: state.next_line_number + 1,
+            total_lines: state.total_lines,
+            refused: true,
+            refused_line_number: state.next_line_number,
+            refused_raw: line,
+            refused_reason: "unknown Codex JSONL event type",
+          }
+      }
+    }
+  }
+}
+
+fn parse_codex_jsonl(text: String) -> CodexEventParse {
+  if text == "" {
+    CodexEventsParsed { events: [] }
+  } else {
+    let lines = split(s: text, delimiter: "\n")
+    let state = fold(
+      lines,
+      init: CodexParseFold {
+        events: [],
+        next_line_number: 1,
+        total_lines: count(lines),
+        refused: false,
+        refused_line_number: 0,
+        refused_raw: "",
+        refused_reason: "",
+      },
+      f: fn(acc, line) {
+        codex_parse_fold_line(state: acc, line: line)
+      },
+    )
+    if state.refused {
+      CodexEventsRefused {
+        events_before_refusal: state.events,
+        line_number: state.refused_line_number,
+        raw: state.refused_raw,
+        reason: state.refused_reason,
+      }
+    } else {
+      CodexEventsParsed { events: state.events }
+    }
+  }
+}
+
+fn provider_execution_fold_event(
+  state: ProviderExecutionState,
+  event: CodexProviderEvent,
+) -> ProviderExecutionState {
+  match state {
+    ProviderCompleted { activity: _ } => state
+    ProviderFailed { activity: _, detail: _ } => state
+    ProviderEventsRefused { activity: _, detail: _ } => state
+    _ =>
+      match event.kind {
+        CodexThreadStarted => ProviderStarting { activity: "thread started" }
+        CodexTurnStarted => ProviderRunning { activity: "agent started" }
+        CodexItemStarted { activity } => ProviderRunning { activity: activity }
+        CodexItemCompleted { activity } =>
+          ProviderRunning { activity: join([activity, " completed"], "") }
+        CodexTurnCompleted =>
+          ProviderCompleted { activity: "agent turn completed" }
+        CodexTurnFailed =>
+          ProviderFailed { activity: "agent turn failed", detail: event.raw }
+        CodexError =>
+          ProviderFailed { activity: "provider error", detail: event.raw }
+      }
+  }
+}
+
+fn provider_execution_state(parsed: CodexEventParse) -> ProviderExecutionState {
+  match parsed {
+    CodexEventsParsed { events } =>
+      fold(
+        events,
+        init: ProviderNotStarted,
+        f: fn(state, event) {
+          provider_execution_fold_event(state: state, event: event)
+        },
+      )
+    CodexEventsRefused {
+      events_before_refusal,
+      line_number,
+      raw,
+      reason,
+    } =>
+      let prior = fold(
+        events_before_refusal,
+        init: ProviderNotStarted,
+        f: fn(state, event) {
+          provider_execution_fold_event(state: state, event: event)
+        },
+      )
+      ProviderEventsRefused {
+        activity: match prior {
+          ProviderNotStarted => "event stream refused"
+          ProviderStarting { activity } => activity
+          ProviderRunning { activity } => activity
+          ProviderCompleted { activity } => activity
+          ProviderFailed { activity, detail: _ } => activity
+          ProviderEventsRefused { activity, detail: _ } => activity
+        },
+        detail: join([
+          "line ", to_string(line_number), ": ", reason, "; raw=", raw,
+        ], ""),
+      }
+  }
+}
+
+fn provider_execution_state_label(state: ProviderExecutionState) -> String {
+  match state {
+    ProviderNotStarted => "not_started"
+    ProviderStarting { activity: _ } => "starting"
+    ProviderRunning { activity: _ } => "running"
+    ProviderCompleted { activity: _ } => "completed"
+    ProviderFailed { activity: _, detail: _ } => "failed"
+    ProviderEventsRefused { activity: _, detail: _ } => "events_refused"
+  }
+}
+
+fn provider_execution_activity(state: ProviderExecutionState) -> String {
+  match state {
+    ProviderNotStarted => "waiting for provider events"
+    ProviderStarting { activity } => activity
+    ProviderRunning { activity } => activity
+    ProviderCompleted { activity } => activity
+    ProviderFailed { activity, detail: _ } => activity
+    ProviderEventsRefused { activity, detail: _ } => activity
+  }
+}
+
+fn provider_execution_detail(state: ProviderExecutionState) -> String {
+  match state {
+    ProviderFailed { activity: _, detail } => detail
+    ProviderEventsRefused { activity: _, detail } => detail
+    _ => ""
+  }
+}

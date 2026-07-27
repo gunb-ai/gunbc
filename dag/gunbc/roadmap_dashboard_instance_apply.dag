@@ -27,7 +27,11 @@ import extdeps.tmux {
   shape_tmux_new_session_argv_for,
 }
 import extdeps.ssh.session { shape_scp_copy_to_argv }
-import extdeps.llm.cli { shape_codex_login_status_env_args_for_program }
+import extdeps.llm.cli {
+  shape_codex_login_status_env_args_for_program,
+  shape_codex_version_env_args_for_program,
+  codex_cli_identity_contains,
+}
 import extdeps.languages.json.emit {
   JsonValue,
   serialize_json,
@@ -61,6 +65,7 @@ import gunbc.roadmap_dashboard_instance {
   DashboardEnsureLocalOrigin,
   DashboardEnsureSourceRepo,
   DashboardEnsureService,
+  DashboardVerifyProviderRuntime,
   DashboardVerifyProviderAuth,
   DashboardVerifyHealth,
   DashboardInstanceObserved,
@@ -72,6 +77,8 @@ import gunbc.roadmap_dashboard_instance {
   srv1_lab_dashboard_instance,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
+  dashboard_instance_dispatch_platform_executables,
+  dashboard_environment_binding_executable,
   dashboard_instance_ownership_marker_path,
   dashboard_instance_service_session_name,
   dashboard_instance_checkout_branch,
@@ -84,7 +91,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_reconcile,
 }
 
-data dashboard_instance_apply_note: String = "The wet path is an interpreter of HostDashboardInstance, not a parallel provisioning script. Its high-level provision plan is pure and browser-visible; this module projects each operation to typed argv, executes locally or through the instance's explicit SSH transport, records a typed receipt, and performs a second independent observation before claiming convergence. Source transport has no handoff gap: inspect shallow state -> hydrate from the modeled remote when needed -> mktemp directory -> git bundle -> metadata verify -> import into a new empty bare repository -> scp to .next -> target mv -> local cleanup. The empty-repository import is the closure proof; target mutation does not begin until it succeeds. A matching ownership-marker filename gates every mutation of an existing isolated source clone. Production is read before mutation and again after; repo HEAD plus /healthz must remain byte-identical. No recursive delete exists in apply."
+data dashboard_instance_apply_note: String = "The wet path is an interpreter of HostDashboardInstance, not a parallel provisioning script. Its high-level provision plan is pure and browser-visible; this module projects each operation to typed argv, executes locally or through the instance's explicit SSH transport, records a typed receipt, and performs a second independent observation before claiming convergence. Codex runtime identity (`--version` must realize `codex-cli`) and OAuth state (`login status`) are separate observations and provision steps, so a broken npm/Node launcher cannot masquerade as an auth refusal; successful stderr is retained in receipts rather than dropping runtime warnings. Source transport has no handoff gap: inspect shallow state -> hydrate from the modeled remote when needed -> mktemp directory -> git bundle -> metadata verify -> import into a new empty bare repository -> scp to .next -> target mv -> local cleanup. The empty-repository import is the closure proof; target mutation does not begin until it succeeds. A matching ownership-marker filename gates every mutation of an existing isolated source clone. Production is read before mutation and again after; repo HEAD plus /healthz must remain byte-identical. No recursive delete exists in apply."
 
 type DashboardExecResult {
   success: Bool
@@ -640,10 +647,37 @@ fn dashboard_apply_provision_op(
       tmux_server: _,
     } =>
       dashboard_ensure_service(instance: instance)
+    DashboardVerifyProviderRuntime { executable, state_root } => {
+      let result = dashboard_target_exec(
+        instance: instance,
+        program: dashboard_environment_binding_executable,
+        args: shape_codex_version_env_args_for_program(
+          program: executable as String,
+          codex_home: state_root as String,
+        ),
+      )
+      if result.success
+          && string_contains(
+            s: join([result.stdout, "\n", result.stderr], ""),
+            pattern: codex_cli_identity_contains,
+          ) {
+        result
+      } else {
+        DashboardExecResult {
+          success: false,
+          stdout: result.stdout,
+          stderr: join([
+            "provider runtime identity did not realize ",
+            codex_cli_identity_contains,
+            if result.stderr == "" { "" } else { join([": ", result.stderr], "") },
+          ], ""),
+        }
+      }
+    }
     DashboardVerifyProviderAuth { executable, state_root } =>
       dashboard_target_exec(
         instance: instance,
-        program: "/usr/bin/env" as FilePath,
+        program: dashboard_environment_binding_executable,
         args: shape_codex_login_status_env_args_for_program(
           program: executable as String,
           codex_home: state_root as String,
@@ -694,7 +728,7 @@ fn dashboard_apply_plan(
           temp_verify_repo: temp_verify_repo,
         )
         let detail = if result.success {
-          trim(result.stdout)
+          trim(join([result.stdout, "\n", result.stderr], ""))
         } else {
           join([result.stderr, result.stdout], "\n")
         }
@@ -794,9 +828,17 @@ fn dashboard_instance_observe(
   production_untouched: Bool,
 ) -> DashboardInstanceObserved {
   let health = dashboard_read_instance_health(instance: instance)
+  let provider_runtime = dashboard_target_probe(
+    instance: instance,
+    program: dashboard_environment_binding_executable,
+    args: shape_codex_version_env_args_for_program(
+      program: dashboard_instance_provider_executable(instance: instance) as String,
+      codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
+    ),
+  )
   let provider = dashboard_target_probe(
     instance: instance,
-    program: "/usr/bin/env" as FilePath,
+    program: dashboard_environment_binding_executable,
     args: shape_codex_login_status_env_args_for_program(
       program: dashboard_instance_provider_executable(instance: instance) as String,
       codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
@@ -842,7 +884,26 @@ fn dashboard_instance_observe(
       instance: instance,
       path: instance.dispatch_worktree_root,
     ),
+    attempt_state_present: dashboard_target_directory_present(
+      instance: instance,
+      path: instance.dispatch_attempt_state_root,
+    ),
+    provider_runtime_ready: provider_runtime.success
+      && string_contains(
+        s: join([provider_runtime.stdout, "\n", provider_runtime.stderr], ""),
+        pattern: codex_cli_identity_contains,
+      ),
+    provider_runtime_detail: trim(join([
+      provider_runtime.stdout,
+      "\n",
+      provider_runtime.stderr,
+    ], "")),
     provider_authenticated: provider.success,
+    provider_auth_detail: trim(join([
+      provider.stdout,
+      "\n",
+      provider.stderr,
+    ], "")),
     service_present: service.success,
     health_current: dashboard_health_names_instance(instance: instance, result: health),
     production_untouched: production_untouched,
@@ -944,18 +1005,30 @@ fn dashboard_source_preflight_decision(
 fn dashboard_required_target_executables(
   instance: HostDashboardInstance,
 ) -> List<FilePath> {
-  [
-    "/usr/bin/git" as FilePath,
-    "/usr/bin/tmux" as FilePath,
-    "/usr/bin/curl" as FilePath,
-    "/usr/bin/env" as FilePath,
-    "/usr/bin/mkdir" as FilePath,
-    "/usr/bin/touch" as FilePath,
-    "/usr/bin/mv" as FilePath,
-    "/usr/bin/nc" as FilePath,
-    instance.serve_binary,
-    dashboard_instance_provider_executable(instance: instance),
-  ]
+  fold(
+    concat(
+      [
+        "/usr/bin/git" as FilePath,
+        "/usr/bin/tmux" as FilePath,
+        "/usr/bin/curl" as FilePath,
+        "/usr/bin/mkdir" as FilePath,
+        "/usr/bin/touch" as FilePath,
+        "/usr/bin/mv" as FilePath,
+        "/usr/bin/nc" as FilePath,
+        instance.serve_binary,
+        dashboard_instance_provider_executable(instance: instance),
+      ],
+      dashboard_instance_dispatch_platform_executables(instance: instance),
+    ),
+    init: [],
+    f: fn(acc, path) {
+      if any(acc, existing => existing == path) {
+        acc
+      } else {
+        append(acc, [path])
+      }
+    },
+  )
 }
 
 fn dashboard_missing_target_executables(
@@ -1147,6 +1220,22 @@ fn dashboard_instance_apply_preflight(
                           " already accepts TCP but does not identify as this dashboard instance",
                         ], ""),
                       )
+                    } else if !observed.provider_runtime_ready {
+                      dashboard_apply_preflight_refused(
+                        instance: instance,
+                        step: "provider-runtime",
+                        detail: join([
+                          "codex --version did not realize ",
+                          codex_cli_identity_contains,
+                          " through ",
+                          dashboard_environment_binding_executable as String,
+                          if observed.provider_runtime_detail == "" {
+                            ""
+                          } else {
+                            join([": ", observed.provider_runtime_detail], "")
+                          },
+                        ], ""),
+                      )
                     } else if !observed.provider_authenticated {
                       dashboard_apply_preflight_refused(
                         instance: instance,
@@ -1154,6 +1243,11 @@ fn dashboard_instance_apply_preflight(
                         detail: join([
                           "codex login status failed for ",
                           dashboard_instance_provider_state_root(instance: instance) as String,
+                          if observed.provider_auth_detail == "" {
+                            ""
+                          } else {
+                            join([": ", observed.provider_auth_detail], "")
+                          },
                         ], ""),
                       )
                     } else {

@@ -14,6 +14,13 @@ import gunbc.roadmap_status {
   TicketFields, TicketUpdate,
   Signoff, Unsigned, SignedOff,
 }
+import gunbc.roadmap_execution_contract {
+  WorkItemExecutionContract,
+  ExecutionContractUnspecified,
+  ExecutionContract,
+  GunbcClaimValidation,
+}
+import std.types { FilePath, NonEmptyStr }
 import std.markdown { MarkdownBlock, HeadingBlock, ParagraphBlock, TextInline, H1 }
 import extdeps.languages.markdown { serialize_markdown_source }
 
@@ -28,30 +35,47 @@ fn signed(by: String, works: Bool, scope_equivalent: Bool, as_expected: Bool) ->
   SignedOff { by: by, works: works, scope_equivalent: scope_equivalent, as_expected: as_expected }
 }
 
+fn default_execution_contract() -> WorkItemExecutionContract {
+  ExecutionContractUnspecified
+}
+
+fn roadmap_gunbc_claim_execution_contract(
+  entry: FilePath,
+  functions: List<NonEmptyStr>,
+) -> WorkItemExecutionContract {
+  ExecutionContract {
+    validations: map(
+      functions,
+      fn_name => GunbcClaimValidation { entry: entry, function: fn_name },
+    ),
+    extra_capabilities: [],
+  }
+}
+
 fn authored(id: String, done: Bool, content: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: [], sizing: Unsized, owner: "", signoff: Unsigned }
+  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: [], sizing: Unsized, execution: default_execution_contract(), owner: "", signoff: Unsigned }
 }
 
 fn authored_doc(id: String, done: Bool, content: String, path: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: plan_ptr(path: path), sizing: Unsized, owner: "", signoff: Unsigned }
+  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: plan_ptr(path: path), sizing: Unsized, execution: default_execution_contract(), owner: "", signoff: Unsigned }
 }
 
 fn authored_pp(id: String, done: Bool, content: String, carriers: List<Pointer>) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: carriers, sizing: Unsized, owner: "", signoff: Unsigned }
+  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: carriers, sizing: Unsized, execution: default_execution_contract(), owner: "", signoff: Unsigned }
 }
 
 fn plain(id: String, content: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: PlainLine { content: content }, carriers: [], sizing: Unsized, owner: "", signoff: Unsigned }
+  RoadmapNode { node: nid(s: id), line: PlainLine { content: content }, carriers: [], sizing: Unsized, execution: default_execution_contract(), owner: "", signoff: Unsigned }
 }
 
 fn derivable(id: String, prs: List<Int>, title: String, description: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: [], sizing: Unsized, owner: "", signoff: Unsigned }
+  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: [], sizing: Unsized, execution: default_execution_contract(), owner: "", signoff: Unsigned }
 }
 fn derivable_doc(id: String, prs: List<Int>, title: String, description: String, path: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: plan_ptr(path: path), sizing: Unsized, owner: "", signoff: Unsigned }
+  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: plan_ptr(path: path), sizing: Unsized, execution: default_execution_contract(), owner: "", signoff: Unsigned }
 }
 fn derivable_pp(id: String, prs: List<Int>, title: String, description: String, carriers: List<Pointer>) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: carriers, sizing: Unsized, owner: "", signoff: Unsigned }
+  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: carriers, sizing: Unsized, execution: default_execution_contract(), owner: "", signoff: Unsigned }
 }
 
 fn derivable_wi(id: String, prs: List<Int>, title: String, description: String, intricacy: Intricacy, volume: Volume, repo: String) -> RoadmapNode {
@@ -60,6 +84,7 @@ fn derivable_wi(id: String, prs: List<Int>, title: String, description: String, 
     line: DerivableLine { prs: prs, title: title, description: description },
     carriers: [],
     sizing: Sized { intricacy: intricacy, volume: volume, repo: repo, acceptance: PrsMerged },
+    execution: default_execution_contract(),
     owner: "",
     signoff: Unsigned,
   }
@@ -71,13 +96,14 @@ fn authored_wi(id: String, done: Bool, content: String, intricacy: Intricacy, vo
     line: AuthoredLine { done: done, content: content },
     carriers: [],
     sizing: Sized { intricacy: intricacy, volume: volume, repo: repo, acceptance: ManualAcceptance },
+    execution: default_execution_contract(),
     owner: "",
     signoff: Unsigned,
   }
 }
 
 fn ticket_row(id: String, done: Bool, t: TicketFields) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: TicketLine { done: done, ticket: t }, carriers: [], sizing: Unsized, owner: "", signoff: Unsigned }
+  RoadmapNode { node: nid(s: id), line: TicketLine { done: done, ticket: t }, carriers: [], sizing: Unsized, execution: default_execution_contract(), owner: "", signoff: Unsigned }
 }
 
 data ticket_write_interface_note: String = "Recorded at the operator's question mid-bulk (2026-07-25): is the migration a consumer for a programmatic read/write interface? Assessed — the READ side exists and is proven at this grain (non_fold_residue_units_from_module_source reads typed record rows from module source; ingest parses any module to a Node tree), the WRITE side exists only as emission (authority -> projection via main_wet; dag is a registered emit target), and there is no in-place source editor — the Node-tree read/write seam is what gunbc#5364 gates. VERDICT: the one-time migration is NOT the right first consumer (its hard half is editorial judgment no interface removes; its mechanical half is already execution-verified per tranche — a harness for the remainder is the purity trap, section 6). The RECURRING consumer is typed TicketUpdate APPEND: belt verdicts landing on the sheet (ts-wf-shape / ts-dispatch-verdict), sessions writing back at close (ts-doc-anchor), typed dissolution triggers firing (ts-group-dissolve-typed) — bounded, typed, append-only writes to the updates axis the migration created. When the write interface lands, the updates axis is its first API and those three rows are its first consumers."
@@ -86,11 +112,11 @@ data ticket_write_interface_note: String = "Recorded at the operator's question 
 data ticket_carrier_constructors_note: String = "ticket_doc / ticket_pp (W2-bulk): the carrier-preserving ticket constructors, the exact siblings authored_doc/authored_pp are to authored. Without them, migrating a pointer-carrying prose row through ticket_row would silently DROP its carriers — the doc-graph's inbound links — which is content loss the migration's own honesty rules forbid and the orphan witness may red on. References reuse the node's carriers per ticket_line_note; these constructors are that reuse, not a new refs concept."
 
 fn ticket_doc(id: String, done: Bool, t: TicketFields, path: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: TicketLine { done: done, ticket: t }, carriers: plan_ptr(path: path), sizing: Unsized, owner: "", signoff: Unsigned }
+  RoadmapNode { node: nid(s: id), line: TicketLine { done: done, ticket: t }, carriers: plan_ptr(path: path), sizing: Unsized, execution: default_execution_contract(), owner: "", signoff: Unsigned }
 }
 
 fn ticket_pp(id: String, done: Bool, t: TicketFields, carriers: List<Pointer>) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: TicketLine { done: done, ticket: t }, carriers: carriers, sizing: Unsized, owner: "", signoff: Unsigned }
+  RoadmapNode { node: nid(s: id), line: TicketLine { done: done, ticket: t }, carriers: carriers, sizing: Unsized, execution: default_execution_contract(), owner: "", signoff: Unsigned }
 }
 
 fn ticket_wi(id: String, done: Bool, t: TicketFields, intricacy: Intricacy, volume: Volume, repo: String) -> RoadmapNode {
@@ -99,25 +125,33 @@ fn ticket_wi(id: String, done: Bool, t: TicketFields, intricacy: Intricacy, volu
     line: TicketLine { done: done, ticket: t },
     carriers: [],
     sizing: Sized { intricacy: intricacy, volume: volume, repo: repo, acceptance: ManualAcceptance },
+    execution: default_execution_contract(),
     owner: "",
     signoff: Unsigned,
   }
 }
 
 fn superseded(id: String, by: String, content: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: SupersededLine { by: by, content: content }, carriers: [], sizing: Unsized, owner: "", signoff: Unsigned }
+  RoadmapNode { node: nid(s: id), line: SupersededLine { by: by, content: content }, carriers: [], sizing: Unsized, execution: default_execution_contract(), owner: "", signoff: Unsigned }
 }
 
 fn owned(rn: RoadmapNode, owner: String) -> RoadmapNode {
-  RoadmapNode { node: rn.node, line: rn.line, carriers: rn.carriers, sizing: rn.sizing, owner: owner, signoff: rn.signoff }
+  RoadmapNode { node: rn.node, line: rn.line, carriers: rn.carriers, sizing: rn.sizing, execution: rn.execution, owner: owner, signoff: rn.signoff }
 }
 
 fn with_plan(rn: RoadmapNode, path: String) -> RoadmapNode {
-  RoadmapNode { node: rn.node, line: rn.line, carriers: concat(rn.carriers, plan_ptr(path: path)), sizing: rn.sizing, owner: rn.owner, signoff: rn.signoff }
+  RoadmapNode { node: rn.node, line: rn.line, carriers: concat(rn.carriers, plan_ptr(path: path)), sizing: rn.sizing, execution: rn.execution, owner: rn.owner, signoff: rn.signoff }
+}
+
+fn with_execution_contract(
+  rn: RoadmapNode,
+  contract: WorkItemExecutionContract,
+) -> RoadmapNode {
+  RoadmapNode { node: rn.node, line: rn.line, carriers: rn.carriers, sizing: rn.sizing, execution: contract, owner: rn.owner, signoff: rn.signoff }
 }
 
 fn sign(rn: RoadmapNode, s: Signoff) -> RoadmapNode {
-  RoadmapNode { node: rn.node, line: rn.line, carriers: rn.carriers, sizing: rn.sizing, owner: rn.owner, signoff: s }
+  RoadmapNode { node: rn.node, line: rn.line, carriers: rn.carriers, sizing: rn.sizing, execution: rn.execution, owner: rn.owner, signoff: s }
 }
 
 fn preamble() -> List<MarkdownBlock> {
@@ -340,7 +374,7 @@ fn section_2() -> RoadmapSection {
             authored_on: "",
             last_verified_on: "",
           }, intricacy: IntricacyHigh, volume: VolumeSmall, repo: "gunbc"), owner: "dispatched 2026-07-01 · adhoc-75790c4c-4e0"),
-          ticket_wi(id: "2-admission-model", done: false, t: TicketFields {
+          with_execution_contract(rn: ticket_wi(id: "2-admission-model", done: false, t: TicketFields {
             headline: "workload-class admission model",
             brief: "Runners are capacity surfaces, not concurrency proof. Define CI workload classes (floor_light · rust_heavy · deploy · session) with measured RAM/swap/pids/CPU-token demand; admitted concurrency per host DERIVES from HostSupply × WorkloadClassDemand, never from runner-slot count. Initial 128c/125GiB policy: ~42 build tokens per host (≈1 core : 3 GiB), with intentionally-stranded cores reserved for sessions and low-memory work — stranded is not wasted. Measured anchors: ci ~11GiB · rust_tests ~37GiB peaks vs the old 8G slot caps.",
             displaced_cost: "",
@@ -355,7 +389,13 @@ fn section_2() -> RoadmapSection {
             ],
             authored_on: "2026-07-01",
             last_verified_on: "",
-          }, intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"),
+          }, intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"), contract: roadmap_gunbc_claim_execution_contract(
+            entry: "dag/test/claim/fleet_host_budget_test.dag" as FilePath,
+            functions: [
+              "witness_plan_derives_and_conserves" as NonEmptyStr,
+              "witness_overcommit_tree_refused" as NonEmptyStr,
+            ],
+          )),
           ticket_row(id: "2-cap-deconflation", done: false, t: TicketFields {
             headline: "cap/admission de-conflation",
             brief: "The three facts now live in three mechanisms — per-slot containment = cgroup caps via converge (#7009/#7000) · host admission = fleet_host_budget conservation (host_allocation_conserves) · build width = the runtime AIMD memory governor (the 2026-07-12 adaptive-width ruling, which retired the width folds and per-shard byte predictions the original framing assumed).",
@@ -2312,14 +2352,15 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             headline: "Codex dispatch provider v0 — auth-preflighted, sandboxed, and observable as a process",
             brief: "Replace the belt's accidental Claude-only assumption with a closed CLI-provider choice. Codex owns its own program token, dedicated CODEX_HOME, login-status preflight, non-interactive exec argv, workspace-write sandbox, approval-never policy, JSONL output, persisted session, and pane fingerprint. Provider auth refusal must happen before git worktree creation; Spawned remains a tmux receipt, never provider completion.",
             displaced_cost: "roadmap work can run while the operator's Claude subscription is unavailable; provider failures stop hiding behind a generic spawned receipt",
-            current_state: "the live belt hardcodes Claude argv, trust-store preflight, and fingerprint. Codex is authenticated in a dedicated srv1 state root and works manually, but no dispatch consumer uses it. The branch session/codex-provider-feedback-v0 carries the first modeled provider arm and pure argv/auth witnesses.",
-            first_slice: "select Codex host-wide for v0; preflight `codex login status` through the dedicated state root; spawn `codex exec` with workspace-write, approval never, JSONL, and persisted session; observe the Codex pane fingerprint through the existing Live route",
+            current_state: "the branch carries a closed Codex arm: exact env/provider executable identities, a dedicated CODEX_HOME, runtime-identity then login-status preflight before Git mutation, and `codex exec` JSONL wired through staged tmux capture. Pure witnesses distinguish missing env, CLI, wrong identity, and auth refusal; the refreshed srv1-lab dispatch receipt and operator signoff remain pending.",
+            first_slice: "land the modeled Codex arm and capture one srv1-lab dispatch through preflight, worktree creation, JSONL capture, terminal reconciliation, and dashboard projection",
             red_control: "missing codex, missing env binding, and nonzero login status each refuse with distinct steps before refs/worktrees/tmux change; the selected tmux argv contains codex and cannot contain claude or the dangerous sandbox-bypass flag",
-            out_of_scope: "per-node provider scheduling; parsing runtime JSONL/exit into provider execution facts; PR/review/acceptance workflow; deploying the branch over production",
+            out_of_scope: "per-node provider scheduling; Claude-provider parity; PR/review/acceptance workflow; deploying the branch over production",
             handback: "the exact srv1 pane fingerprint is resolved as node for the npm launcher. Stop before live apply if auth preflight cannot rely on `codex login status`, or if provisioning changes the CLI packaging without a new fingerprint receipt",
             updates: [
               TicketUpdate { on: "2026-07-27", note: "filed from the first operator preview. Official Codex non-interactive guidance selects codex exec; login status is the auth authority; JSONL exposes thread/turn/item/error events. Local witnesses pin the argv and three refusal classes." },
               TicketUpdate { on: "2026-07-27", note: "srv1 live read-back: codex-cli 0.133.0 authenticated via ChatGPT; a read-only JSONL turn emitted thread.started, turn.started, item.completed; tmux pane_current_command was node because /usr/bin/codex is the npm launcher. v0 fingerprint grounded on node, with packaging-change refusal named." },
+              TicketUpdate { on: "2026-07-27", note: "branch realization now separates executable existence, `codex-cli` identity, and cached authentication as three facts before any Git mutation. The exact `/usr/bin/env` + Codex argv, dedicated state root, workspace-write sandbox, approval-never policy, JSONL mode, staged tmux capture, and wrong-successful-executable RED are modeled together; this is implementation evidence, not operator signoff." },
             ],
             authored_on: "2026-07-27",
             last_verified_on: "2026-07-27",
@@ -2328,13 +2369,14 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             headline: "provider execution facts — stream progress and retain terminal failure",
             brief: "A tmux session proves only process presence. Parse each provider's own event/exit surface into attempt-keyed execution facts: Codex JSONL thread.started, item.*, turn.completed, turn.failed, error plus process exit; Claude transcript/error equivalents. Render current activity and terminal outcome on the row without collapsing them into Live or Attempted.",
             displaced_cost: "subscription exhaustion, auth refresh failure, sandbox denial, agent progress, and clean completion become dashboard facts instead of disappearing when the tmux pane exits",
-            current_state: "Codex v0 requests JSONL and persists the session, but the dashboard observes only tmux presence and attempt refs. A provider can start, fail immediately, and leave the UI with Attempted on and no explanation.",
-            first_slice: "Codex only: persist the JSONL stream at attempt grain, expose a read-only attempt-events route, and render the latest event plus terminal outcome; keep unknown/malformed/truncated as typed refused states",
+            current_state: "the branch persists Codex JSONL and retained process exit at attempt grain, classifies a closed event vocabulary, exposes `/workflow.json`, and projects Environment/Workspace/Agent/Verification/Review independently on each row. Unknown, malformed, truncated, reordered, and exit/event contradictions refuse with raw located evidence. A refreshed live lab attempt and the Claude grammar remain absent.",
+            first_slice: "drive one Codex item through the refreshed srv1-lab instance and retain its admission, JSONL, pane-exit, validation, and UI receipts; capture a real exhausted-usage receipt if one occurs rather than inventing its shape",
             red_control: "a fixture `turn.failed` or `error` must render failed after Live turns off; a truncated JSONL line must refuse parsing and preserve the raw located evidence; Spawned alone cannot render Running or Completed",
             out_of_scope: "Claude event grammar until a live exhausted-usage transcript is captured; PR/review/acceptance facts; a generic stored stage machine",
             handback: "capture the exact Codex out-of-usage JSONL/exit receipt if encountered; do not guess provider error strings",
             updates: [
               TicketUpdate { on: "2026-07-27", note: "split from Codex provider v0 because login status can prove cached auth but cannot prove quota/upstream availability; those signals exist only after exec begins." },
+              TicketUpdate { on: "2026-07-27", note: "branch realization: an attempt-owned event file and tmux pipe retain Codex JSONL; a closed RFC-8259 classifier plus retained process exit derive terminal state; `/workflow.json` projects five independently evidenced segments and the client polls them without collapsing Live or Attempted. Verification and Review intentionally stay pending until their own producers exist." },
             ],
             authored_on: "2026-07-27",
             last_verified_on: "2026-07-27",
@@ -2359,8 +2401,8 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             headline: "dashboard host instance — stop treating every serve process as srv1",
             brief: "Attempts observation and spawn both project the singleton srv1 repo path. Running the same dashboard on srv2 therefore refused `git for-each-ref` because /opt/gunbc/gunbc did not exist. Introduce an explicit serve-host instance whose repo root, worktree root, provider state roots, and actuation posture move together.",
             displaced_cost: "branch previews and future fleet placement stop requiring production-path symlinks or silently reading the wrong Git store",
-            current_state: "the branch preview needed a temporary /opt/gunbc/gunbc binding to its clean worktree. The model names srv1 paths directly, so the failure is faithful but the deployment instance is not selectable.",
-            first_slice: "one HostDashboardInstance value consumed by serve loading, attempts observation, worktree creation, and provider preflight; instantiate srv1-live and srv2-preview without environment-variable forks",
+            current_state: "the branch now carries srv1-live, srv1-lab, and srv2-preview as explicit values consumed by serve, observation, actuation, and provisioning. Each binds repo/origin/worktree/attempt-state/provider/tmux/listen/posture paths together; apply separately observes provider runtime identity and authentication. The refreshed srv1-lab convergence receipt remains pending.",
+            first_slice: "refresh srv1-lab from the committed branch through the modeled apply, then read back instance identity, health, provider runtime/auth, attempt-state root, and observe-only/live posture without a production mutation",
             red_control: "a srv2-preview fixture with no srv1 path observes its configured repo and cannot actuate; deleting any one projection makes the instance-agreement witness red",
             out_of_scope: "general compute-fabric scheduling and remote dispatch; credential replication",
             handback: "stop if runtime selection creates a second string authority beside the modeled instance",
@@ -2369,6 +2411,7 @@ fn task_sheet_lead_lane() -> RoadmapSection {
               TicketUpdate { on: "2026-07-27", note: "branch realization: srv1-live, srv1-lab, and srv2-preview are values whose repo/origin/worktree/provider/tmux/listen/posture projections move together. Provisioning is an end-to-end typed plan (bundle capture + atomic SSH stage + owned clone + auth + service + health), with production before/after readback, bounded readiness, typed receipts, and safe retract intent. The first wet preflight refused at controller-source-dirty before mutation, proving the committed-source wall." },
               TicketUpdate { on: "2026-07-27", note: "first modeled apply refused on its first operation because srv1 ~/.local/share/gunbc is root-owned. No later step ran. The lab root moved to the user-owned sibling ~/.local/share/gunbc-dashboard-instances, and bootstrap-parent presence/writability became a typed preflight fact so this now refuses before mutation on a fresh host." },
               TicketUpdate { on: "2026-07-27", note: "second modeled apply exposed an incomplete source bundle: the controller checkout was shallow at 74dfc55fa0, so metadata verification passed while the empty target origin refused its missing parent f8864c44fb. Controller-history hydration from an explicit named remote, shallow-state preflight, and an empty-bare-repository import proof now precede all target staging; partial target state remains model-owned and reconcilable." },
+              TicketUpdate { on: "2026-07-27", note: "branch cleanup added an explicit durable attempt-state root and split Codex runtime identity from authentication in both observation and provisioning. Platform dependencies are provisioned from the instance contract; task-specific Cargo/Rustc/Rustfmt requirements enter only through the selected work item's execution contract." },
             ],
             authored_on: "2026-07-27",
             last_verified_on: "2026-07-27",
@@ -2588,7 +2631,7 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             headline: "typed work-item fact join — attempt, branch, PR, and node share one identity",
             brief: "Carry RoadmapNodeId and attempt key through the branch and into a typed PullRequest binding, so Proposed and Landed can be observed from GitHub without guessing from titles or branch substrings. ModelArtifact, Brief, Attempt, PR evidence, Verdict, and Signoff remain independent artifacts/facts; no carrier stores a total workflow stage.",
             displaced_cost: "Proposed and Landed stop being unjoinable GitHub facts; merge stops impersonating work-item acceptance",
-            current_state: "session names and attempt branches already preserve node identity; GitHub PullRequest facts have no typed attempt/node binding. The seven-fact table marks Proposed and Landed BlockedOnAttemptPrNodeBinding.",
+            current_state: "the branch adds an attempt-keyed durable prefix carrying environment admission, provider JSONL, spawn failure, and a per-node current pointer, while Git refs preserve node/attempt identity. This closes runtime observation storage but not the typed GitHub PullRequest binding: Proposed and Landed remain BlockedOnAttemptPrNodeBinding.",
             first_slice: "one attempt-keyed binding carrying RoadmapNodeId, attempt key, branch ref, repository, and PullRequest identity, consumed by both the Proposed/Landed observer and the append-only messaging ledger",
             red_control: "a PR on the wrong node or an older attempt refuses the join; a merged bound PR lights Landed but cannot light Done without RoadmapNode.signoff",
             out_of_scope: "adding more lamps before the join; the belt refusal wall (ts-wf-belt-refusals) until the binding lands",
@@ -2596,24 +2639,26 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             updates: [
               TicketUpdate { on: "2026-07-24", note: "migrated to ticket form as a remodel W2 exemplar" },
               TicketUpdate { on: "2026-07-26", note: "operator ruling replaced the proposed stage machine with independent facts. Node id retained for roadmap continuity; the executable first slice is now the PR↔attempt↔node join." },
+              TicketUpdate { on: "2026-07-27", note: "provider-feedback branch establishes the shared durable attempt prefix and current-attempt pointer needed by execution observation. It deliberately does not infer PullRequest identity from branch names, so the PR↔attempt↔node join and Proposed/Landed facts remain open." },
             ],
             authored_on: "2026-07-23",
-            last_verified_on: "2026-07-24",
+            last_verified_on: "2026-07-27",
           }, intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"),
           ticket_wi(id: "ts-wf-belt-refusals", done: false, t: TicketFields {
             headline: "dispatch-time walls in belt_dispatch_node",
             brief: "Refuse dispatch on a node without a ModelArtifact; refuse on stale receipts (the freshness check from ts-wf-node-schema); a NeedsRework verdict dispatches a FRESH session carrying brief + prior diff + located debts — never the producing context unwinding its own work. Typed refusal arms on the existing BeltDispatchResult vocabulary, so the wire and UI pick them up for free through the component register.",
             displaced_cost: "",
-            current_state: "",
-            first_slice: "",
+            current_state: "the branch adds a narrower prerequisite wall: every dispatchable node must declare an exact execution contract, each platform/task capability converges through generic Ensure, and dispatch requires an admitted read-back receipt before Git mutation. Unspecified contracts and missing/unprovisioned capabilities refuse distinctly. ModelArtifact presence, freshness, and NeedsRework handling remain unimplemented.",
+            first_slice: "add the ModelArtifact-presence and freshness decisions beside execution-contract admission, then carry a NeedsRework verdict into a fresh attempt without weakening the existing no-effects-before-admission boundary",
             red_control: "each refusal arm witnessed with a RED control; live receipt on srv1 for at least the no-model-artifact arm",
             out_of_scope: "",
             handback: "",
             updates: [
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 1); the Accept line became the red_control field" },
+              TicketUpdate { on: "2026-07-27", note: "provider-feedback branch models exact dependency admission as typed requirements → generic Ensure → grounded receipts → one admission decision. Fine-grained means one semantic requirement/observation/receipt, not provider or package behavior embedded in Ensure. This is partial belt-wall evidence only; the row's ModelArtifact/freshness/rework accept line is still open." },
             ],
             authored_on: "",
-            last_verified_on: "",
+            last_verified_on: "2026-07-27",
           }, intricacy: IntricacyMedium, volume: VolumeSmall, repo: "gunbc"),
           ticket_wi(id: "ts-wf-lens-walls", done: false, t: TicketFields {
             headline: "floor lenses over the roadmap value",

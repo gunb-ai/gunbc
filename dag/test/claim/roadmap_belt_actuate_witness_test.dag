@@ -9,6 +9,7 @@ import gunbc.roadmap_model {
   Sized,
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_dispatch_actuator {
   dispatch_tmux_session_name,
   HostExecArgv,
@@ -21,6 +22,10 @@ import gunbc.roadmap_belt_actuate {
   BeltExecOutcome, ExecOk, ExecFailed, ExecRefused,
   belt_exec,
   belt_exec_all,
+  BeltExecStep,
+  ExecStepsOk,
+  ExecStepFailed,
+  belt_exec_steps,
   BeltSpawnOutcome, Spawned, SpawnFailed,
   BeltTeardownOutcome, ReapedSession, TeardownFailed,
   belt_actuate_spawn_member,
@@ -44,7 +49,7 @@ import gunbc.roadmap_belt_actuate {
   BeltClaudePreflight, ClaudePreflightOk, ClaudePreflightRefused,
   belt_claude_preflight_decision,
   BeltCodexPreflight, CodexPreflightOk, CodexPreflightRefused,
-  belt_codex_preflight_decision,
+  belt_codex_preflight_decision_observed_for_home,
 }
 import extdeps.languages.json.emit { serialize_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -59,6 +64,7 @@ fn ready_node(id: String) -> RoadmapNode {
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
     sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -168,6 +174,31 @@ test fn witness_exec_all_fails_on_later_step() -> Bool {
     workdir: "/",
   )
   is_exec_failed(o: o)
+}
+
+test fn witness_named_exec_steps_locate_the_first_failure() -> Bool {
+  match belt_exec_steps(
+    steps: [
+      BeltExecStep {
+        step: "prepare",
+        command: host_exec_argv(program: "/usr/bin/true", args: []),
+      },
+      BeltExecStep {
+        step: "tmux-event-pipe",
+        command: host_exec_argv(program: "/usr/bin/false", args: []),
+      },
+      BeltExecStep {
+        step: "provider-start",
+        command: host_exec_argv(program: "/usr/bin/true", args: []),
+      },
+    ],
+    workdir: "/",
+  ) {
+    ExecStepsOk => false
+    ExecStepFailed { step, detail } =>
+      step == "tmux-event-pipe"
+        && string_contains(s: detail, pattern: "exit 1")
+  }
 }
 
 test fn witness_spawn_member_refuses_observed_shape() -> Bool {
@@ -282,6 +313,7 @@ fn owned_node(id: String, owner: String) -> RoadmapNode {
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
     sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    execution: ExecutionContractUnspecified,
     owner: owner,
     signoff: Unsigned,
   }
@@ -521,9 +553,13 @@ fn codex_preflight_ok(p: BeltCodexPreflight) -> Bool {
 }
 
 test fn witness_codex_preflight_refuses_missing_cli_before_auth() -> Bool {
-  codex_preflight_refused_step(p: belt_codex_preflight_decision(
+  codex_preflight_refused_step(p: belt_codex_preflight_decision_observed_for_home(
+    codex_home: "/state/codex",
     codex_on_path: false,
     env_on_path: true,
+    identity_command_success: true,
+    identity_stdout: "codex-cli 0.145.0",
+    identity_stderr: "",
     login_status_success: true,
     login_status_stdout: "Logged in using ChatGPT",
     login_status_stderr: "",
@@ -531,9 +567,13 @@ test fn witness_codex_preflight_refuses_missing_cli_before_auth() -> Bool {
 }
 
 test fn witness_codex_preflight_refuses_missing_env_binding() -> Bool {
-  codex_preflight_refused_step(p: belt_codex_preflight_decision(
+  codex_preflight_refused_step(p: belt_codex_preflight_decision_observed_for_home(
+    codex_home: "/state/codex",
     codex_on_path: true,
     env_on_path: false,
+    identity_command_success: true,
+    identity_stdout: "codex-cli 0.145.0",
+    identity_stderr: "",
     login_status_success: true,
     login_status_stdout: "Logged in using ChatGPT",
     login_status_stderr: "",
@@ -541,19 +581,65 @@ test fn witness_codex_preflight_refuses_missing_env_binding() -> Bool {
 }
 
 test fn witness_codex_preflight_refuses_login_status_nonzero() -> Bool {
-  codex_preflight_refused_step(p: belt_codex_preflight_decision(
+  codex_preflight_refused_step(p: belt_codex_preflight_decision_observed_for_home(
+    codex_home: "/state/codex",
     codex_on_path: true,
     env_on_path: true,
+    identity_command_success: true,
+    identity_stdout: "codex-cli 0.145.0",
+    identity_stderr: "",
     login_status_success: false,
     login_status_stdout: "",
     login_status_stderr: "Not logged in",
   )) == "codex-auth"
 }
 
-test fn witness_codex_preflight_accepts_cli_auth_verdict_without_parsing_wording() -> Bool {
-  codex_preflight_ok(p: belt_codex_preflight_decision(
+test fn witness_codex_preflight_separates_broken_runtime_from_auth() -> Bool {
+  match belt_codex_preflight_decision_observed_for_home(
+    codex_home: "/state/codex",
     codex_on_path: true,
     env_on_path: true,
+    identity_command_success: false,
+    identity_stdout: "",
+    identity_stderr: "/usr/bin/env: node: No such file or directory",
+    login_status_success: false,
+    login_status_stdout: "",
+    login_status_stderr: "",
+  ) {
+    CodexPreflightOk { auth_method: _ } => false
+    CodexPreflightRefused { step, detail } =>
+      step == "codex-identity"
+        && string_contains(s: detail, pattern: "node")
+  }
+}
+
+test fn witness_codex_preflight_refuses_wrong_executable_identity() -> Bool {
+  match belt_codex_preflight_decision_observed_for_home(
+    codex_home: "/state/codex",
+    codex_on_path: true,
+    env_on_path: true,
+    identity_command_success: true,
+    identity_stdout: "some-other-cli 1.0",
+    identity_stderr: "",
+    login_status_success: true,
+    login_status_stdout: "Logged in using ChatGPT",
+    login_status_stderr: "",
+  ) {
+    CodexPreflightOk { auth_method: _ } => false
+    CodexPreflightRefused { step, detail } =>
+      step == "codex-identity"
+        && string_contains(s: detail, pattern: "codex-cli")
+  }
+}
+
+test fn witness_codex_preflight_accepts_cli_auth_verdict_without_parsing_wording() -> Bool {
+  codex_preflight_ok(p: belt_codex_preflight_decision_observed_for_home(
+    codex_home: "/state/codex",
+    codex_on_path: true,
+    env_on_path: true,
+    identity_command_success: true,
+    identity_stdout: "codex-cli future",
+    identity_stderr: "non-fatal runtime warning",
     login_status_success: true,
     login_status_stdout: "future CLI auth method wording",
     login_status_stderr: "",
@@ -563,6 +649,8 @@ test fn witness_codex_preflight_accepts_cli_auth_verdict_without_parsing_wording
 test fn codex_provider_v0_preflight_keystone_holds() -> Bool {
   witness_codex_preflight_refuses_missing_cli_before_auth()
     && witness_codex_preflight_refuses_missing_env_binding()
+    && witness_codex_preflight_separates_broken_runtime_from_auth()
+    && witness_codex_preflight_refuses_wrong_executable_identity()
     && witness_codex_preflight_refuses_login_status_nonzero()
     && witness_codex_preflight_accepts_cli_auth_verdict_without_parsing_wording()
     && witness_fresh_spawn_wire_names_selected_provider()

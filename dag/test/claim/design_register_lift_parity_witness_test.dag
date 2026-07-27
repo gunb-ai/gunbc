@@ -44,7 +44,9 @@ data roadmap_css_repin_stop_note: String = "Re-pinned for U4 (stop from the UI):
 
 data roadmap_css_repin_workflow_lamps_note: String = "Re-pinned 2026-07-26 for workflow lamps v0: the new .workflow-controls wrapper remains the row archetype's third grid occupant while .workflow-strip and .workflow-lamp render the independent Live and Attempted observations. Pending, observed-off, observed-on, and refused each have explicit flat presentation; the compact-width media realization moves the same wrapper across the second row so the new actuator cluster does not overflow. No latch depth styling lands in this slice. Behavioral receipts: workflow_lamps_witness_test (including both symmetric refusal REDs and compact-layout receipt), roadmap_row_witness_test, and the existing sessions/attempts client witnesses. Derived by execution; this digest only pins bytes."
 
-data roadmap_css_lift_parity_digest: String = "3ec3aa0ec8d9b702"
+data roadmap_css_repin_workflow_progress_note: String = "Re-pinned 2026-07-27 for modeled dispatch progress: each dispatched row gains five ordered, evidence-projected segments (environment, workspace, agent, verification, review), with explicit pending, active, complete, failed, and refused presentations plus a provider-activity line. The stages are not a second stored workflow state: roadmap_workflow_progress derives them from admission, attempt-state publication, provider JSONL, retained process exit, and future independent verification/review receipts. Behavioral receipts: roadmap_workflow_progress_keystone_holds, the workflow route witness, and the page client/markup witnesses. Derived by execution; this digest only pins bytes."
+
+data roadmap_css_lift_parity_digest: String = "544f38f2529eab08"
 data moodboard_thesis_themes_lift_parity_digest: String = "69e68066c49667f9"
 
 fn emission_content_digest(s: String) -> String {

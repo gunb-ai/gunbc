@@ -11,6 +11,7 @@ import gunbc.roadmap_page { roadmap_page }
 import gunbc.roadmap_model { RoadmapNode, section_group }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { authored, signed }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -80,6 +81,7 @@ fn done_signed_node() -> RoadmapNode {
     line: base.line,
     carriers: base.carriers,
     sizing: base.sizing,
+    execution: base.execution,
     owner: base.owner,
     signoff: signed(by: "op", works: true, scope_equivalent: true, as_expected: true),
   }

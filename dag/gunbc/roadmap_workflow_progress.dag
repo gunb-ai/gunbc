@@ -1,0 +1,419 @@
+module gunbc.roadmap_workflow_progress
+
+import std.types { String, Int, Bool, List }
+import extdeps.languages.json.emit {
+  JsonValue,
+  json_string,
+  json_array,
+  json_object,
+  json_kv,
+}
+import gunbc.roadmap_provider_events {
+  ProviderExecutionState,
+  ProviderNotStarted,
+  ProviderStarting,
+  ProviderRunning,
+  ProviderCompleted,
+  ProviderFailed,
+  ProviderEventsRefused,
+  provider_execution_state,
+  provider_execution_state_label,
+  provider_execution_activity,
+  provider_execution_detail,
+  parse_codex_jsonl,
+}
+
+type AttemptProcessObservation
+  = AttemptProcessAlive { command: String }
+  | AttemptProcessExited { exit_code: Int, command: String }
+  | AttemptProcessAbsent
+  | AttemptProcessObservationRefused { reason: String }
+
+type WorkflowSegmentKind
+  = EnvironmentWorkflowSegment
+  | WorkspaceWorkflowSegment
+  | AgentWorkflowSegment
+  | VerificationWorkflowSegment
+  | ReviewWorkflowSegment
+
+type WorkflowSegmentState
+  = WorkflowSegmentPending
+  | WorkflowSegmentActive
+  | WorkflowSegmentComplete
+  | WorkflowSegmentFailed
+  | WorkflowSegmentRefused
+
+type WorkflowSegment {
+  kind: WorkflowSegmentKind
+  state: WorkflowSegmentState
+  detail: String
+}
+
+type WorkflowAttemptEvidence {
+  node_id: String
+  attempt_key: String
+  branch: String
+  modeled_state_present: Bool
+  admission_receipt_readable: Bool
+  admission_receipt: String
+  spawn_failure_present: Bool
+  spawn_failure: String
+  provider_events_readable: Bool
+  provider_events: String
+  provider_events_error: String
+  process: AttemptProcessObservation
+  validation_summary: String
+}
+
+type WorkflowAttemptProgress {
+  node_id: String
+  attempt_key: String
+  branch: String
+  admission_receipt: String
+  provider: ProviderExecutionState
+  validation_summary: String
+  segments: List<WorkflowSegment>
+}
+
+data workflow_progress_projection_note: String = "The row progress bar is a pure projection over independent evidence, never a stored workflow status. An attempt state pointer is published only after environment admission, worktree creation, an immutable admission receipt, and an empty provider-events file all exist. Readability alone is not admission: the projection also requires the internally emitted admission schema and admitted verdict, so a corrupted or refused receipt cannot paint Environment complete. Codex JSONL supplies agent activity and provider terminal events; retained tmux pane state supplies process presence and exit. Reconciliation is fail-closed: nonzero exit before a terminal event is failure, zero exit without a terminal event is refused/incomplete, malformed events remain refused, and contradictory turn.completed plus nonzero process exit is refused. Verification and review remain pending until their own authoritative receipts exist; provider completion cannot fabricate either."
+
+fn environment_admission_receipt_is_admitted(receipt: String) -> Bool {
+  string_contains(
+    s: receipt,
+    pattern: "\"schema\": \"roadmap-dispatch-environment/v1\"",
+  )
+    && string_contains(s: receipt, pattern: "\"status\": \"admitted\"")
+}
+
+fn provider_execution_reconcile_process(
+  provider: ProviderExecutionState,
+  process: AttemptProcessObservation,
+) -> ProviderExecutionState {
+  match provider {
+    ProviderFailed { activity: _, detail: _ } => provider
+    ProviderEventsRefused { activity: _, detail: _ } => provider
+    ProviderCompleted { activity } =>
+      match process {
+        AttemptProcessExited { exit_code, command: _ } =>
+          if exit_code == 0 {
+            provider
+          } else {
+            ProviderEventsRefused {
+              activity: activity,
+              detail: join([
+                "Codex emitted turn.completed but the retained pane exited ",
+                to_string(exit_code),
+                "; terminal evidence conflicts",
+              ], ""),
+            }
+          }
+        AttemptProcessAlive { command: _ } => provider
+        AttemptProcessAbsent => provider
+        AttemptProcessObservationRefused { reason: _ } => provider
+      }
+    _ =>
+      match process {
+        AttemptProcessAlive { command: _ } =>
+          match provider {
+            ProviderNotStarted =>
+              ProviderStarting { activity: "waiting for first provider event" }
+            _ => provider
+          }
+        AttemptProcessExited { exit_code, command: _ } =>
+          if exit_code == 0 {
+            ProviderEventsRefused {
+              activity: "provider process exited",
+              detail: "provider process exited 0 without turn.completed, turn.failed, or error",
+            }
+          } else {
+            ProviderFailed {
+              activity: "provider process exited",
+              detail: join([
+                "provider process exited ",
+                to_string(exit_code),
+                " before a terminal provider event",
+              ], ""),
+            }
+          }
+        AttemptProcessAbsent =>
+          ProviderEventsRefused {
+            activity: "provider process absent",
+            detail: "no retained provider pane and no terminal provider event",
+          }
+        AttemptProcessObservationRefused { reason } =>
+          ProviderEventsRefused {
+            activity: "process observation refused",
+            detail: reason,
+          }
+      }
+  }
+}
+
+fn workflow_provider_from_evidence(
+  evidence: WorkflowAttemptEvidence,
+) -> ProviderExecutionState {
+  if !evidence.modeled_state_present {
+    ProviderEventsRefused {
+      activity: "legacy attempt",
+      detail: "attempt predates modeled admission/event capture; progress cannot be reconstructed",
+    }
+  } else if !evidence.admission_receipt_readable {
+    ProviderEventsRefused {
+      activity: "attempt state refused",
+      detail: "current attempt pointer exists but its admission receipt is unreadable",
+    }
+  } else if !environment_admission_receipt_is_admitted(
+    receipt: evidence.admission_receipt,
+  ) {
+    ProviderEventsRefused {
+      activity: "environment admission refused",
+      detail: "admission receipt did not carry the modeled v1 admitted verdict",
+    }
+  } else if evidence.spawn_failure_present {
+    ProviderFailed {
+      activity: "dispatch staging failed",
+      detail: evidence.spawn_failure,
+    }
+  } else if !evidence.provider_events_readable {
+    ProviderEventsRefused {
+      activity: "event capture refused",
+      detail: join([
+        "initialized provider event stream is unreadable: ",
+        evidence.provider_events_error,
+      ], ""),
+    }
+  } else {
+    provider_execution_reconcile_process(
+      provider: provider_execution_state(
+        parsed: parse_codex_jsonl(text: evidence.provider_events),
+      ),
+      process: evidence.process,
+    )
+  }
+}
+
+fn workflow_segment_kind_key(kind: WorkflowSegmentKind) -> String {
+  match kind {
+    EnvironmentWorkflowSegment => "environment"
+    WorkspaceWorkflowSegment => "workspace"
+    AgentWorkflowSegment => "agent"
+    VerificationWorkflowSegment => "verify"
+    ReviewWorkflowSegment => "review"
+  }
+}
+
+fn workflow_segment_kind_label(kind: WorkflowSegmentKind) -> String {
+  match kind {
+    EnvironmentWorkflowSegment => "Environment"
+    WorkspaceWorkflowSegment => "Workspace"
+    AgentWorkflowSegment => "Agent"
+    VerificationWorkflowSegment => "Verify"
+    ReviewWorkflowSegment => "Review"
+  }
+}
+
+fn workflow_segment_state_key(state: WorkflowSegmentState) -> String {
+  match state {
+    WorkflowSegmentPending => "pending"
+    WorkflowSegmentActive => "active"
+    WorkflowSegmentComplete => "complete"
+    WorkflowSegmentFailed => "failed"
+    WorkflowSegmentRefused => "refused"
+  }
+}
+
+fn provider_workflow_segment(
+  provider: ProviderExecutionState,
+) -> WorkflowSegment {
+  match provider {
+    ProviderNotStarted =>
+      WorkflowSegment {
+        kind: AgentWorkflowSegment,
+        state: WorkflowSegmentPending,
+        detail: "provider has not emitted an event",
+      }
+    ProviderStarting { activity } =>
+      WorkflowSegment {
+        kind: AgentWorkflowSegment,
+        state: WorkflowSegmentActive,
+        detail: activity,
+      }
+    ProviderRunning { activity } =>
+      WorkflowSegment {
+        kind: AgentWorkflowSegment,
+        state: WorkflowSegmentActive,
+        detail: activity,
+      }
+    ProviderCompleted { activity } =>
+      WorkflowSegment {
+        kind: AgentWorkflowSegment,
+        state: WorkflowSegmentComplete,
+        detail: activity,
+      }
+    ProviderFailed { activity, detail } =>
+      WorkflowSegment {
+        kind: AgentWorkflowSegment,
+        state: WorkflowSegmentFailed,
+        detail: join([activity, ": ", detail], ""),
+      }
+    ProviderEventsRefused { activity, detail } =>
+      WorkflowSegment {
+        kind: AgentWorkflowSegment,
+        state: WorkflowSegmentRefused,
+        detail: join([activity, ": ", detail], ""),
+      }
+  }
+}
+
+fn verification_segment(
+  provider: ProviderExecutionState,
+  validation_summary: String,
+) -> WorkflowSegment {
+  match provider {
+    ProviderCompleted { activity: _ } =>
+      WorkflowSegment {
+        kind: VerificationWorkflowSegment,
+        state: WorkflowSegmentPending,
+        detail: join([
+          "awaiting independent validation receipt",
+          if validation_summary == "" {
+            ""
+          } else {
+            join([": ", validation_summary], "")
+          },
+        ], ""),
+      }
+    ProviderFailed { activity: _, detail: _ } =>
+      WorkflowSegment {
+        kind: VerificationWorkflowSegment,
+        state: WorkflowSegmentPending,
+        detail: "not reached because the agent failed",
+      }
+    ProviderEventsRefused { activity: _, detail: _ } =>
+      WorkflowSegment {
+        kind: VerificationWorkflowSegment,
+        state: WorkflowSegmentPending,
+        detail: "not reached because agent evidence is refused",
+      }
+    _ =>
+      WorkflowSegment {
+        kind: VerificationWorkflowSegment,
+        state: WorkflowSegmentPending,
+        detail: "waits for a terminal agent event",
+      }
+  }
+}
+
+fn workflow_attempt_progress(
+  evidence: WorkflowAttemptEvidence,
+) -> WorkflowAttemptProgress {
+  let provider = workflow_provider_from_evidence(evidence: evidence)
+  let admitted = evidence.modeled_state_present
+    && evidence.admission_receipt_readable
+    && environment_admission_receipt_is_admitted(
+      receipt: evidence.admission_receipt,
+    )
+  WorkflowAttemptProgress {
+    node_id: evidence.node_id,
+    attempt_key: evidence.attempt_key,
+    branch: evidence.branch,
+    admission_receipt: evidence.admission_receipt,
+    provider: provider,
+    validation_summary: evidence.validation_summary,
+    segments: [
+      WorkflowSegment {
+        kind: EnvironmentWorkflowSegment,
+        state: if admitted {
+          WorkflowSegmentComplete
+        } else {
+          WorkflowSegmentRefused
+        },
+        detail: if admitted {
+          "dispatch environment admitted with grounded Ensure receipts"
+        } else if evidence.admission_receipt_readable {
+          "environment admission receipt is corrupt or does not say admitted"
+        } else {
+          "environment admission receipt unavailable"
+        },
+      },
+      WorkflowSegment {
+        kind: WorkspaceWorkflowSegment,
+        state: if evidence.modeled_state_present {
+          WorkflowSegmentComplete
+        } else {
+          WorkflowSegmentRefused
+        },
+        detail: if evidence.modeled_state_present {
+          "attempt branch and worktree preceded state publication"
+        } else {
+          "legacy branch has no modeled workspace publication receipt"
+        },
+      },
+      provider_workflow_segment(provider: provider),
+      verification_segment(
+        provider: provider,
+        validation_summary: evidence.validation_summary,
+      ),
+      WorkflowSegment {
+        kind: ReviewWorkflowSegment,
+        state: WorkflowSegmentPending,
+        detail: "awaiting an attempt-to-PR binding and review verdict",
+      },
+    ],
+  }
+}
+
+fn workflow_segment_json_value(segment: WorkflowSegment) -> JsonValue {
+  json_object(members: [
+    json_kv(
+      key: "kind",
+      value: json_string(s: workflow_segment_kind_key(kind: segment.kind)),
+    ),
+    json_kv(
+      key: "label",
+      value: json_string(s: workflow_segment_kind_label(kind: segment.kind)),
+    ),
+    json_kv(
+      key: "state",
+      value: json_string(s: workflow_segment_state_key(state: segment.state)),
+    ),
+    json_kv(key: "detail", value: json_string(s: segment.detail)),
+  ])
+}
+
+fn workflow_attempt_progress_json_value(
+  progress: WorkflowAttemptProgress,
+) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "node_id", value: json_string(s: progress.node_id)),
+    json_kv(key: "attempt_key", value: json_string(s: progress.attempt_key)),
+    json_kv(key: "branch", value: json_string(s: progress.branch)),
+    json_kv(
+      key: "provider_status",
+      value: json_string(s: provider_execution_state_label(state: progress.provider)),
+    ),
+    json_kv(
+      key: "provider_activity",
+      value: json_string(s: provider_execution_activity(state: progress.provider)),
+    ),
+    json_kv(
+      key: "provider_detail",
+      value: json_string(s: provider_execution_detail(state: progress.provider)),
+    ),
+    json_kv(
+      key: "validation_summary",
+      value: json_string(s: progress.validation_summary),
+    ),
+    json_kv(
+      key: "admission_receipt",
+      value: json_string(s: progress.admission_receipt),
+    ),
+    json_kv(
+      key: "segments",
+      value: json_array(elements: map(
+        progress.segments,
+        segment => workflow_segment_json_value(segment: segment),
+      )),
+    ),
+  ])
+}

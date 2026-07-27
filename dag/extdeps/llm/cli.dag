@@ -34,6 +34,7 @@ data claude_cli_external_authority_anchor: ExternalAuthority = ExternalAuthority
 data codex_cli_program_note: String = "The one program-token authority for the Codex CLI. Codex dispatch preflight and shape_codex_exec_argv both consume this row. The external non-interactive contract is explicit: codex exec is the automation surface; --json emits JSONL progress; workspace-write is the least sandbox that permits implementation; approval never makes blocked actions return to the agent instead of hanging an unattended worker; CODEX_HOME selects the dedicated persisted auth/config/session state."
 
 data codex_cli_program: String = "codex"
+data codex_cli_identity_contains: String = "codex-cli"
 
 data claude_cli_program_note: String = "The one program-token authority for claude code's CLI (DESIGN §3): shape_claude_invoke_argv's argv head and any caller preflighting claude-on-PATH consume THIS row, never a re-minted literal. (The `service claude.Invoke` transport argv below carries its own literal because the service DSL argv rows are self-contained transport realizations — that literal is the shell-transport handler's spelling of the same upstream binary, not a second authority.)"
 
@@ -182,6 +183,13 @@ fn shape_codex_login_status_env_args_for_program(
   [codex_home_env_assignment(codex_home: codex_home), program, "login", "status"]
 }
 
+fn shape_codex_version_env_args_for_program(
+  program: String,
+  codex_home: String,
+) -> List<String> {
+  [codex_home_env_assignment(codex_home: codex_home), program, "--version"]
+}
+
 fn shape_codex_login_status_env_args(codex_home: String) -> List<String> {
   shape_codex_login_status_env_args_for_program(
     program: codex_cli_program,
@@ -197,9 +205,29 @@ fn shape_codex_exec_argv_for_program(
   reasoning_effort: String,
   spec: CodexExecSpec,
 ) -> List<String> {
+  shape_codex_exec_argv_for_programs(
+    env_program: "env",
+    program: program,
+    codex_home: codex_home,
+    cwd: cwd,
+    prompt: prompt,
+    reasoning_effort: reasoning_effort,
+    spec: spec,
+  )
+}
+
+fn shape_codex_exec_argv_for_programs(
+  env_program: String,
+  program: String,
+  codex_home: String,
+  cwd: String,
+  prompt: String,
+  reasoning_effort: String,
+  spec: CodexExecSpec,
+) -> List<String> {
   concat(
     [
-      "env",
+      env_program,
       codex_home_env_assignment(codex_home: codex_home),
       program,
       "--ask-for-approval", codex_cli_approval_label(approval: spec.approval),

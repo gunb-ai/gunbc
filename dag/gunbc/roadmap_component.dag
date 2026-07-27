@@ -292,6 +292,7 @@ fn dashboard_instance_fetch_statements() -> List<TsStmt> {
 }
 
 data attempts_route_path: String = "/attempts.json"
+data workflow_route_path: String = "/workflow.json"
 
 type WorkflowLamp
   = LiveWorkflowLamp
@@ -342,6 +343,49 @@ data workflow_lamp_label_class: String = "workflow-lamp-label"
 data workflow_lamp_data_attribute: String = "data-workflow-lamp"
 data workflow_observation_data_attribute: String = "data-observation"
 data workflow_lamp_label_data_attribute: String = "data-label"
+
+type WorkflowProgressStage
+  = EnvironmentProgressStage
+  | WorkspaceProgressStage
+  | AgentProgressStage
+  | VerificationProgressStage
+  | ReviewProgressStage
+
+data workflow_progress_stages: List<WorkflowProgressStage> = [
+  EnvironmentProgressStage,
+  WorkspaceProgressStage,
+  AgentProgressStage,
+  VerificationProgressStage,
+  ReviewProgressStage,
+]
+
+fn workflow_progress_stage_key(stage: WorkflowProgressStage) -> String {
+  match stage {
+    EnvironmentProgressStage => "environment"
+    WorkspaceProgressStage => "workspace"
+    AgentProgressStage => "agent"
+    VerificationProgressStage => "verify"
+    ReviewProgressStage => "review"
+  }
+}
+
+fn workflow_progress_stage_label(stage: WorkflowProgressStage) -> String {
+  match stage {
+    EnvironmentProgressStage => "Env"
+    WorkspaceProgressStage => "Worktree"
+    AgentProgressStage => "Agent"
+    VerificationProgressStage => "Verify"
+    ReviewProgressStage => "Review"
+  }
+}
+
+data workflow_progress_class: String = "workflow-progress"
+data workflow_stage_class: String = "workflow-stage"
+data workflow_activity_class: String = "workflow-activity"
+data workflow_stage_data_attribute: String = "data-workflow-stage"
+data workflow_segment_state_data_attribute: String = "data-state"
+
+data workflow_progress_note: String = "The five-segment attempt pipeline is presentation over /workflow.json evidence, not a stored stage machine and not a replacement for independent Live/Attempted facts. Environment and Worktree are constructive publication receipts; Agent comes from provider events reconciled with process exit; Verify and Review remain visibly pending until their own producers exist. The static row declares stage order once, while the client writes only each segment's observed state/detail from the route. A provider turn completing cannot move Verify or Review."
 
 data workflow_lamps_note: String = "Workflow lamps v0 (operator adjudication 2026-07-26): Live and Attempted are two independent projections over the existing /sessions.json and /attempts.json observations. workflow_lamps_v0 declares their presentation order for the row strip; workflow_lamp_state selects each axis without collapsing them into one workflow status. Every lamp starts ClientObservationPending and can become Off, On, or Refused only through the shared gunbc.client_observation_state authority. The strip is evidence presentation only: its rightmost lit member never gates an action and is never persisted. gunbc.client_observation_state.work_item_workflow_fact_note records the seven-fact join ruling without re-declaring those facts as a parallel roster. Proposed and Landed do not earn lamps until the typed attempt/branch/PR/node join exists; that binding, not more visual states, is the next slice."
 
@@ -733,6 +777,8 @@ data js_dwell_const: String = "gunbcDwellMs"
 data js_refresh_sessions_fn: String = "gunbcRefreshSessions"
 data js_poll_sessions_fn: String = "gunbcPollSessions"
 data js_refresh_attempts_fn: String = "gunbcRefreshAttempts"
+data js_refresh_workflow_fn: String = "gunbcRefreshWorkflow"
+data js_poll_workflow_fn: String = "gunbcPollWorkflow"
 
 data session_observation_refresh_note: String = "Session presence is a live read, not page-load state. gunbcRefreshSessions performs one read, so an accepted dispatch can re-observe immediately without minting another timer chain. The single gunbcPollSessions loop schedules itself with setTimeout. Two seconds keeps a short-lived provider/setup failure visible without turning tmux observation into a hot loop. This is observation cadence, not animation; setInterval remains absent under the tactile motion wall."
 
@@ -957,6 +1003,7 @@ fn dispatch_terminal_apply_body() -> TsStmt {
       then: ts_block(stmts: [
         ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_refresh_sessions_fn), args: [])),
         ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_refresh_attempts_fn), args: [])),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_refresh_workflow_fn), args: [])),
       ]),
       else_stmt: none,
     ),
@@ -1847,6 +1894,434 @@ fn attempts_fetch_statements() -> List<TsStmt> {
   ]
 }
 
+fn workflow_progress_in_row_expr(row_name: String) -> TsExpr {
+  ts_binop(
+    left: ts_ident(name: row_name),
+    op: "&&",
+    right: ts_call(
+      callee: ts_member(
+        object: ts_ident(name: row_name),
+        property: "querySelector",
+      ),
+      args: [ts_lit_str(value: join([".", workflow_progress_class], ""))],
+    ),
+  )
+}
+
+fn workflow_dynamic_stage_selector_expr() -> TsExpr {
+  ts_binop(
+    left: ts_binop(
+      left: ts_lit_str(value: join([
+        "[",
+        workflow_stage_data_attribute,
+        "=\"",
+      ], "")),
+      op: "+",
+      right: ts_member(object: ts_ident(name: "seg"), property: "kind"),
+    ),
+    op: "+",
+    right: ts_lit_str(value: "\"]"),
+  )
+}
+
+fn workflow_clear_rendered_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(
+      object: ts_call(
+        callee: ts_member(
+          object: ts_ident(name: "document"),
+          property: "querySelectorAll",
+        ),
+        args: [ts_lit_str(value: join([".", workflow_progress_class], ""))],
+      ),
+      property: "forEach",
+    ),
+    args: [ts_arrow(
+      params: ["wp"],
+      body: ts_expr_stmt(expr: ts_binop(
+        left: ts_member(object: ts_ident(name: "wp"), property: "hidden"),
+        op: "=",
+        right: ts_ident(name: "true"),
+      )),
+    )],
+  ))
+}
+
+fn workflow_refuse_visible_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(
+      object: ts_call(
+        callee: ts_member(
+          object: ts_ident(name: "document"),
+          property: "querySelectorAll",
+        ),
+        args: [ts_lit_str(value: join([
+          ".",
+          workflow_progress_class,
+          ":not([hidden]) .",
+          workflow_stage_class,
+        ], ""))],
+      ),
+      property: "forEach",
+    ),
+    args: [ts_arrow(params: ["stage"], body: ts_block(stmts: [
+      ts_expr_stmt(expr: ts_binop(
+        left: ts_member(
+          object: ts_member(
+            object: ts_ident(name: "stage"),
+            property: "dataset",
+          ),
+          property: "state",
+        ),
+        op: "=",
+        right: ts_lit_str(value: "refused"),
+      )),
+      ts_expr_stmt(expr: ts_binop(
+        left: ts_member(object: ts_ident(name: "stage"), property: "title"),
+        op: "=",
+        right: ts_ident(name: "why"),
+      )),
+    ]))],
+  ))
+}
+
+fn workflow_mark_attempt_stmts() -> List<TsStmt> {
+  [
+    ts_const(name: "wr", value: ts_call(
+      callee: ts_member(
+        object: ts_ident(name: "document"),
+        property: "querySelector",
+      ),
+      args: [workflow_row_selector_expr(
+        node_id: ts_member(
+          object: ts_ident(name: "attempt"),
+          property: "node_id",
+        ),
+      )],
+    )),
+    ts_const(
+      name: "wp",
+      value: workflow_progress_in_row_expr(row_name: "wr"),
+    ),
+    ts_if(
+      cond: ts_ident(name: "wp"),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "wp"), property: "hidden"),
+          op: "=",
+          right: ts_ident(name: "false"),
+        )),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "wp"), property: "title"),
+          op: "=",
+          right: ts_binop(
+            left: ts_member(
+              object: ts_ident(name: "attempt"),
+              property: "provider_status",
+            ),
+            op: "+",
+            right: ts_cond(
+              test: ts_member(
+                object: ts_ident(name: "attempt"),
+                property: "provider_detail",
+              ),
+              consequent: ts_binop(
+                left: ts_lit_str(value: " — "),
+                op: "+",
+                right: ts_member(
+                  object: ts_ident(name: "attempt"),
+                  property: "provider_detail",
+                ),
+              ),
+              alternate: ts_lit_str(value: ""),
+            ),
+          ),
+        )),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(
+            object: ts_ident(name: "wp"),
+            property: "setAttribute",
+          ),
+          args: [
+            ts_lit_str(value: "aria-label"),
+            ts_binop(
+              left: ts_lit_str(value: "Workflow: "),
+              op: "+",
+              right: ts_member(
+                object: ts_ident(name: "attempt"),
+                property: "provider_status",
+              ),
+            ),
+          ],
+        )),
+        ts_const(name: "wa", value: ts_call(
+          callee: ts_member(
+            object: ts_ident(name: "wp"),
+            property: "querySelector",
+          ),
+          args: [ts_lit_str(value: join([
+            ".",
+            workflow_activity_class,
+          ], ""))],
+        )),
+        ts_if(
+          cond: ts_ident(name: "wa"),
+          then: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(
+                object: ts_ident(name: "wa"),
+                property: "textContent",
+              ),
+              op: "=",
+              right: ts_binop(
+                left: ts_member(
+                  object: ts_ident(name: "attempt"),
+                  property: "provider_activity",
+                ),
+                op: "||",
+                right: ts_member(
+                  object: ts_ident(name: "attempt"),
+                  property: "provider_status",
+                ),
+              ),
+            )),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "wa"), property: "title"),
+              op: "=",
+              right: ts_member(
+                object: ts_ident(name: "attempt"),
+                property: "provider_detail",
+              ),
+            )),
+          ]),
+          else_stmt: none,
+        ),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(
+            object: ts_member(
+              object: ts_ident(name: "attempt"),
+              property: "segments",
+            ),
+            property: "forEach",
+          ),
+          args: [ts_arrow(params: ["seg"], body: ts_block(stmts: [
+            ts_const(name: "stage", value: ts_call(
+              callee: ts_member(
+                object: ts_ident(name: "wp"),
+                property: "querySelector",
+              ),
+              args: [workflow_dynamic_stage_selector_expr()],
+            )),
+            ts_if(
+              cond: ts_ident(name: "stage"),
+              then: ts_block(stmts: [
+                ts_expr_stmt(expr: ts_binop(
+                  left: ts_member(
+                    object: ts_member(
+                      object: ts_ident(name: "stage"),
+                      property: "dataset",
+                    ),
+                    property: "state",
+                  ),
+                  op: "=",
+                  right: ts_member(
+                    object: ts_ident(name: "seg"),
+                    property: "state",
+                  ),
+                )),
+                ts_expr_stmt(expr: ts_binop(
+                  left: ts_member(
+                    object: ts_ident(name: "stage"),
+                    property: "title",
+                  ),
+                  op: "=",
+                  right: ts_member(
+                    object: ts_ident(name: "seg"),
+                    property: "detail",
+                  ),
+                )),
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_member(
+                    object: ts_ident(name: "stage"),
+                    property: "setAttribute",
+                  ),
+                  args: [
+                    ts_lit_str(value: "aria-label"),
+                    ts_binop(
+                      left: ts_binop(
+                        left: ts_binop(
+                          left: ts_member(
+                            object: ts_ident(name: "seg"),
+                            property: "label",
+                          ),
+                          op: "+",
+                          right: ts_lit_str(value: ": "),
+                        ),
+                        op: "+",
+                        right: ts_member(
+                          object: ts_ident(name: "seg"),
+                          property: "state",
+                        ),
+                      ),
+                      op: "+",
+                      right: ts_cond(
+                        test: ts_member(
+                          object: ts_ident(name: "seg"),
+                          property: "detail",
+                        ),
+                        consequent: ts_binop(
+                          left: ts_lit_str(value: " — "),
+                          op: "+",
+                          right: ts_member(
+                            object: ts_ident(name: "seg"),
+                            property: "detail",
+                          ),
+                        ),
+                        alternate: ts_lit_str(value: ""),
+                      ),
+                    ),
+                  ],
+                )),
+              ]),
+              else_stmt: none,
+            ),
+          ]))],
+        )),
+      ]),
+      else_stmt: none,
+    ),
+  ]
+}
+
+fn workflow_fetch_request_statements() -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_member(
+            object: ts_call(
+              callee: ts_member(
+                object: ts_call(
+                  callee: ts_ident(name: "fetch"),
+                  args: [ts_lit_str(value: workflow_route_path)],
+                ),
+                property: "then",
+              ),
+              args: [ts_arrow(params: ["r"], body: ts_block(stmts: [
+                ts_return(expr: ts_call(
+                  callee: ts_member(
+                    object: ts_ident(name: "r"),
+                    property: "json",
+                  ),
+                  args: [],
+                )),
+              ]))],
+            ),
+            property: "then",
+          ),
+          args: [ts_arrow(params: ["wj"], body: ts_block(stmts: [
+            ts_if(
+              cond: ts_member(
+                object: ts_ident(name: "wj"),
+                property: "observe_refused",
+              ),
+              then: ts_block(stmts: concat(
+                [
+                  ts_const(name: "why", value: ts_binop(
+                    left: ts_lit_str(
+                      value: "workflow observation refused: ",
+                    ),
+                    op: "+",
+                    right: ts_binop(
+                      left: ts_member(
+                        object: ts_ident(name: "wj"),
+                        property: "reason",
+                      ),
+                      op: "||",
+                      right: ts_lit_str(value: "no reason on the wire"),
+                    ),
+                  )),
+                  workflow_refuse_visible_stmt(),
+                ],
+                observation_refused_banner_stmts(source: "workflow"),
+              )),
+              else_stmt: Present { value: ts_block(stmts: [
+                observation_clear_refused_banner_stmt(source: "workflow"),
+                workflow_clear_rendered_stmt(),
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_member(
+                    object: ts_member(
+                      object: ts_ident(name: "wj"),
+                      property: "attempts",
+                    ),
+                    property: "forEach",
+                  ),
+                  args: [ts_arrow(
+                    params: ["attempt"],
+                    body: ts_block(stmts: workflow_mark_attempt_stmts()),
+                  )],
+                )),
+              ]) },
+            ),
+          ]))],
+        ),
+        property: "catch",
+      ),
+      args: [ts_arrow(params: ["e"], body: ts_block(stmts: concat(
+        [
+          ts_const(name: "why", value: ts_binop(
+            left: ts_lit_str(value: "workflow observation refused: "),
+            op: "+",
+            right: ts_binop(
+              left: ts_ident(name: "e"),
+              op: "+",
+              right: ts_lit_str(value: ""),
+            ),
+          )),
+          workflow_refuse_visible_stmt(),
+        ],
+        observation_refused_banner_stmts(source: "workflow"),
+      )))],
+    )),
+  ]
+}
+
+fn workflow_schedule_refresh_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_ident(name: "setTimeout"),
+    args: [
+      ts_ident(name: js_poll_workflow_fn),
+      ts_lit_num(text: to_string(session_observation_refresh_ms)),
+    ],
+  ))
+}
+
+fn workflow_fetch_statements() -> List<TsStmt> {
+  [
+    ts_const(
+      name: js_refresh_workflow_fn,
+      value: ts_arrow(
+        params: [],
+        body: ts_block(stmts: workflow_fetch_request_statements()),
+      ),
+    ),
+    ts_const(
+      name: js_poll_workflow_fn,
+      value: ts_arrow(params: [], body: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_ident(name: js_refresh_workflow_fn),
+          args: [],
+        )),
+        workflow_schedule_refresh_stmt(),
+      ])),
+    ),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_ident(name: js_poll_workflow_fn),
+      args: [],
+    )),
+  ]
+}
+
 fn dispatch_client_program_for(
   selector: String,
   url_expr: TsExpr,
@@ -1874,9 +2349,11 @@ fn dispatch_client_program_for(
                     swatch_toggle_bind_statements(),
                     concat(
                       sessions_fetch_statements(),
+                    concat(
+                      attempts_fetch_statements(),
                       concat(
-                        attempts_fetch_statements(),
-                        instance_statements)))))))))),
+                        workflow_fetch_statements(),
+                        instance_statements))))))))))),
   }
 }
 

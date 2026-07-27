@@ -58,6 +58,9 @@ import gunbc.roadmap_belt_actuate {
   BeltAttempts, AttemptsObserved, AttemptsRefused,
   belt_attempts_observe, belt_attempts_observe_for_instance,
   belt_attempts_observed_json, belt_attempts_http_status,
+  belt_workflow_attempts_observe_for_instance,
+  belt_workflow_attempts_observed_json,
+  belt_workflow_attempts_http_status,
   BeltStopResult, belt_stop_node, belt_stop_node_for_instance,
   belt_stop_result_json_value, belt_stop_http_status,
 }
@@ -98,6 +101,7 @@ type RoadmapServeHandler
   | SandboxEchoHandler
   | SessionsJsonHandler
   | AttemptsJsonHandler
+  | WorkflowJsonHandler
   | BeltStopHandler
 
 data roadmap_serve_table_build_note: String = "Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo in any route literal would have silently become a second root matcher, a widen at the very seam §5 forbids). The build is now a typed fold: the FIRST malformed literal refuses the WHOLE table (RoadmapServeTableRefused carries raw/segment/reason — typed, located), and the serve entry answers EVERY request with a 500 naming the broken literal until it is fixed — a loudly broken dashboard, never silently wrong routing. The RED control is witness_malformed_route_literal_refuses_table (a bad literal through the same build fold -> Refused)."
@@ -122,6 +126,7 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: "/instance.json", handler: DashboardInstanceHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/sessions.json", handler: SessionsJsonHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/attempts.json", handler: AttemptsJsonHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/workflow.json", handler: WorkflowJsonHandler },
     RoadmapServeRouteSpec { method: GET, raw: roadmap_dispatch_asset_path, handler: DispatchAssetHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/sandbox", handler: SandboxPageHandler },
     RoadmapServeRouteSpec { method: GET, raw: sandbox_asset_path, handler: SandboxAssetHandler },
@@ -260,6 +265,10 @@ fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
       key: "dispatch_worktree_root",
       value: json_string(s: instance.dispatch_worktree_root as String),
     ),
+    json_kv(
+      key: "dispatch_attempt_state_root",
+      value: json_string(s: instance.dispatch_attempt_state_root as String),
+    ),
     json_kv(key: "listen_port", value: json_int(n: instance.listen_port)),
     json_kv(key: "serve_function", value: json_string(s: instance.serve_function as String)),
     json_kv(key: "dispatch_base_ref", value: json_string(s: instance.dispatch_base_ref as String)),
@@ -331,6 +340,7 @@ fn roadmap_serve_invoke_for_instance(
     SandboxEchoHandler => sandbox_echo_response(request: request)
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
+    WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)
     BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params)
   }
 }
@@ -387,6 +397,25 @@ fn serve_attempts_response_for_instance(
 
 fn serve_attempts_response() -> ServeHttpResponse {
   serve_attempts_response_for_instance(instance: srv1_live_dashboard_instance())
+}
+
+data serve_workflow_note: String = "GET /workflow.json is the evidence-derived attempt pipeline. One observation joins current modeled state, Codex events, retained process exit, and the node's declared validation contract. It never upgrades provider completion into verification or review. A refused attempts ledger returns 503; per-attempt event/process refusals remain explicit segment states in a 200 body so one damaged attempt cannot erase evidence from every other row."
+
+fn serve_workflow_response_for_instance(
+  instance: HostDashboardInstance,
+) -> ServeHttpResponse {
+  let observed = belt_workflow_attempts_observe_for_instance(
+    instance: instance,
+  )
+  serve_text_response(
+    status: belt_workflow_attempts_http_status(observed: observed),
+    content_type: application_json_utf8,
+    body: belt_workflow_attempts_observed_json(observed: observed),
+  )
+}
+
+fn serve_workflow_response() -> ServeHttpResponse {
+  serve_workflow_response_for_instance(instance: srv1_live_dashboard_instance())
 }
 
 data serve_sessions_note: String = "U2: the live-session observation as a wire route (GET /sessions.json), so the client marks live rows without the page render losing purity (the healthz digest is over the pure body; live state arrives by fetch exactly as dispatch answers do). ONE observation feeds both the status and the body — observing twice could disagree between them. Refusal serves 503 with the typed reason: an unknowable session set is loud at the client, never an empty panel."

@@ -16,7 +16,10 @@ import extdeps.tmux {
   shape_tmux_new_session_argv_for,
 }
 import extdeps.ssh.session { shape_scp_copy_to_argv }
-import extdeps.llm.cli { shape_codex_login_status_env_args_for_program }
+import extdeps.llm.cli {
+  shape_codex_login_status_env_args_for_program,
+  shape_codex_version_env_args_for_program,
+}
 import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
 import gunbc.roadmap_dashboard_instance {
   srv1_lab_dashboard_instance,
@@ -47,6 +50,7 @@ import gunbc.roadmap_dashboard_instance_apply {
   dashboard_source_preflight_decision,
   dashboard_apply_preflight_json_value,
   dashboard_bootstrap_preflight_decision,
+  dashboard_required_target_executables,
 }
 import extdeps.languages.json.emit { serialize_json }
 
@@ -193,26 +197,67 @@ test fn dashboard_service_is_named_and_scoped_off_production() -> Bool {
     ]
 }
 
-test fn dashboard_provider_dependency_and_auth_are_one_binding() -> Bool {
+test fn dashboard_provider_runtime_and_auth_share_one_state_binding() -> Bool {
   let lab = srv1_lab_dashboard_instance()
-  let argv = concat(
+  let runtime_argv = concat(
+    ["/usr/bin/env"],
+    shape_codex_version_env_args_for_program(
+      program: dashboard_instance_provider_executable(instance: lab) as String,
+      codex_home: dashboard_instance_provider_state_root(instance: lab) as String,
+    ),
+  )
+  let auth_argv = concat(
     ["/usr/bin/env"],
     shape_codex_login_status_env_args_for_program(
       program: dashboard_instance_provider_executable(instance: lab) as String,
       codex_home: dashboard_instance_provider_state_root(instance: lab) as String,
     ),
   )
-  argv == [
+  runtime_argv == [
+    "/usr/bin/env",
+    "CODEX_HOME=/home/briansrls/.codex@gunbc-roadmap",
+    "/usr/bin/codex",
+    "--version",
+  ]
+    && auth_argv == [
     "/usr/bin/env",
     "CODEX_HOME=/home/briansrls/.codex@gunbc-roadmap",
     "/usr/bin/codex",
     "login",
     "status",
   ]
-    && match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    && match typed_argv_shell_safe_refusal_argv(argv: runtime_argv) {
       Absent => true
       Present { value: _ } => false
     }
+    && match typed_argv_shell_safe_refusal_argv(argv: auth_argv) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+test fn dashboard_target_preflight_derives_dispatch_platform_dependencies() -> Bool {
+  let required = dashboard_required_target_executables(
+    instance: srv1_lab_dashboard_instance(),
+  )
+  count(required) == 14
+    && any(required, path => path == ("/usr/bin/sh" as FilePath))
+    && any(required, path => path == ("/usr/bin/tee" as FilePath))
+    && any(required, path => path == ("/usr/bin/env" as FilePath))
+    && any(required, path => path == ("/usr/bin/install" as FilePath))
+    && any(required, path => path == ("/usr/bin/ln" as FilePath))
+    && !any(
+      required,
+      path => path == ("/home/briansrls/.cargo/bin/cargo" as FilePath),
+    )
+    && !any(
+      required,
+      path => path == ("/home/briansrls/.cargo/bin/rustc" as FilePath),
+    )
+    && !any(
+      required,
+      path => path == ("/home/briansrls/.cargo/bin/rustfmt" as FilePath),
+    )
 }
 
 test fn dashboard_health_requires_intended_instance_identity() -> Bool {
@@ -239,10 +284,17 @@ test fn dashboard_health_requires_intended_instance_identity() -> Bool {
 test fn dashboard_plan_is_end_to_end_and_production_disjoint() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let rows = dashboard_instance_provision_plan_rows(instance: lab)
-  count(rows) == 12
+  count(rows) == 14
     && any(rows, row => row.kind == "hydrate-controller-history")
     && any(rows, row => row.kind == "prepare-git-bundle")
     && any(rows, row => row.kind == "stage-git-bundle")
+    && any(
+      rows,
+      row =>
+        row.kind == "ensure-directory"
+          && row.target == lab.dispatch_attempt_state_root as String,
+    )
+    && any(rows, row => row.kind == "verify-provider-runtime")
     && any(rows, row => row.kind == "verify-provider-auth")
     && any(rows, row => row.kind == "verify-health")
     && dashboard_instances_have_disjoint_owned_paths(
@@ -401,7 +453,8 @@ test fn dashboard_instance_apply_model_keystone_holds() -> Bool {
   dashboard_source_transport_argv_is_exact_and_atomic()
     && dashboard_local_origin_ref_translation_is_exact()
     && dashboard_service_is_named_and_scoped_off_production()
-    && dashboard_provider_dependency_and_auth_are_one_binding()
+    && dashboard_provider_runtime_and_auth_share_one_state_binding()
+    && dashboard_target_preflight_derives_dispatch_platform_dependencies()
     && dashboard_health_requires_intended_instance_identity()
     && dashboard_plan_is_end_to_end_and_production_disjoint()
     && dashboard_refusal_receipt_is_typed_and_located()

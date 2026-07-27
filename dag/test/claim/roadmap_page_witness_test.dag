@@ -1,6 +1,7 @@
 module test.claim.roadmap_page_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 
 import std.markup { Fragment, Element, FragmentText, attr }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
@@ -150,6 +151,7 @@ fn signed_off_dispatch_node() -> RoadmapNode {
     line: base.line,
     carriers: base.carriers,
     sizing: base.sizing,
+    execution: base.execution,
     owner: base.owner,
     signoff: gunbc.roadmap_authority.signed(by: "op", works: true, scope_equivalent: true, as_expected: true),
   }
@@ -165,6 +167,9 @@ test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool {
   let h = dispatch_doc_html_for(rn: ready_dispatch_node())
   string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
     && string_contains(s: h, pattern: "data-node=")
+    && string_contains(s: h, pattern: "class=\"workflow-progress\" hidden")
+    && string_contains(s: h, pattern: "data-workflow-stage=\"environment\"")
+    && string_contains(s: h, pattern: "data-workflow-stage=\"review\"")
     && string_contains(s: h, pattern: "<script src=\"/assets/roadmap-dispatch.js\"")
     && !string_contains(s: h, pattern: "querySelectorAll")
     && !string_contains(s: h, pattern: "j.status")
@@ -173,6 +178,9 @@ test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool {
 test fn witness_dispatch_asset_reads_belt_b_status_contract() -> Bool {
   let js = dispatch_client_js_source()
   string_contains(s: js, pattern: "fetch('/dispatch/")
+    && string_contains(s: js, pattern: "fetch('/workflow.json')")
+    && string_contains(s: js, pattern: "provider_activity")
+    && string_contains(s: js, pattern: "attempt.segments.forEach")
     && string_contains(s: js, pattern: "s === 'spawned' ? 'ok'")
     && string_contains(s: js, pattern: "s === 'already_live' ? 'ok'")
     && !string_contains(s: js, pattern: "j.ok")

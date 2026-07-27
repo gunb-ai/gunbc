@@ -2,6 +2,25 @@ module gunbc.roadmap_dashboard_instance
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
+import gunbc.ensure { EnsureObserveOnly }
+import gunbc.roadmap_execution_contract {
+  GitWorkspaceCapability,
+  TmuxSessionCapability,
+  TmuxPipeShellCapability,
+  TeeEventCaptureCapability,
+  EnvironmentBindingCapability,
+  AttemptStateDirectoryCapability,
+  AttemptCurrentPointerCapability,
+  GunbcClaimRunnerCapability,
+  CargoCapability,
+  RustcCapability,
+  RustfmtCapability,
+  ExecutionCapability,
+  CapabilityRealization,
+  DispatchHostEnvironment,
+  dispatch_host_realization,
+  dispatch_platform_required_capabilities,
+}
 import gunbc.host_layout {
   srv1_gunbc_repo_root,
   srv1_gunbc_serve_binary,
@@ -42,6 +61,8 @@ type HostDashboardInstance {
   repo_root: FilePath
   dispatch_base_ref: NonEmptyStr
   dispatch_worktree_root: FilePath
+  dispatch_attempt_state_root: FilePath
+  execution_environment: DispatchHostEnvironment
   provider_state: DashboardProviderStateBinding
   serve_binary: FilePath
   serve_function: NonEmptyStr
@@ -53,7 +74,7 @@ type HostDashboardInstance {
   source_seed: DashboardSourceSeed
 }
 
-data dashboard_instance_note: String = "A dashboard is an explicit host instance, not an ambient serve process. One value moves the source repository, local Git origin, attempt-worktree root, provider state binding, tmux server, listen address, handler entrypoint, and actuation posture together. Selection is by the serve entry function that receives this value; no environment variable may replace one projection independently. Production uses the user's default tmux server for compatibility. Labs and previews use named tmux servers and roots disjoint from production. Provider credentials remain pre-existing user-authored state and are referenced, never copied into a deployment payload."
+data dashboard_instance_note: String = "A dashboard is an explicit host instance, not an ambient serve process. One value moves the source repository, local Git origin, attempt-worktree root, semantic execution-capability realizations, provider state binding, tmux server, listen address, handler entrypoint, and actuation posture together. Selection is by the serve entry function that receives this value; no environment variable may replace one projection independently. Production uses the user's default tmux server for compatibility. Labs and previews use named tmux servers and roots disjoint from production. Provider credentials remain pre-existing user-authored state and are referenced, never copied into a deployment payload. Capability realizations name exact executable paths and identity probes; observe-only means absence refuses admission until a separate capability-specific provisioner exists, never that generic Ensure guesses an installer."
 
 data srv1_dashboard_live_id: NonEmptyStr = "srv1-live" as NonEmptyStr
 data srv1_dashboard_lab_id: NonEmptyStr = "srv1-lab-codex-feedback-v0" as NonEmptyStr
@@ -62,6 +83,7 @@ data srv2_dashboard_preview_id: NonEmptyStr = "srv2-preview-codex-feedback-v0" a
 data srv1_dashboard_lab_root: FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0" as FilePath
 data srv2_dashboard_preview_root: FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-preview-v0" as FilePath
 data dashboard_feedback_controller_repo: FilePath = "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath
+data dashboard_environment_binding_executable: FilePath = "/usr/bin/env" as FilePath
 
 fn dashboard_instance_child(root: FilePath, child: String) -> FilePath {
   join([root as String, "/", child], "") as FilePath
@@ -77,6 +99,34 @@ fn dashboard_instance_provider_executable(instance: HostDashboardInstance) -> Fi
   match instance.provider_state {
     DashboardExistingProviderState { root: _, executable } => executable
   }
+}
+
+fn dashboard_instance_capability_executable(
+  instance: HostDashboardInstance,
+  cap: ExecutionCapability,
+) -> FilePath? {
+  match dispatch_host_realization(
+    environment: instance.execution_environment,
+    capability: cap,
+  ) {
+    Present { value: realization } =>
+      Present { value: realization.executable }
+    Absent => none
+  }
+}
+
+fn dashboard_instance_dispatch_platform_executables(
+  instance: HostDashboardInstance,
+) -> List<FilePath> {
+  dispatch_platform_required_capabilities()
+    |> flat_map(cap =>
+      match dashboard_instance_capability_executable(
+        instance: instance,
+        cap: cap,
+      ) {
+        Present { value: executable } => [executable]
+        Absent => []
+      })
 }
 
 fn dashboard_instance_ownership_marker_path(instance: HostDashboardInstance) -> FilePath {
@@ -148,6 +198,92 @@ fn dashboard_named_tmux_server(instance_id: NonEmptyStr) -> TmuxServerScope {
   NamedTmuxServer { socket_name: instance_id }
 }
 
+fn dashboard_execution_environment(
+  serve_binary: FilePath,
+) -> DispatchHostEnvironment {
+  DispatchHostEnvironment {
+    realizations: [
+      CapabilityRealization {
+        capability: GitWorkspaceCapability,
+        executable: "/usr/bin/git" as FilePath,
+        identity_args: ["--version"],
+        identity_contains: "git version" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
+      },
+      CapabilityRealization {
+        capability: TmuxSessionCapability,
+        executable: "/usr/bin/tmux" as FilePath,
+        identity_args: ["-V"],
+        identity_contains: "tmux" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
+      },
+      CapabilityRealization {
+        capability: TmuxPipeShellCapability,
+        executable: "/usr/bin/sh" as FilePath,
+        identity_args: ["-c", "printf gunbc-tmux-pipe-shell"],
+        identity_contains: "gunbc-tmux-pipe-shell" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
+      },
+      CapabilityRealization {
+        capability: TeeEventCaptureCapability,
+        executable: "/usr/bin/tee" as FilePath,
+        identity_args: ["--version"],
+        identity_contains: "coreutils" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
+      },
+      CapabilityRealization {
+        capability: EnvironmentBindingCapability,
+        executable: dashboard_environment_binding_executable,
+        identity_args: ["--version"],
+        identity_contains: "coreutils" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
+      },
+      CapabilityRealization {
+        capability: AttemptStateDirectoryCapability,
+        executable: "/usr/bin/install" as FilePath,
+        identity_args: ["--version"],
+        identity_contains: "coreutils" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
+      },
+      CapabilityRealization {
+        capability: AttemptCurrentPointerCapability,
+        executable: "/usr/bin/ln" as FilePath,
+        identity_args: ["--version"],
+        identity_contains: "coreutils" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
+      },
+      CapabilityRealization {
+        capability: GunbcClaimRunnerCapability,
+        executable: serve_binary,
+        identity_args: ["--help"],
+        identity_contains: "A causal compiler" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
+      },
+      CapabilityRealization {
+        capability: CargoCapability,
+        executable: "/home/briansrls/.cargo/bin/cargo" as FilePath,
+        identity_args: ["--version"],
+        identity_contains: "cargo" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
+      },
+      CapabilityRealization {
+        capability: RustcCapability,
+        executable: "/home/briansrls/.cargo/bin/rustc" as FilePath,
+        identity_args: ["--version"],
+        identity_contains: "rustc" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
+      },
+      CapabilityRealization {
+        capability: RustfmtCapability,
+        executable: "/home/briansrls/.cargo/bin/rustfmt" as FilePath,
+        identity_args: ["--version"],
+        identity_contains: "rustfmt" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
+      },
+    ],
+  }
+}
+
 fn srv1_live_dashboard_instance() -> HostDashboardInstance {
   HostDashboardInstance {
     instance_id: srv1_dashboard_live_id,
@@ -159,6 +295,10 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     repo_root: srv1_gunbc_repo_root,
     dispatch_base_ref: "origin/main" as NonEmptyStr,
     dispatch_worktree_root: srv1_dispatch_worktree_root,
+    dispatch_attempt_state_root: "/opt/gunbc/attempt-state" as FilePath,
+    execution_environment: dashboard_execution_environment(
+      serve_binary: srv1_gunbc_serve_binary,
+    ),
     provider_state: DashboardExistingProviderState {
       root: srv1_roadmap_codex_home,
       executable: "/usr/bin/codex" as FilePath,
@@ -193,6 +333,10 @@ fn isolated_dashboard_instance(
     repo_root: dashboard_instance_child(root: root, child: "source"),
     dispatch_base_ref: "origin/main" as NonEmptyStr,
     dispatch_worktree_root: dashboard_instance_child(root: root, child: "attempts"),
+    dispatch_attempt_state_root: dashboard_instance_child(root: root, child: "attempt-state"),
+    execution_environment: dashboard_execution_environment(
+      serve_binary: srv1_gunbc_serve_binary,
+    ),
     provider_state: DashboardExistingProviderState {
       root: srv1_roadmap_codex_home,
       executable: "/usr/bin/codex" as FilePath,
@@ -246,6 +390,7 @@ fn dashboard_instance_owned_paths(instance: HostDashboardInstance) -> List<FileP
     instance.local_origin_root,
     instance.repo_root,
     instance.dispatch_worktree_root,
+    instance.dispatch_attempt_state_root,
   ]
 }
 
@@ -310,6 +455,10 @@ type DashboardInstanceProvisionOp
       port: Int,
       tmux_server: TmuxServerScope,
     }
+  | DashboardVerifyProviderRuntime {
+      executable: FilePath,
+      state_root: FilePath,
+    }
   | DashboardVerifyProviderAuth {
       executable: FilePath,
       state_root: FilePath,
@@ -338,6 +487,7 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
   let common = [
     DashboardEnsureDirectory { path: instance.instance_root },
     DashboardEnsureDirectory { path: instance.dispatch_worktree_root },
+    DashboardEnsureDirectory { path: instance.dispatch_attempt_state_root },
     DashboardEnsureOwnershipMarker {
       path: dashboard_instance_ownership_marker_path(instance: instance),
       instance_id: instance.instance_id,
@@ -372,6 +522,10 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
     ]
   }
   concat(controller_source_ops, concat(common, concat(source_ops, [
+    DashboardVerifyProviderRuntime {
+      executable: dashboard_instance_provider_executable(instance: instance),
+      state_root: dashboard_instance_provider_state_root(instance: instance),
+    },
     DashboardVerifyProviderAuth {
       executable: dashboard_instance_provider_executable(instance: instance),
       state_root: dashboard_instance_provider_state_root(instance: instance),
@@ -478,6 +632,16 @@ fn dashboard_instance_provision_op_row(
           to_string(port),
         ], ""),
       }
+    DashboardVerifyProviderRuntime { executable, state_root } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "verify-provider-runtime" as NonEmptyStr,
+        target: executable as String,
+        detail: join([
+          "run --version through the modeled environment binding with CODEX_HOME=",
+          state_root as String,
+          "; require codex-cli identity",
+        ], ""),
+      }
     DashboardVerifyProviderAuth { executable, state_root } =>
       DashboardInstanceProvisionPlanRow {
         kind: "verify-provider-auth" as NonEmptyStr,
@@ -509,7 +673,11 @@ type DashboardInstanceObserved {
   origin_present: Bool
   source_present: Bool
   attempts_present: Bool
+  attempt_state_present: Bool
+  provider_runtime_ready: Bool
+  provider_runtime_detail: String
   provider_authenticated: Bool
+  provider_auth_detail: String
   service_present: Bool
   health_current: Bool
   production_untouched: Bool
@@ -565,6 +733,8 @@ fn dashboard_instance_reconcile(
       && observed.origin_present
       && observed.source_present
       && observed.attempts_present
+      && observed.attempt_state_present
+      && observed.provider_runtime_ready
       && observed.provider_authenticated
       && observed.service_present
       && observed.source_anchor_matches {

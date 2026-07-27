@@ -11,6 +11,7 @@ import gunbc.roadmap_model {
   SectionElement, Group, SectionGroup,
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { next_spawnable, dispatch_brief_template }
 import std.upsert_decision {
@@ -68,6 +69,11 @@ import gunbc.roadmap_dispatch_actuator {
   SessionNameObserved,
   SessionObserved,
   SpawnSession,
+  TmuxAttemptPanesParse,
+  AttemptPanesParsed,
+  AttemptPanesParseRefused,
+  parse_tmux_attempt_panes_output,
+  dispatch_event_pipe_command,
 }
 import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -82,6 +88,7 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
     sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -196,10 +203,16 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
     attempt_key: "feedfacefeedface",
     provider: CodexCliProvider,
   )
-  let wire = join(cmds.tmux_spawn.args, separator: "\0")
-  cmds.tmux_spawn.program == "tmux"
-    && string_contains(s: wire, pattern: "\0codex\0--ask-for-approval\0never\0exec")
-    && !string_contains(s: wire, pattern: "\0claude\0")
+  let create_wire = join(cmds.tmux_spawn.args, separator: "\0")
+  let provider_wire = join(cmds.provider_start.args, separator: "\0")
+  cmds.tmux_spawn.program == "/usr/bin/tmux"
+    && string_contains(s: create_wire, pattern: "\0/usr/bin/sh")
+    && !string_contains(s: create_wire, pattern: "\0codex\0")
+    && string_contains(
+      s: provider_wire,
+      pattern: "\0/usr/bin/codex\0--ask-for-approval\0never\0exec",
+    )
+    && !string_contains(s: provider_wire, pattern: "\0claude\0")
 }
 
 test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool {
@@ -216,20 +229,72 @@ test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool 
     provider: CodexCliProvider,
   )
   let git_wire = join(commands.worktree_add.args, separator: "\0")
+  let state_wire = join(commands.attempt_state_prepare.args, separator: "\0")
+  let pointer_wire = join(commands.attempt_current_pointer.args, separator: "\0")
   let tmux_wire = join(commands.tmux_spawn.args, separator: "\0")
+  let pipe_wire = join(commands.tmux_event_pipe.args, separator: "\0")
+  let provider_wire = join(commands.provider_start.args, separator: "\0")
   string_contains(
     s: git_wire,
     pattern: "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempts/ts-dispatch-provider-events-afeedfacefeedface",
-  )
+    )
     && string_contains(s: git_wire, pattern: "\0origin/main")
+    && commands.attempt_state_prepare.program == "/usr/bin/install"
+    && string_contains(
+      s: state_wire,
+      pattern: "\0/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/ts-dispatch-provider-events-afeedfacefeedface",
+    )
+    && commands.attempt_current_pointer.program == "/usr/bin/ln"
+    && string_contains(
+      s: pointer_wire,
+      pattern: "\0/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/ts-dispatch-provider-events-current",
+    )
     && starts_with(
       s: tmux_wire,
       prefix: "-L\0srv1-lab-codex-feedback-v0\0new-session\0-d\0-s\0gunbc-dispatch-ts-dispatch-provider-events",
     )
     && string_contains(
-      s: tmux_wire,
+      s: pipe_wire,
+      pattern: "provider-events.jsonl",
+    )
+    && string_contains(
+      s: provider_wire,
       pattern: "\0CODEX_HOME=/home/briansrls/.codex@gunbc-roadmap\0/usr/bin/codex\0",
     )
+}
+
+test fn witness_tmux_attempt_panes_parse_alive_and_exit() -> Bool {
+  match parse_tmux_attempt_panes_output(
+    output: "gunbc-dispatch-a\t0\t\tnode\ngunbc-dispatch-b\t1\t7\tnode\n",
+  ) {
+    AttemptPanesParsed { panes } =>
+      count(panes) == 2
+        && !panes.first().dead
+        && panes.skip(n: 1).first().dead
+        && panes.skip(n: 1).first().exit_code == Present { value: 7 }
+    AttemptPanesParseRefused { line_number: _, raw: _, reason: _ } => false
+  }
+}
+
+test fn witness_tmux_attempt_panes_malformed_row_refuses() -> Bool {
+  match parse_tmux_attempt_panes_output(
+    output: "gunbc-dispatch-a\t1\tbogus\tnode\n",
+  ) {
+    AttemptPanesParsed { panes: _ } => false
+    AttemptPanesParseRefused { line_number, raw, reason } =>
+      line_number == 1
+        && string_contains(s: raw, pattern: "bogus")
+        && string_contains(s: reason, pattern: "dead/status")
+  }
+}
+
+test fn witness_event_pipe_shell_quotes_dynamic_argv_tokens() -> Bool {
+  let command = dispatch_event_pipe_command(
+    tee_program: "/usr/bin/tee",
+    events_path: "/tmp/a';$(touch nope)",
+  )
+  let body = command.body as String
+  body == "exec '/usr/bin/tee' -a -- '/tmp/a'\\'';$(touch nope)'"
 }
 
 test fn codex_provider_v0_argv_keystone_holds() -> Bool {
@@ -238,6 +303,9 @@ test fn codex_provider_v0_argv_keystone_holds() -> Bool {
     && witness_codex_argv_is_unattended_but_sandboxed()
     && witness_selected_provider_shapes_codex_tmux_command()
     && witness_lab_instance_moves_repo_tmux_and_codex_state_together()
+    && witness_tmux_attempt_panes_parse_alive_and_exit()
+    && witness_tmux_attempt_panes_malformed_row_refuses()
+    && witness_event_pipe_shell_quotes_dynamic_argv_tokens()
     && witness_host_exec_argv_shapes_bound_to_extdeps()
 }
 

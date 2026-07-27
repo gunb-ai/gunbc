@@ -15,6 +15,7 @@ import gunbc.roadmap_dashboard_instance {
   DashboardEnsureLocalOrigin,
   DashboardEnsureSourceRepo,
   DashboardEnsureService,
+  DashboardVerifyProviderRuntime,
   DashboardVerifyProviderAuth,
   DashboardVerifyHealth,
   DashboardInstanceObserved,
@@ -100,6 +101,10 @@ fn plan_binds_instance_paths(
     DashboardEnsureDirectory { path } => path == instance.dispatch_worktree_root
     _ => false
   })
+  let attempt_state_bound = any(plan, op => match op {
+    DashboardEnsureDirectory { path } => path == instance.dispatch_attempt_state_root
+    _ => false
+  })
   let marker_bound = any(plan, op => match op {
     DashboardEnsureOwnershipMarker { path, instance_id } =>
       path == dashboard_instance_ownership_marker_path(instance: instance)
@@ -108,6 +113,12 @@ fn plan_binds_instance_paths(
   })
   let auth_bound = any(plan, op => match op {
     DashboardVerifyProviderAuth { executable, state_root } =>
+      state_root == dashboard_instance_provider_state_root(instance: instance)
+        && executable == dashboard_instance_provider_executable(instance: instance)
+    _ => false
+  })
+  let runtime_bound = any(plan, op => match op {
+    DashboardVerifyProviderRuntime { executable, state_root } =>
       state_root == dashboard_instance_provider_state_root(instance: instance)
         && executable == dashboard_instance_provider_executable(instance: instance)
     _ => false
@@ -130,7 +141,13 @@ fn plan_binds_instance_paths(
         && port == instance.listen_port
     _ => false
   })
-  source_bound && attempts_bound && marker_bound && auth_bound && service_bound
+  source_bound
+    && attempts_bound
+    && attempt_state_bound
+    && marker_bound
+    && runtime_bound
+    && auth_bound
+    && service_bound
 }
 
 fn plan_binds_source_ref_translation(
@@ -159,7 +176,7 @@ fn plan_binds_source_ref_translation(
 test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 12
+  count(plan) == 14
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
 }
@@ -176,7 +193,11 @@ fn lab_observed(
     origin_present: true,
     source_present: true,
     attempts_present: true,
+    attempt_state_present: true,
+    provider_runtime_ready: true,
+    provider_runtime_detail: "codex-cli test",
     provider_authenticated: true,
+    provider_auth_detail: "Logged in using ChatGPT",
     service_present: true,
     health_current: health_current,
     production_untouched: production_untouched,
@@ -249,7 +270,11 @@ test fn dashboard_bundle_is_required_for_convergence() -> Bool {
     origin_present: true,
     source_present: true,
     attempts_present: true,
+    attempt_state_present: true,
+    provider_runtime_ready: true,
+    provider_runtime_detail: "codex-cli test",
     provider_authenticated: true,
+    provider_auth_detail: "Logged in using ChatGPT",
     service_present: true,
     health_current: true,
     production_untouched: true,
@@ -304,7 +329,11 @@ test fn dashboard_reconcile_refuses_unmarked_existing_source() -> Bool {
     origin_present: true,
     source_present: true,
     attempts_present: false,
+    attempt_state_present: false,
+    provider_runtime_ready: false,
+    provider_runtime_detail: "provider runtime unavailable",
     provider_authenticated: false,
+    provider_auth_detail: "provider auth unavailable",
     service_present: false,
     health_current: false,
     production_untouched: true,
