@@ -27,9 +27,11 @@ import std.observation {
   BatchSegment,
   EntrySegment,
   ModuleSegment,
+  DeclarationSegment,
   PhaseSegment,
   observation_subject_render,
   observation_subject_contains,
+  observation_declaration_key,
   Measured,
   MeasuredValue,
   MeasuredUnavailable,
@@ -190,27 +192,30 @@ type ObservationActivity {
   batch: String
   entry: String
   module_path: String
+  declaration: String
   phase: String
 }
 
-data ci_activity_grain_note: String = "A subject path carries TWO grains a reader needs at once, and collapsing them loses the one that orients: the coarse phase the run is in (the batch label — witness discovery) and the fine activity inside it (typecheck of a named module). A projection that keeps only the deepest segment answers what is happening but not where, and one that keeps only the batch answers where but not what. The heartbeat sentence carries both because the crawl window proved both were missing."
+data ci_activity_grain_note: String = "A subject path carries TWO grains a reader needs at once, and collapsing them loses the one that orients: the coarse phase the run is in (the batch label — witness discovery) and the fine activity inside it (typecheck of a named module, or a declaration-grain witness). A projection that keeps only the deepest segment answers what is happening but not where, and one that keeps only the batch answers where but not what. The heartbeat sentence carries both because the crawl window proved both were missing."
 
 fn ci_subject_activity(subject: ObservationSubject) -> ObservationActivity {
   fold(
     subject.segments,
-    init: ObservationActivity { run: "", batch: "", entry: "", module_path: "", phase: "" },
+    init: ObservationActivity { run: "", batch: "", entry: "", module_path: "", declaration: "", phase: "" },
     f: (acc, seg) =>
       match seg {
         RunSegment { id: i } =>
-          ObservationActivity { run: i, batch: acc.batch, entry: acc.entry, module_path: acc.module_path, phase: acc.phase }
+          ObservationActivity { run: i, batch: acc.batch, entry: acc.entry, module_path: acc.module_path, declaration: acc.declaration, phase: acc.phase }
         BatchSegment { index: _, label: l } =>
-          ObservationActivity { run: acc.run, batch: l, entry: acc.entry, module_path: acc.module_path, phase: acc.phase }
+          ObservationActivity { run: acc.run, batch: l, entry: acc.entry, module_path: acc.module_path, declaration: acc.declaration, phase: acc.phase }
         EntrySegment { source_path: p } =>
-          ObservationActivity { run: acc.run, batch: acc.batch, entry: p, module_path: acc.module_path, phase: acc.phase }
+          ObservationActivity { run: acc.run, batch: acc.batch, entry: p, module_path: acc.module_path, declaration: acc.declaration, phase: acc.phase }
         ModuleSegment { module_path: m } =>
-          ObservationActivity { run: acc.run, batch: acc.batch, entry: acc.entry, module_path: m, phase: acc.phase }
+          ObservationActivity { run: acc.run, batch: acc.batch, entry: acc.entry, module_path: m, declaration: acc.declaration, phase: acc.phase }
+        DeclarationSegment { declaration: d } =>
+          ObservationActivity { run: acc.run, batch: acc.batch, entry: acc.entry, module_path: acc.module_path, declaration: observation_declaration_key(d: d), phase: acc.phase }
         PhaseSegment { name: n } =>
-          ObservationActivity { run: acc.run, batch: acc.batch, entry: acc.entry, module_path: acc.module_path, phase: n }
+          ObservationActivity { run: acc.run, batch: acc.batch, entry: acc.entry, module_path: acc.module_path, declaration: acc.declaration, phase: n }
       }
   )
 }
@@ -232,6 +237,8 @@ fn ci_subject_detail_text(subject: ObservationSubject) -> String {
   let a = ci_subject_activity(subject: subject)
   if a.module_path != "" && a.phase != "" {
     concat(a.phase, concat(" ", a.module_path))
+  } else if a.declaration != "" {
+    a.declaration
   } else if a.module_path != "" {
     a.module_path
   } else if a.phase != "" {

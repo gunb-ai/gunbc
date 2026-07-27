@@ -12,8 +12,6 @@ import v2.std.orchestration_emit {
   orch_construct_run_rawline,
   orch_construct_retry,
   orch_construct_retry_1level,
-  orch_construct_retry_escalation_final,
-  orch_construct_retry_escalation_step,
   orch_construct_seq2,
   orch_construct_if,
   orch_construct_if_else,
@@ -38,6 +36,7 @@ import v2.extdeps.languages.bash {
   bash_redir_stdout_and_stderr_null_source_text,
   bash_redir_stderr_null_source_text,
   bash_redir_stdout_to_stderr_source_text,
+  bash_redir_stdout_null_source_text,
   bash_redir_to_file_source_text
 }
 import v2.extdeps.languages.bash_orch_tier2 {
@@ -87,6 +86,7 @@ import v2.std.orchestration {
   CaptureSpec,
   DiscardAll,
   DiscardErr,
+  DiscardOut,
   StdoutAndStderr,
   ToFile,
   IgnoreFail,
@@ -218,6 +218,7 @@ fn orch_emit_redir_suffix(r: RedirectSpec) -> Outcome<String> {
   match r {
     DiscardAll => outcome_accepted(bash_redir_stdout_and_stderr_null_source_text)
     DiscardErr => outcome_accepted(bash_redir_stderr_null_source_text)
+    DiscardOut => outcome_accepted(bash_redir_stdout_null_source_text)
     StdoutAndStderr => outcome_accepted(bash_redir_stdout_to_stderr_source_text)
     ToFile { path: p } =>
       if !orch_shell_unquoted_path_ok(path: p) {
@@ -796,51 +797,95 @@ fn orch_emit_step(s: PipelineStep, medium: OrchestrationEmitMedium) -> Outcome<e
   }
 }
 
-fn orch_retry_step_command(s: PipelineStep) -> Optional<String> {
-  match s {
-    Do { run: r } =>
-      match r.redirect {
-        Absent =>
-          match r.capture {
-            Absent => Present { value: r.command }
-            Present { value: _ } => Absent
-          }
-        Present { value: _ } => Absent
-      }
-    Comment { text: _ } => Absent
-    Exit { status: _ } => Absent
-    If { cond: _, then_: _, else_: _ } => Absent
-    For { binder: _, over: _, body: _ } => Absent
-    While { cond: _, body: _ } => Absent
-    BoundedPoll { max_attempts: _, body: _, success: _ } => Absent
-    Retry { body: _, escalations: _, on_exhausted: _ } => Absent
-    Let { name: _, value: _ } => Absent
-    Call { callee: _, args: _ } => Absent
+data orch_retry_outer_log_var: String = "BUILD_LOG"
+
+data orch_retry_nested_log_var: String = "RETRY_LOG"
+
+data orch_retry_log_source_fidelity_note: String = "Retry bash templates hardcode tee/grep log vars (BUILD_LOG outer, RETRY_LOG nested). LogMatches.source is admitted only when it equals that template var — a changed source must refuse (^orch_emit_retry_log_source_mismatch), never silently emit the hardcoded name. 🟡 dissolve-on: thread source into the grammar rows so the declared name is the emitted name."
+
+fn orch_emit_retry_require_log_source(
+  source: String,
+  expected: String
+) -> Outcome<String> {
+  match source == expected {
+    true => outcome_accepted(source)
+    false =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_log_source_mismatch))
   }
 }
 
-data orch_retry_body_command_absent_conflation_note: String = "orch_retry_body_command collapses three distinct Absents into one Optional, and orch_emit_retry maps that single Absent to ^orch_emit_retry_body_not_run: (a) empty pipeline (HeadAbsent), (b) head step is not a Do (Comment/Exit/If/For/…), (c) head is a Do that carries Present redirect or capture. State-space conflation — the reason misnames (a)/(c) and would pollute a per-cause tally. 🟡 dissolve-on: replace Optional<String> with a typed RetryBodyExtract sum (EmptyBody | NonDoHead | RedirectOrCapturePresent | Command\{spelling\}) and refuse with per-cause reasons; until then one Absent remains the fail-closed interim."
+fn orch_retry_step_run(s: PipelineStep) -> Outcome<Run> {
+  match s {
+    Do { run: r } => outcome_accepted(r)
+    Comment { text: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    Exit { status: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    If { cond: _, then_: _, else_: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    For { binder: _, over: _, body: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    While { cond: _, body: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    BoundedPoll { max_attempts: _, body: _, success: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    Retry { body: _, escalations: _, on_exhausted: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    Let { name: _, value: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    Call { callee: _, args: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+  }
+}
 
-fn orch_retry_body_command(body: Pipeline) -> Optional<String> {
+data orch_retry_body_command_note: String = "orch_retry_body_command returns Outcome<Run>: multi-step bodies refuse (^orch_emit_retry_body_multi_step); empty/non-Do (incl. Comment/Exit) refuse (^orch_emit_retry_body_not_run); a single Do returns the Run intact so orch_emit_retry_run can refuse Present redirect/capture (^orch_emit_retry_redirect_present / ^orch_emit_retry_capture_present) rather than silently dropping them. Tee/redirect semantics for retry live in the bash retry templates, not on the body Run. Supersedes the Optional<String> Absent conflation interim from PR2a."
+
+fn orch_retry_body_command(body: Pipeline) -> Outcome<Run> {
   match list_head(xs: body.steps) {
-    HeadFound { value: s } => orch_retry_step_command(s: s)
-    HeadAbsent => Absent
+    HeadAbsent =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    HeadFound { value: s } =>
+      match list_tail(xs: body.steps) {
+        TailFound { tail: rest } =>
+          match is_empty(rest) {
+            false =>
+              outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_multi_step))
+            true =>
+              orch_retry_step_run(s: s)
+          }
+        TailAbsent =>
+          orch_retry_step_run(s: s)
+      }
   }
 }
 
 fn orch_emit_retry_run(
   command: String,
   env: FreeMonoid<EnvBinding>,
+  redirect: Optional<RedirectSpec>,
+  capture: Optional<CaptureSpec>,
   medium: OrchestrationEmitMedium
 ) -> Outcome<extdeps.communication.medium.Medium<String>> {
-  orch_emit_run(
-    r: Run { command: command, env: env, redirect: Absent, capture: Absent },
-    medium: medium
-  )
+  match redirect {
+    Present { value: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_redirect_present))
+    Absent =>
+      match capture {
+        Present { value: _ } =>
+          outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_capture_present))
+        Absent =>
+          orch_emit_run(
+            r: Run { command: command, env: env, redirect: Absent, capture: Absent },
+            medium: medium
+          )
+      }
+  }
 }
 
 fn orch_emit_retry_2level(
   command: String,
+  redirect: Optional<RedirectSpec>,
+  capture: Optional<CaptureSpec>,
   pattern1: String,
   pattern2: String,
   warn1: String,
@@ -851,13 +896,31 @@ fn orch_emit_retry_2level(
   medium: OrchestrationEmitMedium
 ) -> Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
-    o: orch_emit_retry_run(command: command, env: [], medium: medium),
+    o: orch_emit_retry_run(
+      command: command,
+      env: [],
+      redirect: redirect,
+      capture: capture,
+      medium: medium
+    ),
     f: fn(m1) {
       bind_outcome(
-        o: orch_emit_retry_run(command: command, env: env1, medium: medium),
+        o: orch_emit_retry_run(
+          command: command,
+          env: env1,
+          redirect: redirect,
+          capture: capture,
+          medium: medium
+        ),
         f: fn(m2) {
           bind_outcome(
-            o: orch_emit_retry_run(command: command, env: env2, medium: medium),
+            o: orch_emit_retry_run(
+              command: command,
+              env: env2,
+              redirect: redirect,
+              capture: capture,
+              medium: medium
+            ),
             f: fn(m3) {
               orch_emit_from_registry(
                 medium: medium,
@@ -883,28 +946,47 @@ fn orch_emit_retry_2level(
 
 fn orch_emit_retry_1level(
   command: String,
+  redirect: Optional<RedirectSpec>,
+  capture: Optional<CaptureSpec>,
   level: EscalationLevel,
   exhausted: String,
   medium: OrchestrationEmitMedium
 ) -> Outcome<extdeps.communication.medium.Medium<String>> {
   match level.detect {
-    LogMatches { source: _, pattern: grep_pat } =>
+    LogMatches { source: src, pattern: grep_pat } =>
       bind_outcome(
-        o: orch_emit_retry_run(command: command, env: [], medium: medium),
-        f: fn(m1) {
+        o: orch_emit_retry_require_log_source(source: src, expected: orch_retry_outer_log_var),
+        f: fn(_) {
           bind_outcome(
-            o: orch_emit_retry_run(command: command, env: level.env, medium: medium),
-            f: fn(m2) {
-              orch_emit_from_registry(
-                medium: medium,
-                construct_tag: orch_construct_retry_1level,
-                target: medium.realize_retry_1level(
-                  m1.carried,
-                  m2.carried,
-                  grep_pat,
-                  level.warning.message,
-                  exhausted
-                )
+            o: orch_emit_retry_run(
+              command: command,
+              env: [],
+              redirect: redirect,
+              capture: capture,
+              medium: medium
+            ),
+            f: fn(m1) {
+              bind_outcome(
+                o: orch_emit_retry_run(
+                  command: command,
+                  env: level.env,
+                  redirect: redirect,
+                  capture: capture,
+                  medium: medium
+                ),
+                f: fn(m2) {
+                  orch_emit_from_registry(
+                    medium: medium,
+                    construct_tag: orch_construct_retry_1level,
+                    target: medium.realize_retry_1level(
+                      m1.carried,
+                      m2.carried,
+                      grep_pat,
+                      level.warning.message,
+                      exhausted
+                    )
+                  )
+                }
               )
             }
           )
@@ -915,192 +997,67 @@ fn orch_emit_retry_1level(
   }
 }
 
-fn orch_emit_retry_run_spelling(
-  command: String,
-  env: FreeMonoid<EnvBinding>,
-  medium: OrchestrationEmitMedium
-) -> Outcome<String> {
-  bind_outcome(
-    o: orch_emit_retry_run(command: command, env: env, medium: medium),
-    f: fn(m) { outcome_accepted(m.carried) }
-  )
-}
-
-fn orch_emit_retry_escalation_final(
-  command: String,
-  env: FreeMonoid<EnvBinding>,
-  exhausted: String,
-  medium: OrchestrationEmitMedium
-) -> Outcome<String> {
-  bind_outcome(
-    o: orch_emit_retry_run_spelling(command: command, env: env, medium: medium),
-    f: fn(occ) {
-      bind_outcome(
-        o: orch_emit_from_registry(
-          medium: medium,
-          construct_tag: orch_construct_retry_escalation_final,
-          target: medium.realize_retry_escalation_final(occ, exhausted)
-        ),
-        f: fn(m) { outcome_accepted(m.carried) }
-      )
-    }
-  )
-}
-
-fn orch_emit_retry_escalation_step_for_level(
-  command: String,
-  level: EscalationLevel,
-  grep_pat: String,
-  inner: String,
-  exhausted: String,
-  medium: OrchestrationEmitMedium
-) -> Outcome<String> {
-  bind_outcome(
-    o: orch_emit_retry_run_spelling(command: command, env: level.env, medium: medium),
-    f: fn(occ) {
-      bind_outcome(
-        o: orch_emit_from_registry(
-          medium: medium,
-          construct_tag: orch_construct_retry_escalation_step,
-          target: medium.realize_retry_escalation_step(
-            occ,
-            grep_pat,
-            level.warning.message,
-            inner,
-            exhausted
-          )
-        ),
-        f: fn(m) { outcome_accepted(m.carried) }
-      )
-    }
-  )
-}
-
-fn orch_emit_retry_escalation_tail(
-  command: String,
-  levels: List<EscalationLevel>,
-  exhausted: String,
-  medium: OrchestrationEmitMedium
-) -> Outcome<String> {
-  match list_head(xs: levels) {
-    HeadAbsent => outcome_accepted(exhausted)
-    HeadFound { value: level } =>
-      match level.detect {
-        LogMatches { source: _, pattern: grep_pat } =>
-          match list_tail(xs: levels) {
-            TailAbsent =>
-              orch_emit_retry_escalation_final(
-                command: command,
-                env: level.env,
-                exhausted: exhausted,
-                medium: medium
-              )
-            TailFound { tail: rest } =>
-              match is_empty(rest) {
-                true =>
-                  orch_emit_retry_escalation_final(
-                    command: command,
-                    env: level.env,
-                    exhausted: exhausted,
-                    medium: medium
-                  )
-                false =>
-                  bind_outcome(
-                    o: orch_emit_retry_escalation_tail(
-                      command: command,
-                      levels: rest,
-                      exhausted: exhausted,
-                      medium: medium
-                    ),
-                    f: fn(inner) {
-                      orch_emit_retry_escalation_step_for_level(
-                        command: command,
-                        level: level,
-                        grep_pat: grep_pat,
-                        inner: inner,
-                        exhausted: exhausted,
-                        medium: medium
-                      )
-                    }
-                  )
-              }
-          }
-        _ =>
-          outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
-      }
-  }
-}
+data orch_emit_retry_multilevel_unsupported_note: String = "Three-or-more escalation levels previously reused realize_retry_1level and stuffed rest into occ2 via escalation_tail — silently dropping level1.env (3level golden had E2=1 after w1, never E1=1) and the final level's LogMatches.pattern. Same DESIGN §5 class as the PR2b silent drops. Refuse (^orch_emit_retry_multilevel_unsupported) until a faithful N-level template threads each level's env with the next level's detect (as orch_emit_retry_2level does). 🟡 dissolve-on: that template + reclaim of escalation_step/final rows under a correct cross-level fold."
 
 fn orch_emit_retry_multilevel(
   command: String,
+  redirect: Optional<RedirectSpec>,
+  capture: Optional<CaptureSpec>,
   level1: EscalationLevel,
   rest: List<EscalationLevel>,
   exhausted: String,
   medium: OrchestrationEmitMedium
 ) -> Outcome<extdeps.communication.medium.Medium<String>> {
-  match level1.detect {
-    LogMatches { source: _, pattern: grep_pat1 } =>
-      bind_outcome(
-        o: orch_emit_retry_run(command: command, env: [], medium: medium),
-        f: fn(m1) {
-          bind_outcome(
-            o: orch_emit_retry_escalation_tail(
-              command: command,
-              levels: rest,
-              exhausted: exhausted,
-              medium: medium
-            ),
-            f: fn(tail) {
-              orch_emit_from_registry(
-                medium: medium,
-                construct_tag: orch_construct_retry_1level,
-                target: medium.realize_retry_1level(
-                  m1.carried,
-                  tail,
-                  grep_pat1,
-                  level1.warning.message,
-                  exhausted
-                )
-              )
-            }
-          )
-        }
-      )
-    _ =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
-  }
+  outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_multilevel_unsupported))
 }
 
 fn orch_emit_retry_levels(
   command: String,
+  redirect: Optional<RedirectSpec>,
+  capture: Optional<CaptureSpec>,
   level1: EscalationLevel,
   level2: EscalationLevel,
   exhausted: String,
   medium: OrchestrationEmitMedium
 ) -> Outcome<extdeps.communication.medium.Medium<String>> {
   match level1.detect {
-    LogMatches { source: _, pattern: p1 } =>
-      match level2.detect {
-        LogMatches { source: _, pattern: p2 } =>
-          orch_emit_retry_2level(
-            command: command,
-            pattern1: p1,
-            pattern2: p2,
-            warn1: level1.warning.message,
-            warn2: level2.warning.message,
-            env1: level1.env,
-            env2: level2.env,
-            exhausted: exhausted,
-            medium: medium
-          )
-        _ => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
-      }
+    LogMatches { source: src1, pattern: p1 } =>
+      bind_outcome(
+        o: orch_emit_retry_require_log_source(source: src1, expected: orch_retry_outer_log_var),
+        f: fn(_) {
+          match level2.detect {
+            LogMatches { source: src2, pattern: p2 } =>
+              bind_outcome(
+                o: orch_emit_retry_require_log_source(source: src2, expected: orch_retry_nested_log_var),
+                f: fn(_) {
+                  orch_emit_retry_2level(
+                    command: command,
+                    redirect: redirect,
+                    capture: capture,
+                    pattern1: p1,
+                    pattern2: p2,
+                    warn1: level1.warning.message,
+                    warn2: level2.warning.message,
+                    env1: level1.env,
+                    env2: level2.env,
+                    exhausted: exhausted,
+                    medium: medium
+                  )
+                }
+              )
+            _ =>
+              outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
+          }
+        }
+      )
     _ => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
   }
 }
 
 fn orch_emit_retry_dispatch(
   command: String,
+  redirect: Optional<RedirectSpec>,
+  capture: Optional<CaptureSpec>,
   escalations: FreeMonoid<EscalationLevel>,
   exhausted: String,
   medium: OrchestrationEmitMedium
@@ -1113,6 +1070,8 @@ fn orch_emit_retry_dispatch(
         TailAbsent =>
           orch_emit_retry_1level(
             command: command,
+            redirect: redirect,
+            capture: capture,
             level: l1,
             exhausted: exhausted,
             medium: medium
@@ -1122,6 +1081,8 @@ fn orch_emit_retry_dispatch(
             true =>
               orch_emit_retry_1level(
                 command: command,
+                redirect: redirect,
+                capture: capture,
                 level: l1,
                 exhausted: exhausted,
                 medium: medium
@@ -1135,6 +1096,8 @@ fn orch_emit_retry_dispatch(
                         true =>
                           orch_emit_retry_levels(
                             command: command,
+                            redirect: redirect,
+                            capture: capture,
                             level1: l1,
                             level2: l2,
                             exhausted: exhausted,
@@ -1143,6 +1106,8 @@ fn orch_emit_retry_dispatch(
                         false =>
                           orch_emit_retry_multilevel(
                             command: command,
+                            redirect: redirect,
+                            capture: capture,
                             level1: l1,
                             rest: concat([l2], more),
                             exhausted: exhausted,
@@ -1167,20 +1132,22 @@ fn orch_emit_retry(
   medium: OrchestrationEmitMedium
 ) -> Outcome<extdeps.communication.medium.Medium<String>> {
   match orch_retry_body_command(body: body) {
-    Present { value: command } =>
+    Accepted { value: body_run, diagnostics: _ } =>
       bind_outcome(
         o: orch_emit_pipeline(p: on_exhausted, medium: medium),
         f: fn(exhausted_medium) {
           orch_emit_retry_dispatch(
-            command: command,
+            command: body_run.command,
+            redirect: body_run.redirect,
+            capture: body_run.capture,
             escalations: escalations,
             exhausted: exhausted_medium.carried,
             medium: medium
           )
         }
       )
-    Absent =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
   }
 }
 

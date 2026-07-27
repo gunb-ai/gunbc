@@ -5,7 +5,7 @@ import gunbc.roadmap_page { roadmap_page_for_authority }
 import gunbc.roadmap_component {
   roadmap_row_archetype, roadmap_row_grid_template,
   RoadmapRowRegion, RowPlacement, HeadTrack, InTitleFlow, UnderHead,
-  node_mid_class, dispatch_reserved_width,
+  node_mid_class, dispatch_reserved_width, workflow_controls_class,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -28,6 +28,13 @@ fn expected_node_mid_block() -> String {
   ], "")
 }
 
+fn expected_workflow_controls_block() -> String {
+  join([
+    ".", workflow_controls_class,
+    " { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-4); flex-wrap: wrap; min-width: var(--space-0) }",
+  ], "")
+}
+
 fn expected_row_actuator_block() -> String {
   join([
     ".node-head .dispatch-btn { font-size: var(--text-11); min-height: var(--h-row); padding: var(--space-0) var(--space-8); margin-left: var(--space-0); max-width: ",
@@ -36,7 +43,7 @@ fn expected_row_actuator_block() -> String {
   ], "")
 }
 
-data grid_structure_note: String = "The template the stylesheet carries must be the one DERIVED from the archetype's placements — the expected block embeds roadmap_row_grid_template(), so an archetype edit the stylesheet misses, or a hand template the archetype never declared, reds. The head-track count (3: chip auto, title 1fr, actuator auto) derives from the placement fold, never a literal claim about the string."
+data grid_structure_note: String = "The template the stylesheet carries must be the one DERIVED from the archetype's placements — the expected block embeds roadmap_row_grid_template(), so an archetype edit the stylesheet misses, or a hand template the archetype never declared, reds. The head-track count remains 3: chip auto, title 1fr, ActuatorRegion auto. Workflow lamps v0 realizes that last region as one workflow-controls wrapper rather than adding strip/button/Stop as grid siblings."
 
 fn head_track_count() -> Int {
   count(roadmap_row_archetype |> filter(r => match r.placement {
@@ -49,6 +56,7 @@ fn head_track_count() -> Int {
 test fn roadmap_row_grid_structure_holds() -> Bool {
   return string_contains(s: roadmap_css(), pattern: expected_node_head_block())
     && string_contains(s: roadmap_css(), pattern: expected_node_mid_block())
+    && string_contains(s: roadmap_css(), pattern: expected_workflow_controls_block())
     && head_track_count() == 3
     && roadmap_row_grid_template() == "auto 1fr auto"
 }
@@ -65,6 +73,8 @@ test fn roadmap_row_page_carries_the_cells() -> Bool {
   return h.length() > 0
     && string_contains(s: h, pattern: join(["class=\"", node_mid_class, "\""], ""))
     && string_contains(s: h, pattern: "class=\"node-head\"")
+    && string_contains(s: h, pattern: join(["class=\"", workflow_controls_class, "\""], ""))
+    && string_contains(s: h, pattern: "<li class=\"node node-done\" data-node=")
 }
 
 data actuator_derived_note: String = "Derived-not-set, both directions on ONE predicate: the block that ships must be the derived one (verbatim presence), and the derived block itself must draw extent from the row token and width from the caption reservation while carrying no fresh literal (no px, no h-control). The planted RED feeds the same predicate the exact block a well-meaning hand retune would write — the discrimination lives in the predicate, not the fixture."
@@ -92,5 +102,6 @@ data density_census_note: String = "The density cells of this slice's own emissi
 test fn roadmap_row_density_all_tokened() -> Bool {
   return !string_contains(s: expected_node_head_block(), pattern: "px")
     && !string_contains(s: expected_node_mid_block(), pattern: "px")
+    && !string_contains(s: expected_workflow_controls_block(), pattern: "px")
     && !string_contains(s: expected_row_actuator_block(), pattern: "px")
 }

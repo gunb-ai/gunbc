@@ -4,7 +4,8 @@ import gunbc.design.material {
   BuildRule, StaticRule, CssDecl, decl, css_block,
   serialize_rules, reduced_motion_block,
 }
-import extdeps.languages.css.properties { Cursor, CustomProperty }
+import extdeps.languages.css.properties { Cursor, CustomProperty, BorderStyle, Opacity, GridColumn }
+import extdeps.languages.css.values { CssLength, css_px, css_length_wire }
 import gunbc.design.scale {
   scale_var, scale_pair, scale_triple, scale_border, scale_root_css,
   space_0, space_1, space_2, space_3, space_4, space_6, space_8, space_12, space_16, space_20, space_24,
@@ -31,6 +32,14 @@ import gunbc.roadmap_component {
   sound_toggle_class, sound_toggle_reserved_width,
   disclosure_mark_class, swatch_toggle_class, swatch_toggle_reserved_width,
   roadmap_row_grid_template, roadmap_row_height, roadmap_row_gutter, roadmap_row_column_gutter, node_mid_class,
+  workflow_controls_class, workflow_strip_class, workflow_lamp_class,
+  workflow_lamp_indicator_class, workflow_lamp_label_class,
+  workflow_observation_data_attribute,
+}
+import gunbc.client_observation_state {
+  ClientObservationState,
+  ClientObservationPending, ClientObservationOn, ClientObservationRefused,
+  client_observation_state_key,
 }
 import extdeps.color.srgb { Srgb8 }
 import std.integer { uint8_channel_inclusive_max_value_derived }
@@ -255,6 +264,47 @@ fn dispatch_btn_base_decls() -> List<CssDecl> {
 data instance_rules_splice_note: String = "roadmap_instance_rules composes head + the state-paint fold + tail at the exact position the four hand per-state rules occupied (composition slice 1): the per-state blocks now emit from state_paint_rules over dispatch_state_family x dispatch_stateful_channels — roster order, channel order — so the mapping lives once and a new family member paints itself. The split into head/tail is placement, not meaning: byte order is pinned by the digest oracle."
 
 data row_actuator_scale_note: String = "The in-row actuator at chip scale (composition slice 2, SIGNED ruling 2026-07-24: chip-scale in rows; instrument feel carried by press physics; full-size specimen in the sandbox gallery). DERIVED-NOT-SET: the row override's extent is the ROW's density token (min-height var(--h-row)) and its width ceiling is the same caption-derived reservation the base declares (min-width and max-width one authority, so the chip is fixed-width in rows and a caption morph can never reflow the row) — no fresh literal enters here, witnessed. The base .dispatch-btn keeps the h-control full-size grain, which is exactly what the sandbox gallery renders (row scope is .node-head descendant, gallery buttons sit outside it). Press physics untouched: the detent and receipt folds target .dispatch-btn and apply at both scales, per-family-honest. The three PROVISIONAL rows discharged at the operator's pass (2026-07-25): h-row 24px SIGNED KEPT (height_row_note); the gutter SPLIT — columns space-8, badge flow space-4 (roadmap_row_gutter_split_note); the ellipsis glyph DEFERRED with its trigger — the clip guard stands until the first caption able to exceed the reservation lands (likely W2's ticket vocabulary), at which point the caption span moves the client textContent target and text-overflow becomes honest."
+
+data workflow_lamp_style_note: String = "Workflow lamps v0 stays flat: the four client observation states remain text-and-material distinguishable without borrowing the depth study. Pending is a dashed hollow indicator; observed Off is solid hollow; On uses the Figure material; Refused stays dark with a loud edge and explicit refused aria state supplied by the client. The workflow-controls wrapper is the one ActuatorRegion grid item. At the typed compact breakpoint, the head keeps status and title on the first row while that same wrapper spans the second row and wraps internally, so the strip and optional controls never create implicit grid columns or overflow the viewport."
+
+data workflow_controls_compact_breakpoint: CssLength = css_px(n: 640)
+
+fn workflow_lamp_state_subject(state: ClientObservationState) -> String {
+  join([
+    ".", workflow_lamp_class,
+    "[", workflow_observation_data_attribute, "=\"",
+    client_observation_state_key(state: state),
+    "\"]",
+  ], "")
+}
+
+fn workflow_lamp_state_child(
+  state: ClientObservationState,
+  child_class: String,
+) -> String {
+  join([
+    workflow_lamp_state_subject(state: state),
+    " .", child_class,
+  ], "")
+}
+
+fn workflow_controls_compact_css() -> String {
+  join([
+    "@media (max-width: ",
+    css_length_wire(l: workflow_controls_compact_breakpoint),
+    ") { ",
+    css_block(selector: ".node-head", decls: [
+      decl(prop: GridTemplateColumns, value: "auto minmax(0, 1fr)"),
+      decl(prop: AlignItems, value: "start"),
+    ]),
+    " ",
+    css_block(selector: join([".", workflow_controls_class], ""), decls: [
+      decl(prop: GridColumn, value: "1 / -1"),
+      decl(prop: Width, value: "100%"),
+    ]),
+    " }",
+  ], "")
+}
 
 fn roadmap_instance_rules() -> List<BuildRule> {
   concat(roadmap_instance_rules_head(),
@@ -558,6 +608,69 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FlexWrap, value: "wrap"),
       decl(prop: MinWidth, value: scale_var(t: space_0)),
     ] },
+    StaticRule { selector: ClassSelector { name: workflow_controls_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: JustifyContent, value: "flex-end"),
+      decl(prop: Gap, value: scale_var(t: roadmap_row_gutter)),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: workflow_strip_class }, decls: [
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+      decl(prop: Flex, value: "0 1 auto"),
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: workflow_lamp_class }, decls: [
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_2)),
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: WhiteSpace, value: "nowrap"),
+    ] },
+    StaticRule { selector: ClassSelector { name: workflow_lamp_indicator_class }, decls: [
+      decl(prop: Display, value: "inline-block"),
+      decl(prop: Width, value: scale_var(t: space_6)),
+      decl(prop: Height, value: scale_var(t: space_6)),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_999)),
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Flex, value: "0 0 auto"),
+    ] },
+    StaticRule { selector: RawSelector { text: workflow_lamp_state_child(
+      state: ClientObservationPending,
+      child_class: workflow_lamp_indicator_class) }, decls: [
+      decl(prop: BorderStyle, value: "dashed"),
+      decl(prop: Opacity, value: "0.72"),
+    ] },
+    StaticRule { selector: RawSelector { text: workflow_lamp_state_child(
+      state: ClientObservationOn,
+      child_class: workflow_lamp_indicator_class) }, decls: [
+      role_decl(prop: Background, r: FigureRole),
+      role_decl(prop: BorderColor, r: FigureRole),
+    ] },
+    StaticRule { selector: RawSelector { text: workflow_lamp_state_child(
+      state: ClientObservationOn,
+      child_class: workflow_lamp_label_class) }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontWeight, value: "600"),
+    ] },
+    StaticRule { selector: RawSelector { text: workflow_lamp_state_child(
+      state: ClientObservationRefused { reason: "" },
+      child_class: workflow_lamp_indicator_class) }, decls: [
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: BorderColor, value: "var(--band-loud)"),
+    ] },
+    StaticRule { selector: RawSelector { text: workflow_lamp_state_child(
+      state: ClientObservationRefused { reason: "" },
+      child_class: workflow_lamp_label_class) }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontWeight, value: "600"),
+    ] },
     StaticRule { selector: RawSelector { text: ".node-head .dispatch-btn" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
@@ -709,6 +822,7 @@ fn roadmap_css() -> String {
     band_root_css(),
     auditioner_root_css(),
     serialize_rules(rules: roadmap_rules()),
+    workflow_controls_compact_css(),
     reduced_motion_block(rules: roadmap_rules()),
   ], "\n")
 }
