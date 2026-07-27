@@ -2,31 +2,62 @@ module v2.compiler.qualification_repair
 
 import v2.std.artifact { Artifact }
 import v2.std.collection { List }
-import v2.std.dependency { DependencyView }
+import v2.std.dependency { BindsTo, DependencyView }
 import v2.std.diagnostic { Locus }
+import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.qualified_name { QualifiedName }
-import v2.std.symbol_index { LexicalBindingCandidate }
 
-data qualification_repair_authority_note: String = "Qualification repair is a compiler migration transform over the resolver's existing occurrence-level DependencyView(kind BindsTo) authority. It never resolves a name independently: a repair row consumes the exact usage-site Node, declaration Node, and declaration containment path already selected by P1. Unbound and ambiguous rows preserve P1's located refusal; they cannot become edits. Plan rows are emitted deterministically in source-occurrence order, counted from the rows, and observed before a separate apply. Apply changes spellings only to QualifiedName projections and never adds imports. The source strings below are transient transform values, not a persistent source snapshot, loader input, cache key, ModuleDependsOn edge, or replacement for v2.compiler.source_authority."
+data qualification_repair_authority_note: String = "Qualification repair is a compiler migration transform over the resolver's existing occurrence-level DependencyView(kind BindsTo) authority. It never resolves a name independently. Accepted observations carry the actual BindsTo view plus its declaration containment path; usage-site and declaration identity are projections of that view, never duplicated free Nodes. Refusals carry the exact occurrence and full declaration-identity population returned by P1. Plan order is the observed source-occurrence order, counts are derived from rows, and a repair-only apply plan is projected only after the counted plan is observed. Apply can express only qualified-name replacement, never import mutation. The source strings below are transient transform values, not a persistent source snapshot, loader input, cache key, ModuleDependsOn edge, or replacement for v2.compiler.source_authority."
+
+type QualificationRepairBoundOccurrence {
+  binding: DependencyView
+  declaration_path: QualifiedName
+  artifact: Artifact
+  location: Locus
+  authored: QualifiedName
+}
+
+fn qualification_repair_bound_occurrence_is_valid(
+  observed: QualificationRepairBoundOccurrence
+) -> Bool {
+  observed.binding.kind == BindsTo
+    && observed.binding.dependent == observed.binding.usage_site
+}
+
+fn qualification_repair_bound_usage_site(
+  observed: QualificationRepairBoundOccurrence
+) -> Node {
+  observed.binding.usage_site
+}
+
+fn qualification_repair_bound_declaration(
+  observed: QualificationRepairBoundOccurrence
+) -> Node {
+  observed.binding.source
+}
 
 type QualificationRepairDisposition
-  = Unchanged
+  = Unchanged {
+      observed: QualificationRepairBoundOccurrence
+    }
   | Repair {
-      usage_site: Node,
-      declaration: Node,
+      observed: QualificationRepairBoundOccurrence,
       replacement: QualifiedName
     }
   | RefusedUnbound {
+      artifact: Artifact,
+      usage_site: Node,
       location: Locus
     }
   | RefusedAmbiguous {
+      artifact: Artifact,
+      usage_site: Node,
       location: Locus,
-      candidates: List<LexicalBindingCandidate>
+      candidate_declarations: List<Node>
     }
 
 type QualificationRepairPlanRow {
-  source: Artifact
   disposition: QualificationRepairDisposition
 }
 
@@ -34,21 +65,50 @@ type QualificationRepairPlan {
   rows: List<QualificationRepairPlanRow>
 }
 
+fn qualification_repair_disposition_is_valid(
+  disposition: QualificationRepairDisposition
+) -> Bool {
+  match disposition {
+    Unchanged { observed: observed } =>
+      qualification_repair_bound_occurrence_is_valid(observed: observed)
+    Repair { observed: observed, replacement: replacement } =>
+      qualification_repair_bound_occurrence_is_valid(observed: observed)
+        && replacement == observed.declaration_path
+    RefusedUnbound { artifact: _, usage_site: _, location: _ } => true
+    RefusedAmbiguous {
+      artifact: _,
+      usage_site: _,
+      location: _,
+      candidate_declarations: candidates
+    } =>
+      count(candidates) > 1
+  }
+}
+
+fn qualification_repair_plan_is_valid(plan: QualificationRepairPlan) -> Bool {
+  fold(
+    plan.rows,
+    init: true,
+    f: (valid, row) =>
+      valid && qualification_repair_disposition_is_valid(disposition: row.disposition)
+  )
+}
+
 type QualificationRepairPlanTotals {
-  unchanged: Int
-  repair: Int
-  refused_unbound: Int
+  seen: Int
+  uniquely_repairable: Int
   refused_ambiguous: Int
-  total: Int
+  refused_unbound: Int
+  unchanged: Int
 }
 
 fn qualification_repair_zero_totals() -> QualificationRepairPlanTotals {
   QualificationRepairPlanTotals {
-    unchanged: 0,
-    repair: 0,
-    refused_unbound: 0,
+    seen: 0,
+    uniquely_repairable: 0,
     refused_ambiguous: 0,
-    total: 0
+    refused_unbound: 0,
+    unchanged: 0,
   }
 }
 
@@ -57,37 +117,42 @@ fn qualification_repair_tally_row(
   row: QualificationRepairPlanRow
 ) -> QualificationRepairPlanTotals {
   match row.disposition {
-    Unchanged =>
+    Unchanged { observed: _ } =>
       QualificationRepairPlanTotals {
+        seen: totals.seen + 1,
+        uniquely_repairable: totals.uniquely_repairable,
+        refused_ambiguous: totals.refused_ambiguous,
+        refused_unbound: totals.refused_unbound,
         unchanged: totals.unchanged + 1,
-        repair: totals.repair,
-        refused_unbound: totals.refused_unbound,
-        refused_ambiguous: totals.refused_ambiguous,
-        total: totals.total + 1
       }
-    Repair { usage_site: _, declaration: _, replacement: _ } =>
+    Repair { observed: _, replacement: _ } =>
       QualificationRepairPlanTotals {
-        unchanged: totals.unchanged,
-        repair: totals.repair + 1,
-        refused_unbound: totals.refused_unbound,
+        seen: totals.seen + 1,
+        uniquely_repairable: totals.uniquely_repairable + 1,
         refused_ambiguous: totals.refused_ambiguous,
-        total: totals.total + 1
-      }
-    RefusedUnbound { location: _ } =>
-      QualificationRepairPlanTotals {
+        refused_unbound: totals.refused_unbound,
         unchanged: totals.unchanged,
-        repair: totals.repair,
+      }
+    RefusedUnbound { artifact: _, usage_site: _, location: _ } =>
+      QualificationRepairPlanTotals {
+        seen: totals.seen + 1,
+        uniquely_repairable: totals.uniquely_repairable,
+        refused_ambiguous: totals.refused_ambiguous,
         refused_unbound: totals.refused_unbound + 1,
-        refused_ambiguous: totals.refused_ambiguous,
-        total: totals.total + 1
-      }
-    RefusedAmbiguous { location: _, candidates: _ } =>
-      QualificationRepairPlanTotals {
         unchanged: totals.unchanged,
-        repair: totals.repair,
-        refused_unbound: totals.refused_unbound,
+      }
+    RefusedAmbiguous {
+      artifact: _,
+      usage_site: _,
+      location: _,
+      candidate_declarations: _
+    } =>
+      QualificationRepairPlanTotals {
+        seen: totals.seen + 1,
+        uniquely_repairable: totals.uniquely_repairable,
         refused_ambiguous: totals.refused_ambiguous + 1,
-        total: totals.total + 1
+        refused_unbound: totals.refused_unbound,
+        unchanged: totals.unchanged,
       }
   }
 }
@@ -102,13 +167,138 @@ fn qualification_repair_plan_totals(
   )
 }
 
+type QualificationRepairCountedPlan {
+  plan: QualificationRepairPlan
+  totals: QualificationRepairPlanTotals
+}
+
+fn qualification_repair_counted_plan(
+  plan: QualificationRepairPlan
+) -> QualificationRepairCountedPlan {
+  QualificationRepairCountedPlan {
+    plan: plan,
+    totals: qualification_repair_plan_totals(plan: plan)
+  }
+}
+
+fn qualification_repair_counted_plan_is_consistent(
+  counted: QualificationRepairCountedPlan
+) -> Bool {
+  qualification_repair_plan_is_valid(plan: counted.plan)
+    && counted.totals == qualification_repair_plan_totals(plan: counted.plan)
+}
+
+type QualificationRepairOccurrenceObservation {
+  artifact: Artifact
+  usage_site: Node
+  location: Locus
+}
+
+fn qualification_repair_disposition_observation(
+  disposition: QualificationRepairDisposition
+) -> QualificationRepairOccurrenceObservation {
+  match disposition {
+    Unchanged { observed: observed } =>
+      QualificationRepairOccurrenceObservation {
+        artifact: observed.artifact,
+        usage_site: qualification_repair_bound_usage_site(observed: observed),
+        location: observed.location
+      }
+    Repair { observed: observed, replacement: _ } =>
+      QualificationRepairOccurrenceObservation {
+        artifact: observed.artifact,
+        usage_site: qualification_repair_bound_usage_site(observed: observed),
+        location: observed.location
+      }
+    RefusedUnbound { artifact: artifact, usage_site: usage_site, location: location } =>
+      QualificationRepairOccurrenceObservation {
+        artifact: artifact,
+        usage_site: usage_site,
+        location: location
+      }
+    RefusedAmbiguous {
+      artifact: artifact,
+      usage_site: usage_site,
+      location: location,
+      candidate_declarations: _
+    } =>
+      QualificationRepairOccurrenceObservation {
+        artifact: artifact,
+        usage_site: usage_site,
+        location: location
+      }
+  }
+}
+
+fn qualification_repair_plan_observation_order(
+  plan: QualificationRepairPlan
+) -> List<QualificationRepairOccurrenceObservation> {
+  map(
+    plan.rows,
+    row => qualification_repair_disposition_observation(disposition: row.disposition)
+  )
+}
+
+type QualificationRepairPlanOrderReceipt {
+  census_order: List<QualificationRepairOccurrenceObservation>
+  counted_plan: QualificationRepairCountedPlan
+}
+
+fn qualification_repair_plan_order_receipt_holds(
+  receipt: QualificationRepairPlanOrderReceipt
+) -> Bool {
+  qualification_repair_counted_plan_is_consistent(counted: receipt.counted_plan)
+    && receipt.census_order == qualification_repair_plan_observation_order(plan: receipt.counted_plan.plan)
+}
+
+type QualificationRepairPlanReplayReceipt {
+  first: QualificationRepairCountedPlan
+  replay: QualificationRepairCountedPlan
+}
+
+fn qualification_repair_plan_replay_receipt_holds(
+  receipt: QualificationRepairPlanReplayReceipt
+) -> Bool {
+  qualification_repair_counted_plan_is_consistent(counted: receipt.first)
+    && qualification_repair_counted_plan_is_consistent(counted: receipt.replay)
+    && receipt.first == receipt.replay
+}
+
+fn qualification_repair_row_is_repair(row: QualificationRepairPlanRow) -> Bool {
+  match row.disposition {
+    Repair { observed: _, replacement: _ } => true
+    _ => false
+  }
+}
+
+type QualificationRepairApplyPlan {
+  repairs: List<QualificationRepairPlanRow>
+}
+
+fn qualification_repair_apply_plan(
+  counted: QualificationRepairCountedPlan
+) -> QualificationRepairApplyPlan {
+  QualificationRepairApplyPlan {
+    repairs: filter(
+      xs: counted.plan.rows,
+      predicate: qualification_repair_row_is_repair
+    )
+  }
+}
+
+fn qualification_repair_apply_plan_is_empty(
+  plan: QualificationRepairApplyPlan
+) -> Bool {
+  count(plan.repairs) == 0
+}
+
 type QualificationRepairSourceInput {
   artifact: Artifact
   content: String
 }
 
 type QualificationRepairApplyInput {
-  plan: QualificationRepairPlan
+  plan: QualificationRepairApplyPlan
   sources: List<QualificationRepairSourceInput>
 }
 
@@ -118,7 +308,55 @@ type QualificationRepairAppliedSource {
   after: String
 }
 
+type QualificationRepairSourceMutation
+  = ReplaceQualifiedName {
+      observed: QualificationRepairBoundOccurrence,
+      replacement: QualifiedName
+    }
+
+type QualificationRepairImportEffect
+  = NoImportAdditions {}
+
 type QualificationRepairApplyOutput {
   sources: List<QualificationRepairAppliedSource>
-  applied_repairs: List<QualificationRepairPlanRow>
+  applied_mutations: List<QualificationRepairSourceMutation>
+  import_effect: QualificationRepairImportEffect
+}
+
+fn qualification_repair_output_before(
+  output: QualificationRepairApplyOutput
+) -> List<String> {
+  map(output.sources, source => source.before)
+}
+
+fn qualification_repair_output_after(
+  output: QualificationRepairApplyOutput
+) -> List<String> {
+  map(output.sources, source => source.after)
+}
+
+type QualificationRepairApplyFixedPointReceipt {
+  initial_plan: QualificationRepairApplyPlan
+  first_apply: QualificationRepairApplyOutput
+  replay_same_plan: QualificationRepairApplyOutput
+  fresh_plan: QualificationRepairApplyPlan
+  apply_fresh_plan: QualificationRepairApplyOutput
+}
+
+fn qualification_repair_apply_fixed_point_receipt_holds(
+  receipt: QualificationRepairApplyFixedPointReceipt
+) -> Bool {
+  let after_first = qualification_repair_output_after(output: receipt.first_apply)
+  let before_replay = qualification_repair_output_before(output: receipt.replay_same_plan)
+  let after_replay = qualification_repair_output_after(output: receipt.replay_same_plan)
+  let before_fresh = qualification_repair_output_before(output: receipt.apply_fresh_plan)
+  let after_fresh = qualification_repair_output_after(output: receipt.apply_fresh_plan)
+  count(receipt.first_apply.applied_mutations) == count(receipt.initial_plan.repairs)
+    && before_replay == after_first
+    && after_replay == after_first
+    && count(receipt.replay_same_plan.applied_mutations) == 0
+    && qualification_repair_apply_plan_is_empty(plan: receipt.fresh_plan)
+    && before_fresh == after_first
+    && after_fresh == after_first
+    && count(receipt.apply_fresh_plan.applied_mutations) == 0
 }
