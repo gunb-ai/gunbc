@@ -31,6 +31,7 @@ fn gate_consumer_site(g: Gate) -> String {
     ExtdepsExternalAuthorityGate => "gate:ExtdepsExternalAuthorityGate"
     DagCompileCleanGate => "gate:DagCompileCleanGate"
     GeneratedArtifactDriftGate => "gate:GeneratedArtifactDriftGate"
+    HandImportGate => "gate:HandImportGate"
     SourceRootIngestGate => "gate:SourceRootIngestGate"
     RegenVerifyGate => "gate:RegenVerifyGate"
     SelfHostReadsRealBytesGate => "gate:SelfHostReadsRealBytesGate"

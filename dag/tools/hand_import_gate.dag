@@ -43,7 +43,7 @@ data hand_import_allowed_prefixes_mirror_dissolution_trigger: Disposition = Scaf
   }
 }
 
-data hand_import_gate_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: scripts/check_hand_import_gate.sh — foreign-executor claim_batch argv scaffold (set -euo pipefail + target/release/claim_batch --claim-run). DISSOLVES WHEN hand_import_gate_passes is enrolled as a CI floor witness without a hand-written shell carrier (gunbc orchestration emit / host_effect_apply routes gate eval — shell→intent lane, ROADMAP shell→intent Phase 3)."
+data hand_import_gate_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: scripts/check_hand_import_gate.sh — foreign-executor claim_batch argv scaffold (set -euo pipefail + target/release/claim_batch --claim-run). DISSOLVES WHEN hand_import_gate_passes runs as HandImportGate RunnableSingleClaim on the CI floor without a hand-written shell carrier (LANDED enrollment: gunbc.commit_workflow CommitSpecGate { gate: HandImportGate } surfaces: [GithubActionsCiJob], review 43609) — shell→intent lane, ROADMAP shell→intent Phase 3)."
 
 data hand_import_gate_shell_runner_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

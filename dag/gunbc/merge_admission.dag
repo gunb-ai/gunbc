@@ -19,6 +19,7 @@ import gunbc.ci_gate {
   Gate,
   EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
+  HandImportGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate,
 }
@@ -77,6 +78,7 @@ fn gate_content_hash(g: Gate) -> ContentHash {
     ExtdepsExternalAuthorityGate => content_hash_atom(value: "ExtdepsExternalAuthorityGate")
     DagCompileCleanGate => content_hash_atom(value: "DagCompileCleanGate")
     GeneratedArtifactDriftGate => content_hash_atom(value: "GeneratedArtifactDriftGate")
+    HandImportGate => content_hash_atom(value: "HandImportGate")
     SourceRootIngestGate => content_hash_atom(value: "SourceRootIngestGate")
     RegenVerifyGate => content_hash_atom(value: "RegenVerifyGate")
     SelfHostReadsRealBytesGate => content_hash_atom(value: "SelfHostReadsRealBytesGate")

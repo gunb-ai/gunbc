@@ -3,7 +3,7 @@
 # Gate-internal dissolution triggers: hand_import_allowed_prefixes_mirror_dissolution_trigger.
 # Shell-carrier dissolution: hand_import_gate_shell_emit_dissolution_trigger /
 # hand_import_gate_shell_runner_scaffold (orchestration-to-shell bash-emission capability).
-# CI enrolls dag/test/claim/hand_import_gate_witness_test.dag.
+# CI enrolls HandImportGate on GithubActionsCiJob (batch-0 RunnableSingleClaim via floor_effect_gate_witness).
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
