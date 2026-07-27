@@ -1,0 +1,5 @@
+module repro.probe_alias_rhs_green
+
+import repro.alias_definer { alias_definer_marker }
+
+type RemoteList = List<repro.alias_definer.RemoteType>

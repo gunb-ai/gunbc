@@ -6,7 +6,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 
 data pool_coincidence_fixture_dir: String = "dag/test/fixtures/type_resolution_pool_coincidence"
 
-data pool_coincidence_transport_note: String = "CI floor transport for type-resolution pool-coincidence probes: compiles fixture modules through compile_dag_dag_fixture_witness_check (host realization mirroring src/v1/tests/src/type_resolution_pool_coincidence_test.rs). Fixture sources are read live from disk at witness eval time. Mask enforcement is enabled per compile via type_ref_pool_coincidence_mask_set_enabled(true) in the host bridge — whole-tree compile stays staged OFF until extdeps import burndown (type_ref_pool_coincidence_mask_staging_note in v1.compiler.infer_env). HAND-RUST receipt authority: tools.type_resolution_pool_coincidence_transport (pool_coincidence_compile_fixture_hand_rust_scaffold + pool_coincidence_compile_fixture_receipt_plan_anchor). Transport-side scaffold: pool_coincidence_fixture_witness_check_dissolution_trigger — dissolves when fixture compile witnesses are modeled as pure .dag transport without cli_run::compile_dag_dag_fixture_witness_check."
+data pool_coincidence_transport_note: String = "CI floor transport for type-resolution pool-coincidence probes: compiles fixture modules through the ordinary, policy-free compile_dag_dag_fixture_witness_check realization. Fixture sources are read live from disk at witness eval time. The bridge has no mask or policy switch: the witness observes the same binding/refusal behavior as production compile. HAND-RUST receipt authority: tools.type_resolution_pool_coincidence_transport (pool_coincidence_compile_fixture_hand_rust_scaffold + pool_coincidence_compile_fixture_receipt_plan_anchor). Transport-side scaffold: pool_coincidence_fixture_witness_check_dissolution_trigger — dissolves when fixture compile witnesses are modeled as pure .dag transport without cli_run::compile_dag_dag_fixture_witness_check."
 
 data pool_coincidence_compile_fixture_hand_rust_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -17,7 +17,7 @@ data pool_coincidence_compile_fixture_hand_rust_scaffold: Disposition = Scaffold
   }
 }
 
-data pool_coincidence_compile_fixture_dissolve_trigger: String = "🟡 dissolve-on: cli_run::compile_dag_dag_fixture_witness_check — host bridge for mask-on fixture compiles (enables type_ref_pool_coincidence_mask_set_enabled per probe, mirrors src/v1/tests/src/type_resolution_pool_coincidence_test.rs). DISSOLVES WHEN tools.type_resolution_pool_coincidence_transport compiles fixtures through modeled substrate transport without the HAND-Rust compile driver (witness-realization lane schedules native runs; floor/witness execution chunk in docs/plans/cli-run-hollowing-plan.md §2)."
+data pool_coincidence_compile_fixture_dissolve_trigger: String = "🟡 dissolve-on: cli_run::compile_dag_dag_fixture_witness_check — policy-free host bridge for ordinary fixture compiles, mirrored by src/v1/tests/src/type_resolution_pool_coincidence_test.rs. DISSOLVES WHEN tools.type_resolution_pool_coincidence_transport compiles fixtures through modeled substrate transport without the HAND-Rust compile driver (witness-realization lane schedules native runs; floor/witness execution chunk in docs/plans/cli-run-hollowing-plan.md §2)."
 
 data pool_coincidence_compile_fixture_receipt_plan_anchor: String = "docs/plans/cli-run-hollowing-plan.md §2 Floor / witness execution · docs/plans/witness-realization-plan.md · ROADMAP §7 ts-seed-interim (hand-Rust review bar: named dissolution trigger + plan anchor — not indefinite interim debt)."
 
@@ -97,9 +97,29 @@ fn probe_crossboundary_refuses_content_hash() -> Bool {
   )
 }
 
+fn probe_alias_rhs_green_compiles_clean() -> Bool {
+  pool_coincidence_probe_witness_check(
+    entry_name: "probe_alias_rhs_green.dag",
+    expect_clean: true,
+    required_unresolved_type: "",
+    forbidden_diagnostic_substrings: []
+  )
+}
+
+fn probe_alias_rhs_refuses_remote_type() -> Bool {
+  pool_coincidence_probe_witness_check(
+    entry_name: "probe_alias_rhs_unbound.dag",
+    expect_clean: false,
+    required_unresolved_type: "RemoteType",
+    forbidden_diagnostic_substrings: []
+  )
+}
+
 fn type_resolution_pool_coincidence_witness_holds() -> Bool {
   probe_green_compiles_clean()
     && probe_silent_refuses_content_hash()
     && probe_one_import_refuses_content_hash()
     && probe_crossboundary_refuses_content_hash()
+    && probe_alias_rhs_green_compiles_clean()
+    && probe_alias_rhs_refuses_remote_type()
 }

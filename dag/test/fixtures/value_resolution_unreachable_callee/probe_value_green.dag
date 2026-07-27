@@ -1,0 +1,7 @@
+module repro.probe_value_green
+
+import repro.callee_definer { fixture }
+
+fn probe_qualified_callee() -> repro.callee_definer.Typed {
+  repro.callee_definer.fixture_callee_read_typed(row: fixture)
+}

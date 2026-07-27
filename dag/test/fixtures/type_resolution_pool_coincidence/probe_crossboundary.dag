@@ -7,3 +7,7 @@ fn local_hash(x: ContentHash) -> ContentHash { x }
 fn feed_real_consumer(x: ContentHash) -> std.types.ContentHash {
   std.content_hash.content_hash_combine(left: local_hash(x: x), right: local_hash(x: x))
 }
+
+fn feed_qualified_control(x: std.types.ContentHash) -> std.types.ContentHash {
+  std.content_hash.content_hash_combine(left: x, right: x)
+}

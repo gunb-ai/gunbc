@@ -4,7 +4,6 @@
 
 use crate::helpers::{compile_dag_named_with_source_roots, diagnostic_messages, workspace_root};
 use v1_compiler::v1_compiler_artifact::RenderTarget;
-use v1_compiler::v1_rt;
 use v1_compiler::v1_std_core::{is_error_diagnostic, CompilerDiagnostic};
 
 const FIXTURE_DIR: &str = "dag/test/fixtures/type_resolution_pool_coincidence";
@@ -22,17 +21,14 @@ fn read_fixture(name: &str) -> String {
 fn compile_probe(
     entry_name: &str,
 ) -> std::rc::Rc<v1_compiler::v1_compiler_compile::PipelineResult> {
-    v1_rt::type_ref_pool_coincidence_mask_set_enabled(true);
     let entry_path = format!("{FIXTURE_DIR}/{entry_name}");
     let source = read_fixture(entry_name);
-    let result = compile_dag_named_with_source_roots(
+    compile_dag_named_with_source_roots(
         &entry_path,
         &source,
         RenderTarget::Dag,
         &fixture_roots(),
-    );
-    v1_rt::type_ref_pool_coincidence_mask_set_enabled(false);
-    result
+    )
 }
 
 fn hard_diagnostic_messages(
@@ -69,12 +65,32 @@ fn has_unresolved_type_for(
 }
 
 #[test]
-fn probe_green_stays_clean_with_own_import() {
+fn probe_green_stays_clean_with_qualified_binding() {
     let result = compile_probe("probe_green.dag");
     let hard = hard_diagnostic_messages(&result);
     assert!(
         hard.is_empty(),
         "control (import-reachable) must compile clean; got {hard:?}"
+    );
+}
+
+#[test]
+fn probe_alias_rhs_green_stays_clean_with_qualified_binding() {
+    let result = compile_probe("probe_alias_rhs_green.dag");
+    let hard = hard_diagnostic_messages(&result);
+    assert!(
+        hard.is_empty(),
+        "qualified type on an alias RHS must compile clean; got {hard:?}"
+    );
+}
+
+#[test]
+fn probe_alias_rhs_unbound_refuses_parameterized_argument() {
+    let result = compile_probe("probe_alias_rhs_unbound.dag");
+    assert!(
+        has_unresolved_type_for(&result, "RemoteType"),
+        "off-chain type in a parameterized alias RHS must refuse; got {:?}",
+        hard_diagnostic_messages(&result)
     );
 }
 

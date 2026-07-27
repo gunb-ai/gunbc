@@ -2,6 +2,6 @@ module repro.probe_value_arm
 
 import repro.callee_definer { fixture }
 
-fn probe_unreachable_return() -> ContentHash {
+fn probe_unreachable_callee() -> repro.callee_definer.Typed {
   fixture_callee_read_typed(row: fixture)
 }

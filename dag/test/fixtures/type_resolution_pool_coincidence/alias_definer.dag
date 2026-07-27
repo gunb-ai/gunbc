@@ -1,0 +1,5 @@
+module repro.alias_definer
+
+type RemoteType { value: String }
+
+data alias_definer_marker: Int = 1

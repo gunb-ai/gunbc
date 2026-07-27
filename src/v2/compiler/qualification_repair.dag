@@ -1,0 +1,124 @@
+module v2.compiler.qualification_repair
+
+import v2.std.artifact { Artifact }
+import v2.std.collection { List }
+import v2.std.dependency { DependencyView }
+import v2.std.diagnostic { Locus }
+import v2.std.node { Node }
+import v2.std.qualified_name { QualifiedName }
+import v2.std.symbol_index { LexicalBindingCandidate }
+
+data qualification_repair_authority_note: String = "Qualification repair is a compiler migration transform over the resolver's existing occurrence-level DependencyView(kind BindsTo) authority. It never resolves a name independently: a repair row consumes the exact usage-site Node, declaration Node, and declaration containment path already selected by P1. Unbound and ambiguous rows preserve P1's located refusal; they cannot become edits. Plan rows are emitted deterministically in source-occurrence order, counted from the rows, and observed before a separate apply. Apply changes spellings only to QualifiedName projections and never adds imports. The source strings below are transient transform values, not a persistent source snapshot, loader input, cache key, ModuleDependsOn edge, or replacement for v2.compiler.source_authority."
+
+type QualificationRepairDisposition
+  = Unchanged
+  | Repair {
+      usage_site: Node,
+      declaration: Node,
+      replacement: QualifiedName
+    }
+  | RefusedUnbound {
+      location: Locus
+    }
+  | RefusedAmbiguous {
+      location: Locus,
+      candidates: List<LexicalBindingCandidate>
+    }
+
+type QualificationRepairPlanRow {
+  source: Artifact
+  disposition: QualificationRepairDisposition
+}
+
+type QualificationRepairPlan {
+  rows: List<QualificationRepairPlanRow>
+}
+
+type QualificationRepairPlanTotals {
+  unchanged: Int
+  repair: Int
+  refused_unbound: Int
+  refused_ambiguous: Int
+  total: Int
+}
+
+fn qualification_repair_zero_totals() -> QualificationRepairPlanTotals {
+  QualificationRepairPlanTotals {
+    unchanged: 0,
+    repair: 0,
+    refused_unbound: 0,
+    refused_ambiguous: 0,
+    total: 0
+  }
+}
+
+fn qualification_repair_tally_row(
+  totals: QualificationRepairPlanTotals,
+  row: QualificationRepairPlanRow
+) -> QualificationRepairPlanTotals {
+  match row.disposition {
+    Unchanged =>
+      QualificationRepairPlanTotals {
+        unchanged: totals.unchanged + 1,
+        repair: totals.repair,
+        refused_unbound: totals.refused_unbound,
+        refused_ambiguous: totals.refused_ambiguous,
+        total: totals.total + 1
+      }
+    Repair { usage_site: _, declaration: _, replacement: _ } =>
+      QualificationRepairPlanTotals {
+        unchanged: totals.unchanged,
+        repair: totals.repair + 1,
+        refused_unbound: totals.refused_unbound,
+        refused_ambiguous: totals.refused_ambiguous,
+        total: totals.total + 1
+      }
+    RefusedUnbound { location: _ } =>
+      QualificationRepairPlanTotals {
+        unchanged: totals.unchanged,
+        repair: totals.repair,
+        refused_unbound: totals.refused_unbound + 1,
+        refused_ambiguous: totals.refused_ambiguous,
+        total: totals.total + 1
+      }
+    RefusedAmbiguous { location: _, candidates: _ } =>
+      QualificationRepairPlanTotals {
+        unchanged: totals.unchanged,
+        repair: totals.repair,
+        refused_unbound: totals.refused_unbound,
+        refused_ambiguous: totals.refused_ambiguous + 1,
+        total: totals.total + 1
+      }
+  }
+}
+
+fn qualification_repair_plan_totals(
+  plan: QualificationRepairPlan
+) -> QualificationRepairPlanTotals {
+  fold(
+    plan.rows,
+    init: qualification_repair_zero_totals(),
+    f: qualification_repair_tally_row
+  )
+}
+
+type QualificationRepairSourceInput {
+  artifact: Artifact
+  content: String
+}
+
+type QualificationRepairApplyInput {
+  plan: QualificationRepairPlan
+  sources: List<QualificationRepairSourceInput>
+}
+
+type QualificationRepairAppliedSource {
+  artifact: Artifact
+  before: String
+  after: String
+}
+
+type QualificationRepairApplyOutput {
+  sources: List<QualificationRepairAppliedSource>
+  applied_repairs: List<QualificationRepairPlanRow>
+}

@@ -1,5 +1,4 @@
 use crate::helpers::{compile_multi, diagnostic_messages};
-use v1_compiler::v1_rt;
 use v1_compiler::v1_std_core::CompilerDiagnostic;
 
 #[test]
@@ -7,12 +6,10 @@ fn std_types_freebie_no_longer_leaks_types_into_non_importers() {
     let std_types = "module std.types\ntype Shape { width: Int }\n";
     let leak_probe = "module leak_probe\ntype Holder { item: Shape }\n";
 
-    v1_rt::type_ref_pool_coincidence_mask_set_enabled(true);
     let result = compile_multi(&[("std_types.dag", std_types), ("leak_probe.dag", leak_probe)]);
-    v1_rt::type_ref_pool_coincidence_mask_set_enabled(false);
 
-    // Pool-present-but-not-import-reachable must refuse (type-resolution fail-closed b):
-    // a globally-unique census name does NOT bind without an import chain — no silent
+    // Pool-present-but-not-on-chain must refuse during an ordinary compile:
+    // a globally unique census name does not establish an occurrence binding — no silent
     // Product(<anon>) fabrication and no advisory-only green.
     assert!(
         result.diagnostics.iter().any(|d| {
