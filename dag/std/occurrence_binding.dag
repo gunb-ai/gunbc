@@ -1,21 +1,22 @@
 module std.occurrence_binding
 
-import std.algebra { FreeMonoid }
+import std.algebra { FreeMonoid, Empty, Cons }
 import std.types { String }
 
 data occurrence_binding_staged_adoption_scaffold_note: String = "STAGED ADOPTION: v1 and v2 execute over distinct Node algebras, so their shared occurrence-binding semantics must land here before either concrete Node instantiation. The next consumers are #7306/P1's fresh-successor v1 declaration-backed resolver instantiation, followed by the v2 resolver instantiation and its DependencyView BindsTo projection. LexicalLookup is not an interim consumer: it has no exact reference-occurrence Node or occurrence containment identity, so binding it here would fabricate the relation this carrier preserves."
 
 data occurrence_binding_staged_adoption_dissolve_on: String = "DISSOLVE-ON: both production resolver paths consume OccurrenceBindingResult by execution — v1 emits declaration-backed occurrence bindings, and v2 emits the same result and derives DependencyView BindsTo from OccurrenceBound — then delete this staged-adoption scaffold note and this dissolution row."
 
-type ContainmentPath<N> = FreeMonoid<N>
+type ContainmentPath<N> {
+  ancestors: FreeMonoid<N>
+  terminal: N
+}
 
 type BindingOccurrence<N> {
-  node: N
   containment: ContainmentPath<N>
 }
 
 type BindingCandidate<N> {
-  declaration: N
   containment: ContainmentPath<N>
 }
 
@@ -24,42 +25,88 @@ type OccurrenceBinding<N> {
   candidate: BindingCandidate<N>
 }
 
+type AmbiguousBindingCandidates<N> {
+  first: BindingCandidate<N>
+  second: BindingCandidate<N>
+  rest: FreeMonoid<BindingCandidate<N>>
+}
+
 type OccurrenceBindingResult<N>
   = OccurrenceBound { binding: OccurrenceBinding<N> }
   | OccurrenceUnbound { occurrence: BindingOccurrence<N> }
   | OccurrenceAmbiguous {
       occurrence: BindingOccurrence<N>
-      candidates: FreeMonoid<BindingCandidate<N>>
+      candidates: AmbiguousBindingCandidates<N>
+    }
+
+type OccurrenceBindingFoldState<N>
+  = OccurrenceBindingFoldZero
+  | OccurrenceBindingFoldOne {
+      first: BindingCandidate<N>
+    }
+  | OccurrenceBindingFoldMany {
+      first: BindingCandidate<N>
+      second: BindingCandidate<N>
+      rest_reversed: FreeMonoid<BindingCandidate<N>>
     }
 
 fn occurrence_binding_from_candidates<N>(
   occurrence: BindingOccurrence<N>,
   candidates: FreeMonoid<BindingCandidate<N>>
 ) -> OccurrenceBindingResult<N> {
-  fold(
+  let state = fold(
     candidates,
-    init: OccurrenceUnbound { occurrence: occurrence },
+    init: OccurrenceBindingFoldZero,
     f: (state, candidate) => match state {
-      OccurrenceUnbound { occurrence: observed } =>
-        OccurrenceBound {
-          binding: OccurrenceBinding {
-            occurrence: observed,
-            candidate: candidate,
-          },
+      OccurrenceBindingFoldZero =>
+        OccurrenceBindingFoldOne {
+          first: candidate,
         }
-      OccurrenceBound { binding: observed } =>
-        OccurrenceAmbiguous {
-          occurrence: observed.occurrence,
-          candidates: candidates,
+      OccurrenceBindingFoldOne { first: first } =>
+        OccurrenceBindingFoldMany {
+          first: first,
+          second: candidate,
+          rest_reversed: Empty,
         }
-      OccurrenceAmbiguous {
-        occurrence: observed,
-        candidates: observed_candidates,
+      OccurrenceBindingFoldMany {
+        first: first,
+        second: second,
+        rest_reversed: rest_reversed,
       } =>
-        OccurrenceAmbiguous {
-          occurrence: observed,
-          candidates: observed_candidates,
+        OccurrenceBindingFoldMany {
+          first: first,
+          second: second,
+          rest_reversed: Cons {
+            head: candidate,
+            tail: rest_reversed,
+          },
         }
     },
   )
+  match state {
+    OccurrenceBindingFoldZero =>
+      OccurrenceUnbound {
+        occurrence: occurrence,
+      }
+    OccurrenceBindingFoldOne { first: first } =>
+      OccurrenceBound {
+        binding: OccurrenceBinding {
+          occurrence: occurrence,
+          candidate: first,
+        },
+      }
+    OccurrenceBindingFoldMany {
+      first: first,
+      second: second,
+      rest_reversed: rest_reversed,
+    } =>
+      OccurrenceAmbiguous {
+        occurrence: occurrence,
+        candidates: AmbiguousBindingCandidates {
+          first: first,
+          second: second,
+          rest: reverse(rest_reversed),
+        },
+      }
+  }
 }
