@@ -182,6 +182,17 @@ fn superseded_node_fixture(id: String, by: String) -> RoadmapNode {
   }
 }
 
+fn signed_sized_superseded_node_fixture(id: String, by: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: SupersededLine { by: by, content: "Accepted Old Row" },
+    carriers: [],
+    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    owner: "",
+    signoff: SignedOff { by: "operator", works: true, scope_equivalent: true, as_expected: true },
+  }
+}
+
 test fn witness_superseded_bucket_holds_superseded_only() -> Bool {
   let node_old = superseded_node_fixture(id: "old-row", by: "successor-lane")
   let node_open = sized_derivable(id: "open-row", prs: [10], title: "Open Row")
@@ -192,6 +203,17 @@ test fn witness_superseded_bucket_holds_superseded_only() -> Bool {
     && !any(frontier.ready, n => n.node == nid(s: "old-row"))
     && !any(frontier.upcoming, n => n.node == nid(s: "old-row"))
     && !any(frontier.done, n => n.node == nid(s: "old-row"))
+}
+
+test fn witness_signed_superseded_node_is_not_also_done() -> Bool {
+  let node_old = signed_sized_superseded_node_fixture(id: "accepted-old-row", by: "successor-lane")
+  let frontier = spawn_frontier(
+    doc: fixture_doc(nodes: [node_old], edges: []),
+    merged: [])
+  any(frontier.superseded, n => n.node == nid(s: "accepted-old-row"))
+    && !any(frontier.ready, n => n.node == nid(s: "accepted-old-row"))
+    && !any(frontier.upcoming, n => n.node == nid(s: "accepted-old-row"))
+    && !any(frontier.done, n => n.node == nid(s: "accepted-old-row"))
 }
 
 test fn witness_page_places_superseded_node_in_superseded_bucket() -> Bool {

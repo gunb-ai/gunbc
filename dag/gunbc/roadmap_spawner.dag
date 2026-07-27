@@ -115,7 +115,9 @@ fn node_is_upcoming(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<Roadma
 }
 
 fn node_is_frontier_done(n: RoadmapNode) -> Bool {
-  node_is_sized(n: n) && node_is_complete(n: n)
+  node_is_sized(n: n)
+    && node_is_complete(n: n)
+    && !frontier_node_is_superseded(n: n)
 }
 
 type SpawnFrontier {
