@@ -407,11 +407,11 @@ fn section_2() -> RoadmapSection {
         ],
       ),
       section_group(
-        label: "SCM — node-grain source control, visibility-first (operator-directed 2026-07-25)",
+        label: "SCM — source-intent integration, visibility-first (operator-directed 2026-07-25; premise revised 2026-07-27)",
         nodes: [
           with_plan(rn: ticket_wi(id: "2-scm-visibility-stage0", done: false, t: TicketFields {
             headline: "repo visibility NOW — the Publish/Reference grant model implemented properly, realized over git public/private roots",
-            brief: "Land the real grant algebra (visibility design P-A model + P-B enforcement), with today's realization = two git storage roots (public + private overlay), file-grain Publish declarations, the push-time guard wall, and the one-time bulk stamp (Publish audience: World) of the already-public corpus so the narrowest default only ever bites new content. The SAME grant interface is later carried unchanged by the node-grain SCM — a git repo is one storage realization of the grants, never the model.",
+            brief: "Land the real grant algebra (visibility design P-A model + P-B enforcement), with today's realization = two git storage roots (public + private overlay), file-grain Publish declarations, the push-time guard wall, and the one-time bulk stamp (Publish audience: World) of the already-public corpus so the narrowest default only ever bites new content. The SAME grant interface is later carried unchanged by the source-intent SCM — a git repo is one storage realization of the grants, never the model.",
             displaced_cost: "",
             current_state: "",
             first_slice: "",
@@ -440,16 +440,17 @@ fn section_2() -> RoadmapSection {
             last_verified_on: "",
           }), path: "docs/plans/dag-scm-design.md"),
           with_plan(rn: ticket_wi(id: "2-scm-node-merge", done: false, t: TicketFields {
-            headline: "node-grain SCM core — merges/conflicts at node identity, git as the compatibility surface",
-            brief: "merge = keyed diff over node identity (std.change.keyed_two_way_diff, the membership-reconcile spine precedent — one diff authority, never a text fork): conflicts locate at nodes, not textual hunks — finer grain, fewer conflicts, fewer tokens spent resolving them. The git interface is preserved as ONE storage realization (ingest/emit git trees via the same grammar-both-directions machinery, §4), so adoption cost is a realization choice, not a rewrite. Binary provenance sorts three ways by construction: derived artifacts = materialization cache · structured formats ingest where DecodeFidelity is Lossless · genuinely opaque leaves = chunked content-addressed bytes.",
-            displaced_cost: "",
-            current_state: "",
-            first_slice: "",
-            red_control: "",
-            out_of_scope: "",
+            headline: "source-intent integration core — grounded joint results, git as the compatibility surface",
+            brief: "Integration operates on modeled transformations and obligations over groups of units; node/key overlap is alignment evidence, never the conflict definition. Outcomes are Applied · Contradictory · Ambiguous · Unknown, and only Applied at the required evidence grade advances exact-parent linear history. Native proposals preserve the authored operation rather than requiring endpoint-three-way inference; Git import recovers transformations from base/endpoints with explicit fidelity, and export emits ordinary squash/one-parent source trees. First slice = cost + discriminating scenario model after DFS of GroupMembership, std.change, computation identity, temporal effect, realization, perturbation, and source authority — no store or Rust mechanism first.",
+            displaced_cost: "Agent-scale integration judgment and freshness waste: explicit stress profile = 50 agents/developer, 10 proposals in one modeled region, 30-minute CI; every invalidated green receipt repeats affected validation and delays admission, while a silent wrong automatic result spends recovery time later at interest.",
+            current_state: "2026-07-27 first-principles revision supersedes the prior merge-equals-keyed-node-diff premise; keyed diff remains an observation/capture engine, and visibility-first remains signed.",
+            first_slice: "Model the four outcome roles, evidence ladder, agent/CI cost inputs, and scenario corpus as .dag facts/witnesses after concept DFS; no new generic Intent, Group, or ScmEntityId carrier by nickname.",
+            red_control: "Accept T1: independent foo argument proposals apply only with joint binding/obligation evidence; rename plus an old-spelling call never yields broken-clean; disjoint edits violating one claim contradict with a counterexample; two valid order-dependent results are ambiguous; nearby perturbations defeat always-apply and always-refuse.",
+            out_of_scope: "Native object store, forge UI, arbitrary-language semantic integration outside declared DecodeFidelity, mind-reading unexpressed preferences, and lower conflict counts purchased with silent decisions.",
             handback: "",
             updates: [
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 18)" },
+              TicketUpdate { on: "2026-07-27", note: "operator revised the premise from node-identity merge to source-intent integration over modeled transformations and obligations; Git/files/nodes remain evidence or realizations" },
             ],
             authored_on: "",
             last_verified_on: "",

@@ -421,5 +421,6 @@ nodes — content homed in [dag-scm-design.md](dag-scm-design.md) §3 until it f
 the rungs land. None of it changes Stage 0/P-B, §5's absence default, or the opt-in hash-stub
 mode. **Sequencing decision**: visibility ships FIRST, implemented as this doc's grant model and
 realized over git public/private roots (P-B), the identical interface later carried by the
-node-grain SCM — roadmap §2 group "SCM — node-grain source control, visibility-first", active row
-`2-scm-visibility-stage0`.
+source-intent SCM — roadmap §2 group "SCM — source-intent integration, visibility-first", active
+row `2-scm-visibility-stage0`. Node/subtree remains the publication grain where the grant model
+derives it; it is no longer claimed as the universal integration/conflict grain.

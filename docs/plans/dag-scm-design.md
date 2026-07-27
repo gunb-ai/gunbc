@@ -331,6 +331,30 @@ Evidence composes from weaker to stronger scopes:
 An admission surface may require a particular rung. The receipt must name the rung; lower evidence
 cannot masquerade as higher.
 
+### Comparison evidence, not design authority
+
+Git's documented default merge strategy combines non-overlapping textual changes and exposes
+content conflicts when it cannot. Rename/copy pairing is a similarity calculation. A clean result
+therefore means the configured merge machinery found no conflict; it is not a language-semantic
+proof ([Git merge](https://git-scm.com/docs/git-merge),
+[diffcore rename detection](https://git-scm.com/docs/gitdiffcore#_diffcore_rename_for_detecting_renames_and_copies)).
+
+The empirical baseline reinforces the safety constraint:
+
+- The ASE 2024
+  [evaluation of version-control merge tools](https://doi.org/10.1145/3691620.3695075) reports,
+  over its corpus, Git `ort` at 2,748 correct / 3,078 unhandled / 157 incorrect scenarios; roughly
+  5.4% of Git's handled outputs in that experiment were incorrect. Its structural Java baseline
+  handled more cases but also produced more incorrect results—evidence that “fewer conflicts”
+  alone is the wrong objective.
+- The 2026 preprint
+  [On Correctness of Software Merge](https://arxiv.org/abs/2607.07987) gives a useful structural
+  floor—parsability plus universal edit preservation—and checks it over 43,774 Java file
+  scenarios. Its guarantee is deliberately syntactic/structural and depends on AST differencing;
+  it does not establish behavioral or normative intent.
+
+These baselines belong in the discriminating corpus. They do not define daglang's model.
+
 ## 8. Existing concept DFS — reuse, do not fork
 
 The first modeling pass must try to compose these authorities:
@@ -348,6 +372,8 @@ The first modeling pass must try to compose these authorities:
 | `std.realization.Independence` | `Independent | Dependent | Unknown` | currently effect-shape-specific and deliberately coarse |
 | `v2.compiler.source_authority` + `DecodeFidelity` | ingest/emit authority and honesty boundary | only lossless fragments may recover exact proposals |
 | affected-set and materialization lanes | dependency-scoped validation and content-keyed receipt reuse | selection/caching must not decide semantic compatibility |
+| `extdeps.git` + `extdeps.git.object_store` | cited Git operation, object, tree, commit, ref, and diff interface shapes | external compatibility authority; Git transport/policy and source integration stay separate |
+| GitLab/Atlassian/Microsoft SEC, pricing, and `gunbc.econ.scm_*` carriers | grounded distribution/serving/agentic-stress economics | price the product and store; they do not imply integration semantics |
 
 The existing keyed diff remains useful beneath the new model. Its meaning changes from “the merge
 algorithm” to “one observation/capture engine.” In particular, the storage-binding plan's current

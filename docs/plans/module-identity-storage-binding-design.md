@@ -1,6 +1,8 @@
 # Module identity vs storage — the path⇄module binding authority, and bidirectional surfaces
 
-**Status:** DRAFT for review (operator-directed 2026-07-18). Model-before-implement; each phase names its receipt and its dissolution trigger. No code lands from this document alone.
+**Status:** DRAFT for review (operator-directed 2026-07-18; group/integration premise amended
+2026-07-27). Model-before-implement; each phase names its receipt and its dissolution trigger. No
+code lands from this document alone.
 
 **Operator intent (2026-07-18, verbatim in spirit):** we should not depend on literal files; we should depend on nodes/modules, where a module is a collection of nodes and may be represented by ≥0 files *at parse time*. The relationship must work both ways — if code references a file, the compiler knows what logical portion of the graph it refers to; more ideally, code references modules and never deals with the bidirectional mapping at all. The same statement covers the generated-markdown pair: writing to the `.md` should be able to update the `.dag` source, and writing to the `.dag` should update the `.md` — two projections of one graph. Prefer inference over per-site ceremony where the inference is sound. **Second directive (2026-07-18):** file edits are orthogonal to the design's intent — decide logically what happens to the *graph* first, then make the files behave properly to represent that faithfully; the direction of travel is a system that no longer transacts with files at all.
 
@@ -26,7 +28,11 @@ The general form: **a dependency living in a string is an edge living in prose.*
 
 ## 2. The model (§2/§3 — one concept, derived binding)
 
-- **A module is a node.** A subtree root in the syntactic containment tree — exactly the namespace lane's authority (qualified name = nesting position). "A collection of nodes" is precisely "a parent and its children."
+- **A module is the containment-derived group of program units rooted at a module node.** The
+  syntactic containment tree — exactly the namespace lane's authority (qualified name = nesting
+  position) — makes membership positional: being below that root is being in the module. This is
+  the module instance of the group-of-units authority (`gunbc.roster_registry.GroupMembership`,
+  variant `ByContainment`), not a second module-membership concept.
 - **A file is a storage realization of module content** — one handler of N, the same §2 Realization shape as everywhere else (content-addressed pure spec → host-effect; shell is one transport of an operation, a file is one storage of a module). In the model the binding is **many-to-many and time-varying**: one module in one file (common), one module across several files, several modules in one file, and **zero files** — produced declarations (the body producer) already create modules with no file, which is the standing proof that identity cannot be the path.
 - **Live snapshot vs end-state — staged honestly (review correction, PR #6856).** The live tree enforces **1:1**: `insert_module_path` panics on a duplicate module path within a source root; `source_authority` parses one `SourceFile` into one module artifact; and `source_ir_artifact_provenance_from_model` rejects every non-`SourceFile` artifact, so today's provenance is parse-only and zero-file modules cannot enter it at all. Phase 1 therefore derives the **live 1:1 binding** as rows — sufficient for every consumer named below — and the many-to-many semantics (fragment identity and order, merge/collision rules, several-modules-one-file) stay a **named deferral** until a consumer prices them (§6), never a silent assumption. What does land now is the provenance **coproduct**: `ParsedFromSource { artifact, span_index } | ProducedByBehavior { producer }` — the produced arm represents zero-file modules honestly instead of pretending they came from parse.
 - **Correction against the live producer (Phase 1 implementation, 2026-07-18).** "Derived at parse" is the **end state**, not what the live host producer does today: `build_module_path_index` derives the mapping via `extract_module_path` — a **substring scan** of the first non-blank, non-comment line beginning with `module ` — so it has no spans, and no parse ran for those rows. A third arm, `DeclarationScanned { artifact }`, records that honestly. Emitting such rows as `ParsedFromSource` with a synthesized `span_index` would **fabricate parse provenance** (§5), and widening `span_index` to `Optional` was rejected because it collapses parsed-but-spanless and never-parsed into one shape (the named `Option` meaning >2 things failure mode). Because the scan and the parser are **different code paths they can disagree** — the arm is what makes that disagreement visible to consumers rather than assumed away, and it is what gives the host-vs-oracle consistency witness a real question to answer. *Dissolution:* when the host producer routes through the real parse path (`v1_compiler_parse.rs`, which already carries `mod_name` + its span), rows upgrade to `ParsedFromSource` with real spans and `DeclarationScanned` is deleted.
@@ -56,7 +62,21 @@ Inference is never the permanent mechanism (§4: a heuristic is never necessary 
 
 ## 4. Bidirectional surfaces — per-surface authority, declared and derived (§3/§4)
 
-**Delta-first layering (operator directive, 2026-07-18):** the transaction is a **keyed delta on the graph**, never a file edit. Decide what happens to the graph first; the file layer then has exactly two derived jobs — **capture** (an edit made through a file editor must be recoverable *as* a delta; that is what ingest is for) and **faithful projection** (emit renders post-delta state to every declared surface). Conflict is defined at the delta layer — two deltas conflict iff their keys intersect — never between files, and the surface an edit arrived through is provenance metadata, not authority. The three-way comparison (committed-consistent baseline vs current dag-projection vs current md) is therefore a **named capture adapter** for deltas arriving via file editors — required while git/PR collaboration transacts in files, and carrying its own dissolution trigger: delta-native transacting (editors and agents submitting typed deltas directly against the graph), at which point surfaces render on demand and "which file is the truth" is a non-question.
+**Delta-first layering (operator directive, 2026-07-18; integration premise corrected
+2026-07-27):** the transaction is a **keyed delta on the graph**, never a file edit. Decide what
+happens to the graph first; the file layer then has exactly two derived jobs — **capture** (an edit
+made through a file editor must be recoverable *as* a delta; that is what ingest is for) and
+**faithful projection** (emit renders post-delta state to every declared surface). Compatibility is
+decided at the delta/model layer, never between files, and the surface an edit arrived through is
+provenance metadata, not authority. **Until the source-intent integration model lands, this
+document's capture adapter conservatively refuses intersecting keys.** Intersection means “deeper
+reconciliation required,” not “semantic contradiction proved”: same-key transformations may be
+identical or compatible, while disjoint-key transformations may jointly violate a claim. The
+three-way comparison (committed-consistent baseline vs current dag-projection vs current md) is
+therefore a **named capture adapter** for deltas arriving via file editors — required while git/PR
+collaboration transacts in files, and carrying two dissolution triggers: delta-native transacting
+removes endpoint inference; the [source-intent integration plan](dag-scm-design.md) replaces
+key-intersection refusal with grounded `Applied | Contradictory | Ambiguous | Unknown` outcomes.
 
 **The composed relation (review correction, PR #6856):** a storage surface is not just a path set — it is `(QualifiedModule × TargetModel × StorageRoot) → (paths, authority, AuthoringSurface)`. *Which side is the authority* is already a typed in-tree fact for the Rust surface: the **frontier disposition**. `SeedRetained` → the Rust file is the authority (hand-edits to the seed are the legitimate authoring surface; **not** `BothWays` — there is no `.dag` side to write back to). `SelfEmitted` → the `.dag` graph is the authority and the `.rs` is a projection — `BothWays` becomes *possible* there, gated on a **declared `Lossless` Rust-ingest fragment**, never general Rust ingest. The authority laws must be **medium-parameterized**: `source_authority` is already `_from_model(lm: LanguageModel)`-shaped but defaults to `dag_language_model()`, and `frontier_probe_emit_from_ingest` reads forward only (`.dag` ingest → Rust emit) — markdown and the Rust fragment become additional language models bound to the *same* laws, which is where the backward reads live.
 
@@ -89,7 +109,15 @@ The generated-markdown pair is the same design's second medium. §4's "one gramm
 - **Authority carrier:** the typed document value — `design_document() -> MarkdownDocument`. The `.dag` source is a program that *builds* this value; the inverse therefore never rewrites arbitrary code — it maps a delta on the **value** onto the string-literal declaration rows the builder reads.
 - **Keyed edit identity — the containment-tree node address, never rendered-file position:** a delta is keyed by the entry's stable identity in the document's own containment structure (section path + the entry's stable anchor, e.g. its bolded lead / declaration-row identity) — the same sub-value addressing the namespace lane makes authoritative (a conceptual tie only; no scheduling dependency). Rendered position is not a key: reordering alone is a noop, positional ambiguity refuses, duplicate anchors refuse. The recovered delta rewrites exactly the corresponding literal row(s) in `dag/gunbc/design_document.dag`; an edit outside the literal-row construct set — structural changes, computed spans — **refuses with location** (an uncapturable edit is an edit the graph never saw; absorbing it would make the file an authority again, §3/§5).
 - **Fidelity prerequisite, priced:** the current ingester collapses inline structure to `TextInline` and the round-trip keystone *deliberately asserts* emphasis does not round-trip (`witness_frontier_not_roundtripped`). The fidelity frontier must first move to cover `design_document()`'s **actual construct set** (inline emphasis, links, nested list blocks); the `BothWays` gate is `ingest(emit(authority)) == authority` over that set — not generic markdown parseability.
-- **Dual-edit semantics (delta-layer, not file-layer):** md-only or dag-only edits each recover to deltas that reconcile; **two deltas conflict iff their keys intersect — a typed conflict refusal, never last-writer-wins** (§5 — a merge heuristic here would be the absorbing fallback). The file three-way compare is one *producer* of deltas (the capture adapter of §4); direct delta submission is the end-state producer, and surface-of-capture is recorded as provenance, never consulted as authority.
+- **Dual-edit semantics (delta-layer, not file-layer):** md-only or dag-only edits each recover to
+  deltas that reconcile. The **current adapter accepts disjoint keys and conservatively returns a
+  typed refusal for intersecting keys, never last-writer-wins** (§5 — a merge heuristic here would
+  be the absorbing fallback). This is a safe capture frontier, not the final compatibility
+  predicate; the source-intent integration plan owns the deeper joint-obligation check and may
+  prove an intersecting pair compatible or a disjoint pair contradictory. The file three-way
+  compare is one *producer* of deltas (the capture adapter of §4); direct delta submission is the
+  end-state producer, and surface-of-capture is recorded as provenance, never consulted as
+  authority.
 
 **Flagship:** edit a DESIGN.md open-thread entry in the `.md`, observe `dag/gunbc/design_document.dag` updated and the drift gate green; a non-grammar md edit refuses with location.
 *Receipt:* round-trip witness green over the construct set + the refusal RED control + the conflict RED control.
@@ -114,7 +142,11 @@ A fuller witness catalog — 15 named acceptance witnesses with RED perturbation
 
 ## 7. Failure modes designed against
 
-- **Dual authority / write-back loops:** the graph is the single authority; both files are projections; `BothWays` reconciliation is ingest→keyed-delta→re-emit-both, never file-to-file merging (§3); concurrent divergent edits refuse with a typed conflict, never last-writer-wins.
+- **Dual authority / write-back loops:** the graph is the single authority; both files are
+  projections; `BothWays` reconciliation is ingest→keyed-delta→re-emit-both, never file-to-file
+  merging (§3). The current capture adapter conservatively refuses intersecting keys, never
+  last-writer-wins; the source-intent integration consumer is the named dissolution for treating
+  overlap as a question to prove rather than a terminal conflict definition.
 - **Counted-but-never-executed rows:** Phase 0's invariant makes "enrolled, zero executing consumers" itself a red — the incident's shape cannot recur silently for the next receipt authored red before its flip.
 - **The file layer re-becoming an authority:** every file-shaped mechanism (three-way recovery, drift repair) is a named capture/projection adapter with delta-native transacting as its dissolution trigger; an edit the grammar cannot lift into a delta refuses — it is never absorbed into the graph by guesswork.
 - **Binding staleness:** the binding is derived at parse and keyed by content hash — there is no hand table to rot (§5 construction; the bad state is unwritable because the state is not authored).
