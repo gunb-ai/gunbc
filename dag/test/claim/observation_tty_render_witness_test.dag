@@ -4,7 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, Bool, List }
 import std.nat { Nat }
 import std.symbols { Tier, Emoji, Ascii, Spinner0, StatusBlocked, StatusFinal }
-import std.measure { millisecond, byte_size, basis_point }
+import std.measure { millisecond, millisecond_to_nanosecond, byte_size, basis_point }
 import std.render { CursorAction, Overwrite, Append, RenderCapability }
 import extdeps.render.ansi { csi_esc }
 import extdeps.render.terminal {
@@ -115,7 +115,9 @@ test fn w_refusal_never_repaints_away() -> Bool {
   let refusal = ObservationEvent {
     subject: tty_entry_subject(),
     transition: Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as NonEmptyStr } },
-    wall: MeasuredValue { value: millisecond(count: 2472000) },
+    wall: MeasuredValue {
+      value: millisecond_to_nanosecond(m: millisecond(count: 2472000))
+    },
     rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
   }
   match tty_event_emission_under(event: refusal, basis: MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
@@ -128,7 +130,9 @@ test fn w_same_event_drives_both_surfaces() -> Bool {
   let event = ObservationEvent {
     subject: tty_entry_subject(),
     transition: Concluded { outcome: Done },
-    wall: MeasuredValue { value: millisecond(count: 230) },
+    wall: MeasuredValue {
+      value: millisecond_to_nanosecond(m: millisecond(count: 230))
+    },
     rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
   }
   match tty_event_emission_under(event: event, basis: MeasuredValue { value: tty_basis() }, cap: tty_cap()) {

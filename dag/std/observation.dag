@@ -2,7 +2,16 @@ module std.observation
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
-import std.measure { Millisecond, ByteSize, BasisPoint, measure_le, millisecond, millisecond_count }
+import std.measure {
+  Nanosecond,
+  Millisecond,
+  ByteSize,
+  BasisPoint,
+  measure_le,
+  millisecond,
+  millisecond_count,
+  millisecond_to_nanosecond,
+}
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
 import std.symbols {
   SymbolId,
@@ -210,7 +219,7 @@ type ObservationTransition
 type ObservationEvent {
   subject: ObservationSubject
   transition: ObservationTransition
-  wall: Measured<Millisecond>
+  wall: Measured<Nanosecond>
   rss: Measured<ByteSize>
 }
 
@@ -287,10 +296,10 @@ fn observation_outcome_is_anomaly(o: ObservationOutcome) -> Bool {
   }
 }
 
-fn observation_attention_of_elapsed(elapsed: Millisecond, basis: AttentionBasis) -> AttentionLevel {
-  if measure_le(a: elapsed, b: basis.average) {
+fn observation_attention_of_elapsed(elapsed: Nanosecond, basis: AttentionBasis) -> AttentionLevel {
+  if measure_le(a: elapsed, b: millisecond_to_nanosecond(m: basis.average)) {
     Ambient
-  } else if measure_le(a: elapsed, b: basis.maximum) {
+  } else if measure_le(a: elapsed, b: millisecond_to_nanosecond(m: basis.maximum)) {
     Notable
   } else {
     Anomaly
