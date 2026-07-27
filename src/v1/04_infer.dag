@@ -219,7 +219,7 @@ type InferScope {
   func_env: ResolvedFuncEnv
   locals: Map<String, TypeBinding>
   body_locals: Map<String, Bool>
-  match_bound_names: Map<String, Bool>
+  match_bound_names: Map<String, SourceSpan>
   module_name: String
   service_registry: Map<String, List<OpEntry>>
   item_registry: Map<String, ItemInfo>
@@ -577,8 +577,10 @@ fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
     Absent =>
       match map_get(scope.locals, name) {
         Present { value: _ } =>
-          if map_has(scope.match_bound_names, name) { MatchBoundBinding }
-          else { LocalValueBinding }
+          match map_get(scope.match_bound_names, name) {
+            Present { value: declaration_span } => MatchBoundBinding { declaration_span: declaration_span }
+            Absent => LocalValueBinding
+          }
         Absent => FunctionValueBinding
       }
   }
@@ -1285,13 +1287,13 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: Sub
   }
 }
 
-fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node, provenance: SubValueRelation) -> InferScope {
+fn extend_scope_match_bound(scope: InferScope, name: String, declaration_span: SourceSpan, resolved: Node, provenance: SubValueRelation) -> InferScope {
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
     locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance }),
     body_locals: map_insert(scope.body_locals, name, true),
-    match_bound_names: map_insert(scope.match_bound_names, name, true),
+    match_bound_names: map_insert(scope.match_bound_names, name, declaration_span),
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
@@ -1357,7 +1359,7 @@ fn derive_field_provenance(scope: InferScope, scrutinee_provenance: SubValueRela
 
 fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scrutinee_subject: PatternSubject, scrutinee_provenance: SubValueRelation) -> PatternScopeResult {
   match pattern {
-    Bind { name: n } => PatternScopeResult { scope: extend_scope_match_bound(scope: scope, name: n, resolved: pattern_binding_type(subject: scrutinee_subject), provenance: scrutinee_provenance), diagnostics: [] }
+    Bind { name: n, declaration_span: declaration_span } => PatternScopeResult { scope: extend_scope_match_bound(scope: scope, name: n, declaration_span: declaration_span, resolved: pattern_binding_type(subject: scrutinee_subject), provenance: scrutinee_provenance), diagnostics: [] }
     Wildcard => PatternScopeResult { scope: scope, diagnostics: [] }
     LitPattern { value: _ } => PatternScopeResult { scope: scope, diagnostics: [] }
     VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
@@ -1373,8 +1375,8 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
         let field_provenance = derive_field_provenance(scope: scope, scrutinee_provenance: scrutinee_provenance, scrutinee_subject: scrutinee_subject, variant_name: vname, field_name: field_name)
         let fb_pattern = field_binding_pattern(n: fb)
         match fb_pattern {
-          Bind { name: n } => PatternScopeResult {
-            scope: extend_scope_match_bound(scope: acc.scope, name: n, resolved: field_type, provenance: field_provenance),
+          Bind { name: n, declaration_span: declaration_span } => PatternScopeResult {
+            scope: extend_scope_match_bound(scope: acc.scope, name: n, declaration_span: declaration_span, resolved: field_type, provenance: field_provenance),
             diagnostics: concat(acc.diagnostics, field_lookup.diagnostics)
           }
           _ =>
@@ -4519,7 +4521,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   if vname == "Present" {
                     bindings |> fold(init: ctx, f: (c, fb) =>
                       match field_binding_pattern(n: fb) {
-                        Bind { name: bname } =>
+                        Bind { name: bname, declaration_span: _ } =>
                           DescentContext {
                             fn_name: c.fn_name,
                             param_names: map_insert(c.param_names, bname, ind_field.element_type),
@@ -4534,7 +4536,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                           inner_bindings |> fold(init: c, f: (ic, inner_fb) =>
                             let inner_field_name = field_binding_name_at(n: inner_fb, source_indices: ctx.type_env.source_indices)
                             let inner_bind_name = match field_binding_pattern(n: inner_fb) {
-                              Bind { name: ibname } => ibname
+                              Bind { name: ibname, declaration_span: _ } => ibname
                               _ => ""
                             }
                             let inner_matching = inner_ind_fields |> filter(f => f.variant_name == inner_vname && f.field_name == inner_field_name) |> first
@@ -4563,7 +4565,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   bindings |> fold(init: ctx, f: (c, fb) =>
                     let field_name = field_binding_name_at(n: fb, source_indices: ctx.type_env.source_indices)
                     let bind_name = match field_binding_pattern(n: fb) {
-                      Bind { name: bname } => bname
+                      Bind { name: bname, declaration_span: _ } => bname
                       _ => ""
                     }
                     let matching = ind_fields |> filter(f => f.variant_name == vname && f.field_name == field_name) |> first
@@ -4582,7 +4584,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                     }
                   )
               }
-            Bind { name: bname } =>
+            Bind { name: bname, declaration_span: _ } =>
               if scrut_type != "" {
                 DescentContext {
                   fn_name: ctx.fn_name,
@@ -5011,7 +5013,7 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
             fold(bindings, init: let_prov, f: (acc, binding) =>
               let field_label = field_binding_name_at(n: binding, source_indices: type_env.source_indices)
               let bind_name = match field_binding_pattern(n: binding) {
-                Bind { name: bn } => bn
+                Bind { name: bn, declaration_span: _ } => bn
                 _ => ""
               }
               if bind_name != "" && field_label != "" {
@@ -5021,7 +5023,7 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
                 map_insert(acc, bind_name, field_prov)
               } else { acc }
             )
-          Bind { name: bname } =>
+          Bind { name: bname, declaration_span: _ } =>
             map_insert(let_prov, bname, scrut_prov)
           _ => let_prov
         }
@@ -5279,7 +5281,7 @@ fn arm_ctx_from_variant_provenance(arm_node: Node, sig: ResolvedFuncSig, scrut: 
           let call_args = call_args_by_name(call: scrut, source_indices: ctx.type_env.source_indices)
           let extended = bindings |> fold(init: ctx, f: (c, fb) =>
             let field_label = field_binding_name_at(n: fb, source_indices: ctx.type_env.source_indices)
-            let bind_name = match field_binding_pattern(n: fb) { Bind { name: bn } => bn  _ => "" }
+            let bind_name = match field_binding_pattern(n: fb) { Bind { name: bn, declaration_span: _ } => bn  _ => "" }
             if bind_name == "" || field_label == "" { c }
             else {
               match map_get(variant_field_map, field_label) {

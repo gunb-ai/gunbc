@@ -74,7 +74,7 @@ type VarBindingKind
   = LocalValueBinding
   | FunctionValueBinding
   | VariantValueBinding { parent_enum: String }
-  | MatchBoundBinding
+  | MatchBoundBinding { declaration_span: SourceSpan }
 
 type CallSemantics
   = PlainCallSemantics
@@ -112,7 +112,7 @@ type ExprData
   | ExprReturn
 
 type MatchPattern
-  = Bind { name: String }
+  = Bind { name: String, declaration_span: SourceSpan }
   | LitPattern { value: LiteralValue }
   | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
   | Wildcard

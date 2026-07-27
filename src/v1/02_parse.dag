@@ -4110,7 +4110,7 @@ fn parse_pattern(tokens: TokenStream, ctx: ParseContext) -> PatternResult {
       } else if is_variant_pattern_start(name: n) {
         parse_variant_pattern(tokens: r.tokens, ctx: ctx, name: n)
       } else {
-        PatternResult { pattern: Bind { name: n }, tokens: r.tokens, ctx: ctx, err: none }
+        PatternResult { pattern: Bind { name: n, declaration_span: r.span }, tokens: r.tokens, ctx: ctx, err: none }
       }
     }
     Present { value: ShKeyword } => {
@@ -4183,7 +4183,7 @@ fn parse_variant_bindings_brace_acc(tokens: TokenStream, ctx: ParseContext, acc:
     EatUnchanged { tokens: __eu } =>
       let e2 = eat(tokens: tokens, expected: ExpectComma)
       let tokens = skip_newlines(tokens: match e2 { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => tokens })
-      let fb = make_field_binding_node(field_name: field_name, binding: Bind { name: field_name }, span: bind_span, name_span: field_name_span)
+      let fb = make_field_binding_node(field_name: field_name, binding: Bind { name: field_name, declaration_span: field_name_span }, span: bind_span, name_span: field_name_span)
       parse_variant_bindings_brace_acc(tokens: tokens, ctx: ctx, acc: list_push(acc, fb))
     }
   }
