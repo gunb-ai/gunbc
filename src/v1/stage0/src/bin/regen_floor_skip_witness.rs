@@ -5,8 +5,8 @@
 //! Prints `regen_not_affected_skip` when the merge-base diff touches no regen input
 //! (the `[src/v1, dag]` compile closure the two regen gates share), else `run_regen`.
 //! Fail-closed: any diff-observation or closure-computation failure prints `run_regen`.
-//! Mirrors `compile_clean_floor_skip_witness` — the whole decision lives in the lib
-//! (`cli_run::regen_floor_skip_label_for_ci`); this bin is just the transport.
+//! The whole decision lives in `cli_run::regen_floor_skip_label_for_ci`; this bin is
+//! just the transport.
 
 use std::process::ExitCode;
 
