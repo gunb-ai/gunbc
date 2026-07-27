@@ -1,0 +1,69 @@
+module test.claim.root4_measure_missing_generics_witness
+
+import gunbc.rust_decl_type_overlay { rust_decl_type_container_overlay_is_admitted }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data root4_measure_missing_generics_witness_note: String = "Root-4 measure_missing_generics family: a function-generic container argument must preserve its applied arguments through render_rust_decl_type overlay resolution. The executable emitter-level fixtures use deliberately synthetic Root4AppliedCarrier, Root4AliasCarrier, and Root4ZeroArityCarrier names, so they exercise the structural shape without re-declaring the canonical std.measure.Measure authority; canonical Measure behavior is covered by the stamped canonical-seven receipt. The decision is structural (__applied_type_args or resolved-type children), never a type-name check. The combined-state fixture proves that an explicitly empty applied-argument property does not suppress non-empty resolved children. RED controls: w_zero_param_alias_list_param_unchanged preserves the existing closed-alias realization; w_unrelated_zero_param_leaf_unchanged proves a bare leaf without applied or resolved children does not gain arguments."
+
+fn w_applied_generic_carrier_preserves_arguments() -> Bool {
+  compile_dag_rust_emit_check(
+    "module root4_applied_carrier\n\ntype ProbeQuantity { value: Int }\ntype ProbeMagnitude { value: Int }\ntype Root4AppliedCarrier<Q, S, M> { payload: M }\n\nfn witness<S>(items: List<Root4AppliedCarrier<ProbeQuantity, S, ProbeMagnitude>>) -> List<Root4AppliedCarrier<ProbeQuantity, S, ProbeMagnitude>> {\n  items\n}\n",
+    "src/root4_applied_carrier.rs",
+    ["Vec<Rc<Root4AppliedCarrier<ProbeQuantity, S, ProbeMagnitude>>"],
+    ["Vec<Rc<Root4AppliedCarrier>>", "Rc<Root4AppliedCarrier>>"]
+  )
+}
+
+fn w_empty_applied_property_falls_through_to_resolved_children() -> Bool {
+  rust_decl_type_container_overlay_is_admitted(
+    authored_is_leaf: true,
+    closed_alias: false,
+    applied_arg_count: Present { value: 0 },
+    resolved_child_count: 1,
+  )
+    && !rust_decl_type_container_overlay_is_admitted(
+      authored_is_leaf: true,
+      closed_alias: false,
+      applied_arg_count: Present { value: 0 },
+      resolved_child_count: 0,
+    )
+    && !rust_decl_type_container_overlay_is_admitted(
+      authored_is_leaf: true,
+      closed_alias: true,
+      applied_arg_count: Present { value: 0 },
+      resolved_child_count: 1,
+    )
+    && !rust_decl_type_container_overlay_is_admitted(
+      authored_is_leaf: false,
+      closed_alias: false,
+      applied_arg_count: Present { value: 0 },
+      resolved_child_count: 1,
+    )
+}
+
+fn w_zero_param_alias_list_param_unchanged() -> Bool {
+  compile_dag_rust_emit_check(
+    "module root4_closed_alias\n\ntype ProbeQuantity\ntype ProbeScale\ntype ProbeMagnitude\ntype Root4AliasCarrier<Q, S, M> { payload: M }\ntype ClosedCarrierAlias = Root4AliasCarrier<ProbeQuantity, ProbeScale, ProbeMagnitude>\n\nfn witness(items: List<ClosedCarrierAlias>) -> List<ClosedCarrierAlias> {\n  items\n}\n",
+    "src/root4_closed_alias.rs",
+    ["Rc<Vec<ClosedCarrierAlias<ProbeQuantity, ProbeScale, ProbeMagnitude>>"],
+    ["Vec<Rc<Root4AliasCarrier"]
+  )
+}
+
+fn w_unrelated_zero_param_leaf_unchanged() -> Bool {
+  compile_dag_rust_emit_check(
+    "module root4.unrelated_zero_param\nimport std.nat { Nat }\n\ntype Root4ZeroArityCarrier { count: Nat }\n\nfn witness(items: List<Root4ZeroArityCarrier>) -> Root4ZeroArityCarrier {\n  Root4ZeroArityCarrier { count: 0 }\n}\n",
+    "src/root4_unrelated_zero_param.rs",
+    ["Vec<Rc<Root4ZeroArityCarrier>>"],
+    ["Root4ZeroArityCarrier<(),", "Root4ZeroArityCarrier<Probe", "< S,"]
+  )
+}
+
+test fn root4_measure_missing_generics_witness_holds() -> Bool {
+  w_applied_generic_carrier_preserves_arguments()
+    && w_empty_applied_property_falls_through_to_resolved_children()
+    && w_zero_param_alias_list_param_unchanged()
+    && w_unrelated_zero_param_leaf_unchanged()
+}
