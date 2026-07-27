@@ -7,22 +7,26 @@
 //!
 //! SCAFFOLD (§7 HAND-RUST — `test_module_hygiene_orphan_gate`):
 //! Seed-retained host for U1–U3. Naming-walk live via `check_orphan_helpers_or_err`
-//! (proud-wren-892 sweep B). Not a census shrink: HAND_MAINTAINED surface until the
-//! hygiene fold is expressed in `.dag` and this module deletes.
+//! (proud-wren-892 sweep B). Not a census shrink: this file is already on
+//! `HAND_MAINTAINED_STAGE0_FILES` until the hygiene fold is expressed in `.dag`
+//! and the module deletes.
 //! DELETE WHEN dissolved: this module, the `cli_run` naming-walk call site, and the
 //! unit RED plants below — host then reads a modeled enroll-or-refuse lens.
-//! Receipt (declaration grain; bare token `test_module_hygiene_orphan_gate` is multi-hit
-//! by design — scaffold header / string literal / unit test). Executable pin that does
-//! NOT self-match this comment (IDENT and TYPE_ANN on separate lines; contiguous only
-//! on the declaration):
-//!   IDENT=TEST_MODULE_HYGIENE_ORPHAN_GATE_SCAFFOLD_MARKER
-//!   TYPE_ANN=: &str =
-//!   rg -F "${IDENT}${TYPE_ANN}" src/v1/stage0/src/test_module_hygiene.rs  # == 1 until deletion
-//! Lane deferral: ROADMAP 5-dissolve-patches / §7 seed shrink — no parallel `.dag`
-//! authority yet (explicit interim, not unmarked workaround).
+//! Lane: ROADMAP §1 "**drain the HAND_MAINTAINED queue**"
+//! (`gunbc.roadmap_authority` ticket `5-dissolve-patches`; plan anchor
+//! `dag/gunbc/v1_deletion_plan.dag` `^hand_queue_drain`).
+//! Discriminating receipt (HAND-RUST GATE — unit RED plants, not a marker-count rg):
+//!   `zero_enrolled_plain_helpers_refuse_demotion`
+//!   `allowlisted_fixture_library_path_exempts_zero_enrolled_plains`
+//!   `directory_prefix_alone_does_not_exempt_zero_enrolled_plains`
+//!   `orphan_collect_refuses_unparsable_test_dag`
+//!   `test_data_only_module_still_orphans_unreachable_plains`
+//!   `plain_data_claim_rows_count_as_enrollment_surface`
+//! Authority row: `dag/gunbc/test_module_hygiene_scaffold.dag`.
 
 /// INTERIM hand-Rust scaffold marker (`test_module_hygiene_orphan_gate` / §7).
-/// Receipt: see module-level SCAFFOLD header (`rg -F` pin == 1 until deletion).
+/// Discriminating receipt: unit RED plants named in the module-level SCAFFOLD header
+/// (and `gunbc.test_module_hygiene_scaffold`); not a marker-count rg.
 pub const TEST_MODULE_HYGIENE_ORPHAN_GATE_SCAFFOLD_MARKER: &str = "test_module_hygiene_orphan_gate";
 
 use im::HashMap;
