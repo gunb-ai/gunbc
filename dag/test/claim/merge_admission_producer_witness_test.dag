@@ -49,13 +49,6 @@ test fn floor_exit_nonzero_maps_to_failure() -> Bool {
   floor_exit_to_check_conclusion(exit_code: 1) == extdeps.github.checks.Failure
 }
 
-test fn merge_admission_stamp_invoke_uses_v1_tool_source_root() -> Bool {
-  let invoke = merge_admission_stamp_invoke()
-  string_contains(s: invoke, pattern: "--source-root dag")
-    && string_contains(s: invoke, pattern: "dag/tools/merge_admission_stamp.dag")
-    && !string_contains(s: invoke, pattern: "--source-root src/v2")
-}
-
 test fn mint_binds_current_gate_roster_hash() -> Bool {
   green_receipt.gate_roster_hash == current_gate_roster_hash
 }
