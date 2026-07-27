@@ -44,7 +44,22 @@ import extdeps.tmux {
   shape_tmux_kill_session_argv,
   shape_tmux_list_panes_argv,
 }
-import extdeps.llm.cli { shape_claude_invoke_argv }
+import extdeps.llm.cli { shape_claude_invoke_argv, claude_cli_program }
+import extdeps.llm.cli_lifecycle {
+  ProviderInstance,
+  ProviderInstanceFieldUnobserved,
+  ClaudeCliProvider,
+}
+import gunbc.worker_lifecycle {
+  WorkerObservation,
+  worker_observation_without_provider_probe,
+  AttemptEvidence,
+  WorktreeUnobserved,
+  ProviderEvidenceUnobserved,
+  ProcessIdentityUnobserved,
+  TranscriptUnobserved,
+  TerminalOutcomeUnobserved,
+}
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.host_layout { srv1_dispatch_worktree_root }
@@ -140,6 +155,35 @@ type DispatchLiveSession {
   node_id: String
   windows: Int
   lease_verdict: ObservationVerdict
+  worker: WorkerObservation
+}
+
+data dispatch_provider_instance_note: String = "The configured provider instance is known from the actuator plan, not guessed from one process command. Claude is the only dispatch provider today and its executable comes from extdeps.llm.cli.claude_cli_program. The tmux observation does not read hostname, version, state/auth directory, credential storage, or service identity, so each stays explicitly Unobserved; filling any from deployment prose would fabricate live evidence. A later provider-instance probe replaces those arms independently."
+
+fn dispatch_provider_instance() -> ProviderInstance {
+  ProviderInstance {
+    kind: ClaudeCliProvider,
+    host: ProviderInstanceFieldUnobserved {
+      reason: "session observation does not read host identity" as NonEmptyStr,
+    },
+    executable: claude_cli_program as NonEmptyStr,
+    observed_version: ProviderInstanceFieldUnobserved {
+      reason: "session observation does not execute the provider version probe" as NonEmptyStr,
+    },
+    state_directory: ProviderInstanceFieldUnobserved {
+      reason: "session observation does not inspect provider state" as NonEmptyStr,
+    },
+    credential_storage_method: ProviderInstanceFieldUnobserved {
+      reason: "session observation does not inspect credential storage" as NonEmptyStr,
+    },
+    service_identity: ProviderInstanceFieldUnobserved {
+      reason: "session observation does not read process ownership" as NonEmptyStr,
+    },
+  }
+}
+
+fn dispatch_worker_observation() -> WorkerObservation {
+  worker_observation_without_provider_probe(instance: dispatch_provider_instance())
 }
 
 fn intricacy_label(i: Intricacy) -> String {
@@ -596,6 +640,7 @@ fn live_session_row(entry: TmuxLsEntry, scope: TmuxSessionScope) -> DispatchLive
     node_id: dispatch_node_id_from_session_name(session_name: entry.session_name),
     windows: entry.windows,
     lease_verdict: classify_tmux_session(scope: scope, obs: obs),
+    worker: dispatch_worker_observation(),
   }
 }
 
@@ -616,6 +661,29 @@ type DispatchAttemptRef {
   node_id: String
   branch: String
   attempt_key: String
+}
+
+fn dispatch_attempt_evidence(attempt: DispatchAttemptRef) -> AttemptEvidence {
+  AttemptEvidence {
+    node_id: attempt.node_id as NonEmptyStr,
+    attempt_key: attempt.attempt_key,
+    branch: attempt.branch as NonEmptyStr,
+    worktree: WorktreeUnobserved {
+      reason: "branch observation does not inspect the attempt worktree" as NonEmptyStr,
+    },
+    provider_instance: ProviderEvidenceUnobserved {
+      reason: "branch observation does not identify the provider instance" as NonEmptyStr,
+    },
+    process_identity: ProcessIdentityUnobserved {
+      reason: "branch observation does not inspect PID, start time, or ownership" as NonEmptyStr,
+    },
+    transcript: TranscriptUnobserved {
+      reason: "branch observation does not locate a provider transcript" as NonEmptyStr,
+    },
+    terminal_outcome: TerminalOutcomeUnobserved {
+      reason: "branch existence does not imply a terminal outcome" as NonEmptyStr,
+    },
+  }
 }
 
 fn parse_dispatch_attempt_branch(line: String) -> DispatchAttemptRef? {
