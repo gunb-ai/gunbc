@@ -8,9 +8,6 @@ import v1.std.core {
   ExprData, MatchPattern, Node, VarBindingKind, arm_body, arm_pattern, build_newline_index,
   empty_intern_table, field_binding_pattern, match_arm_nodes, module_items, node_name_span
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn pattern_binder_source() -> String {
   "module pattern_spans\n\ntype Boxed { value: Int }\ntype Nest { value: Boxed }\n\nfn direct(x: Int) -> Int {\n  match x {\n    direct_bind => direct_bind\n  }\n}\n\nfn aliased(x: Boxed) -> Int {\n  match x {\n    Boxed { value: alias_bind } => alias_bind\n  }\n}\n\nfn shorthand(x: Boxed) -> Int {\n  match x {\n    Boxed { value } => value\n  }\n}\n\nfn nested(x: Nest) -> Int {\n  match x {\n    Nest { value: Boxed { value: nested_bind } } => nested_bind\n  }\n}\n".to_string()
@@ -113,7 +110,7 @@ test fn parse_direct_bind_uses_binder_token_span() -> Bool {
           match match_first_arm(body: body) {
             Present { value: arm } =>
               match arm_pattern(n: arm) {
-                MatchPattern::Bind { declaration_span, .. } =>
+                Bind { name: _, declaration_span: declaration_span } =>
                   match direct_binder_start(source: source) {
                     Present { value: expected } => declaration_span.start == expected
                     Absent => false
@@ -143,11 +140,11 @@ test fn parse_explicit_alias_uses_binder_span_not_label_span() -> Bool {
           match match_first_arm(body: body) {
             Present { value: arm } =>
               match arm_pattern(n: arm) {
-                MatchPattern::VariantPattern { field_bindings, .. } =>
+                VariantPattern { name: _, parent_enum: _, field_bindings: field_bindings } =>
                   match first(field_bindings) {
                     Present { value: field_binding } =>
                       match field_binding_pattern(n: field_binding) {
-                        MatchPattern::Bind { declaration_span, .. } =>
+                        Bind { name: _, declaration_span: declaration_span } =>
                           match alias_binder_start(source: source) {
                             Present { value: expected } =>
                               declaration_span.start == expected
@@ -183,11 +180,11 @@ test fn parse_shorthand_uses_field_label_span() -> Bool {
           match match_first_arm(body: body) {
             Present { value: arm } =>
               match arm_pattern(n: arm) {
-                MatchPattern::VariantPattern { field_bindings, .. } =>
+                VariantPattern { name: _, parent_enum: _, field_bindings: field_bindings } =>
                   match first(field_bindings) {
                     Present { value: field_binding } =>
                       match field_binding_pattern(n: field_binding) {
-                        MatchPattern::Bind { declaration_span, .. } =>
+                        Bind { name: _, declaration_span: declaration_span } =>
                           declaration_span.start == node_name_span(n: field_binding).start
                         _ => false
                       }
@@ -218,15 +215,15 @@ test fn parse_nested_bind_uses_innermost_binder_span() -> Bool {
           match match_first_arm(body: body) {
             Present { value: arm } =>
               match arm_pattern(n: arm) {
-                MatchPattern::VariantPattern { field_bindings, .. } =>
+                VariantPattern { name: _, parent_enum: _, field_bindings: field_bindings } =>
                   match first(field_bindings) {
                     Present { value: outer_field_binding } =>
                       match field_binding_pattern(n: outer_field_binding) {
-                        MatchPattern::VariantPattern { field_bindings: inner_field_bindings, .. } =>
+                        VariantPattern { name: _, parent_enum: _, field_bindings: inner_field_bindings } =>
                           match first(inner_field_bindings) {
                             Present { value: inner_field_binding } =>
                               match field_binding_pattern(n: inner_field_binding) {
-                                MatchPattern::Bind { declaration_span, .. } =>
+                                Bind { name: _, declaration_span: declaration_span } =>
                                   match nested_binder_start(source: source) {
                                     Present { value: expected } => declaration_span.start == expected
                                     Absent => false
@@ -251,11 +248,11 @@ test fn parse_nested_bind_uses_innermost_binder_span() -> Bool {
 
 fn typed_match_bound_binding_span_from_arm(arm: Node) -> Int {
   match arm_pattern(n: arm) {
-    MatchPattern::VariantPattern { field_bindings, .. } =>
+    VariantPattern { name: _, parent_enum: _, field_bindings: field_bindings } =>
       match first(field_bindings) {
         Present { value: field_binding } =>
           match field_binding_pattern(n: field_binding) {
-            MatchPattern::Bind { declaration_span, .. } => declaration_span.start
+            Bind { name: _, declaration_span: declaration_span } => declaration_span.start
             _ => -1
           }
         Absent => -1
@@ -266,9 +263,9 @@ fn typed_match_bound_binding_span_from_arm(arm: Node) -> Int {
 
 fn typed_expr_var_binding_span(expr: Node) -> Int {
   match expr.expr_data {
-    ExprData::ExprVar { binding_kind } =>
+    ExprVar { binding_kind: binding_kind } =>
       match binding_kind {
-        Present { value: VarBindingKind::MatchBoundBinding { declaration_span } } => declaration_span.start
+        Present { value: MatchBoundBinding { declaration_span: declaration_span } } => declaration_span.start
         _ => -1
       }
     _ => -1
