@@ -6,8 +6,9 @@ import std.syntax {
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol,
   AlgebraFieldKind, AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin
 }
-import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
+import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate, FreeMonoid }
 import std.induction { SubValueRelation }
+import std.occurrence_binding { BindingOccurrence, BindingCandidate }
 
 type Token {
   text: String
@@ -112,7 +113,7 @@ type ExprData
   | ExprReturn
 
 type MatchPattern
-  = Bind { name: String }
+  = Bind { declaration: Node }
   | LitPattern { value: LiteralValue }
   | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
   | Wildcard
@@ -265,6 +266,15 @@ type DeclaredFuncEnv {
   signatures: Map<String, DeclaredFuncSig>
 }
 
+type NodeBindingIdentity
+  = DeclarationBindingIdentity {
+      candidate: BindingCandidate<Node>
+    }
+  | ReferenceBindingIdentity {
+      occurrence: BindingOccurrence<Node>
+      lexical_candidates: FreeMonoid<BindingCandidate<Node>>
+    }
+
 type Node {
   name: String
   ident: Int?
@@ -286,6 +296,7 @@ type Node {
 
   match_pattern: MatchPattern?
   expr_data: ExprData
+  binding_identity: NodeBindingIdentity?
 }
 
 fn default_ident_span(name: String, span: SourceSpan) -> SourceSpan? {
@@ -322,6 +333,56 @@ fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>,
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: expr_data
   }
+}
+
+fn make_pattern_binder_declaration_node(name: String, span: SourceSpan) -> Node {
+  make_named_expr_node(
+    name: name,
+    expr_data: NoExprData,
+    children: [],
+    inferred: none,
+    span: span,
+    name_span: span
+  )
+}
+
+fn pattern_bind_declaration(pattern: MatchPattern) -> Node? {
+  match pattern {
+    Bind { declaration: declaration } => Present { value: declaration }
+    _ => none
+  }
+}
+
+fn pattern_bind_name(pattern: MatchPattern) -> String {
+  match pattern {
+    Bind { declaration: declaration } => declaration.name
+    _ => ""
+  }
+}
+
+fn node_with_declaration_binding_identity(node: Node, candidate: BindingCandidate<Node>) -> Node {
+  with(node, {
+    binding_identity: Present {
+      value: DeclarationBindingIdentity {
+        candidate: candidate
+      }
+    }
+  })
+}
+
+fn node_with_reference_binding_identity(
+  node: Node,
+  occurrence: BindingOccurrence<Node>,
+  lexical_candidates: FreeMonoid<BindingCandidate<Node>>
+) -> Node {
+  with(node, {
+    binding_identity: Present {
+      value: ReferenceBindingIdentity {
+        occurrence: occurrence,
+        lexical_candidates: lexical_candidates
+      }
+    }
+  })
 }
 
 fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {
@@ -1058,7 +1119,8 @@ fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
     properties: node.properties, type_annotation: node.type_annotation,
     is_self_recursive: node.is_self_recursive,
     has_non_tail_self_call: node.has_non_tail_self_call,
-    match_pattern: node.match_pattern, expr_data: node.expr_data
+    match_pattern: node.match_pattern, expr_data: node.expr_data,
+    binding_identity: node.binding_identity
   }
 }
 
@@ -1376,11 +1438,11 @@ fn pre_intern_tokens(tokens: List<Token>, table: InternTable) -> InternTable {
 }
 
 fn with_optional_cardinality(n: Node) -> Node {
-  Node { name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
+  Node { name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data, binding_identity: n.binding_identity }
 }
 
 fn with_required_cardinality(n: Node) -> Node {
-  Node { name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
+  Node { name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data, binding_identity: n.binding_identity }
 }
 
 fn module_path_segments(path: String) -> List<String> {
