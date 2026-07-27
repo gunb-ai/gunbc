@@ -1,0 +1,39 @@
+label	root4_measure_missing_generics_parent_child
+classifier_stamp	full-coded-and-uncoded-histogram-v1
+protocol	CSSL_STD_SEED_LINK=1; one empty shim; docs/probes/curated_cargo_probe_one.sh; fresh temp crate per module; one stamped gunbc and cssl_assemble binary per seven-module sweep; retained full cargo logs
+parent_git_sha	9a112a30975be5b8e0203b4d2216459572b3c818
+parent_gunbc_sha256	1380ec700e49d3378230831f0d84a8d0bd6a65c143cdc4a3c2143f2617a40df2
+parent_cssl_assemble_sha256	2cd17c5040afb470ea3af631d5d773e5e7028c4691341b50187d186abfee3720
+child_probe_tree_sha	3cf95d68ef1d400eeeb0fade307918fd439a3408
+child_emitter_change_sha	3cf95d68ef1d400eeeb0fade307918fd439a3408
+child_gunbc_sha256	fa6390f3461a00d978884e3cd4674bf1dad748d1816758976302e4acc0c18e21
+child_cssl_assemble_sha256	2cd17c5040afb470ea3af631d5d773e5e7028c4691341b50187d186abfee3720
+phase	module	cargo	total_errors	distinct_live_root_families	residual_histogram
+BEFORE	src/v2/compiler/06_translate.dag	refuse	386	unclassified	error[E0308]:114 error[E0599]:93 error[E0277]:76 error[E0063]:18 error[E0369]:14 error[E0107]:13 error[E0597]:13 error[E0282]:9 error[E0609]:6 error[E0614]:3 error[E0392]:2 error[E0004]:1 error[E0061]:1 error[E0560]:1 uncoded_unreachable_pattern:21 uncoded_UNRESOLVED_CompilerError:1
+BEFORE	src/v2/compiler/04_infer.dag	refuse	346	unclassified	error[E0308]:91 error[E0599]:88 error[E0277]:75 error[E0063]:18 error[E0369]:14 error[E0107]:13 error[E0282]:9 error[E0609]:6 error[E0597]:5 error[E0614]:3 error[E0392]:2 error[E0004]:1 error[E0061]:1 error[E0560]:1 uncoded_unreachable_pattern:18 uncoded_UNRESOLVED_CompilerError:1
+BEFORE	src/v2/compiler/05_eval.dag	refuse	431	unclassified	error[E0308]:117 error[E0599]:91 error[E0277]:81 error[E0369]:29 error[E0614]:22 error[E0063]:20 error[E0107]:18 error[E0282]:9 error[E0597]:8 error[E0609]:6 error[E0310]:2 error[E0392]:2 error[E0560]:2 error[E0004]:1 error[E0061]:1 error[E0271]:1 uncoded_unreachable_pattern:20 uncoded_UNRESOLVED_CompilerError:1
+BEFORE	src/v2/compiler/05_emit.dag	refuse	386	unclassified	error[E0308]:114 error[E0599]:93 error[E0277]:76 error[E0063]:18 error[E0369]:14 error[E0107]:13 error[E0597]:13 error[E0282]:9 error[E0609]:6 error[E0614]:3 error[E0392]:2 error[E0004]:1 error[E0061]:1 error[E0560]:1 uncoded_unreachable_pattern:21 uncoded_UNRESOLVED_CompilerError:1
+BEFORE	src/v2/compiler/emit_host.dag	refuse	649	unclassified	error[E0308]:203 error[E0277]:129 error[E0599]:96 error[E0369]:81 error[E0107]:31 error[E0614]:22 error[E0063]:20 error[E0597]:16 error[E0282]:9 error[E0609]:6 error[E0310]:2 error[E0392]:2 error[E0425]:2 error[E0560]:2 error[E0004]:1 error[E0061]:1 error[E0271]:1 uncoded_unreachable_pattern:24 uncoded_UNRESOLVED_CompilerError:1
+BEFORE	src/v2/compiler/emit_module.dag	refuse	394	unclassified	error[E0308]:122 error[E0599]:93 error[E0277]:76 error[E0063]:18 error[E0369]:14 error[E0107]:13 error[E0597]:13 error[E0282]:9 error[E0609]:6 error[E0614]:3 error[E0392]:2 error[E0004]:1 error[E0061]:1 error[E0560]:1 uncoded_unreachable_pattern:21 uncoded_UNRESOLVED_CompilerError:1
+BEFORE	src/v2/compiler/materialization_carriers.dag	refuse	328	18	error[E0277]:90 error[E0599]:81 error[E0308]:78 error[E0369]:62 error[E0107]:13 error[E0061]:2 error[E0282]:1 uncoded_unreachable_pattern:1 uncoded_UNRESOLVED_CompilerError:0
+AFTER	src/v2/compiler/06_translate.dag	refuse	385	unclassified	error[E0308]:114 error[E0599]:93 error[E0277]:76 error[E0063]:18 error[E0369]:14 error[E0597]:13 error[E0107]:12 error[E0282]:9 error[E0609]:6 error[E0614]:3 error[E0392]:2 error[E0004]:1 error[E0061]:1 error[E0560]:1 uncoded_unreachable_pattern:21 uncoded_UNRESOLVED_CompilerError:1
+AFTER	src/v2/compiler/04_infer.dag	refuse	345	unclassified	error[E0308]:91 error[E0599]:88 error[E0277]:75 error[E0063]:18 error[E0369]:14 error[E0107]:12 error[E0282]:9 error[E0609]:6 error[E0597]:5 error[E0614]:3 error[E0392]:2 error[E0004]:1 error[E0061]:1 error[E0560]:1 uncoded_unreachable_pattern:18 uncoded_UNRESOLVED_CompilerError:1
+AFTER	src/v2/compiler/05_eval.dag	refuse	427	unclassified	error[E0308]:117 error[E0599]:91 error[E0277]:81 error[E0369]:29 error[E0614]:22 error[E0063]:20 error[E0107]:14 error[E0282]:9 error[E0597]:8 error[E0609]:6 error[E0310]:2 error[E0392]:2 error[E0560]:2 error[E0004]:1 error[E0061]:1 error[E0271]:1 uncoded_unreachable_pattern:20 uncoded_UNRESOLVED_CompilerError:1
+AFTER	src/v2/compiler/05_emit.dag	refuse	385	unclassified	error[E0308]:114 error[E0599]:93 error[E0277]:76 error[E0063]:18 error[E0369]:14 error[E0597]:13 error[E0107]:12 error[E0282]:9 error[E0609]:6 error[E0614]:3 error[E0392]:2 error[E0004]:1 error[E0061]:1 error[E0560]:1 uncoded_unreachable_pattern:21 uncoded_UNRESOLVED_CompilerError:1
+AFTER	src/v2/compiler/emit_host.dag	refuse	637	unclassified	error[E0308]:205 error[E0277]:129 error[E0599]:96 error[E0369]:81 error[E0614]:22 error[E0063]:20 error[E0107]:17 error[E0597]:16 error[E0282]:9 error[E0609]:6 error[E0310]:2 error[E0392]:2 error[E0425]:2 error[E0560]:2 error[E0004]:1 error[E0061]:1 error[E0271]:1 uncoded_unreachable_pattern:24 uncoded_UNRESOLVED_CompilerError:1
+AFTER	src/v2/compiler/emit_module.dag	refuse	393	unclassified	error[E0308]:122 error[E0599]:93 error[E0277]:76 error[E0063]:18 error[E0369]:14 error[E0597]:13 error[E0107]:12 error[E0282]:9 error[E0609]:6 error[E0614]:3 error[E0392]:2 error[E0004]:1 error[E0061]:1 error[E0560]:1 uncoded_unreachable_pattern:21 uncoded_UNRESOLVED_CompilerError:1
+AFTER	src/v2/compiler/materialization_carriers.dag	refuse	320	17	error[E0277]:90 error[E0599]:81 error[E0308]:80 error[E0369]:62 error[E0107]:3 error[E0061]:2 error[E0282]:1 uncoded_unreachable_pattern:1 uncoded_UNRESOLVED_CompilerError:0
+aggregate_phase	total_errors	E0308	E0599	E0277	E0369	E0107	other_coded	uncoded
+BEFORE	2920	839	635	603	228	114	369	132
+AFTER	2892	843	635	603	228	82	369	132
+DELTA	-28	4	0	0	0	-32	0	0
+root_family	scope	before	after	delta	disposition
+measure_missing_generics	canonical-seven	8	0	-8	closed
+measure_missing_generics	materialization_carriers	4	0	-4	closed
+missing_generics_emit_other	canonical-seven	56	32	-24	partially reduced; Outcome/RealizedStep/Verdict collateral, residual List/Witness
+missing_generics_emit_other	materialization_carriers	8	2	-6	partially reduced; residual List
+wrong_generic_arity_emit	canonical-seven	50	50	0	live
+wrong_generic_arity_emit	materialization_carriers	1	1	0	live
+delta_attribution	module	code	locus	count	explanation
+newly_exposed_after_signature_repair	src/v2/compiler/emit_host.dag	E0308	src/std_realization_measurement.rs:91:53 and :91:18	2	fold init and time_measure argument now reach the pre-existing Semiring/Measure representation root after the line-90 Measure E0107 is repaired
+newly_exposed_after_signature_repair	src/v2/compiler/materialization_carriers.dag	E0308	src/std_realization_measurement.rs:91:53 and :91:18	2	fold init and time_measure argument now reach the pre-existing Semiring/Measure representation root after the line-90 Measure E0107 is repaired

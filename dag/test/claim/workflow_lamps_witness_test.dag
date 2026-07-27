@@ -1,0 +1,153 @@
+module test.claim.workflow_lamps_witness
+
+import gunbc.client_observation_state {
+  ClientObservationState,
+  ClientObservationPending, ClientObservationOff, ClientObservationOn, ClientObservationRefused,
+  client_observation_state_from, client_observation_state_key,
+  client_observation_state_reason,
+}
+import gunbc.roadmap_component {
+  WorkflowLamp, LiveWorkflowLamp, AttemptedWorkflowLamp,
+  workflow_lamps_v0, workflow_lamp_key, workflow_lamp_state,
+  workflow_controls_class, workflow_lamp_class, workflow_lamp_indicator_class,
+  workflow_lamp_data_attribute, workflow_observation_data_attribute,
+  dispatch_client_js_source,
+}
+import gunbc.roadmap_page { roadmap_page_for_authority }
+import gunbc.roadmap_style { roadmap_css, workflow_controls_compact_css }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data workflow_lamps_witness_note: String = "Workflow lamps v0 receipts. The shared client observation authority proves all four states and the fail-closed precedence RED: refused + asserted cannot light. The independence controls are symmetric so a comparator hardwired to either Live or Attempted cannot pass: each source refuses while the other remains On, then both On coexist. Served-surface checks pin the stable li identity, always-present workflow-controls wrapper, pending lamp markup, independent client selectors, and flat state materials."
+
+fn state_key(state: ClientObservationState) -> String {
+  client_observation_state_key(state: state)
+}
+
+test fn client_observation_state_is_four_way_and_refusal_wins() -> Bool {
+  let pending = state_key(state: ClientObservationPending)
+  let off = state_key(state: ClientObservationOff)
+  let on = state_key(state: ClientObservationOn)
+  let refused = client_observation_state_from(
+    refused: true,
+    asserted: true,
+    reason: "observation unavailable")
+  pending == "pending"
+    && off == "off"
+    && on == "on"
+    && state_key(state: refused) == "refused"
+    && client_observation_state_reason(state: refused) == "observation unavailable"
+    && state_key(state: refused) != "on"
+}
+
+test fn workflow_lamps_refusals_are_symmetric_and_independent() -> Bool {
+  let sessions_refused = ClientObservationRefused { reason: "tmux refused" }
+  let attempts_refused = ClientObservationRefused { reason: "git refused" }
+  let on = ClientObservationOn
+  state_key(state: workflow_lamp_state(
+    lamp: LiveWorkflowLamp,
+    live: sessions_refused,
+    attempted: on)) == "refused"
+    && state_key(state: workflow_lamp_state(
+      lamp: AttemptedWorkflowLamp,
+      live: sessions_refused,
+      attempted: on)) == "on"
+    && state_key(state: workflow_lamp_state(
+      lamp: LiveWorkflowLamp,
+      live: on,
+      attempted: attempts_refused)) == "on"
+    && state_key(state: workflow_lamp_state(
+      lamp: AttemptedWorkflowLamp,
+      live: on,
+      attempted: attempts_refused)) == "refused"
+}
+
+test fn workflow_lamps_can_both_be_lit() -> Bool {
+  state_key(state: workflow_lamp_state(
+    lamp: LiveWorkflowLamp,
+    live: ClientObservationOn,
+    attempted: ClientObservationOn)) == "on"
+    && state_key(state: workflow_lamp_state(
+      lamp: AttemptedWorkflowLamp,
+      live: ClientObservationOn,
+      attempted: ClientObservationOn)) == "on"
+    && count(workflow_lamps_v0) == 2
+    && any(workflow_lamps_v0, lamp => workflow_lamp_key(lamp: lamp) == "live")
+    && any(workflow_lamps_v0, lamp => workflow_lamp_key(lamp: lamp) == "attempted")
+}
+
+fn authority_page_html() -> String {
+  match try_serialize_html_source(node: roadmap_page_for_authority()) {
+    EmitOk { html } => html
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+test fn workflow_lamps_render_on_stable_rows() -> Bool {
+  let h = authority_page_html()
+  string_contains(s: h, pattern: "<li class=\"node node-done\" data-node=")
+    && string_contains(s: h, pattern: join(["class=\"", workflow_controls_class, "\""], ""))
+    && string_contains(s: h, pattern: join([
+      "class=\"", workflow_lamp_class, "\" ",
+      workflow_lamp_data_attribute, "=\"live\" ",
+      workflow_observation_data_attribute, "=\"pending\"",
+    ], ""))
+    && string_contains(s: h, pattern: join([
+      workflow_lamp_data_attribute, "=\"attempted\" ",
+      workflow_observation_data_attribute, "=\"pending\"",
+    ], ""))
+}
+
+test fn workflow_lamps_client_folds_sources_separately() -> Bool {
+  let js = dispatch_client_js_source()
+  string_contains(s: js, pattern: "querySelectorAll('[data-workflow-lamp=\"live\"]')")
+    && string_contains(s: js, pattern: "querySelectorAll('[data-workflow-lamp=\"attempted\"]')")
+    && string_contains(s: js, pattern: "const sr = document.querySelector('li[data-node=\"' + sess.node_id + '\"]')")
+    && string_contains(s: js, pattern: "const ar = document.querySelector('li[data-node=\"' + att.node_id + '\"]')")
+    && string_contains(s: js, pattern: "gunbcSetClientObservation(lamp, 'refused', why)")
+    && string_contains(s: js, pattern: "gunbcSetClientObservation(lamp, 'off', '')")
+    && !string_contains(s: js, pattern: "Promise.all")
+}
+
+test fn workflow_lamps_four_states_are_styled_flat() -> Bool {
+  let css = roadmap_css()
+  string_contains(s: css, pattern: join([
+    ".workflow-lamp[data-observation=\"pending\"] .",
+    workflow_lamp_indicator_class,
+    " { border-style: dashed; opacity: 0.72 }",
+  ], ""))
+    && string_contains(s: css, pattern: join([
+      ".workflow-lamp[data-observation=\"on\"] .",
+      workflow_lamp_indicator_class,
+      " { background: var(--figure); border-color: var(--figure) }",
+    ], ""))
+    && string_contains(s: css, pattern: join([
+      ".workflow-lamp[data-observation=\"refused\"] .",
+      workflow_lamp_indicator_class,
+      " { background: var(--surface); border-color: var(--band-loud) }",
+    ], ""))
+}
+
+test fn workflow_lamps_compact_layout_keeps_one_grid_item() -> Bool {
+  let compact = workflow_controls_compact_css()
+  string_contains(
+    s: compact,
+    pattern: "@media (max-width: 640px)")
+    && string_contains(
+      s: compact,
+      pattern: ".node-head { grid-template-columns: auto minmax(0, 1fr); align-items: start }")
+    && string_contains(
+      s: compact,
+      pattern: ".workflow-controls { grid-column: 1 / -1; width: 100% }")
+}
+
+test fn workflow_lamps_keystone_holds() -> Bool {
+  client_observation_state_is_four_way_and_refusal_wins()
+    && workflow_lamps_refusals_are_symmetric_and_independent()
+    && workflow_lamps_can_both_be_lit()
+    && workflow_lamps_render_on_stable_rows()
+    && workflow_lamps_client_folds_sources_separately()
+    && workflow_lamps_four_states_are_styled_flat()
+    && workflow_lamps_compact_layout_keeps_one_grid_item()
+}

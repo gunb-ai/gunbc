@@ -42,6 +42,7 @@ import extdeps.languages.rust.emit {
 }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
 import gunbc.stage0_crate_layout_generated { generated_pub_mod_block }
+import gunbc.rust_decl_type_overlay { rust_decl_type_container_overlay_is_admitted }
 import v1.compiler.languages {
   scaffold_for_target, serialization_for_target,
   TestConventions, ItemKeywords,
@@ -836,14 +837,15 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         let base = rust_applied_type_base(name: name, corpus_repr: corpus_repr)
         let peel = is_parametric_opaque_type_by_name(env: env, type_name: name)
         let arg_list = n.children |> map(arg =>
+          let typed_arg = render_rust_decl_type_container_arg(arg: arg, source_indices: source_indices, env: env)
           if peel {
-            render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
-          } else if rust_type_arg_renders_as_unit(n: arg, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
+            render_rust_phantom_opaque_applied_decl_arg(n: typed_arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+          } else if rust_type_arg_renders_as_unit(n: typed_arg, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
             "()"
           } else {
-            match rust_render_checkpoint_scalar_bare(n: arg, corpus_repr: corpus_repr, source_indices: source_indices, shared_types: shared_types) {
+            match rust_render_checkpoint_scalar_bare(n: typed_arg, corpus_repr: corpus_repr, source_indices: source_indices, shared_types: shared_types) {
               Present { value: scalar } => scalar
-              Absent => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+              Absent => render_rust_decl_type(n: typed_arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
             }
           }
         )
@@ -953,6 +955,37 @@ fn render_rust_fn_sig_type_applied_binding(n: Node, shared_types: Set<String>, c
         render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
       }
     Absent => render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+  }
+}
+
+fn rust_decl_type_container_arg_needs_resolved_overlay(arg: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  let authored_is_leaf = arg.connective == NoConnective && (arg.children |> count) == 0
+  let closed_alias = if authored_is_leaf {
+    rust_fn_sig_peel_closed_alias(env: env, n: arg)
+  } else {
+    false
+  }
+  let applied_arg_count = match find_property(props: arg.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+    Present { value: applied } => Present { value: applied.children |> count }
+    Absent => none
+  }
+  let resolved_child_count = match arg.inferred {
+    Present { value: Resolved { node: rt } } => rt.children |> count
+    _ => 0
+  }
+  rust_decl_type_container_overlay_is_admitted(
+    authored_is_leaf: authored_is_leaf,
+    closed_alias: closed_alias,
+    applied_arg_count: applied_arg_count,
+    resolved_child_count: resolved_child_count,
+  )
+}
+
+fn render_rust_decl_type_container_arg(arg: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Node {
+  if rust_decl_type_container_arg_needs_resolved_overlay(arg: arg, source_indices: source_indices, env: env) {
+    child_type_node(ch: arg)
+  } else {
+    arg
   }
 }
 

@@ -109,6 +109,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
+    slug: "root4_measure_missing_generics_closure_2026-07-26",
+    work: DeclarationRef { module_path: "gunbc.rust_decl_type_overlay", decl_name: "rust_decl_type_container_overlay_is_admitted", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the structural declaration-container overlay predicate is consumed by a self-emitted emitter and the before/after receipt is absorbed into the Gate-1 behavioral fixed-point carrier; then this probe bind deletes with the md" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
     slug: "srv2-05-native-agreement-divergence-diagnosis",
     work: DeclarationRef { module_path: "v2.compiler.self_host.witness_entry_eligibility_census", decl_name: "witness_entry_eligibility_census_note", field: WholeDeclaration },
     dissolution: HasTrigger { text: "native re-flip greens on >=2 runner hosts with loud divergence receipts; diagnosis absorbed into frontier carrier" },

@@ -7,6 +7,7 @@ import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected 
 import gunbc.roadmap_page {
   roadmap_page_for_authority,
   roadmap_page,
+  roadmap_daily_workspace_page,
   nodes_ul,
   page_script_census,
   dispatch_client_script,
@@ -15,6 +16,8 @@ import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapEdge,
+  IntricacyLow,
+  VolumeSmall,
   section_group,
 }
 import gunbc.roadmap_component { dispatch_client_js_source }
@@ -117,12 +120,31 @@ fn dispatch_doc_html_for(rn: RoadmapNode) -> String {
   }
 }
 
-fn open_dispatch_node() -> RoadmapNode {
-  gunbc.roadmap_authority.authored(id: "disp1", done: false, content: "dispatch-me")
+fn dispatch_doc_html_for_with_merged(rn: RoadmapNode, merged: List<Int>) -> String {
+  let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
+  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  match try_serialize_html_source(node: roadmap_page(doc: doc, merged: merged)) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+fn ready_dispatch_node() -> RoadmapNode {
+  gunbc.roadmap_authority.authored_wi(
+    id: "disp1",
+    done: false,
+    content: "dispatch-me",
+    intricacy: IntricacyLow,
+    volume: VolumeSmall,
+    repo: "gunbc")
+}
+
+fn unsized_open_dispatch_node() -> RoadmapNode {
+  gunbc.roadmap_authority.authored(id: "disp-unsized", done: false, content: "observe-only")
 }
 
 fn signed_off_dispatch_node() -> RoadmapNode {
-  let base = open_dispatch_node()
+  let base = ready_dispatch_node()
   RoadmapNode {
     node: base.node,
     line: base.line,
@@ -139,8 +161,8 @@ fn dispatch_doc_page(rn: RoadmapNode) -> Fragment {
   roadmap_page(doc: doc, merged: [])
 }
 
-test fn witness_open_node_doc_emits_button_and_external_script() -> Bool {
-  let h = dispatch_doc_html_for(rn: open_dispatch_node())
+test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool {
+  let h = dispatch_doc_html_for(rn: ready_dispatch_node())
   string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
     && string_contains(s: h, pattern: "data-node=")
     && string_contains(s: h, pattern: "<script src=\"/assets/roadmap-dispatch.js\"")
@@ -158,7 +180,7 @@ test fn witness_dispatch_asset_reads_belt_b_status_contract() -> Bool {
 }
 
 test fn witness_page_script_census_clean() -> Bool {
-  page_script_census(page: dispatch_doc_page(rn: open_dispatch_node())).length() == 0
+  page_script_census(page: dispatch_doc_page(rn: ready_dispatch_node())).length() == 0
 }
 
 fn hand_inline_script_page() -> Fragment {
@@ -190,6 +212,58 @@ test fn witness_signed_off_node_doc_has_no_button() -> Bool {
   !string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
 }
 
+test fn witness_merged_pr_is_review_evidence_not_acceptance() -> Bool {
+  let node = gunbc.roadmap_authority.derivable_wi(
+    id: "disp-review",
+    prs: [7301],
+    title: "review-me",
+    description: "",
+    intricacy: IntricacyLow,
+    volume: VolumeSmall,
+    repo: "gunbc")
+  let h = dispatch_doc_html_for_with_merged(rn: node, merged: [7301])
+  string_contains(s: h, pattern: "class=\"status status-review\"")
+    && string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
+}
+
+test fn witness_unsized_open_node_keeps_manual_dispatch() -> Bool {
+  let h = dispatch_doc_html_for(rn: unsized_open_dispatch_node())
+  string_contains(s: h, pattern: "class=\"workflow-controls\"")
+    && string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
+}
+
+fn blocked_dispatch_workspace_html() -> String {
+  let blocker = gunbc.roadmap_authority.authored(
+    id: "disp-blocker",
+    done: false,
+    content: "policy prerequisite")
+  let blocked = gunbc.roadmap_authority.authored_wi(
+    id: "disp-blocked",
+    done: false,
+    content: "blocked work",
+    intricacy: IntricacyLow,
+    volume: VolumeSmall,
+    repo: "gunbc")
+  let edge = RoadmapEdge { child: blocked.node, parent: blocker.node }
+  let sec = RoadmapSection {
+    title: "Belt",
+    elements: [ section_group(label: "", nodes: [blocker, blocked], edges: [edge]) ],
+  }
+  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  match try_serialize_html_source(node: roadmap_daily_workspace_page(doc: doc, merged: [])) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+test fn witness_upcoming_node_keeps_manual_out_of_order_dispatch() -> Bool {
+  let h = blocked_dispatch_workspace_html()
+  string_contains(s: h, pattern: "class=\"frontier-bucket frontier-upcoming\"")
+    && string_contains(s: h, pattern: "data-node=\"disp-blocked\"")
+    && string_contains(s: h, pattern: "class=\"workflow-controls\"")
+    && string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
+}
+
 fn superseded_dispatch_node() -> RoadmapNode {
   gunbc.roadmap_authority.superseded(id: "disp1", by: "successor-lane", content: "dispatch-me")
 }
@@ -209,7 +283,7 @@ test fn witness_ticket_rows_render_structured() -> Bool {
     && string_contains(s: h, pattern: "class=\"ticket-brief\"")
     && string_contains(s: h, pattern: ">displaced cost</span>")
     && string_contains(s: h, pattern: "class=\"ticket-updates\"")
-    && string_contains(s: h, pattern: "href=\"https://github.com/gunb-ai/gunbc/blob/main/docs/plans/dispatch-maintain-cc.md\"")
+    && string_contains(s: h, pattern: "href=\"https://github.com/gunb-ai/gunbc/blob/main/docs/plans/node-subtree-visibility-grants.md\"")
 }
 
 fn long_brief_fixture() -> RoadmapNode {
@@ -291,5 +365,5 @@ test fn witness_overlong_lead_reds() -> Bool {
   let v = lead_budget_violations(nodes: [overlong_lead_node()])
   v.length() == 1
     && all(v, x => x.node == "overlong-lead" && x.lead_chars > roadmap_lead_budget_chars())
-    && lead_budget_violations(nodes: [open_dispatch_node()]).length() == 0
+    && lead_budget_violations(nodes: [ready_dispatch_node()]).length() == 0
 }

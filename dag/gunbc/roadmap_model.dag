@@ -21,6 +21,8 @@ type Acceptance
   = PrsMerged
   | ManualAcceptance
 
+data roadmap_acceptance_boundary_note: String = "NodeSizing.acceptance names the evidence a worker must return for review; it is not the work item's lifecycle verdict. PrsMerged means a merged PR is the expected implementation artifact, while ManualAcceptance means the evidence is operator-inspected directly. In both cases RoadmapNode.signoff is the separate acceptance step and the only route to completed work. A PR can be merged while its roadmap node remains open for residue or rework."
+
 type NodeSizing
   = Unsized
   | Sized { intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance }
