@@ -438,25 +438,20 @@ cost.
 
 ## 11. Visibility, locked realizations, and customer trust
 
-The signed order remains: implement the `Reference`/`Publish` grant model first over today's two
-Git storage roots. It is independently valuable and becomes the same admission interface for later
-native storage.
+The [visibility-grants authority](node-subtree-visibility-grants.md) §11 owns the publication
+rungs, ciphertext/interface cut, admission/refusal rules, hole residues, placement limits, churn
+blinding, and crypto-shred semantics. This plan neither abbreviates nor redefines them.
 
-`Publish` may later refine to the already-designed ladder:
+The only integration consequences carried here are:
 
-| rung | audience keeps |
-|---|---|
-| full source | read · typecheck · execute · verify |
-| emitted artifact only | execute · typecheck, not read |
-| ciphertext + interface | typecheck now · complete/execute with key |
-| interface only | typecheck · execute remotely |
-| commitment hash | verify identity/churn only |
-| absence | nothing; existence hidden |
+- the signed order remains: implement `Reference`/`Publish` first over today's two Git storage
+  roots; and
+- the same grant interface later constrains native history, storage, projection, and remote
+  execution without becoming an integration/conflict predicate.
 
-Locked realizations retain the existing design: per-audience key-wraps, decrypt-then-verify against
-the commitment, typed `KeyMismatch`/`LockedNodeUnrealizable`, counted `LockedBlocked`, optional
-churn blinding, and crypto-shred for PII-typed nodes. This concern composes with integration but
-does not define it.
+No `Applied` integration outcome can widen a publication grant, and no secrecy or publication
+claim can be inferred from structural compatibility. The concerns compose through explicit grants
+and realization bindings only.
 
 Vertical integration can bring the product closer to real compiler/use-case failures. It must not
 turn “visibility into customer code” into an undeclared surveillance business model. Raw source

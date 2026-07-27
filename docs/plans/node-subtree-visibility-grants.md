@@ -410,17 +410,67 @@ therefore how complete that check was entitled to be.
    cache lane's local name projected from it? Either is consistent with §3 (below-boundary
    representation is opaque); picking one avoids a second live name for one fact indefinitely.
 
-## 11. Extension pointer + sequencing decision (operator, 2026-07-25)
+## 11. Publication ladder + locked realizations; sequencing decision (operator, 2026-07-25)
 
-The SCM lane extends this doc's `Publish` verb with a **publication ladder** (source ·
-artifact-only · ciphertext+interface "locked" · interface-only · commitment-hash · absence),
-per-audience key-wrapped **locked realizations** (decrypt-then-verify, `LockedNodeUnrealizable`
-refusals, counted `LockedBlocked` witness state), churn blinding (salted commitments; the
-`SecretRef` wrapper reserved for secrets-as-material), and crypto-shred erasure for PII-typed
-nodes — content homed in [dag-scm-design.md](dag-scm-design.md) §11 until it folds back here when
-the rungs land. None of it changes Stage 0/P-B, §5's absence default, or the opt-in hash-stub
-mode. **Sequencing decision**: visibility ships FIRST, implemented as this doc's grant model and
-realized over git public/private roots (P-B), the identical interface later carried by the
-source-intent SCM — roadmap §2 group "SCM — source-intent integration, visibility-first", active
-row `2-scm-visibility-stage0`. Node/subtree remains the publication grain where the grant model
-derives it; it is no longer claimed as the universal integration/conflict grain.
+This section owns the publication/locked-realization extension that was first captured in the SCM
+seed. It is design-only until Stage 0 lands; the source-intent integration plan consumes this
+interface but does not define its secrecy semantics.
+
+`Publish` for a granted node/subtree is a **rung**, not a boolean. Each rung is a typed capability
+for the audience:
+
+| rung | audience keeps |
+|---|---|
+| full source | read · typecheck · execute · verify |
+| emitted artifact only | execute · typecheck, not read |
+| ciphertext + interface (**locked**) | typecheck now · complete/execute with key |
+| interface only | typecheck · execute remotely |
+| commitment hash | verify identity/churn only |
+| absence (default) | nothing; existence hidden |
+
+**Locked realization encoding and admission.** A locked subtree ships in an artifact as one
+ciphertext blob at the declared subtree boundary. Its internal shape is hidden; pad it to a
+declared size bucket when size leakage is outside the grant. The plaintext residue is exactly the
+interface at the cut plus the commitment. Per-audience envelope key-wraps live on the
+`AudienceScopeTree`, the storage form of the grant, so key rotation re-wraps without changing the
+ciphertext or commitment. Admission decrypts and then verifies against the commitment: a wrong
+key is typed `KeyMismatch`, never bytes admitted as code. Keyless execution that reaches the
+subtree refuses as `LockedNodeUnrealizable`; a witness whose closure is blocked records the
+counted `LockedBlocked` state, never failure and never a silent skip. The visible program compiles
+against interfaces—the same separate-compilation requirement as the self-host frontier—and the
+locked realization arrives out of band through the key.
+
+**Hole residues.** A typecheckable projection irreducibly exposes the type at the cut; coarsening
+it spends the public side's typecheck and effect-admission precision. An executable projection
+needs a realization binding (key, artifact, or remote), and a verify-only projection needs the
+commitment. Per-statement holes inside a published executable body are refused because absence is
+not semantically neutral in code. The clean boundary is the interface/realization seam: publish
+the signature and withhold the body. Data/config content may redact at the grant-derived
+node/subtree grain. The strongest form is unwritability: `Secret`/`Pii`-typed content may inhabit
+only `SecretRef`-shaped nodes, so safe publication is derived from the model rather than a scanner.
+
+**Realization placement is the hardness dial.**
+
+- Client + key is distribution access control, not DRM; a key-holder can exfiltrate.
+- Remote-only is secrecy by non-delivery. The consumer never holds the bytes; the interface
+  remains an oracle, whose extraction risk is priced and bounded through metering.
+- An attested TEE is the on-device middle rung, with hardness explicitly bounded by enclave trust.
+
+**Churn blinding.** A naked commitment reveals when secret content changes—sometimes desirable
+for audits or embargoes. A salted, hiding commitment re-randomized per release makes that public
+change signal carry zero bits while key-holders can still verify. A stable `SecretRef` wrapper is
+reserved for secrets-as-material. Wrapping changing **code** in a stable pointer breaks
+content-addressed determinism and public verifiability: stable identity, changing secret, public
+verifiability—pick two.
+
+**Crypto-shred.** Destroying the key is the erasure mechanism for PII-typed nodes that immutable,
+content-addressed history otherwise lacks. The intended uses, in order, are EE features in one
+artifact (license key as typed unlock, no `ee/` source fork), embargoed fixes (release a key rather
+than a new artifact), per-client subtrees, then PII crypto-shredding.
+
+None of this changes Stage 0/P-B, §5's absence default, or the opt-in hash-stub mode.
+**Sequencing decision:** visibility ships first, implemented as this document's grant model and
+realized over Git public/private roots (P-B). The identical interface is later carried by the
+source-intent SCM—ROADMAP §2 group “SCM — source-intent integration, visibility-first,” active row
+`2-scm-visibility-stage0`. Node/subtree remains the publication grain where the grant model
+derives it; it is not a universal integration/conflict grain.
