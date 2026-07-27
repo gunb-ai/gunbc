@@ -574,3 +574,40 @@ test fn orch_retry_changed_log_source_refused_holds() -> Bool {
       d.head.reason == ^orch_emit_retry_log_source_mismatch
   }
 }
+
+test fn orch_retry_body_env_present_refused_holds() -> Bool {
+  match orch_emit_step(
+    s: orch_retry_probe_single_do(
+      r: Run {
+        command: "true",
+        env: [EnvSet { name: "BODY_ENV", value: "1" }],
+        redirect: Absent,
+        capture: Absent
+      },
+      source: "BUILD_LOG"
+    ),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^orch_emit_retry_body_env_present
+  }
+}
+
+test fn orch_retry_body_env_empty_accepted_holds() -> Bool {
+  match orch_emit_step(
+    s: orch_retry_probe_single_do(
+      r: Run {
+        command: "true",
+        env: [],
+        redirect: Absent,
+        capture: Absent
+      },
+      source: "BUILD_LOG"
+    ),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
