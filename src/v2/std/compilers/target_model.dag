@@ -106,6 +106,7 @@ import v2.std.node_query {
 import v2.std.qualified_name { QualifiedName, qualified_name_from_node }
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
+import std.trait_derive_shape { ReprGroundingDeriveTrait }
 import v2.std.host_transport {
   EmitHostRuntimeRow,
   TargetEmitHostRuntimeRow,
@@ -9094,6 +9095,53 @@ type TargetRepresentation {
   apply: TargetGenericApply
 }
 
+fn target_generic_apply_equal(left: TargetGenericApply, right: TargetGenericApply) -> Bool {
+  match left.field_label_separator {
+    Present { value: left_label_separator } =>
+      match right.field_label_separator {
+        Present { value: right_label_separator } =>
+          left.surface == right.surface
+            && left.open == right.open
+            && left.separator == right.separator
+            && left_label_separator == right_label_separator
+            && left.close == right.close
+        Absent => false
+      }
+    Absent =>
+      match right.field_label_separator {
+        Present { value: _ } => false
+        Absent =>
+          left.surface == right.surface
+            && left.open == right.open
+            && left.separator == right.separator
+            && left.close == right.close
+      }
+  }
+}
+
+fn target_representation_equal(left: TargetRepresentation, right: TargetRepresentation) -> Bool {
+  match left.kind {
+    TargetCollectionReprBTreeSet =>
+      match right.kind {
+        TargetCollectionReprBTreeSet => target_generic_apply_equal(left: left.apply, right: right.apply)
+        TargetCollectionReprHashSet => false
+        TargetCollectionReprVec => false
+      }
+    TargetCollectionReprHashSet =>
+      match right.kind {
+        TargetCollectionReprBTreeSet => false
+        TargetCollectionReprHashSet => target_generic_apply_equal(left: left.apply, right: right.apply)
+        TargetCollectionReprVec => false
+      }
+    TargetCollectionReprVec =>
+      match right.kind {
+        TargetCollectionReprBTreeSet => false
+        TargetCollectionReprHashSet => false
+        TargetCollectionReprVec => target_generic_apply_equal(left: left.apply, right: right.apply)
+      }
+  }
+}
+
 type RequiredTraitWitness
   = TargetCollectionWitnessOrd { type_param: Symbol }
   | TargetCollectionWitnessHash { type_param: Symbol }
@@ -9115,6 +9163,102 @@ type TargetCollectionRealization {
   alternatives: List<TargetRepresentationChoice>
   fallback_diagnostic: Diagnostic
   text_carrier: Optional<TargetTextCarrier>
+}
+
+type TargetDeriveSupplementalGenericBoundContract {
+  source_carrier: Node
+  emitted_representation: TargetRepresentation
+  derive_trait: ReprGroundingDeriveTrait
+  requirements: List<ReprGroundingDeriveTrait>
+}
+
+fn target_derive_supplemental_generic_bound_contract_lookup_miss_diagnostic(
+  source_carrier: Node
+) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_derive_supplemental_generic_bound_contract_lookup_miss,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_derive_supplemental_generic_bound_contract_lookup_ambiguous_diagnostic(
+  source_carrier: Node
+) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_derive_supplemental_generic_bound_contract_lookup_ambiguous,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+type TargetDeriveSupplementalGenericBoundContractLookup
+  = TargetDeriveSupplementalGenericBoundContractMissing
+  | TargetDeriveSupplementalGenericBoundContractUnique {
+      row: TargetDeriveSupplementalGenericBoundContract
+    }
+  | TargetDeriveSupplementalGenericBoundContractAmbiguous
+
+fn target_derive_supplemental_generic_bound_contract_lookup_step(
+  acc: TargetDeriveSupplementalGenericBoundContractLookup,
+  row: TargetDeriveSupplementalGenericBoundContract,
+  source_carrier: Node,
+  emitted_representation: TargetRepresentation,
+  derive_trait: ReprGroundingDeriveTrait
+) -> TargetDeriveSupplementalGenericBoundContractLookup {
+  if content_hash(n: row.source_carrier) == content_hash(n: source_carrier)
+    && target_representation_equal(
+      left: row.emitted_representation,
+      right: emitted_representation
+    )
+    && row.derive_trait == derive_trait
+  {
+    match acc {
+      TargetDeriveSupplementalGenericBoundContractMissing =>
+        TargetDeriveSupplementalGenericBoundContractUnique { row: row }
+      TargetDeriveSupplementalGenericBoundContractUnique { row: _ } =>
+        TargetDeriveSupplementalGenericBoundContractAmbiguous
+      TargetDeriveSupplementalGenericBoundContractAmbiguous =>
+        TargetDeriveSupplementalGenericBoundContractAmbiguous
+    }
+  } else {
+    acc
+  }
+}
+
+fn target_derive_supplemental_generic_bound_contract_lookup_in_catalog(
+  catalog: FreeMonoid<TargetDeriveSupplementalGenericBoundContract>,
+  source_carrier: Node,
+  emitted_representation: TargetRepresentation,
+  derive_trait: ReprGroundingDeriveTrait
+) -> Outcome<TargetDeriveSupplementalGenericBoundContract> {
+  match fold_list(
+    xs: catalog,
+    empty: TargetDeriveSupplementalGenericBoundContractMissing,
+    cons: fn(acc, row) {
+      target_derive_supplemental_generic_bound_contract_lookup_step(
+        acc: acc,
+        row: row,
+        source_carrier: source_carrier,
+        emitted_representation: emitted_representation,
+        derive_trait: derive_trait
+      )
+    }
+  ) {
+    TargetDeriveSupplementalGenericBoundContractMissing =>
+      outcome_rejected(
+        target_derive_supplemental_generic_bound_contract_lookup_miss_diagnostic(
+          source_carrier: source_carrier
+        )
+      )
+    TargetDeriveSupplementalGenericBoundContractUnique { row: row } => outcome_accepted(row)
+    TargetDeriveSupplementalGenericBoundContractAmbiguous =>
+      outcome_rejected(
+        target_derive_supplemental_generic_bound_contract_lookup_ambiguous_diagnostic(
+          source_carrier: source_carrier
+        )
+      )
+  }
 }
 
 fn target_collection_set_no_representation_diagnostic() -> Diagnostic {
