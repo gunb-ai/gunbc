@@ -53,7 +53,7 @@
 
 | Arm | Scope | Current reach | Clean-salvage target |
 |---|---|---|---|
-| **(a)** clone bounds on generic params | fn signatures | `v1_generic_params_needing_clone_bound` → `emit_fn_def` only (`05_emit_rust.dag:5172`) — **scaffold** | Replace with `required_trait_witnesses_for_fn_decl` fold/query (§3.0); emit consumes witness list only |
+| **(a)** clone bounds on generic params | fn signatures | `v1_generic_params_needing_clone_bound` → `emit_fn_def` only (`05_emit_rust.dag:5172`) — **scaffold** | Replace with `required_trait_bound_witnesses_for_fn_decl` fold/query (§3.0); emit consumes witness list only |
 | **(b)** supplemental `impl` blocks for coproduct-native arithmetic | `GroupCompletion`, kernel int carriers | `trait_derive_completeness_gate` + `repr_grounding_derive_traits_for_collection_witness` | E0369 coproduct ops (consume gate, not new predicate walks) |
 | **(c)** serde/Debug/Ord `#[derive]` on named structs/enums | struct/enum declarations | capability table → `v1_emit_struct_from_capability_table` | E0277 F1/F3 via P-derive **container-contract** bound rows (not elem-shape table alone) |
 
@@ -69,7 +69,8 @@ DESIGN requires facts-flow-forward **and** that Node-shape classification not ac
 
 | Surface | Authority | Precedent |
 |---|---|---|
-| **Named query accessor** | `target_collection_witness_from_node` (`target_model.dag`) — reads structured witness fields from a `Node`, returns `Outcome<RequiredTraitWitness>` | Ord/Hash/Eq collection witnesses |
+| **General trait-bound accessor** | New `TraitBoundWitness` coproduct + `required_trait_bound_witnesses_for_fn_decl(fn_node) -> List<TraitBoundWitness>` (`target_model.dag`) — grounded fn-body/signature facts for bare generics, `Outcome`/`Option` receivers, return types, method calls (`.clone()`/`.is_empty()`/`.iter()`), **not** collection-repr-specific | (new — P-fn home) |
+| **Collection repr witness** | `target_collection_witness_from_node` → `Outcome<RequiredTraitWitness>` — **unchanged**; models constraints on `TargetRepresentationChoice` only (Ord/Hash/Eq today). Collection facts **refine** general `TraitBoundWitness` at repr-choice sites; do not broaden `RequiredTraitWitness` for fn-wide Clone | Ord/Hash/Eq collection witnesses |
 | **Completeness gate** | `trait_derive_completeness_gate` / `trait_derive_completeness_gate_for_collection_witness` (`trait_derive_completeness.dag`) — calls `repr_grounding_derive_completeness_predicate` **only inside** the gate; emit consumes the gate verdict | Gate-1 sub-wall #2 (#7174) |
 | **Capability table lookup** | `repr_grounding_derive_shape_has_trait(shape, trait)` + `record_derive_traits_*` list builders (`trait_derive_shape.dag`) — answers **which traits an elem shape may derive**, not per-impl bound lists | struct `#[derive]` attr *selection* today |
 | **Container implementation contract** | `TargetCollectionRealization` / `target_collection_realization_lookup_in_catalog` (`target_model.dag`) — keyed by **source carrier + emitted representation**, carries per-trait supplemental bound facts | collection repr choice + `RequiredTraitWitness` constraints today |
@@ -80,24 +81,24 @@ DESIGN requires facts-flow-forward **and** that Node-shape classification not ac
 |---|---|
 | **Owner** | `v2.compiler.trait_derive_completeness` + `std.trait_derive_shape` |
 | **Lane** | Gate-1 trait-derive-completeness (#7174); v1 `trait_derive_emit` is realization-only |
-| **Dissolve trigger** | `required_trait_witnesses_for_fn_decl` (or extended `target_collection_witness_from_node`) ships in `target_model`; v1 deletes `v1_generic_params_needing_clone_bound` body-classification; emit reads witness list only |
+| **Dissolve trigger** | `TraitBoundWitness` + `required_trait_bound_witnesses_for_fn_decl` ships in `target_model`; v1 deletes `v1_generic_params_needing_clone_bound` body-classification; emit reads witness list only. `RequiredTraitWitness` stays collection-repr-only |
 
 ### Predicate P-fn: `generic_fn_modeled_clone_witness` (E0599 R1–R3 candidate)
 
-**Intent:** When a **modeled** generic function's signature/capabilities require `Clone` on type parameter `T` (or `A`/`U`/`B`/`R`) — because a `RequiredTraitWitness` row or `trait_derive_completeness` gate says the param is used as a collection element, return type, or other grounded witness site — emit `T: Clone` on the fn's generic/`where` clause. Emission **consumes** the witness list; it does not infer requirements from downstream Rust.
+**Intent:** When a **modeled** generic function's signature/body requires `Clone` on type parameter `T` (or `A`/`U`/`B`/`R`) — because a grounded `TraitBoundWitness` says the param is used at a method call (`.clone()`/`.is_empty()`/`.iter()`), return type (`Outcome`/`Option`/container), or other modeled site — emit `T: Clone` on the fn's generic/`where` clause. Emission **consumes** the witness list; it does not infer requirements from downstream Rust.
 
-**Anti-pattern (explicitly out of scope):** scanning emitted function bodies (or any target-language text) for `.clone()`, `.is_empty()`, or `.iter()` calls and retroactively adding bounds. That inverts facts-flow-forward and duplicates authority at the wrong layer.
+**Anti-pattern (explicitly out of scope):** (1) scanning emitted function bodies for method names; (2) encoding all fn-bound facts as `TargetCollectionWitness*` inside `RequiredTraitWitness` — that coproduct is **collection-representation constraints only** (`TargetRepresentationChoice.constraints`) and cannot model bare generics, `Outcome`, or `Option` (R1–R3 scope).
 
 | Field | Value |
 |---|---|
-| **Modeled home (proposed)** | Add `TargetCollectionWitnessClone { type_param: Symbol }` to `RequiredTraitWitness`; implement **`required_trait_witnesses_for_fn_decl(fn_node: Node) -> List<RequiredTraitWitness>`** as a `fold_node` query over the fn's modeled signature/body substrate (new `TraitBoundWitnessFold` algebra in `target_model` — same dissolution class as `target_collection_witness_from_node`, not a Rust-text scan). v1 arm (a) **imports and calls only this accessor** |
-| **Production consumers** | `v1.compiler.trait_derive_emit` arm (a) → `v1_emit_type_params_with_clone_bounds` (rewired to witness list) → `emit_fn_def` (`05_emit_rust.dag:5172`) |
-| **Does NOT add** | New Node-shape predicates in v1; extensions to `v1_type_param_needs_clone_bound`; emitted-Rust body scans |
+| **Modeled home (proposed)** | New **`TraitBoundWitness`** coproduct in `target_model` (general fn/generic bound facts — e.g. `FnTypeParamBoundClone { type_param, site }` with `site` naming the grounded modeled use: method receiver, return carrier, collection element). Implement **`required_trait_bound_witnesses_for_fn_decl(fn_node: Node) -> List<TraitBoundWitness>`** as a `fold_node` query (`TraitBoundWitnessFold` algebra). **`RequiredTraitWitness` unchanged** — collection repr Ord/Hash/Eq only; where a collection repr choice implies Clone, emit **projects** that fact into `TraitBoundWitness` at the repr-choice site rather than broadening the collection coproduct. v1 arm (a) **imports and calls only the general accessor** |
+| **Production consumers** | `v1.compiler.trait_derive_emit` arm (a) → `v1_emit_type_params_with_clone_bounds` (rewired to `TraitBoundWitness` list) → `emit_fn_def` (`05_emit_rust.dag:5172`) |
+| **Does NOT add** | `TargetCollectionWitnessClone` or other fn-bound variants inside `RequiredTraitWitness`; new Node-shape predicates in v1; extensions to `v1_type_param_needs_clone_bound`; emitted-Rust body scans |
 | **Predicted effect** | E0599 −590 (R1+R2+R3); per-module clone/is_empty/iter histogram → 0 |
 | **E0277 collateral** | **Unknown — do not claim** until stamped binary proves Family 1 is not the dominant remaining E0277 mass |
 | **RED (green direction)** | Canonical-seven probe: R1+R2+R3 rows absent from `e0599_canonical_seven_census_*.tsv` |
 | **RED (refusal direction)** | Fixture: modeled fn declares generic `T` with **no** `Clone` witness in source → emit refuses to fabricate `T: Clone` on the signature |
-| **Rollback boundary** | Revert witness fold algebra + `RequiredTraitWitness` row; census TSV must match pre-fix receipt byte-for-key totals |
+| **Rollback boundary** | Revert `TraitBoundWitness` fold algebra; census TSV must match pre-fix receipt byte-for-key totals |
 
 **Interim disposition (until fold lands):** v1 may keep `v1_generic_params_needing_clone_bound` only as a **counted, named scaffold** — owner/lane/trigger per §3.0; no expansion of its structural rules; delete on accessor landing.
 
@@ -138,7 +139,7 @@ DESIGN requires facts-flow-forward **and** that Node-shape classification not ac
 Phase 0 (now)     → this document + management acceptance of consumer graph
 Phase 1 (first)   → #7289 Measure/missing-generics overlay salvage (loyal-boar-481)
 Phase 2           → P-derive via container-contract bound catalog + capability-table trait selection (gate unchanged)
-Phase 3           → P-fn via required_trait_witnesses_for_fn_decl fold/query accessor
+Phase 3           → P-fn via `TraitBoundWitness` + `required_trait_bound_witnesses_for_fn_decl` fold/query accessor
 Phase 4           → P-optional (R4) when namespace lane ready
 Phase 5           → tails R5/R6 if still above noise floor
 ```
