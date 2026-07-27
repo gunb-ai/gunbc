@@ -8,7 +8,7 @@ import gunbc.roadmap_model {
   NodeSizing, Unsized, Sized,
   SectionElement, Group, SectionGroup,
 }
-import gunbc.roadmap_status { DerivableLine, SupersededLine, Signoff, Unsigned }
+import gunbc.roadmap_status { DerivableLine, SupersededLine, Signoff, Unsigned, SignedOff }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { spawn_frontier, next_spawnable }
 import gunbc.roadmap_page {
@@ -31,6 +31,17 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
     owner: "",
     signoff: Unsigned,
+  }
+}
+
+fn accepted_node(base: RoadmapNode) -> RoadmapNode {
+  RoadmapNode {
+    node: base.node,
+    line: base.line,
+    carriers: base.carriers,
+    sizing: base.sizing,
+    owner: base.owner,
+    signoff: SignedOff { by: "operator", works: true, scope_equivalent: true, as_expected: true },
   }
 }
 
@@ -61,7 +72,7 @@ fn fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDoc
 }
 
 test fn witness_ready_matches_next_spawnable() -> Bool {
-  let node_a = sized_derivable(id: "parent-done", prs: [100], title: "Parent")
+  let node_a = accepted_node(base: sized_derivable(id: "parent-done", prs: [100], title: "Parent"))
   let node_b = sized_derivable(id: "child-ready", prs: [200], title: "Child Ready")
   let edges = [RoadmapEdge { child: nid(s: "child-ready"), parent: nid(s: "parent-done") }]
   let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
@@ -81,13 +92,37 @@ test fn witness_upcoming_is_blocked_sized_node() -> Bool {
     && !any(frontier.ready, n => n.node == nid(s: "child-blocked"))
 }
 
-test fn witness_done_is_merged_sized_node() -> Bool {
-  let node = sized_derivable(id: "done-node", prs: [999], title: "Done Node")
+test fn witness_merged_unsigned_node_stays_ready_for_acceptance() -> Bool {
+  let node = sized_derivable(id: "review-node", prs: [999], title: "Review Node")
   let doc = fixture_doc(nodes: [node], edges: [])
   let frontier = spawn_frontier(doc: doc, merged: [999])
-  any(frontier.done, n => n.node == nid(s: "done-node"))
-    && !any(frontier.ready, n => n.node == nid(s: "done-node"))
-    && !any(frontier.upcoming, n => n.node == nid(s: "done-node"))
+  !any(frontier.done, n => n.node == nid(s: "review-node"))
+    && any(frontier.ready, n => n.node == nid(s: "review-node"))
+    && !any(frontier.upcoming, n => n.node == nid(s: "review-node"))
+}
+
+test fn witness_merged_unsigned_parent_does_not_unblock_child() -> Bool {
+  let parent = sized_derivable(id: "review-parent", prs: [999], title: "Review Parent")
+  let child = sized_derivable(id: "after-review", prs: [1000], title: "After Review")
+  let edge = RoadmapEdge { child: child.node, parent: parent.node }
+  let frontier = spawn_frontier(
+    doc: fixture_doc(nodes: [parent, child], edges: [edge]),
+    merged: [999])
+  any(frontier.ready, n => n.node == parent.node)
+    && any(frontier.upcoming, n => n.node == child.node)
+    && !any(frontier.ready, n => n.node == child.node)
+}
+
+test fn witness_signed_node_is_done_and_unblocks_child() -> Bool {
+  let parent = accepted_node(base: sized_derivable(id: "signed-parent", prs: [700], title: "Signed Parent"))
+  let child = sized_derivable(id: "after-signoff", prs: [701], title: "After Signoff")
+  let edge = RoadmapEdge { child: child.node, parent: parent.node }
+  let frontier = spawn_frontier(
+    doc: fixture_doc(nodes: [parent, child], edges: [edge]),
+    merged: [])
+  any(frontier.done, n => n.node == parent.node)
+    && !any(frontier.ready, n => n.node == parent.node)
+    && any(frontier.ready, n => n.node == child.node)
 }
 
 test fn witness_unsized_excluded_from_frontier() -> Bool {
@@ -102,7 +137,7 @@ test fn witness_unsized_excluded_from_frontier() -> Bool {
 test fn witness_buckets_are_disjoint() -> Bool {
   let node_a = sized_derivable(id: "a-open", prs: [100], title: "A")
   let node_b = sized_derivable(id: "b-blocked", prs: [200], title: "B")
-  let node_c = sized_derivable(id: "c-done", prs: [300], title: "C")
+  let node_c = accepted_node(base: sized_derivable(id: "c-done", prs: [300], title: "C"))
   let edges = [RoadmapEdge { child: nid(s: "b-blocked"), parent: nid(s: "a-open") }]
   let doc = fixture_doc(nodes: [node_a, node_b, node_c], edges: edges)
   let frontier = spawn_frontier(doc: doc, merged: [300])
@@ -147,6 +182,17 @@ fn superseded_node_fixture(id: String, by: String) -> RoadmapNode {
   }
 }
 
+fn signed_sized_superseded_node_fixture(id: String, by: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: SupersededLine { by: by, content: "Accepted Old Row" },
+    carriers: [],
+    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    owner: "",
+    signoff: SignedOff { by: "operator", works: true, scope_equivalent: true, as_expected: true },
+  }
+}
+
 test fn witness_superseded_bucket_holds_superseded_only() -> Bool {
   let node_old = superseded_node_fixture(id: "old-row", by: "successor-lane")
   let node_open = sized_derivable(id: "open-row", prs: [10], title: "Open Row")
@@ -157,6 +203,17 @@ test fn witness_superseded_bucket_holds_superseded_only() -> Bool {
     && !any(frontier.ready, n => n.node == nid(s: "old-row"))
     && !any(frontier.upcoming, n => n.node == nid(s: "old-row"))
     && !any(frontier.done, n => n.node == nid(s: "old-row"))
+}
+
+test fn witness_signed_superseded_node_is_not_also_done() -> Bool {
+  let node_old = signed_sized_superseded_node_fixture(id: "accepted-old-row", by: "successor-lane")
+  let frontier = spawn_frontier(
+    doc: fixture_doc(nodes: [node_old], edges: []),
+    merged: [])
+  any(frontier.superseded, n => n.node == nid(s: "accepted-old-row"))
+    && !any(frontier.ready, n => n.node == nid(s: "accepted-old-row"))
+    && !any(frontier.upcoming, n => n.node == nid(s: "accepted-old-row"))
+    && !any(frontier.done, n => n.node == nid(s: "accepted-old-row"))
 }
 
 test fn witness_page_places_superseded_node_in_superseded_bucket() -> Bool {
@@ -185,4 +242,3 @@ test fn witness_authority_daily_workspace_serializes() -> Bool {
     EmitRejected { reason: _ } => false
   }
 }
-

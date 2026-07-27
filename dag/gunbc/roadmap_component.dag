@@ -4,6 +4,11 @@ import std.types { Int, String, Bool }
 import extdeps.languages.css.values { CssLength, css_ch, css_length_wire }
 import gunbc.design.scale { ScaleToken, space_4, space_8, height_row }
 import gunbc.roadmap_altitude { band_expands }
+import gunbc.client_observation_state {
+  ClientObservationState,
+  ClientObservationPending, ClientObservationOff, ClientObservationOn, ClientObservationRefused,
+  client_observation_state_key,
+}
 import gunbc.design.component {
   Component, ComponentState, ComponentStateKind,
   IdleState, RequestedState, TerminalState,
@@ -135,6 +140,58 @@ data sessions_route_path: String = "/sessions.json"
 
 data attempts_route_path: String = "/attempts.json"
 
+type WorkflowLamp
+  = LiveWorkflowLamp
+  | AttemptedWorkflowLamp
+
+data workflow_lamps_v0: List<WorkflowLamp> = [
+  LiveWorkflowLamp,
+  AttemptedWorkflowLamp,
+]
+
+fn workflow_lamp_key(lamp: WorkflowLamp) -> String {
+  match lamp {
+    LiveWorkflowLamp => "live"
+    AttemptedWorkflowLamp => "attempted"
+  }
+}
+
+fn workflow_lamp_label(lamp: WorkflowLamp) -> String {
+  match lamp {
+    LiveWorkflowLamp => "Live"
+    AttemptedWorkflowLamp => "Attempted"
+  }
+}
+
+fn workflow_lamp_state(
+  lamp: WorkflowLamp,
+  live: ClientObservationState,
+  attempted: ClientObservationState,
+) -> ClientObservationState {
+  match lamp {
+    LiveWorkflowLamp => live
+    AttemptedWorkflowLamp => attempted
+  }
+}
+
+fn workflow_lamp_initial_state(lamp: WorkflowLamp) -> ClientObservationState {
+  workflow_lamp_state(
+    lamp: lamp,
+    live: ClientObservationPending,
+    attempted: ClientObservationPending)
+}
+
+data workflow_controls_class: String = "workflow-controls"
+data workflow_strip_class: String = "workflow-strip"
+data workflow_lamp_class: String = "workflow-lamp"
+data workflow_lamp_indicator_class: String = "workflow-lamp-indicator"
+data workflow_lamp_label_class: String = "workflow-lamp-label"
+data workflow_lamp_data_attribute: String = "data-workflow-lamp"
+data workflow_observation_data_attribute: String = "data-observation"
+data workflow_lamp_label_data_attribute: String = "data-label"
+
+data workflow_lamps_note: String = "Workflow lamps v0 (operator adjudication 2026-07-26): Live and Attempted are two independent projections over the existing /sessions.json and /attempts.json observations. workflow_lamps_v0 declares their presentation order for the row strip; workflow_lamp_state selects each axis without collapsing them into one workflow status. Every lamp starts ClientObservationPending and can become Off, On, or Refused only through the shared gunbc.client_observation_state authority. The strip is evidence presentation only: its rightmost lit member never gates an action and is never persisted. gunbc.client_observation_state.work_item_workflow_fact_note records the seven-fact join ruling without re-declaring those facts as a parallel roster. Proposed and Landed do not earn lamps until the typed attempt/branch/PR/node join exists; that binding, not more visual states, is the next slice."
+
 data dispatch_caption_live_word_note: String = "U2: the observation word for a session the BELT reports live at page load — type-distinct from the wire status words (spawned/already_live are answers to MY click; live is an observed fact about the world). It renders through the same session-chip morph, so the caption stays a projection of what was observed, never a phrase the page invented."
 
 data dispatch_caption_live_word: String = "live"
@@ -144,7 +201,7 @@ data dispatch_class_ok: String = "dispatch-ok"
 data dispatch_class_refused: String = "dispatch-refused"
 data dispatch_class_loud: String = "dispatch-loud"
 
-data roadmap_row_archetype_note: String = "The RoadmapRow archetype (composition slice 2; refines the round-5 flex head line, does not rebuild it): the row's five regions DECLARED as data — status chip, title, meta, disclosure, actuator — each with its placement, and the head line's grid template DERIVED from the placements rather than authored as a magic string. Placements: the chip and the actuator own auto head tracks (identity left, action right — the GitHub PR-row shape the operator named); the title owns the flex track; meta FLOWS inside the title's track (badge count varies per node, so meta is a flow, not a column); the disclosure sits under the head on its own line, indented by its landed token. Density rides two tokens on the scale grammar — roadmap_row_height (h-row; the actuator in rows derives its extent from THIS token, derived-not-set, per the signed chip-scale ruling) and roadmap_row_gutter — no bare pixels anywhere in the realization. The full-size instrument specimen (h-control grain) lives in the sandbox gallery by selector scope: the row override applies only under .node-head, so gallery buttons keep the design-surface geometry with the SAME press physics rules (the detent and receipt folds target .dispatch-btn in both contexts, per-family-honest everywhere)."
+data roadmap_row_archetype_note: String = "The RoadmapRow archetype (composition slice 2; refined by workflow lamps v0 without adding a head track): the row's five regions remain status chip, title, meta, disclosure, actuator. The ActuatorRegion is realized by one always-present workflow-controls wrapper containing the workflow strip and the optional dispatch control; dynamic Stop also lands inside that wrapper. This preserves the derived auto 1fr auto grid while giving done/superseded rows an observation surface and preventing Stop or a lamp strip from becoming an implicit fourth grid item. The title owns the flex track; meta FLOWS inside it; disclosure sits under the head. Density rides roadmap_row_height and roadmap_row_gutter. The full-size instrument specimen remains outside .node-head in the sandbox."
 
 type RowTrack
   = AutoTrack
@@ -1035,16 +1092,139 @@ fn swatch_toggle_bind_statements() -> List<TsStmt> {
   ]
 }
 
-data sessions_panel_note: String = "U2 (sessions panel v0): on load the client fetches the belt observation and marks each LIVE node's actuator — ok band + the session-chip morph with the observation word + the tmux session name in the title channel — so a refresh no longer forgets what the belt knows. The refusal arm is LOUD: observe_refused (or a failed fetch) inserts an .observe-refused banner as main's first line naming the reason — an unknowable session set never renders as an empty panel (the altitude law: anomaly expands). The banner is client-inserted so the page render stays pure and the healthz digest law holds."
+data js_set_client_observation_fn: String = "gunbcSetClientObservation"
+
+fn workflow_lamp_selector(lamp: WorkflowLamp) -> String {
+  join([
+    "[", workflow_lamp_data_attribute, "=\"",
+    workflow_lamp_key(lamp: lamp),
+    "\"]",
+  ], "")
+}
+
+fn workflow_row_selector_expr(node_id: TsExpr) -> TsExpr {
+  ts_binop(
+    left: ts_binop(
+      left: ts_lit_str(value: "li[data-node=\""),
+      op: "+",
+      right: node_id),
+    op: "+",
+    right: ts_lit_str(value: "\"]"))
+}
+
+fn workflow_lamp_in_row_expr(row_name: String, lamp: WorkflowLamp) -> TsExpr {
+  ts_binop(
+    left: ts_ident(name: row_name),
+    op: "&&",
+    right: ts_call(
+      callee: ts_member(object: ts_ident(name: row_name), property: "querySelector"),
+      args: [ts_lit_str(value: workflow_lamp_selector(lamp: lamp))]))
+}
+
+fn workflow_observation_key(state: ClientObservationState) -> String {
+  client_observation_state_key(state: state)
+}
+
+fn workflow_set_observation_call(
+  lamp_expr: TsExpr,
+  state: ClientObservationState,
+  reason_expr: TsExpr,
+) -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_ident(name: js_set_client_observation_fn),
+    args: [
+      lamp_expr,
+      ts_lit_str(value: workflow_observation_key(state: state)),
+      reason_expr,
+    ]))
+}
+
+fn workflow_set_all_observations_stmt(
+  lamp: WorkflowLamp,
+  state: ClientObservationState,
+  reason_expr: TsExpr,
+) -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(
+      object: ts_call(
+        callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+        args: [ts_lit_str(value: workflow_lamp_selector(lamp: lamp))]),
+      property: "forEach"),
+    args: [ts_arrow(params: ["lamp"], body: workflow_set_observation_call(
+      lamp_expr: ts_ident(name: "lamp"),
+      state: state,
+      reason_expr: reason_expr))]))
+}
+
+fn workflow_observation_preamble_statements() -> List<TsStmt> {
+  [
+    ts_const(name: js_set_client_observation_fn, value: ts_arrow(
+      params: ["lamp", "state", "reason"],
+      body: ts_block(stmts: [
+        ts_if(
+          cond: ts_ident(name: "lamp"),
+          then: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(
+                object: ts_member(object: ts_ident(name: "lamp"), property: "dataset"),
+                property: "observation"),
+              op: "=",
+              right: ts_ident(name: "state"))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "lamp"), property: "title"),
+              op: "=",
+              right: ts_binop(
+                left: ts_ident(name: "reason"),
+                op: "||",
+                right: ts_lit_str(value: "")))),
+            ts_const(name: "stateLabel", value: ts_cond(
+              test: ts_ident(name: "reason"),
+              consequent: ts_binop(
+                left: ts_binop(
+                  left: ts_ident(name: "state"),
+                  op: "+",
+                  right: ts_lit_str(value: ": ")),
+                op: "+",
+                right: ts_ident(name: "reason")),
+              alternate: ts_ident(name: "state"))),
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_member(object: ts_ident(name: "lamp"), property: "setAttribute"),
+              args: [
+                ts_lit_str(value: "aria-label"),
+                ts_binop(
+                  left: ts_binop(
+                    left: ts_member(
+                      object: ts_member(object: ts_ident(name: "lamp"), property: "dataset"),
+                      property: "label"),
+                    op: "+",
+                    right: ts_lit_str(value: ": ")),
+                  op: "+",
+                  right: ts_ident(name: "stateLabel")),
+              ])),
+          ]),
+          else_stmt: none),
+      ]))),
+  ]
+}
+
+data sessions_panel_note: String = "U2 plus workflow lamps v0: on load the client fetches the belt observation, first resolves every Live lamp Off, then marks each observed row On. The stable lookup is li[data-node], so done and superseded rows retain the observation even without an actuator; a present actuator still receives the session-chip morph and Stop control. Refusal resolves every Live lamp to Refused and inserts the loud banner — unknowable never rounds to Off. The sessions and attempts fetch chains remain independent, so either can resolve while the other refuses."
 
 fn sessions_mark_live_stmts() -> List<TsStmt> {
   [
-    ts_const(name: "sb", value: ts_call(
+    ts_const(name: "sr", value: ts_call(
       callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
-      args: [ts_binop(
-        left: ts_binop(left: ts_lit_str(value: "[data-node=\""), op: "+", right: ts_member(object: ts_ident(name: "sess"), property: "node_id")),
-        op: "+",
-        right: ts_lit_str(value: "\"]"))])),
+      args: [workflow_row_selector_expr(
+        node_id: ts_member(object: ts_ident(name: "sess"), property: "node_id"))])),
+    workflow_set_observation_call(
+      lamp_expr: workflow_lamp_in_row_expr(row_name: "sr", lamp: LiveWorkflowLamp),
+      state: ClientObservationOn,
+      reason_expr: ts_lit_str(value: "")),
+    ts_const(name: "sb", value: ts_binop(
+      left: ts_ident(name: "sr"),
+      op: "&&",
+      right: ts_call(
+        callee: ts_member(object: ts_ident(name: "sr"), property: "querySelector"),
+        args: [ts_lit_str(value: ".dispatch-btn")]))),
     ts_if(
       cond: ts_ident(name: "sb"),
       then: ts_block(stmts: [
@@ -1166,9 +1346,27 @@ fn sessions_fetch_statements() -> List<TsStmt> {
             ts_if(
               cond: ts_member(object: ts_ident(name: "sj"), property: "observe_refused"),
               then: ts_block(stmts: concat(
-                [ts_const(name: "why", value: ts_binop(left: ts_lit_str(value: "session observation refused: "), op: "+", right: ts_binop(left: ts_member(object: ts_ident(name: "sj"), property: "reason"), op: "||", right: ts_lit_str(value: "no reason on the wire"))))],
-                sessions_refused_banner_stmts())),
+                [
+                  ts_const(name: "wireWhy", value: ts_binop(
+                    left: ts_member(object: ts_ident(name: "sj"), property: "reason"),
+                    op: "||",
+                    right: ts_lit_str(value: "no reason on the wire"))),
+                  ts_const(name: "why", value: ts_binop(
+                    left: ts_lit_str(value: "session observation refused: "),
+                    op: "+",
+                    right: ts_ident(name: "wireWhy"))),
+                ],
+                concat(
+                  [workflow_set_all_observations_stmt(
+                    lamp: LiveWorkflowLamp,
+                    state: ClientObservationRefused { reason: "" },
+                    reason_expr: ts_ident(name: "why"))],
+                  sessions_refused_banner_stmts()))),
               else_stmt: Present { value: ts_block(stmts: [
+                workflow_set_all_observations_stmt(
+                  lamp: LiveWorkflowLamp,
+                  state: ClientObservationOff,
+                  reason_expr: ts_lit_str(value: "")),
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(object: ts_member(object: ts_ident(name: "sj"), property: "sessions"), property: "forEach"),
                   args: [ts_arrow(params: ["sess"], body: ts_block(stmts: sessions_mark_live_stmts()))])),
@@ -1178,7 +1376,12 @@ fn sessions_fetch_statements() -> List<TsStmt> {
         property: "catch"),
       args: [ts_arrow(params: ["e"], body: ts_block(stmts: concat(
         [ts_const(name: "why", value: ts_binop(left: ts_lit_str(value: "session observation refused: "), op: "+", right: ts_binop(left: ts_ident(name: "e"), op: "+", right: ts_lit_str(value: ""))))],
-        sessions_refused_banner_stmts())))])),
+        concat(
+          [workflow_set_all_observations_stmt(
+            lamp: LiveWorkflowLamp,
+            state: ClientObservationRefused { reason: "" },
+            reason_expr: ts_ident(name: "why"))],
+          sessions_refused_banner_stmts()))))])),
   ]
 }
 
@@ -1186,20 +1389,18 @@ data attempts_row_note: String = "U3 (result surfacing v0): each attempt branch 
 
 fn attempts_mark_stmts() -> List<TsStmt> {
   [
-    ts_const(name: "ab", value: ts_call(
+    ts_const(name: "ar", value: ts_call(
       callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
-      args: [ts_binop(
-        left: ts_binop(left: ts_lit_str(value: "[data-node=\""), op: "+", right: ts_member(object: ts_ident(name: "att"), property: "node_id")),
-        op: "+",
-        right: ts_lit_str(value: "\"]"))])),
-    ts_const(name: "ali", value: ts_binop(
-      left: ts_ident(name: "ab"),
-      op: "&&",
-      right: ts_call(callee: ts_member(object: ts_ident(name: "ab"), property: "closest"), args: [ts_lit_str(value: "li")]))),
+      args: [workflow_row_selector_expr(
+        node_id: ts_member(object: ts_ident(name: "att"), property: "node_id"))])),
+    workflow_set_observation_call(
+      lamp_expr: workflow_lamp_in_row_expr(row_name: "ar", lamp: AttemptedWorkflowLamp),
+      state: ClientObservationOn,
+      reason_expr: ts_lit_str(value: "")),
     ts_const(name: "adt", value: ts_binop(
-      left: ts_ident(name: "ali"),
+      left: ts_ident(name: "ar"),
       op: "&&",
-      right: ts_call(callee: ts_member(object: ts_ident(name: "ali"), property: "querySelector"), args: [ts_lit_str(value: "details.item-detail")]))),
+      right: ts_call(callee: ts_member(object: ts_ident(name: "ar"), property: "querySelector"), args: [ts_lit_str(value: "details.item-detail")]))),
     ts_if(
       cond: ts_ident(name: "adt"),
       then: ts_block(stmts: [
@@ -1243,9 +1444,27 @@ fn attempts_fetch_statements() -> List<TsStmt> {
             ts_if(
               cond: ts_member(object: ts_ident(name: "aj"), property: "attempts_refused"),
               then: ts_block(stmts: concat(
-                [ts_const(name: "why", value: ts_binop(left: ts_lit_str(value: "attempt observation refused: "), op: "+", right: ts_binop(left: ts_member(object: ts_ident(name: "aj"), property: "reason"), op: "||", right: ts_lit_str(value: "no reason on the wire"))))],
-                sessions_refused_banner_stmts())),
+                [
+                  ts_const(name: "wireWhy", value: ts_binop(
+                    left: ts_member(object: ts_ident(name: "aj"), property: "reason"),
+                    op: "||",
+                    right: ts_lit_str(value: "no reason on the wire"))),
+                  ts_const(name: "why", value: ts_binop(
+                    left: ts_lit_str(value: "attempt observation refused: "),
+                    op: "+",
+                    right: ts_ident(name: "wireWhy"))),
+                ],
+                concat(
+                  [workflow_set_all_observations_stmt(
+                    lamp: AttemptedWorkflowLamp,
+                    state: ClientObservationRefused { reason: "" },
+                    reason_expr: ts_ident(name: "why"))],
+                  sessions_refused_banner_stmts()))),
               else_stmt: Present { value: ts_block(stmts: [
+                workflow_set_all_observations_stmt(
+                  lamp: AttemptedWorkflowLamp,
+                  state: ClientObservationOff,
+                  reason_expr: ts_lit_str(value: "")),
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(object: ts_member(object: ts_ident(name: "aj"), property: "attempts"), property: "forEach"),
                   args: [ts_arrow(params: ["att"], body: ts_block(stmts: attempts_mark_stmts()))])),
@@ -1255,7 +1474,12 @@ fn attempts_fetch_statements() -> List<TsStmt> {
         property: "catch"),
       args: [ts_arrow(params: ["e"], body: ts_block(stmts: concat(
         [ts_const(name: "why", value: ts_binop(left: ts_lit_str(value: "attempt observation refused: "), op: "+", right: ts_binop(left: ts_ident(name: "e"), op: "+", right: ts_lit_str(value: ""))))],
-        sessions_refused_banner_stmts())))])),
+        concat(
+          [workflow_set_all_observations_stmt(
+            lamp: AttemptedWorkflowLamp,
+            state: ClientObservationRefused { reason: "" },
+            reason_expr: ts_ident(name: "why"))],
+          sessions_refused_banner_stmts()))))])),
   ]
 }
 
@@ -1268,18 +1492,20 @@ fn dispatch_client_program_for(selector: String, url_expr: TsExpr, header: List<
       concat(
         dispatch_preamble_statements(),
         concat(
-          dispatch_bind_statements(selector: selector, url_expr: url_expr),
+          workflow_observation_preamble_statements(),
           concat(
-            sound_toggle_bind_statements(),
+            dispatch_bind_statements(selector: selector, url_expr: url_expr),
             concat(
-              theme_toggle_bind_statements(),
+              sound_toggle_bind_statements(),
               concat(
-                disclosure_bind_statements(),
+                theme_toggle_bind_statements(),
                 concat(
-                  swatch_toggle_bind_statements(),
+                  disclosure_bind_statements(),
                   concat(
-                    sessions_fetch_statements(),
-                    attempts_fetch_statements())))))))),
+                    swatch_toggle_bind_statements(),
+                    concat(
+                      sessions_fetch_statements(),
+                      attempts_fetch_statements()))))))))),
   }
 }
 
