@@ -9,6 +9,7 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_method_wraps_result, rust_serde_rename_all_screaming_snake_case,
     rust_serde_rename_all_snake_case,
 };
+pub use crate::gunbc_rust_decl_type_overlay::rust_decl_type_container_overlay_is_admitted;
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
@@ -2200,28 +2201,32 @@ pub fn rust_decl_type_container_arg_needs_resolved_overlay(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> bool {
-    if ((arg.connective.clone() != Connective::NoConnective)
-        || ((arg.children.clone().len() as i64) != 0))
     {
-        false
-    } else {
-        if rust_fn_sig_peel_closed_alias(env.clone(), arg.clone()) {
-            false
+        let authored_is_leaf = ((arg.connective.clone() == Connective::NoConnective)
+            && ((arg.children.clone().len() as i64) == 0));
+        let closed_alias = if authored_is_leaf.clone() {
+            rust_fn_sig_peel_closed_alias(env.clone(), arg.clone())
         } else {
-            match find_property(
-                arg.properties.clone(),
-                "__applied_type_args".to_string(),
-                source_indices.clone(),
-            ) {
-                Some(applied) => ((applied.children.clone().len() as i64) > 0),
-                None => match arg.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved { node: rt, .. }) => {
-                        ((rt.children.clone().len() as i64) > 0)
-                    }
-                    _ => false,
-                },
-            }
-        }
+            false
+        };
+        let applied_arg_count = match find_property(
+            arg.properties.clone(),
+            "__applied_type_args".to_string(),
+            source_indices.clone(),
+        ) {
+            Some(applied) => Some((applied.children.clone().len() as i64)),
+            None => None,
+        };
+        let resolved_child_count = match arg.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => (rt.children.clone().len() as i64),
+            _ => 0,
+        };
+        rust_decl_type_container_overlay_is_admitted(
+            authored_is_leaf.clone(),
+            closed_alias.clone(),
+            applied_arg_count.clone(),
+            resolved_child_count.clone(),
+        )
     }
 }
 

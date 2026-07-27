@@ -4,9 +4,9 @@ This receipt measures one emitter root-family closure. It is not a Gate-1 closur
 
 ## Change and authority
 
-`render_rust_decl_type_container_arg` now consults one structural predicate before replacing a declaration container argument with its resolved overlay. The predicate admits an overlay only when the authored argument has no connective children, is not a closed alias realization, and has non-empty applied or resolved children. It does not inspect the name `Measure`.
+`render_rust_decl_type_container_arg` now consults one structural predicate before replacing a declaration container argument with its resolved overlay. The predicate admits an overlay only when the authored argument has no connective children, is not a closed alias realization, and has non-empty applied or resolved children. An explicitly present but empty applied-argument property falls through to the resolved-child evidence. The predicate does not inspect the name `Measure`.
 
-The source authority is `src/v1/05_emit_rust.dag`; `src/v1/stage0/src/v1_compiler_emit_rust.rs` is its mechanically regenerated bootstrap projection. No `cli_run` transport, interpreter-deletion carrier, or deletion-plan authority changes in this slice.
+The decision authority is `dag/gunbc/rust_decl_type_overlay.dag`; `src/v1/05_emit_rust.dag` projects `Node` evidence into that predicate, and the `src/v1/stage0` Rust files are mechanically regenerated bootstrap projections. No `cli_run` transport, interpreter-deletion carrier, or deletion-plan authority changes in this slice.
 
 ## Identical parent/child protocol
 
@@ -35,7 +35,8 @@ The same structural overlay also removes 24 non-Measure missing-generic errors a
 `dag/test/claim/root4_measure_missing_generics_witness_test.dag` contains:
 
 1. A deliberately synthetic `List<Root4AppliedCarrier<ProbeQuantity, S, ProbeMagnitude>>` positive fixture that exercises the same structural generic-container shape without re-declaring the canonical `std.measure.Measure` authority.
-2. A synthetic closed zero-arity alias control over `Root4AliasCarrier`, likewise avoiding a second unit model.
-3. An unrelated `Root4ZeroArityCarrier` leaf control, proving a bare leaf without applied or resolved children stays unchanged.
+2. The exact combined state from review 43630: an explicitly present zero-length applied-argument property plus one resolved child is admitted, while zero resolved children, a closed alias, and a non-leaf are refused.
+3. A synthetic closed zero-arity alias control over `Root4AliasCarrier`, likewise avoiding a second unit model.
+4. An unrelated `Root4ZeroArityCarrier` leaf control, proving a bare leaf without applied or resolved children stays unchanged.
 
-With exact-parent `claim_batch` built from `9a112a3097` (SHA-256 `6000e1e1432d94945cddd5588c5c5cf761672b374bd7a455ee6435e1d98a7a9a`), the positive fixture fails while both controls pass. With the child binary, all three pass. The canonical `std.measure` closure independently compiles through the real `gunbc compile` transport with zero blocking errors and emits `Vec<Rc<Measure<(), S, Nat>>>`; its 46 `UnlistedImportUse` rows are advisory under the existing compile-clean policy and are not hidden by a `cli_run` change in this PR.
+With exact-parent `claim_batch` built from `9a112a3097` (SHA-256 `6000e1e1432d94945cddd5588c5c5cf761672b374bd7a455ee6435e1d98a7a9a`), the positive emitter fixture fails while both emitter controls pass. With the child binary, all four fixtures pass. The canonical `std.measure` closure independently compiles through the real `gunbc compile` transport with zero blocking errors and emits `Vec<Rc<Measure<(), S, Nat>>>`; its 46 `UnlistedImportUse` rows are advisory under the existing compile-clean policy and are not hidden by a `cli_run` change in this PR.
