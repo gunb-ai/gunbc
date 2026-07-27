@@ -6,7 +6,11 @@ import std.nat { Nat }
 import std.symbols { Tier, Emoji, Ascii, Spinner0, StatusBlocked, StatusFinal }
 import std.measure { millisecond, millisecond_to_nanosecond, byte_size, basis_point }
 import std.render { CursorAction, Overwrite, Append, RenderCapability }
-import extdeps.render.ansi { csi_esc }
+import extdeps.render.ansi {
+  ansi_carriage_return,
+  ansi_line_feed,
+  ansi_erase_entire_line,
+}
 import extdeps.render.terminal {
   DynamicLineClosed,
   DynamicLineOpen,
@@ -216,10 +220,10 @@ test fn w_nonaddressable_routine_composes_to_plain_append_wire() -> Bool {
       ) {
         TerminalWriteRefused { cause: _ } => false
         TerminalWriteProjected { bytes: b, next: n } =>
-          b == concat(rendered, "\n") &&
+          b == concat(rendered, ansi_line_feed) &&
           n == DynamicLineClosed &&
-          !string_contains(s: b, pattern: "\r") &&
-          !string_contains(s: b, pattern: concat(csi_esc, "2K"))
+          !string_contains(s: b, pattern: ansi_carriage_return) &&
+          !string_contains(s: b, pattern: ansi_erase_entire_line())
       }
   }
 }
@@ -244,7 +248,10 @@ test fn w_addressable_refusal_persists_via_exact_closed_append_wire() -> Bool {
       ) {
         TerminalWriteRefused { cause: _ } => false
         TerminalWriteProjected { bytes: b, next: n } =>
-          b == concat("\r", concat(csi_esc, concat("2K", concat(rendered, "\n")))) &&
+          b == concat(
+            ansi_carriage_return,
+            concat(ansi_erase_entire_line(), concat(rendered, ansi_line_feed))
+          ) &&
           n == DynamicLineClosed
       }
   }
