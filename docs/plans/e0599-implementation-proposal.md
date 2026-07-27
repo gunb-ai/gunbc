@@ -55,7 +55,7 @@
 |---|---|---|---|
 | **(a)** clone bounds on generic params | fn signatures | `v1_generic_params_needing_clone_bound` → `emit_fn_def` only (`05_emit_rust.dag:5172`) — **scaffold** | Replace with `required_trait_witnesses_for_fn_decl` fold/query (§3.0); emit consumes witness list only |
 | **(b)** supplemental `impl` blocks for coproduct-native arithmetic | `GroupCompletion`, kernel int carriers | `trait_derive_completeness_gate` + `repr_grounding_derive_traits_for_collection_witness` | E0369 coproduct ops (consume gate, not new predicate walks) |
-| **(c)** serde/Debug/Ord `#[derive]` on named structs/enums | struct/enum declarations | capability table → `v1_emit_struct_from_capability_table` | E0277 F3 (+ F1 limbs) via P-derive bound rows |
+| **(c)** serde/Debug/Ord `#[derive]` on named structs/enums | struct/enum declarations | capability table → `v1_emit_struct_from_capability_table` | E0277 F1/F3 via P-derive **container-contract** bound rows (not elem-shape table alone) |
 
 **Trait-derive clean salvage (deferred)** = land (b)+(c) via gate + capability table; P-fn accessor after #7289 boundary — without opening the fenced `05_emit_rust.dag` ownership consolidation (#7296 / witty-wolf-289).
 
@@ -71,7 +71,8 @@ DESIGN requires facts-flow-forward **and** that Node-shape classification not ac
 |---|---|---|
 | **Named query accessor** | `target_collection_witness_from_node` (`target_model.dag`) — reads structured witness fields from a `Node`, returns `Outcome<RequiredTraitWitness>` | Ord/Hash/Eq collection witnesses |
 | **Completeness gate** | `trait_derive_completeness_gate` / `trait_derive_completeness_gate_for_collection_witness` (`trait_derive_completeness.dag`) — calls `repr_grounding_derive_completeness_predicate` **only inside** the gate; emit consumes the gate verdict | Gate-1 sub-wall #2 (#7174) |
-| **Capability table lookup** | `repr_grounding_derive_shape_has_trait(shape, trait)` + `record_derive_traits_*` list builders (`trait_derive_shape.dag`) — no per-site shape walk in emit | struct `#[derive]` attr selection today |
+| **Capability table lookup** | `repr_grounding_derive_shape_has_trait(shape, trait)` + `record_derive_traits_*` list builders (`trait_derive_shape.dag`) — answers **which traits an elem shape may derive**, not per-impl bound lists | struct `#[derive]` attr *selection* today |
+| **Container implementation contract** | `TargetCollectionRealization` / `target_collection_realization_lookup_in_catalog` (`target_model.dag`) — keyed by **source carrier + emitted representation**, carries per-trait supplemental bound facts | collection repr choice + `RequiredTraitWitness` constraints today |
 
 **Prohibited in new work:** extending hand-matched substrate walks (including growing `v1_type_param_needs_clone_bound` or ad-hoc `repr_grounding_derive_completeness_predicate` call sites). **Bounded interim disposition** for any surviving v1 call path until the query lands:
 
