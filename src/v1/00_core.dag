@@ -112,7 +112,7 @@ type ExprData
   | ExprReturn
 
 type MatchPattern
-  = Bind { name: String }
+  = Bind { declaration: Node }
   | LitPattern { value: LiteralValue }
   | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
   | Wildcard
@@ -399,6 +399,30 @@ fn make_field_binding_node(field_name: String, binding: MatchPattern, span: Sour
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: Present { value: binding }, expr_data: NoExprData
+  }
+}
+
+fn make_match_bind_node(name: String, span: SourceSpan, name_span: SourceSpan) -> Node {
+  Node {
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [], connective: NoConnective,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+fn match_pattern_bind_declaration(pattern: MatchPattern) -> Node? {
+  match pattern {
+    Bind { declaration: decl } => Present { value: decl }
+    _ => Absent
+  }
+}
+
+fn match_pattern_bind_name_at(pattern: MatchPattern, source_indices: Map<String, NewlineIndex>) -> String {
+  match match_pattern_bind_declaration(pattern: pattern) {
+    Present { value: decl } => authored_name_at(source_indices: source_indices, node: decl)
+    Absent => ""
   }
 }
 
