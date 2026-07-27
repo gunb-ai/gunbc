@@ -583,6 +583,7 @@ fn diverse_compilation_agreement_witness(
   primary: DiverseCompilationRun,
   secondary: DiverseCompilationRun,
   independent_compilers: Witness<IndependentCompilerPair>,
+  evidence: IndependentCompilerEvidence,
   agreed_hash: BootstrapHashPin
 ) -> Witness<DiverseCompilationAgreement> {
   match independent_compilers {
