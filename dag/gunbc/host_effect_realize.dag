@@ -153,7 +153,8 @@ import extdeps.sudo.nopasswd_execute_probe {
 }
 import extdeps.sudo.nopasswd_execute_probe_check_op {
   sudo_nopasswd_execute_probe_argv,
-  sudo_nopasswd_grant_list_probe_argv,
+  sudo_nopasswd_grant_list_argv,
+  sudo_nopasswd_grant_list_admits_probe,
 }
 import gunbc.host_effect_nbd_proxy_serve {
   host_effect_nbd_proxy_serve_apply,
@@ -1420,27 +1421,75 @@ fn realize_sudo_nopasswd_execute_probe_on_host(
   }
 }
 
+fn sudo_nopasswd_grant_list_observed(
+  probe: SudoNopasswdGrantListProbeShape,
+  exit_code: Int,
+  query_success: Bool,
+  stdout: String,
+  stderr: String,
+) -> ShellExecObserved {
+  let admitted = query_success
+    && sudo_nopasswd_grant_list_admits_probe(listing: stdout, probe: probe)
+  let observed_exit_code = if admitted {
+    0
+  } else if exit_code == 0 {
+    1
+  } else {
+    exit_code
+  }
+  ShellExecObserved {
+    exit_code: observed_exit_code,
+    success: admitted,
+    stdout: stdout,
+    stderr: stderr,
+  }
+}
+
+fn reconcile_sudo_nopasswd_grant_list_outcome(
+  probe: SudoNopasswdGrantListProbeShape,
+  outcome: TypedArgvExecOutcome,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match outcome {
+    TypedArgvExecConverged { result: r } =>
+      reconcile_shell_exec_observed(
+        observed: sudo_nopasswd_grant_list_observed(
+          probe: probe,
+          exit_code: r.exit_code,
+          query_success: r.success,
+          stdout: r.stdout,
+          stderr: r.stderr,
+        ),
+        intent: intent,
+      )
+    TypedArgvExecRefused { reason: why } =>
+      NotConverged { reason: why, applied: intent }
+  }
+}
+
 fn realize_sudo_nopasswd_grant_list_probe_on_host(
   probe: SudoNopasswdGrantListProbeShape,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let argv = sudo_nopasswd_grant_list_probe_argv(probe: probe)
+  let argv = sudo_nopasswd_grant_list_argv()
   match transport {
     LocalShell => {
-      let result = sudo.NopasswdGrantListProbe.Check(probe: probe)
+      let result = sudo.NopasswdGrantList.Read()
       reconcile_shell_exec_observed(
-        observed: ShellExecObserved {
-          exit_code: if result.success { 0 } else { 1 },
-          success: result.success,
-          stdout: "",
-          stderr: "",
-        },
+        observed: sudo_nopasswd_grant_list_observed(
+          probe: probe,
+          exit_code: result.exit_code,
+          query_success: result.success,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        ),
         intent: intent,
       )
     }
     SshShell { ssh_host: h } =>
-      reconcile_ssh_argv_exec_outcome(
+      reconcile_sudo_nopasswd_grant_list_outcome(
+        probe: probe,
         outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
         intent: intent,
       )

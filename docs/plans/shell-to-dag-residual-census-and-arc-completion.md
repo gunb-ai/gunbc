@@ -454,7 +454,7 @@ The per-symbol remaining work and batching plan for §4.E CI sites. **Load-beari
 | site | current | target op | notes |
 | --- | --- | --- | --- |
 | `ci_spec.dag` · `ci_fmt_gate_line` | `"$CARGO_BIN" fmt --all --check` | `cargo.Build.Fmt` | `ci_fmt_gate_note` already names dissolve-on; **load-bearing ci.yml** |
-| ~~`ci_deploy_access_emit.dag` · six raw preflight builders~~ **DELETED (#7315)** | ~~`"whoami"`, concat-built `sudo -n` / `sudo -n -l`, raw `echo` / `exit` in `Run.command`~~ | `access.PosixEffectivePrincipal.Read` + `sudo.NopasswdExecuteProbe.Check` + `sudo.NopasswdGrantListProbe.Check` | **LANDED.** The fleet grant roster selects execute-check versus greenfield-safe grant-list verification; `deploy_mutation_gate` realizes those typed effects before `live_deploy_fold` applies mutation. Both generated deploy-script goldens exclude the former embedded preflight. |
+| ~~`ci_deploy_access_emit.dag` · six raw preflight builders~~ **DELETED (#7315)** | ~~`"whoami"`, concat-built `sudo -n` / `sudo -n -l`, raw `echo` / `exit` in `Run.command`~~ | `access.PosixEffectivePrincipal.Read` + `sudo.NopasswdExecuteProbe.Check` + `sudo.NopasswdGrantList.Read` with exact `NOPASSWD:` row parsing | **LANDED.** The fleet grant roster selects execute-check versus greenfield-safe grant-list verification; list-query exit zero alone never admits a grant. `deploy_mutation_gate` realizes those typed effects before `live_deploy_fold` applies mutation. Both generated deploy-script goldens exclude the former embedded preflight. |
 
 **Remaining concat-built foreign-executor punch-list:**
 

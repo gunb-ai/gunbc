@@ -11,7 +11,8 @@ import extdeps.sudo.nopasswd_execute_probe {
 }
 import extdeps.sudo.nopasswd_execute_probe_check_op {
   sudo_nopasswd_execute_probe_argv,
-  sudo_nopasswd_grant_list_probe_argv,
+  sudo_nopasswd_grant_list_argv,
+  sudo_nopasswd_grant_list_admits_probe,
 }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
@@ -39,7 +40,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data typed_argv_exec_realization_note: String = "Wave C5 receipt: deploy-preflight probe effects realize through typed argv service operations (access.PosixEffectivePrincipal.Read, sudo.NopasswdExecuteProbe.Check, sudo.NopasswdGrantListProbe.Check) on LocalShell and gunbc.typed_argv_exec_over_ssh on SshShell — one argv shape per op, N transport handlers, no concat-shell. Package-managed binaries that may be absent use the grant-list operation rather than an execute check. Argv tokens outside the portable allowlist fail closed before ssh spawn."
+data typed_argv_exec_realization_note: String = "Wave C5 receipt: deploy-preflight probe effects realize through typed argv service operations (access.PosixEffectivePrincipal.Read, sudo.NopasswdExecuteProbe.Check, sudo.NopasswdGrantList.Read) on LocalShell and gunbc.typed_argv_exec_over_ssh on SshShell — one argv shape per op, N transport handlers, no concat-shell. Package-managed binaries that may be absent use the grant-list read plus exact NOPASSWD-row parser rather than an execute check. The list query's exit status alone is never treated as authorization. Argv tokens outside the portable allowlist fail closed before ssh spawn."
 
 test fn witness_posix_effective_principal_read_typed_argv_holds() -> Bool {
   let result = access.PosixEffectivePrincipal.Read(read: EffectivePosixPrincipalRead {})
@@ -64,9 +65,35 @@ test fn witness_sudo_nopasswd_probe_typed_argv_holds() -> Bool {
 
 test fn witness_sudo_nopasswd_grant_list_probe_typed_argv_holds() -> Bool {
   let probe = "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape
-  let result = sudo.NopasswdGrantListProbe.Check(probe: probe)
-  let argv = sudo_nopasswd_grant_list_probe_argv(probe: probe)
-  result.success && argv == ["sudo", "-n", "-l", "/usr/bin/tailscale"]
+  let result = sudo.NopasswdGrantList.Read()
+  let argv = sudo_nopasswd_grant_list_argv()
+  result.success
+    && sudo_nopasswd_grant_list_admits_probe(
+      listing: result.stdout,
+      probe: probe,
+    )
+    && argv == ["sudo", "-n", "-l"]
+}
+
+test fn witness_sudo_grant_list_password_only_refuses() -> Bool {
+  !sudo_nopasswd_grant_list_admits_probe(
+    listing: "User ghrunner may run the following commands:\n    (ALL) PASSWD: /usr/bin/tailscale",
+    probe: "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape,
+  )
+}
+
+test fn witness_sudo_grant_list_other_nopasswd_does_not_admit_target() -> Bool {
+  !sudo_nopasswd_grant_list_admits_probe(
+    listing: "User ghrunner may run the following commands:\n    (ALL) NOPASSWD: /usr/bin/apt-get\n    (ALL) PASSWD: /usr/bin/tailscale",
+    probe: "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape,
+  )
+}
+
+test fn witness_sudo_grant_list_prefix_collision_refuses() -> Bool {
+  !sudo_nopasswd_grant_list_admits_probe(
+    listing: "    (ALL) NOPASSWD: /usr/bin/tailscale-helper",
+    probe: "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape,
+  )
 }
 
 test fn witness_read_principal_host_effect_apply_typed_argv_holds() -> Bool {
@@ -196,23 +223,16 @@ test fn witness_ssh_sudo_probe_argv_shape_matches_local_authority() -> Bool {
 test fn witness_ssh_sudo_grant_list_argv_shape_matches_local_authority() -> Bool {
   match typed_argv_exec_over_ssh(
     host: operator_host_srv1 as NonEmptyStr,
-    argv: sudo_nopasswd_grant_list_probe_argv(
-      probe: "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape
-    ),
+    argv: sudo_nopasswd_grant_list_argv(),
   ) {
     TypedArgvExecConverged { result: r } => r.success
     TypedArgvExecRefused { reason: _ } => false
   }
 }
 
-test fn witness_ssh_sudo_grant_list_unsafe_path_refuses() -> Bool {
-  match typed_argv_exec_over_ssh(
-    host: operator_host_srv1 as NonEmptyStr,
-    argv: sudo_nopasswd_grant_list_probe_argv(
-      probe: "/usr/bin/not safe" as SudoNopasswdGrantListProbeShape
-    ),
-  ) {
-    TypedArgvExecConverged { result: _ } => false
-    TypedArgvExecRefused { reason: why } => string_contains(s: why, pattern: "allowlist")
-  }
+test fn witness_sudo_grant_list_exact_nopasswd_row_accepts() -> Bool {
+  sudo_nopasswd_grant_list_admits_probe(
+    listing: "    (ALL) NOPASSWD: /usr/bin/tailscale",
+    probe: "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape,
+  )
 }
