@@ -1222,8 +1222,9 @@ data js_sessions_observe_in_flight: String = "gunbcSessionsObservationInFlight"
 data js_attempts_observe_in_flight: String = "gunbcAttemptsObservationInFlight"
 data js_sessions_observe_pending: String = "gunbcSessionsObservationPending"
 data js_attempts_observe_pending: String = "gunbcAttemptsObservationPending"
+data js_observation_poll_tick: String = "gunbcObservationPollTick"
 data observation_poll_interval: Millisecond = millisecond(count: 3000)
-data observation_poll_note: String = "The page has no typed terminal-attempt observation yet, so it cannot honestly decide that an attempt is terminal and stop polling. It therefore re-observes both independent sources for the page lifetime at one explicit cadence; page unload cancels the browser timer. Each source permits one request in flight and coalesces overlapping timer or post-dispatch observations into one pending rerun, so an older response cannot repaint over a newer one. This dissolves into terminal-bounded polling when AttemptEvidence.terminal_outcome gains a live producer."
+data observation_poll_note: String = "The page has no typed terminal-attempt observation yet, so it cannot honestly decide that an attempt is terminal and stop polling. It therefore re-observes both independent sources for the page lifetime at one explicit cadence; a recursive one-shot timeout schedules the next observation without introducing the dashboard's forbidden animation/interval loop, and page unload cancels the browser timer. Each source permits one request in flight and coalesces overlapping timer or post-dispatch observations into one pending rerun, so an older response cannot repaint over a newer one. This dissolves into terminal-bounded polling when AttemptEvidence.terminal_outcome gains a live producer."
 
 fn observation_complete_stmts(
   observer: String,
@@ -1703,13 +1704,22 @@ fn observation_fetch_statements() -> List<TsStmt> {
         attempts_fetch_effect_statements())))),
     ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_sessions_observe_fn), args: [])),
     ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_attempts_observe_fn), args: [])),
-    ts_expr_stmt(expr: ts_call(
-      callee: ts_ident(name: "setInterval"),
-      args: [
-        ts_arrow(params: [], body: ts_block(stmts: [
+    ts_const(
+      name: js_observation_poll_tick,
+      value: ts_arrow(params: [], body: ts_block(stmts: [
           ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_sessions_observe_fn), args: [])),
           ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_attempts_observe_fn), args: [])),
-        ])),
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_ident(name: "setTimeout"),
+            args: [
+              ts_ident(name: js_observation_poll_tick),
+              ts_lit_num(text: to_string(millisecond_count(m: observation_poll_interval))),
+            ])),
+        ]))),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_ident(name: "setTimeout"),
+      args: [
+        ts_ident(name: js_observation_poll_tick),
         ts_lit_num(text: to_string(millisecond_count(m: observation_poll_interval))),
       ])),
   ]
