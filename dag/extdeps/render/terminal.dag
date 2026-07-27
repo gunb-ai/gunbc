@@ -1,8 +1,9 @@
 module extdeps.render.terminal
 
 import extdeps.render.glyphs { resolve_symbol }
-import extdeps.render.ansi { ansi_code }
-import std.render { RenderFrame, Line, RenderCapability, Span, Viewport, cursor_action_under }
+import extdeps.render.ansi { ansi_code, csi_esc }
+import std.render { RenderFrame, Line, RenderCapability, Span, Viewport, CursorAction, Overwrite, Append, Clear, cursor_action_under }
+import std.types { String, NonEmptyStr }
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.symbols { Tier }
 import extdeps.unicode.display { string_display_width, truncate_text }
@@ -124,4 +125,58 @@ fn serialize_line(line: Line, cap: RenderCapability) -> String {
 fn serialize_frame(frame: std.render.RenderFrame, cap: RenderCapability) -> String {
   let rendered = map(frame.lines, line => serialize_line(line: line, cap: cap))
   join(rendered, "\n")
+}
+
+type DynamicLineState = DynamicLineClosed | DynamicLineOpen
+
+type TerminalWriteProjection
+  = TerminalWriteProjected { bytes: String, next: DynamicLineState }
+  | TerminalWriteRefused { cause: NonEmptyStr }
+
+data terminal_wire_projection_note: String = "Stateful terminal projection owns every terminal control byte. Callers supply rendered text only; overwrite, append, and clear are projected through the ECMA-48 CSI authority in extdeps.render.ansi. DynamicLineOpen means the previous write deliberately omitted LF and therefore may only be continued by an addressable terminal. A non-addressable capability paired with Open is contradictory and refuses before downgrade. Overwrite downgrades to Append when cursor addressing is absent; Clear becomes a no-op. Clear also requires empty rendered text, making caller-owned control payloads and ambiguous clear-plus-content states unwritable."
+
+fn terminal_erase_line_2() -> String {
+  concat(csi_esc, "2K")
+}
+
+fn project_terminal_write(
+  prior: DynamicLineState,
+  requested: CursorAction,
+  capability: RenderCapability,
+  rendered: String
+) -> TerminalWriteProjection {
+  if !capability.cursor_addressable && prior == DynamicLineOpen {
+    TerminalWriteRefused { cause: "non-addressable terminal cannot continue an open dynamic line" as NonEmptyStr }
+  } else if requested == Clear && rendered != "" {
+    TerminalWriteRefused { cause: "Clear requires empty rendered text" as NonEmptyStr }
+  } else {
+    let action = cursor_action_under(requested: requested, cap: capability)
+    match action {
+      Overwrite =>
+        TerminalWriteProjected {
+          bytes: concat("\r", concat(terminal_erase_line_2(), rendered)),
+          next: DynamicLineOpen
+        }
+      Append =>
+        match prior {
+          DynamicLineOpen =>
+            TerminalWriteProjected {
+              bytes: concat("\r", concat(terminal_erase_line_2(), concat(rendered, "\n"))),
+              next: DynamicLineClosed
+            }
+          DynamicLineClosed =>
+            TerminalWriteProjected { bytes: concat(rendered, "\n"), next: DynamicLineClosed }
+        }
+      Clear =>
+        match prior {
+          DynamicLineOpen =>
+            TerminalWriteProjected {
+              bytes: concat("\r", terminal_erase_line_2()),
+              next: DynamicLineClosed
+            }
+          DynamicLineClosed =>
+            TerminalWriteProjected { bytes: "", next: DynamicLineClosed }
+        }
+    }
+  }
 }

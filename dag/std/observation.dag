@@ -297,23 +297,46 @@ fn observation_attention_of_elapsed(elapsed: Millisecond, basis: AttentionBasis)
   }
 }
 
-fn observation_attention(event: ObservationEvent, basis: AttentionBasis) -> AttentionLevel {
+type ObservationAttention
+  = AttentionAssigned { level: AttentionLevel }
+  | AttentionRefused { cause: NonEmptyStr }
+
+data observation_attention_availability_note: String = "Attention is a projection over the event wall and the consumer-owned basis, with precedence made explicit. Begin is Ambient and intrinsic Refused/Failed/TimedOut are Anomaly without consulting either measurement. A routine event with an unavailable wall remains Ambient because no elapsed comparison is possible and the wall's absence is already rendered on the line. A routine event with a measured wall may compare only against a measured basis; an unavailable basis returns a typed refusal preserving its exact cause, never a dummy threshold. observation_attention is retained as the strict MeasuredValue facade for existing callers, so its result cannot diverge from observation_attention_under on an available basis."
+
+fn observation_attention_under(event: ObservationEvent, basis: Measured<AttentionBasis>) -> ObservationAttention {
   match event.transition {
-    Begin => Ambient
-    Step { k: _, n: _ } =>
-      match event.wall {
-        MeasuredValue { value: w } => observation_attention_of_elapsed(elapsed: w, basis: basis)
-        MeasuredUnavailable { cause: _ } => Ambient
-      }
+    Begin => AttentionAssigned { level: Ambient }
     Concluded { outcome: o } =>
       if observation_outcome_is_anomaly(o: o) {
-        Anomaly
+        AttentionAssigned { level: Anomaly }
       } else {
         match event.wall {
-          MeasuredValue { value: w } => observation_attention_of_elapsed(elapsed: w, basis: basis)
-          MeasuredUnavailable { cause: _ } => Ambient
+          MeasuredUnavailable { cause: _ } => AttentionAssigned { level: Ambient }
+          MeasuredValue { value: w } =>
+            match basis {
+              MeasuredUnavailable { cause: c } => AttentionRefused { cause: c }
+              MeasuredValue { value: b } =>
+                AttentionAssigned { level: observation_attention_of_elapsed(elapsed: w, basis: b) }
+            }
         }
       }
+    Step { k: _, n: _ } =>
+      match event.wall {
+        MeasuredUnavailable { cause: _ } => AttentionAssigned { level: Ambient }
+        MeasuredValue { value: w } =>
+          match basis {
+            MeasuredUnavailable { cause: c } => AttentionRefused { cause: c }
+            MeasuredValue { value: b } =>
+              AttentionAssigned { level: observation_attention_of_elapsed(elapsed: w, basis: b) }
+          }
+      }
+  }
+}
+
+fn observation_attention(event: ObservationEvent, basis: AttentionBasis) -> AttentionLevel {
+  match observation_attention_under(event: event, basis: MeasuredValue { value: basis }) {
+    AttentionAssigned { level: l } => l
+    AttentionRefused { cause: _ } => Ambient
   }
 }
 

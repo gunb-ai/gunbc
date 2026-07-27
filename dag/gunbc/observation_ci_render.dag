@@ -271,8 +271,7 @@ data ci_duration_absence_note: String = "An unmeasured duration NAMES ITSELF rat
 
 data ci_outcome_duration_note: String = "Every outcome line carries its duration. The reference implementation studied for this lane omits them, which is why a reader cannot tell a fast green from a slow one without diffing timestamps by hand — and the slow green is the one that becomes next month's wall."
 
-fn ci_event_line(event: ObservationEvent, basis: AttentionBasis) -> RenderedLine {
-  let attention = observation_attention(event: event, basis: basis)
+fn ci_event_line_at_attention(event: ObservationEvent, attention: AttentionLevel) -> RenderedLine {
   let presentation = observation_presentation(c: observation_event_class(event: event))
   let subject = ci_subject_leaf_text(subject: event.subject)
   match event.transition {
@@ -291,6 +290,13 @@ fn ci_event_line(event: ObservationEvent, basis: AttentionBasis) -> RenderedLine
         attention: attention
       }
   }
+}
+
+fn ci_event_line(event: ObservationEvent, basis: AttentionBasis) -> RenderedLine {
+  ci_event_line_at_attention(
+    event: event,
+    attention: observation_attention(event: event, basis: basis)
+  )
 }
 
 type HeartbeatSample {
