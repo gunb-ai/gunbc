@@ -2358,6 +2358,7 @@ fn match_bound_variable_always_cloned() {
 
 #[test]
 fn match_pattern_binders_capture_declaration_spans_in_parse_tree() {
+    use v1_compiler::v1_rt::VecCompat;
     use v1_compiler::v1_std_core::{
         arm_pattern, field_binding_pattern, match_arm_nodes, module_items, node_name_span,
         MatchPattern::{Bind, VariantPattern},
@@ -2379,7 +2380,7 @@ fn match_pattern_binders_capture_declaration_spans_in_parse_tree() {
         .first()
         .cloned()
         .expect("direct arm");
-    match arm_pattern(direct_arm) {
+    match arm_pattern(direct_arm).as_ref() {
         Bind {
             declaration_span, ..
         } => {
@@ -2396,14 +2397,14 @@ fn match_pattern_binders_capture_declaration_spans_in_parse_tree() {
         .first()
         .cloned()
         .expect("alias arm");
-    match arm_pattern(alias_arm) {
+    match arm_pattern(alias_arm).as_ref() {
         VariantPattern { field_bindings, .. } => {
             let field_binding = field_bindings
                 .first()
                 .cloned()
                 .expect("alias field binding");
             let field_label_span = node_name_span(field_binding.clone());
-            match field_binding_pattern(field_binding) {
+            match field_binding_pattern(field_binding).as_ref() {
                 Bind {
                     declaration_span, ..
                 } => {
@@ -2427,14 +2428,14 @@ fn match_pattern_binders_capture_declaration_spans_in_parse_tree() {
         .first()
         .cloned()
         .expect("shorthand arm");
-    match arm_pattern(shorthand_arm) {
+    match arm_pattern(shorthand_arm).as_ref() {
         VariantPattern { field_bindings, .. } => {
             let field_binding = field_bindings
                 .first()
                 .cloned()
                 .expect("shorthand field binding");
             let field_label_span = node_name_span(field_binding.clone());
-            match field_binding_pattern(field_binding) {
+            match field_binding_pattern(field_binding).as_ref() {
                 Bind {
                     declaration_span, ..
                 } => {
@@ -2453,13 +2454,13 @@ fn match_pattern_binders_capture_declaration_spans_in_parse_tree() {
         .first()
         .cloned()
         .expect("nested arm");
-    match arm_pattern(nested_arm) {
+    match arm_pattern(nested_arm).as_ref() {
         VariantPattern { field_bindings, .. } => {
             let outer_field_binding = field_bindings
                 .first()
                 .cloned()
                 .expect("outer nested field binding");
-            match field_binding_pattern(outer_field_binding) {
+            match field_binding_pattern(outer_field_binding).as_ref() {
                 VariantPattern {
                     field_bindings: inner_bindings,
                     ..
@@ -2468,7 +2469,7 @@ fn match_pattern_binders_capture_declaration_spans_in_parse_tree() {
                         .first()
                         .cloned()
                         .expect("inner nested field binding");
-                    match field_binding_pattern(inner_field_binding) {
+                    match field_binding_pattern(inner_field_binding).as_ref() {
                         Bind {
                             declaration_span, ..
                         } => {
@@ -2481,7 +2482,10 @@ fn match_pattern_binders_capture_declaration_spans_in_parse_tree() {
                         other => panic!("nested inner field should bind, got {:?}", other),
                     }
                 }
-                other => panic!("nested outer field should contain a nested pattern, got {:?}", other),
+                other => panic!(
+                    "nested outer field should contain a nested pattern, got {:?}",
+                    other
+                ),
             }
         }
         other => panic!("nested arm should be a variant pattern, got {:?}", other),
@@ -2490,10 +2494,18 @@ fn match_pattern_binders_capture_declaration_spans_in_parse_tree() {
 
 #[test]
 fn typed_match_bound_binding_spans_stay_local_across_arms_and_shadowing() {
+    use v1_compiler::v1_rt::VecCompat;
+    use v1_compiler::v1_std_core::{
+        arm_pattern, field_binding_pattern, match_arm_nodes, module_items,
+    };
+
     let separate_source = "module typed_pattern_spans\n\ntype Duo = Left { value: Int } | Right { value: Int }\n\nfn separate_arms(x: Duo) -> Int {\n  match x {\n    Left { value: y } => y\n    Right { value: y } => y\n  }\n}\n";
     let separate_artifact = typed_graph_json(separate_source);
     let separate_parsed = parse_source_named("typed_pattern_spans.dag", separate_source);
-    let separate_module = separate_parsed.module.clone().expect("separate arms should parse");
+    let separate_module = separate_parsed
+        .module
+        .clone()
+        .expect("separate arms should parse");
     let separate_body = module_items(separate_module)
         .iter()
         .find(|item| item.name == "separate_arms")
@@ -2502,10 +2514,13 @@ fn typed_match_bound_binding_spans_stay_local_across_arms_and_shadowing() {
     let separate_arms = match_arm_nodes(separate_body);
     let separate_expected: Vec<i64> = separate_arms
         .iter()
-        .map(|arm| match arm_pattern(arm.clone()) {
+        .map(|arm| match arm_pattern(arm.clone()).as_ref() {
             v1_compiler::v1_std_core::MatchPattern::VariantPattern { field_bindings, .. } => {
-                let fb = field_bindings.first().cloned().expect("separate arm binder");
-                match field_binding_pattern(fb) {
+                let fb = field_bindings
+                    .first()
+                    .cloned()
+                    .expect("separate arm binder");
+                match field_binding_pattern(fb).as_ref() {
                     v1_compiler::v1_std_core::MatchPattern::Bind {
                         declaration_span, ..
                     } => declaration_span.start,
@@ -2552,7 +2567,10 @@ fn typed_match_bound_binding_spans_stay_local_across_arms_and_shadowing() {
     let shadow_source = "module typed_pattern_shadow\n\ntype Duo = Left { value: Int } | Right { value: Int }\n\nfn shadow(outer: Duo, inner: Duo) -> Int {\n  match outer {\n    Left { value: y } => {\n      match inner {\n        Left { value: y } => y\n        Right { value: y } => y\n      }\n      y\n    }\n    Right { value: _ } => 0\n  }\n}\n";
     let shadow_artifact = typed_graph_json(shadow_source);
     let shadow_parsed = parse_source_named("typed_pattern_shadow.dag", shadow_source);
-    let shadow_module = shadow_parsed.module.clone().expect("shadow fixture should parse");
+    let shadow_module = shadow_parsed
+        .module
+        .clone()
+        .expect("shadow fixture should parse");
     let shadow_body = module_items(shadow_module)
         .iter()
         .find(|item| item.name == "shadow")
@@ -2562,10 +2580,10 @@ fn typed_match_bound_binding_spans_stay_local_across_arms_and_shadowing() {
         .first()
         .cloned()
         .expect("shadow outer arm");
-    let shadow_outer_span = match arm_pattern(shadow_outer_arm.clone()) {
+    let shadow_outer_span = match arm_pattern(shadow_outer_arm.clone()).as_ref() {
         v1_compiler::v1_std_core::MatchPattern::VariantPattern { field_bindings, .. } => {
             let fb = field_bindings.first().cloned().expect("outer bind");
-            match field_binding_pattern(fb) {
+            match field_binding_pattern(fb).as_ref() {
                 v1_compiler::v1_std_core::MatchPattern::Bind {
                     declaration_span, ..
                 } => declaration_span.start,
@@ -2583,10 +2601,10 @@ fn typed_match_bound_binding_spans_stay_local_across_arms_and_shadowing() {
     let shadow_inner_arms = match_arm_nodes(shadow_inner_match);
     let shadow_inner_expected: Vec<i64> = shadow_inner_arms
         .iter()
-        .map(|arm| match arm_pattern(arm.clone()) {
+        .map(|arm| match arm_pattern(arm.clone()).as_ref() {
             v1_compiler::v1_std_core::MatchPattern::VariantPattern { field_bindings, .. } => {
                 let fb = field_bindings.first().cloned().expect("inner bind");
-                match field_binding_pattern(fb) {
+                match field_binding_pattern(fb).as_ref() {
                     v1_compiler::v1_std_core::MatchPattern::Bind {
                         declaration_span, ..
                     } => declaration_span.start,
@@ -2598,16 +2616,16 @@ fn typed_match_bound_binding_spans_stay_local_across_arms_and_shadowing() {
         .collect();
     let shadow_outer_expected = shadow_outer_span;
     let shadow_expr_vars = expr_var_nodes_by_name(&shadow_artifact, "y");
-    assert_eq!(shadow_expr_vars.len(), 3, "shadow fixture should have three y ExprVar nodes");
+    assert_eq!(
+        shadow_expr_vars.len(),
+        3,
+        "shadow fixture should have three y ExprVar nodes"
+    );
     let mut shadow_use_spans: Vec<(i64, i64)> = shadow_expr_vars
         .iter()
         .map(|node| {
-            let span = node
-                .get("span")
-                .and_then(Value::as_object)
-                .expect("ExprVar should have span");
             (
-                json_span_start(span),
+                json_span_start(node.get("span").expect("ExprVar should have span")),
                 node.get("expr_data")
                     .and_then(Value::as_object)
                     .and_then(|expr| expr.get("binding_kind"))
@@ -2678,10 +2696,7 @@ fn parsed_function_body(source: &str, fn_name: &str) -> Rc<v1_compiler::v1_std_c
     use v1_compiler::v1_std_core::module_items;
 
     let parsed = parse_source_named("pattern_span_witness.dag", source);
-    let module = parsed
-        .module
-        .clone()
-        .expect("fixture module should parse");
+    let module = parsed.module.clone().expect("fixture module should parse");
     module_items(module)
         .iter()
         .find(|item| item.name == fn_name)

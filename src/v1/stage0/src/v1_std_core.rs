@@ -189,19 +189,7 @@ pub enum VarBindingKind {
     LocalValueBinding,
     FunctionValueBinding,
     VariantValueBinding { parent_enum: String },
-    MatchBoundBinding,
-}
-impl VarBindingKind {
-    pub fn parent_enum(&self) -> String {
-        match self {
-            VarBindingKind::LocalValueBinding => panic!("no parent_enum on unit variant"),
-            VarBindingKind::FunctionValueBinding => panic!("no parent_enum on unit variant"),
-            VarBindingKind::VariantValueBinding {
-                parent_enum: __val, ..
-            } => __val.clone(),
-            VarBindingKind::MatchBoundBinding => panic!("no parent_enum on unit variant"),
-        }
-    }
+    MatchBoundBinding { declaration_span: Rc<SourceSpan> },
 }
 
 #[derive(
@@ -294,6 +282,7 @@ pub enum ExprData {
 pub enum MatchPattern {
     Bind {
         name: String,
+        declaration_span: Rc<SourceSpan>,
     },
     LitPattern {
         value: Rc<LiteralValue>,

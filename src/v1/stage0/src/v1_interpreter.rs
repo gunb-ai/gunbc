@@ -2592,7 +2592,10 @@ fn match_pattern(
     match pattern {
         MatchPattern::Wildcard => Some(HashMap::new()),
 
-        MatchPattern::Bind { name } => {
+        MatchPattern::Bind {
+            name,
+            declaration_span: _,
+        } => {
             let mut bindings = HashMap::new();
             bindings.insert(ctx.sym(name), value.clone());
             Some(bindings)

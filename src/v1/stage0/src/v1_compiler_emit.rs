@@ -303,7 +303,10 @@ pub fn emit_simple_expr(
                             ExprData::ExprVar {
                                 binding_kind: bk, ..
                             } => match bk.clone().as_deref().cloned() {
-                                Some(VarBindingKind::MatchBoundBinding) => false,
+                                Some(VarBindingKind::MatchBoundBinding {
+                                    declaration_span: _,
+                                    ..
+                                }) => false,
                                 Some(VarBindingKind::VariantValueBinding {
                                     parent_enum: _,
                                     ..
@@ -574,7 +577,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
         }),
         locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         body_locals: v1_rt::rc_empty_map::<String, bool>(),
-        match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
+        match_bound_names: v1_rt::rc_empty_map::<String, Rc<SourceSpan>>(),
         module_name: "".to_string(),
         service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
         item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
@@ -588,7 +591,7 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
         func_env: typed_module.func_env.clone(),
         locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         body_locals: v1_rt::rc_empty_map::<String, bool>(),
-        match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
+        match_bound_names: v1_rt::rc_empty_map::<String, Rc<SourceSpan>>(),
         module_name: authored_name_at(
             typed_module.type_env.clone().source_indices.clone(),
             typed_module.module.clone(),

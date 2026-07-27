@@ -157,7 +157,7 @@ pub fn dag_collect_match_pattern(
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
     match (*pattern.clone()).clone() {
-        MatchPattern::Bind { name: _, .. } => slots,
+        MatchPattern::Bind { .. } => slots,
         MatchPattern::LitPattern { value: _, .. } => slots,
         MatchPattern::VariantPattern { field_bindings, .. } => {
             field_bindings.clone().iter().cloned().fold(

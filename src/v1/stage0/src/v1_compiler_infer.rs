@@ -238,7 +238,7 @@ pub struct InferScope {
     pub func_env: Rc<ResolvedFuncEnv>,
     pub locals: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub body_locals: Rc<HashMap<String, bool>>,
-    pub match_bound_names: Rc<HashMap<String, bool>>,
+    pub match_bound_names: Rc<HashMap<String, Rc<SourceSpan>>>,
     pub module_name: String,
     pub service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -933,13 +933,12 @@ pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: String) -> Rc<VarBind
             parent_enum: parent_enum.clone(),
         }),
         None => match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
-            Some(_) => {
-                if v1_rt::map_has(&scope.match_bound_names.clone(), name.clone()) {
-                    Rc::new(VarBindingKind::MatchBoundBinding)
-                } else {
-                    Rc::new(VarBindingKind::LocalValueBinding)
-                }
-            }
+            Some(_) => match v1_rt::map_get(&scope.match_bound_names.clone(), name.clone()) {
+                Some(declaration_span) => Rc::new(VarBindingKind::MatchBoundBinding {
+                    declaration_span: declaration_span.clone(),
+                }),
+                None => Rc::new(VarBindingKind::LocalValueBinding),
+            },
             None => Rc::new(VarBindingKind::FunctionValueBinding),
         },
     }
@@ -2466,6 +2465,7 @@ pub fn extend_scope(
 pub fn extend_scope_match_bound(
     scope: Rc<InferScope>,
     name: String,
+    declaration_span: Rc<SourceSpan>,
     resolved: Rc<Node>,
     provenance: Rc<SubValueRelation>,
 ) -> Rc<InferScope> {
@@ -2485,7 +2485,7 @@ pub fn extend_scope_match_bound(
         match_bound_names: v1_rt::rc_map_insert(
             scope.match_bound_names.clone(),
             name.clone(),
-            true,
+            declaration_span.clone(),
         ),
         module_name: scope.module_name.clone(),
         service_registry: scope.service_registry.clone(),
@@ -2615,10 +2615,15 @@ pub fn extend_scope_with_pattern_node(
 ) -> Rc<PatternScopeResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*pattern.clone()).clone() {
-            MatchPattern::Bind { name: n, .. } => Rc::new(PatternScopeResult {
+            MatchPattern::Bind {
+                name: n,
+                declaration_span,
+                ..
+            } => Rc::new(PatternScopeResult {
                 scope: extend_scope_match_bound(
                     scope.clone(),
                     n.clone(),
+                    declaration_span.clone(),
                     pattern_binding_type(scrutinee_subject.clone()),
                     scrutinee_provenance.clone(),
                 ),
@@ -2675,10 +2680,15 @@ pub fn extend_scope_with_pattern_node(
                         );
                         let fb_pattern = field_binding_pattern(fb.clone());
                         match (*fb_pattern.clone()).clone() {
-                            MatchPattern::Bind { name: n, .. } => Rc::new(PatternScopeResult {
+                            MatchPattern::Bind {
+                                name: n,
+                                declaration_span,
+                                ..
+                            } => Rc::new(PatternScopeResult {
                                 scope: extend_scope_match_bound(
                                     acc.scope.clone(),
                                     n.clone(),
+                                    declaration_span.clone(),
                                     field_type.clone(),
                                     field_provenance.clone(),
                                 ),
@@ -16820,7 +16830,7 @@ pub fn typecheck_module(
             func_env: ctx.func_env.clone(),
             locals: data_locals.clone(),
             body_locals: v1_rt::rc_empty_map::<String, bool>(),
-            match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
+            match_bound_names: v1_rt::rc_empty_map::<String, Rc<SourceSpan>>(),
             module_name: resolved_module_name.clone(),
             service_registry: ctx.svc_registry.clone(),
             item_registry: ctx.item_registry.clone(),

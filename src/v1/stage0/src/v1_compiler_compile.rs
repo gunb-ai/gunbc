@@ -635,7 +635,10 @@ pub fn var_binding_kind_name(value: Rc<VarBindingKind>) -> String {
         VarBindingKind::VariantValueBinding { parent_enum: _, .. } => {
             "VariantValueBinding".to_string()
         }
-        VarBindingKind::MatchBoundBinding => "MatchBoundBinding".to_string(),
+        VarBindingKind::MatchBoundBinding {
+            declaration_span: _,
+            ..
+        } => "MatchBoundBinding".to_string(),
     }
 }
 
@@ -828,10 +831,20 @@ pub fn serialize_match_pattern(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match (*pattern.clone()).clone() {
-        MatchPattern::Bind { name: inner, .. } => v1_rt::concat(
+        MatchPattern::Bind {
+            name: inner,
+            declaration_span,
+            ..
+        } => v1_rt::concat(
             v1_rt::concat(
-                "{\"kind\": \"Bind\", \"name\": ".to_string(),
-                json_quote(inner.clone()),
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "{\"kind\": \"Bind\", \"name\": ".to_string(),
+                        json_quote(inner.clone()),
+                    ),
+                    ", \"declaration_span\": ".to_string(),
+                ),
+                serialize_span(declaration_span.clone()),
             ),
             "}".to_string(),
         ),
@@ -1252,6 +1265,13 @@ pub fn serialize_expr_data(
                                     } => v1_rt::concat(
                                         ", \"parent_enum\": ".to_string(),
                                         json_quote(parent_enum.clone()),
+                                    ),
+                                    VarBindingKind::MatchBoundBinding {
+                                        declaration_span: declaration_span,
+                                        ..
+                                    } => v1_rt::concat(
+                                        ", \"declaration_span\": ".to_string(),
+                                        serialize_span(declaration_span.clone()),
                                     ),
                                     _ => "".to_string(),
                                 },

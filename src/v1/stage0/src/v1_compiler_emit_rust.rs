@@ -15168,7 +15168,7 @@ pub fn has_string_lit_with_bind(arms: Rc<Vec<Rc<Node>>>) -> bool {
             let mut __found = false;
             for arm in arms.clone().iter().cloned() {
                 if match (*arm_pattern(arm.clone())).clone() {
-                    MatchPattern::Bind { name: _, .. } => true,
+                    MatchPattern::Bind { .. } => true,
                     _ => false,
                 } {
                     __found = true;
@@ -16523,7 +16523,7 @@ pub fn emit_variant_pattern_rc_aware(
 
 pub fn match_pattern_is_irrefutable(pattern: Rc<MatchPattern>) -> bool {
     match (*pattern.clone()).clone() {
-        MatchPattern::Bind { name: _, .. } => true,
+        MatchPattern::Bind { .. } => true,
         MatchPattern::Wildcard => true,
         _ => false,
     }
@@ -21879,7 +21879,7 @@ pub fn freemonoid_catchall_arm(arms: Rc<Vec<Rc<Node>>>) -> Option<Rc<Node>> {
         for arm in arms.clone().iter().cloned() {
             if match (*arm_pattern(arm.clone())).clone() {
                 MatchPattern::Wildcard => true,
-                MatchPattern::Bind { name: _, .. } => true,
+                MatchPattern::Bind { .. } => true,
                 _ => false,
             } {
                 __result.push(arm);

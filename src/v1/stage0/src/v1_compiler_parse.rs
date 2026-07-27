@@ -12659,7 +12659,10 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
                         parse_variant_pattern(r.tokens.clone(), ctx.clone(), n.clone())
                     } else {
                         Rc::new(PatternResult {
-                            pattern: Rc::new(MatchPattern::Bind { name: n.clone() }),
+                            pattern: Rc::new(MatchPattern::Bind {
+                                name: n.clone(),
+                                declaration_span: r.span.clone(),
+                            }),
                             tokens: r.tokens.clone(),
                             ctx: ctx.clone(),
                             err: None,
@@ -12914,6 +12917,7 @@ pub fn parse_variant_bindings_brace_acc(
                         field_name.clone(),
                         Rc::new(MatchPattern::Bind {
                             name: field_name.clone(),
+                            declaration_span: field_name_span.clone(),
                         }),
                         bind_span.clone(),
                         field_name_span.clone(),
