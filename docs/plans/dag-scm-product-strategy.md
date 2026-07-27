@@ -468,8 +468,8 @@ the kernel, customer value, Git fidelity, or authority boundary.
 ## 11. Strategy acceptance and dissolution
 
 This strategy is accepted when the operator has ruled on the eight decisions above and the roadmap
-contains the A0/A1 wedge, managed-Git promotion, hosted-authority gate, and vertical-platform
-option in dependency order.
+contains the A0/A1 wedge, managed-Git promotion, native-proposal proof, hosted-authority gate, and
+vertical-platform option in dependency order.
 
 It is falsified or narrowed when the receipts show that:
 
