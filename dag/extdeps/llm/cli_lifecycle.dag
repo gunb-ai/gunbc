@@ -3,6 +3,7 @@ module extdeps.llm.cli_lifecycle
 import std.types { String, NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.llm.cli { claude_cli_external_authority_anchor }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -17,6 +18,8 @@ data codex_cli_auth_external_authority: ExternalAuthority = ExternalAuthority {
     locator: "learn.chatgpt.com/docs/auth"
   }
 }
+
+data claude_cli_lifecycle_external_authority: ExternalAuthority = claude_cli_external_authority_anchor
 
 type ProviderKind
   = ClaudeCliProvider
