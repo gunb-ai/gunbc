@@ -302,6 +302,7 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let present_node = Rc::new(Node {
@@ -322,6 +323,7 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         present_node
@@ -354,6 +356,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         Rc::new(Node {
@@ -374,6 +377,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         })
     }
@@ -399,6 +403,7 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let diagnostic_field = Rc::new(Node {
@@ -421,6 +426,7 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         Rc::new(Node {
@@ -441,6 +447,7 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         })
     }
@@ -819,7 +826,7 @@ pub fn check_match_exhaustiveness(
                     for arm in arms.clone().iter().cloned() {
                         if match (*arm_pattern(arm.clone())).clone() {
                             MatchPattern::Wildcard => true,
-                            MatchPattern::Bind { name: _, .. } => true,
+                            MatchPattern::Bind { declaration: _, .. } => true,
                             _ => false,
                         } {
                             __found = true;

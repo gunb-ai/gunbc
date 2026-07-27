@@ -51,13 +51,14 @@ pub use crate::v1_std_core::{
     is_compiler_error, is_container_type, kernel_span, leaf_node_with_span, local_transport_node,
     make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
     make_field_binding_node, make_field_init_node, make_field_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_resource_use_node, make_span, make_text_part_node,
-    make_variant_node, module_node, no_span, node_name_span, param_node_default_value,
-    param_node_type_expr, pre_intern_tokens, rest_transport_node, service_config_properties,
-    shell_transport_node, transport_auth_basic_key, transport_body_key, transport_headers_key,
-    transport_method_key, transport_path_key, transport_path_template_key, transport_query_key,
-    transport_response_format_key, transport_stdin_key, transport_tls_key, transport_url_key,
-    variant_node_fields, variant_node_name_at, with_required_cardinality,
+    make_named_expr_node, make_param_node, make_pattern_binder_declaration_node,
+    make_resource_use_node, make_span, make_text_part_node, make_variant_node, module_node,
+    no_span, node_name_span, param_node_default_value, param_node_type_expr, pre_intern_tokens,
+    rest_transport_node, service_config_properties, shell_transport_node, transport_auth_basic_key,
+    transport_body_key, transport_headers_key, transport_method_key, transport_path_key,
+    transport_path_template_key, transport_query_key, transport_response_format_key,
+    transport_stdin_key, transport_tls_key, transport_url_key, variant_node_fields,
+    variant_node_name_at, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
@@ -1891,6 +1892,7 @@ pub fn leaf_type_node(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        binding_identity: None,
         ident: None,
     })
 }
@@ -1918,6 +1920,7 @@ pub fn literal_width_nat_type_node(value: i64, span: Rc<SourceSpan>) -> Rc<Node>
                 value: value.clone(),
             }),
         }),
+        binding_identity: None,
         ident: None,
     })
 }
@@ -2207,6 +2210,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let mod_ = Rc::new(Node {
@@ -2512,6 +2516,7 @@ pub fn parse_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResu
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    binding_identity: None,
     ident: None,
 }),
     tokens: tokens.clone(),
@@ -2695,6 +2700,7 @@ pub fn parse_item_by_form(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = expect(
@@ -2819,6 +2825,7 @@ pub fn field_to_child_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         })
     }
@@ -2859,6 +2866,7 @@ pub fn variant_to_child_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         })
     }
@@ -2895,6 +2903,7 @@ pub fn outputs_to_inferred(
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
+                binding_identity: None,
                 ident: None,
             }),
         }))
@@ -2954,6 +2963,7 @@ pub fn make_operation_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         })
     }
@@ -2997,6 +3007,7 @@ pub fn make_capability_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        binding_identity: None,
         ident: None,
     })
 }
@@ -3022,6 +3033,7 @@ pub fn parse_type_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = expect(
@@ -3066,6 +3078,7 @@ pub fn parse_type_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = expect_ident(tokens.clone());
@@ -3110,6 +3123,7 @@ pub fn parse_type_after_kw(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    binding_identity: None,
                     ident: None,
                 });
                 if has_err(r.err.clone()) {
@@ -3173,6 +3187,7 @@ pub fn parse_type_after_kw(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    binding_identity: None,
                     ident: None,
                 });
                 Rc::new(ItemResult {
@@ -3216,6 +3231,7 @@ pub fn parse_type_after_kw(
                             has_non_tail_self_call: false,
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
+                            binding_identity: None,
                             ident: None,
                         });
                         Rc::new(ItemResult {
@@ -3258,6 +3274,7 @@ pub fn parse_type_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let raw_tokens = skip_newlines(prefix.tokens.clone());
@@ -3330,6 +3347,7 @@ pub fn parse_type_body_from_prefix(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    binding_identity: None,
                     ident: None,
                 });
                 Rc::new(ItemResult {
@@ -3373,6 +3391,7 @@ pub fn parse_type_body_from_prefix(
                             has_non_tail_self_call: false,
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
+                            binding_identity: None,
                             ident: None,
                         });
                         Rc::new(ItemResult {
@@ -3415,6 +3434,7 @@ pub fn parse_type_body_after_eq(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectPipe))).clone() {
@@ -3484,6 +3504,7 @@ pub fn parse_type_body_after_eq(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    binding_identity: None,
                     ident: None,
                 });
                 Rc::new(ItemResult {
@@ -3570,6 +3591,7 @@ pub fn parse_type_body_after_eq(
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
+                                    binding_identity: None,
                                     ident: None,
                                 });
                                 Rc::new(ItemResult {
@@ -3629,6 +3651,7 @@ pub fn parse_type_body_after_eq(
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
+                                    binding_identity: None,
                                     ident: None,
                                 });
                                 Rc::new(ItemResult {
@@ -3685,6 +3708,7 @@ pub fn parse_type_body_after_eq(
                             has_non_tail_self_call: false,
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
+                            binding_identity: None,
                             ident: None,
                         });
                         Rc::new(ItemResult {
@@ -3736,6 +3760,7 @@ pub fn try_where_clause(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    binding_identity: None,
                     ident: None,
                 });
                 let refined = Rc::new(Node {
@@ -3756,6 +3781,7 @@ pub fn try_where_clause(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    binding_identity: None,
                     ident: None,
                 });
                 Rc::new(TypeResult {
@@ -4579,6 +4605,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    binding_identity: None,
                     ident: None,
                 });
                 Rc::new(TypeResult {
@@ -4720,6 +4747,7 @@ pub fn parse_callable_type_expr(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         maybe_optional(
@@ -4839,6 +4867,7 @@ pub fn finish_type_expr_from_name(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    binding_identity: None,
                     ident: None,
                 });
                 maybe_optional(
@@ -5005,6 +5034,7 @@ pub fn maybe_optional(
                 has_non_tail_self_call: te.has_non_tail_self_call.clone(),
                 match_pattern: te.match_pattern.clone(),
                 expr_data: te.expr_data.clone(),
+                binding_identity: None,
                 ident: None,
             });
             Rc::new(TypeResult {
@@ -5266,6 +5296,7 @@ pub fn parse_fn_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemRe
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = expect(
@@ -5310,6 +5341,7 @@ pub fn parse_fn_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = expect_ident(tokens.clone());
@@ -5342,6 +5374,7 @@ pub fn parse_fn_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = parse_params(tokens.clone(), ctx.clone());
@@ -5396,6 +5429,7 @@ pub fn parse_fn_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         Rc::new(ItemResult {
@@ -5437,6 +5471,7 @@ pub fn parse_fn_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let tokens = skip_newlines(prefix.tokens.clone());
@@ -5498,6 +5533,7 @@ pub fn parse_fn_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         Rc::new(ItemResult {
@@ -5530,6 +5566,7 @@ pub fn parse_func_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let kw = tok_keyword_text(token_stream_first(tokens.clone()));
@@ -5623,6 +5660,7 @@ pub fn parse_block_item_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = expect_ident(tokens.clone());
@@ -5655,6 +5693,7 @@ pub fn parse_block_item_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = parse_params(tokens.clone(), ctx.clone());
@@ -5730,6 +5769,7 @@ pub fn parse_block_item_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         Rc::new(ItemResult {
@@ -5770,6 +5810,7 @@ pub fn parse_block_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = parse_block(skip_newlines(prefix.tokens.clone()), ctx.clone());
@@ -5800,6 +5841,7 @@ pub fn parse_block_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         Rc::new(ItemResult {
@@ -5834,6 +5876,7 @@ pub fn parse_no_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         Rc::new(ItemResult {
@@ -5993,6 +6036,7 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
                     has_non_tail_self_call: r3.type_expr.clone().has_non_tail_self_call.clone(),
                     match_pattern: r3.type_expr.clone().match_pattern.clone(),
                     expr_data: r3.type_expr.clone().expr_data.clone(),
+                    binding_identity: None,
                     ident: None,
                 });
                 let ru = make_resource_use_node(
@@ -6162,6 +6206,7 @@ pub fn parse_service_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<I
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = expect(
@@ -6206,6 +6251,7 @@ pub fn parse_service_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r_ns = expect_name(tokens.clone());
@@ -6243,6 +6289,7 @@ pub fn parse_service_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
@@ -6318,6 +6365,7 @@ pub fn parse_service_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         Rc::new(ItemResult {
@@ -8785,6 +8833,7 @@ pub fn parse_resource_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = expect(
@@ -8829,6 +8878,7 @@ pub fn parse_resource_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = expect_ident(tokens.clone());
@@ -8860,6 +8910,7 @@ pub fn parse_resource_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
@@ -8915,6 +8966,7 @@ pub fn parse_resource_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         Rc::new(ItemResult {
@@ -9492,6 +9544,7 @@ pub fn parse_data_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = expect(
@@ -9536,6 +9589,7 @@ pub fn parse_alias_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = expect_ident(tokens.clone());
@@ -9567,6 +9621,7 @@ pub fn parse_alias_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
@@ -9621,6 +9676,7 @@ pub fn parse_alias_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         Rc::new(ItemResult {
@@ -9656,6 +9712,7 @@ pub fn parse_data_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = expect_ident(tokens.clone());
@@ -9687,6 +9744,7 @@ pub fn parse_data_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
@@ -9744,6 +9802,7 @@ pub fn parse_data_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_identity: None,
             ident: None,
         });
         Rc::new(ItemResult {
@@ -10199,6 +10258,7 @@ pub fn parse_constrained_assignment(
             has_non_tail_self_call: node.has_non_tail_self_call.clone(),
             match_pattern: node.match_pattern.clone(),
             expr_data: node.expr_data.clone(),
+            binding_identity: None,
             ident: None,
         });
         Rc::new(ExprResult {
@@ -10293,6 +10353,7 @@ pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::ExprLet),
+            binding_identity: None,
             ident: None,
         });
         Rc::new(ExprResult {
@@ -10369,6 +10430,7 @@ pub fn parse_bare_assignment(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> 
                     has_non_tail_self_call: node.has_non_tail_self_call.clone(),
                     match_pattern: node.match_pattern.clone(),
                     expr_data: node.expr_data.clone(),
+                    binding_identity: None,
                     ident: None,
                 });
                 Rc::new(ExprResult {
@@ -12659,7 +12721,12 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
                         parse_variant_pattern(r.tokens.clone(), ctx.clone(), n.clone())
                     } else {
                         Rc::new(PatternResult {
-                            pattern: Rc::new(MatchPattern::Bind { name: n.clone() }),
+                            pattern: Rc::new(MatchPattern::Bind {
+                                declaration: make_pattern_binder_declaration_node(
+                                    n.clone(),
+                                    r.span.clone(),
+                                ),
+                            }),
                             tokens: r.tokens.clone(),
                             ctx: ctx.clone(),
                             err: None,
@@ -12913,7 +12980,10 @@ pub fn parse_variant_bindings_brace_acc(
                     let fb = make_field_binding_node(
                         field_name.clone(),
                         Rc::new(MatchPattern::Bind {
-                            name: field_name.clone(),
+                            declaration: make_pattern_binder_declaration_node(
+                                field_name.clone(),
+                                field_name_span.clone(),
+                            ),
                         }),
                         bind_span.clone(),
                         field_name_span.clone(),
@@ -13121,6 +13191,7 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::ExprLet),
+                    binding_identity: None,
                     ident: None,
                 });
                 Rc::new(ExprResult {
