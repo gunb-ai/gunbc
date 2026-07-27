@@ -113,7 +113,7 @@ fn symbol_to_manifest(sym: &str) -> String {
     }
 }
 
-fn value_symbol_name(ctx: &InterpContext, value: &Value) -> Result<String, String> {
+fn value_symbol_name(value: &Value) -> Result<String, String> {
     match value {
         Value::Str(s) => Ok(symbol_to_manifest(s)),
         other => Err(format!(
@@ -134,7 +134,7 @@ fn load_symbol_data_from_entry(
     let ctx = InterpContext::new(&graph, source_indices, ExecutionMode::Hermetic);
     let value = v1_interpreter::run_in_context(&ctx, data_name, true)
         .map_err(|e| format!("read {data_name}: {e}"))?;
-    let sym = value_symbol_name(&ctx, &value)?;
+    let sym = value_symbol_name(&value)?;
     Ok(sym.trim_start_matches('^').to_string())
 }
 
@@ -192,7 +192,7 @@ fn blocker_variant_emit(blocker: &Value, ctx: &InterpContext) -> Result<String, 
                     .field(fields, "reason")
                     .or_else(|| ctx.field(fields, "cause"))
                     .ok_or_else(|| format!("{name} missing reason/cause"))?;
-                let reason_sym = value_symbol_name(ctx, reason)?;
+                let reason_sym = value_symbol_name(reason)?;
                 Ok(format!("{name} {{ reason: {reason_sym} }}"))
             } else {
                 Ok(name)
@@ -219,7 +219,7 @@ fn extract_probe_receipt(value: &Value, ctx: &InterpContext) -> Result<ProbeRece
         module_path,
         blocker_variant: blocker_variant_emit(blocker, ctx)?,
         located_stage: variant_name(ctx, stage)?,
-        located_reason: value_symbol_name(ctx, reason)?,
+        located_reason: value_symbol_name(reason)?,
         probe_error: None,
     })
 }

@@ -1,0 +1,73 @@
+module gunbc.ci_release_bins
+
+import std.disposition { SingleAuthority }
+import v2.lens.common.construction_justification {
+  ConstructionJustification,
+  WallAfterGrounding
+}
+
+data ci_release_bins_authority_note: String = "Single authority for the CI release-bins pack membership (the dissolve target named on gunbc.roster_registry for the former ci_floor_required_artifact_names hand list). TWO inputs, one derived pack:
+
+(1) ci_floor_invoked_bins — bins the floor / CI shell invokes by path without going through tools.host_prelude.WitnessBin (claim_executor, gunbc, the floor-skip witnesses). Policy seed; small.
+
+(2) witness_declared_release_bins — every production bin_name a WitnessBin transport may address. This IS the witness-declared needs surface the roster dissolve_on named: a newly-addressable bin enrolls HERE, and ci_floor_required_artifact_names derives from the union so build/pack/verify cannot silently omit it.
+
+ci_floor_required_artifact_names() is DERIVED (floor ∪ witness-declared, stable order, no dupes). The old hand List in gunbc.ci_spec is deleted. Construction half in tools.host_prelude: witness_bin_ensure_built_typed refuses WitnessBinNotEnrolled for a bin_name absent from the derived pack — it does NOT cargo-build an unenrolled name (the mid-floor cold-monolith absorption the job split exists to bound). Intentionally-absent negative control no_such_witness_bin_zzz stays OFF this list.
+
+Measured gap that priced this PR (2026-07-26): cssl_assemble and frontier_probe_survey were addressed by production transports but absent from the pack — live absorption risk. Both enroll below.
+
+Dissolve-on (hand membership of witness_declared_release_bins): a host census of production WitnessBin.bin_name literals derives this list (non_fold_residue_units_from_module_source shape), so a transport spelling a free string not yet enrolled is a typed census refusal rather than a hand edit; then this list and its roster row delete."
+
+data ci_floor_invoked_bins: List<String> = [
+  "claim_executor",
+  "gunbc",
+  "compile_clean_floor_skip_witness",
+  "regen_floor_skip_witness",
+  "floor_skip_discovery_witness"
+]
+
+data witness_declared_release_bins: List<String> = [
+  "discover_source_root_ingest",
+  "claim_batch",
+  "regen_stage0",
+  "interp_recorded_fixture_witness",
+  "v1_src_dag_parse",
+  "auth_declared_but_unwired_witness",
+  "bootstrap_witness",
+  "dag_collect_fingerprint_witness",
+  "diagnostics_witness",
+  "effects_rest_transport_witness",
+  "infer_semantics_witness",
+  "parse_witness",
+  "resolution_divergence_census",
+  "cssl_assemble",
+  "frontier_probe_survey"
+]
+
+fn release_bin_list_contains(xs: List<String>, needle: String) -> Bool {
+  any(xs, x => x == needle)
+}
+
+fn release_bin_list_snoc_unique(acc: List<String>, name: String) -> List<String> {
+  if release_bin_list_contains(xs: acc, needle: name) {
+    acc
+  } else {
+    concat(acc, [name])
+  }
+}
+
+fn ci_floor_required_artifact_names() -> List<String> {
+  fold(
+    witness_declared_release_bins,
+    init: ci_floor_invoked_bins,
+    f: (acc, name) => release_bin_list_snoc_unique(acc: acc, name: name)
+  )
+}
+
+fn release_bin_is_enrolled(bin_name: String) -> Bool {
+  release_bin_list_contains(xs: ci_floor_required_artifact_names(), needle: bin_name)
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
