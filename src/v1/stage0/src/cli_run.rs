@@ -12002,6 +12002,9 @@ pub struct EntryResolveReceipt {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiscoveryWitnessOutcome {
     pub entry: String,
+    /// Authored module containing `function`, derived from the live module-graph path index.
+    /// This is the DeclarationRef identity consumed by the canonical ObservationEvent bridge.
+    pub module_path: String,
     pub function: String,
     pub outcome: ClaimOutcome,
     /// Which execution leg ran (`v2.std.witness_execution_routing.WitnessExecutionLeg` projection).
@@ -12114,164 +12117,338 @@ pub struct HistogramData {
     pub eval: TimingPercentiles,
 }
 
-/// One witness row with per-witness eval time and its entry's resolve cost.
-///
-/// SCAFFOLD materialized view of `std.observation.ObservationEvent` join projection
-/// (`gunbc.witness_row_cost.witness_timing_row_seed_view_disposition`) — NOT the #5
-/// authority and NOT a lockstep type. `total_nanos` is derived.
-/// Hand-Rust gate receipts (review 43361): dissolve_trigger, explicit deferral
-/// (lane=placement-workstream-#5-per-row-cost; ROADMAP `5-dissolve-patches`),
-/// scaffold_deletion, loc_delta_net, test_discriminator, plan_anchor —
-/// `docs/plans/progress-observation-design.md#interim-witness-timing-row-scaffold`.
-/// Dissolve-on: seed produces N+1 ObservationEvent values; receipt/drift consume
-/// `project_witness_cost_receipt`; this struct + `compute_witness_timing_rows` +
-/// `entry_resolve_nanos_by_entry` are deleted. Nanos stay internal seed units;
-/// Millisecond conversion is at the event boundary.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WitnessTimingRow {
-    pub entry: String,
-    pub function: String,
-    pub eval_nanos: u128,
-    /// Entry-level/shared resolve wall (repeated per child row; never divided).
-    pub resolve_nanos: u128,
-    pub total_nanos: u128,
+fn witness_cost_nanosecond_value(
+    ctx: &v1_interpreter::InterpContext,
+    nanos: u128,
+) -> Result<v1_interpreter::Value, String> {
+    let count = i64::try_from(nanos).map_err(|_| {
+        format!("[witness-row-cost] REFUSED: measured wall {nanos}ns exceeds the seed Int boundary")
+    })?;
+    v1_interpreter::run_in_context_with_args(
+        ctx,
+        "nanosecond",
+        &[(Some("count".to_string()), v1_interpreter::Value::Int(count))],
+        false,
+    )
+    .map_err(|e| format!("[witness-row-cost] REFUSED: nanosecond constructor failed: {e}"))
 }
 
-pub const DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N: usize = 15;
-
-/// Build entry → resolve_nanos. Duplicate receipts for one entry REFUSE (same cardinality
-/// rule as `project_witness_cost_receipt` — never silently overwrite / pick; review 43351).
-fn entry_resolve_nanos_by_entry(
-    receipts: &[EntryResolveReceipt],
-) -> Result<HashMap<String, u128>, String> {
-    let mut map: HashMap<String, u128> = HashMap::new();
-    for receipt in receipts {
-        if let Some(prev) = map.insert(receipt.entry.clone(), receipt.resolve_nanos) {
-            return Err(format!(
-                "[witness-row-cost] REFUSED: multiple entry resolve receipts for {} (walls {} and {}) — never silently pick (matches project_witness_cost_receipt)",
-                receipt.entry, prev, receipt.resolve_nanos
-            ));
-        }
+fn witness_cost_string_field(
+    ctx: &v1_interpreter::InterpContext,
+    fields: &[(v1_interpreter::Symbol, v1_interpreter::Value)],
+    name: &str,
+) -> Result<String, String> {
+    match ctx.field(fields, name) {
+        Some(v1_interpreter::Value::Str(value)) if !value.is_empty() => Ok(value.clone()),
+        Some(other) => Err(format!(
+            "[witness-row-cost] REFUSED: projected {name} is {}, expected NonEmptyStr",
+            other.type_label_public()
+        )),
+        None => Err(format!(
+            "[witness-row-cost] REFUSED: projected receipt row lacks {name}"
+        )),
     }
-    Ok(map)
 }
 
-pub fn compute_witness_timing_rows(
+fn witness_cost_nanosecond_count(
+    ctx: &v1_interpreter::InterpContext,
+    value: v1_interpreter::Value,
+    field: &str,
+) -> Result<u128, String> {
+    match v1_interpreter::run_in_context_with_args(
+        ctx,
+        "nanosecond_count",
+        &[(Some("n".to_string()), value)],
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Int(n)) if n >= 0 => Ok(n as u128),
+        Ok(other) => Err(format!(
+            "[witness-row-cost] REFUSED: nanosecond_count({field}) returned {}, expected Nat",
+            other.type_label_public()
+        )),
+        Err(e) => Err(format!(
+            "[witness-row-cost] REFUSED: nanosecond_count({field}) failed: {e}"
+        )),
+    }
+}
+
+/// Construct the production N+1 `std.observation.ObservationEvent` stream and execute
+/// `gunbc.witness_row_cost.project_witness_cost_receipt`.
+///
+/// The projector is invoked once per entry-sized group, rather than once for the whole
+/// discovery corpus: its authored fold performs cardinality checks against the supplied
+/// stream, so this keeps work proportional to the sum of each entry's witness-group size.
+/// Rust transports only facts measured by discovery and decodes the accepted projection
+/// into an unnamed presentation-edge tuple:
+/// `(entry, declaration, eval_nanos, resolve_nanos, warm_nanos, outcome_variant, outcome_detail)`.
+/// Deliberately do not introduce another named timing-row carrier.
+pub fn project_witness_cost_receipt(
+    source_roots: &[String],
     summary: &DiscoverySummary,
-) -> Result<Vec<WitnessTimingRow>, String> {
+) -> Result<Vec<(String, String, u128, u128, u128, String, String)>, String> {
+    use v1_interpreter::{run_in_context_with_args, ExecutionMode, Value};
+
     if summary.performance_receipts.len() != summary.witness_outcomes.len() {
         return Err(format!(
-            "[attribution] SKIPPED: mismatched vector lengths (performance_receipts={}, witness_outcomes={}) — timings unreliable",
+            "[witness-row-cost] REFUSED: timing/outcome cardinality mismatch ({}/{})",
             summary.performance_receipts.len(),
             summary.witness_outcomes.len()
         ));
     }
 
-    let entry_resolve_map = entry_resolve_nanos_by_entry(&summary.entry_resolve_receipts)?;
-
-    let mut rows: Vec<WitnessTimingRow> = Vec::new();
-    let mut missing_entry_resolve: Vec<String> = Vec::new();
-    for (perf, outcome) in summary
-        .performance_receipts
+    let entry = source_roots
         .iter()
-        .zip(summary.witness_outcomes.iter())
-    {
-        let Some(resolve_nanos) = entry_resolve_map.get(&outcome.entry).copied() else {
-            // Fail-closed for receipt consumers: silent skip would ship an incomplete
-            // per-witness record as complete (gunbc.witness_row_cost spine note;
-            // review 43274). Histogram path still counts this case separately.
-            missing_entry_resolve.push(format!("{}::{}", outcome.entry, outcome.function));
-            continue;
-        };
-        let eval_nanos = perf.wall_nanos;
-        rows.push(WitnessTimingRow {
-            entry: outcome.entry.clone(),
-            function: outcome.function.clone(),
-            eval_nanos,
-            resolve_nanos,
-            total_nanos: resolve_nanos + eval_nanos,
+        .map(|root| Path::new(root).join("gunbc/witness_row_cost.dag"))
+        .find(|path| path.is_file())
+        .ok_or_else(|| {
+            "[witness-row-cost] REFUSED: gunbc/witness_row_cost.dag is absent from source roots"
+                .to_string()
+        })?
+        .to_string_lossy()
+        .into_owned();
+    let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry)
+        .map_err(|e| format!("[witness-row-cost] REFUSED: resolve failed for {entry}:\n{e}"))?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+
+    // Discovery walks entries contiguously, but preserve first-seen order explicitly rather
+    // than relying on that implementation detail.
+    let mut entry_order = Vec::new();
+    let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
+    for (index, outcome) in summary.witness_outcomes.iter().enumerate() {
+        let group = groups.entry(outcome.entry.clone()).or_insert_with(|| {
+            entry_order.push(outcome.entry.clone());
+            Vec::new()
         });
+        group.push(index);
     }
-    if !missing_entry_resolve.is_empty() {
-        return Err(format!(
-            "[witness-row-cost] REFUSED: {} of {} witness(es) missing entry resolve receipt — incomplete row set is unwritable (fail-closed): {}",
-            missing_entry_resolve.len(),
-            summary.witness_outcomes.len(),
-            missing_entry_resolve.join("; ")
-        ));
+    let mut resolve_groups: HashMap<String, Vec<&EntryResolveReceipt>> = HashMap::new();
+    for receipt in &summary.entry_resolve_receipts {
+        resolve_groups
+            .entry(receipt.entry.clone())
+            .or_default()
+            .push(receipt);
+        if !groups.contains_key(&receipt.entry) {
+            entry_order.push(receipt.entry.clone());
+            groups.insert(receipt.entry.clone(), Vec::new());
+        }
     }
-    if rows.len() != summary.witness_outcomes.len() {
+
+    let mut projected_rows = Vec::with_capacity(summary.witness_outcomes.len());
+    for entry_name in entry_order {
+        let indices = groups
+            .remove(&entry_name)
+            .expect("entry_order is derived from groups");
+        let resolve_receipts = resolve_groups.remove(&entry_name).unwrap_or_default();
+        let mut events = Vec::with_capacity(indices.len() + resolve_receipts.len());
+        for receipt in resolve_receipts {
+            let entry_wall = witness_cost_nanosecond_value(&ctx, receipt.resolve_nanos)?;
+            events.push(
+                run_in_context_with_args(
+                    &ctx,
+                    "witness_cost_entry_resolve_event",
+                    &[
+                        (Some("entry".to_string()), Value::Str(entry_name.clone())),
+                        (Some("resolve".to_string()), entry_wall),
+                    ],
+                    false,
+                )
+                .map_err(|e| {
+                    format!("[witness-row-cost] REFUSED: entry event construction failed: {e}")
+                })?,
+            );
+        }
+        for index in indices {
+            let outcome = &summary.witness_outcomes[index];
+            let eval = witness_cost_nanosecond_value(
+                &ctx,
+                summary.performance_receipts[index].wall_nanos,
+            )?;
+            let mut args = vec![
+                (Some("entry".to_string()), Value::Str(outcome.entry.clone())),
+                (
+                    Some("module_path".to_string()),
+                    Value::Str(outcome.module_path.clone()),
+                ),
+                (
+                    Some("function".to_string()),
+                    Value::Str(outcome.function.clone()),
+                ),
+                (Some("eval".to_string()), eval),
+            ];
+            let constructor = match &outcome.outcome {
+                ClaimOutcome::Pass => "witness_cost_seed_done_event",
+                ClaimOutcome::Fail => {
+                    args.push((
+                        Some("error".to_string()),
+                        Value::Str("returned Bool(false)".to_string()),
+                    ));
+                    "witness_cost_seed_failed_event"
+                }
+                ClaimOutcome::NotBool { got } => {
+                    args.push((
+                        Some("diagnostic".to_string()),
+                        Value::Str(format!("returned `{got}`, not Bool")),
+                    ));
+                    "witness_cost_seed_refused_event"
+                }
+                ClaimOutcome::RuntimeError { message } => {
+                    args.push((
+                        Some("error".to_string()),
+                        Value::Str(format!("runtime error: {message}")),
+                    ));
+                    "witness_cost_seed_failed_event"
+                }
+            };
+            events.push(
+                run_in_context_with_args(&ctx, constructor, &args, false).map_err(|e| {
+                    format!(
+                        "[witness-row-cost] REFUSED: declaration event construction failed for {}::{}: {e}",
+                        outcome.entry, outcome.function
+                    )
+                })?,
+            );
+        }
+
+        let projection = run_in_context_with_args(
+            &ctx,
+            "project_witness_cost_receipt",
+            &[(
+                Some("events".to_string()),
+                Value::List(Rc::new(events.into())),
+            )],
+            false,
+        )
+        .map_err(|e| format!("[witness-row-cost] REFUSED: authored projector failed: {e}"))?;
+        let Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } = projection
+        else {
+            return Err(
+                "[witness-row-cost] REFUSED: authored projector returned a non-projection value"
+                    .to_string(),
+            );
+        };
+        if ctx.sym_eq(variant_name, "WitnessCostProjectionRefused") {
+            let cause = witness_cost_string_field(&ctx, &fields, "cause")?;
+            return Err(format!("[witness-row-cost] REFUSED: {cause}"));
+        }
+        if !ctx.sym_eq(variant_name, "WitnessCostProjectionComplete") {
+            return Err(format!(
+                "[witness-row-cost] REFUSED: authored projector returned unknown variant {}",
+                ctx.resolve(variant_name)
+            ));
+        }
+        let Some(Value::List(rows)) = ctx.field(&fields, "rows") else {
+            return Err(
+                "[witness-row-cost] REFUSED: complete projection lacks receipt rows".to_string(),
+            );
+        };
+        for row in rows.iter() {
+            let Value::Record { fields, .. } = row else {
+                return Err(
+                    "[witness-row-cost] REFUSED: projected receipt contains a non-row".to_string(),
+                );
+            };
+            let row_entry = witness_cost_string_field(&ctx, fields, "entry")?;
+            let declaration = match ctx.field(fields, "declaration") {
+                Some(Value::Record { fields, .. }) => fields,
+                _ => {
+                    return Err(
+                        "[witness-row-cost] REFUSED: projected row lacks DeclarationRef"
+                            .to_string(),
+                    )
+                }
+            };
+            let function = witness_cost_string_field(&ctx, declaration, "decl_name")?;
+            let eval = ctx.field(fields, "eval").cloned().ok_or_else(|| {
+                "[witness-row-cost] REFUSED: projected row lacks eval".to_string()
+            })?;
+            let resolve = ctx.field(fields, "resolve").cloned().ok_or_else(|| {
+                "[witness-row-cost] REFUSED: projected row lacks resolve".to_string()
+            })?;
+            let warm = ctx.field(fields, "warm").cloned().ok_or_else(|| {
+                "[witness-row-cost] REFUSED: projected row lacks warm".to_string()
+            })?;
+            let (outcome, outcome_detail) = match ctx.field(fields, "outcome") {
+                Some(Value::Variant { variant_name, .. }) if ctx.sym_eq(*variant_name, "Done") => {
+                    ("Done".to_string(), String::new())
+                }
+                Some(Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                }) if ctx.sym_eq(*variant_name, "Refused") => (
+                    "Refused".to_string(),
+                    witness_cost_string_field(&ctx, fields, "diagnostic")?,
+                ),
+                Some(Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                }) if ctx.sym_eq(*variant_name, "Failed") => (
+                    "Failed".to_string(),
+                    witness_cost_string_field(&ctx, fields, "error")?,
+                ),
+                Some(Value::Variant { variant_name, .. }) => {
+                    (ctx.resolve(*variant_name).to_string(), String::new())
+                }
+                _ => {
+                    return Err(
+                        "[witness-row-cost] REFUSED: projected row lacks ObservationOutcome"
+                            .to_string(),
+                    )
+                }
+            };
+            projected_rows.push((
+                row_entry,
+                function,
+                witness_cost_nanosecond_count(&ctx, eval, "eval")?,
+                witness_cost_nanosecond_count(&ctx, resolve, "resolve")?,
+                witness_cost_nanosecond_count(&ctx, warm, "warm")?,
+                outcome,
+                outcome_detail,
+            ));
+        }
+    }
+    if projected_rows.len() != summary.witness_outcomes.len() {
         return Err(format!(
-            "[witness-row-cost] REFUSED: row count {} != witness_outcomes {} — incomplete receipt is unwritable (fail-closed)",
-            rows.len(),
+            "[witness-row-cost] REFUSED: authored projector returned {} rows for {} outcomes",
+            projected_rows.len(),
             summary.witness_outcomes.len()
         ));
     }
-    Ok(rows)
+    Ok(projected_rows)
 }
 
-/// Return the top `n` witnesses ranked by eval time (descending), stable on function name.
-pub fn top_n_slowest_witnesses(rows: &[WitnessTimingRow], n: usize) -> Vec<WitnessTimingRow> {
+pub fn top_n_slowest_witnesses(
+    rows: &[(String, String, u128, u128, u128, String, String)],
+    n: usize,
+) -> Vec<(String, String, u128, u128, u128, String, String)> {
     let mut sorted = rows.to_vec();
     sorted.sort_by(|a, b| {
-        b.eval_nanos
-            .cmp(&a.eval_nanos)
-            .then_with(|| a.function.cmp(&b.function))
-            .then_with(|| a.entry.cmp(&b.entry))
+        b.2.cmp(&a.2)
+            .then_with(|| a.1.cmp(&b.1))
+            .then_with(|| a.0.cmp(&b.0))
     });
     sorted.truncate(n);
     sorted
 }
 
-pub fn compute_histogram_data(summary: &DiscoverySummary) -> Result<HistogramData, String> {
-    if summary.performance_receipts.len() != summary.witness_outcomes.len() {
-        return Err(format!(
-            "[histogram] SKIPPED: mismatched vector lengths (performance_receipts={}, witness_outcomes={}) — timings unreliable",
-            summary.performance_receipts.len(),
-            summary.witness_outcomes.len()
-        ));
+pub fn compute_histogram_data(
+    rows: &[(String, String, u128, u128, u128, String, String)],
+) -> HistogramData {
+    HistogramData {
+        included: rows.len(),
+        skipped: 0,
+        total: compute_percentiles(rows.iter().map(|row| row.4).collect()),
+        resolve: compute_percentiles(rows.iter().map(|row| row.3).collect()),
+        eval: compute_percentiles(rows.iter().map(|row| row.2).collect()),
     }
-
-    // Same fail-closed duplicate rule as the receipt spine (review 43351) — observational
-    // percentiles must not silently pick among disagreeing/duplicate entry resolves.
-    let entry_resolve_map = entry_resolve_nanos_by_entry(&summary.entry_resolve_receipts)
-        .map_err(|e| e.replacen("[witness-row-cost]", "[histogram]", 1))?;
-
-    let mut total_times: Vec<u128> = Vec::new();
-    let mut resolve_times: Vec<u128> = Vec::new();
-    let mut eval_times: Vec<u128> = Vec::new();
-    let mut skipped_missing_entry_resolve = 0;
-
-    // performance_receipts and witness_outcomes are both generated in the same discovery pass
-    // with matching cardinality and order, so positional matching is stable across discovery runs.
-    for (perf, outcome) in summary
-        .performance_receipts
-        .iter()
-        .zip(summary.witness_outcomes.iter())
-    {
-        let resolve_nanos = match entry_resolve_map.get(&outcome.entry).copied() {
-            Some(nanos) => nanos,
-            None => {
-                skipped_missing_entry_resolve += 1;
-                continue;
-            }
-        };
-        let eval_nanos = perf.wall_nanos;
-        let total_nanos = resolve_nanos + eval_nanos;
-
-        total_times.push(total_nanos);
-        resolve_times.push(resolve_nanos);
-        eval_times.push(eval_nanos);
-    }
-
-    Ok(HistogramData {
-        included: total_times.len(),
-        skipped: skipped_missing_entry_resolve,
-        total: compute_percentiles(total_times),
-        resolve: compute_percentiles(resolve_times),
-        eval: compute_percentiles(eval_times),
-    })
 }
+
+pub const DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N: usize = 15;
 
 pub const WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY: &str =
     "dag/test/claim/wet_hermetic_equivalence_witness_test.dag";
@@ -16655,8 +16832,21 @@ fn run_discovery_rows(
         summary.total_measured_nanos += wall_nanos;
         summary.performance_receipts.push(receipt);
         let execution_leg = witness_execution_leg_label(&row.entry);
+        let entry_repo_path = workspace_relative_repo_path(&row.entry);
+        let module_path = index
+            .module_graph_facts
+            .path_to_module
+            .get(&entry_repo_path)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "{}: discovery witness entry has no module identity in the live module graph (refuse; DeclarationRef cannot be fabricated)",
+                    row.entry
+                )
+            })?;
         summary.witness_outcomes.push(DiscoveryWitnessOutcome {
             entry: row.entry.clone(),
+            module_path,
             function: row.function.clone(),
             outcome: outcome.clone(),
             execution_leg: execution_leg.clone(),
@@ -20208,13 +20398,26 @@ mod moduleless_entry_skip_tests {
 }
 
 #[cfg(test)]
-mod witness_timing_attribution_tests {
+mod discovery_summary_merge_tests {
     use super::{
-        compute_witness_timing_rows, merge_discovery_summaries, top_n_slowest_witnesses,
-        ClaimOutcome, DiscoverySummary, DiscoveryWitnessOutcome, EntryResolveReceipt,
-        ResolveStageNanos,
+        compute_histogram_data, merge_discovery_summaries, project_witness_cost_receipt,
+        repo_relative_dag_path, run_discovery_corpus_with_options, top_n_slowest_witnesses,
+        witness_execution_leg_cache_put, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
+        DiscoveryWidthPolicy, DiscoveryWitnessOutcome, EntryResolveReceipt,
+        NodeFrontierSelectionMode, ResolveStageNanos,
     };
-    use crate::v1_interpreter::PerformanceReceipt;
+    use crate::v1_interpreter::{ExecutionMode, PerformanceReceipt};
+
+    fn source_roots() -> Vec<String> {
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root");
+        vec![
+            workspace.join("dag").to_string_lossy().into_owned(),
+            workspace.join("src/v2").to_string_lossy().into_owned(),
+        ]
+    }
 
     fn sample_summary() -> DiscoverySummary {
         DiscoverySummary {
@@ -20228,18 +20431,21 @@ mod witness_timing_attribution_tests {
             witness_outcomes: vec![
                 DiscoveryWitnessOutcome {
                     entry: "a.dag".to_string(),
+                    module_path: "a".to_string(),
                     function: "fast".to_string(),
                     outcome: ClaimOutcome::Pass,
                     execution_leg: "InterpretedLeg".to_string(),
                 },
                 DiscoveryWitnessOutcome {
                     entry: "b.dag".to_string(),
+                    module_path: "b".to_string(),
                     function: "slow".to_string(),
                     outcome: ClaimOutcome::Pass,
                     execution_leg: "InterpretedLeg".to_string(),
                 },
                 DiscoveryWitnessOutcome {
                     entry: "a.dag".to_string(),
+                    module_path: "a".to_string(),
                     function: "medium".to_string(),
                     outcome: ClaimOutcome::Pass,
                     execution_leg: "InterpretedLeg".to_string(),
@@ -20304,57 +20510,153 @@ mod witness_timing_attribution_tests {
     }
 
     #[test]
-    fn witness_timing_rows_pair_perf_with_outcomes() {
-        let rows = compute_witness_timing_rows(&sample_summary()).expect("rows");
+    fn production_witness_cost_projection_preserves_failed_and_refused() {
+        let mut summary = sample_summary();
+        summary.witness_outcomes.truncate(2);
+        summary.performance_receipts.truncate(2);
+        summary.entry_resolve_receipts.truncate(2);
+        summary.witness_outcomes[0].outcome = ClaimOutcome::Fail;
+        summary.witness_outcomes[1].outcome = ClaimOutcome::NotBool {
+            got: "String".to_string(),
+        };
+        summary.performance_receipts[0].wall_nanos = 7_000_000;
+        summary.performance_receipts[1].wall_nanos = 19_000_000;
+        summary.entry_resolve_receipts[0].resolve_nanos = 100_000_000;
+        summary.entry_resolve_receipts[1].resolve_nanos = 200_000_000;
+
+        let rows =
+            project_witness_cost_receipt(&source_roots(), &summary).expect("authored projection");
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].2, 7_000_000);
+        assert_eq!(rows[0].4, 107_000_000);
+        assert_eq!(rows[0].5, "Failed");
+        assert_eq!(rows[0].6, "returned Bool(false)");
+        assert_eq!(rows[1].5, "Refused");
+        assert_eq!(rows[1].6, "returned `String`, not Bool");
+    }
+
+    #[test]
+    fn production_witness_cost_projection_preserves_exact_nanoseconds_and_ordering() {
+        let mut summary = sample_summary();
+        for (outcome, function) in summary
+            .witness_outcomes
+            .iter_mut()
+            .zip(["one_ns", "sub_ms", "one_ms"])
+        {
+            outcome.entry = "a.dag".to_string();
+            outcome.module_path = "a".to_string();
+            outcome.function = function.to_string();
+        }
+        summary.entry_resolve_receipts.truncate(1);
+        summary.entry_resolve_receipts[0].resolve_nanos = 7;
+        for (receipt, nanos) in summary
+            .performance_receipts
+            .iter_mut()
+            .zip([1, 999_999, 1_000_000])
+        {
+            receipt.wall_nanos = nanos;
+            receipt.eval_self_nanos = nanos;
+        }
+
+        let rows =
+            project_witness_cost_receipt(&source_roots(), &summary).expect("authored projection");
         assert_eq!(rows.len(), 3);
-        assert_eq!(rows[0].function, "fast");
-        assert_eq!(rows[0].eval_nanos, 1_000);
-        assert_eq!(rows[0].resolve_nanos, 100);
-        assert_eq!(rows[0].total_nanos, 1_100);
+        assert_eq!(rows[0].1, "one_ns");
+        assert_eq!(rows[0].2, 1);
+        assert_eq!(rows[0].3, 7);
+        assert_eq!(rows[0].4, 8);
+        assert_eq!(rows[1].1, "sub_ms");
+        assert_eq!(rows[1].2, 999_999);
+        assert_eq!(rows[1].4, 1_000_006);
+        assert_eq!(rows[2].1, "one_ms");
+        assert_eq!(rows[2].2, 1_000_000);
+        assert_eq!(rows[2].4, 1_000_007);
+
+        let slowest = top_n_slowest_witnesses(&rows, rows.len());
+        assert_eq!(
+            slowest.iter().map(|row| row.1.as_str()).collect::<Vec<_>>(),
+            vec!["one_ms", "sub_ms", "one_ns"]
+        );
+        let histogram = compute_histogram_data(&rows);
+        assert_eq!(histogram.eval.p50, 999_999);
+        assert_eq!(histogram.eval.p100, 1_000_000);
     }
 
     #[test]
-    fn witness_timing_rows_refuse_missing_entry_resolve() {
-        // RED control for review 43274: a missing entry_resolve receipt must refuse,
-        // never return a partial Ok row set that looks complete.
+    fn production_witness_cost_projection_refuses_missing_and_duplicate_parent() {
         let mut summary = sample_summary();
-        summary
-            .entry_resolve_receipts
-            .retain(|r| r.entry != "b.dag");
-        let err = compute_witness_timing_rows(&summary).expect_err("must refuse");
+        summary.witness_outcomes.truncate(1);
+        summary.performance_receipts.truncate(1);
+        summary.entry_resolve_receipts.clear();
+        let missing = project_witness_cost_receipt(&source_roots(), &summary)
+            .expect_err("authored projector must refuse missing parent");
         assert!(
-            err.contains("REFUSED") && err.contains("b.dag::slow"),
-            "expected typed incomplete-coverage refusal, got: {err}"
+            missing.contains("missing parent resolve-phase event"),
+            "{missing}"
+        );
+
+        summary.entry_resolve_receipts = vec![
+            EntryResolveReceipt {
+                entry: "a.dag".to_string(),
+                closure_subject: "subj-a".to_string(),
+                resolve_nanos: 100_000_000,
+                stage_nanos: ResolveStageNanos::default(),
+            },
+            EntryResolveReceipt {
+                entry: "a.dag".to_string(),
+                closure_subject: "subj-a-duplicate".to_string(),
+                resolve_nanos: 200_000_000,
+                stage_nanos: ResolveStageNanos::default(),
+            },
+        ];
+        let duplicate = project_witness_cost_receipt(&source_roots(), &summary)
+            .expect_err("authored projector must refuse duplicate parent");
+        assert!(
+            duplicate.contains("multiple parent resolve-phase events"),
+            "{duplicate}"
         );
     }
 
     #[test]
-    fn witness_timing_rows_refuse_duplicate_entry_resolve() {
-        // RED control for review 43351: HashMap overwrite would silently pick among
-        // duplicate entry resolves while project_witness_cost_receipt refuses.
-        let mut summary = sample_summary();
-        summary.entry_resolve_receipts.push(EntryResolveReceipt {
-            entry: "a.dag".to_string(),
-            closure_subject: "subj-a-dup".to_string(),
-            resolve_nanos: 999,
-            stage_nanos: ResolveStageNanos::default(),
-        });
-        let err = compute_witness_timing_rows(&summary).expect_err("must refuse");
-        assert!(
-            err.contains("REFUSED")
-                && err.contains("multiple entry resolve")
-                && err.contains("a.dag"),
-            "expected duplicate-resolve refusal, got: {err}"
-        );
-    }
+    fn production_discovery_projects_one_real_witness() {
+        let roots = source_roots();
+        let entry = std::path::Path::new(&roots[0])
+            .join("test/claim/witness_row_cost_projection_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let function = "witness_row_cost_projection_holds".to_string();
+        // Execution-leg derivation has its own discriminating test and currently resolves a
+        // workspace-relative authority against process CWD. Cargo runs unit tests from the
+        // package directory, so prime the independently proven default for this fixture rather
+        // than mutating process-wide CWD. The discovery, timing, event, and projection path below
+        // remains the production path this test owns.
+        witness_execution_leg_cache_put(&repo_relative_dag_path(&entry), "InterpretedLeg");
+        let summary = run_discovery_corpus_with_options(
+            &roots,
+            &[],
+            &[(entry.clone(), function.clone())],
+            ExecutionMode::Hermetic,
+            DiscoveryWidthPolicy::Serial,
+            DiscoveryCorpusOptions {
+                node_frontier_selection: NodeFrontierSelectionMode::Off,
+                explicit_roster_only: true,
+                exclude_substrings: Vec::new(),
+                ..Default::default()
+            },
+        )
+        .expect("one-row discovery must execute");
+        assert_eq!(summary.total, 1);
+        assert_eq!(summary.passed, 1);
+        assert_eq!(summary.witness_outcomes.len(), 1);
+        assert_eq!(summary.entry_resolve_receipts.len(), 1);
 
-    #[test]
-    fn top_n_slowest_ranks_by_eval_descending() {
-        let rows = compute_witness_timing_rows(&sample_summary()).expect("rows");
-        let top = top_n_slowest_witnesses(&rows, 2);
-        assert_eq!(top.len(), 2);
-        assert_eq!(top[0].function, "slow");
-        assert_eq!(top[1].function, "medium");
+        let rows = project_witness_cost_receipt(&roots, &summary)
+            .expect("real discovery summary must pass the authored projector");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, entry);
+        assert_eq!(rows[0].1, function);
+        assert_eq!(rows[0].5, "Done");
+        assert_eq!(rows[0].6, "");
     }
 }
 
