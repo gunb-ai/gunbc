@@ -8,7 +8,7 @@ import gunbc.roadmap_model {
   NodeSizing, Unsized, Sized,
   SectionElement, Group, SectionGroup,
 }
-import gunbc.roadmap_status { DerivableLine, AuthoredLine, SupersededLine, Signoff, Unsigned }
+import gunbc.roadmap_status { DerivableLine, AuthoredLine, SupersededLine, Signoff, Unsigned, SignedOff }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { next_spawnable, roadmap_spawn_request_json, spawn_frontier, roadmap_dispatch_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -25,6 +25,28 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
     owner: "",
     signoff: Unsigned,
+  }
+}
+
+fn accepted_node(base: RoadmapNode) -> RoadmapNode {
+  RoadmapNode {
+    node: base.node,
+    line: base.line,
+    carriers: base.carriers,
+    sizing: base.sizing,
+    owner: base.owner,
+    signoff: SignedOff { by: "operator", works: true, scope_equivalent: true, as_expected: true },
+  }
+}
+
+fn rejected_node(base: RoadmapNode) -> RoadmapNode {
+  RoadmapNode {
+    node: base.node,
+    line: base.line,
+    carriers: base.carriers,
+    sizing: base.sizing,
+    owner: base.owner,
+    signoff: SignedOff { by: "operator", works: true, scope_equivalent: false, as_expected: true },
   }
 }
 
@@ -55,7 +77,7 @@ fn fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDoc
 }
 
 test fn witness_satisfied_dep_is_spawnable() -> Bool {
-  let node_a = sized_derivable(id: "test-a", prs: [100], title: "Node A")
+  let node_a = accepted_node(base: sized_derivable(id: "test-a", prs: [100], title: "Node A"))
   let node_b = sized_derivable(id: "test-b", prs: [200], title: "Node B")
   let edges = [RoadmapEdge { child: nid(s: "test-b"), parent: nid(s: "test-a") }]
   let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
@@ -68,7 +90,7 @@ test fn witness_unsatisfied_dep_not_spawnable() -> Bool {
   let node_b = sized_derivable(id: "test-b", prs: [200], title: "Node B")
   let edges = [RoadmapEdge { child: nid(s: "test-b"), parent: nid(s: "test-a") }]
   let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
-  let spawnable = next_spawnable(doc: doc, merged: [])
+  let spawnable = next_spawnable(doc: doc, merged: [100])
   !any(spawnable, n => n.node == nid(s: "test-b"))
 }
 
@@ -79,11 +101,25 @@ test fn witness_unsized_node_excluded() -> Bool {
   !any(spawnable, n => n.node == nid(s: "test-unsized"))
 }
 
-test fn witness_done_node_excluded() -> Bool {
-  let node = sized_derivable(id: "test-done", prs: [999], title: "Done Node")
+test fn witness_accepted_node_excluded() -> Bool {
+  let node = accepted_node(base: sized_derivable(id: "test-done", prs: [999], title: "Done Node"))
   let doc = fixture_doc(nodes: [node], edges: [])
   let spawnable = next_spawnable(doc: doc, merged: [999])
   !any(spawnable, n => n.node == nid(s: "test-done"))
+}
+
+test fn witness_merged_unsigned_node_remains_spawnable() -> Bool {
+  let node = sized_derivable(id: "test-review", prs: [999], title: "Review Node")
+  let doc = fixture_doc(nodes: [node], edges: [])
+  let spawnable = next_spawnable(doc: doc, merged: [999])
+  any(spawnable, n => n.node == nid(s: "test-review"))
+}
+
+test fn witness_rejected_signoff_remains_spawnable_for_rework() -> Bool {
+  let node = rejected_node(base: sized_derivable(id: "test-rework", prs: [999], title: "Rework Node"))
+  let doc = fixture_doc(nodes: [node], edges: [])
+  let spawnable = next_spawnable(doc: doc, merged: [999])
+  any(spawnable, n => n.node == nid(s: "test-rework"))
 }
 
 test fn witness_top_level_sized_node_spawnable() -> Bool {
@@ -106,7 +142,7 @@ test fn witness_json_schema_field_present() -> Bool {
 }
 
 test fn witness_json_satisfied_dep_in_ready() -> Bool {
-  let node_a = sized_derivable(id: "parent-done-node", prs: [100], title: "A2")
+  let node_a = accepted_node(base: sized_derivable(id: "parent-done-node", prs: [100], title: "A2"))
   let node_b = sized_derivable(id: "child-ready-node", prs: [200], title: "B2")
   let edges = [RoadmapEdge { child: nid(s: "child-ready-node"), parent: nid(s: "parent-done-node") }]
   let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
@@ -139,22 +175,26 @@ test fn witness_spawn_frontier_ready_matches_next_spawnable() -> Bool {
 }
 
 test fn witness_all_parents_gate_spawnability() -> Bool {
-  let node_a = sized_derivable(id: "mp-a", prs: [100], title: "Node A")
-  let node_b = sized_derivable(id: "mp-b", prs: [200], title: "Node B")
+  let node_a = accepted_node(base: sized_derivable(id: "mp-a", prs: [100], title: "Node A"))
+  let node_b_open = sized_derivable(id: "mp-b", prs: [200], title: "Node B")
+  let node_b_done = accepted_node(base: node_b_open)
   let node_c = sized_derivable(id: "mp-c", prs: [300], title: "Node C")
   let edges = [
     RoadmapEdge { child: nid(s: "mp-c"), parent: nid(s: "mp-a") },
     RoadmapEdge { child: nid(s: "mp-c"), parent: nid(s: "mp-b") },
   ]
-  let doc = fixture_doc(nodes: [node_a, node_b, node_c], edges: edges)
-  let one_parent_done = next_spawnable(doc: doc, merged: [100])
-  let both_parents_done = next_spawnable(doc: doc, merged: [100, 200])
+  let one_parent_done = next_spawnable(
+    doc: fixture_doc(nodes: [node_a, node_b_open, node_c], edges: edges),
+    merged: [100, 200])
+  let both_parents_done = next_spawnable(
+    doc: fixture_doc(nodes: [node_a, node_b_done, node_c], edges: edges),
+    merged: [100, 200])
   !any(one_parent_done, n => n.node == nid(s: "mp-c"))
     && any(both_parents_done, n => n.node == nid(s: "mp-c"))
 }
 
 test fn witness_dispatch_json_partitions_ready_upcoming_done() -> Bool {
-  let node_done = sized_derivable(id: "dj-done", prs: [100], title: "Done Node")
+  let node_done = accepted_node(base: sized_derivable(id: "dj-done", prs: [100], title: "Done Node"))
   let node_ready = sized_derivable(id: "dj-ready", prs: [200], title: "Ready Node")
   let node_gated = sized_derivable(id: "dj-gated", prs: [300], title: "Gated Node")
   let edges = [
@@ -209,4 +249,3 @@ test fn witness_superseded_control_open_parent_still_gates() -> Bool {
   let doc = fixture_doc(nodes: [node_open, node_child], edges: edges)
   !any(next_spawnable(doc: doc, merged: []), n => n.node == nid(s: "sp-child"))
 }
-

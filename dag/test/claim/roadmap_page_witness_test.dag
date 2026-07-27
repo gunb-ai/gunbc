@@ -120,6 +120,15 @@ fn dispatch_doc_html_for(rn: RoadmapNode) -> String {
   }
 }
 
+fn dispatch_doc_html_for_with_merged(rn: RoadmapNode, merged: List<Int>) -> String {
+  let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
+  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  match try_serialize_html_source(node: roadmap_page(doc: doc, merged: merged)) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
 fn ready_dispatch_node() -> RoadmapNode {
   gunbc.roadmap_authority.authored_wi(
     id: "disp1",
@@ -203,10 +212,24 @@ test fn witness_signed_off_node_doc_has_no_button() -> Bool {
   !string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
 }
 
-test fn witness_unsized_open_node_has_lamps_but_no_button() -> Bool {
+test fn witness_merged_pr_is_review_evidence_not_acceptance() -> Bool {
+  let node = gunbc.roadmap_authority.derivable_wi(
+    id: "disp-review",
+    prs: [7301],
+    title: "review-me",
+    description: "",
+    intricacy: IntricacyLow,
+    volume: VolumeSmall,
+    repo: "gunbc")
+  let h = dispatch_doc_html_for_with_merged(rn: node, merged: [7301])
+  string_contains(s: h, pattern: "class=\"status status-review\"")
+    && string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
+}
+
+test fn witness_unsized_open_node_keeps_manual_dispatch() -> Bool {
   let h = dispatch_doc_html_for(rn: unsized_open_dispatch_node())
   string_contains(s: h, pattern: "class=\"workflow-controls\"")
-    && !string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
+    && string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
 }
 
 fn blocked_dispatch_workspace_html() -> String {
@@ -233,12 +256,12 @@ fn blocked_dispatch_workspace_html() -> String {
   }
 }
 
-test fn witness_upcoming_node_has_lamps_but_no_button() -> Bool {
+test fn witness_upcoming_node_keeps_manual_out_of_order_dispatch() -> Bool {
   let h = blocked_dispatch_workspace_html()
   string_contains(s: h, pattern: "class=\"frontier-bucket frontier-upcoming\"")
     && string_contains(s: h, pattern: "data-node=\"disp-blocked\"")
     && string_contains(s: h, pattern: "class=\"workflow-controls\"")
-    && !string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
+    && string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
 }
 
 fn superseded_dispatch_node() -> RoadmapNode {

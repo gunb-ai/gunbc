@@ -123,8 +123,8 @@ fn sign(rn: RoadmapNode, s: Signoff) -> RoadmapNode {
 fn preamble() -> List<MarkdownBlock> {
   [
     HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap" }] },
-    ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for *why*. This is the **shape of the work** — a scannable, dependency-ordered checklist. **Checkboxes are authoritative for progress**; detail lives in the linked plan docs — don't restate it here (no dual representations). A task's real state is its branch/PR." }] },
-    ParagraphBlock { inlines: [TextInline { text: "Legend: `[x]` done · `[ ]` todo · ~~struck~~ **superseded →** successor (the named carrier/lane now owns the territory; the row is kept as the pointer, never dispatched) · **indentation = depends on the item it sits under**. Each section opens with a **◆ Milestones** spine — the *verifiable* checkpoints in dependency order (`✓` reached · `▸` now · `○` ahead); the checklist below is the work toward them. Read L→R = the path." }] },
+    ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for *why*. This is the **shape of the work** — a scannable, dependency-ordered checklist. A checkbox or merged PR is implementation evidence ready for review; `RoadmapNode.signoff` is the separate work-item acceptance step. **PR != work item**: merged evidence does not close a node, remove its dispatch action, or unblock its children. Detail lives in linked plan docs — don't restate it here (no dual representations)." }] },
+    ParagraphBlock { inlines: [TextInline { text: "Legend: `[x]` implementation evidence present / awaiting acceptance · `[ ]` evidence still open · page status `done` = accepting operator sign-off · ~~struck~~ **superseded →** successor (the named carrier/lane now owns the territory; the row is kept as the pointer, never dispatched) · **indentation = depends on the item it sits under**. Each section opens with a **◆ Milestones** spine — the *verifiable* checkpoints in dependency order (`✓` reached · `▸` now · `○` ahead); the checklist below is the work toward them. Read L→R = the path." }] },
     ParagraphBlock { inlines: [TextInline { text: "**Reset 2026-07-01 (operator-directed).** The roadmap is collapsed to **two pillars** — **§1 get off v1** and **§2 own the compute fabric** — plus **§3 the floor + audit**: the walls that keep both pillars honest, and an execution-grounded audit of what the existing machinery *actually does* (green by execution, red by perturbation). Everything else is **§4 shelved**: parked, not deleted — plan docs and carriers stay, no work dispatches from it, and un-shelving is a PR that moves a node into §1–§3 with a displaced-cost justification (DESIGN §6). The prior roadmap with full detail is in git history. Priority order, top = now." }] },
   ]
 }
@@ -905,10 +905,10 @@ fn section_2() -> RoadmapSection {
           ), path: "docs/plans/shell-intent-emit-realization-design.md"),
           owned(rn: with_plan(rn: ticket_wi(id: "2-emit-partition", done: false, t: TicketFields {
             headline: "shell construction arc close — product intent onto typed targets",
-            brief: "Move every product/foreign-executor shell builder through typed orchestration and the canonical Bash target, then delete the raw producer. Runtime-present paths use typed effects; foreign executors/bootstrap may emit bounded shell. #7293 owns ToFile, Comment and ExitStatus plus the two #7265 residues. FileExists, IntNe, Exit, ambient Run.command, and CaptureSpec fidelity remain later slices.",
+            brief: "Move every product/foreign-executor shell builder through typed orchestration and the canonical Bash target, then delete the raw producer. Runtime-present paths use typed effects; foreign executors/bootstrap may emit bounded shell. #7293 owns ToFile, Comment, ExitStatus, IntNe, and Exit, including the two #7265 residues. FileExists, ambient Run.command, remaining CaptureSpec fidelity, and batch-A product composers remain later slices.",
             displaced_cost: "product intent still assembles executable text, so a migration can move a concat without deleting the untyped authority",
-            current_state: "2026-07-26 census: 16 production intent declarations / 117 raw concat sites remain; 36 / 110 canonical Bash grammar sites and 15 / 30 realization-adapter sites are separate classified bands, not automatically debt. #7293 is open and green at 9a245785 but is not arc completion.",
-            first_slice: "#7293 may close only its named variants and migrated consumers; preserve its explicit PR2b residue list as counted follow-up work",
+            current_state: "2026-07-26 census: 16 production intent declarations / 117 raw concat sites remain; 36 / 110 canonical Bash grammar sites and 15 / 30 realization-adapter sites are separate classified bands, not automatically debt. #7293 is open and all checks are green at 023804a8, but it is not arc completion.",
+            first_slice: "#7293 may close only ToFile, Comment, ExitStatus, IntNe, Exit, and their named migrated consumers; preserve its explicit PR2b residue — ambient FLOOR_EXIT command, FileExists, and batch-A surfaces — as counted follow-up work",
             red_control: "Accept each slice only when the target variant is modeled, every scoped production consumer migrates, the old builder/fallback deletes, all source fields are emitted or loudly refused, and planted unsupported-field / extra-step cases RED. Arc close additionally requires a construction wall rejecting new product-intent command composition.",
             out_of_scope: "canonical Bash serializer spelling; independent test goldens; v1 bootstrap emitter debt; JSON/YAML work without its own current evidence",
             handback: "stop if a source field has no typed target or a migration can pass only by dropping env, redirect, capture, log source, or extra body steps",
@@ -916,6 +916,7 @@ fn section_2() -> RoadmapSection {
               TicketUpdate { on: "2026-07-01", note: "operator directive" },
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 18)" },
               TicketUpdate { on: "2026-07-26", note: "roadmap truth-up: old shell/json/yaml umbrella narrowed to the executing shell arc; live #7293 ownership and classified denominator recorded" },
+              TicketUpdate { on: "2026-07-26", note: "scope correction from #7293 head/body: IntNe and Exit are in PR2a with ToFile, Comment, and ExitStatus; they are not later slices. PR2b retains FileExists, ambient FLOOR_EXIT command, and batch-A surfaces." },
             ],
             authored_on: "2026-07-01",
             last_verified_on: "2026-07-26",
@@ -1433,6 +1434,41 @@ fn task_sheet_lead_lane() -> RoadmapSection {
       section_group(
         label: "1 · Main to actual green (audit receipts, 2026-07-22)",
         nodes: [
+          ticket_row(id: "ts-queue", done: false, t: TicketFields {
+            headline: "queue + zombie hygiene remains live",
+            brief: "Queued workflow runs can survive for months while new main and PR traffic continues around them. This is not historical coordination debris: two exact GitHub Actions runs remain queued and no successor row or owner currently closes them.",
+            displaced_cost: "stale runs consume operator attention and make queue health unknowable",
+            current_state: "run 29219740765 (session/clever-hawk-862) has been queued since 2026-07-13; run 25906916260 (main ci spot rerun) since 2026-05-15",
+            first_slice: "cancel or disposition both exact runs, then decide and encode the retention/priority rule that prevents a new zombie",
+            red_control: "the queue observation must still name any queued run older than the declared retention bound",
+            out_of_scope: "general floor speed; this row owns zombie disposition and queue-retention policy",
+            handback: "the retention and main-priority policy is an operator ruling",
+            updates: [
+              TicketUpdate { on: "2026-07-27", note: "restored after the #7301 deletion audit proved the two named queued runs still exist; no completion receipt or successor was found" },
+            ],
+            authored_on: "2026-07-22",
+            last_verified_on: "2026-07-27",
+          }),
+          superseded(
+            id: "ts-deploy-tail",
+            by: "ts-host-cdtransport + ts-deploy-verdict-isolation",
+            content: "**srv1 deploy failure incident** — the narrow readiness/tree-sync failures were made unwritable by #7077/#7086; four latest eligible main deploys (30224923617, 30223101157, 30223078047, 30214329929) are green. The live-runner transport root and the separate CI-verdict question remain on the two named successors."
+          ),
+          ticket_row(id: "ts-deploy-verdict-isolation", done: false, t: TicketFields {
+            headline: "decide whether deploy failure shares the code-health CI conclusion",
+            brief: "The srv1 deployment can fail on host state after the code floor is green. Decide whether that failure should red the same CI conclusion, report as a separate deployment verdict, or gate a different admission surface. The historical incident is healed; this is the unresolved product meaning of main-green.",
+            displaced_cost: "host-state failures continue to make code health and deployment health indistinguishable",
+            current_state: "no explicit disposition found; the latest four eligible deploy jobs are green, which proves current operation but does not answer the verdict contract",
+            first_slice: "record the verdict contract, then make the CI summary expose code and deployment conclusions without collapsing one into the other",
+            red_control: "a synthetic green floor plus failed deploy must project the ruled pair of conclusions rather than an accidental aggregate",
+            out_of_scope: "deploying from the live runner workspace; ts-host-cdtransport owns that transport defect",
+            handback: "the verdict contract is an operator decision",
+            updates: [
+              TicketUpdate { on: "2026-07-27", note: "split from ts-deploy-tail during #7301 audit; the old row named this question but its deletion had no successor" },
+            ],
+            authored_on: "2026-07-27",
+            last_verified_on: "2026-07-27",
+          }),
           ticket_row(id: "ts-native-flip-revert", done: false, t: TicketFields {
             headline: "first NativeRouted flip reverted by receipt — the frontier working as designed",
             brief: "Main run 29963619401 (#7069 merge, srv2-05) redded the family-crate agreement WARM (compile_skipped=true ×3, false in 496ms): a genuine native-vs-eval divergence or member-run failure, NOT cold cache. Remedy per design: complement + meet_join back to InterpretedRetained agreement_red_on_main — a two-row data edit, receipt on the carrier, investigation off the merge-critical path, the falsifier cold control still exercising both legs.",
@@ -1504,7 +1540,7 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             headline: "CD transport — stop deploying from a live runner workspace",
             brief: "The shared root of both tail incidents: the runner checkout is a maximally stateful foreign entity and rsync-from-it is state coupling by construction. Deploy from the merged commit's CONTENT — fetch-by-hash from a store, or a clean host-side git fetch. The whitelist narrowed the foreign-state contract; CD transport deletes it.",
             displaced_cost: "the whole foreign-state contract on the runner checkout",
-            current_state: "elevates §2's existing CD-transport node with this week's receipts",
+            current_state: "still open and unowned: the latest four eligible srv1 deploy jobs are green, but deployment still originates from a live runner workspace; the whitelist narrows that foreign-state contract without deleting it",
             first_slice: "",
             red_control: "",
             out_of_scope: "",
@@ -2026,7 +2062,7 @@ fn task_sheet_lead_lane() -> RoadmapSection {
       section_group(
         label: "2d · Progress & observation — process→outcome discipline, one event model, N renderers (operator, 2026-07-23)",
         nodes: [
-          ticket_row(id: "ts-obs-anchor", done: true, t: TicketFields {
+          ticket_row(id: "ts-obs-anchor", done: false, t: TicketFields {
             headline: "process output as a designed surface",
             brief: "The register thesis (quiet at arm's length; responsive up close; every response true) applied to logs: a progress line is a projection of a fact the process already has, never a hand-authored string with a hand-chosen level. Five operator-signed laws: (1) process→outcome, no orphan Begins — a watchdog converts quiet-past-budget into a typed line; (2) the heartbeat carries identity, not just vitals; (3) attention escalates by dwell time, recursively down the containment tree (T a measured data row); (4) quiet at arm's length — green collapses, red/refused expands fully, bounded; (5) every rendered number is a receipt fact.",
             displaced_cost: "the 10-min silent crawl window (run 30044816605); the burned triage cycle from walk-end-only receipts; workers hand-rolling the discipline ad hoc (#7129 b295aa6)",
@@ -2038,12 +2074,12 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             updates: [
               TicketUpdate { on: "2026-07-25", note: "branch state verified this session: the observation lane's implementation lives on #7216's unmerged branch (supersedes #7162); this row lands at its merge" },
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 3); design: docs/plans/progress-observation-design.md — per-context format contracts for CI log, TTY, receipt/JSONL, dashboard, pipe" },
-              TicketUpdate { on: "2026-07-26", note: "MERGED #7216; completion reconciled from the merged PR" },
+              TicketUpdate { on: "2026-07-26", note: "MERGED #7216; implementation evidence landed, but the umbrella remains open until the TTY consumer and census-completeness rows are accepted" },
             ],
             authored_on: "",
             last_verified_on: "2026-07-25",
           }),
-          ticket_wi(id: "ts-obs-model", done: true, t: TicketFields {
+          ticket_wi(id: "ts-obs-model", done: false, t: TicketFields {
             headline: "P0 — the observation model as carriers",
             brief: "ObservationEvent (subject = containment path × Begin|Step|Outcome × measured facts; outcomes a closed sum with REFUSED DISTINCT FROM FAILED — §5's typed refusals get their own glyph); BlockedOn facts DERIVED from governor/scheduler state, never hand-set; AttentionLevel derived, event-class→presentation a TOTAL assignment censused like unthemed colors; the five laws + T thresholds as data rows with a Rust-emitter lockstep witness; ONE glyph/material authority.",
             displaced_cost: "",
@@ -2055,12 +2091,12 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             updates: [
               TicketUpdate { on: "2026-07-25", note: "branch state verified this session: the observation lane's implementation lives on #7216's unmerged branch (supersedes #7162); this row lands at its merge — dag/std/observation.dag carries exactly this model" },
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 3); the Accept line became red_control" },
-              TicketUpdate { on: "2026-07-26", note: "MERGED #7216; completion reconciled from the merged PR" },
+              TicketUpdate { on: "2026-07-26", note: "MERGED #7216; implementation evidence landed. Work-item acceptance remains the separate operator sign-off carried by the node." },
             ],
             authored_on: "",
             last_verified_on: "2026-07-25",
           }, intricacy: IntricacyMedium, volume: VolumeMedium, repo: "gunbc"),
-          ticket_wi(id: "ts-obs-ci-renderer", done: true, t: TicketFields {
+          ticket_wi(id: "ts-obs-ci-renderer", done: false, t: TicketFields {
             headline: "P1 — the CI renderer on the floor (the pain point, built first)",
             brief: "Append-only contract: matched Begin/Outcome pairs with durations at entry grain and above; per-minute heartbeat carrying identity (phase/entry/module k-of-n + vitals); dwell escalation appends deeper-subject lines at T/2T; anomalies render immediately and never inside a collapsed group; concurrency attributed by subject path; final summary table + failed/refused boxes re-rendered at end. Enrolls through the D5 batch wall (rendering cost-negligible by receipt). The #7129 arm-line + early-drain emissions are the first two migrations, not exceptions.",
             displaced_cost: "",
@@ -2072,45 +2108,45 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             updates: [
               TicketUpdate { on: "2026-07-25", note: "branch state verified this session: the observation lane's implementation lives on #7216's unmerged branch (supersedes #7162); this row lands at its merge" },
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 3); REDs became red_control, the flagship accept became first_slice" },
-              TicketUpdate { on: "2026-07-26", note: "MERGED #7216; completion reconciled from the merged PR" },
+              TicketUpdate { on: "2026-07-26", note: "MERGED #7216; implementation evidence landed. Work-item acceptance remains the separate operator sign-off carried by the node." },
             ],
             authored_on: "",
             last_verified_on: "2026-07-25",
           }, intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"),
-          ticket_row(id: "ts-obs-tty", done: true, t: TicketFields {
+          ticket_wi(id: "ts-obs-tty", done: false, t: TicketFields {
             headline: "P2 — the interactive TTY renderer",
             brief: "gunbc CLI local runs. The reference implementation's strengths kept (preamble box, in-place repaint, group k-of-n + current subject, contention inline with holder + remaining, failure boxes, reward animal on Final), upgraded per the contracts: durations on outcomes, Refused distinct, escalation recursive not one-level. Same carriers as P1 — a second realization, zero model edits (the §2 proof).",
             displaced_cost: "",
-            current_state: "",
-            first_slice: "",
-            red_control: "",
-            out_of_scope: "",
-            handback: "",
+            current_state: "The renderer declaration and synthetic witnesses landed in #7216, but current main has no production import or gunbc CLI consumer; the only external import is observation_tty_render_witness_test. A test-only renderer is implementation evidence, not accepted P2.",
+            first_slice: "Route one real interactive gunbc CLI progress path through TtyEmission, delete that path's hand-rendered equivalent, and collect a local TTY receipt showing overwrite versus append behavior from the shared ObservationEvent stream.",
+            red_control: "A planted Refused event must append and remain visible while routine progress overwrites; removing the production CLI binding must red the consumer witness. A test-only import cannot satisfy the acceptance.",
+            out_of_scope: "changing std.observation or the CI renderer; P3 owns the remaining emit-site census",
+            handback: "stop if the CLI path cannot provide the existing ObservationEvent facts without inventing a second event or telemetry model",
             updates: [
               TicketUpdate { on: "2026-07-25", note: "branch state verified this session: the observation lane's implementation lives on #7216's unmerged branch (supersedes #7162); this row lands at its merge" },
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 3)" },
-              TicketUpdate { on: "2026-07-26", note: "MERGED #7216; completion reconciled from the merged PR" },
+              TicketUpdate { on: "2026-07-26", note: "MERGED #7216 carried the renderer and tests, but no production CLI consumer. Row reopened with the exact T2/live-consumer acceptance trigger." },
             ],
             authored_on: "",
             last_verified_on: "2026-07-25",
-          }),
-          ticket_row(id: "ts-obs-census-wall", done: true, t: TicketFields {
+          }, intricacy: IntricacyMedium, volume: VolumeSmall, repo: "gunbc"),
+          ticket_wi(id: "ts-obs-census-wall", done: false, t: TicketFields {
             headline: "P3 — emit-site census + wall",
             brief: "Every existing print site ([floor-memory], [typecheck-attribution], [gantt], claim_executor prints, shell echoes) classified event-projection or counted frontier row (the unthemed-color-census pattern); existing receipt FILE formats unchanged — they have consumers and become derived views of the event stream, dissolving on their own triggers; then the lens walls new bare prints outside the projection.",
             displaced_cost: "",
-            current_state: "",
-            first_slice: "",
-            red_control: "zero unclassified or counted-with-trigger is the terminal receipt",
-            out_of_scope: "",
-            handback: "",
+            current_state: "The closed classification model landed, but roster completeness is explicitly Scaffold on current main: 6 families are migrated, 8 families remain CountedFrontierSite, and unmarked raw eprintln sites remain a per-print completeness gap.",
+            first_slice: "Enumerate every unmarked production print into the roster or migrate it, then make the bidirectional wall reject a planted unrostered print. Burn down one counted family at a time without changing existing receipt-file contracts.",
+            red_control: "A planted unrostered tagged or unmarked production print must red with its source location; terminal acceptance is zero unclassified sites, with every retained frontier row carrying a concrete dissolve-on.",
+            out_of_scope: "TTY production adoption (P2); deleting independently consumed receipt file formats",
+            handback: "stop if completeness requires a hand-maintained second list outside observation_emit_roster",
             updates: [
               TicketUpdate { on: "2026-07-25", note: "branch state verified this session: the observation lane's implementation lives on #7216's unmerged branch (supersedes #7162); this row lands at its merge" },
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 3); the terminal receipt became red_control" },
-              TicketUpdate { on: "2026-07-26", note: "MERGED #7216; completion reconciled from the merged PR" },
+              TicketUpdate { on: "2026-07-26", note: "MERGED #7216 carried the census model, but observation_emit_roster_completeness_disposition remains Scaffold with 8 counted families and unmarked residue. Row reopened to its terminal receipt." },
             ],
             authored_on: "",
             last_verified_on: "2026-07-25",
-          }),
+          }, intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"),
         ],
         edges: [
           RoadmapEdge { child: nid(s: "ts-obs-ci-renderer"), parent: nid(s: "ts-obs-model") },
@@ -2140,7 +2176,12 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             authored_on: "2026-07-22",
             last_verified_on: "2026-07-23",
           }),
-          ticket_wi(id: "ts-dispatch-redispatch", done: true, t: TicketFields {
+          with_plan(rn: superseded(
+            id: "2-dispatch-actuator",
+            by: "ts-dispatch-elevate + ts-dispatch-redispatch",
+            content: "**roadmap dispatch actuator MVP** — historical implementation brief for the first srv1 click-to-dispatch path. The actuator and live receipt landed; re-dispatch and later workflow surfaces now have typed successor rows. Retained as a non-dispatchable receipt so the design history remains reachable, not as active work."
+          ), path: "docs/plans/dispatch-maintain-cc.md"),
+          ticket_wi(id: "ts-dispatch-redispatch", done: false, t: TicketFields {
             headline: "re-dispatch after Stop is broken — the dispatch loop is one-shot per node",
             brief: "Two failure classes, both proven live on srv1. Debris: Stop leaves the worktree and `dispatch/<node_id>` branch behind, so the next POST is a typed spawn_failed at the git step. Session-id reuse: even after hand-cleaning, claude exits 1 because the deterministic per-node UUID collides with the archived transcript — one-shot at the claude layer too.",
             displaced_cost: "a stopped node becomes dispatchable again without a human cleaning worktrees and branches on srv1",
@@ -2152,7 +2193,7 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             updates: [
               TicketUpdate { on: "2026-07-23", note: "both failure classes reproduced live on srv1; dedup shown independent of UUID determinism (observe keys on the tmux session name)" },
               TicketUpdate { on: "2026-07-25", note: "U1 (#7266): dispatch became ATTEMPT-grain — branch, worktree, and claude session-id all derive from content_hash(node_id x clock probed_at), so the debris class cannot collide and the archived-transcript class cannot recur. The tmux session name stays NODE-grain because it is the observe/reconcile key: fresh where debris collides, stable where identity reconciles. The handback is resolved fresh-per-attempt, not --resume: a resumed session inherits the prior attempt's context, which is exactly what ts-wf-belt-refusals rules out for NeedsRework (a fresh session carrying brief + prior diff, never the producing context unwinding its own work) — the two rows would otherwise disagree about the same question" },
-              TicketUpdate { on: "2026-07-26", note: "MERGED #7266 with U1 redispatch plus U2 sessions, U3 attempts, and U4 Stop; completion reconciled from the merged PR" },
+              TicketUpdate { on: "2026-07-26", note: "MERGED #7266 with U1 redispatch plus U2 sessions, U3 attempts, and U4 Stop; implementation evidence landed, while Done still requires the node's operator signoff" },
             ],
             authored_on: "2026-07-23",
             last_verified_on: "2026-07-25",
@@ -2161,13 +2202,14 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             headline: "Workflow lamps v0 — Live and Attempted render independently on every row",
             brief: "The page separately renders tmux sessions and attempt branches, forcing operators to join them. Add a modeled workflow strip to every roadmap row with Live and Attempted lamps. Each lamp is an independent projection of its existing observation route, never persisted or inferred from the other. Client state is pending, observed-off, observed-on, or refused; refusal marks that source unknown and keeps the loud banner while the other source still resolves. Existing dispatch, stop, and branch-evidence behavior stays unchanged.",
             displaced_cost: "operators stop refreshing and mentally joining the session button, stop chip, and attempt line to answer whether a node is live or has been attempted",
-            current_state: "U2 /sessions.json and U3 /attempts.json are live, fail-closed observations, but both clients anchor through the dispatch button's data-node; done and superseded rows have no button, and the row archetype has no workflow observation region",
+            current_state: "PR #7301 carries Live and Attempted as independent fail-closed observations on every stable row. The carrier now names the full seven-fact work-item vocabulary; Proposed and Landed remain unavailable because no typed PR-to-attempt-to-node binding exists.",
             first_slice: "one workflow-controls wrapper realizes the existing ActuatorRegion on every row and carries a two-lamp strip plus the optional dispatch button. Live and Attempted each fold their existing fetch independently through the shared client observation-state authority; no new route and no stored workflow status",
             red_control: "both directions: sessions refused + attempts observed-on renders Live refused/dark and Attempted lit; attempts refused + sessions observed-on renders Attempted refused/dark and Live lit. A same-node observed pair lights both, proving no exclusive state machine",
-            out_of_scope: "latch behavior and depth styling (ts-dispatch-latch); polling; Proposed and Landed, which wait for typed PR/handback observations; removal of the existing stop chip or attempt-branch evidence",
+            out_of_scope: "latch behavior and depth styling (ts-dispatch-latch); polling; Proposed and Landed rendering, which waits for the typed attempt/branch/PR/node join; removal of the existing stop chip or attempt-branch evidence",
             handback: "strip visible on the local server with one live session and one attempt branch; stable on rows without an actuator; witness battery green; roadmap_css_lift_parity_digest re-pinned by derivation; PR body carries the live-drive receipt",
             updates: [
               TicketUpdate { on: "2026-07-26", note: "operator adjudication after tree verification: adopted the review recut; workflow-controls belongs in v0; the shared four-state client observation authority has both workflow lamps and the future floor-verdict rollup as consumers; symmetric refusal RED required" },
+              TicketUpdate { on: "2026-07-26", note: "workflow ruling: Ready, Live, Attempted, Proposed, Landed, Done, and Superseded are independent facts joined on node identity, never a stored stage machine. Proposed/Landed wait on one typed attempt/branch/PR/node carrier; the next slice is that join, not more lamps." },
             ],
             authored_on: "2026-07-26",
             last_verified_on: "2026-07-26",
@@ -2207,12 +2249,12 @@ fn task_sheet_lead_lane() -> RoadmapSection {
           authored(id: "ts-intake-discipline", done: false, content: "**until the actuator lands, this sheet is the intake queue** — new work enters as a row here or as a sized lane node with an Accept line, never ad hoc mid-session; dispatch top-down by the numbering; a session that discovers work files a row instead of chasing it."),
           ticket_row(id: "ts-dispatch-lifecycle", done: false, t: TicketFields {
             headline: "each dispatched item is a real workflow, not a single hop",
-            brief: "Stages: MODEL first (concept/authority delta + acceptance claims), BRIEF generated from row + model with the bar as checkable claims, IMPLEMENT, ANTAGONISTIC REVIEW against the brief — never the PR's self-description — LAND with the verdict updating this sheet. The wall: MERGE IS NOT DONE — a merge certifies the diff is safe; only a review verdict moves status. The MODEL stage is unskippable and first, to the ed25519 citation bar (every referenced upstream entity carries its own authority); a brief without the model stage's output is not dispatchable.",
+            brief: "Required artifacts and observations: MODEL first (concept/authority delta + acceptance claims), BRIEF generated from row + model, IMPLEMENT attempts, ANTAGONISTIC REVIEW against the brief, LANDED PR evidence, and operator ACCEPTANCE. This list is a discipline and may be ordered for presentation; the machine stores independent facts, not one stage. MERGE IS NOT DONE: a merge certifies a diff landed, while only the separate acceptance verdict closes the work item.",
             displaced_cost: "the #7087 pattern: worker hits gaps, does half, flags honestly, PR merges — and the item silently reads done; the absorbing fallback at the management layer",
-            current_state: "the discipline row; group 3c (ts-wf-shape lane) is its machine",
+            current_state: "the discipline row; group 3c (ts-wf-shape lane) realizes its fact and identity-join machinery",
             first_slice: "",
             red_control: "",
-            out_of_scope: "the machine itself — typed stages and verdicts live on the 3c lane rows",
+            out_of_scope: "the machine itself — typed facts, identity joins, and verdict carriers live on the 3c lane rows",
             handback: "",
             updates: [
               TicketUpdate { on: "2026-07-23", note: "operator ruling + same-day sharpening: model stage first and unskippable, DFS-associated to existing authorities, created holistically where nothing exists" },
@@ -2222,8 +2264,8 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             last_verified_on: "",
           }),
           ticket_row(id: "ts-dispatch-verdict", done: false, t: TicketFields {
-            headline: "typed review verdict is the only status authority",
-            brief: "Every dispatched item closes with the operator's three questions as the verdict's fields: (1) antagonistic product review — did the PR accomplish what the brief asked; what remains, what blocked, what planning updates follow; (2) modeling audit — what models it adds, whether it should add more, anemia check; (3) planning update — the verdict lands on this sheet so the next session inherits it (sessions are goldfish; the sheet is the anchor). Vocabulary: Accepted | AcceptedWithResidue (residue becomes counted rows, item STAYS OPEN) | NeedsRework (return-to stage + located debts) | Abandoned (reason).",
+            headline: "typed review verdict is the only acceptance authority",
+            brief: "Every dispatched item closes with the operator's three questions as the verdict's fields: (1) antagonistic product review — did the PR accomplish what the brief asked; what remains, what blocked, what planning updates follow; (2) modeling audit — what models it adds, whether it should add more, anemia check; (3) planning update — the verdict lands on this sheet so the next session inherits it (sessions are goldfish; the sheet is the anchor). Vocabulary: Accepted | AcceptedWithResidue (residue becomes counted rows, item STAYS OPEN) | NeedsRework (return to a named causal-arc segment + located debts) | Abandoned (reason).",
             displaced_cost: "merged residue with no row; AcceptedWithResidue is the honest form of the half-done merge",
             current_state: "vocabulary in hand use on this sheet; the typed carrier rides ts-wf-stage-artifacts",
             first_slice: "",
@@ -2237,8 +2279,8 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             last_verified_on: "",
           }),
           ticket_row(id: "ts-dispatch-rework", done: false, t: TicketFields {
-            headline: "rework is a first-class transition, designed against LLM defensiveness",
-            brief: "Backing up from step 10 to step 2 must be cheap and expected, never a negotiation. Three mechanisms: (a) the BRIEF declares rework a normal outcome — expectation set at dispatch, not sprung at review; (b) a NeedsRework verdict dispatches a FRESH session carrying the original brief + the prior attempt's diff + the located debts — never ask the context that produced the work to unwind it (in-context sunk cost is the defensiveness mechanism; the goldfish property becomes the asset); (c) stage artifacts make backup a re-derivation — edit the model, regenerate downstream.",
+            headline: "rework is a first-class disposition, designed against LLM defensiveness",
+            brief: "Returning from later evidence to an earlier causal-arc segment must be cheap and expected, never a negotiation. Three mechanisms: (a) the BRIEF declares rework a normal outcome — expectation set at dispatch, not sprung at review; (b) a NeedsRework verdict dispatches a FRESH session carrying the original brief + the prior attempt's diff + the located debts — never ask the context that produced the work to unwind it (in-context sunk cost is the defensiveness mechanism; the goldfish property becomes the asset); (c) independently keyed artifacts make rework a re-derivation — edit the model, regenerate downstream.",
             displaced_cost: "rework as negotiation; the producing context defending its own work",
             current_state: "priced up front as design; mechanism (b) enforces at ts-wf-belt-refusals, (c) at ts-wf-stage-artifacts",
             first_slice: "",
@@ -2334,10 +2376,10 @@ fn task_sheet_lead_lane() -> RoadmapSection {
         nodes: [
           ticket_row(id: "ts-wf-shape", done: false, t: TicketFields {
             headline: "the lane: mechanize the dispatch lifecycle",
-            brief: "The lifecycle prose rows in group 3 are the DISCIPLINE; this lane is the MACHINE: typed stages and verdicts on the roadmap node carrier, enforced at dispatch time by the belt and at floor time by lenses, with status and progress DERIVED, never written. Surfaces render THROUGH the component register machinery, never beside it.",
+            brief: "The lifecycle prose rows in group 3 are the DISCIPLINE; this lane is the MACHINE: seven independent facts with per-fact authorities, all joined on RoadmapNodeId, enforced at dispatch time by the belt and at floor time by lenses. No stored status and no invented total order; stage is presentation only. Surfaces render THROUGH the component register machinery, never beside it.",
             displaced_cost: "hand-written status; the discipline living only as prose",
-            current_state: "the node schema landed (ts-wf-node-schema); the stage chain has no carrier types yet (ts-wf-stage-artifacts)",
-            first_slice: "ts-dispatch-redispatch is the stage-0 dependency: repeated dispatch must work before workflow state on top of it means anything",
+            current_state: "the node schema landed and the seven-fact table now lives on gunbc.client_observation_state. Ready, Live, Attempted, Done, and Superseded are node-joined; Proposed and Landed are blocked on the attempt/branch/PR/node binding owned by ts-wf-stage-artifacts",
+            first_slice: "bind Proposed and Landed through one typed attempt/branch/PR/node carrier; repeated dispatch is already landed evidence, not a workflow stage",
             red_control: "",
             out_of_scope: "StandingIntent absorption (enforcement-intent thread) and verdict capture from text (md-to-dag delta thread) — declared convergences, not built here",
             handback: "",
@@ -2348,7 +2390,7 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             authored_on: "2026-07-23",
             last_verified_on: "",
           }),
-          ticket_wi(id: "ts-wf-node-schema", done: true, t: TicketFields {
+          ticket_wi(id: "ts-wf-node-schema", done: false, t: TicketFields {
             headline: "node schema decomposition — kill the prose blob at the model grain",
             brief: "RoadmapNode content decomposes into typed ticket fields, so the page, the generated ROADMAP.md, and the dispatch brief all project from fields instead of dumping one string. Freshness falls out later: a row whose receipts predate its lane's last landing revalidates before dispatch. This row is itself migrated — the schema's first recursive consumer.",
             displaced_cost: "briefs become readable tickets; dispatch briefs stop stuffing the title into every slot; updates stop concatenating into an immortal blob",
@@ -2359,21 +2401,23 @@ fn task_sheet_lead_lane() -> RoadmapSection {
             handback: "rows whose prose decomposes ambiguously get flagged for operator wording, never guessed",
             updates: [
               TicketUpdate { on: "2026-07-24", note: "schema + projections landed (remodel W2); exemplars: ts-dispatch-elevate, this row, 2-dispatch-actuator, ts-dispatch-redispatch, ts-wf-stage-artifacts" },
+              TicketUpdate { on: "2026-07-27", note: "implementation evidence is present, but the work item remains open because no operator signoff has attested Done" },
             ],
             authored_on: "2026-07-23",
             last_verified_on: "2026-07-24",
           }, intricacy: IntricacyMedium, volume: VolumeMedium, repo: "gunbc"),
           ticket_wi(id: "ts-wf-stage-artifacts", done: false, t: TicketFields {
-            headline: "the typed stage chain, status derived",
-            brief: "ModelArtifact, then Brief generated from row plus model, then Attempt, then Verdict — typed on the carrier. The verdict is the only status mover: done derives from an Accepted verdict, and backing up to an earlier stage is a re-derivation because everything downstream is generated from the model artifact.",
-            displaced_cost: "merge stops impersonating done; half-done work lands as counted residue instead of silently reading complete",
-            current_state: "direction modeled on the sheet; no carrier types landed",
-            first_slice: "ModelArtifact + Verdict types with done-derivation; the three group-3 prose rows re-point at the machinery as their realization",
-            red_control: "a done node without an Accepted verdict is unrepresentable or lens-red",
-            out_of_scope: "the belt refusal wall (ts-wf-belt-refusals) until the chain lands",
-            handback: "verdict vocabulary changes — the operator owns Accepted / AcceptedWithResidue / NeedsRework / Abandoned",
+            headline: "typed work-item fact join — attempt, branch, PR, and node share one identity",
+            brief: "Carry RoadmapNodeId and attempt key through the branch and into a typed PullRequest binding, so Proposed and Landed can be observed from GitHub without guessing from titles or branch substrings. ModelArtifact, Brief, Attempt, PR evidence, Verdict, and Signoff remain independent artifacts/facts; no carrier stores a total workflow stage.",
+            displaced_cost: "Proposed and Landed stop being unjoinable GitHub facts; merge stops impersonating work-item acceptance",
+            current_state: "session names and attempt branches already preserve node identity; GitHub PullRequest facts have no typed attempt/node binding. The seven-fact table marks Proposed and Landed BlockedOnAttemptPrNodeBinding.",
+            first_slice: "one attempt-keyed binding carrying RoadmapNodeId, attempt key, branch ref, repository, and PullRequest identity, consumed by both the Proposed/Landed observer and the append-only messaging ledger",
+            red_control: "a PR on the wrong node or an older attempt refuses the join; a merged bound PR lights Landed but cannot light Done without RoadmapNode.signoff",
+            out_of_scope: "adding more lamps before the join; the belt refusal wall (ts-wf-belt-refusals) until the binding lands",
+            handback: "the authoritative PR-to-attempt mint point cannot be derived from branch naming alone; stop if no creation/read-back surface can carry the binding as a fact",
             updates: [
               TicketUpdate { on: "2026-07-24", note: "migrated to ticket form as a remodel W2 exemplar" },
+              TicketUpdate { on: "2026-07-26", note: "operator ruling replaced the proposed stage machine with independent facts. Node id retained for roadmap continuity; the executable first slice is now the PR↔attempt↔node join." },
             ],
             authored_on: "2026-07-23",
             last_verified_on: "2026-07-24",
@@ -2395,7 +2439,7 @@ fn task_sheet_lead_lane() -> RoadmapSection {
           }, intricacy: IntricacyMedium, volume: VolumeSmall, repo: "gunbc"),
           ticket_wi(id: "ts-wf-lens-walls", done: false, t: TicketFields {
             headline: "floor lenses over the roadmap value",
-            brief: "Pure readers (the v2 read interface): done-has-verdict; AcceptedWithResidue-has-counted-rows; dispatched-has-model-artifact.",
+            brief: "Pure readers (the v2 read interface): accepting signoff has its review verdict; AcceptedWithResidue has counted rows; dispatched has model evidence; Proposed/Landed facts have exactly one valid attempt/PR/node binding.",
             displaced_cost: "",
             current_state: "",
             first_slice: "",
@@ -2410,7 +2454,7 @@ fn task_sheet_lead_lane() -> RoadmapSection {
           }, intricacy: IntricacyMedium, volume: VolumeSmall, repo: "gunbc"),
           ticket_wi(id: "ts-wf-progress", done: false, t: TicketFields {
             headline: "the DAG progress bar as pure projection",
-            brief: "Verdict-owned done bits, Volume-weighted, rolled up the existing RoadmapEdge fan-in; per-subtree completion with fan-out/fan-in visible. No stored completion percentage anywhere — a derived read on the same tree the belt walks, rendered via the register/component machinery.",
+            brief: "Signoff-owned Done facts, Volume-weighted, rolled up the existing RoadmapEdge fan-in; per-subtree completion with fan-out/fan-in visible. No stored completion percentage anywhere — a derived read on the same tree the belt walks, rendered via the register/component machinery.",
             displaced_cost: "stored or hand-curated completion percentages",
             current_state: "",
             first_slice: "sandbox gallery shows the projection on a synthetic subtree with known fractions; then the live page renders it for the real tree",
@@ -2426,15 +2470,16 @@ fn task_sheet_lead_lane() -> RoadmapSection {
           }, intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
           ticket_wi(id: "ts-wf-messaging", done: false, t: TicketFields {
             headline: "cross-session messaging — sessions that hand off, not just finish",
-            brief: "Dispatched sessions are mutually blind: each gets a brief at spawn and answers only by landing a branch. The lane needs more — a NeedsRework verdict must reach a fresh session; a session that discovers work must file a row; the page should show what a worker says while it is saying it. The carrier is the durable state the stage chain already needs, read a second way: append-only, typed, attempt-keyed. Not a chat channel — a ledger both sides read, so a message is a FACT with an author and a time.",
+            brief: "Dispatched sessions are mutually blind: each gets a brief at spawn and answers only by landing a branch. The lane needs more — a NeedsRework verdict must reach a fresh session; a session that discovers work must file a row; the page should show what a worker says while it is saying it. The carrier is the durable attempt/work-item identity join the workflow facts already need, read a second way: append-only, typed, attempt-keyed. Not a chat channel — a ledger both sides read, so a message is a FACT with an author and a time.",
             displaced_cost: "the operator relaying between sessions by hand — copying a verdict into the next brief, watching a pane to learn what a worker is doing",
             current_state: "nothing recorded before this row; TicketUpdate append is the named first API (ticket_write_interface_note) and the U2 sessions panel is the first reader that would render it",
-            first_slice: "one direction only — worker to ledger to page: a session appends typed TicketUpdates to its own node, /sessions.json carries them, the row renders them. The reverse direction (ledger to a RUNNING worker) waits for a proven reader, because a write nobody reads is the inert-lens lie",
+            first_slice: "share the attempt-keyed carrier with ts-wf-stage-artifacts: mint the attempt/branch/PR/node binding, then one direction only — worker to ledger to page. A session appends typed TicketUpdates to its bound node and attempt; the reverse direction waits for a proven reader.",
             red_control: "an append from a session whose attempt is not the node's current attempt REFUSES — a stale worker cannot write over a newer attempt's record",
             out_of_scope: "agent-to-agent chat, and any channel letting a worker mutate the roadmap outside the updates axis",
             handback: "whether a worker may file NEW rows (intake) or only append to its own — ts-intake-discipline says work enters through the sheet, and a writing worker is the first thing that could bypass it",
             updates: [
               TicketUpdate { on: "2026-07-25", note: "operator question at the U4 receipt: 'i think we'll also need cross session comms/messaging?'. Recorded as a lane row rather than built, because its carrier is the SAME durable state ts-wf-stage-artifacts and ts-dispatch-ownership-mint need — building a messaging channel on its own storage would fork that state three ways before it exists once" },
+              TicketUpdate { on: "2026-07-26", note: "the workflow-fact ruling makes the shared carrier's first obligation concrete: bind PR identity back to RoadmapNodeId and attempt key so Proposed/Landed and messages join the same work item." },
             ],
             authored_on: "2026-07-25",
             last_verified_on: "",
@@ -2532,6 +2577,46 @@ fn task_sheet_lead_lane() -> RoadmapSection {
       section_group(
         label: "4 · Antagonistic product review — the last two weeks of merges",
         nodes: [
+          ticket_row(id: "ts-review-sweep", done: false, t: TicketFields {
+            headline: "sweep the roughly 300 PRs merged since 2026-07-15 with the operator checklist",
+            brief: "Determine whether each merge accomplished its brief, what remains, what incidents it caused, and what context must reach a successor. Output is a disposition per PR: accept, finish, consume, revert, or supersede. The forward-looking dispatch verdict does not discharge this historical retrospective.",
+            displaced_cost: "landed mechanisms and residue remain undiscovered until an incident forces archaeology",
+            current_state: "no completion receipt, successor, or owner was found during the #7301 current-main audit",
+            first_slice: "prioritize merges whose mechanisms have zero executing consumers and merges landed while the falsifier was dark",
+            red_control: "the denominator and every reviewed PR disposition must be reproducible from one pinned merge window",
+            out_of_scope: "the standing per-future-PR verdict carried by ts-dispatch-verdict",
+            handback: "the final accept/rework/revert disposition is the operator's",
+            updates: [
+              TicketUpdate { on: "2026-07-22", note: "operator checklist authored" },
+              TicketUpdate { on: "2026-07-27", note: "restored after #7301 audit found no evidence the retrospective ran and no successor that performs it" },
+            ],
+            authored_on: "2026-07-22",
+            last_verified_on: "2026-07-27",
+          }),
+          superseded(
+            id: "ts-pr-7050",
+            by: "ts-computation-identity-residue",
+            content: "**#7050 computation-identity census PR** — closed unmerged. R1/R2 landed independently through #7069; the remaining current-tree families are preserved on the counted successor rather than deleted with the stale open-PR snapshot."
+          ),
+          ticket_pp(id: "ts-computation-identity-residue", done: false, t: TicketFields {
+            headline: "computation-identity de-fork residue after #7050 closed unmerged",
+            brief: "One ComputationIdentity vocabulary landed, but five census families remain: R3 hand-reimplemented FNV source-root hashing, R4 raw PROCESS_RESOLVE_STORE keying, R5 inert dag-node fingerprint memo naming/scaffold, R7 key_source_eq versus materialization, and R8's missing ByContent/ByStableKey axis. Keep each visible until its own authority and consumer replace it.",
+            displaced_cost: "parallel answers to whether two computations are the same continue to choose caching and sharing inconsistently",
+            current_state: "R1/R2 landed via #7069; R3/R4/R5/R7/R8 remain present on current main and have no current owner",
+            first_slice: "reconstruct the R3-R8 census as typed per-authority residue rows, then take one family at a time with a named consumer and dissolution receipt",
+            red_control: "the census must still locate every known R3/R4/R5/R7/R8 site; deleting a row without deleting or repointing its subject must red",
+            out_of_scope: "reopening #7050 or merging its unreviewed staging document",
+            handback: "stop before implementation if two families cannot be grounded on the existing ComputationIdentity authority",
+            updates: [
+              TicketUpdate { on: "2026-07-27", note: "#7301 audit replaced the silently deleted closed-PR snapshot with this counted live residue" },
+            ],
+            authored_on: "2026-07-27",
+            last_verified_on: "2026-07-27",
+          }, carriers: [
+            ptr(label: "identity authority", path: "dag/std/computation_identity.dag"),
+            ptr(label: "duplicate-work census", path: "docs/plans/duplicate-work-graph-lens-design.md"),
+            ptr(label: "effects residue", path: "dag/std/effects.dag"),
+          ]),
           with_plan(rn: superseded(
             id: "ts-concat-class",
             by: "2-emit-partition + dag/gunbc/v1_deletion_plan.dag",

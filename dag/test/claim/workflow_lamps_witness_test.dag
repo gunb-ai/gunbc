@@ -5,6 +5,10 @@ import gunbc.client_observation_state {
   ClientObservationPending, ClientObservationOff, ClientObservationOn, ClientObservationRefused,
   client_observation_state_from, client_observation_state_key,
   client_observation_state_reason, client_observation_state_is_on,
+  WorkItemWorkflowFact, WorkItemProposed, WorkItemLanded,
+  WorkItemWorkflowJoin, BlockedOnAttemptPrNodeBinding,
+  work_item_workflow_fact_rows, work_item_workflow_fact_key,
+  work_item_workflow_fact_is_joined,
 }
 import gunbc.roadmap_component {
   WorkflowLamp, LiveWorkflowLamp, AttemptedWorkflowLamp,
@@ -77,6 +81,19 @@ test fn workflow_lamps_can_both_be_lit() -> Bool {
     && any(workflow_lamps_v0, lamp => workflow_lamp_key(lamp: lamp) == "attempted")
 }
 
+test fn work_item_workflow_is_seven_independent_node_joined_facts() -> Bool {
+  let proposed = work_item_workflow_fact_rows |> filter(r => r.fact == WorkItemProposed)
+  let landed = work_item_workflow_fact_rows |> filter(r => r.fact == WorkItemLanded)
+  count(work_item_workflow_fact_rows) == 7
+    && count(proposed) == 1
+    && count(landed) == 1
+    && all(proposed, r => !work_item_workflow_fact_is_joined(row: r))
+    && all(landed, r => !work_item_workflow_fact_is_joined(row: r))
+    && count(work_item_workflow_fact_rows |> filter(r => work_item_workflow_fact_is_joined(row: r))) == 5
+    && any(work_item_workflow_fact_rows, r => work_item_workflow_fact_key(fact: r.fact) == "live")
+    && any(work_item_workflow_fact_rows, r => work_item_workflow_fact_key(fact: r.fact) == "done")
+}
+
 fn authority_page_html() -> String {
   match try_serialize_html_source(node: roadmap_page_for_authority()) {
     EmitOk { html } => html
@@ -146,6 +163,7 @@ test fn workflow_lamps_keystone_holds() -> Bool {
   client_observation_state_is_four_way_and_refusal_wins()
     && workflow_lamps_refusals_are_symmetric_and_independent()
     && workflow_lamps_can_both_be_lit()
+    && work_item_workflow_is_seven_independent_node_joined_facts()
     && workflow_lamps_render_on_stable_rows()
     && workflow_lamps_client_folds_sources_separately()
     && workflow_lamps_four_states_are_styled_flat()

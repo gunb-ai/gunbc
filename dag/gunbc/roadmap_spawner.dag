@@ -9,7 +9,7 @@ import gunbc.roadmap_model {
   SectionElement, Prose, Group, SectionGroup,
   RoadmapParent, TopLevel, UnderParent, roadmap_parent,
 }
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_is_done, item_superseded_by, signoff_accepts }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_superseded_by, signoff_accepts }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import extdeps.languages.json.emit {
@@ -61,30 +61,43 @@ fn node_parent_ids(edges: List<RoadmapEdge>, id: RoadmapNodeId) -> List<RoadmapN
   edges |> filter(e => e.child == id) |> map(e => e.parent)
 }
 
-data spawn_frontier_completion_note: String = "Frontier completion is the union of the line's grounded completion fact (merged PR or authored/ticket box) and operator sign-off. The page's done status gives sign-off precedence, while the spawner needs both arms so a signed manual row cannot remain Ready and a signed prerequisite cannot strand its child. This is one predicate reused by ready, upcoming, done, and unmet-parent projections."
+data spawn_frontier_completion_note: String = "Work-item acceptance is separate from implementation evidence. A merged PR or authored/ticket checkbox moves the page status to review, but never completes the node, removes its dispatch action, or unblocks a dependent node. Only an accepting operator sign-off completes work. Supersession is a separate terminal disposition: it never enters the done bucket, but it closes dependency edges because the named successor owns the work. The same acceptance and dependency-closure predicates drive ready, upcoming, done, and unmet-parent projections."
 
-fn node_is_complete(n: RoadmapNode, merged: List<Int>) -> Bool {
-  signoff_accepts(s: n.signoff) || item_is_done(item: n.line, merged: merged)
+fn node_is_accepted(n: RoadmapNode) -> Bool {
+  signoff_accepts(s: n.signoff)
 }
 
-fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId, merged: List<Int>) -> Bool {
+fn node_is_complete(n: RoadmapNode) -> Bool {
+  node_is_accepted(n: n)
+}
+
+fn frontier_node_is_superseded(n: RoadmapNode) -> Bool {
+  !(item_superseded_by(item: n.line) == "")
+}
+
+fn node_closes_dependency(n: RoadmapNode) -> Bool {
+  node_is_accepted(n: n) || frontier_node_is_superseded(n: n)
+}
+
+fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId) -> Bool {
   all(node_parent_ids(edges: edges, id: id), pid =>
-    any(nodes, n => n.node == pid && node_is_complete(n: n, merged: merged)))
+    any(nodes, n => n.node == pid && node_closes_dependency(n: n)))
 }
 
-fn node_is_spawnable(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> Bool {
+fn node_is_spawnable(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Bool {
   match n.sizing {
     Unsized => false
     Sized { intricacy: _, volume: _, repo: _, acceptance: _ } =>
-      !node_is_complete(n: n, merged: merged)
-        && node_dep_done(nodes: nodes, edges: edges, id: n.node, merged: merged)
+      !node_is_complete(n: n)
+        && !frontier_node_is_superseded(n: n)
+        && node_dep_done(nodes: nodes, edges: edges, id: n.node)
   }
 }
 
 fn next_spawnable(doc: RoadmapDocument, merged: List<Int>) -> List<RoadmapNode> {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
-  nodes |> filter(n => node_is_spawnable(n: n, nodes: nodes, edges: edges, merged: merged))
+  nodes |> filter(n => node_is_spawnable(n: n, nodes: nodes, edges: edges))
 }
 
 fn node_is_sized(n: RoadmapNode) -> Bool {
@@ -94,14 +107,15 @@ fn node_is_sized(n: RoadmapNode) -> Bool {
   }
 }
 
-fn node_is_upcoming(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> Bool {
+fn node_is_upcoming(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Bool {
   node_is_sized(n: n)
-    && !node_is_complete(n: n, merged: merged)
-    && !node_dep_done(nodes: nodes, edges: edges, id: n.node, merged: merged)
+    && !node_is_complete(n: n)
+    && !frontier_node_is_superseded(n: n)
+    && !node_dep_done(nodes: nodes, edges: edges, id: n.node)
 }
 
-fn node_is_frontier_done(n: RoadmapNode, merged: List<Int>) -> Bool {
-  node_is_sized(n: n) && node_is_complete(n: n, merged: merged)
+fn node_is_frontier_done(n: RoadmapNode) -> Bool {
+  node_is_sized(n: n) && node_is_complete(n: n)
 }
 
 type SpawnFrontier {
@@ -116,8 +130,8 @@ fn spawn_frontier(doc: RoadmapDocument, merged: List<Int>) -> SpawnFrontier {
   let edges = doc_all_edges(doc: doc)
   SpawnFrontier {
     ready: next_spawnable(doc: doc, merged: merged),
-    upcoming: nodes |> filter(n => node_is_upcoming(n: n, nodes: nodes, edges: edges, merged: merged)),
-    done: nodes |> filter(n => node_is_frontier_done(n: n, merged: merged)),
+    upcoming: nodes |> filter(n => node_is_upcoming(n: n, nodes: nodes, edges: edges)),
+    done: nodes |> filter(n => node_is_frontier_done(n: n)),
     superseded: nodes |> filter(n => !(item_superseded_by(item: n.line) == "")),
   }
 }
@@ -225,9 +239,9 @@ fn node_json(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String,
   serialize_json(v: node_json_value(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges))
 }
 
-fn node_unmet_parent_ids(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId, merged: List<Int>) -> List<RoadmapNodeId> {
+fn node_unmet_parent_ids(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId) -> List<RoadmapNodeId> {
   node_parent_ids(edges: edges, id: id)
-    |> filter(pid => !any(nodes, n => n.node == pid && node_is_complete(n: n, merged: merged)))
+    |> filter(pid => !any(nodes, n => n.node == pid && node_closes_dependency(n: n)))
 }
 
 fn ready_array_json(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> String {
@@ -253,7 +267,7 @@ fn roadmap_spawn_request_json(doc: RoadmapDocument, merged: List<Int>, anchor_co
 }
 
 fn upcoming_node_json(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> String {
-  let unmet = node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node, merged: merged)
+  let unmet = node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node)
   serialize_json(v: json_object(members: [
     json_kv(key: "node_id", value: json_string(s: n.node)),
     json_kv(key: "title", value: json_string(s: node_title(item: n.line))),
@@ -266,7 +280,7 @@ fn upcoming_array_json(frontier_upcoming: List<RoadmapNode>, nodes: List<Roadmap
     json_object(members: [
       json_kv(key: "node_id", value: json_string(s: n.node)),
       json_kv(key: "title", value: json_string(s: node_title(item: n.line))),
-      json_kv(key: "unmet_parents", value: json_array(elements: node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node, merged: merged) |> map(id => json_string(s: id)))),
+      json_kv(key: "unmet_parents", value: json_array(elements: node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node) |> map(id => json_string(s: id)))),
     ])
   )))
 }
@@ -292,7 +306,7 @@ fn roadmap_dispatch_json_value(doc: RoadmapDocument, merged: List<Int>) -> JsonV
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: n.node)),
         json_kv(key: "title", value: json_string(s: node_title(item: n.line))),
-        json_kv(key: "unmet_parents", value: json_array(elements: node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node, merged: merged) |> map(id => json_string(s: id)))),
+        json_kv(key: "unmet_parents", value: json_array(elements: node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node) |> map(id => json_string(s: id)))),
       ])
     ))),
     json_kv(key: "done", value: json_array(elements: frontier.done |> map(n => json_string(s: n.node)))),

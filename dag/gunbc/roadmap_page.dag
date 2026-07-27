@@ -23,7 +23,7 @@ import gunbc.roadmap_status {
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
-import gunbc.roadmap_spawner { spawn_frontier, node_is_spawnable, SpawnFrontier, doc_all_nodes }
+import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes }
 import gunbc.roadmap_component {
   roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class,
   disclosure_mark_class, disclosure_mark_glyph, node_mid_class,
@@ -425,7 +425,7 @@ fn sizing_badge(rn: RoadmapNode) -> List<Fragment> {
   }
 }
 
-data dispatch_button_note: String = "The launch button (operator 2026-07-20: manual click-to-dispatch). Rendered only when the same node_is_spawnable predicate that feeds spawn_frontier.ready accepts the node: sized, unfinished, and with every dependency done. Upcoming, unsized umbrella/policy, done, and superseded rows remain observable through their lamps but expose no actuation the belt would refuse. The button carries data-node = the node id. Its client behavior is a MODELED TsProgram (gunbc.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset (roadmap_dispatch_asset_path, served by belt B) and referenced by <script src> -- NOT a hand-concatenated JS string inlined into the HTML (the former was the dispatch-button incident's root class, §5, and the inline placement was a hack: an inline <script> text node escapes '>' under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`)."
+data dispatch_button_note: String = "The launch button (operator 2026-07-20: manual click-to-dispatch). Rendered on every open or review node; only signoff-Done and authored Superseded rows hide it. This deliberately preserves manual out-of-order dispatch for blocked and unsized rows: spawn_frontier.ready governs automatic belt reconciliation and page grouping, not the manual POST admission contract. belt_dispatch_node currently refuses signoff-Done but does not consult Ready, so the page must not claim otherwise. The button carries data-node = the node id. Its client behavior is a MODELED TsProgram (gunbc.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset (roadmap_dispatch_asset_path, served by belt B) and referenced by <script src> -- NOT a hand-concatenated JS string inlined into the HTML (the former was the dispatch-button incident's root class, §5, and the inline placement was a hack: an inline <script> text node escapes '>' under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`)."
 
 fn superseded_badge(rn: RoadmapNode) -> List<Fragment> {
   let by = item_superseded_by(item: rn.line)
@@ -446,6 +446,11 @@ fn dispatch_button_nodes(rn: RoadmapNode, dispatchable: Bool) -> List<Fragment> 
   } else {
     []
   }
+}
+
+fn node_exposes_manual_dispatch(rn: RoadmapNode, merged: List<Int>) -> Bool {
+  let status = node_status_symbol(rn: rn, merged: merged)
+  !(status == "done" || status == "superseded")
 }
 
 fn workflow_lamp_node(lamp: WorkflowLamp) -> Fragment {
@@ -558,7 +563,7 @@ fn node_li_attributes(rn: RoadmapNode, status: String) -> List<Attribute> {
 
 fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> Fragment {
   let status = node_status_symbol(rn: rn, merged: merged)
-  let dispatchable = node_is_spawnable(n: rn, nodes: nodes, edges: edges, merged: merged)
+  let dispatchable = node_exposes_manual_dispatch(rn: rn, merged: merged)
   let head = concat(
     [ node_head_row(rn: rn, merged: merged, dispatchable: dispatchable) ],
     item_detail_block(rn: rn),
@@ -644,35 +649,38 @@ fn section_markup(s: RoadmapSection, merged: List<Int>) -> Fragment {
     body: body)
 }
 
-fn frontier_flat_node_li(rn: RoadmapNode, merged: List<Int>, dispatchable: Bool) -> Fragment {
+fn frontier_flat_node_li(rn: RoadmapNode, merged: List<Int>) -> Fragment {
   let status = node_status_symbol(rn: rn, merged: merged)
   Element {
     tag: "li",
     attributes: node_li_attributes(rn: rn, status: status),
     children: concat(
-      [ node_head_row(rn: rn, merged: merged, dispatchable: dispatchable) ],
+      [ node_head_row(
+          rn: rn,
+          merged: merged,
+          dispatchable: node_exposes_manual_dispatch(rn: rn, merged: merged)) ],
       item_detail_block(rn: rn)),
   }
 }
 
-fn frontier_bucket_ul(items: List<RoadmapNode>, merged: List<Int>, dispatchable: Bool) -> Fragment {
-  el("ul", map(items, rn => frontier_flat_node_li(rn: rn, merged: merged, dispatchable: dispatchable)))
+fn frontier_bucket_ul(items: List<RoadmapNode>, merged: List<Int>) -> Fragment {
+  el("ul", map(items, rn => frontier_flat_node_li(rn: rn, merged: merged)))
 }
 
-fn frontier_bucket_markup(label: String, cls: String, items: List<RoadmapNode>, merged: List<Int>, dispatchable: Bool) -> Fragment {
+fn frontier_bucket_markup(label: String, cls: String, items: List<RoadmapNode>, merged: List<Int>) -> Fragment {
   altitude_section(
     cls: concat("frontier-bucket frontier-", cls),
     title_nodes: [ el("h2", [ txt(label) ]) ],
     statuses: map(items, rn => node_status_symbol(rn: rn, merged: merged)),
-    body: [ frontier_bucket_ul(items: items, merged: merged, dispatchable: dispatchable) ])
+    body: [ frontier_bucket_ul(items: items, merged: merged) ])
 }
 
 fn roadmap_frontier_markup(frontier: SpawnFrontier, merged: List<Int>) -> Fragment {
   el_class("section", "roadmap-frontier", [
-    frontier_bucket_markup(label: "Ready", cls: "ready", items: frontier.ready, merged: merged, dispatchable: true),
-    frontier_bucket_markup(label: "Upcoming", cls: "upcoming", items: frontier.upcoming, merged: merged, dispatchable: false),
-    frontier_bucket_markup(label: "Done", cls: "done", items: frontier.done, merged: merged, dispatchable: false),
-    frontier_bucket_markup(label: "Superseded", cls: "superseded", items: frontier.superseded, merged: merged, dispatchable: false),
+    frontier_bucket_markup(label: "Ready", cls: "ready", items: frontier.ready, merged: merged),
+    frontier_bucket_markup(label: "Upcoming", cls: "upcoming", items: frontier.upcoming, merged: merged),
+    frontier_bucket_markup(label: "Done", cls: "done", items: frontier.done, merged: merged),
+    frontier_bucket_markup(label: "Superseded", cls: "superseded", items: frontier.superseded, merged: merged),
   ])
 }
 
