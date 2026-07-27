@@ -1,11 +1,47 @@
 module v2.test.claim.ci_placement_witness
 
 import std.logic { Bool }
+import std.realization_schedule {
+  CorpusWitnessKind,
+  ExecutionWitnessKind,
+  SpanUndeclared
+}
+import gunbc.ci_gate {
+  EmitHostGate,
+  CheapClaimPoolGate,
+  ExtdepsExternalAuthorityGate,
+  DagCompileCleanGate,
+  GeneratedArtifactDriftGate,
+  SourceRootIngestGate,
+  RegenVerifyGate,
+  SelfHostReadsRealBytesGate,
+  SelfHostStalenessGate
+}
+import gunbc.commit_workflow {
+  CommitCheckEnrollment,
+  CommitSpecGate,
+  CommitWitnessClaim,
+  CommitCargoFmtCheck,
+  GithubActionsCiJob,
+  GithubActionsCiRegenJob,
+  GitPrePushHook,
+  FalsifierCadenceJob,
+  commit_gate_roster
+}
 import v2.workflow.ci_placement {
   Placement, PrTier, Gauntlet,
   PlacementClassification, Hermetic, Unclassified,
   WarmCostReceipt,
-  placement_is_admissible
+  PlacementShadowDatedReceipt,
+  PlacementShadowSignedBasis,
+  PlacementShadowOutcome,
+  PlacementShadowRowReport,
+  PlacementShadowReport,
+  PlacementShadowWarmState,
+  PlacementShadowCacheState,
+  placement_is_admissible,
+  placement_shadow_report,
+  placement_shadow_row_report
 }
 
 test fn ci_placement_gauntlet_always_admissible_holds() -> Bool {
@@ -31,4 +67,214 @@ test fn ci_placement_unclassified_pr_tier_refused_holds() -> Bool {
     warm_cost: WarmCostReceipt { measured_ms: 100, run_ref: "synthetic-unclassified" },
     classification: Unclassified
   })
+}
+
+fn placement_shadow_receipt(
+  identity: CommitCheckEnrollment,
+  observed_on: String,
+  host_ref: String,
+  run_ref: String,
+  source_sha: String,
+  binary_sha: String,
+  roster_sha: String,
+  warm_state: PlacementShadowWarmState,
+  cache_state: PlacementShadowCacheState
+) -> PlacementShadowDatedReceipt {
+  PlacementShadowDatedReceipt {
+    identity: identity,
+    observed_on: observed_on,
+    host_class: "srv_fleet_arm64",
+    host_ref: host_ref,
+    run_ref: run_ref,
+    source_sha: source_sha,
+    binary_sha: binary_sha,
+    roster_sha: roster_sha,
+    warm_state: warm_state,
+    cache_state: cache_state
+  }
+}
+
+fn placement_shadow_multi_fn_identity() -> CommitCheckEnrollment {
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/lens/non_fold_residue_test.dag",
+      check_fns: [
+        "non_fold_residue_no_unrostered_or_stale",
+        "non_fold_residue_synthetic_unrostered_red_holds",
+        "non_fold_residue_wildcard_red_fixture_holds"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  }
+}
+
+fn placement_shadow_entry_wide_identity() -> CommitCheckEnrollment {
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/execution/bind_eval_by_execution_test.dag",
+      check_fns: [],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  }
+}
+
+fn placement_shadow_missing_identity() -> CommitCheckEnrollment {
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "dag/test/claim/orchestration_if_emit_test.dag",
+      check_fns: [],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  }
+}
+
+test fn ci_placement_shadow_report_spans_all_48_rows_holds() -> Bool {
+  let report = placement_shadow_report(
+    roster: commit_gate_roster,
+    basis: PlacementShadowSignedBasis { receipts: [] }
+  )
+  match report.rows.length() {
+    48 => true
+    _ => false
+  }
+}
+
+test fn ci_placement_shadow_row_qualifies_multi_and_entrywide_rows_holds() -> Bool {
+  let shared_source = "src-sha-2026-07-27"
+  let shared_binary = "bin-sha-2026-07-27"
+  let shared_roster = "roster-sha-2026-07-27"
+  let multi_identity = placement_shadow_multi_fn_identity()
+  let entrywide_identity = placement_shadow_entry_wide_identity()
+  let basis = PlacementShadowSignedBasis {
+    receipts: [
+      placement_shadow_receipt(
+        identity: multi_identity,
+        observed_on: "2026-07-26",
+        host_ref: "srv-a",
+        run_ref: "run-a",
+        source_sha: shared_source,
+        binary_sha: shared_binary,
+        roster_sha: shared_roster,
+        warm_state: ShadowWarm,
+        cache_state: ShadowCacheWarm
+      ),
+      placement_shadow_receipt(
+        identity: multi_identity,
+        observed_on: "2026-07-27",
+        host_ref: "srv-b",
+        run_ref: "run-b",
+        source_sha: shared_source,
+        binary_sha: shared_binary,
+        roster_sha: shared_roster,
+        warm_state: ShadowCold,
+        cache_state: ShadowCacheCold
+      ),
+      placement_shadow_receipt(
+        identity: entrywide_identity,
+        observed_on: "2026-07-26",
+        host_ref: "srv-c",
+        run_ref: "run-c",
+        source_sha: shared_source,
+        binary_sha: shared_binary,
+        roster_sha: shared_roster,
+        warm_state: ShadowWarmUnknown,
+        cache_state: ShadowCacheUnknown
+      ),
+      placement_shadow_receipt(
+        identity: entrywide_identity,
+        observed_on: "2026-07-27",
+        host_ref: "srv-d",
+        run_ref: "run-d",
+        source_sha: shared_source,
+        binary_sha: shared_binary,
+        roster_sha: shared_roster,
+        warm_state: ShadowWarm,
+        cache_state: ShadowCacheWarm
+      )
+    ]
+  }
+  let multi_row = placement_shadow_row_report(identity: multi_identity, basis: basis)
+  let entrywide_row = placement_shadow_row_report(identity: entrywide_identity, basis: basis)
+  match multi_row.outcome {
+    Qualified => match entrywide_row.outcome {
+      Qualified => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
+test fn ci_placement_shadow_row_missing_incomplete_ambiguous_holds() -> Bool {
+  let shared_source = "src-sha-2026-07-27"
+  let shared_binary = "bin-sha-2026-07-27"
+  let shared_roster = "roster-sha-2026-07-27"
+  let missing_row = placement_shadow_row_report(
+    identity: placement_shadow_missing_identity(),
+    basis: PlacementShadowSignedBasis { receipts: [] }
+  )
+  let incomplete_row = placement_shadow_row_report(
+    identity: placement_shadow_missing_identity(),
+    basis: PlacementShadowSignedBasis {
+      receipts: [
+        placement_shadow_receipt(
+          identity: placement_shadow_missing_identity(),
+          observed_on: "2026-07-26",
+          host_ref: "srv-a",
+          run_ref: "run-a",
+          source_sha: shared_source,
+          binary_sha: shared_binary,
+          roster_sha: shared_roster,
+          warm_state: ShadowWarm,
+          cache_state: ShadowCacheWarm
+        )
+      ]
+    }
+  )
+  let ambiguous_row = placement_shadow_row_report(
+    identity: placement_shadow_missing_identity(),
+    basis: PlacementShadowSignedBasis {
+      receipts: [
+        placement_shadow_receipt(
+          identity: placement_shadow_missing_identity(),
+          observed_on: "2026-07-26",
+          host_ref: "srv-a",
+          run_ref: "run-a",
+          source_sha: shared_source,
+          binary_sha: shared_binary,
+          roster_sha: shared_roster,
+          warm_state: ShadowWarm,
+          cache_state: ShadowCacheWarm
+        ),
+        placement_shadow_receipt(
+          identity: placement_shadow_missing_identity(),
+          observed_on: "2026-07-27",
+          host_ref: "srv-b",
+          run_ref: "run-b",
+          source_sha: "source-drift",
+          binary_sha: shared_binary,
+          roster_sha: shared_roster,
+          warm_state: ShadowCold,
+          cache_state: ShadowCacheCold
+        )
+      ]
+    }
+  )
+  match missing_row.outcome {
+    Missing { reason: _ } =>
+      match incomplete_row.outcome {
+        Incomplete { reason: _ } =>
+          match ambiguous_row.outcome {
+            Ambiguous { reason: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
 }
