@@ -69,31 +69,17 @@ type V1NodeContainmentPathCapture {
   terminal: Node
 }
 
-data v1_node_containment_path_capture_adapter_note: String = "Temporary v1 target adapter for the canonical std.occurrence_binding ContainmentPath<Node> fact. It preserves the full authored Node ancestry and terminal Node only. It defines no identifier, equality, selection, deduplication, or resolution semantics."
+data v1_node_containment_path_capture_adapter_note: String = "Temporary v1 target adapter for the canonical std.occurrence_binding ContainmentPath<Node> fact. It preserves authored Node ancestry and the terminal Node. It defines no identifier, equality, candidate population, selection, deduplication, or resolution semantics."
 
-data v1_node_containment_path_capture_adapter_dissolve_on: String = "DISSOLVE-ON: when canonical generic-carrier target emission can emit and compile std.occurrence_binding.ContainmentPath<Node> directly, replace V1NodeContainmentPathCapture with that canonical specialization and delete this adapter without changing captured paths."
-
-type ReferenceCaptureCategory
-  = ValueReferenceCapture
-  | CallReferenceCapture
-  | FieldReferenceCapture
-  | MethodReferenceCapture
-
-type ReferencePathCapture {
-  containment: V1NodeContainmentPathCapture
-  short_name: String
-  category: ReferenceCaptureCategory
-}
+data v1_node_containment_path_capture_adapter_dissolve_on: String = "DISSOLVE-ON: when generic-carrier target emission can compile std.occurrence_binding.ContainmentPath<Node> directly, replace V1NodeContainmentPathCapture with that canonical specialization and delete this adapter without changing captured paths."
 
 type NamespaceIdentityCapture {
-  declaration_paths: FreeMonoid<V1NodeContainmentPathCapture>
-  reference_paths: FreeMonoid<ReferencePathCapture>
+  occurrences: FreeMonoid<V1NodeContainmentPathCapture>
 }
 
 fn empty_namespace_identity_capture() -> NamespaceIdentityCapture {
   NamespaceIdentityCapture {
-    declaration_paths: Empty,
-    reference_paths: Empty
+    occurrences: Empty
   }
 }
 
@@ -102,133 +88,16 @@ fn concat_namespace_identity_capture(
   right: NamespaceIdentityCapture
 ) -> NamespaceIdentityCapture {
   NamespaceIdentityCapture {
-    declaration_paths: concat(left.declaration_paths, right.declaration_paths),
-    reference_paths: concat(left.reference_paths, right.reference_paths)
+    occurrences: concat(left.occurrences, right.occurrences)
   }
 }
 
-fn concat_namespace_identity_captures(
-  captures: FreeMonoid<NamespaceIdentityCapture>
-) -> NamespaceIdentityCapture {
-  fold(
-    captures,
-    init: empty_namespace_identity_capture(),
-    f: (acc, capture) =>
-      concat_namespace_identity_capture(left: acc, right: capture)
-  )
-}
-
-fn declaration_identity_capture(
+fn namespace_identity_capture_singleton(
   containment: V1NodeContainmentPathCapture
 ) -> NamespaceIdentityCapture {
   NamespaceIdentityCapture {
-    declaration_paths: Cons { head: containment, tail: Empty },
-    reference_paths: Empty
+    occurrences: Cons { head: containment, tail: Empty }
   }
-}
-
-fn reference_identity_capture(
-  containment: V1NodeContainmentPathCapture,
-  short_name: String,
-  category: ReferenceCaptureCategory
-) -> NamespaceIdentityCapture {
-  NamespaceIdentityCapture {
-    declaration_paths: Empty,
-    reference_paths: Cons {
-      head: ReferencePathCapture {
-        containment: containment,
-        short_name: short_name,
-        category: category
-      },
-      tail: Empty
-    }
-  }
-}
-
-type LexicalCandidatePopulation {
-  declarations: FreeMonoid<V1NodeContainmentPathCapture>
-}
-
-type LexicalCandidateIndex {
-  by_short_name: Map<String, LexicalCandidatePopulation>
-}
-
-data lexical_candidate_index_invariant: String = "Declaration identity is the authored Node occurrence at its full containment path capture. The short-name map is transient and population-only: insertion appends every active same-name declaration path and never selects, overwrites, or deduplicates by SourceSpan or structural Node equality. Sibling and off-chain frames derive from the same parent index rather than from one another."
-
-fn empty_lexical_candidate_index() -> LexicalCandidateIndex {
-  LexicalCandidateIndex { by_short_name: empty_map() }
-}
-
-fn lexical_candidate_population_snoc(
-  declarations: FreeMonoid<V1NodeContainmentPathCapture>,
-  declaration: V1NodeContainmentPathCapture
-) -> FreeMonoid<V1NodeContainmentPathCapture> {
-  match declarations {
-    Empty => Cons { head: declaration, tail: Empty }
-    Cons { head: head, tail: tail } =>
-      Cons {
-        head: head,
-        tail: lexical_candidate_population_snoc(
-          declarations: tail,
-          declaration: declaration
-        )
-      }
-  }
-}
-
-fn lexical_candidate_index_insert(
-  index: LexicalCandidateIndex,
-  short_name: String,
-  declaration: V1NodeContainmentPathCapture
-) -> LexicalCandidateIndex {
-  let existing = match map_get(index.by_short_name, short_name) {
-    Present { value: population } => population.declarations
-    Absent => Empty
-  }
-  LexicalCandidateIndex {
-    by_short_name: map_insert(
-      index.by_short_name,
-      short_name,
-      LexicalCandidatePopulation {
-        declarations: lexical_candidate_population_snoc(
-          declarations: existing,
-          declaration: declaration
-        )
-      }
-    )
-  }
-}
-
-fn lexical_candidate_index_lookup(
-  index: LexicalCandidateIndex,
-  short_name: String
-) -> FreeMonoid<V1NodeContainmentPathCapture> {
-  match map_get(index.by_short_name, short_name) {
-    Present { value: population } => population.declarations
-    Absent => Empty
-  }
-}
-
-fn lexical_candidate_population_count(
-  declarations: FreeMonoid<V1NodeContainmentPathCapture>
-) -> Int {
-  match declarations {
-    Empty => 0
-    Cons { head: _, tail: tail } =>
-      1 + lexical_candidate_population_count(declarations: tail)
-  }
-}
-
-fn lexical_candidate_index_count(
-  index: LexicalCandidateIndex,
-  short_name: String
-) -> Int {
-  lexical_candidate_population_count(
-    declarations: lexical_candidate_index_lookup(
-      index: index,
-      short_name: short_name
-    )
-  )
 }
 
 type Scope {
