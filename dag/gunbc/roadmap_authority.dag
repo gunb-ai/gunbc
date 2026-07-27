@@ -969,18 +969,19 @@ fn section_2() -> RoadmapSection {
           sign(rn: authored_doc(id: "6-shell-slice1", done: true, content: "**slice 1 — control-flow emit (census-scoped)** ✓ (#6475; tier-2 Procedure/Let band #6566) — the `If` band only (`orch_emit_step::If` + else + condition forms + pipes/cmdsubst/`$?`/AndOr/redirect/env words, byte goldens); `For`/`While` NOT in scope — the pre-runtime census (2026-07-03) found zero pre-runtime sites needing them", path: "docs/plans/shell-emission-model.md"), s: signed(by: "operator", works: true, scope_equivalent: true, as_expected: true)),
           ticket_doc(id: "6-shell-intent-phase1", done: false, t: TicketFields {
             headline: "shell→intent Phase 1 — agnostic orchestration emit",
-            brief: "While/BoundedPoll/general Retry (N-level escalation) emit via 05_emit_orchestration + bash grammar rows; byte goldens orchestration_*_emit_test; production consumer ci_floor_peak_emit.dag.",
+            brief: "Close Phase 1 from PARTIAL, never by counting emitter rows alone: migrate ci_floor_peak_emit's live While condition/body off raw command strings; treat BoundedPoll as test-only until a real need consumes it (or remove it from accepted scope — never invent a consumer); make general Retry faithful or typed-refusing for every body/escalation shape. Keep discriminating orchestration_*_emit_test byte goldens.",
             displaced_cost: "",
-            current_state: "MERGED (#6832), operator sign-off PENDING",
+            current_state: "PARTIAL. #6832 landed While/BoundedPoll/Retry emit machinery and byte goldens, but only While has a production consumer (ci_floor_peak_emit), and its condition/body remain raw shell strings; BoundedPoll has zero production construction sites; current-main Retry reads only the first body step and silently drops the tail. #7293 separately made Present retry-body redirect/capture refuse fail-closed; #7303 is in flight to type the distinct refusal causes and close the multi-step/env/log-source drops.",
             first_slice: "",
             red_control: "",
             out_of_scope: "",
-            handback: "flip to done: true + sign(operator) on sign-off (mirrors 6-shell-slice2)",
+            handback: "Do not sign while the PARTIAL facts above hold. Flip to done: true + sign(operator) only after the live While consumer carries modeled intent, Retry no longer silently drops any accepted shape, and BoundedPoll is either reached by a real need or explicitly removed from accepted scope.",
             updates: [
               TicketUpdate { on: "2026-07-25", note: "migrated to ticket form (W2-bulk tranche 15)" },
+              TicketUpdate { on: "2026-07-27", note: "status true-up: PARTIAL; separate landed emitter support from live typed consumption and open Retry fidelity defects" },
             ],
             authored_on: "",
-            last_verified_on: "",
+            last_verified_on: "2026-07-27",
           }, path: "docs/plans/shell-intent-emit-realization-design.md"),
           ticket_doc(id: "6-shell-slice2", done: false, t: TicketFields {
             headline: "slice 2 — converge thin-run",
