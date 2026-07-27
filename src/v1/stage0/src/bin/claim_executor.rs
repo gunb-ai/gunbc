@@ -11,13 +11,13 @@ use std::time::Instant;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
-    compute_histogram_data, compute_witness_timing_rows, enable_floor_compile_clean_lazy_install,
-    heartbeat_feed_enter_batch, heartbeat_feed_entry_completed, heartbeat_feed_snapshot,
-    install_floor_compile_clean_receipt, make_eval_context, resolve_entry_graph,
+    compute_histogram_data, enable_floor_compile_clean_lazy_install, heartbeat_feed_enter_batch,
+    heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
+    make_eval_context, project_witness_cost_receipt, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
     DiscoveryWidthPolicy, FloorPhase, HistogramData, NodeFrontierSelectionMode, PhaseProfile,
-    TimingPercentiles, WitnessTimingRow, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    TimingPercentiles, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
@@ -587,7 +587,7 @@ struct ClaimResult {
     /// Number of discovery witnesses (non-zero only for discovery batch nodes).
     corpus_witnesses: usize,
     /// Per-witness eval+resolve identity preserved from discovery (empty for gate/single-claim rows).
-    witness_row_costs: Vec<WitnessTimingRow>,
+    witness_row_costs: Vec<(String, String, u128, u128, u128, String)>,
 }
 
 /// A batch is partitioned into resolve-groups before scheduling. SingleClaims that share one
@@ -1053,7 +1053,7 @@ fn str_list_value(lines: &[String]) -> Value {
 /// Render the top-N slowest witnesses through `dag/gunbc/ci_render.dag`.
 fn render_slowest_witnesses(
     source_roots: &[String],
-    rows: &[WitnessTimingRow],
+    rows: &[(String, String, u128, u128, u128, String)],
 ) -> Result<String, String> {
     if rows.is_empty() {
         return Ok(String::new());
@@ -1076,20 +1076,20 @@ fn render_slowest_witnesses(
                 (Some("rank".to_string()), Value::Int((i + 1) as i64)),
                 (
                     Some("function".to_string()),
-                    Value::Str(row.function.clone()),
+                    Value::Str(row.1.clone()),
                 ),
-                (Some("entry".to_string()), Value::Str(row.entry.clone())),
+                (Some("entry".to_string()), Value::Str(row.0.clone())),
                 (
                     Some("eval_ns".to_string()),
-                    Value::Int(clamp_nanos_to_i64(row.eval_nanos)),
+                    Value::Int(clamp_nanos_to_i64(row.2)),
                 ),
                 (
                     Some("resolve_ns".to_string()),
-                    Value::Int(clamp_nanos_to_i64(row.resolve_nanos)),
+                    Value::Int(clamp_nanos_to_i64(row.3)),
                 ),
                 (
                     Some("total_ns".to_string()),
-                    Value::Int(clamp_nanos_to_i64(row.total_nanos)),
+                    Value::Int(clamp_nanos_to_i64(row.4)),
                 ),
             ],
             false,
@@ -1123,33 +1123,30 @@ fn render_slowest_witnesses(
     }
 }
 
-fn emit_slowest_witness_attribution(source_roots: &[String], summary: &DiscoverySummary) {
-    match compute_witness_timing_rows(summary) {
-        Ok(rows) => {
-            let n = slowest_witness_attribution_n().min(rows.len());
-            if n == 0 {
-                return;
-            }
-            let top = top_n_slowest_witnesses(&rows, n);
-            match render_slowest_witnesses(source_roots, &top) {
-                Ok(boxed) => {
-                    eprintln!("{boxed}");
-                    let tail_eval_ms: u128 =
-                        top.iter().map(|r| r.eval_nanos).sum::<u128>() / 1_000_000;
-                    let total_eval_ms = summary.total_measured_nanos / 1_000_000;
-                    let pct = if total_eval_ms == 0 {
-                        0.0
-                    } else {
-                        100.0 * tail_eval_ms as f64 / total_eval_ms as f64
-                    };
-                    eprintln!(
-                        "[attribution] top-{n} slowest witnesses: eval serial-sum {tail_eval_ms}ms ({pct:.1}% of corpus eval)"
-                    );
-                }
-                Err(e) => eprintln!("[attribution] render failed (timings unaffected): {e}"),
-            }
+fn emit_slowest_witness_attribution(
+    source_roots: &[String],
+    rows: &[(String, String, u128, u128, u128, String)],
+) {
+    let n = slowest_witness_attribution_n().min(rows.len());
+    if n == 0 {
+        return;
+    }
+    let top = top_n_slowest_witnesses(rows, n);
+    match render_slowest_witnesses(source_roots, &top) {
+        Ok(boxed) => {
+            eprintln!("{boxed}");
+            let tail_eval_ms: u128 = top.iter().map(|r| r.2).sum::<u128>() / 1_000_000;
+            let total_eval_ms = rows.iter().map(|r| r.2).sum::<u128>() / 1_000_000;
+            let pct = if total_eval_ms == 0 {
+                0.0
+            } else {
+                100.0 * tail_eval_ms as f64 / total_eval_ms as f64
+            };
+            eprintln!(
+                "[attribution] top-{n} slowest witnesses: eval serial-sum {tail_eval_ms}ms ({pct:.1}% of corpus eval)"
+            );
         }
-        Err(msg) => eprintln!("{msg}"),
+        Err(e) => eprintln!("[attribution] render failed (timings unaffected): {e}"),
     }
 }
 
@@ -1300,12 +1297,12 @@ fn discovery_claim_result(
     ok: bool,
     detail: String,
     summary: &DiscoverySummary,
+    projected: Result<Vec<(String, String, u128, u128, u128, String)>, String>,
 ) -> ClaimResult {
     // Per-row identity is load-bearing for the receipt spine: a compute failure OR an
     // incomplete row set must refuse the discovery claim (typed/located), never silently
     // emit a partial receipt as complete (§5 / review 43261 + review 43274).
-    // `compute_witness_timing_rows` itself refuses on missing entry-resolve coverage.
-    match compute_witness_timing_rows(summary) {
+    match projected {
         Ok(witness_row_costs) => ClaimResult {
             function,
             ok,
@@ -1418,14 +1415,19 @@ fn run_discovery_batch_node(
                 ms(st.assembly_emit_info),
                 ms(st.reconcile_assembly),
             );
-            match compute_histogram_data(&summary) {
-                Ok(data) => match render_timing_histogram(&source_roots, &data) {
-                    Ok(histogram) => eprintln!("{histogram}"),
-                    Err(e) => eprintln!("[histogram] render failed (timings unaffected): {e}"),
-                },
+            let projected = project_witness_cost_receipt(&source_roots, &summary);
+            match &projected {
+                Ok(rows) => {
+                    match render_timing_histogram(&source_roots, &compute_histogram_data(rows)) {
+                        Ok(histogram) => eprintln!("{histogram}"),
+                        Err(e) => eprintln!("[histogram] render failed (timings unaffected): {e}"),
+                    }
+                }
                 Err(msg) => eprintln!("{msg}"),
             }
-            emit_slowest_witness_attribution(&source_roots, &summary);
+            if let Ok(rows) = &projected {
+                emit_slowest_witness_attribution(&source_roots, rows);
+            }
             if expect_red && summary.total > 0 {
                 // All green on an expect-red probe = stale quarantine (dissolve-on fired).
                 discovery_claim_result(
@@ -1436,6 +1438,7 @@ fn run_discovery_batch_node(
                         summary.total
                     ),
                     &summary,
+                    projected,
                 )
             } else {
                 discovery_claim_result(
@@ -1443,10 +1446,12 @@ fn run_discovery_batch_node(
                     true,
                     String::new(),
                     &summary,
+                    projected,
                 )
             }
         }
         Ok(summary) => {
+            let projected = project_witness_cost_receipt(&source_roots, &summary);
             if expect_red {
                 eprintln!(
                     "[expect-red] known-red probe still red: {} of {} failed (agreement — quarantine holds)",
@@ -1458,6 +1463,7 @@ fn run_discovery_batch_node(
                     true,
                     String::new(),
                     &summary,
+                    projected,
                 )
             } else {
                 discovery_claim_result(
@@ -1470,6 +1476,7 @@ fn run_discovery_batch_node(
                         summary.failures.join("; ")
                     ),
                     &summary,
+                    projected,
                 )
             }
         }
@@ -2137,12 +2144,12 @@ fn write_witness_row_cost_receipt_at(
         let n = rec.batch_index + 1;
         for result in &rec.results {
             for row in &result.witness_row_costs {
-                let eval_ms = row.eval_nanos / 1_000_000;
-                let resolve_ms = row.resolve_nanos / 1_000_000;
-                let warm_ms = row.total_nanos / 1_000_000;
+                let eval_ms = row.2 / 1_000_000;
+                let resolve_ms = row.3 / 1_000_000;
+                let warm_ms = row.4 / 1_000_000;
                 body.push_str(&format!(
                     "{n}\t{}\t{}\t{eval_ms}\t{resolve_ms}\t{warm_ms}\n",
-                    row.entry, row.function
+                    row.0, row.1
                 ));
                 row_count += 1;
             }
@@ -2306,14 +2313,14 @@ fn write_witness_row_cost_drift_receipt_at(
         let n = rec.batch_index + 1;
         for result in &rec.results {
             for row in &result.witness_row_costs {
-                let observed = row.eval_nanos / 1_000_000;
-                let key = (row.entry.clone(), row.function.clone());
+                let observed = row.2 / 1_000_000;
+                let key = (row.0.clone(), row.1.clone());
                 match basis.get(&key) {
                     None => {
                         basis_absent_count += 1;
                         body.push_str(&format!(
                             "{n}\t{}\t{}\t{observed}\t\tBasisAbsent\t\n",
-                            row.entry, row.function
+                            row.0, row.1
                         ));
                     }
                     Some(b) => {
@@ -2326,7 +2333,7 @@ fn write_witness_row_cost_drift_receipt_at(
                             Err(e) => {
                                 eprintln!(
                                     "claim_executor: drift comparator refused for {}::{}: {e} — walk fails closed here",
-                                    row.entry, row.function
+                                    row.0, row.1
                                 );
                                 return false;
                             }
@@ -2339,7 +2346,7 @@ fn write_witness_row_cost_drift_receipt_at(
                         };
                         body.push_str(&format!(
                             "{n}\t{}\t{}\t{observed}\t{}\t{verdict}\t{}\n",
-                            row.entry, row.function, b.eval_ms_basis, b.run_ref
+                            row.0, row.1, b.eval_ms_basis, b.run_ref
                         ));
                     }
                 }
@@ -5214,11 +5221,12 @@ mod tests {
             failures: vec!["e.dag::f failed".into()],
             witness_outcomes: vec![DiscoveryWitnessOutcome {
                 entry: "e.dag".into(),
+                module_path: "test.e".into(),
                 function: "f".into(),
                 outcome: ClaimOutcome::Fail,
                 execution_leg: "InterpretedLeg".into(),
             }],
-            // Empty entry_resolve_receipts → compute_witness_timing_rows refuses.
+            // Empty entry_resolve_receipts → the authored receipt projection refuses.
             entry_resolve_receipts: Vec::<EntryResolveReceipt>::new(),
             total_resolve_nanos: 0,
             total_stage_nanos: ResolveStageNanos::default(),
@@ -5227,7 +5235,13 @@ mod tests {
             roster_closure_nodes: 0,
         };
         let prior = "1 of 1 discovery witness(es) failed: e.dag::f failed";
-        let result = discovery_claim_result("probe".into(), false, prior.to_string(), &summary);
+        let result = discovery_claim_result(
+            "probe".into(),
+            false,
+            prior.to_string(),
+            &summary,
+            Err("[witness-row-cost] REFUSED: missing measured resolve parent for e.dag".into()),
+        );
         assert!(!result.ok);
         assert!(
             result.detail.contains(prior),

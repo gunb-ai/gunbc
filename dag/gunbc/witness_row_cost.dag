@@ -36,6 +36,8 @@ import std.observation {
   Concluded,
   ObservationOutcome,
   Done,
+  Refused,
+  Failed,
 }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }

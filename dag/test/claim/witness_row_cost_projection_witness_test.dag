@@ -13,21 +13,17 @@ import gunbc.witness_row_cost {
   witness_cost_declaration_event,
   witness_cost_nested_resolve_under_declaration_event,
   witness_cost_module_resolve_event,
+  witness_cost_seed_done_event,
+  witness_cost_seed_refused_event,
+  witness_cost_seed_failed_event,
   witness_cost_warm,
   witness_cost_rss_unavailable_cause,
-  witness_timing_row_seed_view_disposition,
-  witness_timing_row_seed_view_dissolve_trigger,
-  witness_timing_row_hand_rust_receipt_plan_anchor,
-  witness_timing_row_hand_rust_deferral,
-  witness_timing_row_hand_rust_scaffold_deletion,
-  witness_timing_row_hand_rust_loc_delta_net,
-  witness_timing_row_hand_rust_test_discriminator,
+  witness_cost_native_production_note,
   witness_cost_event_role_note,
 }
 import std.logic { Bool }
 import std.nat { Nat }
 import std.types { NonEmptyStr, List, Int }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.measure { millisecond, millisecond_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.observation {
@@ -40,6 +36,7 @@ import std.observation {
   TimedOut,
   Skipped,
   Final,
+  Begin,
   AttentionBasis,
   Ambient,
   observation_attention,
@@ -246,7 +243,7 @@ fn rss_unavailable_carries_cause_on_modeled_events_holds() -> Bool {
   }
 }
 
-fn nested_resolve_phases_do_not_count_as_entry_parent_holds() -> Bool {
+fn malformed_nested_resolve_event_refuses_holds() -> Bool {
   let entry = sample_entry()
   let decl = sample_decl("nested")
   let nested = witness_cost_nested_resolve_under_declaration_event(
@@ -277,14 +274,9 @@ fn nested_resolve_phases_do_not_count_as_entry_parent_holds() -> Bool {
         Present { value: _ } => false
         Absent =>
           match project_witness_cost_receipt(events: events) {
-            WitnessCostProjectionRefused { cause: _ } => false
-            WitnessCostProjectionComplete { rows: rows } =>
-              count(rows) == 1 &&
-              fold(rows, init: true, f: (acc, row) =>
-                acc &&
-                millisecond_count(m: row.resolve) == 100 &&
-                millisecond_count(m: row.eval) == 5
-              )
+            WitnessCostProjectionRefused { cause: c } =>
+              string_contains(s: c, pattern: "malformed")
+            WitnessCostProjectionComplete { rows: _ } => false
           }
       }
   }
@@ -314,26 +306,95 @@ fn typed_event_role_extract_classifies_entry_and_declaration_holds() -> Bool {
   }
 }
 
-fn hand_rust_scaffold_receipts_are_checkable_holds() -> Bool {
-  match witness_timing_row_seed_view_disposition {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
-    _ => false
-  } &&
-  string_contains(s: witness_timing_row_seed_view_dissolve_trigger, pattern: "WitnessTimingRow") &&
-  string_contains(s: witness_timing_row_seed_view_dissolve_trigger, pattern: "5-dissolve-patches") &&
-  string_contains(s: witness_timing_row_hand_rust_deferral, pattern: "EXPLICIT DEFERRAL") &&
-  string_contains(s: witness_timing_row_hand_rust_deferral, pattern: "placement-workstream-#5") &&
-  string_contains(s: witness_timing_row_hand_rust_deferral, pattern: "5-dissolve-patches") &&
-  string_contains(s: witness_timing_row_hand_rust_scaffold_deletion, pattern: "Deleted-scaffold path") &&
-  string_contains(
-    s: witness_timing_row_hand_rust_receipt_plan_anchor,
-    pattern: "progress-observation-design.md#interim-witness-timing-row-scaffold"
-  ) &&
-  witness_timing_row_hand_rust_loc_delta_net > 0 &&
-  string_contains(
-    s: witness_timing_row_hand_rust_test_discriminator,
-    pattern: "witness_timing_rows_refuse_duplicate_entry_resolve"
+fn duplicate_declaration_identity_refuses_holds() -> Bool {
+  let entry = sample_entry()
+  let decl = sample_decl("duplicate")
+  let events: List<ObservationEvent> = [
+    witness_cost_entry_resolve_event(entry: entry, resolve: millisecond(count: 10)),
+    witness_cost_declaration_event(entry: entry, declaration: decl, eval: millisecond(count: 1), outcome: Done),
+    witness_cost_declaration_event(entry: entry, declaration: decl, eval: millisecond(count: 2), outcome: Done)
+  ]
+  match project_witness_cost_receipt(events: events) {
+    WitnessCostProjectionRefused { cause: c } =>
+      string_contains(s: c, pattern: "duplicate declaration")
+    WitnessCostProjectionComplete { rows: _ } => false
+  }
+}
+
+fn non_concluded_timing_event_refuses_holds() -> Bool {
+  let concluded = witness_cost_seed_done_event(
+    entry: sample_entry(),
+    module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
+    function: "begun_only" as NonEmptyStr,
+    eval: millisecond(count: 1)
   )
+  let begun = ObservationEvent {
+    subject: concluded.subject,
+    transition: Begin,
+    wall: concluded.wall,
+    rss: concluded.rss
+  }
+  match project_witness_cost_receipt(events: [
+    witness_cost_entry_resolve_event(entry: sample_entry(), resolve: millisecond(count: 10)),
+    begun
+  ]) {
+    WitnessCostProjectionRefused { cause: c } =>
+      string_contains(s: c, pattern: "non-concluded")
+    WitnessCostProjectionComplete { rows: _ } => false
+  }
+}
+
+fn native_seed_events_preserve_order_outcome_and_perturbation_holds() -> Bool {
+  let entry = sample_entry()
+  let events: List<ObservationEvent> = [
+    witness_cost_entry_resolve_event(entry: entry, resolve: millisecond(count: 100)),
+    witness_cost_seed_refused_event(
+      entry: entry,
+      module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
+      function: "first_refused" as NonEmptyStr,
+      eval: millisecond(count: 7),
+      diagnostic: "typed refusal" as NonEmptyStr
+    ),
+    witness_cost_seed_failed_event(
+      entry: entry,
+      module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
+      function: "second_failed" as NonEmptyStr,
+      eval: millisecond(count: 19),
+      error: "runtime failure" as NonEmptyStr
+    )
+  ]
+  match project_witness_cost_receipt(events: events) {
+    WitnessCostProjectionRefused { cause: _ } => false
+    WitnessCostProjectionComplete { rows: rows } =>
+      count(rows) == 2 &&
+      fold(rows, init: "" as String, f: (acc, row) =>
+        concat(acc, concat(row.declaration.decl_name, ":"))
+      ) == "first_refused:second_failed:" &&
+      fold(rows, init: 0, f: (acc, row) =>
+        acc + millisecond_count(m: row.eval)
+      ) == 26 &&
+      fold(rows, init: false, f: (acc, row) =>
+        acc || match row.outcome {
+          Refused { diagnostic: d } => d == ("typed refusal" as NonEmptyStr)
+          Done => false
+          Failed { error: _, output: _ } => false
+          TimedOut { budget: _, elapsed: _ } => false
+          Skipped { reason: _ } => false
+          Final { shown_failures: _ } => false
+        }
+      ) &&
+      fold(rows, init: false, f: (acc, row) =>
+        acc || match row.outcome {
+          Failed { error: e, output: _ } => e == ("runtime failure" as NonEmptyStr)
+          Done => false
+          Refused { diagnostic: _ } => false
+          TimedOut { budget: _, elapsed: _ } => false
+          Skipped { reason: _ } => false
+          Final { shown_failures: _ } => false
+        }
+      ) &&
+      string_contains(s: witness_cost_native_production_note, pattern: "sole semantic row input")
+  }
 }
 
 test fn witness_row_cost_projection_holds() -> Bool {
@@ -343,8 +404,10 @@ test fn witness_row_cost_projection_holds() -> Bool {
   resolve_wall_is_shared_not_divided_holds() &&
   refused_outcome_distinct_from_failed_in_projection_holds() &&
   w2_ambient_suppress_retains_complete_receipt_row_holds() &&
-  nested_resolve_phases_do_not_count_as_entry_parent_holds() &&
+  malformed_nested_resolve_event_refuses_holds() &&
   typed_event_role_extract_classifies_entry_and_declaration_holds() &&
   rss_unavailable_carries_cause_on_modeled_events_holds() &&
-  hand_rust_scaffold_receipts_are_checkable_holds()
+  duplicate_declaration_identity_refuses_holds() &&
+  non_concluded_timing_event_refuses_holds() &&
+  native_seed_events_preserve_order_outcome_and_perturbation_holds()
 }
