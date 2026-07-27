@@ -587,7 +587,7 @@ struct ClaimResult {
     /// Number of discovery witnesses (non-zero only for discovery batch nodes).
     corpus_witnesses: usize,
     /// Per-witness eval+resolve identity preserved from discovery (empty for gate/single-claim rows).
-    witness_row_costs: Vec<(String, String, u128, u128, u128, String)>,
+    witness_row_costs: Vec<(String, String, u128, u128, u128, String, String)>,
 }
 
 /// A batch is partitioned into resolve-groups before scheduling. SingleClaims that share one
@@ -1053,7 +1053,7 @@ fn str_list_value(lines: &[String]) -> Value {
 /// Render the top-N slowest witnesses through `dag/gunbc/ci_render.dag`.
 fn render_slowest_witnesses(
     source_roots: &[String],
-    rows: &[(String, String, u128, u128, u128, String)],
+    rows: &[(String, String, u128, u128, u128, String, String)],
 ) -> Result<String, String> {
     if rows.is_empty() {
         return Ok(String::new());
@@ -1074,10 +1074,7 @@ fn render_slowest_witnesses(
             "slowest_witness_row",
             &[
                 (Some("rank".to_string()), Value::Int((i + 1) as i64)),
-                (
-                    Some("function".to_string()),
-                    Value::Str(row.1.clone()),
-                ),
+                (Some("function".to_string()), Value::Str(row.1.clone())),
                 (Some("entry".to_string()), Value::Str(row.0.clone())),
                 (
                     Some("eval_ns".to_string()),
@@ -1125,7 +1122,7 @@ fn render_slowest_witnesses(
 
 fn emit_slowest_witness_attribution(
     source_roots: &[String],
-    rows: &[(String, String, u128, u128, u128, String)],
+    rows: &[(String, String, u128, u128, u128, String, String)],
 ) {
     let n = slowest_witness_attribution_n().min(rows.len());
     if n == 0 {
@@ -1297,7 +1294,7 @@ fn discovery_claim_result(
     ok: bool,
     detail: String,
     summary: &DiscoverySummary,
-    projected: Result<Vec<(String, String, u128, u128, u128, String)>, String>,
+    projected: Result<Vec<(String, String, u128, u128, u128, String, String)>, String>,
 ) -> ClaimResult {
     // Per-row identity is load-bearing for the receipt spine: a compute failure OR an
     // incomplete row set must refuse the discovery claim (typed/located), never silently

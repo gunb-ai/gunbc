@@ -12284,12 +12284,12 @@ fn witness_cost_millisecond_nanos(
 /// stream, so this keeps work proportional to the sum of each entry's witness-group size.
 /// Rust transports only facts measured by discovery and decodes the accepted projection
 /// into an unnamed presentation-edge tuple:
-/// `(entry, declaration, eval_nanos, resolve_nanos, warm_nanos, outcome_variant)`.
+/// `(entry, declaration, eval_nanos, resolve_nanos, warm_nanos, outcome_variant, outcome_detail)`.
 /// Deliberately do not introduce another named timing-row carrier.
 pub fn project_witness_cost_receipt(
     source_roots: &[String],
     summary: &DiscoverySummary,
-) -> Result<Vec<(String, String, u128, u128, u128, String)>, String> {
+) -> Result<Vec<(String, String, u128, u128, u128, String, String)>, String> {
     use v1_interpreter::{run_in_context_with_args, ExecutionMode, Value};
 
     if summary.performance_receipts.len() != summary.witness_outcomes.len() {
@@ -12325,7 +12325,12 @@ pub fn project_witness_cost_receipt(
         });
         group.push(index);
     }
+    let mut resolve_groups: HashMap<String, Vec<&EntryResolveReceipt>> = HashMap::new();
     for receipt in &summary.entry_resolve_receipts {
+        resolve_groups
+            .entry(receipt.entry.clone())
+            .or_default()
+            .push(receipt);
         if !groups.contains_key(&receipt.entry) {
             entry_order.push(receipt.entry.clone());
             groups.insert(receipt.entry.clone(), Vec::new());
@@ -12337,11 +12342,7 @@ pub fn project_witness_cost_receipt(
         let indices = groups
             .remove(&entry_name)
             .expect("entry_order is derived from groups");
-        let resolve_receipts: Vec<&EntryResolveReceipt> = summary
-            .entry_resolve_receipts
-            .iter()
-            .filter(|receipt| receipt.entry == entry_name)
-            .collect();
+        let resolve_receipts = resolve_groups.remove(&entry_name).unwrap_or_default();
         let mut events = Vec::with_capacity(indices.len() + resolve_receipts.len());
         for receipt in resolve_receipts {
             let entry_ms = witness_cost_millisecond_value(&ctx, receipt.resolve_nanos)?;
@@ -12356,9 +12357,7 @@ pub fn project_witness_cost_receipt(
                     false,
                 )
                 .map_err(|e| {
-                    format!(
-                        "[witness-row-cost] REFUSED: entry event construction failed: {e}"
-                    )
+                    format!("[witness-row-cost] REFUSED: entry event construction failed: {e}")
                 })?,
             );
         }
@@ -12476,9 +12475,28 @@ pub fn project_witness_cost_receipt(
             let warm = ctx.field(fields, "warm").cloned().ok_or_else(|| {
                 "[witness-row-cost] REFUSED: projected row lacks warm".to_string()
             })?;
-            let outcome = match ctx.field(fields, "outcome") {
+            let (outcome, outcome_detail) = match ctx.field(fields, "outcome") {
+                Some(Value::Variant { variant_name, .. }) if ctx.sym_eq(*variant_name, "Done") => {
+                    ("Done".to_string(), String::new())
+                }
+                Some(Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                }) if ctx.sym_eq(*variant_name, "Refused") => (
+                    "Refused".to_string(),
+                    witness_cost_string_field(&ctx, fields, "diagnostic")?,
+                ),
+                Some(Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                }) if ctx.sym_eq(*variant_name, "Failed") => (
+                    "Failed".to_string(),
+                    witness_cost_string_field(&ctx, fields, "error")?,
+                ),
                 Some(Value::Variant { variant_name, .. }) => {
-                    ctx.resolve(*variant_name).to_string()
+                    (ctx.resolve(*variant_name).to_string(), String::new())
                 }
                 _ => {
                     return Err(
@@ -12494,6 +12512,7 @@ pub fn project_witness_cost_receipt(
                 witness_cost_millisecond_nanos(&ctx, resolve, "resolve")?,
                 witness_cost_millisecond_nanos(&ctx, warm, "warm")?,
                 outcome,
+                outcome_detail,
             ));
         }
     }
@@ -12508,9 +12527,9 @@ pub fn project_witness_cost_receipt(
 }
 
 pub fn top_n_slowest_witnesses(
-    rows: &[(String, String, u128, u128, u128, String)],
+    rows: &[(String, String, u128, u128, u128, String, String)],
     n: usize,
-) -> Vec<(String, String, u128, u128, u128, String)> {
+) -> Vec<(String, String, u128, u128, u128, String, String)> {
     let mut sorted = rows.to_vec();
     sorted.sort_by(|a, b| {
         b.2.cmp(&a.2)
@@ -12522,7 +12541,7 @@ pub fn top_n_slowest_witnesses(
 }
 
 pub fn compute_histogram_data(
-    rows: &[(String, String, u128, u128, u128, String)],
+    rows: &[(String, String, u128, u128, u128, String, String)],
 ) -> HistogramData {
     HistogramData {
         included: rows.len(),
@@ -20485,10 +20504,12 @@ mod moduleless_entry_skip_tests {
 #[cfg(test)]
 mod discovery_summary_merge_tests {
     use super::{
-        merge_discovery_summaries, project_witness_cost_receipt, ClaimOutcome, DiscoverySummary,
-        DiscoveryWitnessOutcome, EntryResolveReceipt, ResolveStageNanos,
+        merge_discovery_summaries, project_witness_cost_receipt, repo_relative_dag_path,
+        run_discovery_corpus_with_options, witness_execution_leg_cache_put, ClaimOutcome,
+        DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy, DiscoveryWitnessOutcome,
+        EntryResolveReceipt, NodeFrontierSelectionMode, ResolveStageNanos,
     };
-    use crate::v1_interpreter::PerformanceReceipt;
+    use crate::v1_interpreter::{ExecutionMode, PerformanceReceipt};
 
     fn source_roots() -> Vec<String> {
         let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -20612,7 +20633,9 @@ mod discovery_summary_merge_tests {
         assert_eq!(rows[0].2, 7_000_000);
         assert_eq!(rows[0].4, 107_000_000);
         assert_eq!(rows[0].5, "Failed");
+        assert_eq!(rows[0].6, "returned Bool(false)");
         assert_eq!(rows[1].5, "Refused");
+        assert_eq!(rows[1].6, "returned `String`, not Bool");
     }
 
     #[test]
@@ -20623,7 +20646,10 @@ mod discovery_summary_merge_tests {
         summary.entry_resolve_receipts.clear();
         let missing = project_witness_cost_receipt(&source_roots(), &summary)
             .expect_err("authored projector must refuse missing parent");
-        assert!(missing.contains("missing parent resolve-phase event"), "{missing}");
+        assert!(
+            missing.contains("missing parent resolve-phase event"),
+            "{missing}"
+        );
 
         summary.entry_resolve_receipts = vec![
             EntryResolveReceipt {
@@ -20645,6 +20671,48 @@ mod discovery_summary_merge_tests {
             duplicate.contains("multiple parent resolve-phase events"),
             "{duplicate}"
         );
+    }
+
+    #[test]
+    fn production_discovery_projects_one_real_witness() {
+        let roots = source_roots();
+        let entry = std::path::Path::new(&roots[0])
+            .join("test/claim/witness_row_cost_projection_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let function = "witness_row_cost_projection_holds".to_string();
+        // Execution-leg derivation has its own discriminating test and currently resolves a
+        // workspace-relative authority against process CWD. Cargo runs unit tests from the
+        // package directory, so prime the independently proven default for this fixture rather
+        // than mutating process-wide CWD. The discovery, timing, event, and projection path below
+        // remains the production path this test owns.
+        witness_execution_leg_cache_put(&repo_relative_dag_path(&entry), "InterpretedLeg");
+        let summary = run_discovery_corpus_with_options(
+            &roots,
+            &[],
+            &[(entry.clone(), function.clone())],
+            ExecutionMode::Hermetic,
+            DiscoveryWidthPolicy::Serial,
+            DiscoveryCorpusOptions {
+                node_frontier_selection: NodeFrontierSelectionMode::Off,
+                explicit_roster_only: true,
+                exclude_substrings: Vec::new(),
+                ..Default::default()
+            },
+        )
+        .expect("one-row discovery must execute");
+        assert_eq!(summary.total, 1);
+        assert_eq!(summary.passed, 1);
+        assert_eq!(summary.witness_outcomes.len(), 1);
+        assert_eq!(summary.entry_resolve_receipts.len(), 1);
+
+        let rows = project_witness_cost_receipt(&roots, &summary)
+            .expect("real discovery summary must pass the authored projector");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, entry);
+        assert_eq!(rows[0].1, function);
+        assert_eq!(rows[0].5, "Done");
+        assert_eq!(rows[0].6, "");
     }
 }
 
