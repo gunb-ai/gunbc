@@ -38,7 +38,7 @@ Rising hysteresis is 1 °C and falling hysteresis is 2 °C. The cited Ampere Alt
 
 The BMC 3.22 web UI's **Fan Control** resource changes `InitialDuty`; it is not the authority for these temperature/duty points.
 
-On srv4, `/usr/share` is visible through the root overlay: a read-only SquashFS lower layer on `/dev/mtdblock4` and a writable JFFS2 upper layer on `/dev/mtdblock5`. The live converge now creates an upper-layer override through an atomic same-filesystem replacement. This is a persistent-storage realization, but not yet a reboot durability receipt: a BMC reboot and a firmware replacement must both be followed by rediscovery and readback.
+On srv4, `/usr/share` is visible through the root overlay: a read-only SquashFS lower layer on `/dev/mtdblock4` and a writable JFFS2 upper layer on `/dev/mtdblock5`. The live converge creates an upper-layer override through an atomic same-filesystem replacement. Persistence across one graceful BMC restart is now witnessed below. A firmware replacement remains a distinct event and must still be followed by rediscovery and readback.
 
 The controller topology is part of desired state, not incidental JSON. srv4 has four installed fans (`FAN1`–`FAN4`) while the factory aggregate PID still referenced an unpopulated `FAN5`. `FAN5=nan` held `zone0` in failsafe. The factory zone fallback was 30%, so normal calculated outputs could mask that state. Raising the fallback to 75% without removing stale FAN5 made the latent failsafe immediately audible. The v2 projection therefore owns both the TEMP_SOC curve and the exact four-input aggregate PID topology, and no-op additionally requires `zone0 FailSafe=false`.
 
@@ -58,7 +58,7 @@ For the current local bootstrap, GCP access is an ensure/upsert at the point of 
 
 The managed-credential checks `srv3_managed_credential_probe_check` and `srv4_managed_credential_probe_check` both completed live on 2026-07-27. On each host, the factory credential was rejected with HTTP 401, the active gcloud session satisfied the access ensure without human intervention, the Secret Manager `payload.data` value was decoded from standard base64, and the stored credential authenticated to the BMC. The expected factory-auth failure rendered only `<redacted-secret>` in argv diagnostics. Password SSH now consumes that same `Secret` through `sshpass -d 0`: the password is stdin/file-descriptor data, never argv or remote-script text. The remaining credential gap is the generic lifecycle for netrc/Redfish/IPMI consumers, not this fan driver's SSH binding.
 
-The current spine has 14 named gaps, 10 of them in the BMC prefix. Fan live observation, persistent overlay actuation, automatic rollback/readback, and immediate thermal/tach/controller proof are now authorities rather than gaps. Remaining BMC gaps cover generic credential binding; live firmware observation; exact approved artifact; update actuator; post-update return/readback and recovery; full subsumption-entrypoint wiring; live Redfish surface rediscovery; reboot persistence; and a workload-qualified thermal envelope. The remaining four are pre-existing OS/assimilation gaps.
+The current spine has 13 named gaps, 9 of them in the BMC prefix. Fan live observation, persistent overlay actuation, automatic rollback/readback, immediate thermal/tach/controller proof, and graceful-reboot persistence are now authorities rather than gaps. Remaining BMC gaps cover generic credential binding; live firmware observation; exact approved artifact; update actuator; post-update return/readback and recovery; full subsumption-entrypoint wiring; live Redfish surface rediscovery; and a workload-qualified thermal envelope. The remaining four are pre-existing OS/assimilation gaps.
 
 ## What subsumption does today
 
@@ -96,7 +96,7 @@ A fan-policy apply is permitted only when all of these agree:
 5. The semantic curve or installed-tach topology differs from intent.
 6. `TEMP_SOC`, every required component temperature, and all four installed tachs are readable and within their pre-apply bounds.
 
-The realizer stages on the same filesystem, validates JSON, atomically replaces the upper-layer file, restarts the controller, requires the zone to leave failsafe, independently reads back config/topology/service/temperature/tachs, and automatically restores the prior file on any failed check. A BMC-reboot persistence witness and a workload-qualified envelope remain separate acceptance conditions.
+The realizer stages on the same filesystem, validates JSON, atomically replaces the upper-layer file, restarts the controller, requires the zone to leave failsafe, independently reads back config/topology/service/temperature/tachs, and automatically restores the prior file on any failed check. A workload-qualified envelope remains a separate acceptance condition.
 
 ## Live srv4 execution receipt
 
@@ -108,8 +108,12 @@ The 2026-07-27 execution exercised both rollback and successful convergence:
 4. The second transaction atomically applied curve plus topology. Independent readback proved semantic equality, four nonzero tachs, required component temperatures, active service, and `FailSafe=false`.
 5. Twelve live samples over six minutes stayed safe. `TEMP_SOC` ranged 72–77 °C and ended at 73 °C. Guarded DIMMs peaked at 69 °C, X550 ended at 68.625 °C, FAN1 ended at 3,616 RPM, and FAN2–FAN4 ended at 889–943 RPM.
 6. Re-driving `srv4_bmc_fan_converge` must now be a safe `Noop`; that idempotency check is part of the handoff test sequence.
+7. A later pre-reboot check found BMC SSH password auth temporarily refusing while the same managed credential remained valid through Redfish. The advertised `/Managers/bmc/Actions/Manager.Reset` `GracefulRestart` action was therefore used instead of treating SSH as the only control plane.
+8. Redfish accepted the BMC-only reset with HTTP 200. The BMC was observed down at 23:09:49Z and back at 23:12:26Z, a 157-second observed outage. srv4's host SSH remained reachable throughout and its Redfish `PowerState` remained `On`.
+9. Before reboot, `TEMP_SOC` was 85 °C and FAN1–FAN4 were 3,676/960/948/896 RPM. After return they were 83 °C and 3,659/961/944/906 RPM.
+10. Post-reboot SSH recovered. The active path was still `/usr/share/swampd/config-asrr.json`, its SHA-256 remained `4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481`, the controller was active, `FailSafe=false`, the semantic observer returned `ExitSuccess`, and a converge re-drive returned `ExitSuccess` through the no-op path.
 
-This is a short equilibrium receipt under the workload present during the run, not the still-open workload-qualified operating envelope and not the still-open BMC-reboot persistence witness.
+The reboot receipt proves this exact JFFS2 upper override across one graceful BMC restart. It does not prove persistence across a firmware replacement. The thermal samples remain short equilibrium receipts under the workloads present during the runs, not the still-open workload-qualified operating envelope.
 
 ## Why srv3 and srv4 sound different
 

@@ -15,6 +15,7 @@ import extdeps.bmc.types {
   BmcFlashBackedOverlayObserved,
   FanPidAggregatedEntry,
   FanPidIndependentEntries,
+  On,
   RedfishFanControlResourceAbsent,
   RedfishInitialDutyControlResource,
   RedfishLegacyChassisThermal,
@@ -38,6 +39,7 @@ import gunbc.fleet_bmc_state {
   srv4_bmc_fan_converged_policy_observation,
   srv4_bmc_fan_convergence_receipt,
   srv4_bmc_fan_projection_capability,
+  srv4_bmc_fan_reboot_persistence_receipt,
   srv4_bmc_redfish_surface_observation,
   srv3_bmc_update_service_observation,
   srv4_bmc_update_service_observation,
@@ -61,7 +63,7 @@ import gunbc.fleet_intent {
   srv4_baseboard,
   srv4_host,
 }
-import std.measure { celsius, percent, percent_count }
+import std.measure { celsius, celsius_count, percent, percent_count, rpm_count }
 import std.nat { Nat }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.uri { Uri, Https }
@@ -432,6 +434,46 @@ test fn srv4_live_receipt_is_converged_quiet_and_failsafe_clear() -> Bool {
     && !srv4_bmc_fan_convergence_receipt.zone_failsafe_active
     && srv4_bmc_fan_convergence_receipt.monitoring_sample_count == 12
     && srv4_bmc_fan_convergence_receipt.final_tachs.length() == 4
+}
+
+test fn srv4_bmc_reboot_persistence_receipt_proves_same_config_and_noop() -> Bool {
+  let receipt = srv4_bmc_fan_reboot_persistence_receipt
+  let classified = bmc_fan_policy_classification(
+    host: srv4_host.identity,
+    board: srv4_baseboard.catalog.model,
+    intent: fleet_bmc_valid_state,
+    observation: Present { value: receipt.post_reboot_policy },
+    persistence: none,
+    projection: Present { value: srv4_bmc_fan_projection_capability },
+  )
+  receipt.reset_action_target == "/redfish/v1/Managers/bmc/Actions/Manager.Reset"
+    && receipt.reset_type == "GracefulRestart"
+    && receipt.reset_http_status == 200
+    && receipt.bmc_down_observed
+    && receipt.bmc_returned
+    && receipt.observed_outage_seconds == 157
+    && receipt.host_power_before == On
+    && receipt.host_power_after == On
+    && receipt.host_os_ssh_reachable_throughout
+    && receipt.before.active_config_digest == receipt.post_reboot_active_config_digest
+    && receipt.post_reboot_policy.curve == fleet_quiet_temp_soc_fan_curve
+    && receipt.post_reboot_tachs.length() == 4
+    && fold(
+      receipt.post_reboot_tachs,
+      init: true,
+      f: (healthy, tach) => healthy && rpm_count(tach.reading) > 0,
+    )
+    && (celsius_count(receipt.post_reboot_temp_soc) < celsius_count(fleet_bmc_valid_state.fan_policy.thermal_guard.processor_rollback_temperature))
+    && receipt.post_reboot_controller_active
+    && !receipt.post_reboot_zone_failsafe_active
+    && receipt.post_reboot_observer_exit_success
+    && receipt.post_reboot_converge_noop_exit_success
+    && classified.verdict == Converged
+    && match classified.decision {
+      Noop => true
+      Refuse { reason: _ } => false
+      Apply { plan: _ } => false
+    }
 }
 
 test fn converged_srv4_curve_without_topology_projection_refuses_noop() -> Bool {

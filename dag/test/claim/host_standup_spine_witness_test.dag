@@ -43,12 +43,13 @@ fn spine_tags_are_linear() -> Bool {
 test fn host_standup_spine_is_sixteen_step_linear_bmc_os_then_p0_p5() -> Bool {
   host_standup_spine_length() == 16
     && spine_tags_are_linear()
-    && host_standup_named_gap_count() == 14
-    && host_standup_bmc_named_gap_count() == 10
+    && host_standup_named_gap_count() == 13
+    && host_standup_bmc_named_gap_count() == 9
     && !host_standup_gap_present(gap_id: "bmc-fan-live-observer")
     && !host_standup_gap_present(gap_id: "bmc-fan-overlay-actuator")
     && !host_standup_gap_present(gap_id: "bmc-fan-rollback-readback")
     && !host_standup_gap_present(gap_id: "bmc-thermal-postapply-probe")
+    && !host_standup_gap_present(gap_id: "bmc-fan-reboot-persistence-witness")
 }
 
 test fn p1b_build_cache_provision_spine_row_landed() -> Bool {
@@ -226,6 +227,6 @@ test fn remaining_bmc_gap_projection_is_complete_and_derived_from_spine() -> Boo
     && !host_standup_gap_present(gap_id: "bmc-fan-overlay-actuator")
     && !host_standup_gap_present(gap_id: "bmc-fan-rollback-readback")
     && !host_standup_gap_present(gap_id: "bmc-thermal-postapply-probe")
-    && host_standup_gap_present(gap_id: "bmc-fan-reboot-persistence-witness")
+    && !host_standup_gap_present(gap_id: "bmc-fan-reboot-persistence-witness")
     && host_standup_gap_present(gap_id: "bmc-thermal-operating-envelope")
 }

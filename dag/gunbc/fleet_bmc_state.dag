@@ -11,9 +11,11 @@ import extdeps.bmc.types {
   BmcRedfishSurfaceObservation,
   BmcUpdateServiceObservation,
   FanPidAggregatedEntry,
+  On,
   RedfishFanControlResourceAbsent,
   RedfishInitialDutyControlResource,
   RedfishLegacyChassisThermal,
+  RedfishPowerState,
   RedfishThermalSubsystemSensorCollection,
 }
 import extdeps.crypto.hash { Digest, sha256_digest }
@@ -50,6 +52,32 @@ type BmcFanConvergenceReceipt {
   temp_soc_final: Celsius
   guarded_component_maximum: Celsius
   final_tachs: List<BmcFanTachReceipt>
+  observed_at: NonEmptyStr
+}
+
+type BmcFanRebootPersistenceReceipt {
+  before: BmcFanConvergenceReceipt
+  post_reboot_policy: BmcFanPolicyObservation
+  reset_action_target: NonEmptyStr
+  reset_type: NonEmptyStr
+  reset_http_status: Nat
+  bmc_down_observed: Bool
+  bmc_returned: Bool
+  bmc_down_observed_at: NonEmptyStr
+  bmc_returned_at: NonEmptyStr
+  observed_outage_seconds: Nat
+  host_power_before: RedfishPowerState
+  host_power_after: RedfishPowerState
+  host_os_ssh_reachable_throughout: Bool
+  pre_reboot_temp_soc: Celsius
+  post_reboot_temp_soc: Celsius
+  pre_reboot_tachs: List<BmcFanTachReceipt>
+  post_reboot_tachs: List<BmcFanTachReceipt>
+  post_reboot_active_config_digest: Digest
+  post_reboot_controller_active: Bool
+  post_reboot_zone_failsafe_active: Bool
+  post_reboot_observer_exit_success: Bool
+  post_reboot_converge_noop_exit_success: Bool
   observed_at: NonEmptyStr
 }
 
@@ -173,7 +201,61 @@ data srv4_bmc_fan_convergence_receipt: BmcFanConvergenceReceipt = BmcFanConverge
   observed_at: "2026-07-27T22:31:25Z",
 }
 
+data srv4_bmc_fan_post_reboot_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
+  firmware: srv4_bmc_firmware_observation.firmware,
+  curve: fleet_bmc_valid_state.fan_policy.curve,
+  selected_config_path: "/usr/share/swampd/config.json",
+  board_config_path: srv4_bmc_fan_projection_capability.config_path,
+  controller_service: srv4_bmc_fan_projection_capability.controller_service,
+  controller_binary: "/usr/bin/swampd",
+  controller_shape: FanPidAggregatedEntry {
+    entry_name: srv4_bmc_fan_projection_capability.aggregate_fan_pid_entry,
+    tach_inputs: srv4_bmc_fan_projection_capability.required_tach_inputs,
+  },
+  observed_at: "2026-07-27T23:14:45Z",
+}
+
+data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = BmcFanRebootPersistenceReceipt {
+  before: srv4_bmc_fan_convergence_receipt,
+  post_reboot_policy: srv4_bmc_fan_post_reboot_policy_observation,
+  reset_action_target: "/redfish/v1/Managers/bmc/Actions/Manager.Reset",
+  reset_type: "GracefulRestart",
+  reset_http_status: 200,
+  bmc_down_observed: true,
+  bmc_returned: true,
+  bmc_down_observed_at: "2026-07-27T23:09:49Z",
+  bmc_returned_at: "2026-07-27T23:12:26Z",
+  observed_outage_seconds: 157,
+  host_power_before: On,
+  host_power_after: On,
+  host_os_ssh_reachable_throughout: true,
+  pre_reboot_temp_soc: celsius(85),
+  post_reboot_temp_soc: celsius(83),
+  pre_reboot_tachs: [
+    BmcFanTachReceipt { sensor: "FAN1", reading: rpm(3676) },
+    BmcFanTachReceipt { sensor: "FAN2", reading: rpm(960) },
+    BmcFanTachReceipt { sensor: "FAN3", reading: rpm(948) },
+    BmcFanTachReceipt { sensor: "FAN4", reading: rpm(896) },
+  ],
+  post_reboot_tachs: [
+    BmcFanTachReceipt { sensor: "FAN1", reading: rpm(3659) },
+    BmcFanTachReceipt { sensor: "FAN2", reading: rpm(961) },
+    BmcFanTachReceipt { sensor: "FAN3", reading: rpm(944) },
+    BmcFanTachReceipt { sensor: "FAN4", reading: rpm(906) },
+  ],
+  post_reboot_active_config_digest: sha256_digest(
+    hex: "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481",
+  ),
+  post_reboot_controller_active: true,
+  post_reboot_zone_failsafe_active: false,
+  post_reboot_observer_exit_success: true,
+  post_reboot_converge_noop_exit_success: true,
+  observed_at: "2026-07-27T23:14:45Z",
+}
+
 data srv4_bmc_fan_projection_probe_note: String = "Authenticated read-only BMC SSH probe, 2026-07-27: the active 3.22 config was projected in memory through the intended TEMP_SOC semantic patch. The projection was idempotent, and a curve perturbation was discriminating. The later typed live receipt is srv4_bmc_fan_convergence_receipt; this note remains the earlier projection-only provenance rather than being rewritten as execution."
+
+data srv4_bmc_fan_reboot_persistence_note: String = "Live perturbation receipt, 2026-07-27: Redfish Manager.Reset advertised and accepted GracefulRestart with HTTP 200. The BMC was observed down for a 157-second reachability interval while srv4's host OS SSH remained reachable and ComputerSystem PowerState remained On. After return, OpenBMC still reported 3.22.00; the active config path and SHA-256 digest were unchanged; phosphor-pid-control was active; zone0 FailSafe=false; the semantic observer returned ExitSuccess; and an independent converge re-drive returned ExitSuccess through its Noop arm. This proves the JFFS2 upper override across one graceful BMC restart. It does not prove persistence across a firmware replacement."
 
 data fleet_bmc_surface_observation_note: String = "Authenticated read-only Redfish observations, 2026-07-27. srv3 OpenBMC 2.07.00 advertises ThermalSubsystem and its 51-member Chassis/Sensors collection includes temperature and fan readings; the legacy Chassis/Thermal URI is absent. srv4 OpenBMC 3.22.00 advertises legacy Chassis/Thermal; its Chassis/Sensors request still returns HTTP success but has only 9 power/utilization members and omits temperature/fan readings. A collection-only observer therefore fails open on srv4: transport success is not telemetry completeness. Direct known sensor URIs still resolve, but they do not make an inventory query complete."
 

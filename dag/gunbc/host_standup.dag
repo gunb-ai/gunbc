@@ -297,14 +297,10 @@ data host_standup_spine: List<HostStandupStep> = [
       decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_m12830_thermal_limits"),
       decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_live_thermal_tach_safety_holds"),
       decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_live_safety_holds"),
+      decl_ref(module_path: "gunbc.fleet_bmc_state", decl_name: "srv4_bmc_fan_reboot_persistence_receipt"),
       decl_ref(module_path: "gunbc.tools.bmc_read_telemetry", decl_name: "bmc_read_telemetry"),
     ],
     gaps: [
-      PhaseGap {
-        gap_id: "bmc-fan-reboot-persistence-witness",
-        missing: "BMC-reboot perturbation witness proving the upper-layer curve remains effective",
-        refusal: "host_standup:prefix:bmc-thermal-safety-verify:persistence-unproven — writable JFFS2 is capability evidence, not a reboot receipt",
-      },
       PhaseGap {
         gap_id: "bmc-thermal-operating-envelope",
         missing: "workload-qualified thermal envelope distinct from the fan curve",
