@@ -15,6 +15,17 @@ data hand_import_allowed_path_prefixes: List<String> = [
   "dag/std/os/invocation.dag",
 ]
 
+data hand_import_gate_enrollment_bootstrap_paths: List<String> = [
+  "dag/tools/hand_import_ci_gate.dag",
+]
+
+data hand_import_gate_enrollment_symbol_carve_outs: List<String> = [
+  "gunbc.ci_gate:HandImportGate",
+  "tools.hand_import_ci_gate:run_hand_import_ci_gate",
+]
+
+data hand_import_gate_enrollment_carve_out_note: String = "HandImportGate CI enrollment must not self-reject (review 43619): outside hand_import_allowed_path_prefixes, additions of gunbc.ci_gate { HandImportGate }, tools.hand_import_ci_gate { run_hand_import_ci_gate }, and bootstrap imports in hand_import_gate_enrollment_bootstrap_paths are exempt. Same-file cross-module import moves (symbol removed from one import block and added to another) are exempt. Host mirror: cli_run::hand_import_gate_passes enrollment carve-out (hand_import_gate_enrollment_carve_out_mirror_dissolution_trigger)."
+
 data hand_import_gate_note: String = "Pre-corpus-wide gate: zero import additions vs origin/main outside operator-allowed witness roster and type-resolution / value-resolution probe fixture dirs (hand_import_allowed_path_prefixes). Host realization: hand_import_gate_passes (git diff + per-file import-block compare). Operator ruling (clever-pike-49, keen-wolf-121): blocks hand-import churn before projection-generator corpus-wide runs. HAND-RUST receipt authority: tools.hand_import_gate (hand_import_gate_hand_rust_scaffold + hand_import_gate_receipt_plan_anchor — shell→intent Phase 3 lane). Counted fail-open residue: allowed-prefix mirror (§3 parallel representation until on-carrier roster) — hand_import_allowed_prefixes_mirror_dissolution_trigger."
 
 data hand_import_gate_hand_rust_scaffold: Disposition = Scaffold {
@@ -39,6 +50,15 @@ data hand_import_allowed_prefixes_mirror_dissolution_trigger: Disposition = Scaf
   bind: DeclarationRef {
     module_path: "tools.hand_import_gate",
     decl_name: "hand_import_allowed_path_prefixes",
+    field: WholeDeclaration
+  }
+}
+
+data hand_import_gate_enrollment_carve_out_mirror_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "tools.hand_import_gate",
+    decl_name: "hand_import_gate_enrollment_symbol_carve_outs",
     field: WholeDeclaration
   }
 }

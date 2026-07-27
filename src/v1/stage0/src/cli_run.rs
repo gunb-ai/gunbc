@@ -1345,6 +1345,8 @@ pub fn compile_dag_dag_fixture_witness_check(
 /// Scaffold residues (each has its own dissolution trigger in `hand_import_gate.dag`):
 /// - `hand_import_allowed_prefixes_mirror_dissolution_trigger` — roster below mirrors
 ///   `hand_import_allowed_path_prefixes` until the gate reads it on-carrier.
+/// - `hand_import_gate_enrollment_carve_out_mirror_dissolution_trigger` — enrollment carve-out
+///   below mirrors `hand_import_gate_enrollment_symbol_carve_outs` until on-carrier.
 pub fn hand_import_gate_passes(base_ref: &str) -> bool {
     // Mirrors tools.hand_import_gate.hand_import_allowed_path_prefixes (review 43116).
     const ALLOWED_PREFIXES: &[&str] = &[
@@ -1381,7 +1383,7 @@ pub fn hand_import_gate_passes(base_ref: &str) -> bool {
         {
             continue;
         }
-        if hand_import_file_has_additions(path, base_ref) {
+        if hand_import_file_has_disallowed_additions(path, base_ref) {
             eprintln!("hand_import_gate: import additions in {}", path);
             return false;
         }
@@ -1389,30 +1391,90 @@ pub fn hand_import_gate_passes(base_ref: &str) -> bool {
     true
 }
 
-fn hand_import_file_has_additions(rel_path: &str, base_ref: &str) -> bool {
+fn hand_import_file_has_disallowed_additions(rel_path: &str, base_ref: &str) -> bool {
     let head = hand_import_git_show(rel_path, "HEAD");
     let base = hand_import_git_show(rel_path, base_ref);
     if head.is_none() {
         return false;
     }
     if base.is_none() {
-        // New file outside allowed prefixes: any import row (including bare `import mod`) is churn.
-        let head_imports = hand_import_parse_imports(head.as_ref().unwrap());
-        return !head_imports.is_empty();
+        return !hand_import_is_enrollment_bootstrap_path(rel_path)
+            && !hand_import_parse_imports(head.as_ref().unwrap()).is_empty();
     }
     let head_imports = hand_import_parse_imports(head.as_ref().unwrap());
     let base_imports = hand_import_parse_imports(base.as_ref().unwrap());
-    for (module, syms) in head_imports {
-        match base_imports.get(&module) {
-            None => return true,
+    let removed = hand_import_collect_removed_symbols(&base_imports, &head_imports);
+    for (module, syms) in &head_imports {
+        match base_imports.get(module) {
+            None => {
+                for sym in syms {
+                    if !hand_import_addition_allowed(rel_path, module, sym, &removed) {
+                        return true;
+                    }
+                }
+            }
             Some(base_syms) => {
-                if syms.iter().any(|s| !base_syms.contains(s)) {
-                    return true;
+                for sym in syms {
+                    if !base_syms.contains(sym)
+                        && !hand_import_addition_allowed(rel_path, module, sym, &removed)
+                    {
+                        return true;
+                    }
                 }
             }
         }
     }
     false
+}
+
+fn hand_import_is_enrollment_bootstrap_path(rel_path: &str) -> bool {
+    // Mirrors tools.hand_import_gate.hand_import_gate_enrollment_bootstrap_paths (review 43619).
+    matches!(rel_path, "dag/tools/hand_import_ci_gate.dag")
+}
+
+fn hand_import_is_enrollment_symbol_carve_out(module: &str, sym: &str) -> bool {
+    // Mirrors tools.hand_import_gate.hand_import_gate_enrollment_symbol_carve_outs (review 43619).
+    matches!(
+        (module, sym),
+        ("gunbc.ci_gate", "HandImportGate")
+            | ("tools.hand_import_ci_gate", "run_hand_import_ci_gate")
+    )
+}
+
+fn hand_import_collect_removed_symbols(
+    base_imports: &HashMap<String, std::collections::BTreeSet<String>>,
+    head_imports: &HashMap<String, std::collections::BTreeSet<String>>,
+) -> std::collections::BTreeSet<String> {
+    let mut removed = std::collections::BTreeSet::new();
+    for (module, base_syms) in base_imports {
+        let head_syms = head_imports.get(module);
+        for sym in base_syms {
+            if head_syms.is_none_or(|hs| !hs.contains(sym)) {
+                removed.insert(sym.clone());
+            }
+        }
+    }
+    removed
+}
+
+fn hand_import_addition_allowed(
+    rel_path: &str,
+    module: &str,
+    sym: &str,
+    removed: &std::collections::BTreeSet<String>,
+) -> bool {
+    if hand_import_is_enrollment_bootstrap_path(rel_path) {
+        return true;
+    }
+    if hand_import_is_enrollment_symbol_carve_out(module, sym) {
+        return true;
+    }
+    // Same-file cross-module import move: symbol dropped from one block and added elsewhere.
+    removed.contains(sym)
+}
+
+fn hand_import_file_has_additions(rel_path: &str, base_ref: &str) -> bool {
+    hand_import_file_has_disallowed_additions(rel_path, base_ref)
 }
 
 fn hand_import_git_show(rel_path: &str, rev: &str) -> Option<String> {
