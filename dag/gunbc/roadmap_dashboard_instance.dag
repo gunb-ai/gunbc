@@ -34,6 +34,7 @@ type DashboardProviderStateBinding
 type HostDashboardInstance {
   instance_id: NonEmptyStr
   host_identity: NonEmptyStr
+  provision_parent_root: FilePath
   instance_root: FilePath
   local_origin_root: FilePath
   local_origin_publish_ref: NonEmptyStr
@@ -57,8 +58,8 @@ data srv1_dashboard_live_id: NonEmptyStr = "srv1-live" as NonEmptyStr
 data srv1_dashboard_lab_id: NonEmptyStr = "srv1-lab-codex-feedback-v0" as NonEmptyStr
 data srv2_dashboard_preview_id: NonEmptyStr = "srv2-preview-codex-feedback-v0" as NonEmptyStr
 
-data srv1_dashboard_lab_root: FilePath = "/home/briansrls/.local/share/gunbc/dashboard-instances/codex-provider-feedback-v0" as FilePath
-data srv2_dashboard_preview_root: FilePath = "/home/briansrls/.local/share/gunbc/dashboard-instances/codex-provider-feedback-preview-v0" as FilePath
+data srv1_dashboard_lab_root: FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0" as FilePath
+data srv2_dashboard_preview_root: FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-preview-v0" as FilePath
 data dashboard_feedback_controller_repo: FilePath = "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath
 
 fn dashboard_instance_child(root: FilePath, child: String) -> FilePath {
@@ -145,6 +146,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
   HostDashboardInstance {
     instance_id: srv1_dashboard_live_id,
     host_identity: "srv1" as NonEmptyStr,
+    provision_parent_root: "/opt/gunbc" as FilePath,
     instance_root: "/opt/gunbc" as FilePath,
     local_origin_root: srv1_gunbc_repo_root,
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
@@ -178,6 +180,7 @@ fn isolated_dashboard_instance(
   HostDashboardInstance {
     instance_id: instance_id,
     host_identity: host_identity,
+    provision_parent_root: "/home/briansrls/.local/share" as FilePath,
     instance_root: root,
     local_origin_root: dashboard_instance_child(root: root, child: "origin.git"),
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,

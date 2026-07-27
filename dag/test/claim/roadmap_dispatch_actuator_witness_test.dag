@@ -219,7 +219,7 @@ test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool 
   let tmux_wire = join(commands.tmux_spawn.args, separator: "\0")
   string_contains(
     s: git_wire,
-    pattern: "/home/briansrls/.local/share/gunbc/dashboard-instances/codex-provider-feedback-v0/attempts/ts-dispatch-provider-events-afeedfacefeedface",
+    pattern: "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempts/ts-dispatch-provider-events-afeedfacefeedface",
   )
     && string_contains(s: git_wire, pattern: "\0origin/main")
     && starts_with(

@@ -47,9 +47,10 @@ import gunbc.roadmap_dashboard_instance {
 test fn dashboard_instance_paths_move_as_one_owned_root() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   dashboard_instance_paths_are_owned(instance: lab)
-    && lab.repo_root == "/home/briansrls/.local/share/gunbc/dashboard-instances/codex-provider-feedback-v0/source"
-    && lab.dispatch_worktree_root == "/home/briansrls/.local/share/gunbc/dashboard-instances/codex-provider-feedback-v0/attempts"
-    && lab.local_origin_root == "/home/briansrls/.local/share/gunbc/dashboard-instances/codex-provider-feedback-v0/origin.git"
+    && lab.provision_parent_root == "/home/briansrls/.local/share"
+    && lab.repo_root == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/source"
+    && lab.dispatch_worktree_root == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempts"
+    && lab.local_origin_root == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/origin.git"
 }
 
 test fn dashboard_lab_and_production_owned_paths_are_disjoint() -> Bool {
@@ -271,7 +272,7 @@ test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
       anchor_ref,
     } =>
       controller_repo == dashboard_feedback_controller_repo
-        && staged_bundle == "/home/briansrls/.local/share/gunbc/dashboard-instances/codex-provider-feedback-v0/inbox/source.bundle"
+        && staged_bundle == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/inbox/source.bundle"
         && anchor_ref == "refs/heads/session/codex-provider-feedback-v0"
     _ => false
   })

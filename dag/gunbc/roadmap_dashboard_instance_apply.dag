@@ -848,6 +848,39 @@ fn dashboard_missing_target_executables(
   )
 }
 
+type DashboardBootstrapPreflight
+  = DashboardBootstrapReady { bootstrap_root: FilePath }
+  | DashboardBootstrapRefused {
+      bootstrap_root: FilePath,
+      reason: NonEmptyStr,
+    }
+
+fn dashboard_bootstrap_preflight_decision(
+  instance: HostDashboardInstance,
+  root_present: Bool,
+  bootstrap_present: Bool,
+  bootstrap_writable: Bool,
+) -> DashboardBootstrapPreflight {
+  let bootstrap_root = if root_present {
+    instance.instance_root
+  } else {
+    instance.provision_parent_root
+  }
+  if !bootstrap_present {
+    DashboardBootstrapRefused {
+      bootstrap_root: bootstrap_root,
+      reason: "nearest modeled bootstrap parent is absent" as NonEmptyStr,
+    }
+  } else if !bootstrap_writable {
+    DashboardBootstrapRefused {
+      bootstrap_root: bootstrap_root,
+      reason: "nearest modeled bootstrap parent is not writable" as NonEmptyStr,
+    }
+  } else {
+    DashboardBootstrapReady { bootstrap_root: bootstrap_root }
+  }
+}
+
 fn dashboard_instance_apply_preflight(
   instance: HostDashboardInstance,
   production: HostDashboardInstance,
@@ -869,6 +902,40 @@ fn dashboard_instance_apply_preflight(
         detail: join(["production read-back refused: ", production_read.detail], ""),
       )
     } else {
+      let root_present = dashboard_target_directory_present(
+        instance: instance,
+        path: instance.instance_root,
+      )
+      let bootstrap_root = if root_present {
+        instance.instance_root
+      } else {
+        instance.provision_parent_root
+      }
+      let bootstrap = dashboard_bootstrap_preflight_decision(
+        instance: instance,
+        root_present: root_present,
+        bootstrap_present: dashboard_target_directory_present(
+          instance: instance,
+          path: bootstrap_root,
+        ),
+        bootstrap_writable: dashboard_target_path_present(
+          instance: instance,
+          flag: "-w",
+          path: bootstrap_root,
+        ),
+      )
+      match bootstrap {
+        DashboardBootstrapRefused { bootstrap_root: refused_root, reason } =>
+          dashboard_apply_preflight_refused(
+            instance: instance,
+            step: "instance-bootstrap-parent",
+            detail: join([
+              reason as String,
+              ": ",
+              refused_root as String,
+            ], ""),
+          )
+        DashboardBootstrapReady { bootstrap_root: _ } =>
       match instance.source_seed {
         DashboardExistingRepo { anchor_ref: _ } =>
           dashboard_apply_preflight_refused(
@@ -957,6 +1024,7 @@ fn dashboard_instance_apply_preflight(
             }
           }
         }
+      }
       }
     }
   }

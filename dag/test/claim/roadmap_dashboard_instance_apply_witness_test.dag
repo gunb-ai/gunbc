@@ -34,19 +34,23 @@ import gunbc.roadmap_dashboard_instance_apply {
   DashboardApplyPreflightResult,
   DashboardApplyPreflightReady,
   DashboardApplyPreflightRefused,
+  DashboardBootstrapPreflight,
+  DashboardBootstrapReady,
+  DashboardBootstrapRefused,
   dashboard_next_path,
   dashboard_instance_health_url,
   dashboard_health_names_instance,
   dashboard_apply_result_json_value,
   dashboard_source_preflight_decision,
   dashboard_apply_preflight_json_value,
+  dashboard_bootstrap_preflight_decision,
 }
 import extdeps.languages.json.emit { serialize_json }
 
 test fn dashboard_source_transport_argv_is_exact_and_atomic() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let local = "/tmp/dashboard-source.bundle" as FilePath
-  let staged = "/home/briansrls/.local/share/gunbc/dashboard-instances/codex-provider-feedback-v0/inbox/source.bundle" as FilePath
+  let staged = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/inbox/source.bundle" as FilePath
   let next = dashboard_next_path(path: staged)
   shape_git_bundle_create_argv(
     repo: "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath,
@@ -67,7 +71,7 @@ test fn dashboard_source_transport_argv_is_exact_and_atomic() -> Bool {
       remote_path: next,
     ) == [
       "/tmp/dashboard-source.bundle",
-      "srv1:/home/briansrls/.local/share/gunbc/dashboard-instances/codex-provider-feedback-v0/inbox/source.bundle.next",
+      "srv1:/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/inbox/source.bundle.next",
     ]
 }
 
@@ -139,7 +143,7 @@ test fn dashboard_service_is_named_and_scoped_off_production() -> Bool {
       "-s",
       "gunbc-dashboard-srv1-lab-codex-feedback-v0",
       "-c",
-      "/home/briansrls/.local/share/gunbc/dashboard-instances/codex-provider-feedback-v0/source",
+      "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/source",
       "/opt/gunbc/bin/gunbc",
       "serve",
       "--source-root",
@@ -281,6 +285,34 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
     )
 }
 
+test fn dashboard_bootstrap_parent_writability_is_a_preflight_fact() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let ready = dashboard_bootstrap_preflight_decision(
+    instance: lab,
+    root_present: false,
+    bootstrap_present: true,
+    bootstrap_writable: true,
+  )
+  let refused = dashboard_bootstrap_preflight_decision(
+    instance: lab,
+    root_present: false,
+    bootstrap_present: true,
+    bootstrap_writable: false,
+  )
+  let ready_ok = match ready {
+    DashboardBootstrapReady { bootstrap_root } =>
+      bootstrap_root == "/home/briansrls/.local/share"
+    DashboardBootstrapRefused { bootstrap_root: _, reason: _ } => false
+  }
+  let refused_ok = match refused {
+    DashboardBootstrapReady { bootstrap_root: _ } => false
+    DashboardBootstrapRefused { bootstrap_root, reason } =>
+      bootstrap_root == "/home/briansrls/.local/share"
+        && string_contains(s: reason as String, pattern: "not writable")
+  }
+  ready_ok && refused_ok
+}
+
 test fn dashboard_instance_apply_model_keystone_holds() -> Bool {
   dashboard_source_transport_argv_is_exact_and_atomic()
     && dashboard_local_origin_ref_translation_is_exact()
@@ -290,4 +322,5 @@ test fn dashboard_instance_apply_model_keystone_holds() -> Bool {
     && dashboard_plan_is_end_to_end_and_production_disjoint()
     && dashboard_refusal_receipt_is_typed_and_located()
     && dashboard_dirty_controller_source_refuses_before_apply()
+    && dashboard_bootstrap_parent_writability_is_a_preflight_fact()
 }

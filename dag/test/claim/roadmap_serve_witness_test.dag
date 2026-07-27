@@ -155,7 +155,7 @@ test fn witness_instance_route_names_posture_and_paths() -> Bool {
     && string_contains(s: r.body, pattern: "\"dispatch_base_ref\": \"origin/main\"")
     && string_contains(s: r.body, pattern: "\"desired_provision_plan\": [")
     && string_contains(s: r.body, pattern: "\"kind\": \"materialize-git-bundle\"")
-    && string_contains(s: r.body, pattern: "\"dispatch_worktree_root\": \"/home/briansrls/.local/share/gunbc/dashboard-instances/codex-provider-feedback-preview-v0/attempts\"")
+    && string_contains(s: r.body, pattern: "\"dispatch_worktree_root\": \"/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-preview-v0/attempts\"")
 }
 
 test fn witness_live_table_builds_ready_ten_routes() -> Bool {
