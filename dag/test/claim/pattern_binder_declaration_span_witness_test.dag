@@ -63,13 +63,6 @@ fn alias_binder_start(source: String) -> Int? {
   }
 }
 
-fn shorthand_binder_start(source: String) -> Int? {
-  match source_index(haystack: source, needle: "Boxed { value }".to_string()) {
-    Present { value: start } => Present { value: start + string_length(s: "Boxed { ") }
-    Absent => none
-  }
-}
-
 fn nested_binder_start(source: String) -> Int? {
   match source_index(
     haystack: source,
@@ -103,7 +96,8 @@ test fn parse_direct_bind_uses_binder_token_span() -> Bool {
     source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source.clone())),
     intern_table: empty_intern_table()
   )
-  match parsed.result.module {
+  let parse_result = parsed.result
+  match parse_result.module {
     Present { value: module } =>
       match item_body_named(module: module, name: "direct".to_string()) {
         Present { value: body } =>
@@ -133,7 +127,8 @@ test fn parse_explicit_alias_uses_binder_span_not_label_span() -> Bool {
     source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source.clone())),
     intern_table: empty_intern_table()
   )
-  match parsed.result.module {
+  let parse_result = parsed.result
+  match parse_result.module {
     Present { value: module } =>
       match item_body_named(module: module, name: "aliased".to_string()) {
         Present { value: body } =>
@@ -173,7 +168,8 @@ test fn parse_shorthand_uses_field_label_span() -> Bool {
     source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source.clone())),
     intern_table: empty_intern_table()
   )
-  match parsed.result.module {
+  let parse_result = parsed.result
+  match parse_result.module {
     Present { value: module } =>
       match item_body_named(module: module, name: "shorthand".to_string()) {
         Present { value: body } =>
@@ -208,7 +204,8 @@ test fn parse_nested_bind_uses_innermost_binder_span() -> Bool {
     source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source.clone())),
     intern_table: empty_intern_table()
   )
-  match parsed.result.module {
+  let parse_result = parsed.result
+  match parse_result.module {
     Present { value: module } =>
       match item_body_named(module: module, name: "nested".to_string()) {
         Present { value: body } =>
