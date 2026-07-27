@@ -1433,11 +1433,13 @@ fn hand_import_is_enrollment_bootstrap_path(rel_path: &str) -> bool {
 }
 
 fn hand_import_is_enrollment_symbol_carve_out(module: &str, sym: &str) -> bool {
-    // Mirrors tools.hand_import_gate.hand_import_gate_enrollment_symbol_carve_outs (review 43619).
+    // Mirrors tools.hand_import_gate enrollment + ci-retry capture carve-outs (review 43619).
     matches!(
         (module, sym),
         ("gunbc.ci_gate", "HandImportGate")
             | ("tools.hand_import_ci_gate", "run_hand_import_ci_gate")
+            | ("v2.std.orchestration", "StdoutAndStderr")
+            | ("v2.std.orchestration", "TeeTo")
     )
 }
 
@@ -1592,6 +1594,50 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
         let head_syms = head_imports.get("std.disposition").expect("head");
         assert!(!base_syms.contains("NewSym"));
         assert!(head_syms.contains("NewSym"));
+    }
+
+    #[test]
+    fn hand_import_enrollment_carve_out_allows_hand_import_gate_symbol() {
+        let base_imports =
+            hand_import_parse_imports(r#"import gunbc.ci_gate { Gate, EmitHostGate }"#);
+        let head_imports = hand_import_parse_imports(
+            r#"import gunbc.ci_gate { Gate, EmitHostGate, HandImportGate }"#,
+        );
+        let removed = super::hand_import_collect_removed_symbols(&base_imports, &head_imports);
+        assert!(super::hand_import_addition_allowed(
+            "dag/gunbc/commit_workflow.dag",
+            "gunbc.ci_gate",
+            "HandImportGate",
+            &removed
+        ));
+    }
+
+    #[test]
+    fn hand_import_same_file_move_exempts_cross_module_symbol_shuffle() {
+        let base_imports = hand_import_parse_imports(
+            r#"
+import gunbc.merge_admission_produce { ci_repo_root_shell }
+import v2.workflow.ci_merge_admission_emit {
+  ci_floor_stamp_merge_admission_script,
+}
+"#,
+        );
+        let head_imports = hand_import_parse_imports(
+            r#"
+import gunbc.merge_admission_produce {
+  ci_floor_stamp_merge_admission_script,
+  ci_repo_root_shell,
+}
+import v2.workflow.ci_merge_admission_emit { ci_floor_disposition_marker_init_script }
+"#,
+        );
+        let removed = super::hand_import_collect_removed_symbols(&base_imports, &head_imports);
+        assert!(super::hand_import_addition_allowed(
+            "dag/gunbc/ci_spec.dag",
+            "gunbc.merge_admission_produce",
+            "ci_floor_stamp_merge_admission_script",
+            &removed
+        ));
     }
 }
 
