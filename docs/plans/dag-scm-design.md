@@ -104,6 +104,7 @@ Unknown alignment stays unknown.
 
 A native proposal should eventually carry, by reuse of existing substrate concepts:
 
+- the authoritative target it proposes to advance;
 - the exact accepted parent state it was authored against;
 - the modeled transformation—what facts or relations it proposes to change;
 - explicit preconditions and postconditions the author relies on;
@@ -123,19 +124,26 @@ the detective work a later three-way merge must redo.
 
 ### Native history
 
-The authoritative history can be a linear sequence of accepted transitions:
+Authority is **target-scoped**, not a property of a branch name. A project may have a primary
+target, supported-release targets, or another explicitly admitted target, but each target has one
+current accepted state and each proposal names exactly one target. `main` is one possible Git
+projection of that role; checking out or receiving another ref does not make it an authority.
+
+The authoritative history for one target can be a linear sequence of accepted transitions:
 
 ```text
-accepted state S_n
-  + proposed transformations authored against known parents
+target T at accepted state S_n
+  + explicitly selected transformations authored against known parents
   + current evidence and admission policy
   -> accepted transition receipt R_(n+1)
-  -> accepted state S_(n+1)
+  -> target T at accepted state S_(n+1)
 ```
 
 Workspaces may be concurrent, but branches and merge commits are not fundamental. A workspace is a
-sandbox containing pending proposals. Acceptance records one exact parent, the applied
-transformation set, the resulting state hash, and the evidence/receipts that grounded it.
+sandbox containing pending proposals. Its construction history is evidence, not accepted history.
+Acceptance records the target, exact accepted predecessor, each proposal's authored parent, the
+applied transformation set, the resulting state hash, and the evidence/receipts that grounded it.
+Git commits and trees are a third thing: compatibility projections of those facts.
 
 This is not “last writer wins with a nicer log.” Before a stale-parent proposal can advance current
 state, the system re-evaluates its transformation against current modeled state. Arrival order is
@@ -148,6 +156,86 @@ authored parent remains necessary causal evidence; the operation is replayed and
 new state. Three-way comparison remains necessary at a **lower-fidelity import/capture boundary**
 where only base, left endpoint, and right endpoint survived.
 
+No wall-clock fact supplies semantic order. Commit time, authoring time, upload time, observation
+time, queue position, and “objectively arrived first” may be retained as audit or performance
+evidence, but cannot rank proposals or recover intent. A transition precedes another because an
+authorized receipt names its accepted predecessor; one proposal depends on another only through an
+explicit parent/dependency edge. A declared domain-time contract may decide whether evidence is
+fresh enough to use, but never turns chronology into proposal priority.
+
+### Deduction contract — one fold, not an interaction catalog
+
+Native integration is one general reconciliation operation over modeled facts, not a growing
+dispatch table for “rename versus call,” “move versus edit,” or every future pair of language
+features. Conceptually:
+
+```text
+obligations =
+  fold(selected proposal set, empty, compose grounded obligations)
+
+candidates =
+  derive(accepted target state, current observations, obligations, admission contract)
+
+outcome =
+  classify(minimal admissible candidates)
+```
+
+The proposal fold accumulates transformations and obligations; it does **not** apply a list in
+arrival order. Its compatible region must compose associatively and commutatively. Failure to
+compose is evidence for `Contradictory`, `Ambiguous`, or `Unknown`, never a reason to add a
+first-arrival branch.
+
+Safety, explicit obligations, grounding, and the required evidence grade are admission conditions,
+not weighted preferences. A cheaper result cannot buy permission to violate one. Among candidates
+that meet those conditions, preserve every fact whose change is not grounded, then use the
+declared cost order to eliminate only strictly dominated realizations. If several materially
+different candidates remain equivalent or incomparable, no hidden weight represents “what users
+usually mean”: the answer is `Ambiguous`.
+
+New models participate by contributing their ordinary facts, relations, claims, effects,
+equivalence, bounds, and costs to this fold. They do not add cases to a central SCM switch. The
+worked examples below are discriminating inputs for the same operation, not its implementation
+branches. If adding a language concept requires editing the integrator rather than supplying facts
+through a shared authority, the missing work is a model/algebra seam to ground—not a twentieth-year
+special case to preserve.
+
+### Closedness and humility — more information is not omniscience
+
+Daglang's advantage is information density: types, bindings, containment, effects, claims,
+resource bounds, dependency closure, and execution receipts can all be premises that Git does not
+have. That supports more deductions; it does not grant permission to infer an unexpressed premise.
+
+> A modeled fact `X` licenses consequences of `X`. It does not prove that no relevant, unmodeled
+> fact `Y` exists.
+
+The change set is closed in one useful sense: every accepted result change must be grounded in an
+admitted proposal or declared canonicalization. The world of relevant meaning is not automatically
+closed merely because the program typechecks. A closed coproduct closes its declared axis; a
+derived affected/dependency closure closes only the relation and bound its evidence names; a
+lossless surface closes only its declared construct set. `Applied` therefore requires a
+closedness/completeness witness for the **specific admission contract**, not a claim that all user
+intent or all program behavior has been modeled. If a potentially relevant axis, dependency,
+effect, capture fragment, or proof bound is missing, the result is `Unknown` at that evidence
+grade.
+
+This is also how the model can evolve without making old confidence implicit. An admission receipt
+names the model/contract inputs and closedness evidence it relied on. Adding a relevant model fact
+invalidates the affected receipt and causes re-evaluation; absence in the older model never becomes
+negative evidence by inertia.
+
+Two live repo precedents carry the same epistemic rule:
+
+- `gunbc.os_install_deduction` carries an attested `observed_at` timestamp, but the timestamp does
+  not strengthen the runtime verdict. Even a visible login prompt yields
+  `KvmSuggestsOsBooted`, not `RuntimeOsInstalled`; the stronger conclusion is reserved for
+  independent read-back evidence.
+- `gunbc.membership_reconcile` turns a removed member with absent ownership evidence into
+  `MemberTeardownRefused { cause: OwnershipUnknown }`. There is no effect arm that can reinterpret
+  “ownership was not modeled” as permission to destroy the member.
+
+These are precedents for the evidence discipline, not claims that source integration is an
+OS-install or membership-diff algorithm.
+
 ## 5. The integration result — four honest outcomes
 
 Illustrative result shape (roles only):
@@ -157,6 +245,7 @@ IntegrationOutcome<Result, Evidence, Question>
   = Applied {
       result,
       grounding_evidence,
+      scope_and_closedness_evidence,
       no_extra_change_evidence,
       reusable_validation_receipts
     }
@@ -173,15 +262,17 @@ IntegrationOutcome<Result, Evidence, Question>
     }
 ```
 
-- **Applied** means the result satisfies every admitted proposal and required obligation, adds no
-  ungrounded change except declared canonicalization, and is unique up to the declared equivalence
-  for this admission contract.
-- **Contradictory** means no result can satisfy the joint obligations. Return a minimal
-  incompatible core and a witness, not a broad conflict region.
+- **Applied** means the relevant candidate/evidence scope is closed for the admission contract and
+  exactly one result equivalence class satisfies every admitted proposal and required obligation,
+  adds no ungrounded change except declared canonicalization, and survives the declared cost order.
+- **Contradictory** means a closed admission problem proves that no result can satisfy the joint
+  obligations. Return a minimal incompatible core and a witness, not a broad conflict region.
 - **Ambiguous** means more than one materially distinct result is valid and the model contains no
   authority for choosing among them. Return the alternatives and the smallest normative choice.
-- **Unknown** means the model, alignment, fidelity, or bound is insufficient to establish any of
-  the other outcomes. It is neither “probably safe” nor “everything conflicts.”
+- **Unknown** means candidate closedness, model, alignment, fidelity, observation, or bound is
+  insufficient to establish another outcome. Finding one plausible candidate without proving the
+  relevant scope closed is still `Unknown`; it is neither “probably safe” nor “everything
+  conflicts.”
 
 The admission policy states the evidence grade it requires. A structurally universal result must
 not be presented as behaviorally safe; a behaviorally bounded result must name its bound. If the
@@ -201,8 +292,12 @@ For proposals admitted as jointly compatible, integration should be:
 - **grounded:** every result change traces to an admitted proposal or declared canonicalization;
 - **minimal/universal:** every admitted change appears exactly once and no other semantic change
   appears;
+- **closedness-qualified:** uniqueness is claimed only over the candidate/evidence scope proven
+  complete for the declared admission contract;
 - **exact-parent checked:** replay states what changed since authoring and never applies against an
   assumed parent;
+- **metadata-inert:** erasing or permuting incidental timestamps, arrival metadata, queue order,
+  or object identifiers cannot change the semantic outcome;
 - **order-honest:** order dependence yields `Ambiguous`, `Contradictory`, or `Unknown` unless an
   explicit policy makes that order part of intent; and
 - **fail-closed:** missing alignment, fidelity, or proof never widens into an automatic result.
@@ -364,12 +459,16 @@ The first modeling pass must try to compose these authorities:
 | `gunbc.roster_registry.GroupMembership` | how membership in a group of units is known | provenance of membership, not yet the whole integration value |
 | `std.change.keyed_two_way_diff` | exact keyed endpoint observation | observes change; does not infer or reconcile peer proposals |
 | `std.change.keyed_three_way_fold` | conservative base/observed/desired reconciliation | asymmetric desired-state/infrastructure shape; key overlap currently collapses to conflict |
-| `gunbc.membership_reconcile` | one generic desired-vs-observed fold with stable member identity | infrastructure convergence, not concurrent author intent |
+| `gunbc.membership_reconcile` | one generic desired-vs-observed fold with stable member identity and an un-emittable ownership-unknown arm | infrastructure convergence and an epistemic precedent, not concurrent author intent |
+| `v2.std.find_witness.CandidateSet` + `UniqueOnly` | finite closed candidate selection with no/unique/ambiguous outcomes | supplied structural candidates only; does not generate the SCM candidate space or prove behavioral completeness |
+| `v2.std.constraints.ConstraintGraph` + `solve_constraints` | existing structural “find what satisfies” authority | extend/compose after DFS; do not mint an SCM-local solver nickname |
 | `std.realization_reconcile` | apply → read-back → grounding evidence | receipt shape, not source integration semantics |
 | `std.temporal_effect` | exact snapshots, intent hashes, idempotency, prior receipts, generations | effect-attempt vocabulary; do not rename it into generic source intent |
 | `std.computation_identity` | structural/normalized/bounded-extensional evidence plus typed unknown | identity evidence, not user-intent identity |
 | `std.perturbation` | response to changed inputs | a building block for bounded noninterference evidence |
 | `std.realization.Independence` | `Independent | Dependent | Unknown` | currently effect-shape-specific and deliberately coarse |
+| `std.pareto` + `std.realization_schedule.CostAccount` | dominance without hidden scalar weights; grounded time/space/power accounting | may prune strictly dominated safe candidates; cannot trade cost for safety or choose between incomparable intents |
+| `gunbc.os_install_deduction` | evidence-graded deduction where timestamps remain provenance and weak observations stay weak | domain-specific precedent, not an SCM outcome or solver |
 | `v2.compiler.source_authority` + `DecodeFidelity` | ingest/emit authority and honesty boundary | only lossless fragments may recover exact proposals |
 | affected-set and materialization lanes | dependency-scoped validation and content-keyed receipt reuse | selection/caching must not decide semantic compatibility |
 | `extdeps.git` + `extdeps.git.object_store` | cited Git operation, object, tree, commit, ref, and diff interface shapes | external compatibility authority; Git transport/policy and source integration stay separate |
@@ -380,26 +479,45 @@ algorithm” to “one observation/capture engine.” In particular, the storage
 same-key refusal is the safe adapter available **before** semantic integration lands; it is not a
 proof that same-key proposals are contradictory.
 
+The same anti-fork rule applies to “deduction.” The first implementation must determine how the
+existing finite-candidate, structural-constraint, Pareto, closure, and diagnostic authorities
+compose. It must not land a generic `ScmSolver`, `ReconciliationConstraint`, or interaction-rule
+registry beside them merely because the SCM is the first demanding consumer.
+
 ## 9. Admission and CI — linear history without serial work
 
 The native fast path:
 
-1. Read accepted state `S_n` and its validation receipts.
-2. Author a modeled transformation directly, or capture one from a declared lossless surface.
-3. Derive the affected group and required claims.
-4. Evaluate the proposal with any concurrently pending proposals against current accepted state.
-5. Reuse receipts whose content-addressed dependency inputs are unchanged; validate only newly
+1. Read target `T` at accepted state `S_n`, its admission contract, and validation receipts.
+2. Observe required current facts with explicit authority/fidelity; missing observation stays
+   missing.
+3. Author a modeled transformation directly, or capture one from a declared lossless surface.
+4. Select and record the proposal set at an explicit admission frontier. An authorized actor or
+   declared policy may select it; transport arrival, timestamps, and scheduler iteration may not.
+5. Derive the affected group and required claims, then fold the selected proposals into grounded
+   obligations.
+6. Derive and classify minimal admissible candidates against `S_n`.
+7. Reuse receipts whose content-addressed model/contract/dependency inputs are unchanged; validate
+   only newly
    affected obligations.
-6. Append one accepted transition if `Applied`, or return the smallest
+8. If `Applied`, atomically advance `T` only while its current state is still `S_n`; otherwise
+   restart from step 1. For any other outcome, return the smallest
    `Contradictory`/`Ambiguous`/`Unknown` handoff.
-7. Project the new state to all declared surfaces, including Git.
+9. Project the new state to all declared surfaces, including Git.
 
 Linear accepted history does not imply serial validation. Compatible proposals and their affected
 claims can evaluate in parallel; the acceptance log serializes receipts only after their
 commutativity and current-parent conditions are established.
 
+The frontier solves a finite coordination question without pretending to know the future. A
+proposal not yet observed cannot block progress. But if two known proposals are order-dependent,
+automatically accepting whichever the scheduler happened to visit first would itself be a
+normative choice. Once an authorized acceptance advances `T`, its receipt—not its timestamp—makes
+the result the authoritative prior for later proposals.
+
 This is the direct answer to green-then-main-advanced CI waste. A receipt should be keyed by the
-actual modeled inputs of the claim, not by “the whole branch is still at this SHA.” If main
+actual modeled inputs of the claim, including any closedness evidence, not by “the whole branch is
+still at this SHA.” If the target
 advances outside those inputs, the green receipt remains grounded. If it advances inside them, the
 system revalidates the affected claim before acceptance. A blanket rerun is an `Unknown`/modeling
 deficit, not a silent “fail-closed” success.
@@ -466,6 +584,16 @@ The idea is interesting because agent concurrency changes the economics of sourc
 compounding compute/latency/token cost. Daglang has unusually rich evidence available because the
 program, claims, compiler, affected set, and execution model can share one substrate.
 
+The product advantage is therefore not “the language knows what the user meant.” It is:
+
+> **More modeled information produces more mechanical deductions, while every missing closure,
+> fidelity, or normative fact remains visible as `Unknown` or `Ambiguous`.**
+
+The user-facing operation stays simple: reconcile proposals and observations against the accepted
+target, apply the unique safe minimal result when it is grounded, and otherwise ask the smallest
+question. The internal model can deepen for decades without turning that operation into a catalog
+of language-feature interactions.
+
 The initial wedge is narrow and credible:
 
 - teams running many coding agents against the same modeled monorepo;
@@ -510,9 +638,15 @@ designs:
 | formatting/reorder/file move, same graph | large textual diff | semantic no-op; storage/projection change only |
 | lossy Git import | plausible inferred delta | `Unknown`/`AmbiguousRecovery`, never exact-intent claim |
 | absent required behavioral bound | structurally clean | structural evidence only; admission `Unknown` if behavior is required |
+| identical facts/proposals with timestamps and arrival order permuted | first/last arrival often becomes operational order | identical native outcome and result evidence |
+| one plausible result but relevant candidate/dependency closure unproved | clean-looking candidate | `Unknown`, never “unique because nothing else was modeled” |
+| new modeled invariant contributed through the shared claim relation | new merge-driver case | outcome changes through the same fold; no integrator branch changes |
 
 Every `Applied` case needs a perturbation that makes one obligation false and turns the outcome
 red. Every refusal needs a nearby compatible control, so “always refuse” cannot satisfy the suite.
+The timestamp case must permute and erase incidental time metadata. The model-extension case must
+add its invariant as data while holding the reconciliation implementation fixed; otherwise the
+claimed general algorithm has become a disguised interaction registry.
 
 Git's default merge, the current keyed-diff adapter, and at least one structural merge baseline
 should run on the same corpus. The comparison is evidence, not the design authority.
@@ -525,22 +659,28 @@ does not wait for a native store:
 1. **Visibility Stage 0 (already first):** `Publish`/`Reference` model, public/private Git roots,
    file-grain declarations, push guard, and existing-public-corpus stamp.
 2. **P0 — cost and scenario model:** carry the agent/CI stress profile, the four outcome roles,
-   evidence rungs, and the scenario corpus as `.dag` facts/witnesses after concept DFS.
+   target scope, candidate closedness, evidence rungs, timestamp non-authority, and the scenario
+   corpus as `.dag` facts/witnesses after concept DFS.
    **Accept T1:** every scenario produces its named outcome; compatible/incompatible RED controls
-   prevent always-apply and always-refuse.
-3. **P1 — pure source integration fold:** integrate directly authored transformations over a small
-   modeled program, using group-membership provenance and existing identity/change/evidence
-   carriers.
-   **Accept T1:** idempotence, compatible commutativity/associativity, grounding, and
-   order-dependence witnesses execute.
+   prevent always-apply and always-refuse; timestamp/arrival permutations cannot change a semantic
+   verdict, while removal of required closedness evidence changes `Applied` to `Unknown`.
+3. **P1 — pure source integration fold:** one generic fold integrates directly authored
+   transformations over a small modeled program, using group-membership provenance and existing
+   constraint/witness/identity/change/evidence/Pareto carriers. Scenarios supply facts; they do not
+   add fold arms.
+   **Accept T1:** idempotence, compatible commutativity/associativity, grounding,
+   order-dependence, and no-extra-change witnesses execute; adding a new invariant through the
+   shared claim relation changes its scenario outcome without editing the fold.
 4. **P2 — lossless authoring capture:** one daglang surface recovers the same transformation as
    direct submission.
    **Accept T2:** edit → ingest → proposal → integrate → emit round-trips; a lossy edit refuses
    without mutation.
-5. **P3 — exact-parent admission + receipt reuse:** pending proposals re-evaluate against current
-   accepted state; affected validation receipts survive unrelated advances.
+5. **P3 — target-scoped atomic admission + receipt reuse:** pending proposals re-evaluate against
+   the target's current accepted state; an explicit frontier selects known proposals; affected
+   validation receipts survive unrelated advances.
    **Accept T2/T3:** two real concurrent proposals accept without full CI replay; a changed required
-   input invalidates the receipt and reds before acceptance.
+   input or closedness/model authority invalidates the receipt and reds before acceptance; a
+   compare-and-advance race re-evaluates rather than mutating a stale target.
 6. **P4 — Git compatibility realization:** import an ordinary Git branch/PR with fidelity, export
    accepted transitions as ordinary squash/one-parent commits.
    **Accept T3:** unmodified Git clone/build works; native metadata removal lowers evidence but
@@ -559,6 +699,10 @@ consumer and a discriminating red.
 
 - Mind-reading or claiming certainty about unexpressed intent.
 - Reducing conflict count by silently choosing a plausible result.
+- A weighted “likely intent” score, timestamp/arrival tie-break, or pairwise interaction catalog
+  standing where the general reconciliation fold and an honest ambiguity belong.
+- Claiming the modeled program is globally complete; every automatic result is scoped to explicit
+  closedness, fidelity, equivalence, and proof bounds.
 - Making node identity, module identity, a file path, or a universal durable entity ID the
   definition of compatibility.
 - Replacing Git hosting, object storage, or forge UI before the integration consumer proves value.
