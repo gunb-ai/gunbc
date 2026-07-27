@@ -7,6 +7,8 @@ import std.render { RenderCapability, Overwrite, Append, Clear }
 import std.perturbation { BackwardDiffInDiffOut, perturbation_consistent }
 import extdeps.render.ansi {
   ansi_c0_controls,
+  ansi_c1_controls,
+  ansi_terminal_controls,
   ansi_escape,
   ansi_carriage_return,
   ansi_line_feed,
@@ -64,7 +66,7 @@ type TerminalControlScan {
 
 fn terminal_control_scan() -> TerminalControlScan {
   let roster_scan = fold(
-    ansi_c0_controls,
+    ansi_terminal_controls,
     init: TerminalControlScan {
       next_index: 0,
       first_failure: -1,
@@ -188,7 +190,9 @@ test fn w_rendered_text_cannot_smuggle_cursor_control_bytes() -> Bool {
   scan.carriage_return_refuses &&
   scan.line_feed_refuses &&
   scan.escape_refuses &&
-  scan.next_index == 33 &&
+  ansi_c0_controls.count() == 33 &&
+  ansi_c1_controls.count() == 32 &&
+  scan.next_index == 65 &&
   scan.first_failure == -1
 }
 

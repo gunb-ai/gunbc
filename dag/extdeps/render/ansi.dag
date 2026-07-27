@@ -54,12 +54,52 @@ data ansi_c0_controls: List<String> = [
   "\x7f",
 ]
 
+data ansi_c1_controls: List<String> = [
+  "\u{0080}",
+  "\u{0081}",
+  "\u{0082}",
+  "\u{0083}",
+  "\u{0084}",
+  "\u{0085}",
+  "\u{0086}",
+  "\u{0087}",
+  "\u{0088}",
+  "\u{0089}",
+  "\u{008a}",
+  "\u{008b}",
+  "\u{008c}",
+  "\u{008d}",
+  "\u{008e}",
+  "\u{008f}",
+  "\u{0090}",
+  "\u{0091}",
+  "\u{0092}",
+  "\u{0093}",
+  "\u{0094}",
+  "\u{0095}",
+  "\u{0096}",
+  "\u{0097}",
+  "\u{0098}",
+  "\u{0099}",
+  "\u{009a}",
+  "\u{009b}",
+  "\u{009c}",
+  "\u{009d}",
+  "\u{009e}",
+  "\u{009f}",
+]
+
+data ansi_terminal_controls: List<String> = concat(
+  ansi_c0_controls,
+  ansi_c1_controls
+)
+
 fn ansi_erase_entire_line() -> String {
   concat(csi_esc, "2K")
 }
 
 fn ansi_text_contains_terminal_control(text: String) -> Bool {
-  fold(ansi_c0_controls, init: false, f: (found, control) =>
+  fold(ansi_terminal_controls, init: false, f: (found, control) =>
     found || string_contains(s: text, pattern: control)
   )
 }
