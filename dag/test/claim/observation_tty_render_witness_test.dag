@@ -4,7 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, Bool, List }
 import std.nat { Nat }
 import std.symbols { Tier, Emoji, Ascii, Spinner0, StatusBlocked, StatusFinal }
-import std.measure { millisecond, byte_size, basis_point }
+import std.measure { millisecond, millisecond_to_nanosecond, byte_size, basis_point }
 import std.render { CursorAction, Overwrite, Append, RenderCapability }
 import std.observation {
   ObservationSubject,
@@ -97,7 +97,9 @@ test fn w_refusal_never_repaints_away() -> Bool {
   let refusal = ObservationEvent {
     subject: tty_entry_subject(),
     transition: Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as NonEmptyStr } },
-    wall: MeasuredValue { value: millisecond(count: 2472000) },
+    wall: MeasuredValue {
+      value: millisecond_to_nanosecond(m: millisecond(count: 2472000))
+    },
     rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
   }
   let emission = tty_event_emission(event: refusal, basis: tty_basis(), cap: tty_cap())
@@ -109,7 +111,9 @@ test fn w_same_event_drives_both_surfaces() -> Bool {
   let event = ObservationEvent {
     subject: tty_entry_subject(),
     transition: Concluded { outcome: Done },
-    wall: MeasuredValue { value: millisecond(count: 230) },
+    wall: MeasuredValue {
+      value: millisecond_to_nanosecond(m: millisecond(count: 230))
+    },
     rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
   }
   let emission = tty_event_emission(event: event, basis: tty_basis(), cap: tty_cap())
@@ -159,4 +163,3 @@ test fn w_final_with_failures_names_them_and_is_anomaly() -> Bool {
   string_contains(s: line.text, pattern: "3 problems shown") &&
   line.attention == Anomaly
 }
-
