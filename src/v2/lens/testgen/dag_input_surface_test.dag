@@ -20,18 +20,12 @@ import v2.std.algebra { any, for_all, length }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
   ManualLbeConjDagSurface,
   TestClaimCompilesClaimVariant,
   TestClassification,
-  TestClaim,
   Tier1,
   Unit,
-  manual_claim_anchor,
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
+  manual_claim_anchor
 }
 import v2.test.manual.connective_anchors {
   stub_empty_conj,

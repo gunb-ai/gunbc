@@ -1007,21 +1007,4 @@ test fn umbrella_holds() -> Bool {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
-
-    #[test]
-    fn corpus_orphan_list_tmp() {
-        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let ws = root.join("../../..").canonicalize().unwrap();
-        let roots = vec![
-            ws.join("src/v2").to_string_lossy().into_owned(),
-            ws.join("dag").to_string_lossy().into_owned(),
-        ];
-        match check_orphan_helpers_or_err(&roots) {
-            Ok(()) => println!("ORPHAN_COUNT=0"),
-            Err(e) => {
-                println!("ORPHAN_ERR\n{e}");
-                panic!("still orphans");
-            }
-        }
-    }
 }
