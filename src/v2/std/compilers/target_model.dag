@@ -9108,71 +9108,6 @@ data target_representation_kind_hash_set: Symbol = ^target_representation_kind_h
 data target_representation_kind_vec: Symbol = ^target_representation_kind_vec
 data target_representation_field_apply: Symbol = ^target_representation_field_apply
 
-fn target_generic_apply_key_node(apply: TargetGenericApply) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: ^target_generic_apply_field_surface },
-        target: Node {
-          kind: TypeNode { connective: Atom { identity: apply.surface } },
-          children: [],
-          occurrence_id: SyntheticOccurrence
-        }
-      },
-      Edge {
-        label: Named { name: ^target_generic_apply_field_open },
-        target: Node {
-          kind: TypeNode { connective: Atom { identity: apply.open } },
-          children: [],
-          occurrence_id: SyntheticOccurrence
-        }
-      },
-      Edge {
-        label: Named { name: ^target_generic_apply_field_separator },
-        target: Node {
-          kind: TypeNode { connective: Atom { identity: apply.separator } },
-          children: [],
-          occurrence_id: SyntheticOccurrence
-        }
-      },
-      Edge {
-        label: Named { name: ^target_generic_apply_field_field_label_separator },
-        target: match apply.field_label_separator {
-          Present { value: label_separator } => Node {
-            kind: TypeNode { connective: Conj },
-            children: [
-              Edge {
-                label: Named { name: ^target_generic_apply_field_field_label_separator_present },
-                target: Node {
-                  kind: TypeNode { connective: Atom { identity: label_separator } },
-                  children: [],
-                  occurrence_id: SyntheticOccurrence
-                }
-              }
-            ],
-            occurrence_id: SyntheticOccurrence
-          }
-          Absent => Node {
-            kind: TypeNode { connective: Atom { identity: ^target_generic_apply_field_field_label_separator_absent } },
-            children: [],
-            occurrence_id: SyntheticOccurrence
-          }
-        }
-      },
-      Edge {
-        label: Named { name: ^target_generic_apply_field_close },
-        target: Node {
-          kind: TypeNode { connective: Atom { identity: apply.close } },
-          children: [],
-          occurrence_id: SyntheticOccurrence
-        }
-      }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
 type RequiredTraitWitness
   = TargetCollectionWitnessOrd { type_param: Symbol }
   | TargetCollectionWitnessHash { type_param: Symbol }
@@ -9181,6 +9116,7 @@ type RequiredTraitWitness
 type TargetRepresentationChoice {
   form: TargetRepresentation
   constraints: List<RequiredTraitWitness>
+  supplemental_generic_bound_contracts: List<TargetDeriveSupplementalGenericBoundContract>
 }
 
 type TargetTextCarrier {
@@ -9198,7 +9134,6 @@ type TargetCollectionRealization {
 
 type TargetDeriveSupplementalGenericBoundContract {
   source_carrier: Node
-  selected_choice: TargetRepresentationChoice
   derive_trait: ReprGroundingDeriveTrait
   requirements: List<TargetDeriveSupplementalGenericBoundRequirement>
 }
@@ -9259,13 +9194,13 @@ fn target_derive_supplemental_generic_bound_contract_lookup_step(
   }
 }
 
-fn target_derive_supplemental_generic_bound_contract_lookup_in_catalog(
-  catalog: FreeMonoid<TargetDeriveSupplementalGenericBoundContract>,
+fn target_derive_supplemental_generic_bound_contract_lookup_in_choice(
+  choice: TargetRepresentationChoice,
   source_carrier: Node,
   derive_trait: ReprGroundingDeriveTrait
 ) -> Outcome<TargetDeriveSupplementalGenericBoundContract> {
   match fold_list(
-    xs: catalog,
+    xs: choice.supplemental_generic_bound_contracts,
     empty: TargetDeriveSupplementalGenericBoundContractMissing,
     cons: fn(acc, row) {
       target_derive_supplemental_generic_bound_contract_lookup_step(
