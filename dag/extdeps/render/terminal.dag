@@ -141,59 +141,20 @@ type TerminalWriteProjection
 
 data terminal_wire_projection_note: String = "Stateful terminal projection owns every terminal control byte. Callers supply rendered text only; overwrite, append, and clear are projected through the ECMA-48 CSI authority in extdeps.render.ansi. DynamicLineOpen means the previous write deliberately omitted LF and therefore may only be continued by an addressable terminal. A non-addressable capability paired with Open is contradictory and refuses before downgrade. Overwrite downgrades to Append when cursor addressing is absent; Clear becomes a no-op. Clear also requires empty rendered text, making caller-owned control payloads and ambiguous clear-plus-content states unwritable."
 
-fn dynamic_line_is_open(state: DynamicLineState) -> Bool {
-  match state {
-    DynamicLineOpen => true
-    DynamicLineClosed => false
-  }
-}
-
-fn cursor_action_is_clear(action: CursorAction) -> Bool {
-  match action {
-    Clear => true
-    Overwrite => false
-    Append => false
-  }
-}
-
-fn project_terminal_write(
+fn project_terminal_write_admitted(
   prior: DynamicLineState,
   requested: CursorAction,
   capability: RenderCapability,
   rendered: String
 ) -> TerminalWriteProjection {
-  if !capability.cursor_addressable && dynamic_line_is_open(state: prior) {
-    TerminalWriteRefused { cause: "non-addressable terminal cannot continue an open dynamic line" as NonEmptyStr }
+  if ansi_text_contains_terminal_control(text: rendered) {
+    TerminalWriteRefused { cause: "rendered text cannot contain terminal cursor-control bytes" as NonEmptyStr }
   } else {
-    if ansi_text_contains_terminal_control(text: rendered) {
-      TerminalWriteRefused { cause: "rendered text cannot contain terminal cursor-control bytes" as NonEmptyStr }
-    } else if cursor_action_is_clear(action: requested) && rendered != "" {
-      TerminalWriteRefused { cause: "Clear requires empty rendered text" as NonEmptyStr }
-    } else {
-      let action = cursor_action_under(requested: requested, cap: capability)
-      match action {
-        Overwrite =>
-          TerminalWriteProjected {
-            bytes: concat(ansi_carriage_return, concat(ansi_erase_entire_line(), rendered)),
-            next: DynamicLineOpen
-          }
-        Append =>
-          match prior {
-            DynamicLineOpen =>
-              TerminalWriteProjected {
-                bytes: concat(
-                  ansi_carriage_return,
-                  concat(ansi_erase_entire_line(), concat(rendered, ansi_line_feed))
-                ),
-                next: DynamicLineClosed
-              }
-            DynamicLineClosed =>
-              TerminalWriteProjected {
-                bytes: concat(rendered, ansi_line_feed),
-                next: DynamicLineClosed
-              }
-          }
-        Clear =>
+    match requested {
+      Clear =>
+        if rendered != "" {
+          TerminalWriteRefused { cause: "Clear requires empty rendered text" as NonEmptyStr }
+        } else {
           match prior {
             DynamicLineOpen =>
               TerminalWriteProjected {
@@ -203,7 +164,77 @@ fn project_terminal_write(
             DynamicLineClosed =>
               TerminalWriteProjected { bytes: "", next: DynamicLineClosed }
           }
-      }
+        }
+      Overwrite =>
+        match cursor_action_under(requested: Overwrite, cap: capability) {
+          Overwrite =>
+            TerminalWriteProjected {
+              bytes: concat(ansi_carriage_return, concat(ansi_erase_entire_line(), rendered)),
+              next: DynamicLineOpen
+            }
+          Append =>
+            match prior {
+              DynamicLineOpen =>
+                TerminalWriteProjected {
+                  bytes: concat(
+                    ansi_carriage_return,
+                    concat(ansi_erase_entire_line(), concat(rendered, ansi_line_feed))
+                  ),
+                  next: DynamicLineClosed
+                }
+              DynamicLineClosed =>
+                TerminalWriteProjected {
+                  bytes: concat(rendered, ansi_line_feed),
+                  next: DynamicLineClosed
+                }
+            }
+          Clear =>
+            TerminalWriteRefused { cause: "Overwrite cannot project to Clear" as NonEmptyStr }
+        }
+      Append =>
+        match prior {
+          DynamicLineOpen =>
+            TerminalWriteProjected {
+              bytes: concat(
+                ansi_carriage_return,
+                concat(ansi_erase_entire_line(), concat(rendered, ansi_line_feed))
+              ),
+              next: DynamicLineClosed
+            }
+          DynamicLineClosed =>
+            TerminalWriteProjected {
+              bytes: concat(rendered, ansi_line_feed),
+              next: DynamicLineClosed
+            }
+        }
     }
+  }
+}
+
+fn project_terminal_write(
+  prior: DynamicLineState,
+  requested: CursorAction,
+  capability: RenderCapability,
+  rendered: String
+) -> TerminalWriteProjection {
+  match prior {
+    DynamicLineOpen =>
+      if capability.cursor_addressable {
+        project_terminal_write_admitted(
+          prior: prior,
+          requested: requested,
+          capability: capability,
+          rendered: rendered
+        )
+      } else {
+        TerminalWriteRefused { cause: "non-addressable terminal cannot continue an open dynamic line" as NonEmptyStr }
+      }
+    DynamicLineClosed =>
+      project_terminal_write_admitted(
+        prior: prior,
+        requested: requested,
+        capability: capability,
+        rendered: rendered
+      )
   }
 }
