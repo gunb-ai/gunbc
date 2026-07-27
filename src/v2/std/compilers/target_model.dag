@@ -9173,35 +9173,6 @@ fn target_generic_apply_key_node(apply: TargetGenericApply) -> Node {
   }
 }
 
-fn target_representation_key_node(repr: TargetRepresentation) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: ^target_representation_field_kind },
-        target: Node {
-          kind: TypeNode {
-            connective: Atom {
-              identity: match repr.kind {
-                TargetCollectionReprBTreeSet => ^target_representation_kind_btree_set
-                TargetCollectionReprHashSet => ^target_representation_kind_hash_set
-                TargetCollectionReprVec => ^target_representation_kind_vec
-              }
-            }
-          },
-          children: [],
-          occurrence_id: SyntheticOccurrence
-        }
-      },
-      Edge {
-        label: Named { name: ^target_representation_field_apply },
-        target: target_generic_apply_key_node(apply: repr.apply)
-      }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
 type RequiredTraitWitness
   = TargetCollectionWitnessOrd { type_param: Symbol }
   | TargetCollectionWitnessHash { type_param: Symbol }
@@ -9227,7 +9198,7 @@ type TargetCollectionRealization {
 
 type TargetDeriveSupplementalGenericBoundContract {
   source_carrier: Node
-  emitted_representation: TargetRepresentation
+  selected_choice: TargetRepresentationChoice
   derive_trait: ReprGroundingDeriveTrait
   requirements: List<TargetDeriveSupplementalGenericBoundRequirement>
 }
@@ -9268,21 +9239,20 @@ fn target_derive_supplemental_generic_bound_contract_lookup_step(
   acc: TargetDeriveSupplementalGenericBoundContractLookup,
   row: TargetDeriveSupplementalGenericBoundContract,
   source_carrier: Node,
-  emitted_representation: TargetRepresentation,
   derive_trait: ReprGroundingDeriveTrait
 ) -> TargetDeriveSupplementalGenericBoundContractLookup {
-  if content_hash(n: row.source_carrier) == content_hash(n: source_carrier)
-    && content_hash(n: target_representation_key_node(repr: row.emitted_representation))
-      == content_hash(n: target_representation_key_node(repr: emitted_representation))
-    && row.derive_trait == derive_trait
-  {
-    match acc {
-      TargetDeriveSupplementalGenericBoundContractMissing =>
-        TargetDeriveSupplementalGenericBoundContractUnique { row: row }
-      TargetDeriveSupplementalGenericBoundContractUnique { row: _ } =>
-        TargetDeriveSupplementalGenericBoundContractAmbiguous
-      TargetDeriveSupplementalGenericBoundContractAmbiguous =>
-        TargetDeriveSupplementalGenericBoundContractAmbiguous
+  if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
+    if row.derive_trait == derive_trait {
+      match acc {
+        TargetDeriveSupplementalGenericBoundContractMissing =>
+          TargetDeriveSupplementalGenericBoundContractUnique { row: row }
+        TargetDeriveSupplementalGenericBoundContractUnique { row: _ } =>
+          TargetDeriveSupplementalGenericBoundContractAmbiguous
+        TargetDeriveSupplementalGenericBoundContractAmbiguous =>
+          TargetDeriveSupplementalGenericBoundContractAmbiguous
+      }
+    } else {
+      acc
     }
   } else {
     acc
@@ -9292,7 +9262,6 @@ fn target_derive_supplemental_generic_bound_contract_lookup_step(
 fn target_derive_supplemental_generic_bound_contract_lookup_in_catalog(
   catalog: FreeMonoid<TargetDeriveSupplementalGenericBoundContract>,
   source_carrier: Node,
-  emitted_representation: TargetRepresentation,
   derive_trait: ReprGroundingDeriveTrait
 ) -> Outcome<TargetDeriveSupplementalGenericBoundContract> {
   match fold_list(
@@ -9303,7 +9272,6 @@ fn target_derive_supplemental_generic_bound_contract_lookup_in_catalog(
         acc: acc,
         row: row,
         source_carrier: source_carrier,
-        emitted_representation: emitted_representation,
         derive_trait: derive_trait
       )
     }
