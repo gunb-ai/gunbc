@@ -17,7 +17,7 @@ fn w_measure_list_param_preserves_applied_generics() -> Bool {
 
 fn w_zero_param_alias_list_param_unchanged() -> Bool {
   compile_dag_rust_emit_check(
-    "module root4_zero_param_alias\nimport std.measure { ByteSize }\n\nfn witness(spaces: List<ByteSize>) -> List<ByteSize> {\n  spaces\n}\n",
+    "module root4_zero_param_alias\n\ntype Memory\ntype One\ntype Nat\ntype Measure<Q, S, M> { count: M }\ntype ByteSize = Measure<Memory, One, Nat>\n\nfn witness(spaces: List<ByteSize>) -> List<ByteSize> {\n  spaces\n}\n",
     "src/root4_zero_param_alias.rs",
     ["Rc<Vec<ByteSize<Memory, One, Nat>>"],
     ["Vec<Rc<Measure"]
