@@ -91,6 +91,14 @@ test fn sessions_presence_does_not_overwrite_dispatch_presentation() -> Bool {
     && string_contains(s: js, pattern: "pb.textContent === 'session · present'")
 }
 
+test fn sessions_refusal_withdraws_prior_presence() -> Bool {
+  let js = dispatch_client_js_source()
+  let presence_reset_selector = ".dispatch-btn[data-session-presence=\"present\"]"
+  return count(split(s: js, delimiter: presence_reset_selector)) == 4
+    && string_contains(s: js, pattern: "sj.observe_refused")
+    && string_contains(s: js, pattern: ".catch(")
+}
+
 test fn sessions_banner_is_styled_loud() -> Bool {
   return string_contains(s: roadmap_css(), pattern: ".observe-refused { font-size: var(--text-12); color: var(--text); border-left: var(--border-2) solid var(--band-loud); padding-left: var(--space-6); margin: var(--space-4) var(--space-0) var(--space-8); font-family: var(--font-mono) }")
 }

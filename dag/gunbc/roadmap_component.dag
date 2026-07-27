@@ -1523,10 +1523,13 @@ fn sessions_fetch_effect_statements() -> List<TsStmt> {
                     right: ts_ident(name: "wireWhy"))),
                 ],
                 concat(
-                  [workflow_set_all_observations_stmt(
-                    lamp: LiveWorkflowLamp,
-                    state: ClientObservationRefused { reason: "" },
-                    reason_expr: ts_ident(name: "why"))],
+                  [
+                    sessions_reset_presence_stmt(),
+                    workflow_set_all_observations_stmt(
+                      lamp: LiveWorkflowLamp,
+                      state: ClientObservationRefused { reason: "" },
+                      reason_expr: ts_ident(name: "why")),
+                  ],
                   observation_refused_banner_stmts(source_class: "sessions-observe-refused")))),
               else_stmt: Present { value: ts_block(stmts: [
                 remove_all_selector_stmt(selector: ".sessions-observe-refused", item_name: "oldBanner"),
@@ -1548,10 +1551,13 @@ fn sessions_fetch_effect_statements() -> List<TsStmt> {
       args: [ts_arrow(params: ["e"], body: ts_block(stmts: concat(
         [ts_const(name: "why", value: ts_binop(left: ts_lit_str(value: "session observation refused: "), op: "+", right: ts_binop(left: ts_ident(name: "e"), op: "+", right: ts_lit_str(value: ""))))],
         concat(
-          [workflow_set_all_observations_stmt(
-            lamp: LiveWorkflowLamp,
-            state: ClientObservationRefused { reason: "" },
-            reason_expr: ts_ident(name: "why"))],
+          [
+            sessions_reset_presence_stmt(),
+            workflow_set_all_observations_stmt(
+              lamp: LiveWorkflowLamp,
+              state: ClientObservationRefused { reason: "" },
+              reason_expr: ts_ident(name: "why")),
+          ],
           concat(
             observation_refused_banner_stmts(source_class: "sessions-observe-refused"),
             observation_complete_stmts(
