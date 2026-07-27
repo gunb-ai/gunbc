@@ -994,7 +994,7 @@ fn orch_emit_retry_1level(
   }
 }
 
-data orch_emit_retry_multilevel_unsupported_note: String = "Three-or-more escalation levels previously reused realize_retry_1level and stuffed rest into occ2 via escalation_tail — silently dropping level1.env (3level golden had E2=1 after w1, never E1=1) and the final level's LogMatches.pattern. Same DESIGN §5 class as the PR2b silent drops. Refuse (^orch_emit_retry_multilevel_unsupported) until a faithful N-level template threads env_i with detect_{i+1} like orch_emit_retry_2level. 🟡 dissolve-on: that template + reclaim of escalation_step/final rows under a correct cross-level fold."
+data orch_emit_retry_multilevel_unsupported_note: String = "Three-or-more escalation levels previously reused realize_retry_1level and stuffed rest into occ2 via escalation_tail — silently dropping level1.env (3level golden had E2=1 after w1, never E1=1) and the final level's LogMatches.pattern. Same DESIGN §5 class as the PR2b silent drops. Refuse (^orch_emit_retry_multilevel_unsupported) until a faithful N-level template threads each level's env with the next level's detect (as orch_emit_retry_2level does). 🟡 dissolve-on: that template + reclaim of escalation_step/final rows under a correct cross-level fold."
 
 fn orch_emit_retry_multilevel(
   command: String,

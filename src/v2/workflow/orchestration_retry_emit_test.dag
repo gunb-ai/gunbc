@@ -442,16 +442,6 @@ test fn orch_retry_3level_refused_holds() -> Bool {
   }
 }
 
-test fn orch_retry_3level_level1_env_not_silently_emitted_holds() -> Bool {
-  match orch_emit_step(s: orch_retry_3level_intent(), medium: bash_orchestration_emit_medium()) {
-    Accepted { value: source, diagnostics: _ } =>
-      string_contains(s: source.carried, pattern: "E2=1")
-        && !string_contains(s: source.carried, pattern: "E1=1")
-    Rejected { diagnostics: d } =>
-      d.head.reason == ^orch_emit_retry_multilevel_unsupported
-  }
-}
-
 fn orch_retry_probe_escalation(source: String) -> EscalationLevel {
   EscalationLevel {
     detect: LogMatches { source: source, pattern: "PAT" },
