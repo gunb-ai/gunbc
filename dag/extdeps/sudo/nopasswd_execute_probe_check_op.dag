@@ -1,7 +1,10 @@
 module extdeps.sudo.nopasswd_execute_probe_check_op
 
 import std.types { String, NonEmptyStr, Bool, List }
-import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdExecuteProbeShape }
+import extdeps.sudo.nopasswd_execute_probe {
+  SudoNopasswdExecuteProbeShape,
+  SudoNopasswdGrantListProbeShape,
+}
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -16,6 +19,10 @@ data sudo_nopasswd_execute_probe_check_op_note: String = "Typed argv transport f
 
 fn sudo_nopasswd_execute_probe_argv(probe: SudoNopasswdExecuteProbeShape) -> List<String> {
   ["sudo", "-n", probe.command_path as String, probe.check_argv as String]
+}
+
+fn sudo_nopasswd_grant_list_probe_argv(probe: SudoNopasswdGrantListProbeShape) -> List<String> {
+  ["sudo", "-n", "-l", probe.command_path as String]
 }
 
 service sudo.NopasswdExecuteProbe {
@@ -33,6 +40,25 @@ service sudo.NopasswdExecuteProbe {
     }
     mock_response {
       0 => { success: true } "hermetic sudo.NopasswdExecuteProbe.Check"
+    }
+  }
+}
+
+service sudo.NopasswdGrantListProbe {
+  operation Check {
+    input { probe: SudoNopasswdGrantListProbeShape }
+    output { success: Bool from "exit_success" }
+    readonly
+
+    transport shell {
+      argv: ["sudo", "-n", "-l", "{probe.command_path}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "sudo nopasswd grant-list probe failed"
+    }
+    mock_response {
+      0 => { success: true } "hermetic sudo.NopasswdGrantListProbe.Check"
     }
   }
 }

@@ -11,8 +11,6 @@ import extdeps.sudo.nopasswd_execute_probe {
 }
 import extdeps.sudo.nopasswd_execute_probe_check_op {
   sudo_nopasswd_execute_probe_argv,
-}
-import extdeps.sudo.nopasswd_grant_list_probe_check_op {
   sudo_nopasswd_grant_list_probe_argv,
 }
 import gunbc.typed_argv_exec {
