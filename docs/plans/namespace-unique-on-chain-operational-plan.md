@@ -164,9 +164,28 @@ by raw name. The semantic declaration identity remains the declaration node at i
 full containment path; `declaration_span` is the v1 bridge that lets downstream
 ownership address that node without another name lookup.
 
+The exact current representation boundary is now known:
+
+- `ExprLet` is already a declaration `Node`.
+- Lambda parameters already have distinct `parsed_name_leaf` child `Node`s with
+  authored spans.
+- `MatchPattern.Bind` carries only `name: String`; direct and nested pattern binders
+  therefore have no declaration `Node` yet.
+- `infer_expr` carries no ancestor `ContainmentPath`, while
+  `InferScope.locals: Map<String, TypeBinding>` overwrites equal-name declarations
+  and `TypeBinding` carries no declaration identity.
+
+Accordingly, the upstream identity prerequisite has two facts: materialize exact
+pattern-binder declaration nodes, and preserve/thread existing declaration and
+reference node containment through inference into the canonical occurrence-binding
+fold. A `SourceSpan + origin` record is not a substitute: it would create another
+identity universe and restate syntax already carried by the declaration node.
+
 #7328 must:
 
 - preserve the authored binder span through parser/core/inference;
+- materialize or consume pattern declaration nodes only after their model/API home
+  is explicitly ruled; until then, stop at the honest span bridge;
 - prove equal-text binders in sibling arms remain distinct;
 - prove nested patterns preserve each declaration's own span;
 - prove a uniquely bound use carries its accepted declaration span;
@@ -404,20 +423,24 @@ restoring the old fallback or priority changes the verdict.
 
 1. **This docs-only plan** is reviewed against §13 and the operator's no-parallel-
    subsystem requirement, including the dual-authority census and dispositions.
-2. **#7328 exact identity prerequisite** is rebased/reworked to its narrow boundary:
-   exact span flow, `.dag` witnesses, no silent shadowing, no handwritten Rust.
-3. **Generic-match ownership prerequisite** consumes the exact uniquely bound edge
+2. **Pattern-node and containment identity prerequisite** gives every binder an
+   exact declaration node and threads declaration/reference containment through
+   inference without a name-keyed overwrite or parallel identity carrier.
+3. **#7328 exact identity bridge** is rebased/reworked to its narrow boundary:
+   honest span flow, `.dag` witnesses, no silent shadowing, no handwritten Rust; it
+   consumes the ruled pattern-node home rather than inventing one.
+4. **Generic-match ownership prerequisite** consumes the exact uniquely bound edge
    and removes emitter-invented clone behavior.
-4. **P-derive authority/consumer prerequisites** land independently.
-5. **#7321 P1** rebases current main and implements the single full-chain
+5. **P-derive authority/consumer prerequisites** land independently.
+6. **#7321 P1** rebases current main and implements the single full-chain
    occurrence-binding consumer, including the shadowing ambiguity matrix.
-6. **Executing dual-authority census** classifies every naming decision entry point
+7. **Executing dual-authority census** classifies every naming decision entry point
    and turns the table above into checked cleanup rows with named consumers.
-7. **Corpus census and generated repair** eliminate unbound/ambiguous residues by
+8. **Corpus census and generated repair** eliminate unbound/ambiguous residues by
    qualification/alias/rename, with no import additions.
-8. **Reference-derived dependency/loading convergence** consumes accepted binding
+9. **Reference-derived dependency/loading convergence** consumes accepted binding
    edges and deletes the transitional import/reference union.
-9. **Dispatch 2** deletes import lines and grammar only after the reference-only
+10. **Dispatch 2** deletes import lines and grammar only after the reference-only
    authority, authority census, and full refusal matrix are green.
 
 No step may use a default-off escape, nearest-wins compatibility arm, raw-name
