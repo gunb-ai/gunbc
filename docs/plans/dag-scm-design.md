@@ -335,7 +335,7 @@ proof rules/procedures, and checkable certificates through shared interfaces. It
 feature-pair arm to an SCM switch. A solver or LLM may propose a candidate or certificate; an
 unverified proposal has no authority.
 
-Safety, explicit obligations, grounding, and the required evidence grade are admission conditions,
+Safety, explicit obligations, grounding, and the required evidence profile are admission conditions,
 not weighted preferences. A cheaper result cannot buy permission to violate one. Among candidates
 that meet those conditions, preserve every fact whose change is not grounded. By default, cost
 selects only among realizations of the **same semantically determined result**; it cannot decide
