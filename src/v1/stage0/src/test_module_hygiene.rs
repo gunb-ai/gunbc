@@ -22,6 +22,7 @@
 //!   `orphan_collect_refuses_unparsable_test_dag`
 //!   `test_data_only_module_still_orphans_unreachable_plains`
 //!   `plain_data_alone_does_not_enroll_demoted_holds`
+//!   `unrelated_test_plus_dead_plain_data_does_not_enroll`
 //! Authority row: `dag/gunbc/test_module_hygiene_scaffold.dag`.
 
 /// INTERIM hand-Rust scaffold marker (`test_module_hygiene_orphan_gate` / §7).
@@ -265,10 +266,10 @@ fn umbrella_conjuncts(
 struct ModuleFns {
     /// name -> (is_test, param_count, body)
     fns: BTreeMap<String, (bool, usize, Option<Rc<Node>>)>,
-    /// data/const initializer bodies (reachability roots for fixture constructors).
-    /// Walked only when executable enrollment (`test fn` / `test data`) is present —
-    /// plain `data` alone is not an enrollment surface (review 43610 / DESIGN §5).
-    data_bodies: Vec<Rc<Node>>,
+    /// data/const: name -> (is_test_data, body).
+    /// Only `test data` are enrollment roots; plain `data` bodies are walked only
+    /// when that data name is reachable from an executable root (reviews 43610 / 43617).
+    data: BTreeMap<String, (bool, Option<Rc<Node>>)>,
     /// Executable enrollment: `test fn` / `test data` only (not plain `data`).
     has_enrollment_surface: bool,
     si: Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
@@ -278,7 +279,7 @@ fn analyze_test_module(path: &Path, content: &str) -> Option<ModuleFns> {
     let parsed = parse_dag_file(path)?;
     let test_names: HashSet<String> = scan_test_decl_names(content).into_iter().collect();
     let mut fns = BTreeMap::new();
-    let mut data_bodies = Vec::new();
+    let mut data = BTreeMap::new();
     for item in parsed.items.iter() {
         let name = authored_name_at(parsed.source_indices.clone(), item.clone());
         if name.is_empty() {
@@ -292,9 +293,8 @@ fn analyze_test_module(path: &Path, content: &str) -> Option<ModuleFns> {
                 fns.insert(name, (is_test, param_count, item.body.clone()));
             }
             ItemKind::DataItem => {
-                if let Some(body) = item.body.clone() {
-                    data_bodies.push(body);
-                }
+                let is_test_data = test_names.contains(&name);
+                data.insert(name, (is_test_data, item.body.clone()));
             }
             _ => {}
         }
@@ -302,7 +302,7 @@ fn analyze_test_module(path: &Path, content: &str) -> Option<ModuleFns> {
     let has_enrollment_surface = !test_names.is_empty();
     Some(ModuleFns {
         fns,
-        data_bodies,
+        data,
         has_enrollment_surface,
         si: parsed.source_indices,
     })
@@ -375,31 +375,57 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
 
     let mut reachable: HashSet<String> = HashSet::new();
     let mut queue: VecDeque<String> = VecDeque::new();
+    let mut data_seen: HashSet<String> = HashSet::new();
+    let mut data_queue: VecDeque<String> = VecDeque::new();
 
-    // Roots: test fn / test data bodies + (only when executable enrollment exists)
-    // plain data/const initializers as fixture reachability + export roster seeds.
+    // Enqueue plain-fn / data refs from a body. Plain `data` is never a root —
+    // only entered when its name is reached from an executable path (review 43617).
+    let enqueue_from_body = |body: &Rc<Node>,
+                             plain: &HashSet<String>,
+                             data: &BTreeMap<String, (bool, Option<Rc<Node>>)>,
+                             queue: &mut VecDeque<String>,
+                             data_queue: &mut VecDeque<String>,
+                             data_seen: &mut HashSet<String>| {
+        let mut refs = HashSet::new();
+        walk_refs(body, &module.si, &mut refs);
+        for c in refs {
+            if plain.contains(&c) {
+                queue.push_back(c.clone());
+            }
+            if data.contains_key(&c) && data_seen.insert(c.clone()) {
+                data_queue.push_back(c);
+            }
+        }
+    };
+
+    // Roots: test fn bodies + test data bodies + export roster seeds.
     for (name, (is_test, _, body)) in &module.fns {
         if *is_test {
             reachable.insert(name.clone());
             if let Some(body) = body {
-                let mut refs = HashSet::new();
-                walk_refs(body, &module.si, &mut refs);
-                for c in refs {
-                    if plain.contains(&c) {
-                        queue.push_back(c);
-                    }
-                }
+                enqueue_from_body(
+                    body,
+                    &plain,
+                    &module.data,
+                    &mut queue,
+                    &mut data_queue,
+                    &mut data_seen,
+                );
             }
         }
     }
-    if module.has_enrollment_surface {
-        for body in &module.data_bodies {
-            let mut refs = HashSet::new();
-            walk_refs(body, &module.si, &mut refs);
-            for c in refs {
-                if plain.contains(&c) {
-                    queue.push_back(c);
-                }
+    for (name, (is_test_data, body)) in &module.data {
+        if *is_test_data {
+            data_seen.insert(name.clone());
+            if let Some(body) = body {
+                enqueue_from_body(
+                    body,
+                    &plain,
+                    &module.data,
+                    &mut queue,
+                    &mut data_queue,
+                    &mut data_seen,
+                );
             }
         }
     }
@@ -409,17 +435,32 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
         }
     }
 
-    while let Some(n) = queue.pop_front() {
-        if !reachable.insert(n.clone()) {
-            continue;
+    while !queue.is_empty() || !data_queue.is_empty() {
+        while let Some(n) = queue.pop_front() {
+            if !reachable.insert(n.clone()) {
+                continue;
+            }
+            if let Some((_, _, Some(body))) = module.fns.get(&n) {
+                enqueue_from_body(
+                    body,
+                    &plain,
+                    &module.data,
+                    &mut queue,
+                    &mut data_queue,
+                    &mut data_seen,
+                );
+            }
         }
-        if let Some((_, _, Some(body))) = module.fns.get(&n) {
-            let mut refs = HashSet::new();
-            walk_refs(body, &module.si, &mut refs);
-            for c in refs {
-                if plain.contains(&c) && !reachable.contains(&c) {
-                    queue.push_back(c);
-                }
+        while let Some(n) = data_queue.pop_front() {
+            if let Some((_, Some(body))) = module.data.get(&n) {
+                enqueue_from_body(
+                    body,
+                    &plain,
+                    &module.data,
+                    &mut queue,
+                    &mut data_queue,
+                    &mut data_seen,
+                );
             }
         }
     }
