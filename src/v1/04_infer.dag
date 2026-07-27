@@ -357,6 +357,11 @@ type StringPartInferResult {
   diagnostics: List<ErrorNode>
 }
 
+type InterpPartInferResult {
+  typed_part: Node
+  diagnostics: List<ErrorNode>
+}
+
 type ArgInferResult {
   typed_arg: Node
   diagnostics: List<ErrorNode>
@@ -1321,7 +1326,7 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
 
 fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
   let with_params = fold(params, init: scope, f: (acc, p) =>
-    extend_scope(
+    extend_scope_with_candidate(
       scope: acc,
       name: param_node_name_at(
         n: p,
@@ -1354,18 +1359,13 @@ fn extend_scope(
   scope: InferScope,
   name: String,
   resolved: Node,
-  provenance: SubValueRelation,
-  candidate: BindingCandidate<Node>
+  provenance: SubValueRelation
 ) -> InferScope {
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
     locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance }),
-    lexical_candidates: lexical_candidate_index_insert(
-      index: scope.lexical_candidates,
-      short_name: name,
-      candidate: candidate
-    ),
+    lexical_candidates: scope.lexical_candidates,
     containment_ancestors: scope.containment_ancestors,
     body_locals: map_insert(scope.body_locals, name, true),
     match_bound_names: scope.match_bound_names,
@@ -1373,6 +1373,38 @@ fn extend_scope(
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
     lambda_param_provenance: scope.lambda_param_provenance
+  }
+}
+
+fn extend_scope_with_candidate(
+  scope: InferScope,
+  name: String,
+  resolved: Node,
+  provenance: SubValueRelation,
+  candidate: BindingCandidate<Node>
+) -> InferScope {
+  let extended = extend_scope(
+    scope: scope,
+    name: name,
+    resolved: resolved,
+    provenance: provenance
+  )
+  InferScope {
+    type_env: extended.type_env,
+    func_env: extended.func_env,
+    locals: extended.locals,
+    lexical_candidates: lexical_candidate_index_insert(
+      index: extended.lexical_candidates,
+      short_name: name,
+      candidate: candidate
+    ),
+    containment_ancestors: extended.containment_ancestors,
+    body_locals: extended.body_locals,
+    match_bound_names: extended.match_bound_names,
+    module_name: extended.module_name,
+    service_registry: extended.service_registry,
+    item_registry: extended.item_registry,
+    lambda_param_provenance: extended.lambda_param_provenance
   }
 }
 
@@ -1408,7 +1440,7 @@ fn extend_scope_with_params(scope: InferScope, params: List<Node>) -> InferScope
       source_indices: scope.type_env.source_indices,
       node: p
     )
-    extend_scope(
+    extend_scope_with_candidate(
       scope: acc,
       name: name,
       resolved: type_variable_node(id: "lambda_param"),
@@ -1429,7 +1461,7 @@ fn scope_after_stmt_node(stmt: Node, stmt_type: Node, scope: InferScope) -> Infe
           Present { value: v } => v
           Absent => stmt
         }
-        extend_scope(
+        extend_scope_with_candidate(
           scope: scope,
           name: let_binding_name_at(
             texpr: stmt,
@@ -1472,15 +1504,20 @@ fn derive_field_provenance(scope: InferScope, scrutinee_provenance: SubValueRela
 fn extend_scope_with_pattern_node(
   scope: InferScope,
   pattern: MatchPattern,
+  authored_pattern: MatchPattern,
   scrutinee_subject: PatternSubject,
   scrutinee_provenance: SubValueRelation,
   ancestors: FreeMonoid<Node>
 ) -> PatternScopeResult {
   match pattern {
     Bind { declaration: declaration } =>
+      let authored_declaration = match authored_pattern {
+        Bind { declaration: authored } => authored
+        _ => declaration
+      }
       let candidate = binding_candidate_at(
         ancestors: ancestors,
-        declaration: declaration
+        declaration: authored_declaration
       )
       PatternScopeResult {
         scope: extend_scope_match_bound(
@@ -1511,15 +1548,28 @@ fn extend_scope_with_pattern_node(
         pattern: LitPattern { value: value }
       }
     VariantPattern { name: vname, parent_enum: parent_enum, field_bindings: bindings } =>
+      let authored_bindings = match authored_pattern {
+        VariantPattern {
+          name: _,
+          parent_enum: _,
+          field_bindings: source_bindings
+        } => source_bindings
+        _ => bindings
+      }
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
       let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let variant_diags = variant_lookup.diagnostics
-      let result = fold(bindings, init: PatternBindingsScopeResult {
+      let result = fold(bindings |> enumerate, init: PatternBindingsScopeResult {
         scope: scope,
         diagnostics: variant_diags,
         bindings: []
-      }, f: (acc, fb) =>
+      }, f: (acc, pair) =>
+        let fb = pair.second
+        let authored_fb = match authored_bindings |> skip(pair.first) |> first {
+          Present { value: source_binding } => source_binding
+          Absent => fb
+        }
         let field_name = field_binding_name_at(n: fb, source_indices: scope.type_env.source_indices)
         let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_name, module_name: scope.module_name, source_indices: scope.type_env.source_indices)
         let field_subject = lookup_result_subject(result: field_lookup)
@@ -1527,11 +1577,12 @@ fn extend_scope_with_pattern_node(
         let nested = extend_scope_with_pattern_node(
           scope: acc.scope,
           pattern: field_binding_pattern(n: fb),
+          authored_pattern: field_binding_pattern(n: authored_fb),
           scrutinee_subject: field_subject,
           scrutinee_provenance: field_provenance,
           ancestors: containment_ancestors_snoc(
             ancestors: ancestors,
-            node: fb
+            node: authored_fb
           )
         )
         PatternBindingsScopeResult {
@@ -1801,6 +1852,38 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           lexical_candidates: lexical_candidate_index_lookup(
             index: scope.lexical_candidates,
             short_name: expr_call_func_at(
+              texpr: texpr,
+              source_indices: scope.type_env.source_indices
+            )
+          )
+        )
+      }
+    ExprFieldAccess { summary: _ } =>
+      Present {
+        value: node_with_reference_binding_identity(
+          node: result.typed,
+          occurrence: BindingOccurrence {
+            containment: current_containment
+          },
+          lexical_candidates: lexical_candidate_index_lookup(
+            index: scope.lexical_candidates,
+            short_name: field_access_field_at(
+              texpr: texpr,
+              source_indices: scope.type_env.source_indices
+            )
+          )
+        )
+      }
+    ExprMethodCall { method_semantics: _ } =>
+      Present {
+        value: node_with_reference_binding_identity(
+          node: result.typed,
+          occurrence: BindingOccurrence {
+            containment: current_containment
+          },
+          lexical_candidates: lexical_candidate_index_lookup(
+            index: scope.lexical_candidates,
+            short_name: expr_method_name_at(
               texpr: texpr,
               source_indices: scope.type_env.source_indices
             )
@@ -2513,7 +2596,7 @@ fn infer_expr_descended(
               match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: dotted) {
                 Absent => none
                 Present { value: _ } =>
-                  Present { value: infer_expr(
+                  Present { value: infer_expr_descended(
                     texpr: make_named_expr_node(
                       name: dotted,
                       expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
@@ -2523,7 +2606,8 @@ fn infer_expr_descended(
                       name_span: kernel_span(name: dotted)
                     ),
                     scope: scope,
-                    expected: expected
+                    expected: expected,
+                    current_containment: current_containment
                   ) }
               }
           }
@@ -2621,6 +2705,7 @@ fn infer_expr_descended(
         let pattern_result = extend_scope_with_pattern_node(
           scope: scope,
           pattern: parent_annotated_pattern,
+          authored_pattern: arm_pat,
           scrutinee_subject: scrut_subject,
           scrutinee_provenance: scrut_provenance,
           ancestors: containment_ancestors_snoc(
@@ -2683,6 +2768,7 @@ fn infer_expr_descended(
             let pattern_result = extend_scope_with_pattern_node(
               scope: scope,
               pattern: parent_annotated_pattern,
+              authored_pattern: arm_pat,
               scrutinee_subject: scrut_subject,
               scrutinee_provenance: scrut_provenance,
               ancestors: containment_ancestors_snoc(
@@ -2841,7 +2927,7 @@ fn infer_expr_descended(
           diagnostics: val_diags
         }
       } else {
-        let extended = extend_scope(
+        let extended = extend_scope_with_candidate(
           scope: scope,
           name: let_name,
           resolved: val_type,
@@ -2863,7 +2949,18 @@ fn infer_expr_descended(
     ExprRecordLit { parent_enum: _ } =>
       let span = texpr.span
       let field_inits = texpr.children
-      infer_record_lit(type_name: record_lit_type_name_at(texpr: texpr, source_indices: scope.type_env.source_indices), field_inits: field_inits, span: span, name_span: node_name_span(n: texpr), scope: scope, expected: expected)
+      infer_record_lit(
+        type_name: record_lit_type_name_at(
+          texpr: texpr,
+          source_indices: scope.type_env.source_indices
+        ),
+        field_inits: field_inits,
+        span: span,
+        name_span: node_name_span(n: texpr),
+        scope: scope,
+        expected: expected,
+        field_inits_are_containment_nodes: true
+      )
 
     ExprListLit =>
       let span = texpr.span
@@ -2967,7 +3064,7 @@ fn infer_expr_descended(
                   Present { value: cp } => param_node_type_expr(n: cp)
                   Absent => type_variable_node(id: "callable_param")
                 }
-                extend_scope(
+                extend_scope_with_candidate(
                   scope: acc,
                   name: pair.second,
                   resolved: resolved,
@@ -2983,7 +3080,7 @@ fn infer_expr_descended(
         } else if lam_params |> count == 1 {
           match lam_param_nodes |> first {
             Present { value: declaration } =>
-              extend_scope(
+              extend_scope_with_candidate(
                 scope: scope,
                 name: declaration.name,
                 resolved: exp,
@@ -3000,7 +3097,7 @@ fn infer_expr_descended(
             let param_prov = if pair.first == (lam_params |> count) - 1 { elem_prov } else { SubValueUnknown }
             match lam_param_nodes |> skip(pair.first) |> first {
               Present { value: declaration } =>
-                extend_scope(
+                extend_scope_with_candidate(
                   scope: acc,
                   name: pair.second,
                   resolved: if pair.first == (lam_params |> count) - 1 {
@@ -3078,7 +3175,7 @@ fn infer_expr_descended(
       let span = texpr.span
       let part_results = texpr.children |> map(part_node =>
         match part_node.expr_data {
-          ExprLiteral { value: _ } => {
+          ExprLiteral { value: _ } => InterpPartInferResult {
             typed_part: part_node,
             diagnostics: []
           }
@@ -3090,11 +3187,11 @@ fn infer_expr_descended(
                   scope: infer_scope_descend(scope: scope, parent: part_node),
                   expected: none
                 )
-                {
+                InterpPartInferResult {
                   typed_part: make_interp_part_node(expr: r.typed, span: part_node.span),
                   diagnostics: r.diagnostics
                 }
-              Absent => {
+              Absent => InterpPartInferResult {
                 typed_part: part_node,
                 diagnostics: []
               }
@@ -3157,7 +3254,7 @@ fn infer_expr_descended(
       let coll_diags = coll_result.diagnostics
       let elem_type_node = for_each_element_type_node(n: resolved_type(n: coll_typed), source_indices: scope.type_env.source_indices)
       let elem_provenance = derive_element_provenance(coll_expr: coll_typed, elem_type: elem_type_node, scope: scope)
-      let body_scope = extend_scope(
+      let body_scope = extend_scope_with_candidate(
         scope: scope,
         name: variable,
         resolved: elem_type_node,
@@ -3333,8 +3430,12 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span
                             field_inits: [payload_init],
                             span: span,
                             name_span: name_span,
-                            scope: scope,
-                            expected: none
+                            scope: infer_scope_descend(
+                              scope: scope,
+                              parent: arg
+                            ),
+                            expected: none,
+                            field_inits_are_containment_nodes: false
                           ) }
                       }
                     Absent => none
@@ -3603,7 +3704,15 @@ data zero_field_variant_tag_reference_frontier_note: String = "P0 field-wall fro
 
 data presence_check_census_gate_note: String = "Field-presence enforcement (P0 wall, #6663) stands down when the literal's bare type name is AMBIGUOUS in the corpus-wide census (global_bare, order-independent): with two same-named decls in the closure, every name-keyed template lookup below resolves by overlay-wins import order (a LEDGERED binding fork, see guarded_cache_union_note), so enforcing would GUESS which decl the author meant and red correct literals against the wrong layer's fields (2026-07-16 main-red: v2 nested Monoid/BooleanAlgebra/OrderedRing literals checked against dag/std flat shapes). Skipping on ambiguity is the pre-wall behavior for exactly those names; enforcement stays live for census-unique names (~98 percent of the corpus) AND for names this module DECLARES LOCALLY. The local carve-out is the one census-ambiguous case that still enforces, and it is read from TypeEnv.str_bindings ONLY: build_type_env sets str_bindings = local_str_bindings (this module's own declarations; the direct-import overlay lands in ancestry_str_bindings), and lookup_binding_by_name_local consults str_bindings FIRST, so a locally-declared name resolves to the local decl deterministically and order-independently - the precedence note's 'locals > kernel > direct-selected > transitive union' with no fork to guess (direct_import_export_precedence_note). The gate must NOT reach lookup_type_by_name here: that walks on into ancestry_str_bindings, i.e. the import-order overlay, which makes the WALL ITSELF order-dependent - the same source text refusing under one import order and passing under the other (reproduced 2026-07-20, target/probe-presencewall ARM SET A: probe.c1 'import a then b' passes while probe.c2 'import b then a' reds on one identical literal), which is exactly the GUESS this gate exists to refuse. Dissolve-on: containment SymbolIndex (namespace lane) makes the expected type scope-resolved; then this gate is dead code and the wall goes total. Ratchet (PR #6709 review, accepted): before the wall goes total, stand-downs become counted out-of-band ledger rows (binding_forks channel shape — LEDGERED, never diagnostics; a red refusal would re-red correct literals), landing with the SymbolIndex work that dissolves this gate."
 
-fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
+fn infer_record_lit(
+  type_name: String?,
+  field_inits: List<Node>,
+  span: SourceSpan,
+  name_span: SourceSpan,
+  scope: InferScope,
+  expected: Node?,
+  field_inits_are_containment_nodes: Bool
+) -> InferResult {
   let struct_fields = match type_name {
     Present { value: tn } =>
       match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
@@ -3728,9 +3837,14 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
         } else { none }
       Absent => none
     }
+    let field_scope = if field_inits_are_containment_nodes {
+      infer_scope_descend(scope: scope, parent: fi)
+    } else {
+      scope
+    }
     let ar = infer_expr(
       texpr: field_init_node_value(n: fi),
-      scope: infer_scope_descend(scope: scope, parent: fi),
+      scope: field_scope,
       expected: field_expected
     )
     let ar_typed = ar.typed
@@ -6104,7 +6218,7 @@ fn infer_item_descended(item: Node, scope: InferScope) -> TypedItemResult {
   else if item.body != none && item.params |> count > 0 {
     let fn_scope = build_params_scope(scope: scope, params: item.params)
     let fn_scope = fold(item.uses, init: fn_scope, f: (s, u) =>
-      extend_scope(
+      extend_scope_with_candidate(
         scope: s,
         name: resource_use_name_at(
           n: u,

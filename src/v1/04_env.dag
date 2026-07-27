@@ -65,8 +65,12 @@ type SymbolIndex {
   services: Map<String, ServiceCensusEntry>
 }
 
+type LexicalCandidatePopulation {
+  candidates: FreeMonoid<BindingCandidate<Node>>
+}
+
 type LexicalCandidateIndex {
-  by_short_name: Map<String, FreeMonoid<BindingCandidate<Node>>>
+  by_short_name: Map<String, LexicalCandidatePopulation>
 }
 
 data lexical_candidate_index_invariant: String = "Declaration identity is the authored Node occurrence at its full ContainmentPath<Node>. The short-name map is only a population index: insertion appends every active same-name candidate and never selects, overwrites, or deduplicates by SourceSpan or structural Node equality. Inference reaches each lexical declaration once per scope construction; repeated traversal starts from the parent scope instead of merging duplicate discoveries."
@@ -98,17 +102,19 @@ fn lexical_candidate_index_insert(
   candidate: BindingCandidate<Node>
 ) -> LexicalCandidateIndex {
   let existing = match map_get(index.by_short_name, short_name) {
-    Present { value: candidates } => candidates
+    Present { value: population } => population.candidates
     Absent => Empty
   }
   LexicalCandidateIndex {
     by_short_name: map_insert(
       index.by_short_name,
       short_name,
-      lexical_candidate_population_snoc(
-        candidates: existing,
-        candidate: candidate
-      )
+      LexicalCandidatePopulation {
+        candidates: lexical_candidate_population_snoc(
+          candidates: existing,
+          candidate: candidate
+        )
+      }
     )
   }
 }
@@ -118,7 +124,7 @@ fn lexical_candidate_index_lookup(
   short_name: String
 ) -> FreeMonoid<BindingCandidate<Node>> {
   match map_get(index.by_short_name, short_name) {
-    Present { value: candidates } => candidates
+    Present { value: population } => population.candidates
     Absent => Empty
   }
 }
