@@ -23,6 +23,7 @@
 //!   `test_data_only_module_still_orphans_unreachable_plains`
 //!   `plain_data_alone_does_not_enroll_demoted_holds`
 //!   `unrelated_test_plus_dead_plain_data_does_not_enroll`
+//!   `plain_data_reached_from_test_data_still_covers_helpers`
 //! Authority row: `dag/gunbc/test_module_hygiene_scaffold.dag`.
 
 /// INTERIM hand-Rust scaffold marker (`test_module_hygiene_orphan_gate` / §7).
@@ -378,35 +379,38 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
     let mut data_seen: HashSet<String> = HashSet::new();
     let mut data_queue: VecDeque<String> = VecDeque::new();
 
-    // Enqueue plain-fn / data refs from a body. Plain `data` is never a root —
-    // only entered when its name is reached from an executable path (review 43617).
-    let enqueue_from_body = |body: &Rc<Node>,
-                             plain: &HashSet<String>,
-                             data: &BTreeMap<String, (bool, Option<Rc<Node>>)>,
-                             queue: &mut VecDeque<String>,
-                             data_queue: &mut VecDeque<String>,
-                             data_seen: &mut HashSet<String>| {
+    // Plain `data` is never a root — only entered when its name is reached from an
+    // executable path (test fn / test data / already-reached plain) — review 43617.
+    let enqueue_refs = |body: &Rc<Node>,
+                        si: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+                        plain: &HashSet<String>,
+                        data_keys: &HashSet<String>,
+                        queue: &mut VecDeque<String>,
+                        data_queue: &mut VecDeque<String>,
+                        data_seen: &mut HashSet<String>| {
         let mut refs = HashSet::new();
-        walk_refs(body, &module.si, &mut refs);
+        walk_refs(body, si, &mut refs);
         for c in refs {
             if plain.contains(&c) {
                 queue.push_back(c.clone());
             }
-            if data.contains_key(&c) && data_seen.insert(c.clone()) {
+            if data_keys.contains(&c) && data_seen.insert(c.clone()) {
                 data_queue.push_back(c);
             }
         }
     };
+    let data_keys: HashSet<String> = module.data.keys().cloned().collect();
 
     // Roots: test fn bodies + test data bodies + export roster seeds.
     for (name, (is_test, _, body)) in &module.fns {
         if *is_test {
             reachable.insert(name.clone());
             if let Some(body) = body {
-                enqueue_from_body(
+                enqueue_refs(
                     body,
+                    &module.si,
                     &plain,
-                    &module.data,
+                    &data_keys,
                     &mut queue,
                     &mut data_queue,
                     &mut data_seen,
@@ -418,10 +422,11 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
         if *is_test_data {
             data_seen.insert(name.clone());
             if let Some(body) = body {
-                enqueue_from_body(
+                enqueue_refs(
                     body,
+                    &module.si,
                     &plain,
-                    &module.data,
+                    &data_keys,
                     &mut queue,
                     &mut data_queue,
                     &mut data_seen,
@@ -441,10 +446,12 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
                 continue;
             }
             if let Some((_, _, Some(body))) = module.fns.get(&n) {
-                enqueue_from_body(
-                    body,
+                let body = body.clone();
+                enqueue_refs(
+                    &body,
+                    &module.si,
                     &plain,
-                    &module.data,
+                    &data_keys,
                     &mut queue,
                     &mut data_queue,
                     &mut data_seen,
@@ -453,10 +460,12 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
         }
         while let Some(n) = data_queue.pop_front() {
             if let Some((_, Some(body))) = module.data.get(&n) {
-                enqueue_from_body(
-                    body,
+                let body = body.clone();
+                enqueue_refs(
+                    &body,
+                    &module.si,
                     &plain,
-                    &module.data,
+                    &data_keys,
                     &mut queue,
                     &mut data_queue,
                     &mut data_seen,
@@ -871,6 +880,67 @@ data fixture: Bool = formerly_test_holds()
     }
 
     #[test]
+    fn unrelated_test_plus_dead_plain_data_does_not_enroll() {
+        // review 43617: an unrelated `test fn` must not make dead plain `data`
+        // into a reachability root for demoted holds.
+        let dir = tmp_dir();
+        let file = dir.join("dead_plain_data_test.dag");
+        std::fs::write(
+            &file,
+            r#"module dead_plain_data
+
+test fn unrelated_holds() -> Bool { true }
+
+fn demoted_holds() -> Bool { true }
+
+data fixture: Bool = demoted_holds()
+"#,
+        )
+        .unwrap();
+        let entry = file.to_string_lossy().into_owned();
+        let err = check_orphan_helpers_in_entries(&[entry])
+            .expect_err("dead plain data beside an unrelated test must not enroll");
+        assert!(
+            err.contains("demoted_holds"),
+            "must name the demoted plain fn: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn plain_data_reached_from_test_data_still_covers_helpers() {
+        // Chain: test data → plain data → helper must still green the helper.
+        let dir = tmp_dir();
+        let file = dir.join("plain_data_chain_test.dag");
+        std::fs::write(
+            &file,
+            r#"module plain_data_chain
+
+fn helper_holds() -> Bool { true }
+
+fn dark_plain() -> Bool { false }
+
+data claim_row: Bool = helper_holds()
+
+test data enrolled_run: Bool = claim_row
+"#,
+        )
+        .unwrap();
+        let entry = file.to_string_lossy().into_owned();
+        let err = check_orphan_helpers_in_entries(&[entry])
+            .expect_err("unreachable plain must still red");
+        assert!(
+            err.contains("dark_plain"),
+            "must name unreachable plain: {err}"
+        );
+        assert!(
+            !err.contains("helper_holds"),
+            "helper reached via test-data→plain-data chain must not red: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn orphan_gate_scaffold_marker_is_declared() {
         assert_eq!(
             TEST_MODULE_HYGIENE_ORPHAN_GATE_SCAFFOLD_MARKER,
@@ -936,5 +1006,6 @@ test fn umbrella_holds() -> Bool {
             vec!["a_holds", "b_holds", "c_holds"]
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
     }
 }
