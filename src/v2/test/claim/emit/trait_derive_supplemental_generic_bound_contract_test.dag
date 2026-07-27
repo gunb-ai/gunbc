@@ -233,30 +233,22 @@ fn sgb_nested_choice() -> TargetRepresentationChoice {
   sgb_choice_with_contracts(contracts: sgb_nested_choice_contracts())
 }
 
-fn sgb_duplicate_debug_choice() -> TargetRepresentationChoice {
-  sgb_choice_with_contracts(contracts: Cons {
-    head: sgb_contract_row(
-      derive_trait: ReprDeriveDebug,
-      requirements: sgb_requirements_for(derive_trait: ReprDeriveDebug)
-    ),
+fn sgb_no_requirement_choice_contracts() -> List<TargetDeriveSupplementalGenericBoundContract> {
+  Cons {
+    head: sgb_contract_row(derive_trait: ReprDeriveDebug, requirements: Empty),
     tail: Cons {
-      head: sgb_contract_row(
-        derive_trait: ReprDeriveDebug,
-        requirements: sgb_requirements_for(derive_trait: ReprDeriveDebug)
-      ),
+      head: sgb_contract_row(derive_trait: ReprDeriveClone, requirements: Empty),
       tail: Empty
     }
-  })
+  }
 }
 
-fn sgb_wrong_choice() -> TargetRepresentationChoice {
-  sgb_choice_with_contracts(contracts: Cons {
-    head: sgb_contract_row(
-      derive_trait: ReprDeriveDebug,
-      requirements: sgb_requirements_for(derive_trait: ReprDeriveDebug)
-    ),
-    tail: Empty
-  })
+fn sgb_concrete_choice() -> TargetRepresentationChoice {
+  sgb_choice_with_contracts(contracts: sgb_no_requirement_choice_contracts())
+}
+
+fn sgb_unrelated_choice() -> TargetRepresentationChoice {
+  sgb_choice_with_contracts(contracts: sgb_no_requirement_choice_contracts())
 }
 
 fn sgb_realization(
@@ -354,7 +346,7 @@ fn sgb_nested_realization() -> TargetCollectionRealization {
 fn sgb_concrete_realization() -> TargetCollectionRealization {
   sgb_realization(
     source_carrier: sgb_concrete_source_carrier_node(),
-    primary: sgb_empty_choice(),
+    primary: sgb_concrete_choice(),
     alternatives: Empty
   )
 }
@@ -362,7 +354,7 @@ fn sgb_concrete_realization() -> TargetCollectionRealization {
 fn sgb_unrelated_realization() -> TargetCollectionRealization {
   sgb_realization(
     source_carrier: sgb_unrelated_source_carrier_node(),
-    primary: sgb_empty_choice(),
+    primary: sgb_unrelated_choice(),
     alternatives: Empty
   )
 }
