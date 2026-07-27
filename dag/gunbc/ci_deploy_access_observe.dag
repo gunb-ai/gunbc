@@ -1,6 +1,6 @@
 module gunbc.ci_deploy_access_observe
 
-import std.types { NonEmptyStr, Bool, List }
+import std.types { List }
 import std.access { AccessDecision, decision_meet }
 import gunbc.host_effect { HostEffect }
 import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do }
