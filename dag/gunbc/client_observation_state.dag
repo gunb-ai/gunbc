@@ -79,13 +79,6 @@ fn work_item_workflow_fact_key(fact: WorkItemWorkflowFact) -> String {
   }
 }
 
-fn work_item_workflow_fact_is_joined(row: WorkItemWorkflowFactRow) -> Bool {
-  match row.join {
-    JoinedOnRoadmapNode => true
-    BlockedOnAttemptPrNodeBinding => false
-  }
-}
-
 fn client_observation_state_from(
   refused: Bool,
   asserted: Bool,
@@ -115,14 +108,5 @@ fn client_observation_state_reason(state: ClientObservationState) -> String {
     ClientObservationOff => ""
     ClientObservationOn => ""
     ClientObservationRefused { reason } => reason
-  }
-}
-
-fn client_observation_state_is_on(state: ClientObservationState) -> Bool {
-  match state {
-    ClientObservationPending => false
-    ClientObservationOff => false
-    ClientObservationOn => true
-    ClientObservationRefused { reason: _ } => false
   }
 }

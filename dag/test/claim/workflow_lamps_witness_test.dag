@@ -4,11 +4,10 @@ import gunbc.client_observation_state {
   ClientObservationState,
   ClientObservationPending, ClientObservationOff, ClientObservationOn, ClientObservationRefused,
   client_observation_state_from, client_observation_state_key,
-  client_observation_state_reason, client_observation_state_is_on,
+  client_observation_state_reason,
   WorkItemWorkflowFact, WorkItemProposed, WorkItemLanded,
-  WorkItemWorkflowJoin, BlockedOnAttemptPrNodeBinding,
+  WorkItemWorkflowJoin, JoinedOnRoadmapNode, BlockedOnAttemptPrNodeBinding,
   work_item_workflow_fact_rows, work_item_workflow_fact_key,
-  work_item_workflow_fact_is_joined,
 }
 import gunbc.roadmap_component {
   WorkflowLamp, LiveWorkflowLamp, AttemptedWorkflowLamp,
@@ -42,7 +41,7 @@ test fn client_observation_state_is_four_way_and_refusal_wins() -> Bool {
     && on == "on"
     && state_key(state: refused) == "refused"
     && client_observation_state_reason(state: refused) == "observation unavailable"
-    && !client_observation_state_is_on(state: refused)
+    && state_key(state: refused) != "on"
 }
 
 test fn workflow_lamps_refusals_are_symmetric_and_independent() -> Bool {
@@ -68,14 +67,14 @@ test fn workflow_lamps_refusals_are_symmetric_and_independent() -> Bool {
 }
 
 test fn workflow_lamps_can_both_be_lit() -> Bool {
-  client_observation_state_is_on(state: workflow_lamp_state(
+  state_key(state: workflow_lamp_state(
     lamp: LiveWorkflowLamp,
     live: ClientObservationOn,
-    attempted: ClientObservationOn))
-    && client_observation_state_is_on(state: workflow_lamp_state(
+    attempted: ClientObservationOn)) == "on"
+    && state_key(state: workflow_lamp_state(
       lamp: AttemptedWorkflowLamp,
       live: ClientObservationOn,
-      attempted: ClientObservationOn))
+      attempted: ClientObservationOn)) == "on"
     && count(workflow_lamps_v0) == 2
     && any(workflow_lamps_v0, lamp => workflow_lamp_key(lamp: lamp) == "live")
     && any(workflow_lamps_v0, lamp => workflow_lamp_key(lamp: lamp) == "attempted")
@@ -87,9 +86,9 @@ test fn work_item_workflow_is_seven_independent_node_joined_facts() -> Bool {
   count(work_item_workflow_fact_rows) == 7
     && count(proposed) == 1
     && count(landed) == 1
-    && all(proposed, r => !work_item_workflow_fact_is_joined(row: r))
-    && all(landed, r => !work_item_workflow_fact_is_joined(row: r))
-    && count(work_item_workflow_fact_rows |> filter(r => work_item_workflow_fact_is_joined(row: r))) == 5
+    && all(proposed, r => r.join == BlockedOnAttemptPrNodeBinding)
+    && all(landed, r => r.join == BlockedOnAttemptPrNodeBinding)
+    && count(work_item_workflow_fact_rows |> filter(r => r.join == JoinedOnRoadmapNode)) == 5
     && any(work_item_workflow_fact_rows, r => work_item_workflow_fact_key(fact: r.fact) == "live")
     && any(work_item_workflow_fact_rows, r => work_item_workflow_fact_key(fact: r.fact) == "done")
 }
