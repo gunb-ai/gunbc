@@ -1241,9 +1241,9 @@ does not wait for a native store:
    C0-owned proposal identity, transition, and primary outcome while projection/fidelity receipts
    remain realization specific; R1 does not invent the later semantic/admission receipt. Removing a
    required conditional-advance capability refuses that target policy; a synthetic fourth adapter
-   requires no primary-interaction edit and, once P1 exists, no proof-kernel edit. This slice
-   replaces C0's optional `git` fixture slot and Git-named presentation cases with
-   realization-indexed projection receipts without changing primary behavior.
+   requires no primary-interaction edit. This slice replaces C0's optional `git` fixture slot and
+   Git-named presentation cases with realization-indexed projection receipts without changing
+   primary behavior.
    R0 and P−1 may proceed in parallel because neither is allowed to infer the other. R1 waits for
    all three R0 models; the proof kernel waits for P−1.
 5. **P0 — user contract, cost, and layered scenario model:** carry the §0
