@@ -143,8 +143,14 @@ fn coproduct_arm_payload_pairs(type_name: Symbol) -> List<CoproductArmPayloadPai
   )
 }
 
-fn coproduct_nullary_inhabitants<T>(type_name: Symbol) -> Outcome<List<T>> {
-  coproduct_nullary_inhabitants(type_name: type_name)
+fn coproduct_nullary_inhabitants<T>(
+  type_name: Symbol,
+  discriminant_of: fn(T) -> Symbol
+) -> Outcome<List<T>> {
+  coproduct_nullary_inhabitants(
+    type_name: type_name,
+    discriminant_of: discriminant_of
+  )
 }
 
 type CoproductNullaryInhabitantLookup<T>
@@ -159,10 +165,11 @@ fn coproduct_nullary_inhabitant_lookup_missing<T>(
 
 fn coproduct_nullary_inhabitant_lookup_step<T>(
   wanted: Symbol,
+  discriminant_of: fn(T) -> Symbol,
   acc: CoproductNullaryInhabitantLookup<T>,
   inhabitant: T
 ) -> CoproductNullaryInhabitantLookup<T> {
-  if discriminant(v: inhabitant) == wanted {
+  if discriminant_of(inhabitant) == wanted {
     match acc {
       CoproductNullaryInhabitantMissing =>
         CoproductNullaryInhabitantUnique { value: inhabitant }
@@ -189,10 +196,14 @@ fn coproduct_nullary_inhabitant_lookup_diagnostic(
 
 fn coproduct_nullary_inhabitant_by_discriminant<T>(
   type_name: Symbol,
+  discriminant_of: fn(T) -> Symbol,
   wanted: Symbol
 ) -> Outcome<T> {
   bind_outcome(
-    o: coproduct_nullary_inhabitants(type_name: type_name),
+    o: coproduct_nullary_inhabitants(
+      type_name: type_name,
+      discriminant_of: discriminant_of
+    ),
     f: fn(inhabitants) {
       match fold(
         xs: inhabitants,
@@ -200,6 +211,7 @@ fn coproduct_nullary_inhabitant_by_discriminant<T>(
         f: fn(acc, inhabitant) {
           coproduct_nullary_inhabitant_lookup_step(
             wanted: wanted,
+            discriminant_of: discriminant_of,
             acc: acc,
             inhabitant: inhabitant
           )

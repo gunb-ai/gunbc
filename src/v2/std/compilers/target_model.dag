@@ -9139,6 +9139,12 @@ type TargetDeriveSupplementalGenericBoundRequirement {
   required_trait: ReprGroundingDeriveTrait
 }
 
+fn target_grounding_derive_trait_discriminant(
+  derive_trait: ReprGroundingDeriveTrait
+) -> Symbol {
+  discriminant(v: derive_trait)
+}
+
 fn target_representation_choice_has_parameter(
   choice: TargetRepresentationChoice,
   representation_parameter: Symbol
@@ -9173,6 +9179,7 @@ fn target_derive_supplemental_generic_bound_requirement_from_node(
                   bind_outcome(
                     o: coproduct_nullary_inhabitant_by_discriminant(
                       type_name: ^ReprGroundingDeriveTrait,
+                      discriminant_of: target_grounding_derive_trait_discriminant,
                       wanted: required_trait_id
                     ),
                     f: fn(required_trait) {
@@ -9209,6 +9216,7 @@ fn target_derive_supplemental_generic_bound_contract_from_node(
           bind_outcome(
             o: coproduct_nullary_inhabitant_by_discriminant(
               type_name: ^ReprGroundingDeriveTrait,
+              discriminant_of: target_grounding_derive_trait_discriminant,
               wanted: derive_trait_id
             ),
             f: fn(derive_trait) {

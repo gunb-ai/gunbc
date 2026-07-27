@@ -9,6 +9,14 @@ fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
   a == b
 }
 
+fn behavior_discriminant(value: Behavior) -> Symbol {
+  discriminant(v: value)
+}
+
+fn connective_discriminant(value: Connective) -> Symbol {
+  discriminant(v: value)
+}
+
 test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
   !bag_eq(
     xs: coproduct_arm_keys(type_name: reflect_connective_type),
@@ -39,7 +47,10 @@ fn all_inhabitant_discriminants_are_reflected_arms(
 }
 
 test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
-  match coproduct_nullary_inhabitants(type_name: reflect_behavior_type) {
+  match coproduct_nullary_inhabitants(
+    type_name: reflect_behavior_type,
+    discriminant_of: behavior_discriminant
+  ) {
     Accepted { value: inhabitants, diagnostics: _ } =>
       let keys = coproduct_arm_keys(type_name: reflect_behavior_type)
       bag_eq(
@@ -55,9 +66,11 @@ test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
 }
 
 test fn witness_connective_nullary_inhabitants_fail_closed() -> Bool {
-  match coproduct_nullary_inhabitants(type_name: reflect_connective_type) {
+  match coproduct_nullary_inhabitants(
+    type_name: reflect_connective_type,
+    discriminant_of: connective_discriminant
+  ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
 }
-
