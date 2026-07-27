@@ -28,7 +28,7 @@ reuse, atomic advance, and Git projection are system responsibilities. A normal 
 merge versus rebase, maintains branch topology, edits conflict markers, or interprets
 proof/evidence terminology.
 
-At the semantic integration boundary, only two results are primary-user-visible:
+At the semantic integration boundary, there are only two semantic handoffs:
 
 ```text
 Landed
@@ -56,6 +56,23 @@ information becomes a user question only when the missing information is genuine
 that no observation can answer. The precise receipt and mechanics remain available on demand
 through an explicit inspect/debug surface.
 
+A third **non-semantic terminal outcome** is necessary for fail-closed honesty:
+
+```text
+Could not land
+This change is not permitted to alter the production access policy.
+Approval was not granted. No files were changed.
+```
+
+`Could not land` is not a choice and never converts a machine deficit into user work. It appears
+only after the system has exhausted or ruled out every permitted retry, observation, repair,
+approval route, or other machine-owned continuation. Internally it retains a typed, located,
+counted refusal and an audience-authorized receipt reference; the primary message gives the plain
+domain reason, who or what owns any real next action, and confirms that no transition committed.
+Permanent authorization denial, policy refusal, unsupported proof bounds, and non-retryable effect
+failure therefore cannot disappear into an inspect-only state. Non-terminal progress may be shown
+as status, but it is not a semantic conclusion or a request for preference.
+
 The compatibility surface may look like an ordinary Git worktree and accept ordinary commits or
 PRs, but Git is import/export and compatibility realization, not the native interaction model. A
 submit operation imports the pending delta/proposal, replays it against the current accepted
@@ -71,6 +88,8 @@ The interaction contract has executable acceptance conditions:
 - every user question is a genuine normative choice in domain language;
 - every machine-answerable issue stays inside the machine;
 - one answer resumes the suspended operation automatically; and
+- every terminal refusal produces a plain `Could not land` message backed by a typed, located,
+  counted internal refusal; and
 - every accepted result remains exportable as ordinary Git.
 
 The first scenario design therefore includes both the internal layered receipt and this minimal
@@ -83,7 +102,8 @@ The product thesis is:
 
 > **The user makes changes and states preferences. The system owns integration. It lands every
 > safely determined result and interrupts the user only for an irreducible choice about what they
-> want.**
+> want; when policy, authority, or a terminal system limit makes landing impossible, it says so
+> plainly without pretending that failure is a preference.**
 
 The formal objective underneath that thesis is:
 
@@ -504,21 +524,36 @@ The distinctions are load-bearing:
   `RetryStaleParent`, not Unknown. A committed native state whose Git export fails remains committed
   with `ProjectionFailed`/`ProjectionPending`; projection failure is not semantic rollback.
 
-The primary handoff does **not** expose four buckets. It projects the layers through the §0
-boundary:
+The primary surface does **not** expose the internal buckets. It projects the layers through the
+§0 boundary:
 
 ```text
-PrimaryHandoff
+PrimaryOutcome
   = Landed { result_preview }
   | ChoiceRequired { one_domain_question, concrete_previews, continuation }
+  | CouldNotLand {
+      plain_domain_reason,
+      responsible_party,
+      real_next_action_or_none,
+      typed_refusal_receipt
+    }
 ```
 
 A committed/read-back result becomes `Landed`. A closed-many result, or mutually incompatible
 explicit requests, becomes `ChoiceRequired` only when a genuine user preference can discriminate
-the alternatives. Unclosed search, missing machine-observable facts, stale-parent retry,
-authorization routing, effect retry, and projection repair remain internal work or non-semantic
-operational status—not questions disguised as work delegation. One answer adds the authenticated
+the alternatives. Those are the only two **semantic handoffs**. Unclosed search, missing
+machine-observable facts, stale-parent retry, authorization routing, effect retry, and projection
+repair remain internal work or non-semantic operational status while a permitted machine-owned
+continuation exists—not questions disguised as work delegation. One answer adds the authenticated
 preference and resumes the stored continuation automatically.
+
+When no permitted continuation remains, the typed refusal projects to `CouldNotLand` rather than
+vanishing into inspect state. A permanently unclosed fragment reports that the requested change
+cannot yet be checked safely; denied authority reports that the change is not permitted; a
+non-retryable effect failure reports the failed domain action. The wording never exposes the
+internal result-arm name, never asks the user to perform reconciliation, and never implies a
+preference could fix a non-preference failure. The receipt preserves the exact typed location and
+cause for inspection, counting, and repair.
 
 Receipts and inspect APIs preserve every underlying state. Every group keeps its partial
 assessments even if the batch cannot partially commit: for example group A may be unique and
