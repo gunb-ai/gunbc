@@ -69,7 +69,7 @@ DESIGN requires facts-flow-forward **and** that Node-shape classification not ac
 
 | Surface | Authority | Precedent |
 |---|---|---|
-| **General trait-bound accessor** | New `TraitBoundWitness` coproduct + `required_trait_bound_witnesses_for_fn_decl(fn_node) -> List<TraitBoundWitness>` (`target_model.dag`) — grounded **modeled operations** in fn bodies (method invokes on type-param/`Outcome`/`Option`/container receivers), **not** type occurrence alone | (new — P-fn home) |
+| **General trait-bound accessor** | New `TraitBoundWitness` coproduct + `required_trait_bound_witnesses_for_fn_decl(fn_node) -> List<TraitBoundWitness>` (`target_model.dag`) — grounded **modeled operations** in fn bodies (method invokes on type-param/`Outcome`/`Option`/container receivers), **not** type occurrence alone. **Prerequisite:** general body producer — operations must exist as substrate behaviors, not grammar production spine | (new — P-fn home; blocked until body producer) |
 | **Collection repr witness** | `target_collection_witness_from_node` → `Outcome<RequiredTraitWitness>` — **unchanged**; models constraints on `TargetRepresentationChoice` only (Ord/Hash/Eq today). Collection facts **refine** general `TraitBoundWitness` at repr-choice sites; do not broaden `RequiredTraitWitness` for fn-wide Clone | Ord/Hash/Eq collection witnesses |
 | **Completeness gate** | `trait_derive_completeness_gate` / `trait_derive_completeness_gate_for_collection_witness` (`trait_derive_completeness.dag`) — calls `repr_grounding_derive_completeness_predicate` **only inside** the gate; emit consumes the gate verdict | Gate-1 sub-wall #2 (#7174) |
 | **Capability table lookup** | `repr_grounding_derive_shape_has_trait(shape, trait)` + `record_derive_traits_*` list builders (`trait_derive_shape.dag`) — answers **which traits an elem shape may derive**, not per-impl bound lists | struct `#[derive]` attr *selection* today |
@@ -91,9 +91,10 @@ DESIGN requires facts-flow-forward **and** that Node-shape classification not ac
 
 | Field | Value |
 |---|---|
-| **Modeled home (proposed)** | New **`TraitBoundWitness`** coproduct in `target_model` (general fn/generic bound facts — e.g. `FnTypeParamBoundClone { type_param, site }` where `site` names the **grounded modeled operation**, not a bare type occurrence: `TraitBoundSiteMethodInvoke { method, receiver }` for `.clone()`/`.is_empty()`/`.iter()` on type-param, `Outcome<T>`, `Option<T>`, `im::Vector<T>`, etc.). Implement **`required_trait_bound_witnesses_for_fn_decl(fn_node: Node) -> List<TraitBoundWitness>`** as a `fold_node` query (`TraitBoundWitnessFold` algebra) over modeled **operations** in the fn body. **`RequiredTraitWitness` unchanged** — collection repr Ord/Hash/Eq only; where a collection repr choice implies Clone, emit **projects** that fact into `TraitBoundWitness` at the repr-choice site rather than broadening the collection coproduct. v1 arm (a) **imports and calls only the general accessor** |
+| **Prerequisite (load-bearing)** | **General body producer** ([general-body-producer-design.md](general-body-producer-design.md)) — real ingested `fn_decl` bodies must lower to substrate behaviors (`Transform`, `Bind`, `Match`, method invokes, etc.) before `TraitBoundWitnessFold` can observe R1–R3 operations. Today bodies remain grammar production spines only (DESIGN open thread: body-lowering / general body producer). **No parallel syntax-shape walker** substitutes for this producer — that would violate predicate/walker dissolution. Until the producer clears the v1 emit-module closure, P-fn accessor work is **unauthorizable**; arm (a) stays on the counted `v1_generic_params_needing_clone_bound` scaffold only |
+| **Modeled home (proposed)** | New **`TraitBoundWitness`** coproduct in `target_model` (general fn/generic bound facts — e.g. `FnTypeParamBoundClone { type_param, site }` where `site` names the **grounded modeled operation**, not a bare type occurrence: `TraitBoundSiteMethodInvoke { method, receiver }` for `.clone()`/`.is_empty()`/`.iter()` on type-param, `Outcome<T>`, `Option<T>`, `im::Vector<T>`, etc.). Implement **`required_trait_bound_witnesses_for_fn_decl(fn_node: Node) -> List<TraitBoundWitness>`** as a `fold_node` query (`TraitBoundWitnessFold` algebra) over substrate **behaviors** in the fn body (post–body-producer), not over `^grammar_production_*` spines. **`RequiredTraitWitness` unchanged** — collection repr Ord/Hash/Eq only; where a collection repr choice implies Clone, emit **projects** that fact into `TraitBoundWitness` at the repr-choice site rather than broadening the collection coproduct. v1 arm (a) **imports and calls only the general accessor** once prerequisite is met |
 | **Production consumers** | `v1.compiler.trait_derive_emit` arm (a) → `v1_emit_type_params_with_clone_bounds` (rewired to `TraitBoundWitness` list) → `emit_fn_def` (`05_emit_rust.dag:5172`) |
-| **Does NOT add** | `TargetCollectionWitnessClone` or other fn-bound variants inside `RequiredTraitWitness`; new Node-shape predicates in v1; extensions to `v1_type_param_needs_clone_bound`; emitted-Rust body scans |
+| **Does NOT add** | `TargetCollectionWitnessClone` or other fn-bound variants inside `RequiredTraitWitness`; grammar-production-spine or emitted-Rust syntax walkers as a body-producer substitute; new Node-shape predicates in v1; extensions to `v1_type_param_needs_clone_bound`; emitted-Rust body scans |
 | **Predicted effect** | E0599 −590 (R1+R2+R3); per-module clone/is_empty/iter histogram → 0 |
 | **E0277 collateral** | **Unknown — do not claim** until stamped binary proves Family 1 is not the dominant remaining E0277 mass |
 | **RED (green direction)** | Canonical-seven probe: R1+R2+R3 rows absent from `e0599_canonical_seven_census_*.tsv` |
@@ -139,12 +140,13 @@ DESIGN requires facts-flow-forward **and** that Node-shape classification not ac
 Phase 0 (now)     → this document + management acceptance of consumer graph
 Phase 1 (first)   → #7289 Measure/missing-generics overlay salvage (loyal-boar-481)
 Phase 2           → P-derive via container-contract bound catalog + capability-table trait selection (gate unchanged)
-Phase 3           → P-fn via `TraitBoundWitness` + `required_trait_bound_witnesses_for_fn_decl` fold/query accessor
+Phase 2a (gate)   → general body producer — fn_decl bodies → substrate behaviors for v1 emit-module closure ([general-body-producer-design.md](general-body-producer-design.md); DESIGN body-lowering open thread)
+Phase 3           → P-fn via `TraitBoundWitness` + `required_trait_bound_witnesses_for_fn_decl` (blocked until Phase 2a — accessor has no canonical operation surface without it)
 Phase 4           → P-optional (R4) when namespace lane ready
 Phase 5           → tails R5/R6 if still above noise floor
 ```
 
-**Do not start Phase 2–3 before Phase 1 acceptance** — respects deletion-lane sequence and the `05_emit_rust.dag` fence (P-derive/P-fn route through `trait_derive_emit.dag`, not seed emit bulk edits).
+**Do not start Phase 2 before Phase 1 acceptance** — respects deletion-lane sequence and the `05_emit_rust.dag` fence (P-derive routes through `trait_derive_emit.dag`, not seed emit bulk edits). **Do not start Phase 3 before Phase 2a** — P-fn's `TraitBoundWitnessFold` requires substrate behaviors the body producer alone supplies; interim arm (a) stays on the counted v1 scaffold until then.
 
 ---
 
