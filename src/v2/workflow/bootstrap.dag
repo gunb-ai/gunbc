@@ -91,7 +91,6 @@ type DiverseCompilationAgreement {
   primary: DiverseCompilationRun
   secondary: DiverseCompilationRun
   independent_compilers: IndependentCompilerPair
-  evidence: IndependentCompilerEvidence
   agreed_hash: BootstrapHashPin
 }
 
@@ -586,30 +585,9 @@ fn diverse_compilation_agreement_witness(
   evidence: IndependentCompilerEvidence,
   agreed_hash: BootstrapHashPin
 ) -> Witness<DiverseCompilationAgreement> {
-  match independent_compilers {
-    Holds { value: pair } =>
-      if (primary.compiler == pair.primary)
-           && (secondary.compiler == pair.secondary)
-           && (primary.source == secondary.source)
-           && (primary.output == secondary.output)
-           && (primary.output_hash.digest == secondary.output_hash.digest)
-           && (agreed_hash.digest == primary.output_hash.digest)
-           && (primary.output_hash.pin == ^pinned_v4_fixed_point_hash_pin)
-           && (secondary.output_hash.pin == ^pinned_v4_fixed_point_hash_pin)
-           && (agreed_hash.pin == ^pinned_v4_fixed_point_hash_pin) {
-        Holds {
-          value: DiverseCompilationAgreement {
-            primary: primary,
-            secondary: secondary,
-            independent_compilers: pair,
-            evidence: evidence,
-            agreed_hash: agreed_hash
-          }
-        }
-      } else {
-        Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+  match evidence {
+    IndependentCompilerEvidenceUnavailable { correction: _ } =>
+      Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
   }
 }
 
@@ -618,11 +596,8 @@ fn bootstrap_seed_honesty_discharge_witness(
   diverse_double_compilation: Witness<DiverseCompilationAgreement>
 ) -> Witness<SeedHonestyDischarge> {
   match diverse_double_compilation {
-    Holds { value: agreement } =>
-      match agreement.evidence {
-        IndependentCompilerEvidenceUnavailable { correction: _ } =>
-          Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
-      }
+    Holds { value: _ } =>
+      Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }

@@ -49,7 +49,6 @@ fn seed_honesty_fabricated_agreement(
         primary: primary_compiler,
         secondary: secondary_compiler
       },
-      evidence: independent_compiler_evidence_unavailable(),
       agreed_hash: BootstrapHashPin {
         digest: pinned_v4_fixed_point_hash,
         pin: ^pinned_v4_fixed_point_hash_pin
