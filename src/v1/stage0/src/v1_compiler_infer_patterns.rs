@@ -220,7 +220,7 @@ pub fn expand_scrut_type_for_variant_lookup(
     loop {
         let name = authored_name_at(env.source_indices.clone(), scrut_node.clone());
         let is_disj = (scrut_node.connective.clone() == Connective::Disj);
-        let is_witness = crate::v1_std_core::is_witness_type_name(name.clone());
+        let is_witness = is_witness_type_name(name.clone());
         let is_optional = (scrut_node.return_cardinality.clone() == Cardinality::CardOptional);
         if ((is_optional.clone() || is_disj.clone()) || is_witness.clone()) {
             break scrut_node.clone();
@@ -237,6 +237,10 @@ pub fn expand_scrut_type_for_variant_lookup(
             }
         }
     }
+}
+
+pub fn is_witness_type_name(name: String) -> bool {
+    ((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string()))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -596,11 +600,11 @@ pub fn lookup_variant_in_type(
                             let optional_cardinality_subject = (scrut_opt.clone()
                                 && (authored_name_at(source_indices.clone(), scrut_node.clone())
                                     != "Optional".to_string()));
-                            let witness_subject = (crate::v1_std_core::is_witness_type_name(
-                                authored_name_at(source_indices.clone(), scrut_node.clone()),
-                            ) && ((scrut_node.children.clone().len()
-                                as i64)
-                                == 1));
+                            let witness_subject =
+                                (is_witness_type_name(authored_name_at(
+                                    source_indices.clone(),
+                                    scrut_node.clone(),
+                                )) && ((scrut_node.children.clone().len() as i64) == 1));
                             if (optional_cardinality_subject.clone()
                                 && (variant_name.clone() == "Present".to_string()))
                             {
@@ -788,7 +792,7 @@ pub fn check_match_exhaustiveness(
         let is_coproduct = (resolved.connective.clone() == Connective::Disj);
         let resolved_is_optional =
             (resolved.return_cardinality.clone() == Cardinality::CardOptional);
-        let resolved_is_witness = (crate::v1_std_core::is_witness_type_name(authored_name_at(
+        let resolved_is_witness = (is_witness_type_name(authored_name_at(
             env.source_indices.clone(),
             resolved.clone(),
         )) && ((resolved.children.clone().len() as i64) == 1));

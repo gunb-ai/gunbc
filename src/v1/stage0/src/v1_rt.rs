@@ -172,20 +172,6 @@ pub fn name_resolution_policy_is_namespace_only() -> bool {
     NAME_RESOLUTION_POLICY_NAMESPACE_ONLY.with(|e| e.get())
 }
 
-// Type-ref pool-coincidence mask staging (type-resolution fail-closed b): default OFF until
-// projection-generator extdeps import burndown — see type_ref_pool_coincidence_mask_staging_note.
-thread_local! {
-    static TYPE_REF_POOL_COINCIDENCE_MASK_ENABLED: Cell<bool> = const { Cell::new(false) };
-}
-
-pub fn type_ref_pool_coincidence_mask_set_enabled(enabled: bool) {
-    TYPE_REF_POOL_COINCIDENCE_MASK_ENABLED.with(|e| e.set(enabled));
-}
-
-pub fn type_ref_pool_coincidence_mask_is_enabled() -> bool {
-    TYPE_REF_POOL_COINCIDENCE_MASK_ENABLED.with(|e| e.get())
-}
-
 pub fn resolution_silent_pick_record_fn_parent_first_hit(
     env_module_path: String,
     name: String,

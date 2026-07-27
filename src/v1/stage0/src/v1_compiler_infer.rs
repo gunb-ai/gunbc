@@ -189,6 +189,10 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
+pub fn is_witness_type_name(name: String) -> bool {
+    ((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string()))
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemContribution {
     pub resolved_item: Rc<Node>,
@@ -2303,7 +2307,7 @@ pub fn annotate_pattern_parent_enums(
                             && ((variant_name.clone() == "Present".to_string())
                                 || (variant_name.clone() == "Absent".to_string())));
                         let witness_container_subject =
-                            (crate::v1_std_core::is_witness_type_name(scrutinee_name.clone())
+                            (is_witness_type_name(scrutinee_name.clone())
                                 && ((variant_name.clone() == "Holds".to_string())
                                     || (variant_name.clone() == "Violates".to_string())));
                         if ((optional_cardinality_subject.clone()

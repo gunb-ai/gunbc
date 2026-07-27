@@ -23,12 +23,7 @@ fn compile_probe(
 ) -> std::rc::Rc<v1_compiler::v1_compiler_compile::PipelineResult> {
     let entry_path = format!("{FIXTURE_DIR}/{entry_name}");
     let source = read_fixture(entry_name);
-    compile_dag_named_with_source_roots(
-        &entry_path,
-        &source,
-        RenderTarget::Dag,
-        &fixture_roots(),
-    )
+    compile_dag_named_with_source_roots(&entry_path, &source, RenderTarget::Dag, &fixture_roots())
 }
 
 fn hard_diagnostic_messages(

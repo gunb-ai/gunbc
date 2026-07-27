@@ -179,14 +179,6 @@ pub fn is_compiler_error(inferred: Rc<InferredNode>) -> bool {
     }
 }
 
-pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
-    match (*inferred.clone()).clone() {
-        InferredNode::TypeVariable { id: _, .. } => true,
-        InferredNode::Resolved { node: _, .. } => false,
-        InferredNode::CompilerError { .. } => false,
-    }
-}
-
 pub fn has_inferred(n: Rc<Node>) -> bool {
     (n.inferred.clone() != None)
 }
@@ -3866,11 +3858,6 @@ pub fn qualified_last_segment(name: String) -> String {
         Some(s) => s.clone(),
         None => name.clone(),
     }
-}
-
-pub fn is_witness_type_name(name: String) -> bool {
-    (((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string()))
-        || (qualified_last_segment(name.clone()) == "Witness".to_string()))
 }
 
 pub fn type_name_compatible(a: String, b: String) -> bool {
