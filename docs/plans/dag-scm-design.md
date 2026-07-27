@@ -15,51 +15,77 @@ grounding: DESIGN open thread “SCM economics — the GitLab 10-K corpus.” Vi
 [node/subtree visibility grants](node-subtree-visibility-grants.md). Storage/surface authority:
 [module identity vs storage](module-identity-storage-binding-design.md).
 
-## 0. User contract — edit, submit, answer at most one real question
+## 0. User contract — Git-compatible, not Git-shaped
 
 The proof machinery below is an implementation contract, not product vocabulary. A developer
-should not need to understand candidate closure, evidence lattices, patch transport,
-linearizability, or even three-way merge. The ordinary loop is:
+should not need to understand candidate closure, evidence relations, patch transport,
+linearizability, or three-way merge. The native workflow is:
 
-1. start from the named accepted target;
-2. edit through a supported worktree/editor surface;
-3. submit the change; and
-4. receive either **Landed** or one localized, plain-language question about a genuinely normative
-   choice.
+> **edit → submit → Landed**
 
-Everything mechanical stays behind that surface: capture, rebasing/transport, target refresh,
-evidence collection, validation reuse, stale-parent retry, atomic advance, and projection repair.
-An epistemic deficit is not dumped onto the user as “candidate closure failed.” The system first
-tries the declared mechanical observations and bounded proof procedures. If it still cannot prove
-safety, it makes no change and reports the smallest useful next action in ordinary language, with
-the formal receipt available under an explicit inspect/debug view.
+Synchronization, replay against the current accepted target, integration, validation, receipt
+reuse, atomic advance, and Git projection are system responsibilities. A normal user never chooses
+merge versus rebase, maintains branch topology, edits conflict markers, or interprets
+proof/evidence terminology.
 
-Illustrative presentation:
+At the semantic integration boundary, only two results are primary-user-visible:
 
 ```text
-Landed: update both arguments to foo(c, d).
+Landed
+The requested change was safely accepted.
 
 or
 
-One choice is still yours:
+Choice required
 When foo was renamed to bar, should this new call follow that rename,
 or should a separate foo remain?
+
+[Follow the rename: bar(...)]  [Keep a separate foo(...)]
 ```
 
+`Choice required` means that more than one materially different requested meaning remains, or that
+two explicit requested outcomes cannot both be preserved. It asks exactly one localized question
+in domain language, presents concrete alternatives with result previews, and retains enough
+continuation state that one answer resumes the operation automatically. It never asks the user to
+perform integration mechanics.
+
+Missing observations, stale parents, incomplete models, retryable failures, and projection repair
+remain internal work. The system exhausts its declared mechanical observations and bounded proof
+procedures before interrupting. A machine-answerable issue stays inside the machine. Missing
+information becomes a user question only when the missing information is genuinely a preference
+that no observation can answer. The precise receipt and mechanics remain available on demand
+through an explicit inspect/debug surface.
+
 The compatibility surface may look like an ordinary Git worktree and accept ordinary commits or
-PRs, but the streamlined path does not require users to merge, rebase, choose a merge strategy, or
-understand distributed-ref topology. A submit operation imports the pending Git delta/proposal,
-reconciles it against the current accepted target, and emits an ordinary one-parent/squash commit
-when it lands. Expert Git plumbing remains available for compatibility; it is not the conceptual
-front door.
+PRs, but Git is import/export and compatibility realization, not the native interaction model. A
+submit operation imports the pending delta/proposal, replays it against the current accepted
+target, and emits an ordinary one-parent/squash commit when it lands. Ordinary Git clients remain
+usable and expert plumbing remains available; neither is the conceptual front door.
+
+The interaction contract has executable acceptance conditions:
+
+- no normal journey requires merge, rebase, cherry-pick, reset, conflict-marker editing, or
+  force-push;
+- no primary user message contains `candidate`, `closedness`, `evidence grade`, `reconciliation`,
+  `constraint`, `unknown`, or `contradictory`;
+- every user question is a genuine normative choice in domain language;
+- every machine-answerable issue stays inside the machine;
+- one answer resumes the suspended operation automatically; and
+- every accepted result remains exportable as ordinary Git.
 
 The first scenario design therefore includes both the internal layered receipt and this minimal
-presentation projection. No internal state may disappear, but no internal terminology leaks into
-the default UI merely because it exists.
+presentation projection. Internal state is retained and inspectable, but internal terminology does
+not leak into the default UI merely because it exists.
 
 ## 1. Product objective — minimize judgment without pricing safety
 
-The product is not “Git with smaller conflict markers.” It is:
+The product thesis is:
+
+> **The user makes changes and states preferences. The system owns integration. It lands every
+> safely determined result and interrupts the user only for an irreducible choice about what they
+> want.**
+
+The formal objective underneath that thesis is:
 
 > **For the declared admission contract and abstraction, return the most informative conclusion
 > whose soundness is established; claim uniqueness only when query-local candidate and evidence
