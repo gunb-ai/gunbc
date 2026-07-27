@@ -11,6 +11,7 @@ use crate::helpers::workspace_root;
 fn sample_outcome(entry: &str, function: &str, outcome: ClaimOutcome) -> DiscoveryWitnessOutcome {
     DiscoveryWitnessOutcome {
         entry: entry.to_string(),
+        module_path: "test.wet_hermetic_equivalence_fixture".to_string(),
         function: function.to_string(),
         outcome,
         execution_leg: "InterpretedLeg".to_string(),
