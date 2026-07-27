@@ -1428,7 +1428,7 @@ fn realize_sudo_nopasswd_grant_list_probe_on_host(
   let argv = sudo_nopasswd_grant_list_probe_argv(probe: probe)
   match transport {
     LocalShell => {
-      let result = sudo.NopasswdGrantListProbe.Check(probe: probe)
+      let result = sudo.NopasswdGrantListProbe.Check(command_path: probe.command_path)
       reconcile_shell_exec_observed(
         observed: ShellExecObserved {
           exit_code: if result.success { 0 } else { 1 },

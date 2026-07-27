@@ -66,7 +66,7 @@ test fn witness_sudo_nopasswd_grant_list_probe_typed_argv_holds() -> Bool {
   let probe = SudoNopasswdGrantListProbeShape {
     command_path: "/usr/bin/tailscale" as NonEmptyStr
   }
-  let result = sudo.NopasswdGrantListProbe.Check(probe: probe)
+  let result = sudo.NopasswdGrantListProbe.Check(command_path: probe.command_path)
   let argv = sudo_nopasswd_grant_list_probe_argv(probe: probe)
   result.success && argv == ["sudo", "-n", "-l", "/usr/bin/tailscale"]
 }
