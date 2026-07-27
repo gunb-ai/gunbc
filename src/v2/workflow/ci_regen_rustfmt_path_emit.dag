@@ -3,32 +3,61 @@ module v2.workflow.ci_regen_rustfmt_path_emit
 import v2.workflow.orchestration_bash_emit_support {
   orch_bash_comment_line,
   orch_bash_do,
-  orch_bash_emit_pipeline
+  orch_bash_emit_pipeline,
+  orch_bash_run
 }
 import v2.std.orchestration {
+  And,
+  DiscardAll,
+  DiscardErr,
+  Do,
+  Exit,
+  ExitZero,
+  ExprCmdSubst,
   FailFast,
-  Pipeline
+  If,
+  IgnoreFail,
+  Let,
+  Not,
+  Pipeline,
+  PipelineStep,
+  Predicate,
+  Run,
+  StrNonempty
 }
+import v2.std.collection { Absent, Present }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data ci_regen_rustfmt_path_emit_authority_note: String = "Foreign-executor shell emission for the regen-job rustfmt PATH ensure (bucket D). Intent is a Pipeline of atomic PATH probes; bash medium binding lives here per shell→intent routing. Kept out of ci_workflow_run_emit so gunbc.ci_spec can import this surface without the ci_materialization ↔ ci_spec cycle that module's sccache injection closes."
+data ci_regen_rustfmt_path_emit_authority_note: String = "Foreign-executor shell emission for the regen-job rustfmt PATH ensure (bucket D). Intent is a Pipeline of If/Predicate/Exit/Let nodes — control flow is orchestration, not bash-in-String (review 43658). Leaf Run.command / export spellings are the irreducible kernel (test -x / command -v / export PATH / dirname) until FileExists + session-EnvExport carriers land (PR2b residue named beside ci_floor_stamp). Kept out of ci_workflow_run_emit so gunbc.ci_spec can import this surface without the ci_materialization ↔ ci_spec cycle."
 
 data ci_regen_rustfmt_path_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ regen rustfmt-PATH run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
 
-data ci_regen_ensure_rustfmt_path_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_regen_ensure_rustfmt_path_script — foreign-executor PATH probe ensuring rustfmt is spawnable for regen_stage0 on hosts with a cargo shim and no CARGO_HOME/bin (receipt CI #7290 srv3-03); Pipeline of atomic Do steps emitted through orch bash-emit (same carrier class as ci_pin_rustup_default_script / ci_floor_disposition_marker_init_script); DISSOLVES WHEN the regen job shares the isolate+pin prelude that already puts CARGO_HOME/bin on PATH by construction, or when rustfmt resolution is a typed toolchain probe on host_effect_apply rather than emitted bash (#5828 / ROADMAP 6-shell-slice0)"
+data ci_regen_ensure_rustfmt_path_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_regen_ensure_rustfmt_path_script — foreign-executor PATH ensure for regen_stage0 on hosts with a cargo shim and no CARGO_HOME/bin (receipt CI #7290 srv3-03); control flow is If/Predicate/Exit/Let via orch bash-emit; leaf test -x / command -v / export PATH / dirname strings remain until FileExists + session-EnvExport (PR2b) or the regen job shares isolate+pin by construction; DISSOLVES WHEN rustfmt resolution is a typed toolchain probe on host_effect_apply rather than emitted bash (#5828 / ROADMAP 6-shell-slice0)"
 
 data ci_regen_ensure_rustfmt_path_note: String = "Prepend a locatable rustfmt dir onto PATH before regen_stage0's standalone rustfmt spawn (hosts that expose a cargo shim without CARGO_HOME/bin — receipt CI #7290 srv3-03). Probe order: CARGO_HOME/bin, /opt/cargo/bin, HOME/.cargo/bin, rustup which; refuse if still absent."
 
-data ci_regen_ensure_rustfmt_path_cargo_home_command: String = "if [ -n \"$CARGO_HOME\" ] && [ -x \"$CARGO_HOME/bin/rustfmt\" ]; then export PATH=\"$CARGO_HOME/bin:$PATH\"; fi"
+data ci_regen_rustfmt_test_x_cargo_home: String = "[ -x \"$CARGO_HOME/bin/rustfmt\" ]"
 
-data ci_regen_ensure_rustfmt_path_opt_cargo_command: String = "if ! command -v rustfmt >/dev/null 2>&1 && [ -x /opt/cargo/bin/rustfmt ]; then export PATH=\"/opt/cargo/bin:$PATH\"; fi"
+data ci_regen_rustfmt_test_x_opt_cargo: String = "[ -x /opt/cargo/bin/rustfmt ]"
 
-data ci_regen_ensure_rustfmt_path_home_cargo_command: String = "if ! command -v rustfmt >/dev/null 2>&1 && [ -x \"$HOME/.cargo/bin/rustfmt\" ]; then export PATH=\"$HOME/.cargo/bin:$PATH\"; fi"
+data ci_regen_rustfmt_test_x_home_cargo: String = "[ -x \"$HOME/.cargo/bin/rustfmt\" ]"
 
-data ci_regen_ensure_rustfmt_path_rustup_which_command: String = "if ! command -v rustfmt >/dev/null 2>&1; then RF=$(/opt/cargo/bin/rustup which rustfmt 2>/dev/null || true); if [ -n \"$RF\" ] && [ -x \"$RF\" ]; then export PATH=\"$(dirname \"$RF\"):$PATH\"; fi; fi"
+data ci_regen_rustfmt_test_x_rf: String = "[ -x \"$RF\" ]"
 
-data ci_regen_ensure_rustfmt_path_require_command: String = "if ! command -v rustfmt >/dev/null 2>&1; then echo \"::error::rustfmt not on PATH for regen_stage0 standalone spawn (hosts with a cargo shim and no CARGO_HOME/bin — receipt CI #7290 srv3-03)\"; exit 1; fi"
+data ci_regen_rustfmt_command_v: String = "command -v rustfmt"
+
+data ci_regen_rustfmt_export_cargo_home_path: String = "export PATH=\"$CARGO_HOME/bin:$PATH\""
+
+data ci_regen_rustfmt_export_opt_cargo_path: String = "export PATH=\"/opt/cargo/bin:$PATH\""
+
+data ci_regen_rustfmt_export_home_cargo_path: String = "export PATH=\"$HOME/.cargo/bin:$PATH\""
+
+data ci_regen_rustfmt_export_rf_dir_path: String = "export PATH=\"$RF_DIR:$PATH\""
+
+data ci_regen_rustfmt_error_echo: String = "echo \"::error::rustfmt not on PATH for regen_stage0 standalone spawn (hosts with a cargo shim and no CARGO_HOME/bin — receipt CI #7290 srv3-03)\""
+
+data ci_regen_rustfmt_rustup_which_assign: String = "RF=$(/opt/cargo/bin/rustup which rustfmt)"
 
 data ci_regen_ensure_rustfmt_path_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -39,16 +68,145 @@ data ci_regen_ensure_rustfmt_path_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
+fn ci_regen_rustfmt_exit_zero(command: String) -> Predicate {
+  ExitZero { run: orch_bash_run(command: command) }
+}
+
+fn ci_regen_rustfmt_command_v_ok() -> Predicate {
+  ExitZero {
+    run: Run {
+      command: ci_regen_rustfmt_command_v,
+      env: [],
+      redirect: Present { value: DiscardAll },
+      capture: Absent
+    }
+  }
+}
+
+fn ci_regen_rustfmt_command_v_missing() -> Predicate {
+  Not { inner: ci_regen_rustfmt_command_v_ok() }
+}
+
+fn ci_regen_rustfmt_export_step(command: String) -> PipelineStep {
+  orch_bash_do(command: command)
+}
+
+fn ci_regen_rustfmt_one_step(command: String) -> Pipeline {
+  Pipeline {
+    steps: [ci_regen_rustfmt_export_step(command: command)],
+    on_failure: FailFast
+  }
+}
+
+fn ci_regen_rustfmt_probe_cargo_home_step() -> PipelineStep {
+  If {
+    cond: And {
+      lhs: StrNonempty { operand: "\"$CARGO_HOME\"" },
+      rhs: ci_regen_rustfmt_exit_zero(command: ci_regen_rustfmt_test_x_cargo_home)
+    },
+    then_: ci_regen_rustfmt_one_step(command: ci_regen_rustfmt_export_cargo_home_path),
+    else_: Absent
+  }
+}
+
+fn ci_regen_rustfmt_probe_opt_cargo_step() -> PipelineStep {
+  If {
+    cond: And {
+      lhs: ci_regen_rustfmt_command_v_missing(),
+      rhs: ci_regen_rustfmt_exit_zero(command: ci_regen_rustfmt_test_x_opt_cargo)
+    },
+    then_: ci_regen_rustfmt_one_step(command: ci_regen_rustfmt_export_opt_cargo_path),
+    else_: Absent
+  }
+}
+
+fn ci_regen_rustfmt_probe_home_cargo_step() -> PipelineStep {
+  If {
+    cond: And {
+      lhs: ci_regen_rustfmt_command_v_missing(),
+      rhs: ci_regen_rustfmt_exit_zero(command: ci_regen_rustfmt_test_x_home_cargo)
+    },
+    then_: ci_regen_rustfmt_one_step(command: ci_regen_rustfmt_export_home_cargo_path),
+    else_: Absent
+  }
+}
+
+fn ci_regen_rustfmt_rustup_which_bind_step() -> PipelineStep {
+  Do {
+    run: Run {
+      command: ci_regen_rustfmt_rustup_which_assign,
+      env: [],
+      redirect: Present { value: DiscardErr },
+      capture: Present { value: IgnoreFail }
+    }
+  }
+}
+
+fn ci_regen_rustfmt_dirname_rf_step() -> PipelineStep {
+  Let {
+    name: "RF_DIR",
+    value: ExprCmdSubst {
+      callee: "dirname",
+      args: ["\"$RF\""]
+    }
+  }
+}
+
+fn ci_regen_rustfmt_probe_rustup_then() -> Pipeline {
+  Pipeline {
+    steps: [
+      ci_regen_rustfmt_rustup_which_bind_step(),
+      If {
+        cond: And {
+          lhs: StrNonempty { operand: "\"$RF\"" },
+          rhs: ci_regen_rustfmt_exit_zero(command: ci_regen_rustfmt_test_x_rf)
+        },
+        then_: Pipeline {
+          steps: [
+            ci_regen_rustfmt_dirname_rf_step(),
+            ci_regen_rustfmt_export_step(command: ci_regen_rustfmt_export_rf_dir_path)
+          ],
+          on_failure: FailFast
+        },
+        else_: Absent
+      }
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn ci_regen_rustfmt_probe_rustup_step() -> PipelineStep {
+  If {
+    cond: ci_regen_rustfmt_command_v_missing(),
+    then_: ci_regen_rustfmt_probe_rustup_then(),
+    else_: Absent
+  }
+}
+
+fn ci_regen_rustfmt_require_step() -> PipelineStep {
+  If {
+    cond: ci_regen_rustfmt_command_v_missing(),
+    then_: Pipeline {
+      steps: [
+        orch_bash_do(command: ci_regen_rustfmt_error_echo),
+        Exit { status: "1" }
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
 fn ci_regen_ensure_rustfmt_path_intent() -> Pipeline {
   Pipeline {
     steps: [
       orch_bash_comment_line(text: ci_regen_ensure_rustfmt_path_shell_emit_dissolution_trigger),
       orch_bash_comment_line(text: ci_regen_ensure_rustfmt_path_note),
-      orch_bash_do(command: ci_regen_ensure_rustfmt_path_cargo_home_command),
-      orch_bash_do(command: ci_regen_ensure_rustfmt_path_opt_cargo_command),
-      orch_bash_do(command: ci_regen_ensure_rustfmt_path_home_cargo_command),
-      orch_bash_do(command: ci_regen_ensure_rustfmt_path_rustup_which_command),
-      orch_bash_do(command: ci_regen_ensure_rustfmt_path_require_command)
+      ci_regen_rustfmt_probe_cargo_home_step(),
+      ci_regen_rustfmt_probe_opt_cargo_step(),
+      ci_regen_rustfmt_probe_home_cargo_step(),
+      ci_regen_rustfmt_probe_rustup_step(),
+      ci_regen_rustfmt_require_step()
     ],
     on_failure: FailFast
   }
