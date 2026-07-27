@@ -82,7 +82,7 @@ type DiverseCompilationRun {
 type IndependentCompilerPair {
   primary: Symbol
   secondary: Symbol
-  evidence: Symbol
+  evidence: IndependentCompilerEvidence
 }
 
 type DiverseCompilationAgreement {
@@ -110,6 +110,19 @@ type FixptStage1Stage2 {
 type SeedHonestyDischarge {
   seed_honesty_axiom: Symbol
   diverse_double_compilation: DiverseCompilationAgreement
+}
+
+type IndependentCompilerEvidence
+  = IndependentCompilerEvidenceUnavailable { correction: Unavailable }
+
+data independent_compiler_evidence_dissolve_on_note: String = "Dissolve-on: a future Available arm requires grounded independent-compiler provenance plus executed output bytes/digests under a separately ruled DDC/reference-compiler slice. Until then the evidence carrier is Unavailable-only, and the bootstrap discharge wall must refuse every current construction."
+
+data bootstrap_seed_honesty_disconnected_digest_note: String = "The self_host_bytes_digest_source_perturb_teeth_holds witness stays green; this unavailable-only seed-honesty carrier is disconnected from canonical_emitted_bytes_digest in this PR."
+
+fn independent_compiler_evidence_unavailable() -> IndependentCompilerEvidence {
+  IndependentCompilerEvidenceUnavailable {
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
 }
 
 type BootstrapPlan {
@@ -558,12 +571,11 @@ fn bootstrap_convergence_ladder(plan: Outcome<BootstrapPlan>) -> Witness<Converg
 fn independent_compiler_pair_witness(
   primary: Symbol,
   secondary: Symbol,
-  evidence: Symbol
+  evidence: IndependentCompilerEvidence
 ) -> Witness<IndependentCompilerPair> {
-  if (primary != secondary) && (evidence == ^independent_compiler_witness) {
-    Holds { value: IndependentCompilerPair { primary: primary, secondary: secondary, evidence: evidence } }
-  } else {
-    Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
+  match evidence {
+    IndependentCompilerEvidenceUnavailable { correction: _ } =>
+      Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
   }
 }
 
@@ -601,21 +613,12 @@ fn diverse_compilation_agreement_witness(
 
 fn bootstrap_seed_honesty_discharge_witness(
   axiom: Symbol,
+  evidence: IndependentCompilerEvidence,
   diverse_double_compilation: Witness<DiverseCompilationAgreement>
 ) -> Witness<SeedHonestyDischarge> {
-  match diverse_double_compilation {
-    Holds { value: agreement } =>
-      if axiom == ^seed_honesty_axiom {
-        Holds {
-          value: SeedHonestyDischarge {
-            seed_honesty_axiom: axiom,
-            diverse_double_compilation: agreement
-          }
-        }
-      } else {
-        Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+  match evidence {
+    IndependentCompilerEvidenceUnavailable { correction: _ } =>
+      Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
   }
 }
 
@@ -693,6 +696,7 @@ data bootstrap_physical_axiom: PhysicalExecutionAxiom = PhysicalExecutionAxiom {
 
 data bootstrap_seed_honesty_discharge: Witness<SeedHonestyDischarge> = bootstrap_seed_honesty_discharge_witness(
   axiom: ^seed_honesty_axiom,
+  evidence: independent_compiler_evidence_unavailable(),
   diverse_double_compilation: diverse_compilation_agreement_witness(
     primary: DiverseCompilationRun {
       source: ^v2_dag_source,
@@ -709,7 +713,7 @@ data bootstrap_seed_honesty_discharge: Witness<SeedHonestyDischarge> = bootstrap
     independent_compilers: independent_compiler_pair_witness(
       primary: ^v1_pipeline,
       secondary: ^independent_compiler_witness,
-      evidence: ^independent_compiler_witness
+      evidence: independent_compiler_evidence_unavailable()
     ),
     agreed_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: ^pinned_v4_fixed_point_hash_pin }
   )
