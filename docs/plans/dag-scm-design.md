@@ -995,14 +995,17 @@ The product advantage is therefore not “the language knows what the user meant
 
 > **The user makes changes and states preferences. The system owns integration. It lands every
 > safely determined result and interrupts the user only for an irreducible choice about what they
-> want.**
+> want; when a terminal refusal makes landing impossible, it says so plainly without fabricating a
+> choice.**
 
 The user-facing operation stays the §0 loop: edit, submit, then receive **Landed** or one localized
 plain-language **Choice required** question with concrete previews and a stored continuation. The
-system retries stale targets and seeks missing mechanical evidence itself. Internal
-`BothConflicted`, `Unclosed`, policy, transition, and projection states remain inspectable
-receipts, never default error prose. The model can deepen for decades without changing that public
-operation or growing a catalog of language-feature interactions.
+system retries stale targets and seeks missing mechanical evidence itself. If every permitted
+machine-owned continuation is exhausted, **Could not land** reports the plain domain reason and
+confirms no transition committed. Internal `BothConflicted`, `Unclosed`, policy, transition, and
+projection states remain inspectable receipts, never default error prose. The model can deepen for
+decades without changing that public operation or growing a catalog of language-feature
+interactions.
 
 The initial wedge is narrow and credible:
 
@@ -1022,8 +1025,8 @@ Track at least:
 - automatic `Applied` rate by evidence profile and admission contract;
 - semantic zero/one/many/unclosed, admission, transition, and projection rates and causes
   separately;
-- default-surface `Landed | ChoiceRequired` rates, question count, time-to-answer, and automatic
-  continuation success;
+- default-surface `Landed | ChoiceRequired | CouldNotLand` rates, question count, time-to-answer,
+  automatic continuation success, and refusal owners/causes;
 - judgment requests, human minutes, and LLM tokens per accepted proposal;
 - false-conflict rate relative to the required contract;
 - detected and escaped wrong integrations;
@@ -1047,25 +1050,26 @@ projection:
 |---|---|---|
 | `foo` arguments changed independently | `ClosedOne foo(c,d)` only with binding + joint-obligation + closure evidence; then admitted, committed, read back | `Landed`, with `foo(c,d)` preview |
 | rename plus concurrent old-spelling call | witnessed transport, closed-zero/many, or unclosed; never broken-clean | `Landed`, or `Choice required`: follow the rename vs keep a separate `foo`, with previews |
-| disjoint policy changes violate one claim | `ClosedZero` with a subset-minimal-within-bound claim core | `Choice required` only if the user can choose which explicit requirement to change; otherwise keep machine/policy work internal |
+| disjoint policy changes violate one claim | `ClosedZero` with a subset-minimal-within-bound claim core | `Choice required` only if the user can choose which explicit requirement to change; otherwise `Could not land` with the permitted policy reason |
 | two valid order-dependent transformations | `ClosedMany` with the two material alternatives | `Choice required` with one localized placement/order question and two previews |
 | non-idempotent append/increment delivered twice with one proposal occurrence ID | one contribution/application | `Landed`; no duplicate-work explanation required |
 | formatting/reorder/file move | semantic no-op only under the named model/equivalence; projection delta separate | `Landed`, optionally noting no program behavior changed |
 | login status says logged in; live request proves refresh invalid | `CredentialRecorded` supported; `ProviderReady` challenged/not supported | readiness consumer requests authentication only if needed; not an SCM question |
 | positive probe can establish the state it observes | positive evidence is neither/insufficient; negative may remain evidence | system seeks an independent check internally |
 | three proposals are pairwise compatible but jointly violate a cardinality/resource/security bound | `ClosedZero` with an n-way core | `Choice required` only for a genuine requirement tradeoff, with concrete previews |
-| proposal removes the policy that would reject it | `PolicyRefused` under frozen parent policy | policy change routes separately under parent policy; no semantic question |
-| exactly one semantic result but proposer lacks authority | `ClosedOne + Unauthorized`, never Applied | route the required approval; do not ask what the code should mean |
+| proposal removes the policy that would reject it | `PolicyRefused` under frozen parent policy | route the policy change separately; if refused, `Could not land`, never a semantic question |
+| exactly one semantic result but proposer lacks authority | `ClosedOne + Unauthorized`, never Applied | route approval; if denied or unavailable, `Could not land`, never ask what the code should mean |
 | contradiction would cite a locked node to an unauthorized audience | full internal proof + audience-authorized redacted/commitment-bearing projection | no hidden existence/content leak through wording, timing, or alternatives |
 | target advances after validation | `RetryStaleParent`; automatic re-evaluation | no interruption and no rebase request |
 | native transition commits but Git export fails | committed/read-back transition + `ProjectionFailed/Pending` outbox state | `Landed`; projection repair is inspectable operational status |
 | endpoint decodes losslessly but authored operation is absent | `ExactEndpointDelta + UnknownOperationRecovery`, never native-authored evidence | system continues only if the admission contract proves the endpoint delta sufficient |
-| lossy Git import | ambiguous/unknown recovery profile | no invented intent; ask only if a genuine preference remains |
-| absent required behavioral bound | structural assessment survives; semantic space/admission remains unclosed | system seeks the evidence and does not delegate that work to the user |
+| lossy Git import | ambiguous/unknown recovery profile | no invented intent; ask only if a genuine preference remains, otherwise `Could not land` after recovery bounds exhaust |
+| absent required behavioral bound | structural assessment survives; semantic space/admission remains unclosed | system seeks evidence; if the declared source/bound is terminally unavailable, `Could not land` |
+| non-retryable effect failure before commit | `EffectFailed` with typed domain cause and no transition receipt | `Could not land`: plain failed action, responsible owner, no files changed |
 | timestamps/arrival order are erased or permuted | identical semantic result and evidence assessments | identical outcome |
-| one plausible result but candidate/dependency closure unproved | `Unclosed` with the plausible candidate retained as partial information | continue internal investigation; never land merely because nothing else was modeled |
+| one plausible result but candidate/dependency closure unproved | `Unclosed` with the plausible candidate retained as partial information | investigate until bounds exhaust, then `Could not land`; never land merely because nothing else was modeled |
 | authorized prior transition adds a new invariant as ordinary data | later outcome changes through the same kernel | no new merge mode or user workflow |
-| one batch has unique, contradictory, unknown, and ambiguous independent groups | all four partial assessments retained; partial commit only with declared atomicity + proven independence | land proven-independent work; at most one `Choice required`, details on inspect |
+| one batch has unique, contradictory, unknown, and ambiguous independent groups | all four partial assessments retained; partial commit only with declared atomicity + proven independence | land proven-independent work; at most one `Choice required`; terminal refused groups say `Could not land`, details on inspect |
 | ordinary Git branch is stale but proposal transport is provable | target refresh/transport/CAS happens internally | submit succeeds without asking the user to merge or rebase |
 
 Every committed/Applied case needs a perturbation that breaks one obligation or certificate and
@@ -1092,17 +1096,20 @@ does not wait for a native store:
    **Accept T1:** login-status/live-request and self-establishing-probe scenarios preserve
    credential-vs-provider and support/challenge/neither distinctions; the three consumers use the
    same carrier rather than local enums.
-3. **P0 — user contract, cost, and layered scenario model:** carry the §0 edit/submit/Landed-or-one-
-   question surface, stress profile, proposal contract roles, evidence profiles, semantic
+3. **P0 — user contract, cost, and layered scenario model:** carry the §0
+   `Landed | ChoiceRequired | CouldNotLand` surface, stress profile, proposal contract roles,
+   evidence profiles, semantic
    zero/one/many/unclosed space, admission, transition, projection, closure certificates,
    timestamp non-authority, and scenario corpus as `.dag` facts/witnesses.
-   **Accept T1:** every scenario produces its internal receipt and the two-arm
-   `Landed | ChoiceRequired` handoff; nearby REDs prevent always-apply/refuse; removing a closure
-   certificate changes `ClosedOne` to `Unclosed`; self-amendment and unauthorized-unique scenarios
-   refuse in the correct layer. No normal journey requires merge/rebase/cherry-pick/reset/conflict
+   **Accept T1:** every scenario produces its internal receipt and three-arm primary outcome, with
+   only `Landed | ChoiceRequired` as semantic handoffs; nearby REDs prevent always-apply/refuse;
+   removing a closure certificate changes `ClosedOne` to `Unclosed`; self-amendment,
+   unauthorized-unique, exhausted-bound, and permanent-effect scenarios produce typed refusals and
+   plain `CouldNotLand`. No normal journey requires merge/rebase/cherry-pick/reset/conflict
    markers/force-push; primary messages contain none of the §0 forbidden terms; every question is
-   normative; machine-answerable work stays internal; one answer resumes automatically; ordinary
-   Git export remains valid.
+   normative; machine-answerable work stays internal while a permitted continuation exists; one
+   answer resumes automatically; every terminal refusal is visible; ordinary Git export remains
+   valid.
 4. **P1 — bounded source-integration proof kernel:** one public operation composes directly
    authored transformations over a small decidable program fragment. Domains contribute facts,
    claims, procedures, and checkable certificates; scenarios never add feature-pair arms.
