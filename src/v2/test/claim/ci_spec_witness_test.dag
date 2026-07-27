@@ -45,14 +45,8 @@ import gunbc.ci_materialization {
 }
 import gunbc.ci_workflow { ci_selection_control_script }
 import gunbc.merge_admission_produce {
-  ci_floor_disposition_marker_path,
-  ci_floor_disposition_marker_init_note,
-  ci_floor_disposition_marker_init_shell_emit_dissolution_trigger,
-  merge_admission_floor_disposition_documentation_only_skipped,
-  merge_admission_floor_disposition_floor_running,
   merge_admission_stamp_invoke,
   merge_admission_merge_base_ref,
-  ci_documentation_only_gate_skip_prefix_shell_emit_dissolution_trigger,
   ci_merge_admission_gate_script,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -281,41 +275,24 @@ test fn witness_repo_identity_single_authority_perturbation() -> Bool {
     && (perturbed as String) == "origin/develop"
 }
 
-test fn witness_documentation_only_gate_skip_prefix_dissolve_on_named() -> Bool {
-  string_contains(
-    s: ci_documentation_only_gate_skip_prefix_shell_emit_dissolution_trigger,
-    pattern: "dissolve-on: ci_documentation_only_gate_skip_prefix"
-  )
-}
-
-test fn witness_documentation_only_gate_skip_emits_dissolve_on_in_runners() -> Bool {
-  let marker = concat("# ", ci_documentation_only_gate_skip_prefix_shell_emit_dissolution_trigger)
-  string_contains(s: ci_floor_resolve_receipt_gate_script(), pattern: marker)
-    && string_contains(s: ci_floor_materialization_receipt_gate_script(), pattern: marker)
-    && string_contains(s: ci_selection_control_script(), pattern: marker)
-    && string_contains(s: ci_merge_admission_gate_script(), pattern: marker)
-}
-
-test fn witness_floor_disposition_marker_init_dissolve_on_named() -> Bool {
-  string_contains(
-    s: ci_floor_disposition_marker_init_shell_emit_dissolution_trigger,
-    pattern: "dissolve-on: ci_floor_disposition_marker_init_script"
-  )
-}
-
-test fn witness_floor_disposition_marker_init_emits_dissolve_on_in_floor_runner() -> Bool {
-  let marker = concat("# ", ci_floor_disposition_marker_init_shell_emit_dissolution_trigger)
-  string_contains(s: gunbc_ci_floor_only_script(spec: gunbc_ci_spec), pattern: marker)
-}
-
-test fn witness_floor_disposition_marker_initialized_at_floor_start() -> Bool {
-  let script = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
-  let stamp = concat(
-    concat("echo ", merge_admission_floor_disposition_floor_running),
-    concat(" > ", ci_floor_disposition_marker_path)
-  )
-  string_contains(s: script, pattern: ci_floor_disposition_marker_init_note) &&
-    string_contains(s: script, pattern: stamp)
+test fn witness_documentation_only_disposition_transport_retired() -> Bool {
+  let marker_path = "target/ci-floor-disposition.txt"
+  let skipped_disposition = "documentation_only_skipped"
+  let floor = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
+  let resolve_gate = ci_floor_resolve_receipt_gate_script()
+  let materialization_gate = ci_floor_materialization_receipt_gate_script()
+  let selection_gate = ci_selection_control_script()
+  let admission_gate = ci_merge_admission_gate_script()
+  !string_contains(s: floor, pattern: marker_path) &&
+    !string_contains(s: floor, pattern: skipped_disposition) &&
+    !string_contains(s: resolve_gate, pattern: marker_path) &&
+    !string_contains(s: resolve_gate, pattern: skipped_disposition) &&
+    !string_contains(s: materialization_gate, pattern: marker_path) &&
+    !string_contains(s: materialization_gate, pattern: skipped_disposition) &&
+    !string_contains(s: selection_gate, pattern: marker_path) &&
+    !string_contains(s: selection_gate, pattern: skipped_disposition) &&
+    !string_contains(s: admission_gate, pattern: marker_path) &&
+    !string_contains(s: admission_gate, pattern: skipped_disposition)
 }
 
 test fn witness_collapsed_run_script_is_build_plus_floor() -> Bool {
