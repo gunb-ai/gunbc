@@ -6,6 +6,7 @@ import std.syntax {
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol,
   AlgebraFieldKind, AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin
 }
+import std.occurrence_binding { ContainmentPath }
 import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
 import std.induction { SubValueRelation }
 
@@ -423,6 +424,13 @@ fn match_pattern_bind_name_at(pattern: MatchPattern, source_indices: Map<String,
   match match_pattern_bind_declaration(pattern: pattern) {
     Present { value: decl } => authored_name_at(source_indices: source_indices, node: decl)
     Absent => ""
+  }
+}
+
+fn match_pattern_bind_containment(pattern: MatchPattern) -> ContainmentPath<Node>? {
+  match match_pattern_bind_declaration(pattern: pattern) {
+    Present { value: decl } => Present { value: ContainmentPath { ancestors: [], terminal: decl } }
+    Absent => none
   }
 }
 

@@ -2234,7 +2234,7 @@ fn emit_typed_method_call_unified(receiver: Node, method: String, args: List<Nod
 
 fn emit_unified_pattern(pattern: MatchPattern, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
   match pattern {
-    Bind { name: n } => emit_ident(name: n, target: target)
+    Bind { declaration: n } => emit_ident(name: n.name, target: target)
     LitPattern { value: v } => emit_literal(value: v, target: target)
     VariantPattern { name: n, parent_enum: pe, field_bindings: fbs } =>
       emit_unified_variant_pattern(name: n, parent_enum: pe, field_bindings: fbs, target: target, source_indices: source_indices)

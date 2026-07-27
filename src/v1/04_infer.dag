@@ -1357,7 +1357,7 @@ fn derive_field_provenance(scope: InferScope, scrutinee_provenance: SubValueRela
 
 fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scrutinee_subject: PatternSubject, scrutinee_provenance: SubValueRelation) -> PatternScopeResult {
   match pattern {
-    Bind { name: n } => PatternScopeResult { scope: extend_scope_match_bound(scope: scope, name: n, resolved: pattern_binding_type(subject: scrutinee_subject), provenance: scrutinee_provenance), diagnostics: [] }
+    Bind { declaration: decl } => PatternScopeResult { scope: extend_scope_match_bound(scope: scope, name: authored_name_at(source_indices: scope.type_env.source_indices, node: decl), resolved: pattern_binding_type(subject: scrutinee_subject), provenance: scrutinee_provenance), diagnostics: [] }
     Wildcard => PatternScopeResult { scope: scope, diagnostics: [] }
     LitPattern { value: _ } => PatternScopeResult { scope: scope, diagnostics: [] }
     VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
@@ -1373,8 +1373,8 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
         let field_provenance = derive_field_provenance(scope: scope, scrutinee_provenance: scrutinee_provenance, scrutinee_subject: scrutinee_subject, variant_name: vname, field_name: field_name)
         let fb_pattern = field_binding_pattern(n: fb)
         match fb_pattern {
-          Bind { name: n } => PatternScopeResult {
-            scope: extend_scope_match_bound(scope: acc.scope, name: n, resolved: field_type, provenance: field_provenance),
+          Bind { declaration: decl } => PatternScopeResult {
+            scope: extend_scope_match_bound(scope: acc.scope, name: authored_name_at(source_indices: scope.type_env.source_indices, node: decl), resolved: field_type, provenance: field_provenance),
             diagnostics: concat(acc.diagnostics, field_lookup.diagnostics)
           }
           _ =>
@@ -4519,12 +4519,12 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   if vname == "Present" {
                     bindings |> fold(init: ctx, f: (c, fb) =>
                       match field_binding_pattern(n: fb) {
-                        Bind { name: bname } =>
+                        Bind { declaration: bdecl } =>
                           DescentContext {
                             fn_name: c.fn_name,
-                            param_names: map_insert(c.param_names, bname, ind_field.element_type),
+                            param_names: map_insert(c.param_names, authored_name_at(source_indices: c.type_env.source_indices, node: bdecl), ind_field.element_type),
                             param_order: c.param_order, type_env: c.type_env,
-                            sub_value_vars: map_insert(c.sub_value_vars, bname, StrictSubValue { field: ind_field, factor: UnitShrink }),
+                            sub_value_vars: map_insert(c.sub_value_vars, authored_name_at(source_indices: c.type_env.source_indices, node: bdecl), StrictSubValue { field: ind_field, factor: UnitShrink }),
                             size_aliases: c.size_aliases,
                             scope_locals: c.scope_locals, func_env: c.func_env,
                             per_field_vars: c.per_field_vars
@@ -4534,7 +4534,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                           inner_bindings |> fold(init: c, f: (ic, inner_fb) =>
                             let inner_field_name = field_binding_name_at(n: inner_fb, source_indices: ctx.type_env.source_indices)
                             let inner_bind_name = match field_binding_pattern(n: inner_fb) {
-                              Bind { name: ibname } => ibname
+                              Bind { declaration: ibdecl } => authored_name_at(source_indices: ic.type_env.source_indices, node: ibdecl)
                               _ => ""
                             }
                             let inner_matching = inner_ind_fields |> filter(f => f.variant_name == inner_vname && f.field_name == inner_field_name) |> first
@@ -4563,7 +4563,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   bindings |> fold(init: ctx, f: (c, fb) =>
                     let field_name = field_binding_name_at(n: fb, source_indices: ctx.type_env.source_indices)
                     let bind_name = match field_binding_pattern(n: fb) {
-                      Bind { name: bname } => bname
+                      Bind { declaration: bdecl } => authored_name_at(source_indices: c.type_env.source_indices, node: bdecl)
                       _ => ""
                     }
                     let matching = ind_fields |> filter(f => f.variant_name == vname && f.field_name == field_name) |> first
@@ -4582,13 +4582,13 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                     }
                   )
               }
-            Bind { name: bname } =>
+            Bind { declaration: bdecl } =>
               if scrut_type != "" {
                 DescentContext {
                   fn_name: ctx.fn_name,
-                  param_names: map_insert(ctx.param_names, bname, scrut_type),
+                  param_names: map_insert(ctx.param_names, authored_name_at(source_indices: ctx.type_env.source_indices, node: bdecl), scrut_type),
                   param_order: ctx.param_order, type_env: ctx.type_env,
-                  sub_value_vars: map_insert(ctx.sub_value_vars, bname, PreservedValue),
+                  sub_value_vars: map_insert(ctx.sub_value_vars, authored_name_at(source_indices: ctx.type_env.source_indices, node: bdecl), PreservedValue),
                   size_aliases: ctx.size_aliases,
                   scope_locals: ctx.scope_locals, func_env: ctx.func_env,
                   per_field_vars: ctx.per_field_vars
@@ -4598,9 +4598,9 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   Present { value: ind_field } =>
                     DescentContext {
                       fn_name: ctx.fn_name,
-                      param_names: map_insert(ctx.param_names, bname, ind_field.element_type),
+                      param_names: map_insert(ctx.param_names, authored_name_at(source_indices: ctx.type_env.source_indices, node: bdecl), ind_field.element_type),
                       param_order: ctx.param_order, type_env: ctx.type_env,
-                      sub_value_vars: map_insert(ctx.sub_value_vars, bname, StrictSubValue { field: ind_field, factor: UnitShrink }),
+                      sub_value_vars: map_insert(ctx.sub_value_vars, authored_name_at(source_indices: ctx.type_env.source_indices, node: bdecl), StrictSubValue { field: ind_field, factor: UnitShrink }),
                       size_aliases: ctx.size_aliases,
                       scope_locals: ctx.scope_locals, func_env: ctx.func_env,
                       per_field_vars: ctx.per_field_vars
@@ -5011,7 +5011,7 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
             fold(bindings, init: let_prov, f: (acc, binding) =>
               let field_label = field_binding_name_at(n: binding, source_indices: type_env.source_indices)
               let bind_name = match field_binding_pattern(n: binding) {
-                Bind { name: bn } => bn
+                Bind { declaration: bdecl } => authored_name_at(source_indices: type_env.source_indices, node: bdecl)
                 _ => ""
               }
               if bind_name != "" && field_label != "" {
@@ -5021,8 +5021,8 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
                 map_insert(acc, bind_name, field_prov)
               } else { acc }
             )
-          Bind { name: bname } =>
-            map_insert(let_prov, bname, scrut_prov)
+          Bind { declaration: bdecl } =>
+            map_insert(let_prov, authored_name_at(source_indices: type_env.source_indices, node: bdecl), scrut_prov)
           _ => let_prov
         }
         classify_body_provenance(expr: arm_body(n: arm), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: arm_let_prov)
@@ -5279,7 +5279,7 @@ fn arm_ctx_from_variant_provenance(arm_node: Node, sig: ResolvedFuncSig, scrut: 
           let call_args = call_args_by_name(call: scrut, source_indices: ctx.type_env.source_indices)
           let extended = bindings |> fold(init: ctx, f: (c, fb) =>
             let field_label = field_binding_name_at(n: fb, source_indices: ctx.type_env.source_indices)
-            let bind_name = match field_binding_pattern(n: fb) { Bind { name: bn } => bn  _ => "" }
+                    let bind_name = match field_binding_pattern(n: fb) { Bind { declaration: bdecl } => authored_name_at(source_indices: c.type_env.source_indices, node: bdecl)  _ => "" }
             if bind_name == "" || field_label == "" { c }
             else {
               match map_get(variant_field_map, field_label) {

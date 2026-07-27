@@ -92,7 +92,7 @@ fn dag_collect_inferred(value: InferredNode?, slots: Map<String, DagCollectSlot>
 
 fn dag_collect_match_pattern(pattern: MatchPattern, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
   match pattern {
-    Bind { name: _ } => slots
+    Bind { declaration: _ } => slots
     LitPattern { value: _ } => slots
     VariantPattern { name: _, parent_enum: _, field_bindings: field_bindings } =>
       field_bindings |> fold(init: slots, f: (s, fb) => dag_collect_insert_slots(node: fb, slots: s, collision_errors: collision_errors))
