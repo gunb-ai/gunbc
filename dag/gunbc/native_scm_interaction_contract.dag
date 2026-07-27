@@ -141,7 +141,14 @@ fn native_scm_transition_for(scenario: NativeScmScenario) -> NativeScmCommitTran
     ToolModelProofDeficitRoutesInternally => NativeScmCommitTransitionUncommitted
     TwoLegitimateMeaningsNeedChoice => NativeScmCommitTransitionUncommitted
     IncompatibleGoalsNeedAuthorizedDecider => NativeScmCommitTransitionUncommitted
-    _ => NativeScmCommitTransitionCommitted
+    TwoIndependentChangesLand => NativeScmCommitTransitionCommitted
+    StaleTargetAutoResync => NativeScmCommitTransitionCommitted
+    DuplicateSubmissionAppliesOnce => NativeScmCommitTransitionCommitted
+    RenameReferenceUniqueMeaning => NativeScmCommitTransitionCommitted
+    EvidenceGatheredInternally => NativeScmCommitTransitionCommitted
+    GitExportFailureRepairsWithoutReinterpretation => NativeScmCommitTransitionCommitted
+    ConventionalGitImportWithoutRebase => NativeScmCommitTransitionCommitted
+    VisibilityAuthorizedDetails => NativeScmCommitTransitionCommitted
   }
 }
 
@@ -250,21 +257,48 @@ fn native_scm_receipt_details_for(scenario: NativeScmScenario) -> Optional<Strin
 fn native_scm_review_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
   match scenario {
     ToolModelProofDeficitRoutesInternally => NativeScmLifecycleReady
-    _ => NativeScmLifecycleReady
+    TwoIndependentChangesLand => NativeScmLifecycleReady
+    StaleTargetAutoResync => NativeScmLifecycleReady
+    DuplicateSubmissionAppliesOnce => NativeScmLifecycleReady
+    RenameReferenceUniqueMeaning => NativeScmLifecycleReady
+    TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
+    IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
+    EvidenceGatheredInternally => NativeScmLifecycleReady
+    GitExportFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
+    ConventionalGitImportWithoutRebase => NativeScmLifecycleReady
+    VisibilityAuthorizedDetails => NativeScmLifecycleReady
   }
 }
 
 fn native_scm_access_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
   match scenario {
     ToolModelProofDeficitRoutesInternally => NativeScmLifecycleReady
-    _ => NativeScmLifecycleReady
+    TwoIndependentChangesLand => NativeScmLifecycleReady
+    StaleTargetAutoResync => NativeScmLifecycleReady
+    DuplicateSubmissionAppliesOnce => NativeScmLifecycleReady
+    RenameReferenceUniqueMeaning => NativeScmLifecycleReady
+    TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
+    IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
+    EvidenceGatheredInternally => NativeScmLifecycleReady
+    GitExportFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
+    ConventionalGitImportWithoutRebase => NativeScmLifecycleReady
+    VisibilityAuthorizedDetails => NativeScmLifecycleReady
   }
 }
 
 fn native_scm_check_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
   match scenario {
     ToolModelProofDeficitRoutesInternally => NativeScmLifecyclePending
-    _ => NativeScmLifecycleReady
+    TwoIndependentChangesLand => NativeScmLifecycleReady
+    StaleTargetAutoResync => NativeScmLifecycleReady
+    DuplicateSubmissionAppliesOnce => NativeScmLifecycleReady
+    RenameReferenceUniqueMeaning => NativeScmLifecycleReady
+    TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
+    IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
+    EvidenceGatheredInternally => NativeScmLifecycleReady
+    GitExportFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
+    ConventionalGitImportWithoutRebase => NativeScmLifecycleReady
+    VisibilityAuthorizedDetails => NativeScmLifecycleReady
   }
 }
 
@@ -272,7 +306,15 @@ fn native_scm_operational_for(scenario: NativeScmScenario) -> NativeScmLifecycle
   match scenario {
     GitExportFailureRepairsWithoutReinterpretation => NativeScmLifecyclePending
     ToolModelProofDeficitRoutesInternally => NativeScmLifecyclePending
-    _ => NativeScmLifecycleReady
+    TwoIndependentChangesLand => NativeScmLifecycleReady
+    StaleTargetAutoResync => NativeScmLifecycleReady
+    DuplicateSubmissionAppliesOnce => NativeScmLifecycleReady
+    RenameReferenceUniqueMeaning => NativeScmLifecycleReady
+    TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
+    IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
+    EvidenceGatheredInternally => NativeScmLifecycleReady
+    ConventionalGitImportWithoutRebase => NativeScmLifecycleReady
+    VisibilityAuthorizedDetails => NativeScmLifecycleReady
   }
 }
 
@@ -296,11 +338,51 @@ fn native_scm_receipt_for(scenario: NativeScmScenario) -> NativeScmReceipt {
         target: "main",
         git: "origin/session/native-scm-import",
       )
-      _ => NativeScmProjection {
+      TwoIndependentChangesLand => NativeScmProjection {
         workspace: optional_present(value: "/workspaces/native-scm-contract"),
         target: optional_present(value: "main"),
         git: optional_present(value: "origin/main"),
-      },
+      }
+      StaleTargetAutoResync => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
+      }
+      DuplicateSubmissionAppliesOnce => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
+      }
+      RenameReferenceUniqueMeaning => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
+      }
+      TwoLegitimateMeaningsNeedChoice => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
+      }
+      IncompatibleGoalsNeedAuthorizedDecider => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
+      }
+      EvidenceGatheredInternally => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
+      }
+      ToolModelProofDeficitRoutesInternally => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
+      }
+      VisibilityAuthorizedDetails => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-contract"),
+        target: optional_present(value: "main"),
+        git: optional_present(value: "origin/main"),
+      }
     },
     primary: native_scm_primary_for(scenario: scenario, identity: identity),
     receipt_details: native_scm_receipt_details_for(scenario: scenario),
