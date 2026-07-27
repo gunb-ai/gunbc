@@ -9101,6 +9101,10 @@ data target_representation_kind_hash_set: Symbol = ^target_representation_kind_h
 data target_representation_kind_vec: Symbol = ^target_representation_kind_vec
 data target_representation_field_apply: Symbol = ^target_representation_field_apply
 data target_collection_choice_field_supplemental_generic_bound_contracts: Symbol = ^target_collection_choice_field_supplemental_generic_bound_contracts
+data target_derive_supplemental_generic_bound_contract_field_derive_trait: Symbol = ^target_derive_supplemental_generic_bound_contract_field_derive_trait
+data target_derive_supplemental_generic_bound_contract_field_requirements: Symbol = ^target_derive_supplemental_generic_bound_contract_field_requirements
+data target_derive_supplemental_generic_bound_requirement_field_representation_parameter: Symbol = ^target_derive_supplemental_generic_bound_requirement_field_representation_parameter
+data target_derive_supplemental_generic_bound_requirement_field_required_trait: Symbol = ^target_derive_supplemental_generic_bound_requirement_field_required_trait
 
 type RequiredTraitWitness
   = TargetCollectionWitnessOrd { type_param: Symbol }
@@ -9132,8 +9136,170 @@ type TargetDeriveSupplementalGenericBoundContract {
 }
 
 type TargetDeriveSupplementalGenericBoundRequirement {
-  generic_parameter: Node
-  derive_trait: ReprGroundingDeriveTrait
+  representation_parameter: Symbol
+  required_trait: ReprGroundingDeriveTrait
+}
+
+fn target_grounding_derive_trait_from_atom(id: Symbol) -> Optional<ReprGroundingDeriveTrait> {
+  if id == discriminant(v: ReprDeriveDebug) {
+    optional_present(value: ReprDeriveDebug)
+  } else {
+    if id == discriminant(v: ReprDeriveClone) {
+      optional_present(value: ReprDeriveClone)
+    } else {
+      if id == discriminant(v: ReprDeriveCopy) {
+        optional_present(value: ReprDeriveCopy)
+      } else {
+        if id == discriminant(v: ReprDerivePartialEq) {
+          optional_present(value: ReprDerivePartialEq)
+        } else {
+          if id == discriminant(v: ReprDeriveEq) {
+            optional_present(value: ReprDeriveEq)
+          } else {
+            if id == discriminant(v: ReprDerivePartialOrd) {
+              optional_present(value: ReprDerivePartialOrd)
+            } else {
+              if id == discriminant(v: ReprDeriveOrd) {
+                optional_present(value: ReprDeriveOrd)
+              } else {
+                if id == discriminant(v: ReprDeriveSerialize) {
+                  optional_present(value: ReprDeriveSerialize)
+                } else {
+                  if id == discriminant(v: ReprDeriveDeserialize) {
+                    optional_present(value: ReprDeriveDeserialize)
+                  } else {
+                    if id == discriminant(v: ReprDeriveAdd) {
+                      optional_present(value: ReprDeriveAdd)
+                    } else {
+                      if id == discriminant(v: ReprDeriveSub) {
+                        optional_present(value: ReprDeriveSub)
+                      } else {
+                        if id == discriminant(v: ReprDeriveMul) {
+                          optional_present(value: ReprDeriveMul)
+                        } else {
+                          if id == discriminant(v: ReprDeriveDiv) {
+                            optional_present(value: ReprDeriveDiv)
+                          } else {
+                            if id == discriminant(v: ReprDeriveRem) {
+                              optional_present(value: ReprDeriveRem)
+                            } else {
+                              if id == discriminant(v: ReprDeriveNeg) {
+                                optional_present(value: ReprDeriveNeg)
+                              } else {
+                                optional_absent()
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn target_derive_supplemental_generic_bound_requirement_from_node(
+  node: Node
+) -> Outcome<TargetDeriveSupplementalGenericBoundRequirement> {
+  bind_outcome(
+    o: find_named_child(
+      root: node,
+      name: ^target_derive_supplemental_generic_bound_requirement_field_representation_parameter
+    ),
+    f: fn(parameter_node) {
+      bind_outcome(
+        o: target_collection_node_atom_identity(node: parameter_node),
+        f: fn(representation_parameter) {
+          bind_outcome(
+            o: find_named_child(
+              root: node,
+              name: ^target_derive_supplemental_generic_bound_requirement_field_required_trait
+            ),
+            f: fn(required_trait_node) {
+              bind_outcome(
+                o: target_collection_node_atom_identity(node: required_trait_node),
+                f: fn(required_trait_id) {
+                  match target_grounding_derive_trait_from_atom(id: required_trait_id) {
+                    Present { value: required_trait } =>
+                      outcome_accepted(
+                        TargetDeriveSupplementalGenericBoundRequirement {
+                          representation_parameter: representation_parameter,
+                          required_trait: required_trait
+                        }
+                      )
+                    Absent =>
+                      outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
+                  }
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_derive_supplemental_generic_bound_contract_from_node(
+  node: Node
+) -> Outcome<TargetDeriveSupplementalGenericBoundContract> {
+  bind_outcome(
+    o: find_named_child(
+      root: node,
+      name: ^target_derive_supplemental_generic_bound_contract_field_derive_trait
+    ),
+    f: fn(derive_trait_node) {
+      bind_outcome(
+        o: target_collection_node_atom_identity(node: derive_trait_node),
+        f: fn(derive_trait_id) {
+          match target_grounding_derive_trait_from_atom(id: derive_trait_id) {
+            Present { value: derive_trait } =>
+              bind_outcome(
+                o: find_named_child(
+                  root: node,
+                  name: ^target_derive_supplemental_generic_bound_contract_field_requirements
+                ),
+                f: fn(requirements_node) {
+                  bind_outcome(
+                    o: target_collection_fold_list_from_node(
+                      remaining: target_collection_subtree_count(n: requirements_node),
+                      node: requirements_node,
+                      decode_item: target_derive_supplemental_generic_bound_requirement_from_node
+                    ),
+                    f: fn(requirements) {
+                      outcome_accepted(
+                        TargetDeriveSupplementalGenericBoundContract {
+                          derive_trait: derive_trait,
+                          requirements: requirements
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            Absent =>
+              outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
+          }
+        }
+      )
+    }
+  )
+}
+
+fn target_derive_supplemental_generic_bound_contracts_from_node(
+  node: Node
+) -> Outcome<List<TargetDeriveSupplementalGenericBoundContract>> {
+  target_collection_fold_list_from_node(
+    remaining: target_collection_subtree_count(n: node),
+    node: node,
+    decode_item: target_derive_supplemental_generic_bound_contract_from_node
+  )
 }
 
 fn target_derive_supplemental_generic_bound_contract_lookup_miss_diagnostic(
