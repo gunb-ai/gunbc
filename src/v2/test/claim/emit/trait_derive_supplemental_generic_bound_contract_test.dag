@@ -1,6 +1,6 @@
 module v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract
 
-import std.algebra { Cons, Empty, fold_list_node }
+import std.algebra { Cons, Empty }
 import std.trait_derive_shape {
   ReprDeriveClone,
   ReprDeriveDebug,
@@ -20,19 +20,11 @@ import v2.std.compilers.target_model {
   char_kernel_type_node,
   target_carrier_free_monoid_node,
   target_collection_free_monoid_no_representation_diagnostic,
-  target_collection_choice_field_constraints,
-  target_collection_choice_field_form,
-  target_collection_choice_field_supplemental_generic_bound_contracts,
-  target_derive_supplemental_generic_bound_contract_field_derive_trait,
-  target_derive_supplemental_generic_bound_contract_field_requirements,
-  target_derive_supplemental_generic_bound_requirement_field_representation_parameter,
-  target_derive_supplemental_generic_bound_requirement_field_required_trait,
   target_derive_supplemental_generic_bound_contract_lookup_in_realization
 }
 import v2.compiler.translate { target_collection_choice_from_node }
 import v2.extdeps.languages.rust {
-  rust_collection_choice_bundle_node,
-  rust_collection_repr_bundle_node
+  rust_collection_choice_bundle_node
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
@@ -40,13 +32,14 @@ import v2.std.node {
   Atom,
   Edge,
   Instantiation,
-  Named,
   Node,
   Positional,
   SyntheticOccurrence,
   TypeNode,
+  node_rebuild
 }
 import v2.std.collection { List, Symbol }
+import v2.std.algebra { fold_list_node }
 import v2.std.optional { Absent, Optional, Present }
 
 data trait_derive_supplemental_generic_bound_contract_note: String = "Model-only contract for per-derive supplemental generic bounds: rows hang off the selected choice relation, carry representation-parameter slots plus required traits, and never re-identify the source declaration. Nested generic carrier rows prove the exact extra bound set per derive; Clone keeps an explicit empty row rather than a fabricated supplemental Clone. Missing, duplicate, malformed, and wrong-choice rows refuse."
@@ -406,84 +399,67 @@ fn sgb_choice_matches_exact(
     }
 }
 
-fn sgb_empty_constraints_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [],
-    occurrence_id: SyntheticOccurrence
+fn sgb_choice_bundle_node() -> Node {
+  rust_collection_choice_bundle_node(choice: sgb_nested_choice())
+}
+
+fn sgb_choice_bundle_missing_contract_edge_node() -> Node {
+  let bundle = sgb_choice_bundle_node()
+  match bundle.children {
+    Cons {
+      head: form_edge,
+      tail: Cons {
+        head: constraints_edge,
+        tail: Cons {
+          head: _contracts_edge,
+          tail: Empty
+        }
+      }
+    } =>
+      node_rebuild(
+        n: bundle,
+        children: Cons {
+          head: form_edge,
+          tail: Cons {
+            head: constraints_edge,
+            tail: Empty
+          }
+        }
+      )
+    _ => bundle
   }
 }
 
-fn sgb_choice_bundle_with_contracts_node(contracts: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: ^target_collection_choice_field_form },
-        target: rust_collection_repr_bundle_node(form: sgb_vec_representation())
-      },
-      Edge {
-        label: Named { name: ^target_collection_choice_field_constraints },
-        target: sgb_empty_constraints_node()
-      },
-      Edge {
-        label: Named { name: ^target_collection_choice_field_supplemental_generic_bound_contracts },
-        target: contracts
+fn sgb_choice_bundle_duplicate_contract_edge_node() -> Node {
+  let bundle = sgb_choice_bundle_node()
+  match bundle.children {
+    Cons {
+      head: form_edge,
+      tail: Cons {
+        head: constraints_edge,
+        tail: Cons {
+          head: contracts_edge,
+          tail: Empty
+        }
       }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn sgb_missing_contract_edge_bundle_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: ^target_collection_choice_field_form },
-        target: rust_collection_repr_bundle_node(form: sgb_vec_representation())
-      },
-      Edge {
-        label: Named { name: ^target_collection_choice_field_constraints },
-        target: sgb_empty_constraints_node()
-      }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn sgb_duplicate_contract_edge_bundle_node() -> Node {
-  let contracts = fold_list_node(
-    xs: Cons {
-      head: sgb_contract_row(
-        derive_trait: ReprDeriveDebug,
-        requirements: sgb_requirements_for(derive_trait: ReprDeriveDebug)
-      ),
-      tail: Empty
-    },
-    item_node: fn(row) { row }
-  )
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: ^target_collection_choice_field_form },
-        target: rust_collection_repr_bundle_node(form: sgb_vec_representation())
-      },
-      Edge {
-        label: Named { name: ^target_collection_choice_field_constraints },
-        target: sgb_empty_constraints_node()
-      },
-      Edge {
-        label: Named { name: ^target_collection_choice_field_supplemental_generic_bound_contracts },
-        target: contracts
-      },
-      Edge {
-        label: Named { name: ^target_collection_choice_field_supplemental_generic_bound_contracts },
-        target: contracts
-      }
-    ],
-    occurrence_id: SyntheticOccurrence
+    } =>
+      node_rebuild(
+        n: bundle,
+        children: Cons {
+          head: form_edge,
+          tail: Cons {
+            head: constraints_edge,
+            tail: Cons {
+              head: contracts_edge,
+              tail: Cons {
+                head: contracts_edge,
+                tail: Empty
+              }
+            }
+          }
+        }
+      )
+    _ => bundle
   }
 }
 
@@ -492,7 +468,7 @@ fn sgb_malformed_contract_row_bundle_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^target_derive_supplemental_generic_bound_contract_field_derive_trait },
+        label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: discriminant(v: ReprDeriveDebug) } },
           children: [],
@@ -501,6 +477,42 @@ fn sgb_malformed_contract_row_bundle_node() -> Node {
       }
     ],
     occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sgb_choice_bundle_with_malformed_contracts_node() -> Node {
+  let bundle = sgb_choice_bundle_node()
+  match bundle.children {
+    Cons {
+      head: form_edge,
+      tail: Cons {
+        head: constraints_edge,
+        tail: Cons {
+          head: Edge {
+            label: contracts_label,
+            target: _contracts_target
+          },
+          tail: Empty
+        }
+      }
+    } =>
+      node_rebuild(
+        n: bundle,
+        children: Cons {
+          head: form_edge,
+          tail: Cons {
+            head: constraints_edge,
+            tail: Cons {
+              head: Edge {
+                label: contracts_label,
+                target: sgb_malformed_contracts_bundle_node()
+              },
+              tail: Empty
+            }
+          }
+        }
+      )
+    _ => bundle
   }
 }
 
@@ -797,14 +809,14 @@ test fn wrong_choice_refuses_nonselected_contracts() -> Bool {
 }
 
 test fn missing_contract_edge_refuses_on_bundle_decode() -> Bool {
-  match target_collection_choice_from_node(node: sgb_missing_contract_edge_bundle_node()) {
+  match target_collection_choice_from_node(node: sgb_choice_bundle_missing_contract_edge_node()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
 }
 
 test fn duplicate_contract_edge_refuses_on_bundle_decode() -> Bool {
-  match target_collection_choice_from_node(node: sgb_duplicate_contract_edge_bundle_node()) {
+  match target_collection_choice_from_node(node: sgb_choice_bundle_duplicate_contract_edge_node()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
@@ -812,7 +824,7 @@ test fn duplicate_contract_edge_refuses_on_bundle_decode() -> Bool {
 
 test fn malformed_contract_row_refuses_on_bundle_decode() -> Bool {
   match target_collection_choice_from_node(
-    node: sgb_choice_bundle_with_contracts_node(contracts: sgb_malformed_contracts_bundle_node())
+    node: sgb_choice_bundle_with_malformed_contracts_node()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
