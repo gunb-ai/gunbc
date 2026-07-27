@@ -127,8 +127,8 @@ data witness_row_cost_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[witness-row-cost]" as NonEmptyStr,
   source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
   disposition: CountedFrontierSite {
-    reason: "per-witness cost TSV probe lines (#7284 / placement #5 spine) — the complete machine-readable per-row record mirrored to the log, still a raw tag family" as NonEmptyStr,
-    dissolve_on: "fold the TSV emit into an observation MeasurementSegment / receipt projection (shared per-entry record with W2) and retire the bracket tag" as NonEmptyStr
+    reason: "per-witness cost TSV probe lines (#7284 / placement #5 spine) — complete join projection of the ObservationEvent N+1 stream mirrored to the log, still a raw tag family" as NonEmptyStr,
+    dissolve_on: "fold the TSV emit into ObservationEvent-native emission (N+1 stream) and retire the bracket tag; TSV remains a complete join projection of the same events" as NonEmptyStr
   }
 }
 
@@ -137,7 +137,7 @@ data witness_row_cost_drift_site: CensusedEmitSite = CensusedEmitSite {
   source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
   disposition: CountedFrontierSite {
     reason: "falsifier-cadence per-row drift comparison lines (#7284) — BasisAbsent / DriftExceeded / WithinBasis against dated basis, still a raw tag family" as NonEmptyStr,
-    dissolve_on: "fold into the same MeasurementSegment / receipt projection as witness-row-cost once drift is an observation event rather than a bracket TSV mirror" as NonEmptyStr
+    dissolve_on: "fold into ObservationEvent-native drift emission once drift is an observation event rather than a bracket TSV mirror of the complete projection" as NonEmptyStr
   }
 }
 

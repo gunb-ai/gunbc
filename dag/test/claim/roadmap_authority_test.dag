@@ -46,7 +46,8 @@ test fn witness_fabric_design_rule() -> Bool {
 test fn witness_emit_refs_from_binding() -> Bool {
   let o = out()
   string_contains(s: o, pattern: "**provenance ingest live at floor runtime** (#6105)")
-    && string_contains(s: o, pattern: "**orchestration emission → agnostic registry dispatch** (#6106)")
+    && string_contains(s: o, pattern: "**registry-dispatch foundation** — #6106 merged")
+    && string_contains(s: o, pattern: "**superseded →** 2-emit-partition")
     && string_contains(s: o, pattern: "**no-dual-representation-test lens rebuilt pure-v2** (#6104)")
 }
 
@@ -93,6 +94,14 @@ test fn witness_merge_perturb_does_not_flip_boxes() -> Bool {
     && !string_contains(s: flipped, pattern: "- [x] **provenance ingest live at floor runtime** (#6105)")
 }
 
+test fn witness_legend_separates_evidence_acceptance_and_supersession() -> Bool {
+  let o = out()
+  string_contains(s: o, pattern: "`[x]` checklist-closed by accepting operator sign-off or authored supersession")
+    && string_contains(s: o, pattern: "`[ ]` not accepted")
+    && string_contains(s: o, pattern: "`⏳ awaiting sign-off` implementation evidence present but acceptance absent")
+    && string_contains(s: o, pattern: "page status `done` = accepting sign-off only")
+}
+
 test fn witness_shelf_is_uncheckboxed() -> Bool {
   let o = out()
   string_contains(s: o, pattern: "- **fold-ergonomics lane** —")
@@ -107,4 +116,3 @@ test fn witness_audit_lane_present() -> Bool {
     && string_contains(s: o, pattern: "**artifact-freshness gate**")
     && string_contains(s: o, pattern: "**one tree, one verdict**")
 }
-

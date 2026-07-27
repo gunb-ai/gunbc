@@ -38,6 +38,7 @@ type CssPropertyName
   | FontVariantNumeric
   | FontWeight
   | Gap
+  | GridColumn
   | GridTemplateColumns
   | Height
   | JustifyContent
@@ -95,6 +96,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     FontVariantNumeric => "font-variant-numeric"
     FontWeight => "font-weight"
     Gap => "gap"
+    GridColumn => "grid-column"
     GridTemplateColumns => "grid-template-columns"
     Height => "height"
     JustifyContent => "justify-content"

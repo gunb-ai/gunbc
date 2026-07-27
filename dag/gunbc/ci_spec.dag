@@ -39,6 +39,9 @@ import v2.workflow.ci_merge_admission_emit {
   ci_floor_disposition_marker_init_script,
   ci_floor_stamp_merge_admission_script,
 }
+import v2.workflow.ci_regen_rustfmt_path_emit {
+  ci_regen_ensure_rustfmt_path_script,
+}
 import extdeps.git {
   git_remote_ref_parts,
   git_fetch_no_tags_shell,
@@ -413,12 +416,15 @@ fn ci_regen_floor_skip_shortcut_script() -> String {
 
 fn gunbc_ci_regen_floor_only_script(spec: CiSpec) -> String {
   concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    concat(ci_regen_ensure_rustfmt_path_script(), "\n"),
     concat(
-      concat(git_fetch_script(policy: spec.diff_policy), "\n"),
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
       concat(
-        concat(ci_regen_floor_skip_shortcut_script(), "\n"),
-        concat(scheduler_invoke_with(spec: spec, plan_function: regen_floor_plan_function), "\n")
+        concat(git_fetch_script(policy: spec.diff_policy), "\n"),
+        concat(
+          concat(ci_regen_floor_skip_shortcut_script(), "\n"),
+          concat(scheduler_invoke_with(spec: spec, plan_function: regen_floor_plan_function), "\n")
+        )
       )
     )
   )

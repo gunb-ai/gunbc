@@ -25,6 +25,7 @@ data generated_stage0_files: List<String> = [
   "extdeps_units_iso8601.rs",
   "extdeps_version.rs",
   "extdeps_version_semver.rs",
+  "gunbc_rust_decl_type_overlay.rs",
   "gunbc_stage0_crate_layout_generated.rs",
   "gunbc_stage0_crate_partition_generated.rs",
   "lib.rs",

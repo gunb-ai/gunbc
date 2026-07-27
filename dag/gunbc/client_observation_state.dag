@@ -1,0 +1,43 @@
+module gunbc.client_observation_state
+
+type ClientObservationState
+  = ClientObservationPending
+  | ClientObservationOff
+  | ClientObservationOn
+  | ClientObservationRefused { reason: String }
+
+data client_observation_state_note: String = "The shared presentation-grain state of an asynchronous observation, first consumed by roadmap workflow lamps and reserved for the floor-verdict rollup on the same belt-B surface. Pending means no answer has arrived. Off means a successful observation asserted absence. On means a successful observation asserted presence. Refused carries why the set is unknowable. These four states may not collapse: dark cannot mean both observed-absent and unknowable, just as a missing floor verdict cannot render as checks-passing. This is transient client read state, never a persisted workflow status."
+
+data work_item_workflow_fact_note: String = "In roadmap context, workflow means the work item's lifecycle. Compiler and CI execution workflow remains namespaced under v2.workflow and is not this vocabulary. The ruling names seven independent facts, each still owned by its existing typed authority: Ready by gunbc.roadmap_spawner.node_is_spawnable; Live by gunbc.roadmap_dispatch_actuator.DispatchLiveSession keyed through the node-grain tmux session name; Attempted by dispatch_attempt_refs keyed through the attempt branch; Proposed and Landed by extdeps.github.pulls.PullRequest observations once the missing typed binding exists; Done by RoadmapNode.signoff; Superseded by SupersededLine.by. This note records the join ruling only. It is not an executable roster, does not re-declare those domain facts, and must not be enumerated as workflow status data. The facts have no total order and several may be true at once: a node can be Live and Landed, Attempted and Superseded, or Landed but not Done. A UI may order or group observations for presentation only; the rightmost lamp never becomes status. Proposed and Landed remain blocked until one typed attempt-keyed carrier joins RoadmapNodeId, attempt key, branch, and PullRequest identity; that is the shared durable carrier already required by ts-wf-stage-artifacts and ts-wf-messaging."
+
+fn client_observation_state_from(
+  refused: Bool,
+  asserted: Bool,
+  reason: String,
+) -> ClientObservationState {
+  if refused {
+    ClientObservationRefused { reason: reason }
+  } else if asserted {
+    ClientObservationOn
+  } else {
+    ClientObservationOff
+  }
+}
+
+fn client_observation_state_key(state: ClientObservationState) -> String {
+  match state {
+    ClientObservationPending => "pending"
+    ClientObservationOff => "off"
+    ClientObservationOn => "on"
+    ClientObservationRefused { reason: _ } => "refused"
+  }
+}
+
+fn client_observation_state_reason(state: ClientObservationState) -> String {
+  match state {
+    ClientObservationPending => ""
+    ClientObservationOff => ""
+    ClientObservationOn => ""
+    ClientObservationRefused { reason } => reason
+  }
+}

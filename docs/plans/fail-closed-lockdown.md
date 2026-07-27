@@ -27,7 +27,7 @@ These are the **structural** gates. The gap is everything *analytical* and the *
 | Lens / gate | State | Why it enforces nothing |
 | --- | --- | --- |
 | **complexity**, **cost** | inert | single authority for the §1 time axis; **no `test fn`/gate runs them on the tree** — a mis-costed loop ships silently (`lens/complexity.dag`, `lens/cost.dag`) |
-| **host_language_transport_script** | inert | §5 literal-blob ban; no gate asserts it RED — a `shell.Exec.Run` can regress to a bare string |
+| **host_language_transport_script** | LIVE (#7184) | §5 literal-blob ban — ACTIVATED, no longer inert: a per-PR ReadsLiveTree consumer over the `shell.Exec.Run` anchor sites (`wall_residue_live_test.dag`) reds a NEW raw literal at an enrolled Run position. Deliberately green on `ComputedApplication` (the counted `retained_*` bridge calls), so it backstops literal blobs only. CONSTRUCTION closes computed joins at the `ShellOnHost.script` edge, where the `RetainedShellScript` record makes a bare `String` unwritable; direct `shell.Exec.Run` still accepts the transparent `TransportScript` brand, so computed/cast inputs there remain open pending meta-exec confinement. Corrected 2026-07-27: this row said the record closed the `shell.Exec.Run` computed-join class, but that wall is scoped to `ShellOnHost`. |
 | **leaf_model_verification** | inert | 845-line R1–R3 realization matrix; test data never discovered |
 | **extdeps_shape_transport_policy** | inert | the §3 shape/transport/policy enforcer — authored, not wired |
 | affected_set, fact_cardinality, mock_totality, ownership, subsumption, … | inert | authored lenses, no discovered gate |
@@ -84,7 +84,7 @@ Two tiers: **construction** (the class becomes unwritable — this is the real w
 - [ ] **Complexity / cost / necessity** — legitimate lens (can't structurally forbid an *unnecessary* loop); fix cost-lens zero-absorption (`symbolic_max` floor), then gate the change-set (not a roster) → §6.
 - [ ] **Cache-redundancy completeness** (§7 P3) — shared-across-boundary → ERROR; reach, not measurement; the residue that survives the content-key construction.
 - [ ] **warm==cold purity-oracle witness per cache** — residue check behind the content-key construction (guaranteed once the key is fn-of-inputs, but cheap to witness).
-- [ ] **Promote-or-delete every inert lens** (host_language_transport_script, extdeps_shape_transport_policy, leaf_model_verification, …); de-vacuum thin gates (EmitHostGate beyond 4 fixtures; advisory rosters → change-set); the `discrimination` enforcer is itself roster-only — whole-corpus it.
+- [ ] **Promote-or-delete every inert lens** (extdeps_shape_transport_policy, leaf_model_verification, …; host_language_transport_script is DONE — promoted live by #7184); de-vacuum thin gates (EmitHostGate beyond 4 fixtures; advisory rosters → change-set); the `discrimination` enforcer is itself roster-only — whole-corpus it.
 
 **Meta — two layers, the executable one is load-bearing:**
 
