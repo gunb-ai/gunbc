@@ -57,7 +57,7 @@ fn polynomial_dominates_linear_claim_rhs() -> Node {
   }
 }
 
-data claim_polynomial_dominates_linear: TestClaim = EqualsClaim {
+test data claim_polynomial_dominates_linear: TestClaim = EqualsClaim {
   label: "lens_synthesis/polynomial_dominates_linear: quadratic dominates linear",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: synthesis_poly_x,

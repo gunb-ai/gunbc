@@ -46,7 +46,7 @@ fn hollow_type_defect_key_claim_rhs() -> Node {
   }
 }
 
-data claim_hollow_type_defect_key: TestClaim = EqualsClaim {
+test data claim_hollow_type_defect_key: TestClaim = EqualsClaim {
   label: "lens_coverage/hollow_type_defect_key: HollowType acceptance key",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: hollow_type_authority_node,

@@ -147,7 +147,7 @@ fn anchor_go_add_serialize_rejects_missing_translation_rules() -> Outcome<Medium
   )
 }
 
-data go_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_go_add_serialize_rejects_missing_translation_rules()
+test data go_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_go_add_serialize_rejects_missing_translation_rules()
 
 fn go_add_serialize_reject_claim_outcome() -> Outcome<Node> {
   match go_add_serialize_reject_receipt {
@@ -324,7 +324,7 @@ fn anchor_go_add_compile_inferred_accepts() -> Outcome<CompileOutput> {
   )
 }
 
-data go_add_emit_receipt: Outcome<Medium<String>> = anchor_go_add_emit_accepts()
+test data go_add_emit_receipt: Outcome<Medium<String>> = anchor_go_add_emit_accepts()
 
 test fn go_add_emit_add_fn_accepts_holds() -> Bool {
   match go_add_emit_receipt {
@@ -334,7 +334,7 @@ test fn go_add_emit_add_fn_accepts_holds() -> Bool {
   }
 }
 
-data go_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_go_add_compile_inferred_accepts()
+test data go_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_go_add_compile_inferred_accepts()
 
 fn go_add_emit_claim_outcome() -> Outcome<Node> {
   match go_add_emit_receipt {
@@ -389,7 +389,7 @@ fn go_add_compile_inferred_claim_outcome() -> Outcome<Node> {
   }
 }
 
-data claim_go_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
+test data claim_go_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: anchor_go_add_emit_accepts with canonical go_add add-fn source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: go_add_emitted_root,
@@ -397,7 +397,7 @@ data claim_go_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_go_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
+test data claim_go_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: compile_inferred emits canonical go_add add-fn source through grammar inverse",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: go_add_emitted_root,
@@ -415,7 +415,7 @@ data subject_go_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimE
   )
 }
 
-data run_go_add_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+test data run_go_add_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_go_add_emit_add_fn_accepts),
   verdict: run_test_claim_assert(
     claim: claim_go_add_emit_add_fn_accepts,
@@ -434,7 +434,7 @@ data subject_go_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> 
   )
 }
 
-data run_go_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+test data run_go_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_go_add_compile_inferred_add_fn_accepts),
   verdict: run_test_claim_assert(
     claim: claim_go_add_compile_inferred_add_fn_accepts,
@@ -443,7 +443,7 @@ data run_go_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = Test
   )
 }
 
-data claim_go_add_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
+test data claim_go_add_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
   label: "manual/rust_add_emit: target_serialize_source_from_model rejects go bundle missing translation_rules",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: go_add_emitted_root,
@@ -467,7 +467,7 @@ data subject_go_add_serialize_rejects_missing_translation_rules: TestClaimEvalSu
   )
 }
 
-data run_go_add_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
+test data run_go_add_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_go_add_serialize_rejects_missing_translation_rules),
   verdict: run_test_claim_assert(
     claim: claim_go_add_serialize_rejects_missing_translation_rules,

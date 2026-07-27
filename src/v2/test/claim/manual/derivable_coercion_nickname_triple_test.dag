@@ -156,7 +156,7 @@ fn derivable_coercion_claim_lhs(ok: Bool) -> Node {
   }
 }
 
-data claim_task_id_surfaces_distinct: TestClaim = EqualsClaim {
+test data claim_task_id_surfaces_distinct: TestClaim = EqualsClaim {
   label: "manual/derivable_coercion: API/DB/wire inhabitants have distinct SurfaceSpelling surfaces",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: derivable_coercion_claim_lhs(ok: witness_task_id_surfaces_distinct),
@@ -164,7 +164,7 @@ data claim_task_id_surfaces_distinct: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_crux_substrate_gap: TestClaim = EqualsClaim {
+test data claim_crux_substrate_gap: TestClaim = EqualsClaim {
   label: "manual/derivable_coercion: CRUX — find_witness dispatch derives nickname siblings and rejects wrong-core",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: derivable_coercion_claim_lhs(ok: !witness_crux_substrate_gap),
@@ -172,7 +172,7 @@ data claim_crux_substrate_gap: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_matrix_widening_accepts_siblings_and_wrong_core: TestClaim = EqualsClaim {
+test data claim_matrix_widening_accepts_siblings_and_wrong_core: TestClaim = EqualsClaim {
   label: "manual/derivable_coercion: CRUX — widening accepts siblings AND wrong-core (non-discriminating)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: derivable_coercion_claim_lhs(ok: witness_matrix_widening_api_to_db_accepts && witness_matrix_widening_api_to_wire_accepts && witness_matrix_widening_db_to_wire_accepts && witness_matrix_widening_api_to_account_id_accepts),

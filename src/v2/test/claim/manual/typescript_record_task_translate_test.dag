@@ -161,9 +161,9 @@ fn anchor_typescript_record_task_compile_inferred_accepts() -> Outcome<CompileOu
   }
 }
 
-data typescript_record_task_emit_receipt: Outcome<Medium<String>> = anchor_typescript_record_task_emit_accepts()
+test data typescript_record_task_emit_receipt: Outcome<Medium<String>> = anchor_typescript_record_task_emit_accepts()
 
-data typescript_record_task_compile_inferred_receipt: Outcome<CompileOutput> = anchor_typescript_record_task_compile_inferred_accepts()
+test data typescript_record_task_compile_inferred_receipt: Outcome<CompileOutput> = anchor_typescript_record_task_compile_inferred_accepts()
 
 fn typescript_record_task_emit_claim_outcome() -> Outcome<Node> {
   match typescript_record_task_emit_receipt {

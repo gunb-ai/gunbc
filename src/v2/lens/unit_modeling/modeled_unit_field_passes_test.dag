@@ -62,7 +62,7 @@ fn modeled_unit_field_passes_rhs() -> Node {
   }
 }
 
-data claim_modeled_unit_field_passes: TestClaim = EqualsClaim {
+test data claim_modeled_unit_field_passes: TestClaim = EqualsClaim {
   label: "lens_unit_modeling/pass: ram_bytes attached to ByteSize carrier is accepted",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: modeled_unit_field_input,

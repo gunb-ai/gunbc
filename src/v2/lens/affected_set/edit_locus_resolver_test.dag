@@ -275,13 +275,13 @@ fn edit_locus_source_provenance_producer_rejects_malformed_source_holds() -> Boo
 data edit_locus_narrow_resolution_claim_passes: Bool = edit_locus_narrow_resolution_holds()
 data edit_locus_fail_closed_claim_passes: Bool = edit_locus_fail_closed_holds()
 data edit_locus_affected_set_wire_claim_passes: Bool = edit_locus_affected_set_wire_holds()
-data edit_locus_affected_set_wire_fail_closed_claim_passes: Bool = edit_locus_affected_set_wire_fail_closed_holds()
+test data edit_locus_affected_set_wire_fail_closed_claim_passes: Bool = edit_locus_affected_set_wire_fail_closed_holds()
 data edit_locus_source_provenance_affected_set_wire_claim_passes: Bool = edit_locus_source_provenance_affected_set_wire_holds()
 data edit_locus_source_provenance_producer_rejects_malformed_source_claim_passes: Bool = edit_locus_source_provenance_producer_rejects_malformed_source_holds()
 
 data edit_locus_narrow_resolution_holds_symbol: Symbol = edit_locus_narrow_resolution_holds
 
-data unified_claim_edit_locus_narrow: UnifiedTestClaim = BoolWitnessClaim {
+test data unified_claim_edit_locus_narrow: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v2/lens/affected_set/edit_locus_resolver_test.dag",
     function: edit_locus_narrow_resolution_holds

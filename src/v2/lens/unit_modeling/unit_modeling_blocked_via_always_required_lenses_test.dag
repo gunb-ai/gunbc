@@ -87,7 +87,7 @@ fn unit_modeling_blocked_via_always_required_lenses_rhs() -> Node {
   }
 }
 
-data claim_unit_modeling_blocked_via_always_required_lenses: TestClaim = EqualsClaim {
+test data claim_unit_modeling_blocked_via_always_required_lenses: TestClaim = EqualsClaim {
   label: "lens_unit_modeling/unit_modeling_blocked_via_always_required_lenses: always_required_lenses() (wired into validate_then_compile) rejects a fact-bearing flat-scalar unit leaf with the unit-modeling reason",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: unit_ar_authority,

@@ -267,7 +267,7 @@ fn identity_witness_claim_input(ok: Bool) -> Node {
 fn identity_witness_expected() -> Node {
   identity_source_node()
 }
-data claim_find_witness_identity_module_compiles: TestClaim = CompilesClaim {
+test data claim_find_witness_identity_module_compiles: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity: identity behavior anchors compile",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_source_node(),
@@ -275,7 +275,7 @@ data claim_find_witness_identity_module_compiles: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_find_witness_identity_accepts: TestClaim = CompilesClaim {
+test data claim_find_witness_identity_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity: identity candidate accepts",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_identity_accepts),
@@ -283,14 +283,14 @@ data claim_find_witness_identity_accepts: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_find_witness_non_identity_rejects: TestClaim = CompilesClaim {
+test data claim_find_witness_non_identity_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity: non-identity candidate rejects",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_non_identity_rejects),
   expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-data claim_find_witness_constraint_rule_accepts: TestClaim = CompilesClaim {
+test data claim_find_witness_constraint_rule_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity: constraint_satisfaction accepts identity candidate",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_constraint_rule_accepts),
@@ -298,7 +298,7 @@ data claim_find_witness_constraint_rule_accepts: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_find_witness_other_rule_rejects: TestClaim = CompilesClaim {
+test data claim_find_witness_other_rule_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity: unrealized preservation rule rejects before enumeration",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_other_rule_rejects),
@@ -306,7 +306,7 @@ data claim_find_witness_other_rule_rejects: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_find_witness_unique_only_ambiguous_rejects: TestClaim = CompilesClaim {
+test data claim_find_witness_unique_only_ambiguous_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity: UniqueOnly ambiguity rejects",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_unique_only_ambiguous_rejects),
@@ -314,7 +314,7 @@ data claim_find_witness_unique_only_ambiguous_rejects: TestClaim = CompilesClaim
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_find_witness_selected_invalid_rejects: TestClaim = CompilesClaim {
+test data claim_find_witness_selected_invalid_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity: invalid declared priority rejects",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_selected_invalid_rejects),
@@ -322,7 +322,7 @@ data claim_find_witness_selected_invalid_rejects: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_find_witness_user_selected_invalid_rejects: TestClaim = CompilesClaim {
+test data claim_find_witness_user_selected_invalid_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity: invalid user selection rejects",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_user_selected_invalid_rejects),
@@ -330,7 +330,7 @@ data claim_find_witness_user_selected_invalid_rejects: TestClaim = CompilesClaim
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_verify_witness_accepts: TestClaim = CompilesClaim {
+test data claim_verify_witness_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity: verify_witness accepts matching witness",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_verify_witness_accepts),
@@ -338,7 +338,7 @@ data claim_verify_witness_accepts: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_verify_witness_property_mismatch_rejects: TestClaim = CompilesClaim {
+test data claim_verify_witness_property_mismatch_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity: verify_witness rejects property mismatch",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_verify_witness_property_mismatch_rejects),
@@ -346,7 +346,7 @@ data claim_verify_witness_property_mismatch_rejects: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_verify_witness_evidence_mismatch_rejects: TestClaim = CompilesClaim {
+test data claim_verify_witness_evidence_mismatch_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity: verify_witness rejects evidence mismatch",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_verify_witness_evidence_mismatch_rejects),
@@ -354,7 +354,7 @@ data claim_verify_witness_evidence_mismatch_rejects: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_coercion_fold_identity_accepts: TestClaim = CompilesClaim {
+test data claim_coercion_fold_identity_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity: coercion_fold identity accepts",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_coercion_fold_identity_accepts),

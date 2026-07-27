@@ -87,7 +87,7 @@ fn modeled_unit_field_admitted_via_always_required_lenses_rhs() -> Node {
   }
 }
 
-data claim_modeled_unit_field_admitted_via_always_required_lenses: TestClaim = EqualsClaim {
+test data claim_modeled_unit_field_admitted_via_always_required_lenses: TestClaim = EqualsClaim {
   label: "lens_unit_modeling/modeled_unit_field_admitted_via_always_required_lenses: always_required_lenses() admits a ram_bytes field attached to a ByteSize carrier",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: unit_ar_pass_authority,

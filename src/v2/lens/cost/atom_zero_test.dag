@@ -41,7 +41,7 @@ fn atom_zero_claim_rhs() -> Node {
   }
 }
 
-data claim_atom_zero: TestClaim = EqualsClaim {
+test data claim_atom_zero: TestClaim = EqualsClaim {
   label: "lens_cost/atom_zero: bare atom has zero symbolic cost",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: atom_zero_input,

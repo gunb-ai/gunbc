@@ -277,7 +277,7 @@ fn ingest_bridge_realized_input(ok: Bool) -> Symbol {
   if ok { ^ingest_bridge_realized } else { ^ingest_bridge_not_realized }
 }
 
-data claim_ingest_bridge_module_compiles: TestClaim = CompilesClaim {
+test data claim_ingest_bridge_module_compiles: TestClaim = CompilesClaim {
   label: "manual/ingest_bridge: forward interpreter bridge claim compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: atom_node(s: ^ingest_fixture_start),
@@ -285,7 +285,7 @@ data claim_ingest_bridge_module_compiles: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
-data claim_ingest_bridge_realized: TestClaim = CompilesClaim {
+test data claim_ingest_bridge_realized: TestClaim = CompilesClaim {
   label: "manual/ingest_bridge: ParseTree frontier -> forward-selected emit-side core node -> canonical IR by execution (Option A; row-driven, fail-closed, forward-deterministic)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ingest_bridge_realized_input(ok: ingest_bridge_realized()),

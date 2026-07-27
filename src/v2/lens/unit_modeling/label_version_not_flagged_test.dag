@@ -62,7 +62,7 @@ fn label_version_not_flagged_rhs() -> Node {
   }
 }
 
-data claim_label_version_not_flagged: TestClaim = EqualsClaim {
+test data claim_label_version_not_flagged: TestClaim = EqualsClaim {
   label: "lens_unit_modeling/label: version:Int (label) is not flagged",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: label_field_input,

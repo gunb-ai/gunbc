@@ -164,9 +164,9 @@ fn anchor_typescript_pr3_compile_inferred_accepts() -> Outcome<CompileOutput> {
   }
 }
 
-data typescript_pr3_emit_receipt: Outcome<Medium<String>> = anchor_typescript_pr3_emit_accepts()
+test data typescript_pr3_emit_receipt: Outcome<Medium<String>> = anchor_typescript_pr3_emit_accepts()
 
-data typescript_pr3_compile_inferred_receipt: Outcome<CompileOutput> = anchor_typescript_pr3_compile_inferred_accepts()
+test data typescript_pr3_compile_inferred_receipt: Outcome<CompileOutput> = anchor_typescript_pr3_compile_inferred_accepts()
 
 fn typescript_pr3_emit_claim_outcome() -> Outcome<Node> {
   match typescript_pr3_emit_receipt {
