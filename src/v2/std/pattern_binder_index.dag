@@ -1,0 +1,248 @@
+module v2.std.pattern_binder_index
+
+import std.algebra { Cons, Empty, FreeMonoid }
+import std.occurrence_binding {
+  BindingCandidate,
+  BindingOccurrence,
+  ContainmentPath,
+  OccurrenceBindingResult,
+  occurrence_binding_from_candidates
+}
+import v2.std.algebra {
+  any,
+  is_empty,
+  list_append,
+  list_head,
+  list_init,
+  list_map,
+  list_snoc_item
+}
+import v2.std.collection {
+  Map,
+  empty_map,
+  map_get,
+  map_insert
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected, Unavailable, Diagnostic, ExternalContractUnknown, node_locus }
+import v2.std.node { Node, Symbol }
+import v2.std.node_minimal { PatternBinderShape, SpanRef }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+
+type PatternBinderEntry {
+  node: Node
+  shape: PatternBinderShape
+  span: SpanRef
+  declaration: ContainmentPath<Node>
+  reference: ContainmentPath<Node>
+}
+
+type PatternBinderScope {
+  by_name: Map<Symbol, FreeMonoid<PatternBinderEntry>>
+}
+
+type PatternBinderIndex {
+  scopes: Map<ContainmentPath<Node>, PatternBinderScope>
+}
+
+type PatternBinderPathParentResult
+  = PatternBinderPathParentFound { parent: ContainmentPath<Node> }
+  | PatternBinderPathParentAbsent
+
+fn empty_pattern_binder_scope() -> PatternBinderScope {
+  PatternBinderScope {
+    by_name: empty_map()
+  }
+}
+
+fn empty_pattern_binder_index() -> PatternBinderIndex {
+  PatternBinderIndex {
+    scopes: empty_map()
+  }
+}
+
+fn pattern_binder_entry_candidate(entry: PatternBinderEntry) -> BindingCandidate<Node> {
+  BindingCandidate {
+    containment: entry.declaration
+  }
+}
+
+fn pattern_binder_entry_eq(left: PatternBinderEntry, right: PatternBinderEntry) -> Bool {
+  left.node == right.node
+    && left.shape == right.shape
+    && left.span == right.span
+    && left.declaration == right.declaration
+    && left.reference == right.reference
+}
+
+fn pattern_binder_scope_candidates(scope: PatternBinderScope, name: Symbol) -> FreeMonoid<PatternBinderEntry> {
+  match map_get(scope.by_name, name) {
+    Accepted { value: opt, diagnostics: _ } => match opt {
+      Present { value: entries } => entries
+      Absent => Empty
+    }
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+fn pattern_binder_scope_insert(
+  scope: PatternBinderScope,
+  name: Symbol,
+  entry: PatternBinderEntry
+) -> PatternBinderScope {
+  let current = pattern_binder_scope_candidates(scope: scope, name: name)
+  if any(xs: current, predicate: fn(existing) {
+    pattern_binder_entry_eq(left: existing, right: entry)
+  }) {
+    scope
+  } else {
+    PatternBinderScope {
+      by_name: map_insert(
+        m: scope.by_name,
+        key: name,
+        value: list_snoc_item(xs: current, item: entry)
+      )
+    }
+  }
+}
+
+fn pattern_binder_index_scope(index: PatternBinderIndex, scope: ContainmentPath<Node>) -> PatternBinderScope {
+  match map_get(index.scopes, scope) {
+    Accepted { value: opt, diagnostics: _ } => match opt {
+      Present { value: existing } => existing
+      Absent => empty_pattern_binder_scope()
+    }
+    Rejected { diagnostics: _ } => empty_pattern_binder_scope()
+  }
+}
+
+fn pattern_binder_index_insert(
+  index: PatternBinderIndex,
+  name: Symbol,
+  entry: PatternBinderEntry
+) -> PatternBinderIndex {
+  let scope = pattern_binder_index_scope(index: index, scope: entry.declaration)
+  let inserted = pattern_binder_scope_insert(scope: scope, name: name, entry: entry)
+  PatternBinderIndex {
+    scopes: map_insert(
+      m: index.scopes,
+      key: entry.declaration,
+      value: inserted
+    )
+  }
+}
+
+fn pattern_binder_index_candidates_at(
+  index: PatternBinderIndex,
+  position: ContainmentPath<Node>,
+  name: Symbol
+) -> FreeMonoid<PatternBinderEntry> {
+  let scope = pattern_binder_index_scope(index: index, scope: position)
+  pattern_binder_scope_candidates(scope: scope, name: name)
+}
+
+fn containment_path_parent_from_rest(
+  prefix: FreeMonoid<Node>,
+  rest: FreeMonoid<Node>
+) -> PatternBinderPathParentResult {
+  match rest {
+    Empty => PatternBinderPathParentAbsent
+    Cons { head: h, tail: t } =>
+      match t {
+        Empty =>
+          PatternBinderPathParentFound {
+            parent: ContainmentPath {
+              ancestors: prefix,
+              terminal: h
+            }
+          }
+        _ =>
+          containment_path_parent_from_rest(
+            prefix: list_snoc_item(xs: prefix, item: h),
+            rest: t
+          )
+      }
+  }
+}
+
+fn containment_path_parent(path: ContainmentPath<Node>) -> Optional<ContainmentPath<Node>> {
+  match containment_path_parent_from_rest(prefix: Empty, rest: path.ancestors) {
+    PatternBinderPathParentFound { parent: parent } => optional_present(value: parent)
+    PatternBinderPathParentAbsent => optional_absent()
+  }
+}
+
+fn pattern_binder_index_candidates_collect(
+  index: PatternBinderIndex,
+  position: ContainmentPath<Node>,
+  name: Symbol,
+  acc: FreeMonoid<PatternBinderEntry>
+) -> FreeMonoid<PatternBinderEntry> {
+  let with_current = list_append(
+    left: acc,
+    right: pattern_binder_index_candidates_at(
+      index: index,
+      position: position,
+      name: name
+    )
+  )
+  match containment_path_parent(path: position) {
+    Present { value: parent } =>
+      pattern_binder_index_candidates_collect(
+        index: index,
+        position: parent,
+        name: name,
+        acc: with_current
+      )
+    Absent => with_current
+  }
+}
+
+fn pattern_binder_index_candidates(
+  index: PatternBinderIndex,
+  position: ContainmentPath<Node>,
+  name: Symbol
+) -> FreeMonoid<PatternBinderEntry> {
+  pattern_binder_index_candidates_collect(
+    index: index,
+    position: position,
+    name: name,
+    acc: Empty
+  )
+}
+
+fn pattern_binder_index_binding_candidates(
+  index: PatternBinderIndex,
+  position: ContainmentPath<Node>,
+  name: Symbol
+) -> FreeMonoid<BindingCandidate<Node>> {
+  list_map(
+    xs: pattern_binder_index_candidates(index: index, position: position, name: name),
+    f: fn(entry) {
+      pattern_binder_entry_candidate(entry: entry)
+    }
+  )
+}
+
+fn pattern_binder_index_lexical_bindings(
+  index: PatternBinderIndex,
+  position: ContainmentPath<Node>,
+  name: Symbol
+) -> OccurrenceBindingResult<Node> {
+  occurrence_binding_from_candidates(
+    occurrence: BindingOccurrence {
+      containment: position
+    },
+    candidates: pattern_binder_index_binding_candidates(
+      index: index,
+      position: position,
+      name: name
+    )
+  )
+}
+

@@ -125,6 +125,14 @@ type SurfaceDeclRole
   | SdrResourceUse
   | SdrProperty
   | SdrServiceOp
+  | SdrPatternBinder
+
+type PatternBinderShape
+  = PatternBinderDirect
+  | PatternBinderAlias
+  | PatternBinderShorthand
+  | PatternBinderTuple
+  | PatternBinderNested
 
 type FnItemDescentFlags {
   is_self_recursive: Bool
@@ -163,6 +171,10 @@ type SurfaceDeclPayload
     }
   | SdpServiceOp {
       transport: TransportSlot
+      children: List<Edge>
+    }
+  | SdpPatternBinder {
+      shape: PatternBinderShape
       children: List<Edge>
     }
 
