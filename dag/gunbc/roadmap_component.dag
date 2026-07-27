@@ -1287,40 +1287,54 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
       cond: ts_ident(name: "sb"),
       then: ts_block(stmts: [
         ts_expr_stmt(expr: ts_binop(
-          left: ts_member(object: ts_ident(name: "sb"), property: "textContent"),
-          op: "=",
-          right: ts_lit_str(value: concat(dispatch_session_chip_prefix, dispatch_caption_present_word)))),
-        ts_expr_stmt(expr: ts_binop(
           left: ts_member(
             object: ts_member(object: ts_ident(name: "sb"), property: "dataset"),
             property: "sessionPresence"),
           op: "=",
           right: ts_lit_str(value: "present"))),
-        ts_expr_stmt(expr: ts_call(
-          callee: ts_member(object: ts_member(object: ts_ident(name: "sb"), property: "classList"), property: "add"),
-          args: [ts_lit_str(value: dispatch_class_ok)])),
-        ts_expr_stmt(expr: ts_binop(
-          left: ts_member(object: ts_ident(name: "sb"), property: "title"),
-          op: "=",
-          right: ts_binop(
+        ts_if(
+          cond: ts_binop(
             left: ts_binop(
-              left: ts_binop(
-                left: ts_binop(
-                  left: ts_member(object: ts_ident(name: "sess"), property: "configured_provider"),
-                  op: "+",
-                  right: ts_lit_str(value: " configured · ")),
-                op: "+",
-                right: ts_member(object: ts_ident(name: "sess"), property: "provider")),
-              op: "+",
-              right: ts_lit_str(value: " · ")),
-            op: "+",
+              left: ts_member(object: ts_ident(name: "sb"), property: "textContent"),
+              op: "===",
+              right: ts_lit_str(value: dispatch_caption_idle)),
+            op: "||",
             right: ts_binop(
-              left: ts_member(object: ts_ident(name: "sess"), property: "provider_readiness"),
-              op: "+",
+              left: ts_member(object: ts_ident(name: "sb"), property: "textContent"),
+              op: "===",
+              right: ts_lit_str(value: concat(dispatch_session_chip_prefix, dispatch_caption_present_word)))),
+          then: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "sb"), property: "textContent"),
+              op: "=",
+              right: ts_lit_str(value: concat(dispatch_session_chip_prefix, dispatch_caption_present_word)))),
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_member(object: ts_member(object: ts_ident(name: "sb"), property: "classList"), property: "add"),
+              args: [ts_lit_str(value: dispatch_class_ok)])),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "sb"), property: "title"),
+              op: "=",
               right: ts_binop(
-                left: ts_lit_str(value: " — "),
+                left: ts_binop(
+                  left: ts_binop(
+                    left: ts_binop(
+                      left: ts_member(object: ts_ident(name: "sess"), property: "configured_provider"),
+                      op: "+",
+                      right: ts_lit_str(value: " configured · ")),
+                    op: "+",
+                    right: ts_member(object: ts_ident(name: "sess"), property: "provider")),
+                  op: "+",
+                  right: ts_lit_str(value: " · ")),
                 op: "+",
-                right: ts_member(object: ts_ident(name: "sess"), property: "session_name")))))),
+                right: ts_binop(
+                  left: ts_member(object: ts_ident(name: "sess"), property: "provider_readiness"),
+                  op: "+",
+                  right: ts_binop(
+                    left: ts_lit_str(value: " — "),
+                    op: "+",
+                    right: ts_member(object: ts_ident(name: "sess"), property: "session_name")))))),
+          ]),
+          else_stmt: none),
         ts_let(name: "sc", value: ts_call(
           callee: ts_member(object: ts_member(object: ts_ident(name: "sb"), property: "parentElement"), property: "querySelector"),
           args: [ts_lit_str(value: ".stop-chip")])),
@@ -1410,24 +1424,32 @@ fn sessions_reset_presence_stmt() -> TsStmt {
       property: "forEach"),
     args: [ts_arrow(params: ["pb"], body: ts_block(stmts: [
       ts_expr_stmt(expr: ts_binop(
-        left: ts_member(object: ts_ident(name: "pb"), property: "textContent"),
-        op: "=",
-        right: ts_lit_str(value: dispatch_caption_idle))),
-      ts_expr_stmt(expr: ts_binop(
         left: ts_member(
           object: ts_member(object: ts_ident(name: "pb"), property: "dataset"),
           property: "sessionPresence"),
         op: "=",
         right: ts_lit_str(value: ""))),
-      ts_expr_stmt(expr: ts_call(
-        callee: ts_member(
-          object: ts_member(object: ts_ident(name: "pb"), property: "classList"),
-          property: "remove"),
-        args: [ts_lit_str(value: dispatch_class_ok)])),
-      ts_expr_stmt(expr: ts_binop(
-        left: ts_member(object: ts_ident(name: "pb"), property: "title"),
-        op: "=",
-        right: ts_lit_str(value: ""))),
+      ts_if(
+        cond: ts_binop(
+          left: ts_member(object: ts_ident(name: "pb"), property: "textContent"),
+          op: "===",
+          right: ts_lit_str(value: concat(dispatch_session_chip_prefix, dispatch_caption_present_word))),
+        then: ts_block(stmts: [
+          ts_expr_stmt(expr: ts_binop(
+            left: ts_member(object: ts_ident(name: "pb"), property: "textContent"),
+            op: "=",
+            right: ts_lit_str(value: dispatch_caption_idle))),
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_member(
+              object: ts_member(object: ts_ident(name: "pb"), property: "classList"),
+              property: "remove"),
+            args: [ts_lit_str(value: dispatch_class_ok)])),
+          ts_expr_stmt(expr: ts_binop(
+            left: ts_member(object: ts_ident(name: "pb"), property: "title"),
+            op: "=",
+            right: ts_lit_str(value: ""))),
+        ]),
+        else_stmt: none),
       ts_const(name: "oldStop", value: ts_call(
         callee: ts_member(object: ts_member(object: ts_ident(name: "pb"), property: "parentElement"), property: "querySelector"),
         args: [ts_lit_str(value: ".stop-chip")])),
