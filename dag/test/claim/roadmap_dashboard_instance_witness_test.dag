@@ -184,6 +184,8 @@ test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
 fn lab_observed(
   production_untouched: Bool,
   source_anchor_matches: Bool,
+  source_revision_observed: Bool,
+  source_revision_current: Bool,
   health_current: Bool,
 ) -> DashboardInstanceObserved {
   DashboardInstanceObserved {
@@ -192,6 +194,15 @@ fn lab_observed(
     bundle_present: true,
     origin_present: true,
     source_present: true,
+    source_revision_observed: source_revision_observed,
+    source_revision_current: source_revision_current,
+    source_revision_detail: if !source_revision_observed {
+      "git rev-parse HEAD refused"
+    } else if source_revision_current {
+      "desired=abc observed=abc"
+    } else {
+      "source revision drift: desired=abc observed=def"
+    },
     attempts_present: true,
     attempt_state_present: true,
     provider_runtime_ready: true,
@@ -211,6 +222,8 @@ test fn dashboard_reconcile_converges_only_after_independent_readback() -> Bool 
     observed: lab_observed(
       production_untouched: true,
       source_anchor_matches: true,
+      source_revision_observed: true,
+      source_revision_current: true,
       health_current: true,
     ),
   ) {
@@ -225,6 +238,8 @@ test fn dashboard_reconcile_plans_missing_health_without_claiming_convergence() 
     observed: lab_observed(
       production_untouched: true,
       source_anchor_matches: true,
+      source_revision_observed: true,
+      source_revision_current: true,
       health_current: false,
     ),
   ) {
@@ -239,6 +254,8 @@ test fn dashboard_reconcile_refuses_production_overlap() -> Bool {
     observed: lab_observed(
       production_untouched: false,
       source_anchor_matches: true,
+      source_revision_observed: true,
+      source_revision_current: true,
       health_current: false,
     ),
   ) {
@@ -253,11 +270,46 @@ test fn dashboard_reconcile_refuses_destructive_source_replacement() -> Bool {
     observed: lab_observed(
       production_untouched: true,
       source_anchor_matches: false,
+      source_revision_observed: true,
+      source_revision_current: false,
       health_current: false,
     ),
   ) {
     DashboardInstanceRefused { reason } =>
       reason == "source repo exists at a different anchor; replacement is destructive and must be adjudicated"
+    _ => false
+  }
+}
+
+test fn dashboard_reconcile_refreshes_owned_clean_stale_revision() -> Bool {
+  match dashboard_instance_reconcile(
+    instance: srv1_lab_dashboard_instance(),
+    observed: lab_observed(
+      production_untouched: true,
+      source_anchor_matches: true,
+      source_revision_observed: true,
+      source_revision_current: false,
+      health_current: true,
+    ),
+  ) {
+    DashboardInstanceApply { plan } => count(plan) > 0
+    _ => false
+  }
+}
+
+test fn dashboard_reconcile_refuses_unreadable_source_revision() -> Bool {
+  match dashboard_instance_reconcile(
+    instance: srv1_lab_dashboard_instance(),
+    observed: lab_observed(
+      production_untouched: true,
+      source_anchor_matches: true,
+      source_revision_observed: false,
+      source_revision_current: false,
+      health_current: true,
+    ),
+  ) {
+    DashboardInstanceRefused { reason } =>
+      string_contains(s: reason as String, pattern: "source revision read-back refused")
     _ => false
   }
 }
@@ -269,6 +321,9 @@ test fn dashboard_bundle_is_required_for_convergence() -> Bool {
     bundle_present: false,
     origin_present: true,
     source_present: true,
+    source_revision_observed: true,
+    source_revision_current: true,
+    source_revision_detail: "desired=abc observed=abc",
     attempts_present: true,
     attempt_state_present: true,
     provider_runtime_ready: true,
@@ -328,6 +383,9 @@ test fn dashboard_reconcile_refuses_unmarked_existing_source() -> Bool {
     bundle_present: false,
     origin_present: true,
     source_present: true,
+    source_revision_observed: false,
+    source_revision_current: false,
+    source_revision_detail: "source repository unavailable",
     attempts_present: false,
     attempt_state_present: false,
     provider_runtime_ready: false,
@@ -413,6 +471,8 @@ test fn dashboard_instance_model_keystone_holds() -> Bool {
     && dashboard_reconcile_plans_missing_health_without_claiming_convergence()
     && dashboard_reconcile_refuses_production_overlap()
     && dashboard_reconcile_refuses_destructive_source_replacement()
+    && dashboard_reconcile_refreshes_owned_clean_stale_revision()
+    && dashboard_reconcile_refuses_unreadable_source_revision()
     && dashboard_bundle_is_required_for_convergence()
     && dashboard_source_capture_has_no_manual_await_step()
     && dashboard_reconcile_refuses_unmarked_existing_source()

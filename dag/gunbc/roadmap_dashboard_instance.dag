@@ -672,6 +672,9 @@ type DashboardInstanceObserved {
   bundle_present: Bool
   origin_present: Bool
   source_present: Bool
+  source_revision_observed: Bool
+  source_revision_current: Bool
+  source_revision_detail: String
   attempts_present: Bool
   attempt_state_present: Bool
   provider_runtime_ready: Bool
@@ -683,6 +686,8 @@ type DashboardInstanceObserved {
   production_untouched: Bool
   source_anchor_matches: Bool
 }
+
+data dashboard_source_revision_convergence_note: String = "Source convergence has two independent equalities. source_anchor_matches compares the target checkout HEAD with its target-local origin/base ref; that proves the owned checkout is cleanly resettable and prevents overwriting a divergent worktree. source_revision_current compares that HEAD with the exact controller CommitSha captured by preflight; that proves the running lab is this requested source revision rather than merely self-consistent at an older revision. A clean stale revision derives Apply, an unreadable revision refuses, and only both equalities can converge. The split is load-bearing: the first lab refresh after a controller rebase exposed that HEAD == old origin/main was true while HEAD == requested commit was false."
 
 fn dashboard_source_seed_ready(
   instance: HostDashboardInstance,
@@ -726,6 +731,13 @@ fn dashboard_instance_reconcile(
     DashboardInstanceRefused {
       reason: "source repo exists at a different anchor; replacement is destructive and must be adjudicated" as NonEmptyStr,
     }
+  } else if observed.source_present && !observed.source_revision_observed {
+    DashboardInstanceRefused {
+      reason: join([
+        "source revision read-back refused: ",
+        observed.source_revision_detail,
+      ], "") as NonEmptyStr,
+    }
   } else if observed.health_current
       && observed.root_present
       && observed.ownership_marker_present
@@ -737,7 +749,8 @@ fn dashboard_instance_reconcile(
       && observed.provider_runtime_ready
       && observed.provider_authenticated
       && observed.service_present
-      && observed.source_anchor_matches {
+      && observed.source_anchor_matches
+      && observed.source_revision_current {
     DashboardInstanceConverged
   } else {
     DashboardInstanceApply { plan: dashboard_instance_provision_plan(instance: instance) }

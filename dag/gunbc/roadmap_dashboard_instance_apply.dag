@@ -1,6 +1,6 @@
 module gunbc.roadmap_dashboard_instance_apply
 
-import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, GitRef }
+import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, GitRef, CommitSha }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.gunbc
@@ -91,7 +91,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_reconcile,
 }
 
-data dashboard_instance_apply_note: String = "The wet path is an interpreter of HostDashboardInstance, not a parallel provisioning script. Its high-level provision plan is pure and browser-visible; this module projects each operation to typed argv, executes locally or through the instance's explicit SSH transport, records a typed receipt, and performs a second independent observation before claiming convergence. Codex runtime identity (`--version` must realize `codex-cli`) and OAuth state (`login status`) are separate observations and provision steps, so a broken npm/Node launcher cannot masquerade as an auth refusal; successful stderr is retained in receipts rather than dropping runtime warnings. Source transport has no handoff gap: inspect shallow state -> hydrate from the modeled remote when needed -> mktemp directory -> git bundle -> metadata verify -> import into a new empty bare repository -> scp to .next -> target mv -> local cleanup. The empty-repository import is the closure proof; target mutation does not begin until it succeeds. A matching ownership-marker filename gates every mutation of an existing isolated source clone. Production is read before mutation and again after; repo HEAD plus /healthz must remain byte-identical. Recursive deletion is confined to the fresh controller-side mktemp directory minted by this invocation; no instance or target state is recursively deleted by apply."
+data dashboard_instance_apply_note: String = "The wet path is an interpreter of HostDashboardInstance, not a parallel provisioning script. Its high-level provision plan is pure and browser-visible; this module projects each operation to typed argv, executes locally or through the instance's explicit SSH transport, records a typed receipt, and performs a second independent observation before claiming convergence. Preflight resolves the modeled controller ref once and carries that exact CommitSha through initial observation and post-apply read-back; a target checkout that is clean against its own origin but stale against the requested commit derives Apply, never false convergence. Codex runtime identity (`--version` must realize `codex-cli`) and OAuth state (`login status`) are separate observations and provision steps, so a broken npm/Node launcher cannot masquerade as an auth refusal; successful stderr is retained in receipts rather than dropping runtime warnings. Source transport has no handoff gap: inspect shallow state -> hydrate from the modeled remote when needed -> mktemp directory -> git bundle -> metadata verify -> import into a new empty bare repository -> scp to .next -> target mv -> local cleanup. The empty-repository import is the closure proof; target mutation does not begin until it succeeds. A matching ownership-marker filename gates every mutation of an existing isolated source clone. Production is read before mutation and again after; repo HEAD plus /healthz must remain byte-identical. Recursive deletion is confined to the fresh controller-side mktemp directory minted by this invocation; no instance or target state is recursively deleted by apply."
 
 type DashboardExecResult {
   success: Bool
@@ -823,9 +823,47 @@ fn dashboard_source_anchor_matches(
   }
 }
 
+fn dashboard_source_revision_readback(
+  instance: HostDashboardInstance,
+  desired_source_revision: CommitSha,
+) -> DashboardExecResult {
+  let head = dashboard_target_probe(
+    instance: instance,
+    program: "/usr/bin/git" as FilePath,
+    args: shape_git_rev_parse_argv(
+      repo: instance.repo_root,
+      target: "HEAD" as GitRef,
+    ),
+  )
+  let observed = trim(head.stdout)
+  if !head.success {
+    dashboard_exec_refused(detail: join([
+      "git rev-parse HEAD refused: ",
+      head.stderr,
+      head.stdout,
+    ], ""))
+  } else if desired_source_revision == "" {
+    dashboard_exec_refused(detail: "controller source revision is empty")
+  } else if observed == desired_source_revision {
+    dashboard_exec_ok(stdout: observed)
+  } else {
+    DashboardExecResult {
+      success: true,
+      stdout: observed,
+      stderr: join([
+        "source revision drift: desired=",
+        desired_source_revision,
+        " observed=",
+        observed,
+      ], ""),
+    }
+  }
+}
+
 fn dashboard_instance_observe(
   instance: HostDashboardInstance,
   production_untouched: Bool,
+  desired_source_revision: CommitSha,
 ) -> DashboardInstanceObserved {
   let health = dashboard_read_instance_health(instance: instance)
   let provider_runtime = dashboard_target_probe(
@@ -862,6 +900,10 @@ fn dashboard_instance_observe(
     } =>
       dashboard_target_file_present(instance: instance, path: staged_bundle)
   }
+  let source_revision = dashboard_source_revision_readback(
+    instance: instance,
+    desired_source_revision: desired_source_revision,
+  )
   DashboardInstanceObserved {
     root_present: dashboard_target_directory_present(
       instance: instance,
@@ -880,6 +922,14 @@ fn dashboard_instance_observe(
       instance: instance,
       path: instance.repo_root,
     ),
+    source_revision_observed: source_revision.success,
+    source_revision_current: source_revision.success
+      && trim(source_revision.stdout) == desired_source_revision,
+    source_revision_detail: trim(join([
+      source_revision.stdout,
+      "\n",
+      source_revision.stderr,
+    ], "")),
     attempts_present: dashboard_target_directory_present(
       instance: instance,
       path: instance.dispatch_worktree_root,
@@ -912,7 +962,10 @@ fn dashboard_instance_observe(
 }
 
 type DashboardApplyPreflightResult
-  = DashboardApplyPreflightReady { instance_id: NonEmptyStr }
+  = DashboardApplyPreflightReady {
+      instance_id: NonEmptyStr,
+      source_revision: CommitSha,
+    }
   | DashboardApplyPreflightRefused {
       instance_id: NonEmptyStr,
       step: NonEmptyStr,
@@ -958,6 +1011,12 @@ fn dashboard_source_preflight_decision(
         status_read.stdout,
       ], ""),
     )
+  } else if trim(ref_read.stdout) == "" {
+    dashboard_apply_preflight_refused(
+      instance: instance,
+      step: "controller-source-ref",
+      detail: "source ref resolved successfully but returned an empty revision",
+    )
   } else if trim(status_read.stdout) != "" {
     dashboard_apply_preflight_refused(
       instance: instance,
@@ -998,7 +1057,10 @@ fn dashboard_source_preflight_decision(
       ], ""),
     )
   } else {
-    DashboardApplyPreflightReady { instance_id: instance.instance_id }
+    DashboardApplyPreflightReady {
+      instance_id: instance.instance_id,
+      source_revision: trim(ref_read.stdout) as CommitSha,
+    }
   }
 }
 
@@ -1177,7 +1239,10 @@ fn dashboard_instance_apply_preflight(
           match source {
             DashboardApplyPreflightRefused { instance_id: _, step: _, detail: _ } =>
               source
-            DashboardApplyPreflightReady { instance_id: _ } => {
+            DashboardApplyPreflightReady {
+              instance_id: _,
+              source_revision,
+            } => {
               let missing = dashboard_missing_target_executables(instance: instance)
               if count(missing) > 0 {
                 dashboard_apply_preflight_refused(
@@ -1192,6 +1257,7 @@ fn dashboard_instance_apply_preflight(
                 let observed = dashboard_instance_observe(
                   instance: instance,
                   production_untouched: true,
+                  desired_source_revision: source_revision,
                 )
                 match dashboard_instance_reconcile(instance: instance, observed: observed) {
                   DashboardInstanceRefused { reason } =>
@@ -1251,7 +1317,10 @@ fn dashboard_instance_apply_preflight(
                         ], ""),
                       )
                     } else {
-                      DashboardApplyPreflightReady { instance_id: instance.instance_id }
+                      DashboardApplyPreflightReady {
+                        instance_id: instance.instance_id,
+                        source_revision: source_revision,
+                      }
                     }
                   }
                 }
@@ -1269,11 +1338,12 @@ fn dashboard_apply_preflight_json_value(
   result: DashboardApplyPreflightResult,
 ) -> JsonValue {
   match result {
-    DashboardApplyPreflightReady { instance_id } =>
+    DashboardApplyPreflightReady { instance_id, source_revision } =>
       json_object(members: [
         json_kv(key: "schema", value: json_string(s: "dashboard-instance-preflight/v1")),
         json_kv(key: "instance_id", value: json_string(s: instance_id as String)),
         json_kv(key: "status", value: json_string(s: "ready")),
+        json_kv(key: "source_revision", value: json_string(s: source_revision)),
       ])
     DashboardApplyPreflightRefused { instance_id, step, detail } =>
       json_object(members: [
@@ -1310,6 +1380,8 @@ fn dashboard_apply_result_json_value(
         json_kv(key: "status", value: json_string(s: "converged")),
         json_kv(key: "health_current", value: json_bool(b: observed.health_current)),
         json_kv(key: "production_untouched", value: json_bool(b: observed.production_untouched)),
+        json_kv(key: "source_revision_current", value: json_bool(b: observed.source_revision_current)),
+        json_kv(key: "source_revision_detail", value: json_string(s: observed.source_revision_detail)),
         json_kv(key: "steps", value: json_array(elements: receipts |> map(r =>
           dashboard_step_receipt_json_value(receipt: r)))),
       ])
@@ -1354,6 +1426,7 @@ fn dashboard_apply_refused(
 fn dashboard_instance_apply_after_preflight(
   instance: HostDashboardInstance,
   production: HostDashboardInstance,
+  desired_source_revision: CommitSha,
 ) -> DashboardInstanceApplyResult {
   if !dashboard_instance_paths_are_owned(instance: instance)
       || !dashboard_instances_have_disjoint_owned_paths(a: instance, b: production)
@@ -1377,6 +1450,7 @@ fn dashboard_instance_apply_after_preflight(
       let before = dashboard_instance_observe(
         instance: instance,
         production_untouched: true,
+        desired_source_revision: desired_source_revision,
       )
       match dashboard_instance_reconcile(instance: instance, observed: before) {
         DashboardInstanceConverged =>
@@ -1434,6 +1508,7 @@ fn dashboard_instance_apply_after_preflight(
               let after = dashboard_instance_observe(
                 instance: instance,
                 production_untouched: untouched,
+                desired_source_revision: desired_source_revision,
               )
               match dashboard_instance_reconcile(instance: instance, observed: after) {
                 DashboardInstanceConverged =>
@@ -1483,10 +1558,14 @@ fn dashboard_instance_apply(
         detail: detail,
         receipts: [],
       )
-    DashboardApplyPreflightReady { instance_id: _ } =>
+    DashboardApplyPreflightReady {
+      instance_id: _,
+      source_revision,
+    } =>
       dashboard_instance_apply_after_preflight(
         instance: instance,
         production: production,
+        desired_source_revision: source_revision,
       )
   }
 }
@@ -1514,7 +1593,10 @@ fn srv1_lab_dashboard_preflight_json() -> String {
 func srv1_lab_dashboard_preflight_wet() -> ProcessExit {
   let result = srv1_lab_dashboard_preflight()
   match result {
-    DashboardApplyPreflightReady { instance_id: _ } => ExitSuccess
+    DashboardApplyPreflightReady {
+      instance_id: _,
+      source_revision: _,
+    } => ExitSuccess
     DashboardApplyPreflightRefused { instance_id: _, step: _, detail: _ } =>
       exit_failure(reason: serialize_json(v: dashboard_apply_preflight_json_value(
         result: result,

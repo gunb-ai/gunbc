@@ -395,29 +395,73 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
       stderr: "No such remote",
     },
   )
+  let empty_revision = dashboard_source_preflight_decision(
+    instance: lab,
+    ref_read: DashboardExecResult {
+      success: true,
+      stdout: "",
+      stderr: "",
+    },
+    status_read: DashboardExecResult {
+      success: true,
+      stdout: "",
+      stderr: "",
+    },
+    shallow_read: DashboardExecResult {
+      success: true,
+      stdout: "false",
+      stderr: "",
+    },
+    history_remote_read: DashboardExecResult {
+      success: true,
+      stdout: "unused",
+      stderr: "",
+    },
+  )
   let dirty_ok = match dirty {
     DashboardApplyPreflightRefused { instance_id: _, step, detail } =>
       step == "controller-source-dirty"
         && string_contains(s: detail, pattern: "bundle carries committed objects only")
-    DashboardApplyPreflightReady { instance_id: _ } => false
+    DashboardApplyPreflightReady {
+      instance_id: _,
+      source_revision: _,
+    } => false
   }
   let clean_ok = match clean {
-    DashboardApplyPreflightReady { instance_id } =>
+    DashboardApplyPreflightReady { instance_id, source_revision } =>
       instance_id == lab.instance_id
+        && source_revision == "deadbeef"
     DashboardApplyPreflightRefused { instance_id: _, step: _, detail: _ } => false
   }
   let missing_remote_ok = match missing_remote {
     DashboardApplyPreflightRefused { instance_id: _, step, detail } =>
       step == "controller-history-remote"
         && string_contains(s: detail, pattern: "modeled hydration remote")
-    DashboardApplyPreflightReady { instance_id: _ } => false
+    DashboardApplyPreflightReady {
+      instance_id: _,
+      source_revision: _,
+    } => false
+  }
+  let empty_revision_ok = match empty_revision {
+    DashboardApplyPreflightRefused { instance_id: _, step, detail } =>
+      step == "controller-source-ref"
+        && string_contains(s: detail, pattern: "empty revision")
+    DashboardApplyPreflightReady {
+      instance_id: _,
+      source_revision: _,
+    } => false
   }
   dirty_ok
     && clean_ok
     && missing_remote_ok
+    && empty_revision_ok
     && string_contains(
       s: serialize_json(v: dashboard_apply_preflight_json_value(result: dirty)),
       pattern: "\"status\": \"refused\"",
+    )
+    && string_contains(
+      s: serialize_json(v: dashboard_apply_preflight_json_value(result: clean)),
+      pattern: "\"source_revision\": \"deadbeef\"",
     )
 }
 
