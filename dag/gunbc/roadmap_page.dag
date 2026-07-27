@@ -27,7 +27,14 @@ import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes }
 import gunbc.roadmap_component {
   roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class,
   disclosure_mark_class, disclosure_mark_glyph, node_mid_class,
+  WorkflowLamp, workflow_lamps_v0, workflow_lamp_key, workflow_lamp_label,
+  workflow_lamp_initial_state,
+  workflow_controls_class, workflow_strip_class, workflow_lamp_class,
+  workflow_lamp_indicator_class, workflow_lamp_label_class,
+  workflow_lamp_data_attribute, workflow_observation_data_attribute,
+  workflow_lamp_label_data_attribute,
 }
+import gunbc.client_observation_state { client_observation_state_key }
 import gunbc.v1_deletion_plan {
   v1_deletion_gates, v1_deletion_milestones, PlanGateSpec, PlanMilestone,
   PlanGate, GateEmitterFixedPoint, GateHonestFrontier, GateLedgerGreen, GateDeletion,
@@ -247,7 +254,7 @@ fn lead_nodes(line: RoadmapItem) -> List<Fragment> {
   markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: line_lead(line: line)))
 }
 
-data roadmap_lead_budget_note: String = "The lead is the row's at-a-glance face: everything before the first ' — ' (falling back to the first '. ', then the whole title). A row whose LEAD is itself paragraph-length defeats the disclosure — the brief stays collapsed but the summary line does not, so the reader pays the full text anyway. The bound is authoring residue, not a structural class: no construction forbids a long sentence, so this is the §5-sanctioned lens over the genuinely unstructurable part, and it is typed/located/counted (node id + measured length) rather than a bare Bool, so a red says WHICH row and by how much. 300 chars is the operator's declared bound (roadmap-workspace-ux-plan.md P1b); the corpus cleared it when the three offenders were re-cut (ts-review-sweep, ts-group-census, shelf-sketches), each by moving the ' — ' up to just after its bold headline rather than by deleting content — the body survives verbatim behind the disclosure. Measured distribution at that point: 180 rows under 100 chars, 16 in 100-199, 3 in 200-249, 2 in 250-299, 0 at or over 300."
+data roadmap_lead_budget_note: String = "The lead is the row's at-a-glance face: everything before the first ' — ' (falling back to the first '. ', then the whole title). A row whose LEAD is itself paragraph-length defeats the disclosure — the brief stays collapsed but the summary line does not, so the reader pays the full text anyway. The bound is authoring residue, not a structural class: no construction forbids a long sentence, so this is the §5-sanctioned lens over the genuinely unstructurable part, and it is typed/located/counted (node id + measured length) rather than a bare Bool, so a red says WHICH row and by how much. 300 chars is the operator's declared bound (roadmap-workspace-ux-plan.md P1b); an offender is re-cut by moving its summary delimiter earlier or splitting its content, while the body remains available behind the disclosure."
 
 fn roadmap_lead_budget_chars() -> Int { 300 }
 
@@ -418,7 +425,7 @@ fn sizing_badge(rn: RoadmapNode) -> List<Fragment> {
   }
 }
 
-data dispatch_button_note: String = "The launch button (operator 2026-07-20: manual click-to-dispatch). Rendered on every NOT-signoff-done node (open OR review -- DONE = the operator's signoff, never a merged PR), carrying data-node = the node id. Its client behavior is a MODELED TsProgram (gunbc.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset (roadmap_dispatch_asset_path, served by belt B) and referenced by <script src> -- NOT a hand-concatenated JS string inlined into the HTML (the former was the dispatch-button incident's root class, §5, and the inline placement was a hack: an inline <script> text node escapes '>' under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`)."
+data dispatch_button_note: String = "The launch button (operator 2026-07-20: manual click-to-dispatch). Rendered on every open or review node; only signoff-Done and authored Superseded rows hide it. This deliberately preserves manual out-of-order dispatch for blocked and unsized rows: spawn_frontier.ready governs automatic belt reconciliation and page grouping, not the manual POST admission contract. belt_dispatch_node currently refuses signoff-Done but does not consult Ready, so the page must not claim otherwise. The button carries data-node = the node id. Its client behavior is a MODELED TsProgram (gunbc.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset (roadmap_dispatch_asset_path, served by belt B) and referenced by <script src> -- NOT a hand-concatenated JS string inlined into the HTML (the former was the dispatch-button incident's root class, §5, and the inline placement was a hack: an inline <script> text node escapes '>' under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`)."
 
 fn superseded_badge(rn: RoadmapNode) -> List<Fragment> {
   let by = item_superseded_by(item: rn.line)
@@ -429,17 +436,53 @@ fn superseded_badge(rn: RoadmapNode) -> List<Fragment> {
   }
 }
 
-fn dispatch_button_nodes(rn: RoadmapNode, merged: List<Int>) -> List<Fragment> {
-  let status = node_status_symbol(rn: rn, merged: merged)
-  if status == "done" || status == "superseded" {
-    []
-  } else {
+fn dispatch_button_nodes(rn: RoadmapNode, dispatchable: Bool) -> List<Fragment> {
+  if dispatchable {
     [ el_attrs("button", [
         attr(name: "class", value: "dispatch-btn" ),
         attr(name: "type", value: "button" ),
         attr(name: "data-node", value: rn.node as String ),
       ], [ txt("dispatch") ]) ]
+  } else {
+    []
   }
+}
+
+fn node_exposes_manual_dispatch(rn: RoadmapNode, merged: List<Int>) -> Bool {
+  let status = node_status_symbol(rn: rn, merged: merged)
+  !(status == "done" || status == "superseded")
+}
+
+fn workflow_lamp_node(lamp: WorkflowLamp) -> Fragment {
+  let key = workflow_lamp_key(lamp: lamp)
+  let label = workflow_lamp_label(lamp: lamp)
+  let observation = client_observation_state_key(
+    state: workflow_lamp_initial_state(lamp: lamp))
+  el_attrs("span", [
+    attr(name: "class", value: workflow_lamp_class),
+    attr(name: workflow_lamp_data_attribute, value: key),
+    attr(name: workflow_observation_data_attribute, value: observation),
+    attr(name: workflow_lamp_label_data_attribute, value: label),
+    attr(name: "role", value: "status"),
+    attr(name: "aria-label", value: join([label, ": ", observation], "")),
+  ], [
+    el_class("span", workflow_lamp_indicator_class, []),
+    el_class("span", workflow_lamp_label_class, [ txt(label) ]),
+  ])
+}
+
+fn workflow_strip_node() -> Fragment {
+  el_attrs("span", [
+    attr(name: "class", value: workflow_strip_class),
+    attr(name: "role", value: "group"),
+    attr(name: "aria-label", value: "workflow observations"),
+  ], map(workflow_lamps_v0, lamp => workflow_lamp_node(lamp: lamp)))
+}
+
+fn workflow_controls_nodes(rn: RoadmapNode, dispatchable: Bool) -> List<Fragment> {
+  [ el_class("div", workflow_controls_class, concat(
+      [ workflow_strip_node() ],
+      dispatch_button_nodes(rn: rn, dispatchable: dispatchable))) ]
 }
 
 fn dispatch_client_script() -> Fragment {
@@ -494,9 +537,9 @@ fn page_script_census(page: Fragment) -> List<PageScriptViolation> {
   collect_script_violations(node: page, known_src: roadmap_dispatch_asset_path)
 }
 
-data node_head_row_note: String = "The row composition, on the declared archetype (composition slice 2; refines round 5's flex head line). The head line realizes the RoadmapRow archetype's head tracks: status chip in its auto track, the node-mid cell (title + the flowing meta regions — badges, carrier links) in the flex track, the actuator in its auto track at the right edge (the GitHub PR-row shape: identity left, action right). The grid template is DERIVED from the archetype's placements (roadmap_row_grid_template), the disclosure stays indented beneath on its landed token, and the wrapper exists because meta is declared InTitleFlow — badge count varies per node, so meta flows in the title's cell rather than owning a ragged column."
+data node_head_row_note: String = "The row composition, on the declared archetype. The head line retains three derived tracks: status chip; node-mid title/meta flow; and one workflow-controls realization of ActuatorRegion. That final wrapper is always present, carrying the workflow observation strip plus the optional dispatch button, so done/superseded rows remain observable and dynamic Stop stays inside the existing grid cell. The li owns stable data-node identity independently of actuator presence; client observations locate the row first and only then its lamp or optional control."
 
-fn node_head_row(rn: RoadmapNode, merged: List<Int>) -> Fragment {
+fn node_head_row(rn: RoadmapNode, merged: List<Int>, dispatchable: Bool) -> Fragment {
   let status = node_status_symbol(rn: rn, merged: merged)
   el_class("div", "node-head", concat(
     [
@@ -508,13 +551,21 @@ fn node_head_row(rn: RoadmapNode, merged: List<Int>) -> Fragment {
         ),
         concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)))),
     ],
-    dispatch_button_nodes(rn: rn, merged: merged)))
+    workflow_controls_nodes(rn: rn, dispatchable: dispatchable)))
+}
+
+fn node_li_attributes(rn: RoadmapNode, status: String) -> List<Attribute> {
+  [
+    attr(name: "class", value: concat("node node-", status)),
+    attr(name: "data-node", value: rn.node as String),
+  ]
 }
 
 fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> Fragment {
   let status = node_status_symbol(rn: rn, merged: merged)
+  let dispatchable = node_exposes_manual_dispatch(rn: rn, merged: merged)
   let head = concat(
-    [ node_head_row(rn: rn, merged: merged) ],
+    [ node_head_row(rn: rn, merged: merged, dispatchable: dispatchable) ],
     item_detail_block(rn: rn),
   )
   let kids = children_of(nodes: nodes, edges: edges, parent: rn.node)
@@ -533,7 +584,7 @@ fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, 
   }
   Element {
     tag: "li",
-    attributes: [ attr(name: "class", value: concat("node node-", status) ) ],
+    attributes: node_li_attributes(rn: rn, status: status),
     children: concat(head, child_block),
   }
 }
@@ -602,9 +653,12 @@ fn frontier_flat_node_li(rn: RoadmapNode, merged: List<Int>) -> Fragment {
   let status = node_status_symbol(rn: rn, merged: merged)
   Element {
     tag: "li",
-    attributes: [ attr(name: "class", value: concat("node node-", status) ) ],
+    attributes: node_li_attributes(rn: rn, status: status),
     children: concat(
-      [ node_head_row(rn: rn, merged: merged) ],
+      [ node_head_row(
+          rn: rn,
+          merged: merged,
+          dispatchable: node_exposes_manual_dispatch(rn: rn, merged: merged)) ],
       item_detail_block(rn: rn)),
   }
 }

@@ -1,7 +1,7 @@
 module test.claim.css_grain_witness
 
 import extdeps.languages.css.properties {
-  CssPropertyName, FontSize, BorderColor, ColorScheme, CustomProperty, RawProperty, css_property_wire,
+  CssPropertyName, FontSize, BorderColor, ColorScheme, GridColumn, CustomProperty, RawProperty, css_property_wire,
 }
 import extdeps.languages.css.selectors {
   SelectorSubject, ClassSelector, ElementSelector, PseudoSuffix, RawSelector,
@@ -17,6 +17,7 @@ test fn witness_property_wire_byte_exact() -> Bool {
   css_property_wire(p: FontSize) == "font-size"
     && css_property_wire(p: BorderColor) == "border-color"
     && css_property_wire(p: ColorScheme) == "color-scheme"
+    && css_property_wire(p: GridColumn) == "grid-column"
     && css_property_wire(p: CustomProperty { name: "space-8" }) == "--space-8"
     && css_property_wire(p: RawProperty { name: "code-spacing" }) == "code-spacing"
 }
