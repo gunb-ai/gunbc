@@ -6,9 +6,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.algebra { fold_list, any }
 import gunbc.ci_deploy_access {
   DeployAccess,
-  PrivilegedCommand,
   gunbc_deploy_sudoers_dropin,
   deploy_access_sudoers_line,
+  posix_sudo_grant_to_privileged,
 }
 import gunbc.fleet_posix_accounts {
   PosixSudoGrant,
@@ -77,7 +77,7 @@ fn deploy_sudoers_dropin_header() -> String {
 fn deploy_sudoers_line_for_grant(access: DeployAccess, g: PosixSudoGrant) -> String {
   deploy_access_sudoers_line(
     access: access,
-    cmd: PrivilegedCommand { path: g.command_path, check: g.check_argv }
+    cmd: posix_sudo_grant_to_privileged(g: g)
   )
 }
 

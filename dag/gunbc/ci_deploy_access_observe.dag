@@ -7,6 +7,7 @@ import gunbc.host_effect {
   ShellCommand,
   ReadEffectivePosixPrincipal,
   SudoNopasswdExecuteProbe,
+  SudoNopasswdGrantListProbe,
   LiveDeployApply,
   LiveDeployRetract,
   LiveDeployEnsureDependency,
@@ -70,6 +71,7 @@ fn deploy_access_effect_is_typed_probe(effect: HostEffect) -> Bool {
   match effect {
     ReadEffectivePosixPrincipal { read: _ } => true
     SudoNopasswdExecuteProbe { probe: _ } => true
+    SudoNopasswdGrantListProbe { probe: _ } => true
     ShellCommand { script: _ } => false
     RedfishAction { action: _ } => false
     ConvergePlan { policy: _ } => false
