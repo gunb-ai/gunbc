@@ -60,6 +60,11 @@ test fn attempts_observed_projects_to_wire() -> Bool {
   return string_contains(s: j, pattern: "\"schema\": \"roadmap-attempts/v1\"")
     && string_contains(s: j, pattern: "\"attempts_refused\": false")
     && string_contains(s: j, pattern: "\"branch\": \"dispatch/5-regen-cutover-afeedfacefeedface\"")
+    && string_contains(s: j, pattern: "\"worktree_evidence\": \"unobserved\"")
+    && string_contains(s: j, pattern: "\"provider_evidence\": \"unobserved\"")
+    && string_contains(s: j, pattern: "\"process_identity_evidence\": \"unobserved\"")
+    && string_contains(s: j, pattern: "\"transcript_evidence\": \"unobserved\"")
+    && string_contains(s: j, pattern: "\"terminal_outcome_evidence\": \"unobserved\"")
     && belt_attempts_http_status(a: AttemptsObserved { attempts: [] }) == 200
 }
 

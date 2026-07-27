@@ -1,0 +1,80 @@
+module test.claim.provider_lifecycle_witness
+
+import extdeps.llm.cli_lifecycle {
+  ProviderInstance,
+  ProviderInstanceFieldUnobserved,
+  ClaudeCliProvider,
+  ProviderReadiness,
+  ProviderCredentialsRecordedUnverified,
+  ProviderRefreshFailed,
+  ProviderAuthenticated,
+  ProviderSetupRequired,
+  ToolExecutionReadiness,
+  SandboxProbeFailed,
+  ToolExecutionReadinessUnobserved,
+  provider_readiness_label,
+  tool_execution_readiness_label,
+}
+import gunbc.worker_lifecycle {
+  WorkerObservation,
+  WorkerPhase,
+  WorkerPhaseUnobserved,
+  WorkerWaitingForHumanSetup,
+  worker_phase_label,
+}
+import std.types { Bool, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fixture_instance() -> ProviderInstance {
+  ProviderInstance {
+    kind: ClaudeCliProvider,
+    host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+    executable: "claude" as NonEmptyStr,
+    observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+    state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+    credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+    service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+  }
+}
+
+test fn recorded_credentials_do_not_imply_refreshable_authentication() -> Bool {
+  let recorded = provider_readiness_label(readiness: ProviderCredentialsRecordedUnverified)
+  let failed = provider_readiness_label(readiness: ProviderRefreshFailed {
+    reason: "invalid_refresh_token" as NonEmptyStr,
+  })
+  recorded == "credentials recorded, unverified"
+    && failed == "authentication refresh failed"
+    && recorded != failed
+}
+
+test fn model_access_and_sandbox_readiness_are_independent() -> Bool {
+  let observation = WorkerObservation {
+    provider_instance: fixture_instance(),
+    provider_readiness: ProviderAuthenticated,
+    tool_readiness: SandboxProbeFailed {
+      reason: "bwrap loopback RTM_NEWADDR refused" as NonEmptyStr,
+    },
+    phase: WorkerPhaseUnobserved {
+      reason: "no progress transcript" as NonEmptyStr,
+    },
+  }
+  provider_readiness_label(readiness: observation.provider_readiness) == "authenticated"
+    && tool_execution_readiness_label(readiness: observation.tool_readiness) == "sandbox unavailable"
+    && worker_phase_label(phase: observation.phase) == "phase unobserved"
+}
+
+test fn session_presence_cannot_promote_setup_to_execution() -> Bool {
+  let observation = WorkerObservation {
+    provider_instance: fixture_instance(),
+    provider_readiness: ProviderSetupRequired,
+    tool_readiness: ToolExecutionReadinessUnobserved {
+      reason: "provider has not reached tool execution" as NonEmptyStr,
+    },
+    phase: WorkerWaitingForHumanSetup,
+  }
+  provider_readiness_label(readiness: observation.provider_readiness) == "setup required"
+    && worker_phase_label(phase: observation.phase) == "waiting for human setup"
+    && tool_execution_readiness_label(readiness: observation.tool_readiness) == "tool readiness unobserved"
+}

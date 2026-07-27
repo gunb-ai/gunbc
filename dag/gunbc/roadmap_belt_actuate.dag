@@ -34,7 +34,7 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchSpawnCommands,
   dispatch_spawn_commands,
   dispatch_attempt_key,
-  DispatchAttemptRef, dispatch_attempt_refs, git_for_each_ref_dispatch_argv,
+  DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv,
   TmuxPaneEntry, parse_tmux_panes_output, tmux_list_panes_argv,
   tmux_session_observation_with_panes, dispatch_tmux_session_scope,
   DispatchStopGate, StopPermitted, StopRefused, dispatch_stop_gate,
@@ -44,6 +44,19 @@ import gunbc.roadmap_dispatch_actuator {
   tmux_ls_argv,
   tmux_kill_session_argv,
   dispatch_live_sessions,
+}
+import extdeps.llm.cli_lifecycle {
+  provider_kind_label,
+  provider_readiness_label,
+  tool_execution_readiness_label,
+}
+import gunbc.worker_lifecycle {
+  worker_phase_label,
+  worktree_evidence_label,
+  provider_evidence_label,
+  process_identity_evidence_label,
+  transcript_evidence_label,
+  terminal_outcome_evidence_label,
 }
 import gunbc.host_layout { srv1_gunbc_repo_root }
 import extdeps.gunbc
@@ -562,12 +575,19 @@ fn belt_attempts_json_value(a: BeltAttempts) -> JsonValue {
       json_object(members: [
         json_kv(key: "schema", value: json_string(s: "roadmap-attempts/v1")),
         json_kv(key: "attempts_refused", value: json_bool(b: false)),
-        json_kv(key: "attempts", value: json_array(elements: attempts |> map(a2 =>
+        json_kv(key: "attempts", value: json_array(elements: attempts |> map(a2 => {
+          let evidence = dispatch_attempt_evidence(attempt: a2)
           json_object(members: [
             json_kv(key: "node_id", value: json_string(s: a2.node_id)),
             json_kv(key: "branch", value: json_string(s: a2.branch)),
             json_kv(key: "attempt_key", value: json_string(s: a2.attempt_key)),
-          ])))),
+            json_kv(key: "worktree_evidence", value: json_string(s: worktree_evidence_label(evidence: evidence.worktree))),
+            json_kv(key: "provider_evidence", value: json_string(s: provider_evidence_label(evidence: evidence.provider_instance))),
+            json_kv(key: "process_identity_evidence", value: json_string(s: process_identity_evidence_label(evidence: evidence.process_identity))),
+            json_kv(key: "transcript_evidence", value: json_string(s: transcript_evidence_label(evidence: evidence.transcript))),
+            json_kv(key: "terminal_outcome_evidence", value: json_string(s: terminal_outcome_evidence_label(evidence: evidence.terminal_outcome))),
+          ])
+        }))),
       ])
   }
 }
@@ -698,6 +718,10 @@ fn belt_sessions_json_value(o: BeltObserve) -> JsonValue {
           json_object(members: [
             json_kv(key: "node_id", value: json_string(s: sess.node_id)),
             json_kv(key: "session_name", value: json_string(s: sess.session_name)),
+            json_kv(key: "provider", value: json_string(s: provider_kind_label(kind: sess.worker.provider_instance.kind))),
+            json_kv(key: "provider_readiness", value: json_string(s: provider_readiness_label(readiness: sess.worker.provider_readiness))),
+            json_kv(key: "tool_execution_readiness", value: json_string(s: tool_execution_readiness_label(readiness: sess.worker.tool_readiness))),
+            json_kv(key: "worker_phase", value: json_string(s: worker_phase_label(phase: sess.worker.phase))),
           ])))),
       ])
   }
