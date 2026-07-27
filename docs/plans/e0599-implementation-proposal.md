@@ -57,7 +57,7 @@
 | **(b)** supplemental `impl` blocks for coproduct-native arithmetic | `GroupCompletion`, kernel int carriers | `trait_derive_completeness_gate` + `repr_grounding_derive_traits_for_collection_witness` | E0369 coproduct ops (consume gate, not new predicate walks) |
 | **(c)** serde/Debug/Ord `#[derive]` on named structs/enums | struct/enum declarations | capability table → `v1_emit_struct_from_capability_table` | E0277 F1/F3 via P-derive **container-contract** bound rows (not elem-shape table alone) |
 
-**Trait-derive clean salvage (deferred)** = land (b)+(c) via gate + capability table; P-fn accessor after #7289 boundary — without opening the fenced `05_emit_rust.dag` ownership consolidation (#7296 / witty-wolf-289).
+**Trait-derive clean salvage (deferred)** = land (b)+(c) via gate + capability trait selection + container-contract bound catalog; P-fn accessor after #7289 boundary — without opening the fenced `05_emit_rust.dag` ownership consolidation (#7296 / witty-wolf-289).
 
 ---
 
@@ -105,16 +105,18 @@ DESIGN requires facts-flow-forward **and** that Node-shape classification not ac
 
 ### Predicate P-derive: `per_derive_target_bound_completeness` (E0277 F1/F3 + derive arm c)
 
-**Intent:** For each `ReprGroundingDeriveTrait` × elem shape row, emit the **minimal bound list each derived impl actually needs** (e.g. `T: Clone + Serialize` for serde on `Vector<T>` fields), never a blanket struct-level `T: Clone`.
+**Intent:** For each **derived impl** on a struct field, emit the **minimal bound list that impl actually needs** (e.g. `T: Clone + Serialize` for serde on an `im::Vector<T>` field), never a blanket struct-level `T: Clone`. The requirement is **conditional on the field's target carrier/representation**, not on elem shape alone: `im::Vector<T>` needs supplemental `T: Clone` for `Debug`/`Serialize`/`Deserialize` (per vendored `im` conditional impls, e0277 census review 43338), while another container with the same element kernel may not.
+
+**Anti-pattern (explicitly out of scope):** (1) adding `T: Clone` to the struct's own generic parameter list — over-constrains every use; (2) encoding bound requirements in the `ReprGroundingDeriveTrait × ReprGroundingDeriveElemShape` capability table — that table lacks the carrier/representation dimension and cannot distinguish `im::Vector<T>` from `Rc<Vec<T>>` or other same-shape carriers.
 
 | Field | Value |
 |---|---|
-| **Modeled home (proposed)** | Add per-trait **bound-requirement rows** to `std.trait_derive_shape` capability table (`repr_grounding_derive_shape_has_trait` + serde-bound override metadata on `ReprGroundingDeriveTrait` rows). **Query surface:** `trait_derive_completeness_gate(required, elem)` and `repr_grounding_derive_traits_for_collection_witness` — emit consumes gate verdict + trait list; does **not** extend `repr_grounding_derive_completeness_predicate` call sites or add parallel shape classifiers |
-| **Production consumers** | `v1_emit_struct_from_capability_table` → `record_derive_traits_*` builders → `rust_trait_derive_attr_from_traits` (+ serde `bound(...)` override emission) |
+| **Modeled home (proposed)** | Extend **`TargetCollectionRealization`** (or a sibling `TargetDerivedImplBoundContract` catalog in `target_model`) with rows keyed by **`(source_carrier, emitted_representation, derive_trait)`** → supplemental bounds on each implicated type param (e.g. `im::Vector` + `ReprDeriveDebug` → `{T: Clone, Debug}`; `im::Vector` + `ReprDeriveSerialize` → `{T: Clone, Serialize}`). **Trait eligibility** stays in `std.trait_derive_shape` capability table (gate answers "may derive?"); **bound completeness** is a separate lookup on the container contract. **Query surface:** `derived_impl_bound_requirements(field_type_node, derive_trait) -> List<DerivedImplBoundRequirement>` resolving the field's carrier through `target_collection_realization_lookup_in_catalog`, then reading contract rows — emit consumes the bound list; does **not** extend `repr_grounding_derive_completeness_predicate` call sites or add parallel elem-shape classifiers |
+| **Production consumers** | `v1_emit_struct_from_capability_table` → gate selects traits from capability table → **contract lookup supplies per-trait bound overrides** → `rust_trait_derive_attr_from_traits` + serde `bound(...)` / per-impl bound emission (`extdeps.languages.rust.emit`) |
 | **Predicted effect** | E0277 Family 1 + F3 serde/Debug rows; **not** E0599 R1–R3 unless those errors also appear at derive sites (census says they do not) |
-| **RED (green)** | `e0277_trait_bound_census` Family 1 `T: Clone` rows burn; serde 3:1 ratio rows on `*Interpreter` absent |
-| **RED (refusal)** | Struct with field type whose impl needs `Clone` but source `.dag` explicitly marks param non-cloneable → typed refusal, no blanket struct bound |
-| **Rollback boundary** | Revert capability-table rows + emit attr overrides; E0277 per-module totals return to 603 baseline |
+| **RED (green)** | `e0277_trait_bound_census` Family 1 `T: Clone` rows burn; serde 3:1 ratio rows on `*Interpreter` absent; fixture with `Rc<Vec<T>>` field does **not** gain spurious `T: Clone` when contract row absent |
+| **RED (refusal)** | Struct with field type whose contract row needs `Clone` but source `.dag` explicitly marks param non-cloneable → typed refusal, no blanket struct bound |
+| **Rollback boundary** | Revert contract catalog rows + emit bound overrides; E0277 per-module totals return to 603 baseline |
 
 ### Predicate P-optional: `modeled_optional_match_grounding` (E0599 R4 / Slice B)
 
@@ -135,7 +137,7 @@ DESIGN requires facts-flow-forward **and** that Node-shape classification not ac
 ```
 Phase 0 (now)     → this document + management acceptance of consumer graph
 Phase 1 (first)   → #7289 Measure/missing-generics overlay salvage (loyal-boar-481)
-Phase 2           → P-derive via trait_derive_completeness_gate + capability bound rows
+Phase 2           → P-derive via container-contract bound catalog + capability-table trait selection (gate unchanged)
 Phase 3           → P-fn via required_trait_witnesses_for_fn_decl fold/query accessor
 Phase 4           → P-optional (R4) when namespace lane ready
 Phase 5           → tails R5/R6 if still above noise floor
