@@ -828,10 +828,12 @@ pub fn serialize_match_pattern(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match (*pattern.clone()).clone() {
-        MatchPattern::Bind { name: inner, .. } => v1_rt::concat(
+        MatchPattern::Bind {
+            declaration: inner, ..
+        } => v1_rt::concat(
             v1_rt::concat(
                 "{\"kind\": \"Bind\", \"name\": ".to_string(),
-                json_quote(inner.clone()),
+                json_quote(inner.name.clone()),
             ),
             "}".to_string(),
         ),

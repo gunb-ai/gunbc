@@ -24,6 +24,7 @@ use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+pub use crate::std_occurrence_binding::ContainmentPath;
 use crate::std_syntax::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };
@@ -293,7 +294,7 @@ pub enum ExprData {
 #[serde(tag = "_variant")]
 pub enum MatchPattern {
     Bind {
-        name: String,
+        declaration: Rc<Node>,
     },
     LitPattern {
         value: Rc<LiteralValue>,
@@ -1091,6 +1092,65 @@ pub fn make_field_binding_node(
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
+}
+
+pub fn make_match_bind_node(
+    name: String,
+    span: Rc<SourceSpan>,
+    name_span: Rc<SourceSpan>,
+) -> Rc<Node> {
+    Rc::new(Node {
+        name: name.clone(),
+        span: span.clone(),
+        ident_span: default_ident_span(name.clone(), name_span.clone()),
+        children: Rc::new(vec![]),
+        connective: Connective::NoConnective,
+        params: Rc::new(vec![]),
+        inferred: None,
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
+    })
+}
+
+pub fn match_pattern_bind_declaration(pattern: Rc<MatchPattern>) -> Option<Rc<Node>> {
+    match (*pattern.clone()).clone() {
+        MatchPattern::Bind {
+            declaration: decl, ..
+        } => Some(decl.clone()),
+        _ => None,
+    }
+}
+
+pub fn match_pattern_bind_name_at(
+    pattern: Rc<MatchPattern>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match match_pattern_bind_declaration(pattern.clone()) {
+        Some(decl) => authored_name_at(source_indices.clone(), decl.clone()),
+        None => "".to_string(),
+    }
+}
+
+pub fn match_pattern_bind_containment(
+    pattern: Rc<MatchPattern>,
+) -> Option<Rc<ContainmentPath<Rc<Node>>>> {
+    match match_pattern_bind_declaration(pattern.clone()) {
+        Some(decl) => Some(Rc::new(ContainmentPath {
+            ancestors: Rc::new(vec![]),
+            terminal: decl.clone(),
+            _phantom: std::marker::PhantomData,
+        })),
+        None => None,
+    }
 }
 
 pub fn field_binding_name_at(

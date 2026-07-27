@@ -5458,7 +5458,7 @@ pub fn emit_unified_pattern(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match (*pattern.clone()).clone() {
-        MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), target.clone()),
+        MatchPattern::Bind { declaration: n, .. } => emit_ident(n.name.clone(), target.clone()),
         MatchPattern::LitPattern { value: v, .. } => emit_literal(v.clone(), target.clone()),
         MatchPattern::VariantPattern {
             name: n,
