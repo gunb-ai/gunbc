@@ -410,16 +410,106 @@ therefore how complete that check was entitled to be.
    cache lane's local name projected from it? Either is consistent with §3 (below-boundary
    representation is opaque); picking one avoids a second live name for one fact indefinitely.
 
-## 11. Extension pointer + sequencing decision (operator, 2026-07-25)
+## 11. Publication capability profile + locked realizations; sequencing decision (operator, 2026-07-25)
 
-The SCM lane extends this doc's `Publish` verb with a **publication ladder** (source ·
-artifact-only · ciphertext+interface "locked" · interface-only · commitment-hash · absence),
-per-audience key-wrapped **locked realizations** (decrypt-then-verify, `LockedNodeUnrealizable`
-refusals, counted `LockedBlocked` witness state), churn blinding (salted commitments; the
-`SecretRef` wrapper reserved for secrets-as-material), and crypto-shred erasure for PII-typed
-nodes — content homed in [dag-scm-design.md](dag-scm-design.md) §3 until it folds back here when
-the rungs land. None of it changes Stage 0/P-B, §5's absence default, or the opt-in hash-stub
-mode. **Sequencing decision**: visibility ships FIRST, implemented as this doc's grant model and
-realized over git public/private roots (P-B), the identical interface later carried by the
-node-grain SCM — roadmap §2 group "SCM — node-grain source control, visibility-first", active row
-`2-scm-visibility-stage0`.
+This section owns the publication/locked-realization extension that was first captured in the SCM
+seed. It is design-only until Stage 0 lands; the source-intent integration plan consumes this
+interface but does not define its secrecy semantics.
+
+`Publish` is not a boolean and its refinements are **not a total ladder**. They form a product of
+independently declared capabilities:
+
+| axis | examples of honest states |
+|---|---|
+| source disclosure | full source · declared source fragment · no source |
+| interface disclosure | full interface · coarsened interface · no interface |
+| artifact delivery | plaintext artifact · authenticated ciphertext · no artifact |
+| local execution | direct · key-gated · attested-environment-gated · unavailable |
+| remote execution | admitted endpoint + effect envelope · unavailable |
+| integrity verification | authenticated artifact · commitment only · unavailable |
+| reproducibility | source-reproducible · interface/artifact receipt only · unavailable |
+| existence disclosure | named · commitment-visible · hidden subject to the threat model |
+| churn disclosure | stable commitment · re-randomized hiding commitment · hidden subject to residual channels |
+| revocation/erasure | access revocation · conditional cryptographic erase · unavailable |
+| placement/trust boundary | client plaintext · client ciphertext/key remote · remote service · attested execution |
+
+A policy names the required point in this product. An “emitted artifact only” profile means source
+is not disclosed; it does **not** promise that an artifact cannot be inspected or reverse
+engineered. Typechecking normally uses a separately disclosed interface, not an assertion that an
+opaque executable itself is source-unreadable. A client-held decryption key grants plaintext
+access and is distinct from a key confined to a remote service or attested execution environment.
+
+**Locked realization encoding and admission.** A locked subtree ships in an artifact as one
+ciphertext blob at the declared subtree boundary. Its internal shape is hidden only under a named
+threat model; pad it to a declared size bucket when length leakage is outside the grant. The
+plaintext residue is exactly the separately granted interface at the cut plus the integrity
+binding.
+
+The blob uses AEAD or an equivalent authenticated construction
+([NIST SP 800-38D](https://csrc.nist.gov/pubs/sp/800/38/d/final)). Associated data binds at least
+subject identity, interface hash, version, audience, algorithm/key version, and the relevant grant
+or policy generation. Per-audience envelope key wraps protect both confidentiality and integrity
+([NIST SP 800-38F](https://csrc.nist.gov/pubs/sp/800/38/f/final)); key rotation may re-wrap the data
+key without changing ciphertext only when the associated-data/version contract says that is the
+same admitted artifact. Admission authenticates/decrypts and verifies the declared content
+identity. A wrong key, modified context, or authentication failure is a typed `KeyMismatch`/
+`LockedArtifactUnauthenticated`, never bytes admitted as code.
+
+Keyless local execution that reaches the subtree refuses as `LockedNodeUnrealizable`; a witness
+whose closure is blocked records the counted `LockedBlocked` state, never test failure and never a
+silent skip. The visible program compiles against the separately published interface—the same
+separate-compilation requirement as the self-host frontier—and a permitted realization arrives
+through the declared local-key, remote, or attested binding.
+
+**Hole and placement residues remain hard constraints.**
+
+- A typecheckable projection irreducibly exposes the interface at the cut. Coarsening it spends
+  type/effect-admission precision and must be declared.
+- An executable projection needs a realization binding: delivered plaintext/artifact, admitted
+  key, remote endpoint, or attested environment. A verify-only projection needs the declared
+  integrity capability.
+- Per-statement holes inside a published executable body are refused because absence is not
+  semantically neutral. The clean cut is interface vs realization: publish the signature and
+  withhold the body. Data/config may redact only at a grant-derived node/subtree grain.
+- `Secret`/`Pii`-typed content may inhabit only `SecretRef`-shaped nodes where that construction
+  wall lands; a scanner is not the authority.
+- Client + key is distribution access control, not DRM; a key-holder can exfiltrate plaintext.
+  Remote-only is secrecy by non-delivery, and an attested environment is bounded by its attestation
+  and hardware trust assumptions. These placements are distinct capability points, not stronger
+  and weaker rungs on one axis.
+
+**Threat model and residual channels.** A naked stable commitment reveals equality and churn and
+may permit guessing when the hidden value has low entropy. A salted/rerandomized hiding commitment
+can computationally hide equality only under its named construction and threat model; it does not
+erase leakage from length, timing, interface shape, audience-wrap count, access pattern, errors, or
+release cadence. Padding and response shaping mitigate named channels but never justify “zero
+bits.” A stable `SecretRef` wrapper is reserved for secrets-as-material. Wrapping changing
+**code** in a stable pointer breaks content-addressed determinism and public verifiability: stable
+identity, changing secret, public verifiability—pick two.
+
+**Remote execution and diagnostics are information-flow surfaces.** The interface is an oracle.
+Metering prices queries but does not prove safe disclosure through outputs, errors, timing,
+resource use, or effects. Admission therefore names what may be declassified, by whom, where, and
+when, and checks the relevant information-flow/noninterference contract
+([Sabelfeld & Sands](https://doi.org/10.3233/JCS-2009-0352)). SCM diagnostics obey the same rule:
+the internal proof may cite locked nodes, affected closure, counterexamples, or alternatives; each
+audience receives only an authorized projection, possibly a redaction or commitment, with no
+hidden-existence leak through wording, timing, size, or alternative count.
+
+**Conditional cryptographic erase, not “delete one key.”** Cryptographic erase is an erasure
+mechanism only if every usable data key, wrap, backup, plaintext cache, derivative, recovery path,
+and escrow copy is within the sanitization scope; the result is validated under the organizational
+media-sanitization program. [NIST SP 800-88 Rev. 2](https://csrc.nist.gov/pubs/sp/800/88/r2/final)
+is the external authority. Access revocation, loss of one wrap, and validated cryptographic erase
+are distinct states and must not share a success arm.
+
+The intended locked-realization uses, in order, remain: EE features in one artifact (typed unlock,
+no `ee/` source fork), embargoed fixes (release a key rather than a new artifact), per-client
+subtrees, then PII-bearing material where the conditional erase contract can actually be met.
+
+None of this changes Stage 0/P-B, §5's absence default, or the opt-in hash-stub mode.
+**Sequencing decision:** visibility ships first, implemented as this document's grant model and
+realized over Git public/private roots (P-B). The identical interface is later carried by the
+source-intent SCM—ROADMAP §2 group “SCM — source-intent integration, visibility-first,” active row
+`2-scm-visibility-stage0`. Node/subtree remains the publication grain where the grant model derives
+it; it is not a universal integration/conflict grain.
