@@ -2,6 +2,11 @@ module std.occurrence_binding
 
 import std.algebra { FreeMonoid, Empty, Cons }
 import std.types { String }
+import v2.std.optional {
+  Optional,
+  optional_absent,
+  optional_present
+}
 
 data occurrence_binding_staged_adoption_scaffold_note: String = "STAGED ADOPTION: v1 and v2 execute over distinct Node algebras, so their shared occurrence-binding semantics must land here before either concrete Node instantiation. The next consumers are #7306/P1's fresh-successor v1 declaration-backed resolver instantiation, followed by the v2 resolver instantiation and its DependencyView BindsTo projection. LexicalLookup is not an interim consumer: it has no exact reference-occurrence Node or occurrence containment identity, so binding it here would fabricate the relation this carrier preserves."
 
@@ -106,7 +111,36 @@ fn occurrence_binding_from_candidates<N>(
           first: first,
           second: second,
           rest: reverse(rest_reversed),
-        },
+      },
+  }
+}
+
+fn containment_path_parent_from_rest<N>(
+  prefix_reversed: FreeMonoid<N>,
+  rest: FreeMonoid<N>
+) -> Optional<ContainmentPath<N>> {
+  match rest {
+    Empty => optional_absent()
+    Cons { head: h, tail: t } =>
+      match t {
+        Empty =>
+          optional_present(value: ContainmentPath {
+            ancestors: reverse(prefix_reversed),
+            terminal: h,
+          })
+        _ =>
+          containment_path_parent_from_rest(
+            prefix_reversed: Cons {
+              head: h,
+              tail: prefix_reversed,
+            },
+            rest: t,
+          )
       }
   }
+}
+
+fn containment_path_parent<N>(path: ContainmentPath<N>) -> Optional<ContainmentPath<N>> {
+  containment_path_parent_from_rest(prefix_reversed: Empty, rest: path.ancestors)
+}
 }

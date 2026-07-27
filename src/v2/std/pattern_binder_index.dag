@@ -6,6 +6,7 @@ import std.occurrence_binding {
   BindingOccurrence,
   ContainmentPath,
   OccurrenceBindingResult,
+  containment_path_parent,
   occurrence_binding_from_candidates
 }
 import v2.std.algebra { any, is_empty, list_append, list_map, list_snoc_item }
@@ -19,13 +20,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.node_minimal { PatternBinderShape, SpanRef }
-import v2.std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present
-}
+import v2.std.optional { Absent, Optional, Present }
 
 type PatternBinderEntry {
   node: Node
@@ -42,10 +37,6 @@ type PatternBinderScope {
 type PatternBinderIndex {
   scopes: Map<ContainmentPath<Node>, PatternBinderScope>
 }
-
-type PatternBinderPathParentResult
-  = PatternBinderPathParentFound { parent: ContainmentPath<Node> }
-  | PatternBinderPathParentAbsent
 
 fn empty_pattern_binder_scope() -> PatternBinderScope {
   PatternBinderScope {
@@ -137,37 +128,6 @@ fn pattern_binder_index_candidates_at(
 ) -> FreeMonoid<PatternBinderEntry> {
   let scope = pattern_binder_index_scope(index: index, scope: position)
   pattern_binder_scope_candidates(scope: scope, name: name)
-}
-
-fn containment_path_parent_from_rest(
-  prefix: FreeMonoid<Node>,
-  rest: FreeMonoid<Node>
-) -> PatternBinderPathParentResult {
-  match rest {
-    Empty => PatternBinderPathParentAbsent
-    Cons { head: h, tail: t } =>
-      match t {
-        Empty =>
-          PatternBinderPathParentFound {
-            parent: ContainmentPath {
-              ancestors: prefix,
-              terminal: h
-            }
-          }
-        _ =>
-          containment_path_parent_from_rest(
-            prefix: list_snoc_item(xs: prefix, item: h),
-            rest: t
-          )
-      }
-  }
-}
-
-fn containment_path_parent(path: ContainmentPath<Node>) -> Optional<ContainmentPath<Node>> {
-  match containment_path_parent_from_rest(prefix: Empty, rest: path.ancestors) {
-    PatternBinderPathParentFound { parent: parent } => optional_present(value: parent)
-    PatternBinderPathParentAbsent => optional_absent()
-  }
 }
 
 fn pattern_binder_index_candidates_collect(
