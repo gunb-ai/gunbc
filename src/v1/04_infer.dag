@@ -586,6 +586,19 @@ fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
   }
 }
 
+fn remove_match_bound_name(match_bound_names: Map<String, SourceSpan>, name: String) -> Map<String, SourceSpan> {
+  fold(map_keys(match_bound_names), init: empty_map(), f: (acc, key) =>
+    if key == name {
+      acc
+    } else {
+      match map_get(match_bound_names, key) {
+        Present { value: declaration_span } => map_insert(acc, key, declaration_span)
+        Absent => acc
+      }
+    }
+  )
+}
+
 fn inference_error(message: String, span: SourceSpan, module_name: String) -> ErrorNode {
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
@@ -1279,7 +1292,7 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: Sub
     func_env: scope.func_env,
     locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance }),
     body_locals: map_insert(scope.body_locals, name, true),
-    match_bound_names: scope.match_bound_names,
+    match_bound_names: remove_match_bound_name(match_bound_names: scope.match_bound_names, name: name),
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
@@ -1308,12 +1321,15 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
   let new_body_locals = fold(params, init: scope.body_locals, f: (acc, p) =>
     map_insert(acc, p, true)
   )
+  let new_match_bound_names = fold(params, init: scope.match_bound_names, f: (acc, p) =>
+    remove_match_bound_name(match_bound_names: acc, name: p)
+  )
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
     locals: new_locals,
     body_locals: new_body_locals,
-    match_bound_names: scope.match_bound_names,
+    match_bound_names: new_match_bound_names,
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
