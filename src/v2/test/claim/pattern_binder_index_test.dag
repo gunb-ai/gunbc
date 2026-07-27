@@ -229,16 +229,9 @@ test fn pattern_binder_nested_same_name_coexistence_holds() -> Bool {
     position: pb_inner_path,
     name: ^dup
   ) {
-    OccurrenceAmbiguous {
-      occurrence: _,
-      candidates: AmbiguousBindingCandidates {
-        first: first,
-        second: second,
-        rest: Empty
-      }
-    } =>
-      (first.containment == pb_inner_path) && (second.containment == pb_outer_path)
-    OccurrenceBound { binding: _ } => false
+    OccurrenceBound { binding: BindingCandidate { containment: observed } } =>
+      observed == pb_inner_path
+    OccurrenceAmbiguous { occurrence: _, candidates: _ } => false
     OccurrenceUnbound { occurrence: _ } => false
   }
 }
