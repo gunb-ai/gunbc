@@ -56,22 +56,6 @@ test fn merge_admission_stamp_invoke_uses_v1_tool_source_root() -> Bool {
     && !string_contains(s: invoke, pattern: "--source-root src/v2")
 }
 
-test fn documentation_only_disposition_maps_to_skipped() -> Bool {
-  match floor_disposition_to_check_conclusion(
-    disposition: merge_admission_floor_disposition_documentation_only_skipped
-  ) {
-    Present { value: conclusion } => conclusion == extdeps.github.checks.Skipped
-    Absent => false
-  }
-}
-
-test fn documentation_only_skip_policy_is_on_carrier() -> Bool {
-  string_contains(
-    s: merge_admission_stamp_documentation_only_skip_policy,
-    pattern: "Skipped (not Success)"
-  )
-}
-
 test fn mint_binds_current_gate_roster_hash() -> Bool {
   green_receipt.gate_roster_hash == current_gate_roster_hash
 }

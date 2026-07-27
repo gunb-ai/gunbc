@@ -186,13 +186,6 @@ path = "src/bin/bootstrap_witness.rs"
 name = "floor_skip_discovery_witness"
 path = "src/bin/floor_skip_discovery_witness.rs"
 
-# Host-physics CI witness: docs-only floor admission via tools.dag_compile_clean_scope
-# (Ruling 1 path grain). Prints typed witness labels (documentation_only_skip |
-# run_full_floor_{scoping_inactive|diff_observation_failed|empty_diff|non_docs_change}).
-[[bin]]
-name = "compile_clean_floor_skip_witness"
-path = "src/bin/compile_clean_floor_skip_witness.rs"
-
 # Host-physics CI witness: regen self-host fixed-point affected-set skip. Prints
 # regen_not_affected_skip | run_regen for the generated ci regen step by intersecting
 # the merge-base diff with the [src/v1, dag] regen input closure (shared authority

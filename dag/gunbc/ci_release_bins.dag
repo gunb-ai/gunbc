@@ -8,7 +8,7 @@ import v2.lens.common.construction_justification {
 
 data ci_release_bins_authority_note: String = "Single authority for the CI release-bins pack membership (the dissolve target named on gunbc.roster_registry for the former ci_floor_required_artifact_names hand list). TWO inputs, one derived pack:
 
-(1) ci_floor_invoked_bins — bins the floor / CI shell invokes by path without going through tools.host_prelude.WitnessBin (claim_executor, gunbc, the floor-skip witnesses). Policy seed; small.
+(1) ci_floor_invoked_bins — bins the floor / CI shell invokes by path without going through tools.host_prelude.WitnessBin (claim_executor, gunbc, and the independently live regen/discovery witnesses). Policy seed; small.
 
 (2) witness_declared_release_bins — every production bin_name a WitnessBin transport may address. This IS the witness-declared needs surface the roster dissolve_on named: a newly-addressable bin enrolls HERE, and ci_floor_required_artifact_names derives from the union so build/pack/verify cannot silently omit it.
 
@@ -21,7 +21,6 @@ Dissolve-on (hand membership of witness_declared_release_bins): a host census of
 data ci_floor_invoked_bins: List<String> = [
   "claim_executor",
   "gunbc",
-  "compile_clean_floor_skip_witness",
   "regen_floor_skip_witness",
   "floor_skip_discovery_witness"
 ]
