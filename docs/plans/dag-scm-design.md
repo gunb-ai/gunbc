@@ -13,7 +13,11 @@ concept the substrate already owns.
 Roadmap carrier: ROADMAP §2, “SCM — source-intent integration, visibility-first.” Economics
 grounding: DESIGN open thread “SCM economics — the GitLab 10-K corpus.” Visibility authority:
 [node/subtree visibility grants](node-subtree-visibility-grants.md). Storage/surface authority:
-[module identity vs storage](module-identity-storage-binding-design.md).
+[module identity vs storage](module-identity-storage-binding-design.md). Product wedge, design
+partner, hosted-authority promotion, and adjacent-product sequencing:
+[SCM product strategy](dag-scm-product-strategy.md). That strategy cannot weaken this document's
+semantic, evidence, admission, or Git-fidelity contract; this document cannot promote a product
+stage merely because its technical carrier exists.
 
 ## 0. User contract — Git-compatible, not Git-shaped
 
