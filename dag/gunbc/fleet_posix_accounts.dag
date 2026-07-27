@@ -1,7 +1,11 @@
 module gunbc.fleet_posix_accounts
 
 import extdeps.access.posix { PosixUser }
-import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdExecuteProbeShape }
+import extdeps.sudo.nopasswd_execute_probe {
+  SudoNopasswdProbeKind,
+  NopasswdExecuteCheck,
+  NopasswdGrantListCheck,
+}
 import std.types { NonEmptyStr, List, String, Bool }
 import std.disposition { Disposition, Terminal, Scaffold, ConstructionMechanism }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -21,9 +25,12 @@ type PosixAccountDeclaredProbe {
   host: NonEmptyStr
 }
 
-type PosixSudoGrant = SudoNopasswdExecuteProbeShape
+type PosixSudoGrant {
+  command_path: NonEmptyStr
+  probe: SudoNopasswdProbeKind
+}
 
-data posix_sudo_grant_materialization_note: String = "PosixSudoGrant is the fleet-domain MATERIALIZATION carrier for std.effect_grant.Grant over ExecuteEffect: posix_sudo_grant_to_effect_grant projects command_path to filesystem_position and carries verb via verb_of_effect_shape(ExecuteEffect) -- never a parallel grant vocabulary (DESIGN 3). check_argv is the deploy-preflight probe argv (transport/policy, not reach). WHO may sudo remains GroundedPosixPrincipal / std.access. dissolve-on = deploy-preflight envelope admits via admit_effect over projected grants."
+data posix_sudo_grant_materialization_note: String = "PosixSudoGrant is the fleet-domain MATERIALIZATION carrier for std.effect_grant.Grant over ExecuteEffect: posix_sudo_grant_to_effect_grant projects command_path to filesystem_position and carries verb via verb_of_effect_shape(ExecuteEffect) -- never a parallel grant vocabulary (DESIGN 3). probe chooses the typed verification operation (execute-check, or grant-list when the binary may be absent); it is observation policy, not grant reach. WHO may sudo remains GroundedPosixPrincipal / std.access. dissolve-on = deploy-preflight envelope admits via admit_effect over projected grants."
 
 fn absolute_command_path_segments(path: NonEmptyStr) -> List<String> {
   filter(xs: split(s: path as String, delimiter: "/"), f: s => s != "")
@@ -126,7 +133,7 @@ fn fleet_posix_operator_sudo_grants() -> List<PosixSudoGrant> {
   [
     PosixSudoGrant {
       command_path: fleet_hostnamectl_command_path,
-      check_argv: "--version",
+      probe: NopasswdExecuteCheck { check_argv: "--version" },
     },
   ]
 }
@@ -141,12 +148,12 @@ data gunbc_deploy_privileged_helper_check_argv: NonEmptyStr = "probe"
 
 fn fleet_posix_ci_runner_sudo_grants() -> List<PosixSudoGrant> {
   [
-    PosixSudoGrant { command_path: fleet_apt_get_binary_path, check_argv: "--help" },
-    PosixSudoGrant { command_path: "/usr/bin/install", check_argv: "--version" },
-    PosixSudoGrant { command_path: fleet_visudo_binary_path, check_argv: "-V" },
-    PosixSudoGrant { command_path: "/usr/bin/systemctl", check_argv: "--version" },
-    PosixSudoGrant { command_path: "/usr/bin/tailscale", check_argv: "version" },
-    PosixSudoGrant { command_path: "/usr/bin/rm", check_argv: "--version" },
+    PosixSudoGrant { command_path: fleet_apt_get_binary_path, probe: NopasswdExecuteCheck { check_argv: "--help" } },
+    PosixSudoGrant { command_path: "/usr/bin/install", probe: NopasswdExecuteCheck { check_argv: "--version" } },
+    PosixSudoGrant { command_path: fleet_visudo_binary_path, probe: NopasswdExecuteCheck { check_argv: "-V" } },
+    PosixSudoGrant { command_path: "/usr/bin/systemctl", probe: NopasswdExecuteCheck { check_argv: "--version" } },
+    PosixSudoGrant { command_path: "/usr/bin/tailscale", probe: NopasswdGrantListCheck },
+    PosixSudoGrant { command_path: "/usr/bin/rm", probe: NopasswdExecuteCheck { check_argv: "--version" } },
   ]
 }
 

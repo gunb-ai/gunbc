@@ -838,7 +838,7 @@ fn orch_retry_step_run(s: PipelineStep) -> Outcome<Run> {
   }
 }
 
-data orch_retry_body_command_note: String = "orch_retry_body_command returns Outcome<Run>: multi-step bodies refuse (^orch_emit_retry_body_multi_step); empty/non-Do (incl. Comment/Exit) refuse (^orch_emit_retry_body_not_run); a single Do returns the Run intact so orch_emit_retry_run can refuse Present redirect/capture (^orch_emit_retry_redirect_present / ^orch_emit_retry_capture_present) rather than silently dropping them. Tee/redirect semantics for retry live in the bash retry templates, not on the body Run. Supersedes the Optional<String> Absent conflation interim from PR2a."
+data orch_retry_body_command_note: String = "orch_retry_body_command returns Outcome<Run>: multi-step bodies refuse (^orch_emit_retry_body_multi_step); empty/non-Do (incl. Comment/Exit) refuse (^orch_emit_retry_body_not_run); a single Do returns the Run intact so orch_emit_retry_run can refuse Present redirect/capture (^orch_emit_retry_redirect_present / ^orch_emit_retry_capture_present) rather than silently dropping them. orch_emit_retry refuses nonempty body Run.env (^orch_emit_retry_body_env_present) — the retry bash templates hardcode the first occurrence without body env, so a nonempty env must refuse, never silently drop. Tee/redirect semantics for retry live in the bash retry templates, not on the body Run. Supersedes the Optional<String> Absent conflation interim from PR2a."
 
 fn orch_retry_body_command(body: Pipeline) -> Outcome<Run> {
   match list_head(xs: body.steps) {
@@ -1133,19 +1133,24 @@ fn orch_emit_retry(
 ) -> Outcome<extdeps.communication.medium.Medium<String>> {
   match orch_retry_body_command(body: body) {
     Accepted { value: body_run, diagnostics: _ } =>
-      bind_outcome(
-        o: orch_emit_pipeline(p: on_exhausted, medium: medium),
-        f: fn(exhausted_medium) {
-          orch_emit_retry_dispatch(
-            command: body_run.command,
-            redirect: body_run.redirect,
-            capture: body_run.capture,
-            escalations: escalations,
-            exhausted: exhausted_medium.carried,
-            medium: medium
+      match is_empty(body_run.env) {
+        false =>
+          outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_env_present))
+        true =>
+          bind_outcome(
+            o: orch_emit_pipeline(p: on_exhausted, medium: medium),
+            f: fn(exhausted_medium) {
+              orch_emit_retry_dispatch(
+                command: body_run.command,
+                redirect: body_run.redirect,
+                capture: body_run.capture,
+                escalations: escalations,
+                exhausted: exhausted_medium.carried,
+                medium: medium
+              )
+            }
           )
-        }
-      )
+      }
     Rejected { diagnostics: d } =>
       Rejected { diagnostics: d }
   }

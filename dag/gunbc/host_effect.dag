@@ -8,7 +8,10 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.bmc.types { RedfishSystemAction }
 import extdeps.dns.domain_name { DnsLabel }
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
-import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdExecuteProbeShape }
+import extdeps.sudo.nopasswd_execute_probe {
+  SudoNopasswdExecuteProbeShape,
+  SudoNopasswdGrantListProbeShape,
+}
 import extdeps.bmc.webui.nbd_proxy_serve { NbdProxyServeTransportIntent }
 import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_converge { HostConverge }
@@ -33,6 +36,7 @@ type HostEffect =
   | SetHostnameCas { hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead }
   | SudoNopasswdExecuteProbe { probe: SudoNopasswdExecuteProbeShape }
+  | SudoNopasswdGrantListProbe { probe: SudoNopasswdGrantListProbeShape }
   | Srv3InstallMediaFetch
   | Srv3SeededInstallMediaRemaster
   | Srv3SeededInstallMediaToolchainEnsure
