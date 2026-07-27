@@ -4,7 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data root4_measure_missing_generics_witness_note: String = "Root-4 measure_missing_generics family: a function-generic container argument must preserve its applied arguments through render_rust_decl_type overlay resolution. The executable emitter-level fixtures use deliberately synthetic Root4AppliedCarrier and Root4AliasCarrier names, so they exercise the structural shape without re-declaring the canonical std.measure.Measure authority; canonical Measure behavior is covered by the stamped canonical-seven receipt. The decision is structural (__applied_type_args or resolved-type children), never a Measure name check. RED controls: w_zero_param_alias_list_param_unchanged preserves the existing closed-alias realization; w_homonym_measure_zero_param_list_unchanged proves an unrelated zero-parameter homonym does not gain arguments."
+data root4_measure_missing_generics_witness_note: String = "Root-4 measure_missing_generics family: a function-generic container argument must preserve its applied arguments through render_rust_decl_type overlay resolution. The executable emitter-level fixtures use deliberately synthetic Root4AppliedCarrier, Root4AliasCarrier, and Root4ZeroArityCarrier names, so they exercise the structural shape without re-declaring the canonical std.measure.Measure authority; canonical Measure behavior is covered by the stamped canonical-seven receipt. The decision is structural (__applied_type_args or resolved-type children), never a type-name check. RED controls: w_zero_param_alias_list_param_unchanged preserves the existing closed-alias realization; w_unrelated_zero_param_leaf_unchanged proves a bare leaf without applied or resolved children does not gain arguments."
 
 fn w_applied_generic_carrier_preserves_arguments() -> Bool {
   compile_dag_rust_emit_check(
@@ -24,17 +24,17 @@ fn w_zero_param_alias_list_param_unchanged() -> Bool {
   )
 }
 
-fn w_homonym_measure_zero_param_list_unchanged() -> Bool {
+fn w_unrelated_zero_param_leaf_unchanged() -> Bool {
   compile_dag_rust_emit_check(
-    "module root4.homonym_measure\nimport std.nat { Nat }\n\ntype Measure { count: Nat }\n\nfn witness(items: List<Measure>) -> Measure {\n  Measure { count: 0 }\n}\n",
-    "src/root4_homonym_measure.rs",
-    ["Vec<Rc<Measure>>"],
-    ["Measure<(),", "Measure<Time", "< S,", "<Memory"]
+    "module root4.unrelated_zero_param\nimport std.nat { Nat }\n\ntype Root4ZeroArityCarrier { count: Nat }\n\nfn witness(items: List<Root4ZeroArityCarrier>) -> Root4ZeroArityCarrier {\n  Root4ZeroArityCarrier { count: 0 }\n}\n",
+    "src/root4_unrelated_zero_param.rs",
+    ["Vec<Rc<Root4ZeroArityCarrier>>"],
+    ["Root4ZeroArityCarrier<(),", "Root4ZeroArityCarrier<Probe", "< S,"]
   )
 }
 
 test fn root4_measure_missing_generics_witness_holds() -> Bool {
   w_applied_generic_carrier_preserves_arguments()
     && w_zero_param_alias_list_param_unchanged()
-    && w_homonym_measure_zero_param_list_unchanged()
+    && w_unrelated_zero_param_leaf_unchanged()
 }

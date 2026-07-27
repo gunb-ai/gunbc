@@ -36,6 +36,6 @@ The same structural overlay also removes 24 non-Measure missing-generic errors a
 
 1. A deliberately synthetic `List<Root4AppliedCarrier<ProbeQuantity, S, ProbeMagnitude>>` positive fixture that exercises the same structural generic-container shape without re-declaring the canonical `std.measure.Measure` authority.
 2. A synthetic closed zero-arity alias control over `Root4AliasCarrier`, likewise avoiding a second unit model.
-3. An unrelated zero-arity type also named `Measure`, proving the decision is structural rather than name-based.
+3. An unrelated `Root4ZeroArityCarrier` leaf control, proving a bare leaf without applied or resolved children stays unchanged.
 
 With exact-parent `claim_batch` built from `9a112a3097` (SHA-256 `6000e1e1432d94945cddd5588c5c5cf761672b374bd7a455ee6435e1d98a7a9a`), the positive fixture fails while both controls pass. With the child binary, all three pass. The canonical `std.measure` closure independently compiles through the real `gunbc compile` transport with zero blocking errors and emits `Vec<Rc<Measure<(), S, Nat>>>`; its 46 `UnlistedImportUse` rows are advisory under the existing compile-clean policy and are not hidden by a `cli_run` change in this PR.
