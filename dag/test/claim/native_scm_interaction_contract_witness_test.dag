@@ -25,6 +25,7 @@ import gunbc.native_scm_interaction_contract {
   native_scm_submission_ledger,
   native_scm_apply_once,
   native_scm_applied_count,
+  native_scm_rekey_receipt,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -76,6 +77,18 @@ test fn witness_duplicate_submission_applies_once() -> Bool {
   let ledger2 = native_scm_apply_once(ledger: ledger1, receipt: receipt)
   native_scm_applied_count(ledger: ledger1) == 1
     && native_scm_applied_count(ledger: ledger2) == 1
+}
+
+test fn witness_same_name_distinct_attempts_apply_separately() -> Bool {
+  let receipt_a = receipt_for(scenario: DuplicateSubmissionAppliesOnce)
+  let receipt_b = native_scm_rekey_receipt(
+    receipt: receipt_a,
+    attempt_key: "attempt-duplicate-submission-second",
+  )
+  let ledger0 = native_scm_submission_ledger()
+  let ledger1 = native_scm_apply_once(ledger: ledger0, receipt: receipt_a)
+  let ledger2 = native_scm_apply_once(ledger: ledger1, receipt: receipt_b)
+  native_scm_applied_count(ledger: ledger2) == 2
 }
 
 test fn witness_rename_and_reference_unique_meaning_lands() -> Bool {
@@ -133,13 +146,14 @@ test fn witness_obtainable_evidence_is_gathered_internally() -> Bool {
 
 test fn witness_tool_model_proof_deficits_stay_internal() -> Bool {
   let r = receipt_for(scenario: ToolModelProofDeficitRoutesInternally)
-  primary_label(receipt: r) == "CouldNotLand"
+  primary_label(receipt: r) == "InProgress"
+    && match r.transition {
+      NativeScmCommitTransitionUncommitted => true
+      _ => false
+    }
     && match r.primary {
-      CouldNotLand { plain_reason, responsible_party, next_action, refusal_receipt } =>
-        !contains_banned_terms(text: plain_reason)
-          && !contains_banned_terms(text: responsible_party)
-          && !contains_banned_terms(text: next_action)
-          && !contains_banned_terms(text: refusal_receipt)
+      InProgress { progress_preview } =>
+        string_contains(s: progress_preview, pattern: "internal")
       _ => false
     }
     && match native_scm_inspect_receipt(receipt: r, authorized: false) {

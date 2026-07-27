@@ -10,6 +10,10 @@ type NativeScmProposalIdentity {
   attempt_key: String
 }
 
+type NativeScmCommitTransition
+  = NativeScmCommitTransitionUncommitted
+  | NativeScmCommitTransitionCommitted
+
 type NativeScmLifecycle
   = NativeScmLifecyclePending
   | NativeScmLifecycleReady
@@ -27,6 +31,13 @@ type NativeScmContinuation {
   resume_preview: String
 }
 
+type NativeScmRefusal {
+  plain_reason: String
+  responsible_party: String
+  next_action: String
+  refusal_receipt: String
+}
+
 type NativeScmPrimaryOutcome
   = Landed {
       result_preview: String
@@ -36,15 +47,16 @@ type NativeScmPrimaryOutcome
       previews: List<String>
       continuation: NativeScmContinuation
     }
+  | InProgress {
+      progress_preview: String
+    }
   | CouldNotLand {
-      plain_reason: String
-      responsible_party: String
-      next_action: String
-      refusal_receipt: String
+      refusal: NativeScmRefusal
     }
 
 type NativeScmReceipt {
   identity: NativeScmProposalIdentity
+  transition: NativeScmCommitTransition
   review: NativeScmLifecycle
   access: NativeScmLifecycle
   check: NativeScmLifecycle
@@ -124,6 +136,15 @@ fn native_scm_lifecycle_ready() -> NativeScmLifecycle {
   NativeScmLifecycleReady
 }
 
+fn native_scm_transition_for(scenario: NativeScmScenario) -> NativeScmCommitTransition {
+  match scenario {
+    ToolModelProofDeficitRoutesInternally => NativeScmCommitTransitionUncommitted
+    TwoLegitimateMeaningsNeedChoice => NativeScmCommitTransitionUncommitted
+    IncompatibleGoalsNeedAuthorizedDecider => NativeScmCommitTransitionUncommitted
+    _ => NativeScmCommitTransitionCommitted
+  }
+}
+
 fn native_scm_projection(workspace: String, target: String, git: String) -> NativeScmProjection {
   NativeScmProjection {
     workspace: optional_present(value: workspace),
@@ -173,11 +194,8 @@ fn native_scm_primary_for(scenario: NativeScmScenario, identity: NativeScmPropos
     EvidenceGatheredInternally => Landed {
       result_preview: "support was gathered internally, so the proposal lands without a user question",
     }
-    ToolModelProofDeficitRoutesInternally => CouldNotLand {
-      plain_reason: "tool, model, or proof gaps remain internal work and do not become a preference question",
-      responsible_party: "machine owner",
-      next_action: "continue internal proof repair",
-      refusal_receipt: "native-scm-deficit-refusal",
+    ToolModelProofDeficitRoutesInternally => InProgress {
+      progress_preview: "tool, model, and proof work remain internal; the proposal is still progressing",
     }
     GitExportFailureRepairsWithoutReinterpretation => Landed {
       result_preview: "accepted result remains landed while the Git export projection is repaired separately",
@@ -214,7 +232,9 @@ fn native_scm_receipt_details_for(scenario: NativeScmScenario) -> Optional<Strin
     EvidenceGatheredInternally => Present {
       value: "details: obtainable evidence is gathered inside the machine before the user sees a result",
     }
-    ToolModelProofDeficitRoutesInternally => Absent,
+    ToolModelProofDeficitRoutesInternally => Present {
+      value: "details: internal progress stays internal until the machine finishes its own continuation",
+    }
     GitExportFailureRepairsWithoutReinterpretation => Present {
       value: "details: Git export repair updates only the projection, not the semantic result",
     }
@@ -260,6 +280,7 @@ fn native_scm_receipt_for(scenario: NativeScmScenario) -> NativeScmReceipt {
   let identity = native_scm_identity_for(scenario: scenario)
   NativeScmReceipt {
     identity: identity,
+    transition: native_scm_transition_for(scenario: scenario),
     review: native_scm_review_for(scenario: scenario),
     access: native_scm_access_for(scenario: scenario),
     check: native_scm_check_for(scenario: scenario),
@@ -294,10 +315,27 @@ fn native_scm_apply_once(
   ledger: NativeScmSubmissionLedger,
   receipt: NativeScmReceipt,
 ) -> NativeScmSubmissionLedger {
-  if all(ledger.applied, applied => applied != receipt.identity.name) {
-    NativeScmSubmissionLedger { applied: concat(ledger.applied, [receipt.identity.name]) }
+  if all(ledger.applied, applied => applied != receipt.identity.attempt_key) {
+    NativeScmSubmissionLedger { applied: concat(ledger.applied, [receipt.identity.attempt_key]) }
   } else {
     ledger
+  }
+}
+
+fn native_scm_rekey_receipt(receipt: NativeScmReceipt, attempt_key: String) -> NativeScmReceipt {
+  NativeScmReceipt {
+    identity: NativeScmProposalIdentity {
+      name: receipt.identity.name,
+      attempt_key: attempt_key,
+    },
+    transition: receipt.transition,
+    review: receipt.review,
+    access: receipt.access,
+    check: receipt.check,
+    operational: receipt.operational,
+    projections: receipt.projections,
+    primary: receipt.primary,
+    receipt_details: receipt.receipt_details,
   }
 }
 
@@ -309,12 +347,8 @@ fn native_scm_primary_label(primary: NativeScmPrimaryOutcome) -> String {
   match primary {
     Landed { result_preview: _ } => "Landed"
     ChoiceRequired { question: _, previews: _, continuation: _ } => "ChoiceRequired"
-    CouldNotLand {
-      plain_reason: _,
-      responsible_party: _,
-      next_action: _,
-      refusal_receipt: _,
-    } => "CouldNotLand"
+    InProgress { progress_preview: _ } => "InProgress"
+    CouldNotLand { refusal: _ } => "CouldNotLand"
   }
 }
 
@@ -328,26 +362,24 @@ fn native_scm_resolve_choice(
         Landed { result_preview: continuation.resume_preview }
       } else {
         CouldNotLand {
-          plain_reason: "the answer did not match the stored continuation",
-          responsible_party: "authorized decider",
-          next_action: "select one of the stored previews",
-          refusal_receipt: continuation.proposal.name,
+          refusal: NativeScmRefusal {
+            plain_reason: "the answer did not match the stored continuation",
+            responsible_party: "authorized decider",
+            next_action: "select one of the stored previews",
+            refusal_receipt: continuation.proposal.attempt_key,
+          },
         }
       }
     Landed { result_preview: p } => Landed { result_preview: p }
-    CouldNotLand { plain_reason, responsible_party, next_action, refusal_receipt } =>
-      CouldNotLand {
-        plain_reason: plain_reason,
-        responsible_party: responsible_party,
-        next_action: next_action,
-        refusal_receipt: refusal_receipt,
-      }
+    InProgress { progress_preview } => InProgress { progress_preview: progress_preview }
+    CouldNotLand { refusal } => CouldNotLand { refusal: refusal }
   }
 }
 
 fn native_scm_repair_git_projection(receipt: NativeScmReceipt, git_ref: String) -> NativeScmReceipt {
   NativeScmReceipt {
     identity: receipt.identity,
+    transition: receipt.transition,
     review: receipt.review,
     access: receipt.access,
     check: receipt.check,
