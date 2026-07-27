@@ -98,6 +98,7 @@ import v2.std.node {
 import v2.std.witness { StructuralPropertyWitness }
 import v2.std.node_query {
   arrow_domain_named_param_bindings,
+  coproduct_nullary_inhabitant_by_discriminant,
   find_arrow_body_child,
   find_named_child,
   node_labeled_child_edges,
@@ -9138,70 +9139,6 @@ type TargetDeriveSupplementalGenericBoundRequirement {
   required_trait: ReprGroundingDeriveTrait
 }
 
-fn target_grounding_derive_trait_from_atom(id: Symbol) -> Optional<ReprGroundingDeriveTrait> {
-  if id == discriminant(v: ReprDeriveDebug) {
-    optional_present(value: ReprDeriveDebug)
-  } else {
-    if id == discriminant(v: ReprDeriveClone) {
-      optional_present(value: ReprDeriveClone)
-    } else {
-      if id == discriminant(v: ReprDeriveCopy) {
-        optional_present(value: ReprDeriveCopy)
-      } else {
-        if id == discriminant(v: ReprDerivePartialEq) {
-          optional_present(value: ReprDerivePartialEq)
-        } else {
-          if id == discriminant(v: ReprDeriveEq) {
-            optional_present(value: ReprDeriveEq)
-          } else {
-            if id == discriminant(v: ReprDerivePartialOrd) {
-              optional_present(value: ReprDerivePartialOrd)
-            } else {
-              if id == discriminant(v: ReprDeriveOrd) {
-                optional_present(value: ReprDeriveOrd)
-              } else {
-                if id == discriminant(v: ReprDeriveSerialize) {
-                  optional_present(value: ReprDeriveSerialize)
-                } else {
-                  if id == discriminant(v: ReprDeriveDeserialize) {
-                    optional_present(value: ReprDeriveDeserialize)
-                  } else {
-                    if id == discriminant(v: ReprDeriveAdd) {
-                      optional_present(value: ReprDeriveAdd)
-                    } else {
-                      if id == discriminant(v: ReprDeriveSub) {
-                        optional_present(value: ReprDeriveSub)
-                      } else {
-                        if id == discriminant(v: ReprDeriveMul) {
-                          optional_present(value: ReprDeriveMul)
-                        } else {
-                          if id == discriminant(v: ReprDeriveDiv) {
-                            optional_present(value: ReprDeriveDiv)
-                          } else {
-                            if id == discriminant(v: ReprDeriveRem) {
-                              optional_present(value: ReprDeriveRem)
-                            } else {
-                              if id == discriminant(v: ReprDeriveNeg) {
-                                optional_present(value: ReprDeriveNeg)
-                              } else {
-                                optional_absent()
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
 fn target_representation_choice_has_parameter(
   choice: TargetRepresentationChoice,
   representation_parameter: Symbol
@@ -9233,17 +9170,20 @@ fn target_derive_supplemental_generic_bound_requirement_from_node(
               bind_outcome(
                 o: target_collection_node_atom_identity(node: required_trait_node),
                 f: fn(required_trait_id) {
-                  match target_grounding_derive_trait_from_atom(id: required_trait_id) {
-                    Present { value: required_trait } =>
+                  bind_outcome(
+                    o: coproduct_nullary_inhabitant_by_discriminant(
+                      type_name: ^ReprGroundingDeriveTrait,
+                      wanted: required_trait_id
+                    ),
+                    f: fn(required_trait) {
                       outcome_accepted(
                         TargetDeriveSupplementalGenericBoundRequirement {
                           representation_parameter: representation_parameter,
                           required_trait: required_trait
                         }
                       )
-                    Absent =>
-                      outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
-                  }
+                    }
+                  )
                 }
               )
             }
@@ -9266,8 +9206,12 @@ fn target_derive_supplemental_generic_bound_contract_from_node(
       bind_outcome(
         o: target_collection_node_atom_identity(node: derive_trait_node),
         f: fn(derive_trait_id) {
-          match target_grounding_derive_trait_from_atom(id: derive_trait_id) {
-            Present { value: derive_trait } =>
+          bind_outcome(
+            o: coproduct_nullary_inhabitant_by_discriminant(
+              type_name: ^ReprGroundingDeriveTrait,
+              wanted: derive_trait_id
+            ),
+            f: fn(derive_trait) {
               bind_outcome(
                 o: find_named_child(
                   root: node,
@@ -9290,9 +9234,8 @@ fn target_derive_supplemental_generic_bound_contract_from_node(
                   )
                 }
               )
-            Absent =>
-              outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
-          }
+            }
+          )
         }
       )
     }
