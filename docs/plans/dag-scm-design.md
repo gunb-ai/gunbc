@@ -16,21 +16,23 @@ grounding: DESIGN open thread “SCM economics — the GitLab 10-K corpus.” Vi
 [module identity vs storage](module-identity-storage-binding-design.md). Product wedge, design
 partner, hosted-authority promotion, and adjacent-product sequencing:
 [SCM product strategy](dag-scm-product-strategy.md). That strategy cannot weaken this document's
-semantic, evidence, admission, or Git-fidelity contract; this document cannot promote a product
-stage merely because its technical carrier exists.
+semantic, evidence, admission, or compatibility-fidelity contract; this document cannot promote a
+product stage merely because its technical carrier exists. Git is the first adoption realization,
+not the interface from which the native model is derived.
 
-## 0. User contract — Git-compatible, not Git-shaped
+## 0. User contract — SCM-compatible, not SCM-shaped
 
 The proof machinery below is an implementation contract, not product vocabulary. A developer
 should not need to understand candidate closure, evidence relations, patch transport,
-linearizability, or three-way merge. The native workflow is:
+linearizability, three-way merge, or which compatibility realization is active. The native
+workflow is:
 
 > **edit → submit → Landed**
 
 Synchronization, replay against the current accepted target, integration, validation, receipt
-reuse, atomic advance, and Git projection are system responsibilities. A normal user never chooses
-merge versus rebase, maintains branch topology, edits conflict markers, or interprets
-proof/evidence terminology.
+reuse, atomic advance, and compatibility projection are system responsibilities. A normal user
+never chooses merge versus rebase, maintains branch/bookmark/channel topology, edits conflict
+markers, or interprets proof/evidence terminology.
 
 At the semantic integration boundary, there are only two semantic handoffs:
 
@@ -77,11 +79,13 @@ Permanent authorization denial, policy refusal, unsupported proof bounds, and no
 failure therefore cannot disappear into an inspect-only state. Non-terminal progress may be shown
 as status, but it is not a semantic conclusion or a request for preference.
 
-The compatibility surface may look like an ordinary Git worktree and accept ordinary commits or
-PRs, but Git is import/export and compatibility realization, not the native interaction model. A
-submit operation imports the pending delta/proposal, replays it against the current accepted
-target, and emits an ordinary one-parent/squash commit when it lands. Ordinary Git clients remain
-usable and expert plumbing remains available; neither is the conceptual front door.
+The first compatibility surface may look like an ordinary Git worktree and accept ordinary
+commits or PRs, but Git is one import/export and target realization, not the native interaction
+model. A submit operation imports the pending delta/proposal, replays it against the current
+accepted target, and emits the target medium's ordinary representation when it lands. The initial
+product emits an ordinary one-parent/squash Git commit; Mercurial and Pijul are modeled up front as
+design-stress realizations, not silently promised as product-grade adapters. Ordinary native SCM
+clients and expert plumbing remain available; none is the conceptual front door.
 
 The interaction contract has executable acceptance conditions:
 
@@ -94,7 +98,9 @@ The interaction contract has executable acceptance conditions:
 - one answer resumes the suspended operation automatically; and
 - every terminal refusal produces a plain `Could not land` message backed by a typed, located,
   counted internal refusal; and
-- every accepted result remains exportable as ordinary Git.
+- every accepted result remains exportable through each compatibility realization whose declared
+  fidelity and capability profile the target requires; the initial product requirement is ordinary
+  Git.
 
 The first scenario design therefore includes both the internal layered receipt and this minimal
 presentation projection. Internal state is retained and inspectable, but internal terminology does
@@ -143,8 +149,10 @@ safe partial deductions.
 
 ## 2. Separate the layers
 
-Git's native interface necessarily exposes commits, trees, paths, blobs, and textual merge
-drivers. Those are useful storage and compatibility concepts. They are not the program.
+Every SCM exposes its own useful native concepts: Git has commits/trees/refs, Mercurial has
+changesets/manifests/bookmarks/phases, and Pijul has changes/dependencies/channels/pristine state.
+Those are upstream storage, history, publication, and compatibility concepts. None is the program,
+and none supplies the vocabulary of the native integration interface.
 
 This lane keeps the following layers separate:
 
@@ -157,8 +165,8 @@ This lane keeps the following layers separate:
 | semantic deduction | the closed zero/one/many or unclosed joint-result calculation | authorization, mutation, queue order, or path overlap |
 | admission policy | required claim assessments and actor authority under the accepted parent policy | semantic satisfiability or realization cost |
 | transition realization | exact-parent compare-and-advance, effects, and read-back | whether the semantic candidate space was closed |
-| history + projection | grounded receipts over accepted states and downstream media such as Git | a second copy of the program or a retroactive semantic verdict |
-| medium / transport | `.dag`, Rust, markdown, files, Git trees, CLI/REST, remote storage | semantic correctness beyond the medium's declared decode fidelity |
+| history + projection | grounded receipts over accepted states and downstream media such as Git, Mercurial, or Pijul | a second copy of the program or a retroactive semantic verdict |
+| medium / transport | `.dag`, Rust, markdown, files, SCM-native stores, CLI/REST, remote storage | semantic correctness beyond the medium's declared decode fidelity |
 
 Text and files have two downstream jobs, already named by the storage-binding design:
 
@@ -304,8 +312,9 @@ existing authorities rather than extract three local versions later.
 
 Authority is **target-scoped**, not a property of a branch name. A project may have a primary
 target, supported-release targets, or another explicitly admitted target, but each target has one
-current accepted state and each proposal names exactly one target. `main` is one possible Git
-projection of that role; checking out or receiving another ref does not make it an authority.
+current accepted state and each proposal names exactly one target. A Git ref, Mercurial bookmark or
+branch head, and Pijul channel are different upstream projections of target-like roles; checking
+out, updating, switching, pulling, or receiving one does not make it the native authority.
 
 The authoritative history for one target can be a linear sequence of accepted transitions:
 
@@ -321,7 +330,8 @@ Workspaces may be concurrent, but branches and merge commits are not fundamental
 sandbox containing pending proposals. Its construction history is evidence, not accepted history.
 Acceptance records the target, exact accepted predecessor, each proposal's authored parent, the
 applied transformation set, the resulting state hash, and the evidence/receipts that grounded it.
-Git commits and trees are a third thing: compatibility projections of those facts.
+Git commits/trees, Mercurial changesets/manifests, and Pijul channel/change state are a third thing:
+compatibility projections or capture evidence for those facts.
 
 This is not “last writer wins with a nicer log.” Before a stale-parent proposal can advance current
 state, the system re-evaluates its transformation against current modeled state. Arrival order is
@@ -803,6 +813,9 @@ The first modeling pass must try to compose these authorities:
 | `extdeps.git` + `extdeps.git.object_store` | cited Git operation, object, tree, commit, ref, and diff interface shapes | external compatibility authority; Git transport/policy and source integration stay separate |
 | GitLab/Atlassian/Microsoft SEC, pricing, and `gunbc.econ.scm_*` carriers | grounded distribution/serving/agentic-stress economics | price the product and store; they do not imply integration semantics |
 
+There is no Mercurial or Pijul extdeps authority in-tree today. That absence is a substrate gap, not
+permission to infer their shapes from Git or to call a Git-shaped interface generic.
+
 The existing keyed diff remains useful beneath the new model. Its meaning changes from “the merge
 algorithm” to “one observation/capture engine.” In particular, the storage-binding plan's current
 same-key refusal is the safe adapter available **before** semantic integration lands; it is not a
@@ -833,6 +846,54 @@ These are comparison authorities, not instructions to implement eleven subsystem
 | locked artifacts and erasure | [NIST SP 800-38D](https://csrc.nist.gov/pubs/sp/800/38/d/final), [SP 800-38F](https://csrc.nist.gov/pubs/sp/800/38/f/final), [SP 800-88r2](https://csrc.nist.gov/pubs/sp/800/88/r2/final) | AEAD, authenticated key wrap, conditional cryptographic erase |
 | Git fidelity boundary | [Git object model](https://git-scm.com/docs/user-manual), [`gitattributes`](https://git-scm.com/docs/gitattributes), [partial clone](https://git-scm.com/docs/partial-clone) | complete import/export inventory, unavailable-object states |
 
+### SCM plurality stress — three upstream models before one shared shape
+
+The product wedge remains Git-first because that minimizes adoption cost. The technical boundary is
+SCM-plural because adoption order is not design authority. Three upstreams are modeled before a
+common compatibility carrier is allowed to land:
+
+| upstream realization | upstream shapes that must remain distinct | design pressure |
+|---|---|---|
+| [Git](https://git-scm.com/book/en/v2/Git-Internals-Git-Objects) | blob/tree/commit/tag objects, refs and symbolic refs, worktree/index, object/hash format, and exact-old-OID [`update-ref`](https://git-scm.com/docs/git-update-ref) | dominant compatibility and first writable product target; stresses snapshot/object fidelity and an explicit compare-and-advance primitive |
+| [Mercurial](https://www.mercurial-scm.org/help/topics/glossary) | file revisions, manifests, changesets, DAG revision selection, bookmarks, named/topological branches, [phases](https://www.mercurial-scm.org/help/topics/phases), and separately stored experimental obsolescence markers | prevents `branch = ref`, `published = pushed`, or one history identity from becoming universal; stresses mutable/publication metadata orthogonal to file history |
+| [Pijul](https://pijul.org/manual/getting_started.html) | working copy, recorded changes, dependency/context graph, pristine state, tree, conflicts retained in the graph, and [channels as sets of changes](https://pijul.org/manual/workflows/channels) | prevents `change = snapshot commit` and `target = pointer to one commit`; stresses first-class change identity, dependencies, commutation, and set-valued channel state |
+
+These are design falsifiers, not a promise that all three are product-grade on day one. Their
+upstream models land independently in `extdeps/`, with real names, citations, version/format
+boundaries, and no common interface. Only after all three exist may DFS extract proven coincidence.
+The core must not gain `ScmKind = Git | Mercurial | Pijul`, switch on vendor identity, or import an
+upstream's branch/ref/channel vocabulary. Dispatch belongs in peripheral realization bindings
+(DESIGN §3), so adding a fourth SCM is a new extdeps model plus bound handlers and witnesses—not a
+kernel edit or a new coproduct arm.
+
+The shared compatibility boundary is expected to need these **roles**, pending that DFS:
+
+- observe an upstream state and its stable generation/version evidence without assuming one OID or
+  linear revision number;
+- capture endpoint and, where the upstream retains it, authored-change evidence at an explicit
+  fidelity profile;
+- identify a named upstream target without equating ref, bookmark, branch, or channel;
+- state the target's conditional-advance guarantee: exact compare-and-advance, a differently
+  grounded serialized/transactional guarantee, or capability unavailable/unknown;
+- project the accepted program and allowed metadata into the upstream representation;
+- independently read back the projected/advanced state;
+- repair an idempotent projection without replaying the semantic transition; and
+- preserve or explicitly downgrade upstream-specific history, publication, conflict, path/mode,
+  opaque-content, partial-availability, and identity facts.
+
+Not every SCM must provide every role. Missing exact-parent or round-trip fidelity is a typed
+capability refusal for that target policy, not a fake implementation built from fetch timing,
+local locks, or “most recent” state. The semantic kernel consumes native proposals, accepted
+states, claims, and receipts; it never consumes a Git commit, Mercurial changeset, or Pijul change
+as though that upstream object were the semantic contract.
+
+The landed C0 interaction carrier (`gunbc.native_scm_interaction_contract`) is deliberately only a
+presentation fixture. Its optional `git` projection and two Git-named scenarios are now a counted
+frontier, not the shared adapter interface. They must not be consumed by the proof kernel. Their
+dissolution trigger is the three-upstream compatibility-shape slice: replace the fixture slot with
+adapter-indexed projection receipts derived from the extracted roles, while keeping the dead-simple
+primary outcome byte/behavior stable.
+
 ## 9. Admission and CI — linear history without serial work
 
 The native fast path:
@@ -853,11 +914,14 @@ The native fast path:
    only newly affected obligations.
 8. Apply the accepted-parent admission policy and actor/effect authority. A unique semantic result
    can still be unauthorized, approval-required, or policy-refused.
-9. For the first P3 realization, write the proposed Git tree and ordinary one-parent commit, then
-   execute `git update-ref <target-ref> <new-oid> <old-oid>`. Git verifies the exact old object ID
-   before updating; a mismatch returns `RetryStaleParent` and restarts from step 1, never `Unknown`.
-10. Independently read back the target ref/result. Only a committed and grounded read-back returns
-    `Applied`.
+9. Bind one target-transition realization whose declared capability satisfies the target policy.
+   The first product realization writes a Git tree and ordinary one-parent commit, then executes
+   `git update-ref <target-ref> <new-oid> <old-oid>`; an old-object mismatch returns
+   `RetryStaleParent` and restarts from step 1, never `Unknown`. A Mercurial or Pijul realization
+   may advance only after its own upstream model grounds an equivalent-enough guarantee for that
+   policy; similarity of commands or local serialization is not evidence.
+10. Independently read back the target through the same bound realization. Only a committed and
+    grounded read-back returns `Applied`.
 11. Project or enqueue every other declared surface. Projection is idempotent and records
     `Projected | ProjectionPending | ProjectionFailed`; it does not replay or roll back the
     semantic transition.
@@ -878,12 +942,14 @@ still at this SHA.” If the target advances outside those inputs, the green rec
 grounded. If it advances inside them, the system revalidates the affected claim before acceptance.
 A blanket rerun is an `Unknown`/modeling deficit, not a silent “fail-closed” success.
 
-The Git-ref compare-and-swap is the minimal **transition realization**, not a claim that Git trees
-become the program authority. [`git update-ref`](https://git-scm.com/docs/git-update-ref) supplies
-the exact-old-object check needed for a linearizable commit point. When a later native target
-becomes authoritative and Git is asynchronous projection, an idempotent outbox binds the committed
-native transition to its Git projection and repairs `ProjectionPending`/`ProjectionFailed` without
-reapplying the semantic change.
+The Git-ref compare-and-swap is the first minimal **transition realization**, not the transition
+interface and not a claim that Git trees become the program authority.
+[`git update-ref`](https://git-scm.com/docs/git-update-ref) supplies the exact-old-object check
+needed by the initial target policy. Other SCMs must ground their guarantee independently or expose
+the capability as unavailable. When a later native target becomes authoritative and external SCMs
+are asynchronous projections, an idempotent outbox binds the committed native transition to each
+declared projection and repairs `ProjectionPending`/`ProjectionFailed` without reapplying the
+semantic change.
 
 Every transition receipt binds at least target + generation, parent/result state hashes, proposal
 occurrence-set hash, admission-contract hash, model/schema + inference-rule versions, equivalence
@@ -891,11 +957,20 @@ definition + bound, evidence set + freshness, and affected-set derivation versio
 and policy/evidence hashes prevent an ABA-shaped acceptance in which the visible state hash returns
 to an old value while the authority under which it was validated has changed.
 
-## 10. Git is a compatibility realization, not the semantic authority
+## 10. Compatibility realizations are plural; Git is first, not authority
 
-Compatibility is non-negotiable for adoption, but it is downstream:
+Compatibility is non-negotiable for adoption, but it is downstream. Product priority and design
+coverage are intentionally different:
 
-### Export
+- Git is the first product-grade realization because current gunbc work, forges, CI, and likely
+  design partners already use it.
+- Mercurial and Pijul are first-wave design-stress realizations. Their upstream models and
+  read-only round-trip fixtures must constrain the shared shape before that shape is called
+  generic.
+- Product-grade support for either is promoted only by a partner/workload receipt; the core remains
+  unchanged whether that promotion occurs.
+
+### Git export
 
 - Each accepted native transition can emit an ordinary one-parent/squash Git commit and source
   tree. A team using squash-to-main sees the history shape it already expects.
@@ -907,7 +982,7 @@ Compatibility is non-negotiable for adoption, but it is downstream:
 - Files, paths, formatting, opaque blobs, and derived artifacts follow the storage-binding and
   materialization policies; they are not smuggled into the semantic model.
 
-### Import
+### Git import
 
 External Git work supplies base and endpoint snapshots. Ingest recovers graph transformations with
 an explicit fidelity result:
@@ -948,6 +1023,46 @@ contract](https://git-scm.com/docs/partial-clone), and [hash-format
 transition](https://git-scm.com/docs/hash-function-transition) are the external boundary. Ordinary
 clone/build compatibility is not established until these fidelity axes round-trip or refuse
 honestly.
+
+### Mercurial stress boundary
+
+Mercurial modeling must preserve its own distinctions rather than translate them into Git names:
+portable changeset identity versus clone-local revision number; file revisions and manifests;
+executable/symlink/copy facts; changeset parents and heads; named branches, movable bookmarks, and
+tags; public/draft/secret phase monotonicity and publishing-server behavior; subrepositories;
+repository-format requirements and unavailable data; and experimental obsolescence markers as
+metadata orthogonal to file-history changesets. A bookmark is not renamed to a ref in extdeps, a
+phase is not reduced to a visibility Boolean, and an obsolescence successor is not silently called
+a rebase.
+
+The first Mercurial fixture is read-only state/change capture plus round-trip projection over a
+bounded repository. Managed target advance remains capability-unavailable until the upstream model
+and an executing transport witness establish the exact concurrency/transaction guarantee required
+by the target policy.
+
+### Pijul stress boundary
+
+Pijul modeling must preserve change identity and dependency/context facts, the recorded
+change/pristine/tree/working-copy split, graph conflict facts, channel state as a set of changes,
+channel-independent change identity, version/state identity, partial-path/change availability, and
+the difference between applying a change and projecting a working copy. A change is not renamed to
+a commit and a channel is not forced into one-head semantics merely to inhabit a Git-derived
+adapter.
+
+The first Pijul fixture imports and exports a bounded change/dependency/channel state and proves
+that reordering independent change delivery does not change the native semantic receipt. This is
+not permission to inherit Pijul's textual conflict semantics as Daglang semantic safety. Managed
+target advance remains capability-unavailable until its upstream operation and read-back contract
+meet the declared target policy.
+
+### Cross-realization law
+
+For one accepted native state and one declared surface fragment, changing only the compatibility
+realization may change upstream bytes, history topology, publication metadata, and fidelity
+receipts. It must not change the native semantic result, admission decision, or user question.
+Removing an upstream capability may turn projection or target admission into a typed refusal; it
+may not select a different semantic result. Adding a fourth SCM must require no edit to the proof
+kernel or primary interaction carrier.
 
 The first product can therefore be a Git-compatible semantic admission tool rather than a new
 hosted object store. It proves the integration advantage while keeping clone, editor, CI, and forge
