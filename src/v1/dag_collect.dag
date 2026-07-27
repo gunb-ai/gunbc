@@ -90,17 +90,6 @@ fn dag_collect_inferred(value: InferredNode?, slots: Map<String, DagCollectSlot>
   }
 }
 
-fn dag_collect_match_pattern(pattern: MatchPattern, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
-  match pattern {
-    Bind { declaration: declaration } =>
-      dag_collect_insert_slots(node: declaration, slots: slots, collision_errors: collision_errors)
-    LitPattern { value: _ } => slots
-    VariantPattern { name: _, parent_enum: _, field_bindings: field_bindings } =>
-      field_bindings |> fold(init: slots, f: (s, fb) => dag_collect_insert_slots(node: fb, slots: s, collision_errors: collision_errors))
-    Wildcard => slots
-  }
-}
-
 fn dag_collect_node_tree(node: Node, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
   let slots = dag_collect_nodes_list(nodes: node.children, slots: slots, collision_errors: collision_errors)
   let slots = if is_module_shell_node(n: node) {
@@ -113,11 +102,7 @@ fn dag_collect_node_tree(node: Node, slots: Map<String, DagCollectSlot>, collisi
   let slots = dag_collect_optional_node(value: node.transport, slots: slots, collision_errors: collision_errors)
   let slots = dag_collect_nodes_list(nodes: node.properties, slots: slots, collision_errors: collision_errors)
   let slots = dag_collect_optional_node(value: node.type_annotation, slots: slots, collision_errors: collision_errors)
-  let slots = dag_collect_inferred(value: node.inferred, slots: slots, collision_errors: collision_errors)
-  match node.match_pattern {
-    Present { value: p } => dag_collect_match_pattern(pattern: p, slots: slots, collision_errors: collision_errors)
-    Absent => slots
-  }
+  dag_collect_inferred(value: node.inferred, slots: slots, collision_errors: collision_errors)
 }
 
 fn dag_collect_insert_slots(node: Node, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
