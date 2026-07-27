@@ -1,0 +1,9 @@
+module v1.test.scratch_pattern_identity
+
+import v1.compiler.compile { SourceFile, front_end_sources }
+
+test fn scratch_pattern_frontend_has_graph() -> Bool {
+  let source = "module scratch\n\ntype Duo = Left { value: Int } | Right { value: Int }\n\nfn f(x: Duo) -> Int {\n  match x {\n    Left { value: y } => y\n    Right { value: _ } => 0\n  }\n}\n"
+  let frontend = front_end_sources(sources: [SourceFile { path: "scratch.dag", content: source }])
+  frontend.graph != none
+}
