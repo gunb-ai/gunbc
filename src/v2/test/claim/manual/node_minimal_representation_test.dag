@@ -4,11 +4,18 @@ import v2.std.node { Node, SyntheticOccurrence, TypeNode, Atom }
 import v2.std.node_minimal {
   MnkSubstrateGraph,
   MnkSurfaceExprLeaf,
+  IdentRef,
+  InferenceAbsent,
+  NamedProvenance,
+  MrnSurfaceNamedDecl,
   MrnSubstrateGraph,
   NsfConnective,
   NsfParams,
   NsfUses,
   NsfBody,
+  PatternBinderDirect,
+  SdpPatternBinder,
+  SdrPatternBinder,
   minimal_expr_leaf_example,
   minimal_kind_migrated_to_facts,
   minimal_kind_owed_placement,
@@ -18,6 +25,7 @@ import v2.std.node_minimal {
   minimal_node_superset_field_unused_by_kind,
   minimal_substrate_node_from_v2,
   node_superset_field_count,
+  SpanRef,
   witness_partition_covers_superset
 }
 import v2.std.verification {
@@ -91,6 +99,28 @@ fn witness_minimal_node_kind_of_expr_leaf() -> Bool {
   }
 }
 
+fn pattern_binder_surface_decl_round_trip_holds() -> Bool {
+  let binder_shape = PatternBinderDirect
+  let binder_decl = MrnSurfaceNamedDecl {
+    role: SdrPatternBinder,
+    provenance: NamedProvenance {
+      span: SpanRef { file_id: 7, start: 1, end: 4 },
+      ident_span: SpanRef { file_id: 7, start: 1, end: 4 },
+      ident: IdentRef { value: 1 },
+      name: ^pattern_binder_probe
+    },
+    payload: SdpPatternBinder {
+      shape: binder_shape,
+      children: []
+    },
+    inference: InferenceAbsent
+  }
+  match minimal_node_kind_of(node: binder_decl) {
+    MnkSurfaceNamedDecl => true
+    _ => false
+  }
+}
+
 fn witness_placed_bucket_count() -> Bool {
   count(minimal_kind_placed_fields_union()) == 12
 }
@@ -112,6 +142,8 @@ data witness_node_minimal_substrate_round_trip: Bool = witness_substrate_kind_ro
 data witness_node_minimal_substrate_zero_superset: Bool = witness_substrate_kind_has_zero_superset_fields()
 
 data witness_node_minimal_kind_of_expr_leaf: Bool = witness_minimal_node_kind_of_expr_leaf()
+
+data witness_node_minimal_pattern_binder_surface_decl_round_trip: Bool = pattern_binder_surface_decl_round_trip_holds()
 
 data witness_node_minimal_partition_covers_superset: Bool = witness_partition_covers_superset()
 
@@ -139,6 +171,10 @@ test fn node_minimal_substrate_has_no_superset_fields_holds() -> Bool {
 
 test fn node_minimal_kind_of_expr_leaf_holds() -> Bool {
   witness_node_minimal_kind_of_expr_leaf
+}
+
+test fn node_minimal_pattern_binder_surface_decl_round_trip_holds() -> Bool {
+  witness_node_minimal_pattern_binder_surface_decl_round_trip
 }
 
 test fn witness_partition_covers_superset_holds() -> Bool {

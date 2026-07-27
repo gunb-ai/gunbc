@@ -8,22 +8,15 @@ import std.occurrence_binding {
   OccurrenceBindingResult,
   occurrence_binding_from_candidates
 }
-import v2.std.algebra {
-  any,
-  is_empty,
-  list_append,
-  list_head,
-  list_init,
-  list_map,
-  list_snoc_item
-}
+import v2.std.algebra { any, list_append, list_map, list_snoc_item }
 import v2.std.collection {
   Map,
   empty_map,
   map_get,
   map_insert
 }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, Unavailable, Diagnostic, ExternalContractUnknown, node_locus }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.node_minimal { PatternBinderShape, SpanRef }
 import v2.std.optional {
@@ -245,4 +238,3 @@ fn pattern_binder_index_lexical_bindings(
     )
   )
 }
-

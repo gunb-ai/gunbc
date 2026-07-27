@@ -1,0 +1,298 @@
+module v2.test.claim.pattern_binder_index
+
+import std.algebra { Cons, Empty, FreeMonoid }
+import std.occurrence_binding {
+  AmbiguousBindingCandidates,
+  BindingCandidate,
+  ContainmentPath,
+  OccurrenceAmbiguous,
+  OccurrenceBound,
+  OccurrenceUnbound
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.node_minimal {
+  PatternBinderAlias,
+  PatternBinderDirect,
+  PatternBinderNested,
+  PatternBinderShape,
+  PatternBinderShorthand,
+  PatternBinderTuple,
+  SpanRef
+}
+import v2.std.pattern_binder_index {
+  PatternBinderEntry,
+  PatternBinderIndex,
+  empty_pattern_binder_index,
+  pattern_binder_index_insert,
+  pattern_binder_index_lexical_bindings
+}
+import v2.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn pb_node(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn pb_path(ancestors: FreeMonoid<Node>, terminal: Node) -> ContainmentPath<Node> {
+  ContainmentPath {
+    ancestors: ancestors,
+    terminal: terminal
+  }
+}
+
+fn pb_entry(
+  node: Node,
+  shape: PatternBinderShape,
+  span: SpanRef,
+  declaration: ContainmentPath<Node>,
+  reference: ContainmentPath<Node>
+) -> PatternBinderEntry {
+  PatternBinderEntry {
+    node: node,
+    shape: shape,
+    span: span,
+    declaration: declaration,
+    reference: reference
+  }
+}
+
+data pb_module: Node = pb_node(sym: ^pb_module)
+data pb_outer_scope: Node = pb_node(sym: ^pb_outer_scope)
+data pb_inner_scope: Node = pb_node(sym: ^pb_inner_scope)
+data pb_arm_a_scope: Node = pb_node(sym: ^pb_arm_a_scope)
+data pb_arm_b_scope: Node = pb_node(sym: ^pb_arm_b_scope)
+data pb_same_scope: Node = pb_node(sym: ^pb_same_scope)
+data pb_overwrite_scope: Node = pb_node(sym: ^pb_overwrite_scope)
+
+data pb_outer_path: ContainmentPath<Node> = pb_path(
+  ancestors: Empty,
+  terminal: pb_outer_scope
+)
+
+data pb_inner_path: ContainmentPath<Node> = pb_path(
+  ancestors: Cons { head: pb_outer_scope, tail: Empty },
+  terminal: pb_inner_scope
+)
+
+data pb_arm_a_path: ContainmentPath<Node> = pb_path(
+  ancestors: Cons { head: pb_module, tail: Empty },
+  terminal: pb_arm_a_scope
+)
+
+data pb_arm_b_path: ContainmentPath<Node> = pb_path(
+  ancestors: Cons { head: pb_module, tail: Empty },
+  terminal: pb_arm_b_scope
+)
+
+data pb_same_path: ContainmentPath<Node> = pb_path(
+  ancestors: Empty,
+  terminal: pb_same_scope
+)
+
+data pb_span_one: SpanRef = SpanRef { file_id: 1, start: 10, end: 12 }
+data pb_span_two: SpanRef = SpanRef { file_id: 1, start: 20, end: 22 }
+data pb_span_three: SpanRef = SpanRef { file_id: 2, start: 30, end: 33 }
+
+data pb_direct_entry: PatternBinderEntry = pb_entry(
+  node: pb_outer_scope,
+  shape: PatternBinderDirect,
+  span: pb_span_one,
+  declaration: pb_outer_path,
+  reference: pb_outer_path
+)
+
+data pb_alias_entry: PatternBinderEntry = pb_entry(
+  node: pb_inner_scope,
+  shape: PatternBinderAlias,
+  span: pb_span_two,
+  declaration: pb_inner_path,
+  reference: pb_inner_path
+)
+
+data pb_shorthand_entry: PatternBinderEntry = pb_entry(
+  node: pb_arm_a_scope,
+  shape: PatternBinderShorthand,
+  span: pb_span_one,
+  declaration: pb_arm_a_path,
+  reference: pb_arm_a_path
+)
+
+data pb_tuple_entry: PatternBinderEntry = pb_entry(
+  node: pb_arm_b_scope,
+  shape: PatternBinderTuple,
+  span: pb_span_two,
+  declaration: pb_arm_b_path,
+  reference: pb_arm_b_path
+)
+
+data pb_nested_entry: PatternBinderEntry = pb_entry(
+  node: pb_same_scope,
+  shape: PatternBinderNested,
+  span: pb_span_one,
+  declaration: pb_same_path,
+  reference: pb_same_path
+)
+
+data pb_overwrite_entry: PatternBinderEntry = pb_entry(
+  node: pb_overwrite_scope,
+  shape: PatternBinderAlias,
+  span: pb_span_three,
+  declaration: pb_outer_path,
+  reference: pb_outer_path
+)
+
+fn pb_all_shapes_holds() -> Bool {
+  match pb_direct_entry.shape {
+    PatternBinderDirect =>
+      match pb_alias_entry.shape {
+        PatternBinderAlias =>
+          match pb_shorthand_entry.shape {
+            PatternBinderShorthand =>
+              match pb_tuple_entry.shape {
+                PatternBinderTuple =>
+                  match pb_nested_entry.shape {
+                    PatternBinderNested => true
+                    _ => false
+                  }
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+data pb_nested_same_name_index: PatternBinderIndex = pattern_binder_index_insert(
+  index: pattern_binder_index_insert(
+    index: empty_pattern_binder_index(),
+    name: ^dup,
+    entry: pb_direct_entry
+  ),
+  name: ^dup,
+  entry: pb_alias_entry
+)
+
+data pb_sibling_isolation_index: PatternBinderIndex = pattern_binder_index_insert(
+  index: pattern_binder_index_insert(
+    index: empty_pattern_binder_index(),
+    name: ^arm_local,
+    entry: pb_shorthand_entry
+  ),
+  name: ^arm_local,
+  entry: pb_tuple_entry
+)
+
+data pb_same_declaration_once_index: PatternBinderIndex = pattern_binder_index_insert(
+  index: pattern_binder_index_insert(
+    index: empty_pattern_binder_index(),
+    name: ^singleton,
+    entry: pb_nested_entry
+  ),
+  name: ^singleton,
+  entry: pb_nested_entry
+)
+
+data pb_overwrite_red_index: PatternBinderIndex = pattern_binder_index_insert(
+  index: pattern_binder_index_insert(
+    index: empty_pattern_binder_index(),
+    name: ^span_identity,
+    entry: pb_direct_entry
+  ),
+  name: ^span_identity,
+  entry: pb_overwrite_entry
+)
+
+test fn pattern_binder_shapes_round_trip_holds() -> Bool {
+  pb_all_shapes_holds()
+}
+
+test fn pattern_binder_nested_same_name_coexistence_holds() -> Bool {
+  match pattern_binder_index_lexical_bindings(
+    index: pb_nested_same_name_index,
+    position: pb_inner_path,
+    name: ^dup
+  ) {
+    OccurrenceAmbiguous {
+      occurrence: _,
+      candidates: AmbiguousBindingCandidates {
+        first: first,
+        second: second,
+        rest: Empty
+      }
+    } =>
+      (first.containment == pb_inner_path) && (second.containment == pb_outer_path)
+    OccurrenceBound { binding: _ } => false
+    OccurrenceUnbound { occurrence: _ } => false
+  }
+}
+
+test fn pattern_binder_sibling_arm_isolation_holds() -> Bool {
+  match pattern_binder_index_lexical_bindings(
+    index: pb_sibling_isolation_index,
+    position: pb_arm_a_path,
+    name: ^arm_local
+  ) {
+    OccurrenceBound { binding: BindingCandidate { containment: observed } } =>
+      observed == pb_arm_a_path
+    OccurrenceAmbiguous { occurrence: _, candidates: _ } => false
+    OccurrenceUnbound { occurrence: _ } => false
+  }
+}
+
+test fn pattern_binder_same_declaration_discovered_once_holds() -> Bool {
+  match pattern_binder_index_lexical_bindings(
+    index: pb_same_declaration_once_index,
+    position: pb_same_path,
+    name: ^singleton
+  ) {
+    OccurrenceBound { binding: BindingCandidate { containment: observed } } =>
+      observed == pb_same_path
+    OccurrenceAmbiguous { occurrence: _, candidates: _ } => false
+    OccurrenceUnbound { occurrence: _ } => false
+  }
+}
+
+test fn pattern_binder_span_identity_not_overwritten_holds() -> Bool {
+  match pattern_binder_index_lexical_bindings(
+    index: pb_overwrite_red_index,
+    position: pb_outer_path,
+    name: ^span_identity
+  ) {
+    OccurrenceAmbiguous {
+      occurrence: _,
+      candidates: AmbiguousBindingCandidates {
+        first: first,
+        second: second,
+        rest: Empty
+      }
+    } =>
+      (first.containment == pb_outer_path) && (second.containment == pb_outer_path)
+    OccurrenceBound { binding: _ } => false
+    OccurrenceUnbound { occurrence: _ } => false
+  }
+}
+
+data claim_pattern_binder_index_compiles: TestClaim = CompilesClaim {
+  label: "pattern_binder_index: declaration-node candidate enumeration compiles",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: pb_direct_entry.node,
+  expected_value: pb_direct_entry.node,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
