@@ -1,7 +1,7 @@
 module test.claim.occurrence_binding_witness_test
 
 import std.types { Bool }
-import std.symbols { Symbol }
+import v2.std.node { Symbol }
 import std.algebra { FreeMonoid, Empty, Cons }
 import std.occurrence_binding {
   BindingOccurrence,
