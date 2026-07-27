@@ -9099,6 +9099,25 @@ type RequiredTraitWitness
   | TargetCollectionWitnessHash { type_param: Symbol }
   | TargetCollectionWitnessEq { type_param: Symbol }
 
+type TraitBoundSiteMethodInvoke {
+  method: Symbol
+  receiver: Node
+}
+
+type TraitBoundWitness
+  = FnTypeParamBoundClone {
+      type_param: Symbol
+      site: TraitBoundSiteMethodInvoke
+    }
+
+data trait_bound_witness_authority_note: String = "P-fn Phase 2 (e0599): fn-body operation witnesses for generic type-param trait bounds — sibling to RequiredTraitWitness (collection repr Ord/Hash/Eq only). Each witness names a modeled method invoke whose receiver evidence links to a type parameter declared on the enclosing Arrow domain, never from signature/field type occurrence alone. Producer: v2.compiler.trait_bound_witness.required_trait_bound_witnesses_for_fn_decl. Consumer (Phase 3, deferred): trait_derive_emit arm (a) → emit_fn_def via witness list; v1_generic_params_needing_clone_bound dissolves on that flip."
+
+fn trait_bound_witness_type_param(witness: TraitBoundWitness) -> Symbol {
+  match witness {
+    FnTypeParamBoundClone { type_param: sym, site: _ } => sym
+  }
+}
+
 type TargetRepresentationChoice {
   form: TargetRepresentation
   constraints: List<RequiredTraitWitness>

@@ -1,0 +1,359 @@
+module v2.compiler.trait_bound_witness
+
+import v2.compiler.infer {
+  InferredTree,
+  inferred_facts_resolved_type,
+  infer_atom_binding_sym
+}
+import v2.std.algebra { Cons, Empty, any, concat }
+import v2.std.collection { List, list_at_optional, list_snoc_item }
+import v2.std.compilers.target_model {
+  FnTypeParamBoundClone,
+  TraitBoundSiteMethodInvoke,
+  TraitBoundWitness,
+  trait_bound_witness_type_param
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  NodeFold,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  fold_node,
+  node_synthetic
+}
+import v2.std.node_query {
+  arrow_domain_named_param_bindings,
+  find_arrow_body_child,
+  node_positional_child_targets
+}
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+
+data trait_bound_witness_note: String = "P-fn Phase 2 accessor (e0599): derives TraitBoundWitness rows from modeled Transform method invokes in an Arrow body plus InferredTree receiver evidence. Fail-closed: 0 matching declared type params → no witness; >1 → MethodReceiverTypeParamAmbiguous. Does not broaden RequiredTraitWitness; does not scan emitted Rust."
+
+data trait_bound_method_clone: Symbol = ^trait_bound_method_clone
+data trait_bound_method_is_empty: Symbol = ^trait_bound_method_is_empty
+data trait_bound_method_iter: Symbol = ^trait_bound_method_iter
+
+fn trait_bound_method_requires_clone_on_type_param(method: Symbol) -> Bool {
+  (method == trait_bound_method_clone)
+    || (method == trait_bound_method_is_empty)
+    || (method == trait_bound_method_iter)
+}
+
+fn trait_bound_receiver_type_param_ambiguous_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^trait_bound_receiver_type_param_ambiguous,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn trait_bound_receiver_type_evidence_missing_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^trait_bound_receiver_type_evidence_missing,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn trait_bound_transform_operator_symbol(transform: Node) -> Optional<Symbol> {
+  match list_at_optional(xs: node_positional_child_targets(node: transform), index: 0) {
+    Absent => optional_absent()
+    Present { value: op } =>
+      match op.kind {
+        TypeNode { connective: Atom { identity: sym } } => optional_present(value: sym)
+        _ => optional_absent()
+      }
+  }
+}
+
+fn trait_bound_transform_receiver_node(transform: Node) -> Optional<Node> {
+  match list_at_optional(xs: node_positional_child_targets(node: transform), index: 1) {
+    Absent => optional_absent()
+    Present { value: recv } => optional_present(value: recv)
+  }
+}
+
+fn trait_bound_type_param_symbol_in_list(sym: Symbol, params: List<Symbol>) -> Bool {
+  any(xs: params, pred: fn(p) { p == sym })
+}
+
+fn trait_bound_count_type_param_matches(sym: Symbol, params: List<Symbol>) -> Int {
+  fold(params, init: 0, f: fn(acc, p) {
+    if p == sym { acc + 1 } else { acc }
+  })
+}
+
+fn trait_bound_accept_type_param_candidate(
+  sym: Symbol,
+  params: List<Symbol>,
+  at: Node
+) -> Outcome<Symbol> {
+  let count = trait_bound_count_type_param_matches(sym: sym, params: params)
+  if count == 1 {
+    outcome_accepted(value: sym)
+  } else {
+    if count > 1 {
+      outcome_rejected(d: trait_bound_receiver_type_param_ambiguous_diagnostic(node: at))
+    } else {
+      outcome_rejected(d: trait_bound_receiver_type_evidence_missing_diagnostic(node: at))
+    }
+  }
+}
+
+fn trait_bound_optional_type_param_from_resolved(
+  resolved: Node,
+  params: List<Symbol>,
+  at: Node
+) -> Optional<Symbol> {
+  match trait_bound_atom_type_param_from_resolved(resolved: resolved, params: params, at: at) {
+    Accepted { value: sym, diagnostics: _ } => optional_present(value: sym)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn trait_bound_atom_type_param_from_resolved(
+  resolved: Node,
+  params: List<Symbol>,
+  at: Node
+) -> Outcome<Symbol> {
+  match resolved.kind {
+    TypeNode { connective: Atom { identity: sym } } =>
+      trait_bound_accept_type_param_candidate(sym: sym, params: params, at: at)
+    _ => outcome_rejected(d: trait_bound_receiver_type_evidence_missing_diagnostic(node: at))
+  }
+}
+
+fn trait_bound_peel_container_type_param(
+  resolved: Node,
+  params: List<Symbol>,
+  at: Node
+) -> Outcome<Symbol> {
+  match resolved.kind {
+    TypeNode { connective: Conj } =>
+      match fold(resolved.children, init: optional_absent(), f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            trait_bound_optional_type_param_from_resolved(
+              resolved: e.target,
+              params: params,
+              at: at
+            )
+        }
+      }) {
+        Present { value: sym } =>
+          trait_bound_accept_type_param_candidate(sym: sym, params: params, at: at)
+        Absent =>
+          outcome_rejected(d: trait_bound_receiver_type_evidence_missing_diagnostic(node: at))
+      }
+    _ =>
+      trait_bound_atom_type_param_from_resolved(resolved: resolved, params: params, at: at)
+  }
+}
+
+fn trait_bound_receiver_declared_type_param(
+  receiver: Node,
+  domain_params: List<Symbol>,
+  tree: InferredTree
+) -> Outcome<Symbol> {
+  match infer_atom_binding_sym(node: receiver) {
+    Present { value: binding } =>
+      trait_bound_accept_type_param_candidate(sym: binding, params: domain_params, at: receiver)
+    Absent =>
+      match tree.facts.lookup(receiver) {
+        Present { value: facts } =>
+          trait_bound_peel_container_type_param(
+            resolved: inferred_facts_resolved_type(facts: facts),
+            params: domain_params,
+            at: receiver
+          )
+        Absent =>
+          outcome_rejected(d: trait_bound_receiver_type_evidence_missing_diagnostic(node: receiver))
+      }
+  }
+}
+
+fn trait_bound_witness_from_transform(
+  transform: Node,
+  domain_params: List<Symbol>,
+  tree: InferredTree
+) -> Outcome<Optional<TraitBoundWitness>> {
+  match trait_bound_transform_operator_symbol(transform: transform) {
+    Absent => outcome_accepted(value: optional_absent())
+    Present { value: method } =>
+      if trait_bound_method_requires_clone_on_type_param(method: method) {
+        match trait_bound_transform_receiver_node(transform: transform) {
+          Absent => outcome_accepted(value: optional_absent())
+          Present { value: receiver } =>
+            bind_outcome(
+              o: trait_bound_receiver_declared_type_param(
+                receiver: receiver,
+                domain_params: domain_params,
+                tree: tree
+              ),
+              f: fn(type_param) {
+                outcome_accepted(
+                  value: optional_present(
+                    value: FnTypeParamBoundClone {
+                      type_param: type_param,
+                      site: TraitBoundSiteMethodInvoke {
+                        method: method,
+                        receiver: receiver
+                      }
+                    }
+                  )
+                )
+              }
+            )
+        }
+      } else {
+        outcome_accepted(value: optional_absent())
+      }
+  }
+}
+
+fn trait_bound_witness_list_contains_type_param(
+  witnesses: List<TraitBoundWitness>,
+  type_param: Symbol
+) -> Bool {
+  any(
+    xs: witnesses,
+    pred: fn(w) { trait_bound_witness_type_param(witness: w) == type_param }
+  )
+}
+
+fn trait_bound_witness_list_snoc_unique(
+  witnesses: List<TraitBoundWitness>,
+  witness: TraitBoundWitness
+) -> List<TraitBoundWitness> {
+  let sym = trait_bound_witness_type_param(witness: witness)
+  if trait_bound_witness_list_contains_type_param(witnesses: witnesses, type_param: sym) {
+    witnesses
+  } else {
+    list_snoc_item(xs: witnesses, item: witness)
+  }
+}
+
+fn trait_bound_witness_fold_step_transform(
+  acc: Outcome<List<TraitBoundWitness>>,
+  transform: Node,
+  domain_params: List<Symbol>,
+  tree: InferredTree
+) -> Outcome<List<TraitBoundWitness>> {
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: witnesses, diagnostics: d } =>
+      match trait_bound_witness_from_transform(
+        transform: transform,
+        domain_params: domain_params,
+        tree: tree
+      ) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: opt, diagnostics: _ } =>
+          match opt {
+            Absent => Accepted { value: witnesses, diagnostics: d }
+            Present { value: w } =>
+              outcome_accepted(
+                value: trait_bound_witness_list_snoc_unique(witnesses: witnesses, witness: w)
+              )
+          }
+      }
+  }
+}
+
+fn trait_bound_witnesses_from_body_node(
+  body: Node,
+  domain_params: List<Symbol>,
+  tree: InferredTree
+) -> Outcome<List<TraitBoundWitness>> {
+  fold_node(
+    n: body,
+    algebra: NodeFold {
+      init: fn(n) {
+        match n.kind {
+          ComputationNode { behavior: Transform } =>
+            trait_bound_witness_fold_step_transform(
+              acc: outcome_accepted(value: Empty),
+              transform: n,
+              domain_params: domain_params,
+              tree: tree
+            )
+          _ => outcome_accepted(value: Empty)
+        }
+      },
+      step: fn(acc, _edge, sub) {
+        match acc {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: acc_w, diagnostics: d_acc } =>
+            match sub {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: sub_w, diagnostics: _ } =>
+                outcome_accepted(value: concat(acc_w, sub_w))
+            }
+        }
+      }
+    }
+  )
+}
+
+fn required_trait_bound_witnesses_for_fn_decl(
+  arrow: Node,
+  tree: InferredTree
+) -> Outcome<List<TraitBoundWitness>> {
+  bind_outcome(
+    o: arrow_domain_named_param_bindings(arrow: arrow),
+    f: fn(domain_params) {
+      bind_outcome(
+        o: find_arrow_body_child(root: arrow),
+        f: fn(body) {
+          trait_bound_witnesses_from_body_node(
+            body: body,
+            domain_params: domain_params,
+            tree: tree
+          )
+        }
+      )
+    }
+  )
+}
+
+fn required_trait_bound_clone_type_params_for_fn_decl(
+  arrow: Node,
+  tree: InferredTree
+) -> Outcome<List<Symbol>> {
+  bind_outcome(
+    o: required_trait_bound_witnesses_for_fn_decl(arrow: arrow, tree: tree),
+    f: fn(witnesses) {
+      outcome_accepted(
+        value: fold(witnesses, init: Empty, f: fn(acc, w) {
+          let sym = trait_bound_witness_type_param(witness: w)
+          if trait_bound_type_param_symbol_in_list(sym: sym, params: acc) {
+            acc
+          } else {
+            list_snoc_item(xs: acc, item: sym)
+          }
+        })
+      )
+    }
+  )
+}
