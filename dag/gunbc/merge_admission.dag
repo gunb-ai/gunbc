@@ -170,12 +170,10 @@ type MergeAdmissionVerdict
 
 data merge_admission_enforcement_policy: AdmissionPolicy = KeyedReceipt
 
-data merge_admission_documentation_only_skipped_admit_policy: String = "Merge-admission receipt conclusion Skipped is admissible when stamped via CI_FLOOR_DISPOSITION=documentation_only_skipped — floor-not-run (docs-only shortcut), not a failed floor. Pre-wires admission before GatingEnforced so docs-only PRs are not denied by MergeDeniedNotSuccess."
-
 fn check_conclusion_admits_merge_admission_floor(c: CheckConclusion) -> Bool {
   match c {
     Success => true
-    Skipped => true
+    Skipped => false
     ActionRequired => false
     Cancelled => false
     Failure => false

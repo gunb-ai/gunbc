@@ -36,7 +36,6 @@ import gunbc.merge_admission_produce {
   ci_repo_root_shell,
 }
 import v2.workflow.ci_merge_admission_emit {
-  ci_floor_disposition_marker_init_script,
   ci_floor_stamp_merge_admission_script,
 }
 import v2.workflow.ci_regen_rustfmt_path_emit {
@@ -338,7 +337,7 @@ fn join_slash(parts: List<String>) -> String {
   fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
 }
 
-data ci_documentation_only_floor_shortcut_retired_note: String = "REMOVED 2026-07-21 (gunbc#7023 / proud-cat-517): the documentation_only_skip shell shortcut exited before claim_executor, bypassing the witness corpus entirely on docs-only PRs. That bypassed the existing ReadsLiveTree never-predict-skip lane — doc_reachability_witness_test.dag already declared ReadsLiveTree since #6654, but the shell never reached selection. Docs-only PRs now run the normal floor (SelectionApplied): import-closure skips non-live-tree witnesses cheaply; ReadsLiveTree rows (doc-graph wall, corpus-read host-fed lenses) always run. compile_clean_floor_skip_witness remains for dag_compile_clean_scope disposition only — it no longer gates floor admission."
+data ci_documentation_only_floor_shortcut_retired_note: String = "REMOVED 2026-07-21 (gunbc#7023 / proud-cat-517): the documentation_only_skip shell shortcut exited before claim_executor, bypassing the witness corpus entirely on docs-only PRs. That bypassed the existing ReadsLiveTree never-predict-skip lane — doc_reachability_witness_test.dag already declared ReadsLiveTree since #6654, but the shell never reached selection. Docs-only PRs now run the normal floor (SelectionApplied): import-closure skips non-live-tree witnesses cheaply; ReadsLiveTree rows (doc-graph wall, corpus-read host-fed lenses) always run. The isolated pre-executor skip-label binary and its unreachable persistent disposition transport retired afterward; compile-clean docs-universe scoping remains independently exercised on the live floor path."
 
 fn ci_merge_base_diff_range(policy: DiffPolicy) -> String {
   match policy.mode {
@@ -381,11 +380,8 @@ fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
         concat(git_fetch_script(policy: spec.diff_policy), "\n")
       ),
       concat(
-        concat(ci_floor_disposition_marker_init_script(), "\n"),
-        concat(
-          concat("set +e\n", concat(scheduler_invoke(spec: spec), "\n")),
-          ci_floor_stamp_merge_admission_script()
-        )
+        concat("set +e\n", concat(scheduler_invoke(spec: spec), "\n")),
+        ci_floor_stamp_merge_admission_script()
       )
     )
   )
@@ -516,4 +512,3 @@ fn ci_heal_shell_lines() -> List<String> {
 fn gunbc_ci_heal_commit_push_script() -> String {
   fold(ci_heal_shell_lines(), init: "", f: fn(acc, line) { concat(acc, concat(line, "\n")) })
 }
-
