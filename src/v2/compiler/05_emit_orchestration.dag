@@ -796,7 +796,6 @@ fn orch_emit_step(s: PipelineStep, medium: OrchestrationEmitMedium) -> Outcome<e
   }
 }
 
-<<<<<<< HEAD
 data orch_retry_outer_log_var: String = "BUILD_LOG"
 
 data orch_retry_nested_log_var: String = "RETRY_LOG"
@@ -817,6 +816,10 @@ fn orch_emit_retry_require_log_source(
 fn orch_retry_step_run(s: PipelineStep) -> Outcome<Run> {
   match s {
     Do { run: r } => outcome_accepted(r)
+    Comment { text: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    Exit { status: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
     If { cond: _, then_: _, else_: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
     For { binder: _, over: _, body: _ } =>
@@ -834,37 +837,9 @@ fn orch_retry_step_run(s: PipelineStep) -> Outcome<Run> {
   }
 }
 
-data orch_retry_body_command_note: String = "orch_retry_body_command returns Outcome<Run>: multi-step bodies refuse (^orch_emit_retry_body_multi_step); empty/non-Do refuse (^orch_emit_retry_body_not_run); a single Do returns the Run intact so orch_emit_retry_run can refuse Present redirect/capture rather than silently dropping them. Tee/redirect semantics for retry live in the bash retry templates, not on the body Run."
+data orch_retry_body_command_note: String = "orch_retry_body_command returns Outcome<Run>: multi-step bodies refuse (^orch_emit_retry_body_multi_step); empty/non-Do (incl. Comment/Exit) refuse (^orch_emit_retry_body_not_run); a single Do returns the Run intact so orch_emit_retry_run can refuse Present redirect/capture (^orch_emit_retry_redirect_present / ^orch_emit_retry_capture_present) rather than silently dropping them. Tee/redirect semantics for retry live in the bash retry templates, not on the body Run. Supersedes the Optional<String> Absent conflation interim from PR2a."
 
 fn orch_retry_body_command(body: Pipeline) -> Outcome<Run> {
-=======
-fn orch_retry_step_command(s: PipelineStep) -> Optional<String> {
-  match s {
-    Do { run: r } =>
-      match r.redirect {
-        Absent =>
-          match r.capture {
-            Absent => Present { value: r.command }
-            Present { value: _ } => Absent
-          }
-        Present { value: _ } => Absent
-      }
-    Comment { text: _ } => Absent
-    Exit { status: _ } => Absent
-    If { cond: _, then_: _, else_: _ } => Absent
-    For { binder: _, over: _, body: _ } => Absent
-    While { cond: _, body: _ } => Absent
-    BoundedPoll { max_attempts: _, body: _, success: _ } => Absent
-    Retry { body: _, escalations: _, on_exhausted: _ } => Absent
-    Let { name: _, value: _ } => Absent
-    Call { callee: _, args: _ } => Absent
-  }
-}
-
-data orch_retry_body_command_absent_conflation_note: String = "orch_retry_body_command collapses three distinct Absents into one Optional, and orch_emit_retry maps that single Absent to ^orch_emit_retry_body_not_run: (a) empty pipeline (HeadAbsent), (b) head step is not a Do (Comment/Exit/If/For/…), (c) head is a Do that carries Present redirect or capture. State-space conflation — the reason misnames (a)/(c) and would pollute a per-cause tally. 🟡 dissolve-on: replace Optional<String> with a typed RetryBodyExtract sum (EmptyBody | NonDoHead | RedirectOrCapturePresent | Command\{spelling\}) and refuse with per-cause reasons; until then one Absent remains the fail-closed interim."
-
-fn orch_retry_body_command(body: Pipeline) -> Optional<String> {
->>>>>>> origin/main
   match list_head(xs: body.steps) {
     HeadAbsent =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
