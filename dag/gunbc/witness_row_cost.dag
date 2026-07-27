@@ -3,9 +3,15 @@ module gunbc.witness_row_cost
 import std.logic { Bool }
 import std.nat { Nat }
 import std.types { NonEmptyStr, List, Int }
-import std.measure { Millisecond, millisecond, millisecond_count }
+import std.measure {
+  Nanosecond,
+  nanosecond,
+  nanosecond_count,
+  Millisecond,
+  millisecond,
+  millisecond_count,
+}
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.observation {
   ObservationEvent,
   ObservationSubject,
@@ -37,11 +43,13 @@ import std.observation {
   Concluded,
   ObservationOutcome,
   Done,
+  Refused,
+  Failed,
 }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 
-data witness_row_cost_spine_note: String = "Per-witness cost receipts (placement workstream #5 spine). THE RECORD is std.observation.ObservationEvent (progress-observation-design §2/§3c) — not a TSV schema and not WitnessTimingRow. Production shape is N+1 per entry: exactly ONE entry resolve-phase Concluded event (entry-level/shared resolve wall) plus one declaration-grain Concluded event per witness (eval wall + actual outcome; Refused distinct from Failed). RSS is MeasuredUnavailable with an explicit cause. The TSV is a COMPLETE join projection of that stream (every joined row retained); warm_ms is derived as eval+resolve at projection time. The resolve column repeats the observed full entry resolve for each child — never divided across witnesses and never summed N times into a corpus total. W2 filters the SAME events via AttentionLevel/ObservationDensity (Ambient may suppress a render line while the complete receipt still retains the row). Basis values MUST cite an arm64 srv-fleet run id (never local x86). A row with no dated basis is BasisAbsent. Drift is falsifier-cadence counted, not merge-refusing. Millisecond only at the event/projection boundary. Executing consumers: dag/test/claim/witness_row_cost_drift_witness_test.dag and dag/test/claim/witness_row_cost_projection_witness_test.dag."
+data witness_row_cost_spine_note: String = "Per-witness cost receipts (placement workstream #5 spine). THE RECORD is std.observation.ObservationEvent (progress-observation-design §2/§3c) — not a TSV schema and not WitnessTimingRow. Production shape is N+1 per entry: exactly ONE entry resolve-phase Concluded event (entry-level/shared resolve wall) plus one declaration-grain Concluded event per witness (eval wall + actual outcome; Refused distinct from Failed). RSS is MeasuredUnavailable with an explicit cause. The canonical event and joined receipt retain exact Nanosecond eval, resolve, and warm values; histogram, ordering, and attribution consume those exact values. The TSV/drift/placement wires are named Millisecond presentation and policy boundaries and may floor only there. The resolve column repeats the observed full entry resolve for each child — never divided across witnesses and never summed N times into a corpus total. W2 filters the SAME events via AttentionLevel/ObservationDensity (Ambient may suppress a render line while the complete receipt still retains the row). Basis values MUST cite an arm64 srv-fleet run id (never local x86). A row with no dated basis is BasisAbsent. Drift is falsifier-cadence counted, not merge-refusing. Executing consumers: dag/test/claim/witness_row_cost_drift_witness_test.dag and dag/test/claim/witness_row_cost_projection_witness_test.dag."
 
 data witness_row_cost_basis_host_class_note: String = "Every signed basis row names host_class=srv_fleet_arm64 (the same idiom as gunbc_ci_floor_batch_clamp_note's 1000ms coefficient basis). When the fleet or governor width moves, basis rows re-sign from a new cited run — never a local measurement."
 
@@ -49,28 +57,7 @@ data placement_workstream_task_20_open_unknown_note: String = "TASK #20 — REOP
 
 data expectation_frontier_burn_down_lane_note: String = "TRACKED LANE (not this PR's scope): the expectation frontier is measurable but unshrunk — 340 service-op call sites, 16 annotated, 67 undeclared dispatches on generated_artifact_drift_test alone (expectation_declaration_frontier_note). The three A2 annotations in this PR (VerifyBuildArtifacts, chmod, shell.Exec.Run read-back) are the first deliberate shrink sites; the burn-down continues as its own lane with the [expectation-frontier] receipt as the progress oracle."
 
-data witness_timing_row_seed_view_disposition: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "std.observation",
-    decl_name: "ObservationEvent",
-    field: WholeDeclaration
-  }
-}
-
-data witness_timing_row_seed_view_dissolve_trigger: String = "🟡 dissolve-on: WitnessTimingRow + compute_witness_timing_rows + entry_resolve_nanos_by_entry in src/v1/stage0/src/cli_run.rs (HAND-Rust materialized view of project_witness_cost_receipt). DISSOLVES WHEN seed emits N+1 ObservationEvent values per entry (or host bridge equivalent) and receipt/drift consume project_witness_cost_receipt as sole authority — then those Rust decls DELETE. Lane=placement-workstream-#5-per-row-cost; ROADMAP row=5-dissolve-patches."
-
-data witness_timing_row_hand_rust_receipt_plan_anchor: String = "docs/plans/progress-observation-design.md#interim-witness-timing-row-scaffold"
-
-data witness_timing_row_hand_rust_deferral: String = "EXPLICIT DEFERRAL (hand-Rust gate / review 43361): lane=placement-workstream-#5-per-row-cost; ROADMAP row=5-dissolve-patches. Seed retains WitnessTimingRow/compute_witness_timing_rows/entry_resolve_nanos_by_entry until ObservationEvent production lands in the seed; not a census shrink. Deleted-scaffold path: those three decls delete when dissolve_trigger fires."
-
-data witness_timing_row_hand_rust_scaffold_deletion: String = "Deleted-scaffold path: WitnessTimingRow struct + compute_witness_timing_rows + entry_resolve_nanos_by_entry (+ witness_timing_rows_refuse_duplicate_entry_resolve unit) delete when dissolve_trigger fires; rg WitnessTimingRow src/v1/stage0 == 0 is the deletion receipt."
-
-data witness_timing_row_hand_rust_loc_delta_net: Int = 42
-
-data witness_timing_row_hand_rust_test_discriminator: String = "witness_timing_rows_refuse_duplicate_entry_resolve"
-
-data witness_timing_row_seed_view_note: String = "WitnessTimingRow in cli_run.rs is a seed MATERIALIZED VIEW of the ObservationEvent join projection only (Scaffold bound above) — not a lockstep authority type and not the #5 record. total_nanos is derived. Hand-Rust receipts: dissolve_trigger, deferral (lane + ROADMAP 5-dissolve-patches), scaffold_deletion, loc_delta_net, test_discriminator, plan_anchor — see progress-observation-design.md#interim-witness-timing-row-scaffold. Nanos may remain internal seed units; Millisecond conversion is at the event boundary."
+data witness_cost_native_production_note: String = "The former hand-Rust timing-row materialized view dissolved when its trigger fired: production now constructs the canonical N+1 ObservationEvent stream through the authored constructors below and executes project_witness_cost_receipt. The accepted WitnessCostProjection is the sole semantic row input to TSV, drift, slowest attribution, and histogram consumers. The seed bridge transports only occurrence facts it already measured (entry, declaration identity, outcome, duration); role classification, parent/child joining, duplicate detection, warm derivation, and refusal all remain here."
 
 data witness_cost_transition_extract_note: String = "ObservationTransition is read only through witness_cost_concluded_outcome (Optional extract). reusable Begin|Step|Concluded-to-Bool predicates are dissolved (review 43351). Event role (entry resolve parent vs declaration witness) is witness_cost_event_role — a typed Optional<WitnessCostEventRole> extract, not is_* Bool nicknames (review 43409 dissolves the review 43383/43399 Bool-filter Scaffold). Subject segment fields are read through std.observation observation_subject_entry_path / observation_subject_declaration / observation_subject_phase_name / observation_subject_module_path (canonical accessors; review 43361/43409) — no local ObservationSegment walkers."
 
@@ -110,8 +97,8 @@ fn witness_row_cost_verdict(
   }
 }
 
-fn witness_cost_warm(eval: Millisecond, resolve: Millisecond) -> Millisecond {
-  millisecond(count: millisecond_count(m: eval) + millisecond_count(m: resolve))
+fn witness_cost_warm(eval: Nanosecond, resolve: Nanosecond) -> Nanosecond {
+  nanosecond(count: nanosecond_count(n: eval) + nanosecond_count(n: resolve))
 }
 
 fn witness_cost_subject_entry(subject: ObservationSubject) -> Optional<NonEmptyStr> {
@@ -122,7 +109,7 @@ fn witness_cost_subject_declaration(subject: ObservationSubject) -> Optional<Dec
   observation_subject_declaration(subject: subject)
 }
 
-fn witness_cost_measured_wall(wall: Measured<Millisecond>) -> Optional<Millisecond> {
+fn witness_cost_measured_wall(wall: Measured<Nanosecond>) -> Optional<Nanosecond> {
   match wall {
     MeasuredValue { value: v } => Present { value: v }
     MeasuredUnavailable { cause: _ } => Absent
@@ -198,10 +185,37 @@ fn witness_cost_count_resolve_for_entry(events: List<ObservationEvent>, entry: N
   )
 }
 
+fn witness_cost_count_declaration_for_entry(
+  events: List<ObservationEvent>,
+  entry: NonEmptyStr,
+  declaration: DeclarationRef,
+) -> Nat {
+  fold(events, init: 0, f: (acc, event) =>
+    match witness_cost_event_role(event: event) {
+      Present { value: DeclarationWitness } =>
+        match witness_cost_subject_entry(subject: event.subject) {
+          Present { value: p } =>
+            match witness_cost_subject_declaration(subject: event.subject) {
+              Present { value: d } =>
+                if p == entry && d == declaration {
+                  acc + 1
+                } else {
+                  acc
+                }
+              Absent => acc
+            }
+          Absent => acc
+        }
+      Present { value: EntryResolveParent } => acc
+      Absent => acc
+    }
+  )
+}
+
 fn witness_cost_unique_resolve_wall(
   events: List<ObservationEvent>,
   entry: NonEmptyStr,
-) -> Optional<Millisecond> {
+) -> Optional<Nanosecond> {
   if witness_cost_count_resolve_for_entry(events: events, entry: entry) == 1 {
     fold(events, init: Absent, f: (acc, event) =>
       match witness_cost_event_role(event: event) {
@@ -227,9 +241,9 @@ fn witness_cost_unique_resolve_wall(
 type WitnessCostReceiptRow {
   entry: NonEmptyStr
   declaration: DeclarationRef
-  eval: Millisecond
-  resolve: Millisecond
-  warm: Millisecond
+  eval: Nanosecond
+  resolve: Nanosecond
+  warm: Nanosecond
   outcome: ObservationOutcome
 }
 
@@ -275,24 +289,34 @@ fn witness_cost_project_one_witness(
                       cause: "declaration-grain witness missing DeclarationSegment" as NonEmptyStr
                     }
                   Present { value: decl } =>
-                    match witness_cost_concluded_outcome(event: event) {
-                      Absent =>
-                        WitnessCostProjectionRefused {
-                          cause: "declaration-grain witness is not Concluded" as NonEmptyStr
-                        }
-                      Present { value: outcome } =>
-                        WitnessCostProjectionComplete {
-                          rows: [
-                            WitnessCostReceiptRow {
-                              entry: entry,
-                              declaration: decl,
-                              eval: eval,
-                              resolve: resolve,
-                              warm: witness_cost_warm(eval: eval, resolve: resolve),
-                              outcome: outcome
-                            }
-                          ]
-                        }
+                    if witness_cost_count_declaration_for_entry(
+                      events: events,
+                      entry: entry,
+                      declaration: decl
+                    ) != 1 {
+                      WitnessCostProjectionRefused {
+                        cause: "duplicate declaration witness identity for entry (refuse; never silently duplicate/overwrite)" as NonEmptyStr
+                      }
+                    } else {
+                      match witness_cost_concluded_outcome(event: event) {
+                        Absent =>
+                          WitnessCostProjectionRefused {
+                            cause: "declaration-grain witness is not Concluded" as NonEmptyStr
+                          }
+                        Present { value: outcome } =>
+                          WitnessCostProjectionComplete {
+                            rows: [
+                              WitnessCostReceiptRow {
+                                entry: entry,
+                                declaration: decl,
+                                eval: eval,
+                                resolve: resolve,
+                                warm: witness_cost_warm(eval: eval, resolve: resolve),
+                                outcome: outcome
+                              }
+                            ]
+                          }
+                      }
                     }
                 }
             }
@@ -356,7 +380,10 @@ fn project_witness_cost_receipt(events: List<ObservationEvent>) -> WitnessCostPr
               left: acc,
               right: witness_cost_check_unique_resolve_parent(events: events, event: event)
             )
-          Absent => acc
+          Absent =>
+            WitnessCostProjectionRefused {
+              cause: "malformed or non-concluded witness timing event (refuse; never drop)" as NonEmptyStr
+            }
         }
     }
   )
@@ -368,7 +395,7 @@ fn witness_cost_rss_unavailable_cause() -> NonEmptyStr {
 
 fn witness_cost_entry_resolve_event(
   entry: NonEmptyStr,
-  resolve: Millisecond,
+  resolve: Nanosecond,
 ) -> ObservationEvent {
   ObservationEvent {
     subject: ObservationSubject {
@@ -386,7 +413,7 @@ fn witness_cost_entry_resolve_event(
 fn witness_cost_nested_resolve_under_declaration_event(
   entry: NonEmptyStr,
   declaration: DeclarationRef,
-  resolve: Millisecond,
+  resolve: Nanosecond,
 ) -> ObservationEvent {
   ObservationEvent {
     subject: ObservationSubject {
@@ -405,7 +432,7 @@ fn witness_cost_nested_resolve_under_declaration_event(
 fn witness_cost_module_resolve_event(
   entry: NonEmptyStr,
   module_path: NonEmptyStr,
-  resolve: Millisecond,
+  resolve: Nanosecond,
 ) -> ObservationEvent {
   ObservationEvent {
     subject: ObservationSubject {
@@ -424,7 +451,7 @@ fn witness_cost_module_resolve_event(
 fn witness_cost_declaration_event(
   entry: NonEmptyStr,
   declaration: DeclarationRef,
-  eval: Millisecond,
+  eval: Nanosecond,
   outcome: ObservationOutcome,
 ) -> ObservationEvent {
   ObservationEvent {
@@ -438,4 +465,59 @@ fn witness_cost_declaration_event(
     wall: MeasuredValue { value: eval },
     rss: MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
   }
+}
+
+fn witness_cost_seed_declaration(
+  module_path: NonEmptyStr,
+  function: NonEmptyStr,
+) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path,
+    decl_name: function,
+    field: WholeDeclaration
+  }
+}
+
+fn witness_cost_seed_done_event(
+  entry: NonEmptyStr,
+  module_path: NonEmptyStr,
+  function: NonEmptyStr,
+  eval: Nanosecond,
+) -> ObservationEvent {
+  witness_cost_declaration_event(
+    entry: entry,
+    declaration: witness_cost_seed_declaration(module_path: module_path, function: function),
+    eval: eval,
+    outcome: Done
+  )
+}
+
+fn witness_cost_seed_refused_event(
+  entry: NonEmptyStr,
+  module_path: NonEmptyStr,
+  function: NonEmptyStr,
+  eval: Nanosecond,
+  diagnostic: NonEmptyStr,
+) -> ObservationEvent {
+  witness_cost_declaration_event(
+    entry: entry,
+    declaration: witness_cost_seed_declaration(module_path: module_path, function: function),
+    eval: eval,
+    outcome: Refused { diagnostic: diagnostic }
+  )
+}
+
+fn witness_cost_seed_failed_event(
+  entry: NonEmptyStr,
+  module_path: NonEmptyStr,
+  function: NonEmptyStr,
+  eval: Nanosecond,
+  error: NonEmptyStr,
+) -> ObservationEvent {
+  witness_cost_declaration_event(
+    entry: entry,
+    declaration: witness_cost_seed_declaration(module_path: module_path, function: function),
+    eval: eval,
+    outcome: Failed { error: error, output: "" }
+  )
 }
