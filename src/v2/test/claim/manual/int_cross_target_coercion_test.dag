@@ -140,26 +140,11 @@ test data witness_cross_target_python_to_rust_i32_rejects: Bool = match run_test
   Deferred { actual: _, diagnostic: _ } => false
 }
 
-fn cross_target_witness_claim_input(ok: Bool) -> Node {
-  if ok {
-    python_int_inhabitant_node()
-  } else {
-    rust_inhabitant_i32_node()
-  }
-}
 
 data claim_int_cross_target_coercion_module_compiles: TestClaim = CompilesClaim {
   label: "manual/int_cross_target: cross-target coercion safety anchors compile",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: python_int_inhabitant_node(),
-  expected_value: python_int_inhabitant_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_cross_target_python_to_rust_i32_rejects_compiles: TestClaim = CompilesClaim {
-  label: "manual/int_cross_target: python int -> rust i32 coercion_fold rejects coercion_mismatch_no_target",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: cross_target_witness_claim_input(ok: witness_cross_target_python_to_rust_i32_rejects),
   expected_value: python_int_inhabitant_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
@@ -214,21 +199,6 @@ test fn witness_cross_target_rust_i32_to_python_int_accepts() -> Bool {
   }
 }
 
-fn cross_target_widening_witness_claim_input(ok: Bool) -> Node {
-  if ok {
-    rust_inhabitant_i32_node()
-  } else {
-    python_int_inhabitant_node()
-  }
-}
-
-data claim_cross_target_rust_i32_to_python_int_accepts: TestClaim = CompilesClaim {
-  label: "manual/int_cross_target: rust i32 -> python int coercion_fold_refinement_widening accepts Widened",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: cross_target_widening_witness_claim_input(ok: witness_cross_target_rust_i32_to_python_int_accepts()),
-  expected_value: python_int_inhabitant_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
 
 fn cross_target_python_to_rust_i32_narrowing_fold() -> Outcome<CoercionResult> {
   bind_outcome(

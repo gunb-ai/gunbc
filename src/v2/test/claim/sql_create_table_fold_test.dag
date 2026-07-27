@@ -115,7 +115,7 @@ fn sql_fold_pk_operation() -> SqlSchemaOperation {
   SqlCreateTable { table: sql_fold_tasks_pk_table }
 }
 
-fn sql_fold_relation_row_single_col_witness_holds() -> Bool {
+test fn sql_fold_relation_row_single_col_witness_holds() -> Bool {
   let op = sql_fold_single_col_operation()
   match sql_fold_schema_operation_bundle_witness(op: op) {
     Holds { value: bundle } =>
@@ -130,15 +130,15 @@ fn sql_fold_relation_row_single_col_witness_holds() -> Bool {
   }
 }
 
-fn sql_fold_create_table_single_col_holds() -> Bool {
+test fn sql_fold_create_table_single_col_holds() -> Bool {
   sql_fold_fold_matches_oracle(op: sql_fold_single_col_operation())
 }
 
-fn sql_fold_create_table_two_col_holds() -> Bool {
+test fn sql_fold_create_table_two_col_holds() -> Bool {
   sql_fold_fold_matches_oracle(op: sql_fold_two_col_operation())
 }
 
-fn sql_fold_create_table_with_pk_holds() -> Bool {
+test fn sql_fold_create_table_with_pk_holds() -> Bool {
   sql_fold_fold_matches_oracle(op: sql_fold_pk_operation())
 }
 
@@ -170,7 +170,7 @@ fn sql_fold_direct_serialize_single_col_holds() -> Bool {
   }
 }
 
-fn sql_fold_wrong_production_rejects_oracle_holds() -> Bool {
+test fn sql_fold_wrong_production_rejects_oracle_holds() -> Bool {
   let op = sql_fold_single_col_operation()
   match sql_fold_schema_operation_bundle_witness(op: op) {
     Holds { value: bundle } =>
@@ -185,7 +185,7 @@ fn sql_fold_wrong_production_rejects_oracle_holds() -> Bool {
   }
 }
 
-fn sql_fold_emitted_tree_differs_on_two_col_fixture_holds() -> Bool {
+test fn sql_fold_emitted_tree_differs_on_two_col_fixture_holds() -> Bool {
   match sql_fold_operation_emitted_witness(op: sql_fold_single_col_operation()) {
     Holds { value: single } =>
       match sql_fold_operation_emitted_witness(op: sql_fold_two_col_operation()) {
@@ -196,7 +196,7 @@ fn sql_fold_emitted_tree_differs_on_two_col_fixture_holds() -> Bool {
   }
 }
 
-fn sql_fold_oracle_rejects_unsupported_drop_table_holds() -> Bool {
+test fn sql_fold_oracle_rejects_unsupported_drop_table_holds() -> Bool {
   match sql_serialize_schema_operation(
     op: SqlDropTable { table_name: SqlRegularIdentifier { name: "t" } }
   ) {
@@ -205,7 +205,7 @@ fn sql_fold_oracle_rejects_unsupported_drop_table_holds() -> Bool {
   }
 }
 
-fn sql_fold_oracle_rejects_parameterized_numeric_type_holds() -> Bool {
+test fn sql_fold_oracle_rejects_parameterized_numeric_type_holds() -> Bool {
   match sql_serialize_data_type(
     dt: SqlTypeNumeric {
       precision: NonZeroNat { prev: Zero },
@@ -217,7 +217,7 @@ fn sql_fold_oracle_rejects_parameterized_numeric_type_holds() -> Bool {
   }
 }
 
-fn sql_fold_two_col_uses_recursive_list_production_holds() -> Bool {
+test fn sql_fold_two_col_uses_recursive_list_production_holds() -> Bool {
   match sql_fold_column_list_uses_recursive_list_production_witness(
     cols: sql_fold_tasks_two_col_table.columns
   ) {
@@ -227,7 +227,7 @@ fn sql_fold_two_col_uses_recursive_list_production_holds() -> Bool {
   }
 }
 
-fn sql_fold_single_col_uses_leaf_list_production_holds() -> Bool {
+test fn sql_fold_single_col_uses_leaf_list_production_holds() -> Bool {
   match sql_fold_column_list_uses_recursive_list_production_witness(
     cols: sql_fold_tasks_single_col_table.columns
   ) {
@@ -235,22 +235,6 @@ fn sql_fold_single_col_uses_leaf_list_production_holds() -> Bool {
     Holds { value: true } => false
     Violates { diagnostic: _ } => false
   }
-}
-
-test fn sql_fold_structural_tier_holds() -> Bool {
-  sql_fold_relation_row_single_col_witness_holds()
-  && sql_fold_emitted_tree_differs_on_two_col_fixture_holds()
-  && sql_fold_wrong_production_rejects_oracle_holds()
-  && sql_fold_oracle_rejects_unsupported_drop_table_holds()
-  && sql_fold_oracle_rejects_parameterized_numeric_type_holds()
-  && sql_fold_two_col_uses_recursive_list_production_holds()
-  && sql_fold_single_col_uses_leaf_list_production_holds()
-}
-
-test fn sql_fold_create_table_tier_holds() -> Bool {
-  sql_fold_create_table_single_col_holds()
-  && sql_fold_create_table_two_col_holds()
-  && sql_fold_create_table_with_pk_holds()
 }
 
 test fn sql_fold_direct_serialize_tier_holds() -> Bool {

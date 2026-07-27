@@ -73,42 +73,35 @@ data corpus_ci_gate_row_typescript_same_language_source_emit_round_trip: ClaimWi
 data corpus_ci_gate_row_add_arrow_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "add arrow eval by execution keystone",
   entry: "src/v2/test/claim/execution/add_arrow_eval_by_execution_test.dag",
-  function: "add_arrow_eval_by_execution_keystone_holds",
+  function: "",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_pick_ingested_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
-  label: "pick ingested if_expr Branch eval keystone (1/2)",
+  label: "pick ingested if_expr Branch eval (file-grain)",
   entry: "src/v2/test/claim/execution/pick_ingested_structural_lowering_test.dag",
-  function: "pick_ingested_equals_eval_keystone_holds",
-  expected: ExpectPass
-}
-
-data corpus_ci_gate_row_pick2_ingested_eval_generality: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
-  label: "pick2 ingested if_expr Branch eval generality (3/4)",
-  entry: "src/v2/test/claim/execution/pick_ingested_structural_lowering_test.dag",
-  function: "pick2_ingested_equals_eval_generality_holds",
+  function: "",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_branch_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "branch eval by execution keystone",
   entry: "src/v2/test/claim/execution/branch_eval_by_execution_test.dag",
-  function: "branch_eval_by_execution_keystone_holds",
+  function: "",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_branch_if_then_else_round_trip_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "branch if then else emit ingest round trip",
-  entry: "src/v2/test/claim/manual/branch_if_then_else_round_trip_test.dag",
-  function: "branch_if_then_else_round_trip_keystone_holds",
+  entry: "src/v2/test/claim/execution/branch_if_then_else_round_trip_test.dag",
+  function: "",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_branch_if_then_else_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "branch if then else emit keystone",
   entry: "src/v2/test/claim/manual/branch_if_then_else_emit_test.dag",
-  function: "branch_if_then_else_emit_keystone_holds",
+  function: "",
   expected: ExpectPass
 }
 
@@ -122,14 +115,14 @@ data corpus_ci_gate_row_bind_eval_keystone: ClaimWitnessCorpusClaimRunRow = Clai
 data corpus_ci_gate_row_bind_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "bind emit keystone",
   entry: "src/v2/test/claim/manual/bind_emit_test.dag",
-  function: "bind_emit_keystone_holds",
+  function: "",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_bind_round_trip_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "bind emit ingest round trip",
-  entry: "src/v2/test/claim/manual/bind_round_trip_test.dag",
-  function: "bind_round_trip_keystone_holds",
+  entry: "src/v2/test/claim/execution/bind_round_trip_test.dag",
+  function: "",
   expected: ExpectPass
 }
 
@@ -143,35 +136,35 @@ data corpus_ci_gate_row_loop_eval_keystone: ClaimWitnessCorpusClaimRunRow = Clai
 data corpus_ci_gate_row_loop_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "loop emit keystone",
   entry: "src/v2/test/claim/manual/loop_emit_test.dag",
-  function: "loop_emit_keystone_holds",
+  function: "",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_loop_round_trip_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "loop emit ingest round trip",
-  entry: "src/v2/test/claim/manual/loop_round_trip_test.dag",
-  function: "loop_round_trip_keystone_holds",
+  entry: "src/v2/test/claim/execution/loop_round_trip_test.dag",
+  function: "",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_bind_demand_driven_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "bind demand driven eval keystone",
   entry: "src/v2/test/claim/manual/bind_demand_driven_eval_test.dag",
-  function: "bind_demand_driven_eval_keystone_holds",
+  function: "",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_loop_demand_driven_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "loop demand driven eval keystone",
   entry: "src/v2/test/claim/manual/loop_demand_driven_eval_test.dag",
-  function: "loop_demand_driven_eval_keystone_holds",
+  function: "",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_lazy_arm_eval_acceptance_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "lazy arm eval acceptance keystone",
   entry: "src/v2/test/claim/manual/branch_lazy_arm_eval_acceptance_test.dag",
-  function: "lazy_arm_eval_acceptance_keystone_holds",
+  function: "",
   expected: ExpectPass
 }
 
@@ -401,7 +394,7 @@ data corpus_ci_gate_row_filesystem_write_keystone: ClaimWitnessCorpusClaimRunRow
 
 data corpus_ci_gate_row_gunbhub_react_browse_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "gunbhub react browse page serialize keystone",
-  entry: "dag/test/claim/gunbhub_react_browse_witness.dag",
+  entry: "dag/test/claim/gunbhub_react_browse_witness_test.dag",
   function: "gunbhub_browse_keystone_holds",
   expected: ExpectPass
 }
@@ -524,7 +517,6 @@ data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_english_emit_ingest_round_trip,
   corpus_ci_gate_row_add_arrow_eval_keystone,
   corpus_ci_gate_row_pick_ingested_eval_keystone,
-  corpus_ci_gate_row_pick2_ingested_eval_generality,
   corpus_ci_gate_row_branch_eval_keystone,
   corpus_ci_gate_row_branch_if_then_else_round_trip_keystone,
   corpus_ci_gate_row_branch_if_then_else_emit_keystone,

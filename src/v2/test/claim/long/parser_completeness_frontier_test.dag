@@ -1,6 +1,5 @@
 module v2.test.long.parser_completeness_frontier
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data parser_frontier_module_artifact: Artifact = Artifact {
@@ -127,19 +126,3 @@ test fn parser_frontier_logic_untyped_single_param_fn_holds() -> Bool {
   parser_frontier_assemble_accepts(src: src_logic_untyped_single_param_fn)
 }
 
-test fn parser_completeness_frontier_all_holds() -> Bool {
-  parser_frontier_parse_module_header_holds()
-    && parser_frontier_parse_type_decl_holds()
-    && parser_frontier_parse_fn_simple_body_holds()
-    && parser_frontier_parse_single_arm_match_holds()
-    && parser_frontier_infer_single_arm_module_holds()
-    && parser_frontier_parse_multi_arm_match_holds()
-    && parser_frontier_logic_empty_record_type_holds()
-    && parser_frontier_logic_record_type_fields_holds()
-    && parser_frontier_logic_data_nested_ctor_holds()
-    && parser_frontier_logic_let_discard_holds()
-    && parser_frontier_logic_generic_data_holds()
-    && parser_frontier_logic_inline_fn_multi_arm_holds()
-    && parser_frontier_logic_nested_rec_fn_holds()
-    && parser_frontier_logic_untyped_single_param_fn_holds()
-}

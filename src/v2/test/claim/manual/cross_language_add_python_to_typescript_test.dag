@@ -92,14 +92,7 @@ test fn parse_tree_to_target_model_bridge_realized() -> Bool {
   }
 }
 
-fn parse_tree_to_target_model_bridge_fails_closed() -> Bool {
-  match parse_tree_to_target_model_bridge_scaffold() {
-    Violates { diagnostic: d } => d.reason == ^parse_tree_to_target_model_bridge_not_realized
-    Holds { value: _ } => false
-  }
-}
-
-fn cross_language_emit_inhabitant_neutralization_fails_closed() -> Bool {
+test fn cross_language_emit_inhabitant_neutralization_fails_closed() -> Bool {
   match infer(tree: python_emitted_add_fn_node()) {
     Accepted { value: inferred, diagnostics: _ } =>
       match emit(tree: inferred, target: ts_target_model()) {
@@ -110,7 +103,7 @@ fn cross_language_emit_inhabitant_neutralization_fails_closed() -> Bool {
   }
 }
 
-fn cross_language_emit_inhabitant_neutralization_holds() -> Bool {
+test fn cross_language_emit_inhabitant_neutralization_holds() -> Bool {
   match neutralize_core_for_target(
     core: python_emitted_add_fn_node(),
     target: ts_target_model()
@@ -128,7 +121,7 @@ fn cross_language_emit_inhabitant_neutralization_holds() -> Bool {
   }
 }
 
-fn cross_language_add_python_to_typescript_chain_status_holds() -> Bool {
+test fn cross_language_add_python_to_typescript_chain_status_holds() -> Bool {
 
   match python_grammar_parse_fixture() {
     Accepted { value: python_parse_tree, diagnostics: _ } =>
@@ -156,20 +149,6 @@ fn cross_language_compile_on_real_tree_holds(parse_tree: ParseTree) -> Bool {
   ) {
     Accepted { value: ts_source, diagnostics: _ } =>
       string_is_empty(s: ts_source.carried) == false
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn cross_language_chain_discriminates_on_real_tree() -> Bool {
-  match python_grammar_parse_fixture() {
-    Accepted { value: python_parse_tree, diagnostics: _ } =>
-      match parse_tree_to_emitted_node(
-        parse_tree: python_parse_tree,
-        source_model: ts_target_model()
-      ) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
-      }
     Rejected { diagnostics: _ } => false
   }
 }
@@ -206,26 +185,4 @@ data cross_language_emit_matrix: List<CrossLanguageEmitMatrixRow> = [
   }
 ]
 
-fn cross_language_bridge_realized_input(ok: Bool) -> Symbol {
-  if ok {
-    ^cross_language_bridge_realized
-  } else {
-    ^cross_language_bridge_not_realized
-  }
-}
 
-data claim_cross_language_add_python_to_typescript_module_compiles: TestClaim = CompilesClaim {
-  label: "manual/cross_language: python->ts add-slice end-to-end matrix claim compiles",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: atom_node(s: ^ingest_bridge_hermetic_fixture_parse_tree),
-  expected_value: atom_node(s: ^ingest_bridge_hermetic_fixture_parse_tree),
-  classification: TestClassification { tier: Tier1, layer: Integration }
-}
-
-data claim_cross_language_parse_tree_bridge_realized: TestClaim = CompilesClaim {
-  label: "manual/cross_language: ParseTree->TargetModel bridge realized (#4801) — typed check Holds (was fail-closed)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: cross_language_bridge_realized_input(ok: parse_tree_to_target_model_bridge_realized()),
-  expected_value: atom_node(s: ^cross_language_bridge_realized),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}

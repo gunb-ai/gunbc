@@ -49,13 +49,6 @@ fn gi_live_slice() -> List<DependencyView> {
   ]
 }
 
-fn gi_live_projection() -> GraphReachProjection {
-  GraphReachProjection {
-    edges: gi_live_slice(),
-    roots: [gi_out()]
-  }
-}
-
 test fn graph_reaches_live_slice() -> Bool {
   graph_reaches(dependence: gi_live_slice(), from: gi_out(), to: gi_input())
 }

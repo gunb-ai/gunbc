@@ -38,33 +38,6 @@ fn export_fingerprint_for_gate(module_path: NonEmptyStr) -> ContentHash? {
   }
 }
 
-fn firewall_body_v1_fingerprint_receipt() -> String {
-  match export_fingerprint_for_gate(
-    module_path: "v2.test.fixture.interface_summary.firewall_body_v1"
-  ) {
-    Present { value: fp } => fp
-    Absent => "absent"
-  }
-}
-
-fn firewall_body_v2_fingerprint_receipt() -> String {
-  match export_fingerprint_for_gate(
-    module_path: "v2.test.fixture.interface_summary.firewall_body_v2"
-  ) {
-    Present { value: fp } => fp
-    Absent => "absent"
-  }
-}
-
-fn firewall_sig_variant_fingerprint_receipt() -> String {
-  match export_fingerprint_for_gate(
-    module_path: "v2.test.fixture.interface_summary.firewall_sig_variant"
-  ) {
-    Present { value: fp } => fp
-    Absent => "absent"
-  }
-}
-
 fn body_only_edit_preserves_export_fingerprint() -> Bool {
   let v1 = export_fingerprint_for_gate(
     module_path: "v2.test.fixture.interface_summary.firewall_body_v1"

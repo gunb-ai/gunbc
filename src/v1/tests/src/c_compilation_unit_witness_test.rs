@@ -3,7 +3,7 @@ use v1_compiler::cli_run::{make_eval_context, resolve_entry_graph, run_claim, Cl
 use v1_compiler::v1_interpreter::ExecutionMode;
 
 #[test]
-fn c_compilation_unit_witnesses_green_by_execution() {
+fn c_compilation_unit_leaf_witness_green_by_execution() {
     let roots = vec![
         workspace_root()
             .join("src/v2")
@@ -17,10 +17,11 @@ fn c_compilation_unit_witnesses_green_by_execution() {
         .into_owned();
     let (graph, si) = resolve_entry_graph(&roots, &entry).expect("resolve c witness entry");
     let ctx = make_eval_context(&graph, si, ExecutionMode::Hermetic);
-    let outcome = run_claim(&ctx, "c_compilation_unit_witnesses");
+    // Umbrella `c_compilation_unit_witnesses` dissolved; pin one surviving leaf.
+    let outcome = run_claim(&ctx, "witness_r3_header_source_object_paths");
     assert!(
         matches!(outcome, ClaimOutcome::Pass),
-        "c_compilation_unit_witnesses must pass by execution, got {:?}",
+        "witness_r3_header_source_object_paths must pass by execution, got {:?}",
         outcome
     );
 }

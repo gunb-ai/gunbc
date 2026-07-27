@@ -1,6 +1,5 @@
 module v2.test.long.dag_compile_clean_scope_sigma_test
 
-
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data corpus_scope_subject_path: String = "dag/tools/dag_compile_clean_scope.dag"
@@ -23,27 +22,8 @@ fn corpus_subject_trees() -> List<Node> {
   }
 }
 
-fn corpus_scope_parse_accepted() -> Bool {
+test fn corpus_scope_parse_accepted() -> Bool {
   length(xs: corpus_subject_trees()) == 1
-}
-
-fn corpus_scope_sigma_family_count() -> Int {
-  fold_list(
-    xs: corpus_subject_trees(),
-    empty: 0,
-    cons: fn(acc, tree) { acc + module_sigma_family_count(tree: tree) }
-  )
-}
-
-fn corpus_scope_largest_family_size() -> Int {
-  fold_list(
-    xs: corpus_subject_trees(),
-    empty: 0,
-    cons: fn(acc, tree) {
-      let m = module_largest_family_member_count(tree: tree)
-      if m > acc { m } else { acc }
-    }
-  )
 }
 
 test fn corpus_scope_has_no_sigma_families() -> Bool {
@@ -54,34 +34,6 @@ test fn corpus_scope_has_no_sigma_families() -> Bool {
     cons: fn(acc, tree) { acc + module_sigma_family_count(tree: tree) }
   )
   (length(xs: trees) == 1) && (family_total == 0)
-}
-
-fn no_ordinals() -> List<Int> {
-  []
-}
-
-fn corpus_scope_family_ordinals() -> List<Int> {
-  fold_list(
-    xs: corpus_subject_trees(),
-    empty: no_ordinals(),
-    cons: fn(acc, tree) { collect_family_ordinals(acc: acc, tree: tree) }
-  )
-}
-
-fn collect_family_ordinals(acc: List<Int>, tree: Node) -> List<Int> {
-  fold_list(
-    xs: module_sigma_families(tree: tree),
-    empty: acc,
-    cons: fn(a2, f) { append_family_row(a2: a2, f: f) }
-  )
-}
-
-fn append_family_row(a2: List<Int>, f: FnFamilyFinding) -> List<Int> {
-  fold_list(
-    xs: f.member_ordinals,
-    empty: list_snoc_item(xs: list_snoc_item(xs: a2, item: 0 - 1), item: f.member_count),
-    cons: fn(x, o) { list_snoc_item(xs: x, item: o) }
-  )
 }
 
 data planted_family_fixture_path: String = "src/v2/test/fixture/fn_family/planted_family.dag"

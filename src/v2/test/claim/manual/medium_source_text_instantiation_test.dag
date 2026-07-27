@@ -1,6 +1,5 @@
 module v2.test.manual.medium_source_text_instantiation
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data medium_source_fixture_text: String = "module medium.source\nfn add(x:Int, y:Int) -> Int { x + y }"
@@ -22,27 +21,22 @@ fn medium_source_read_witness() -> DagSourceReadWitness {
   }
 }
 
-fn medium_source_carried_matches_fixture() -> Bool {
+test fn medium_source_carried_matches_fixture() -> Bool {
   let m = medium_source_lossless()
   m.carried == medium_source_fixture_text
 }
 
-fn medium_source_fidelity_is_lossless() -> Bool {
+test fn medium_source_fidelity_is_lossless() -> Bool {
   match medium_source_lossless().fidelity {
     Lossless => true
     Lossy => false
   }
 }
 
-fn witness_source_field_is_medium() -> Bool {
+test fn witness_source_field_is_medium() -> Bool {
   match medium_source_read_witness().source.fidelity {
     Lossless => medium_source_read_witness().source.carried == medium_source_fixture_text
     Lossy => false
   }
 }
 
-test fn medium_source_text_instantiation_holds() -> Bool {
-  medium_source_carried_matches_fixture()
-    && medium_source_fidelity_is_lossless()
-    && witness_source_field_is_medium()
-}

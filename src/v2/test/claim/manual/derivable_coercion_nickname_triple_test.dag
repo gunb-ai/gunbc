@@ -82,10 +82,6 @@ fn find_witness_sibling_accepts(source: Node, target: Node, rule: Symbol) -> Boo
   }
 }
 
-fn find_witness_sibling_rejects(source: Node, target: Node, rule: Symbol) -> Bool {
-  !find_witness_sibling_accepts(source: source, target: target, rule: rule)
-}
-
 fn find_witness_dispatch_accepts(source: Node, target: Node) -> Bool {
   match find_witness_derives(
     source_facts: source,
@@ -142,27 +138,6 @@ fn find_witness_dispatch_faithful_for_siblings() -> Bool {
     && witness_dispatch_api_to_wire_accepts
     && witness_dispatch_db_to_wire_accepts
     && !witness_dispatch_api_to_account_id_accepts
-}
-
-fn preservation_rule_faithful_for_siblings(rule: Symbol) -> Bool {
-  if rule == ^preservation_rule_exact_structural_equality_zip_fold {
-    witness_matrix_exact_api_to_db_accepts
-      && witness_matrix_exact_api_to_wire_accepts
-      && witness_matrix_exact_db_to_wire_accepts
-      && !witness_matrix_exact_api_to_account_id_accepts
-  } else if rule == ^preservation_rule_refinement_widening {
-    witness_matrix_widening_api_to_db_accepts
-      && witness_matrix_widening_api_to_wire_accepts
-      && witness_matrix_widening_db_to_wire_accepts
-      && !witness_matrix_widening_api_to_account_id_accepts
-  } else if rule == ^preservation_rule_constraint_satisfaction {
-    witness_matrix_constraint_api_to_db_accepts
-      && witness_matrix_constraint_api_to_wire_accepts
-      && witness_matrix_constraint_db_to_wire_accepts
-      && !witness_matrix_constraint_api_to_account_id_accepts
-  } else {
-    false
-  }
 }
 
 data witness_crux_substrate_gap: Bool = !find_witness_dispatch_faithful_for_siblings()
@@ -229,7 +204,7 @@ test data witness_claim_crux_substrate_gap: Bool = match run_test_claim_assert(
   Deferred { actual: _, diagnostic: _ } => false
 }
 
-data witness_claim_matrix_widening_accepts_siblings_and_wrong_core: Bool = match run_test_claim_assert(
+test data witness_claim_matrix_widening_accepts_siblings_and_wrong_core: Bool = match run_test_claim_assert(
   claim: claim_matrix_widening_accepts_siblings_and_wrong_core,
   actual: Accepted { value: derivable_coercion_pass_node(), diagnostics: None },
   at: task_id_api_inhabitant_node()

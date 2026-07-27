@@ -130,7 +130,7 @@ test fn edit_locus_fail_closed_holds() -> Bool {
   }
 }
 
-fn edit_locus_affected_set_wire_holds() -> Bool {
+test fn edit_locus_affected_set_wire_holds() -> Bool {
   match affected_set_reading_from_git_diff(
     edit_read: edit_locus_fixture_read,
     graph: affected_set_claim_tree(),
@@ -145,7 +145,7 @@ fn edit_locus_affected_set_wire_holds() -> Bool {
   }
 }
 
-fn edit_locus_affected_set_wire_fail_closed_holds() -> Bool {
+test fn edit_locus_affected_set_wire_fail_closed_holds() -> Bool {
   match affected_set_reading_from_git_diff(
     edit_read: edit_locus_fixture_read,
     graph: affected_set_claim_tree(),
@@ -287,3 +287,4 @@ data unified_claim_edit_locus_narrow: UnifiedTestClaim = BoolWitnessClaim {
     function: edit_locus_narrow_resolution_holds
   }
 }
+

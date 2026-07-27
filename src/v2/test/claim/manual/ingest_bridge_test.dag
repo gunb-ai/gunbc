@@ -172,7 +172,7 @@ fn ingest_fixture_model_ambiguous(emitted: Node, spine_class: Symbol) -> TargetM
   ingest_fixture_model_from_bundle(bundle: ingest_fixture_bundle_with_rules(rules: rules))
 }
 
-fn ingest_recovers_emitted_holds() -> Bool {
+test fn ingest_recovers_emitted_holds() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
@@ -187,7 +187,7 @@ fn ingest_recovers_emitted_holds() -> Bool {
   }
 }
 
-fn ingest_bridge_to_canonical_holds() -> Bool {
+test fn ingest_bridge_to_canonical_holds() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_target_model_bridge(
@@ -202,7 +202,7 @@ fn ingest_bridge_to_canonical_holds() -> Bool {
   }
 }
 
-fn ingest_fails_closed_off_frontier_holds() -> Bool {
+test fn ingest_fails_closed_off_frontier_holds() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
@@ -216,7 +216,7 @@ fn ingest_fails_closed_off_frontier_holds() -> Bool {
   }
 }
 
-fn ingest_fails_closed_ambiguous_holds() -> Bool {
+test fn ingest_fails_closed_ambiguous_holds() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
@@ -238,7 +238,7 @@ fn ingest_unstamped_node() -> Node {
 }
 }
 
-fn ingest_fails_closed_on_unstamped_holds() -> Bool {
+test fn ingest_fails_closed_on_unstamped_holds() -> Bool {
   match parse_tree_to_emitted_node(
     parse_tree: ingest_unstamped_node(),
     source_model: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
@@ -248,7 +248,7 @@ fn ingest_fails_closed_on_unstamped_holds() -> Bool {
   }
 }
 
-fn ingest_cross_language_compile_holds() -> Bool {
+test fn ingest_cross_language_compile_holds() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
       match cross_language_compile(
@@ -273,22 +273,4 @@ test fn ingest_bridge_realized() -> Bool {
     && ingest_cross_language_compile_holds()
 }
 
-fn ingest_bridge_realized_input(ok: Bool) -> Symbol {
-  if ok { ^ingest_bridge_realized } else { ^ingest_bridge_not_realized }
-}
 
-data claim_ingest_bridge_module_compiles: TestClaim = CompilesClaim {
-  label: "manual/ingest_bridge: forward interpreter bridge claim compiles",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: atom_node(s: ^ingest_fixture_start),
-  expected_value: atom_node(s: ^ingest_fixture_start),
-  classification: TestClassification { tier: Tier1, layer: Integration }
-}
-
-data claim_ingest_bridge_realized: TestClaim = CompilesClaim {
-  label: "manual/ingest_bridge: ParseTree frontier -> forward-selected emit-side core node -> canonical IR by execution (Option A; row-driven, fail-closed, forward-deterministic)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: ingest_bridge_realized_input(ok: ingest_bridge_realized()),
-  expected_value: atom_node(s: ^ingest_bridge_realized),
-  classification: TestClassification { tier: Tier1, layer: Integration }
-}

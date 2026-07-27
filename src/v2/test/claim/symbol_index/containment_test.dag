@@ -1,20 +1,6 @@
 module v2.test.claim.symbol_index.containment
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-fn si_qn_node(seg: Symbol) -> Node {
-  fold_list_node(
-    xs: Cons { head: seg, tail: Empty },
-    item_node: fn(sym) {
-      Node {
-        kind: TypeNode { connective: Atom { identity: sym } },
-        children: [],
-        occurrence_id: SyntheticOccurrence
-      }
-    }
-  )
-}
 
 fn si_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
   fold_list_node(
