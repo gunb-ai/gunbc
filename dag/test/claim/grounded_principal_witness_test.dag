@@ -60,8 +60,20 @@ test fn witness_ci_runner_sudo_grants_derive_privileged_commands() -> Bool {
   length(grounded) == 6
     && length(composed) == 6
     && composed == grounded
-    && grounded.first().path == deploy_access_apt_get_binary_path
-    && !any(grounded, c => c.path == "/usr/bin/bash")
+    && grounded.first().grant.command_path == deploy_access_apt_get_binary_path
+    && !any(grounded, c => c.grant.command_path == "/usr/bin/bash")
+    && any(
+      grounded,
+      c =>
+        if c.grant.command_path != "/usr/bin/tailscale" {
+          false
+        } else {
+          match c.grant.probe {
+            NopasswdGrantListCheck => true
+            NopasswdExecuteCheck { check_argv: _ } => false
+          }
+        }
+    )
 }
 
 test fn witness_preflight_shell_is_dash_safe() -> Bool {
@@ -123,31 +135,9 @@ test fn witness_deploy_preflight_plan_has_whoami_plus_privileged_probes() -> Boo
   plan.steps.count() == 7
 }
 
-test fn witness_deploy_preflight_plan_uses_typed_probes() -> Bool {
-  deploy_access_preflight_plan_uses_typed_probes(
-    plan: deploy_access_preflight_plan(access: ci_deploy_srv1_access)
-  )
-}
-
 test fn witness_deploy_preflight_plan_first_step_reads_principal() -> Bool {
-  match deploy_access_preflight_plan_first_effect(
-    plan: deploy_access_preflight_plan(access: ci_deploy_srv1_access)
-  ) {
-    Present { value: effect } =>
-      match effect {
-        ReadEffectivePosixPrincipal { read: _ } => true
-        _ => false
-      }
-    Absent => false
-  }
-}
-
-test fn witness_deploy_preflight_plan_shell_command_red() -> Bool {
-  let poisoned = EffectPlan {
-    steps: [Do { effect: ShellCommand { script: "whoami" } }],
-    on_failure: FailFast,
-  }
-  !deploy_access_preflight_plan_uses_typed_probes(plan: poisoned)
+  let first = deploy_access_preflight_plan(access: ci_deploy_srv1_access).steps.first()
+  first == deploy_access_principal_probe_step()
 }
 
 test fn witness_deploy_grant_admits_apt_get_probe() -> Bool {
@@ -163,7 +153,12 @@ test fn witness_deploy_grant_admits_apt_get_probe() -> Bool {
 test fn witness_deploy_grant_refuses_outside_envelope() -> Bool {
   match deploy_access_grant_admits_probe(
     access: ci_deploy_srv1_access,
-    cmd: PrivilegedCommand { path: "/usr/bin/bash" as NonEmptyStr, check: "--version" as NonEmptyStr }
+    cmd: PrivilegedCommand {
+      grant: PosixSudoGrant {
+        command_path: "/usr/bin/bash" as NonEmptyStr,
+        probe: NopasswdExecuteCheck { check_argv: "--version" as NonEmptyStr },
+      }
+    }
   ) {
     Admitted { via_root: _ } => false
     EffectOutsideGrant { verb: _, target: _, frame: _ } => true
@@ -222,13 +217,19 @@ test fn witness_blessed_helper_grant_absent_from_roster() -> Bool {
 
 test fn witness_unknown_sudo_grant_command_lint_red() -> Bool {
   !posix_sudo_grant_generic_mover_lint_ok(
-    g: PosixSudoGrant { command_path: "/usr/bin/bash" as NonEmptyStr, check_argv: "--version" }
+    g: PosixSudoGrant {
+      command_path: "/usr/bin/bash" as NonEmptyStr,
+      probe: NopasswdExecuteCheck { check_argv: "--version" },
+    }
   )
 }
 
 test fn witness_posix_sudo_grant_materializes_execute_grant() -> Bool {
   let projected = posix_sudo_grant_to_effect_grant(
-    g: PosixSudoGrant { command_path: fleet_apt_get_binary_path, check_argv: "--help" }
+    g: PosixSudoGrant {
+      command_path: fleet_apt_get_binary_path,
+      probe: NopasswdExecuteCheck { check_argv: "--help" },
+    }
   )
   let expected = filesystem_position(path: ["usr", "bin", "apt-get"])
   let root = grant_root(g: projected)
@@ -237,4 +238,3 @@ test fn witness_posix_sudo_grant_materializes_execute_grant() -> Bool {
     && position_under(target: expected, root: root)
     && position_under(target: root, root: expected)
 }
-

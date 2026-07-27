@@ -56,9 +56,7 @@ import gunbc.ci_deploy_access {
   DeployAccessReady,
   DeployAccessJobPrincipalRefused,
   deploy_access_job_principal_refused_emit_poison,
-  deploy_access_preflight_pass_message,
 }
-import gunbc.ci_deploy_access_emit { deploy_access_emit_bootstrap_preflight_steps }
 import gunbc.ci_deploy_sudoers { deploy_sudoers_install_shell }
 
 data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
@@ -244,7 +242,7 @@ fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
   }
 }
 
-data emit_deploy_principal_note: String = "The deploy principal on srv1 is the UNPRIVILEGED CI-runner account — DeployRunnerPrincipal.job_user grounds on gunbc.fleet_posix_accounts FleetAccountCiRunner (ghrunner, uid 1001); unit_user=root is NOT the authorization principal. Exactly the six NOPASSWD sudo grants that fleet_posix_ci_runner_sudo_grants() enumerates (apt-get, install, visudo, systemctl, tailscale, rm) — NOT root, and no blessed-helper grant (#7011 realization). The prior note here claimed ROOT from a hand ssh verification (parent lane 2026-07-20) that CONTRADICTED the repo's own single authority (fleet_posix_accounts, probed 2026-07-02) — a DESIGN 3 fork of the principal fact — and reality sided with the authority: the first flip deploy (run 29822498755, 2026-07-21) died on bare-rsync EACCES/chgrp-EPERM into the service-user-owned tree. The corrected realization stays INSIDE the granted set: directories and the binary install with -o/-g service-user via the granted install (ownership at creation, never a chown fixup — the root-writes-then-chown two-step is dissolved, the wrongly-owned intermediate state unwritable); the tree sync runs AS the service user through gunbc-tree-sync.service (a oneshot unit, User=service-user, installed and started via the granted install+systemctl — the owner writes its own tree); teardown rm goes through the granted rm. Wave C envelope (this PR): deploy-access preflight + roster-emitted /etc/sudoers.d/gunbc-deploy (visudo -c gated, visudo on roster) run in-script before the first mutation (deploy_apply_preamble_shell), sharing apply and retract. RESIDUE (named): emit-construction refusal of bare rsync/chown outside the granted set rides the effect-namespace-grants lane. The former install_d_shared_setup_latent_coupling marker fired as designed: /opt/gunbc now has MULTIPLE owned writers, so the shared-prefix `install -d /opt/gunbc` rides the FIRST owned writer in apply order (GunbcSourceTree) once, and each deeper parent (/opt/gunbc/bin) rides its own writer."
+data emit_deploy_principal_note: String = "The deploy principal on srv1 is the UNPRIVILEGED CI-runner account — DeployRunnerPrincipal.job_user grounds on gunbc.fleet_posix_accounts FleetAccountCiRunner (ghrunner, uid 1001); unit_user=root is NOT the authorization principal. Exactly the six NOPASSWD sudo grants that fleet_posix_ci_runner_sudo_grants() enumerates (apt-get, install, visudo, systemctl, tailscale, rm) — NOT root, and no blessed-helper grant (#7011 realization). The prior note here claimed ROOT from a hand ssh verification (parent lane 2026-07-20) that CONTRADICTED the repo's own single authority (fleet_posix_accounts, probed 2026-07-02) — a DESIGN 3 fork of the principal fact — and reality sided with the authority: the first flip deploy (run 29822498755, 2026-07-21) died on bare-rsync EACCES/chgrp-EPERM into the service-user-owned tree. The corrected realization stays INSIDE the granted set: directories and the binary install with -o/-g service-user via the granted install (ownership at creation, never a chown fixup — the root-writes-then-chown two-step is dissolved, the wrongly-owned intermediate state unwritable); the tree sync runs AS the service user through gunbc-tree-sync.service (a oneshot unit, User=service-user, installed and started via the granted install+systemctl — the owner writes its own tree); teardown rm goes through the granted rm. Deploy authorization is runtime-present: live_deploy_fold runs deploy_mutation_gate before host_effect_apply, and the gate observes ReadEffectivePosixPrincipal plus SudoNopasswdExecuteProbe / SudoNopasswdGrantListProbe through typed service-op argv transports. The roster selects grant-list verification for package-managed tailscale, whose binary may be absent before ensure. The former gunbc.ci_deploy_access_emit in-script duplicate is deleted; these committed scripts are HostReconciler projections, not standalone authorization entrypoints. Their shared preamble only installs the roster-derived /etc/sudoers.d/gunbc-deploy after the typed gate has permitted execution. RESIDUE (named): emit-construction refusal of bare rsync/chown outside the granted set rides the effect-namespace-grants lane. The former install_d_shared_setup_latent_coupling marker fired as designed: /opt/gunbc now has MULTIPLE owned writers, so the shared-prefix `install -d /opt/gunbc` rides the FIRST owned writer in apply order (GunbcSourceTree) once, and each deeper parent (/opt/gunbc/bin) rides its own writer."
 
 fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
   join([
@@ -254,13 +252,7 @@ fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
 }
 
 fn deploy_apply_preamble_steps(access: DeployAccess) -> List<PipelineStep> {
-  concat(
-    deploy_access_emit_bootstrap_preflight_steps(access: access),
-    [
-      deploy_raw(command: deploy_sudoers_install_shell(access: access)),
-      deploy_raw(command: concat("echo \"", concat(deploy_access_preflight_pass_message(access: access), "\"")))
-    ]
-  )
+  [deploy_raw(command: deploy_sudoers_install_shell(access: access))]
 }
 
 data apply_tree_split_sync_note: String = "GunbcSourceTree apply is a SPLIT sync (review 40332, DESIGN 5 — the retract-side rmdir wall alone gave false assurance): the shared repo at /opt/gunbc/gunbc accumulates target-LOCAL git state the runner checkout never has — .git/worktrees/<name> registrations for every live dispatch worktree, the session branch refs those worktrees are on, and the objects their commits wrote into the shared store — so a single rsync --delete of ./ would destroy live agent sessions on every redeploy. The working tree syncs with --delete (stale sources must not linger) but excludes /.git; .git syncs ADDITIVELY (no --delete), which keeps origin/main fresh from the runner checkout (the belt's git worktree add resolves origin/main from these remote-tracking refs — srv1 does no fetch) while never deleting worktree metadata, session refs, or their objects. Accumulation of pruned-worktree residue is the safe direction and is reaped by git itself, never by deploy. Flags are -rlpt, not -a: the sync principal is the service user (emit_deploy_principal_note), so -a's owner/group replication would chgrp toward the runner's group and fail EPERM — ownership is the destination principal's by construction, never replicated from the source."
@@ -364,7 +356,7 @@ fn apply_intent_from_effects(
         deploy_raw(command: concat("# GENERATED APPLY by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity)),
         deploy_raw(command: "# Principal: job_user=ghrunner (DeployRunnerPrincipal.job_user). unit_user=root is NOT the deploy principal."),
         deploy_raw(command: "# Mutation rides six sudo -n grants (roster incl. visudo); tree sync AS service user via gunbc-tree-sync.service."),
-        deploy_raw(command: "# Wave C envelope: deploy-access preflight + sudoers dropin emitted from roster before mutation."),
+        deploy_raw(command: "# Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; roster sudoers install precedes mutation."),
         deploy_raw(command: "_gunbc_stage=\"$(mktemp -d)\""),
         deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
       ],
@@ -393,7 +385,7 @@ fn retract_intent_from_effects(
         deploy_raw(command: "set -euo pipefail"),
         deploy_raw(command: concat("# GENERATED RETRACT by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity)),
         deploy_raw(command: "# owned-artifacts only — ensured deps (tailscale, tmux) intentionally NOT purged"),
-        deploy_raw(command: "# Wave C envelope: shared deploy_apply_preamble_shell — retract also installs/refreshes"),
+        deploy_raw(command: "# Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; retract also installs/refreshes"),
         deploy_raw(command: "# /etc/sudoers.d/gunbc-deploy (idempotent; first retract-after-flip may be the dropin install)."),
         deploy_raw(command: "# Principal: UNPRIVILEGED ci-runner. dispatch-worktrees teardown is rm -d (granted rm,"),
         deploy_raw(command: "# empty-dir only): live worktrees fail it LOUDLY — the same empty-dir refusal wall."),
