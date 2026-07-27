@@ -94,6 +94,14 @@ test fn witness_merge_perturb_does_not_flip_boxes() -> Bool {
     && !string_contains(s: flipped, pattern: "- [x] **provenance ingest live at floor runtime** (#6105)")
 }
 
+test fn witness_legend_separates_evidence_acceptance_and_supersession() -> Bool {
+  let o = out()
+  string_contains(s: o, pattern: "`[x]` checklist-closed by accepting operator sign-off or authored supersession")
+    && string_contains(s: o, pattern: "`[ ]` not accepted")
+    && string_contains(s: o, pattern: "`⏳ awaiting sign-off` implementation evidence present but acceptance absent")
+    && string_contains(s: o, pattern: "page status `done` = accepting sign-off only")
+}
+
 test fn witness_shelf_is_uncheckboxed() -> Bool {
   let o = out()
   string_contains(s: o, pattern: "- **fold-ergonomics lane** —")
