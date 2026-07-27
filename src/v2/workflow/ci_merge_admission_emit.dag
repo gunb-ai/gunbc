@@ -1,15 +1,10 @@
 module v2.workflow.ci_merge_admission_emit
 
 import gunbc.merge_admission_produce {
-  ci_floor_disposition_marker_init_shell_emit_dissolution_trigger,
-  ci_floor_disposition_marker_init_note,
-  merge_admission_floor_disposition_floor_running,
-  ci_floor_disposition_marker_path,
   ci_repo_root_shell,
   merge_admission_stamp_command,
 }
 import v2.workflow.orchestration_bash_emit_support {
-  orch_bash_comment_line,
   orch_bash_do,
   orch_bash_emit_pipeline
 }
@@ -23,54 +18,19 @@ import v2.std.orchestration {
   IntNe,
   Pipeline,
   PipelineStep,
-  Run,
-  ToFile
+  Run
 }
 import v2.std.collection { Absent, Present }
 
-data ci_merge_admission_emit_authority_note: String = "Foreign-executor shell emission for gunbc.merge_admission_produce script surfaces (bucket D). Intent stays out of dag/gunbc/merge_admission_produce; bash medium binding lives here per shell→intent routing. PR2a carriers: ToFile (stamp), Comment (comment lines), ExitStatus (STAMP_EXIT), IntNe + Exit (floor_stamp propagate/final). PR2b residue: FileExists + batch-A surfaces 1/3. Sibling #7298 adds RedirectSpec.DiscardOut to the same orchestration/emit files — this PR lands first; #7298 must merge origin/main after and re-run goldens."
+data ci_merge_admission_emit_authority_note: String = "Foreign-executor shell emission for gunbc.merge_admission_produce script surfaces (bucket D). Intent stays out of dag/gunbc/merge_admission_produce; bash medium binding lives here per shell→intent routing. PR2a carriers: ExitStatus (STAMP_EXIT), IntNe + Exit (floor_stamp propagate/final). The former ToFile/Comment floor-disposition marker consumer retired atomically with its unreachable documentation-only readers; remaining residue is the ambient prior-exit command plus the independent stamp and gate composers."
 
 data ci_merge_admission_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ merge-admission run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
-
-data ci_floor_disposition_marker_mkdir_command: String = "mkdir -p target"
-
-data ci_floor_disposition_stamp_echo_command: String = concat("echo ", merge_admission_floor_disposition_floor_running)
-
-fn ci_floor_disposition_marker_stamp_step() -> PipelineStep {
-  Do {
-    run: Run {
-      command: ci_floor_disposition_stamp_echo_command,
-      env: [],
-      redirect: Present { value: ToFile { path: ci_floor_disposition_marker_path } },
-      capture: Absent
-    }
-  }
-}
-
-fn ci_floor_disposition_marker_init_intent() -> Pipeline {
-  Pipeline {
-    steps: [
-      orch_bash_comment_line(text: ci_floor_disposition_marker_init_shell_emit_dissolution_trigger),
-      orch_bash_comment_line(text: ci_floor_disposition_marker_init_note),
-      orch_bash_do(command: ci_floor_disposition_marker_mkdir_command),
-      ci_floor_disposition_marker_stamp_step()
-    ],
-    on_failure: FailFast
-  }
-}
-
-fn ci_floor_disposition_marker_init_script() -> String {
-  orch_bash_emit_pipeline(
-    p: ci_floor_disposition_marker_init_intent(),
-    refused_poison: ci_merge_admission_emit_refused_poison
-  )
-}
 
 data ci_floor_stamp_ambient_exit_command: String = "FLOOR_EXIT=$?"
 
 data ci_floor_stamp_root_command: String = concat("ROOT=", ci_repo_root_shell())
 
-data ci_floor_stamp_pr2b_residue_note: String = "DECLARED SCAFFOLD remaining after PR2a IntNe/Exit expansion: ambient FLOOR_EXIT=$? stays constant opaque Run.command (prior-command capture outside this Pipeline — not CaptureSpec-on-Run). FileExists Predicate + batch-A surfaces (ci_documentation_only_gate_skip_prefix / gate) stay PR2b. 🟡 dissolve-on: typed ambient-prior-exit carrier and FileExists + batch-A emit."
+data ci_floor_stamp_pr2b_residue_note: String = "DECLARED SCAFFOLD remaining after PR2a IntNe/Exit expansion: ambient FLOOR_EXIT=$? stays constant opaque Run.command (prior-command capture outside this Pipeline — not CaptureSpec-on-Run). The unreachable documentation-only disposition reader family retired instead of gaining FileExists/typed-read models. 🟡 dissolve-on: typed ambient-prior-exit carrier and emission of the two independent merge-admission composers."
 
 fn ci_floor_stamp_propagate_floor_exit_step() -> PipelineStep {
   If {

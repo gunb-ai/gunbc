@@ -1,9 +1,6 @@
 module v2.workflow.ci_merge_admission_emit_test
 
 import v2.workflow.ci_merge_admission_emit {
-  ci_floor_disposition_marker_init_script,
-  ci_floor_disposition_marker_stamp_step,
-  ci_floor_disposition_stamp_echo_command,
   ci_floor_stamp_merge_admission_script
 }
 import v2.workflow.orchestration_bash_emit_support {
@@ -39,25 +36,24 @@ import v2.std.diagnostic { Accepted, EmitDirective, Rejected, SeverityWarning }
 
 data ci_merge_admission_emit_golden_note: String = "Hand-authored golden independent of grammar row spellings; byte test compares emit output against this literal (#6467 pattern)."
 
-data ci_floor_disposition_marker_init_golden: String = concat(
-  concat("# 🟡 dissolve-on: ci_floor_disposition_marker_init_script — concat-built bash floor step opener stamping floor_running into target/ci-floor-disposition.txt (clears stale documentation_only_skipped on persistent self-hosted runners before docs-only branch); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes floor disposition initialization through orchestration emit and the marker init retires without a transport scaffold\n"),
-  concat(
-    concat("# Positive floor-running stamp at the start of every floor step clears stale documentation_only_skipped left in target/ on persistent self-hosted runners (review 37010 / operator ruling 2026-07-11). Receipt gates skip only on an exact documentation_only_skipped match — never on file presence alone.\n"),
-    concat(
-      "mkdir -p target\n",
-      "echo floor_running > target/ci-floor-disposition.txt"
-    )
-  )
-)
+data orch_to_file_fixture_command: String = "echo receipt_ready"
+data orch_to_file_fixture_path: String = "target/orchestration-receipt.txt"
 
-test fn ci_floor_disposition_marker_init_emit_matches_golden_holds() -> Bool {
-  ci_floor_disposition_marker_init_script() == ci_floor_disposition_marker_init_golden
+data orch_to_file_redirect_golden: String = "echo receipt_ready > target/orchestration-receipt.txt"
+
+fn orch_to_file_redirect_step() -> PipelineStep {
+  Do {
+    run: Run {
+      command: orch_to_file_fixture_command,
+      env: [],
+      redirect: Present { value: ToFile { path: orch_to_file_fixture_path } },
+      capture: Absent
+    }
+  }
 }
 
-data orch_to_file_redirect_golden: String = "echo floor_running > target/ci-floor-disposition.txt"
-
 fn orch_to_file_redirect_emit() -> String {
-  match orch_emit_step(s: ci_floor_disposition_marker_stamp_step(), medium: bash_orchestration_emit_medium()) {
+  match orch_emit_step(s: orch_to_file_redirect_step(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: _ } => source.carried
     Rejected { diagnostics: _ } => "__TO_FILE_EMIT_REJECTED__"
   }
@@ -70,7 +66,7 @@ test fn orch_to_file_redirect_emit_matches_golden_holds() -> Bool {
 test fn orch_to_file_redirect_emit_red_when_path_wrong_holds() -> Bool {
   let wrong = Do {
     run: Run {
-      command: ci_floor_disposition_stamp_echo_command,
+      command: orch_to_file_fixture_command,
       env: [],
       redirect: Present { value: ToFile { path: "target/WRONG-path.txt" } },
       capture: Absent
@@ -88,7 +84,7 @@ test fn orch_to_file_path_newline_refused_holds() -> Bool {
   match orch_emit_step(
     s: Do {
       run: Run {
-        command: ci_floor_disposition_stamp_echo_command,
+        command: orch_to_file_fixture_command,
         env: [],
         redirect: Present { value: ToFile { path: "target/x.txt\nrm -rf /" } },
         capture: Absent
@@ -105,7 +101,7 @@ test fn orch_to_file_path_metachar_refused_holds() -> Bool {
   match orch_emit_step(
     s: Do {
       run: Run {
-        command: ci_floor_disposition_stamp_echo_command,
+        command: orch_to_file_fixture_command,
         env: [],
         redirect: Present { value: ToFile { path: "target/x;echo injected" } },
         capture: Absent
@@ -122,7 +118,7 @@ test fn orch_to_file_path_space_refused_holds() -> Bool {
   match orch_emit_step(
     s: Do {
       run: Run {
-        command: ci_floor_disposition_stamp_echo_command,
+        command: orch_to_file_fixture_command,
         env: [],
         redirect: Present { value: ToFile { path: "target/has space.txt" } },
         capture: Absent
@@ -283,14 +279,14 @@ test fn orch_exit_status_binder_newline_not_executable_second_line_holds() -> Bo
   }
 }
 
-data orch_to_file_then_exit_status_golden: String = "echo floor_running > target/ci-floor-disposition.txt\nSTAMP_EXIT=$?"
+data orch_to_file_then_exit_status_golden: String = "echo receipt_ready > target/orchestration-receipt.txt\nSTAMP_EXIT=$?"
 
 fn orch_to_file_then_exit_status_intent() -> PipelineStep {
   Do {
     run: Run {
-      command: ci_floor_disposition_stamp_echo_command,
+      command: orch_to_file_fixture_command,
       env: [],
-      redirect: Present { value: ToFile { path: "target/ci-floor-disposition.txt" } },
+      redirect: Present { value: ToFile { path: orch_to_file_fixture_path } },
       capture: Present { value: ExitStatus { binder: "STAMP_EXIT" } }
     }
   }
@@ -308,7 +304,7 @@ test fn orch_to_file_then_exit_status_invalid_path_refuses_whole_holds() -> Bool
   match orch_emit_step(
     s: Do {
       run: Run {
-        command: ci_floor_disposition_stamp_echo_command,
+        command: orch_to_file_fixture_command,
         env: [],
         redirect: Present { value: ToFile { path: "target/x;injected" } },
         capture: Present { value: ExitStatus { binder: "STAMP_EXIT" } }
