@@ -155,10 +155,6 @@ fn merge_admission_stamp_command() -> String {
   )
 }
 
-fn merge_admission_stamp_invoke() -> String {
-  concat(merge_admission_stamp_command(), "\n")
-}
-
 fn merge_admission_gate_invoke() -> String {
   concat(
     concat(
@@ -166,22 +162,6 @@ fn merge_admission_gate_invoke() -> String {
       " --entry dag/tools/merge_admission_gate.dag --function main"
     ),
     "\n"
-  )
-}
-
-data merge_admission_shell_emit_disposition: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.live_deploy.emit",
-    decl_name: "live_deploy_emit_shell_dissolution_trigger",
-    field: WholeDeclaration
-  }
-}
-
-fn ci_merge_admission_stamp_script() -> String {
-  concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
-    merge_admission_stamp_invoke()
   )
 }
 
