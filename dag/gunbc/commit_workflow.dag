@@ -11,7 +11,8 @@ import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GithooksPrePushArtifact, artifact_path
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
+import std.types { NonEmptyStr }
 import std.realization_schedule {
   string_list_eq, ScheduleWitnessEntry,
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq,
@@ -39,6 +40,40 @@ type CommitCheckEnrollment {
   check: CommitCheckKind
   surfaces: List<CommitWorkflowSurface>
 }
+
+type EntryDeclarationDiscovery
+  = DiscoveryComplete {
+      entry: String,
+      module_path: NonEmptyStr,
+      declarations: List<DeclarationRef>
+    }
+  | DiscoveryIncomplete { entry: String, cause: NonEmptyStr }
+
+type EnrollmentWitnessDemand {
+  check: CommitCheckKind
+  declarations: List<DeclarationRef>
+}
+
+type EnrollmentDemandOutcome
+  = DemandQualified { rows: List<EnrollmentWitnessDemand> }
+  | DemandMissing { check: CommitCheckKind, cause: NonEmptyStr }
+  | DemandAmbiguous { check: CommitCheckKind, cause: NonEmptyStr }
+  | DemandIncomplete { check: CommitCheckKind, cause: NonEmptyStr }
+
+type SingleEnrollmentDemandOutcome
+  = SingleDemandQualified { row: EnrollmentWitnessDemand }
+  | SingleDemandMissing { cause: NonEmptyStr }
+  | SingleDemandAmbiguous { cause: NonEmptyStr }
+  | SingleDemandIncomplete { cause: NonEmptyStr }
+
+type NamedDeclarationDemandOutcome
+  = NamedDeclarationsQualified { declarations: List<DeclarationRef> }
+  | NamedDeclarationMissing { cause: NonEmptyStr }
+  | NamedDeclarationAmbiguous { cause: NonEmptyStr }
+
+type DuplicateCommitCheck
+  = NoDuplicateCommitCheck
+  | DuplicateCommitCheckFound { check: CommitCheckKind }
 
 type CommitWorkflowRealizationKind
   = CiYamlHandler
@@ -777,6 +812,370 @@ fn live_roster_falsifier_witness_entries() -> List<ScheduleWitnessEntry> {
 
 fn witness_seam_eq(a: WitnessSeam, b: WitnessSeam) -> Bool {
   (a.producer == b.producer) && (a.consumer == b.consumer)
+}
+
+fn witness_seam_lists_eq(left: List<WitnessSeam>, right: List<WitnessSeam>) -> Bool {
+  if left.count() != right.count() {
+    false
+  } else if left.count() == 0 {
+    true
+  } else {
+    witness_seam_eq(a: left.first(), b: right.first())
+      && witness_seam_lists_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+  }
+}
+
+fn witness_span_eq(a: WitnessSpan, b: WitnessSpan) -> Bool {
+  match a {
+    SpanUndeclared => match b {
+      SpanUndeclared => true
+      SpanSeams { seams: _ } => false
+    }
+    SpanSeams { seams } => match b {
+      SpanUndeclared => false
+      SpanSeams { seams: other } => witness_seam_lists_eq(left: seams, right: other)
+    }
+  }
+}
+
+fn commit_check_kind_eq(a: CommitCheckKind, b: CommitCheckKind) -> Bool {
+  match a {
+    CommitSpecGate { gate } => match b {
+      CommitSpecGate { gate: other } => gate_eq(a: gate, b: other)
+      CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => false
+      CommitCargoFmtCheck => false
+    }
+    CommitWitnessClaim { entry, check_fns, kind, span } => match b {
+      CommitSpecGate { gate: _ } => false
+      CommitWitnessClaim {
+        entry: other_entry,
+        check_fns: other_fns,
+        kind: other_kind,
+        span: other_span
+      } =>
+        entry == other_entry
+          && string_list_eq(left: check_fns, right: other_fns)
+          && witness_kind_eq(a: kind, b: other_kind)
+          && witness_span_eq(a: span, b: other_span)
+      CommitCargoFmtCheck => false
+    }
+    CommitCargoFmtCheck => match b {
+      CommitSpecGate { gate: _ } => false
+      CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => false
+      CommitCargoFmtCheck => true
+    }
+  }
+}
+
+fn declaration_field_is_whole(field: DeclField) -> Bool {
+  match field {
+    WholeDeclaration => true
+    NamedField { field_name: _ } => false
+  }
+}
+
+fn declaration_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
+  a.module_path == b.module_path
+    && a.decl_name == b.decl_name
+    && declaration_field_is_whole(field: a.field)
+    && declaration_field_is_whole(field: b.field)
+}
+
+fn declaration_ref_in_list(target: DeclarationRef, declarations: List<DeclarationRef>) -> Bool {
+  fold(declarations, init: false, f: fn(acc, declaration) {
+    acc || declaration_ref_eq(a: target, b: declaration)
+  })
+}
+
+fn declaration_refs_unique(declarations: List<DeclarationRef>) -> Bool {
+  if declarations.count() == 0 {
+    true
+  } else {
+    !declaration_ref_in_list(
+      target: declarations.first(),
+      declarations: declarations.skip(n: 1)
+    ) && declaration_refs_unique(declarations: declarations.skip(n: 1))
+  }
+}
+
+fn declaration_ref_lists_eq(left: List<DeclarationRef>, right: List<DeclarationRef>) -> Bool {
+  left.count() == right.count()
+    && fold(left, init: true, f: fn(acc, declaration) {
+      acc && declaration_ref_in_list(target: declaration, declarations: right)
+    })
+    && fold(right, init: true, f: fn(acc, declaration) {
+      acc && declaration_ref_in_list(target: declaration, declarations: left)
+    })
+}
+
+fn commit_check_count(check: CommitCheckKind, roster: List<CommitCheckEnrollment>) -> Int {
+  filter(roster, row => commit_check_kind_eq(a: check, b: row.check)).count()
+}
+
+fn demand_check_count(check: CommitCheckKind, rows: List<EnrollmentWitnessDemand>) -> Int {
+  filter(rows, row => commit_check_kind_eq(a: check, b: row.check)).count()
+}
+
+fn first_duplicate_commit_check(roster: List<CommitCheckEnrollment>) -> DuplicateCommitCheck {
+  if roster.count() == 0 {
+    NoDuplicateCommitCheck
+  } else if commit_check_count(check: roster.first().check, roster: roster) > 1 {
+    DuplicateCommitCheckFound { check: roster.first().check }
+  } else {
+    first_duplicate_commit_check(roster: roster.skip(n: 1))
+  }
+}
+
+fn demand_rows_match_roster(
+  roster: List<CommitCheckEnrollment>,
+  rows: List<EnrollmentWitnessDemand>,
+) -> Bool {
+  roster.count() == rows.count()
+    && fold(roster, init: true, f: fn(acc, enrollment) {
+      acc && demand_check_count(check: enrollment.check, rows: rows) == 1
+    })
+    && fold(rows, init: true, f: fn(acc, row) {
+      acc && commit_check_count(check: row.check, roster: roster) == 1
+    })
+}
+
+fn discovery_entry(discovery: EntryDeclarationDiscovery) -> String {
+  match discovery {
+    DiscoveryComplete { entry, module_path: _, declarations: _ } => entry
+    DiscoveryIncomplete { entry, cause: _ } => entry
+  }
+}
+
+fn discoveries_for_entry(
+  entry: String,
+  discoveries: List<EntryDeclarationDiscovery>,
+) -> List<EntryDeclarationDiscovery> {
+  filter(discoveries, discovery => discovery_entry(discovery: discovery) == entry)
+}
+
+fn complete_discovery_module_count(
+  module_path: NonEmptyStr,
+  discoveries: List<EntryDeclarationDiscovery>,
+) -> Int {
+  filter(discoveries, discovery => match discovery {
+    DiscoveryComplete { entry: _, module_path: candidate, declarations: _ } =>
+      candidate == module_path
+    DiscoveryIncomplete { entry: _, cause: _ } => false
+  }).count()
+}
+
+fn discovery_declarations_well_formed(
+  module_path: NonEmptyStr,
+  declarations: List<DeclarationRef>,
+) -> Bool {
+  declarations.count() > 0
+    && declaration_refs_unique(declarations: declarations)
+    && fold(declarations, init: true, f: fn(acc, declaration) {
+      acc
+        && declaration.module_path == module_path
+        && declaration_field_is_whole(field: declaration.field)
+    })
+}
+
+fn declaration_matches_name(declaration: DeclarationRef, name: String) -> Bool {
+  (declaration.decl_name as String) == name
+}
+
+fn project_named_declaration_demands(
+  names: List<String>,
+  declarations: List<DeclarationRef>,
+) -> NamedDeclarationDemandOutcome {
+  if names.count() == 0 {
+    NamedDeclarationsQualified { declarations: [] }
+  } else {
+    let matching = filter(
+      declarations,
+      declaration => declaration_matches_name(declaration: declaration, name: names.first())
+    )
+    if matching.count() == 0 {
+      NamedDeclarationMissing {
+        cause: "named witness declaration is absent from complete discovery" as NonEmptyStr
+      }
+    } else if matching.count() > 1 {
+      NamedDeclarationAmbiguous {
+        cause: "named witness declaration has duplicate discovery identities" as NonEmptyStr
+      }
+    } else {
+      match project_named_declaration_demands(
+        names: names.skip(n: 1),
+        declarations: declarations
+      ) {
+        NamedDeclarationMissing { cause } => NamedDeclarationMissing { cause: cause }
+        NamedDeclarationAmbiguous { cause } => NamedDeclarationAmbiguous { cause: cause }
+        NamedDeclarationsQualified { declarations: rest } =>
+          let selected = concat([matching.first()], rest)
+          if declaration_refs_unique(declarations: selected) {
+            NamedDeclarationsQualified { declarations: selected }
+          } else {
+            NamedDeclarationAmbiguous {
+              cause: "named witness demand repeats one declaration identity" as NonEmptyStr
+            }
+          }
+      }
+    }
+  }
+}
+
+fn project_one_enrollment_witness_demand(
+  check: CommitCheckKind,
+  discoveries: List<EntryDeclarationDiscovery>,
+) -> SingleEnrollmentDemandOutcome {
+  match check {
+    CommitSpecGate { gate: _ } =>
+      SingleDemandQualified {
+        row: EnrollmentWitnessDemand { check: check, declarations: [] }
+      }
+    CommitCargoFmtCheck =>
+      SingleDemandQualified {
+        row: EnrollmentWitnessDemand { check: check, declarations: [] }
+      }
+    CommitWitnessClaim { entry, check_fns, kind: _, span: _ } =>
+      let matching = discoveries_for_entry(entry: entry, discoveries: discoveries)
+      if matching.count() == 0 {
+        SingleDemandMissing {
+          cause: "witness enrollment has no supplied declaration discovery" as NonEmptyStr
+        }
+      } else if matching.count() > 1 {
+        SingleDemandAmbiguous {
+          cause: "witness enrollment has duplicate discovery entries" as NonEmptyStr
+        }
+      } else {
+        match matching.first() {
+          DiscoveryIncomplete { entry: _, cause } =>
+            SingleDemandIncomplete { cause: cause }
+          DiscoveryComplete { entry: _, module_path, declarations } =>
+            if complete_discovery_module_count(
+              module_path: module_path,
+              discoveries: discoveries
+            ) > 1 {
+              SingleDemandAmbiguous {
+                cause: "complete discoveries repeat one module identity" as NonEmptyStr
+              }
+            } else if !discovery_declarations_well_formed(
+              module_path: module_path,
+              declarations: declarations
+            ) {
+              SingleDemandAmbiguous {
+                cause: "complete discovery contains invalid or duplicate declaration identities" as NonEmptyStr
+              }
+            } else if check_fns.count() == 0 {
+              SingleDemandQualified {
+                row: EnrollmentWitnessDemand {
+                  check: check,
+                  declarations: declarations
+                }
+              }
+            } else {
+              match project_named_declaration_demands(
+                names: check_fns,
+                declarations: declarations
+              ) {
+                NamedDeclarationMissing { cause } => SingleDemandMissing { cause: cause }
+                NamedDeclarationAmbiguous { cause } => SingleDemandAmbiguous { cause: cause }
+                NamedDeclarationsQualified { declarations: selected } =>
+                  SingleDemandQualified {
+                    row: EnrollmentWitnessDemand {
+                      check: check,
+                      declarations: selected
+                    }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
+fn demand_row_overlaps(
+  row: EnrollmentWitnessDemand,
+  rows: List<EnrollmentWitnessDemand>,
+) -> Bool {
+  fold(row.declarations, init: false, f: fn(overlaps, declaration) {
+    overlaps || fold(rows, init: false, f: fn(found, other) {
+      found || declaration_ref_in_list(
+        target: declaration,
+        declarations: other.declarations
+      )
+    })
+  })
+}
+
+fn project_enrollment_witness_demands_unchecked(
+  roster: List<CommitCheckEnrollment>,
+  discoveries: List<EntryDeclarationDiscovery>,
+) -> EnrollmentDemandOutcome {
+  if roster.count() == 0 {
+    DemandQualified { rows: [] }
+  } else {
+    let check = roster.first().check
+    match project_one_enrollment_witness_demand(
+      check: check,
+      discoveries: discoveries
+    ) {
+      SingleDemandMissing { cause } => DemandMissing { check: check, cause: cause }
+      SingleDemandAmbiguous { cause } => DemandAmbiguous { check: check, cause: cause }
+      SingleDemandIncomplete { cause } => DemandIncomplete { check: check, cause: cause }
+      SingleDemandQualified { row } =>
+        match project_enrollment_witness_demands_unchecked(
+          roster: roster.skip(n: 1),
+          discoveries: discoveries
+        ) {
+          DemandMissing { check: failed, cause } =>
+            DemandMissing { check: failed, cause: cause }
+          DemandAmbiguous { check: failed, cause } =>
+            DemandAmbiguous { check: failed, cause: cause }
+          DemandIncomplete { check: failed, cause } =>
+            DemandIncomplete { check: failed, cause: cause }
+          DemandQualified { rows } =>
+            if demand_row_overlaps(row: row, rows: rows) {
+              DemandAmbiguous {
+                check: check,
+                cause: "declaration identity belongs to multiple enrollment demands" as NonEmptyStr
+              }
+            } else {
+              DemandQualified { rows: concat([row], rows) }
+            }
+        }
+    }
+  }
+}
+
+fn project_enrollment_witness_demands(
+  roster: List<CommitCheckEnrollment>,
+  discoveries: List<EntryDeclarationDiscovery>,
+) -> EnrollmentDemandOutcome {
+  match first_duplicate_commit_check(roster: roster) {
+    DuplicateCommitCheckFound { check } =>
+      DemandAmbiguous {
+        check: check,
+        cause: "commit check roster contains a duplicate typed identity" as NonEmptyStr
+      }
+    NoDuplicateCommitCheck =>
+      match project_enrollment_witness_demands_unchecked(
+        roster: roster,
+        discoveries: discoveries
+      ) {
+        DemandMissing { check, cause } => DemandMissing { check: check, cause: cause }
+        DemandAmbiguous { check, cause } =>
+          DemandAmbiguous { check: check, cause: cause }
+        DemandIncomplete { check, cause } =>
+          DemandIncomplete { check: check, cause: cause }
+        DemandQualified { rows } =>
+          if demand_rows_match_roster(roster: roster, rows: rows) {
+            DemandQualified { rows: rows }
+          } else {
+            DemandIncomplete {
+              check: roster.first().check,
+              cause: "projected demand check set does not equal input roster" as NonEmptyStr
+            }
+          }
+      }
+  }
 }
 
 fn witness_seam_wellformed(seam: WitnessSeam) -> Bool {
