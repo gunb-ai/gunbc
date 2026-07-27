@@ -300,7 +300,7 @@ These are correct as shell (GHA `run:`, cron, git hooks, pre-runtime bootstrap �
 
 ### 4.F — bottom transport (Phase-3 WALL — **PARTIALLY LANDED** on the `ShellOnHost` edge, operator acceptance 2026-07-24; the `shell.Exec.Run` sink stays open)
 
-> **Trued up 2026-07-26 (`review 43486`).** This table described the wall as *pending* and directed Phase 3 to "brand `TransportScript`" across "26 sites". **The wall landed on 2026-07-24 and branding was proven ineffective by execution** — both facts were already recorded in §5.E's ruling block ~275 lines below, which superseded this table in place without updating it. A worker reading the action column would have executed superseded work. Corrected against the tree.
+> **Trued up 2026-07-26 (`review 43486`).** This table described the wall as *pending* and directed Phase 3 to "brand `TransportScript`" across "26 sites". **The `ShellOnHost` half of the wall landed on 2026-07-24 and branding was proven ineffective by execution** (the `shell.Exec.Run` sink stays open — see the row below) — both facts were already recorded in §5.E's ruling block ~275 lines below, which superseded this table in place without updating it. A worker reading the action column would have executed superseded work. Corrected against the tree.
 
 | surface | status | action |
 | --- | --- | --- |
@@ -363,7 +363,7 @@ Re-censused §4.A, §4.B and §4.D against `origin/main` @ `efe67794cd` by execu
 
 **Net:** with bucket D (§4.E/§4.I) in flight, the non-deferred remainder of this arc is **meta-exec confinement only** — coupled to the node/subtree visibility-grants lane, not independently schedulable here. Everything else open is operator-deferred srv\*.
 
-*(Corrected 2026-07-26, `review 43494`: this "Net" dispatched **`host_language_transport_script` lens promotion** as remaining §4.F work. §4.F now says explicitly **do not** promote that lens — the construction wall landed (#7184), and the lens is already **live**, deliberately green on the computed concats that were the actual fake. Same document, opposite dispatch; the wall half of "§4.F wall-green" is discharged, leaving only meta-exec confinement.)*
+*(Corrected 2026-07-26, `review 43494`: this "Net" dispatched **`host_language_transport_script` lens promotion** as remaining §4.F work. §4.F now says explicitly **do not** promote that lens — the construction wall landed (#7184) on the `ShellOnHost` edge, and the lens is already **live**, deliberately green on the computed concats that were the actual fake. Same document, opposite dispatch; the wall half of "§4.F wall-green" is discharged, leaving only meta-exec confinement.)*
 
 ### Ledger true-up @ 2026-07-25 (bucket A, calm-pike-837) — read this before the 07-22 snapshot below
 
@@ -410,7 +410,7 @@ The state of every PR in this arc, so nothing is missed if work pauses here. **A
 **Not started — the remaining arc (bounded, fully specified in §5; safe to pause):**
 
 - **§5.A** — **COMPLETE.** All four ops landed on #7194 and are verified in tree at their post-#7231 homes: `os.Hostname.ReadShort`/`Set` (`dag/extdeps/tools/hostname.dag`), `systemd.Systemctl.ListUnits` and `.Status` (`dag/extdeps/systemd/systemctl.dag:185,219`), `os.Id.Uid` (`dag/extdeps/tools/id.dag:26`). (`ssh.Session.ExecArgv` landed via C5; `Clock.Now` in `dag/extdeps/clock/clock.dag` already existed and is now the single authority for every `date -Iseconds` site.) **The finite new-op list this whole arc needed is closed** — everything remaining in §5.B is calling ops that now exist.
-- **§5.B** — the call-the-op migrations, **UNPAUSED** (the wall landed, #7184). D1/D2/D3 (#7192/#7193/#7194) and bucket A discharged the hostname, systemctl-read and clock clusters. **Updated 2026-07-26:** `live_deploy` (4.A4) and the `fleet_show`/`host_converge_slice1` systemctl cluster (4.A1) are **also done** — only the **operator-deferred srv\* cluster (4.A5, and 4.D which is inside it)** remains in §5.B. With bucket D (4.E/4.I foreign-executor emit) in flight, the non-deferred §5.B queue is **empty**.
+- **§5.B** — the call-the-op migrations, **UNPAUSED** (the `ShellOnHost` wall landed, #7184; that is what unpaused these — the `shell.Exec.Run` sink being open does not re-pause them). D1/D2/D3 (#7192/#7193/#7194) and bucket A discharged the hostname, systemctl-read and clock clusters. **Updated 2026-07-26:** `live_deploy` (4.A4) and the `fleet_show`/`host_converge_slice1` systemctl cluster (4.A1) are **also done** — only the **operator-deferred srv\* cluster (4.A5, and 4.D which is inside it)** remains in §5.B. With bucket D (4.E/4.I foreign-executor emit) in flight, the non-deferred §5.B queue is **empty**.
 - **§5.E** — the **transport-script construction wall** — **PARTIALLY LANDED #7184** (the `ShellOnHost` record edge only; the `shell.Exec.Run` sink remains open — see §5.E). Built as a `RetainedShellScript` RECORD edge + free-minter deletion + counted bridges + lens activation + compile-fail REDs (see §5.E ruling block; "brand `TransportScript`" was found non-walling because the brand is transparent). The 2026-07-24 wall-first ruling that paused §5.A/§5.B is therefore discharged.
 
 **⚠ Do-not-miss for wind-down:**
