@@ -94,6 +94,8 @@ deploy-preflight (`ci_deploy_access.dag`) is the natural first exemplar, reframe
 
 Because deploy-preflight is **runtime-present** (it runs on srv1 via `shell.Exec.Run` from inside `gunbc run`), it realizes as typed effect-plan through `host_effect_apply` — **not** bash emit. That dissolves the machinery objection: it needs no `For`/capture *emission* (both currently `outcome_rejected` in `05_emit_orchestration`), because the fold-over-commands becomes a typed map and the `whoami` comparison a typed predicate over captured values. Any inequality predicate is `Not{StrEq}` (reuse), never a minted `StrNeq`.
 
+**Current-tree correction after merged #7298:** `ci_deploy_access_emit.dag` does **not** satisfy that exemplar. It places concat-built `whoami` / `sudo -n` / `sudo -n -l` plus raw `echo` / `exit` syntax into `Run.command`; wrapping those strings in `Pipeline` is still medium-as-string, not typed effect-plan realization. The bounded corrective owner and deletion trigger live in the census §4.J; this design rule remains unchanged.
+
 This work belongs to the grant lane (silent-ibex-417) and the census/arc lane (witty-ibex-317) — it is contributed there and coordinated, not landed as a parallel plan here.
 
 ## Corrections carried out of the 2026-07-19 draft (for the record)
