@@ -94,7 +94,8 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, binding_declares_name
+  lookup_binding_by_name, binding_declares_name, type_binding_from_declaration,
+  declaration_binding_result, ambiguous_binding_candidate_labels, type_binding_from_declaration_path
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
@@ -123,7 +124,10 @@ import std.termination {
   OneStep
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect }
-import std.occurrence_binding { ContainmentPath }
+import std.occurrence_binding {
+  ContainmentPath, BindingOccurrence,
+  OccurrenceBound, OccurrenceUnbound, OccurrenceAmbiguous
+}
 import v1.compiler.infer_resolve {
   resolve_node, resolve_item_types, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl,
@@ -171,7 +175,7 @@ import v1.compiler.infer_lookup {
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
   lookup_in_scope, lookup_func_sig, func_sig_if_resolved,
-  global_bare_callable_node
+  global_bare_callable_node, resolved_func_sig_from_declaration_path
 }
 import v1.compiler.infer_access {
   AccessCheckResultNode,
@@ -226,6 +230,22 @@ type InferScope {
   service_registry: Map<String, List<OpEntry>>
   item_registry: Map<String, ItemInfo>
   lambda_param_provenance: Map<String, SubValueRelation>
+  occurrence_ancestors: List<Node>
+}
+
+fn scope_with_occurrence_parent(scope: InferScope, parent: Node) -> InferScope {
+  InferScope {
+    type_env: scope.type_env,
+    func_env: scope.func_env,
+    locals: scope.locals,
+    body_locals: scope.body_locals,
+    match_bound_names: scope.match_bound_names,
+    module_name: scope.module_name,
+    service_registry: scope.service_registry,
+    item_registry: scope.item_registry,
+    lambda_param_provenance: scope.lambda_param_provenance,
+    occurrence_ancestors: concat(scope.occurrence_ancestors, [parent])
+  }
 }
 
 type InferResult {
@@ -1269,7 +1289,8 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
-    lambda_param_provenance: empty_map()
+    lambda_param_provenance: empty_map(),
+    occurrence_ancestors: scope.occurrence_ancestors
   }
 }
 
@@ -1283,7 +1304,8 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: Sub
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
-    lambda_param_provenance: scope.lambda_param_provenance
+    lambda_param_provenance: scope.lambda_param_provenance,
+    occurrence_ancestors: scope.occurrence_ancestors
   }
 }
 
@@ -1297,7 +1319,8 @@ fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node, pro
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
-    lambda_param_provenance: scope.lambda_param_provenance
+    lambda_param_provenance: scope.lambda_param_provenance,
+    occurrence_ancestors: scope.occurrence_ancestors
   }
 }
 
@@ -1317,7 +1340,8 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
-    lambda_param_provenance: scope.lambda_param_provenance
+    lambda_param_provenance: scope.lambda_param_provenance,
+    occurrence_ancestors: scope.occurrence_ancestors
   }
 }
 
@@ -1469,7 +1493,8 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         module_name: scope.module_name,
         service_registry: scope.service_registry,
         item_registry: scope.item_registry,
-        lambda_param_provenance: prov_map
+        lambda_param_provenance: prov_map,
+        occurrence_ancestors: scope.occurrence_ancestors
       }
       let ar = infer_expr(texpr: lam_value, scope: fold_scope, expected: Present { value: fold_callable })
       ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
@@ -1489,7 +1514,8 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
           module_name: scope.module_name,
           service_registry: scope.service_registry,
           item_registry: scope.item_registry,
-          lambda_param_provenance: nf_prov_map
+          lambda_param_provenance: nf_prov_map,
+          occurrence_ancestors: scope.occurrence_ancestors
         }
       } else { scope }
       infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
@@ -1578,6 +1604,10 @@ fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) 
 }
 
 fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
+  let occurrence = BindingOccurrence {
+    containment: ContainmentPath { ancestors: scope.occurrence_ancestors, terminal: texpr }
+  }
+  let scope = scope_with_occurrence_parent(scope: scope, parent: texpr)
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
       let span = texpr.span
@@ -2690,7 +2720,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         locals: lam_scope.locals, body_locals: lam_scope.body_locals,
         match_bound_names: lam_scope.match_bound_names,
         module_name: lam_scope.module_name, service_registry: lam_scope.service_registry,
-        item_registry: lam_scope.item_registry, lambda_param_provenance: empty_map()
+        item_registry: lam_scope.item_registry, lambda_param_provenance: empty_map(),
+        occurrence_ancestors: lam_scope.occurrence_ancestors
       }
       let body_result = infer_expr(texpr: lam_body, scope: body_scope, expected: body_expected)
       let body_typed = body_result.typed
@@ -5656,6 +5687,7 @@ fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportRe
 }
 
 fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
+  let scope = scope_with_occurrence_parent(scope: scope, parent: item)
   let typed_anno = item.type_annotation
   let transport_scope = if item.params |> count > 0 {
     build_params_scope(scope: scope, params: item.params)
@@ -5796,6 +5828,35 @@ fn body_shadow_aware_func_sig(scope: InferScope, func_name: String) -> FuncSigLo
   match map_get(scope.body_locals, func_name) {
     Present { value: _ } => FuncSigUnresolved
     Absent => lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name)
+  }
+}
+
+fn declaration_func_sig_lookup(
+  scope: InferScope,
+  occurrence: BindingOccurrence<Node>,
+  func_name: String
+) -> FuncSigLookup {
+  if map_get(scope.body_locals, func_name) != none || infer_builtin_call_type(name: func_name) != none {
+    FuncSigUnresolved
+  } else {
+    match declaration_binding_result(env: scope.type_env, occurrence: occurrence, name: func_name) {
+      OccurrenceBound { binding: accepted } =>
+        match resolved_func_sig_from_declaration_path(
+          path: accepted.candidate.containment,
+          type_env: scope.type_env
+        ) {
+          Present { value: sig } => FuncSigResolved { sig: sig }
+          Absent => FuncSigUnresolved
+        }
+      OccurrenceUnbound { occurrence: _ } => FuncSigUnresolved
+      OccurrenceAmbiguous { occurrence: _, candidates: candidates } =>
+        FuncSigAmbiguous {
+          candidates: ambiguous_binding_candidate_labels(
+            candidates: candidates,
+            source_indices: scope.type_env.source_indices
+          )
+        }
+    }
   }
 }
 
@@ -6260,51 +6321,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
   if is_namespace_alias_item(item: item, source_indices: source_indices) {
     none
   } else {
-  let has_structure = item.connective != NoConnective
-  if has_structure {
-    let type_node = Node {
-      name: item.name, span: item.span, ident_span: item.ident_span, children: item.children,
-      connective: item.connective, params: item.params, inferred: none,
-      return_cardinality: item.return_cardinality,
-      uses: [], body: none, transport: none, properties: item.properties,
-      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
-    }
-    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown } }
-  } else if item.body != none && item.transport == none {
-    let fn_node = Node {
-      name: item.name, span: item.span, ident_span: item.ident_span, children: [],
-      connective: NoConnective, params: item.params, inferred: item.inferred,
-      return_cardinality: item.return_cardinality,
-      uses: [], body: none, transport: none, properties: [],
-      type_annotation: item.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
-    }
-    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: fn_node, provenance: SubValueUnknown } }
-  } else if item.inferred != none && item.params |> count == 0 && item.body == none {
-    let alias_node = Node {
-      name: item.name, span: item.span, ident_span: item.ident_span, children: [],
-      connective: NoConnective, params: [], inferred: item.inferred,
-      return_cardinality: item.return_cardinality,
-      uses: [], body: none, transport: none, properties: [],
-      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
-    }
-    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown } }
-  } else if item.transport == none && item.children |> count > 0 {
-    let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
-    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown } }
-  } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
-    let bare_node = Node {
-      name: item.name, span: item.span, ident_span: item.ident_span, children: [],
-      connective: NoConnective, params: item.params, inferred: item.inferred,
-      return_cardinality: item.return_cardinality,
-      uses: [], body: none, transport: none, properties: [],
-      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
-    }
-    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: bare_node, provenance: SubValueUnknown } }
-  } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
-    Present { value: nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)) }
-  } else {
-    none
-  }
+    type_binding_from_declaration(declaration: item, source_indices: source_indices)
   }
 }
 
@@ -6315,7 +6332,9 @@ fn symbol_index_insert_item(
   item: Node,
   source_indices: Map<String, NewlineIndex>
 ) -> SymbolIndex {
-  let with_decl = if is_namespace_alias_item(item: item, source_indices: source_indices) {
+  let is_namespace_alias = is_namespace_alias_item(item: item, source_indices: source_indices)
+  let projected = local_binding_for_item(item: item, source_indices: source_indices)
+  let with_decl = if is_namespace_alias {
     match namespace_alias_target_path(item: item, source_indices: source_indices) {
       Absent => index
       Present { value: target_path } =>
@@ -6334,7 +6353,7 @@ fn symbol_index_insert_item(
         }
     }
   } else {
-    match local_binding_for_item(item: item, source_indices: source_indices) {
+    match projected {
       Absent => index
       Present { value: binding } =>
         symbol_index_insert_decl(
@@ -6345,12 +6364,14 @@ fn symbol_index_insert_item(
     }
   }
   let declaration_name = authored_name_at(source_indices: source_indices, node: item)
-  let with_path = symbol_index_insert_declaration_path(
-    index: with_decl,
-    module_path: module_path,
-    declaration_name: declaration_name,
-    path: ContainmentPath { ancestors: [module], terminal: item }
-  )
+  let with_path = if is_namespace_alias || projected != none {
+    symbol_index_insert_declaration_path(
+      index: with_decl,
+      module_path: module_path,
+      declaration_name: declaration_name,
+      path: ContainmentPath { ancestors: [module], terminal: item }
+    )
+  } else { with_decl }
   if item.transport != none && item.children |> count > 0 {
     symbol_index_insert_service(
       index: with_path,
@@ -6715,7 +6736,14 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
       Absent => acc
     }
   )
-  SymbolIndex { entries: entries2, global_bare: global2, services: services2 }
+  SymbolIndex {
+    entries: entries2,
+    global_bare: global2,
+    services: services2,
+    declaration_entries: index.declaration_entries,
+    declaration_bare: index.declaration_bare,
+    module_roots: index.module_roots
+  }
 }
 
 fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
@@ -6753,18 +6781,51 @@ fn symbol_index_with_bare_fill(closure: SymbolIndex, tree: SymbolIndex) -> Symbo
         }
     }
   )
-  SymbolIndex { entries: closure.entries, global_bare: global2, services: services2 }
+  let declaration_bare2 = fold(bare_keys, init: closure.declaration_bare, f: (acc, k) =>
+    match map_get(closure.global_bare, k) {
+      Present { value: _ } => acc
+      Absent =>
+        match map_get(tree.declaration_bare, k) {
+          Present { value: paths } => map_insert(acc, k, paths)
+          Absent => acc
+        }
+    }
+  )
+  let module_roots2 = fold(tree.module_roots |> map_keys, init: closure.module_roots, f: (acc, k) =>
+    match map_get(acc, k) {
+      Present { value: _ } => acc
+      Absent =>
+        match map_get(tree.module_roots, k) {
+          Present { value: root } => map_insert(acc, k, root)
+          Absent => acc
+        }
+    }
+  )
+  SymbolIndex {
+    entries: closure.entries,
+    global_bare: global2,
+    services: services2,
+    declaration_entries: closure.declaration_entries,
+    declaration_bare: declaration_bare2,
+    module_roots: module_roots2
+  }
 }
 
 fn build_symbol_index_qualified_fill(modules: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
   let raw = fold(modules, init: empty_symbol_index(), f: (index, module_node) =>
     let module_path = authored_name_at(source_indices: source_indices, node: module_node)
     let items = module_items(n: module_node)
-    let with_items = fold(items, init: index, f: (acc, item) =>
+    let with_root = symbol_index_insert_module_root(index: index, module_path: module_path, module: module_node)
+    let with_items = fold(items, init: with_root, f: (acc, item) =>
       match local_binding_for_item(item: item, source_indices: source_indices) {
         Absent => acc
         Present { value: binding } =>
-          symbol_index_insert(index: acc, qualified_name: concat(concat(module_path, "."), binding.name), resolved: binding.resolved)
+          symbol_index_insert_declaration_path(
+            index: symbol_index_insert(index: acc, qualified_name: concat(concat(module_path, "."), binding.name), resolved: binding.resolved),
+            module_path: module_path,
+            declaration_name: binding.name,
+            path: ContainmentPath { ancestors: [module_node], terminal: item }
+          )
       }
     )
     let counts = disj_variant_name_counts(items: items, source_indices: source_indices)
@@ -6775,7 +6836,12 @@ fn build_symbol_index_qualified_fill(modules: List<Node>, source_indices: Map<St
             let vname = authored_name_at(source_indices: source_indices, node: child)
             match map_get(counts, vname) {
               Present { value: 1 } =>
-                symbol_index_insert(index: a2, qualified_name: concat(concat(module_path, "."), vname), resolved: item)
+                symbol_index_insert_declaration_path(
+                  index: symbol_index_insert(index: a2, qualified_name: concat(concat(module_path, "."), vname), resolved: item),
+                  module_path: module_path,
+                  declaration_name: vname,
+                  path: ContainmentPath { ancestors: [module_node, item], terminal: child }
+                )
               _ => a2
             }
           )
@@ -6798,7 +6864,34 @@ fn symbol_index_with_qualified_fill(closure: SymbolIndex, fill: SymbolIndex) -> 
         }
     }
   )
-  SymbolIndex { entries: entries2, global_bare: closure.global_bare, services: closure.services }
+  let declaration_entries2 = fold(fill.declaration_entries |> map_keys, init: closure.declaration_entries, f: (acc, k) =>
+    match map_get(acc, k) {
+      Present { value: _ } => acc
+      Absent =>
+        match map_get(fill.declaration_entries, k) {
+          Present { value: paths } => map_insert(acc, k, paths)
+          Absent => acc
+        }
+    }
+  )
+  let module_roots2 = fold(fill.module_roots |> map_keys, init: closure.module_roots, f: (acc, k) =>
+    match map_get(acc, k) {
+      Present { value: _ } => acc
+      Absent =>
+        match map_get(fill.module_roots, k) {
+          Present { value: root } => map_insert(acc, k, root)
+          Absent => acc
+        }
+    }
+  )
+  SymbolIndex {
+    entries: entries2,
+    global_bare: closure.global_bare,
+    services: closure.services,
+    declaration_entries: declaration_entries2,
+    declaration_bare: closure.declaration_bare,
+    module_roots: module_roots2
+  }
 }
 
 data direct_import_export_precedence_note: String = "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields, with that arm's modules placed so the homonym is census-UNAMBIGUOUS by containment (realleaf under the consumer's own parent, leakleaf under a sibling parent) - a census-ambiguous name stands the wall down BY DESIGN (presence_check_census_gate_note), so without that placement the control asserts a diagnostic the gate exists to suppress and silently measures the gate instead of the overlay; ledger arm = the fork row is still recorded)."
@@ -7597,7 +7690,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     module_name: resolved_module_name,
     service_registry: ctx.svc_registry,
     item_registry: ctx.item_registry,
-    lambda_param_provenance: empty_map()
+    lambda_param_provenance: empty_map(),
+    occurrence_ancestors: [resolved.module]
   }
   let typed_item_results = infer_items(items: ctx.resolved_items, scope: infer_scope)
   let typed_items = map(typed_item_results, tir => tir.item)

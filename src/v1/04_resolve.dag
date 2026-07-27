@@ -12,7 +12,7 @@ import v1.std.core {
   make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   ErrorNode, make_error_node,
-  InternalError, ArityMismatch, UnresolvedType, UnlistedImportUse,
+  InternalError, ArityMismatch, UnresolvedType, UnlistedImportUse, AmbiguousReference,
   Cardinality, Required,
   StringPart, Text, Interpolation,
   MatchPattern, Wildcard,
@@ -43,9 +43,15 @@ import v1.compiler.infer_types {
 
 import std.induction { SubValueUnknown }
 
+import std.occurrence_binding {
+  ContainmentPath, BindingOccurrence, BindingCandidate, OccurrenceBinding,
+  OccurrenceBound, OccurrenceUnbound, OccurrenceAmbiguous
+}
+
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
-  env_with_type_variable_bindings, bare_name_miss_diagnostic
+  env_with_type_variable_bindings, bare_name_miss_diagnostic,
+  declaration_binding_result, ambiguous_binding_candidate_labels, type_binding_from_declaration_path
 }
 
 fn is_unit_variant_node(variant: Node) -> Bool {
@@ -152,11 +158,11 @@ fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> No
       let structural = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
         match resolved.inferred {
           Present { value: Resolved { node: target } } =>
-            resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0, masked: false).resolved
-          _ => resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: 0, masked: false).resolved
+            resolve_node_bounded(n: target, env: env, module_name: module_name, ancestors: [], depth: 0, masked: false).resolved
+          _ => resolve_node_bounded(n: resolved, env: env, module_name: module_name, ancestors: [], depth: 0, masked: false).resolved
         }
       } else {
-        resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: 0, masked: false).resolved
+        resolve_node_bounded(n: resolved, env: env, module_name: module_name, ancestors: [], depth: 0, masked: false).resolved
       }
       if brand != "" && brand != authored_name_at(source_indices: source_indices, node: structural)
         && !is_declared_container_alias_spelling(name: brand)
@@ -166,7 +172,7 @@ fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> No
       } else if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
         match resolved.inferred {
           Present { value: Resolved { node: target } } =>
-            let target_resolved = resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0, masked: false).resolved
+            let target_resolved = resolve_node_bounded(n: target, env: env, module_name: module_name, ancestors: [], depth: 0, masked: false).resolved
             with_authored_identity(identity: n, structural: target_resolved)
           _ => resolved
         }
@@ -231,7 +237,11 @@ type ResourceUseResult {
 }
 
 fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
-  resolve_node_bounded(n: n, env: env, module_name: module_name, depth: 0, masked: true)
+  let ancestors = match map_get(env.symbol_index.module_roots, env.module_path) {
+    Present { value: root } => [root]
+    Absent => []
+  }
+  resolve_node_bounded(n: n, env: env, module_name: module_name, ancestors: ancestors, depth: 0, masked: true)
 }
 
 data parameterized_use_site_prefers_parameterized_decl: String = "A use site WITH type arguments (children > 0) whose primary name lookup lands on a PARAMLESS decl is definitionally mis-resolved - type args imply a generic declaration. The concrete seam: the kernel prelude binding for a name (e.g. the kernel Optional) shadows an explicitly imported user generic of the same name in the ancestry rung, so v2's Optional<T> consumers resolved the paramless kernel decl, is_user_generic_use_site went false, the sig return was never expanded, and pattern bindings went error-typed with zero diagnostics (the interpreted-parse cascade; pre-existing on main). Retry the DIRECT import parents (str_bindings) for a parameterized decl before accepting the paramless one - the params filter naturally excludes the kernel parent, and the ancestry rung itself carries the kernel-shadowed entry so it cannot serve as the retry source."
@@ -356,7 +366,7 @@ fn classify_alias(target: Node) -> AliasKind {
 fn resolve_alias_target(target: Node, env: TypeEnv, module_name: String, depth: Int) -> Node {
   match classify_alias(target: target) {
     AliasParameterized =>
-      resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1, masked: false).resolved
+      resolve_node_bounded(n: target, env: env, module_name: module_name, ancestors: [], depth: depth + 1, masked: false).resolved
     AliasLeaf =>
       match lookup_type_by_name(env: env, name: authored_name_at(source_indices: env.source_indices, node: target)) {
         Present { value: env_target } => env_target
@@ -393,13 +403,21 @@ fn resolve_nominal_alias_rhs(n: Node, env: TypeEnv, module_name: String) -> Node
 
 data resolve_node_bounded_masked_boundary: String = "Selective-import fail-closed (§5): 'masked' is TRUE at the resolve_node source entry and INHERITS through structural recursions (product base :391, product child rt :406, optional inner :426, variant field rt :444, generic args :477, map k/v :519/:522, list elem :538), so every use-site type-argument reaches the leaf mask check masked. It flips FALSE only into GROUNDING recursions (peel_nominal_alias_identity :150/:151/:154/:163, resolve_alias_target :342, parameterized-alias target :494, resolved-name grounding :561), which descend into DEFINING-module structure (the import responsibility of that module, not the use-site). INVARIANT (reviewed lively-raven-355 2026-07-06): grounding recursions must only ever descend into defining-module structure; the :561 arm relies on the resolved.children==0 leaf guard AND the :550-552 coproduct-container short-circuit — if a future refactor lets a parameterized use reach :561, a use-site arg could be inlined into grounding and skipped (a false-NEGATIVE / missing diagnostic once this is a hard refusal, not an availability bug in diagnostic-collect). Mask check (:568 Present arm) emits UnlistedImportUse when masked && name NOT in env.source_visible_names; keeps 'resolved' intact (diagnostic-collect, advisory). source_visible_names = locals + kernel + selective specific_names + is_all-module exports + type-params (:971). SCAFFOLD dissolve-on (§6): the advisory/non-erroring posture (is_error_diagnostic=false, 00_core.dag) is diagnostic-collect, NOT the final wall. Dissolves when (a) family-closure SVN lands — each imported name resolves to its whole coproduct family (owner + ALL siblings, lively-raven-355 ruling 2026-07-06) so the variant-owner-reverse false-positive class (import variant B then use owner E, or sibling A) is gone, AND (b) the corpus burndown of genuine unlisted uses (Symbol in v2/std/diagnostic.dag, NonEmptyStr in gcp, ...) reaches zero — at which point UnlistedImportUse promotes to a hard UnresolvedType/Refused joining §5's fail-closed wall, and the empty-source_visible_names guard (:345 count>0, a §3 dual-signal with 'masked' — flagged by claude-opus-4-7) collapses so 'masked' is the sole authority."
 
-fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, masked: Bool) -> NodeResolveResult {
+fn resolve_node_bounded(
+  n: Node,
+  env: TypeEnv,
+  module_name: String,
+  ancestors: List<Node>,
+  depth: Int,
+  masked: Bool
+) -> NodeResolveResult {
   if depth > 100 {
     return NodeResolveResult {
       resolved: n,
       diagnostics: [make_error_node(diagnostic: InternalError { message: concat("internal: type resolution exceeded depth 100 for '", authored_name(env: env, node: n), "'"), span: n.span }, module_name: module_name)]
     }
   }
+  let child_ancestors = concat(ancestors, [n])
   let has_structure = n.connective != NoConnective
   if has_structure {
     let is_product = n.connective == Conj
@@ -407,7 +425,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
       if n.type_annotation != none {
         match n.children |> first {
           Present { value: base } =>
-            let base_result = resolve_node_bounded(n: base, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+            let base_result = resolve_node_bounded(n: base, env: env, module_name: module_name, ancestors: child_ancestors, depth: depth + 1, masked: masked)
             let base_resolved = base_result.resolved
             let base_diags = base_result.diagnostics
             NodeResolveResult {
@@ -422,7 +440,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
             NodeResolveResult { resolved: child, diagnostics: [] }
           } else {
             let child_rt = resolved_type(n: child)
-            let rt_result = resolve_node_bounded(n: child_rt, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+            let rt_result = resolve_node_bounded(n: child_rt, env: env, module_name: module_name, ancestors: concat(child_ancestors, [child]), depth: depth + 1, masked: masked)
             let rt_resolved = rt_result.resolved
             let rt_diags = rt_result.diagnostics
             NodeResolveResult {
@@ -442,7 +460,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
       let is_optional = n.return_cardinality == CardOptional
       if is_optional {
         let inner = with_required_cardinality(n: n)
-        let inner_result = resolve_node_bounded(n: inner, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+        let inner_result = resolve_node_bounded(n: inner, env: env, module_name: module_name, ancestors: ancestors, depth: depth + 1, masked: masked)
         let inner_resolved = inner_result.resolved
         let inner_diags = inner_result.diagnostics
         NodeResolveResult {
@@ -460,7 +478,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
               let rt_result = if is_self_ref {
                 NodeResolveResult { resolved: field_rt, diagnostics: [] }
               } else {
-                resolve_node_bounded(n: field_rt, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+                resolve_node_bounded(n: field_rt, env: env, module_name: module_name, ancestors: concat(concat(child_ancestors, [variant_child]), [field_child]), depth: depth + 1, masked: masked)
               }
               let rt_resolved = rt_result.resolved
               let rt_diags = rt_result.diagnostics
@@ -493,7 +511,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
     let arity_diags = if expected_arity != actual_arity {
       [make_error_node(diagnostic: ArityMismatch { name: type_name, expected: expected_arity, got: actual_arity, span: n.span }, module_name: module_name)]
     } else { [] }
-    let arg_results = n.children |> map(child => resolve_node_bounded(n: child, env: env, module_name: module_name, depth: depth + 1, masked: masked))
+    let arg_results = n.children |> map(child => resolve_node_bounded(n: child, env: env, module_name: module_name, ancestors: child_ancestors, depth: depth + 1, masked: masked))
     let resolved_args = map(arg_results, ar => ar.resolved)
     let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
     let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
@@ -510,7 +528,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
         Present { value: Resolved { node: target } } => substitute_type_slots(n: target, slot_bindings: slot_bindings, decl_name: type_name, source_indices: env.source_indices)
         _ => n
       }
-      let target_result = resolve_node_bounded(n: alias_target, env: env, module_name: module_name, depth: depth + 1, masked: false)
+      let target_result = resolve_node_bounded(n: alias_target, env: env, module_name: module_name, ancestors: [], depth: depth + 1, masked: false)
       let is_recursive = is_recursive_type_by_name(env: env, name: type_name)
       let expanded_node = Node { name: type_name, span: n.span, ident_span: n.ident_span, children: target_result.resolved.children, connective: target_result.resolved.connective, params: [], inferred: target_result.resolved.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
       let resolved_node = Node { name: type_name, span: n.span, ident_span: n.ident_span, children: resolved_args, connective: NoConnective, params: [], inferred: Present { value: Resolved { node: expanded_node } }, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
@@ -535,10 +553,10 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
       let val_child_node = match skip(n.children, 1) |> first { Present { value: v } => v  Absent => unit_type }
       let key_type = child_type_node(ch: key_child_node)
       let val_type = child_type_node(ch: val_child_node)
-      let key_result = resolve_node_bounded(n: key_type, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+      let key_result = resolve_node_bounded(n: key_type, env: env, module_name: module_name, ancestors: concat(child_ancestors, [key_child_node]), depth: depth + 1, masked: masked)
       let key_resolved = key_result.resolved
       let key_diags = key_result.diagnostics
-      let val_result = resolve_node_bounded(n: val_type, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+      let val_result = resolve_node_bounded(n: val_type, env: env, module_name: module_name, ancestors: concat(child_ancestors, [val_child_node]), depth: depth + 1, masked: masked)
       let val_resolved = val_result.resolved
       let val_diags = val_result.diagnostics
       let key_param_name = if key_child_node.inferred != none { authored_name(env: env, node: key_child_node) } else { match container_param_name(kind_name: type_name, index: 0) { Present { value: pn } => pn  Absent => authored_name(env: env, node: key_child_node) } }
@@ -554,7 +572,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
     match n.children |> first {
       Present { value: child_node } =>
         let el_type = child_type_node(ch: child_node)
-        let el_result = resolve_node_bounded(n: el_type, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+        let el_result = resolve_node_bounded(n: el_type, env: env, module_name: module_name, ancestors: concat(child_ancestors, [child_node]), depth: depth + 1, masked: masked)
         let el_resolved = el_result.resolved
         let el_diags = el_result.diagnostics
         let el_param_name = if child_node.inferred != none { authored_name(env: env, node: child_node) } else { match container_param_name(kind_name: type_name, index: 0) { Present { value: pn } => pn  Absent => authored_name(env: env, node: child_node) } }
@@ -570,14 +588,47 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
     if is_recursive_type_for(env: env, node: n) || n_target_is_coproduct_container {
       NodeResolveResult { resolved: n, diagnostics: [] }
     } else {
-      match lookup_type_for(env: env, node: n) {
-        Present { value: resolved } =>
+      let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
+      let n_is_callable = n.params |> count > 0
+      let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+      let grounded = is_width_nat_type_literal(n: n)
+        || is_kernel_type(name: authored_name(env: env, node: n))
+        || n_is_type_var
+        || n_is_error
+        || n_is_callable
+      if grounded {
+        match lookup_type_for(env: env, node: n) {
+          Present { value: resolved } =>
+            NodeResolveResult {
+              resolved: resolved,
+              diagnostics: []
+            }
+          Absent => NodeResolveResult { resolved: n, diagnostics: [] }
+        }
+      } else {
+      let occurrence = BindingOccurrence {
+        containment: ContainmentPath { ancestors: ancestors, terminal: n }
+      }
+      let binding_result = declaration_binding_result(
+          env: env,
+          occurrence: occurrence,
+          name: authored_name(env: env, node: n)
+        )
+      match binding_result {
+        OccurrenceBound { binding: accepted } =>
+          let projected = type_binding_from_declaration_path(
+            path: accepted.candidate.containment,
+            source_indices: env.source_indices
+          )
+          match projected {
+          Present { value: accepted_binding } =>
+          let resolved = accepted_binding.resolved
           let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
             match resolved.inferred {
               Present { value: Resolved { node: target } } =>
                 let target_is_coproduct_use = target.connective == NoConnective && target.children |> count > 0 && is_user_generic_use_site(n: target, env: env) && resolve_generic_use_decl(env: env, n: target).connective == Disj
                 if target_is_coproduct_use {
-                  resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1, masked: false).resolved
+                  resolve_node_bounded(n: target, env: env, module_name: module_name, ancestors: [], depth: depth + 1, masked: false).resolved
                 } else { target }
               _ => resolved
             }
@@ -588,23 +639,39 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
             [make_error_node(diagnostic: UnlistedImportUse { name: authored_name(env: env, node: n), span: n.span }, module_name: module_name)]
           } else { [] }
           NodeResolveResult { resolved: final_resolved, diagnostics: unlisted_diags }
-        Absent =>
-          let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
-          let n_is_callable = n.params |> count > 0
-          let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
-
-          if is_width_nat_type_literal(n: n) || is_kernel_type(name: authored_name(env: env, node: n)) || n_is_type_var || n_is_error || n_is_callable {
-            NodeResolveResult { resolved: n, diagnostics: [] }
-          } else {
-            match lookup_unit_variant_phantom_type(env: env, variant_name: authored_name(env: env, node: n)) {
-              Present { value: phantom } => NodeResolveResult { resolved: phantom, diagnostics: [] }
-              Absent =>
-                NodeResolveResult {
-                  resolved: n,
-                  diagnostics: [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: authored_name(env: env, node: n), span: n.span), module_name: module_name)]
-                }
+          Absent =>
+            NodeResolveResult {
+              resolved: n,
+              diagnostics: [make_error_node(
+                diagnostic: InternalError {
+                  message: concat("bound declaration has no TypeBinding projection: ", authored_name(env: env, node: accepted.candidate.containment.terminal)),
+                  span: n.span
+                },
+                module_name: module_name
+              )]
             }
           }
+        OccurrenceUnbound { occurrence: _ } =>
+          NodeResolveResult {
+            resolved: n,
+            diagnostics: [make_error_node(
+              diagnostic: UnresolvedType { name: authored_name(env: env, node: n), span: n.span },
+              module_name: module_name
+            )]
+          }
+        OccurrenceAmbiguous { occurrence: _, candidates: candidates } =>
+          NodeResolveResult {
+            resolved: n,
+            diagnostics: [make_error_node(
+              diagnostic: AmbiguousReference {
+                name: authored_name(env: env, node: n),
+                candidates: ambiguous_binding_candidate_labels(candidates: candidates, source_indices: env.source_indices),
+                span: n.span
+              },
+              module_name: module_name
+            )]
+          }
+      }
       }
     }
     } else {

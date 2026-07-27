@@ -1,6 +1,7 @@
 module v1.compiler.infer_lookup
 
 import std.induction { SubValueRelation }
+import std.occurrence_binding { ContainmentPath }
 
 import v1.std.core {
   Node, param_node_type_expr,
@@ -38,7 +39,8 @@ import v1.compiler.infer_types {
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, authored_name,
   is_recursive_type, lookup_type, lookup_type_for,
-  GlobalBareLookupState, borrowed_generic_param_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup
+  GlobalBareLookupState, borrowed_generic_param_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
+  declaration_path_owner_module
 }
 
 import v1.compiler.infer_emit_info {
@@ -125,6 +127,49 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDecl? 
 }
 
 data census_reserved_method_name_note: String = "Census precedence law (main-parity): the whole-pool census never serves an algebra method-template name (filter/any/contains/…) as a bare fn sig or tail callable. Those names belong to the known-method bridge in the ExprCall arm — a census sig for the UNLOADED v2.std.algebra typed filter(xs, f) as a plain call and the runtime died NoSuchFunction where main rewrote to the builtin method. Loaded providers are unaffected: lookup_resolved_sig runs before the census fallback."
+
+fn resolved_func_sig_from_declaration_path(
+  path: ContainmentPath<Node>,
+  type_env: TypeEnv
+) -> ResolvedFuncSig? {
+  let declaration = path.terminal
+  let is_callable = (declaration.params |> count) > 0
+    || declaration.body != none
+    || declaration.inferred != none
+    || declaration.type_annotation != none
+  if is_callable == false {
+    none
+  } else {
+    let name = authored_name_at(source_indices: type_env.source_indices, node: declaration)
+    let owner_module_path = declaration_path_owner_module(path: path, source_indices: type_env.source_indices)
+    let excluded = borrowed_generic_param_names(params: declaration.params, source_indices: type_env.source_indices)
+    let raw_return = match declaration.inferred {
+      Present { value: Resolved { node: inferred } } => inferred
+      _ => match declaration.type_annotation {
+        Present { value: ann } => ann
+        Absent => error_type
+      }
+    }
+    let resolved_return = if owner_module_path == type_env.module_path {
+      raw_return
+    } else {
+      qualify_borrowed_type_names(
+        n: raw_return,
+        owner_module_path: owner_module_path,
+        env: type_env,
+        excluded: excluded
+      )
+    }
+    Present { value: ResolvedFuncSig {
+      name: name,
+      params: declaration.params,
+      inferred: resolved_return,
+      is_async: (declaration.uses |> count) > 0,
+      output_provenance: [],
+      variant_provenance: empty_map()
+    } }
+  }
+}
 
 fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig? {
   if algebra_method_template_name(name: name) {

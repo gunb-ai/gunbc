@@ -1,6 +1,6 @@
 module v1.compiler.infer_env
 
-import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
+import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, NoConnective, ExprData, NoExprData, InferredNode, kernel_span, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 
 import std.types { SourceSpan, is_kernel_type }
 
@@ -226,6 +226,85 @@ fn symbol_index_insert_module_root(index: SymbolIndex, module_path: String, modu
     declaration_entries: index.declaration_entries,
     declaration_bare: index.declaration_bare,
     module_roots: map_insert(index.module_roots, module_path, module)
+  }
+}
+
+fn type_binding_from_declaration(
+  declaration: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> TypeBinding? {
+  let declaration_name = authored_name_at(source_indices: source_indices, node: declaration)
+  let has_structure = declaration.connective != NoConnective
+  if has_structure {
+    let type_node = Node {
+      name: declaration.name, span: declaration.span, ident_span: declaration.ident_span, children: declaration.children,
+      connective: declaration.connective, params: declaration.params, inferred: none,
+      return_cardinality: declaration.return_cardinality,
+      uses: [], body: none, transport: none, properties: declaration.properties,
+      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    }
+    Present { value: TypeBinding { name: declaration_name, resolved: type_node, provenance: SubValueUnknown } }
+  } else if declaration.body != none && declaration.transport == none {
+    let fn_node = Node {
+      name: declaration.name, span: declaration.span, ident_span: declaration.ident_span, children: [],
+      connective: NoConnective, params: declaration.params, inferred: declaration.inferred,
+      return_cardinality: declaration.return_cardinality,
+      uses: [], body: none, transport: none, properties: [],
+      type_annotation: declaration.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    }
+    Present { value: TypeBinding { name: declaration_name, resolved: fn_node, provenance: SubValueUnknown } }
+  } else if declaration.inferred != none && declaration.params |> count == 0 && declaration.body == none {
+    let alias_node = Node {
+      name: declaration.name, span: declaration.span, ident_span: declaration.ident_span, children: [],
+      connective: NoConnective, params: [], inferred: declaration.inferred,
+      return_cardinality: declaration.return_cardinality,
+      uses: [], body: none, transport: none, properties: [],
+      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    }
+    Present { value: TypeBinding { name: declaration_name, resolved: alias_node, provenance: SubValueUnknown } }
+  } else if declaration.transport == none && declaration.children |> count > 0 {
+    let ref_node = Node {
+      name: declaration.name, span: declaration.span, ident_span: declaration.ident_span, children: [],
+      connective: NoConnective, params: [], inferred: none, return_cardinality: declaration.return_cardinality,
+      uses: [], body: none, transport: none, properties: [], type_annotation: none,
+      is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    }
+    Present { value: TypeBinding { name: declaration_name, resolved: ref_node, provenance: SubValueUnknown } }
+  } else if declaration.params |> count > 0 && declaration.connective == NoConnective && declaration.body == none && declaration.transport == none {
+    let bare_node = Node {
+      name: declaration.name, span: declaration.span, ident_span: declaration.ident_span, children: [],
+      connective: NoConnective, params: declaration.params, inferred: declaration.inferred,
+      return_cardinality: declaration.return_cardinality,
+      uses: [], body: none, transport: none, properties: [],
+      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    }
+    Present { value: TypeBinding { name: declaration_name, resolved: bare_node, provenance: SubValueUnknown } }
+  } else if declaration.properties |> count > 0 && declaration.connective == NoConnective && declaration.transport == none && declaration.inferred == none && declaration.params |> count == 0 {
+    let nominal = Node {
+      name: declaration.name, span: declaration.span, ident_span: declaration.ident_span, children: [],
+      connective: NoConnective, params: [], inferred: none, return_cardinality: declaration.return_cardinality,
+      uses: [], body: none, transport: none, properties: declaration.properties, type_annotation: none,
+      is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    }
+    Present { value: TypeBinding { name: declaration_name, resolved: nominal, provenance: SubValueUnknown } }
+  } else {
+    none
+  }
+}
+
+fn type_binding_from_declaration_path(
+  path: ContainmentPath<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> TypeBinding? {
+  match type_binding_from_declaration(declaration: path.terminal, source_indices: source_indices) {
+    Present { value: binding } => Present { value: binding }
+    Absent =>
+      fold(path.ancestors |> reverse, init: none, f: (acc, ancestor) =>
+        match acc {
+          Present { value: _ } => acc
+          Absent => type_binding_from_declaration(declaration: ancestor, source_indices: source_indices)
+        }
+      )
   }
 }
 
