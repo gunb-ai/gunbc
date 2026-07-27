@@ -2502,22 +2502,26 @@ fn match_pattern_binders_capture_declaration_spans_in_parse_tree() {
 fn typed_match_bound_binding_spans_stay_local_across_arms_and_shadowing() {
     use v1_compiler::v1_rt::VecCompat;
     use v1_compiler::v1_std_core::{
-        arm_pattern, field_binding_pattern, match_arm_nodes, module_items,
+        arm_body, arm_pattern, block_stmts, field_binding_pattern, match_arm_nodes, module_items,
+        ExprData, VarBindingKind,
     };
 
     let separate_source = "module typed_pattern_spans\n\ntype Duo = Left { value: Int } | Right { value: Int }\n\nfn separate_arms(x: Duo) -> Int {\n  match x {\n    Left { value: y } => y\n    Right { value: y } => y\n  }\n}\n";
-    let separate_artifact = typed_graph_json(separate_source);
-    let separate_parsed = parse_source_named("typed_pattern_spans.dag", separate_source);
-    let separate_module = separate_parsed
+    let separate_resolved = compile_dag_resolved(separate_source);
+    let separate_graph = separate_resolved.graph.clone().expect("separate graph");
+    let separate_module = separate_graph
+        .modules
+        .first()
+        .cloned()
+        .expect("separate module")
         .module
-        .clone()
-        .expect("separate arms should parse");
+        .clone();
     let separate_body = module_items(separate_module)
         .iter()
         .find(|item| item.name == "separate_arms")
         .and_then(|item| item.body.clone())
         .expect("separate_arms body");
-    let separate_arms = match_arm_nodes(separate_body);
+    let separate_arms = match_arm_nodes(separate_body.clone());
     let separate_expected: Vec<i64> = separate_arms
         .iter()
         .map(|arm| match arm_pattern(arm.clone()).as_ref() {
@@ -2540,49 +2544,50 @@ fn typed_match_bound_binding_spans_stay_local_across_arms_and_shadowing() {
         separate_expected[0], separate_expected[1],
         "equal text in separate arms must not collapse to one declaration span"
     );
-    let separate_expr_vars = expr_var_nodes_by_name(&separate_artifact, "y");
+    let separate_expr_vars: Vec<Rc<v1_compiler::v1_std_core::Node>> =
+        match_arm_nodes(separate_body)
+            .iter()
+            .cloned()
+            .map(arm_body)
+            .collect();
     assert_eq!(
         separate_expr_vars.len(),
         2,
         "separate_arms should contribute two ExprVar nodes"
     );
     for (expr_var, expected_start) in separate_expr_vars.iter().zip(separate_expected.iter()) {
-        let binding_kind = expr_var
-            .get("expr_data")
-            .and_then(Value::as_object)
-            .and_then(|expr| expr.get("binding_kind"))
-            .and_then(Value::as_object)
-            .expect("match-bound ExprVar should carry binding_kind");
+        let binding_kind = match expr_var.expr_data.as_ref() {
+            ExprData::ExprVar { binding_kind } => binding_kind
+                .clone()
+                .expect("match-bound ExprVar should carry binding_kind"),
+            other => panic!("expected ExprVar body node, got {:?}", other),
+        };
         assert_eq!(
-            binding_kind
-                .get("kind")
-                .and_then(Value::as_str)
-                .expect("binding kind tag"),
-            "MatchBoundBinding"
-        );
-        assert_eq!(
-            binding_kind
-                .get("declaration_span")
-                .map(json_span_start)
-                .expect("match-bound ExprVar should carry declaration_span"),
+            match binding_kind.as_ref() {
+                VarBindingKind::MatchBoundBinding { declaration_span } => declaration_span.start,
+                other => panic!("expected match-bound binding kind, got {:?}", other),
+            },
             *expected_start,
             "ExprVar should carry the declaration span of its own arm binder"
         );
     }
 
     let shadow_source = "module typed_pattern_shadow\n\ntype Duo = Left { value: Int } | Right { value: Int }\n\nfn shadow(outer: Duo, inner: Duo) -> Int {\n  match outer {\n    Left { value: y } => {\n      match inner {\n        Left { value: y } => y\n        Right { value: y } => y\n      }\n      y\n    }\n    Right { value: _ } => 0\n  }\n}\n";
-    let shadow_artifact = typed_graph_json(shadow_source);
-    let shadow_parsed = parse_source_named("typed_pattern_shadow.dag", shadow_source);
-    let shadow_module = shadow_parsed
+    let shadow_resolved = compile_dag_resolved(shadow_source);
+    let shadow_graph = shadow_resolved.graph.clone().expect("shadow graph");
+    let shadow_module = shadow_graph
+        .modules
+        .first()
+        .cloned()
+        .expect("shadow module")
         .module
-        .clone()
-        .expect("shadow fixture should parse");
+        .clone();
     let shadow_body = module_items(shadow_module)
         .iter()
         .find(|item| item.name == "shadow")
         .and_then(|item| item.body.clone())
         .expect("shadow body");
-    let shadow_outer_arm = match_arm_nodes(shadow_body)
+    let shadow_outer_arm = match_arm_nodes(shadow_body.clone())
         .first()
         .cloned()
         .expect("shadow outer arm");
@@ -2598,8 +2603,8 @@ fn typed_match_bound_binding_spans_stay_local_across_arms_and_shadowing() {
         }
         other => panic!("expected outer variant arm, got {:?}", other),
     };
-    let shadow_outer_block = v1_compiler::v1_std_core::arm_body(shadow_outer_arm);
-    let shadow_block_stmts = v1_compiler::v1_std_core::block_stmts(shadow_outer_block);
+    let shadow_outer_block = arm_body(shadow_outer_arm);
+    let shadow_block_stmts = block_stmts(shadow_outer_block);
     let shadow_inner_match = shadow_block_stmts
         .first()
         .cloned()
@@ -2621,38 +2626,45 @@ fn typed_match_bound_binding_spans_stay_local_across_arms_and_shadowing() {
         })
         .collect();
     let shadow_outer_expected = shadow_outer_span;
-    let shadow_expr_vars = expr_var_nodes_by_name(&shadow_artifact, "y");
+    let shadow_inner_uses: Vec<Rc<v1_compiler::v1_std_core::Node>> =
+        shadow_inner_arms.iter().cloned().map(arm_body).collect();
     assert_eq!(
-        shadow_expr_vars.len(),
-        3,
-        "shadow fixture should have three y ExprVar nodes"
+        shadow_inner_uses.len(),
+        2,
+        "inner match should contribute two ExprVar body nodes"
     );
-    let mut shadow_use_spans: Vec<(i64, i64)> = shadow_expr_vars
-        .iter()
-        .map(|node| {
-            (
-                json_span_start(node.get("span").expect("ExprVar should have span")),
-                node.get("expr_data")
-                    .and_then(Value::as_object)
-                    .and_then(|expr| expr.get("binding_kind"))
-                    .and_then(Value::as_object)
-                    .and_then(|binding| binding.get("declaration_span"))
-                    .map(json_span_start)
-                    .expect("ExprVar should carry declaration_span"),
-            )
-        })
-        .collect();
-    shadow_use_spans.sort_by_key(|pair| pair.0);
+    for (expr_var, expected_start) in shadow_inner_uses.iter().zip(shadow_inner_expected.iter()) {
+        let binding_kind = match expr_var.expr_data.as_ref() {
+            ExprData::ExprVar { binding_kind } => binding_kind
+                .clone()
+                .expect("inner shadow ExprVar should carry binding_kind"),
+            other => panic!("expected inner ExprVar body node, got {:?}", other),
+        };
+        assert_eq!(
+            match binding_kind.as_ref() {
+                VarBindingKind::MatchBoundBinding { declaration_span } => declaration_span.start,
+                other => panic!("expected match-bound inner binding kind, got {:?}", other),
+            },
+            *expected_start,
+            "same-name binder in the second inner arm must stay local to that arm"
+        );
+    }
+    let shadow_outer_use = shadow_block_stmts
+        .last()
+        .cloned()
+        .expect("outer reference after nested match");
+    let shadow_outer_use_kind = match shadow_outer_use.expr_data.as_ref() {
+        ExprData::ExprVar { binding_kind } => binding_kind
+            .clone()
+            .expect("outer shadow ExprVar should carry binding_kind"),
+        other => panic!("expected outer ExprVar body node, got {:?}", other),
+    };
     assert_eq!(
-        shadow_use_spans[0].1, shadow_inner_expected[0],
-        "inner shadowed ExprVar must use the inner binder span"
-    );
-    assert_eq!(
-        shadow_use_spans[1].1, shadow_inner_expected[1],
-        "same-name binder in the second inner arm must stay local to that arm"
-    );
-    assert_eq!(
-        shadow_use_spans[2].1, shadow_outer_expected,
+        match shadow_outer_use_kind.as_ref() {
+            VarBindingKind::MatchBoundBinding { declaration_span } => declaration_span.start,
+            other => panic!("expected match-bound outer binding kind, got {:?}", other),
+        },
+        shadow_outer_expected,
         "outer reference after the nested match must use the outer binder span"
     );
 }
