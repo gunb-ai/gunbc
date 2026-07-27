@@ -5,6 +5,7 @@ import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_me
 import v2.workflow.ci_materialization_emit { ci_sccache_provider_shell_injection }
 import gunbc.merge_admission_produce { ci_documentation_only_gate_skip_prefix, ci_repo_root_shell }
 import v2.std.orchestration {
+  Comment,
   Do,
   FailFast,
   Pipeline,
@@ -13,6 +14,8 @@ import v2.std.orchestration {
 }
 import v2.std.collection { Absent }
 import v2.std.diagnostic { Accepted, Rejected, None, Some }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data ci_workflow_run_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ ci_workflow run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
 
@@ -116,6 +119,48 @@ fn ci_pin_rustup_default_intent() -> Pipeline {
 
 fn ci_pin_rustup_default_script() -> String {
   ci_workflow_run_emit_pipeline(p: ci_pin_rustup_default_intent())
+}
+
+data ci_regen_ensure_rustfmt_path_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_regen_ensure_rustfmt_path_script — foreign-executor PATH probe ensuring rustfmt is spawnable for regen_stage0 on hosts with a cargo shim and no CARGO_HOME/bin (receipt CI #7290 srv3-03); Pipeline of atomic Do steps emitted through orch bash-emit (same carrier class as ci_pin_rustup_default_script / ci_floor_disposition_marker_init_script); DISSOLVES WHEN the regen job shares the isolate+pin prelude that already puts CARGO_HOME/bin on PATH by construction, or when rustfmt resolution is a typed toolchain probe on host_effect_apply rather than emitted bash (#5828 / ROADMAP 6-shell-slice0)"
+
+data ci_regen_ensure_rustfmt_path_note: String = "Prepend a locatable rustfmt dir onto PATH before regen_stage0's standalone rustfmt spawn (hosts that expose a cargo shim without CARGO_HOME/bin — receipt CI #7290 srv3-03). Probe order: CARGO_HOME/bin, /opt/cargo/bin, HOME/.cargo/bin, rustup which; refuse if still absent."
+
+data ci_regen_ensure_rustfmt_path_cargo_home_command: String = "if [ -n \"$CARGO_HOME\" ] && [ -x \"$CARGO_HOME/bin/rustfmt\" ]; then export PATH=\"$CARGO_HOME/bin:$PATH\"; fi"
+
+data ci_regen_ensure_rustfmt_path_opt_cargo_command: String = "if ! command -v rustfmt >/dev/null 2>&1 && [ -x /opt/cargo/bin/rustfmt ]; then export PATH=\"/opt/cargo/bin:$PATH\"; fi"
+
+data ci_regen_ensure_rustfmt_path_home_cargo_command: String = "if ! command -v rustfmt >/dev/null 2>&1 && [ -x \"$HOME/.cargo/bin/rustfmt\" ]; then export PATH=\"$HOME/.cargo/bin:$PATH\"; fi"
+
+data ci_regen_ensure_rustfmt_path_rustup_which_command: String = "if ! command -v rustfmt >/dev/null 2>&1; then RF=$(/opt/cargo/bin/rustup which rustfmt 2>/dev/null || true); if [ -n \"$RF\" ] && [ -x \"$RF\" ]; then export PATH=\"$(dirname \"$RF\"):$PATH\"; fi; fi"
+
+data ci_regen_ensure_rustfmt_path_require_command: String = "if ! command -v rustfmt >/dev/null 2>&1; then echo \"::error::rustfmt not on PATH for regen_stage0 standalone spawn (hosts with a cargo shim and no CARGO_HOME/bin — receipt CI #7290 srv3-03)\"; exit 1; fi"
+
+data ci_regen_ensure_rustfmt_path_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_workflow_run_emit",
+    decl_name: "ci_regen_ensure_rustfmt_path_script",
+    field: WholeDeclaration
+  }
+}
+
+fn ci_regen_ensure_rustfmt_path_intent() -> Pipeline {
+  Pipeline {
+    steps: [
+      Comment { text: ci_regen_ensure_rustfmt_path_shell_emit_dissolution_trigger },
+      Comment { text: ci_regen_ensure_rustfmt_path_note },
+      ci_workflow_do(command: ci_regen_ensure_rustfmt_path_cargo_home_command),
+      ci_workflow_do(command: ci_regen_ensure_rustfmt_path_opt_cargo_command),
+      ci_workflow_do(command: ci_regen_ensure_rustfmt_path_home_cargo_command),
+      ci_workflow_do(command: ci_regen_ensure_rustfmt_path_rustup_which_command),
+      ci_workflow_do(command: ci_regen_ensure_rustfmt_path_require_command)
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn ci_regen_ensure_rustfmt_path_script() -> String {
+  ci_workflow_run_emit_pipeline(p: ci_regen_ensure_rustfmt_path_intent())
 }
 
 fn ci_selection_control_root_command() -> String {

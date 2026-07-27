@@ -1,0 +1,46 @@
+module v2.workflow.ci_workflow_run_emit_test
+
+import v2.workflow.ci_workflow_run_emit {
+  ci_regen_ensure_rustfmt_path_script,
+  ci_regen_ensure_rustfmt_path_shell_emit_scaffold,
+}
+import std.disposition { Disposition, Scaffold }
+
+data ci_regen_ensure_rustfmt_path_golden: String = concat(
+  concat("# 🟡 dissolve-on: ci_regen_ensure_rustfmt_path_script — foreign-executor PATH probe ensuring rustfmt is spawnable for regen_stage0 on hosts with a cargo shim and no CARGO_HOME/bin (receipt CI #7290 srv3-03); Pipeline of atomic Do steps emitted through orch bash-emit (same carrier class as ci_pin_rustup_default_script / ci_floor_disposition_marker_init_script); DISSOLVES WHEN the regen job shares the isolate+pin prelude that already puts CARGO_HOME/bin on PATH by construction, or when rustfmt resolution is a typed toolchain probe on host_effect_apply rather than emitted bash (#5828 / ROADMAP 6-shell-slice0)\n"),
+  concat(
+    concat("# Prepend a locatable rustfmt dir onto PATH before regen_stage0's standalone rustfmt spawn (hosts that expose a cargo shim without CARGO_HOME/bin — receipt CI #7290 srv3-03). Probe order: CARGO_HOME/bin, /opt/cargo/bin, HOME/.cargo/bin, rustup which; refuse if still absent.\n"),
+    concat(
+      concat("if [ -n \"$CARGO_HOME\" ] && [ -x \"$CARGO_HOME/bin/rustfmt\" ]; then export PATH=\"$CARGO_HOME/bin:$PATH\"; fi\n"),
+      concat(
+        concat("if ! command -v rustfmt >/dev/null 2>&1 && [ -x /opt/cargo/bin/rustfmt ]; then export PATH=\"/opt/cargo/bin:$PATH\"; fi\n"),
+        concat(
+          concat("if ! command -v rustfmt >/dev/null 2>&1 && [ -x \"$HOME/.cargo/bin/rustfmt\" ]; then export PATH=\"$HOME/.cargo/bin:$PATH\"; fi\n"),
+          concat(
+            "if ! command -v rustfmt >/dev/null 2>&1; then RF=$(/opt/cargo/bin/rustup which rustfmt 2>/dev/null || true); if [ -n \"$RF\" ] && [ -x \"$RF\" ]; then export PATH=\"$(dirname \"$RF\"):$PATH\"; fi; fi\n",
+            "if ! command -v rustfmt >/dev/null 2>&1; then echo \"::error::rustfmt not on PATH for regen_stage0 standalone spawn (hosts with a cargo shim and no CARGO_HOME/bin — receipt CI #7290 srv3-03)\"; exit 1; fi"
+          )
+        )
+      )
+    )
+  )
+)
+
+test fn ci_regen_ensure_rustfmt_path_emit_matches_golden_holds() -> Bool {
+  ci_regen_ensure_rustfmt_path_script() == ci_regen_ensure_rustfmt_path_golden
+}
+
+test fn ci_regen_ensure_rustfmt_path_shell_emit_is_scaffold_holds() -> Bool {
+  match ci_regen_ensure_rustfmt_path_shell_emit_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn ci_regen_ensure_rustfmt_path_emit_carries_dissolve_marker_holds() -> Bool {
+  string_contains(s: ci_regen_ensure_rustfmt_path_script(), pattern: "🟡 dissolve-on: ci_regen_ensure_rustfmt_path_script")
+}
+
+test fn ci_regen_ensure_rustfmt_path_emit_red_when_marker_stripped_holds() -> Bool {
+  !string_contains(s: "if [ -n \"$CARGO_HOME\" ]; then export PATH=\"$CARGO_HOME/bin:$PATH\"; fi", pattern: "🟡 dissolve-on:")
+}

@@ -162,7 +162,7 @@ fn ci_prelude_steps() -> List<Step> {
 
 data ci_artifact_consumer_prelude_note: String = "Checkout-only prelude for deploy jobs that consume the build job's release-bins artifact. Rust release-bin build + isolated rustup stay on build only — deploy verifies and runs prebuilt binaries."
 
-data ci_floor_gate_toolchain_note: String = "Batch-4 floor gates (emit_host rust smoke, self_host realized-comparison rustfmt/regen_stage0) need cargo+rustfmt on PATH. Uses setup-rust-toolchain without isolated RUSTUP_HOME — the full ci_prelude_steps isolate+pin+cache stack stays build-only (exit 127 rustup extract flake on srv3-07/08, 2026-07-21). Hosts that expose a cargo shim (e.g. /usr/local/ctrl-build-shims/cargo) without $CARGO_HOME/bin on PATH still fail bare `rustfmt` spawn inside regen_stage0 while `cargo fmt` works — ci_regen_ensure_rustfmt_path_command prepends the locatable rustfmt dir onto PATH for the regen shell (receipt: CI #7290 srv3-03)."
+data ci_floor_gate_toolchain_note: String = "Batch-4 floor gates (emit_host rust smoke, self_host realized-comparison rustfmt/regen_stage0) need cargo+rustfmt on PATH. Uses setup-rust-toolchain without isolated RUSTUP_HOME — the full ci_prelude_steps isolate+pin+cache stack stays build-only (exit 127 rustup extract flake on srv3-07/08, 2026-07-21). Hosts that expose a cargo shim (e.g. /usr/local/ctrl-build-shims/cargo) without $CARGO_HOME/bin on PATH still fail bare `rustfmt` spawn inside regen_stage0 while `cargo fmt` works — ci_regen_ensure_rustfmt_path_script (v2.workflow.ci_workflow_run_emit; Scaffold + orch bash-emit Pipeline of atomic PATH probes) prepends the locatable rustfmt dir onto PATH for the regen shell (receipt: CI #7290 srv3-03)."
 
 fn ci_floor_gate_toolchain_step() -> Step {
   UsesStep {
