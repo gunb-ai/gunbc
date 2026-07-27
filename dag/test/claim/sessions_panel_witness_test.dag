@@ -101,7 +101,7 @@ test fn sessions_refusal_withdraws_prior_presence() -> Bool {
 
 test fn attempts_refusal_withdraws_prior_rows() -> Bool {
   let js = dispatch_client_js_source()
-  return count(split(s: js, delimiter: ".dispatch-attempts")) == 4
+  return count(split(s: js, delimiter: ".dispatch-attempts")) == 5
     && string_contains(s: js, pattern: "aj.attempts_refused")
     && string_contains(s: js, pattern: "staleAttempts.remove()")
 }
