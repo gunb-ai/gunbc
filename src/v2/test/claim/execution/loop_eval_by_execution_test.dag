@@ -169,14 +169,6 @@ fn loop_runtime_int_is_one(value: RuntimeValue) -> Bool {
   }
 }
 
-fn loop_runtime_int_is_two(value: RuntimeValue) -> Bool {
-  match value {
-    RuntimePrimitive { value: p } =>
-      (p.primitive_type == loop_i64_node()) && (count(p.bytes) == 2)
-    _ => false
-  }
-}
-
 fn loop_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
   if dag_node_is_int_literal_atom(node: node) {
     match dag_int_literal_magnitude_int_from_node(node: node) {
@@ -399,14 +391,14 @@ fn loop_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
   }
 }
 
-fn loop_source_pipeline_admits_holds() -> Bool {
+test fn loop_source_pipeline_admits_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn loop_source_driven_executes_holds() -> Bool {
+test fn loop_source_driven_executes_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
@@ -419,7 +411,7 @@ fn loop_source_driven_executes_holds() -> Bool {
   }
 }
 
-fn loop_source_driven_wrong_value_red_holds() -> Bool {
+test fn loop_source_driven_wrong_value_red_holds() -> Bool {
   match table_fixture_loop_wrong_value_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
@@ -432,7 +424,7 @@ fn loop_source_driven_wrong_value_red_holds() -> Bool {
   }
 }
 
-fn loop_direct_runtime_holds() -> Bool {
+test fn loop_direct_runtime_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
       let input = loop_pick_call(callee: arrow)
@@ -457,7 +449,7 @@ fn loop_direct_runtime_holds() -> Bool {
   }
 }
 
-fn loop_value_perturbation_red_holds() -> Bool {
+test fn loop_value_perturbation_red_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
@@ -470,7 +462,7 @@ fn loop_value_perturbation_red_holds() -> Bool {
   }
 }
 
-fn loop_fixture_producer_holds() -> Bool {
+test fn loop_fixture_producer_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
@@ -483,7 +475,7 @@ fn loop_fixture_producer_holds() -> Bool {
   }
 }
 
-fn loop_fixture_wrong_value_red_holds() -> Bool {
+test fn loop_fixture_wrong_value_red_holds() -> Bool {
   match table_fixture_loop_wrong_value_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
@@ -496,7 +488,7 @@ fn loop_fixture_wrong_value_red_holds() -> Bool {
   }
 }
 
-fn loop_census_ingested_executes_holds() -> Bool {
+test fn loop_census_ingested_executes_holds() -> Bool {
   match ingested_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
@@ -509,7 +501,7 @@ fn loop_census_ingested_executes_holds() -> Bool {
   }
 }
 
-fn loop_census_ingested_wrong_value_red_holds() -> Bool {
+test fn loop_census_ingested_wrong_value_red_holds() -> Bool {
   match ingested_loop_arrow_with_body_wrong_value() {
     Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
@@ -522,12 +514,3 @@ fn loop_census_ingested_wrong_value_red_holds() -> Bool {
   }
 }
 
-test fn loop_eval_by_execution_keystone_holds() -> Bool {
-  loop_source_driven_executes_holds()
-    && loop_source_driven_wrong_value_red_holds()
-    && loop_direct_runtime_holds()
-    && loop_source_pipeline_admits_holds()
-    && loop_value_perturbation_red_holds()
-    && loop_fixture_producer_holds()
-    && loop_fixture_wrong_value_red_holds()
-}

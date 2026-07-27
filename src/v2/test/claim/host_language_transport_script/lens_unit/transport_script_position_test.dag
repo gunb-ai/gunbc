@@ -1,6 +1,5 @@
 module v2.test.host_language_transport_script.lens_unit.transport_script_position
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data path_dag: String = "dag/tools/dag_compile_clean_transport.dag"
@@ -33,24 +32,24 @@ data fact_interp_literals: TransportScriptPositionFact = TransportScriptPosition
   shape: StringInterpLiteralsOnly
 }
 
-fn witness_computed_green() -> Bool {
+test fn witness_computed_green() -> Bool {
   transport_script_literal_ban_holds(facts: [fact_computed])
 }
 
-fn witness_bare_literal_red() -> Bool {
+test fn witness_bare_literal_red() -> Bool {
   !transport_script_literal_ban_holds(facts: [fact_bare_literal])
     && transport_script_literal_violation_count(facts: [fact_bare_literal]) == 1
 }
 
-fn witness_let_bound_red() -> Bool {
+test fn witness_let_bound_red() -> Bool {
   !transport_script_literal_ban_holds(facts: [fact_let_bound])
 }
 
-fn witness_interp_literals_red() -> Bool {
+test fn witness_interp_literals_red() -> Bool {
   !transport_script_literal_ban_holds(facts: [fact_interp_literals])
 }
 
-fn witness_lens_verdict_holds_on_computed() -> Bool {
+test fn witness_lens_verdict_holds_on_computed() -> Bool {
   match transport_script_lens_verdict(facts: [fact_computed]) {
     Holds => true
     Violation { diagnostic: _ } => false
@@ -59,7 +58,7 @@ fn witness_lens_verdict_holds_on_computed() -> Bool {
   }
 }
 
-fn witness_lens_verdict_violation_on_bare_literal() -> Bool {
+test fn witness_lens_verdict_violation_on_bare_literal() -> Bool {
   match transport_script_lens_verdict(facts: [fact_bare_literal]) {
     Violation { diagnostic: _ } => true
     Holds => false
@@ -68,11 +67,3 @@ fn witness_lens_verdict_violation_on_bare_literal() -> Bool {
   }
 }
 
-test fn transport_script_position_witnesses() -> Bool {
-  witness_computed_green()
-    && witness_bare_literal_red()
-    && witness_let_bound_red()
-    && witness_interp_literals_red()
-    && witness_lens_verdict_holds_on_computed()
-    && witness_lens_verdict_violation_on_bare_literal()
-}

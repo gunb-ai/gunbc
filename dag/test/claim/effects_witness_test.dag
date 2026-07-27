@@ -28,7 +28,6 @@ type ReadonlyGetCase {
   path: String
 }
 
-
 fn derived_op(name: String, method: HttpMethod, path: PathTemplate) -> DerivedOpEffect {
   match derive_op_effect(operation_name: name, method: method, path: path) {
     DerivedEffect { effect: e } => e
@@ -103,13 +102,6 @@ fn is_read(shape: EffectShape<KeySource>) -> Bool {
 fn is_create(shape: EffectShape<KeySource>) -> Bool {
   match shape {
     CreateEffect { cause: cause } => true
-    _ => false
-  }
-}
-
-fn is_create_always(shape: EffectShape<KeySource>) -> Bool {
-  match shape {
-    CreateEffect { cause: PostAlways } => true
     _ => false
   }
 }

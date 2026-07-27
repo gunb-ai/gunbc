@@ -64,7 +64,7 @@ fn rust_fold_call_emit_from_root(root: Node, target: TargetModel) -> Outcome<Med
   )
 }
 
-fn rust_fold_call_emit_canonical_accepts() -> Bool {
+test fn rust_fold_call_emit_canonical_accepts() -> Bool {
   match rust_fold_call_emit_from_root(
     root: fold_fixture_param_canonical_arrow,
     target: rust_fold_call_target_model_staging()
@@ -75,7 +75,7 @@ fn rust_fold_call_emit_canonical_accepts() -> Bool {
   }
 }
 
-fn rust_fold_call_emit_swap_discriminates() -> Bool {
+test fn rust_fold_call_emit_swap_discriminates() -> Bool {
   match rust_fold_call_emit_from_root(
     root: fold_fixture_param_canonical_arrow,
     target: rust_fold_call_target_model_staging()
@@ -100,6 +100,3 @@ fn rust_fold_call_emit_swap_discriminates() -> Bool {
   }
 }
 
-test fn rust_fold_call_closure_emit_holds() -> Bool {
-  rust_fold_call_emit_canonical_accepts() && rust_fold_call_emit_swap_discriminates()
-}

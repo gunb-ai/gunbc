@@ -56,7 +56,7 @@ data rust_variant_construct_emit_inferred_tree: InferredTree = rust_variant_cons
 
 data rust_variant_construct_emit_wrong_value_inferred_tree: InferredTree = rust_variant_construct_emit_inferred_tree_for(root: dag_variant_construct_arrow_with_body_wrong_value_fixture)
 
-fn rust_variant_construct_emit_holds_accepts() -> Bool {
+test fn rust_variant_construct_emit_holds_accepts() -> Bool {
   match emit(
     tree: rust_variant_construct_emit_inferred_tree,
     target: rust_variant_construct_target_model_staging()
@@ -67,7 +67,7 @@ fn rust_variant_construct_emit_holds_accepts() -> Bool {
   }
 }
 
-fn rust_variant_construct_emit_wrong_value_discriminates() -> Bool {
+test fn rust_variant_construct_emit_wrong_value_discriminates() -> Bool {
   match emit(
     tree: rust_variant_construct_emit_wrong_value_inferred_tree,
     target: rust_variant_construct_target_model_staging()
@@ -80,7 +80,3 @@ fn rust_variant_construct_emit_wrong_value_discriminates() -> Bool {
   }
 }
 
-test fn rust_variant_construct_emit_holds() -> Bool {
-  rust_variant_construct_emit_holds_accepts()
-    && rust_variant_construct_emit_wrong_value_discriminates()
-}

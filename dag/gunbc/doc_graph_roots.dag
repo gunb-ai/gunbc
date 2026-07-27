@@ -90,6 +90,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     dissolution: HasTrigger { text: "Slice A Clone-bound propagation lands in v1 trait_derive_emit (where-clause + container bounds) and canonical-seven E0599 census reaches tails-only; or doc migrates into a registered gunbc.plan.Plan row" },
   },
   HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "e0599-implementation-proposal",
+    work: DeclarationRef { module_path: "tools.e0599_probe_census", decl_name: "e0599_probe_census_note", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "Phase 0 consumer graph accepted and each named predicate (P-fn, P-derive, P-optional) lands with measured receipt or the doc migrates into a registered gunbc.plan.Plan row" },
+  },
+  HandAuthoredDocBind {
     home: ProbeDoc,
     slug: "rc-scalar-wrap-fresh-build-correction-2026-07-25",
     work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "value_inferred_type_is_rc_wrapped", field: WholeDeclaration },

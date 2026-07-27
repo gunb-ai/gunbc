@@ -200,9 +200,3 @@ test fn c_add_emit_wrong_node_refuses_holds() -> Bool {
   }
 }
 
-test fn c_add_emit_translate_keystone_holds() -> Bool {
-  c_add_emit_add_fn_accepts_holds()
-    && c_add_serialize_source_matches_authority_holds()
-    && c_add_serialize_rejects_missing_translation_rules_holds()
-    && c_add_emit_wrong_node_refuses_holds()
-}

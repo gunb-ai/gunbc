@@ -1,0 +1,37 @@
+module v2.test.long.bash_program_real_probes_witness
+
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.workflow.bash_emit { bash_emit_program_matches_golden }
+import v2.test.claim.bash_program_fold {
+  bash_program_real_claims_golden,
+  bash_program_real_witness_golden
+}
+import v2.test.claim.bash_program_fold_support {
+  bash_program_fixture_gunbc_claims_specials,
+  bash_program_fixture_witness_bin_specials
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data bash_program_real_probes_long_note: String = "Executing consumer for bash real-program golden probes (review 43557). OfflineLocalRecipe under test/claim/long/ — local recipe, not per-PR floor. Dissolve-on: measured under fast-lane budget and re-enroll per-PR, or delete if goldens are superseded."
+
+test fn bash_program_real_witness_matches_golden_holds() -> Bool {
+  bash_emit_program_matches_golden(
+    statements: bash_program_fixture_witness_bin_specials(
+      var_name: "V1_DAG_PARSE",
+      bin_name: "v1srcdag_parse",
+      args: ["--entry", "dag/std/algebra.dag"]
+    ),
+    set_e: true,
+    golden: bash_program_real_witness_golden
+  )
+}
+
+test fn bash_program_real_claims_matches_golden_holds() -> Bool {
+  bash_emit_program_matches_golden(
+    statements: bash_program_fixture_gunbc_claims_specials(),
+    set_e: true,
+    golden: bash_program_real_claims_golden
+  )
+}

@@ -5,7 +5,9 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.test.lens_affected_set.edit_locus_resolver {
   edit_locus_source_provenance_affected_set_wire_holds,
-  edit_locus_source_provenance_producer_rejects_malformed_source_holds
+  edit_locus_source_provenance_producer_rejects_malformed_source_holds,
+  edit_locus_source_provenance_producer_holds,
+  edit_locus_source_provenance_parse_root_span_holds
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -21,3 +23,12 @@ test fn lens_edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
 test fn lens_edit_locus_source_provenance_producer_rejects_malformed_source_holds() -> Bool {
   edit_locus_source_provenance_producer_rejects_malformed_source_holds()
 }
+
+test fn lens_edit_locus_source_provenance_producer_holds() -> Bool {
+  edit_locus_source_provenance_producer_holds()
+}
+
+test fn lens_edit_locus_source_provenance_parse_root_span_holds() -> Bool {
+  edit_locus_source_provenance_parse_root_span_holds()
+}
+

@@ -226,12 +226,3 @@ test fn tdc_record_surface_binding_heap_vs_copy() -> Bool {
     )
 }
 
-test fn tdc_trait_derive_completeness_predicate_witness_holds() -> Bool {
-  tdc_string_kernel_satisfies_clone_ord_serde_not_add()
-    && tdc_int_kernel_satisfies_arith_and_ord()
-    && tdc_unknown_atom_refuses_ord_completeness()
-    && tdc_payload_coproduct_shape_and_predicate()
-    && tdc_nullary_enum_copy_shape_and_binding()
-    && tdc_symbol_kernel_string_shape()
-    && tdc_record_surface_binding_heap_vs_copy()
-}

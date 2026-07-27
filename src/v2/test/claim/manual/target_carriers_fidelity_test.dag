@@ -1,6 +1,5 @@
 module v2.test.manual.target_carriers_fidelity
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data target_carriers_probe_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"

@@ -116,13 +116,6 @@ fn emit_field_eval_composed_facts(key: Node) -> Optional<InferredFacts> {
   optional_present(value: emit_field_eval_generic_facts(node: key))
 }
 
-fn emit_field_eval_alt_descent_composed_facts(key: Node) -> Optional<InferredFacts> {
-  optional_present(value: emit_field_eval_facts_with_descent(
-      node: key,
-      descent_symbol: ^emit_field_eval_alt_descent
-    ))
-}
-
 fn rust_field_access_emit_host_wrong_field_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
@@ -154,15 +147,6 @@ fn emit_field_eval_producer_tree() -> Outcome<InferredTree> {
 }
 
 data emit_field_eval_alt_descent_producer_note: String = "Valid alternative tree for the emit-on-demand content-change probe, mirroring kernel_alt_subject_tree: same root, different facts (descent ranking symbol) -> different inferred_tree_digest -> new native key, while the emitted Rust stays the valid fn get(r: (i32,)) -> i32 { r.0 } producing octet 9. The wrong-field tree (r.1 on a 1-tuple) is NOT a valid alt: it is the semantic-mismatch RED fixture and does not compile natively (rustc E0609)."
-
-fn emit_field_eval_alt_descent_producer_tree() -> Outcome<InferredTree> {
-  outcome_accepted(
-    value: InferredTree {
-      root: dag_field_access_arrow_with_body_fixture,
-      facts: Map { lookup: emit_field_eval_alt_descent_composed_facts }
-    }
-  )
-}
 
 fn emit_field_eval_octet_value(n: Int) -> RuntimeValue {
   RuntimePrimitive {
@@ -400,6 +384,3 @@ test fn emit_host_field_access_wrong_fixture_refuses_holds() -> Bool {
   }
 }
 
-test fn emit_host_field_access_equals_eval_all_holds() -> Bool {
-  emit_host_field_access_equals_eval_holds() && emit_host_field_access_wrong_fixture_refuses_holds()
-}

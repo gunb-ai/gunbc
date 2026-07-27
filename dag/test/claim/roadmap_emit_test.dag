@@ -47,8 +47,6 @@ fn signed_child_node() -> RoadmapNode {
 fn nodes() -> List<RoadmapNode> { [parent_node(), child_node()] }
 fn edges() -> List<RoadmapEdge> { [RoadmapEdge { child: child_id, parent: parent_id }] }
 
-fn elements() -> List<SectionElement> { [section_group(label: "", nodes: nodes(), edges: edges())] }
-
 fn emit_nodes(nodes: List<RoadmapNode>, merged: List<Int>) -> String {
   serialize_markdown_source(doc: project_roadmap_section(
     title: "6. Expansion", elements: [section_group(label: "", nodes: nodes, edges: edges())], merged: merged,

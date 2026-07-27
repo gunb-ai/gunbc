@@ -64,7 +64,7 @@ fn python_add_emit_from_tree(target: TargetModel) -> Outcome<Medium<String>> {
   emit(tree: python_add_inferred_tree, target: target)
 }
 
-fn python_add_emit_holds() -> Bool {
+test fn python_add_emit_holds() -> Bool {
   match target_serialize_source_from_model(
     target: python_target_model(),
     emitted: python_emitted_add_fn_node()
@@ -79,7 +79,7 @@ fn python_add_emit_holds() -> Bool {
   }
 }
 
-fn python_add_emit_perturbed_spellings_discriminates() -> Bool {
+test fn python_add_emit_perturbed_spellings_discriminates() -> Bool {
   match python_add_emit_from_tree(target: python_target_model()) {
     Accepted { value: canonical, diagnostics: dc } =>
       match python_add_emit_from_tree(
@@ -96,6 +96,3 @@ fn python_add_emit_perturbed_spellings_discriminates() -> Bool {
   }
 }
 
-test fn python_add_emit_keystone_holds() -> Bool {
-  python_add_emit_holds() && python_add_emit_perturbed_spellings_discriminates()
-}

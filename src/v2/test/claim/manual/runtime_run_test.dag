@@ -204,7 +204,7 @@ fn runtime_run_context() -> EvalContext {
   )
 }
 
-fn runtime_run_step_appends_receipt_holds() -> Bool {
+test fn runtime_run_step_appends_receipt_holds() -> Bool {
   let init = RuntimeRunState { log: runtime_run_log_empty(), scheduled: [] }
   let frontier = RunnableFrontier { ready: [runtime_run_node_a] }
   let state = runtime_run_step_from_frontier(
@@ -216,7 +216,7 @@ fn runtime_run_step_appends_receipt_holds() -> Bool {
   length(xs: state.log.entries) == 1 && state.scheduled == [runtime_run_node_a]
 }
 
-fn runtime_run_completes_both_nodes_holds() -> Bool {
+test fn runtime_run_completes_both_nodes_holds() -> Bool {
   match runtime_run(
     nodes: runtime_run_nodes,
     dependencies: runtime_run_dependencies,
@@ -229,7 +229,7 @@ fn runtime_run_completes_both_nodes_holds() -> Bool {
   }
 }
 
-fn runtime_run_step_is_bounded_to_frontier_holds() -> Bool {
+test fn runtime_run_step_is_bounded_to_frontier_holds() -> Bool {
   let init = RuntimeRunState { log: runtime_run_log_empty(), scheduled: [] }
   let frontier = RunnableFrontier { ready: [runtime_run_node_a] }
   let state = runtime_run_step_from_frontier(
@@ -242,8 +242,3 @@ fn runtime_run_step_is_bounded_to_frontier_holds() -> Bool {
   state.scheduled == [runtime_run_node_a] && length(xs: state.log.entries) == 1
 }
 
-test fn runtime_run_claims_hold() -> Bool {
-  runtime_run_step_appends_receipt_holds()
-    && runtime_run_completes_both_nodes_holds()
-    && runtime_run_step_is_bounded_to_frontier_holds()
-}

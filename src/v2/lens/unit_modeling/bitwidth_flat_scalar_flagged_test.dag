@@ -13,15 +13,6 @@ import v2.std.node {
   TypeNode,
   SyntheticOccurrence
 }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -50,22 +41,4 @@ test fn bitwidth_flat_scalar_flagged_holds() -> Bool {
   }
 }
 
-fn bitwidth_flat_scalar_flagged_rhs() -> Node {
-  if bitwidth_flat_scalar_flagged_holds() {
-    bitwidth_flat_scalar_input
-  } else {
-    Node {
-      kind: TypeNode { connective: Conj },
-      children: [],
-      occurrence_id: SyntheticOccurrence
-    }
-  }
-}
 
-data claim_bitwidth_flat_scalar_flagged: TestClaim = EqualsClaim {
-  label: "lens_unit_modeling/bitwidth_flag: pointer_width typed bare Int is rejected",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: bitwidth_flat_scalar_input,
-  rhs: bitwidth_flat_scalar_flagged_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
