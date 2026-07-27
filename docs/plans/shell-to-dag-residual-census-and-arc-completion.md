@@ -458,13 +458,12 @@ The per-symbol remaining work and batching plan for §4.E CI sites. **Load-beari
 
 **Remaining concat-built foreign-executor punch-list:**
 
-#### A — `merge_admission_produce.dag` (5 script surfaces)
+#### A — `merge_admission_produce.dag` (4 script surfaces)
 
 | symbol | GHA consumer | status / emit complexity |
 | --- | --- | --- |
 | ~~`ci_floor_disposition_marker_init_script`~~ | ~~floor opener (via `gunbc_ci_floor_only_script`)~~ | **RETIRED 2026-07-27** — its only purpose was clearing stale state for an unreachable zero-writer docs-only disposition family |
 | ~~`ci_documentation_only_gate_skip_prefix`~~ | ~~receipt gates, merge gate, selection control~~ | **RETIRED 2026-07-27** — all four readers, persistent marker writer, stamp branch, and admission override deleted atomically |
-| `ci_merge_admission_stamp_script` | merge-admission stamp step | open — low |
 | `ci_merge_admission_gate_script` | merge-admission gate step | open — medium |
 | `ci_floor_stamp_merge_admission_script` | floor tail | **PARTIAL #7293** — control/capture now emit through typed `ExitStatus`/`IntNe`/`Exit`; remaining raw leaves are `ci_floor_stamp_ambient_exit_command`, `ci_floor_stamp_root_command`, and `merge_admission_stamp_command()` |
 
@@ -505,7 +504,7 @@ The per-symbol remaining work and batching plan for §4.E CI sites. **Load-beari
 
 | row | exact production symbols | owner | dissolve trigger |
 | --- | --- | --- | --- |
-| Merge-admission foreign executor | concat builders `ci_merge_admission_stamp_script`, `ci_merge_admission_gate_script`; raw leaves inside the already-emitted floor tail: `ci_floor_stamp_ambient_exit_command`, `ci_floor_stamp_root_command`, `merge_admission_stamp_command()` | roadmap `2-emit-partition`; **unassigned after wise-crane’s #7303 charter closed** | construct typed orchestration intent, emit through the canonical Bash medium, then delete each concat builder / raw `Run.command` leaf. The zero-writer documentation-only disposition reader/marker/policy family retired atomically rather than gaining FileExists/typed-read models. |
+| Merge-admission foreign executor | concat builder `ci_merge_admission_gate_script`; raw leaves inside the already-emitted floor tail: `ci_floor_stamp_ambient_exit_command`, `ci_floor_stamp_root_command`, `merge_admission_stamp_command()` | roadmap `2-emit-partition`; **unassigned after wise-crane’s #7303 charter closed** | construct typed orchestration intent, emit through the canonical Bash medium, then delete the remaining concat builder / raw `Run.command` leaf. The zero-writer documentation-only disposition reader/marker/policy family retired atomically rather than gaining FileExists/typed-read models. |
 | CI materialization foreign executor | `ci_floor_materialization_receipt_gate_script`, `ci_floor_resolve_receipt_gate_script` | roadmap `2-emit-partition`; unassigned | same, with receipt parsing/refusal represented by typed predicates rather than `sed`/test strings |
 | CI-spec foreign executor | `ci_release_build_line`, `ci_fmt_gate_line`, `ci_floor_build_verify_script`, `ci_release_bins_pack_script`, `ci_release_bins_unpack_verify_script`, `gunbc_ci_floor_only_script`, `ci_regen_floor_skip_shortcut_script`, `gunbc_ci_regen_floor_only_script`, `gunbc_ci_deploy_invoke`, `gunbc_ci_heal_regen_invoke`, `gunbc_ci_heal_commit_push_script`, `scheduler_invoke`, `scheduler_invoke_with`, `git_fetch_script` | roadmap `2-emit-partition`; unassigned; `ci_spec.dag` is load-bearing | `ci_fmt_gate_line` calls `cargo.Build.Fmt`; the remaining rows become typed intent → canonical Bash emission; old composers delete and `ci.yml` drift+parse stays green |
 | Phase-1 orchestration fidelity | `ci_floor_peak_while_cond_command`, `ci_floor_peak_while_body_command` | roadmap `6-shell-intent-phase1`; unassigned | model the two live While leaves and move their discriminating witness onto normal cadence; #7318 explicitly refuses nonempty Retry body `Run.env`, BoundedPoll remains test-only, and three-or-more (N-level) Retry is refused, so the remaining scope/adoption claim either gains a need-driven consumer with faithful lowering or narrows explicitly |
