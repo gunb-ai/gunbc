@@ -23,7 +23,13 @@ import gunbc.worker_lifecycle {
   WorkerPhase,
   WorkerPhaseUnobserved,
   WorkerWaitingForHumanSetup,
+  WorkerTerminal,
+  WorkerTerminalCompleted,
+  WorkerTerminalFailed,
+  TerminalOutcomeObserved,
   worker_phase_label,
+  worker_terminal_outcome_label,
+  terminal_outcome_evidence_label,
 }
 import std.types { Bool, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -88,4 +94,15 @@ test fn session_presence_cannot_promote_setup_to_execution() -> Bool {
     && provider_evidence_label(evidence: observation.provider_instance) == "unobserved"
     && worker_phase_label(phase: observation.phase) == "waiting for human setup"
     && tool_execution_readiness_label(readiness: observation.tool_readiness) == "tool readiness unobserved"
+}
+
+test fn terminal_evidence_accepts_only_terminal_outcomes() -> Bool {
+  let completed_phase = WorkerTerminal { outcome: WorkerTerminalCompleted }
+  let failed_outcome = WorkerTerminalFailed {
+    reason: "provider exited nonzero" as NonEmptyStr,
+  }
+  worker_phase_label(phase: completed_phase) == "completed"
+    && worker_terminal_outcome_label(outcome: failed_outcome) == "failed"
+    && terminal_outcome_evidence_label(
+      evidence: TerminalOutcomeObserved { outcome: failed_outcome }) == "observed"
 }

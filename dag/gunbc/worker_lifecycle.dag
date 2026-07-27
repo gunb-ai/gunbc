@@ -10,6 +10,19 @@ import extdeps.llm.cli_lifecycle {
   ToolExecutionReadinessUnobserved,
 }
 
+type WorkerTerminalOutcome
+  = WorkerTerminalCompleted
+  | WorkerTerminalFailed { reason: NonEmptyStr }
+  | WorkerTerminalRefused { reason: NonEmptyStr }
+
+fn worker_terminal_outcome_label(outcome: WorkerTerminalOutcome) -> String {
+  match outcome {
+    WorkerTerminalCompleted => "completed"
+    WorkerTerminalFailed { reason: _ } => "failed"
+    WorkerTerminalRefused { reason: _ } => "refused"
+  }
+}
+
 type WorkerPhase
   = WorkerPhaseUnobserved { reason: NonEmptyStr }
   | WorkerStarting
@@ -18,9 +31,7 @@ type WorkerPhase
   | WorkerReasoning
   | WorkerRunningTool
   | WorkerWaitingOnBuild
-  | WorkerCompleted
-  | WorkerFailed { reason: NonEmptyStr }
-  | WorkerRefused { reason: NonEmptyStr }
+  | WorkerTerminal { outcome: WorkerTerminalOutcome }
 
 fn worker_phase_label(phase: WorkerPhase) -> String {
   match phase {
@@ -31,9 +42,7 @@ fn worker_phase_label(phase: WorkerPhase) -> String {
     WorkerReasoning => "reasoning"
     WorkerRunningTool => "running tool"
     WorkerWaitingOnBuild => "waiting on build/test"
-    WorkerCompleted => "completed"
-    WorkerFailed { reason: _ } => "failed"
-    WorkerRefused { reason: _ } => "refused"
+    WorkerTerminal { outcome } => worker_terminal_outcome_label(outcome: outcome)
   }
 }
 
@@ -50,7 +59,7 @@ type TranscriptEvidence
   | TranscriptUnobserved { reason: NonEmptyStr }
 
 type TerminalOutcomeEvidence
-  = TerminalOutcomeObserved { phase: WorkerPhase }
+  = TerminalOutcomeObserved { outcome: WorkerTerminalOutcome }
   | TerminalOutcomeUnobserved { reason: NonEmptyStr }
 
 type AttemptEvidence {
@@ -102,7 +111,7 @@ fn transcript_evidence_label(evidence: TranscriptEvidence) -> String {
 
 fn terminal_outcome_evidence_label(evidence: TerminalOutcomeEvidence) -> String {
   match evidence {
-    TerminalOutcomeObserved { phase: _ } => "observed"
+    TerminalOutcomeObserved { outcome: _ } => "observed"
     TerminalOutcomeUnobserved { reason: _ } => "unobserved"
   }
 }
