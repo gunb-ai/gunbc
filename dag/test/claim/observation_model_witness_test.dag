@@ -90,6 +90,10 @@ import std.observation {
   Notable,
   Anomaly,
   AttentionBasis,
+  ObservationAttention,
+  AttentionAssigned,
+  AttentionRefused,
+  observation_attention_under,
   observation_attention,
   observation_outcome_is_anomaly,
   ObservationEventClass,
@@ -302,6 +306,69 @@ test fn w_attention_moves_with_the_basis_not_a_local_constant() -> Bool {
   perturbation_consistent(
     reading: BackwardDiffInDiffOut,
     output_responded: observation_attention(event: event, basis: strict) != observation_attention(event: event, basis: loose)
+  )
+}
+
+test fn w_attention_availability_precedence_and_causes_hold() -> Bool {
+  let basis_cause = "cost basis absent for this subject" as NonEmptyStr
+  let no_basis = MeasuredUnavailable { cause: basis_cause }
+  let no_wall = ObservationEvent {
+    subject: obs_entry_subject(),
+    transition: Step { k: 1, n: 2 },
+    wall: MeasuredUnavailable { cause: "clock absent" as NonEmptyStr },
+    rss: MeasuredUnavailable { cause: "rss absent" as NonEmptyStr }
+  }
+  let begin = ObservationEvent {
+    subject: obs_entry_subject(),
+    transition: Begin,
+    wall: MeasuredUnavailable { cause: "clock absent" as NonEmptyStr },
+    rss: MeasuredUnavailable { cause: "rss absent" as NonEmptyStr }
+  }
+  let refused = obs_event(transition: Concluded { outcome: Refused { diagnostic: "policy" as NonEmptyStr } }, wall_ms: 1)
+  let failed = obs_event(transition: Concluded { outcome: Failed { error: "broken" as NonEmptyStr, output: "" } }, wall_ms: 1)
+  let timed_out = obs_event(
+    transition: Concluded { outcome: TimedOut { budget: millisecond(count: 1), elapsed: millisecond(count: 2) } },
+    wall_ms: 2
+  )
+  let done = obs_event(transition: Concluded { outcome: Done }, wall_ms: 500)
+  match observation_attention_under(event: begin, basis: no_basis) {
+    AttentionAssigned { level: l } => l == Ambient
+    AttentionRefused { cause: _ } => false
+  } &&
+  match observation_attention_under(event: refused, basis: no_basis) {
+    AttentionAssigned { level: l } => l == Anomaly
+    AttentionRefused { cause: _ } => false
+  } &&
+  match observation_attention_under(event: failed, basis: no_basis) {
+    AttentionAssigned { level: l } => l == Anomaly
+    AttentionRefused { cause: _ } => false
+  } &&
+  match observation_attention_under(event: timed_out, basis: no_basis) {
+    AttentionAssigned { level: l } => l == Anomaly
+    AttentionRefused { cause: _ } => false
+  } &&
+  match observation_attention_under(event: no_wall, basis: no_basis) {
+    AttentionAssigned { level: l } => l == Ambient
+    AttentionRefused { cause: _ } => false
+  } &&
+  match observation_attention_under(event: done, basis: no_basis) {
+    AttentionAssigned { level: _ } => false
+    AttentionRefused { cause: c } => c == basis_cause
+  }
+}
+
+test fn w_attention_strict_facade_equals_measured_value_projection() -> Bool {
+  let events = [
+    obs_event(transition: Begin, wall_ms: 1),
+    obs_event(transition: Step { k: 1, n: 2 }, wall_ms: 2000),
+    obs_event(transition: Concluded { outcome: Done }, wall_ms: 9000),
+    obs_event(transition: Concluded { outcome: Refused { diagnostic: "policy" as NonEmptyStr } }, wall_ms: 1)
+  ]
+  fold(events, init: true, f: (acc, event) =>
+    acc && match observation_attention_under(event: event, basis: MeasuredValue { value: obs_basis() }) {
+      AttentionAssigned { level: l } => l == observation_attention(event: event, basis: obs_basis())
+      AttentionRefused { cause: _ } => false
+    }
   )
 }
 

@@ -98,8 +98,12 @@ fn tty_cursor_action(density: ObservationDensity, attention: AttentionLevel, cap
     SummaryAlwaysShown => Append
     AnomalyExpanded => Append
     RoutineCollapsible =>
-      if cap.cursor_addressable && attention == Ambient {
-        Overwrite
+      if cap.cursor_addressable {
+        match attention {
+          Ambient => Overwrite
+          Notable => Append
+          Anomaly => Append
+        }
       } else {
         Append
       }
@@ -171,7 +175,7 @@ type TtyEmissionProjection
   = TtyEmissionProjected { emission: TtyEmission }
   | TtyEmissionRefused { cause: NonEmptyStr }
 
-fn tty_event_emission(event: ObservationEvent, basis: Measured<AttentionBasis>, cap: RenderCapability) -> TtyEmissionProjection {
+fn tty_event_emission_under(event: ObservationEvent, basis: Measured<AttentionBasis>, cap: RenderCapability) -> TtyEmissionProjection {
   match observation_attention_under(event: event, basis: basis) {
     AttentionRefused { cause: c } => TtyEmissionRefused { cause: c }
     AttentionAssigned { level: attention } =>
@@ -182,6 +186,19 @@ fn tty_event_emission(event: ObservationEvent, basis: Measured<AttentionBasis>, 
           line: line,
           cursor: tty_cursor_action(density: density, attention: attention, cap: cap)
         }
+      }
+  }
+}
+
+fn tty_event_emission(event: ObservationEvent, basis: AttentionBasis, cap: RenderCapability) -> TtyEmission {
+  match tty_event_emission_under(event: event, basis: MeasuredValue { value: basis }, cap: cap) {
+    TtyEmissionProjected { emission: e } => e
+    TtyEmissionRefused { cause: _ } =>
+      let line = ci_event_line(event: event, basis: basis)
+      let density = observation_class_density(c: observation_event_class(event: event))
+      TtyEmission {
+        line: line,
+        cursor: tty_cursor_action(density: density, attention: line.attention, cap: cap)
       }
   }
 }

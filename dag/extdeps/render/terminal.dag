@@ -139,44 +139,63 @@ fn terminal_erase_line_2() -> String {
   concat(csi_esc, "2K")
 }
 
+fn dynamic_line_is_open(state: DynamicLineState) -> Bool {
+  match state {
+    DynamicLineOpen => true
+    DynamicLineClosed => false
+  }
+}
+
+fn cursor_action_is_clear(action: CursorAction) -> Bool {
+  match action {
+    Clear => true
+    Overwrite => false
+    Append => false
+  }
+}
+
 fn project_terminal_write(
   prior: DynamicLineState,
   requested: CursorAction,
   capability: RenderCapability,
   rendered: String
 ) -> TerminalWriteProjection {
-  if !capability.cursor_addressable && prior == DynamicLineOpen {
+  if !capability.cursor_addressable && dynamic_line_is_open(state: prior) {
     TerminalWriteRefused { cause: "non-addressable terminal cannot continue an open dynamic line" as NonEmptyStr }
-  } else if requested == Clear && rendered != "" {
-    TerminalWriteRefused { cause: "Clear requires empty rendered text" as NonEmptyStr }
   } else {
-    let action = cursor_action_under(requested: requested, cap: capability)
-    match action {
-      Overwrite =>
-        TerminalWriteProjected {
-          bytes: concat("\r", concat(terminal_erase_line_2(), rendered)),
-          next: DynamicLineOpen
-        }
-      Append =>
-        match prior {
-          DynamicLineOpen =>
-            TerminalWriteProjected {
-              bytes: concat("\r", concat(terminal_erase_line_2(), concat(rendered, "\n"))),
-              next: DynamicLineClosed
-            }
-          DynamicLineClosed =>
-            TerminalWriteProjected { bytes: concat(rendered, "\n"), next: DynamicLineClosed }
-        }
-      Clear =>
-        match prior {
-          DynamicLineOpen =>
-            TerminalWriteProjected {
-              bytes: concat("\r", terminal_erase_line_2()),
-              next: DynamicLineClosed
-            }
-          DynamicLineClosed =>
-            TerminalWriteProjected { bytes: "", next: DynamicLineClosed }
-        }
+    if string_contains(s: rendered, pattern: "\r") || string_contains(s: rendered, pattern: terminal_erase_line_2()) {
+      TerminalWriteRefused { cause: "rendered text cannot contain terminal cursor-control bytes" as NonEmptyStr }
+    } else if cursor_action_is_clear(action: requested) && rendered != "" {
+      TerminalWriteRefused { cause: "Clear requires empty rendered text" as NonEmptyStr }
+    } else {
+      let action = cursor_action_under(requested: requested, cap: capability)
+      match action {
+        Overwrite =>
+          TerminalWriteProjected {
+            bytes: concat("\r", concat(terminal_erase_line_2(), rendered)),
+            next: DynamicLineOpen
+          }
+        Append =>
+          match prior {
+            DynamicLineOpen =>
+              TerminalWriteProjected {
+                bytes: concat("\r", concat(terminal_erase_line_2(), concat(rendered, "\n"))),
+                next: DynamicLineClosed
+              }
+            DynamicLineClosed =>
+              TerminalWriteProjected { bytes: concat(rendered, "\n"), next: DynamicLineClosed }
+          }
+        Clear =>
+          match prior {
+            DynamicLineOpen =>
+              TerminalWriteProjected {
+                bytes: concat("\r", terminal_erase_line_2()),
+                next: DynamicLineClosed
+              }
+            DynamicLineClosed =>
+              TerminalWriteProjected { bytes: "", next: DynamicLineClosed }
+          }
+      }
     }
   }
 }

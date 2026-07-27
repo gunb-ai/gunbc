@@ -16,11 +16,16 @@ import std.observation {
   MeasuredValue,
   MeasuredUnavailable,
   ObservationEvent,
+  Begin,
   Concluded,
   Done,
   Refused,
   Failed,
+  Final,
   AttentionBasis,
+  RoutineCollapsible,
+  SummaryAlwaysShown,
+  AnomalyExpanded,
   Ambient,
   Notable,
   Anomaly,
@@ -37,8 +42,12 @@ import gunbc.observation_tty_render {
   tty_blocked_line,
   tty_final_line,
   tty_event_emission,
+  tty_event_emission_under,
   tty_render_emission,
   TtyEmission,
+  TtyEmissionProjection,
+  TtyEmissionProjected,
+  TtyEmissionRefused,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -83,14 +92,15 @@ test fn w_preamble_names_what_why_and_how_much() -> Bool {
 }
 
 test fn w_routine_repaints_in_place_but_anomaly_scrolls() -> Bool {
-  tty_cursor_action(attention: Ambient, cap: tty_cap()) == Overwrite &&
-  tty_cursor_action(attention: Notable, cap: tty_cap()) == Append &&
-  tty_cursor_action(attention: Anomaly, cap: tty_cap()) == Append
+  tty_cursor_action(density: RoutineCollapsible, attention: Ambient, cap: tty_cap()) == Overwrite &&
+  tty_cursor_action(density: RoutineCollapsible, attention: Notable, cap: tty_cap()) == Append &&
+  tty_cursor_action(density: AnomalyExpanded, attention: Anomaly, cap: tty_cap()) == Append &&
+  tty_cursor_action(density: SummaryAlwaysShown, attention: Ambient, cap: tty_cap()) == Append
 }
 
 test fn w_non_addressable_terminal_always_appends() -> Bool {
-  tty_cursor_action(attention: Ambient, cap: pipe_cap()) == Append &&
-  tty_cursor_action(attention: Anomaly, cap: pipe_cap()) == Append
+  tty_cursor_action(density: RoutineCollapsible, attention: Ambient, cap: pipe_cap()) == Append &&
+  tty_cursor_action(density: AnomalyExpanded, attention: Anomaly, cap: pipe_cap()) == Append
 }
 
 test fn w_refusal_never_repaints_away() -> Bool {
@@ -100,9 +110,10 @@ test fn w_refusal_never_repaints_away() -> Bool {
     wall: MeasuredValue { value: millisecond(count: 2472000) },
     rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
   }
-  let emission = tty_event_emission(event: refusal, basis: tty_basis(), cap: tty_cap())
-  emission.line.attention == Anomaly &&
-  emission.cursor == Append
+  match tty_event_emission_under(event: refusal, basis: MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
+    TtyEmissionProjected { emission: e } => e.line.attention == Anomaly && e.cursor == Append
+    TtyEmissionRefused { cause: _ } => false
+  }
 }
 
 test fn w_same_event_drives_both_surfaces() -> Bool {
@@ -112,8 +123,65 @@ test fn w_same_event_drives_both_surfaces() -> Bool {
     wall: MeasuredValue { value: millisecond(count: 230) },
     rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
   }
-  let emission = tty_event_emission(event: event, basis: tty_basis(), cap: tty_cap())
-  string_contains(s: tty_render_emission(emission: emission, tier: Emoji), pattern: "in 230ms")
+  match tty_event_emission_under(event: event, basis: MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
+    TtyEmissionProjected { emission: e } =>
+      string_contains(s: tty_render_emission(emission: e, tier: Emoji), pattern: "in 230ms")
+    TtyEmissionRefused { cause: _ } => false
+  }
+}
+
+test fn w_unavailable_basis_refuses_with_exact_cause() -> Bool {
+  let cause = "no signed basis for this subject" as NonEmptyStr
+  let event = ObservationEvent {
+    subject: tty_entry_subject(),
+    transition: Concluded { outcome: Done },
+    wall: MeasuredValue { value: millisecond(count: 230) },
+    rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
+  }
+  match tty_event_emission_under(event: event, basis: MeasuredUnavailable { cause: cause }, cap: tty_cap()) {
+    TtyEmissionProjected { emission: _ } => false
+    TtyEmissionRefused { cause: c } => c == cause
+  }
+}
+
+test fn w_clean_final_appends_even_when_ambient() -> Bool {
+  let event = ObservationEvent {
+    subject: tty_entry_subject(),
+    transition: Concluded { outcome: Final { shown_failures: 0 } },
+    wall: MeasuredValue { value: millisecond(count: 230) },
+    rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
+  }
+  match tty_event_emission_under(event: event, basis: MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
+    TtyEmissionProjected { emission: e } => e.line.attention == Ambient && e.cursor == Append
+    TtyEmissionRefused { cause: _ } => false
+  }
+}
+
+test fn w_routine_begin_overwrites_on_addressable_tty() -> Bool {
+  let event = ObservationEvent {
+    subject: tty_entry_subject(),
+    transition: Begin,
+    wall: MeasuredUnavailable { cause: "not started" as NonEmptyStr },
+    rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
+  }
+  match tty_event_emission_under(event: event, basis: MeasuredUnavailable { cause: "basis absent" as NonEmptyStr }, cap: tty_cap()) {
+    TtyEmissionProjected { emission: e } => e.line.attention == Ambient && e.cursor == Overwrite
+    TtyEmissionRefused { cause: _ } => false
+  }
+}
+
+test fn w_tty_strict_facade_equals_measured_value_projection() -> Bool {
+  let event = ObservationEvent {
+    subject: tty_entry_subject(),
+    transition: Concluded { outcome: Done },
+    wall: MeasuredValue { value: millisecond(count: 230) },
+    rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
+  }
+  let strict = tty_event_emission(event: event, basis: tty_basis(), cap: tty_cap())
+  match tty_event_emission_under(event: event, basis: MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
+    TtyEmissionProjected { emission: projected } => strict == projected
+    TtyEmissionRefused { cause: _ } => false
+  }
 }
 
 test fn w_group_line_names_the_current_entry() -> Bool {
@@ -159,4 +227,3 @@ test fn w_final_with_failures_names_them_and_is_anomaly() -> Bool {
   string_contains(s: line.text, pattern: "3 problems shown") &&
   line.attention == Anomaly
 }
-
