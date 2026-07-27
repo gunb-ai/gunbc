@@ -136,14 +136,8 @@ test fn witness_deploy_preflight_plan_has_whoami_plus_privileged_probes() -> Boo
 }
 
 test fn witness_deploy_preflight_plan_first_step_reads_principal() -> Bool {
-  match deploy_access_preflight_plan(access: ci_deploy_srv1_access).steps.first() {
-    Do { effect: effect } =>
-      match effect {
-        ReadEffectivePosixPrincipal { read: _ } => true
-        _ => false
-      }
-    _ => false
-  }
+  let first = deploy_access_preflight_plan(access: ci_deploy_srv1_access).steps.first()
+  first == deploy_access_principal_probe_step()
 }
 
 test fn witness_deploy_grant_admits_apt_get_probe() -> Bool {
