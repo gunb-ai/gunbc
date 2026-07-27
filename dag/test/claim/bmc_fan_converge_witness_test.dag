@@ -1,0 +1,230 @@
+module test.claim.bmc_fan_converge_witness
+
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation,
+}
+import extdeps.bmc.types {
+  BmcConfigPersistenceUnsupported,
+  BmcFlashBackedOverlayObserved,
+}
+import gunbc.bmc_converge { BmcFanPolicyApplyPlan }
+import gunbc.bmc_fan_converge {
+  BmcFanLiveIdentityObserved,
+  BmcFanLiveIdentityRefused,
+  BmcFanLiveObserved,
+  BmcFanLiveObservationRefused,
+  bmc_fan_apply_script,
+  bmc_fan_identity_matches_firmware_intent,
+  bmc_fan_identity_observer_script,
+  bmc_fan_policy_projection_json,
+  bmc_fan_live_safety_holds,
+  bmc_fan_observer_script,
+  bmc_fan_parse_live_identity,
+  bmc_fan_parse_live_observation,
+}
+import gunbc.bmc_intent {
+  fleet_bmc_valid_state,
+  fleet_quiet_temp_soc_fan_curve,
+}
+import gunbc.fleet_bmc_state { srv4_bmc_fan_projection_capability }
+import gunbc.fleet_intent { srv4_host }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data desired_live_observation_lines: List<String> = [
+  "firmware=3.22.00",
+  "machine=altrad8ud-1l2t",
+  "selected_config_path=/usr/share/swampd/config.json",
+  "board_config_path=/usr/share/swampd/config-asrr.json",
+  "controller_service=phosphor-pid-control.service",
+  "controller_binary=/usr/bin/swampd",
+  "service_active=active",
+  "zone_control_path=/xyz/openbmc_project/settings/fanctrl/zone0",
+  "zone_failsafe=false",
+  "target_count=1",
+  "minimum=30",
+  "zone_failsafe_duty=75",
+  "sensor_failsafe=75",
+  "positive_hysteresis=1",
+  "negative_hysteresis=2",
+  "readings=40,75,90,93,95,97,98",
+  "outputs=30,30,30,55,70,85,100",
+  "fan_entries=FAN1",
+  "fan_entry_count=1",
+  "fan_inputs=FAN1,FAN2,FAN3,FAN4",
+  "lowerdir=/run/initramfs/ro",
+  "upperdir=/run/initramfs/rw",
+  "writable=true",
+  "upper_override=true",
+  "available_bytes=20000000",
+  "observed_at=2026-07-27T20:00:00Z",
+  "temperature_TEMP_SOC=74",
+  "tach_FAN1=4800",
+  "tach_FAN2=1200",
+  "tach_FAN3=1210",
+  "tach_FAN4=1190",
+  "tach_FAN5=absent",
+  "temperature_TEMP_Core_VRD=63",
+  "temperature_TEMP_DIMM_A1=65",
+  "temperature_TEMP_DIMM_B1=64",
+  "temperature_TEMP_DIMM_C1=63",
+  "temperature_TEMP_DIMM_D1=60",
+  "temperature_TEMP_DIMM_E1=68",
+  "temperature_TEMP_DIMM_F1=70",
+  "temperature_TEMP_DIMM_G1=70",
+  "temperature_TEMP_DIMM_H1=67",
+  "temperature_TEMP_DIMM_VRD=59",
+  "temperature_TEMP_MB=55",
+  "temperature_TEMP_RCA_VR=60",
+  "temperature_TEMP_SOC_VRD=58",
+  "temperature_TEMP_VR=59",
+  "temperature_TEMP_X550=63",
+  "temperature_TEMP_CARD_SIDE=52",
+]
+
+fn desired_fixture_apply_plan() -> BmcFanPolicyApplyPlan {
+  BmcFanPolicyApplyPlan {
+    host: srv4_host.identity,
+    observed: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation,
+    desired_curve: fleet_quiet_temp_soc_fan_curve,
+    config_path: srv4_bmc_fan_projection_capability.config_path,
+    controller_service: srv4_bmc_fan_projection_capability.controller_service,
+    projection: srv4_bmc_fan_projection_capability,
+  }
+}
+
+test fn identity_preflight_is_tool_minimal_and_rejects_openbmc_2_track() -> Bool {
+  let script = bmc_fan_identity_observer_script()
+  let parsed = bmc_fan_parse_live_identity(lines: [
+    "firmware=2.07.00",
+    "machine=altrad8ud-1l2t",
+  ])
+  !string_contains(s: script, pattern: "jq")
+    && string_contains(s: script, pattern: "VERSION_ID")
+    && match parsed {
+      BmcFanLiveIdentityRefused { reason: _ } => false
+      BmcFanLiveIdentityObserved { identity: identity } =>
+        !bmc_fan_identity_matches_firmware_intent(
+          identity: identity,
+          intent: fleet_bmc_valid_state.firmware,
+        )
+    }
+}
+
+test fn live_observer_normalizes_desired_curve_and_safety_surface() -> Bool {
+  match bmc_fan_parse_live_observation(lines: desired_live_observation_lines) {
+    BmcFanLiveObservationRefused { reason: _ } => false
+    BmcFanLiveObserved { observation: observed } =>
+      observed.policy.curve == fleet_quiet_temp_soc_fan_curve
+        && observed.policy.firmware.version == "3.22.00"
+        && !observed.zone_failsafe_active
+        && match observed.persistence {
+          BmcFlashBackedOverlayObserved {
+            firmware: _,
+            config_path: _,
+            lower_filesystem: _,
+            upper_filesystem: _,
+            overlay_mount: _,
+            writable: writable,
+            upper_override_present: _,
+            available_bytes: _,
+            observed_at: _,
+          } => writable
+          BmcConfigPersistenceUnsupported {
+            firmware: _,
+            config_path: _,
+            reason: _,
+            observed_at: _,
+          } => false
+        }
+        && bmc_fan_live_safety_holds(
+          observation: observed,
+          intent: fleet_bmc_valid_state,
+          projection: srv4_bmc_fan_projection_capability,
+        )
+  }
+}
+
+test fn active_zone_failsafe_is_not_a_converged_live_state() -> Bool {
+  let failsafe = desired_live_observation_lines |> map(
+    line =>
+      if starts_with(s: line, prefix: "zone_failsafe=") {
+        "zone_failsafe=true"
+      } else {
+        line
+      }
+  )
+  match bmc_fan_parse_live_observation(lines: failsafe) {
+    BmcFanLiveObservationRefused { reason: _ } => false
+    BmcFanLiveObserved { observation: observed } =>
+      !bmc_fan_live_safety_holds(
+        observation: observed,
+        intent: fleet_bmc_valid_state,
+        projection: srv4_bmc_fan_projection_capability,
+      )
+  }
+}
+
+test fn absent_required_tach_fails_closed() -> Bool {
+  let without_fan4 = desired_live_observation_lines |> filter(line => !starts_with(s: line, prefix: "tach_FAN4="))
+  match bmc_fan_parse_live_observation(lines: without_fan4) {
+    BmcFanLiveObservationRefused { reason: _ } => false
+    BmcFanLiveObserved { observation: observed } =>
+      !bmc_fan_live_safety_holds(
+        observation: observed,
+        intent: fleet_bmc_valid_state,
+        projection: srv4_bmc_fan_projection_capability,
+      )
+  }
+}
+
+test fn malformed_or_unordered_curve_refuses_observation() -> Bool {
+  let malformed = desired_live_observation_lines |> map(
+    line =>
+      if starts_with(s: line, prefix: "readings=") {
+        "readings=40,90,75,93,95,97,98"
+      } else {
+        line
+      }
+  )
+  match bmc_fan_parse_live_observation(lines: malformed) {
+    BmcFanLiveObservationRefused { reason: _ } => true
+    BmcFanLiveObserved { observation: _ } => false
+  }
+}
+
+test fn desired_projection_is_derived_once_as_json() -> Bool {
+  bmc_fan_policy_projection_json(
+    curve: fleet_quiet_temp_soc_fan_curve,
+    projection: srv4_bmc_fan_projection_capability,
+  ) == "{\"readings\": [40, 75, 90, 93, 95, 97, 98], \"outputs\": [30, 30, 30, 55, 70, 85, 100], \"minimum\": 30, \"sensor_failsafe\": 75, \"zone_failsafe_duty\": 75, \"positive_hysteresis\": 1, \"negative_hysteresis\": 2, \"fan_pid_entry\": \"FAN1\", \"fan_inputs\": [\"FAN1\", \"FAN2\", \"FAN3\", \"FAN4\"]}"
+}
+
+test fn apply_script_carries_atomic_replace_rollback_and_postapply_probes() -> Bool {
+  let script = bmc_fan_apply_script(
+    plan: desired_fixture_apply_plan(),
+    intent: fleet_bmc_valid_state,
+  )
+  string_contains(s: script, pattern: "mv -f \"$STAGE\" \"$CONFIG\"")
+    && string_contains(s: script, pattern: "restore_previous")
+    && string_contains(s: script, pattern: "systemctl is-active --quiet \"$SERVICE\"")
+    && string_contains(s: script, pattern: "required tach $tach is zero")
+    && string_contains(s: script, pattern: ".inputs = $desired.fan_inputs")
+    && string_contains(s: script, pattern: "zone remained in failsafe")
+    && string_contains(s: script, pattern: "component sensor $sensor reached the rollback ceiling")
+    && string_contains(s: script, pattern: ".failsafePercent = $desired.zone_failsafe_duty")
+}
+
+test fn observer_script_reads_every_global_component_guard_sensor() -> Bool {
+  let script = bmc_fan_observer_script(
+    config_path: srv4_bmc_fan_projection_capability.config_path,
+    controller_service: srv4_bmc_fan_projection_capability.controller_service,
+    controller_zone_path: srv4_bmc_fan_projection_capability.controller_zone_path,
+    component_sensors: fleet_bmc_valid_state.fan_policy.thermal_guard.required_component_sensors,
+  )
+  string_contains(s: script, pattern: "TEMP_DIMM_A1")
+    && string_contains(s: script, pattern: "TEMP_DIMM_H1")
+    && string_contains(s: script, pattern: "TEMP_X550")
+    && string_contains(s: script, pattern: "temperature_TEMP_SOC")
+}

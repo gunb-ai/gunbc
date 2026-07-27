@@ -6,18 +6,52 @@ import extdeps.bmc.capability {
 }
 import extdeps.bmc.types {
   BmcConfigPersistenceObservation,
+  BmcFanPolicyObservation,
   BmcFlashBackedOverlayObserved,
   BmcRedfishSurfaceObservation,
   BmcUpdateServiceObservation,
+  FanPidAggregatedEntry,
   RedfishFanControlResourceAbsent,
   RedfishInitialDutyControlResource,
   RedfishLegacyChassisThermal,
   RedfishThermalSubsystemSensorCollection,
 }
+import extdeps.crypto.hash { Digest, sha256_digest }
 import gunbc.fleet_intent { srv3_baseboard, srv4_baseboard }
+import gunbc.bmc_intent { fleet_bmc_valid_state }
 import gunbc.bmc_fan_projection { BmcFanPolicyProjectionCapability }
 import std.bmc { OpenBmc }
-import std.measure { byte_size }
+import std.measure {
+  Celsius,
+  RevolutionsPerMinute,
+  byte_size,
+  celsius,
+  rpm,
+}
+import std.nat { Nat }
+
+type BmcFanTachReceipt {
+  sensor: NonEmptyStr
+  reading: RevolutionsPerMinute
+}
+
+type BmcFanConvergenceReceipt {
+  policy: BmcFanPolicyObservation
+  persistence: BmcConfigPersistenceObservation
+  projection_id: NonEmptyStr
+  active_config_digest: Digest
+  previous_config_digest: Digest
+  zone_control_path: NonEmptyStr
+  zone_failsafe_active: Bool
+  monitoring_sample_count: Nat
+  monitoring_duration_seconds: Nat
+  temp_soc_minimum: Celsius
+  temp_soc_maximum: Celsius
+  temp_soc_final: Celsius
+  guarded_component_maximum: Celsius
+  final_tachs: List<BmcFanTachReceipt>
+  observed_at: NonEmptyStr
+}
 
 data srv3_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservation {
   endpoint: srv3_baseboard.bmc,
@@ -80,7 +114,24 @@ data srv4_bmc_fan_projection_capability: BmcFanPolicyProjectionCapability = BmcF
   firmware: srv4_bmc_firmware_observation.firmware,
   config_path: "/usr/share/swampd/config-asrr.json",
   controller_service: "phosphor-pid-control.service",
-  projection_id: "swampd-asrr-temp-soc-stepwise-v1",
+  controller_zone_path: "/xyz/openbmc_project/settings/fanctrl/zone0",
+  aggregate_fan_pid_entry: "FAN1",
+  projection_id: "swampd-asrr-temp-soc-stepwise-v2",
+  required_tach_inputs: fleet_bmc_valid_state.fan_policy.required_tach_inputs,
+}
+
+data srv4_bmc_fan_converged_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
+  firmware: srv4_bmc_firmware_observation.firmware,
+  curve: fleet_bmc_valid_state.fan_policy.curve,
+  selected_config_path: "/usr/share/swampd/config.json",
+  board_config_path: srv4_bmc_fan_projection_capability.config_path,
+  controller_service: srv4_bmc_fan_projection_capability.controller_service,
+  controller_binary: "/usr/bin/swampd",
+  controller_shape: FanPidAggregatedEntry {
+    entry_name: srv4_bmc_fan_projection_capability.aggregate_fan_pid_entry,
+    tach_inputs: srv4_bmc_fan_projection_capability.required_tach_inputs,
+  },
+  observed_at: "2026-07-27T22:31:25Z",
 }
 
 data srv4_bmc_config_persistence_observation: BmcConfigPersistenceObservation = BmcFlashBackedOverlayObserved {
@@ -90,12 +141,39 @@ data srv4_bmc_config_persistence_observation: BmcConfigPersistenceObservation = 
   upper_filesystem: "jffs2:/dev/mtdblock5",
   overlay_mount: "/",
   writable: true,
-  upper_override_present: false,
-  available_bytes: byte_size(20361216),
-  observed_at: "2026-07-27",
+  upper_override_present: true,
+  available_bytes: byte_size(20365312),
+  observed_at: "2026-07-27T22:31:25Z",
 }
 
-data srv4_bmc_fan_projection_probe_note: String = "Authenticated read-only BMC SSH probe, 2026-07-27: the active 3.22 config was projected in memory through the intended TEMP_SOC semantic patch. The projection was semantically idempotent; changing the 75C output from 75 to 74 was discriminating; applying the projection healed the perturbation exactly. No file was written and phosphor-pid-control was not restarted. This proves the jq transformation can express the desired state, not that the typed persistent actuator or rollback receipt exists."
+data srv4_bmc_fan_convergence_receipt: BmcFanConvergenceReceipt = BmcFanConvergenceReceipt {
+  policy: srv4_bmc_fan_converged_policy_observation,
+  persistence: srv4_bmc_config_persistence_observation,
+  projection_id: srv4_bmc_fan_projection_capability.projection_id,
+  active_config_digest: sha256_digest(
+    hex: "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481",
+  ),
+  previous_config_digest: sha256_digest(
+    hex: "d8bfd424085001709228abdd5c19decb53e7da36f51001200b4ff5519dcc6d02",
+  ),
+  zone_control_path: srv4_bmc_fan_projection_capability.controller_zone_path,
+  zone_failsafe_active: false,
+  monitoring_sample_count: 12,
+  monitoring_duration_seconds: 360,
+  temp_soc_minimum: celsius(72),
+  temp_soc_maximum: celsius(77),
+  temp_soc_final: celsius(73),
+  guarded_component_maximum: celsius(69),
+  final_tachs: [
+    BmcFanTachReceipt { sensor: "FAN1", reading: rpm(3616) },
+    BmcFanTachReceipt { sensor: "FAN2", reading: rpm(943) },
+    BmcFanTachReceipt { sensor: "FAN3", reading: rpm(933) },
+    BmcFanTachReceipt { sensor: "FAN4", reading: rpm(889) },
+  ],
+  observed_at: "2026-07-27T22:31:25Z",
+}
+
+data srv4_bmc_fan_projection_probe_note: String = "Authenticated read-only BMC SSH probe, 2026-07-27: the active 3.22 config was projected in memory through the intended TEMP_SOC semantic patch. The projection was idempotent, and a curve perturbation was discriminating. The later typed live receipt is srv4_bmc_fan_convergence_receipt; this note remains the earlier projection-only provenance rather than being rewritten as execution."
 
 data fleet_bmc_surface_observation_note: String = "Authenticated read-only Redfish observations, 2026-07-27. srv3 OpenBMC 2.07.00 advertises ThermalSubsystem and its 51-member Chassis/Sensors collection includes temperature and fan readings; the legacy Chassis/Thermal URI is absent. srv4 OpenBMC 3.22.00 advertises legacy Chassis/Thermal; its Chassis/Sensors request still returns HTTP success but has only 9 power/utilization members and omits temperature/fan readings. A collection-only observer therefore fails open on srv4: transport success is not telemetry completeness. Direct known sensor URIs still resolve, but they do not make an inventory query complete."
 

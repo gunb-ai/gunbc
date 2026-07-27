@@ -12,9 +12,9 @@ On both observed firmware versions, `phosphor-pid-control.service` runs `/usr/bi
 /usr/share/swampd/config.json -> /usr/share/swampd/config-asrr.json
 ```
 
-The board configuration controls all five fan outputs from `TEMP_SOC` with this observed policy:
+The factory board configuration controls all five fan outputs from `TEMP_SOC` with this observed policy:
 
-| TEMP_SOC at or above | Requested duty |
+| Factory TEMP_SOC at or above | Requested duty |
 | ---: | ---: |
 | 40 °C | 30% |
 | 55 °C | 40% |
@@ -22,13 +22,25 @@ The board configuration controls all five fan outputs from `TEMP_SOC` with this 
 | 75 °C | 75% |
 | 85 °C | 100% |
 
-Positive and negative hysteresis are both 1 °C. Minimum duty is 30%, including below the first breakpoint. If the control temperature is unavailable, the observed fail-safe request is 75%.
+The fleet-owned desired policy is deliberately flat at the factory-established minimum through 90 °C, then becomes an emergency ramp:
+
+| Desired TEMP_SOC at or above | Requested duty |
+| ---: | ---: |
+| 40 °C | 30% |
+| 75 °C | 30% |
+| 90 °C | 30% |
+| 93 °C | 55% |
+| 95 °C | 70% |
+| 97 °C | 85% |
+| 98 °C | 100% |
+
+Rising hysteresis is 1 °C and falling hysteresis is 2 °C. The cited Ampere Altra Max M128-30 limits are 100 °C maximum continuous junction temperature, 105 °C throttle, and 120 °C shutdown. Because phosphor-pid-control only recomputes after the input moves farther than rising hysteresis, the 98 °C full-duty step ensures effective full cooling below 100 °C. A missing `TEMP_SOC` or a real zone failure requests 75%.
 
 The BMC 3.22 web UI's **Fan Control** resource changes `InitialDuty`; it is not the authority for these temperature/duty points.
 
-On srv4, `/usr/share` is visible through the root overlay: a read-only SquashFS lower layer on `/dev/mtdblock4` and a writable JFFS2 upper layer on `/dev/mtdblock5`. The active board file currently comes from the lower layer; no upper-layer override exists. That makes a managed persistent override technically viable, but it is not yet a durability receipt: a BMC reboot and a firmware replacement must both be followed by rediscovery and readback.
+On srv4, `/usr/share` is visible through the root overlay: a read-only SquashFS lower layer on `/dev/mtdblock4` and a writable JFFS2 upper layer on `/dev/mtdblock5`. The live converge now creates an upper-layer override through an atomic same-filesystem replacement. This is a persistent-storage realization, but not yet a reboot durability receipt: a BMC reboot and a firmware replacement must both be followed by rediscovery and readback.
 
-An authenticated read-only probe projected the desired TEMP_SOC policy through the active 3.22 JSON in memory. The projection was idempotent, a 75%-to-74% perturbation made the check fail, and reapplying the projection healed it. No BMC file was written and `phosphor-pid-control.service` was not restarted. This proves the exact 3.22 transformation, not the mutation/rollback path.
+The controller topology is part of desired state, not incidental JSON. srv4 has four installed fans (`FAN1`–`FAN4`) while the factory aggregate PID still referenced an unpopulated `FAN5`. `FAN5=nan` held `zone0` in failsafe. The factory zone fallback was 30%, so normal calculated outputs could mask that state. Raising the fallback to 75% without removing stale FAN5 made the latent failsafe immediately audible. The v2 projection therefore owns both the TEMP_SOC curve and the exact four-input aggregate PID topology, and no-op additionally requires `zone0 FailSafe=false`.
 
 ## How BMC convergence fits host convergence
 
@@ -44,48 +56,80 @@ The shared state is `std.upsert_decision.UpsertClassification` and `ObservationV
 
 For the current local bootstrap, GCP access is an ensure/upsert at the point of demand, not a standup phase. A selected operation must first require a Secret Manager read/write; only that branch calls `gcloud auth print-access-token` to observe the access capability. A live session classifies `Converged/Noop`. An absent or expired session classifies `Absent/Apply(HumanGcloudLogin)`: run `gcloud auth login` with an account authorized for the fleet secrets project, then re-run the same convergent command. A path that does not need GCP never evaluates the ensure and never pauses for gcloud. The token is captured internally and must not be pasted into intent, argv, a netrc committed to the tree, or the PR. A workload-identity/OAuth handler can later realize the same ensure at the shared `AccessTokenSource` seam.
 
-The read-only managed-credential checks `srv3_managed_credential_probe_check` and `srv4_managed_credential_probe_check` both completed live on 2026-07-27. On each host, the factory credential was rejected with HTTP 401, the active gcloud session satisfied the access ensure without human intervention, the Secret Manager `payload.data` value was decoded from standard base64, and the stored credential authenticated to the BMC. The expected factory-auth failure rendered only `<redacted-secret>` in argv diagnostics. The first execution found two defects before this receipt could go green: treating the Secret Manager payload object as credential bytes and rendering `Secret`-typed shell inputs inside failed argv traces. Both are now covered by discriminating tests. These checks prove credential selection and liveness; they do not materialize a scoped netrc/SSH binding or authorize any BMC mutation.
+The managed-credential checks `srv3_managed_credential_probe_check` and `srv4_managed_credential_probe_check` both completed live on 2026-07-27. On each host, the factory credential was rejected with HTTP 401, the active gcloud session satisfied the access ensure without human intervention, the Secret Manager `payload.data` value was decoded from standard base64, and the stored credential authenticated to the BMC. The expected factory-auth failure rendered only `<redacted-secret>` in argv diagnostics. Password SSH now consumes that same `Secret` through `sshpass -d 0`: the password is stdin/file-descriptor data, never argv or remote-script text. The remaining credential gap is the generic lifecycle for netrc/Redfish/IPMI consumers, not this fan driver's SSH binding.
 
-The current spine has 18 named gaps, 14 of them in the BMC prefix. They cover managed credential binding; live firmware observation; exact approved artifact; update actuator; post-update return/readback and recovery; subsumption-entrypoint wiring; live Redfish surface rediscovery; live fan-policy observation; persistent overlay actuation and rollback; post-apply thermal/tach/service proof; reboot persistence; and a workload-qualified thermal envelope. The remaining four are pre-existing OS/assimilation gaps.
+The current spine has 14 named gaps, 10 of them in the BMC prefix. Fan live observation, persistent overlay actuation, automatic rollback/readback, and immediate thermal/tach/controller proof are now authorities rather than gaps. Remaining BMC gaps cover generic credential binding; live firmware observation; exact approved artifact; update actuator; post-update return/readback and recovery; full subsumption-entrypoint wiring; live Redfish surface rediscovery; reboot persistence; and a workload-qualified thermal envelope. The remaining four are pre-existing OS/assimilation gaps.
 
 ## What subsumption does today
 
 | Host | Snapshot classification | What a current subsumption run does |
 | --- | --- | --- |
-| srv3 | Firmware `Drifted`; fan realization `Conflict` until firmware converges and surfaces are rediscovered | Does **not** update the BMC. No exact approved image/digest or BMC update actuator is wired. |
-| srv4 | Firmware `Converged`; declared curve `Converged`, therefore `Noop` | Does **not** rewrite the curve. The snapshot agrees, but the managed live observer and BMC driver are not wired. |
+| srv3 | Firmware `Drifted`; fan realization `Conflict` until firmware converges and surfaces are rediscovered | `srv3_bmc_fan_converge` observes and refuses before mutation. It does **not** update 2.07 to 3.x because no exact approved image/digest or firmware actuator is wired. |
+| srv4 | Firmware `Converged`; curve/topology/controller state are live-observed | `srv4_bmc_fan_converge` applies drift or proves no-op through independent readback. The 2026-07-27 live run is now `Noop`. |
 
-`gunbc converge` currently drives the `HostOs` policy only. Its receipt is not a BMC-convergence receipt. The explicit `bmc-subsumption-entrypoint-wiring` gap prevents the host path from being described as if it also reconciled the controller.
+The executable observer first reads only `/etc/os-release`, using no version-specific utility or JSON layout. It compares that live identity to the global firmware track before querying controller configuration. This matters on srv3: OpenBMC 2.07 has no `jq`, but the current read-only result is now the intended typed refusal—`observed OpenBMC 2.07.00; fleet valid state requires OpenBMC 3.x`—rather than an accidental missing-tool error. A valid-track version still requires an exact board/version projection before any detailed observation or mutation.
+
+The fan prefix now has per-host subsumption entrypoints:
+
+```sh
+target/release/gunbc run \
+  --source-root dag --source-root src/v2 \
+  --entry dag/gunbc/bmc_fan_converge.dag \
+  --function srv4_bmc_fan_observe
+
+target/release/gunbc run \
+  --source-root dag --source-root src/v2 \
+  --entry dag/gunbc/bmc_fan_converge.dag \
+  --function srv4_bmc_fan_converge
+```
+
+The read-only function exits nonzero with `safe drift: apply required` when mutation is admissible; it exits zero only for an independently safe no-op. `srv4_bmc_fan_rollback_previous` restores the exact-version transaction snapshot. `gunbc converge` still drives the `HostOs` policy only, so its receipt is not yet a whole-host BMC receipt. The retained `bmc-subsumption-entrypoint-wiring` gap is for composing firmware, surface rediscovery, and fan phases into that top-level driver—not for the now-live fan prefix.
 
 Read-only Redfish checks found `/redfish/v1/UpdateService/update` on both machines and marked each active BMC image `Updateable=true`. Each inventory exposed exactly one BMC image and no backup BMC image. The update transport shape therefore exists, but rollback cannot be inferred from the generic manual's “backup if supported” language; the recovery gap remains real.
 
-Once the missing effect lands, a fan-policy apply is permitted only when all of these agree:
+A fan-policy apply is permitted only when all of these agree:
 
 1. The host is on the declared firmware track.
 2. A live observer normalizes the current controller config.
-3. An exact board + firmware + config-path + service projection capability exists.
+3. An exact board + firmware + config-path + service + zone + aggregate-PID projection capability exists.
 4. Writable persistent storage is observed on that same exact firmware.
-5. The semantic curve differs from intent.
+5. The semantic curve or installed-tach topology differs from intent.
+6. `TEMP_SOC`, every required component temperature, and all four installed tachs are readable and within their pre-apply bounds.
 
-The realizer must stage on the same filesystem, validate JSON, atomically replace the upper-layer file, restart the controller, independently read back config/service/temperature/tachs, and automatically restore the prior file on any failed check. A BMC-reboot persistence witness remains a separate acceptance condition.
+The realizer stages on the same filesystem, validates JSON, atomically replaces the upper-layer file, restarts the controller, requires the zone to leave failsafe, independently reads back config/topology/service/temperature/tachs, and automatically restores the prior file on any failed check. A BMC-reboot persistence witness and a workload-qualified envelope remain separate acceptance conditions.
+
+## Live srv4 execution receipt
+
+The 2026-07-27 execution exercised both rollback and successful convergence:
+
+1. Read-only classification observed exact 3.22 support, writable overlay storage, safe temperatures, and four healthy installed tachs.
+2. The first transaction exposed the latent `FAN5=nan` failsafe when zone fallback was raised to 75%. The exact prior factory file was restored and the controller restarted successfully.
+3. The projection was corrected to own the installed topology (`FAN1`–`FAN4`) and typed zone failsafe observation.
+4. The second transaction atomically applied curve plus topology. Independent readback proved semantic equality, four nonzero tachs, required component temperatures, active service, and `FailSafe=false`.
+5. Twelve live samples over six minutes stayed safe. `TEMP_SOC` ranged 72–77 °C and ended at 73 °C. Guarded DIMMs peaked at 69 °C, X550 ended at 68.625 °C, FAN1 ended at 3,616 RPM, and FAN2–FAN4 ended at 889–943 RPM.
+6. Re-driving `srv4_bmc_fan_converge` must now be a safe `Noop`; that idempotency check is part of the handoff test sequence.
+
+This is a short equilibrium receipt under the workload present during the run, not the still-open workload-qualified operating envelope and not the still-open BMC-reboot persistence witness.
 
 ## Why srv3 and srv4 sound different
 
-The curve points are the same. The operating points and controller/resource shapes are not.
+The observed factory curve points were the same. The operating points and controller/resource shapes were not.
 
 | Observation | srv3 | srv4 |
 | --- | --- | --- |
 | BMC firmware | 2.07.00 | 3.22.00 |
 | BIOS observed | 2.06 | 3.10 |
 | TEMP_SOC range observed during investigation | 61–63 °C | 69–77 °C |
-| Corresponding curve region | 40% | 50%, then a large step to 75% |
+| Corresponding factory curve region | 40% | 50%, then a large step to 75% |
 | Fan PID configuration | ten independent/alias entries | one aggregate entry over FAN1–FAN5 |
 | Populated tach headers observed | FAN1, FAN3–FAN5 | FAN1–FAN4 |
 | Complete Redfish thermal surface | `ThermalSubsystem` plus `Sensors` | legacy `Thermal` |
 | `/Chassis/.../Sensors` members | 51, including thermals/fans | 9, omitting thermals/fans |
 | `/Managers/bmc/FanControl` | absent | `InitialDuty` resource present |
 
-The supplied srv4 snapshot showed `TEMP_SOC` at 75 °C and FAN1 near 9,482 RPM, which is consistent with the normal 75% curve step. It is not the 100% curve point; that begins at 85 °C. A missing temperature reading can request the same 75% duty, so an observation must retain whether `TEMP_SOC` was readable rather than collapsing both causes into “fan spike.”
+The supplied srv4 snapshot showed `TEMP_SOC` at 75 °C and FAN1 near 9,482 RPM, which was consistent with the factory 75% curve step. It was not the 100% curve point; that began at 85 °C. A missing temperature reading could request the same 75% duty, so an observation must retain whether `TEMP_SOC` was readable rather than collapsing both causes into “fan spike.”
+
+The live apply also demonstrated why curve equality alone is insufficient. The first transaction changed the zone fallback from 30% to 75% but retained uninstalled FAN5 as an input. The controller correctly reported `FailSafe=true` and held FAN1 near 9,500 RPM. Automatic transaction rollback was exercised, then the model was corrected to own topology and failsafe state. The second transaction removed FAN5 from the aggregate PID, produced `FailSafe=false`, and at 74 °C reduced FAN1 to about 3,600 RPM and FAN2–FAN4 to about 890–940 RPM.
 
 During the comparison, srv4 was also doing more CPU work and showed roughly 49 W core-rail power versus roughly 42 W on srv3, with materially hotter SOC/core-VRD readings. The card-side reading was not hotter on srv4, so the evidence points first toward workload and CPU-local heat transfer/airflow rather than room temperature alone. If srv4 reaches 75 °C at comparable sustained work while srv3 remains near 62 °C, inspect the air baffle, CPU-fan orientation, heatsink mount pressure, and thermal-interface material.
 
@@ -137,11 +181,18 @@ Prefer Redfish or single D-Bus reads for diagnosis. Rapid direct polling of BMC 
 - Exact board/firmware projection rule and observed srv4 capability: `gunbc.bmc_fan_projection` and `gunbc.fleet_bmc_state`
 - Query completeness rule and fan-duty cause model: `extdeps.bmc.types`
 - Shared-classification BMC plans: `gunbc.bmc_converge`
+- Password-on-fd-0 SSH transport: `extdeps.ssh.password_session`
+- Live observe/apply/rollback/readback driver: `gunbc.bmc_fan_converge`
 - Canonical phases and derived typed gaps: `gunbc.host_standup`
-- Executable discriminating witness: `test.claim.bmc_firmware_thermal_witness`
+- Executable discriminating witnesses: `test.claim.bmc_firmware_thermal_witness` and `test.claim.bmc_fan_converge_witness`
 
 The board's official product page and CPU-cooler airflow guidance are maintained by ASRock Rack:
 
 - <https://www.asrockrack.com/general/productdetail.asp?Model=ALTRAD8UD-1L2T>
 - <https://www.asrockrack.com/support/CPUCooler/ALTRAD8UD-1L2T.pdf>
 - <https://www.asrockrack.com/support/faq.asp?id=65>
+
+Thermal/controller semantics are grounded in the Ampere Altra Max datasheet and upstream phosphor-pid-control documentation:
+
+- <https://amperecomputing.com/assets/Altra_Max_Rev_A1_DS_v1_15_20230809_b7cdce449e_424d129849.pdf>
+- <https://github.com/openbmc/phosphor-pid-control/blob/master/configure.md>

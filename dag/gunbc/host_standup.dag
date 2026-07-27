@@ -201,8 +201,8 @@ data host_standup_spine: List<HostStandupStep> = [
     gaps: [
       PhaseGap {
         gap_id: "bmc-managed-credential-binding",
-        missing: "scoped SecretRef-to-netrc and SecretRef-to-BMC-SSH credential binding with liveness proof and teardown",
-        refusal: "host_standup:prefix:bmc-credential-converge:binding-unrealized — when a selected BMC operation demands Secret Manager, the gcloud handler can unlock it and support a probe, but the fetched BMC credential cannot yet become a scoped managed subsumption transport",
+        missing: "scoped SecretRef-to-netrc binding and one generic managed-credential lifecycle spanning the remaining Redfish/IPMI realizers",
+        refusal: "host_standup:prefix:bmc-credential-converge:binding-partial — password SSH now consumes the fetched Secret through fd 0, but remaining BMC transports still need the same demand-derived, scoped, teardown-proven binding instead of separate materialization paths",
       },
     ],
     effect_evidence: host_effect_identity_evidence
@@ -268,7 +268,7 @@ data host_standup_spine: List<HostStandupStep> = [
     ],
     effect_evidence: host_effect_read_evidence
   ),
-  host_standup_prefix_partial_step(
+  host_standup_prefix_step(
     phase: BmcFanPolicyConverge,
     label: "prefix:bmc-fan-policy-converge",
     authorities: [
@@ -276,25 +276,15 @@ data host_standup_spine: List<HostStandupStep> = [
       decl_ref(module_path: "gunbc.bmc_converge", decl_name: "bmc_fan_policy_classification"),
       decl_ref(module_path: "gunbc.bmc_converge", decl_name: "bmc_config_persistence_supports_apply"),
       decl_ref(module_path: "gunbc.bmc_fan_projection", decl_name: "bmc_fan_policy_projection_supports_apply"),
+      decl_ref(module_path: "gunbc.bmc_fan_projection", decl_name: "bmc_fan_policy_projection_topology_matches"),
       decl_ref(module_path: "gunbc.fleet_bmc_state", decl_name: "srv4_bmc_fan_projection_capability"),
       decl_ref(module_path: "gunbc.fleet_bmc_state", decl_name: "srv4_bmc_config_persistence_observation"),
-    ],
-    gaps: [
-      PhaseGap {
-        gap_id: "bmc-fan-live-observer",
-        missing: "typed BMC config read that normalizes swampd JSON into BmcFanPolicyObservation",
-        refusal: "host_standup:prefix:bmc-fan-policy-converge:observation-absent — Redfish InitialDuty is not fan-curve evidence",
-      },
-      PhaseGap {
-        gap_id: "bmc-fan-overlay-actuator",
-        missing: "typed same-filesystem stage, JSON validation, atomic overlay replace, and phosphor-pid-control restart",
-        refusal: "host_standup:prefix:bmc-fan-policy-converge:apply-unimplemented — the in-memory jq projection is proven but no persistent BmcController effect may write it",
-      },
-      PhaseGap {
-        gap_id: "bmc-fan-rollback-readback",
-        missing: "automatic rollback plus independent config, service, temperature, and tach readback",
-        refusal: "host_standup:prefix:bmc-fan-policy-converge:rollback-unproven — never retain a curve after controller or cooling readback fails",
-      },
+      decl_ref(module_path: "extdeps.ssh.password_session", decl_name: "password_ssh_exec_script"),
+      decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_parse_live_observation"),
+      decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_apply_script"),
+      decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_rollback_script"),
+      decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_run"),
+      decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "srv4_bmc_fan_converge"),
     ],
     effect_evidence: host_effect_converge_loop_evidence
   ),
@@ -304,14 +294,12 @@ data host_standup_spine: List<HostStandupStep> = [
     authorities: [
       decl_ref(module_path: "extdeps.bmc.types", decl_name: "bmc_fan_duty_decision"),
       decl_ref(module_path: "extdeps.bmc.types", decl_name: "redfish_thermal_query_verdict"),
+      decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_m12830_thermal_limits"),
+      decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_live_thermal_tach_safety_holds"),
+      decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_live_safety_holds"),
       decl_ref(module_path: "gunbc.tools.bmc_read_telemetry", decl_name: "bmc_read_telemetry"),
     ],
     gaps: [
-      PhaseGap {
-        gap_id: "bmc-thermal-postapply-probe",
-        missing: "post-apply producer proving TEMP_SOC readable, expected tachs present, and phosphor-pid-control active",
-        refusal: "host_standup:prefix:bmc-thermal-safety-verify:postapply-unobserved — config equality alone is not cooling evidence",
-      },
       PhaseGap {
         gap_id: "bmc-fan-reboot-persistence-witness",
         missing: "BMC-reboot perturbation witness proving the upper-layer curve remains effective",

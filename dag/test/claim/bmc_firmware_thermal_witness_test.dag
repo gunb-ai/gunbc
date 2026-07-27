@@ -28,13 +28,15 @@ import extdeps.boards.asrock_rack {
   asrock_altrad8ud_openbmc_3_06_00_capabilities,
   asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation,
   asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation,
-  asrock_altrad8ud_temp_soc_fan_curve,
+  asrock_altrad8ud_factory_temp_soc_fan_curve,
 }
 import gunbc.fleet_bmc_state {
   srv3_bmc_firmware_observation,
   srv3_bmc_redfish_surface_observation,
   srv4_bmc_firmware_observation,
   srv4_bmc_config_persistence_observation,
+  srv4_bmc_fan_converged_policy_observation,
+  srv4_bmc_fan_convergence_receipt,
   srv4_bmc_fan_projection_capability,
   srv4_bmc_redfish_surface_observation,
   srv3_bmc_update_service_observation,
@@ -45,7 +47,11 @@ import gunbc.bmc_converge {
   bmc_fan_policy_classification,
   bmc_firmware_classification,
 }
-import gunbc.bmc_intent { fleet_bmc_valid_state }
+import gunbc.bmc_intent {
+  fleet_bmc_valid_state,
+  fleet_fan_policy_is_thermally_bounded,
+  fleet_quiet_temp_soc_fan_curve,
+}
 import gunbc.fleet_intent {
   ComputeHost,
   srv3_baseboard,
@@ -258,8 +264,8 @@ test fn sensors_http_success_alone_is_incomplete_red_control() -> Bool {
 }
 
 test fn firmware_versions_share_curve_but_not_controller_shape() -> Bool {
-  asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation.curve == asrock_altrad8ud_temp_soc_fan_curve
-    && asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.curve == asrock_altrad8ud_temp_soc_fan_curve
+  asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation.curve == asrock_altrad8ud_factory_temp_soc_fan_curve
+    && asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.curve == asrock_altrad8ud_factory_temp_soc_fan_curve
     && match asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation.controller_shape {
       FanPidIndependentEntries { entry_names: names } =>
         list_length(items: names) == 10
@@ -275,36 +281,82 @@ test fn firmware_versions_share_curve_but_not_controller_shape() -> Bool {
 test fn temp_soc_curve_explains_the_audible_step() -> Bool {
   curve_decision_has_duty(
     decision: bmc_fan_duty_decision(
-      curve: asrock_altrad8ud_temp_soc_fan_curve,
+      curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
       reading: Present { value: celsius(39) }
     ),
     expected: 30
   )
     && curve_decision_has_duty(
       decision: bmc_fan_duty_decision(
-        curve: asrock_altrad8ud_temp_soc_fan_curve,
+        curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
         reading: Present { value: celsius(62) }
       ),
       expected: 40
     )
     && curve_decision_has_duty(
       decision: bmc_fan_duty_decision(
-        curve: asrock_altrad8ud_temp_soc_fan_curve,
+        curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
         reading: Present { value: celsius(69) }
       ),
       expected: 50
     )
     && curve_decision_has_duty(
       decision: bmc_fan_duty_decision(
-        curve: asrock_altrad8ud_temp_soc_fan_curve,
+        curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
         reading: Present { value: celsius(75) }
       ),
       expected: 75
     )
     && curve_decision_has_duty(
       decision: bmc_fan_duty_decision(
-        curve: asrock_altrad8ud_temp_soc_fan_curve,
+        curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
         reading: Present { value: celsius(85) }
+      ),
+      expected: 100
+    )
+}
+
+test fn fleet_curve_is_quiet_through_90c_and_emergency_full_before_continuous_limit() -> Bool {
+  fleet_fan_policy_is_thermally_bounded()
+    && curve_decision_has_duty(
+      decision: bmc_fan_duty_decision(
+        curve: fleet_quiet_temp_soc_fan_curve,
+        reading: Present { value: celsius(74) }
+      ),
+      expected: 30
+    )
+    && curve_decision_has_duty(
+      decision: bmc_fan_duty_decision(
+        curve: fleet_quiet_temp_soc_fan_curve,
+        reading: Present { value: celsius(75) }
+      ),
+      expected: 30
+    )
+    && curve_decision_has_duty(
+      decision: bmc_fan_duty_decision(
+        curve: fleet_quiet_temp_soc_fan_curve,
+        reading: Present { value: celsius(90) }
+      ),
+      expected: 30
+    )
+    && curve_decision_has_duty(
+      decision: bmc_fan_duty_decision(
+        curve: fleet_quiet_temp_soc_fan_curve,
+        reading: Present { value: celsius(93) }
+      ),
+      expected: 55
+    )
+    && curve_decision_has_duty(
+      decision: bmc_fan_duty_decision(
+        curve: fleet_quiet_temp_soc_fan_curve,
+        reading: Present { value: celsius(97) }
+      ),
+      expected: 85
+    )
+    && curve_decision_has_duty(
+      decision: bmc_fan_duty_decision(
+        curve: fleet_quiet_temp_soc_fan_curve,
+        reading: Present { value: celsius(98) }
       ),
       expected: 100
     )
@@ -312,7 +364,7 @@ test fn temp_soc_curve_explains_the_audible_step() -> Bool {
 
 test fn sensor_unavailable_uses_same_duty_but_retains_cause() -> Bool {
   match bmc_fan_duty_decision(
-    curve: asrock_altrad8ud_temp_soc_fan_curve,
+    curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
     reading: Absent
   ) {
     BmcFanDutyFromSensorFailsafe { duty: d } => percent_count(d) == 75
@@ -328,23 +380,27 @@ fn srv4_fan_policy_with_curve(curve: BmcFanCurve) -> BmcFanPolicyObservation {
     board_config_path: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.board_config_path,
     controller_service: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.controller_service,
     controller_binary: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.controller_binary,
-    controller_shape: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.controller_shape,
+    controller_shape: FanPidAggregatedEntry {
+      entry_name: srv4_bmc_fan_projection_capability.aggregate_fan_pid_entry,
+      tach_inputs: srv4_bmc_fan_projection_capability.required_tach_inputs,
+    },
     observed_at: "fixture",
   }
 }
 
 fn minimum_duty_perturbation() -> BmcFanCurve {
   BmcFanCurve {
-    control_sensor: asrock_altrad8ud_temp_soc_fan_curve.control_sensor,
-    steps: asrock_altrad8ud_temp_soc_fan_curve.steps,
+    control_sensor: fleet_quiet_temp_soc_fan_curve.control_sensor,
+    steps: fleet_quiet_temp_soc_fan_curve.steps,
     minimum_duty: percent(31),
-    sensor_unavailable_duty: asrock_altrad8ud_temp_soc_fan_curve.sensor_unavailable_duty,
-    positive_hysteresis_degrees_celsius: asrock_altrad8ud_temp_soc_fan_curve.positive_hysteresis_degrees_celsius,
-    negative_hysteresis_degrees_celsius: asrock_altrad8ud_temp_soc_fan_curve.negative_hysteresis_degrees_celsius,
+    sensor_unavailable_duty: fleet_quiet_temp_soc_fan_curve.sensor_unavailable_duty,
+    zone_failsafe_duty: fleet_quiet_temp_soc_fan_curve.zone_failsafe_duty,
+    positive_hysteresis_degrees_celsius: fleet_quiet_temp_soc_fan_curve.positive_hysteresis_degrees_celsius,
+    negative_hysteresis_degrees_celsius: fleet_quiet_temp_soc_fan_curve.negative_hysteresis_degrees_celsius,
   }
 }
 
-test fn srv4_flash_overlay_is_observed_writable_but_not_yet_overridden() -> Bool {
+test fn srv4_flash_overlay_is_observed_writable_and_live_overridden() -> Bool {
   match srv4_bmc_config_persistence_observation {
     BmcFlashBackedOverlayObserved {
       firmware: firmware,
@@ -360,7 +416,7 @@ test fn srv4_flash_overlay_is_observed_writable_but_not_yet_overridden() -> Bool
       firmware.version == "3.22.00"
         && path == "/usr/share/swampd/config-asrr.json"
         && writable
-        && !upper_present
+        && upper_present
     BmcConfigPersistenceUnsupported {
       firmware: _,
       config_path: _,
@@ -370,16 +426,43 @@ test fn srv4_flash_overlay_is_observed_writable_but_not_yet_overridden() -> Bool
   }
 }
 
-test fn converged_srv4_curve_is_noop_without_needing_apply_capability() -> Bool {
+test fn srv4_live_receipt_is_converged_quiet_and_failsafe_clear() -> Bool {
+  srv4_bmc_fan_convergence_receipt.policy == srv4_bmc_fan_converged_policy_observation
+    && srv4_bmc_fan_convergence_receipt.policy.curve == fleet_quiet_temp_soc_fan_curve
+    && !srv4_bmc_fan_convergence_receipt.zone_failsafe_active
+    && srv4_bmc_fan_convergence_receipt.monitoring_sample_count == 12
+    && srv4_bmc_fan_convergence_receipt.final_tachs.length() == 4
+}
+
+test fn converged_srv4_curve_without_topology_projection_refuses_noop() -> Bool {
   let classified = bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
     intent: fleet_bmc_valid_state,
     observation: Present {
-      value: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation,
+      value: srv4_fan_policy_with_curve(curve: fleet_quiet_temp_soc_fan_curve),
     },
     persistence: none,
     projection: none,
+  )
+  classified.verdict == UnknownRefused
+    && match classified.decision {
+      Noop => false
+      Refuse { reason: _ } => true
+      Apply { plan: _ } => false
+    }
+}
+
+test fn converged_curve_and_installed_tach_topology_are_noop() -> Bool {
+  let classified = bmc_fan_policy_classification(
+    host: srv4_host.identity,
+    board: srv4_baseboard.catalog.model,
+    intent: fleet_bmc_valid_state,
+    observation: Present {
+      value: srv4_fan_policy_with_curve(curve: fleet_quiet_temp_soc_fan_curve),
+    },
+    persistence: none,
+    projection: Present { value: srv4_bmc_fan_projection_capability },
   )
   classified.verdict == Converged
     && match classified.decision {
@@ -389,8 +472,35 @@ test fn converged_srv4_curve_is_noop_without_needing_apply_capability() -> Bool 
     }
 }
 
+test fn desired_curve_with_stale_uninstalled_fan_input_still_builds_apply_plan() -> Bool {
+  let stale_topology = BmcFanPolicyObservation {
+    firmware: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.firmware,
+    curve: fleet_quiet_temp_soc_fan_curve,
+    selected_config_path: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.selected_config_path,
+    board_config_path: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.board_config_path,
+    controller_service: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.controller_service,
+    controller_binary: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.controller_binary,
+    controller_shape: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.controller_shape,
+    observed_at: "fixture",
+  }
+  let classified = bmc_fan_policy_classification(
+    host: srv4_host.identity,
+    board: srv4_baseboard.catalog.model,
+    intent: fleet_bmc_valid_state,
+    observation: Present { value: stale_topology },
+    persistence: Present { value: srv4_bmc_config_persistence_observation },
+    projection: Present { value: srv4_bmc_fan_projection_capability },
+  )
+  classified.verdict == Drifted
+    && match classified.decision {
+      Apply { plan: _ } => true
+      Noop => false
+      Refuse { reason: _ } => false
+    }
+}
+
 test fn drifted_srv4_curve_builds_typed_overlay_plan_only_with_exact_projection_and_persistence() -> Bool {
-  let drifted = srv4_fan_policy_with_curve(curve: minimum_duty_perturbation())
+  let drifted = asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation
   let with_storage = bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
@@ -421,7 +531,7 @@ test fn drifted_srv4_curve_builds_typed_overlay_plan_only_with_exact_projection_
         plan.host == srv4_host.identity
           && plan.config_path == "/usr/share/swampd/config-asrr.json"
           && plan.controller_service == "phosphor-pid-control.service"
-          && plan.desired_curve == asrock_altrad8ud_temp_soc_fan_curve
+          && plan.desired_curve == fleet_quiet_temp_soc_fan_curve
           && plan.projection == srv4_bmc_fan_projection_capability
       Noop => false
       Refuse { reason: _ } => false
@@ -432,7 +542,7 @@ test fn drifted_srv4_curve_builds_typed_overlay_plan_only_with_exact_projection_
       Noop => false
       Apply { plan: _ } => false
     }
-    && without_projection.verdict == Drifted
+    && without_projection.verdict == UnknownRefused
     && match without_projection.decision {
       Refuse { reason: _ } => true
       Noop => false

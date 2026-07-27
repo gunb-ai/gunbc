@@ -1,16 +1,23 @@
 module gunbc.bmc_fan_projection
 
 import extdeps.bmc.capability { BmcFirmwareVersion }
-import extdeps.bmc.types { BmcFanPolicyObservation }
+import extdeps.bmc.types {
+  BmcFanPolicyObservation,
+  FanPidAggregatedEntry,
+  FanPidIndependentEntries,
+}
 import extdeps.boards.types { BaseboardModel }
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr }
 
 type BmcFanPolicyProjectionCapability {
   board: BaseboardModel
   firmware: BmcFirmwareVersion
   config_path: NonEmptyStr
   controller_service: NonEmptyStr
+  controller_zone_path: NonEmptyStr
+  aggregate_fan_pid_entry: NonEmptyStr
   projection_id: NonEmptyStr
+  required_tach_inputs: List<NonEmptyStr>
 }
 
 fn bmc_fan_policy_projection_supports_apply(
@@ -24,4 +31,19 @@ fn bmc_fan_policy_projection_supports_apply(
     && capability.controller_service == observation.controller_service
 }
 
-data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, config path, and controller service witnessed together. Thus OpenBMC 3.06 and 3.22 can both satisfy a 3.x intent while only 3.22 has the currently observed swampd-asrr-temp-soc-stepwise-v1 projection."
+fn bmc_fan_policy_projection_topology_matches(
+  capability: BmcFanPolicyProjectionCapability,
+  observation: BmcFanPolicyObservation,
+) -> Bool {
+  match observation.controller_shape {
+    FanPidAggregatedEntry {
+      entry_name: entry_name,
+      tach_inputs: tach_inputs,
+    } =>
+      entry_name == capability.aggregate_fan_pid_entry
+        && tach_inputs == capability.required_tach_inputs
+    FanPidIndependentEntries { entry_names: _ } => false
+  }
+}
+
+data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. Thus OpenBMC 3.06 and 3.22 can both satisfy a 3.x intent while only 3.22 has the currently observed swampd-asrr-temp-soc-stepwise-v2 projection."

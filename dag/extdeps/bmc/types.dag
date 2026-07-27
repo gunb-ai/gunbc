@@ -9,6 +9,7 @@ import std.measure {
   RevolutionsPerMinute,
   Watt,
   celsius_count,
+  percent_count,
 }
 import std.nat { Nat }
 import std.types { Bool, Int, List, NonEmptyStr }
@@ -17,6 +18,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.dmtf.org/standards/redfish"
+  }
+}
+
+data phosphor_pid_control_stepwise_semantics_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openbmc/phosphor-pid-control/blob/master/configure.md"
   }
 }
 
@@ -133,15 +141,84 @@ type BmcFanCurve {
   steps: List<BmcFanCurveStep>
   minimum_duty: Percent
   sensor_unavailable_duty: Percent
+  zone_failsafe_duty: Percent
   positive_hysteresis_degrees_celsius: Nat
   negative_hysteresis_degrees_celsius: Nat
+}
+
+type BmcFanAcousticPolicy {
+  quiet_through_temperature: Celsius
+  quiet_duty_ceiling: Percent
+  emergency_full_duty_at_or_below: Celsius
+}
+
+type BmcFanThermalGuard {
+  processor_rollback_temperature: Celsius
+  component_rollback_temperature: Celsius
+  required_component_sensors: List<NonEmptyStr>
+}
+
+fn bmc_fan_curve_stays_within_quiet_duty(
+  curve: BmcFanCurve,
+  policy: BmcFanAcousticPolicy,
+) -> Bool {
+  fold(
+    curve.steps,
+    init: true,
+    f: (ok, step) =>
+      ok
+        && (
+          celsius_count(step.at_or_above) > celsius_count(policy.quiet_through_temperature)
+            || percent_count(step.duty) <= percent_count(policy.quiet_duty_ceiling)
+        )
+  )
+    && percent_count(
+      bmc_fan_curve_duty_at(
+        curve: curve,
+        reading: policy.quiet_through_temperature,
+      )
+    ) <= percent_count(policy.quiet_duty_ceiling)
+}
+
+fn bmc_fan_curve_reaches_emergency_full_duty(
+  curve: BmcFanCurve,
+  policy: BmcFanAcousticPolicy,
+) -> Bool {
+  fold(
+    curve.steps,
+    init: false,
+    f: (found, step) =>
+      found
+        || (
+          percent_count(step.duty) == 100
+            && celsius_count(step.at_or_above) <= celsius_count(policy.emergency_full_duty_at_or_below)
+        )
+  )
+}
+
+fn bmc_fan_curve_effectively_reaches_full_duty_before(
+  curve: BmcFanCurve,
+  temperature: Celsius,
+) -> Bool {
+  fold(
+    curve.steps,
+    init: false,
+    f: (found, step) =>
+      found
+        || (
+          percent_count(step.duty) == 100
+            && (
+              celsius_count(step.at_or_above) + curve.positive_hysteresis_degrees_celsius
+            ) < celsius_count(temperature)
+        )
+  )
 }
 
 type BmcFanDutyDecision
   = BmcFanDutyFromCurve { reading: Celsius, duty: Percent }
   | BmcFanDutyFromSensorFailsafe { duty: Percent }
 
-data bmc_fan_duty_decision_semantics_note: String = "The curve branch is the stateless base projection of the declared step points, clamped by minimum_duty below the first point. The live controller also applies the declared positive/negative hysteresis using prior state; a runtime observation must retain that state when exact transition timing matters. The coproduct keeps a base-curve request distinct from the numerically identical sensor-unavailable fail-safe request."
+data bmc_fan_duty_decision_semantics_note: String = "The curve branch is the stateless base projection of the declared step points, clamped by minimum_duty below the first point. phosphor-pid-control's cited stepwise semantics only recompute after the input moves farther than positiveHysteresis or negativeHysteresis from the prior recomputation input; the effective emergency proof therefore includes rising hysteresis. A runtime observation must retain prior state when exact transition timing matters. The coproduct keeps a base-curve request distinct from the numerically identical sensor-unavailable fail-safe request."
 
 fn bmc_fan_curve_duty_at(curve: BmcFanCurve, reading: Celsius) -> Percent {
   fold(

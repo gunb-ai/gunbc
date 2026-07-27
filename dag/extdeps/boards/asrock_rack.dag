@@ -104,7 +104,7 @@ data asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog: List<BmcFirmwareCapa
 
 data asrock_altrad8ud_shipped_bmc_firmware_capabilities: BmcFirmwareCapabilityRow = asrock_altrad8ud_openbmc_2_07_00_capabilities
 
-data asrock_altrad8ud_temp_soc_fan_curve_steps: List<BmcFanCurveStep> = [
+data asrock_altrad8ud_factory_temp_soc_fan_curve_steps: List<BmcFanCurveStep> = [
   BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
   BmcFanCurveStep { at_or_above: celsius(55), duty: percent(40) },
   BmcFanCurveStep { at_or_above: celsius(65), duty: percent(50) },
@@ -112,18 +112,19 @@ data asrock_altrad8ud_temp_soc_fan_curve_steps: List<BmcFanCurveStep> = [
   BmcFanCurveStep { at_or_above: celsius(85), duty: percent(100) },
 ]
 
-data asrock_altrad8ud_temp_soc_fan_curve: BmcFanCurve = BmcFanCurve {
+data asrock_altrad8ud_factory_temp_soc_fan_curve: BmcFanCurve = BmcFanCurve {
   control_sensor: "TEMP_SOC",
-  steps: asrock_altrad8ud_temp_soc_fan_curve_steps,
+  steps: asrock_altrad8ud_factory_temp_soc_fan_curve_steps,
   minimum_duty: percent(30),
   sensor_unavailable_duty: percent(75),
+  zone_failsafe_duty: percent(30),
   positive_hysteresis_degrees_celsius: 1,
   negative_hysteresis_degrees_celsius: 1,
 }
 
 data asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
   firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
-  curve: asrock_altrad8ud_temp_soc_fan_curve,
+  curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: "/usr/share/swampd/config-asrr.json",
   controller_service: "phosphor-pid-control.service",
@@ -147,7 +148,7 @@ data asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation: BmcFanPolicyObserv
 
 data asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
   firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
-  curve: asrock_altrad8ud_temp_soc_fan_curve,
+  curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: "/usr/share/swampd/config-asrr.json",
   controller_service: "phosphor-pid-control.service",
@@ -159,7 +160,7 @@ data asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation: BmcFanPolicyObserv
   observed_at: "2026-07-27",
 }
 
-data asrock_altrad8ud_fan_policy_observation_note: String = "Authenticated read-only observations on srv3 (OpenBMC 2.07.00) and srv4 (OpenBMC 3.22.00), 2026-07-27: both select /usr/share/swampd/config-asrr.json through /usr/share/swampd/config.json and run /usr/bin/swampd under phosphor-pid-control.service. The TEMP_SOC curve is the same authority on both versions. What changed is the PID-entry topology and the Redfish resource shape, not the five curve points. The 3.22 web UI /Managers/bmc/FanControl resource exposes InitialDuty; it does not own these thermal curve points."
+data asrock_altrad8ud_fan_policy_observation_note: String = "Authenticated read-only observations on srv3 (OpenBMC 2.07.00) and srv4 (OpenBMC 3.22.00), 2026-07-27: both select /usr/share/swampd/config-asrr.json through /usr/share/swampd/config.json and run /usr/bin/swampd under phosphor-pid-control.service. Both factory images carried the same TEMP_SOC curve. That curve is an observation owned here, not fleet intent. What changed between versions is the PID-entry topology and Redfish resource shape, not the five factory points. The 3.22 web UI /Managers/bmc/FanControl resource exposes InitialDuty; it does not own these thermal curve points."
 
 data asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint: BmcwebNbdProxyEndpointVariant = VmSlotIndexEndpoint
 

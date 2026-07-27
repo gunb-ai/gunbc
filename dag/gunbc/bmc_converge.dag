@@ -26,6 +26,7 @@ import gunbc.bmc_intent {
 import gunbc.bmc_fan_projection {
   BmcFanPolicyProjectionCapability,
   bmc_fan_policy_projection_supports_apply,
+  bmc_fan_policy_projection_topology_matches,
 }
 import product.placement_supply { HostIdentity }
 import std.types { Bool, NonEmptyStr }
@@ -235,22 +236,24 @@ fn bmc_fan_policy_classification(
             reason: "bmc firmware must converge and be re-observed before selecting a version-specific fan-policy realizer",
           },
         }
-      } else if observed.curve == desired {
-        UpsertClassification {
-          verdict: Converged,
-          decision: Noop,
-        }
       } else {
         match projection {
           Absent =>
             UpsertClassification {
-              verdict: Drifted,
+              verdict: UnknownRefused,
               decision: Refuse {
-                reason: "bmc fan curve drifted, but no exact board-and-firmware semantic projection capability is available",
+                reason: "bmc fan state cannot converge without an exact board-and-firmware projection for both curve and installed-tach topology",
               },
             }
           Present { value: projector } =>
-            if !bmc_fan_policy_projection_supports_apply(
+            if projector.required_tach_inputs != intent.fan_policy.required_tach_inputs {
+              UpsertClassification {
+                verdict: Conflict,
+                decision: Refuse {
+                  reason: "bmc fan projection installed-tach topology differs from fleet intent",
+                },
+              }
+            } else if !bmc_fan_policy_projection_supports_apply(
               capability: projector,
               board: board,
               observation: observed,
@@ -260,6 +263,15 @@ fn bmc_fan_policy_classification(
                 decision: Refuse {
                   reason: "bmc fan projection capability does not match the observed board, exact firmware, config path, and controller service",
                 },
+              }
+            } else if observed.curve == desired
+              && bmc_fan_policy_projection_topology_matches(
+                capability: projector,
+                observation: observed,
+              ) {
+              UpsertClassification {
+                verdict: Converged,
+                decision: Noop,
               }
             } else {
               match persistence {

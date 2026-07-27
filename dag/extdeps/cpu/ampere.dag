@@ -22,6 +22,15 @@ data ampere_altra_classic_rev_a1_datasheet_authority: ExternalAuthority = Extern
   }
 }
 
+data ampere_altra_max_m12830_thermal_limits: ProcessorThermalLimits = ProcessorThermalLimits {
+  maximum_continuous_junction_temperature: celsius(100),
+  thermal_throttle_temperature: celsius(105),
+  thermal_shutdown_temperature: celsius(120),
+  authority: ampere_altra_rev_a1_datasheet_authority,
+}
+
+data ampere_altra_max_m12830_thermal_limits_note: String = "Ampere Altra Max Rev A1 datasheet issue 1.25, table 14: M128-30 maximum continuous junction temperature TCJ=100C, SoC thermal throttling TM1=105C, and thermal shutdown TM2=120C. These are processor facts. A fleet fan policy may derive its emergency ramp from them, but must not rewrite them as operator preference."
+
 data ampere_altra_l1_data_capacity_per_core: ByteSize = byte_size(65536)
 data ampere_altra_l1_instruction_capacity_per_core: ByteSize = byte_size(65536)
 data ampere_altra_l1_line_size: ByteSize = byte_size(64)

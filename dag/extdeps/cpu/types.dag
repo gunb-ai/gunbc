@@ -36,6 +36,13 @@ type CacheGeometryCitation {
   authority: ExternalAuthority
 }
 
+type ProcessorThermalLimits {
+  maximum_continuous_junction_temperature: Celsius
+  thermal_throttle_temperature: Celsius
+  thermal_shutdown_temperature: Celsius
+  authority: ExternalAuthority
+}
+
 type CpuModelCatalogRow {
   model_number: NonEmptyStr
   oem_listing_id: NonEmptyStr?
