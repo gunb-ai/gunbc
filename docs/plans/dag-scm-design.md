@@ -1237,10 +1237,11 @@ does not wait for a native store:
    DFS over their executing fixtures and extract the smallest role interface actually shared. Keep
    upstream dispatch peripheral; capability support is data/receipts, never a central vendor enum
    or switch.
-   **Accept T1/T2:** one accepted native state exercises all three fixtures and returns the same
-   semantic/admission/primary receipt while projection/fidelity receipts remain realization
-   specific; removing a required conditional-advance capability refuses that target policy; a
-   synthetic fourth adapter requires no proof-kernel or primary-interaction edit. This slice
+   **Accept T1/T2:** one fixed accepted-state/proposal fixture exercises all three and preserves
+   C0-owned proposal identity, transition, and primary outcome while projection/fidelity receipts
+   remain realization specific; R1 does not invent the later semantic/admission receipt. Removing a
+   required conditional-advance capability refuses that target policy; a synthetic fourth adapter
+   requires no primary-interaction edit and, once P1 exists, no proof-kernel edit. This slice
    replaces C0's optional `git` fixture slot and Git-named presentation cases with
    realization-indexed projection receipts without changing primary behavior.
    R0 and P−1 may proceed in parallel because neither is allowed to infer the other. R1 waits for
