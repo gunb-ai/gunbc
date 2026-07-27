@@ -19,6 +19,8 @@ import v2.test.manual.retry_eagain_bash {
   retry_eagain_example_command
 }
 import v2.std.orchestration {
+  Comment,
+  Exit,
   PipelineStep,
   Retry,
   EscalationLevel,
@@ -143,6 +145,8 @@ fn orch_retry_perturbed_intent() -> PipelineStep {
         on_exhausted: x
       }
     Do { run: _ } => retry_eagain_intent()
+    Comment { text: _ } => retry_eagain_intent()
+    Exit { status: _ } => retry_eagain_intent()
     If { cond: _, then_: _, else_: _ } => retry_eagain_intent()
     For { binder: _, over: _, body: _ } => retry_eagain_intent()
     While { cond: _, body: _ } => retry_eagain_intent()
@@ -186,6 +190,8 @@ fn orch_retry_perturbed_exhausted_intent() -> PipelineStep {
         }
       }
     Do { run: _ } => retry_eagain_intent()
+    Comment { text: _ } => retry_eagain_intent()
+    Exit { status: _ } => retry_eagain_intent()
     If { cond: _, then_: _, else_: _ } => retry_eagain_intent()
     For { binder: _, over: _, body: _ } => retry_eagain_intent()
     While { cond: _, body: _ } => retry_eagain_intent()
@@ -287,6 +293,8 @@ fn orch_retry_1level_perturbed_intent() -> PipelineStep {
         on_exhausted: x
       }
     Do { run: _ } => orch_retry_1level_intent()
+    Comment { text: _ } => orch_retry_1level_intent()
+    Exit { status: _ } => orch_retry_1level_intent()
     If { cond: _, then_: _, else_: _ } => orch_retry_1level_intent()
     For { binder: _, over: _, body: _ } => orch_retry_1level_intent()
     While { cond: _, body: _ } => orch_retry_1level_intent()
@@ -483,6 +491,8 @@ fn orch_retry_3level_perturbed_intent() -> PipelineStep {
         on_exhausted: x
       }
     Do { run: _ } => orch_retry_3level_intent()
+    Comment { text: _ } => orch_retry_3level_intent()
+    Exit { status: _ } => orch_retry_3level_intent()
     If { cond: _, then_: _, else_: _ } => orch_retry_3level_intent()
     For { binder: _, over: _, body: _ } => orch_retry_3level_intent()
     While { cond: _, body: _ } => orch_retry_3level_intent()

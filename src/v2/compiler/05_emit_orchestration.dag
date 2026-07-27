@@ -33,9 +33,12 @@ import v2.extdeps.languages.bash {
   bash_stmt_andor_target_model,
   bash_stmt_with_redir_emitted,
   bash_stmt_with_redir_target_model,
+  bash_stmt_exit_emitted,
+  bash_stmt_exit_target_model,
   bash_redir_stdout_and_stderr_null_source_text,
   bash_redir_stderr_null_source_text,
-  bash_redir_stdout_to_stderr_source_text
+  bash_redir_stdout_to_stderr_source_text,
+  bash_redir_to_file_source_text
 }
 import v2.extdeps.languages.bash_orch_tier2 {
   bash_orch_call_emitted
@@ -47,6 +50,8 @@ import v2.extdeps.languages.bash_orch_if {
   bash_test_str_empty_target_model,
   bash_test_str_nonempty_emitted,
   bash_test_str_nonempty_target_model,
+  bash_test_int_ne_emitted,
+  bash_test_int_ne_target_model,
   bash_log_matches_grep_emitted,
   bash_log_matches_grep_target_model,
   bash_stmt_or_ignore_fail_emitted,
@@ -74,6 +79,7 @@ import v2.std.orchestration {
   StrEq,
   StrEmpty,
   StrNonempty,
+  IntNe,
   Not,
   And,
   Or,
@@ -82,7 +88,13 @@ import v2.std.orchestration {
   DiscardAll,
   DiscardErr,
   StdoutAndStderr,
+  ToFile,
   IgnoreFail,
+  ExitStatus,
+  TeeTo,
+  CmdSubst,
+  Comment,
+  Exit,
   EnvBinding
 }
 import std.algebra { FreeMonoid }
@@ -174,11 +186,45 @@ fn orch_emit_node_spelling(emitted_root: Node, target: TargetModel) -> Outcome<S
   )
 }
 
-fn orch_emit_redir_suffix(r: RedirectSpec) -> String {
+data orch_shell_unquoted_path_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-@"
+
+fn orch_shell_unquoted_path_char_ok(ch: String) -> Bool {
+  string_length(s: ch) == 1 && string_contains(s: orch_shell_unquoted_path_alphabet, pattern: ch)
+}
+
+fn orch_shell_unquoted_path_ok_at(path: String, i: Int, n: Int) -> Bool {
+  if i >= n {
+    true
+  } else {
+    let ch = char_at(s: path, pos: i)
+    if !orch_shell_unquoted_path_char_ok(ch: ch) {
+      false
+    } else {
+      orch_shell_unquoted_path_ok_at(path: path, i: i + 1, n: n)
+    }
+  }
+}
+
+fn orch_shell_unquoted_path_ok(path: String) -> Bool {
+  let n = string_length(s: path)
+  if n == 0 {
+    false
+  } else {
+    orch_shell_unquoted_path_ok_at(path: path, i: 0, n: n)
+  }
+}
+
+fn orch_emit_redir_suffix(r: RedirectSpec) -> Outcome<String> {
   match r {
-    DiscardAll => bash_redir_stdout_and_stderr_null_source_text
-    DiscardErr => bash_redir_stderr_null_source_text
-    StdoutAndStderr => bash_redir_stdout_to_stderr_source_text
+    DiscardAll => outcome_accepted(bash_redir_stdout_and_stderr_null_source_text)
+    DiscardErr => outcome_accepted(bash_redir_stderr_null_source_text)
+    StdoutAndStderr => outcome_accepted(bash_redir_stdout_to_stderr_source_text)
+    ToFile { path: p } =>
+      if !orch_shell_unquoted_path_ok(path: p) {
+        outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_to_file_path_invalid))
+      } else {
+        outcome_accepted(bash_redir_to_file_source_text(path: p))
+      }
   }
 }
 
@@ -202,10 +248,86 @@ fn orch_emit_run_core(r: Run, medium: OrchestrationEmitMedium) -> Outcome<String
 }
 
 fn orch_emit_run_with_redir(stmt: String, redir: RedirectSpec) -> Outcome<String> {
-  orch_emit_node_spelling(
-    emitted_root: bash_stmt_with_redir_emitted,
-    target: bash_stmt_with_redir_target_model(stmt: stmt, redir: orch_emit_redir_suffix(r: redir))
+  bind_outcome(
+    o: orch_emit_redir_suffix(r: redir),
+    f: fn(suffix) {
+      orch_emit_node_spelling(
+        emitted_root: bash_stmt_with_redir_emitted,
+        target: bash_stmt_with_redir_target_model(stmt: stmt, redir: suffix)
+      )
+    }
   )
+}
+
+data orch_shell_ident_start_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
+
+data orch_shell_ident_continue_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_0123456789"
+
+fn orch_shell_ident_start_char_ok(ch: String) -> Bool {
+  string_length(s: ch) == 1 && string_contains(s: orch_shell_ident_start_alphabet, pattern: ch)
+}
+
+fn orch_shell_ident_continue_char_ok(ch: String) -> Bool {
+  string_length(s: ch) == 1 && string_contains(s: orch_shell_ident_continue_alphabet, pattern: ch)
+}
+
+fn orch_shell_ident_ok_at(binder: String, i: Int, n: Int) -> Bool {
+  if i >= n {
+    true
+  } else {
+    let ch = char_at(s: binder, pos: i)
+    let ok = if i == 0 {
+      orch_shell_ident_start_char_ok(ch: ch)
+    } else {
+      orch_shell_ident_continue_char_ok(ch: ch)
+    }
+    if !ok {
+      false
+    } else {
+      orch_shell_ident_ok_at(binder: binder, i: i + 1, n: n)
+    }
+  }
+}
+
+fn orch_shell_ident_ok(binder: String) -> Bool {
+  let n = string_length(s: binder)
+  if n == 0 {
+    false
+  } else {
+    orch_shell_ident_ok_at(binder: binder, i: 0, n: n)
+  }
+}
+
+fn orch_emit_exit_status_bind(stmt: String, binder: String, medium: OrchestrationEmitMedium) -> Outcome<String> {
+  if !orch_shell_ident_ok(binder: binder) {
+    outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_exit_status_binder_invalid))
+  } else {
+    bind_outcome(
+      o: orch_emit_join2(left: stmt, right: concat(binder, "=$?"), medium: medium),
+      f: fn(m) { outcome_accepted(m.carried) }
+    )
+  }
+}
+
+fn orch_emit_apply_capture(stmt: String, capture: CaptureSpec, medium: OrchestrationEmitMedium) -> Outcome<String> {
+  match capture {
+    IgnoreFail =>
+      bind_outcome(
+        o: bash_stmt_or_ignore_fail_target_model(stmt: stmt),
+        f: fn(target) {
+          orch_emit_node_spelling(
+            emitted_root: bash_stmt_or_ignore_fail_emitted,
+            target: target
+          )
+        }
+      )
+    ExitStatus { binder: b } =>
+      orch_emit_exit_status_bind(stmt: stmt, binder: b, medium: medium)
+    TeeTo { log: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_run_capture_unsupported))
+    CmdSubst =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_run_capture_unsupported))
+  }
 }
 
 fn orch_emit_run_spelling(r: Run, medium: OrchestrationEmitMedium) -> Outcome<String> {
@@ -216,18 +338,8 @@ fn orch_emit_run_spelling(r: Run, medium: OrchestrationEmitMedium) -> Outcome<St
         Absent =>
           match r.capture {
             Absent => outcome_accepted(core)
-            Present { value: IgnoreFail } =>
-              bind_outcome(
-                o: bash_stmt_or_ignore_fail_target_model(stmt: core),
-                f: fn(target) {
-                  orch_emit_node_spelling(
-                    emitted_root: bash_stmt_or_ignore_fail_emitted,
-                    target: target
-                  )
-                }
-              )
-            Present { value: _ } =>
-              outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_run_capture_unsupported))
+            Present { value: cap } =>
+              orch_emit_apply_capture(stmt: core, capture: cap, medium: medium)
           }
         Present { value: redir } =>
           bind_outcome(
@@ -235,18 +347,8 @@ fn orch_emit_run_spelling(r: Run, medium: OrchestrationEmitMedium) -> Outcome<St
             f: fn(with_redir) {
               match r.capture {
                 Absent => outcome_accepted(with_redir)
-                Present { value: IgnoreFail } =>
-                  bind_outcome(
-                    o: bash_stmt_or_ignore_fail_target_model(stmt: with_redir),
-                    f: fn(target) {
-                      orch_emit_node_spelling(
-                        emitted_root: bash_stmt_or_ignore_fail_emitted,
-                        target: target
-                      )
-                    }
-                  )
-                Present { value: _ } =>
-                  outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_run_capture_unsupported))
+                Present { value: cap } =>
+                  orch_emit_apply_capture(stmt: with_redir, capture: cap, medium: medium)
               }
             }
           )
@@ -319,6 +421,20 @@ fn orch_emit_predicate(p: Predicate, medium: OrchestrationEmitMedium) -> Outcome
           )
         }
       )
+    IntNe { lhs: lhs, rhs: rhs } =>
+      if !orch_shell_test_operand_ok(operand: lhs) || !orch_shell_test_operand_ok(operand: rhs) {
+        outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_int_ne_operand_invalid))
+      } else {
+        bind_outcome(
+          o: bash_test_int_ne_target_model(lhs: lhs, rhs: rhs),
+          f: fn(target) {
+            orch_emit_node_spelling(
+              emitted_root: bash_test_int_ne_emitted,
+              target: target
+            )
+          }
+        )
+      }
     LogMatches { source: source, pattern: pattern } =>
       bind_outcome(
         o: bash_log_matches_grep_target_model(
@@ -603,9 +719,66 @@ fn orch_emit_bounded_poll_step(
   )
 }
 
+data orch_shell_test_operand_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-@$\"{}"
+
+fn orch_shell_test_operand_char_ok(ch: String) -> Bool {
+  string_length(s: ch) == 1 && string_contains(s: orch_shell_test_operand_alphabet, pattern: ch)
+}
+
+fn orch_shell_test_operand_ok_at(operand: String, i: Int, n: Int) -> Bool {
+  if i >= n {
+    true
+  } else {
+    let ch = char_at(s: operand, pos: i)
+    if !orch_shell_test_operand_char_ok(ch: ch) {
+      false
+    } else {
+      orch_shell_test_operand_ok_at(operand: operand, i: i + 1, n: n)
+    }
+  }
+}
+
+fn orch_shell_test_operand_ok(operand: String) -> Bool {
+  let n = string_length(s: operand)
+  if n == 0 {
+    false
+  } else {
+    orch_shell_test_operand_ok_at(operand: operand, i: 0, n: n)
+  }
+}
+
+fn orch_shell_exit_status_ok(status: String) -> Bool {
+  orch_shell_test_operand_ok(operand: status)
+}
+
+fn orch_emit_exit_step(status: String) -> Outcome<extdeps.communication.medium.Medium<String>> {
+  if !orch_shell_exit_status_ok(status: status) {
+    outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_exit_status_operand_invalid))
+  } else {
+    bind_outcome(
+      o: orch_emit_node_spelling(
+        emitted_root: bash_stmt_exit_emitted,
+        target: bash_stmt_exit_target_model(code: status)
+      ),
+      f: fn(spelling) { outcome_accepted(lossless_source(text: spelling)) }
+    )
+  }
+}
+
 fn orch_emit_step(s: PipelineStep, medium: OrchestrationEmitMedium) -> Outcome<extdeps.communication.medium.Medium<String>> {
   match s {
     Do { run: r } => orch_emit_run(r: r, medium: medium)
+    Comment { text: t } =>
+      if string_contains(s: t, pattern: "\n") || string_contains(s: t, pattern: "\r") {
+        outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_comment_multiline_refused))
+      } else {
+        orch_emit_from_registry(
+          medium: medium,
+          construct_tag: orch_construct_run_rawline,
+          target: medium.realize_run_rawline(concat("# ", t))
+        )
+      }
+    Exit { status: st } => orch_emit_exit_step(status: st)
     If { cond: c, then_: t, else_: e } =>
       orch_emit_if_step(cond: c, then_: t, else_: e, medium: medium)
     For { binder: _, over: _, body: _ } =>
@@ -623,6 +796,7 @@ fn orch_emit_step(s: PipelineStep, medium: OrchestrationEmitMedium) -> Outcome<e
   }
 }
 
+<<<<<<< HEAD
 data orch_retry_outer_log_var: String = "BUILD_LOG"
 
 data orch_retry_nested_log_var: String = "RETRY_LOG"
@@ -663,6 +837,34 @@ fn orch_retry_step_run(s: PipelineStep) -> Outcome<Run> {
 data orch_retry_body_command_note: String = "orch_retry_body_command returns Outcome<Run>: multi-step bodies refuse (^orch_emit_retry_body_multi_step); empty/non-Do refuse (^orch_emit_retry_body_not_run); a single Do returns the Run intact so orch_emit_retry_run can refuse Present redirect/capture rather than silently dropping them. Tee/redirect semantics for retry live in the bash retry templates, not on the body Run."
 
 fn orch_retry_body_command(body: Pipeline) -> Outcome<Run> {
+=======
+fn orch_retry_step_command(s: PipelineStep) -> Optional<String> {
+  match s {
+    Do { run: r } =>
+      match r.redirect {
+        Absent =>
+          match r.capture {
+            Absent => Present { value: r.command }
+            Present { value: _ } => Absent
+          }
+        Present { value: _ } => Absent
+      }
+    Comment { text: _ } => Absent
+    Exit { status: _ } => Absent
+    If { cond: _, then_: _, else_: _ } => Absent
+    For { binder: _, over: _, body: _ } => Absent
+    While { cond: _, body: _ } => Absent
+    BoundedPoll { max_attempts: _, body: _, success: _ } => Absent
+    Retry { body: _, escalations: _, on_exhausted: _ } => Absent
+    Let { name: _, value: _ } => Absent
+    Call { callee: _, args: _ } => Absent
+  }
+}
+
+data orch_retry_body_command_absent_conflation_note: String = "orch_retry_body_command collapses three distinct Absents into one Optional, and orch_emit_retry maps that single Absent to ^orch_emit_retry_body_not_run: (a) empty pipeline (HeadAbsent), (b) head step is not a Do (Comment/Exit/If/For/…), (c) head is a Do that carries Present redirect or capture. State-space conflation — the reason misnames (a)/(c) and would pollute a per-cause tally. 🟡 dissolve-on: replace Optional<String> with a typed RetryBodyExtract sum (EmptyBody | NonDoHead | RedirectOrCapturePresent | Command\{spelling\}) and refuse with per-cause reasons; until then one Absent remains the fail-closed interim."
+
+fn orch_retry_body_command(body: Pipeline) -> Optional<String> {
+>>>>>>> origin/main
   match list_head(xs: body.steps) {
     HeadAbsent =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))

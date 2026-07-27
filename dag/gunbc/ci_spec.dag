@@ -30,10 +30,12 @@ import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce {
-  ci_floor_stamp_merge_admission_script,
   ci_repo_root_shell,
 }
-import v2.workflow.ci_merge_admission_emit { ci_floor_disposition_marker_init_script }
+import v2.workflow.ci_merge_admission_emit {
+  ci_floor_disposition_marker_init_script,
+  ci_floor_stamp_merge_admission_script,
+}
 import extdeps.git {
   git_remote_ref_parts,
   git_fetch_no_tags_shell,
