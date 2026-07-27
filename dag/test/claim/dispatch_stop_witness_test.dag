@@ -8,7 +8,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_tmux_process_fingerprint_observation_dissolution_trigger,
 }
 import gunbc.roadmap_belt_actuate {
-  BeltStopResult, StopStopped, StopRefusedResult, StopObserveRefused, StopTeardownFailed,
+  BeltStopResult, StopStopped, StopDisabled, StopRefusedResult, StopObserveRefused, StopTeardownFailed,
   belt_stop_result_json_value, belt_stop_http_status,
 }
 import gunbc.roadmap_component { dispatch_client_js_source }
@@ -19,7 +19,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data dispatch_stop_witness_note: String = "U4's receipts: the pane parse, the fingerprint-carrying observation upgrade, and the R5 stop gate proven arm by arm — the star RED is the operator's own test fixture (a hand-made sleep session wearing the dispatch name observes Conflict and the gate REFUSES to kill it: refusing what we cannot prove ours is the point). The wire mapping discriminates 404 (no session) from 409 (ownership refusal) from 503 (unknowable) from 502 (kill failed); the client chip is pinned in the served asset; and the fingerprint scaffold's dissolution is asserted discharged."
+data dispatch_stop_witness_note: String = "U4's receipts: the pane parse, the fingerprint-carrying observation upgrade, and the R5 stop gate proven arm by arm — the positive fixture uses dispatch_cli_provider's live-observed pane fingerprint (node for the srv1 npm Codex launcher), while the star RED is the operator's own hand-made sleep session wearing the dispatch name. The wire mapping discriminates 404 (no session) from 409 (ownership refusal) from 503 (unknowable) from 502 (kill failed); the client chip is pinned in the served asset."
 
 fn scope() -> TmuxSessionScope {
   dispatch_tmux_session_scope(node_id: "ts-authority-converge")
@@ -41,16 +41,16 @@ test fn stop_pane_parse_holds() -> Bool {
     && match parse_tmux_pane_line(line: "") { Present { value: p2 } => false Absent => true }
 }
 
-test fn stop_gate_kills_only_proven_claude() -> Bool {
-  let claude_obs = tmux_session_observation_with_panes(
+test fn stop_gate_kills_only_proven_selected_provider() -> Bool {
+  let provider_obs = tmux_session_observation_with_panes(
     scope: scope(), entries: [entry()],
-    panes: [TmuxPaneEntry { session_name: "gunbc-dispatch-ts-authority-converge", command: "claude" }])
+    panes: [TmuxPaneEntry { session_name: "gunbc-dispatch-ts-authority-converge", command: "node" }])
   let sleep_obs = tmux_session_observation_with_panes(
     scope: scope(), entries: [entry()],
     panes: [TmuxPaneEntry { session_name: "gunbc-dispatch-ts-authority-converge", command: "sleep" }])
   let blind_obs = tmux_session_observation_with_panes(scope: scope(), entries: [entry()], panes: [])
   let absent_obs = tmux_session_observation_with_panes(scope: scope(), entries: [], panes: [])
-  return match dispatch_stop_gate(scope: scope(), obs: claude_obs) {
+  return match dispatch_stop_gate(scope: scope(), obs: provider_obs) {
     StopPermitted { session_name: sn } => sn == "gunbc-dispatch-ts-authority-converge"
     StopRefused { reason: _ } => false
   } && match dispatch_stop_gate(scope: scope(), obs: sleep_obs) {
@@ -67,16 +67,19 @@ test fn stop_gate_kills_only_proven_claude() -> Bool {
 
 test fn stop_wire_statuses_discriminate() -> Bool {
   let stopped = StopStopped { node_id: "n", session_name: "gunbc-dispatch-n" }
+  let disabled = StopDisabled { node_id: "n", instance_id: "preview", reason: "observe-only" }
   let foreign = StopRefusedResult { node_id: "n", reason: "a foreign process wears the dispatch session name — refusing to kill what we cannot prove ours" }
   let missing = StopRefusedResult { node_id: "n", reason: "no live session for this node" }
   let unknowable = StopObserveRefused { node_id: "n", reason: "tmux ls: permission denied" }
   let failed = StopTeardownFailed { node_id: "n", session_name: "gunbc-dispatch-n", detail: "kill-session exited 1" }
   return belt_stop_http_status(r: stopped) == 200
+    && belt_stop_http_status(r: disabled) == 403
     && belt_stop_http_status(r: foreign) == 409
     && belt_stop_http_status(r: missing) == 404
     && belt_stop_http_status(r: unknowable) == 503
     && belt_stop_http_status(r: failed) == 502
     && string_contains(s: serialize_json(v: belt_stop_result_json_value(r: stopped)), pattern: "\"status\": \"stopped\"")
+    && string_contains(s: serialize_json(v: belt_stop_result_json_value(r: disabled)), pattern: "\"status\": \"stop_disabled\"")
     && string_contains(s: serialize_json(v: belt_stop_result_json_value(r: foreign)), pattern: "\"status\": \"stop_refused\"")
 }
 
@@ -99,4 +102,13 @@ test fn stop_fingerprint_scaffold_is_discharged() -> Bool {
     Scaffold { dissolves_to: _, bind: _ } => false
     Terminal { reason: r } => string_contains(s: r as String, pattern: "DISSOLVED")
   }
+}
+
+test fn dashboard_instance_stop_contract_keystone_holds() -> Bool {
+  stop_pane_parse_holds()
+    && stop_gate_kills_only_proven_selected_provider()
+    && stop_wire_statuses_discriminate()
+    && stop_client_carries_the_chip()
+    && stop_chip_is_styled()
+    && stop_fingerprint_scaffold_is_discharged()
 }

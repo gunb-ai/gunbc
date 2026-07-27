@@ -17,12 +17,23 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data codex_noninteractive_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "learn.chatgpt.com/docs/non-interactive-mode"
+  }
+}
+
 data claude_cli_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "docs.claude.com/en/docs/claude-code/cli-reference"
   }
 }
+
+data codex_cli_program_note: String = "The one program-token authority for the Codex CLI. Codex dispatch preflight and shape_codex_exec_argv both consume this row. The external non-interactive contract is explicit: codex exec is the automation surface; --json emits JSONL progress; workspace-write is the least sandbox that permits implementation; approval never makes blocked actions return to the agent instead of hanging an unattended worker; CODEX_HOME selects the dedicated persisted auth/config/session state."
+
+data codex_cli_program: String = "codex"
 
 data claude_cli_program_note: String = "The one program-token authority for claude code's CLI (DESIGN §3): shape_claude_invoke_argv's argv head and any caller preflighting claude-on-PATH consume THIS row, never a re-minted literal. (The `service claude.Invoke` transport argv below carries its own literal because the service DSL argv rows are self-contained transport realizations — that literal is the shell-transport handler's spelling of the same upstream binary, not a second authority.)"
 
@@ -116,6 +127,114 @@ fn shape_claude_invoke_argv(
         start_prompt,
       ],
     ),
+  )
+}
+
+type CodexCliSandbox
+  = CodexReadOnly
+  | CodexWorkspaceWrite
+  | CodexDangerFullAccess
+
+type CodexCliApprovalPolicy
+  = CodexApprovalUntrusted
+  | CodexApprovalOnRequest
+  | CodexApprovalNever
+
+type CodexExecSpec {
+  sandbox: CodexCliSandbox
+  approval: CodexCliApprovalPolicy
+  json_events: Bool
+  persist_session: Bool
+}
+
+fn codex_cli_sandbox_label(sandbox: CodexCliSandbox) -> String {
+  match sandbox {
+    CodexReadOnly => "read-only"
+    CodexWorkspaceWrite => "workspace-write"
+    CodexDangerFullAccess => "danger-full-access"
+  }
+}
+
+fn codex_cli_approval_label(approval: CodexCliApprovalPolicy) -> String {
+  match approval {
+    CodexApprovalUntrusted => "untrusted"
+    CodexApprovalOnRequest => "on-request"
+    CodexApprovalNever => "never"
+  }
+}
+
+fn codex_json_event_args(enabled: Bool) -> List<String> {
+  if enabled { ["--json"] } else { [] }
+}
+
+fn codex_session_persistence_args(persist: Bool) -> List<String> {
+  if persist { [] } else { ["--ephemeral"] }
+}
+
+fn codex_home_env_assignment(codex_home: String) -> String {
+  concat("CODEX_HOME=", codex_home)
+}
+
+fn shape_codex_login_status_env_args_for_program(
+  program: String,
+  codex_home: String,
+) -> List<String> {
+  [codex_home_env_assignment(codex_home: codex_home), program, "login", "status"]
+}
+
+fn shape_codex_login_status_env_args(codex_home: String) -> List<String> {
+  shape_codex_login_status_env_args_for_program(
+    program: codex_cli_program,
+    codex_home: codex_home,
+  )
+}
+
+fn shape_codex_exec_argv_for_program(
+  program: String,
+  codex_home: String,
+  cwd: String,
+  prompt: String,
+  reasoning_effort: String,
+  spec: CodexExecSpec,
+) -> List<String> {
+  concat(
+    [
+      "env",
+      codex_home_env_assignment(codex_home: codex_home),
+      program,
+      "--ask-for-approval", codex_cli_approval_label(approval: spec.approval),
+      "exec",
+      "--sandbox", codex_cli_sandbox_label(sandbox: spec.sandbox),
+      "--color", "never",
+    ],
+    concat(
+      codex_json_event_args(enabled: spec.json_events),
+      concat(
+        codex_session_persistence_args(persist: spec.persist_session),
+        [
+          "-C", cwd,
+          "-c", concat(concat("model_reasoning_effort=\"", reasoning_effort), "\""),
+          prompt,
+        ],
+      ),
+    ),
+  )
+}
+
+fn shape_codex_exec_argv(
+  codex_home: String,
+  cwd: String,
+  prompt: String,
+  reasoning_effort: String,
+  spec: CodexExecSpec,
+) -> List<String> {
+  shape_codex_exec_argv_for_program(
+    program: codex_cli_program,
+    codex_home: codex_home,
+    cwd: cwd,
+    prompt: prompt,
+    reasoning_effort: reasoning_effort,
+    spec: spec,
   )
 }
 

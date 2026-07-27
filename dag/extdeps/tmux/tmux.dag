@@ -1,6 +1,6 @@
 module extdeps.tmux
 
-import std.types { List, String }
+import std.types { List, String, NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -11,27 +11,87 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-fn shape_tmux_new_session_argv(session_name: String, working_dir: String, inner_argv: List<String>) -> List<String> {
+type TmuxServerScope
+  = DefaultTmuxServer
+  | NamedTmuxServer { socket_name: NonEmptyStr }
+
+fn tmux_server_scope_argv(scope: TmuxServerScope) -> List<String> {
+  match scope {
+    DefaultTmuxServer => []
+    NamedTmuxServer { socket_name: name } => ["-L", name as String]
+  }
+}
+
+fn shape_tmux_new_session_argv_for(
+  scope: TmuxServerScope,
+  session_name: String,
+  working_dir: String,
+  inner_argv: List<String>,
+) -> List<String> {
   concat(
-    ["new-session", "-d", "-s", session_name, "-c", working_dir],
-    inner_argv,
+    tmux_server_scope_argv(scope: scope),
+    concat(
+      ["new-session", "-d", "-s", session_name, "-c", working_dir],
+      inner_argv,
+    ),
   )
 }
 
+fn shape_tmux_new_session_argv(session_name: String, working_dir: String, inner_argv: List<String>) -> List<String> {
+  shape_tmux_new_session_argv_for(
+    scope: DefaultTmuxServer,
+    session_name: session_name,
+    working_dir: working_dir,
+    inner_argv: inner_argv,
+  )
+}
+
+fn shape_tmux_ls_argv_for(scope: TmuxServerScope) -> List<String> {
+  concat(tmux_server_scope_argv(scope: scope), ["ls"])
+}
+
 fn shape_tmux_ls_argv() -> List<String> {
-  ["ls"]
+  shape_tmux_ls_argv_for(scope: DefaultTmuxServer)
+}
+
+fn shape_tmux_kill_session_argv_for(scope: TmuxServerScope, session_name: String) -> List<String> {
+  concat(
+    tmux_server_scope_argv(scope: scope),
+    ["kill-session", "-t", session_name],
+  )
 }
 
 fn shape_tmux_kill_session_argv(session_name: String) -> List<String> {
-  ["kill-session", "-t", session_name]
+  shape_tmux_kill_session_argv_for(scope: DefaultTmuxServer, session_name: session_name)
+}
+
+fn shape_tmux_has_session_argv_for(scope: TmuxServerScope, session_name: String) -> List<String> {
+  concat(
+    tmux_server_scope_argv(scope: scope),
+    ["has-session", "-t", session_name],
+  )
+}
+
+fn shape_tmux_has_session_argv(session_name: String) -> List<String> {
+  shape_tmux_has_session_argv_for(
+    scope: DefaultTmuxServer,
+    session_name: session_name,
+  )
 }
 
 data tmux_list_panes_format_note: String = "The pane-fingerprint read (upstream: tmux FORMATS, man tmux — session_name and pane_current_command are cited format variables; pane_current_command is the name of the process running IN the pane, which is exactly the ownership evidence the dispatch lease classification needs). -a lists panes across all sessions in one read. Single-space separator: tmux session names in this system are single tokens (gunbc-dispatch-<node_id>) and pane_current_command is a process name — the parse splits on the FIRST space, so even a hypothetical spaced command survives as the fingerprint's head token, which is the token the classification compares."
 
 data tmux_list_panes_format: String = "#\{session_name\} #\{pane_current_command\}"
 
+fn shape_tmux_list_panes_argv_for(scope: TmuxServerScope) -> List<String> {
+  concat(
+    tmux_server_scope_argv(scope: scope),
+    ["list-panes", "-a", "-F", tmux_list_panes_format],
+  )
+}
+
 fn shape_tmux_list_panes_argv() -> List<String> {
-  ["list-panes", "-a", "-F", tmux_list_panes_format]
+  shape_tmux_list_panes_argv_for(scope: DefaultTmuxServer)
 }
 
 service tmux.Session {

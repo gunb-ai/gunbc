@@ -1,0 +1,561 @@
+module gunbc.roadmap_dashboard_instance
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
+import gunbc.host_layout {
+  srv1_gunbc_repo_root,
+  srv1_gunbc_serve_binary,
+  srv1_dispatch_worktree_root,
+  srv1_roadmap_codex_home,
+}
+
+type DashboardActuationPosture
+  = DashboardObserveOnly
+  | DashboardActuating
+
+type DashboardProvisionTransport
+  = DashboardLocalProvision
+  | DashboardSshProvision { host: NonEmptyStr }
+
+type DashboardSourceSeed
+  = DashboardExistingRepo { anchor_ref: NonEmptyStr }
+  | DashboardGitBundle {
+      controller_repo: FilePath,
+      staged_bundle: FilePath,
+      anchor_ref: NonEmptyStr,
+    }
+
+type DashboardProviderStateBinding
+  = DashboardExistingProviderState {
+      root: FilePath,
+      executable: FilePath,
+    }
+
+type HostDashboardInstance {
+  instance_id: NonEmptyStr
+  host_identity: NonEmptyStr
+  instance_root: FilePath
+  local_origin_root: FilePath
+  local_origin_publish_ref: NonEmptyStr
+  repo_root: FilePath
+  dispatch_base_ref: NonEmptyStr
+  dispatch_worktree_root: FilePath
+  provider_state: DashboardProviderStateBinding
+  serve_binary: FilePath
+  serve_function: NonEmptyStr
+  listen_host: NonEmptyStr
+  listen_port: Int
+  tmux_server: TmuxServerScope
+  actuation: DashboardActuationPosture
+  provision_transport: DashboardProvisionTransport
+  source_seed: DashboardSourceSeed
+}
+
+data dashboard_instance_note: String = "A dashboard is an explicit host instance, not an ambient serve process. One value moves the source repository, local Git origin, attempt-worktree root, provider state binding, tmux server, listen address, handler entrypoint, and actuation posture together. Selection is by the serve entry function that receives this value; no environment variable may replace one projection independently. Production uses the user's default tmux server for compatibility. Labs and previews use named tmux servers and roots disjoint from production. Provider credentials remain pre-existing user-authored state and are referenced, never copied into a deployment payload."
+
+data srv1_dashboard_live_id: NonEmptyStr = "srv1-live" as NonEmptyStr
+data srv1_dashboard_lab_id: NonEmptyStr = "srv1-lab-codex-feedback-v0" as NonEmptyStr
+data srv2_dashboard_preview_id: NonEmptyStr = "srv2-preview-codex-feedback-v0" as NonEmptyStr
+
+data srv1_dashboard_lab_root: FilePath = "/home/briansrls/.local/share/gunbc/dashboard-instances/codex-provider-feedback-v0" as FilePath
+data srv2_dashboard_preview_root: FilePath = "/home/briansrls/.local/share/gunbc/dashboard-instances/codex-provider-feedback-preview-v0" as FilePath
+data dashboard_feedback_controller_repo: FilePath = "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath
+
+fn dashboard_instance_child(root: FilePath, child: String) -> FilePath {
+  join([root as String, "/", child], "") as FilePath
+}
+
+fn dashboard_instance_provider_state_root(instance: HostDashboardInstance) -> FilePath {
+  match instance.provider_state {
+    DashboardExistingProviderState { root, executable: _ } => root
+  }
+}
+
+fn dashboard_instance_provider_executable(instance: HostDashboardInstance) -> FilePath {
+  match instance.provider_state {
+    DashboardExistingProviderState { root: _, executable } => executable
+  }
+}
+
+fn dashboard_instance_ownership_marker_path(instance: HostDashboardInstance) -> FilePath {
+  dashboard_instance_child(
+    root: instance.instance_root,
+    child: join([".gunbc-dashboard-instance-", instance.instance_id as String], ""),
+  )
+}
+
+fn dashboard_instance_service_session_name(instance: HostDashboardInstance) -> NonEmptyStr {
+  join(["gunbc-dashboard-", instance.instance_id as String], "") as NonEmptyStr
+}
+
+fn dashboard_instance_checkout_branch(instance: HostDashboardInstance) -> NonEmptyStr {
+  replace(
+    s: instance.local_origin_publish_ref as String,
+    from: "refs/heads/",
+    to: "",
+  ) as NonEmptyStr
+}
+
+fn dashboard_instance_controller_workdir(instance: HostDashboardInstance) -> FilePath {
+  match instance.source_seed {
+    DashboardExistingRepo { anchor_ref: _ } => instance.repo_root
+    DashboardGitBundle { controller_repo, staged_bundle: _, anchor_ref: _ } =>
+      controller_repo
+  }
+}
+
+fn dashboard_instance_serve_argv(instance: HostDashboardInstance) -> List<String> {
+  [
+    "serve",
+    "--source-root", "dag",
+    "--source-root", "src/v2",
+    "--entry", "dag/gunbc/roadmap_serve.dag",
+    "--function", instance.serve_function as String,
+    "--host", instance.listen_host as String,
+    "--port", to_string(instance.listen_port),
+  ]
+}
+
+fn dashboard_actuation_posture_label(posture: DashboardActuationPosture) -> String {
+  match posture {
+    DashboardObserveOnly => "observe-only"
+    DashboardActuating => "actuating"
+  }
+}
+
+fn dashboard_provision_transport_label(transport: DashboardProvisionTransport) -> String {
+  match transport {
+    DashboardLocalProvision => "local"
+    DashboardSshProvision { host } => join(["ssh:", host as String], "")
+  }
+}
+
+fn dashboard_instance_can_actuate(instance: HostDashboardInstance) -> Bool {
+  match instance.actuation {
+    DashboardObserveOnly => false
+    DashboardActuating => true
+  }
+}
+
+fn dashboard_named_tmux_server(instance_id: NonEmptyStr) -> TmuxServerScope {
+  NamedTmuxServer { socket_name: instance_id }
+}
+
+fn srv1_live_dashboard_instance() -> HostDashboardInstance {
+  HostDashboardInstance {
+    instance_id: srv1_dashboard_live_id,
+    host_identity: "srv1" as NonEmptyStr,
+    instance_root: "/opt/gunbc" as FilePath,
+    local_origin_root: srv1_gunbc_repo_root,
+    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
+    repo_root: srv1_gunbc_repo_root,
+    dispatch_base_ref: "origin/main" as NonEmptyStr,
+    dispatch_worktree_root: srv1_dispatch_worktree_root,
+    provider_state: DashboardExistingProviderState {
+      root: srv1_roadmap_codex_home,
+      executable: "/usr/bin/codex" as FilePath,
+    },
+    serve_binary: srv1_gunbc_serve_binary,
+    serve_function: "roadmap_serve_handle" as NonEmptyStr,
+    listen_host: "0.0.0.0" as NonEmptyStr,
+    listen_port: 8080,
+    tmux_server: DefaultTmuxServer,
+    actuation: DashboardActuating,
+    provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
+    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
+  }
+}
+
+fn isolated_dashboard_instance(
+  instance_id: NonEmptyStr,
+  host_identity: NonEmptyStr,
+  root: FilePath,
+  serve_function: NonEmptyStr,
+  listen_port: Int,
+  actuation: DashboardActuationPosture,
+  provision_transport: DashboardProvisionTransport,
+) -> HostDashboardInstance {
+  HostDashboardInstance {
+    instance_id: instance_id,
+    host_identity: host_identity,
+    instance_root: root,
+    local_origin_root: dashboard_instance_child(root: root, child: "origin.git"),
+    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
+    repo_root: dashboard_instance_child(root: root, child: "source"),
+    dispatch_base_ref: "origin/main" as NonEmptyStr,
+    dispatch_worktree_root: dashboard_instance_child(root: root, child: "attempts"),
+    provider_state: DashboardExistingProviderState {
+      root: srv1_roadmap_codex_home,
+      executable: "/usr/bin/codex" as FilePath,
+    },
+    serve_binary: srv1_gunbc_serve_binary,
+    serve_function: serve_function,
+    listen_host: "0.0.0.0" as NonEmptyStr,
+    listen_port: listen_port,
+    tmux_server: dashboard_named_tmux_server(instance_id: instance_id),
+    actuation: actuation,
+    provision_transport: provision_transport,
+    source_seed: DashboardGitBundle {
+      controller_repo: dashboard_feedback_controller_repo,
+      staged_bundle: dashboard_instance_child(root: root, child: "inbox/source.bundle"),
+      anchor_ref: "refs/heads/session/codex-provider-feedback-v0" as NonEmptyStr,
+    },
+  }
+}
+
+fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    instance_id: srv1_dashboard_lab_id,
+    host_identity: "srv1" as NonEmptyStr,
+    root: srv1_dashboard_lab_root,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18081,
+    actuation: DashboardActuating,
+    provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
+  )
+}
+
+fn srv2_preview_dashboard_instance() -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    instance_id: srv2_dashboard_preview_id,
+    host_identity: "srv2" as NonEmptyStr,
+    root: srv2_dashboard_preview_root,
+    serve_function: "roadmap_serve_handle_srv2_preview" as NonEmptyStr,
+    listen_port: 18080,
+    actuation: DashboardObserveOnly,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn dashboard_path_is_under(path: FilePath, root: FilePath) -> Bool {
+  starts_with(s: path as String, prefix: concat(root as String, "/"))
+}
+
+fn dashboard_instance_owned_paths(instance: HostDashboardInstance) -> List<FilePath> {
+  [
+    instance.local_origin_root,
+    instance.repo_root,
+    instance.dispatch_worktree_root,
+  ]
+}
+
+fn dashboard_instance_paths_are_owned(instance: HostDashboardInstance) -> Bool {
+  all(
+    dashboard_instance_owned_paths(instance: instance),
+    path => dashboard_path_is_under(path: path, root: instance.instance_root),
+  )
+}
+
+fn dashboard_instances_have_disjoint_owned_paths(
+  a: HostDashboardInstance,
+  b: HostDashboardInstance,
+) -> Bool {
+  all(
+    dashboard_instance_owned_paths(instance: a),
+    ap => all(
+      dashboard_instance_owned_paths(instance: b),
+      bp =>
+        ap != bp
+          && !dashboard_path_is_under(path: ap, root: bp)
+          && !dashboard_path_is_under(path: bp, root: ap),
+    ),
+  )
+}
+
+type DashboardInstanceProvisionOp
+  = DashboardMaterializeGitBundle {
+      controller_repo: FilePath,
+      staged_bundle: FilePath,
+      anchor_ref: NonEmptyStr,
+    }
+  | DashboardEnsureDirectory { path: FilePath }
+  | DashboardEnsureOwnershipMarker {
+      path: FilePath,
+      instance_id: NonEmptyStr,
+    }
+  | DashboardEnsureLocalOrigin {
+      bundle: FilePath,
+      origin: FilePath,
+      source_ref: NonEmptyStr,
+      publish_ref: NonEmptyStr,
+    }
+  | DashboardEnsureSourceRepo {
+      origin: FilePath,
+      repo: FilePath,
+      anchor_ref: NonEmptyStr,
+    }
+  | DashboardEnsureService {
+      instance_id: NonEmptyStr,
+      binary: FilePath,
+      workdir: FilePath,
+      handler: NonEmptyStr,
+      host: NonEmptyStr,
+      port: Int,
+      tmux_server: TmuxServerScope,
+    }
+  | DashboardVerifyProviderAuth {
+      executable: FilePath,
+      state_root: FilePath,
+    }
+  | DashboardVerifyHealth { host: NonEmptyStr, port: Int }
+
+fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<DashboardInstanceProvisionOp> {
+  let common = [
+    DashboardEnsureDirectory { path: instance.instance_root },
+    DashboardEnsureDirectory { path: instance.dispatch_worktree_root },
+    DashboardEnsureOwnershipMarker {
+      path: dashboard_instance_ownership_marker_path(instance: instance),
+      instance_id: instance.instance_id,
+    },
+  ]
+  let source_ops = match instance.source_seed {
+    DashboardExistingRepo { anchor_ref: _ } => []
+    DashboardGitBundle { controller_repo, staged_bundle, anchor_ref } => [
+      DashboardEnsureDirectory {
+        path: dashboard_instance_child(root: instance.instance_root, child: "inbox"),
+      },
+      DashboardMaterializeGitBundle {
+        controller_repo: controller_repo,
+        staged_bundle: staged_bundle,
+        anchor_ref: anchor_ref,
+      },
+      DashboardEnsureLocalOrigin {
+        bundle: staged_bundle,
+        origin: instance.local_origin_root,
+        source_ref: anchor_ref,
+        publish_ref: instance.local_origin_publish_ref,
+      },
+      DashboardEnsureSourceRepo {
+        origin: instance.local_origin_root,
+        repo: instance.repo_root,
+        anchor_ref: instance.dispatch_base_ref,
+      },
+    ]
+  }
+  concat(common, concat(source_ops, [
+    DashboardVerifyProviderAuth {
+      executable: dashboard_instance_provider_executable(instance: instance),
+      state_root: dashboard_instance_provider_state_root(instance: instance),
+    },
+    DashboardEnsureService {
+      instance_id: instance.instance_id,
+      binary: instance.serve_binary,
+      workdir: instance.repo_root,
+      handler: instance.serve_function,
+      host: instance.listen_host,
+      port: instance.listen_port,
+      tmux_server: instance.tmux_server,
+    },
+    DashboardVerifyHealth { host: instance.listen_host, port: instance.listen_port },
+  ]))
+}
+
+type DashboardInstanceProvisionPlanRow {
+  kind: NonEmptyStr
+  target: String
+  detail: String
+}
+
+fn dashboard_instance_provision_op_row(
+  op: DashboardInstanceProvisionOp,
+) -> DashboardInstanceProvisionPlanRow {
+  match op {
+    DashboardMaterializeGitBundle { controller_repo, staged_bundle, anchor_ref } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "materialize-git-bundle" as NonEmptyStr,
+        target: staged_bundle as String,
+        detail: join([
+          controller_repo as String,
+          " @ ",
+          anchor_ref as String,
+          " -> temporary bundle -> atomic target staging",
+        ], ""),
+      }
+    DashboardEnsureDirectory { path } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "ensure-directory" as NonEmptyStr,
+        target: path as String,
+        detail: "mkdir parents; idempotent",
+      }
+    DashboardEnsureOwnershipMarker { path, instance_id } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "ensure-ownership-marker" as NonEmptyStr,
+        target: path as String,
+        detail: instance_id as String,
+      }
+    DashboardEnsureLocalOrigin { bundle, origin, source_ref, publish_ref } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "ensure-local-origin" as NonEmptyStr,
+        target: origin as String,
+        detail: join([
+          bundle as String,
+          " ",
+          source_ref as String,
+          " -> ",
+          publish_ref as String,
+        ], ""),
+      }
+    DashboardEnsureSourceRepo { origin, repo, anchor_ref } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "ensure-source-repo" as NonEmptyStr,
+        target: repo as String,
+        detail: join([origin as String, " @ ", anchor_ref as String], ""),
+      }
+    DashboardEnsureService {
+      instance_id,
+      binary,
+      workdir,
+      handler,
+      host,
+      port,
+      tmux_server: _,
+    } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "ensure-service" as NonEmptyStr,
+        target: instance_id as String,
+        detail: join([
+          binary as String,
+          " · ",
+          workdir as String,
+          " · ",
+          handler as String,
+          " · ",
+          host as String,
+          ":",
+          to_string(port),
+        ], ""),
+      }
+    DashboardVerifyProviderAuth { executable, state_root } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "verify-provider-auth" as NonEmptyStr,
+        target: state_root as String,
+        detail: executable as String,
+      }
+    DashboardVerifyHealth { host, port } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "verify-health" as NonEmptyStr,
+        target: join([host as String, ":", to_string(port)], ""),
+        detail: "/instance.json must name the intended instance within the bounded readiness poll",
+      }
+  }
+}
+
+fn dashboard_instance_provision_plan_rows(
+  instance: HostDashboardInstance,
+) -> List<DashboardInstanceProvisionPlanRow> {
+  map(
+    dashboard_instance_provision_plan(instance: instance),
+    op => dashboard_instance_provision_op_row(op: op),
+  )
+}
+
+type DashboardInstanceObserved {
+  root_present: Bool
+  ownership_marker_present: Bool
+  bundle_present: Bool
+  origin_present: Bool
+  source_present: Bool
+  attempts_present: Bool
+  provider_authenticated: Bool
+  service_present: Bool
+  health_current: Bool
+  production_untouched: Bool
+  source_anchor_matches: Bool
+}
+
+fn dashboard_source_seed_ready(
+  instance: HostDashboardInstance,
+  observed: DashboardInstanceObserved,
+) -> Bool {
+  match instance.source_seed {
+    DashboardExistingRepo { anchor_ref: _ } => true
+    DashboardGitBundle { controller_repo: _, staged_bundle: _, anchor_ref: _ } =>
+      observed.bundle_present
+  }
+}
+
+type DashboardInstanceReconcile
+  = DashboardInstanceConverged
+  | DashboardInstanceApply { plan: List<DashboardInstanceProvisionOp> }
+  | DashboardInstanceRefused { reason: NonEmptyStr }
+
+fn dashboard_instance_reconcile(
+  instance: HostDashboardInstance,
+  observed: DashboardInstanceObserved,
+) -> DashboardInstanceReconcile {
+  if !dashboard_instance_paths_are_owned(instance: instance) {
+    DashboardInstanceRefused {
+      reason: "instance-owned paths escape the instance root" as NonEmptyStr,
+    }
+  } else if !observed.production_untouched {
+    DashboardInstanceRefused {
+      reason: "production isolation read-back failed" as NonEmptyStr,
+    }
+  } else if (observed.origin_present || observed.source_present)
+      && !observed.ownership_marker_present {
+    DashboardInstanceRefused {
+      reason: "source or origin exists without the matching instance ownership marker" as NonEmptyStr,
+    }
+  } else if observed.source_present && !observed.source_anchor_matches {
+    DashboardInstanceRefused {
+      reason: "source repo exists at a different anchor; replacement is destructive and must be adjudicated" as NonEmptyStr,
+    }
+  } else if observed.health_current
+      && observed.root_present
+      && observed.ownership_marker_present
+      && dashboard_source_seed_ready(instance: instance, observed: observed)
+      && observed.origin_present
+      && observed.source_present
+      && observed.attempts_present
+      && observed.provider_authenticated
+      && observed.service_present
+      && observed.source_anchor_matches {
+    DashboardInstanceConverged
+  } else {
+    DashboardInstanceApply { plan: dashboard_instance_provision_plan(instance: instance) }
+  }
+}
+
+type DashboardInstanceRetractOp
+  = DashboardStopService {
+      instance_id: NonEmptyStr,
+      tmux_server: TmuxServerScope,
+    }
+  | DashboardRefuseUnlessAttemptsEmpty { path: FilePath }
+  | DashboardRemoveSourceRepo { path: FilePath }
+  | DashboardRemoveLocalOrigin { path: FilePath }
+  | DashboardPreserveSourceBundle { path: FilePath }
+
+type DashboardInstanceRetract
+  = DashboardInstanceRetractPlan { plan: List<DashboardInstanceRetractOp> }
+  | DashboardInstanceRetractRefused { reason: NonEmptyStr }
+
+data dashboard_instance_retract_note: String = "Retraction is modeled independently from provisioning and is deliberately narrower than recursive deletion. Existing-repo instances (including production) are not owned by this model and refuse retraction. Isolated bundle-seeded instances stop only their named service, refuse while any attempt worktree remains, remove the reproducible source clone and local origin, and preserve the staged bundle as the recovery anchor. Provider state is referenced secret state and is never in the retract plan."
+
+fn dashboard_instance_retract_plan(
+  instance: HostDashboardInstance,
+) -> DashboardInstanceRetract {
+  if !dashboard_instance_paths_are_owned(instance: instance) {
+    DashboardInstanceRetractRefused {
+      reason: "instance-owned paths escape the instance root" as NonEmptyStr,
+    }
+  } else {
+    match instance.source_seed {
+      DashboardExistingRepo { anchor_ref: _ } =>
+        DashboardInstanceRetractRefused {
+          reason: "existing-repo dashboard instances are not owned by the isolated-instance retractor" as NonEmptyStr,
+        }
+      DashboardGitBundle { controller_repo: _, staged_bundle, anchor_ref: _ } =>
+        DashboardInstanceRetractPlan { plan: [
+          DashboardStopService {
+            instance_id: instance.instance_id,
+            tmux_server: instance.tmux_server,
+          },
+          DashboardRefuseUnlessAttemptsEmpty { path: instance.dispatch_worktree_root },
+          DashboardRemoveSourceRepo { path: instance.repo_root },
+          DashboardRemoveLocalOrigin { path: instance.local_origin_root },
+          DashboardPreserveSourceBundle { path: staged_bundle },
+        ] }
+    }
+  }
+}

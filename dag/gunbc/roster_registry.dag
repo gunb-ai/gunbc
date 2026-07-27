@@ -171,7 +171,7 @@ data roster_registry: List<RosterRegistration> = [
     roster: roster_decl(module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_dispatch_result_exemplars"),
     unit_kind: "BeltDispatchResult variant exemplar",
     membership: DeclaredFrontier {
-      reason: "hand variant enumeration standing in for coproduct-arm enumeration: belt_dispatch_result_exemplars lists one exemplar per BeltDispatchResult arm to derive the wire-label set (belt_dispatch_all_status_labels). belt_dispatch_status_label's total match walls a 7th VARIANT at compile time, but nothing ties THIS list to the variant set, so a missed exemplar would silently narrow both the derived label set and the component wire-total that reads it while the live server emits the unmodeled label",
+      reason: "hand variant enumeration standing in for coproduct-arm enumeration: belt_dispatch_result_exemplars lists one exemplar per BeltDispatchResult arm to derive the wire-label set (belt_dispatch_all_status_labels). belt_dispatch_status_label's total match walls an 8th VARIANT at compile time, but nothing ties THIS list to the variant set, so a missed exemplar would silently narrow both the derived label set and the component wire-total that reads it while the live server emits the unmodeled label",
       dissolve_on: "substrate inhabitance enumeration lands (DESIGN section 4, fold over a coproduct's arms without a hand roster), or the exemplars derive from the serve JSON emit's own total match (belt_dispatch_result_json_value); then this list and its roster row delete"
     }
   },

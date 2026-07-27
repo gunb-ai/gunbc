@@ -5,7 +5,11 @@ import gunbc.roadmap_belt_actuate {
   belt_sessions_json_value, belt_sessions_observed_json, belt_sessions_http_status,
 }
 import gunbc.roadmap_dispatch_actuator { DispatchLiveSession }
-import gunbc.roadmap_component { dispatch_client_js_source, sessions_route_path }
+import gunbc.roadmap_component {
+  dispatch_client_js_source, sessions_route_path,
+  dispatch_receipt_chip_prefix, dispatch_session_chip_prefix,
+  dispatch_caption_present_word, session_observation_refresh_ms,
+}
 import gunbc.roadmap_style { roadmap_css }
 import std.upsert_decision { ObservationVerdict, Converged }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -41,13 +45,29 @@ test fn sessions_refusal_is_loud_on_the_wire() -> Bool {
     && !string_contains(s: j, pattern: "\"sessions\"")
 }
 
-test fn sessions_client_marks_live_and_shouts_refusal() -> Bool {
+test fn sessions_client_marks_presence_reobserves_and_shouts_refusal() -> Bool {
   let js = dispatch_client_js_source()
   return string_contains(s: js, pattern: "fetch('/sessions.json')")
     && string_contains(s: js, pattern: "sj.observe_refused")
-    && string_contains(s: js, pattern: "session · live")
+    && string_contains(s: js, pattern: "const gunbcRefreshSessions =")
+    && string_contains(s: js, pattern: "const gunbcPollSessions =")
+    && string_contains(s: js, pattern: join([
+      "setTimeout(gunbcPollSessions, ",
+      to_string(session_observation_refresh_ms),
+      ")",
+    ], ""))
+    && string_contains(
+      s: js,
+      pattern: join([dispatch_session_chip_prefix, dispatch_caption_present_word], ""))
+    && string_contains(s: js, pattern: join(["ok ? '", dispatch_receipt_chip_prefix, "' + s"], ""))
+    && !string_contains(s: js, pattern: "session · spawned")
+    && !string_contains(s: js, pattern: "session · live")
+    && string_contains(s: js, pattern: "data-session-observed")
+    && string_contains(s: js, pattern: "removeAttribute('data-session-observed')")
     && string_contains(s: js, pattern: "sb.title = sess.session_name")
     && string_contains(s: js, pattern: "'observe-refused'")
+    && string_contains(s: js, pattern: "data-source")
+    && string_contains(s: js, pattern: "cb.remove()")
     && string_contains(s: js, pattern: "session observation refused: ")
     && string_contains(s: js, pattern: "mn.prepend(bn)")
     && string_contains(s: js, pattern: ".catch(")

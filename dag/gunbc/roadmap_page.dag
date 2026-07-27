@@ -33,6 +33,7 @@ import gunbc.roadmap_component {
   workflow_lamp_indicator_class, workflow_lamp_label_class,
   workflow_lamp_data_attribute, workflow_observation_data_attribute,
   workflow_lamp_label_data_attribute,
+  dashboard_instance_class, dashboard_instance_label_class,
 }
 import gunbc.client_observation_state { client_observation_state_key }
 import gunbc.v1_deletion_plan {
@@ -163,6 +164,14 @@ fn three_gate_progress_markup() -> Fragment {
       [ el("h2", [ txt("v1-delete bar: three gates") ]) ],
       map(filter(v1_deletion_gates, spec => tg_is_bar_gate(g: spec.gate)),
           spec => tg_gate_progress_row(spec: spec))))
+}
+
+fn dashboard_instance_banner() -> Fragment {
+  el_class("section", dashboard_instance_class, [
+    el_class("span", dashboard_instance_label_class, [
+      txt("instance · observing"),
+    ]),
+  ])
 }
 
 data sound_toggle_placement_note: String = "The mute lives in the HEADER, pushed to the far edge by margin-left auto, because it is a property of the whole surface rather than of any row — a per-row mute would be a second control on every line, which is exactly what the exemplar's scope forbids. It renders with an empty label: the text is painted by the client program from the persisted preference on load, so the markup never ships a claim about the sound state that a different browser's storage would contradict. With no JS the control is a blank button that does nothing, which is honest — there is no sound to mute either."
@@ -738,7 +747,14 @@ fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
 }
 
 fn roadmap_page_for_authority() -> Fragment {
-  roadmap_page_impl(doc: roadmap_authority(), merged: authored_merged_prs(), main_prefix: [ three_gate_progress_markup() ])
+  roadmap_page_impl(
+    doc: roadmap_authority(),
+    merged: authored_merged_prs(),
+    main_prefix: [
+      dashboard_instance_banner(),
+      three_gate_progress_markup(),
+    ],
+  )
 }
 
 fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
@@ -746,5 +762,12 @@ fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Frag
 }
 
 fn roadmap_daily_workspace_page_for_authority() -> Fragment {
-  roadmap_daily_workspace_page_impl(doc: roadmap_authority(), merged: authored_merged_prs(), main_prefix: [ three_gate_progress_markup() ])
+  roadmap_daily_workspace_page_impl(
+    doc: roadmap_authority(),
+    merged: authored_merged_prs(),
+    main_prefix: [
+      dashboard_instance_banner(),
+      three_gate_progress_markup(),
+    ],
+  )
 }

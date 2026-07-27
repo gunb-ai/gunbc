@@ -35,6 +35,7 @@ import gunbc.roadmap_component {
   workflow_controls_class, workflow_strip_class, workflow_lamp_class,
   workflow_lamp_indicator_class, workflow_lamp_label_class,
   workflow_observation_data_attribute,
+  dashboard_instance_class,
 }
 import gunbc.client_observation_state {
   ClientObservationState,
@@ -509,6 +510,16 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FlexDirection, value: "column"),
       decl(prop: Gap, value: scale_var(t: space_12)),
       decl(prop: MarginBottom, value: scale_var(t: space_24)),
+    ] },
+    StaticRule { selector: ClassSelector { name: dashboard_instance_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--focus)")),
+      decl(prop: PaddingLeft, value: scale_var(t: space_6)),
+      decl(prop: MarginBottom, value: scale_var(t: space_12)),
     ] },
     StaticRule { selector: RawSelector { text: ".three-gate-progress h2" }, decls: [
       decl(prop: Margin, value: scale_triple(a: space_0, b: space_0, c: space_4)),

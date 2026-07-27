@@ -33,23 +33,39 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchLiveSession,
   DispatchSpawnCommands,
   dispatch_spawn_commands,
+  dispatch_spawn_commands_for_instance,
   dispatch_attempt_key,
   DispatchAttemptRef, dispatch_attempt_refs, git_for_each_ref_dispatch_argv,
   TmuxPaneEntry, parse_tmux_panes_output, tmux_list_panes_argv,
+  tmux_list_panes_argv_for_instance,
   tmux_session_observation_with_panes, dispatch_tmux_session_scope,
+  DispatchCliProvider, ClaudeCodeProvider, CodexCliProvider,
+  dispatch_cli_provider, dispatch_provider_label, dispatch_codex_home,
   DispatchStopGate, StopPermitted, StopRefused, dispatch_stop_gate,
   TmuxLsEntry,
   dispatch_tmux_session_name,
   dispatch_worktree_root,
   tmux_ls_argv,
+  tmux_ls_argv_for_instance,
   tmux_kill_session_argv,
+  tmux_kill_session_argv_for_instance,
   dispatch_live_sessions,
 }
 import gunbc.host_layout { srv1_gunbc_repo_root }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  DashboardObserveOnly,
+  DashboardActuating,
+  srv1_live_dashboard_instance,
+  dashboard_instance_provider_state_root,
+  dashboard_instance_provider_executable,
+  dashboard_instance_can_actuate,
+}
 import extdeps.gunbc
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.llm.cli {
+  shape_codex_login_status_env_args_for_program,
   claude_cli_program,
   claude_trust_store_path,
   claude_workspace_trust_seeded,
@@ -59,7 +75,7 @@ import std.content_hash { content_hash_atom, content_hash_combine }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data belt_actuate_exec_authority_note: String = "Slice 2b actuation: the belt DECISION (gunbc.roadmap_belt.belt_reconcile) is CLOSED against the host by three proven single-authorities — the actuator's HostExecArgv argv model (gunbc.roadmap_dispatch_actuator, the one place the git/tmux/claude argv is shaped), gunbc.WitnessBin.Run (the typed-argv exec intrinsic, no shell string — the SAME exec authority gunbc.host_effect_realize's own realizers build on via srv3_transport_witness_bin_success), and shell.Which.Check (program -> bin_path). The belt is a PEER realizer over WitnessBin.Run, not a fork: host_effect_apply's HostEffect coproduct carries only specific srv3/bmc/hostname effects, with no general typed-argv variant, so the belt routes its generic invocations through the shared lower exec authority. This is fail-closed throughout (which-miss -> ExecRefused, nonzero exit -> ExecFailed, worktree failure short-circuits the tmux spawn), never a fabricated success. Claude-only for now (operator 2026-07-18: 'just do claude to get something working; nicer later as compute fabric')."
+data belt_actuate_exec_authority_note: String = "Slice 2b actuation: the belt DECISION (gunbc.roadmap_belt.belt_reconcile) is CLOSED against the host by three proven single-authorities — the actuator's HostExecArgv argv model (gunbc.roadmap_dispatch_actuator, the one place git/tmux/provider argv is shaped), gunbc.WitnessBin.Run (the typed-argv exec intrinsic, no shell string), and shell.Which.Check (program -> bin_path). Provider is a closed ClaudeCodeProvider | CodexCliProvider choice whose argv, preflight, and pane fingerprint move together. This remains fail-closed throughout: which-miss or auth uncertainty refuses before git worktree add; a worktree failure short-circuits tmux spawn; a nonzero provider process after tmux accepted is runtime evidence, not spawn evidence, and is deliberately NOT absorbed into Spawned-as-success."
 
 data belt_actuate_placement_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
@@ -180,7 +196,7 @@ fn belt_claude_preflight_decision(
   }
 }
 
-fn belt_claude_preflight() -> BeltClaudePreflight {
+fn belt_claude_preflight_for_instance(instance: HostDashboardInstance) -> BeltClaudePreflight {
   let claude_ok = belt_program_available(program: claude_cli_program)
   let home = match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
     Absent => ""
@@ -193,7 +209,7 @@ fn belt_claude_preflight() -> BeltClaudePreflight {
       trust_store_path: "",
       trust_store_readable: false,
       trust_store_text: "",
-      trust_root: dispatch_worktree_root,
+      trust_root: instance.dispatch_worktree_root as String,
     )
   } else {
     let path = claude_trust_store_path(home: home)
@@ -204,16 +220,197 @@ fn belt_claude_preflight() -> BeltClaudePreflight {
       trust_store_path: path,
       trust_store_readable: r.success,
       trust_store_text: r.content,
-      trust_root: dispatch_worktree_root,
+      trust_root: instance.dispatch_worktree_root as String,
     )
   }
 }
 
-fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String) -> BeltSpawnOutcome {
-  match belt_claude_preflight() {
-    ClaudePreflightRefused { step: st, detail: d } =>
+fn belt_claude_preflight() -> BeltClaudePreflight {
+  belt_claude_preflight_for_instance(instance: srv1_live_dashboard_instance())
+}
+
+type BeltCodexPreflight
+  = CodexPreflightOk { auth_method: String }
+  | CodexPreflightRefused { step: String, detail: String }
+
+data belt_codex_preflight_note: String = "Codex preflight owns only facts decidable before actuation. It requires both codex and env on PATH, then executes `env CODEX_HOME=<dedicated-root> codex login status`; exit 0 is the CLI's active-auth verdict and its stdout is retained as the method receipt, while every nonzero is codex-auth refusal carrying stdout+stderr. It never parses auth.json and never treats file presence as authentication. Subscription exhaustion and upstream/rate failures occur only after `codex exec` starts; those belong to the provider JSONL event stream (`turn.failed` / `error`) and exit status, not this preflight. Until that event observer lands, a tmux spawn is only Spawned and session presence is only Present."
+
+fn belt_codex_preflight_decision_for_home(
+  codex_home: String,
+  codex_on_path: Bool,
+  env_on_path: Bool,
+  login_status_success: Bool,
+  login_status_stdout: String,
+  login_status_stderr: String,
+) -> BeltCodexPreflight {
+  if !codex_on_path {
+    CodexPreflightRefused {
+      step: "codex-cli",
+      detail: "codex not found on PATH; refusing before worktree creation",
+    }
+  } else if !env_on_path {
+    CodexPreflightRefused {
+      step: "codex-env",
+      detail: "env not found on PATH; cannot bind the dedicated CODEX_HOME for auth or execution",
+    }
+  } else if !login_status_success {
+    CodexPreflightRefused {
+      step: "codex-auth",
+      detail: join([
+        "codex login status exited nonzero for ",
+        codex_home,
+        "; stdout: ",
+        login_status_stdout,
+        "; stderr: ",
+        login_status_stderr,
+      ], ""),
+    }
+  } else {
+    CodexPreflightOk { auth_method: login_status_stdout }
+  }
+}
+
+fn belt_codex_preflight_decision(
+  codex_on_path: Bool,
+  env_on_path: Bool,
+  login_status_success: Bool,
+  login_status_stdout: String,
+  login_status_stderr: String,
+) -> BeltCodexPreflight {
+  belt_codex_preflight_decision_for_home(
+    codex_home: dispatch_codex_home,
+    codex_on_path: codex_on_path,
+    env_on_path: env_on_path,
+    login_status_success: login_status_success,
+    login_status_stdout: login_status_stdout,
+    login_status_stderr: login_status_stderr,
+  )
+}
+
+fn belt_codex_preflight_for_instance(instance: HostDashboardInstance) -> BeltCodexPreflight {
+  let codex_home = dashboard_instance_provider_state_root(instance: instance) as String
+  let codex_program = dashboard_instance_provider_executable(instance: instance) as String
+  let codex_ok = belt_program_available(program: codex_program)
+  let env_ok = belt_program_available(program: "env")
+  if !codex_ok || !env_ok {
+    belt_codex_preflight_decision_for_home(
+      codex_home: codex_home,
+      codex_on_path: codex_ok,
+      env_on_path: env_ok,
+      login_status_success: false,
+      login_status_stdout: "",
+      login_status_stderr: "",
+    )
+  } else {
+    let result = gunbc.WitnessBin.Run(
+      workdir: belt_observe_workdir,
+      bin_path: "env" as FilePath,
+      args: shape_codex_login_status_env_args_for_program(
+        program: codex_program,
+        codex_home: codex_home,
+      ),
+      expect: OutcomeIsData,
+    )
+    belt_codex_preflight_decision_for_home(
+      codex_home: codex_home,
+      codex_on_path: codex_ok,
+      env_on_path: env_ok,
+      login_status_success: result.success,
+      login_status_stdout: result.stdout,
+      login_status_stderr: result.stderr,
+    )
+  }
+}
+
+fn belt_codex_preflight() -> BeltCodexPreflight {
+  belt_codex_preflight_for_instance(instance: srv1_live_dashboard_instance())
+}
+
+type BeltProviderPreflight
+  = ProviderPreflightOk
+  | ProviderPreflightRefused { step: String, detail: String }
+
+fn belt_provider_preflight_for_instance(
+  instance: HostDashboardInstance,
+  provider: DispatchCliProvider,
+) -> BeltProviderPreflight {
+  match provider {
+    ClaudeCodeProvider =>
+      match belt_claude_preflight_for_instance(instance: instance) {
+        ClaudePreflightOk => ProviderPreflightOk
+        ClaudePreflightRefused { step: st, detail: d } =>
+          ProviderPreflightRefused { step: st, detail: d }
+      }
+    CodexCliProvider =>
+      match belt_codex_preflight_for_instance(instance: instance) {
+        CodexPreflightOk { auth_method: _ } => ProviderPreflightOk
+        CodexPreflightRefused { step: st, detail: d } =>
+          ProviderPreflightRefused { step: st, detail: d }
+      }
+  }
+}
+
+fn belt_provider_preflight(provider: DispatchCliProvider) -> BeltProviderPreflight {
+  belt_provider_preflight_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    provider: provider,
+  )
+}
+
+fn belt_actuate_spawn_for_instance(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  probed_at: String,
+) -> BeltSpawnOutcome {
+  match belt_provider_preflight_for_instance(
+    instance: instance,
+    provider: dispatch_cli_provider,
+  ) {
+    ProviderPreflightRefused { step: st, detail: d } =>
       SpawnFailed { node_id: node.node as String, step: st, detail: d }
-    ClaudePreflightOk => belt_actuate_spawn_exec(node: node, probed_at: probed_at, workdir: workdir)
+    ProviderPreflightOk =>
+      belt_actuate_spawn_exec_for_instance(
+        instance: instance,
+        node: node,
+        probed_at: probed_at,
+      )
+  }
+}
+
+fn belt_actuate_spawn_exec_for_instance(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  probed_at: String,
+) -> BeltSpawnOutcome {
+  let cmds = dispatch_spawn_commands_for_instance(
+    instance: instance,
+    node: node,
+    session_uuid: belt_spawn_session_uuid(node_id: node.node as String, probed_at: probed_at),
+    attempt_key: dispatch_attempt_key(node_id: node.node, probed_at: probed_at),
+    provider: dispatch_cli_provider,
+  )
+  match belt_exec_all(
+    cmds: [cmds.worktree_add, cmds.tmux_spawn],
+    workdir: instance.repo_root as String,
+  ) {
+    ExecOk { stdout: _ } =>
+      Spawned {
+        node_id: node.node as String,
+        session_name: dispatch_tmux_session_name(node_id: node.node),
+      }
+    ExecFailed { program: p, exit_code: _, stderr: e } =>
+      SpawnFailed { node_id: node.node as String, step: p, detail: e }
+    ExecRefused { program: p, reason: r } =>
+      SpawnFailed { node_id: node.node as String, step: p, detail: r }
+  }
+}
+
+fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String) -> BeltSpawnOutcome {
+  match belt_provider_preflight(provider: dispatch_cli_provider) {
+    ProviderPreflightRefused { step: st, detail: d } =>
+      SpawnFailed { node_id: node.node as String, step: st, detail: d }
+    ProviderPreflightOk =>
+      belt_actuate_spawn_exec(node: node, probed_at: probed_at, workdir: workdir)
   }
 }
 
@@ -239,8 +436,17 @@ type BeltTeardownOutcome
   = ReapedSession { session_name: String }
   | TeardownFailed { session_name: String, detail: String }
 
-fn belt_actuate_teardown(session_name: String) -> BeltTeardownOutcome {
-  match belt_exec(cmd: tmux_kill_session_argv(session_name: session_name), workdir: belt_observe_workdir as String) {
+fn belt_actuate_teardown_for_instance(
+  instance: HostDashboardInstance,
+  session_name: String,
+) -> BeltTeardownOutcome {
+  match belt_exec(
+    cmd: tmux_kill_session_argv_for_instance(
+      instance: instance,
+      session_name: session_name,
+    ),
+    workdir: belt_observe_workdir as String,
+  ) {
     ExecOk { stdout: _ } => ReapedSession { session_name: session_name }
     ExecFailed { program: _, exit_code: _, stderr: e } =>
       TeardownFailed { session_name: session_name, detail: e }
@@ -249,11 +455,18 @@ fn belt_actuate_teardown(session_name: String) -> BeltTeardownOutcome {
   }
 }
 
+fn belt_actuate_teardown(session_name: String) -> BeltTeardownOutcome {
+  belt_actuate_teardown_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    session_name: session_name,
+  )
+}
+
 data belt_actuate_member_shape_note: String = "The reconcile guarantees spawns are DesiredMembers (carry the RoadmapNode for the brief) and teardowns are ObservedMembers (carry the live session). The cross arms are unreachable by construction; if ever reached they REFUSE (typed SpawnFailed/TeardownFailed), never a fabricated action — DESIGN §5 (no spawn without a node model, no teardown without an observed session)."
 
 data belt_session_uuid_salt: NonEmptyStr = "belt-session-uuid-v1" as NonEmptyStr
 
-data belt_spawn_session_uuid_note: String = "The spawned session name is claude's --session-id, which claude REQUIRES to be a syntactically valid UUID (a `belt-<node_id>` placeholder is rejected). The UUID is ATTEMPT-scoped (U1 redispatch fix 2026-07-25): derived from (node_id x the spawn's clock observation) — two fnv1a64 content hashes over the stamped id give 16 + 16 = 32 lowercase hex chars, reshaped to RFC-4122 v4 and dashed 8-4-4-4-12. The earlier node-deterministic derivation made every node one-shot at the claude layer: claude refuses a --session-id whose archived transcript exists, so a stopped node could never dispatch again. Reconcile idempotency never keyed on this id — the TMUX SESSION NAME (node-grain, unchanged) is what observe keys on, so no-spawn-per-tick holds exactly as before; per attempt the derivation stays deterministic (same node + same observation = same id), grounded on std.content_hash — the single hashing authority — not uuidgen."
+data belt_spawn_session_uuid_note: String = "The UUID is the Claude provider's --session-id input; Claude requires a syntactically valid UUID. It remains computed for every provider so dispatch_spawn_commands has one stable arity, but CodexCliProvider deliberately ignores it and lets Codex mint its persisted thread id. For Claude the UUID is ATTEMPT-scoped (U1 redispatch fix 2026-07-25): derived from (node_id x the spawn's clock observation), reshaped to RFC-4122 v4. The earlier node-deterministic derivation made every node one-shot at the Claude layer. Reconcile idempotency never keys on this id — the node-grain tmux session name is the observation key."
 
 fn belt_uuid_stamped_id(node_id: String, probed_at: String) -> NonEmptyStr {
   join([node_id, "\n", probed_at], "") as NonEmptyStr
@@ -359,8 +572,8 @@ fn belt_observe_from_result(
   }
 }
 
-fn belt_observe() -> BeltObserve {
-  let ls = tmux_ls_argv()
+fn belt_observe_for_instance(instance: HostDashboardInstance) -> BeltObserve {
+  let ls = tmux_ls_argv_for_instance(instance: instance)
   if belt_program_available(program: ls.program) {
     let result = gunbc.WitnessBin.Run(
       workdir: belt_observe_workdir,
@@ -378,6 +591,10 @@ fn belt_observe() -> BeltObserve {
       reason: "belt_observe: tmux not found on PATH; cannot observe belt session set; fail-closed (no blind spawn/reap on an unknowable observed set)",
     }
   }
+}
+
+fn belt_observe() -> BeltObserve {
+  belt_observe_for_instance(instance: srv1_live_dashboard_instance())
 }
 
 type BeltTickResult {
@@ -464,7 +681,7 @@ fn belt_tick_teardown_ok_count(t: BeltTickResult) -> Int {
   count(t.teardown_outcomes |> filter(o => belt_teardown_ok(o: o)))
 }
 
-data belt_run_once_note: String = "The runnable belt entrypoint: one tick against the LIVE roadmap. Reads the roadmap authority + merged PRs, builds the ready frontier, and runs belt_tick_default_workdir (Running, default capacity, belt_actuate_workdir). Zero-arg so it is invokable directly (gunbc run --function belt_run_once_json, wet), spawning real Claude tmux sessions on the host it runs on. belt_run_once returns the typed BeltTickResult; belt_run_once_json projects it to a receipt (observe verdict, occupied/free/deferred, per-node spawn/teardown outcomes, refusal count) so the operator sees exactly what one tick did — no fabricated summary. Idempotent: a spawned session is observed live next tick and reconciles to noop."
+data belt_run_once_note: String = "The runnable belt entrypoint: one tick against the LIVE roadmap. Reads the roadmap authority + merged PRs, builds the ready frontier, and runs belt_tick_default_workdir (Running, default capacity, belt_actuate_workdir). Zero-arg so it is invokable directly (gunbc run --function belt_run_once_json, wet), spawning a real tmux session through dispatch_cli_provider on the host it runs on. belt_run_once returns the typed BeltTickResult; belt_run_once_json projects it to a receipt (observe verdict, occupied/free/deferred, per-node spawn/teardown outcomes, refusal count) so the operator sees exactly what one tick did — no fabricated summary. Idempotent: a spawned session is observed live next tick and reconciles to noop."
 
 fn belt_run_once() -> BeltTickResult {
   belt_tick_default_workdir(
@@ -532,11 +749,11 @@ type BeltAttempts
 
 data belt_attempts_observe_note: String = "U3: the attempts observation mirrors belt_observe's fail-closed grammar — git absent or a non-zero for-each-ref is an UNKNOWABLE attempts set (AttemptsRefused, typed, carries stderr), never widened to zero attempts; exit 0 with empty output IS a genuine zero (for-each-ref's documented no-match behavior). Runs in belt_actuate_workdir — the same repo-root authority the spawn's worktree add uses, because the attempt branches live exactly where spawns mint them."
 
-fn belt_attempts_observe() -> BeltAttempts {
+fn belt_attempts_observe_for_instance(instance: HostDashboardInstance) -> BeltAttempts {
   let cmd = git_for_each_ref_dispatch_argv()
   if belt_program_available(program: cmd.program) {
     let result = gunbc.WitnessBin.Run(
-      workdir: belt_actuate_workdir,
+      workdir: instance.repo_root,
       bin_path: cmd.program as FilePath,
       args: cmd.args,
     )
@@ -548,6 +765,10 @@ fn belt_attempts_observe() -> BeltAttempts {
   } else {
     AttemptsRefused { reason: "git not found on PATH — the attempts set is unknowable" }
   }
+}
+
+fn belt_attempts_observe() -> BeltAttempts {
+  belt_attempts_observe_for_instance(instance: srv1_live_dashboard_instance())
 }
 
 fn belt_attempts_json_value(a: BeltAttempts) -> JsonValue {
@@ -585,14 +806,15 @@ fn belt_attempts_http_status(a: BeltAttempts) -> Int {
 
 type BeltStopResult
   = StopStopped { node_id: String, session_name: String }
+  | StopDisabled { node_id: String, instance_id: String, reason: String }
   | StopRefusedResult { node_id: String, reason: String }
   | StopObserveRefused { node_id: String, reason: String }
   | StopTeardownFailed { node_id: String, session_name: String, detail: String }
 
 data belt_stop_note: String = "U4 (stop from the UI): the R5 owned-only teardown as a wire actuation. The decision chain is observation-first and refuses at every unknowable: tmux ls refused → StopObserveRefused (503); pane read refused → the observation stays name-only and the gate refuses fingerprint-unobserved (409) — a pane-read failure NEVER widens into a kill; the gate itself refuses foreign/absent/inaccessible per verdict (409/404); only a Converged-or-Drifted observation reaches tmux kill-session, and a kill that fails is its own typed arm (502). The operator's hand-made sleep session wearing a dispatch name is the standing negative control: it observes Conflict and the button refuses to kill it."
 
-fn belt_observe_panes() -> List<TmuxPaneEntry>? {
-  let cmd = tmux_list_panes_argv()
+fn belt_observe_panes_for_instance(instance: HostDashboardInstance) -> List<TmuxPaneEntry>? {
+  let cmd = tmux_list_panes_argv_for_instance(instance: instance)
   if belt_program_available(program: cmd.program) {
     let result = gunbc.WitnessBin.Run(
       workdir: belt_observe_workdir,
@@ -609,15 +831,29 @@ fn belt_observe_panes() -> List<TmuxPaneEntry>? {
   }
 }
 
-fn belt_stop_node(node_id: String) -> BeltStopResult {
-  match belt_observe() {
+fn belt_observe_panes() -> List<TmuxPaneEntry>? {
+  belt_observe_panes_for_instance(instance: srv1_live_dashboard_instance())
+}
+
+fn belt_stop_node_for_instance(
+  instance: HostDashboardInstance,
+  node_id: String,
+) -> BeltStopResult {
+  if !dashboard_instance_can_actuate(instance: instance) {
+    StopDisabled {
+      node_id: node_id,
+      instance_id: instance.instance_id as String,
+      reason: "dashboard instance is observe-only; stop refused before tmux observation",
+    }
+  } else {
+  match belt_observe_for_instance(instance: instance) {
     ObserveRefused { reason: r } => StopObserveRefused { node_id: node_id, reason: r }
     Observed { live } => {
       let scope = dispatch_tmux_session_scope(node_id: node_id)
       let entries = live
         |> filter(sess => sess.session_name == (scope.session_name as String))
         |> map(sess => TmuxLsEntry { session_name: sess.session_name, windows: sess.windows })
-      let obs = match belt_observe_panes() {
+      let obs = match belt_observe_panes_for_instance(instance: instance) {
         Present { value: panes } =>
           tmux_session_observation_with_panes(scope: scope, entries: entries, panes: panes)
         Absent =>
@@ -626,7 +862,7 @@ fn belt_stop_node(node_id: String) -> BeltStopResult {
       match dispatch_stop_gate(scope: scope, obs: obs) {
         StopRefused { reason: r2 } => StopRefusedResult { node_id: node_id, reason: r2 }
         StopPermitted { session_name: sn } =>
-          match belt_actuate_teardown(session_name: sn) {
+          match belt_actuate_teardown_for_instance(instance: instance, session_name: sn) {
             ReapedSession { session_name: sn2 } => StopStopped { node_id: node_id, session_name: sn2 }
             TeardownFailed { session_name: sn3, detail: d } =>
               StopTeardownFailed { node_id: node_id, session_name: sn3, detail: d }
@@ -634,6 +870,14 @@ fn belt_stop_node(node_id: String) -> BeltStopResult {
       }
     }
   }
+  }
+}
+
+fn belt_stop_node(node_id: String) -> BeltStopResult {
+  belt_stop_node_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    node_id: node_id,
+  )
 }
 
 fn belt_stop_result_json_value(r: BeltStopResult) -> JsonValue {
@@ -643,6 +887,13 @@ fn belt_stop_result_json_value(r: BeltStopResult) -> JsonValue {
         json_kv(key: "node_id", value: json_string(s: nid)),
         json_kv(key: "status", value: json_string(s: "stopped")),
         json_kv(key: "session_name", value: json_string(s: sn)),
+      ])
+    StopDisabled { node_id: nid, instance_id: iid, reason: why } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "stop_disabled")),
+        json_kv(key: "instance", value: json_string(s: iid)),
+        json_kv(key: "reason", value: json_string(s: why)),
       ])
     StopRefusedResult { node_id: nid, reason: r2 } =>
       json_object(members: [
@@ -669,6 +920,7 @@ fn belt_stop_result_json_value(r: BeltStopResult) -> JsonValue {
 fn belt_stop_http_status(r: BeltStopResult) -> Int {
   match r {
     StopStopped { node_id: _, session_name: _ } => 200
+    StopDisabled { node_id: _, instance_id: _, reason: _ } => 403
     StopRefusedResult { node_id: _, reason: r2 } =>
       if string_contains(s: r2, pattern: "no live session") { 404 } else { 409 }
     StopObserveRefused { node_id: _, reason: _ } => 503
@@ -765,19 +1017,30 @@ fn belt_node_session_live(live: List<DispatchLiveSession>, node_id: String) -> B
 type BeltDispatchResult
   = DispatchSpawned { node_id: String, session_name: String }
   | DispatchAlreadyLive { node_id: String, session_name: String }
+  | DispatchDisabled { node_id: String, instance_id: String, reason: String }
   | DispatchNodeNotFound { node_id: String }
   | DispatchNodeAlreadyDone { node_id: String }
   | DispatchObserveRefused { node_id: String, reason: String }
   | DispatchSpawnFailed { node_id: String, step: String, detail: String }
 
-fn belt_dispatch_node(node_id: String) -> BeltDispatchResult {
+fn belt_dispatch_node_for_instance(
+  instance: HostDashboardInstance,
+  node_id: String,
+) -> BeltDispatchResult {
+  if !dashboard_instance_can_actuate(instance: instance) {
+    DispatchDisabled {
+      node_id: node_id,
+      instance_id: instance.instance_id as String,
+      reason: "dashboard instance is observe-only; dispatch refused before observation, provider preflight, or worktree creation",
+    }
+  } else {
   match belt_lookup_node(node_id: node_id) {
     NodeMissing => DispatchNodeNotFound { node_id: node_id }
     NodeFound { node: node } =>
       if signoff_accepts(s: node.signoff) {
         DispatchNodeAlreadyDone { node_id: node_id }
       } else {
-        match belt_observe() {
+        match belt_observe_for_instance(instance: instance) {
           ObserveRefused { reason: r } =>
             DispatchObserveRefused { node_id: node_id, reason: r }
           Observed { live: live } =>
@@ -789,7 +1052,11 @@ fn belt_dispatch_node(node_id: String) -> BeltDispatchResult {
             } else {
               match (match clock_now_probed_at() {
                 Present { value: probed_at } =>
-                  belt_actuate_spawn(node: node, probed_at: probed_at as String, workdir: belt_actuate_workdir as String)
+                  belt_actuate_spawn_for_instance(
+                    instance: instance,
+                    node: node,
+                    probed_at: probed_at as String,
+                  )
                 Absent =>
                   SpawnFailed {
                     node_id: node_id,
@@ -806,6 +1073,14 @@ fn belt_dispatch_node(node_id: String) -> BeltDispatchResult {
         }
       }
   }
+  }
+}
+
+fn belt_dispatch_node(node_id: String) -> BeltDispatchResult {
+  belt_dispatch_node_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    node_id: node_id,
+  )
 }
 
 fn belt_dispatch_result_ok(r: BeltDispatchResult) -> Bool {
@@ -818,11 +1093,22 @@ fn belt_dispatch_status_label(r: BeltDispatchResult) -> String {
   match r {
     DispatchSpawned { node_id: _, session_name: _ } => "spawned"
     DispatchAlreadyLive { node_id: _, session_name: _ } => "already_live"
+    DispatchDisabled { node_id: _, instance_id: _, reason: _ } => "disabled"
     DispatchNodeNotFound { node_id: _ } => "node_not_found"
     DispatchNodeAlreadyDone { node_id: _ } => "already_done_signed_off"
     DispatchObserveRefused { node_id: _, reason: _ } => "observe_refused"
     DispatchSpawnFailed { node_id: _, step: _, detail: _ } => "spawn_failed"
   }
+}
+
+fn belt_dispatch_disabled_status_label() -> String {
+  belt_dispatch_status_label(
+    r: DispatchDisabled {
+      node_id: "label-exemplar",
+      instance_id: "label-exemplar",
+      reason: "label-exemplar",
+    },
+  )
 }
 
 data dispatch_band_note: String = "The operator-facing state vocabulary (operator ruling 2026-07-24, roadmap-workspace-remodel-plan W1a): the wire taxonomy is the belt's DIAGNOSTIC vocabulary and must not moonlight as button text. The operator reads BANDS, each a remedy class — ok: the click achieved or already holds the desired state; fail: this click cannot achieve it and the ROW is the remedy (wrong node, already signed off); loud: the BELT itself is unwell (observe refused, spawn failed — step/detail surface in the detail channel, never the caption). BandInProgress is inhabited only by the client's requested phase: no wire RESULT maps to it (the fold below has no arm producing it), so presentation cannot fabricate progress out of an answer. This fold is now the SINGLE ok-authority — belt_dispatch_result_ok and belt_dispatch_ok_status_labels are projections of it; the former hand copies (a Bool match, a hand list, a label predicate — three spellings of one fact) were the half-born-band defect this dissolves."
@@ -837,6 +1123,7 @@ fn belt_dispatch_result_band(r: BeltDispatchResult) -> DispatchBand {
   match r {
     DispatchSpawned { node_id: _, session_name: _ } => BandOk
     DispatchAlreadyLive { node_id: _, session_name: _ } => BandOk
+    DispatchDisabled { node_id: _, instance_id: _, reason: _ } => BandFail
     DispatchNodeNotFound { node_id: _ } => BandFail
     DispatchNodeAlreadyDone { node_id: _ } => BandFail
     DispatchObserveRefused { node_id: _, reason: _ } => BandLoud
@@ -891,12 +1178,13 @@ fn belt_dispatch_label_band_key(wire_label: String) -> String {
   }
 }
 
-data belt_dispatch_all_status_labels_note: String = "The full wire-label set, GROUNDED in belt_dispatch_status_label rather than hand-listed (§3): one exemplar per BeltDispatchResult variant, mapped through the label authority. The exemplar roster is the single manual enumeration the closed variant set forces — the same enumeration witness_dispatch_status_labels_pin_wire_contract already pins — and it is fail-closed twice: a 7th variant makes belt_dispatch_status_label's match non-exhaustive (compiler-caught), and gunbc.roadmap_component derives the DispatchButton's terminal states from THIS list and cross-checks totality both directions (a label with no state row, a state with no label — each red), so the button's state set cannot silently drift from the served contract. This is the projection the dispatch-button incident (2026-07-23) needed: one authority for the wire vocabulary, consumed by the JSON body, the page ok-predicate, and now the component state totality."
+data belt_dispatch_all_status_labels_note: String = "The full wire-label set, GROUNDED in belt_dispatch_status_label rather than hand-listed (§3): one exemplar per BeltDispatchResult variant, mapped through the label authority. The exemplar roster is the single manual enumeration the closed variant set forces — the same enumeration witness_dispatch_status_labels_pin_wire_contract already pins — and it is fail-closed twice: an 8th variant makes belt_dispatch_status_label's match non-exhaustive (compiler-caught), and gunbc.roadmap_component derives the DispatchButton's terminal states from THIS list and cross-checks totality both directions (a label with no state row, a state with no label — each red), so the button's state set cannot silently drift from the served contract. This is the projection the dispatch-button incident (2026-07-23) needed: one authority for the wire vocabulary, consumed by the JSON body, the page ok-predicate, and now the component state totality."
 
 fn belt_dispatch_result_exemplars() -> List<BeltDispatchResult> {
   [
     DispatchSpawned { node_id: "x", session_name: "s" },
     DispatchAlreadyLive { node_id: "x", session_name: "s" },
+    DispatchDisabled { node_id: "x", instance_id: "i", reason: "r" },
     DispatchNodeNotFound { node_id: "x" },
     DispatchNodeAlreadyDone { node_id: "x" },
     DispatchObserveRefused { node_id: "x", reason: "r" },
@@ -922,12 +1210,17 @@ data belt_dispatch_path_prefix_note: String = "The dispatch route prefix, part o
 
 data belt_dispatch_path_prefix: String = "/dispatch/"
 
+fn belt_dispatch_provider_label() -> String {
+  dispatch_provider_label(provider: dispatch_cli_provider)
+}
+
 fn belt_dispatch_result_json_value(r: BeltDispatchResult) -> JsonValue {
   match r {
     DispatchSpawned { node_id: nid, session_name: sn } =>
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: nid)),
         json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
+        json_kv(key: "provider", value: json_string(s: belt_dispatch_provider_label())),
         json_kv(key: "session_name", value: json_string(s: sn)),
       ])
     DispatchAlreadyLive { node_id: nid, session_name: sn } =>
@@ -935,6 +1228,13 @@ fn belt_dispatch_result_json_value(r: BeltDispatchResult) -> JsonValue {
         json_kv(key: "node_id", value: json_string(s: nid)),
         json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
         json_kv(key: "session_name", value: json_string(s: sn)),
+      ])
+    DispatchDisabled { node_id: nid, instance_id: iid, reason: why } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
+        json_kv(key: "instance", value: json_string(s: iid)),
+        json_kv(key: "reason", value: json_string(s: why)),
       ])
     DispatchNodeNotFound { node_id: nid } =>
       json_object(members: [
@@ -956,6 +1256,7 @@ fn belt_dispatch_result_json_value(r: BeltDispatchResult) -> JsonValue {
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: nid)),
         json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
+        json_kv(key: "provider", value: json_string(s: belt_dispatch_provider_label())),
         json_kv(key: "step", value: json_string(s: st)),
         json_kv(key: "detail", value: json_string(s: d)),
       ])

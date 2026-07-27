@@ -40,14 +40,31 @@ import gunbc.session_lease {
 import extdeps.git { shape_git_worktree_add_argv }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
+  shape_tmux_new_session_argv_for,
   shape_tmux_ls_argv,
+  shape_tmux_ls_argv_for,
   shape_tmux_kill_session_argv,
+  shape_tmux_kill_session_argv_for,
   shape_tmux_list_panes_argv,
+  shape_tmux_list_panes_argv_for,
 }
-import extdeps.llm.cli { shape_claude_invoke_argv }
+import extdeps.llm.cli {
+  shape_claude_invoke_argv,
+  shape_codex_exec_argv,
+  shape_codex_exec_argv_for_program,
+  CodexExecSpec,
+  CodexWorkspaceWrite,
+  CodexApprovalNever,
+}
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.host_layout { srv1_dispatch_worktree_root }
+import gunbc.host_layout { srv1_dispatch_worktree_root, srv1_roadmap_codex_home }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  srv1_live_dashboard_instance,
+  dashboard_instance_provider_state_root,
+  dashboard_instance_provider_executable,
+}
 import gunbc.repo_identity { gunbc_merge_target_ref }
 
 data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Terminal {
@@ -63,10 +80,36 @@ data dispatch_git_remote_ref: String = gunbc_merge_target_ref as String
 data dispatch_tmux_session_prefix: String = "gunbc-dispatch-"
 data dispatch_claude_fingerprint_finding_note: String = "NAMED FINDING (U4 live drive, macOS, 2026-07-25): pane_current_command is the kernel process name (p_comm) — symlinks resolve and exec -a cannot fake it, which is exactly the anti-spoof property R5 wants — BUT a REAL running claude CLI on this macOS reported its VERSION STRING (2.1.220) as p_comm, not claude (node process.title). So the Converged green path may not fire on real workers until the fingerprint a real srv1 spawned session reports is READ, not guessed. The refuse arms are unaffected (they are the safety half and were proven live four ways). DECIDE-BY-RECEIPT: run tmux list-panes on srv1 beside a live dispatch session; if it reports claude this row stands; if it reports a version-or-node name, this row becomes the observed value (or an accepted set) — a data edit, never a code change."
 
+type DispatchCliProvider
+  = ClaudeCodeProvider
+  | CodexCliProvider
+
+data dispatch_cli_provider_note: String = "The dispatch provider is an explicit closed choice, not whichever executable happens to be authenticated on the host. v0 selects CodexCliProvider because the operator's Claude subscription is unavailable and the dedicated srv1 Codex state root is authenticated. Provider choice owns argv, preflight, and expected pane fingerprint together; adding a provider without all three projections is impossible at this call site. This is still a single host-wide provider selection. Per-node/provider placement belongs to the compute-fabric offer lane, not this unblock slice."
+
+data dispatch_cli_provider: DispatchCliProvider = CodexCliProvider
+
 data dispatch_claude_process_fingerprint: NonEmptyStr = "claude" as NonEmptyStr
+data dispatch_codex_process_fingerprint_note: String = "LIVE RECEIPT (srv1, 2026-07-27): the authenticated npm-installed Codex CLI (`/usr/bin/codex` launcher, codex-cli 0.133.0) reports pane_current_command `node` while a real read-only `codex exec --json` turn is active. The pane emitted thread.started, turn.started, and item.completed before exit. Therefore the current host realization's expected fingerprint is node, not the argv token codex. This is deliberately fail-closed across packaging changes: if provisioning moves srv1 to a standalone native binary and tmux begins reporting codex, ownership/Stop refuses until that new realization is observed and this row changes with its receipt."
+data dispatch_codex_process_fingerprint: NonEmptyStr = "node" as NonEmptyStr
 data claude_skip_permission_settings_json: String = "{\"skipDangerousModePermissionPrompt\":true}"
 data dispatch_claude_start_prompt: String = "Begin working on the assigned node."
 data dispatch_claude_permission_args: List<String> = ["--dangerously-skip-permissions"]
+data dispatch_codex_start_prompt: String = "Begin working on the assigned node."
+data dispatch_codex_home: String = srv1_roadmap_codex_home as String
+data dispatch_codex_exec_spec: CodexExecSpec = CodexExecSpec {
+  sandbox: CodexWorkspaceWrite,
+  approval: CodexApprovalNever,
+  json_events: true,
+  persist_session: true,
+}
+data dispatch_codex_exec_spec_note: String = "Codex dispatch is unattended but not unrestricted: workspace-write permits implementation inside the attempt worktree; approval never returns blocked operations to the agent instead of hanging on an invisible prompt; --json exposes the provider event stream in the pane; persisted sessions preserve the provider transcript after the process exits. The dashboard does not yet parse those persisted events, so Spawned and session-present remain actuator/process observations only — never a claim that the provider completed successfully."
+
+fn dispatch_provider_label(provider: DispatchCliProvider) -> String {
+  match provider {
+    ClaudeCodeProvider => "claude"
+    CodexCliProvider => "codex"
+  }
+}
 
 type HostExecArgv {
   program: String
@@ -131,7 +174,7 @@ type DispatchRequestGate
       worktree_path: String
       branch_name: String
       brief: String
-      claude_effort: String
+      reasoning_effort: String
     }
   | DispatchRefused { reason: NonEmptyStr }
 
@@ -158,7 +201,7 @@ fn volume_label(v: Volume) -> String {
   }
 }
 
-fn claude_effort_for_intricacy(i: Intricacy) -> String {
+fn dispatch_reasoning_effort_for_intricacy(i: Intricacy) -> String {
   match i {
     IntricacyHigh => "high"
     IntricacyMedium => "medium"
@@ -166,11 +209,22 @@ fn claude_effort_for_intricacy(i: Intricacy) -> String {
   }
 }
 
+fn claude_effort_for_intricacy(i: Intricacy) -> String {
+  dispatch_reasoning_effort_for_intricacy(i: i)
+}
+
+fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> NonEmptyStr {
+  match provider {
+    ClaudeCodeProvider => dispatch_claude_process_fingerprint
+    CodexCliProvider => dispatch_codex_process_fingerprint
+  }
+}
+
 fn dispatch_tmux_session_name(node_id: RoadmapNodeId) -> String {
   concat(dispatch_tmux_session_prefix, node_id)
 }
 
-data dispatch_attempt_note: String = "Dispatch is ATTEMPT-grain (U1, the redispatch fix, 2026-07-25; the operator's accidental spawn was the live receipt): branch, worktree, and claude session-id carry an attempt key derived from (node_id x the spawn's clock observation) through std.content_hash — so a stopped attempt's debris never collides with the next spawn, and NOTHING is deleted to make way (a stopped attempt's worktree may hold uncommitted work, and the rework discipline carries prior diffs forward; cleanup is separate explicit work, never an absorbing arm on spawn). The tmux session name deliberately STAYS node-grain: it is what observe/reconcile key on, so already-live detection, kill, and tick idempotency are untouched — the invariant remains one live session per node. Same-instant duplicate spawns for one node collide on the attempt key and refuse at the git step, typed — fail-closed, and honestly: a same-second double-press IS a refusal-worthy event. A clock refusal refuses the spawn (step attempt-clock), never an unknown-stamped attempt that would collide later."
+data dispatch_attempt_note: String = "Dispatch is ATTEMPT-grain (U1, the redispatch fix, 2026-07-25; the operator's accidental spawn was the live receipt): branch and worktree carry an attempt key derived from (node_id x the spawn's clock observation) through std.content_hash; the Claude provider also derives its required session-id from that stamp, while Codex mints its own persisted thread identity and does not yet join it back to the attempt. A stopped attempt's debris therefore never collides with the next spawn, and NOTHING is deleted to make way. The tmux session name deliberately STAYS node-grain: it is what observe/reconcile key on, so already-live detection, kill, and tick idempotency are untouched. Same-instant duplicate spawns for one node collide on the attempt key and refuse at the git step, typed. A clock refusal refuses the spawn (step attempt-clock), never an unknown-stamped attempt."
 
 fn dispatch_attempt_key(node_id: RoadmapNodeId, probed_at: String) -> String {
   content_hash_atom(value: join([node_id as String, "\n", probed_at], "") as NonEmptyStr) as String
@@ -178,6 +232,20 @@ fn dispatch_attempt_key(node_id: RoadmapNodeId, probed_at: String) -> String {
 
 fn dispatch_worktree_path(node_id: RoadmapNodeId, attempt_key: String) -> String {
   join([dispatch_worktree_root, "/", node_id as String, "-a", attempt_key], "")
+}
+
+fn dispatch_worktree_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    instance.dispatch_worktree_root as String,
+    "/",
+    node_id as String,
+    "-a",
+    attempt_key,
+  ], "")
 }
 
 fn dispatch_branch_name(node_id: RoadmapNodeId, attempt_key: String) -> String {
@@ -188,7 +256,7 @@ fn dispatch_tmux_session_scope(node_id: RoadmapNodeId) -> TmuxSessionScope {
   TmuxSessionScope {
     session_name: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
     expected_owner_label: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
-    expected_process_fingerprint: dispatch_claude_process_fingerprint,
+    expected_process_fingerprint: dispatch_provider_process_fingerprint(provider: dispatch_cli_provider),
   }
 }
 
@@ -329,14 +397,127 @@ fn claude_spawn_argv(
   )
 }
 
-fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: List<String>) -> HostExecArgv {
+fn codex_spawn_argv(
+  effort: String,
+  worktree_path: String,
+  brief: String,
+) -> List<String> {
+  shape_codex_exec_argv(
+    codex_home: dispatch_codex_home,
+    cwd: worktree_path,
+    prompt: join([brief, "\n\n", dispatch_codex_start_prompt], ""),
+    reasoning_effort: effort,
+    spec: dispatch_codex_exec_spec,
+  )
+}
+
+fn codex_spawn_argv_for_instance(
+  instance: HostDashboardInstance,
+  effort: String,
+  worktree_path: String,
+  brief: String,
+) -> List<String> {
+  shape_codex_exec_argv_for_program(
+    program: dashboard_instance_provider_executable(instance: instance) as String,
+    codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
+    cwd: worktree_path,
+    prompt: join([brief, "\n\n", dispatch_codex_start_prompt], ""),
+    reasoning_effort: effort,
+    spec: dispatch_codex_exec_spec,
+  )
+}
+
+fn dispatch_provider_inner_argv(
+  provider: DispatchCliProvider,
+  effort: String,
+  session_uuid: String,
+  node_id: RoadmapNodeId,
+  worktree_path: String,
+  brief: String,
+) -> List<String> {
+  match provider {
+    ClaudeCodeProvider =>
+      concat(
+        ["env", "CLAUDE_CODE_NO_FLICKER=1"],
+        claude_spawn_argv(
+          effort: effort,
+          session_uuid: session_uuid,
+          node_id: node_id,
+          brief: brief,
+        ),
+      )
+    CodexCliProvider =>
+      codex_spawn_argv(
+        effort: effort,
+        worktree_path: worktree_path,
+        brief: brief,
+      )
+  }
+}
+
+fn dispatch_provider_inner_argv_for_instance(
+  instance: HostDashboardInstance,
+  provider: DispatchCliProvider,
+  effort: String,
+  session_uuid: String,
+  node_id: RoadmapNodeId,
+  worktree_path: String,
+  brief: String,
+) -> List<String> {
+  match provider {
+    ClaudeCodeProvider =>
+      concat(
+        ["env", "CLAUDE_CODE_NO_FLICKER=1"],
+        claude_spawn_argv(
+          effort: effort,
+          session_uuid: session_uuid,
+          node_id: node_id,
+          brief: brief,
+        ),
+      )
+    CodexCliProvider =>
+      codex_spawn_argv_for_instance(
+        instance: instance,
+        effort: effort,
+        worktree_path: worktree_path,
+        brief: brief,
+      )
+  }
+}
+
+fn tmux_spawn_inner_argv(session_name: String, worktree_path: String, inner_argv: List<String>) -> HostExecArgv {
   host_exec_argv(
     program: "tmux",
     args: shape_tmux_new_session_argv(
       session_name: session_name,
       working_dir: worktree_path,
-      inner_argv: concat(["env", "CLAUDE_CODE_NO_FLICKER=1"], claude_argv),
+      inner_argv: inner_argv,
     ),
+  )
+}
+
+fn tmux_spawn_inner_argv_for_instance(
+  instance: HostDashboardInstance,
+  session_name: String,
+  worktree_path: String,
+  inner_argv: List<String>,
+) -> HostExecArgv {
+  host_exec_argv(
+    program: "tmux",
+    args: shape_tmux_new_session_argv_for(
+      scope: instance.tmux_server,
+      session_name: session_name,
+      working_dir: worktree_path,
+      inner_argv: inner_argv,
+    ),
+  )
+}
+
+fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: List<String>) -> HostExecArgv {
+  tmux_spawn_inner_argv(
+    session_name: session_name,
+    worktree_path: worktree_path,
+    inner_argv: concat(["env", "CLAUDE_CODE_NO_FLICKER=1"], claude_argv),
   )
 }
 
@@ -344,8 +525,25 @@ fn tmux_ls_argv() -> HostExecArgv {
   host_exec_argv(program: "tmux", args: shape_tmux_ls_argv())
 }
 
+fn tmux_ls_argv_for_instance(instance: HostDashboardInstance) -> HostExecArgv {
+  host_exec_argv(program: "tmux", args: shape_tmux_ls_argv_for(scope: instance.tmux_server))
+}
+
 fn tmux_kill_session_argv(session_name: String) -> HostExecArgv {
   host_exec_argv(program: "tmux", args: shape_tmux_kill_session_argv(session_name: session_name))
+}
+
+fn tmux_kill_session_argv_for_instance(
+  instance: HostDashboardInstance,
+  session_name: String,
+) -> HostExecArgv {
+  host_exec_argv(
+    program: "tmux",
+    args: shape_tmux_kill_session_argv_for(
+      scope: instance.tmux_server,
+      session_name: session_name,
+    ),
+  )
 }
 
 type DispatchSpawnCommands {
@@ -353,11 +551,17 @@ type DispatchSpawnCommands {
   tmux_spawn: HostExecArgv
 }
 
-fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key: String) -> DispatchSpawnCommands {
+fn dispatch_spawn_commands_for_provider(
+  node: RoadmapNode,
+  session_uuid: String,
+  attempt_key: String,
+  provider: DispatchCliProvider,
+) -> DispatchSpawnCommands {
   let fields = dispatch_brief_fields(node: node)
   let brief = fill_dispatch_brief(template: dispatch_brief_template, fields: fields)
   let effort = match node.sizing {
-    Sized { intricacy, volume: _, repo: _, acceptance: _ } => claude_effort_for_intricacy(i: intricacy)
+    Sized { intricacy, volume: _, repo: _, acceptance: _ } =>
+      dispatch_reasoning_effort_for_intricacy(i: intricacy)
     Unsized => "medium"
   }
   let session_name = dispatch_tmux_session_name(node_id: node.node)
@@ -368,14 +572,74 @@ fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key:
     branch_name: branch_name,
     remote_ref: dispatch_git_remote_ref,
   )
-  let claude = claude_spawn_argv(
+  let provider_inner = dispatch_provider_inner_argv(
+    provider: provider,
     effort: effort,
     session_uuid: session_uuid,
     node_id: node.node,
+    worktree_path: worktree_path,
     brief: brief,
   )
-  let tmux = tmux_spawn_argv(session_name: session_name, worktree_path: worktree_path, claude_argv: claude)
+  let tmux = tmux_spawn_inner_argv(
+    session_name: session_name,
+    worktree_path: worktree_path,
+    inner_argv: provider_inner,
+  )
   DispatchSpawnCommands { worktree_add: worktree, tmux_spawn: tmux }
+}
+
+fn dispatch_spawn_commands_for_instance(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  session_uuid: String,
+  attempt_key: String,
+  provider: DispatchCliProvider,
+) -> DispatchSpawnCommands {
+  let fields = dispatch_brief_fields(node: node)
+  let brief = fill_dispatch_brief(template: dispatch_brief_template, fields: fields)
+  let effort = match node.sizing {
+    Sized { intricacy, volume: _, repo: _, acceptance: _ } =>
+      dispatch_reasoning_effort_for_intricacy(i: intricacy)
+    Unsized => "medium"
+  }
+  let session_name = dispatch_tmux_session_name(node_id: node.node)
+  let worktree_path = dispatch_worktree_path_for_instance(
+    instance: instance,
+    node_id: node.node,
+    attempt_key: attempt_key,
+  )
+  let branch_name = dispatch_branch_name(node_id: node.node, attempt_key: attempt_key)
+  let worktree = git_worktree_add_argv(
+    worktree_path: worktree_path,
+    branch_name: branch_name,
+    remote_ref: instance.dispatch_base_ref as String,
+  )
+  let provider_inner = dispatch_provider_inner_argv_for_instance(
+    instance: instance,
+    provider: provider,
+    effort: effort,
+    session_uuid: session_uuid,
+    node_id: node.node,
+    worktree_path: worktree_path,
+    brief: brief,
+  )
+  let tmux = tmux_spawn_inner_argv_for_instance(
+    instance: instance,
+    session_name: session_name,
+    worktree_path: worktree_path,
+    inner_argv: provider_inner,
+  )
+  DispatchSpawnCommands { worktree_add: worktree, tmux_spawn: tmux }
+}
+
+fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key: String) -> DispatchSpawnCommands {
+  dispatch_spawn_commands_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    node: node,
+    session_uuid: session_uuid,
+    attempt_key: attempt_key,
+    provider: dispatch_cli_provider,
+  )
 }
 
 fn parse_tmux_ls_windows(rest: String) -> Int {
@@ -536,7 +800,7 @@ fn dispatch_permitted_for_node(node: RoadmapNode, attempt_key: String) -> Dispat
   let brief = filled_dispatch_brief_for_node(node: node)
   let effort = match node.sizing {
     Sized { intricacy, volume: _, repo: _, acceptance: _ } =>
-      claude_effort_for_intricacy(i: intricacy)
+      dispatch_reasoning_effort_for_intricacy(i: intricacy)
     Unsized => "medium"
   }
   DispatchPermitted {
@@ -544,7 +808,7 @@ fn dispatch_permitted_for_node(node: RoadmapNode, attempt_key: String) -> Dispat
     worktree_path: dispatch_worktree_path(node_id: node.node, attempt_key: attempt_key),
     branch_name: dispatch_branch_name(node_id: node.node, attempt_key: attempt_key),
     brief: brief,
-    claude_effort: effort,
+    reasoning_effort: effort,
   }
 }
 
@@ -658,7 +922,7 @@ fn git_for_each_ref_dispatch_argv() -> HostExecArgv {
 
 data dispatch_session_ownership_note: String = "R5 owned-only teardown, session grain: a live dispatch session is teardown-eligible (OUR process) ONLY when its lease verdict is Converged (running with our expected process fingerprint) or Drifted (our fingerprint, stale lease — reap-able stale-ours, matching decision_for_dispatch_lease_verdict's DrainStale). Conflict (foreign process), Inaccessible, UnknownRefused, Absent are NOT owned. Name-only tmux-ls observation yields UnknownRefused/Inaccessible only, so teardown FAIL-CLOSED-REFUSES until the observation carries a process fingerprint — correct R5 (no ownership proof, no reap). This owned-ness judgment lives HERE (the actuator owns lease/ownership classification, §3) as a Bool; gunbc.roadmap_belt lifts the Bool into gunbc.ownership.Ownership for the reconcile teardown gate, so the belt never imports ObservationVerdict."
 
-data tmux_pane_fingerprint_note: String = "U4 (stop from the UI): the pane read is the scaffold's declared dissolution — tmux list-panes -a with the cited format variables yields (session_name, pane_current_command) per pane, and pane_current_command IS the process-fingerprint evidence the lease classification was built to consume. The observation upgrade is total over its inputs: a session whose pane row is found observes as SessionObserved (fingerprint in hand — Converged for claude, Conflict for anything else wearing the name, e.g. a hand-made sleep); a session visible in ls but absent from the pane read stays SessionNameObserved (honest partial — UnknownRefused downstream, still no reap). The stop gate is the R5 table as a typed decision: owned stops; everything else refuses with the verdict's own reason, and refusing to kill what we cannot prove ours is the point, not a limitation."
+data tmux_pane_fingerprint_note: String = "U4 (stop from the UI): the pane read is the scaffold's declared dissolution — tmux list-panes -a with the cited format variables yields (session_name, pane_current_command) per pane, and pane_current_command IS the process-fingerprint evidence the lease classification was built to consume. The observation upgrade is total over its inputs: a session whose pane row is found observes as SessionObserved (fingerprint in hand — Converged only for dispatch_cli_provider's expected process, Conflict for anything else wearing the name, e.g. a hand-made sleep); a session visible in ls but absent from the pane read stays SessionNameObserved (honest partial — UnknownRefused downstream, still no reap). The stop gate is the R5 table as a typed decision: owned stops; everything else refuses with the verdict's own reason, and refusing to kill what we cannot prove ours is the point, not a limitation."
 
 type TmuxPaneEntry {
   session_name: String
@@ -691,6 +955,13 @@ fn parse_tmux_panes_output(output: String) -> List<TmuxPaneEntry> {
 
 fn tmux_list_panes_argv() -> HostExecArgv {
   host_exec_argv(program: "tmux", args: shape_tmux_list_panes_argv())
+}
+
+fn tmux_list_panes_argv_for_instance(instance: HostDashboardInstance) -> HostExecArgv {
+  host_exec_argv(
+    program: "tmux",
+    args: shape_tmux_list_panes_argv_for(scope: instance.tmux_server),
+  )
 }
 
 fn pane_command_for_session(panes: List<TmuxPaneEntry>, session_name: String) -> String {
