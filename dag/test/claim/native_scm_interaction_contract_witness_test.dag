@@ -38,14 +38,6 @@ fn primary_label(receipt: NativeScmReceipt) -> String {
   native_scm_primary_label(primary: receipt.primary)
 }
 
-fn contains_banned_terms(text: String) -> Bool {
-  string_contains(s: text, pattern: "candidate")
-    || string_contains(s: text, pattern: "closedness")
-    || string_contains(s: text, pattern: "reconciliation")
-    || string_contains(s: text, pattern: "unknown")
-    || string_contains(s: text, pattern: "contradictory")
-}
-
 test fn witness_two_independent_changes_both_land() -> Bool {
   let r = receipt_for(scenario: TwoIndependentChangesLand)
   primary_label(receipt: r) == "Landed"
