@@ -90,6 +90,7 @@ import v1.compiler.infer_env {
   inductive_fields_list_to_map,
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
   SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
+  symbol_index_insert_declaration_path, symbol_index_insert_module_root,
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
@@ -122,6 +123,7 @@ import std.termination {
   OneStep
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect }
+import std.occurrence_binding { ContainmentPath }
 import v1.compiler.infer_resolve {
   resolve_node, resolve_item_types, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl,
@@ -6308,6 +6310,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
 
 fn symbol_index_insert_item(
   index: SymbolIndex,
+  module: Node,
   module_path: String,
   item: Node,
   source_indices: Map<String, NewlineIndex>
@@ -6341,14 +6344,21 @@ fn symbol_index_insert_item(
         )
     }
   }
+  let declaration_name = authored_name_at(source_indices: source_indices, node: item)
+  let with_path = symbol_index_insert_declaration_path(
+    index: with_decl,
+    module_path: module_path,
+    declaration_name: declaration_name,
+    path: ContainmentPath { ancestors: [module], terminal: item }
+  )
   if item.transport != none && item.children |> count > 0 {
     symbol_index_insert_service(
-      index: with_decl,
-      name: authored_name_at(source_indices: source_indices, node: item),
+      index: with_path,
+      name: declaration_name,
       module_path: module_path,
       item: item
     )
-  } else { with_decl }
+  } else { with_path }
 }
 
 fn disj_variant_name_count_inc(counts: Map<String, Int>, name: String) -> Map<String, Int> {
@@ -6408,6 +6418,7 @@ fn corpus_item_name_counts(modules: List<ResolvedModule>, source_indices: Map<St
 
 fn symbol_index_insert_unique_disj_variant_aliases(
   index: SymbolIndex,
+  module: Node,
   module_path: String,
   items: List<Node>,
   source_indices: Map<String, NewlineIndex>,
@@ -6420,19 +6431,25 @@ fn symbol_index_insert_unique_disj_variant_aliases(
       Disj =>
         fold(item.children, init: acc, f: (a2, child) =>
           let vname = authored_name_at(source_indices: source_indices, node: child)
+          let with_variant_path = symbol_index_insert_declaration_path(
+            index: a2,
+            module_path: module_path,
+            declaration_name: vname,
+            path: ContainmentPath { ancestors: [module, item], terminal: child }
+          )
           match map_get(counts, vname) {
             Present { value: 1 } =>
               match map_get(corpus_variant_counts, vname) {
                 Present { value: 1 } =>
                   if map_get(corpus_item_counts, vname) != none || overlay_skips_kernel_name(name: vname) {
                     symbol_index_insert(
-                      index: a2,
+                      index: with_variant_path,
                       qualified_name: concat(module_path, ".", vname),
                       resolved: item
                     )
                   } else {
                   symbol_index_insert_decl(
-                    index: a2,
+                    index: with_variant_path,
                     module_path: module_path,
                     binding: TypeBinding {
                       name: vname,
@@ -6443,12 +6460,12 @@ fn symbol_index_insert_unique_disj_variant_aliases(
                   }
                 _ =>
                   symbol_index_insert(
-                    index: a2,
+                    index: with_variant_path,
                     qualified_name: concat(module_path, ".", vname),
                     resolved: item
                   )
               }
-            _ => a2
+            _ => with_variant_path
           }
         )
       _ => acc
@@ -6462,9 +6479,11 @@ fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices:
   fold(module_nodes, init: empty_symbol_index(), f: (index, module_node) =>
     let module_path = authored_name_at(source_indices: source_indices, node: module_node)
     let items = module_items(n: module_node)
-    let with_items = fold(items, init: index, f: (acc, item) =>
+    let with_root = symbol_index_insert_module_root(index: index, module_path: module_path, module: module_node)
+    let with_items = fold(items, init: with_root, f: (acc, item) =>
       symbol_index_insert_item(
         index: acc,
+        module: module_node,
         module_path: module_path,
         item: item,
         source_indices: source_indices
@@ -6472,6 +6491,7 @@ fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices:
     )
     symbol_index_insert_unique_disj_variant_aliases(
       index: with_items,
+      module: module_node,
       module_path: module_path,
       items: items,
       source_indices: source_indices,

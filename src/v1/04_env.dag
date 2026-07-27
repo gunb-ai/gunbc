@@ -6,6 +6,12 @@ import std.types { SourceSpan, is_kernel_type }
 
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 
+import std.occurrence_binding {
+  ContainmentPath, BindingOccurrence, BindingCandidate,
+  OccurrenceBindingResult, OccurrenceBound, OccurrenceUnbound, OccurrenceAmbiguous,
+  AmbiguousBindingCandidates, occurrence_binding_from_candidates
+}
+
 
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
@@ -61,6 +67,9 @@ type SymbolIndex {
   entries: Map<String, Node>
   global_bare: Map<String, GlobalBareLookupState>
   services: Map<String, ServiceCensusEntry>
+  declaration_entries: Map<String, List<ContainmentPath<Node>>>
+  declaration_bare: Map<String, List<ContainmentPath<Node>>>
+  module_roots: Map<String, Node>
 }
 
 type Scope {
@@ -68,7 +77,14 @@ type Scope {
 }
 
 fn empty_symbol_index() -> SymbolIndex {
-  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map() }
+  SymbolIndex {
+    entries: empty_map(),
+    global_bare: empty_map(),
+    services: empty_map(),
+    declaration_entries: empty_map(),
+    declaration_bare: empty_map(),
+    module_roots: empty_map()
+  }
 }
 
 fn empty_type_env() -> TypeEnv {
@@ -129,7 +145,10 @@ fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Nod
   SymbolIndex {
     entries: map_insert(index.entries, qualified_name, resolved),
     global_bare: index.global_bare,
-    services: index.services
+    services: index.services,
+    declaration_entries: index.declaration_entries,
+    declaration_bare: index.declaration_bare,
+    module_roots: index.module_roots
   }
 }
 
@@ -137,7 +156,10 @@ fn symbol_index_insert_decl(index: SymbolIndex, module_path: String, binding: Ty
   SymbolIndex {
     entries: map_insert(index.entries, concat(module_path, ".", binding.name), binding.resolved),
     global_bare: symbol_index_track_global_bare(global_bare: index.global_bare, module_path: module_path, binding: binding),
-    services: index.services
+    services: index.services,
+    declaration_entries: index.declaration_entries,
+    declaration_bare: index.declaration_bare,
+    module_roots: index.module_roots
   }
 }
 
@@ -145,7 +167,65 @@ fn symbol_index_insert_service(index: SymbolIndex, name: String, module_path: St
   SymbolIndex {
     entries: index.entries,
     global_bare: index.global_bare,
-    services: map_insert(index.services, name, ServiceCensusEntry { module_path: module_path, item: item })
+    services: map_insert(index.services, name, ServiceCensusEntry { module_path: module_path, item: item }),
+    declaration_entries: index.declaration_entries,
+    declaration_bare: index.declaration_bare,
+    module_roots: index.module_roots
+  }
+}
+
+fn containment_paths_insert_unique(
+  paths: List<ContainmentPath<Node>>,
+  path: ContainmentPath<Node>
+) -> List<ContainmentPath<Node>> {
+  if paths |> any(existing => existing == path) { paths }
+  else { concat(paths, [path]) }
+}
+
+fn containment_path_map_insert_unique(
+  entries: Map<String, List<ContainmentPath<Node>>>,
+  key: String,
+  path: ContainmentPath<Node>
+) -> Map<String, List<ContainmentPath<Node>>> {
+  let existing = match map_get(entries, key) {
+    Present { value: paths } => paths
+    Absent => []
+  }
+  map_insert(entries, key, containment_paths_insert_unique(paths: existing, path: path))
+}
+
+fn symbol_index_insert_declaration_path(
+  index: SymbolIndex,
+  module_path: String,
+  declaration_name: String,
+  path: ContainmentPath<Node>
+) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    services: index.services,
+    declaration_entries: containment_path_map_insert_unique(
+      entries: index.declaration_entries,
+      key: concat(module_path, ".", declaration_name),
+      path: path
+    ),
+    declaration_bare: containment_path_map_insert_unique(
+      entries: index.declaration_bare,
+      key: declaration_name,
+      path: path
+    ),
+    module_roots: index.module_roots
+  }
+}
+
+fn symbol_index_insert_module_root(index: SymbolIndex, module_path: String, module: Node) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    services: index.services,
+    declaration_entries: index.declaration_entries,
+    declaration_bare: index.declaration_bare,
+    module_roots: map_insert(index.module_roots, module_path, module)
   }
 }
 
@@ -515,6 +595,146 @@ fn segment_lcp_len(a: List<String>, b: List<String>) -> Int {
     } else { acc }
   )
   scan.matched
+}
+
+fn declaration_path_owner_module(
+  path: ContainmentPath<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  match path.ancestors |> first {
+    Present { value: root } => authored_name_at(source_indices: source_indices, node: root)
+    Absent => ""
+  }
+}
+
+fn declaration_paths_for_qualified(index: SymbolIndex, qualified_name: String) -> List<ContainmentPath<Node>> {
+  match map_get(index.declaration_entries, qualified_name) {
+    Present { value: paths } => paths
+    Absent => []
+  }
+}
+
+fn declaration_paths_for_bare(index: SymbolIndex, name: String) -> List<ContainmentPath<Node>> {
+  match map_get(index.declaration_bare, name) {
+    Present { value: paths } => paths
+    Absent => []
+  }
+}
+
+fn declaration_paths_on_chain(
+  env: TypeEnv,
+  paths: List<ContainmentPath<Node>>
+) -> List<ContainmentPath<Node>> {
+  let env_segs = module_path_segments(path: env.module_path)
+  paths |> filter(path =>
+    let owner_segs = module_path_segments(path: declaration_path_owner_module(path: path, source_indices: env.source_indices))
+    segment_lcp_len(a: owner_segs, b: env_segs) == (owner_segs |> count)
+  )
+}
+
+type DeclarationPathLcpScan {
+  best_lcp: Int
+  paths: List<ContainmentPath<Node>>
+}
+
+fn declaration_paths_nearest_rung(
+  env: TypeEnv,
+  paths: List<ContainmentPath<Node>>
+) -> List<ContainmentPath<Node>> {
+  let env_segs = module_path_segments(path: env.module_path)
+  let scan = fold(paths, init: DeclarationPathLcpScan { best_lcp: 0 - 1, paths: [] }, f: (acc, path) =>
+    let owner = declaration_path_owner_module(path: path, source_indices: env.source_indices)
+    let lcp = segment_lcp_len(a: module_path_segments(path: owner), b: env_segs)
+    if lcp > acc.best_lcp {
+      DeclarationPathLcpScan { best_lcp: lcp, paths: [path] }
+    } else if lcp == acc.best_lcp {
+      DeclarationPathLcpScan { best_lcp: acc.best_lcp, paths: containment_paths_insert_unique(paths: acc.paths, path: path) }
+    } else { acc }
+  )
+  scan.paths
+}
+
+fn declaration_paths_from_visible_parents(env: TypeEnv, name: String) -> List<ContainmentPath<Node>> {
+  fold(env.parents, init: [], f: (paths, parent) =>
+    if map_get(parent.str_bindings, name) == none { paths }
+    else {
+      fold(
+        declaration_paths_for_qualified(index: env.symbol_index, qualified_name: concat(parent.module_path, ".", name)),
+        init: paths,
+        f: (acc, path) => containment_paths_insert_unique(paths: acc, path: path)
+      )
+    }
+  )
+}
+
+fn structurally_visible_declaration_paths(env: TypeEnv, name: String) -> List<ContainmentPath<Node>> {
+  if contains(name, ".") {
+    declaration_paths_for_qualified(index: env.symbol_index, qualified_name: name)
+  } else {
+    let local = declaration_paths_for_qualified(index: env.symbol_index, qualified_name: concat(env.module_path, ".", name))
+    if (local |> count) > 0 {
+      local
+    } else {
+      let imported = declaration_paths_from_visible_parents(env: env, name: name)
+      if (imported |> count) > 0 {
+        imported
+      } else {
+        let all = declaration_paths_for_bare(index: env.symbol_index, name: name)
+        if (all |> count) <= 1 {
+          all
+        } else if name_resolution_policy_is_namespace_only() {
+          let chain = declaration_paths_on_chain(env: env, paths: all)
+          if (chain |> count) > 0 { chain } else { all }
+        } else {
+          declaration_paths_nearest_rung(env: env, paths: all)
+        }
+      }
+    }
+  }
+}
+
+fn declaration_binding_result(
+  env: TypeEnv,
+  occurrence: BindingOccurrence<Node>,
+  name: String
+) -> OccurrenceBindingResult<Node> {
+  let candidates = structurally_visible_declaration_paths(env: env, name: name)
+    |> map(path => BindingCandidate { containment: path })
+  occurrence_binding_from_candidates(occurrence: occurrence, candidates: candidates)
+}
+
+fn containment_path_diagnostic_label(
+  path: ContainmentPath<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  let ancestor_labels = path.ancestors |> map(node =>
+    concat(
+      authored_name_at(source_indices: source_indices, node: node),
+      "@",
+      to_string(value: node.span)
+    )
+  )
+  let terminal_label = concat(
+    authored_name_at(source_indices: source_indices, node: path.terminal),
+    "@",
+    to_string(value: path.terminal.span)
+  )
+  join(concat(ancestor_labels, [terminal_label]), separator: ".")
+}
+
+fn ambiguous_binding_candidate_labels(
+  candidates: AmbiguousBindingCandidates<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  concat(
+    [
+      containment_path_diagnostic_label(path: candidates.first.containment, source_indices: source_indices),
+      containment_path_diagnostic_label(path: candidates.second.containment, source_indices: source_indices)
+    ],
+    candidates.rest |> map(candidate =>
+      containment_path_diagnostic_label(path: candidate.containment, source_indices: source_indices)
+    )
+  )
 }
 
 type GlobalBareNearestScan {
