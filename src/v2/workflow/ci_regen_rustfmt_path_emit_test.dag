@@ -1,10 +1,10 @@
-module v2.workflow.ci_workflow_run_emit_test
+module v2.workflow.ci_regen_rustfmt_path_emit_test
 
-import v2.workflow.ci_workflow_run_emit {
+import v2.workflow.ci_regen_rustfmt_path_emit {
   ci_regen_ensure_rustfmt_path_script,
   ci_regen_ensure_rustfmt_path_shell_emit_scaffold,
 }
-import std.disposition { Disposition, Scaffold }
+import std.disposition { Scaffold }
 
 data ci_regen_ensure_rustfmt_path_golden: String = concat(
   concat("# 🟡 dissolve-on: ci_regen_ensure_rustfmt_path_script — foreign-executor PATH probe ensuring rustfmt is spawnable for regen_stage0 on hosts with a cargo shim and no CARGO_HOME/bin (receipt CI #7290 srv3-03); Pipeline of atomic Do steps emitted through orch bash-emit (same carrier class as ci_pin_rustup_default_script / ci_floor_disposition_marker_init_script); DISSOLVES WHEN the regen job shares the isolate+pin prelude that already puts CARGO_HOME/bin on PATH by construction, or when rustfmt resolution is a typed toolchain probe on host_effect_apply rather than emitted bash (#5828 / ROADMAP 6-shell-slice0)\n"),

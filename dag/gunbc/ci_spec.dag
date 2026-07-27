@@ -36,7 +36,7 @@ import v2.workflow.ci_merge_admission_emit {
   ci_floor_disposition_marker_init_script,
   ci_floor_stamp_merge_admission_script,
 }
-import v2.workflow.ci_workflow_run_emit {
+import v2.workflow.ci_regen_rustfmt_path_emit {
   ci_regen_ensure_rustfmt_path_script,
 }
 import extdeps.git {
