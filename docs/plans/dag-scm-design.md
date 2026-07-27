@@ -176,8 +176,11 @@ obligations =
 candidates =
   derive(accepted target state, current observations, obligations, admission contract)
 
+result classes =
+  quotient(admissible candidates, declared semantic equivalence)
+
 outcome =
-  classify(minimal admissible candidates)
+  classify(result classes)
 ```
 
 The proposal fold accumulates transformations and obligations; it does **not** apply a list in
@@ -187,10 +190,13 @@ first-arrival branch.
 
 Safety, explicit obligations, grounding, and the required evidence grade are admission conditions,
 not weighted preferences. A cheaper result cannot buy permission to violate one. Among candidates
-that meet those conditions, preserve every fact whose change is not grounded, then use the
-declared cost order to eliminate only strictly dominated realizations. If several materially
-different candidates remain equivalent or incomparable, no hidden weight represents “what users
-usually mean”: the answer is `Ambiguous`.
+that meet those conditions, preserve every fact whose change is not grounded. By default, cost
+selects only among realizations of the **same semantically determined result**; it cannot decide
+which materially different result the user intended. A contract may make a cost axis part of
+intent explicitly, but absent that authority, several result equivalence classes are `Ambiguous`
+even when one looks cheaper. Within one class, the declared cost order eliminates only strictly
+dominated realizations and preserves incomparable alternatives rather than inventing scalar
+weights.
 
 New models participate by contributing their ordinary facts, relations, claims, effects,
 equivalence, bounds, and costs to this fold. They do not add cases to a central SCM switch. The
@@ -199,11 +205,17 @@ branches. If adding a language concept requires editing the integrator rather th
 through a shared authority, the missing work is a model/algebra seam to ground—not a twentieth-year
 special case to preserve.
 
-### Closedness and humility — more information is not omniscience
+### Fail-closed deduction — ignorance never becomes an answer (DESIGN §5)
 
 Daglang's advantage is information density: types, bindings, containment, effects, claims,
 resource bounds, dependency closure, and execution receipts can all be premises that Git does not
 have. That supports more deductions; it does not grant permission to infer an unexpressed premise.
+
+This is not a new “humility” principle. It is DESIGN §5's existing rule—never fabricate a
+plausible output; a failure arm refuses, never widens—applied to reconciliation. Returning the one
+candidate the current model happened to expose, while silently treating every unmodeled fact as
+irrelevant, would conflate ignorance with an answer in exactly the absorbing-fallback shape §5
+forbids.
 
 > A modeled fact `X` licenses consequences of `X`. It does not prove that no relevant, unmodeled
 > fact `Y` exists.
@@ -223,7 +235,7 @@ names the model/contract inputs and closedness evidence it relied on. Adding a r
 invalidates the affected receipt and causes re-evaluation; absence in the older model never becomes
 negative evidence by inertia.
 
-Two live repo precedents carry the same epistemic rule:
+Two live repo precedents carry the same fail-closed rule:
 
 - `gunbc.os_install_deduction` carries an attested `observed_at` timestamp, but the timestamp does
   not strengthen the runtime verdict. Even a visible login prompt yields
@@ -264,7 +276,8 @@ IntegrationOutcome<Result, Evidence, Question>
 
 - **Applied** means the relevant candidate/evidence scope is closed for the admission contract and
   exactly one result equivalence class satisfies every admitted proposal and required obligation,
-  adds no ungrounded change except declared canonicalization, and survives the declared cost order.
+  adds no ungrounded change except declared canonicalization, and has a realization selected only
+  under the declared cost order.
 - **Contradictory** means a closed admission problem proves that no result can satisfy the joint
   obligations. Return a minimal incompatible core and a witness, not a broad conflict region.
 - **Ambiguous** means more than one materially distinct result is valid and the model contains no
@@ -282,6 +295,12 @@ Humans or LLMs may answer an `Ambiguous` question by submitting another explicit
 claim. They may help model an `Unknown`. Their answer does not retroactively turn a guess into
 evidence.
 
+The stop reason must remain precise. `Ambiguous` asks for the smallest **normative choice** because
+several grounded answers remain. `Unknown` names the missing fact, model, observation, fidelity, or
+bound because the system cannot yet establish the answer space. Asking “which do you want?” for an
+`Unknown` would hide a modeling deficit; asking for more evidence when two valid intents remain
+would hide a real user decision.
+
 ### Laws for the compatible region
 
 For proposals admitted as jointly compatible, integration should be:
@@ -297,7 +316,7 @@ For proposals admitted as jointly compatible, integration should be:
 - **exact-parent checked:** replay states what changed since authoring and never applies against an
   assumed parent;
 - **metadata-inert:** erasing or permuting incidental timestamps, arrival metadata, queue order,
-  or object identifiers cannot change the semantic outcome;
+  or transport-envelope identifiers cannot change the semantic outcome;
 - **order-honest:** order dependence yields `Ambiguous`, `Contradictory`, or `Unknown` unless an
   explicit policy makes that order part of intent; and
 - **fail-closed:** missing alignment, fidelity, or proof never widens into an automatic result.
@@ -467,7 +486,7 @@ The first modeling pass must try to compose these authorities:
 | `std.computation_identity` | structural/normalized/bounded-extensional evidence plus typed unknown | identity evidence, not user-intent identity |
 | `std.perturbation` | response to changed inputs | a building block for bounded noninterference evidence |
 | `std.realization.Independence` | `Independent | Dependent | Unknown` | currently effect-shape-specific and deliberately coarse |
-| `std.pareto` + `std.realization_schedule.CostAccount` | dominance without hidden scalar weights; grounded time/space/power accounting | may prune strictly dominated safe candidates; cannot trade cost for safety or choose between incomparable intents |
+| `std.pareto` + `std.realization_schedule.CostAccount` | dominance without hidden scalar weights; grounded time/space/power accounting | chooses among realizations of one semantic result by default; cannot trade cost for safety or supply missing semantic intent |
 | `gunbc.os_install_deduction` | evidence-graded deduction where timestamps remain provenance and weak observations stay weak | domain-specific precedent, not an SCM outcome or solver |
 | `v2.compiler.source_authority` + `DecodeFidelity` | ingest/emit authority and honesty boundary | only lossless fragments may recover exact proposals |
 | affected-set and materialization lanes | dependency-scoped validation and content-keyed receipt reuse | selection/caching must not decide semantic compatibility |
@@ -498,8 +517,7 @@ The native fast path:
    obligations.
 6. Derive and classify minimal admissible candidates against `S_n`.
 7. Reuse receipts whose content-addressed model/contract/dependency inputs are unchanged; validate
-   only newly
-   affected obligations.
+   only newly affected obligations.
 8. If `Applied`, atomically advance `T` only while its current state is still `S_n`; otherwise
    restart from step 1. For any other outcome, return the smallest
    `Contradictory`/`Ambiguous`/`Unknown` handoff.
@@ -517,10 +535,9 @@ the result the authoritative prior for later proposals.
 
 This is the direct answer to green-then-main-advanced CI waste. A receipt should be keyed by the
 actual modeled inputs of the claim, including any closedness evidence, not by “the whole branch is
-still at this SHA.” If the target
-advances outside those inputs, the green receipt remains grounded. If it advances inside them, the
-system revalidates the affected claim before acceptance. A blanket rerun is an `Unknown`/modeling
-deficit, not a silent “fail-closed” success.
+still at this SHA.” If the target advances outside those inputs, the green receipt remains
+grounded. If it advances inside them, the system revalidates the affected claim before acceptance.
+A blanket rerun is an `Unknown`/modeling deficit, not a silent “fail-closed” success.
 
 ## 10. Git is a compatibility realization, not the semantic authority
 
