@@ -30,7 +30,7 @@
 | **R1** missing_method `clone` on type param | 261 | 41% | `emit_fn` signature missing `T: Clone` that the **modeled** fn already requires | **Partial** — `v1_generic_params_needing_clone_bound` (structural rules on substrate `Node`s only; incomplete vs census) |
 | **R2** bounds_unsatisfied `is_empty`/`iter` on `im::Vector` carriers | 168 | 27% | Same — modeled collection witness requires `Clone` on element type param | **None** (witness row not yet authored) |
 | **R3** bounds_unsatisfied `clone` on `Outcome`/`Option`/`im::Vector` | 161 | 25% | Same | **None** |
-| **R4** GlobalBare* on `std::option::Option` | 24 | 4% | Match lowering: modeled `Optional::GlobalBare*` arms reach native `Option` pattern syntax | namespace-resolution / coproduct grounding lane (not Root-4 trait derive) |
+| **R4** GlobalBare* on `std::option::Option` | 24 | 4% | Match lowering: `GlobalBareBindingState` arms nested under the lookup `Option` envelope — **not** as `Optional::GlobalBare*` variants on native `Option` | `v2.std.symbol_index.GlobalBareBindingState` + global-bare lookup emit lane |
 | **R5** `as_deref` on `()` | 12 | 2% | Projection site with unit receiver | separate tail; defer |
 | **R6** misc cache/verdict `clone` | 9 | 1% | Named carrier structs | defer post–Root-4 |
 
@@ -120,15 +120,21 @@ DESIGN requires facts-flow-forward **and** that Node-shape classification not ac
 | **RED (refusal)** | Struct with field type whose contract row needs `Clone` but source `.dag` explicitly marks param non-cloneable → typed refusal, no blanket struct bound |
 | **Rollback boundary** | Revert contract catalog rows + emit bound overrides; E0277 per-module totals return to 603 baseline |
 
-### Predicate P-optional: `modeled_optional_match_grounding` (E0599 R4 / Slice B)
+### Predicate P-optional: `global_bare_binding_state_emit_grounding` (E0599 R4 / Slice B)
 
-**Intent:** Lower `Optional::GlobalBareUnique|GlobalBareAmbiguous` to native match only when receiver is modeled `Optional`, not `std::option::Option`.
+**Intent:** Emit global-bare match patterns with the correct **carrier nesting**. `GlobalBareUnique` / `GlobalBareAmbiguous` are variants of **`GlobalBareBindingState`** (`v2.std.symbol_index.dag:36` — `GlobalBareUnique { node, path } | GlobalBareAmbiguous`), registered in `SymbolIndex.global_bare`. The **outer** lookup envelope is native `Option` / `GlobalBareLookup` (`GlobalBareHit | GlobalBareLookupAmbiguous | GlobalBareLookupUnbound`); it is **not** a modeled `Optional` coproduct variant. Today's defect: emit pattern-matches `Some(Optional::GlobalBareUnique { … })` while the receiver is `std::option::Option<_>`. Correct shape: outer `Some`/`None` on the lookup envelope; inner arms are `GlobalBareBindingState::GlobalBareUnique { … }` / `GlobalBareAmbiguous` (or refuse on `GlobalBareLookupAmbiguous`).
+
+**Anti-pattern (explicitly out of scope):** treating `GlobalBare*` as `Optional` coproduct variants or attaching them directly to `std::option::Option<T>` type parameters — that misidentifies the single authority and cannot emit the nested `Some(GlobalBareBindingState::…)` pattern.
 
 | Field | Value |
 |---|---|
-| **Modeled home** | namespace-resolution / coproduct emit lane (not `trait_derive_emit`) |
+| **Modeled home** | `v2.std.symbol_index` — `GlobalBareBindingState`, `GlobalBareLookup`, `symbol_index_track_global_bare` / lookup accessors. Emit lane: global-bare match lowering (namespace-resolution lane; not `trait_derive_emit`) |
+| **Emission rule** | Lower `GlobalBareLookup` sites: envelope = lookup `Option`; payload variants = `GlobalBareBindingState` only. Typed refusal when lookup is `GlobalBareLookupAmbiguous` or unbound — never widen to a fabricated `Option` arm |
+| **Production consumers** | v1/v2 emit paths that lower global-bare scrutinees (census: `no_variant` + `GlobalBareUnique`/`GlobalBareAmbiguous` on `enum \`std::option::Option<…>\``) |
 | **Predicted effect** | E0599 −24; GlobalBare* rows absent from census |
-| **Coordination** | Separate from Root-4; do not batch with P-fn or P-derive |
+| **RED (green)** | Fixture global-bare lookup → emitted match uses `GlobalBareBindingState::…` under `Some`, not `Optional::GlobalBare*` |
+| **RED (refusal)** | `GlobalBareLookupAmbiguous` site → typed refusal, no silent native `Option` fallback arm |
+| **Coordination** | Separate from Root-4 trait derive; do not batch with P-fn or P-derive |
 
 **Not one root:** P-fn, P-derive, and P-optional are three predicates with disjoint primary consumers. **Joint E0599+E0277 claim requires:** one stamped binary where **the same predicate** moves both buckets — currently **not satisfiable** with P-fn alone per loyal-raven census.
 
