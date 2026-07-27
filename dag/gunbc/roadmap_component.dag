@@ -1258,16 +1258,22 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
           right: ts_binop(
             left: ts_binop(
               left: ts_binop(
-                left: ts_member(object: ts_ident(name: "sess"), property: "provider"),
+                left: ts_binop(
+                  left: ts_member(object: ts_ident(name: "sess"), property: "configured_provider"),
+                  op: "+",
+                  right: ts_lit_str(value: " configured · ")),
                 op: "+",
-                right: ts_lit_str(value: " · ")),
+                right: ts_member(object: ts_ident(name: "sess"), property: "provider")),
               op: "+",
-              right: ts_member(object: ts_ident(name: "sess"), property: "provider_readiness")),
+              right: ts_lit_str(value: " · ")),
             op: "+",
             right: ts_binop(
-              left: ts_lit_str(value: " — "),
+              left: ts_member(object: ts_ident(name: "sess"), property: "provider_readiness"),
               op: "+",
-              right: ts_member(object: ts_ident(name: "sess"), property: "session_name"))))),
+              right: ts_binop(
+                left: ts_lit_str(value: " — "),
+                op: "+",
+                right: ts_member(object: ts_ident(name: "sess"), property: "session_name")))))),
         ts_let(name: "sc", value: ts_call(
           callee: ts_member(object: ts_member(object: ts_ident(name: "sb"), property: "parentElement"), property: "querySelector"),
           args: [ts_lit_str(value: ".stop-chip")])),

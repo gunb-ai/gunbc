@@ -55,6 +55,7 @@ test fn sessions_client_marks_live_and_shouts_refusal() -> Bool {
     && string_contains(s: js, pattern: "dispatch · accepted")
     && !string_contains(s: js, pattern: "session · spawned")
     && !string_contains(s: js, pattern: "session · live")
+    && string_contains(s: js, pattern: "sess.configured_provider")
     && string_contains(s: js, pattern: "sess.provider")
     && string_contains(s: js, pattern: "sess.provider_readiness")
     && string_contains(s: js, pattern: "'observe-refused sessions-observe-refused'")
