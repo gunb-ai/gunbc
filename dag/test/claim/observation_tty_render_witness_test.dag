@@ -296,22 +296,3 @@ test fn w_final_with_failures_names_them_and_is_anomaly() -> Bool {
   string_contains(s: line.text, pattern: "3 problems shown") &&
   line.attention == Anomaly
 }
-
-fn observation_tty_render_matrix_holds() -> Bool {
-  w_preamble_names_what_why_and_how_much() &&
-  w_routine_repaints_in_place_but_anomaly_scrolls() &&
-  w_non_addressable_terminal_always_appends() &&
-  w_refusal_never_repaints_away() &&
-  w_same_event_drives_both_surfaces() &&
-  w_unavailable_basis_refuses_with_exact_cause() &&
-  w_clean_final_appends_even_when_ambient() &&
-  w_routine_begin_overwrites_on_addressable_tty() &&
-  w_tty_strict_facade_equals_measured_value_projection() &&
-  w_nonaddressable_routine_composes_to_plain_append_wire() &&
-  w_addressable_refusal_persists_via_exact_closed_append_wire() &&
-  w_group_line_names_the_current_entry() &&
-  w_blocked_line_carries_holder_and_bounded_remaining() &&
-  w_blocked_line_names_why_remaining_is_unknown() &&
-  w_reward_animal_is_deterministic_and_degrades_to_a_word() &&
-  w_final_with_failures_names_them_and_is_anomaly()
-}

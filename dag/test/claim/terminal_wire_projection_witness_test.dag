@@ -200,15 +200,3 @@ test fn w_ecma48_csi_perturbation_changes_wire_bytes() -> Bool {
     next: DynamicLineOpen
   )
 }
-
-fn terminal_wire_projection_matrix_holds() -> Bool {
-  w_overwrite_projects_exact_bytes_and_opens_line() &&
-  w_append_from_open_erases_then_closes() &&
-  w_append_from_closed_is_plain_line() &&
-  w_clear_open_erases_and_clear_closed_is_noop() &&
-  w_clear_with_text_refuses() &&
-  w_rendered_text_cannot_smuggle_cursor_control_bytes() &&
-  w_nonaddressable_overwrite_downgrades_and_clear_noops() &&
-  w_nonaddressable_open_state_refuses_as_contradictory() &&
-  w_ecma48_csi_perturbation_changes_wire_bytes()
-}
