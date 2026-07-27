@@ -1142,10 +1142,11 @@ pub fn match_pattern_bind_name_at(
 
 pub fn match_pattern_bind_containment(
     pattern: Rc<MatchPattern>,
+    ancestors: Rc<Vec<Rc<Node>>>,
 ) -> Option<Rc<ContainmentPath<Rc<Node>>>> {
     match match_pattern_bind_declaration(pattern.clone()) {
         Some(decl) => Some(Rc::new(ContainmentPath {
-            ancestors: Rc::new(vec![]),
+            ancestors: ancestors.clone(),
             terminal: decl.clone(),
             _phantom: std::marker::PhantomData,
         })),

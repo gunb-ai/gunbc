@@ -157,17 +157,19 @@ pub fn dag_collect_match_pattern(
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
     match (*pattern.clone()).clone() {
-        MatchPattern::Bind { declaration: _, .. } => slots,
-        MatchPattern::LitPattern { value: _, .. } => slots,
+        MatchPattern::Bind {
+            declaration: decl, ..
+        } => dag_collect_insert_slots(decl.clone(), slots.clone(), collision_errors.clone()),
+        MatchPattern::LitPattern { value: _, .. } => slots.clone(),
         MatchPattern::VariantPattern { field_bindings, .. } => {
             field_bindings.clone().iter().cloned().fold(
-                slots,
+                slots.clone(),
                 |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, fb: Rc<Node>| {
                     dag_collect_insert_slots(fb.clone(), s, collision_errors.clone())
                 },
             )
         }
-        MatchPattern::Wildcard => slots,
+        MatchPattern::Wildcard => slots.clone(),
     }
 }
 
