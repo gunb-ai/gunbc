@@ -15,9 +15,24 @@ import gunbc.ci_spec {
   ci_release_features,
   scheduler_invoke, gunbc_ci_workflow_run, gunbc_ci_floor_only_script, git_fetch_script,
   ci_floor_build_verify_script,
+  ci_release_bins_pack_script,
+  ci_release_bins_unpack_verify_script,
+  ci_release_bins_pack_shell_emit_dissolution_trigger,
+  ci_release_bins_unpack_verify_shell_emit_dissolution_trigger,
+  artifact_shell_path,
   ci_documentation_only_floor_shortcut_retired_note,
 }
-import v2.workflow.ci_release_build_emit { gunbc_ci_run_script, ci_release_build_script }
+import gunbc.ci_release_bins {
+  ci_floor_required_artifact_names
+}
+import gunbc.cli_invoke {
+  claim_executor_verify_artifacts_shell
+}
+import v2.workflow.ci_release_build_emit {
+  gunbc_ci_run_script,
+  ci_release_build_script,
+  ci_release_build_shell_emit_dissolution_trigger
+}
 import gunbc.repo_identity {
   gunbc_merge_target_ref,
   gunbc_default_remote_name,
@@ -43,8 +58,6 @@ import gunbc.merge_admission_produce {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-data golden_floor_build_verify_script: String = "\"$ROOT/target/release/claim_executor\" --verify-build-artifacts \"$ROOT/target/release/claim_executor\" \"$ROOT/target/release/gunbc\" \"$ROOT/target/release/compile_clean_floor_skip_witness\" \"$ROOT/target/release/regen_floor_skip_witness\" \"$ROOT/target/release/floor_skip_discovery_witness\" \"$ROOT/target/release/discover_source_root_ingest\" \"$ROOT/target/release/claim_batch\" \"$ROOT/target/release/regen_stage0\" \"$ROOT/target/release/interp_recorded_fixture_witness\" \"$ROOT/target/release/v1_src_dag_parse\" \"$ROOT/target/release/auth_declared_but_unwired_witness\" \"$ROOT/target/release/bootstrap_witness\" \"$ROOT/target/release/dag_collect_fingerprint_witness\" \"$ROOT/target/release/diagnostics_witness\" \"$ROOT/target/release/effects_rest_transport_witness\" \"$ROOT/target/release/infer_semantics_witness\" \"$ROOT/target/release/parse_witness\" \"$ROOT/target/release/resolution_divergence_census\"\n"
 
 data reflect_gate_type: Symbol = ^Gate
 
@@ -182,8 +195,49 @@ test fn witness_release_build_verifies_nonempty_artifacts() -> Bool {
     !string_contains(s: script, pattern: "-newer")
 }
 
-test fn witness_floor_build_verify_script_byte_identical() -> Bool {
-  ci_floor_build_verify_script() == golden_floor_build_verify_script
+test fn witness_release_build_shell_emit_dissolve_on_named() -> Bool {
+  string_contains(
+    s: ci_release_build_shell_emit_dissolution_trigger,
+    pattern: "dissolve-on: ci_release_build_script"
+  )
+}
+
+test fn witness_release_build_emits_dissolve_on_in_runner() -> Bool {
+  let marker = concat("# ", ci_release_build_shell_emit_dissolution_trigger)
+  string_contains(s: ci_release_build_script(), pattern: marker)
+}
+
+test fn witness_release_bins_pack_shell_emit_dissolve_on_named() -> Bool {
+  string_contains(
+    s: ci_release_bins_pack_shell_emit_dissolution_trigger,
+    pattern: "dissolve-on: ci_release_bins_pack_script"
+  )
+}
+
+test fn witness_release_bins_pack_emits_dissolve_on_in_runner() -> Bool {
+  let marker = concat("# ", ci_release_bins_pack_shell_emit_dissolution_trigger)
+  string_contains(s: ci_release_bins_pack_script(), pattern: marker)
+}
+
+test fn witness_release_bins_unpack_verify_shell_emit_dissolve_on_named() -> Bool {
+  string_contains(
+    s: ci_release_bins_unpack_verify_shell_emit_dissolution_trigger,
+    pattern: "dissolve-on: ci_release_bins_unpack_verify_script"
+  )
+}
+
+test fn witness_release_bins_unpack_verify_emits_dissolve_on_in_runner() -> Bool {
+  let marker = concat("# ", ci_release_bins_unpack_verify_shell_emit_dissolution_trigger)
+  string_contains(s: ci_release_bins_unpack_verify_script(), pattern: marker)
+}
+
+test fn witness_floor_build_verify_script_matches_pack() -> Bool {
+  let script = ci_floor_build_verify_script()
+  script == claim_executor_verify_artifacts_shell(
+    artifact_paths: map(ci_floor_required_artifact_names(), name => artifact_shell_path(name: name))
+  )
+    && string_contains(s: script, pattern: "cssl_assemble")
+    && string_contains(s: script, pattern: "frontier_probe_survey")
 }
 
 test fn witness_scheduler_uses_release_binary() -> Bool {
@@ -270,4 +324,3 @@ test fn witness_collapsed_run_script_is_build_plus_floor() -> Bool {
     gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
   )
 }
-

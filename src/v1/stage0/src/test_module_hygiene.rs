@@ -1007,21 +1007,4 @@ test fn umbrella_holds() -> Bool {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
-
-    #[test]
-    fn corpus_orphan_list_tmp() {
-        // CORPUS_ORPHAN_LIST
-        match collect_orphan_helpers(&["src/v2".into(), "dag".into()]) {
-            Ok(orphans) => {
-                println!("ORPHAN_COUNT={}", orphans.len());
-                for o in &orphans {
-                    println!("ORPHAN	{}	{}", o.entry, o.name);
-                }
-                if !orphans.is_empty() {
-                    panic!("orphans present: {}", orphans.len());
-                }
-            }
-            Err(e) => panic!("collect err: {e}"),
-        }
-    }
 }
