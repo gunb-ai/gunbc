@@ -640,11 +640,7 @@ fn dispatch_terminal_apply_body() -> TsStmt {
       op: "=",
       right: ts_cond(
         test: ts_ident(name: "ok"),
-        consequent: ts_binop(
-          left: ts_lit_str(value: dispatch_ack_prefix),
-          op: "+",
-          right: ts_lit_str(value: dispatch_ack_word),
-        ),
+        consequent: ts_lit_str(value: concat(dispatch_ack_prefix, dispatch_ack_word)),
         alternate: ts_cond(
           test: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: "fail")),
           consequent: ts_lit_str(value: dispatch_caption_fail),
@@ -1683,7 +1679,7 @@ fn dispatch_state_display_text(state: ComponentState) -> String {
     RequestedState => dispatch_caption_requested
     TerminalState { wire_label: wl, ok: ok } =>
       if ok {
-        join([dispatch_session_chip_prefix, wl], "")
+        concat(dispatch_ack_prefix, dispatch_ack_word)
       } else if belt_dispatch_label_band_key(wire_label: wl) == "loud" {
         dispatch_caption_loud
       } else {

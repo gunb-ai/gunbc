@@ -1,6 +1,6 @@
 module gunbc.worker_lifecycle
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, Int }
 import extdeps.llm.cli_lifecycle {
   ProviderInstance,
   ProviderReadiness,
@@ -38,7 +38,7 @@ fn worker_phase_label(phase: WorkerPhase) -> String {
 
 type ProcessIdentityEvidence
   = ProcessIdentityObserved {
-      pid: NonEmptyStr
+      pid: Int
       started_at: NonEmptyStr
       owner: NonEmptyStr
     }
@@ -107,7 +107,8 @@ fn terminal_outcome_evidence_label(evidence: TerminalOutcomeEvidence) -> String 
 }
 
 type WorkerObservation {
-  provider_instance: ProviderInstance
+  configured_provider: ProviderInstance
+  provider_instance: ProviderEvidence
   provider_readiness: ProviderReadiness
   tool_readiness: ToolExecutionReadiness
   phase: WorkerPhase
@@ -115,7 +116,10 @@ type WorkerObservation {
 
 fn worker_observation_without_provider_probe(instance: ProviderInstance) -> WorkerObservation {
   WorkerObservation {
-    provider_instance: instance,
+    configured_provider: instance,
+    provider_instance: ProviderEvidenceUnobserved {
+      reason: "tmux name presence does not identify the provider process tree" as NonEmptyStr,
+    },
     provider_readiness: ProviderReadinessUnobserved {
       reason: "tmux presence does not observe provider authentication or model access" as NonEmptyStr,
     },
@@ -128,4 +132,4 @@ fn worker_observation_without_provider_probe(instance: ProviderInstance) -> Work
   }
 }
 
-data worker_lifecycle_separation_note: String = "spawned != session present != provider ready != agent executing != work completed. WorkerObservation keeps provider readiness, sandbox readiness, and worker phase as independent axes. AttemptEvidence binds only evidence actually observed at attempt grain; an unobserved process, transcript, or terminal outcome remains a named refusal-to-infer. The current tmux route is therefore allowed to report session presence and a configured ProviderInstance while every deeper axis stays Unobserved until its own probe executes."
+data worker_lifecycle_separation_note: String = "spawned != session present != provider ready != agent executing != work completed. WorkerObservation keeps the configured provider separate from the observed ProviderEvidence, then keeps provider readiness, sandbox readiness, and worker phase as independent axes. A tmux name may therefore report configured_provider=Claude while provider_instance remains Unobserved; this prevents a node wrapper or foreign child from inheriting Claude identity by naming convention. AttemptEvidence binds only evidence actually observed at attempt grain; an unobserved process, transcript, or terminal outcome remains a named refusal-to-infer."

@@ -718,7 +718,8 @@ fn belt_sessions_json_value(o: BeltObserve) -> JsonValue {
           json_object(members: [
             json_kv(key: "node_id", value: json_string(s: sess.node_id)),
             json_kv(key: "session_name", value: json_string(s: sess.session_name)),
-            json_kv(key: "provider", value: json_string(s: provider_kind_label(kind: sess.worker.provider_instance.kind))),
+            json_kv(key: "configured_provider", value: json_string(s: provider_kind_label(kind: sess.worker.configured_provider.kind))),
+            json_kv(key: "provider", value: json_string(s: provider_evidence_label(evidence: sess.worker.provider_instance))),
             json_kv(key: "provider_readiness", value: json_string(s: provider_readiness_label(readiness: sess.worker.provider_readiness))),
             json_kv(key: "tool_execution_readiness", value: json_string(s: tool_execution_readiness_label(readiness: sess.worker.tool_readiness))),
             json_kv(key: "worker_phase", value: json_string(s: worker_phase_label(phase: sess.worker.phase))),

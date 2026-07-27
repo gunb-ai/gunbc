@@ -14,9 +14,12 @@ import extdeps.llm.cli_lifecycle {
   ToolExecutionReadinessUnobserved,
   provider_readiness_label,
   tool_execution_readiness_label,
+  provider_kind_label,
 }
 import gunbc.worker_lifecycle {
   WorkerObservation,
+  ProviderEvidenceUnobserved,
+  provider_evidence_label,
   WorkerPhase,
   WorkerPhaseUnobserved,
   WorkerWaitingForHumanSetup,
@@ -51,7 +54,10 @@ test fn recorded_credentials_do_not_imply_refreshable_authentication() -> Bool {
 
 test fn model_access_and_sandbox_readiness_are_independent() -> Bool {
   let observation = WorkerObservation {
-    provider_instance: fixture_instance(),
+    configured_provider: fixture_instance(),
+    provider_instance: ProviderEvidenceUnobserved {
+      reason: "fixture process tree unobserved" as NonEmptyStr,
+    },
     provider_readiness: ProviderAuthenticated,
     tool_readiness: SandboxProbeFailed {
       reason: "bwrap loopback RTM_NEWADDR refused" as NonEmptyStr,
@@ -67,7 +73,10 @@ test fn model_access_and_sandbox_readiness_are_independent() -> Bool {
 
 test fn session_presence_cannot_promote_setup_to_execution() -> Bool {
   let observation = WorkerObservation {
-    provider_instance: fixture_instance(),
+    configured_provider: fixture_instance(),
+    provider_instance: ProviderEvidenceUnobserved {
+      reason: "fixture process tree unobserved" as NonEmptyStr,
+    },
     provider_readiness: ProviderSetupRequired,
     tool_readiness: ToolExecutionReadinessUnobserved {
       reason: "provider has not reached tool execution" as NonEmptyStr,
@@ -75,6 +84,8 @@ test fn session_presence_cannot_promote_setup_to_execution() -> Bool {
     phase: WorkerWaitingForHumanSetup,
   }
   provider_readiness_label(readiness: observation.provider_readiness) == "setup required"
+    && provider_kind_label(kind: observation.configured_provider.kind) == "Claude"
+    && provider_evidence_label(evidence: observation.provider_instance) == "unobserved"
     && worker_phase_label(phase: observation.phase) == "waiting for human setup"
     && tool_execution_readiness_label(readiness: observation.tool_readiness) == "tool readiness unobserved"
 }
