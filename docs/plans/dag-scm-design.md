@@ -1,106 +1,563 @@
-# dag-native SCM — node-grain source control (design seed)
+# Source-intent integration — a first-principles SCM design
 
-Operator-directed 2026-07-25 (session gitlab-10k-scm-costs-baz90x). Roadmap carrier: §2 group
-"SCM — node-grain source control, visibility-first". Economics grounding landed the same session:
-DESIGN open thread "SCM economics — the GitLab 10-K corpus" (cited carriers + witnesses).
+**Status:** operator-directed design seed, revised 2026-07-27. This revision supersedes this
+file's 2026-07-25 premise that “merge = keyed diff over node identity.” It preserves the signed
+visibility-first sequence and the landed economics corpus, but treats nodes, files, branches, and
+three-way comparison as possible evidence or realizations—not as the foundation.
 
-## 1. Thesis
+“Source-intent integration” is a descriptive name in this plan, not a proposed substrate type.
+No carrier lands from this document alone. The first implementation step remains concept-DFS in
+`std/` and a discriminating scenario corpus; the plan must not create an SCM-local nickname for a
+concept the substrate already owns.
 
-Merges and conflicts happen at **node identity**, not file/text grain: a conflict is located at a
-node, so most textual conflicts (formatting, adjacent edits, reorders) never exist, and the ones
-that remain are smaller — fewer conflicts, fewer human/LLM tokens spent resolving them. The git
-interface survives as a **compatibility surface**: git trees are ONE storage realization of the
-node graph (ingest/emit through the same grammar-read-both-directions machinery, DESIGN §4), so
-adoption cost is a realization choice, not a rewrite. The product wedge is workflow value
-(visibility, typed secrecy, memoized CI), not serving cost — the GitLab corpus shows serving is
-11–13% of revenue at every scale; the money is distribution.
+Roadmap carrier: ROADMAP §2, “SCM — source-intent integration, visibility-first.” Economics
+grounding: DESIGN open thread “SCM economics — the GitLab 10-K corpus.” Visibility authority:
+[node/subtree visibility grants](node-subtree-visibility-grants.md). Storage/surface authority:
+[module identity vs storage](module-identity-storage-binding-design.md).
 
-## 2. Architecture (each piece an existing lane, composed)
+## 1. Product objective — minimize judgment without buying silent errors
 
-- **Store**: content-addressed node store; files/repos are storage realizations (module-identity
-  storage-binding thread). Binary provenance sorts three ways by construction: *derived* artifacts
-  are materialization cache (regenerable, never versioned source); *structured* formats ingest to
-  nodes where `DecodeFidelity` is `Lossless` (the LFS dual-store dissolves — no pointer-file
-  second system, and chunked dedup replaces LFS's full-file-per-version billing shape);
-  *genuinely opaque* leaves are chunked content-addressed bytes, tiered hot/cold.
-- **Merge**: keyed diff over node identity — `std.change.keyed_two_way_diff`, the same spine as
-  membership-reconcile (§3 one diff authority, never a text fork). Conflict = same-node divergent
-  edits; refusal typed and located at the node.
-- **Visibility**: the `Reference`/`Publish` grant algebra
-  ([node-subtree-visibility-grants](node-subtree-visibility-grants.md)) — implemented FIRST,
-  realized over git public/private roots (that doc's P-B / Stage 0), the identical interface
-  carried by the native store later. Extended by the **publication ladder** (§3 below).
-- **Remote realization = the SCM's CI**: a withheld/locked node executes server-side on the
-  execution-as-realization spine (ROADMAP §0-④) — interface public, realization hosted, effect
-  envelope declared so admission works without decryption, metered per invocation (protection
-  mechanism = billing mechanism). Memoized by content hash: only affected nodes re-run.
-- **Serving + economics**: serving surface rides `gunbc serve`/belt B; costs are cited carriers —
-  `gunbc.econ.free_tier_serving` floors 10k free users at 2×AX41-1-LTD ≈ 115 EUR/month
-  (witnessed), and GitLab's filed floor upper-bounds average serving at ≤2.42 USD/user-year.
-  Metered CI compute is the abuse axis (GitLab's 400-free-minutes fence + cryptomining FAQ is the
-  receipt): meter compute from day one.
+The product is not “Git with smaller conflict markers.” It is:
 
-## 3. Publication ladder + locked realizations (extends the visibility doc's §4/§5; design-only until Stage 0 lands)
+> **Minimize the total human/LLM judgment needed to accept concurrent source changes, subject to
+> never automatically asserting a result the available model and evidence do not ground.**
 
-`Publish` per node is a **rung**, not a boolean — each rung a typed capability for the audience:
+Humans and LLMs are both expensive, lossy judgment providers. They should receive only the
+irreducible normative choices. Everything else—alignment, replay, independence, invariant
+checking, affected-set calculation, receipt reuse, and projection—should be mechanical.
+
+The displaced cost has four terms, all denominated in time:
+
+1. integration compute;
+2. CI work invalidated or repeated because main advanced;
+3. human/LLM attention and tokens spent reconstructing context and resolving conflicts; and
+4. recovery from a clean-looking but wrong automatic integration, paid later at interest.
+
+The motivating workload is an explicit **stress profile**, not a universal constant: 50 agents per
+developer, 10 proposals touching the same modeled region, and a 30-minute CI path. Every proposal
+invalidated after it was green spends at least another affected 30-minute validation interval;
+serial invalidations also add wall-clock queue delay. The first model must carry these as workload
+inputs so the benefit is measured rather than asserted.
+
+A lower textual-conflict count is not itself success. An aggressive integrator can improve that
+number by silently choosing wrong results. The product metric is **judgment displaced at a fixed
+safety contract**, with false automatic integrations priced most heavily.
+
+## 2. Separate the five concerns
+
+Git's native interface necessarily exposes commits, trees, paths, blobs, and textual merge
+drivers. Those are useful storage and compatibility concepts. They are not the program.
+
+This lane keeps five layers separate:
+
+| concern | authority | never allowed to decide |
+|---|---|---|
+| program model | the actual `Node` + `Edge` graph, grounded facts, claims, effects, and bounds | file layout, line position, or formatter output |
+| proposed change | a transformation over modeled facts plus its explicit obligations and provenance | an inferred story about a user's unexpressed preference |
+| integration | the joint-result calculation and its evidence/refusal | queue arrival order, path overlap, or a tie-break heuristic |
+| history | grounded transition and validation receipts over accepted states | a second copy of the program |
+| medium / transport | `.dag`, Rust, markdown, files, Git trees, CLI/REST, remote storage | semantic correctness beyond the medium's declared decode fidelity |
+
+Text and files have two downstream jobs, already named by the storage-binding design:
+
+- **capture:** lift an edit made through a surface into a proposed graph transformation, with an
+  explicit fidelity verdict; and
+- **projection:** render the accepted graph through the declared medium.
+
+A path move, import deletion, formatting pass, or source reorder may therefore be a semantic no-op
+even though its Git tree changes. Conversely, two disjoint textual hunks may jointly violate one
+modeled invariant.
+
+## 3. Grain comes from groups of units; SCM does not choose one
+
+The recent group-of-units lane is the starting authority. Its current concrete carrier is
+`gunbc.roster_registry.GroupMembership`, which distinguishes membership known:
+
+- **by containment**;
+- **by derivation**;
+- by a declared, counted **frontier** with a reason and dissolution trigger; or
+- by an ungrounded nickname, which is the violation.
+
+This is the useful content behind the working shorthand `Group<U>`; this plan must not mint a
+competing generic group type merely because the shorthand is convenient.
+
+A module is one important example: a containment-derived group of program units. An affected
+closure is a derived group. A temporarily hand-curated migration set is a frontier group. Files
+are storage realizations of such groups, not group authorities.
+
+The integration algorithm is therefore **unit- and group-polymorphic**:
+
+- a unit may be a declaration, binding edge, argument edge, claim, grammar row, effect, or another
+  grounded fact;
+- a proposal may affect one unit or a derived group of units;
+- the evidence needed to align two observations depends on the unit's actual authority; and
+- “same node,” “same module,” and “same file” are observations at different grains, never universal
+  conflict definitions.
+
+Identity remains involved, but only as detective evidence. A key can align two facts through time;
+it does not decide what their joint result should be. No universal durable `ScmEntityId` is assumed.
+Containment position, declaration reference, content identity, normalization, bounded extensional
+identity, provenance, and an authored transformation can each supply different grades of evidence.
+Unknown alignment stays unknown.
+
+## 4. The native transaction is a proposed transformation, not an endpoint diff
+
+A native proposal should eventually carry, by reuse of existing substrate concepts:
+
+- the exact accepted parent state it was authored against;
+- the modeled transformation—what facts or relations it proposes to change;
+- explicit preconditions and postconditions the author relies on;
+- claims, effects, resource bounds, and observable behavior relevant to admission;
+- a derivable affected group and dependency closure;
+- provenance, including the authoring surface if one captured it; and
+- capture/decode fidelity.
+
+These are **roles**, not a proposed `Intent` record. `EffectAttemptIntent`, `StandingIntent`, graph
+intent in the orchestration lane, `ChangeSet`, temporal snapshots, and other neighboring concepts
+must be DFS'd before any new carrier is named.
+
+An endpoint diff remains valuable, but it answers only “what observations differ?” A native
+proposal answers “what transformation was requested, against which accepted state, and under
+which obligations?” Capturing the operation before flattening it to two snapshots removes much of
+the detective work a later three-way merge must redo.
+
+### Native history
+
+The authoritative history can be a linear sequence of accepted transitions:
+
+```text
+accepted state S_n
+  + proposed transformations authored against known parents
+  + current evidence and admission policy
+  -> accepted transition receipt R_(n+1)
+  -> accepted state S_(n+1)
+```
+
+Workspaces may be concurrent, but branches and merge commits are not fundamental. A workspace is a
+sandbox containing pending proposals. Acceptance records one exact parent, the applied
+transformation set, the resulting state hash, and the evidence/receipts that grounded it.
+
+This is not “last writer wins with a nicer log.” Before a stale-parent proposal can advance current
+state, the system re-evaluates its transformation against current modeled state. Arrival order is
+not intent. If two compatible proposals commute, validation may run in parallel and either
+serialization must yield the same declared-equivalent result. If order changes meaning and no
+policy declares an order, the system asks rather than letting queue timing choose.
+
+Native transactions therefore do not require three endpoint snapshots as their primitive. The
+authored parent remains necessary causal evidence; the operation is replayed and verified on the
+new state. Three-way comparison remains necessary at a **lower-fidelity import/capture boundary**
+where only base, left endpoint, and right endpoint survived.
+
+## 5. The integration result — four honest outcomes
+
+Illustrative result shape (roles only):
+
+```text
+IntegrationOutcome<Result, Evidence, Question>
+  = Applied {
+      result,
+      grounding_evidence,
+      no_extra_change_evidence,
+      reusable_validation_receipts
+    }
+  | Contradictory {
+      minimal_incompatible_proposals,
+      counterexample
+    }
+  | Ambiguous {
+      materially_distinct_valid_results,
+      smallest_required_question
+    }
+  | Unknown {
+      missing_model_or_evidence
+    }
+```
+
+- **Applied** means the result satisfies every admitted proposal and required obligation, adds no
+  ungrounded change except declared canonicalization, and is unique up to the declared equivalence
+  for this admission contract.
+- **Contradictory** means no result can satisfy the joint obligations. Return a minimal
+  incompatible core and a witness, not a broad conflict region.
+- **Ambiguous** means more than one materially distinct result is valid and the model contains no
+  authority for choosing among them. Return the alternatives and the smallest normative choice.
+- **Unknown** means the model, alignment, fidelity, or bound is insufficient to establish any of
+  the other outcomes. It is neither “probably safe” nor “everything conflicts.”
+
+The admission policy states the evidence grade it requires. A structurally universal result must
+not be presented as behaviorally safe; a behaviorally bounded result must name its bound. If the
+policy requires a proof the system cannot produce, `Unknown` blocks automatic admission.
+
+Humans or LLMs may answer an `Ambiguous` question by submitting another explicit proposal or
+claim. They may help model an `Unknown`. Their answer does not retroactively turn a guess into
+evidence.
+
+### Laws for the compatible region
+
+For proposals admitted as jointly compatible, integration should be:
+
+- **idempotent:** submitting the same proposal twice has the same result as once;
+- **commutative:** arrival order does not change the result;
+- **associative:** compatible batches compose without batch-boundary semantics;
+- **grounded:** every result change traces to an admitted proposal or declared canonicalization;
+- **minimal/universal:** every admitted change appears exactly once and no other semantic change
+  appears;
+- **exact-parent checked:** replay states what changed since authoring and never applies against an
+  assumed parent;
+- **order-honest:** order dependence yields `Ambiguous`, `Contradictory`, or `Unknown` unless an
+  explicit policy makes that order part of intent; and
+- **fail-closed:** missing alignment, fidelity, or proof never widens into an automatic result.
+
+## 6. Worked examples
+
+### 6.1 Different call arguments — often compatible, never assumed compatible
+
+Accepted source:
+
+```dag
+foo(a, b)
+```
+
+Proposal P changes the argument bound to `foo`'s first parameter:
+
+```dag
+foo(c, b)
+```
+
+Proposal Q changes the argument bound to its second parameter:
+
+```dag
+foo(a, d)
+```
+
+A text merge sees two edits to one line and will ordinarily refuse. A node-key rule might say the
+call node overlaps and also refuse. Neither answer uses all the available model.
+
+The program graph can instead observe two distinct argument-binding edges. If it also establishes
+that:
+
+- both edges still target the same resolved `foo`;
+- each replacement inhabits its parameter type/refinement;
+- the combined call satisfies cross-argument preconditions;
+- effects and resource claims remain admissible; and
+- every required behavioral claim holds within its declared bound,
+
+then P and Q commute and the sole grounded result is:
+
+```dag
+foo(c, d)
+```
+
+If `c` changes overload resolution, or `foo` requires the two arguments to share a region, the
+result may be contradictory. If both rebinding interpretations are valid and materially different,
+it is ambiguous. If the relevant relationship is not modeled, it is unknown. “Different argument
+keys” is evidence that starts the check, not permission to skip it.
+
+The reverse is equally important: two transformations touching the **same** coarse key are not
+automatically contradictory. They may be identical, act on independent substructure, or normalize
+to one transformation. Key intersection identifies where deeper reconciliation is required.
+
+### 6.2 Rename plus a new reference — textual clean merge, semantic question
+
+P renames declaration `foo` to `bar`. Q, authored concurrently, adds a call spelled `foo()` in a
+different line or file. Git can merge this cleanly while leaving a broken reference.
+
+With binding provenance, the native possibilities are explicit:
+
+- Q targeted the same declaration and the rename transports the reference → `Applied`, emitting
+  `bar()`;
+- Q explicitly requires a distinct/public name `foo` to remain → `Contradictory`; or
+- endpoint import cannot establish which declaration Q meant → `Ambiguous` or `Unknown`.
+
+The system does not infer “they probably meant the renamed function” from spelling similarity.
+
+### 6.3 Disjoint edits with an emergent invariant failure
+
+P lowers one authorization threshold. Q broadens a separately stored audience grant. The edits
+touch different units and files, but together violate a claim such as “untrusted callers can never
+reach destructive effect E.” Integration returns `Contradictory` with that claim's counterexample.
+A clean textual merge is not safety evidence.
+
+### 6.4 Two valid results, no authority to choose
+
+P changes a representation. Q inserts an adapter whose placement before or after that change
+produces two valid but observably different programs. If both satisfy the current claims and no
+modeled policy defines placement, the result is `Ambiguous`, not a deterministic tie-break.
+
+### 6.5 Surface-only change
+
+A formatter reorders declarations, a module moves between files, or namespace-derived imports
+disappear while the graph stays identical. The semantic transformation is a no-op; storage binding
+or projection provenance changes separately. No semantic conflict exists.
+
+## 7. The safety quadrants and the real bar
+
+“Compatible” below means compatible relative to the explicitly required model, claims, fidelity,
+and bounds—not unknowable private thoughts:
+
+| underlying joint result | textual Git says clean | textual Git says conflict |
+|---|---|---|
+| compatible | correct automatic merge | **false conflict**: unnecessary judgment and CI delay |
+| incompatible | **silent wrong merge**: highest-cost failure | correct refusal, usually imprecise |
+
+Daglang's opportunity is not merely moving cases from the right column to the left. It is:
+
+- prove more compatible cases and return `Applied`;
+- prove more incompatible cases and return a small `Contradictory` witness;
+- expose genuinely normative choices as `Ambiguous`; and
+- keep incomplete modeling visible as `Unknown`.
+
+The strongest honest “true final intent” guarantee is:
+
+> The accepted result is the unique result, up to declared equivalence, that satisfies all explicit
+> proposals and required obligations, and every result change is grounded in those proposals.
+
+No SCM can guarantee an unexpressed mental preference. Claiming that would convert missing
+information into a silent decision.
+
+### Evidence ladder
+
+Evidence composes from weaker to stronger scopes:
+
+1. **capture fidelity:** exact authored transformation, lossless structural recovery, ambiguous
+   recovery, or unknown;
+2. **structural preservation:** well-formed graph; every captured edit represented once; no
+   invented structural edit;
+3. **resolution and typing:** bindings, inhabitance, refinements, and namespace claims hold;
+4. **cross-unit claims:** invariants over derived groups and dependency closures hold;
+5. **effects/resources:** interference, grants, resource bounds, and temporal preconditions hold;
+6. **behavioral evidence:** required observables agree within an explicit bound; and
+7. **normative intent:** only what the author explicitly supplied—never inferred from plausibility.
+
+An admission surface may require a particular rung. The receipt must name the rung; lower evidence
+cannot masquerade as higher.
+
+## 8. Existing concept DFS — reuse, do not fork
+
+The first modeling pass must try to compose these authorities:
+
+| existing carrier | contribution | limit for this lane |
+|---|---|---|
+| `gunbc.roster_registry.GroupMembership` | how membership in a group of units is known | provenance of membership, not yet the whole integration value |
+| `std.change.keyed_two_way_diff` | exact keyed endpoint observation | observes change; does not infer or reconcile peer proposals |
+| `std.change.keyed_three_way_fold` | conservative base/observed/desired reconciliation | asymmetric desired-state/infrastructure shape; key overlap currently collapses to conflict |
+| `gunbc.membership_reconcile` | one generic desired-vs-observed fold with stable member identity | infrastructure convergence, not concurrent author intent |
+| `std.realization_reconcile` | apply → read-back → grounding evidence | receipt shape, not source integration semantics |
+| `std.temporal_effect` | exact snapshots, intent hashes, idempotency, prior receipts, generations | effect-attempt vocabulary; do not rename it into generic source intent |
+| `std.computation_identity` | structural/normalized/bounded-extensional evidence plus typed unknown | identity evidence, not user-intent identity |
+| `std.perturbation` | response to changed inputs | a building block for bounded noninterference evidence |
+| `std.realization.Independence` | `Independent | Dependent | Unknown` | currently effect-shape-specific and deliberately coarse |
+| `v2.compiler.source_authority` + `DecodeFidelity` | ingest/emit authority and honesty boundary | only lossless fragments may recover exact proposals |
+| affected-set and materialization lanes | dependency-scoped validation and content-keyed receipt reuse | selection/caching must not decide semantic compatibility |
+
+The existing keyed diff remains useful beneath the new model. Its meaning changes from “the merge
+algorithm” to “one observation/capture engine.” In particular, the storage-binding plan's current
+same-key refusal is the safe adapter available **before** semantic integration lands; it is not a
+proof that same-key proposals are contradictory.
+
+## 9. Admission and CI — linear history without serial work
+
+The native fast path:
+
+1. Read accepted state `S_n` and its validation receipts.
+2. Author a modeled transformation directly, or capture one from a declared lossless surface.
+3. Derive the affected group and required claims.
+4. Evaluate the proposal with any concurrently pending proposals against current accepted state.
+5. Reuse receipts whose content-addressed dependency inputs are unchanged; validate only newly
+   affected obligations.
+6. Append one accepted transition if `Applied`, or return the smallest
+   `Contradictory`/`Ambiguous`/`Unknown` handoff.
+7. Project the new state to all declared surfaces, including Git.
+
+Linear accepted history does not imply serial validation. Compatible proposals and their affected
+claims can evaluate in parallel; the acceptance log serializes receipts only after their
+commutativity and current-parent conditions are established.
+
+This is the direct answer to green-then-main-advanced CI waste. A receipt should be keyed by the
+actual modeled inputs of the claim, not by “the whole branch is still at this SHA.” If main
+advances outside those inputs, the green receipt remains grounded. If it advances inside them, the
+system revalidates the affected claim before acceptance. A blanket rerun is an `Unknown`/modeling
+deficit, not a silent “fail-closed” success.
+
+## 10. Git is a compatibility realization, not the semantic authority
+
+Compatibility is non-negotiable for adoption, but it is downstream:
+
+### Export
+
+- Each accepted native transition can emit an ordinary one-parent/squash Git commit and source
+  tree. A team using squash-to-main sees the history shape it already expects.
+- Native proposal/evidence receipts may travel as optional metadata; a normal Git client can ignore
+  them and still clone/build the projected tree.
+- Files, paths, formatting, opaque blobs, and derived artifacts follow the storage-binding and
+  materialization policies; they are not smuggled into the semantic model.
+
+### Import
+
+External Git work supplies base and endpoint snapshots. Ingest recovers graph transformations with
+an explicit fidelity result:
+
+```text
+ExactAuthored | StructurallyRecovered | AmbiguousRecovery | UnknownRecovery
+```
+
+Those labels are illustrative roles pending DFS. Rename similarity, matching content, and
+three-way ancestry are evidence. They never become invented identity. A textual merge driver may
+remain as a compatibility fallback, but its clean result carries only textual evidence and cannot
+claim the native safety grade.
+
+The first product can therefore be a Git-compatible semantic admission tool rather than a new
+hosted object store. It proves the integration advantage while keeping clone, editor, CI, and forge
+workflows intact. A native store is justified only after the semantic consumer displaces measured
+cost.
+
+## 11. Visibility, locked realizations, and customer trust
+
+The signed order remains: implement the `Reference`/`Publish` grant model first over today's two
+Git storage roots. It is independently valuable and becomes the same admission interface for later
+native storage.
+
+`Publish` may later refine to the already-designed ladder:
 
 | rung | audience keeps |
 |---|---|
 | full source | read · typecheck · execute · verify |
-| emitted artifact only | execute · typecheck (not read) |
-| ciphertext + interface (**locked**) | typecheck now · complete/execute on key |
+| emitted artifact only | execute · typecheck, not read |
+| ciphertext + interface | typecheck now · complete/execute with key |
 | interface only | typecheck · execute remotely |
 | commitment hash | verify identity/churn only |
-| absence (default) | nothing — existence hidden |
+| absence | nothing; existence hidden |
 
-**Locked nodes** (the operator's unlock-with-a-key design): the subtree ships in-artifact as ONE
-ciphertext blob (internal shape hidden; pad to size buckets when size leaks), plaintext residue =
-the interface at the cut + the commitment. Per-audience envelope key-wraps live on the
-`AudienceScopeTree` (the storage form of the grant); key rotation re-wraps without touching
-ciphertext or commitment. Decrypt-then-VERIFY against the commitment before admission — a wrong
-key is a typed `KeyMismatch`, never garbage admitted as code (§5). Keyless execution reaching a
-locked node refuses (`LockedNodeUnrealizable`), and a witness whose closure is blocked is a
-counted `LockedBlocked` state — never failed, never silently skipped. The 99.99% compiles against
-interfaces (separate compilation already required by the self-host frontier); the locked
-realization arrives out of band, via key.
+Locked realizations retain the existing design: per-audience key-wraps, decrypt-then-verify against
+the commitment, typed `KeyMismatch`/`LockedNodeUnrealizable`, counted `LockedBlocked`, optional
+churn blinding, and crypto-shred for PII-typed nodes. This concern composes with integration but
+does not define it.
 
-**Hole residues** (what redaction can never hide): a typecheckable projection irreducibly exposes
-the type at the cut (coarsening it spends the public side's typecheck/effect-admission
-precision); an executable projection needs a realization binding (key, artifact, or remote); a
-verify-only projection needs the commitment. Per-statement holes inside *published executable
-bodies* are refused — absence is not semantically neutral in code; the clean collapse is the
-interface/realization seam (publish the signature, withhold the body). Data/config nodes redact
-cleanly at node grain, and the strongest form is unwritability: `Secret`/`Pii`-typed content can
-only inhabit `SecretRef`-shaped nodes, so publication is safe by construction (never a scanner).
+Vertical integration can bring the product closer to real compiler/use-case failures. It must not
+turn “visibility into customer code” into an undeclared surveillance business model. Raw source
+stays governed by `Publish`/effect grants; telemetry is derived, consented, and minimal—fidelity
+bucket, outcome bucket, cost, and anonymized mechanism gap where possible. Trust is part of the
+safety product, not a growth shortcut.
 
-**Realization placements** (the hardness dial): client+key = access control for distribution
-(NOT DRM — a key-holder can always exfiltrate); remote-only = secrecy by non-delivery (the
-consumer never holds the bytes; the interface remains an oracle, priced by metering); attested
-TEE = the on-device middle rung, hardness bounded by enclave trust. **Churn blinding**: a naked
-commitment leaks when the secret changed (sometimes a feature — audits, embargoes); a salted
-(hiding) commitment re-randomized per release makes the public signal carry zero bits while
-key-holders still verify; the stable `SecretRef` wrapper is reserved for secrets-as-material —
-wrapping CODE in a stable pointer breaks content-addressed determinism and public verifiability
-(stable identity × changing secret × public verifiability: pick two). **Crypto-shred** (key
-destruction) is the erasure story for PII-typed nodes — the deletion mechanism content-addressed
-immutable history otherwise lacks. Uses unlocked, in order: EE-features-in-one-artifact (license
-key = typed unlock, no `ee/` fork), embargoed fixes (release the key, not a new artifact),
-per-client subtrees, PII crypto-shredding.
+## 12. Product thesis and falsification
 
-## 4. Sequencing (visibility first — operator plan 2026-07-25)
+The idea is interesting because agent concurrency changes the economics of source control. A
+30-minute validation path and many simultaneous proposals make integration quality a direct,
+compounding compute/latency/token cost. Daglang has unusually rich evidence available because the
+program, claims, compiler, affected set, and execution model can share one substrate.
 
-1. **NOW** — roadmap `2-scm-visibility-stage0`: the grant model implemented properly, realized
-   over git public/private roots (visibility doc P-A/P-B: two git storage roots, file-grain
-   `Publish`, push-time guard, one-time `World` stamp of the existing public corpus).
-2. Ladder + locked realizations land as model + witnesses only after Stage 0 (roadmap
-   `2-scm-publication-ladder`).
-3. Node-grain merge core + git-realization compatibility (`2-scm-node-merge`), riding the
-   module-identity storage-binding authority.
-4. Remote realization / metered CI (`2-scm-remote-realization`) and the store/serving infra
-   (`2-scm-infra-econ`).
+The initial wedge is narrow and credible:
+
+- teams running many coding agents against the same modeled monorepo;
+- long or expensive CI;
+- a lossless daglang source model;
+- Git-compatible input/output; and
+- a dashboard showing judgment and validation work actually displaced.
+
+The GitLab corpus supports the “cheap to serve” premise, not “distribution is free.” GitLab's
+serving cost is a minority of revenue while selling and R&D dominate. Word of mouth is plausible
+only if the product makes savings obvious in the existing workflow. Compatibility and receipts are
+therefore part of the product, not marketing afterthoughts.
+
+Track at least:
+
+- automatic `Applied` rate by evidence rung;
+- `Contradictory`, `Ambiguous`, and `Unknown` rates and causes;
+- judgment requests, human minutes, and LLM tokens per accepted proposal;
+- false-conflict rate relative to the required contract;
+- detected and escaped wrong integrations;
+- CI minutes and wall-clock delay invalidated, rerun, and reused;
+- proposal queue latency under the 50-agent/10-overlap stress profile;
+- Git-import fidelity distribution and round-trip fidelity; and
+- storage operations/bytes/egress under the landed packing and provider models.
+
+The “unsafe automatic integration” target is not hand-waved as absolute. Every claim is scoped to
+the declared model, fidelity, and bound, and the falsifier corpus must actively search for escaped
+wrong results.
+
+## 13. Discriminating scenario corpus
+
+Before storage or forge work, land a model-level corpus whose expected outcomes separate the
+designs:
+
+| scenario | textual/key-overlap baseline | required native outcome |
+|---|---|---|
+| `foo` arguments changed independently | textual conflict / call-key overlap | `Applied foo(c,d)` only with binding + joint-obligation evidence |
+| rename plus concurrent old-spelling call | often textually clean | transported binding, `Contradictory`, `Ambiguous`, or `Unknown`; never broken-clean |
+| disjoint policy changes violate one claim | textually clean | `Contradictory` with minimal claim counterexample |
+| two valid order-dependent transformations | deterministic queue result | `Ambiguous` with the two material alternatives |
+| duplicate proposal delivery | duplicate patch/application risk | idempotent `Applied` |
+| formatting/reorder/file move, same graph | large textual diff | semantic no-op; storage/projection change only |
+| lossy Git import | plausible inferred delta | `Unknown`/`AmbiguousRecovery`, never exact-intent claim |
+| absent required behavioral bound | structurally clean | structural evidence only; admission `Unknown` if behavior is required |
+
+Every `Applied` case needs a perturbation that makes one obligation false and turns the outcome
+red. Every refusal needs a nearby compatible control, so “always refuse” cannot satisfy the suite.
+
+Git's default merge, the current keyed-diff adapter, and at least one structural merge baseline
+should run on the same corpus. The comparison is evidence, not the design authority.
+
+## 14. Sequencing and acceptance
+
+The previously signed visibility sequence stays intact. Integration work starts model-first and
+does not wait for a native store:
+
+1. **Visibility Stage 0 (already first):** `Publish`/`Reference` model, public/private Git roots,
+   file-grain declarations, push guard, and existing-public-corpus stamp.
+2. **P0 — cost and scenario model:** carry the agent/CI stress profile, the four outcome roles,
+   evidence rungs, and the scenario corpus as `.dag` facts/witnesses after concept DFS.
+   **Accept T1:** every scenario produces its named outcome; compatible/incompatible RED controls
+   prevent always-apply and always-refuse.
+3. **P1 — pure source integration fold:** integrate directly authored transformations over a small
+   modeled program, using group-membership provenance and existing identity/change/evidence
+   carriers.
+   **Accept T1:** idempotence, compatible commutativity/associativity, grounding, and
+   order-dependence witnesses execute.
+4. **P2 — lossless authoring capture:** one daglang surface recovers the same transformation as
+   direct submission.
+   **Accept T2:** edit → ingest → proposal → integrate → emit round-trips; a lossy edit refuses
+   without mutation.
+5. **P3 — exact-parent admission + receipt reuse:** pending proposals re-evaluate against current
+   accepted state; affected validation receipts survive unrelated advances.
+   **Accept T2/T3:** two real concurrent proposals accept without full CI replay; a changed required
+   input invalidates the receipt and reds before acceptance.
+6. **P4 — Git compatibility realization:** import an ordinary Git branch/PR with fidelity, export
+   accepted transitions as ordinary squash/one-parent commits.
+   **Accept T3:** unmodified Git clone/build works; native metadata removal lowers evidence but
+   never changes the emitted program; ambiguous recovery refuses.
+7. **P5 — publication ladder and remote realization:** after visibility Stage 0, land the ladder
+   and execute withheld nodes through declared interfaces/effect grants where a consumer prices it.
+8. **P6 — native store/serving:** only after the semantic path is a named consumer; use the landed
+   object-storage, packing, reliability, and regional-compute carriers. Never one stored object per
+   semantic node by default.
+
+The publication ladder may advance independently after visibility Stage 0; it is not a semantic
+integration prerequisite. No phase is complete at T0 algebra alone: each names an executing
+consumer and a discriminating red.
+
+## 15. Non-goals
+
+- Mind-reading or claiming certainty about unexpressed intent.
+- Reducing conflict count by silently choosing a plausible result.
+- Making node identity, module identity, a file path, or a universal durable entity ID the
+  definition of compatibility.
+- Replacing Git hosting, object storage, or forge UI before the integration consumer proves value.
+- One semantic node per billable storage object.
+- General arbitrary-language semantic merge outside a declared `DecodeFidelity` boundary.
+- Unbounded behavioral equivalence; every such claim names a bound.
+- Centralized access to customer source as an assumed business advantage.
 
 ## Dissolution trigger (DESIGN §6)
 
-This doc dissolves into the visibility design doc (grant/ladder content), the module-identity
-storage-binding design (store content), and registered `gunbc.plan.Plan` rows as each roadmap
-node lands with executing witnesses; it must not outlive Stage 1 as a parallel ledger.
+This document is the one design seed for the SCM lane, not a second status ledger. Its sections
+dissolve as follows:
+
+- outcome/evidence/group roles → the DFS-selected `std/` and plan carriers plus executing witnesses;
+- capture/storage content → `v2.compiler.source_authority` and the module-storage design;
+- visibility/ladder content → the visibility-grants authority;
+- admission/receipt content → the temporal-effect, affected-set, realization, and roadmap rows;
+- Git shapes → `extdeps.git` interface operations plus peripheral handlers; and
+- economics → the already-landed cited extdeps/econ carriers.
+
+Delete this plan when the native admission consumer reaches P4/T3 and the registered roadmap/carrier
+graph contains the remaining P5/P6 work. Until then, update this file rather than opening a parallel
+SCM design.
