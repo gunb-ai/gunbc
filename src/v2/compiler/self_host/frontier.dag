@@ -1094,6 +1094,7 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "resolved_graph_cache", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "shared_typecheck_store", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "recorded_fixture", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "std_occurrence_binding", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "main", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "phase_profile", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "pre_push", has_pub_mod: false, is_dir: false },
