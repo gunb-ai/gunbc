@@ -21,6 +21,7 @@ import std.symbols {
 import std.change { KeyedDiffAddedHunk, KeyedDiffRemovedHunk, KeyedDiffModifiedHunk }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
 import std.measure {
+  Nanosecond,
   nanosecond,
   Millisecond,
   millisecond,
@@ -192,11 +193,11 @@ fn obs_event(transition: ObservationTransition, wall_ms: Int) -> ObservationEven
   }
 }
 
-fn obs_event_ns(transition: ObservationTransition, wall_ns: Int) -> ObservationEvent {
+fn obs_event_ns(transition: ObservationTransition, wall: Nanosecond) -> ObservationEvent {
   ObservationEvent {
     subject: obs_entry_subject(),
     transition: transition,
-    wall: MeasuredValue { value: nanosecond(count: wall_ns) },
+    wall: MeasuredValue { value: wall },
     rss: MeasuredUnavailable { cause: "cgroup memory.current unreadable in this fixture" as NonEmptyStr }
   }
 }
@@ -322,23 +323,23 @@ test fn w_attention_compares_exact_nanoseconds_to_millisecond_policy() -> Bool {
     maximum: millisecond(count: 2)
   }
   observation_attention(
-    event: obs_event_ns(transition: Concluded { outcome: Done }, wall_ns: 1),
+    event: obs_event_ns(transition: Concluded { outcome: Done }, wall: nanosecond(count: 1)),
     basis: basis
   ) == Ambient &&
   observation_attention(
-    event: obs_event_ns(transition: Concluded { outcome: Done }, wall_ns: 999999),
+    event: obs_event_ns(transition: Concluded { outcome: Done }, wall: nanosecond(count: 999999)),
     basis: basis
   ) == Ambient &&
   observation_attention(
-    event: obs_event_ns(transition: Concluded { outcome: Done }, wall_ns: 1000000),
+    event: obs_event_ns(transition: Concluded { outcome: Done }, wall: nanosecond(count: 1000000)),
     basis: basis
   ) == Ambient &&
   observation_attention(
-    event: obs_event_ns(transition: Concluded { outcome: Done }, wall_ns: 1000001),
+    event: obs_event_ns(transition: Concluded { outcome: Done }, wall: nanosecond(count: 1000001)),
     basis: basis
   ) == Notable &&
   observation_attention(
-    event: obs_event_ns(transition: Concluded { outcome: Done }, wall_ns: 2000001),
+    event: obs_event_ns(transition: Concluded { outcome: Done }, wall: nanosecond(count: 2000001)),
     basis: basis
   ) == Anomaly
 }
