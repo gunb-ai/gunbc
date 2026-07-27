@@ -63,10 +63,8 @@ test fn witness_sudo_nopasswd_probe_typed_argv_holds() -> Bool {
 }
 
 test fn witness_sudo_nopasswd_grant_list_probe_typed_argv_holds() -> Bool {
-  let probe = SudoNopasswdGrantListProbeShape {
-    command_path: "/usr/bin/tailscale" as NonEmptyStr
-  }
-  let result = sudo.NopasswdGrantListProbe.Check(command_path: probe.command_path)
+  let probe = "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape
+  let result = sudo.NopasswdGrantListProbe.Check(probe: probe)
   let argv = sudo_nopasswd_grant_list_probe_argv(probe: probe)
   result.success && argv == ["sudo", "-n", "-l", "/usr/bin/tailscale"]
 }
@@ -111,7 +109,7 @@ test fn witness_tailscale_roster_selects_grant_list_not_execute_probe() -> Bool 
     cmd: ci_deploy_srv1_access.privileged_commands.skip(n: 4).first()
   ) {
     SudoNopasswdGrantListProbe { probe: p } =>
-      p.command_path == "/usr/bin/tailscale"
+      p as String == "/usr/bin/tailscale"
     _ => false
   }
 }
@@ -199,9 +197,7 @@ test fn witness_ssh_sudo_grant_list_argv_shape_matches_local_authority() -> Bool
   match typed_argv_exec_over_ssh(
     host: operator_host_srv1 as NonEmptyStr,
     argv: sudo_nopasswd_grant_list_probe_argv(
-      probe: SudoNopasswdGrantListProbeShape {
-        command_path: "/usr/bin/tailscale" as NonEmptyStr
-      }
+      probe: "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape
     ),
   ) {
     TypedArgvExecConverged { result: r } => r.success
@@ -213,9 +209,7 @@ test fn witness_ssh_sudo_grant_list_unsafe_path_refuses() -> Bool {
   match typed_argv_exec_over_ssh(
     host: operator_host_srv1 as NonEmptyStr,
     argv: sudo_nopasswd_grant_list_probe_argv(
-      probe: SudoNopasswdGrantListProbeShape {
-        command_path: "/usr/bin/not safe" as NonEmptyStr
-      }
+      probe: "/usr/bin/not safe" as SudoNopasswdGrantListProbeShape
     ),
   ) {
     TypedArgvExecConverged { result: _ } => false

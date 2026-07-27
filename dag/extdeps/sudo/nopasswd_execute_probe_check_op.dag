@@ -22,7 +22,7 @@ fn sudo_nopasswd_execute_probe_argv(probe: SudoNopasswdExecuteProbeShape) -> Lis
 }
 
 fn sudo_nopasswd_grant_list_probe_argv(probe: SudoNopasswdGrantListProbeShape) -> List<String> {
-  ["sudo", "-n", "-l", probe.command_path as String]
+  ["sudo", "-n", "-l", probe as String]
 }
 
 service sudo.NopasswdExecuteProbe {
@@ -46,12 +46,12 @@ service sudo.NopasswdExecuteProbe {
 
 service sudo.NopasswdGrantListProbe {
   operation Check {
-    input { command_path: NonEmptyStr }
+    input { probe: SudoNopasswdGrantListProbeShape }
     output { success: Bool from "exit_success" }
     readonly
 
     transport shell {
-      argv: ["sudo", "-n", "-l", "{command_path}"]
+      argv: ["sudo", "-n", "-l", "{probe}"]
     }
     exit {
       0 => Unit

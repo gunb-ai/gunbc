@@ -13,16 +13,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data sudo_nopasswd_execute_probe_note: String = "Non-interactive sudo execute probe: sudo -n <command_path> <check_argv>. Interface shape only — typed argv transport lives in extdeps.sudo.nopasswd_execute_probe_check_op at the realization edge. check_argv is one argv token for command_path (not a shell fragment): fleet roster rows use single-token probes only (--version, --help, -V, version, probe). Multi-token probes require a List<String> shape change, not space-embedding in NonEmptyStr — emit concat and typed argv agree only when check_argv is single-token."
 
-data sudo_nopasswd_grant_list_probe_note: String = "Non-interactive sudoers grant probe: sudo -n -l <command_path> (lists allowed command, no exec). Used when the binary may be absent before package ensure — exec failure would mis-diagnose absence as a grant miss (review 41039). Typed argv transport lives in extdeps.sudo.nopasswd_grant_list_probe_check_op at the realization edge."
+data sudo_nopasswd_grant_list_probe_note: String = "Non-interactive sudoers grant probe: sudo -n -l <command_path> (lists allowed command, no exec). Used when the binary may be absent before package ensure — exec failure would mis-diagnose absence as a grant miss (review 41039). Its one-field operation shape is the typed command path itself; the service, argv projection, host effect, and callers consume that single authority directly. Typed argv transport lives in extdeps.sudo.nopasswd_execute_probe_check_op at the realization edge."
 
 type SudoNopasswdExecuteProbeShape {
   command_path: NonEmptyStr
   check_argv: NonEmptyStr
 }
 
-type SudoNopasswdGrantListProbeShape {
-  command_path: NonEmptyStr
-}
+type SudoNopasswdGrantListProbeShape = NonEmptyStr where brand("SudoNopasswdGrantListProbeShape")
 
 type SudoNopasswdProbeKind
   = NopasswdExecuteCheck { check_argv: NonEmptyStr }

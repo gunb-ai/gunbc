@@ -238,9 +238,7 @@ fn deploy_access_sudo_probe_effect(cmd: PrivilegedCommand) -> HostEffect {
       }
     NopasswdGrantListCheck =>
       SudoNopasswdGrantListProbe {
-        probe: SudoNopasswdGrantListProbeShape {
-          command_path: cmd.grant.command_path,
-        }
+        probe: cmd.grant.command_path as SudoNopasswdGrantListProbeShape
       }
   }
 }
