@@ -26,6 +26,7 @@ import v2.std.node {
   Atom,
   Edge,
   Instantiation,
+  MintedOccurrence,
   Node,
   Positional,
   SyntheticOccurrence,
@@ -162,8 +163,19 @@ fn sgb_requirement_matches(
   generic_parameter: Node,
   derive_trait: ReprGroundingDeriveTrait
 ) -> Bool {
-  occurrence_id_eq(left: req.generic_parameter.occurrence_id, right: generic_parameter.occurrence_id)
-    && req.derive_trait == derive_trait
+  match req.generic_parameter.occurrence_id {
+    SyntheticOccurrence =>
+      match generic_parameter.occurrence_id {
+        SyntheticOccurrence => req.derive_trait == derive_trait
+        MintedOccurrence { id: _ } => false
+      }
+    MintedOccurrence { id: req_id } =>
+      match generic_parameter.occurrence_id {
+        SyntheticOccurrence => false
+        MintedOccurrence { id: param_id } =>
+          occurrence_id_eq(left: req_id, right: param_id) && req.derive_trait == derive_trait
+      }
+  }
 }
 
 fn sgb_requirements_match_exact_order(
@@ -358,7 +370,11 @@ test fn nested_generic_swap_red_requires_exact_declaration_nodes() -> Bool {
     derive_trait: ReprDeriveSerialize
   ) {
     Accepted { value: row, diagnostics: _ } =>
-      !occurrence_id_eq(left: left_param.occurrence_id, right: right_param.occurrence_id)
+      !sgb_requirement_matches(
+        req: sgb_requirement(generic_parameter: left_param, derive_trait: ReprDeriveClone),
+        generic_parameter: right_param,
+        derive_trait: ReprDeriveClone
+      )
         && row.derive_trait == ReprDeriveSerialize
         && sgb_requirements_match_exact_order(
           reqs: row.requirements,
