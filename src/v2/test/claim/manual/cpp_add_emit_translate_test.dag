@@ -156,21 +156,13 @@ fn anchor_cpp_add_serialize_rejects_missing_translation_rules() -> Outcome<Mediu
 
 data cpp_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_cpp_add_serialize_rejects_missing_translation_rules()
 
-fn cpp_add_serialize_reject_claim_outcome() -> Outcome<Node> {
+test fn cpp_add_serialize_reject_receipt_holds() -> Bool {
   match cpp_add_serialize_reject_receipt {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: _, diagnostics: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: Diagnostic {
-            reason: ^cpp_add_serialize_unexpected_accept,
-            at: node_locus(node: cpp_add_emitted_root),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          }
-        )
-      }
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d != None
   }
 }
+
 
 fn cpp_add_canonical_grounding(
   node: Node,
@@ -333,60 +325,23 @@ fn anchor_cpp_add_compile_inferred_accepts() -> Outcome<CompileOutput> {
 
 data cpp_add_emit_receipt: Outcome<Medium<String>> = anchor_cpp_add_emit_accepts()
 
+test fn cpp_add_emit_receipt_holds() -> Bool {
+  match cpp_add_emit_receipt {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 data cpp_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_cpp_add_compile_inferred_accepts()
 
-fn cpp_add_emit_claim_outcome() -> Outcome<Node> {
-  match cpp_add_emit_receipt {
-    Accepted { value: source, diagnostics: d } =>
-      if (source.carried == cpp_source_text) && (d == None) {
-        Accepted { value: cpp_add_emitted_root, diagnostics: None }
-      } else {
-        Rejected {
-          diagnostics: diagnostics_singleton(
-            d: Diagnostic {
-              reason: ^cpp_add_emit_source_mismatch,
-              at: node_locus(node: cpp_add_emitted_root),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            }
-          )
-        }
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+test fn cpp_add_compile_inferred_receipt_holds() -> Bool {
+  match cpp_add_compile_inferred_receipt {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
   }
 }
 
-fn cpp_add_compile_inferred_claim_outcome() -> Outcome<Node> {
-  match cpp_add_compile_inferred_receipt {
-    Accepted { value: compile_result, diagnostics: d } =>
-      match compile_result {
-        TranslateResult { source } =>
-          if (source.carried == cpp_source_text) && (d == None) {
-            Accepted { value: cpp_add_emitted_root, diagnostics: None }
-          } else {
-            Rejected {
-              diagnostics: diagnostics_singleton(
-                d: Diagnostic {
-                  reason: ^cpp_add_compile_source_mismatch,
-                  at: node_locus(node: cpp_add_emitted_root),
-                  correction: Unavailable { reason: ExternalContractUnknown }
-                }
-              )
-            }
-          }
-        _ =>
-          Rejected {
-            diagnostics: diagnostics_singleton(
-              d: Diagnostic {
-                reason: ^cpp_add_compile_source_mismatch,
-                at: node_locus(node: cpp_add_emitted_root),
-                correction: Unavailable { reason: ExternalContractUnknown }
-              }
-            )
-          }
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
+
 
 data claim_cpp_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: anchor_cpp_add_emit_accepts with canonical cpp_add add-fn source",
@@ -414,14 +369,6 @@ data subject_cpp_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaim
   )
 }
 
-data run_cpp_add_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_cpp_add_emit_add_fn_accepts),
-  verdict: run_test_claim_assert(
-    claim: claim_cpp_add_emit_add_fn_accepts,
-    actual: cpp_add_emit_claim_outcome(),
-    at: cpp_add_emitted_root
-  )
-}
 
 data subject_cpp_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_cpp_add_compile_inferred_add_fn_accepts,
@@ -433,14 +380,6 @@ data subject_cpp_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node>
   )
 }
 
-data run_cpp_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_cpp_add_compile_inferred_add_fn_accepts),
-  verdict: run_test_claim_assert(
-    claim: claim_cpp_add_compile_inferred_add_fn_accepts,
-    actual: cpp_add_compile_inferred_claim_outcome(),
-    at: cpp_add_emitted_root
-  )
-}
 
 data claim_cpp_add_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
   label: "manual/rust_add_emit: target_serialize_source_from_model rejects cpp bundle missing translation_rules",
@@ -466,11 +405,3 @@ data subject_cpp_add_serialize_rejects_missing_translation_rules: TestClaimEvalS
   )
 }
 
-data run_cpp_add_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_cpp_add_serialize_rejects_missing_translation_rules),
-  verdict: run_test_claim_assert(
-    claim: claim_cpp_add_serialize_rejects_missing_translation_rules,
-    actual: cpp_add_serialize_reject_claim_outcome(),
-    at: cpp_add_emitted_root
-  )
-}

@@ -17,15 +17,6 @@ import v2.std.node {
   TypeNode,
   SyntheticOccurrence
 }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 import v2.test.lens_common.infer_fixture {
   claim_atom_node,
   claim_inferred_facts,
@@ -75,22 +66,4 @@ test fn unit_modeling_blocked_via_always_required_lenses_holds() -> Bool {
   }
 }
 
-fn unit_modeling_blocked_via_always_required_lenses_rhs() -> Node {
-  if unit_modeling_blocked_via_always_required_lenses_holds() {
-    unit_ar_authority
-  } else {
-    Node {
-      kind: TypeNode { connective: Conj },
-      children: [],
-      occurrence_id: SyntheticOccurrence
-    }
-  }
-}
 
-data claim_unit_modeling_blocked_via_always_required_lenses: TestClaim = EqualsClaim {
-  label: "lens_unit_modeling/unit_modeling_blocked_via_always_required_lenses: always_required_lenses() (wired into validate_then_compile) rejects a fact-bearing flat-scalar unit leaf with the unit-modeling reason",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: unit_ar_authority,
-  rhs: unit_modeling_blocked_via_always_required_lenses_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}

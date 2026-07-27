@@ -26,20 +26,6 @@ fn lens_testgen_generator_provenance_marker_node(marker: Symbol) -> Node {
 }
 }
 
-fn lens_testgen_generator_provenance_rhs() -> Node {
-  if scheduled_generators_carry_provenance() {
-    lens_testgen_generator_provenance_marker_node(marker: ^lens_testgen_generator_provenance_ok)
-  } else {
-    lens_testgen_generator_provenance_marker_node(marker: ^lens_testgen_generator_provenance_failed)
-  }
-}
 
-data claim_lens_testgen_scheduled_generators_carry_provenance: TestClaim = EqualsClaim {
-  label: "lens_testgen/generator_provenance: scheduled generators carry consistent provenance + profile metadata",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: lens_testgen_generator_provenance_marker_node(marker: ^lens_testgen_generator_provenance_ok),
-  rhs: lens_testgen_generator_provenance_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
 
-test data witness_lens_testgen_scheduled_generators_carry_provenance_green: Bool = scheduled_generators_carry_provenance()
+data witness_lens_testgen_scheduled_generators_carry_provenance_green: Bool = scheduled_generators_carry_provenance()

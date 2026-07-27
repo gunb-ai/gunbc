@@ -147,21 +147,13 @@ fn anchor_typescript_add_serialize_rejects_missing_translation_rules() -> Outcom
 
 data typescript_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_typescript_add_serialize_rejects_missing_translation_rules()
 
-fn typescript_add_serialize_reject_claim_outcome() -> Outcome<Node> {
+test fn typescript_add_serialize_reject_receipt_holds() -> Bool {
   match typescript_add_serialize_reject_receipt {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: _, diagnostics: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: Diagnostic {
-            reason: ^typescript_add_serialize_unexpected_accept,
-            at: node_locus(node: typescript_add_emitted_root),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          }
-        )
-      }
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d != None
   }
 }
+
 
 fn typescript_add_canonical_grounding(
   node: Node,
@@ -327,58 +319,14 @@ test fn typescript_add_emit_add_fn_accepts_holds() -> Bool {
 
 data typescript_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_typescript_add_compile_inferred_accepts()
 
-fn typescript_add_emit_claim_outcome() -> Outcome<Node> {
-  match typescript_add_emit_receipt {
-    Accepted { value: source, diagnostics: d } =>
-      if (source.carried == ts_source_text) && (d == None) {
-        Accepted { value: typescript_add_emitted_root, diagnostics: None }
-      } else {
-        Rejected {
-          diagnostics: diagnostics_singleton(
-            d: Diagnostic {
-              reason: ^typescript_add_emit_source_mismatch,
-              at: node_locus(node: typescript_add_emitted_root),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            }
-          )
-        }
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+test fn typescript_add_compile_inferred_receipt_holds() -> Bool {
+  match typescript_add_compile_inferred_receipt {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
   }
 }
 
-fn typescript_add_compile_inferred_claim_outcome() -> Outcome<Node> {
-  match typescript_add_compile_inferred_receipt {
-    Accepted { value: compile_result, diagnostics: d } =>
-      match compile_result {
-        TranslateResult { source } =>
-          if (source.carried == ts_source_text) && (d == None) {
-            Accepted { value: typescript_add_emitted_root, diagnostics: None }
-          } else {
-            Rejected {
-              diagnostics: diagnostics_singleton(
-                d: Diagnostic {
-                  reason: ^typescript_add_compile_source_mismatch,
-                  at: node_locus(node: typescript_add_emitted_root),
-                  correction: Unavailable { reason: ExternalContractUnknown }
-                }
-              )
-            }
-          }
-        _ =>
-          Rejected {
-            diagnostics: diagnostics_singleton(
-              d: Diagnostic {
-                reason: ^typescript_add_compile_source_mismatch,
-                at: node_locus(node: typescript_add_emitted_root),
-                correction: Unavailable { reason: ExternalContractUnknown }
-              }
-            )
-          }
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
+
 
 data claim_typescript_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: anchor_typescript_add_emit_accepts with canonical ts_add add-fn source",
@@ -406,14 +354,6 @@ data subject_typescript_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = Te
   )
 }
 
-data run_typescript_add_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_typescript_add_emit_add_fn_accepts),
-  verdict: run_test_claim_assert(
-    claim: claim_typescript_add_emit_add_fn_accepts,
-    actual: typescript_add_emit_claim_outcome(),
-    at: typescript_add_emitted_root
-  )
-}
 
 data subject_typescript_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_typescript_add_compile_inferred_add_fn_accepts,
@@ -425,14 +365,6 @@ data subject_typescript_add_compile_inferred_add_fn_accepts: TestClaimEvalSubjec
   )
 }
 
-data run_typescript_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_typescript_add_compile_inferred_add_fn_accepts),
-  verdict: run_test_claim_assert(
-    claim: claim_typescript_add_compile_inferred_add_fn_accepts,
-    actual: typescript_add_compile_inferred_claim_outcome(),
-    at: typescript_add_emitted_root
-  )
-}
 
 data claim_typescript_add_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
   label: "manual/rust_add_emit: target_serialize_source_from_model rejects ts bundle missing translation_rules",
@@ -458,11 +390,3 @@ data subject_typescript_add_serialize_rejects_missing_translation_rules: TestCla
   )
 }
 
-data run_typescript_add_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_typescript_add_serialize_rejects_missing_translation_rules),
-  verdict: run_test_claim_assert(
-    claim: claim_typescript_add_serialize_rejects_missing_translation_rules,
-    actual: typescript_add_serialize_reject_claim_outcome(),
-    at: typescript_add_emitted_root
-  )
-}

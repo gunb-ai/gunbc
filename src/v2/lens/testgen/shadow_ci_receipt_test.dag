@@ -30,7 +30,7 @@ fn lens_testgen_shadow_ci_marker_node(marker: Symbol) -> Node {
 }
 }
 
-fn lens_testgen_shadow_ci_run_receipt_holds() -> Bool {
+test fn lens_testgen_shadow_ci_run_receipt_holds() -> Bool {
   match testgen_run_receipt_outcome(profile_ref: ^testgen_default_profile_ref) {
     Accepted { value: receipt, diagnostics: _ } =>
       testgen_run_receipt_carries_profile_roster(receipt: receipt)
@@ -38,20 +38,6 @@ fn lens_testgen_shadow_ci_run_receipt_holds() -> Bool {
   }
 }
 
-fn lens_testgen_shadow_ci_rhs() -> Node {
-  if lens_testgen_shadow_ci_run_receipt_holds() {
-    lens_testgen_shadow_ci_marker_node(marker: ^lens_testgen_shadow_ci_ok)
-  } else {
-    lens_testgen_shadow_ci_marker_node(marker: ^lens_testgen_shadow_ci_failed)
-  }
-}
 
-data claim_lens_testgen_shadow_ci_run_receipt: TestClaim = EqualsClaim {
-  label: "lens_testgen/shadow_ci_receipt: TestgenRunReceipt carries profile-selected scheduled generators",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: lens_testgen_shadow_ci_marker_node(marker: ^lens_testgen_shadow_ci_ok),
-  rhs: lens_testgen_shadow_ci_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
 
-test data witness_lens_testgen_shadow_ci_run_receipt_green: Bool = lens_testgen_shadow_ci_run_receipt_holds()
+data witness_lens_testgen_shadow_ci_run_receipt_green: Bool = lens_testgen_shadow_ci_run_receipt_holds()

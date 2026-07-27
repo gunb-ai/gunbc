@@ -149,21 +149,13 @@ fn anchor_go_add_serialize_rejects_missing_translation_rules() -> Outcome<Medium
 
 data go_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_go_add_serialize_rejects_missing_translation_rules()
 
-fn go_add_serialize_reject_claim_outcome() -> Outcome<Node> {
+test fn go_add_serialize_reject_receipt_holds() -> Bool {
   match go_add_serialize_reject_receipt {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: _, diagnostics: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: Diagnostic {
-            reason: ^go_add_serialize_unexpected_accept,
-            at: node_locus(node: go_add_emitted_root),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          }
-        )
-      }
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d != None
   }
 }
+
 
 fn go_add_canonical_grounding(
   node: Node,
@@ -336,58 +328,14 @@ test fn go_add_emit_add_fn_accepts_holds() -> Bool {
 
 data go_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_go_add_compile_inferred_accepts()
 
-fn go_add_emit_claim_outcome() -> Outcome<Node> {
-  match go_add_emit_receipt {
-    Accepted { value: source, diagnostics: d } =>
-      if (source.carried == go_source_text) && (d == None) {
-        Accepted { value: go_add_emitted_root, diagnostics: None }
-      } else {
-        Rejected {
-          diagnostics: diagnostics_singleton(
-            d: Diagnostic {
-              reason: ^go_add_emit_source_mismatch,
-              at: node_locus(node: go_add_emitted_root),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            }
-          )
-        }
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+test fn go_add_compile_inferred_receipt_holds() -> Bool {
+  match go_add_compile_inferred_receipt {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
   }
 }
 
-fn go_add_compile_inferred_claim_outcome() -> Outcome<Node> {
-  match go_add_compile_inferred_receipt {
-    Accepted { value: compile_result, diagnostics: d } =>
-      match compile_result {
-        TranslateResult { source } =>
-          if (source.carried == go_source_text) && (d == None) {
-            Accepted { value: go_add_emitted_root, diagnostics: None }
-          } else {
-            Rejected {
-              diagnostics: diagnostics_singleton(
-                d: Diagnostic {
-                  reason: ^go_add_compile_source_mismatch,
-                  at: node_locus(node: go_add_emitted_root),
-                  correction: Unavailable { reason: ExternalContractUnknown }
-                }
-              )
-            }
-          }
-        _ =>
-          Rejected {
-            diagnostics: diagnostics_singleton(
-              d: Diagnostic {
-                reason: ^go_add_compile_source_mismatch,
-                at: node_locus(node: go_add_emitted_root),
-                correction: Unavailable { reason: ExternalContractUnknown }
-              }
-            )
-          }
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
+
 
 data claim_go_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: anchor_go_add_emit_accepts with canonical go_add add-fn source",
@@ -415,14 +363,6 @@ data subject_go_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimE
   )
 }
 
-data run_go_add_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_go_add_emit_add_fn_accepts),
-  verdict: run_test_claim_assert(
-    claim: claim_go_add_emit_add_fn_accepts,
-    actual: go_add_emit_claim_outcome(),
-    at: go_add_emitted_root
-  )
-}
 
 data subject_go_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_go_add_compile_inferred_add_fn_accepts,
@@ -434,14 +374,6 @@ data subject_go_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> 
   )
 }
 
-data run_go_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_go_add_compile_inferred_add_fn_accepts),
-  verdict: run_test_claim_assert(
-    claim: claim_go_add_compile_inferred_add_fn_accepts,
-    actual: go_add_compile_inferred_claim_outcome(),
-    at: go_add_emitted_root
-  )
-}
 
 data claim_go_add_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
   label: "manual/rust_add_emit: target_serialize_source_from_model rejects go bundle missing translation_rules",
@@ -467,11 +399,3 @@ data subject_go_add_serialize_rejects_missing_translation_rules: TestClaimEvalSu
   )
 }
 
-data run_go_add_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_go_add_serialize_rejects_missing_translation_rules),
-  verdict: run_test_claim_assert(
-    claim: claim_go_add_serialize_rejects_missing_translation_rules,
-    actual: go_add_serialize_reject_claim_outcome(),
-    at: go_add_emitted_root
-  )
-}

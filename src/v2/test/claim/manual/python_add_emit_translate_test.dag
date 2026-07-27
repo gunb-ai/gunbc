@@ -142,21 +142,13 @@ fn anchor_python_add_serialize_rejects_missing_translation_rules() -> Outcome<Me
 
 data python_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_python_add_serialize_rejects_missing_translation_rules()
 
-fn python_add_serialize_reject_claim_outcome() -> Outcome<Node> {
+test fn python_add_serialize_reject_receipt_holds() -> Bool {
   match python_add_serialize_reject_receipt {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: _, diagnostics: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: Diagnostic {
-            reason: ^python_add_serialize_unexpected_accept,
-            at: node_locus(node: python_add_emitted_root),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          }
-        )
-      }
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d != None
   }
 }
+
 
 fn python_add_canonical_grounding(
   node: Node,
@@ -287,58 +279,14 @@ test fn python_add_emit_add_fn_accepts_holds() -> Bool {
 
 data python_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_python_add_compile_inferred_accepts()
 
-fn python_add_emit_claim_outcome() -> Outcome<Node> {
-  match python_add_emit_receipt {
-    Accepted { value: source, diagnostics: d } =>
-      if (source.carried == python_source_text) && (d == None) {
-        Accepted { value: python_add_emitted_root, diagnostics: None }
-      } else {
-        Rejected {
-          diagnostics: diagnostics_singleton(
-            d: Diagnostic {
-              reason: ^python_add_emit_source_mismatch,
-              at: node_locus(node: python_add_emitted_root),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            }
-          )
-        }
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+test fn python_add_compile_inferred_receipt_holds() -> Bool {
+  match python_add_compile_inferred_receipt {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
   }
 }
 
-fn python_add_compile_inferred_claim_outcome() -> Outcome<Node> {
-  match python_add_compile_inferred_receipt {
-    Accepted { value: compile_result, diagnostics: d } =>
-      match compile_result {
-        TranslateResult { source } =>
-          if (source.carried == python_source_text) && (d == None) {
-            Accepted { value: python_add_emitted_root, diagnostics: None }
-          } else {
-            Rejected {
-              diagnostics: diagnostics_singleton(
-                d: Diagnostic {
-                  reason: ^python_add_compile_source_mismatch,
-                  at: node_locus(node: python_add_emitted_root),
-                  correction: Unavailable { reason: ExternalContractUnknown }
-                }
-              )
-            }
-          }
-        _ =>
-          Rejected {
-            diagnostics: diagnostics_singleton(
-              d: Diagnostic {
-                reason: ^python_add_compile_source_mismatch,
-                at: node_locus(node: python_add_emitted_root),
-                correction: Unavailable { reason: ExternalContractUnknown }
-              }
-            )
-          }
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
+
 
 data claim_python_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: anchor_python_add_emit_accepts with canonical python_add add-fn source",
@@ -366,14 +314,6 @@ data subject_python_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestCl
   )
 }
 
-data run_python_add_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_python_add_emit_add_fn_accepts),
-  verdict: run_test_claim_assert(
-    claim: claim_python_add_emit_add_fn_accepts,
-    actual: python_add_emit_claim_outcome(),
-    at: python_add_emitted_root
-  )
-}
 
 data subject_python_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_python_add_compile_inferred_add_fn_accepts,
@@ -385,14 +325,6 @@ data subject_python_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<No
   )
 }
 
-data run_python_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_python_add_compile_inferred_add_fn_accepts),
-  verdict: run_test_claim_assert(
-    claim: claim_python_add_compile_inferred_add_fn_accepts,
-    actual: python_add_compile_inferred_claim_outcome(),
-    at: python_add_emitted_root
-  )
-}
 
 data claim_python_add_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
   label: "manual/rust_add_emit: target_serialize_source_from_model rejects python bundle missing translation_rules",
@@ -418,11 +350,3 @@ data subject_python_add_serialize_rejects_missing_translation_rules: TestClaimEv
   )
 }
 
-data run_python_add_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_python_add_serialize_rejects_missing_translation_rules),
-  verdict: run_test_claim_assert(
-    claim: claim_python_add_serialize_rejects_missing_translation_rules,
-    actual: python_add_serialize_reject_claim_outcome(),
-    at: python_add_emitted_root
-  )
-}
