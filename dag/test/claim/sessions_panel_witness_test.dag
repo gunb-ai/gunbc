@@ -74,6 +74,16 @@ test fn sessions_client_reobserves_after_dispatch_and_on_cadence() -> Bool {
     && string_contains(s: js, pattern: "3000")
 }
 
+test fn sessions_client_serializes_each_observation_source() -> Bool {
+  let js = dispatch_client_js_source()
+  return string_contains(s: js, pattern: "let gunbcSessionsObservationInFlight = false")
+    && string_contains(s: js, pattern: "let gunbcAttemptsObservationInFlight = false")
+    && string_contains(s: js, pattern: "if (gunbcSessionsObservationInFlight)")
+    && string_contains(s: js, pattern: "gunbcSessionsObservationPending = true")
+    && string_contains(s: js, pattern: "if (gunbcAttemptsObservationInFlight)")
+    && string_contains(s: js, pattern: "gunbcAttemptsObservationPending = true")
+}
+
 test fn sessions_banner_is_styled_loud() -> Bool {
   return string_contains(s: roadmap_css(), pattern: ".observe-refused { font-size: var(--text-12); color: var(--text); border-left: var(--border-2) solid var(--band-loud); padding-left: var(--space-6); margin: var(--space-4) var(--space-0) var(--space-8); font-family: var(--font-mono) }")
 }
