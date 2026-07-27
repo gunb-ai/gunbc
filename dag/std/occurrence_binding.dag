@@ -1,6 +1,11 @@
 module std.occurrence_binding
 
 import std.algebra { FreeMonoid }
+import std.types { String }
+
+data occurrence_binding_staged_adoption_scaffold_note: String = "STAGED ADOPTION: v1 and v2 execute over distinct Node algebras, so their shared occurrence-binding semantics must land here before either concrete Node instantiation. The next consumers are #7306/P1's fresh-successor v1 declaration-backed resolver instantiation, followed by the v2 resolver instantiation and its DependencyView BindsTo projection. LexicalLookup is not an interim consumer: it has no exact reference-occurrence Node or occurrence containment identity, so binding it here would fabricate the relation this carrier preserves."
+
+data occurrence_binding_staged_adoption_dissolve_on: String = "DISSOLVE-ON: both production resolver paths consume OccurrenceBindingResult by execution — v1 emits declaration-backed occurrence bindings, and v2 emits the same result and derives DependencyView BindsTo from OccurrenceBound — then delete this staged-adoption scaffold note and this dissolution row."
 
 type ContainmentPath<N> = FreeMonoid<N>
 
