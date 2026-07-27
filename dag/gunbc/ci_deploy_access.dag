@@ -86,13 +86,6 @@ fn deploy_access_apt_get_privileged_command() -> PrivilegedCommand {
   PrivilegedCommand { path: deploy_access_apt_get_binary_path, check: "--help" }
 }
 
-fn deploy_access_sudo_n_apt_get_install_command(package: NonEmptyStr) -> String {
-  concat(
-    concat(concat("sudo -n ", deploy_access_apt_get_binary_path as String), " install -y "),
-    package as String
-  )
-}
-
 fn posix_sudo_grant_to_privileged(g: PosixSudoGrant) -> PrivilegedCommand {
   PrivilegedCommand { path: g.command_path, check: g.check_argv }
 }
