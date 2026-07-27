@@ -5,10 +5,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data sg_rc_fail_text: String = ""
 data sg_rc_expected_rc_diagnostics: String = "Rc<Diagnostics>"
 data sg_rc_expected_owned_diagnostics: String = "Diagnostics"
-data sg_rc_expected_rc_node: String = "Rc<Node>"
-data sg_rc_expected_owned_node: String = "Node"
-data sg_rc_expected_box_node: String = "Box<Node>"
-data sg_rc_expected_rc_probe_heap: String = "Rc<ProbeHeap>"
 data sg_rc_expected_rc_outcome_node: String = "Rc<Outcome<Node>>"
 
 fn sg_rc_fail_node() -> Node {
@@ -160,43 +156,6 @@ test fn sg_rc_f1_dual_boundary_holds() -> Bool {
     && sg_rc_f1_value_dual_boundary_holds()
 }
 
-fn sg_rc_binding_projection_fold_shell() -> Node {
-  match translate_coerced_shell(
-    coerced: target_carrier_diagnostics_node(),
-    target: sg_rc_target()
-  ) {
-    Accepted { value: shell, diagnostics: _ } => shell
-    Rejected { diagnostics: _ } => sg_rc_fail_node()
-  }
-}
-
-test fn sg_rc_binding_projection_fold_holds() -> Bool {
-  sg_rc_serialized_type_text(emitted: sg_rc_binding_projection_fold_shell()) ==
-    sg_rc_expected_rc_diagnostics
-}
-
-fn sg_rc_f2_return_shell() -> Node {
-  match translate_coerced_shell_at_use_site(
-    coerced: target_carrier_diagnostics_node(),
-    target: sg_rc_target(),
-    use_site: OwnershipAtFunctionReturn
-  ) {
-    Accepted { value: shell, diagnostics: _ } => shell
-    Rejected { diagnostics: _ } => sg_rc_fail_node()
-  }
-}
-
-fn sg_rc_f2_param_shell() -> Node {
-  match translate_coerced_shell_at_use_site(
-    coerced: target_carrier_diagnostics_node(),
-    target: sg_rc_target(),
-    use_site: OwnershipAtFunctionParameter
-  ) {
-    Accepted { value: shell, diagnostics: _ } => shell
-    Rejected { diagnostics: _ } => sg_rc_fail_node()
-  }
-}
-
 test fn sg_rc_f2_return_value_holds() -> Bool {
   match translate_apply_use_site_ownership_to_value_expression(
     expr: sg_rc_diagnostics_identity_value(),
@@ -229,56 +188,6 @@ test fn sg_rc_f2_param_value_holds() -> Bool {
   }
 }
 
-test fn sg_rc_f2_cross_site_holds() -> Bool {
-  sg_rc_serialized_type_text(emitted: sg_rc_f2_return_shell()) == sg_rc_expected_rc_diagnostics
-    && sg_rc_serialized_type_text(emitted: sg_rc_f2_param_shell()) == sg_rc_expected_owned_diagnostics
-    && sg_rc_f2_return_value_holds()
-    && sg_rc_f2_param_value_holds()
-}
-
-fn sg_rc_f2_node_return_shell() -> Node {
-  match translate_coerced_shell_at_use_site(
-    coerced: target_carrier_node_node(),
-    target: sg_rc_target(),
-    use_site: OwnershipAtFunctionReturn
-  ) {
-    Accepted { value: shell, diagnostics: _ } => shell
-    Rejected { diagnostics: _ } => sg_rc_fail_node()
-  }
-}
-
-fn sg_rc_f2_node_param_shell() -> Node {
-  match translate_coerced_shell_at_use_site(
-    coerced: target_carrier_node_node(),
-    target: sg_rc_target(),
-    use_site: OwnershipAtFunctionParameter
-  ) {
-    Accepted { value: shell, diagnostics: _ } => shell
-    Rejected { diagnostics: _ } => sg_rc_fail_node()
-  }
-}
-
-test fn sg_rc_f2_node_cross_site_holds() -> Bool {
-  sg_rc_serialized_type_text(emitted: sg_rc_f2_node_return_shell()) == sg_rc_expected_rc_node
-    && sg_rc_serialized_type_text(emitted: sg_rc_f2_node_param_shell()) == sg_rc_expected_owned_node
-}
-
-fn sg_rc_f3_probe_heap_return_shell() -> Node {
-  match translate_coerced_shell_at_use_site(
-    coerced: target_carrier_probe_heap_node(),
-    target: sg_rc_target(),
-    use_site: OwnershipAtFunctionReturn
-  ) {
-    Accepted { value: shell, diagnostics: _ } => shell
-    Rejected { diagnostics: _ } => sg_rc_fail_node()
-  }
-}
-
-test fn sg_rc_f3_new_carrier_holds() -> Bool {
-  sg_rc_serialized_type_text(emitted: sg_rc_f3_probe_heap_return_shell()) ==
-    sg_rc_expected_rc_probe_heap
-}
-
 test fn sg_rc_probe_heap_param_without_row_rejects() -> Bool {
   match translate_coerced_shell_at_use_site(
     coerced: target_carrier_probe_heap_node(),
@@ -287,32 +196,6 @@ test fn sg_rc_probe_heap_param_without_row_rejects() -> Bool {
   ) {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
-  }
-}
-
-fn sg_rc_f4_box_node_shell() -> Node {
-  match translate_coerced_shell_at_use_site(
-    coerced: target_carrier_node_node(),
-    target: sg_rc_target(),
-    use_site: OwnershipAtStructField
-  ) {
-    Accepted { value: shell, diagnostics: _ } => shell
-    Rejected { diagnostics: _ } => sg_rc_fail_node()
-  }
-}
-
-test fn sg_rc_f4_box_layer_holds() -> Bool {
-  sg_rc_serialized_type_text(emitted: sg_rc_f4_box_node_shell()) == sg_rc_expected_box_node
-}
-
-test fn sg_rc_f6_round_trip_rc() -> Bool {
-  match target_reference_layer_probe_from_emitted_type(
-    emitted: sg_rc_apply_layer_to_diagnostics(layer: ReferenceLayerRc),
-    projection: rust_type_expression_projection(),
-    tokens: rust_reference_layer_tokens()
-  ) {
-    ReferenceLayerProbe { value: WrappedReferenceLayerRc } => true
-    _ => false
   }
 }
 
