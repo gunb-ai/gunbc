@@ -99,6 +99,13 @@ test fn sessions_refusal_withdraws_prior_presence() -> Bool {
     && string_contains(s: js, pattern: ".catch(")
 }
 
+test fn attempts_refusal_withdraws_prior_rows() -> Bool {
+  let js = dispatch_client_js_source()
+  return count(split(s: js, delimiter: ".dispatch-attempts")) == 4
+    && string_contains(s: js, pattern: "aj.attempts_refused")
+    && string_contains(s: js, pattern: "staleAttempts.remove()")
+}
+
 test fn sessions_banner_is_styled_loud() -> Bool {
   return string_contains(s: roadmap_css(), pattern: ".observe-refused { font-size: var(--text-12); color: var(--text); border-left: var(--border-2) solid var(--band-loud); padding-left: var(--space-6); margin: var(--space-4) var(--space-0) var(--space-8); font-family: var(--font-mono) }")
 }
