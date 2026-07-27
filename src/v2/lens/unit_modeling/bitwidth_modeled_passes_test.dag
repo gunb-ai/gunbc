@@ -62,7 +62,7 @@ fn bitwidth_modeled_passes_rhs() -> Node {
   }
 }
 
-test data claim_bitwidth_modeled_passes: TestClaim = EqualsClaim {
+data claim_bitwidth_modeled_passes: TestClaim = EqualsClaim {
   label: "lens_unit_modeling/bitwidth_pass: pointer_width attached to BitWidth carrier is accepted",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: bitwidth_modeled_input,

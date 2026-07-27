@@ -369,7 +369,7 @@ test fn sg_rc_value_rc_wrap_tagged() -> Bool {
   }
 }
 
-test data claim_sg_rc_f1_dual_boundary: TestClaim = EqualsClaim {
+data claim_sg_rc_f1_dual_boundary: TestClaim = EqualsClaim {
   label: "manual/sg-rc: Diagnostics Rc vs owned type + value expr move together (F1)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg_rc_claim_input(ok: sg_rc_f1_dual_boundary_holds()),
@@ -377,7 +377,7 @@ test data claim_sg_rc_f1_dual_boundary: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-test data claim_sg_rc_binding_projection_fold: TestClaim = EqualsClaim {
+data claim_sg_rc_binding_projection_fold: TestClaim = EqualsClaim {
   label: "manual/sg-rc: default translate_coerced_shell applies binding-projection Rc row (P-RC-CONSUMER)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg_rc_claim_input(ok: sg_rc_binding_projection_fold_holds()),
@@ -385,7 +385,7 @@ test data claim_sg_rc_binding_projection_fold: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-test data claim_sg_rc_outcome_inner_sg2_args_preserved: TestClaim = EqualsClaim {
+data claim_sg_rc_outcome_inner_sg2_args_preserved: TestClaim = EqualsClaim {
   label: "manual/sg-rc: Outcome<T> return wraps SG-2-projected inner type as Rc<Outcome<T>>",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg_rc_claim_input(ok: sg_rc_outcome_inner_sg2_args_preserved()),
@@ -393,7 +393,7 @@ test data claim_sg_rc_outcome_inner_sg2_args_preserved: TestClaim = EqualsClaim 
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-test data claim_sg_rc_f2_cross_site: TestClaim = EqualsClaim {
+data claim_sg_rc_f2_cross_site: TestClaim = EqualsClaim {
   label: "manual/sg-rc: Diagnostics return Rc and parameter owned (F2)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg_rc_claim_input(ok: sg_rc_f2_cross_site_holds()),
@@ -401,7 +401,7 @@ test data claim_sg_rc_f2_cross_site: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-test data claim_sg_rc_f2_node_cross_site: TestClaim = EqualsClaim {
+data claim_sg_rc_f2_node_cross_site: TestClaim = EqualsClaim {
   label: "manual/sg-rc: Node return Rc and parameter owned (P0 F2)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg_rc_claim_input(ok: sg_rc_f2_node_cross_site_holds()),
@@ -409,7 +409,7 @@ test data claim_sg_rc_f2_node_cross_site: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-test data claim_sg_rc_f3_probe_heap: TestClaim = EqualsClaim {
+data claim_sg_rc_f3_probe_heap: TestClaim = EqualsClaim {
   label: "manual/sg-rc: ProbeHeap return Rc without emitter name branch (F3)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg_rc_claim_input(ok: sg_rc_f3_new_carrier_holds()),
@@ -417,7 +417,7 @@ test data claim_sg_rc_f3_probe_heap: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-test data claim_sg_rc_lookup_miss_fail_closed: TestClaim = EqualsClaim {
+data claim_sg_rc_lookup_miss_fail_closed: TestClaim = EqualsClaim {
   label: "manual/sg-rc: missing use_site row rejects under SG-RC-ready bundle (fail-closed)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg_rc_claim_input(ok: sg_rc_probe_heap_param_without_row_rejects()),
@@ -425,7 +425,7 @@ test data claim_sg_rc_lookup_miss_fail_closed: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-test data claim_sg_rc_f4_box_layer: TestClaim = EqualsClaim {
+data claim_sg_rc_f4_box_layer: TestClaim = EqualsClaim {
   label: "manual/sg-rc: Node struct-field Box layer (F4)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg_rc_claim_input(ok: sg_rc_f4_box_layer_holds()),
@@ -433,7 +433,7 @@ test data claim_sg_rc_f4_box_layer: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-test data claim_sg_rc_f6_bidir: TestClaim = EqualsClaim {
+data claim_sg_rc_f6_bidir: TestClaim = EqualsClaim {
   label: "manual/sg-rc: emitted type wire decodes reference_layer (F6)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg_rc_claim_input(ok: sg_rc_f6_round_trip_rc() && sg_rc_f6_round_trip_owned()),
@@ -441,7 +441,7 @@ test data claim_sg_rc_f6_bidir: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-test data claim_sg_rc_value_coupling: TestClaim = EqualsClaim {
+data claim_sg_rc_value_coupling: TestClaim = EqualsClaim {
   label: "manual/sg-rc: translate value path matches catalog-driven Rc wrapper node (P-RC-BIDIR)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg_rc_claim_input(ok: sg_rc_value_rc_wrap_tagged()),
@@ -449,7 +449,7 @@ test data claim_sg_rc_value_coupling: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-test data claim_sg_rc_ctor_spellings: TestClaim = EqualsClaim {
+data claim_sg_rc_ctor_spellings: TestClaim = EqualsClaim {
   label: "manual/sg-rc: Rc::new / Box::new binding_spellings on rust_sg2 map (§3)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg_rc_claim_input(ok: sg_rc_ctor_spellings_in_binding_map()),

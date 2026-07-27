@@ -145,7 +145,7 @@ fn anchor_typescript_add_serialize_rejects_missing_translation_rules() -> Outcom
   )
 }
 
-test data typescript_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_typescript_add_serialize_rejects_missing_translation_rules()
+data typescript_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_typescript_add_serialize_rejects_missing_translation_rules()
 
 fn typescript_add_serialize_reject_claim_outcome() -> Outcome<Node> {
   match typescript_add_serialize_reject_receipt {
@@ -315,7 +315,7 @@ fn anchor_typescript_add_compile_inferred_accepts() -> Outcome<CompileOutput> {
   )
 }
 
-test data typescript_add_emit_receipt: Outcome<Medium<String>> = anchor_typescript_add_emit_accepts()
+data typescript_add_emit_receipt: Outcome<Medium<String>> = anchor_typescript_add_emit_accepts()
 
 test fn typescript_add_emit_add_fn_accepts_holds() -> Bool {
   match typescript_add_emit_receipt {
@@ -325,7 +325,7 @@ test fn typescript_add_emit_add_fn_accepts_holds() -> Bool {
   }
 }
 
-test data typescript_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_typescript_add_compile_inferred_accepts()
+data typescript_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_typescript_add_compile_inferred_accepts()
 
 fn typescript_add_emit_claim_outcome() -> Outcome<Node> {
   match typescript_add_emit_receipt {
@@ -380,7 +380,7 @@ fn typescript_add_compile_inferred_claim_outcome() -> Outcome<Node> {
   }
 }
 
-test data claim_typescript_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
+data claim_typescript_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: anchor_typescript_add_emit_accepts with canonical ts_add add-fn source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: typescript_add_emitted_root,
@@ -388,7 +388,7 @@ test data claim_typescript_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data claim_typescript_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
+data claim_typescript_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/typescript_add G1: compile_inferred emits canonical ts_add add-fn source through grammar inverse production ts_production_fn_add",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: typescript_add_emitted_root,
@@ -406,7 +406,7 @@ data subject_typescript_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = Te
   )
 }
 
-test data run_typescript_add_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+data run_typescript_add_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_typescript_add_emit_add_fn_accepts),
   verdict: run_test_claim_assert(
     claim: claim_typescript_add_emit_add_fn_accepts,
@@ -425,7 +425,7 @@ data subject_typescript_add_compile_inferred_add_fn_accepts: TestClaimEvalSubjec
   )
 }
 
-test data run_typescript_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+data run_typescript_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_typescript_add_compile_inferred_add_fn_accepts),
   verdict: run_test_claim_assert(
     claim: claim_typescript_add_compile_inferred_add_fn_accepts,
@@ -434,7 +434,7 @@ test data run_typescript_add_compile_inferred_add_fn_accepts: TestClaimRun<Node,
   )
 }
 
-test data claim_typescript_add_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
+data claim_typescript_add_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
   label: "manual/rust_add_emit: target_serialize_source_from_model rejects ts bundle missing translation_rules",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: typescript_add_emitted_root,
@@ -458,7 +458,7 @@ data subject_typescript_add_serialize_rejects_missing_translation_rules: TestCla
   )
 }
 
-test data run_typescript_add_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
+data run_typescript_add_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_typescript_add_serialize_rejects_missing_translation_rules),
   verdict: run_test_claim_assert(
     claim: claim_typescript_add_serialize_rejects_missing_translation_rules,

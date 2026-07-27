@@ -77,7 +77,7 @@ data ci_runner_conj_wrapped_touched_node: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-test data ci_runner_claim_untouched: TestClaim = EqualsClaim {
+data ci_runner_claim_untouched: TestClaim = EqualsClaim {
   label: "workflow/affected_set_ci_runner: untouched claim input",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ci_runner_untouched_node,
@@ -85,7 +85,7 @@ test data ci_runner_claim_untouched: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data ci_runner_claim_touched: TestClaim = EqualsClaim {
+data ci_runner_claim_touched: TestClaim = EqualsClaim {
   label: "workflow/affected_set_ci_runner: touched claim input",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ci_runner_touched_node,
@@ -93,7 +93,7 @@ test data ci_runner_claim_touched: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data ci_runner_claim_other: TestClaim = EqualsClaim {
+data ci_runner_claim_other: TestClaim = EqualsClaim {
   label: "workflow/affected_set_ci_runner: other claim input",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ci_runner_other_node,
@@ -180,7 +180,7 @@ fn ci_runner_fail_closed_superset_rhs() -> Node {
   }
 }
 
-test data ci_runner_narrow_selection_claim: TestClaim = EqualsClaim {
+data ci_runner_narrow_selection_claim: TestClaim = EqualsClaim {
   label: "workflow/affected_set_ci_runner: RerunNodeSet narrows TestClaim roster to touched input",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ci_runner_touched_node,
@@ -188,7 +188,7 @@ test data ci_runner_narrow_selection_claim: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data ci_runner_fail_closed_superset_claim: TestClaim = EqualsClaim {
+data ci_runner_fail_closed_superset_claim: TestClaim = EqualsClaim {
   label: "workflow/affected_set_ci_runner: fail-closed affected-set selects full roster",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ci_runner_untouched_node,
@@ -196,7 +196,7 @@ test data ci_runner_fail_closed_superset_claim: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data ci_runner_claim_shape_a: TestClaim = EqualsClaim {
+data ci_runner_claim_shape_a: TestClaim = EqualsClaim {
   label: "workflow/affected_set_ci_runner: shape-a atom claim",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ci_runner_shape_a_node,
@@ -204,7 +204,7 @@ test data ci_runner_claim_shape_a: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data ci_runner_claim_shape_b: TestClaim = EqualsClaim {
+data ci_runner_claim_shape_b: TestClaim = EqualsClaim {
   label: "workflow/affected_set_ci_runner: shape-b atom claim (same shape, different Symbol)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ci_runner_shape_b_node,
@@ -246,7 +246,7 @@ fn ci_runner_shape_collision_rhs() -> Node {
   }
 }
 
-test data ci_runner_shape_collision_claim: TestClaim = EqualsClaim {
+data ci_runner_shape_collision_claim: TestClaim = EqualsClaim {
   label: "workflow/affected_set_ci_runner: shared Atom shape does not false-positive second claim",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ci_runner_shape_a_node,
@@ -254,7 +254,7 @@ test data ci_runner_shape_collision_claim: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data ci_runner_claim_conj_wrapped: TestClaim = EqualsClaim {
+data ci_runner_claim_conj_wrapped: TestClaim = EqualsClaim {
   label: "workflow/affected_set_ci_runner: inner frontier atom inside Conj lhs",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ci_runner_conj_wrapped_touched_node,
@@ -372,7 +372,7 @@ fn ci_runner_inner_frontier_rhs() -> Node {
   }
 }
 
-test data ci_runner_inner_frontier_claim: TestClaim = EqualsClaim {
+data ci_runner_inner_frontier_claim: TestClaim = EqualsClaim {
   label: "workflow/affected_set_ci_runner: dependent inner atom matches Conj-wrapped lhs",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ci_runner_touched_node,

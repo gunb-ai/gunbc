@@ -69,7 +69,7 @@ fn zm_bool_node(b: Bool) -> Node {
   }
 }
 
-test data claim_namespace_graft_metadata_predicate_exhaustive: TestClaim = EqualsClaim {
+data claim_namespace_graft_metadata_predicate_exhaustive: TestClaim = EqualsClaim {
   label: "namespace_graft: module-root metadata-edge predicate is header-only (no hidden doc/pragma arms)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: zm_bool_node(b: true),

@@ -140,7 +140,7 @@ fn anchor_python_add_serialize_rejects_missing_translation_rules() -> Outcome<Me
   )
 }
 
-test data python_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_python_add_serialize_rejects_missing_translation_rules()
+data python_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_python_add_serialize_rejects_missing_translation_rules()
 
 fn python_add_serialize_reject_claim_outcome() -> Outcome<Node> {
   match python_add_serialize_reject_receipt {
@@ -275,7 +275,7 @@ fn anchor_python_add_compile_inferred_accepts() -> Outcome<CompileOutput> {
   )
 }
 
-test data python_add_emit_receipt: Outcome<Medium<String>> = anchor_python_add_emit_accepts()
+data python_add_emit_receipt: Outcome<Medium<String>> = anchor_python_add_emit_accepts()
 
 test fn python_add_emit_add_fn_accepts_holds() -> Bool {
   match python_add_emit_receipt {
@@ -285,7 +285,7 @@ test fn python_add_emit_add_fn_accepts_holds() -> Bool {
   }
 }
 
-test data python_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_python_add_compile_inferred_accepts()
+data python_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_python_add_compile_inferred_accepts()
 
 fn python_add_emit_claim_outcome() -> Outcome<Node> {
   match python_add_emit_receipt {
@@ -340,7 +340,7 @@ fn python_add_compile_inferred_claim_outcome() -> Outcome<Node> {
   }
 }
 
-test data claim_python_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
+data claim_python_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: anchor_python_add_emit_accepts with canonical python_add add-fn source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: python_add_emitted_root,
@@ -348,7 +348,7 @@ test data claim_python_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data claim_python_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
+data claim_python_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: compile_inferred emits canonical python_add add-fn source through grammar inverse",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: python_add_emitted_root,
@@ -366,7 +366,7 @@ data subject_python_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestCl
   )
 }
 
-test data run_python_add_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+data run_python_add_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_python_add_emit_add_fn_accepts),
   verdict: run_test_claim_assert(
     claim: claim_python_add_emit_add_fn_accepts,
@@ -385,7 +385,7 @@ data subject_python_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<No
   )
 }
 
-test data run_python_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+data run_python_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_python_add_compile_inferred_add_fn_accepts),
   verdict: run_test_claim_assert(
     claim: claim_python_add_compile_inferred_add_fn_accepts,
@@ -394,7 +394,7 @@ test data run_python_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Nod
   )
 }
 
-test data claim_python_add_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
+data claim_python_add_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
   label: "manual/rust_add_emit: target_serialize_source_from_model rejects python bundle missing translation_rules",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: python_add_emitted_root,
@@ -418,7 +418,7 @@ data subject_python_add_serialize_rejects_missing_translation_rules: TestClaimEv
   )
 }
 
-test data run_python_add_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
+data run_python_add_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_python_add_serialize_rejects_missing_translation_rules),
   verdict: run_test_claim_assert(
     claim: claim_python_add_serialize_rejects_missing_translation_rules,

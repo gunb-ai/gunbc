@@ -282,7 +282,7 @@ fn distinct_witness_claim_input(ok: Bool) -> Node {
 fn distinct_witness_expected() -> Node {
   distinct_source_add_node()
 }
-test data claim_find_witness_distinct_node_zip_fold_compiles: TestClaim = CompilesClaim {
+data claim_find_witness_distinct_node_zip_fold_compiles: TestClaim = CompilesClaim {
   label: "manual/find_witness_distinct_node_zip_fold: distinct-node anchors compile",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: distinct_source_add_node(),
@@ -290,7 +290,7 @@ test data claim_find_witness_distinct_node_zip_fold_compiles: TestClaim = Compil
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data claim_find_witness_distinct_node_accepts: TestClaim = CompilesClaim {
+data claim_find_witness_distinct_node_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_distinct_node_zip_fold: distinct-node candidate accepts",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: distinct_witness_claim_input(ok: witness_find_witness_distinct_node_accepts),
@@ -298,7 +298,7 @@ test data claim_find_witness_distinct_node_accepts: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data claim_verify_witness_distinct_node_accepts: TestClaim = CompilesClaim {
+data claim_verify_witness_distinct_node_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_distinct_node_zip_fold: distinct-node witness verifies",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: distinct_witness_claim_input(ok: witness_verify_witness_distinct_node_accepts),
@@ -306,7 +306,7 @@ test data claim_verify_witness_distinct_node_accepts: TestClaim = CompilesClaim 
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data claim_find_witness_wrong_arity_rejects: TestClaim = CompilesClaim {
+data claim_find_witness_wrong_arity_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_distinct_node_zip_fold: wrong arity rejects",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: distinct_witness_claim_input(ok: witness_find_witness_wrong_arity_rejects),
@@ -314,7 +314,7 @@ test data claim_find_witness_wrong_arity_rejects: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data claim_find_witness_wrong_subtree_rejects: TestClaim = CompilesClaim {
+data claim_find_witness_wrong_subtree_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_distinct_node_zip_fold: same root arity wrong subtree rejects",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: distinct_witness_claim_input(ok: witness_find_witness_wrong_subtree_rejects),
@@ -322,7 +322,7 @@ test data claim_find_witness_wrong_subtree_rejects: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data claim_find_witness_nested_distinct_node_accepts: TestClaim = CompilesClaim {
+data claim_find_witness_nested_distinct_node_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_distinct_node_zip_fold: nested distinct-node candidate accepts",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: distinct_witness_claim_input(ok: witness_find_witness_nested_distinct_node_accepts),
@@ -330,7 +330,7 @@ test data claim_find_witness_nested_distinct_node_accepts: TestClaim = CompilesC
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data claim_coercion_fold_distinct_node_accepts: TestClaim = CompilesClaim {
+data claim_coercion_fold_distinct_node_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_distinct_node_zip_fold: coercion_fold returns Exact",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: distinct_witness_claim_input(ok: witness_coercion_fold_distinct_node_accepts),

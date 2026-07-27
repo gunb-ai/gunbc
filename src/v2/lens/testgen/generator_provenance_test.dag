@@ -34,7 +34,7 @@ fn lens_testgen_generator_provenance_rhs() -> Node {
   }
 }
 
-test data claim_lens_testgen_scheduled_generators_carry_provenance: TestClaim = EqualsClaim {
+data claim_lens_testgen_scheduled_generators_carry_provenance: TestClaim = EqualsClaim {
   label: "lens_testgen/generator_provenance: scheduled generators carry consistent provenance + profile metadata",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: lens_testgen_generator_provenance_marker_node(marker: ^lens_testgen_generator_provenance_ok),

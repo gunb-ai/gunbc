@@ -1007,4 +1007,19 @@ test fn umbrella_holds() -> Bool {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn corpus_orphan_list_tmp() {
+        // CORPUS_ORPHAN_LIST
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let ws = root.join("../../..").canonicalize().unwrap();
+        let entries: Vec<String> = ["src/v2/lens/affected_set/edit_locus_resolver_test.dag", "src/v2/lens/cost/atom_zero_test.dag", "src/v2/lens/coverage/hollow_type_defect_key_test.dag", "src/v2/lens/synthesis/polynomial_dominates_linear_test.dag", "src/v2/lens/testgen/dag_input_surface_test.dag", "src/v2/lens/testgen/generator_provenance_test.dag", "src/v2/lens/testgen/shadow_ci_receipt_test.dag", "src/v2/lens/unit_modeling/bitwidth_flat_scalar_flagged_test.dag", "src/v2/lens/unit_modeling/bitwidth_modeled_passes_test.dag", "src/v2/lens/unit_modeling/coordinate_index_not_flagged_test.dag", "src/v2/lens/unit_modeling/electrical_blocked_pending_flagged_test.dag", "src/v2/lens/unit_modeling/flat_scalar_unit_leaf_flagged_test.dag", "src/v2/lens/unit_modeling/label_version_not_flagged_test.dag", "src/v2/lens/unit_modeling/modeled_unit_field_admitted_via_always_required_lenses_test.dag", "src/v2/lens/unit_modeling/modeled_unit_field_passes_test.dag", "src/v2/lens/unit_modeling/novel_unit_flagged_test.dag", "src/v2/lens/unit_modeling/unit_modeling_blocked_via_always_required_lenses_test.dag", "src/v2/test/claim/grounding_typescript/sg_claims_test.dag", "src/v2/test/claim/manual/cross_language_add_python_to_typescript_test.dag", "src/v2/test/claim/manual/derivable_coercion_nickname_triple_test.dag", "src/v2/test/claim/manual/find_witness_distinct_node_zip_fold_test.dag", "src/v2/test/claim/manual/find_witness_identity_test.dag", "src/v2/test/claim/manual/go_add_emit_translate_test.dag", "src/v2/test/claim/manual/ingest_bridge_test.dag", "src/v2/test/claim/manual/int_cross_target_coercion_test.dag", "src/v2/test/claim/manual/python_add_emit_translate_test.dag", "src/v2/test/claim/manual/rust_add_emit_translate_test.dag", "src/v2/test/claim/manual/sg_rc_layering_test.dag", "src/v2/test/claim/manual/typescript_add_emit_translate_test.dag", "src/v2/test/claim/manual/typescript_pr3_typed_fn_translate_test.dag", "src/v2/test/claim/manual/typescript_record_task_translate_test.dag", "src/v2/test/claim/namespace_graft/zero_metadata_test.dag", "src/v2/workflow/affected_set_ci_runner_test.dag"]
+            .into_iter()
+            .map(|rel| ws.join(rel).to_string_lossy().into_owned())
+            .collect();
+        match check_orphan_helpers_in_entries(&entries) {
+            Ok(()) => println!("ORPHAN_COUNT=0"),
+            Err(e) => { println!("ORPHAN_ERR\n{e}"); panic!("still orphans"); }
+        }
+    }
 }

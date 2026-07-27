@@ -62,7 +62,7 @@ fn novel_unit_flagged_rhs() -> Node {
   }
 }
 
-test data claim_novel_unit_flagged: TestClaim = EqualsClaim {
+data claim_novel_unit_flagged: TestClaim = EqualsClaim {
   label: "lens_unit_modeling/novel: unrecognized unit throughput:Int is flagged (blocked-pending class)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: novel_unit_input,

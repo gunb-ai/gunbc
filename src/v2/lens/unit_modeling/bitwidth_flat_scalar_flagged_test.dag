@@ -62,7 +62,7 @@ fn bitwidth_flat_scalar_flagged_rhs() -> Node {
   }
 }
 
-test data claim_bitwidth_flat_scalar_flagged: TestClaim = EqualsClaim {
+data claim_bitwidth_flat_scalar_flagged: TestClaim = EqualsClaim {
   label: "lens_unit_modeling/bitwidth_flag: pointer_width typed bare Int is rejected",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: bitwidth_flat_scalar_input,

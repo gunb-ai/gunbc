@@ -118,7 +118,7 @@ data cross_target_coercion_expected_rejection: NonEmptyDiagnostics = NonEmptyDia
   tail: [cross_target_upstream_find_witness_rejection]
 }
 
-test data claim_cross_target_python_to_rust_i32_rejects: TestClaim = DiagnosticClaim {
+data claim_cross_target_python_to_rust_i32_rejects: TestClaim = DiagnosticClaim {
   label: "manual/int_cross_target: python unbounded int -> rust declared inhabitants rejects (no exact witness)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: python_int_inhabitant_node(),
@@ -148,7 +148,7 @@ fn cross_target_witness_claim_input(ok: Bool) -> Node {
   }
 }
 
-test data claim_int_cross_target_coercion_module_compiles: TestClaim = CompilesClaim {
+data claim_int_cross_target_coercion_module_compiles: TestClaim = CompilesClaim {
   label: "manual/int_cross_target: cross-target coercion safety anchors compile",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: python_int_inhabitant_node(),
@@ -156,7 +156,7 @@ test data claim_int_cross_target_coercion_module_compiles: TestClaim = CompilesC
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data claim_cross_target_python_to_rust_i32_rejects_compiles: TestClaim = CompilesClaim {
+data claim_cross_target_python_to_rust_i32_rejects_compiles: TestClaim = CompilesClaim {
   label: "manual/int_cross_target: python int -> rust i32 coercion_fold rejects coercion_mismatch_no_target",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: cross_target_witness_claim_input(ok: witness_cross_target_python_to_rust_i32_rejects),
@@ -222,7 +222,7 @@ fn cross_target_widening_witness_claim_input(ok: Bool) -> Node {
   }
 }
 
-test data claim_cross_target_rust_i32_to_python_int_accepts: TestClaim = CompilesClaim {
+data claim_cross_target_rust_i32_to_python_int_accepts: TestClaim = CompilesClaim {
   label: "manual/int_cross_target: rust i32 -> python int coercion_fold_refinement_widening accepts Widened",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: cross_target_widening_witness_claim_input(ok: witness_cross_target_rust_i32_to_python_int_accepts()),
@@ -254,7 +254,7 @@ data cross_target_narrowing_expected_rejection: NonEmptyDiagnostics = NonEmptyDi
   tail: [cross_target_upstream_find_witness_rejection]
 }
 
-test data claim_cross_target_python_to_rust_i32_would_lose_information: TestClaim = DiagnosticClaim {
+data claim_cross_target_python_to_rust_i32_would_lose_information: TestClaim = DiagnosticClaim {
   label: "manual/int_cross_target: python int -> rust i32 refinement reverse rejects WouldLoseInformation",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: python_int_inhabitant_node(),

@@ -62,7 +62,7 @@ fn flat_scalar_unit_leaf_flagged_rhs() -> Node {
   }
 }
 
-test data claim_flat_scalar_unit_leaf_flagged: TestClaim = EqualsClaim {
+data claim_flat_scalar_unit_leaf_flagged: TestClaim = EqualsClaim {
   label: "lens_unit_modeling/flag: ram_bytes typed bare Int is rejected (flat-scalar unit leaf)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: flat_scalar_unit_leaf_input,

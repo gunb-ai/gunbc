@@ -146,7 +146,7 @@ fn lens_testgen_dag_generator_surface_rhs() -> Node {
   }
 }
 
-test data claim_lens_testgen_schedules_dag_input_surface: TestClaim = EqualsClaim {
+data claim_lens_testgen_schedules_dag_input_surface: TestClaim = EqualsClaim {
   label: "lens_testgen/dag_input_surface: scheduled LBE generators include .dag input surface",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: lens_testgen_marker_node(marker: ^lens_testgen_dag_input_surface_ok),
@@ -154,7 +154,7 @@ test data claim_lens_testgen_schedules_dag_input_surface: TestClaim = EqualsClai
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data claim_lens_testgen_bootstrap_generator_reifies_dag_input_surface: TestClaim = EqualsClaim {
+data claim_lens_testgen_bootstrap_generator_reifies_dag_input_surface: TestClaim = EqualsClaim {
   label: "lens_testgen/dag_input_surface: bootstrap generator reifies .dag input surface",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: lens_testgen_marker_node(marker: ^lens_testgen_dag_generator_surface_ok),

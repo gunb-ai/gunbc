@@ -165,7 +165,7 @@ fn anchor_rust_add_serialize_rejects_missing_translation_rules() -> Outcome<Medi
   )
 }
 
-test data rust_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_rust_add_serialize_rejects_missing_translation_rules()
+data rust_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_rust_add_serialize_rejects_missing_translation_rules()
 
 fn rust_add_serialize_reject_claim_outcome() -> Outcome<Node> {
   match rust_add_serialize_reject_receipt {
@@ -374,7 +374,7 @@ fn anchor_rust_add_compile_inferred_accepts() -> Outcome<CompileOutput> {
   )
 }
 
-test data rust_add_emit_receipt: Outcome<Medium<String>> = anchor_rust_add_emit_accepts()
+data rust_add_emit_receipt: Outcome<Medium<String>> = anchor_rust_add_emit_accepts()
 
 test fn rust_add_emit_add_fn_accepts_holds() -> Bool {
   match rust_add_emit_receipt {
@@ -384,7 +384,7 @@ test fn rust_add_emit_add_fn_accepts_holds() -> Bool {
   }
 }
 
-test data rust_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_rust_add_compile_inferred_accepts()
+data rust_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_rust_add_compile_inferred_accepts()
 
 fn rust_add_emit_claim_outcome() -> Outcome<Node> {
   match rust_add_emit_receipt {
@@ -472,7 +472,7 @@ fn rust_add_coerce_grounded_node_exact_structural_claim_outcome() -> Outcome<Nod
   }
 }
 
-test data claim_rust_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
+data claim_rust_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: anchor_rust_add_emit_accepts Accepted with canonical rust_add add-fn source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: rust_add_emitted_root,
@@ -480,7 +480,7 @@ test data claim_rust_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data claim_rust_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
+data claim_rust_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: compile_inferred emits canonical rust_add add-fn source through grammar inverse",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: rust_add_emitted_root,
@@ -488,7 +488,7 @@ test data claim_rust_add_compile_inferred_add_fn_accepts: TestClaim = CompilesCl
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data claim_rust_add_coerce_grounded_node_exact_structural_accepts: TestClaim = CompilesClaim {
+data claim_rust_add_coerce_grounded_node_exact_structural_accepts: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: coerce_grounded_node accepts rust_add add-fn through exact-structural find_witness",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: rust_add_emitted_root,
@@ -506,7 +506,7 @@ data subject_rust_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClai
   )
 }
 
-test data run_rust_add_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+data run_rust_add_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_rust_add_emit_add_fn_accepts),
   verdict: run_test_claim_assert(
     claim: claim_rust_add_emit_add_fn_accepts,
@@ -525,7 +525,7 @@ data subject_rust_add_coerce_grounded_node_exact_structural_accepts: TestClaimEv
   )
 }
 
-test data run_rust_add_coerce_grounded_node_exact_structural_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+data run_rust_add_coerce_grounded_node_exact_structural_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_rust_add_coerce_grounded_node_exact_structural_accepts),
   verdict: run_test_claim_assert(
     claim: claim_rust_add_coerce_grounded_node_exact_structural_accepts,
@@ -544,7 +544,7 @@ data subject_rust_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node
   )
 }
 
-test data run_rust_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+data run_rust_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_rust_add_compile_inferred_add_fn_accepts),
   verdict: run_test_claim_assert(
     claim: claim_rust_add_compile_inferred_add_fn_accepts,
@@ -553,7 +553,7 @@ test data run_rust_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node>
   )
 }
 
-test data claim_rust_add_translate_module_compiles: TestClaim = CompilesClaim {
+data claim_rust_add_translate_module_compiles: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: translate stage module + coercion_fold call-site compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: add_arrow_node,
@@ -561,7 +561,7 @@ test data claim_rust_add_translate_module_compiles: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data claim_rust_add_emit_module_compiles: TestClaim = CompilesClaim {
+data claim_rust_add_emit_module_compiles: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: emit stage module (serialize_target o translate) compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: add_arrow_node,
@@ -569,7 +569,7 @@ test data claim_rust_add_emit_module_compiles: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test data claim_rust_add_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
+data claim_rust_add_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
   label: "manual/rust_add_emit: target_serialize_source_from_model rejects bundle missing translation_rules",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: rust_add_emitted_root,
@@ -593,7 +593,7 @@ data subject_rust_add_serialize_rejects_missing_translation_rules: TestClaimEval
   )
 }
 
-test data run_rust_add_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
+data run_rust_add_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_rust_add_serialize_rejects_missing_translation_rules),
   verdict: run_test_claim_assert(
     claim: claim_rust_add_serialize_rejects_missing_translation_rules,

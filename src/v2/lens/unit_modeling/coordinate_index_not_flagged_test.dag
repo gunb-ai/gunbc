@@ -62,7 +62,7 @@ fn coordinate_index_not_flagged_rhs() -> Node {
   }
 }
 
-test data claim_coordinate_index_not_flagged: TestClaim = EqualsClaim {
+data claim_coordinate_index_not_flagged: TestClaim = EqualsClaim {
   label: "lens_unit_modeling/coordinate: index:Int (coordinate) is not flagged",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: coordinate_field_input,

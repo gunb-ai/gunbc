@@ -62,7 +62,7 @@ fn electrical_blocked_pending_flagged_rhs() -> Node {
   }
 }
 
-test data claim_electrical_blocked_pending_flagged: TestClaim = EqualsClaim {
+data claim_electrical_blocked_pending_flagged: TestClaim = EqualsClaim {
   label: "lens_unit_modeling/electrical: tdp_watts:Int is flagged (blocked-pending-carrier class)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: electrical_field_input,

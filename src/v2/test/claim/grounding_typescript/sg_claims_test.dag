@@ -172,7 +172,7 @@ fn ts_g2_sg5_collection_realization_absence_holds() -> Bool {
     }
 }
 
-test data claim_ts_g2_sg1_atom_realizations_executable: TestClaim = EqualsClaim {
+data claim_ts_g2_sg1_atom_realizations_executable: TestClaim = EqualsClaim {
   label: "TypeScript G.2 SG-1 atom realization evidence is executable through run_test_claim",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_g2_executable_claim_input(ok: ts_g2_sg1_atom_realizations_hold()),
@@ -187,11 +187,11 @@ data subject_ts_g2_sg1_atom_realizations: TestClaimEvalSubject<Node> = eval_test
   evaluator_pin: ^eval_evaluator_pin
 )
 
-test data run_ts_g2_sg1_atom_realizations: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+data run_ts_g2_sg1_atom_realizations: TestClaimRun<Node, RuntimeValue> = run_test_claim(
   subject: subject_ts_g2_sg1_atom_realizations
 )
 
-test data claim_ts_g2_g14_fact_registry_executable: TestClaim = EqualsClaim {
+data claim_ts_g2_g14_fact_registry_executable: TestClaim = EqualsClaim {
   label: "TypeScript G.2 G.1.4 fact bundle registry folds through fail-closed insert",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_g2_executable_claim_input(ok: ts_g2_g14_fact_registry_accepts()),
@@ -206,11 +206,11 @@ data subject_ts_g2_g14_fact_registry: TestClaimEvalSubject<Node> = eval_test_cla
   evaluator_pin: ^eval_evaluator_pin
 )
 
-test data run_ts_g2_g14_fact_registry: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+data run_ts_g2_g14_fact_registry: TestClaimRun<Node, RuntimeValue> = run_test_claim(
   subject: subject_ts_g2_g14_fact_registry
 )
 
-test data claim_ts_g2_sg2_type_expression_projection_executable: TestClaim = EqualsClaim {
+data claim_ts_g2_sg2_type_expression_projection_executable: TestClaim = EqualsClaim {
   label: "TypeScript G.2 SG-2 evidence records present type-expression projection edge and golden instantiation",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_g2_executable_claim_input(ok: ts_g2_sg2_type_expression_projection_holds()),
@@ -225,11 +225,11 @@ data subject_ts_g2_sg2_type_expression_projection: TestClaimEvalSubject<Node> = 
   evaluator_pin: ^eval_evaluator_pin
 )
 
-test data run_ts_g2_sg2_type_expression_projection: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+data run_ts_g2_sg2_type_expression_projection: TestClaimRun<Node, RuntimeValue> = run_test_claim(
   subject: subject_ts_g2_sg2_type_expression_projection
 )
 
-test data claim_ts_g2_sg5_collection_absence_executable: TestClaim = EqualsClaim {
+data claim_ts_g2_sg5_collection_absence_executable: TestClaim = EqualsClaim {
   label: "TypeScript G.2 SG-5 evidence records absent collection realization edge fail-closed",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_g2_executable_claim_input(ok: ts_g2_sg5_collection_realization_absence_holds()),
@@ -244,7 +244,7 @@ data subject_ts_g2_sg5_collection_absence: TestClaimEvalSubject<Node> = eval_tes
   evaluator_pin: ^eval_evaluator_pin
 )
 
-test data run_ts_g2_sg5_collection_absence: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+data run_ts_g2_sg5_collection_absence: TestClaimRun<Node, RuntimeValue> = run_test_claim(
   subject: subject_ts_g2_sg5_collection_absence
 )
 
