@@ -1,6 +1,5 @@
 module v2.test.emit.decl_emit_consolidated
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data dc_bool_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
@@ -339,14 +338,14 @@ fn dc_refused_count() -> Int {
   fold_list(xs: dc_construct_rows, empty: 0, cons: fn(acc, row) { if row.covered { acc } else { acc + 1 } })
 }
 
-fn dc_enums_covered_holds() -> Bool {
+test fn dc_enums_covered_holds() -> Bool {
   dc_enum_matches(emitted: dc_bool_emitted(), golden: dc_bool_golden)
     && dc_enum_matches(emitted: dc_execmode_emitted(), golden: dc_execmode_golden)
     && dc_enum_matches(emitted: dc_artifactkind_emitted(), golden: dc_artifactkind_golden)
     && dc_enum_matches(emitted: dc_witness_emitted(), golden: dc_witness_golden)
 }
 
-fn dc_structs_covered_holds() -> Bool {
+test fn dc_structs_covered_holds() -> Bool {
   dc_struct_matches(emitted: dc_spw_emitted(), golden: dc_spw_golden)
     && dc_struct_matches(emitted: dc_hw_emitted(), golden: dc_hw_golden)
     && dc_struct_matches(emitted: dc_artifact_emitted(), golden: dc_artifact_golden)
@@ -355,7 +354,7 @@ fn dc_structs_covered_holds() -> Bool {
     && dc_struct_matches(emitted: dc_pair_emitted(), golden: dc_pair_golden)
 }
 
-fn dc_golden_discriminates_holds() -> Bool {
+test fn dc_golden_discriminates_holds() -> Bool {
   !dc_enum_matches(emitted: dc_bool_emitted(), golden: dc_execmode_golden)
     && !dc_enum_matches(emitted: dc_bool_emitted(), golden: concat(rust_enum_derives_copy, "\nenum Bool { True, FALSE }"))
     && !dc_struct_matches(emitted: dc_spw_emitted(), golden: concat(rust_struct_derives, "\nstruct StructuralPropertyWitness { property: Symbol, evidence: NODE }"))
@@ -363,7 +362,7 @@ fn dc_golden_discriminates_holds() -> Bool {
     && !dc_struct_matches(emitted: dc_spw_emitted(), golden: "struct StructuralPropertyWitness { property: Symbol, evidence: Node }")
 }
 
-fn dc_gaps_refused_holds() -> Bool {
+test fn dc_gaps_refused_holds() -> Bool {
   dc_struct_refused(emitted: dc_empty_record_emitted())
     && dc_enum_refused(emitted: dc_empty_enum_emitted())
     && dc_coproduct_derive_binding_rejects_non_disj()
@@ -383,16 +382,9 @@ fn dc_enum_non_disj_coproduct_emitted() -> Node {
   dc_enum_nongeneric(name: "Bad", coproduct: dc_atom_type(t: "NotDisj"), variants: [])
 }
 
-fn dc_witness_module_fully_emitted_holds() -> Bool {
+test fn dc_witness_module_fully_emitted_holds() -> Bool {
   dc_struct_matches(emitted: dc_spw_emitted(), golden: dc_spw_golden)
     && dc_struct_matches(emitted: dc_hw_emitted(), golden: dc_hw_golden)
     && dc_enum_matches(emitted: dc_witness_emitted(), golden: dc_witness_golden)
 }
 
-test fn decl_emit_consolidated_holds() -> Bool {
-  dc_enums_covered_holds()
-    && dc_structs_covered_holds()
-    && dc_golden_discriminates_holds()
-    && dc_gaps_refused_holds()
-    && dc_witness_module_fully_emitted_holds()
-}

@@ -2,16 +2,7 @@ module v2.test.lens_cost.atom_zero
 
 import v2.lens.cost { cost_lens, zero_cost }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
+import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
 import v2.std.witness { Holds }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -27,24 +18,4 @@ test fn atom_zero_claim_holds() -> Bool {
     Holds { value: actual } => actual == zero_cost()
     _ => false
   }
-}
-
-fn atom_zero_claim_rhs() -> Node {
-  if atom_zero_claim_holds() {
-    atom_zero_input
-  } else {
-    Node {
-      kind: TypeNode { connective: Conj },
-      children: [],
-      occurrence_id: SyntheticOccurrence
-}
-  }
-}
-
-data claim_atom_zero: TestClaim = EqualsClaim {
-  label: "lens_cost/atom_zero: bare atom has zero symbolic cost",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: atom_zero_input,
-  rhs: atom_zero_claim_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
 }

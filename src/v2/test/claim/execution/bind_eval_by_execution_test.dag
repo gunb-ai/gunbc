@@ -162,14 +162,6 @@ fn bind_runtime_int_is_one(value: RuntimeValue) -> Bool {
   }
 }
 
-fn bind_runtime_int_is_two(value: RuntimeValue) -> Bool {
-  match value {
-    RuntimePrimitive { value: p } =>
-      (p.primitive_type == bind_i64_node()) && (count(p.bytes) == 2)
-    _ => false
-  }
-}
-
 fn bind_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
   if dag_node_is_int_literal_atom(node: node) {
     match dag_int_literal_magnitude_int_from_node(node: node) {
@@ -361,14 +353,14 @@ fn bind_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
   }
 }
 
-fn bind_source_pipeline_admits_holds() -> Bool {
+test fn bind_source_pipeline_admits_holds() -> Bool {
   match table_fixture_bind_arrow_with_body() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn bind_source_driven_executes_holds() -> Bool {
+test fn bind_source_driven_executes_holds() -> Bool {
   match table_fixture_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
@@ -381,7 +373,7 @@ fn bind_source_driven_executes_holds() -> Bool {
   }
 }
 
-fn bind_direct_runtime_holds() -> Bool {
+test fn bind_direct_runtime_holds() -> Bool {
   match table_fixture_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
       let input = bind_pick_call(callee: arrow)
@@ -406,7 +398,7 @@ fn bind_direct_runtime_holds() -> Bool {
   }
 }
 
-fn bind_value_perturbation_red_holds() -> Bool {
+test fn bind_value_perturbation_red_holds() -> Bool {
   match table_fixture_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
@@ -419,7 +411,7 @@ fn bind_value_perturbation_red_holds() -> Bool {
   }
 }
 
-fn bind_fixture_producer_holds() -> Bool {
+test fn bind_fixture_producer_holds() -> Bool {
   match table_fixture_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
@@ -432,7 +424,7 @@ fn bind_fixture_producer_holds() -> Bool {
   }
 }
 
-fn bind_fixture_wrong_value_red_holds() -> Bool {
+test fn bind_fixture_wrong_value_red_holds() -> Bool {
   match table_fixture_bind_wrong_value_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
@@ -445,7 +437,7 @@ fn bind_fixture_wrong_value_red_holds() -> Bool {
   }
 }
 
-fn bind_census_ingested_executes_holds() -> Bool {
+test fn bind_census_ingested_executes_holds() -> Bool {
   match ingested_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
@@ -458,7 +450,7 @@ fn bind_census_ingested_executes_holds() -> Bool {
   }
 }
 
-fn bind_census_ingested_wrong_value_red_holds() -> Bool {
+test fn bind_census_ingested_wrong_value_red_holds() -> Bool {
   match ingested_bind_arrow_with_body_wrong_value() {
     Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
@@ -471,11 +463,3 @@ fn bind_census_ingested_wrong_value_red_holds() -> Bool {
   }
 }
 
-test fn bind_eval_by_execution_keystone_holds() -> Bool {
-  bind_source_driven_executes_holds()
-    && bind_direct_runtime_holds()
-    && bind_source_pipeline_admits_holds()
-    && bind_value_perturbation_red_holds()
-    && bind_fixture_producer_holds()
-    && bind_fixture_wrong_value_red_holds()
-}

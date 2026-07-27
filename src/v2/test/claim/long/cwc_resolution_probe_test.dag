@@ -1,6 +1,5 @@
 module v2.test.long.cwc_resolution_probe
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data cwc_src_type_two: String = "module probe\ntype T = A | B\n"
@@ -101,7 +100,7 @@ test fn cwc_malformed_nary_coproduct_normalize_rejects() -> Bool {
   cwc_norm_rejects(src: cwc_src_type_malformed_coproduct)
 }
 
-fn cwc_malformed_nary_coproduct_fail_open_control() -> Bool {
+test fn cwc_malformed_nary_coproduct_fail_open_control() -> Bool {
   !cwc_norm_rejects(src: cwc_src_type_malformed_coproduct)
 }
 
@@ -139,13 +138,3 @@ test fn cwc_review_disj_has_four_arms() -> Bool {
   }
 }
 
-test fn cwc_nary_coproduct_normalize_boundary_holds() -> Bool {
-  cwc_norm_two_variant_accepts()
-    && cwc_norm_three_variant_accepts()
-    && cwc_review_normalized_has_disj()
-    && cwc_review_disj_has_four_arms()
-    && cwc_cwc_module_resolve_accepts()
-    && cwc_non_coproduct_rhs_passes_through()
-    && cwc_malformed_nary_coproduct_normalize_rejects()
-    && !cwc_malformed_nary_coproduct_fail_open_control()
-}

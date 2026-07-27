@@ -21,16 +21,16 @@ test fn witness_steps_sequence_elements_are_yaml_values() -> Bool {
   }
 }
 
-fn witness_step_sequence_only_serializes() -> Bool {
+test fn witness_step_sequence_only_serializes() -> Bool {
   let step = step_yaml(step: ci_workflow.jobs.first().steps.first())
   serialize_yaml(v: yaml_sequence(elements: concat(empty_yaml_values, [step]))) != ""
 }
 
-fn witness_step_mapping_serializes() -> Bool {
+test fn witness_step_mapping_serializes() -> Bool {
   serialize_yaml(v: step_yaml(step: ci_workflow.jobs.first().steps.first())) != ""
 }
 
-fn witness_first_step_is_mapping() -> Bool {
+test fn witness_first_step_is_mapping() -> Bool {
   match steps_yaml(steps: ci_workflow.jobs.first().steps) {
     YamlSequence { elements: els } =>
       match els.first() {
@@ -41,20 +41,20 @@ fn witness_first_step_is_mapping() -> Bool {
   }
 }
 
-fn witness_one_step_serializes() -> Bool {
+test fn witness_one_step_serializes() -> Bool {
   let first = ci_workflow.jobs.first().steps.first()
   serialize_yaml(v: yaml_mapping(entries: [
     kv(key: "steps", value: yaml_sequence(elements: concat(empty_yaml_values, [step_yaml(step: first)])))
   ])) != ""
 }
 
-fn witness_steps_wrapped_serializes() -> Bool {
+test fn witness_steps_wrapped_serializes() -> Bool {
   serialize_yaml(v: yaml_mapping(entries: [
     kv(key: "steps", value: steps_yaml(steps: ci_workflow.jobs.first().steps))
   ])) != ""
 }
 
-fn witness_jobs_yaml_serializes() -> Bool {
+test fn witness_jobs_yaml_serializes() -> Bool {
   serialize_yaml(v: yaml_mapping(entries: [
     kv(key: "jobs", value: jobs_yaml(jobs: ci_workflow.jobs))
   ])) != ""

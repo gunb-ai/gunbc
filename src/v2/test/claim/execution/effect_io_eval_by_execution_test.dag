@@ -88,22 +88,6 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn effect_io_eval_atom(s: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: s } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn effect_io_eval_type_node() -> Node {
-  effect_io_eval_atom(s: ^effect_io_eval_type_symbol)
-}
-
-fn effect_io_eval_algebra_node() -> Node {
-  effect_io_eval_atom(s: ^effect_io_eval_algebra_symbol)
-}
-
 fn effect_io_eval_termination_proof() -> v2.std.cardinality.TerminationProof {
   v2.std.cardinality.TerminationProof {
     non_increasing: [],

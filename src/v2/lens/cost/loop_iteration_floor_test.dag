@@ -1,6 +1,5 @@
 module v2.test.lens_cost.loop_iteration_floor
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data loop_iteration_floor_body: Node = Node {
@@ -24,7 +23,7 @@ data loop_iteration_floor_input: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn loop_iteration_floor_projects_linear() -> Bool {
+test fn loop_iteration_floor_projects_linear() -> Bool {
   match cost_lens(n: loop_iteration_floor_input) {
     Holds { value: actual } =>
       match actual {
@@ -35,13 +34,10 @@ fn loop_iteration_floor_projects_linear() -> Bool {
   }
 }
 
-fn symbolic_product_absorbs_zero() -> Bool {
+test fn symbolic_product_absorbs_zero() -> Bool {
   symbolic_product(
     a: linear_in_node(n: loop_iteration_floor_measure),
     b: zero_cost()
   ) == zero_cost()
 }
 
-test fn loop_iteration_floor_holds() -> Bool {
-  loop_iteration_floor_projects_linear() && symbolic_product_absorbs_zero()
-}

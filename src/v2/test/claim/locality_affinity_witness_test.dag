@@ -183,7 +183,7 @@ data locality_conflicting_assignment: List<ConsumerBatch> = [
   ConsumerBatch { consumer: locality_consumer_b_hash, batch: 0 }
 ]
 
-fn witness_derive_affinity_claims_smallest_fitting_level() -> Bool {
+test fn witness_derive_affinity_claims_smallest_fitting_level() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: locality_flows, domain: locality_domain) {
     AffinityClaim { operand: op, level: lvl, footprint: fp, consumers: cs } =>
       op == locality_shared_hash
@@ -194,7 +194,7 @@ fn witness_derive_affinity_claims_smallest_fitting_level() -> Bool {
   }
 }
 
-fn witness_derive_affinity_refuses_no_fitting_level() -> Bool {
+test fn witness_derive_affinity_refuses_no_fitting_level() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: locality_flows, domain: locality_domain_no_fit) {
     AffinityRefused { operand: op, cause: AffinityNoFittingLevel { operand: _, footprint: fp } } =>
       op == locality_shared_hash && byte_size_count(b: fp) == 64
@@ -203,7 +203,7 @@ fn witness_derive_affinity_refuses_no_fitting_level() -> Bool {
   }
 }
 
-fn witness_derive_affinity_refuses_single_consumer() -> Bool {
+test fn witness_derive_affinity_refuses_single_consumer() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: [locality_flow_a], domain: locality_domain) {
     AffinityRefused { operand: op, cause: AffinityInsufficientConsumers { operand: _ } } =>
       op == locality_shared_hash
@@ -212,7 +212,7 @@ fn witness_derive_affinity_refuses_single_consumer() -> Bool {
   }
 }
 
-fn witness_derive_affinity_refuses_unresolved_operand_edge() -> Bool {
+test fn witness_derive_affinity_refuses_unresolved_operand_edge() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: locality_flows_with_unresolved, domain: locality_domain) {
     AffinityRefused { operand: op, cause: AffinityFlowRefused { edge: e, cause: OperandFlowNoOperand { edge: _ } } } =>
       op == locality_shared_hash && e == locality_edge_unresolved
@@ -221,7 +221,7 @@ fn witness_derive_affinity_refuses_unresolved_operand_edge() -> Bool {
   }
 }
 
-fn witness_derive_affinity_refuses_operand_mismatch() -> Bool {
+test fn witness_derive_affinity_refuses_operand_mismatch() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: locality_flows_with_mismatch, domain: locality_domain) {
     AffinityRefused { operand: op, cause: AffinityOperandMismatch { expected: expected, found: found } } =>
       op == locality_shared_hash
@@ -232,7 +232,7 @@ fn witness_derive_affinity_refuses_operand_mismatch() -> Bool {
   }
 }
 
-fn witness_derive_affinity_refuses_footprint_mismatch() -> Bool {
+test fn witness_derive_affinity_refuses_footprint_mismatch() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: locality_flows_with_footprint_mismatch, domain: locality_domain) {
     AffinityRefused { operand: op, cause: AffinityFootprintMismatch { operand: _, expected: exp, found: fnd } } =>
       op == locality_shared_hash
@@ -243,7 +243,7 @@ fn witness_derive_affinity_refuses_footprint_mismatch() -> Bool {
   }
 }
 
-fn witness_derive_affinity_dedupes_consumers_from_duplicate_edges() -> Bool {
+test fn witness_derive_affinity_dedupes_consumers_from_duplicate_edges() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: locality_flows_duplicate_edge_two_consumers, domain: locality_domain) {
     AffinityClaim { operand: op, level: lvl, footprint: fp, consumers: cs } =>
       op == locality_shared_hash
@@ -254,7 +254,7 @@ fn witness_derive_affinity_dedupes_consumers_from_duplicate_edges() -> Bool {
   }
 }
 
-fn witness_derive_affinity_refuses_when_duplicate_edges_are_one_real_consumer() -> Bool {
+test fn witness_derive_affinity_refuses_when_duplicate_edges_are_one_real_consumer() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: locality_flows_duplicate_edge_single_consumer, domain: locality_domain) {
     AffinityRefused { operand: op, cause: AffinityInsufficientConsumers { operand: _ } } =>
       op == locality_shared_hash
@@ -263,7 +263,7 @@ fn witness_derive_affinity_refuses_when_duplicate_edges_are_one_real_consumer() 
   }
 }
 
-fn witness_co_batch_prices_single_load() -> Bool {
+test fn witness_co_batch_prices_single_load() -> Bool {
   match price_operand_traffic(
     operand: locality_shared_hash,
     flows: locality_flows,
@@ -278,7 +278,7 @@ fn witness_co_batch_prices_single_load() -> Bool {
   }
 }
 
-fn witness_split_batch_prices_double_load() -> Bool {
+test fn witness_split_batch_prices_double_load() -> Bool {
   match price_operand_traffic(
     operand: locality_shared_hash,
     flows: locality_flows,
@@ -293,7 +293,7 @@ fn witness_split_batch_prices_double_load() -> Bool {
   }
 }
 
-fn witness_missing_batch_assignment_refuses_typed() -> Bool {
+test fn witness_missing_batch_assignment_refuses_typed() -> Bool {
   match price_operand_traffic(
     operand: locality_shared_hash,
     flows: locality_flows,
@@ -307,7 +307,7 @@ fn witness_missing_batch_assignment_refuses_typed() -> Bool {
   }
 }
 
-fn witness_conflicting_batch_assignment_refuses_typed() -> Bool {
+test fn witness_conflicting_batch_assignment_refuses_typed() -> Bool {
   match price_operand_traffic(
     operand: locality_shared_hash,
     flows: locality_flows,
@@ -327,7 +327,7 @@ fn witness_conflicting_batch_assignment_refuses_typed() -> Bool {
   }
 }
 
-fn witness_refused_affinity_propagates_typed() -> Bool {
+test fn witness_refused_affinity_propagates_typed() -> Bool {
   match price_operand_traffic(
     operand: locality_shared_hash,
     flows: locality_flows,
@@ -341,18 +341,3 @@ fn witness_refused_affinity_propagates_typed() -> Bool {
   }
 }
 
-test fn locality_affinity_witnesses() -> Bool {
-  witness_derive_affinity_claims_smallest_fitting_level()
-    && witness_derive_affinity_refuses_no_fitting_level()
-    && witness_derive_affinity_refuses_single_consumer()
-    && witness_derive_affinity_refuses_unresolved_operand_edge()
-    && witness_derive_affinity_refuses_operand_mismatch()
-    && witness_derive_affinity_refuses_footprint_mismatch()
-    && witness_derive_affinity_dedupes_consumers_from_duplicate_edges()
-    && witness_derive_affinity_refuses_when_duplicate_edges_are_one_real_consumer()
-    && witness_co_batch_prices_single_load()
-    && witness_split_batch_prices_double_load()
-    && witness_missing_batch_assignment_refuses_typed()
-    && witness_conflicting_batch_assignment_refuses_typed()
-    && witness_refused_affinity_propagates_typed()
-}

@@ -28,7 +28,7 @@ data normalize_wet_known_red_admission_note: String = "2026-07-25 review #7199: 
 data synthetic_orphan_entry: String = "dag/test/claim/synthetic_orphan_admission_witness_test.dag"
 data synthetic_orphan_fn: String = "synthetic_orphan_no_consumer_holds"
 
-fn witness_03_normalize_wet_known_red_consumer_holds() -> Bool {
+test fn witness_03_normalize_wet_known_red_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: normalize_entry,
     function: normalize_fn,
@@ -39,11 +39,11 @@ fn witness_03_normalize_wet_known_red_consumer_holds() -> Bool {
   }
 }
 
-fn witness_03_normalize_wet_known_red_manifest_covers_holds() -> Bool {
+test fn witness_03_normalize_wet_known_red_manifest_covers_holds() -> Bool {
   witness_admission_manifest_covers_row(entry: normalize_entry, function: normalize_fn)
 }
 
-fn witness_synthetic_orphan_has_no_consumer_holds() -> Bool {
+test fn witness_synthetic_orphan_has_no_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: synthetic_orphan_entry,
     function: synthetic_orphan_fn,
@@ -54,14 +54,14 @@ fn witness_synthetic_orphan_has_no_consumer_holds() -> Bool {
   }
 }
 
-fn witness_synthetic_orphan_admission_red_holds() -> Bool {
+test fn witness_synthetic_orphan_admission_red_holds() -> Bool {
   !witness_admission_holds_for_row(
     entry: synthetic_orphan_entry,
     function: synthetic_orphan_fn
   )
 }
 
-fn witness_known_red_probe_consumer_holds() -> Bool {
+test fn witness_known_red_probe_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
     function: "logic_complement_truth_table",
@@ -72,10 +72,10 @@ fn witness_known_red_probe_consumer_holds() -> Bool {
   }
 }
 
-fn witness_field_access_wet_falsifier_consumer_holds() -> Bool {
+test fn witness_field_access_wet_falsifier_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: "src/v2/test/claim/execution/emit_on_demand_field_access_family_witness_test.dag",
-    function: "emit_on_demand_field_access_family_witnesses",
+    function: "emit_on_demand_field_access_grain_keys_differ_holds",
     excluded_from_discovery: true
   ) {
     OfflineLocalRecipe => true
@@ -83,10 +83,10 @@ fn witness_field_access_wet_falsifier_consumer_holds() -> Bool {
   }
 }
 
-fn witness_complement_wet_falsifier_consumer_holds() -> Bool {
+test fn witness_complement_wet_falsifier_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: "src/v2/test/claim/execution/emit_on_demand_complement_family_witness_test.dag",
-    function: "emit_on_demand_complement_family_witnesses",
+    function: "emit_on_demand_complement_grain_keys_differ_holds",
     excluded_from_discovery: true
   ) {
     OfflineLocalRecipe => true
@@ -94,7 +94,7 @@ fn witness_complement_wet_falsifier_consumer_holds() -> Bool {
   }
 }
 
-fn witness_offline_execution_lane_consumer_holds() -> Bool {
+test fn witness_offline_execution_lane_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: "src/v2/test/claim/execution/synthetic_optin_exec_witness_test.dag",
     function: "synthetic_optin_exec_witness",
@@ -105,7 +105,7 @@ fn witness_offline_execution_lane_consumer_holds() -> Bool {
   }
 }
 
-fn witness_discovery_row_consumer_holds() -> Bool {
+test fn witness_discovery_row_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: "src/v2/test/claim/effect_reach_test.dag",
     function: "effect_reach_path_data_init_derived_host_reading_holds",
@@ -116,7 +116,7 @@ fn witness_discovery_row_consumer_holds() -> Bool {
   }
 }
 
-fn witness_rehomed_bin_wet_consumer_holds() -> Bool {
+test fn witness_rehomed_bin_wet_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: "dag/test/claim/floor_skip_discovery_witness_test.dag",
     function: "floor_skip_discovery_keystone_holds",
@@ -127,14 +127,14 @@ fn witness_rehomed_bin_wet_consumer_holds() -> Bool {
   }
 }
 
-fn witness_rehomed_bin_wet_manifest_covers_holds() -> Bool {
+test fn witness_rehomed_bin_wet_manifest_covers_holds() -> Bool {
   witness_admission_manifest_covers_row(
     entry: "dag/test/claim/floor_skip_discovery_witness_test.dag",
     function: "floor_skip_discovery_keystone_holds"
   )
 }
 
-fn witness_substrate_long_lane_consumer_holds() -> Bool {
+test fn witness_substrate_long_lane_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
     function: "lens_affected_set_provenance_producer_single_read_emits_row_holds",
@@ -145,30 +145,14 @@ fn witness_substrate_long_lane_consumer_holds() -> Bool {
   }
 }
 
-fn witness_substrate_long_lane_manifest_covers_holds() -> Bool {
+test fn witness_substrate_long_lane_manifest_covers_holds() -> Bool {
   witness_admission_manifest_covers_row(
     entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
     function: "lens_affected_set_provenance_producer_single_read_emits_row_holds"
   )
 }
 
-fn witness_explicit_manifest_nonempty_holds() -> Bool {
+test fn witness_explicit_manifest_nonempty_holds() -> Bool {
   length(xs: witness_admission_explicit_consumer_manifest()) > 0
 }
 
-test fn witness_admission_invariant_holds() -> Bool {
-  witness_03_normalize_wet_known_red_consumer_holds()
-    && witness_03_normalize_wet_known_red_manifest_covers_holds()
-    && witness_synthetic_orphan_has_no_consumer_holds()
-    && witness_synthetic_orphan_admission_red_holds()
-    && witness_known_red_probe_consumer_holds()
-    && witness_field_access_wet_falsifier_consumer_holds()
-    && witness_complement_wet_falsifier_consumer_holds()
-    && witness_offline_execution_lane_consumer_holds()
-    && witness_discovery_row_consumer_holds()
-    && witness_rehomed_bin_wet_consumer_holds()
-    && witness_rehomed_bin_wet_manifest_covers_holds()
-    && witness_substrate_long_lane_consumer_holds()
-    && witness_substrate_long_lane_manifest_covers_holds()
-    && witness_explicit_manifest_nonempty_holds()
-}

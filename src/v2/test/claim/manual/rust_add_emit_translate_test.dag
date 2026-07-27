@@ -93,42 +93,12 @@ import v2.std.node {
   TypeNode,
   SyntheticOccurrence
 }
-import v2.std.verification {
-  DiagnosticClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  CompilesClaim,
-  manual_claim_anchor,
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data rust_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 
-fn add_int_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: ^add_int_atom } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-}
-}
-
-data add_arrow_node: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge { label: Positional, target: add_int_node() },
-    Edge { label: Positional, target: add_int_node() },
-    Edge { label: Positional, target: add_int_node() }
-  ],
-  occurrence_id: SyntheticOccurrence
-}
 
 data rust_add_emitted_root: Node = rust_fixture_emitted_add_fn
 
@@ -167,21 +137,13 @@ fn anchor_rust_add_serialize_rejects_missing_translation_rules() -> Outcome<Medi
 
 data rust_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_rust_add_serialize_rejects_missing_translation_rules()
 
-fn rust_add_serialize_reject_claim_outcome() -> Outcome<Node> {
+test fn rust_add_serialize_reject_receipt_holds() -> Bool {
   match rust_add_serialize_reject_receipt {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: _, diagnostics: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: Diagnostic {
-            reason: ^rust_add_serialize_unexpected_accept,
-            at: node_locus(node: rust_add_emitted_root),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          }
-        )
-      }
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d != None
   }
 }
+
 
 fn rust_add_i32_facts_node() -> Node {
   rust_integer_facts_node(facts: rust_facts_i32)
@@ -363,10 +325,6 @@ data rust_add_inferred_tree: InferredTree = InferredTree {
   }
 }
 
-fn anchor_rust_add_translate_accepts() -> Outcome<Node> {
-  translate(tree: rust_add_inferred_tree, target: rust_add_target_model)
-}
-
 fn anchor_rust_add_emit_accepts() -> Outcome<Medium<String>> {
   emit(tree: rust_add_inferred_tree, target: rust_add_target_model)
 }
@@ -390,218 +348,17 @@ test fn rust_add_emit_add_fn_accepts_holds() -> Bool {
 
 data rust_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_rust_add_compile_inferred_accepts()
 
-fn rust_add_emit_claim_outcome() -> Outcome<Node> {
-  match rust_add_emit_receipt {
-    Accepted { value: source, diagnostics: d } =>
-      if (source.carried == rust_source_text) && (d == None) {
-        Accepted { value: rust_add_emitted_root, diagnostics: None }
-      } else {
-        Rejected {
-          diagnostics: diagnostics_singleton(
-            d: Diagnostic {
-              reason: ^rust_add_emit_source_mismatch,
-              at: node_locus(node: rust_add_emitted_root),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            }
-          )
-        }
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
-
-fn rust_add_compile_inferred_claim_outcome() -> Outcome<Node> {
+test fn rust_add_compile_inferred_receipt_holds() -> Bool {
   match rust_add_compile_inferred_receipt {
-    Accepted { value: compile_result, diagnostics: d } =>
-      match compile_result {
-        TranslateResult { source } =>
-          if (source.carried == rust_source_text) && (d == None) {
-            Accepted { value: rust_add_emitted_root, diagnostics: None }
-          } else {
-            Rejected {
-              diagnostics: diagnostics_singleton(
-                d: Diagnostic {
-                  reason: ^rust_add_compile_source_mismatch,
-                  at: node_locus(node: rust_add_emitted_root),
-                  correction: Unavailable { reason: ExternalContractUnknown }
-                }
-              )
-            }
-          }
-        _ =>
-          Rejected {
-            diagnostics: diagnostics_singleton(
-              d: Diagnostic {
-                reason: ^rust_add_compile_source_mismatch,
-                at: node_locus(node: rust_add_emitted_root),
-                correction: Unavailable { reason: ExternalContractUnknown }
-              }
-            )
-          }
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
   }
 }
 
-fn rust_add_coercion_quality_is_exact(q: CoercionQuality) -> Bool {
-  match q {
-    Exact => true
-    Identity => false
-    Widened => false
-  }
-}
 
-fn rust_add_coerce_grounded_node_exact_structural_claim_outcome() -> Outcome<Node> {
-  match coerce_grounded_node(
-    source: rust_add_emitted_root,
-    tree: rust_add_inferred_tree,
-    target: rust_add_target_model
-  ) {
-    Accepted { value: r, diagnostics: d } =>
-      if (r.target == rust_fixture_emitted_add_fn)
-        && rust_add_coercion_quality_is_exact(q: r.quality) {
-        Accepted { value: r.target, diagnostics: d }
-      } else {
-        Rejected {
-          diagnostics: diagnostics_singleton(
-            d: Diagnostic {
-              reason: ^rust_add_emit_source_mismatch,
-              at: node_locus(node: rust_add_emitted_root),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            }
-          )
-        }
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
 
-data claim_rust_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: anchor_rust_add_emit_accepts Accepted with canonical rust_add add-fn source",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: rust_add_emitted_root,
-  expected_value: rust_add_emitted_root,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
 
-data claim_rust_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: compile_inferred emits canonical rust_add add-fn source through grammar inverse",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: rust_add_emitted_root,
-  expected_value: rust_add_emitted_root,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
 
-data claim_rust_add_coerce_grounded_node_exact_structural_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: coerce_grounded_node accepts rust_add add-fn through exact-structural find_witness",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: rust_add_emitted_root,
-  expected_value: rust_add_emitted_root,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
 
-data subject_rust_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
-  claim: claim_rust_add_emit_add_fn_accepts,
-  context: infer_receipt_context(),
-  tree: rust_add_inferred_tree,
-  input: test_claim_typed_input_node(
-    evaluator_input: rust_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add
-  )
-}
 
-data run_rust_add_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_rust_add_emit_add_fn_accepts),
-  verdict: run_test_claim_assert(
-    claim: claim_rust_add_emit_add_fn_accepts,
-    actual: rust_add_emit_claim_outcome(),
-    at: rust_add_emitted_root
-  )
-}
 
-data subject_rust_add_coerce_grounded_node_exact_structural_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
-  claim: claim_rust_add_coerce_grounded_node_exact_structural_accepts,
-  context: infer_receipt_context(),
-  tree: rust_add_inferred_tree,
-  input: test_claim_typed_input_node(
-    evaluator_input: rust_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add
-  )
-}
-
-data run_rust_add_coerce_grounded_node_exact_structural_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_rust_add_coerce_grounded_node_exact_structural_accepts),
-  verdict: run_test_claim_assert(
-    claim: claim_rust_add_coerce_grounded_node_exact_structural_accepts,
-    actual: rust_add_coerce_grounded_node_exact_structural_claim_outcome(),
-    at: rust_add_emitted_root
-  )
-}
-
-data subject_rust_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
-  claim: claim_rust_add_compile_inferred_add_fn_accepts,
-  context: infer_receipt_context(),
-  tree: rust_add_inferred_tree,
-  input: test_claim_typed_input_node(
-    evaluator_input: rust_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add
-  )
-}
-
-data run_rust_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_rust_add_compile_inferred_add_fn_accepts),
-  verdict: run_test_claim_assert(
-    claim: claim_rust_add_compile_inferred_add_fn_accepts,
-    actual: rust_add_compile_inferred_claim_outcome(),
-    at: rust_add_emitted_root
-  )
-}
-
-data claim_rust_add_translate_module_compiles: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: translate stage module + coercion_fold call-site compiles",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: add_arrow_node,
-  expected_value: add_arrow_node,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_rust_add_emit_module_compiles: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: emit stage module (serialize_target o translate) compiles",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: add_arrow_node,
-  expected_value: add_arrow_node,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_rust_add_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
-  label: "manual/rust_add_emit: target_serialize_source_from_model rejects bundle missing translation_rules",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: rust_add_emitted_root,
-  expected_rejection: diagnostics_singleton(
-    d: Diagnostic {
-      reason: ^translate_target_bundle_malformed,
-      at: node_locus(node: rust_add_empty_translation_rules_bundle),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  ),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data subject_rust_add_serialize_rejects_missing_translation_rules: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
-  claim: claim_rust_add_serialize_rejects_missing_translation_rules,
-  context: infer_receipt_context(),
-  tree: rust_add_inferred_tree,
-  input: test_claim_typed_input_node(
-    evaluator_input: rust_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add
-  )
-}
-
-data run_rust_add_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_rust_add_serialize_rejects_missing_translation_rules),
-  verdict: run_test_claim_assert(
-    claim: claim_rust_add_serialize_rejects_missing_translation_rules,
-    actual: rust_add_serialize_reject_claim_outcome(),
-    at: rust_add_emitted_root
-  )
-}

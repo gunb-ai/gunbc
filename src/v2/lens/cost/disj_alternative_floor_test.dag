@@ -1,6 +1,5 @@
 module v2.test.lens_cost.disj_alternative_floor
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data disj_floor_arm_a: Node = Node {
@@ -24,17 +23,14 @@ data disj_floor_input: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn disj_floor_projects_unit() -> Bool {
+test fn disj_floor_projects_unit() -> Bool {
   match cost_lens(n: disj_floor_input) {
     Holds { value: actual } => actual == unit_cost()
     _ => false
   }
 }
 
-fn symbolic_max_absorbs_zero() -> Bool {
+test fn symbolic_max_absorbs_zero() -> Bool {
   symbolic_max(a: zero_cost(), b: zero_cost()) == zero_cost()
 }
 
-test fn disj_alternative_floor_holds() -> Bool {
-  disj_floor_projects_unit() && symbolic_max_absorbs_zero()
-}

@@ -132,6 +132,17 @@ fn witness_dead_wire_detected() -> Bool {
     && fold(dead, init: false, f: fn(acc, w) { acc || (w.param == ^wiring_corpus_dead_input) })
 }
 
+
+test fn wiring_corpus_fixture_surface_holds() -> Bool {
+  wiring_corpus_probe(alpha: true, beta: true)
+    && wiring_corpus_helper(seed: true)
+    && wiring_corpus_probe_live_let(seed: true)
+    && wiring_corpus_probe_dead_let(seed: true)
+    && wiring_corpus_probe_dead_let_transitive(seed: true)
+    && wiring_corpus_probe_inert_let(seed: true)
+    && wiring_corpus_probe_lambda(flag: true, items: Empty)
+}
+
 test fn wiring_liveness_corpus_witnesses() -> Bool {
   let decls = fn_arrow_decl_facts_live()
   return witness_dead_wire_detected()

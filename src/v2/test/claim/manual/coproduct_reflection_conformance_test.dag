@@ -1,6 +1,5 @@
 module v2.test.manual.coproduct_reflection_conformance
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data reflect_connective_type: Symbol = ^Connective
@@ -62,8 +61,3 @@ test fn witness_connective_nullary_inhabitants_fail_closed() -> Bool {
   }
 }
 
-test fn coproduct_reflection_conformance_holds() -> Bool {
-  witness_connective_behavior_arm_sets_are_distinct()
-    && witness_behavior_nullary_inhabitant_set_matches_arm_keys()
-    && witness_connective_nullary_inhabitants_fail_closed()
-}

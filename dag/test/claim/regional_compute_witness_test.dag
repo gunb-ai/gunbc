@@ -60,13 +60,6 @@ fn w_premium_at_least(baseline: RegionalComputeRow, region: RegionalComputeRow, 
   }
 }
 
-fn w_premium_equals(baseline: RegionalComputeRow, region: RegionalComputeRow, expected_bp: Nat) -> Bool {
-  match premium_bp_of(baseline: baseline, region: region) {
-    Present { value: bp } => bp == expected_bp
-    _ => false
-  }
-}
-
 test fn w_no_aws_region_is_cheaper_than_us_east() -> Bool {
   w_premium_at_least(baseline: aws_us_east_1, region: aws_ap_south_1, floor_bp: 1)
     && w_premium_at_least(baseline: aws_us_east_1, region: aws_eu_central_1, floor_bp: 1)

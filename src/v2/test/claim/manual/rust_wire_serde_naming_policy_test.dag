@@ -17,7 +17,7 @@ fn rust_ws_serialized_text(target: v2.std.compilers.target_model.TargetModel, em
   }
 }
 
-fn witness_rust_wire_serde_screaming_snake_holds() -> Bool {
+test fn witness_rust_wire_serde_screaming_snake_holds() -> Bool {
   rust_ws_serialize_accepts(
     target: v2.extdeps.languages.rust_wire_serde.rust_wire_serde_screaming_snake_target,
     emitted: v2.extdeps.languages.rust_wire_serde.rust_wire_serde_review_event_emitted
@@ -28,7 +28,7 @@ fn witness_rust_wire_serde_screaming_snake_holds() -> Bool {
     ) == rust_ws_review_event_screaming_golden
 }
 
-fn witness_rust_wire_serde_snake_case_holds() -> Bool {
+test fn witness_rust_wire_serde_snake_case_holds() -> Bool {
   rust_ws_serialize_accepts(
     target: v2.extdeps.languages.rust_wire_serde.rust_wire_serde_snake_case_target,
     emitted: v2.extdeps.languages.rust_wire_serde.rust_wire_serde_review_event_emitted
@@ -39,7 +39,7 @@ fn witness_rust_wire_serde_snake_case_holds() -> Bool {
     ) == rust_ws_review_event_snake_golden
 }
 
-fn witness_rust_wire_serde_naming_discriminates() -> Bool {
+test fn witness_rust_wire_serde_naming_discriminates() -> Bool {
   let screaming = rust_ws_serialized_text(
     target: v2.extdeps.languages.rust_wire_serde.rust_wire_serde_screaming_snake_target,
     emitted: v2.extdeps.languages.rust_wire_serde.rust_wire_serde_review_event_emitted
