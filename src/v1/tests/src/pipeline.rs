@@ -2502,21 +2502,36 @@ fn match_pattern_binders_capture_declaration_spans_in_parse_tree() {
 fn typed_match_bound_binding_spans_stay_local_across_arms_and_shadowing() {
     use v1_compiler::v1_rt::VecCompat;
     use v1_compiler::v1_std_core::{
-        arm_body, arm_pattern, block_stmts, field_binding_pattern, match_arm_nodes, module_items,
-        ExprData, VarBindingKind,
+        arm_body, arm_pattern, block_stmts, empty_map, field_binding_pattern, map_insert,
+        match_arm_nodes, module_items, ExprData, VarBindingKind,
     };
 
     let separate_source = "module typed_pattern_spans\n\ntype Duo = Left { value: Int } | Right { value: Int }\n\nfn separate_arms(x: Duo) -> Int {\n  match x {\n    Left { value: y } => y\n    Right { value: y } => y\n  }\n}\n";
-    let separate_resolved = compile_dag_resolved(separate_source);
-    let separate_graph = separate_resolved.graph.clone().expect("separate graph");
-    let separate_module = separate_graph
+    let separate_frontend =
+        v1_compiler::v1_compiler_compile::front_end_sources(Rc::new(vec![Rc::new(SourceFile {
+            path: "typed_pattern_spans_separate.dag".to_string(),
+            content: separate_source.to_string(),
+        })]));
+    let separate_graph = separate_frontend.graph.clone().expect("separate graph");
+    let separate_source_indices = separate_frontend
+        .newline_indices
+        .clone()
+        .iter()
+        .cloned()
+        .fold(empty_map(), |acc, si| map_insert(acc, si.file.clone(), si));
+    let separate_typed = v1_compiler::v1_compiler_infer::typecheck_with_census_extra(
+        separate_graph,
+        separate_source_indices.clone(),
+        separate_frontend.intern_table.clone(),
+        Rc::new(vec![]),
+        separate_source_indices.clone(),
+    );
+    let separate_module = separate_typed
         .modules
         .first()
         .cloned()
-        .expect("separate module")
-        .module
-        .clone();
-    let separate_body = module_items(separate_module)
+        .expect("separate module");
+    let separate_body = module_items(separate_module.module.clone())
         .iter()
         .find(|item| item.name == "separate_arms")
         .and_then(|item| item.body.clone())
@@ -2573,16 +2588,31 @@ fn typed_match_bound_binding_spans_stay_local_across_arms_and_shadowing() {
     }
 
     let shadow_source = "module typed_pattern_shadow\n\ntype Duo = Left { value: Int } | Right { value: Int }\n\nfn shadow(outer: Duo, inner: Duo) -> Int {\n  match outer {\n    Left { value: y } => {\n      match inner {\n        Left { value: y } => y\n        Right { value: y } => y\n      }\n      y\n    }\n    Right { value: _ } => 0\n  }\n}\n";
-    let shadow_resolved = compile_dag_resolved(shadow_source);
-    let shadow_graph = shadow_resolved.graph.clone().expect("shadow graph");
-    let shadow_module = shadow_graph
+    let shadow_frontend =
+        v1_compiler::v1_compiler_compile::front_end_sources(Rc::new(vec![Rc::new(SourceFile {
+            path: "typed_pattern_shadow.dag".to_string(),
+            content: shadow_source.to_string(),
+        })]));
+    let shadow_graph = shadow_frontend.graph.clone().expect("shadow graph");
+    let shadow_source_indices = shadow_frontend
+        .newline_indices
+        .clone()
+        .iter()
+        .cloned()
+        .fold(empty_map(), |acc, si| map_insert(acc, si.file.clone(), si));
+    let shadow_typed = v1_compiler::v1_compiler_infer::typecheck_with_census_extra(
+        shadow_graph,
+        shadow_source_indices.clone(),
+        shadow_frontend.intern_table.clone(),
+        Rc::new(vec![]),
+        shadow_source_indices.clone(),
+    );
+    let shadow_module = shadow_typed
         .modules
         .first()
         .cloned()
-        .expect("shadow module")
-        .module
-        .clone();
-    let shadow_body = module_items(shadow_module)
+        .expect("shadow module");
+    let shadow_body = module_items(shadow_module.module.clone())
         .iter()
         .find(|item| item.name == "shadow")
         .and_then(|item| item.body.clone())
