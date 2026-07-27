@@ -417,7 +417,7 @@ artifact-only · ciphertext+interface "locked" · interface-only · commitment-h
 per-audience key-wrapped **locked realizations** (decrypt-then-verify, `LockedNodeUnrealizable`
 refusals, counted `LockedBlocked` witness state), churn blinding (salted commitments; the
 `SecretRef` wrapper reserved for secrets-as-material), and crypto-shred erasure for PII-typed
-nodes — content homed in [dag-scm-design.md](dag-scm-design.md) §3 until it folds back here when
+nodes — content homed in [dag-scm-design.md](dag-scm-design.md) §11 until it folds back here when
 the rungs land. None of it changes Stage 0/P-B, §5's absence default, or the opt-in hash-stub
 mode. **Sequencing decision**: visibility ships FIRST, implemented as this doc's grant model and
 realized over git public/private roots (P-B), the identical interface later carried by the
