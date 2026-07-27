@@ -19,8 +19,6 @@ import gunbc.merge_admission_produce {
   MergeTargetTreeHashOk,
   MergeTargetTreeHashRefused,
 }
-import extdeps.github.checks { CheckConclusion }
-
 data merge_admission_stamp_missing_floor_exit_is_failure: String = "CI_FLOOR_EXIT unset stamps floor_exit_code as Failure (non-zero) — fail-closed per §5; only the ci.yml floor tail sets CI_FLOOR_EXIT from claim_executor"
 
 data merge_admission_stamp_non_pr_omits_pr_number: String = "non-PR CI events (push to main, workflow_dispatch) omit pr_number from the receipt wire — jq requires .pull_request.number be a JSON number; absent field, not fabricated 0"
