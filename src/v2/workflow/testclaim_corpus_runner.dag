@@ -10,7 +10,7 @@ import v2.compiler.eval {
 import v2.std.collection { List }
 import v2.std.algebra { Equal, Greater, Less, length, list_append }
 import v2.std.logic { Bool }
-import v2.std.nat { Nat, Succ, Zero, nat_compare }
+import std.nat { Nat, Succ, Zero, nat_compare }
 import v2.std.node { Node, Symbol }
 import v2.std.runtime { RuntimeValue }
 import v2.std.verdict {
@@ -141,27 +141,27 @@ fn corpus_report_tally(r: CorpusEvalReport) -> VerdictTally {
   })
 }
 
-fn corpus_report_pass_count(r: CorpusEvalReport) -> v2.std.nat.Nat {
+fn corpus_report_pass_count(r: CorpusEvalReport) -> std.nat.Nat {
   corpus_report_tally(r: r).pass
 }
 
-fn corpus_report_fail_count(r: CorpusEvalReport) -> v2.std.nat.Nat {
+fn corpus_report_fail_count(r: CorpusEvalReport) -> std.nat.Nat {
   corpus_report_tally(r: r).fail
 }
 
-fn corpus_report_deferred_count(r: CorpusEvalReport) -> v2.std.nat.Nat {
+fn corpus_report_deferred_count(r: CorpusEvalReport) -> std.nat.Nat {
   corpus_report_tally(r: r).deferred
 }
 
-fn corpus_report_total(r: CorpusEvalReport) -> v2.std.nat.Nat {
+fn corpus_report_total(r: CorpusEvalReport) -> std.nat.Nat {
   verdict_tally_total(t: corpus_report_tally(r: r))
 }
 
-fn list_length_nat<T>(xs: List<T>) -> v2.std.nat.Nat {
+fn list_length_nat<T>(xs: List<T>) -> std.nat.Nat {
   fold(xs, init: Zero, f: fn(acc, _) { Succ { prev: acc } })
 }
 
-fn nat_eq(a: v2.std.nat.Nat, b: v2.std.nat.Nat) -> Bool {
+fn nat_eq(a: std.nat.Nat, b: std.nat.Nat) -> Bool {
   match nat_compare(a: a, b: b) {
     Equal => true
     Less => false

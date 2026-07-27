@@ -4,7 +4,7 @@ import v2.std.optional {
   Optional
 }
 import v2.std.text { String }
-import v2.std.nat { Nat }
+import std.nat { Nat }
 
 type HttpMethod
   = GET
@@ -73,7 +73,7 @@ type UriHost {
 }
 
 type UriPort {
-  value: v2.std.nat.Nat,
+  value: std.nat.Nat,
   grammar: Rfc3986AbnfProduction,
 }
 

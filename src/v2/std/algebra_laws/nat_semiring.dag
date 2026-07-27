@@ -80,43 +80,43 @@ fn accepted_claim(label: String, anchor: ManualAnchorKey, input: Node) -> TestCl
 }
 
 data claim_nat_add_left_identity: TestClaim = accepted_claim(
-  label: "v2.std.nat.Nat addition left identity law",
+  label: "std.nat.Nat addition left identity law",
   anchor: ManualNatAddLeftIdentity,
   input: nat_add_left_identity_input
 )
 
 data claim_nat_add_right_identity: TestClaim = accepted_claim(
-  label: "v2.std.nat.Nat addition right identity law",
+  label: "std.nat.Nat addition right identity law",
   anchor: ManualNatAddRightIdentity,
   input: nat_add_right_identity_input
 )
 
 data claim_nat_add_associativity: TestClaim = accepted_claim(
-  label: "v2.std.nat.Nat addition associativity law",
+  label: "std.nat.Nat addition associativity law",
   anchor: ManualNatAddAssociativity,
   input: nat_add_associativity_input
 )
 
 data claim_nat_mul_left_identity: TestClaim = accepted_claim(
-  label: "v2.std.nat.Nat multiplication left identity law",
+  label: "std.nat.Nat multiplication left identity law",
   anchor: ManualNatMulLeftIdentity,
   input: nat_mul_left_identity_input
 )
 
 data claim_nat_mul_annihilator: TestClaim = accepted_claim(
-  label: "v2.std.nat.Nat multiplication annihilator law",
+  label: "std.nat.Nat multiplication annihilator law",
   anchor: ManualNatMulAnnihilator,
   input: nat_mul_annihilator_input
 )
 
 data claim_nat_mul_associativity: TestClaim = accepted_claim(
-  label: "v2.std.nat.Nat multiplication associativity law",
+  label: "std.nat.Nat multiplication associativity law",
   anchor: ManualNatMulAssociativity,
   input: nat_mul_associativity_input
 )
 
 data claim_nat_add_wrong_identity_falsifies_law: TestClaim = DiagnosticClaim {
-  label: "v2.std.nat.Nat addition wrong identity falsifies law claim",
+  label: "std.nat.Nat addition wrong identity falsifies law claim",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_nat_add_wrong_identity,
   expected_rejection: diagnostics_singleton(

@@ -1,7 +1,7 @@
 module synthetic.parse_mechanism.elseif_k4
 
 
-fn else_if_chain(x: v2.std.nat.Nat) -> v2.std.nat.Nat {
+fn else_if_chain(x: std.nat.Nat) -> std.nat.Nat {
   if x == 0 { 0 }
   else if x == 1 { 1 }
   else if x == 2 { 2 }

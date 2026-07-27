@@ -2,7 +2,7 @@ module v2.std.leaf_model_verification
 
 import v2.std.collection { List }
 import v2.std.host_run { ValueDiff }
-import v2.std.nat { Nat }
+import std.nat { Nat }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 import v2.std.verdict { Verdict, verdict_combine }
@@ -47,11 +47,11 @@ type LeafModelClaimVerdictRow {
 }
 
 type LeafModelVerificationTotals {
-  proven: v2.std.nat.Nat
-  model_failed: v2.std.nat.Nat
-  falsification_caught: v2.std.nat.Nat
-  falsification_missed: v2.std.nat.Nat
-  not_checked: v2.std.nat.Nat
+  proven: std.nat.Nat
+  model_failed: std.nat.Nat
+  falsification_caught: std.nat.Nat
+  falsification_missed: std.nat.Nat
+  not_checked: std.nat.Nat
 }
 
 type LeafModelVerificationReport<M> {

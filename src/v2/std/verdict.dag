@@ -10,7 +10,7 @@ import v2.std.optional {
   Absent
 }
 import v2.std.diagnostic { Diagnostic, Outcome }
-import v2.std.nat { Nat, Succ, Zero, nat_add }
+import std.nat { Nat, Succ, Zero, nat_add }
 import v2.std.test_claim_falsification { FalsificationReceipt }
 import v2.std.logic { Bool }
 
@@ -73,9 +73,9 @@ fn verdict_monoid<Subj, T>() -> Monoid<Verdict<Subj, T>> {
 }
 
 type VerdictTally {
-  pass: v2.std.nat.Nat
-  fail: v2.std.nat.Nat
-  deferred: v2.std.nat.Nat
+  pass: std.nat.Nat
+  fail: std.nat.Nat
+  deferred: std.nat.Nat
 }
 
 data verdict_tally_empty: VerdictTally = VerdictTally { pass: Zero, fail: Zero, deferred: Zero }
@@ -100,7 +100,7 @@ fn verdict_tally<Subj, T>(vs: List<Verdict<Subj, T>>) -> VerdictTally {
   })
 }
 
-fn verdict_tally_total(t: VerdictTally) -> v2.std.nat.Nat {
+fn verdict_tally_total(t: VerdictTally) -> std.nat.Nat {
   nat_add(a: nat_add(a: t.pass, b: t.fail), b: t.deferred)
 }
 

@@ -63,7 +63,7 @@ import v2.std.host_run { HostLogicalRun }
 import v2.compiler.self_host.native_agreement_support {
   native_agreement_divergence_from_run
 }
-import v2.std.native_agreement {
+import std.native_agreement {
   NativeAgreementDivergence,
   native_agreement_failure_receipt,
   format_native_agreement_divergence

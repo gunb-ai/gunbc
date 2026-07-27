@@ -438,7 +438,7 @@ data gunbc_ci_fast_lane_rule_note: String = "Fast-lane 5-second rule (operator r
 
 data gunbc_ci_fast_lane_witness_eval_budget: Second = second(count: 5)
 
-fn gunbc_ci_fast_lane_eval_budget_ms() -> v2.std.nat.Nat {
+fn gunbc_ci_fast_lane_eval_budget_ms() -> std.nat.Nat {
   second_count(s: gunbc_ci_fast_lane_witness_eval_budget) * 1000
 }
 
@@ -466,13 +466,13 @@ data gunbc_falsifier_self_host_wet_receipt_budget_note: String = "Whole-receipt 
 
 data gunbc_falsifier_self_host_wet_receipt_wall_budget: Second = second(count: 600)
 
-fn gunbc_falsifier_self_host_wet_receipt_wall_budget_ms() -> v2.std.nat.Nat {
+fn gunbc_falsifier_self_host_wet_receipt_wall_budget_ms() -> std.nat.Nat {
   second_count(s: gunbc_falsifier_self_host_wet_receipt_wall_budget) * 1000
 }
 
 data gunbc_falsifier_self_host_wet_interp_eval_budget: Second = second(count: 120)
 
-fn gunbc_falsifier_self_host_wet_interp_eval_budget_ms() -> v2.std.nat.Nat {
+fn gunbc_falsifier_self_host_wet_interp_eval_budget_ms() -> std.nat.Nat {
   second_count(s: gunbc_falsifier_self_host_wet_interp_eval_budget) * 1000
 }
 
@@ -480,7 +480,7 @@ data gunbc_falsifier_silent_pick_gate_receipt_budget_note: String = "Whole-recei
 
 data gunbc_falsifier_silent_pick_gate_receipt_wall_budget: Second = second(count: 900)
 
-fn gunbc_falsifier_silent_pick_gate_receipt_wall_budget_ms() -> v2.std.nat.Nat {
+fn gunbc_falsifier_silent_pick_gate_receipt_wall_budget_ms() -> std.nat.Nat {
   second_count(s: gunbc_falsifier_silent_pick_gate_receipt_wall_budget) * 1000
 }
 
@@ -488,7 +488,7 @@ data gunbc_falsifier_substrate_long_lane_budget_note: String = "Per-witness eval
 
 data gunbc_falsifier_substrate_long_lane_witness_eval_budget: Second = second(count: 180)
 
-fn gunbc_falsifier_substrate_long_lane_eval_budget_ms() -> v2.std.nat.Nat {
+fn gunbc_falsifier_substrate_long_lane_eval_budget_ms() -> std.nat.Nat {
   second_count(s: gunbc_falsifier_substrate_long_lane_witness_eval_budget) * 1000
 }
 

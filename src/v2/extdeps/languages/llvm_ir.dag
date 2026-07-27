@@ -49,7 +49,7 @@ import v2.std.model_core {
   ModelCoreFactAxisSurfaceSpelling,
   ModelCoreFactAxisWidth
 }
-import v2.std.nat { Nat }
+import std.nat { Nat }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 
 type FloatKind
@@ -68,9 +68,9 @@ type LlvmType
   | MetadataType
   | IntegerType { bits: NonZeroNat }
   | FloatingType { kind: FloatKind }
-  | PointerType { address_space: v2.std.nat.Nat }
+  | PointerType { address_space: std.nat.Nat }
   | VectorType { element: LlvmType, count: NonZeroNat, scalable: VectorScaling }
-  | ArrayType { element: LlvmType, count: v2.std.nat.Nat }
+  | ArrayType { element: LlvmType, count: std.nat.Nat }
   | StructType { fields: List<LlvmType>, packed: StructPacking }
   | FunctionType { result: LlvmType, params: List<LlvmType>, var_arg: VarArg }
   | NamedType { name: Symbol }

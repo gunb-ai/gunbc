@@ -1,6 +1,6 @@
 module v2.extdeps.languages.verilog
 
-import v2.std.nat { Nat }
+import std.nat { Nat }
 import v2.std.node { Symbol }
 import v2.std.grammar {
   StampClass,
@@ -593,8 +593,8 @@ type VerilogModule
     }
 
 type VerilogCost {
-  gate_cost: v2.std.nat.Nat
-  area_cost: v2.std.nat.Nat
+  gate_cost: std.nat.Nat
+  area_cost: std.nat.Nat
 }
 fn verilog_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }

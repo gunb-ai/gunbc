@@ -35,7 +35,7 @@ import v2.std.node {
   TypeNode,
   SyntheticOccurrence
 }
-import v2.std.nat { Zero }
+import std.nat { Zero }
 import v2.std.logic { Bool }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

@@ -4,7 +4,7 @@ import v2.std.algebra { Ordering, Less, Equal, Greater }
 import v2.std.diagnostic { Diagnostic, Outcome, port_locus, Unavailable, UserInputBoundary, Accepted, None, diagnostics_singleton }
 import v2.std.logic { Bool }
 import v2.std.machine { Bit, Word32, Word64 }
-import v2.std.nat { Nat, nat_compare, is_zero }
+import std.nat { Nat, nat_compare, is_zero }
 import v2.std.node { Symbol }
 type Float32Interchange = Word32
 type Float64Interchange = Word64
@@ -18,8 +18,8 @@ type FloatSpecial
 type FloatBody
   = Finite {
       sign: Bit
-      biased_exponent: v2.std.nat.Nat
-      trailing_significand: v2.std.nat.Nat
+      biased_exponent: std.nat.Nat
+      trailing_significand: std.nat.Nat
     }
   | NonFinite { tag: FloatSpecial }
 
@@ -31,10 +31,10 @@ type Float64 {
   body: FloatBody
 }
 type Float = Float64
-fn sign_rank_lex(s: Bit) -> v2.std.nat.Nat {
+fn sign_rank_lex(s: Bit) -> std.nat.Nat {
   match s {
-    true => v2.std.nat.Zero
-    false => v2.std.nat.Succ { prev: v2.std.nat.Zero }
+    true => std.nat.Zero
+    false => std.nat.Succ { prev: std.nat.Zero }
   }
 }
 fn ordering_invert(o: Ordering) -> Ordering {
@@ -45,10 +45,10 @@ fn ordering_invert(o: Ordering) -> Ordering {
   }
 }
 fn float_finite_unsigned_field_order(
-  ea: v2.std.nat.Nat,
-  fa: v2.std.nat.Nat,
-  eb: v2.std.nat.Nat,
-  fb: v2.std.nat.Nat,
+  ea: std.nat.Nat,
+  fa: std.nat.Nat,
+  eb: std.nat.Nat,
+  fb: std.nat.Nat,
 ) -> Ordering {
   let o2 = nat_compare(a: ea, b: eb)
   match o2 {
@@ -58,12 +58,12 @@ fn float_finite_unsigned_field_order(
   }
 }
 
-fn float_special_rank(t: FloatSpecial) -> v2.std.nat.Nat {
+fn float_special_rank(t: FloatSpecial) -> std.nat.Nat {
   match t {
-    NegInfinity => v2.std.nat.Zero
-    PosInfinity => v2.std.nat.Succ { prev: v2.std.nat.Zero }
-    QuietNan => v2.std.nat.Succ { prev: v2.std.nat.Succ { prev: v2.std.nat.Zero } }
-    SignalingNan => v2.std.nat.Succ { prev: v2.std.nat.Succ { prev: v2.std.nat.Succ { prev: v2.std.nat.Zero } } }
+    NegInfinity => std.nat.Zero
+    PosInfinity => std.nat.Succ { prev: std.nat.Zero }
+    QuietNan => std.nat.Succ { prev: std.nat.Succ { prev: std.nat.Zero } }
+    SignalingNan => std.nat.Succ { prev: std.nat.Succ { prev: std.nat.Succ { prev: std.nat.Zero } } }
   }
 }
 
@@ -74,7 +74,7 @@ fn float_body_is_nan(x: FloatBody) -> Bool {
     _ => false
   }
 }
-fn float_finite_magnitude_zero(e: v2.std.nat.Nat, f: v2.std.nat.Nat) -> Bool {
+fn float_finite_magnitude_zero(e: std.nat.Nat, f: std.nat.Nat) -> Bool {
   is_zero(e) && is_zero(f)
 }
 fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> Ordering {

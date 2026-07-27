@@ -1,28 +1,28 @@
 module v2.test.manual.qualified_pattern_reconcile
 
-import v2.std.nat { Nat, Zero, Succ, nat_mul }
+import std.nat { Nat, Zero, Succ, nat_mul }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data reconcile_note: String = "Regression witness for native-coproduct pattern reconciliation over QUALIFIED pattern spellings. A Nat constructed to its grounded native form (Zero grounds to Int 0, Succ grounds to Int k+1) reaching a match whose arm name is the qualified spelling v2.std.nat.Zero / v2.std.nat.Succ must still reconcile with the native value; before the fix the interpreter compared the full qualified pattern name against the short literal Zero/Succ and the native Int matched no arm (runtime: non-exhaustive pattern match on: 0). Discriminating: the qualified cases red without the fix; the bare control always holds. Mirrors the flip-era resolver stamping bare pattern arms with their containment path."
+data reconcile_note: String = "Regression witness for native-coproduct pattern reconciliation over QUALIFIED pattern spellings. A Nat constructed to its grounded native form (Zero grounds to Int 0, Succ grounds to Int k+1) reaching a match whose arm name is the qualified spelling std.nat.Zero / std.nat.Succ must still reconcile with the native value; before the fix the interpreter compared the full qualified pattern name against the short literal Zero/Succ and the native Int matched no arm (runtime: non-exhaustive pattern match on: 0). Discriminating: the qualified cases red without the fix; the bare control always holds. Mirrors the flip-era resolver stamping bare pattern arms with their containment path."
 
 fn three() -> Nat {
   Succ { prev: Succ { prev: Succ { prev: Zero } } }
 }
 
-fn is_zero_qualified(value: v2.std.nat.Nat) -> Bool {
+fn is_zero_qualified(value: std.nat.Nat) -> Bool {
   match value {
-    v2.std.nat.Zero => true
-    v2.std.nat.Succ { prev: p } => false
+    std.nat.Zero => true
+    std.nat.Succ { prev: p } => false
   }
 }
 
-fn is_succ_qualified(value: v2.std.nat.Nat) -> Bool {
+fn is_succ_qualified(value: std.nat.Nat) -> Bool {
   match value {
-    v2.std.nat.Zero => false
-    v2.std.nat.Succ { prev: p } => true
+    std.nat.Zero => false
+    std.nat.Succ { prev: p } => true
   }
 }
 

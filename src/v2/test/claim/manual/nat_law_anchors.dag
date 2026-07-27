@@ -20,7 +20,7 @@ import v2.std.diagnostic { Accepted, None, Outcome }
 import v2.test.manual.connective_anchors { stub_empty_conj }
 
 data claim_nat_add_left_identity: TestClaim = CompilesClaim {
-  label: "manual/nat: monoid left identity nat_add(v2.std.nat.Zero,a)=a (law)",
+  label: "manual/nat: monoid left identity nat_add(std.nat.Zero,a)=a (law)",
   anchor: manual_claim_anchor(anchor: ManualNatAddLeftIdentity),
   input: stub_empty_conj,
   expected_value: stub_empty_conj,
@@ -28,7 +28,7 @@ data claim_nat_add_left_identity: TestClaim = CompilesClaim {
 }
 
 data claim_nat_add_right_identity: TestClaim = CompilesClaim {
-  label: "manual/nat: monoid right identity nat_add(a,v2.std.nat.Zero)=a (law)",
+  label: "manual/nat: monoid right identity nat_add(a,std.nat.Zero)=a (law)",
   anchor: manual_claim_anchor(anchor: ManualNatAddRightIdentity),
   input: stub_empty_conj,
   expected_value: stub_empty_conj,
@@ -44,7 +44,7 @@ data claim_nat_add_associativity: TestClaim = CompilesClaim {
 }
 
 data claim_nat_mul_left_identity: TestClaim = CompilesClaim {
-  label: "manual/nat: multiplicative monoid identity nat_mul(one,a)=a where one is v2.std.nat.Succ-of-v2.std.nat.Zero (law)",
+  label: "manual/nat: multiplicative monoid identity nat_mul(one,a)=a where one is std.nat.Succ-of-std.nat.Zero (law)",
   anchor: manual_claim_anchor(anchor: ManualNatMulLeftIdentity),
   input: stub_empty_conj,
   expected_value: stub_empty_conj,
@@ -52,7 +52,7 @@ data claim_nat_mul_left_identity: TestClaim = CompilesClaim {
 }
 
 data claim_nat_mul_annihilator: TestClaim = CompilesClaim {
-  label: "manual/nat: semiring zero annihilator nat_mul(v2.std.nat.Zero,a)=v2.std.nat.Zero (law)",
+  label: "manual/nat: semiring zero annihilator nat_mul(std.nat.Zero,a)=std.nat.Zero (law)",
   anchor: manual_claim_anchor(anchor: ManualNatMulAnnihilator),
   input: stub_empty_conj,
   expected_value: stub_empty_conj,

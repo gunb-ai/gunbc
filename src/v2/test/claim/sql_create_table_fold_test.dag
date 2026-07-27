@@ -13,7 +13,7 @@ import v2.extdeps.formats.sql {
   sql_serialize_schema_operation
 }
 import v2.std.cardinality { NonZeroNat }
-import v2.std.nat { Zero }
+import std.nat { Zero }
 import v2.extdeps.formats.sql_create_table_fold {
   sql_fold_operation_emitted_witness,
   sql_fold_relation_row_witness,

@@ -7,7 +7,7 @@ import v2.std.optional {
   Absent
 }
 import v2.std.diagnostic { Accepted }
-import v2.std.native_agreement {
+import std.native_agreement {
   NativeAgreementDivergence,
   runtime_value_octet_label
 }

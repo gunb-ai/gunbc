@@ -10,7 +10,7 @@ import v2.lens.cost {
 }
 import v2.std.cardinality { NonZeroNat }
 import v2.std.logic { Bool }
-import v2.std.nat { Zero }
+import std.nat { Zero }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.verification {
   EqualsClaim,

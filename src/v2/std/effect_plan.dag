@@ -26,7 +26,7 @@ type EffectPlanStep<E>
   | For { binder: Symbol, over: ValueSource, body: EffectPlan<E> }
   | While { cond: Predicate, body: EffectPlan<E> }
   | BoundedPoll {
-      max_attempts: v2.std.nat.Nat,
+      max_attempts: std.nat.Nat,
       body: EffectPlan<E>,
       success: Predicate
     }

@@ -12,22 +12,22 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   port_locus
 }
-import v2.std.nat { Nat, Succ, Zero }
+import std.nat { Nat, Succ, Zero }
 import v2.std.node { Symbol }
 import v2.std.patch { ConfigPatchRecord, config_patch_layer }
 
 type Lean4NameValue
 type Lean4SyntaxValue
-type Lean4NatValue = v2.std.nat.Nat
+type Lean4NatValue = std.nat.Nat
 fn lean4_format_authoritative_locus() -> Locus {
   port_locus(port: ^lean4_format_authoritative_locus_port)
 }
 
-fn lean4_nat_succ(n: v2.std.nat.Nat) -> v2.std.nat.Nat {
+fn lean4_nat_succ(n: std.nat.Nat) -> std.nat.Nat {
   Succ { prev: n }
 }
 
-fn lean4_nat_add_ten(n: v2.std.nat.Nat) -> v2.std.nat.Nat {
+fn lean4_nat_add_ten(n: std.nat.Nat) -> std.nat.Nat {
   lean4_nat_succ(
     n: lean4_nat_succ(
       n: lean4_nat_succ(
@@ -53,7 +53,7 @@ fn lean4_nat_max_materializable() -> Int {
   4096
 }
 
-fn lean4_nat_catalog_format_width() -> v2.std.nat.Nat {
+fn lean4_nat_catalog_format_width() -> std.nat.Nat {
   lean4_nat_add_ten(
     n: lean4_nat_add_ten(
       n: lean4_nat_add_ten(
@@ -77,11 +77,11 @@ fn lean4_nat_catalog_format_width() -> v2.std.nat.Nat {
   )
 }
 
-fn lean4_nat_catalog_format_indent() -> v2.std.nat.Nat {
+fn lean4_nat_catalog_format_indent() -> std.nat.Nat {
   lean4_nat_succ(n: lean4_nat_succ(n: Zero))
 }
 
-fn lean4_nat_peano_from_non_negative_int(value: Int) -> v2.std.nat.Nat {
+fn lean4_nat_peano_from_non_negative_int(value: Int) -> std.nat.Nat {
   if value == 0 {
     Zero
   } else {
@@ -89,7 +89,7 @@ fn lean4_nat_peano_from_non_negative_int(value: Int) -> v2.std.nat.Nat {
   }
 }
 
-fn lean4_nat_materialize_non_negative_int(value: Int, at: Locus) -> Outcome<v2.std.nat.Nat> {
+fn lean4_nat_materialize_non_negative_int(value: Int, at: Locus) -> Outcome<std.nat.Nat> {
   if value < 0 {
     Rejected {
       diagnostics: diagnostics_singleton(

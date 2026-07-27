@@ -39,7 +39,7 @@ import v2.std.diagnostic {
 }
 import v2.std.witness { StructuralPropertyWitness }
 import v2.std.find_witness { PreservationPredicate, verify_witness }
-import v2.std.nat {
+import std.nat {
   NatAlgebraLawObligation,
   nat_declared_algebra_law_obligations
 }

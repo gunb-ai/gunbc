@@ -18,7 +18,7 @@ import v2.extdeps.languages.llvm_ir {
   block_well_formed
 }
 import v2.std.cardinality { NonZeroNat }
-import v2.std.nat { Zero }
+import std.nat { Zero }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.verification {
   EqualsClaim,

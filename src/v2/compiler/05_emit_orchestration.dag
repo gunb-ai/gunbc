@@ -111,7 +111,7 @@ import v2.std.optional {
   optional_absent
 }
 import v2.std.integer { integer_nat_to_decimal_string }
-import v2.std.nat { Nat }
+import std.nat { Nat }
 import v2.compiler.target_carriers { lossless_source }
 import v2.std.diagnostic {
   Accepted,
@@ -689,7 +689,7 @@ fn orch_emit_while_step(
 }
 
 fn orch_emit_bounded_poll_step(
-  max_attempts: v2.std.nat.Nat,
+  max_attempts: std.nat.Nat,
   body: Pipeline,
   success: Predicate,
   medium: OrchestrationEmitMedium

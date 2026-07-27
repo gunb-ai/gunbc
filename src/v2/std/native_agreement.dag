@@ -1,4 +1,4 @@
-module v2.std.native_agreement
+module std.native_agreement
 
 import v2.std.algebra { Cons, Empty }
 import v2.std.collection {

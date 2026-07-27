@@ -25,7 +25,7 @@ import std.measure {
   Resistance,
   Time,
 }
-import v2.std.nat { Nat }
+import std.nat { Nat }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
@@ -244,7 +244,7 @@ type StepBranchVoltage {
 }
 
 type TimeSeriesSample {
-  tick: v2.std.nat.Nat
+  tick: std.nat.Nat
   microvolts: Voltage
 }
 

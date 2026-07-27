@@ -15,6 +15,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data rust_type_checkpoints: List<TypeCheckpoint> = [
   { dag_name: "Int",    target_type: "i64",    default_expr: "0",              is_copy: true,  literal_suffix: none },
+  { dag_name: "Nat",    target_type: "i64",    default_expr: "0",              is_copy: true,  literal_suffix: none },
   { dag_name: "Float",  target_type: "f64",    default_expr: "0.0",            is_copy: true,  literal_suffix: none },
   { dag_name: "Bool",   target_type: "bool",   default_expr: "false",          is_copy: true,  literal_suffix: none },
   { dag_name: "Symbol", target_type: "String", default_expr: "String::new()",  is_copy: false, literal_suffix: ".to_string()" },

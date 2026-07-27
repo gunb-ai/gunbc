@@ -3,36 +3,36 @@ module v2.std.datetime
 import v2.std.diagnostic { Locus, Outcome, bind_outcome, outcome_accepted }
 import v2.std.algebra { fold_list }
 import v2.std.collection { List }
-import v2.std.nat { Nat }
+import std.nat { Nat }
 import v2.std.node { Symbol }
 import v2.std.refinement { Refined, Validation, refine, refined_base }
 
 type Year {
-  value: Refined<v2.std.nat.Nat>
+  value: Refined<std.nat.Nat>
 }
 
 type MonthOrdinal {
-  value: Refined<v2.std.nat.Nat>
+  value: Refined<std.nat.Nat>
 }
 
 type DayOrdinal {
-  value: Refined<v2.std.nat.Nat>
+  value: Refined<std.nat.Nat>
 }
 
 type HourOfDay {
-  value: Refined<v2.std.nat.Nat>
+  value: Refined<std.nat.Nat>
 }
 
 type MinuteOfHour {
-  value: Refined<v2.std.nat.Nat>
+  value: Refined<std.nat.Nat>
 }
 
 type SecondOfMinute {
-  value: Refined<v2.std.nat.Nat>
+  value: Refined<std.nat.Nat>
 }
 
 type SecfracDigit {
-  value: Refined<v2.std.nat.Nat>
+  value: Refined<std.nat.Nat>
 }
 
 type SecfracDigits {
@@ -49,11 +49,11 @@ type TzOffsetSign
   | TzOffsetMinus
 
 type TzOffsetHour {
-  value: Refined<v2.std.nat.Nat>
+  value: Refined<std.nat.Nat>
 }
 
 type TzOffsetMinute {
-  value: Refined<v2.std.nat.Nat>
+  value: Refined<std.nat.Nat>
 }
 
 type NumericTzOffset {
@@ -136,9 +136,9 @@ type LeapSecondAuthoritySource {
 }
 
 type LeapSecondInsertionDate {
-  year: v2.std.nat.Nat
-  month: v2.std.nat.Nat
-  day: v2.std.nat.Nat
+  year: std.nat.Nat
+  month: std.nat.Nat
+  day: std.nat.Nat
 }
 
 type LeapSecondInsertionTable {
@@ -214,43 +214,43 @@ data positive_utc_leap_second_insertions: LeapSecondInsertionTable = LeapSecondI
   ]
 }
 
-fn year_value(year: Year) -> v2.std.nat.Nat {
+fn year_value(year: Year) -> std.nat.Nat {
   refined_base(r: year.value)
 }
 
-fn month_value(month: MonthOrdinal) -> v2.std.nat.Nat {
+fn month_value(month: MonthOrdinal) -> std.nat.Nat {
   refined_base(r: month.value)
 }
 
-fn day_value(day: DayOrdinal) -> v2.std.nat.Nat {
+fn day_value(day: DayOrdinal) -> std.nat.Nat {
   refined_base(r: day.value)
 }
 
-fn second_value(second: SecondOfMinute) -> v2.std.nat.Nat {
+fn second_value(second: SecondOfMinute) -> std.nat.Nat {
   refined_base(r: second.value)
 }
 
-fn minute_value(minute: MinuteOfHour) -> v2.std.nat.Nat {
+fn minute_value(minute: MinuteOfHour) -> std.nat.Nat {
   refined_base(r: minute.value)
 }
 
-fn hour_value(hour: HourOfDay) -> v2.std.nat.Nat {
+fn hour_value(hour: HourOfDay) -> std.nat.Nat {
   refined_base(r: hour.value)
 }
 
-fn tz_offset_hour_value(hour: TzOffsetHour) -> v2.std.nat.Nat {
+fn tz_offset_hour_value(hour: TzOffsetHour) -> std.nat.Nat {
   refined_base(r: hour.value)
 }
 
-fn tz_offset_minute_value(minute: TzOffsetMinute) -> v2.std.nat.Nat {
+fn tz_offset_minute_value(minute: TzOffsetMinute) -> std.nat.Nat {
   refined_base(r: minute.value)
 }
 
-fn secfrac_digit_value(digit: SecfracDigit) -> v2.std.nat.Nat {
+fn secfrac_digit_value(digit: SecfracDigit) -> std.nat.Nat {
   refined_base(r: digit.value)
 }
 
-fn leap_second_insertion_date(year: v2.std.nat.Nat, month: v2.std.nat.Nat, day: v2.std.nat.Nat) -> LeapSecondInsertionDate {
+fn leap_second_insertion_date(year: std.nat.Nat, month: std.nat.Nat, day: std.nat.Nat) -> LeapSecondInsertionDate {
   LeapSecondInsertionDate {
     year: year,
     month: month,
@@ -258,55 +258,55 @@ fn leap_second_insertion_date(year: v2.std.nat.Nat, month: v2.std.nat.Nat, day: 
   }
 }
 
-fn year_admits(value: v2.std.nat.Nat) -> Bool {
+fn year_admits(value: std.nat.Nat) -> Bool {
   value <= 9999
 }
 
-fn month_admits(value: v2.std.nat.Nat) -> Bool {
+fn month_admits(value: std.nat.Nat) -> Bool {
   (value >= 1) && (value <= 12)
 }
 
-fn day_admits(value: v2.std.nat.Nat) -> Bool {
+fn day_admits(value: std.nat.Nat) -> Bool {
   (value >= 1) && (value <= 31)
 }
 
-fn hour_admits(value: v2.std.nat.Nat) -> Bool {
+fn hour_admits(value: std.nat.Nat) -> Bool {
   value <= 23
 }
 
-fn minute_admits(value: v2.std.nat.Nat) -> Bool {
+fn minute_admits(value: std.nat.Nat) -> Bool {
   value <= 59
 }
 
-fn second_admits(value: v2.std.nat.Nat) -> Bool {
+fn second_admits(value: std.nat.Nat) -> Bool {
   value <= 60
 }
 
-fn secfrac_digit_admits(value: v2.std.nat.Nat) -> Bool {
+fn secfrac_digit_admits(value: std.nat.Nat) -> Bool {
   value <= 9
 }
 
-fn tz_offset_hour_admits(value: v2.std.nat.Nat) -> Bool {
+fn tz_offset_hour_admits(value: std.nat.Nat) -> Bool {
   value <= 23
 }
 
-fn tz_offset_minute_admits(value: v2.std.nat.Nat) -> Bool {
+fn tz_offset_minute_admits(value: std.nat.Nat) -> Bool {
   value <= 59
 }
 
-fn divisible_by_4(value: v2.std.nat.Nat) -> Bool {
+fn divisible_by_4(value: std.nat.Nat) -> Bool {
   (value % 4) == 0
 }
 
-fn divisible_by_100(value: v2.std.nat.Nat) -> Bool {
+fn divisible_by_100(value: std.nat.Nat) -> Bool {
   (value % 100) == 0
 }
 
-fn divisible_by_400(value: v2.std.nat.Nat) -> Bool {
+fn divisible_by_400(value: std.nat.Nat) -> Bool {
   (value % 400) == 0
 }
 
-fn leap_year(value: v2.std.nat.Nat) -> Bool {
+fn leap_year(value: std.nat.Nat) -> Bool {
   divisible_by_4(value: value)
     && (!divisible_by_100(value: value) || divisible_by_400(value: value))
 }
@@ -414,11 +414,11 @@ fn leap_second_insertion_occurrence_announcement(occurrence: LeapSecondInsertion
   fields.announcement
 }
 
-fn minute_of_day(hour: v2.std.nat.Nat, minute: v2.std.nat.Nat) -> v2.std.nat.Nat {
+fn minute_of_day(hour: std.nat.Nat, minute: std.nat.Nat) -> std.nat.Nat {
   (hour * 60) + minute
 }
 
-fn tz_offset_minutes(offset: NumericTzOffset) -> v2.std.nat.Nat {
+fn tz_offset_minutes(offset: NumericTzOffset) -> std.nat.Nat {
   (tz_offset_hour_value(hour: offset.hour) * 60) + tz_offset_minute_value(minute: offset.minute)
 }
 
@@ -475,47 +475,47 @@ fn leap_second_offset_datetime_admits(fields: LeapSecondOffsetDateTimeFields) ->
     && leap_second_local_matches_utc(announcement: announcement, fields: fields)
 }
 
-data year_validation: Validation<v2.std.nat.Nat> = Validation {
+data year_validation: Validation<std.nat.Nat> = Validation {
   reason: ^year_out_of_range,
   admits: year_admits
 }
 
-data month_validation: Validation<v2.std.nat.Nat> = Validation {
+data month_validation: Validation<std.nat.Nat> = Validation {
   reason: ^month_out_of_range,
   admits: month_admits
 }
 
-data day_validation: Validation<v2.std.nat.Nat> = Validation {
+data day_validation: Validation<std.nat.Nat> = Validation {
   reason: ^day_out_of_range,
   admits: day_admits
 }
 
-data hour_validation: Validation<v2.std.nat.Nat> = Validation {
+data hour_validation: Validation<std.nat.Nat> = Validation {
   reason: ^hour_out_of_range,
   admits: hour_admits
 }
 
-data minute_validation: Validation<v2.std.nat.Nat> = Validation {
+data minute_validation: Validation<std.nat.Nat> = Validation {
   reason: ^minute_out_of_range,
   admits: minute_admits
 }
 
-data second_validation: Validation<v2.std.nat.Nat> = Validation {
+data second_validation: Validation<std.nat.Nat> = Validation {
   reason: ^second_out_of_range,
   admits: second_admits
 }
 
-data secfrac_digit_validation: Validation<v2.std.nat.Nat> = Validation {
+data secfrac_digit_validation: Validation<std.nat.Nat> = Validation {
   reason: ^secfrac_digit_out_of_range,
   admits: secfrac_digit_admits
 }
 
-data tz_offset_hour_validation: Validation<v2.std.nat.Nat> = Validation {
+data tz_offset_hour_validation: Validation<std.nat.Nat> = Validation {
   reason: ^tz_offset_hour_out_of_range,
   admits: tz_offset_hour_admits
 }
 
-data tz_offset_minute_validation: Validation<v2.std.nat.Nat> = Validation {
+data tz_offset_minute_validation: Validation<std.nat.Nat> = Validation {
   reason: ^tz_offset_minute_out_of_range,
   admits: tz_offset_minute_admits
 }
@@ -550,43 +550,43 @@ data leap_second_offset_datetime_validation: Validation<LeapSecondOffsetDateTime
   admits: leap_second_offset_datetime_admits
 }
 
-fn make_year(value: v2.std.nat.Nat, at: Locus) -> Outcome<Year> {
+fn make_year(value: std.nat.Nat, at: Locus) -> Outcome<Year> {
   bind_outcome(o: refine(base: value, by: year_validation, at: at), f: fn(refined) {
     outcome_accepted(value: Year { value: refined })
   })
 }
 
-fn make_month_ordinal(value: v2.std.nat.Nat, at: Locus) -> Outcome<MonthOrdinal> {
+fn make_month_ordinal(value: std.nat.Nat, at: Locus) -> Outcome<MonthOrdinal> {
   bind_outcome(o: refine(base: value, by: month_validation, at: at), f: fn(refined) {
     outcome_accepted(value: MonthOrdinal { value: refined })
   })
 }
 
-fn make_day_ordinal(value: v2.std.nat.Nat, at: Locus) -> Outcome<DayOrdinal> {
+fn make_day_ordinal(value: std.nat.Nat, at: Locus) -> Outcome<DayOrdinal> {
   bind_outcome(o: refine(base: value, by: day_validation, at: at), f: fn(refined) {
     outcome_accepted(value: DayOrdinal { value: refined })
   })
 }
 
-fn make_hour_of_day(value: v2.std.nat.Nat, at: Locus) -> Outcome<HourOfDay> {
+fn make_hour_of_day(value: std.nat.Nat, at: Locus) -> Outcome<HourOfDay> {
   bind_outcome(o: refine(base: value, by: hour_validation, at: at), f: fn(refined) {
     outcome_accepted(value: HourOfDay { value: refined })
   })
 }
 
-fn make_minute_of_hour(value: v2.std.nat.Nat, at: Locus) -> Outcome<MinuteOfHour> {
+fn make_minute_of_hour(value: std.nat.Nat, at: Locus) -> Outcome<MinuteOfHour> {
   bind_outcome(o: refine(base: value, by: minute_validation, at: at), f: fn(refined) {
     outcome_accepted(value: MinuteOfHour { value: refined })
   })
 }
 
-fn make_second_of_minute(value: v2.std.nat.Nat, at: Locus) -> Outcome<SecondOfMinute> {
+fn make_second_of_minute(value: std.nat.Nat, at: Locus) -> Outcome<SecondOfMinute> {
   bind_outcome(o: refine(base: value, by: second_validation, at: at), f: fn(refined) {
     outcome_accepted(value: SecondOfMinute { value: refined })
   })
 }
 
-fn make_secfrac_digit(value: v2.std.nat.Nat, at: Locus) -> Outcome<SecfracDigit> {
+fn make_secfrac_digit(value: std.nat.Nat, at: Locus) -> Outcome<SecfracDigit> {
   bind_outcome(o: refine(base: value, by: secfrac_digit_validation, at: at), f: fn(refined) {
     outcome_accepted(value: SecfracDigit { value: refined })
   })
@@ -596,13 +596,13 @@ fn make_subsecond(digits: SecfracDigits) -> Subsecond {
   FractionalSecond { digits: digits }
 }
 
-fn make_tz_offset_hour(value: v2.std.nat.Nat, at: Locus) -> Outcome<TzOffsetHour> {
+fn make_tz_offset_hour(value: std.nat.Nat, at: Locus) -> Outcome<TzOffsetHour> {
   bind_outcome(o: refine(base: value, by: tz_offset_hour_validation, at: at), f: fn(refined) {
     outcome_accepted(value: TzOffsetHour { value: refined })
   })
 }
 
-fn make_tz_offset_minute(value: v2.std.nat.Nat, at: Locus) -> Outcome<TzOffsetMinute> {
+fn make_tz_offset_minute(value: std.nat.Nat, at: Locus) -> Outcome<TzOffsetMinute> {
   bind_outcome(o: refine(base: value, by: tz_offset_minute_validation, at: at), f: fn(refined) {
     outcome_accepted(value: TzOffsetMinute { value: refined })
   })

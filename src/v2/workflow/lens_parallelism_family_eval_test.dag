@@ -7,7 +7,7 @@ import v2.compiler.eval {
 import v2.std.algebra { is_empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.nat { Zero }
+import std.nat { Zero }
 import v2.std.node { Node }
 import v2.std.runtime { RuntimeValue }
 import v2.std.verdict {
