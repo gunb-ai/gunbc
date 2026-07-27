@@ -187,6 +187,8 @@ import v2.std.compilers.target_model {
   target_reference_layer_tokens_node,
   TargetRepresentation,
   TargetRepresentationChoice,
+  TargetDeriveSupplementalGenericBoundContract,
+  TargetDeriveSupplementalGenericBoundRequirement,
   RequiredTraitWitness,
   TargetCollectionWitnessOrd,
   TargetCollectionWitnessHash,
@@ -195,6 +197,12 @@ import v2.std.compilers.target_model {
   TargetCollectionReprBTreeSet,
   TargetCollectionReprHashSet,
   TargetCollectionReprVec,
+  target_collection_choice_field_supplemental_generic_bound_contracts,
+  target_derive_supplemental_generic_bound_contract_field_derive_trait,
+  target_derive_supplemental_generic_bound_contract_field_requirements,
+  target_derive_supplemental_generic_bound_requirement_field_representation_parameter,
+  target_derive_supplemental_generic_bound_requirement_field_required_trait,
+  ReprGroundingDeriveTrait,
   target_type_expr_atom_emitted,
   target_type_expr_arrow_emitted,
   target_type_expr_surface_edge,
@@ -1678,6 +1686,47 @@ fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
   }
 }
 
+fn rust_derive_supplemental_generic_bound_requirement_bundle_node(
+  requirement: TargetDeriveSupplementalGenericBoundRequirement
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^target_derive_supplemental_generic_bound_requirement_field_representation_parameter,
+        target: rust_inhabitant_atom(id: requirement.representation_parameter)
+      ),
+      rust_named_edge(
+        name: ^target_derive_supplemental_generic_bound_requirement_field_required_trait,
+        target: rust_inhabitant_atom(id: discriminant(v: requirement.required_trait))
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn rust_derive_supplemental_generic_bound_contract_bundle_node(
+  contract: TargetDeriveSupplementalGenericBoundContract
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^target_derive_supplemental_generic_bound_contract_field_derive_trait,
+        target: rust_inhabitant_atom(id: discriminant(v: contract.derive_trait))
+      ),
+      rust_named_edge(
+        name: ^target_derive_supplemental_generic_bound_contract_field_requirements,
+        target: fold_list_node(
+          xs: contract.requirements,
+          item_node: rust_derive_supplemental_generic_bound_requirement_bundle_node
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
 fn rust_collection_choice_bundle_node(choice: TargetRepresentationChoice) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1691,6 +1740,13 @@ fn rust_collection_choice_bundle_node(choice: TargetRepresentationChoice) -> Nod
         target: fold_list_node(
           xs: choice.constraints,
           item_node: rust_collection_witness_bundle_node
+        )
+      ),
+      rust_named_edge(
+        name: ^target_collection_choice_field_supplemental_generic_bound_contracts,
+        target: fold_list_node(
+          xs: choice.supplemental_generic_bound_contracts,
+          item_node: rust_derive_supplemental_generic_bound_contract_bundle_node
         )
       )
     ],

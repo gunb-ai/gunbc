@@ -102,6 +102,7 @@ import v2.std.compilers.target_model {
   TargetCollectionRealization,
   TargetTextCarrier,
   TargetRepresentationChoice,
+  target_derive_supplemental_generic_bound_contracts_from_node,
   target_collection_select_choice,
   target_collection_realization_lookup_in_catalog,
   target_carrier_free_monoid_node,
@@ -124,6 +125,7 @@ import v2.std.compilers.target_model {
   target_type_expr_emitted_kind,
   target_type_expr_record_emitted,
   target_type_expr_sum_emitted,
+  target_collection_choice_field_supplemental_generic_bound_contracts,
   type_expr_projection_row_closedness_from_target,
   type_expression_projection_from_target,
   lex_rules_literal,
@@ -1350,11 +1352,26 @@ fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentatio
                   decode_item: target_collection_witness_from_node
                 ),
                 f: fn(constraints) {
-                  outcome_accepted(
-                    TargetRepresentationChoice {
-                      form: form,
-                      constraints: constraints,
-                      supplemental_generic_bound_contracts: Empty
+                  bind_outcome(
+                    o: find_named_child(
+                      root: node,
+                      name: ^target_collection_choice_field_supplemental_generic_bound_contracts
+                    ),
+                    f: fn(contracts_node) {
+                      bind_outcome(
+                        o: target_derive_supplemental_generic_bound_contracts_from_node(
+                          node: contracts_node
+                        ),
+                        f: fn(supplemental_generic_bound_contracts) {
+                          outcome_accepted(
+                            TargetRepresentationChoice {
+                              form: form,
+                              constraints: constraints,
+                              supplemental_generic_bound_contracts: supplemental_generic_bound_contracts
+                            }
+                          )
+                        }
+                      )
                     }
                   )
                 }
