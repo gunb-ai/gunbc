@@ -1,0 +1,150 @@
+module v2.test.emit.seed_honesty_discharge_unavailable_test
+
+import v2.workflow.bootstrap {
+  BootstrapHashPin,
+  DiverseCompilationAgreement,
+  DiverseCompilationRun,
+  IndependentCompilerPair,
+  bootstrap_seed_honesty_discharge,
+  bootstrap_seed_honesty_discharge_witness,
+  independent_compiler_evidence_unavailable,
+  independent_compiler_pair_witness,
+  pinned_v4_fixed_point_hash
+}
+import v2.std.node { Symbol }
+import v2.std.witness { Holds, Violates, Witness }
+import v2.std.logic { Bool }
+
+data seed_honesty_emit_enrollment_note: String = "Enrolled via witness_discovery_scan_dirs (src/v2/test/claim/emit/) — CI-discovered fail-closed refusal receipt for the seed-honesty unavailable-only evidence carrier."
+
+data seed_honesty_primary_compiler: Symbol = ^seed_honesty_primary_compiler
+data seed_honesty_secondary_compiler: Symbol = ^seed_honesty_secondary_compiler
+data seed_honesty_shared_compiler: Symbol = ^seed_honesty_shared_compiler
+data seed_honesty_perturbed_primary_compiler: Symbol = ^seed_honesty_perturbed_primary_compiler
+data seed_honesty_perturbed_secondary_compiler: Symbol = ^seed_honesty_perturbed_secondary_compiler
+
+fn seed_honesty_fabricated_agreement(
+  primary_compiler: Symbol,
+  secondary_compiler: Symbol
+) -> Witness<DiverseCompilationAgreement> {
+  Holds {
+    value: DiverseCompilationAgreement {
+      primary: DiverseCompilationRun {
+        source: ^seed_honesty_fabricated_source,
+        compiler: primary_compiler,
+        output: ^seed_honesty_fabricated_output,
+        output_hash: BootstrapHashPin {
+          digest: pinned_v4_fixed_point_hash,
+          pin: ^pinned_v4_fixed_point_hash_pin
+        }
+      },
+      secondary: DiverseCompilationRun {
+        source: ^seed_honesty_fabricated_source,
+        compiler: secondary_compiler,
+        output: ^seed_honesty_fabricated_output,
+        output_hash: BootstrapHashPin {
+          digest: pinned_v4_fixed_point_hash,
+          pin: ^pinned_v4_fixed_point_hash_pin
+        }
+      },
+      independent_compilers: IndependentCompilerPair {
+        primary: primary_compiler,
+        secondary: secondary_compiler
+      },
+      agreed_hash: BootstrapHashPin {
+        digest: pinned_v4_fixed_point_hash,
+        pin: ^pinned_v4_fixed_point_hash_pin
+      }
+    }
+  }
+}
+
+fn seed_honesty_discharge_refuses_when_unavailable() -> Bool {
+  match bootstrap_seed_honesty_discharge {
+    Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
+    Holds { value: _ } => false
+  }
+}
+
+fn seed_honesty_discharge_witness_refuses_holds_agreement() -> Bool {
+  match bootstrap_seed_honesty_discharge_witness(
+    axiom: ^seed_honesty_axiom,
+    diverse_double_compilation: seed_honesty_fabricated_agreement(
+      primary_compiler: seed_honesty_primary_compiler,
+      secondary_compiler: seed_honesty_secondary_compiler
+    )
+  ) {
+    Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
+    Holds { value: _ } => false
+  }
+}
+
+fn seed_honesty_discharge_witness_refuses_old_magic_atom() -> Bool {
+  match bootstrap_seed_honesty_discharge_witness(
+    axiom: ^seed_honesty_axiom,
+    diverse_double_compilation: seed_honesty_fabricated_agreement(
+      primary_compiler: ^independent_compiler_witness,
+      secondary_compiler: ^independent_compiler_witness
+    )
+  ) {
+    Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
+    Holds { value: _ } => false
+  }
+}
+
+fn independent_compiler_pair_witness_refuses_distinct_compilers_unavailable() -> Bool {
+  match independent_compiler_pair_witness(
+    primary: seed_honesty_primary_compiler,
+    secondary: seed_honesty_secondary_compiler,
+    evidence: independent_compiler_evidence_unavailable()
+  ) {
+    Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
+    Holds { value: _ } => false
+  }
+}
+
+fn independent_compiler_pair_witness_refuses_matching_compilers_unavailable() -> Bool {
+  match independent_compiler_pair_witness(
+    primary: seed_honesty_shared_compiler,
+    secondary: seed_honesty_shared_compiler,
+    evidence: independent_compiler_evidence_unavailable()
+  ) {
+    Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
+    Holds { value: _ } => false
+  }
+}
+
+fn independent_compiler_pair_witness_refuses_perturbed_compilers_unavailable() -> Bool {
+  match independent_compiler_pair_witness(
+    primary: seed_honesty_perturbed_primary_compiler,
+    secondary: seed_honesty_perturbed_secondary_compiler,
+    evidence: independent_compiler_evidence_unavailable()
+  ) {
+    Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
+    Holds { value: _ } => false
+  }
+}
+
+test fn seed_honesty_discharge_unavailable_top_level_refuses() -> Bool {
+  seed_honesty_discharge_refuses_when_unavailable()
+}
+
+test fn seed_honesty_discharge_unavailable_holds_agreement_refuses() -> Bool {
+  seed_honesty_discharge_witness_refuses_holds_agreement()
+}
+
+test fn seed_honesty_discharge_unavailable_old_magic_atom_refuses() -> Bool {
+  seed_honesty_discharge_witness_refuses_old_magic_atom()
+}
+
+test fn independent_compiler_pair_unavailable_distinct_refuses() -> Bool {
+  independent_compiler_pair_witness_refuses_distinct_compilers_unavailable()
+}
+
+test fn independent_compiler_pair_unavailable_matching_refuses() -> Bool {
+  independent_compiler_pair_witness_refuses_matching_compilers_unavailable()
+}
+
+test fn independent_compiler_pair_unavailable_perturbed_refuses() -> Bool {
+  independent_compiler_pair_witness_refuses_perturbed_compilers_unavailable()
+}
