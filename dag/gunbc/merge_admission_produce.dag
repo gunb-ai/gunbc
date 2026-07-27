@@ -165,6 +165,15 @@ fn merge_admission_gate_invoke() -> String {
   )
 }
 
+data merge_admission_shell_emit_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.emit",
+    decl_name: "live_deploy_emit_shell_dissolution_trigger",
+    field: WholeDeclaration
+  }
+}
+
 fn ci_merge_admission_gate_script() -> String {
   concat(
     concat(
