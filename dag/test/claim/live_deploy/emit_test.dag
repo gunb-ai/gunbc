@@ -28,7 +28,12 @@ import gunbc.live_deploy.emit {
 }
 import gunbc.ci_deploy_access {
   DeployAccessJobPrincipalRefusal,
+  ci_deploy_srv1_access,
   deploy_access_job_principal_refused_emit_poison,
+}
+import gunbc.ci_deploy_access_observe {
+  deploy_access_preflight_plan,
+  deploy_access_preflight_plan_uses_typed_probes,
 }
 import gunbc.fleet_posix_accounts { DeployRunnerPrincipal }
 import v2.std.orchestration { Do, Run }
@@ -115,24 +120,27 @@ test fn witness_dependency_ensure_is_idempotent() -> Bool {
     && string_contains(s: tmux, pattern: "apt-get install --yes tmux")
 }
 
-test fn witness_apply_script_contains_preflight_and_sudoers() -> Bool {
+test fn witness_apply_uses_runtime_typed_preflight_and_emits_only_sudoers() -> Bool {
   let sh = expected_live_deploy_apply_script()
-  string_contains(s: sh, pattern: "deploy-access-bootstrap-preflight")
-    && string_contains(s: sh, pattern: "whoami")
-    && string_contains(s: sh, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
-    && string_contains(s: sh, pattern: "privileged command not in sudoers (sudo -l preflight miss)")
-    && !string_contains(s: sh, pattern: "sudo -n /usr/bin/tailscale version >/dev/null")
-    && string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -V >/dev/null")
+  deploy_access_preflight_plan_uses_typed_probes(
+    plan: deploy_access_preflight_plan(access: ci_deploy_srv1_access)
+  )
+    && !string_contains(s: sh, pattern: "deploy-access-bootstrap-preflight")
+    && !string_contains(s: sh, pattern: "whoami")
+    && !string_contains(s: sh, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
+    && !string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -V >/dev/null")
+    && !string_contains(s: sh, pattern: "deploy-access-preflight: PASS")
     && string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -cf")
     && string_contains(s: sh, pattern: "/etc/sudoers.d/gunbc-deploy")
-    && string_contains(s: sh, pattern: "deploy-access-preflight: PASS principal=ghrunner")
     && !string_contains(s: sh, pattern: "gunbc-deploy-privileged")
 }
 
 test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
   let sh = expected_live_deploy_retract_script()
   string_contains(s: sh, pattern: "first retract-after-flip may be the dropin install")
-    && string_contains(s: sh, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
+    && !string_contains(s: sh, pattern: "deploy-access-bootstrap-preflight")
+    && !string_contains(s: sh, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
+    && string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -cf")
 }
 
 test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
@@ -153,7 +161,7 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
     && string_contains(s: sh, pattern: "fold=apply verdict=converged")
 }
 
-data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. The tree sync must instead ride the service-user oneshot unit (both rsync directions live INSIDE gunbc-tree-sync.service, principal User=briansrls), and every mutation outside it must be one of the five granted sudo -n commands. Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (emit_deploy_principal_note)."
+data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. The tree sync must instead ride the service-user oneshot unit (both rsync directions live INSIDE gunbc-tree-sync.service, principal User=briansrls), and every mutation outside it must be one of the six roster-granted sudo -n commands. Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (emit_deploy_principal_note)."
 
 test fn witness_scripts_stay_within_ci_runner_grants() -> Bool {
   let apply = expected_live_deploy_apply_script()
@@ -321,4 +329,3 @@ test fn witness_apply_script_access_ready_not_deploy_access_poison() -> Bool {
   let sh = expected_live_deploy_apply_script()
   !string_contains(s: sh, pattern: "__GUNBC_DEPLOY_ACCESS_REFUSED__")
 }
-

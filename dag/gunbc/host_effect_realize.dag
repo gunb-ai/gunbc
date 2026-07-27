@@ -6,6 +6,7 @@ import gunbc.host_effect {
   SetHostnameCas,
   ReadEffectivePosixPrincipal,
   SudoNopasswdExecuteProbe,
+  SudoNopasswdGrantListProbe,
   Srv3InstallMediaFetch,
   Srv3SeededInstallMediaRemaster,
   Srv3SeededInstallMediaToolchainEnsure,
@@ -146,9 +147,15 @@ import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
 import extdeps.access.posix_effective_principal_read_op {
   posix_effective_principal_read_argv,
 }
-import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdExecuteProbeShape }
+import extdeps.sudo.nopasswd_execute_probe {
+  SudoNopasswdExecuteProbeShape,
+  SudoNopasswdGrantListProbeShape,
+}
 import extdeps.sudo.nopasswd_execute_probe_check_op {
   sudo_nopasswd_execute_probe_argv,
+}
+import extdeps.sudo.nopasswd_grant_list_probe_check_op {
+  sudo_nopasswd_grant_list_probe_argv,
 }
 import gunbc.host_effect_nbd_proxy_serve {
   host_effect_nbd_proxy_serve_apply,
@@ -183,7 +190,8 @@ type ResolvedHostEffectCell =
   | BmcwebSessionLoginOnHost { node: ComputeHost }
   | BmcwebTokenExtractOnHost { node: ComputeHost }
   | EffectivePrincipalReadOnHost { node: ComputeHost, read: EffectivePosixPrincipalRead }
-  | SudoNopasswdProbeOnHost { node: ComputeHost, probe: SudoNopasswdExecuteProbeShape }
+  | SudoNopasswdExecuteProbeOnHost { node: ComputeHost, probe: SudoNopasswdExecuteProbeShape }
+  | SudoNopasswdGrantListProbeOnHost { node: ComputeHost, probe: SudoNopasswdGrantListProbeShape }
   | LiveDeployApplyOnHost { node: ComputeHost, spec: DeploymentSpec }
   | LiveDeployRetractOnHost { node: ComputeHost, spec: DeploymentSpec }
   | LiveDeployEnsureDependencyOnHost { node: ComputeHost, dep: DeploymentDependencyStep }
@@ -262,7 +270,9 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
             ReadEffectivePosixPrincipal { read: r } =>
               EffectivePrincipalReadOnHost { node: n, read: r }
             SudoNopasswdExecuteProbe { probe: p } =>
-              SudoNopasswdProbeOnHost { node: n, probe: p }
+              SudoNopasswdExecuteProbeOnHost { node: n, probe: p }
+            SudoNopasswdGrantListProbe { probe: p } =>
+              SudoNopasswdGrantListProbeOnHost { node: n, probe: p }
             Srv3NbdProxyServe { intent: i, lease_key: k } =>
               NbdProxySessionOnHost { node: n, intent: i, lease_key: k }
             HostIdentityShortHostnameRead =>
@@ -322,6 +332,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               IncompatibleCell { reason: "host_effect: ReadEffectivePosixPrincipal is in-band (shell whoami) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             SudoNopasswdExecuteProbe { probe: _ } =>
               IncompatibleCell { reason: "host_effect: SudoNopasswdExecuteProbe is in-band (shell sudo -n probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            SudoNopasswdGrantListProbe { probe: _ } =>
+              IncompatibleCell { reason: "host_effect: SudoNopasswdGrantListProbe is in-band (typed sudo grant-list probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             HostIdentityShortHostnameRead =>
               IncompatibleCell { reason: "host_effect: HostIdentityShortHostnameRead is in-band (shell hostname -s) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             LiveDeployApply { spec: _ } =>
@@ -1378,7 +1390,7 @@ fn realize_effective_principal_read_on_host(
   }
 }
 
-fn realize_sudo_nopasswd_probe_on_host(
+fn realize_sudo_nopasswd_execute_probe_on_host(
   probe: SudoNopasswdExecuteProbeShape,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
@@ -1405,6 +1417,38 @@ fn realize_sudo_nopasswd_probe_on_host(
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
         reason: "host_effect_apply: SudoNopasswdExecuteProbe cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+        applied: intent,
+      }
+  }
+}
+
+fn realize_sudo_nopasswd_grant_list_probe_on_host(
+  probe: SudoNopasswdGrantListProbeShape,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let argv = sudo_nopasswd_grant_list_probe_argv(probe: probe)
+  match transport {
+    LocalShell => {
+      let result = sudo.NopasswdGrantListProbe.Check(probe: probe)
+      reconcile_shell_exec_observed(
+        observed: ShellExecObserved {
+          exit_code: if result.success { 0 } else { 1 },
+          success: result.success,
+          stdout: "",
+          stderr: "",
+        },
+        intent: intent,
+      )
+    }
+    SshShell { ssh_host: h } =>
+      reconcile_ssh_argv_exec_outcome(
+        outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
+        intent: intent,
+      )
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: SudoNopasswdGrantListProbe cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
       }
   }
@@ -1605,8 +1649,10 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_bmcweb_token_extract_on_host(transport: transport, intent: intent)
     EffectivePrincipalReadOnHost { node: _, read: r } =>
       realize_effective_principal_read_on_host(read: r, transport: transport, intent: intent)
-    SudoNopasswdProbeOnHost { node: _, probe: p } =>
-      realize_sudo_nopasswd_probe_on_host(probe: p, transport: transport, intent: intent)
+    SudoNopasswdExecuteProbeOnHost { node: _, probe: p } =>
+      realize_sudo_nopasswd_execute_probe_on_host(probe: p, transport: transport, intent: intent)
+    SudoNopasswdGrantListProbeOnHost { node: _, probe: p } =>
+      realize_sudo_nopasswd_grant_list_probe_on_host(probe: p, transport: transport, intent: intent)
     LiveDeployApplyOnHost { node: _, spec: s } =>
       realize_live_deploy_apply_on_host(spec: s, transport: transport, intent: intent)
     LiveDeployRetractOnHost { node: _, spec: s } =>
@@ -1760,8 +1806,10 @@ fn host_effect_apply_gated(
           realize_bmcweb_token_extract_on_host(transport: transport, intent: intent)
         EffectivePrincipalReadOnHost { node: _, read: r } =>
           realize_effective_principal_read_on_host(read: r, transport: transport, intent: intent)
-        SudoNopasswdProbeOnHost { node: _, probe: p } =>
-          realize_sudo_nopasswd_probe_on_host(probe: p, transport: transport, intent: intent)
+        SudoNopasswdExecuteProbeOnHost { node: _, probe: p } =>
+          realize_sudo_nopasswd_execute_probe_on_host(probe: p, transport: transport, intent: intent)
+        SudoNopasswdGrantListProbeOnHost { node: _, probe: p } =>
+          realize_sudo_nopasswd_grant_list_probe_on_host(probe: p, transport: transport, intent: intent)
         LiveDeployApplyOnHost { node: _, spec: s } =>
           realize_live_deploy_apply_on_host(spec: s, transport: transport, intent: intent)
         LiveDeployRetractOnHost { node: _, spec: s } =>
@@ -1821,7 +1869,8 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             BmcwebSessionLoginOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BmcwebTokenExtractOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EffectivePrincipalReadOnHost { node: _, read: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            SudoNopasswdProbeOnHost { node: _, probe: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            SudoNopasswdExecuteProbeOnHost { node: _, probe: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            SudoNopasswdGrantListProbeOnHost { node: _, probe: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployApplyOnHost { node: _, spec: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployRetractOnHost { node: _, spec: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployEnsureDependencyOnHost { node: _, dep: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
