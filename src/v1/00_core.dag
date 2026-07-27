@@ -112,7 +112,7 @@ type ExprData
   | ExprReturn
 
 type MatchPattern
-  = Bind { declaration: Node }
+  = Bind { declaration: Node? }
   | LitPattern { value: LiteralValue }
   | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
   | Wildcard
@@ -333,20 +333,6 @@ fn make_pattern_binder_declaration_node(name: String, span: SourceSpan) -> Node 
     span: span,
     name_span: span
   )
-}
-
-fn pattern_bind_declaration(pattern: MatchPattern) -> Node? {
-  match pattern {
-    Bind { declaration: declaration } => Present { value: declaration }
-    _ => none
-  }
-}
-
-fn pattern_bind_name(pattern: MatchPattern) -> String {
-  match pattern {
-    Bind { declaration: declaration } => declaration.name
-    _ => ""
-  }
 }
 
 fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {

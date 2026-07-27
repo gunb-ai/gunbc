@@ -247,10 +247,10 @@ fn namespace_containment_path_at(
 }
 
 fn namespace_identity_capture_pattern(
-  pattern: MatchPattern,
+  match_pattern_value: MatchPattern,
   ancestors: FreeMonoid<Node>
 ) -> NamespaceIdentityCapture {
-  match pattern {
+  match match_pattern_value {
     Bind { declaration: declaration } =>
       namespace_identity_capture_singleton(
         containment: namespace_containment_path_at(
@@ -275,14 +275,10 @@ fn namespace_identity_capture_pattern(
             ancestors: ancestors,
             node: binding
           )
-          let nested_capture = match binding.match_pattern {
-            Present { value: nested } =>
-              namespace_identity_capture_pattern(
-                pattern: nested,
-                ancestors: binding_ancestors
-              )
-            Absent => empty_namespace_identity_capture()
-          }
+          let nested_capture = namespace_identity_capture_pattern(
+            match_pattern_value: field_binding_pattern(n: binding),
+            ancestors: binding_ancestors
+          )
           concat_namespace_identity_capture(
             left: acc,
             right: concat_namespace_identity_capture(
@@ -347,7 +343,7 @@ fn namespace_identity_capture_node(
   let pattern_capture = match node.match_pattern {
     Present { value: pattern } =>
       namespace_identity_capture_pattern(
-        pattern: pattern,
+        match_pattern_value: pattern,
         ancestors: child_ancestors
       )
     Absent => empty_namespace_identity_capture()
@@ -4769,7 +4765,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   fn_name: ctx.fn_name,
                   param_names: map_insert(ctx.param_names, declaration.name, scrut_type),
                   param_order: ctx.param_order, type_env: ctx.type_env,
-                  sub_value_vars: map_insert(ctx.sub_value_vars, bname, PreservedValue),
+                  sub_value_vars: map_insert(ctx.sub_value_vars, declaration.name, PreservedValue),
                   size_aliases: ctx.size_aliases,
                   scope_locals: ctx.scope_locals, func_env: ctx.func_env,
                   per_field_vars: ctx.per_field_vars
@@ -4779,9 +4775,9 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   Present { value: ind_field } =>
                     DescentContext {
                       fn_name: ctx.fn_name,
-                      param_names: map_insert(ctx.param_names, bname, ind_field.element_type),
+                      param_names: map_insert(ctx.param_names, declaration.name, ind_field.element_type),
                       param_order: ctx.param_order, type_env: ctx.type_env,
-                      sub_value_vars: map_insert(ctx.sub_value_vars, bname, StrictSubValue { field: ind_field, factor: UnitShrink }),
+                      sub_value_vars: map_insert(ctx.sub_value_vars, declaration.name, StrictSubValue { field: ind_field, factor: UnitShrink }),
                       size_aliases: ctx.size_aliases,
                       scope_locals: ctx.scope_locals, func_env: ctx.func_env,
                       per_field_vars: ctx.per_field_vars

@@ -4112,7 +4112,9 @@ fn parse_pattern(tokens: TokenStream, ctx: ParseContext) -> PatternResult {
       } else {
         PatternResult {
           pattern: Bind {
-            declaration: make_pattern_binder_declaration_node(name: n, span: r.span)
+            declaration: Present {
+              value: make_pattern_binder_declaration_node(name: n, span: r.span)
+            }
           },
           tokens: r.tokens,
           ctx: ctx,
@@ -4193,10 +4195,12 @@ fn parse_variant_bindings_brace_acc(tokens: TokenStream, ctx: ParseContext, acc:
       let fb = make_field_binding_node(
         field_name: field_name,
         binding: Bind {
-          declaration: make_pattern_binder_declaration_node(
-            name: field_name,
-            span: field_name_span
-          )
+          declaration: Present {
+            value: make_pattern_binder_declaration_node(
+              name: field_name,
+              span: field_name_span
+            )
+          }
         },
         span: bind_span,
         name_span: field_name_span
