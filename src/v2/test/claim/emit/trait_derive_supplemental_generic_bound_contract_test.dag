@@ -5,6 +5,7 @@ import std.trait_derive_shape {
   ReprDeriveClone,
   ReprDeriveDebug,
   ReprDeriveDeserialize,
+  ReprDeriveOrd,
   ReprDerivePartialEq,
   ReprDeriveSerialize,
   ReprGroundingDeriveTrait
@@ -22,9 +23,14 @@ import v2.std.compilers.target_model {
   target_collection_free_monoid_no_representation_diagnostic,
   target_derive_supplemental_generic_bound_contract_lookup_in_realization
 }
-import v2.compiler.translate { target_collection_choice_from_node }
+import v2.compiler.translate {
+  free_monoid_collection_realization_from_target,
+  target_collection_choice_from_node
+}
 import v2.extdeps.languages.rust {
-  rust_collection_choice_bundle_node
+  rust_collection_choice_bundle_node,
+  rust_free_monoid_collection_primary_choice,
+  rust_target_model
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
@@ -42,11 +48,12 @@ import v2.std.collection { List, Symbol }
 import v2.std.algebra { fold_list_node }
 import v2.std.optional { Absent, Optional, Present }
 
-data trait_derive_supplemental_generic_bound_contract_note: String = "Model-only contract for per-derive supplemental generic bounds: rows hang off the selected choice relation, carry representation-parameter slots plus required traits, and never re-identify the source declaration. Nested generic carrier rows prove the exact extra bound set per derive; Clone keeps an explicit empty row rather than a fabricated supplemental Clone. Missing, duplicate, malformed, and wrong-choice rows refuse."
+data trait_derive_supplemental_generic_bound_contract_note: String = "Model-only carrier and bundle-codec prerequisite for per-derive supplemental generic bounds: rows hang off the selected choice relation, carry representation-parameter slots plus independently serialized required traits, and never re-identify the source declaration. The cross-trait fixture models im::Vector<L> plus BTreeSet<R>: im 15.1.0 requires supplemental Clone for Debug, PartialEq, Serialize, and Deserialize, while BTreeSet deserialization additionally requires Ord on R. Clone keeps an explicit empty row rather than a fabricated supplemental Clone. Missing, duplicate, malformed, and wrong-choice rows refuse."
 
 data sgb_type_param: Symbol = ^sgb_type_param
 data sgb_left_slot: Symbol = ^sgb_left_slot
 data sgb_right_slot: Symbol = ^sgb_right_slot
+data sgb_unknown_slot: Symbol = ^sgb_unknown_slot
 data sgb_vec_surface: Symbol = ^sgb_vec_surface
 data sgb_vec_open: Symbol = ^sgb_vec_open
 data sgb_vec_separator: Symbol = ^sgb_vec_separator
@@ -154,11 +161,11 @@ fn sgb_choice_with_contracts(
 
 fn sgb_requirement(
   representation_parameter: Symbol,
-  derive_trait: ReprGroundingDeriveTrait
+  required_trait: ReprGroundingDeriveTrait
 ) -> TargetDeriveSupplementalGenericBoundRequirement {
   TargetDeriveSupplementalGenericBoundRequirement {
     representation_parameter: representation_parameter,
-    required_trait: derive_trait
+    required_trait: required_trait
   }
 }
 
@@ -169,51 +176,33 @@ fn sgb_requirements_for(
     ReprDeriveDebug => Cons {
       head: sgb_requirement(
         representation_parameter: ^sgb_left_slot,
-        derive_trait: ReprDeriveDebug
+        required_trait: ReprDeriveClone
       ),
-      tail: Cons {
-        head: sgb_requirement(
-          representation_parameter: ^sgb_right_slot,
-          derive_trait: ReprDeriveDebug
-        ),
-        tail: Empty
-      }
+      tail: Empty
     }
     ReprDerivePartialEq => Cons {
       head: sgb_requirement(
         representation_parameter: ^sgb_left_slot,
-        derive_trait: ReprDerivePartialEq
+        required_trait: ReprDeriveClone
       ),
-      tail: Cons {
-        head: sgb_requirement(
-          representation_parameter: ^sgb_right_slot,
-          derive_trait: ReprDerivePartialEq
-        ),
-        tail: Empty
-      }
+      tail: Empty
     }
     ReprDeriveSerialize => Cons {
       head: sgb_requirement(
         representation_parameter: ^sgb_left_slot,
-        derive_trait: ReprDeriveSerialize
+        required_trait: ReprDeriveClone
       ),
-      tail: Cons {
-        head: sgb_requirement(
-          representation_parameter: ^sgb_right_slot,
-          derive_trait: ReprDeriveSerialize
-        ),
-        tail: Empty
-      }
+      tail: Empty
     }
     ReprDeriveDeserialize => Cons {
       head: sgb_requirement(
         representation_parameter: ^sgb_left_slot,
-        derive_trait: ReprDeriveDeserialize
+        required_trait: ReprDeriveClone
       ),
       tail: Cons {
         head: sgb_requirement(
           representation_parameter: ^sgb_right_slot,
-          derive_trait: ReprDeriveDeserialize
+          required_trait: ReprDeriveOrd
         ),
         tail: Empty
       }
@@ -258,6 +247,22 @@ fn sgb_requirements_match_exact_order(
   }
 }
 
+fn sgb_requirements_match_single(
+  reqs: List<TargetDeriveSupplementalGenericBoundRequirement>,
+  representation_parameter: Symbol,
+  required_trait: ReprGroundingDeriveTrait
+) -> Bool {
+  match reqs {
+    Cons { head: req, tail: Empty } =>
+      sgb_requirement_matches(
+        req: req,
+        representation_parameter: representation_parameter,
+        derive_trait: required_trait
+      )
+    _ => false
+  }
+}
+
 fn sgb_requirements_are_empty(
   reqs: List<TargetDeriveSupplementalGenericBoundRequirement>
 ) -> Bool {
@@ -271,15 +276,16 @@ fn sgb_empty_choice() -> TargetRepresentationChoice {
   sgb_choice_with_contracts(representation_parameters: Empty, contracts: Empty)
 }
 
+fn sgb_nested_representation_parameters() -> List<Symbol> {
+  [
+    ^sgb_left_slot,
+    ^sgb_right_slot
+  ]
+}
+
 fn sgb_nested_choice() -> TargetRepresentationChoice {
   sgb_choice_with_contracts(
-    representation_parameters: Cons {
-      head: ^sgb_left_slot,
-      tail: Cons {
-        head: ^sgb_right_slot,
-        tail: Empty
-      }
-    },
+    representation_parameters: sgb_nested_representation_parameters(),
     contracts: sgb_nested_choice_contracts()
   )
 }
@@ -316,22 +322,55 @@ fn sgb_contract_row(
   }
 }
 
-fn sgb_contract_matches_exact(
-  row: TargetDeriveSupplementalGenericBoundContract,
-  derive_trait: ReprGroundingDeriveTrait,
-  first_parameter: Symbol,
-  first_trait: ReprGroundingDeriveTrait,
-  second_parameter: Symbol,
-  second_trait: ReprGroundingDeriveTrait
+fn sgb_requirement_lists_match_exact(
+  left: List<TargetDeriveSupplementalGenericBoundRequirement>,
+  right: List<TargetDeriveSupplementalGenericBoundRequirement>
 ) -> Bool {
-  row.derive_trait == derive_trait
-    && sgb_requirements_match_exact_order(
-      reqs: row.requirements,
-      first_parameter: first_parameter,
-      first_trait: first_trait,
-      second_parameter: second_parameter,
-      second_trait: second_trait
-    )
+  match left {
+    Empty =>
+      match right {
+        Empty => true
+        _ => false
+      }
+    Cons { head: left_head, tail: left_tail } =>
+      match right {
+        Cons { head: right_head, tail: right_tail } =>
+          left_head.representation_parameter == right_head.representation_parameter
+            && left_head.required_trait == right_head.required_trait
+            && sgb_requirement_lists_match_exact(
+              left: left_tail,
+              right: right_tail
+            )
+        _ => false
+      }
+  }
+}
+
+fn sgb_contract_lists_match_exact(
+  left: List<TargetDeriveSupplementalGenericBoundContract>,
+  right: List<TargetDeriveSupplementalGenericBoundContract>
+) -> Bool {
+  match left {
+    Empty =>
+      match right {
+        Empty => true
+        _ => false
+      }
+    Cons { head: left_head, tail: left_tail } =>
+      match right {
+        Cons { head: right_head, tail: right_tail } =>
+          left_head.derive_trait == right_head.derive_trait
+            && sgb_requirement_lists_match_exact(
+              left: left_head.requirements,
+              right: right_head.requirements
+            )
+            && sgb_contract_lists_match_exact(
+              left: left_tail,
+              right: right_tail
+            )
+        _ => false
+      }
+  }
 }
 
 fn sgb_contract_matches_empty(
@@ -341,77 +380,17 @@ fn sgb_contract_matches_empty(
   row.derive_trait == derive_trait && sgb_requirements_are_empty(reqs: row.requirements)
 }
 
-fn sgb_nested_choice_contracts_match(
-  rows: List<TargetDeriveSupplementalGenericBoundContract>
-) -> Bool {
-  match rows {
-    Cons {
-      head: debug_row,
-      tail: Cons {
-        head: partial_eq_row,
-        tail: Cons {
-          head: serialize_row,
-          tail: Cons {
-            head: deserialize_row,
-            tail: Cons {
-              head: clone_row,
-              tail: Empty
-            }
-          }
-        }
-      }
-    } => sgb_contract_matches_exact(
-      row: debug_row,
-      derive_trait: ReprDeriveDebug,
-      first_parameter: ^sgb_left_slot,
-      first_trait: ReprDeriveDebug,
-      second_parameter: ^sgb_right_slot,
-      second_trait: ReprDeriveDebug
-    ) && sgb_contract_matches_exact(
-      row: partial_eq_row,
-      derive_trait: ReprDerivePartialEq,
-      first_parameter: ^sgb_left_slot,
-      first_trait: ReprDerivePartialEq,
-      second_parameter: ^sgb_right_slot,
-      second_trait: ReprDerivePartialEq
-    ) && sgb_contract_matches_exact(
-      row: serialize_row,
-      derive_trait: ReprDeriveSerialize,
-      first_parameter: ^sgb_left_slot,
-      first_trait: ReprDeriveSerialize,
-      second_parameter: ^sgb_right_slot,
-      second_trait: ReprDeriveSerialize
-    ) && sgb_contract_matches_exact(
-      row: deserialize_row,
-      derive_trait: ReprDeriveDeserialize,
-      first_parameter: ^sgb_left_slot,
-      first_trait: ReprDeriveDeserialize,
-      second_parameter: ^sgb_right_slot,
-      second_trait: ReprDeriveDeserialize
-    ) && sgb_contract_matches_empty(
-      row: clone_row,
-      derive_trait: ReprDeriveClone
-    )
-    _ => false
-  }
-}
-
 fn sgb_choice_matches_exact(
   choice: TargetRepresentationChoice,
   expected: TargetRepresentationChoice
 ) -> Bool {
   sgb_representation_matches(left: choice.form, right: expected.form)
     && choice.representation_parameters == expected.representation_parameters
-    && match choice.constraints {
-      Empty => match expected.constraints {
-        Empty =>
-          sgb_nested_choice_contracts_match(
-            rows: choice.supplemental_generic_bound_contracts
-          )
-        _ => false
-      }
-      _ => false
-    }
+    && choice.constraints == expected.constraints
+    && sgb_contract_lists_match_exact(
+      left: choice.supplemental_generic_bound_contracts,
+      right: expected.supplemental_generic_bound_contracts
+    )
 }
 
 fn sgb_choice_bundle_node() -> Node {
@@ -619,6 +598,58 @@ fn sgb_wrong_choice_contracts() -> List<TargetDeriveSupplementalGenericBoundCont
   }
 }
 
+fn sgb_undeclared_slot_contracts() -> List<TargetDeriveSupplementalGenericBoundContract> {
+  [
+    sgb_contract_row(
+      derive_trait: ReprDeriveDebug,
+      requirements: [
+        sgb_requirement(
+          representation_parameter: ^sgb_unknown_slot,
+          required_trait: ReprDeriveClone
+        )
+      ]
+    )
+  ]
+}
+
+fn sgb_valid_debug_and_malformed_serialize_contracts(
+) -> List<TargetDeriveSupplementalGenericBoundContract> {
+  [
+    sgb_contract_row(
+      derive_trait: ReprDeriveDebug,
+      requirements: sgb_requirements_for(derive_trait: ReprDeriveDebug)
+    ),
+    sgb_contract_row(
+      derive_trait: ReprDeriveSerialize,
+      requirements: [
+        sgb_requirement(
+          representation_parameter: ^sgb_unknown_slot,
+          required_trait: ReprDeriveClone
+        )
+      ]
+    )
+  ]
+}
+
+fn sgb_duplicate_requirement_contracts(
+) -> List<TargetDeriveSupplementalGenericBoundContract> {
+  [
+    sgb_contract_row(
+      derive_trait: ReprDeriveDebug,
+      requirements: [
+        sgb_requirement(
+          representation_parameter: ^sgb_left_slot,
+          required_trait: ReprDeriveClone
+        ),
+        sgb_requirement(
+          representation_parameter: ^sgb_left_slot,
+          required_trait: ReprDeriveClone
+        )
+      ]
+    )
+  ]
+}
+
 fn sgb_nested_realization() -> TargetCollectionRealization {
   sgb_realization(
     source_carrier: sgb_nested_source_carrier_node(),
@@ -655,14 +686,61 @@ fn sgb_duplicate_debug_realization() -> TargetCollectionRealization {
   sgb_realization(
     source_carrier: sgb_nested_source_carrier_node(),
     primary: sgb_choice_with_contracts(
-      representation_parameters: Cons {
-        head: ^sgb_left_slot,
-        tail: Cons {
-          head: ^sgb_right_slot,
-          tail: Empty
-        }
-      },
+      representation_parameters: sgb_nested_representation_parameters(),
       contracts: sgb_duplicate_debug_choice_contracts()
+    ),
+    alternatives: Empty
+  )
+}
+
+fn sgb_duplicate_parameter_realization() -> TargetCollectionRealization {
+  sgb_realization(
+    source_carrier: sgb_nested_source_carrier_node(),
+    primary: sgb_choice_with_contracts(
+      representation_parameters: [
+        ^sgb_left_slot,
+        ^sgb_left_slot
+      ],
+      contracts: [
+        sgb_contract_row(
+          derive_trait: ReprDeriveDebug,
+          requirements: sgb_requirements_for(derive_trait: ReprDeriveDebug)
+        )
+      ]
+    ),
+    alternatives: Empty
+  )
+}
+
+fn sgb_undeclared_slot_realization() -> TargetCollectionRealization {
+  sgb_realization(
+    source_carrier: sgb_nested_source_carrier_node(),
+    primary: sgb_choice_with_contracts(
+      representation_parameters: sgb_nested_representation_parameters(),
+      contracts: sgb_undeclared_slot_contracts()
+    ),
+    alternatives: Empty
+  )
+}
+
+fn sgb_valid_debug_and_malformed_serialize_realization(
+) -> TargetCollectionRealization {
+  sgb_realization(
+    source_carrier: sgb_nested_source_carrier_node(),
+    primary: sgb_choice_with_contracts(
+      representation_parameters: sgb_nested_representation_parameters(),
+      contracts: sgb_valid_debug_and_malformed_serialize_contracts()
+    ),
+    alternatives: Empty
+  )
+}
+
+fn sgb_duplicate_requirement_realization() -> TargetCollectionRealization {
+  sgb_realization(
+    source_carrier: sgb_nested_source_carrier_node(),
+    primary: sgb_choice_with_contracts(
+      representation_parameters: sgb_nested_representation_parameters(),
+      contracts: sgb_duplicate_requirement_contracts()
     ),
     alternatives: Empty
   )
@@ -674,7 +752,7 @@ fn sgb_wrong_choice_realization() -> TargetCollectionRealization {
     primary: sgb_empty_choice(),
     alternatives: Cons {
       head: sgb_choice_with_contracts(
-        representation_parameters: Empty,
+        representation_parameters: sgb_nested_representation_parameters(),
         contracts: sgb_wrong_choice_contracts()
       ),
       tail: Empty
@@ -682,7 +760,7 @@ fn sgb_wrong_choice_realization() -> TargetCollectionRealization {
   )
 }
 
-test fn nested_generic_debug_requires_exact_slot_symbols() -> Bool {
+test fn nested_generic_debug_requires_clone_on_exact_slot() -> Bool {
   match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
     row: sgb_nested_realization(),
     elem: char_kernel_type_node(),
@@ -690,18 +768,16 @@ test fn nested_generic_debug_requires_exact_slot_symbols() -> Bool {
   ) {
     Accepted { value: row, diagnostics: _ } =>
       row.derive_trait == ReprDeriveDebug
-        && sgb_requirements_match_exact_order(
+        && sgb_requirements_match_single(
           reqs: row.requirements,
-          first_parameter: ^sgb_left_slot,
-          first_trait: ReprDeriveDebug,
-          second_parameter: ^sgb_right_slot,
-          second_trait: ReprDeriveDebug
+          representation_parameter: ^sgb_left_slot,
+          required_trait: ReprDeriveClone
         )
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn nested_generic_partial_eq_requires_exact_slot_symbols() -> Bool {
+test fn nested_generic_partial_eq_requires_clone_on_exact_slot() -> Bool {
   match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
     row: sgb_nested_realization(),
     elem: char_kernel_type_node(),
@@ -709,18 +785,16 @@ test fn nested_generic_partial_eq_requires_exact_slot_symbols() -> Bool {
   ) {
     Accepted { value: row, diagnostics: _ } =>
       row.derive_trait == ReprDerivePartialEq
-        && sgb_requirements_match_exact_order(
+        && sgb_requirements_match_single(
           reqs: row.requirements,
-          first_parameter: ^sgb_left_slot,
-          first_trait: ReprDerivePartialEq,
-          second_parameter: ^sgb_right_slot,
-          second_trait: ReprDerivePartialEq
+          representation_parameter: ^sgb_left_slot,
+          required_trait: ReprDeriveClone
         )
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn nested_generic_serialize_requires_exact_slot_symbols() -> Bool {
+test fn nested_generic_serialize_requires_clone_on_exact_slot() -> Bool {
   match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
     row: sgb_nested_realization(),
     elem: char_kernel_type_node(),
@@ -728,18 +802,16 @@ test fn nested_generic_serialize_requires_exact_slot_symbols() -> Bool {
   ) {
     Accepted { value: row, diagnostics: _ } =>
       row.derive_trait == ReprDeriveSerialize
-        && sgb_requirements_match_exact_order(
+        && sgb_requirements_match_single(
           reqs: row.requirements,
-          first_parameter: ^sgb_left_slot,
-          first_trait: ReprDeriveSerialize,
-          second_parameter: ^sgb_right_slot,
-          second_trait: ReprDeriveSerialize
+          representation_parameter: ^sgb_left_slot,
+          required_trait: ReprDeriveClone
         )
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn nested_generic_deserialize_requires_exact_slot_symbols() -> Bool {
+test fn nested_generic_deserialize_requires_clone_and_ord_on_exact_slots() -> Bool {
   match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
     row: sgb_nested_realization(),
     elem: char_kernel_type_node(),
@@ -750,33 +822,79 @@ test fn nested_generic_deserialize_requires_exact_slot_symbols() -> Bool {
         && sgb_requirements_match_exact_order(
           reqs: row.requirements,
           first_parameter: ^sgb_left_slot,
-          first_trait: ReprDeriveDeserialize,
+          first_trait: ReprDeriveClone,
           second_parameter: ^sgb_right_slot,
-          second_trait: ReprDeriveDeserialize
+          second_trait: ReprDeriveOrd
         )
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn nested_generic_swap_red_rejects_swapped_slot_symbols() -> Bool {
+test fn nested_generic_swap_red_rejects_swapped_slot_requirements() -> Bool {
   match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
     row: sgb_nested_realization(),
     elem: char_kernel_type_node(),
-    derive_trait: ReprDeriveSerialize
+    derive_trait: ReprDeriveDeserialize
   ) {
     Accepted { value: row, diagnostics: _ } =>
-      row.derive_trait == ReprDeriveSerialize && !sgb_requirements_match_exact_order(
+      row.derive_trait == ReprDeriveDeserialize && !sgb_requirements_match_exact_order(
         reqs: row.requirements,
         first_parameter: ^sgb_right_slot,
-        first_trait: ReprDeriveSerialize,
+        first_trait: ReprDeriveClone,
         second_parameter: ^sgb_left_slot,
-        second_trait: ReprDeriveSerialize
+        second_trait: ReprDeriveOrd
       )
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn nested_generic_clone_requires_no_fabricated_clone() -> Bool {
+test fn nested_generic_required_trait_red_rejects_derive_trait_echo() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_nested_realization(),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveDebug
+  ) {
+    Accepted { value: row, diagnostics: _ } =>
+      row.derive_trait == ReprDeriveDebug
+        && !sgb_requirements_match_single(
+          reqs: row.requirements,
+          representation_parameter: ^sgb_left_slot,
+          required_trait: ReprDeriveDebug
+        )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn nested_generic_outer_inner_trait_axes_are_distinct() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_nested_realization(),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveDebug
+  ) {
+    Accepted { value: debug_row, diagnostics: _ } =>
+      match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+        row: sgb_nested_realization(),
+        elem: char_kernel_type_node(),
+        derive_trait: ReprDeriveClone
+      ) {
+        Accepted { value: clone_row, diagnostics: _ } =>
+          debug_row.derive_trait == ReprDeriveDebug
+            && sgb_requirements_match_single(
+              reqs: debug_row.requirements,
+              representation_parameter: ^sgb_left_slot,
+              required_trait: ReprDeriveClone
+            )
+            && sgb_contract_matches_empty(
+              row: clone_row,
+              derive_trait: ReprDeriveClone
+            )
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn nested_generic_clone_has_explicit_empty_requirements() -> Bool {
   match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
     row: sgb_nested_realization(),
     elem: char_kernel_type_node(),
@@ -794,6 +912,48 @@ test fn nested_generic_contract_round_trip_preserves_slot_rows() -> Bool {
   ) {
     Accepted { value: decoded, diagnostics: _ } =>
       sgb_choice_matches_exact(choice: decoded, expected: sgb_nested_choice())
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_vec_target_bundle_round_trip_preserves_known_zero_policy() -> Bool {
+  match free_monoid_collection_realization_from_target(target: rust_target_model()) {
+    Accepted { value: decoded, diagnostics: _ } =>
+      sgb_choice_matches_exact(
+        choice: decoded.primary,
+        expected: rust_free_monoid_collection_primary_choice()
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_vec_debug_contract_is_explicit_known_zero() -> Bool {
+  match free_monoid_collection_realization_from_target(target: rust_target_model()) {
+    Accepted { value: decoded, diagnostics: _ } =>
+      match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+        row: decoded,
+        elem: char_kernel_type_node(),
+        derive_trait: ReprDeriveDebug
+      ) {
+        Accepted { value: row, diagnostics: _ } =>
+          sgb_contract_matches_empty(row: row, derive_trait: ReprDeriveDebug)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_vec_unmodeled_ord_contract_refuses_as_missing() -> Bool {
+  match free_monoid_collection_realization_from_target(target: rust_target_model()) {
+    Accepted { value: decoded, diagnostics: _ } =>
+      match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+        row: decoded,
+        elem: char_kernel_type_node(),
+        derive_trait: ReprDeriveOrd
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
     Rejected { diagnostics: _ } => false
   }
 }
@@ -842,6 +1002,50 @@ test fn duplicate_matching_rows_refuse() -> Bool {
   }
 }
 
+test fn undeclared_slot_refuses_instead_of_becoming_missing() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_undeclared_slot_realization(),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveDebug
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn malformed_unrelated_row_poison_refuses_valid_debug_lookup() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_valid_debug_and_malformed_serialize_realization(),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveDebug
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn duplicate_representation_parameter_slots_refuse() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_duplicate_parameter_realization(),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveDebug
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn duplicate_requirement_pairs_refuse() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_duplicate_requirement_realization(),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveDebug
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
 test fn wrong_choice_refuses_nonselected_contracts() -> Bool {
   match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
     row: sgb_wrong_choice_realization(),
@@ -870,6 +1074,50 @@ test fn duplicate_contract_edge_refuses_on_bundle_decode() -> Bool {
 test fn malformed_contract_row_refuses_on_bundle_decode() -> Bool {
   match target_collection_choice_from_node(
     node: sgb_choice_bundle_with_malformed_contracts_node()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn duplicate_derive_rows_refuse_on_bundle_decode() -> Bool {
+  match target_collection_choice_from_node(
+    node: rust_collection_choice_bundle_node(
+      choice: sgb_duplicate_debug_realization().primary
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn undeclared_slot_refuses_on_bundle_decode() -> Bool {
+  match target_collection_choice_from_node(
+    node: rust_collection_choice_bundle_node(
+      choice: sgb_undeclared_slot_realization().primary
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn duplicate_parameter_slots_refuse_on_bundle_decode() -> Bool {
+  match target_collection_choice_from_node(
+    node: rust_collection_choice_bundle_node(
+      choice: sgb_duplicate_parameter_realization().primary
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn duplicate_requirement_pairs_refuse_on_bundle_decode() -> Bool {
+  match target_collection_choice_from_node(
+    node: rust_collection_choice_bundle_node(
+      choice: sgb_duplicate_requirement_realization().primary
+    )
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true

@@ -1,4 +1,11 @@
 module v2.extdeps.languages.rust
+import std.trait_derive_shape {
+  ReprDeriveClone,
+  ReprDeriveDebug,
+  ReprDeriveDeserialize,
+  ReprDerivePartialEq,
+  ReprDeriveSerialize
+}
 import v2.std.language_model { LanguageModel }
 import v2.std.grammar {
   StampClass,
@@ -1550,6 +1557,38 @@ fn rust_free_monoid_collection_apply_vec() -> TargetGenericApply {
   }
 }
 
+data rust_vec_supplemental_generic_bound_contract_source: String = "Rust std::vec::Vec implementation contract: Debug, Clone, PartialEq, Serialize, and Deserialize require only the corresponding element trait, so the representation contributes zero additional bounds. The explicit empty rows preserve known-zero separately from an unknown/missing contract."
+
+fn rust_known_zero_supplemental_generic_bound_contract(
+  derive_trait: ReprGroundingDeriveTrait
+) -> TargetDeriveSupplementalGenericBoundContract {
+  TargetDeriveSupplementalGenericBoundContract {
+    derive_trait: derive_trait,
+    requirements: Empty
+  }
+}
+
+fn rust_vec_supplemental_generic_bound_contracts(
+) -> List<TargetDeriveSupplementalGenericBoundContract> {
+  [
+    rust_known_zero_supplemental_generic_bound_contract(
+      derive_trait: ReprDeriveDebug
+    ),
+    rust_known_zero_supplemental_generic_bound_contract(
+      derive_trait: ReprDeriveClone
+    ),
+    rust_known_zero_supplemental_generic_bound_contract(
+      derive_trait: ReprDerivePartialEq
+    ),
+    rust_known_zero_supplemental_generic_bound_contract(
+      derive_trait: ReprDeriveSerialize
+    ),
+    rust_known_zero_supplemental_generic_bound_contract(
+      derive_trait: ReprDeriveDeserialize
+    )
+  ]
+}
+
 fn rust_set_collection_primary_choice() -> TargetRepresentationChoice {
   TargetRepresentationChoice {
     form: TargetRepresentation {
@@ -1594,7 +1633,7 @@ fn rust_free_monoid_collection_primary_choice() -> TargetRepresentationChoice {
     },
     representation_parameters: [^target_collection_type_param_t],
     constraints: [],
-    supplemental_generic_bound_contracts: Empty
+    supplemental_generic_bound_contracts: rust_vec_supplemental_generic_bound_contracts()
   }
 }
 
