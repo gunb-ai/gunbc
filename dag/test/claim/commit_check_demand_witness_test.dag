@@ -448,12 +448,19 @@ test fn commit_check_demand_duplicate_discovery_entry_is_ambiguous() -> Bool {
 }
 
 test fn commit_check_demand_duplicate_module_is_ambiguous() -> Bool {
-  let check = synthetic_witness_check(
+  let first = synthetic_witness_check(
     entry: "dag/test/claim/module_a_test.dag",
     check_fns: ["a_holds"]
   )
+  let second = synthetic_witness_check(
+    entry: "dag/test/claim/module_b_test.dag",
+    check_fns: ["b_holds"]
+  )
   match project_enrollment_witness_demands(
-    roster: [synthetic_enrollment(check: check)],
+    roster: [
+      synthetic_enrollment(check: first),
+      synthetic_enrollment(check: second)
+    ],
     discoveries: [
       complete_discovery(
         entry: "dag/test/claim/module_a_test.dag",
@@ -468,7 +475,8 @@ test fn commit_check_demand_duplicate_module_is_ambiguous() -> Bool {
     ]
   ) {
     DemandAmbiguous { check: failed, cause: _ } =>
-      commit_check_kind_eq(a: failed, b: check)
+      commit_check_kind_eq(a: failed, b: first)
+        || commit_check_kind_eq(a: failed, b: second)
     DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
     DemandIncomplete { check: _, cause: _ } => false
