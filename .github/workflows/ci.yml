@@ -132,13 +132,22 @@ jobs:
         timeout-minutes: 5
       - name: gunbc ci regen (self-host fixed-point — required)
         run: |
-          # 🟡 dissolve-on: ci_regen_ensure_rustfmt_path_script — foreign-executor PATH probe ensuring rustfmt is spawnable for regen_stage0 on hosts with a cargo shim and no CARGO_HOME/bin (receipt CI #7290 srv3-03); Pipeline of atomic Do steps emitted through orch bash-emit (same carrier class as ci_pin_rustup_default_script / ci_floor_disposition_marker_init_script); DISSOLVES WHEN the regen job shares the isolate+pin prelude that already puts CARGO_HOME/bin on PATH by construction, or when rustfmt resolution is a typed toolchain probe on host_effect_apply rather than emitted bash (#5828 / ROADMAP 6-shell-slice0)
+          # 🟡 dissolve-on: ci_regen_ensure_rustfmt_path_script — foreign-executor PATH ensure for regen_stage0 on hosts with a cargo shim and no CARGO_HOME/bin (receipt CI #7290 srv3-03); control flow is If/Predicate/Exit/Let via orch bash-emit; leaf test -x / command -v / export PATH / dirname strings remain until FileExists + session-EnvExport (PR2b) or the regen job shares isolate+pin by construction; DISSOLVES WHEN rustfmt resolution is a typed toolchain probe on host_effect_apply rather than emitted bash (#5828 / ROADMAP 6-shell-slice0)
           # Prepend a locatable rustfmt dir onto PATH before regen_stage0's standalone rustfmt spawn (hosts that expose a cargo shim without CARGO_HOME/bin — receipt CI #7290 srv3-03). Probe order: CARGO_HOME/bin, /opt/cargo/bin, HOME/.cargo/bin, rustup which; refuse if still absent.
           if [ -n "$CARGO_HOME" ] && [ -x "$CARGO_HOME/bin/rustfmt" ]; then export PATH="$CARGO_HOME/bin:$PATH"; fi
           if ! command -v rustfmt >/dev/null 2>&1 && [ -x /opt/cargo/bin/rustfmt ]; then export PATH="/opt/cargo/bin:$PATH"; fi
           if ! command -v rustfmt >/dev/null 2>&1 && [ -x "$HOME/.cargo/bin/rustfmt" ]; then export PATH="$HOME/.cargo/bin:$PATH"; fi
-          if ! command -v rustfmt >/dev/null 2>&1; then RF=$(/opt/cargo/bin/rustup which rustfmt 2>/dev/null || true); if [ -n "$RF" ] && [ -x "$RF" ]; then export PATH="$(dirname "$RF"):$PATH"; fi; fi
-          if ! command -v rustfmt >/dev/null 2>&1; then echo "::error::rustfmt not on PATH for regen_stage0 standalone spawn (hosts with a cargo shim and no CARGO_HOME/bin — receipt CI #7290 srv3-03)"; exit 1; fi
+          if ! command -v rustfmt >/dev/null 2>&1; then
+          RF=$(/opt/cargo/bin/rustup which rustfmt) 2>/dev/null || true
+          if [ -n "$RF" ] && [ -x "$RF" ]; then
+          RF_DIR="$(dirname "$RF")"
+          export PATH="$RF_DIR:$PATH"
+          fi
+          fi
+          if ! command -v rustfmt >/dev/null 2>&1; then
+          echo "::error::rustfmt not on PATH for regen_stage0 standalone spawn (hosts with a cargo shim and no CARGO_HOME/bin — receipt CI #7290 srv3-03)"
+          exit 1
+          fi
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main 2>/dev/null || true
           # Affected-set-scoped regen admission (pull_request only): on a pull_request event, regen_floor_skip_witness intersects the merge-base diff with the [src/v1, dag] regen input closure (shared authority cli_run::regen_input_sources — the exact set regen_stage0 compiles; both the RegenVerifyGate and the SelfHostStalenessGate invoke regen_stage0, so the closure covers both). A PR diff touching none of src/v1/** (emitter source + committed stage0 outputs), v1's transitive dag import-closure, or the Cargo/toolchain build config cannot change the self-host fixed-point, so the regen step exits 0 immediately (a required step that passes because the self-host fixed-point is provably unchanged — regen runs before the floor so emitter drift fails fast, with no floor or merge-admission dependency). Empty diff / diff failure / closure failure runs regen (fail-closed). COLD CONTROL: the skip is gated to pull_request events via GITHUB_EVENT_NAME, so push-to-main and workflow_dispatch run regen UNCONDITIONALLY (no witness). A wrong closure that lets a PR wrongly skip therefore surfaces as a counted divergence on the very next merge to main — the squash-merge main-push run has an empty diff and runs regen cold, reding main if the seed is stale (a one-merge acceptance window, the discovery-flip shape). The 4-hourly falsifier does NOT run regen_stage0; the unconditional main-push regen is the cold control.
