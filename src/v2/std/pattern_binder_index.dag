@@ -176,23 +176,25 @@ fn pattern_binder_index_candidates_collect(
   name: Symbol,
   acc: FreeMonoid<PatternBinderEntry>
 ) -> FreeMonoid<PatternBinderEntry> {
-  let with_current = list_append(
-    left: acc,
-    right: pattern_binder_index_candidates_at(
-      index: index,
-      position: position,
-      name: name
-    )
+  let current = pattern_binder_index_candidates_at(
+    index: index,
+    position: position,
+    name: name
   )
-  match containment_path_parent(path: position) {
-    Present { value: parent } =>
-      pattern_binder_index_candidates_collect(
-        index: index,
-        position: parent,
-        name: name,
-        acc: with_current
-      )
-    Absent => with_current
+  if !is_empty(xs: current) {
+    list_append(left: acc, right: current)
+  } else {
+    let with_current = list_append(left: acc, right: current)
+    match containment_path_parent(path: position) {
+      Present { value: parent } =>
+        pattern_binder_index_candidates_collect(
+          index: index,
+          position: parent,
+          name: name,
+          acc: with_current
+        )
+      Absent => with_current
+    }
   }
 }
 
