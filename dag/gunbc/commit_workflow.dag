@@ -60,6 +60,7 @@ type EnrollmentDemandOutcome
   | DemandMissing { check: CommitCheckKind, cause: NonEmptyStr }
   | DemandAmbiguous { check: CommitCheckKind, cause: NonEmptyStr }
   | DemandIncomplete { check: CommitCheckKind, cause: NonEmptyStr }
+  | DemandRosterAmbiguous { cause: NonEmptyStr }
 
 type SingleEnrollmentDemandOutcome
   = SingleDemandQualified { row: EnrollmentWitnessDemand }
@@ -875,11 +876,23 @@ fn declaration_field_is_whole(field: DeclField) -> Bool {
   }
 }
 
+fn declaration_field_eq(a: DeclField, b: DeclField) -> Bool {
+  match a {
+    WholeDeclaration => match b {
+      WholeDeclaration => true
+      NamedField { field_name: _ } => false
+    }
+    NamedField { field_name } => match b {
+      WholeDeclaration => false
+      NamedField { field_name: other } => field_name == other
+    }
+  }
+}
+
 fn declaration_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
   a.module_path == b.module_path
     && a.decl_name == b.decl_name
-    && declaration_field_is_whole(field: a.field)
-    && declaration_field_is_whole(field: b.field)
+    && declaration_field_eq(a: a.field, b: b.field)
 }
 
 fn declaration_ref_in_list(target: DeclarationRef, declarations: List<DeclarationRef>) -> Bool {
@@ -954,6 +967,32 @@ fn discoveries_for_entry(
   filter(discoveries, discovery => discovery_entry(discovery: discovery) == entry)
 }
 
+fn roster_references_discovery_entry(
+  entry: String,
+  roster: List<CommitCheckEnrollment>,
+) -> Bool {
+  fold(roster, init: false, f: fn(found, enrollment) {
+    found || match enrollment.check {
+      CommitWitnessClaim { entry: candidate, check_fns: _, kind: _, span: _ } =>
+        candidate == entry
+      CommitSpecGate { gate: _ } => false
+      CommitCargoFmtCheck => false
+    }
+  })
+}
+
+fn discoveries_are_roster_scoped(
+  roster: List<CommitCheckEnrollment>,
+  discoveries: List<EntryDeclarationDiscovery>,
+) -> Bool {
+  fold(discoveries, init: true, f: fn(scoped, discovery) {
+    scoped && roster_references_discovery_entry(
+      entry: discovery_entry(discovery: discovery),
+      roster: roster
+    )
+  })
+}
+
 fn complete_discovery_module_count(
   module_path: NonEmptyStr,
   discoveries: List<EntryDeclarationDiscovery>,
@@ -969,8 +1008,7 @@ fn discovery_declarations_well_formed(
   module_path: NonEmptyStr,
   declarations: List<DeclarationRef>,
 ) -> Bool {
-  declarations.count() > 0
-    && declaration_refs_unique(declarations: declarations)
+  declaration_refs_unique(declarations: declarations)
     && fold(declarations, init: true, f: fn(acc, declaration) {
       acc
         && declaration.module_path == module_path
@@ -1063,6 +1101,10 @@ fn project_one_enrollment_witness_demand(
                   SingleDemandAmbiguous {
                     cause: "complete discoveries repeat one module identity" as NonEmptyStr
                   }
+                } else if declarations.count() == 0 {
+                  SingleDemandMissing {
+                    cause: "complete witness discovery contains no declarations" as NonEmptyStr
+                  }
                 } else if !discovery_declarations_well_formed(
                   module_path: module_path,
                   declarations: declarations
@@ -1139,6 +1181,8 @@ fn project_enrollment_witness_demands_unchecked(
             DemandAmbiguous { check: failed, cause: cause }
           DemandIncomplete { check: failed, cause } =>
             DemandIncomplete { check: failed, cause: cause }
+          DemandRosterAmbiguous { cause } =>
+            DemandRosterAmbiguous { cause: cause }
           DemandQualified { rows } =>
             if demand_row_overlaps(row: row, rows: rows) {
               DemandAmbiguous {
@@ -1157,7 +1201,12 @@ fn project_enrollment_witness_demands(
   roster: List<CommitCheckEnrollment>,
   discoveries: List<EntryDeclarationDiscovery>,
 ) -> EnrollmentDemandOutcome {
-  match first_duplicate_commit_check(roster: roster) {
+  if !discoveries_are_roster_scoped(roster: roster, discoveries: discoveries) {
+    DemandRosterAmbiguous {
+      cause: "declaration discovery has no owning witness enrollment" as NonEmptyStr
+    }
+  } else {
+    match first_duplicate_commit_check(roster: roster) {
     DuplicateCommitCheckFound { check } =>
       DemandAmbiguous {
         check: check,
@@ -1173,6 +1222,8 @@ fn project_enrollment_witness_demands(
           DemandAmbiguous { check: check, cause: cause }
         DemandIncomplete { check, cause } =>
           DemandIncomplete { check: check, cause: cause }
+        DemandRosterAmbiguous { cause } =>
+          DemandRosterAmbiguous { cause: cause }
         DemandQualified { rows } =>
           if demand_rows_match_roster(roster: roster, rows: rows) {
             DemandQualified { rows: rows }
@@ -1182,8 +1233,9 @@ fn project_enrollment_witness_demands(
               cause: "projected demand check set does not equal input roster" as NonEmptyStr
             }
           }
-      }
+    }
   }
+}
 }
 
 fn witness_seam_wellformed(seam: WitnessSeam) -> Bool {

@@ -14,6 +14,7 @@ import gunbc.commit_workflow {
   DemandMissing,
   DemandAmbiguous,
   DemandIncomplete,
+  DemandRosterAmbiguous,
   commit_gate_roster,
   commit_check_kind_eq,
   demand_rows_match_roster,
@@ -271,6 +272,7 @@ test fn commit_check_demand_all_six_file_grain_rows_expand_complete_discoveries(
       DemandMissing { check: _, cause: _ } => false
       DemandAmbiguous { check: _, cause: _ } => false
       DemandIncomplete { check: _, cause: _ } => false
+      DemandRosterAmbiguous { cause: _ } => false
     }
 }
 
@@ -316,10 +318,12 @@ test fn commit_check_demand_named_multi_function_is_exact_and_permutation_invari
         DemandMissing { check: _, cause: _ } => false
         DemandAmbiguous { check: _, cause: _ } => false
         DemandIncomplete { check: _, cause: _ } => false
+        DemandRosterAmbiguous { cause: _ } => false
       }
     DemandMissing { check: _, cause: _ } => false
     DemandAmbiguous { check: _, cause: _ } => false
     DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
@@ -337,6 +341,28 @@ test fn commit_check_demand_gate_and_fmt_rows_stay_typed_and_empty() -> Bool {
         && rows.skip(n: 1).first().declarations.count() == 0
         && commit_check_kind_eq(a: rows.first().check, b: gate)
         && commit_check_kind_eq(a: rows.skip(n: 1).first().check, b: fmt)
+    DemandMissing { check: _, cause: _ } => false
+    DemandAmbiguous { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
+  }
+}
+
+test fn commit_check_demand_unowned_discovery_is_roster_ambiguous() -> Bool {
+  let gate = CommitSpecGate { gate: EmitHostGate }
+  match project_enrollment_witness_demands(
+    roster: [synthetic_enrollment(check: gate)],
+    discoveries: [
+      complete_discovery(
+        entry: "dag/test/claim/unowned_test.dag",
+        module_path: "test.claim.unowned",
+        declaration_names: ["unowned_holds"]
+      )
+    ]
+  ) {
+    DemandRosterAmbiguous { cause } =>
+      cause == ("declaration discovery has no owning witness enrollment" as NonEmptyStr)
+    DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
     DemandAmbiguous { check: _, cause: _ } => false
     DemandIncomplete { check: _, cause: _ } => false
@@ -363,6 +389,32 @@ test fn commit_check_demand_absent_named_declaration_is_missing() -> Bool {
     DemandQualified { rows: _ } => false
     DemandAmbiguous { check: _, cause: _ } => false
     DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
+  }
+}
+
+test fn commit_check_demand_empty_complete_discovery_is_missing() -> Bool {
+  let check = synthetic_witness_check(
+    entry: "dag/test/claim/empty_test.dag",
+    check_fns: []
+  )
+  match project_enrollment_witness_demands(
+    roster: [synthetic_enrollment(check: check)],
+    discoveries: [
+      complete_discovery(
+        entry: "dag/test/claim/empty_test.dag",
+        module_path: "test.claim.empty",
+        declaration_names: []
+      )
+    ]
+  ) {
+    DemandMissing { check: failed, cause } =>
+      commit_check_kind_eq(a: failed, b: check)
+        && cause == ("complete witness discovery contains no declarations" as NonEmptyStr)
+    DemandQualified { rows: _ } => false
+    DemandAmbiguous { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
@@ -391,6 +443,7 @@ test fn commit_check_demand_duplicate_discovery_entry_is_ambiguous() -> Bool {
     DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
     DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
@@ -419,6 +472,7 @@ test fn commit_check_demand_duplicate_module_is_ambiguous() -> Bool {
     DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
     DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
@@ -442,6 +496,7 @@ test fn commit_check_demand_duplicate_declaration_is_ambiguous() -> Bool {
     DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
     DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
@@ -465,6 +520,7 @@ test fn commit_check_demand_incomplete_discovery_stays_incomplete() -> Bool {
     DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
     DemandAmbiguous { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
@@ -489,6 +545,7 @@ test fn commit_check_demand_duplicate_roster_identity_is_ambiguous() -> Bool {
     DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
     DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
@@ -520,6 +577,7 @@ test fn commit_check_demand_overlapping_output_membership_is_ambiguous() -> Bool
     DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
     DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
@@ -556,7 +614,8 @@ test fn commit_check_demand_rejects_non_whole_or_wrong_module_discovery() -> Boo
     decl_name: "holds" as NonEmptyStr,
     field: NamedField { field_name: "body" as NonEmptyStr }
   }
-  match project_enrollment_witness_demands(
+  declaration_ref_lists_eq(left: [wrong_field], right: [wrong_field])
+    && match project_enrollment_witness_demands(
     roster: [synthetic_enrollment(check: check)],
     discoveries: [
       DiscoveryComplete {
@@ -570,5 +629,6 @@ test fn commit_check_demand_rejects_non_whole_or_wrong_module_discovery() -> Boo
     DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
     DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
   }
 }
