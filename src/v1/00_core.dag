@@ -427,9 +427,9 @@ fn match_pattern_bind_name_at(pattern: MatchPattern, source_indices: Map<String,
   }
 }
 
-fn match_pattern_bind_containment(pattern: MatchPattern) -> ContainmentPath<Node>? {
+fn match_pattern_bind_containment(pattern: MatchPattern, ancestors: List<Node>) -> ContainmentPath<Node>? {
   match match_pattern_bind_declaration(pattern: pattern) {
-    Present { value: decl } => Present { value: ContainmentPath { ancestors: [], terminal: decl } }
+    Present { value: decl } => Present { value: ContainmentPath { ancestors: ancestors, terminal: decl } }
     Absent => none
   }
 }
