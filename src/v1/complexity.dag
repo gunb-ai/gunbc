@@ -1736,7 +1736,7 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
 
 fn collect_field_binding_names(fb: Node, vars: Map<String, Bool>) -> Map<String, Bool> {
   match field_binding_pattern(n: fb) {
-    Bind { name: binding_name } => map_insert(vars, binding_name, true)
+    Bind { name: binding_name, declaration_span: _ } => map_insert(vars, binding_name, true)
     VariantPattern { name: _, parent_enum: _, field_bindings: nested } =>
       nested |> fold(init: vars, f: (inner, nested_fb) =>
         collect_field_binding_names(fb: nested_fb, vars: inner)
@@ -1893,7 +1893,7 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
               bindings |> fold(init: acc, f: (inner, fb) =>
                 collect_field_binding_names(fb: fb, vars: inner)
               )
-            Bind { name: binding_name } =>
+            Bind { name: binding_name, declaration_span: _ } =>
               if scrut_is_descent { map_insert(acc, binding_name, true) } else { acc }
             _ => acc
           }
@@ -1984,7 +1984,7 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
               bindings |> fold(init: vars, f: (inner, fb) =>
                 collect_field_binding_names(fb: fb, vars: inner)
               )
-            Bind { name: binding_name } =>
+            Bind { name: binding_name, declaration_span: _ } =>
               if scrut_is_descent { map_insert(vars, binding_name, true) } else { vars }
             _ => vars
           }
@@ -2304,7 +2304,7 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
                 bindings |> fold(init: vars, f: (inner, fb) =>
                   collect_field_binding_names(fb: fb, vars: inner)
                 )
-              Bind { name: binding_name } =>
+              Bind { name: binding_name, declaration_span: _ } =>
                 if scrut_is_descent { map_insert(vars, binding_name, true) } else { vars }
               _ => vars
             }

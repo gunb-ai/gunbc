@@ -316,7 +316,7 @@ fn var_binding_kind_name(value: VarBindingKind) -> String {
     LocalValueBinding => "LocalValueBinding"
     FunctionValueBinding => "FunctionValueBinding"
     VariantValueBinding { parent_enum: _ } => "VariantValueBinding"
-    MatchBoundBinding => "MatchBoundBinding"
+    MatchBoundBinding { declaration_span: _ } => "MatchBoundBinding"
   }
 }
 
@@ -414,8 +414,8 @@ fn serialize_field_binding(binding: Node, source_indices: Map<String, NewlineInd
 
 fn serialize_match_pattern(pattern: MatchPattern, source_indices: Map<String, NewlineIndex>) -> String {
   match pattern {
-    Bind { name: inner } =>
-      concat("{\"kind\": \"Bind\", \"name\": ", json_quote(s: inner), "}")
+    Bind { name: inner, declaration_span: declaration_span } =>
+      concat("{\"kind\": \"Bind\", \"name\": ", json_quote(s: inner), ", \"declaration_span\": ", serialize_span(span: declaration_span), "}")
     LitPattern { value: inner } =>
       concat("{\"kind\": \"LitPattern\", \"value\": ", serialize_literal(value: inner), "}")
     VariantPattern { name: inner, parent_enum: parent_enum, field_bindings: field_bindings } =>
@@ -582,6 +582,8 @@ fn serialize_expr_data(expr_node: Node, source_indices: Map<String, NewlineIndex
               match inner {
                 VariantValueBinding { parent_enum: parent_enum } =>
                   concat(", \"parent_enum\": ", json_quote(s: parent_enum))
+                MatchBoundBinding { declaration_span: declaration_span } =>
+                  concat(", \"declaration_span\": ", serialize_span(span: declaration_span))
                 _ => ""
               },
             "}")

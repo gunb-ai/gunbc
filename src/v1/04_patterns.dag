@@ -375,7 +375,7 @@ fn check_match_exhaustiveness(
     let has_catch_all = any(arms, arm =>
       match arm_pattern(n: arm) {
         Wildcard => true
-        Bind { name: _ } => true
+        Bind { name: _, declaration_span: _ } => true
         _ => false
       }
     )
