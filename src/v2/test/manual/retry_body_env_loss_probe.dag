@@ -1,0 +1,100 @@
+module v2.test.manual.retry_body_env_loss_probe
+
+import v2.compiler.emit_orchestration { orch_emit_step }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import std.algebra { FreeMonoid }
+import v2.std.orchestration {
+  Do,
+  EnvBinding,
+  EnvSet,
+  EscalationLevel,
+  FailFast,
+  LogMatches,
+  Pipeline,
+  PipelineStep,
+  Retry,
+  Run
+}
+import v2.std.collection { Absent }
+import v2.std.diagnostic { Accepted, EmitDirective, None, Rejected, SeverityWarning }
+import v2.std.optional { Optional, Present }
+
+data probe_command: String = "probe_cmd"
+data probe_exhausted: String = "exit 9"
+
+fn probe_escalation() -> EscalationLevel {
+  EscalationLevel {
+    detect: LogMatches { source: "BUILD_LOG", pattern: "PAT1" },
+    warning: EmitDirective {
+      severity: SeverityWarning,
+      message: "w1"
+    },
+    env: [EnvSet { name: "E1", value: "1" }]
+  }
+}
+
+fn probe_exhausted_pipeline() -> Pipeline {
+  Pipeline {
+    steps: [
+      Do {
+        run: Run {
+          command: probe_exhausted,
+          env: [],
+          redirect: Absent,
+          capture: Absent
+        }
+      }
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn probe_retry_body(env: FreeMonoid<EnvBinding>) -> PipelineStep {
+  Retry {
+    body: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: probe_command,
+            env: env,
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    },
+    escalations: [probe_escalation()],
+    on_exhausted: probe_exhausted_pipeline()
+  }
+}
+
+fn probe_emit(step: PipelineStep) -> Optional<String> {
+  match orch_emit_step(s: step, medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: dg } =>
+      match dg {
+        None => Present { value: source.carried }
+        Some { diagnostics: _ } => Absent
+      }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn probe_retry_body_env_empty() -> PipelineStep {
+  probe_retry_body(env: [])
+}
+
+fn probe_retry_body_env_present() -> PipelineStep {
+  probe_retry_body(env: [EnvSet { name: "BODY_VAR", value: "body_val" }])
+}
+
+fn main() -> Bool {
+  match probe_emit(step: probe_retry_body_env_empty()) {
+    Present { value: empty_emit } =>
+      match probe_emit(step: probe_retry_body_env_present()) {
+        Present { value: present_emit } => empty_emit == present_emit
+        Absent => false
+      }
+    Absent => false
+  }
+}
