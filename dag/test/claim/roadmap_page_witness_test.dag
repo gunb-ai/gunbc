@@ -44,6 +44,13 @@ test fn witness_authority_serializes_with_structure() -> Bool {
     && string_contains(s: h, pattern: "class=\"status status-")
 }
 
+test fn witness_authority_page_preserves_multi_parent_dependencies() -> Bool {
+  string_contains(
+    s: authority_page_html(),
+    pattern: "requires all: 2-scm-git-upstream-model, 2-scm-mercurial-upstream-model, 2-scm-pijul-upstream-model",
+  )
+}
+
 fn empty_doc_html() -> String {
   let empty = RoadmapDocument { preamble: [], lead_lanes: [], sections: [] }
   match try_serialize_html_source(node: roadmap_page(doc: empty, merged: [])) {

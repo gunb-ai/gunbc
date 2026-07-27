@@ -7,7 +7,7 @@ import gunbc.roadmap_model {
   Acceptance, PrsMerged, ManualAcceptance,
   NodeSizing, Unsized, Sized,
   SectionElement, Prose, Group, SectionGroup,
-  roadmap_parent_ids,
+  RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids,
 }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_superseded_by, signoff_accepts }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
@@ -213,7 +213,7 @@ fn node_plan_doc_json(carriers: List<Pointer>) -> JsonValue {
 }
 
 fn node_json_value(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance, edges: List<RoadmapEdge>) -> JsonValue {
-  let parent_id_value = match roadmap_parent(edges: edges, node: n.node) {
+  let parent_id_value = match roadmap_primary_parent(edges: edges, node: n.node) {
     TopLevel => json_null()
     UnderParent { parent: pid } => json_string(s: pid)
   }
@@ -226,7 +226,7 @@ fn node_json_value(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: S
     json_kv(key: "intricacy", value: json_string(s: intricacy_str(i: intricacy))),
     json_kv(key: "volume", value: json_string(s: volume_str(v: volume))),
     json_kv(key: "parent_node_id", value: parent_id_value),
-    json_kv(key: "parent_node_ids", value: json_array(elements: node_parent_ids(edges: edges, id: n.node) |> map(id => json_string(s: id)))),
+    json_kv(key: "parent_node_ids", value: json_array(elements: roadmap_parent_ids(edges: edges, node: n.node) |> map(id => json_string(s: id)))),
     json_kv(key: "owner", value: owner_value),
     json_kv(key: "plan_doc", value: node_plan_doc_json(carriers: n.carriers)),
     json_kv(key: "acceptance", value: acceptance_json_value(a: acceptance, line: n.line)),
@@ -238,7 +238,7 @@ fn node_json(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String,
 }
 
 fn node_unmet_parent_ids(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId) -> List<RoadmapNodeId> {
-  node_parent_ids(edges: edges, id: id)
+  roadmap_parent_ids(edges: edges, node: id)
     |> filter(pid => !any(nodes, n => n.node == pid && node_closes_dependency(n: n)))
 }
 

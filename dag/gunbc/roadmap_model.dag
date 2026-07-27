@@ -71,7 +71,7 @@ fn roadmap_primary_parent(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> Road
   if count(parents) == 0 {
     top_level()
   } else {
-    under_parent(p: first(parents).value)
+    under_parent(p: first(parents))
   }
 }
 
