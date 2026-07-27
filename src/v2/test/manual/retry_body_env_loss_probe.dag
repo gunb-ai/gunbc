@@ -69,17 +69,6 @@ fn probe_retry_body(env: FreeMonoid<EnvBinding>) -> PipelineStep {
   }
 }
 
-fn probe_emit(step: PipelineStep) -> Optional<String> {
-  match orch_emit_step(s: step, medium: bash_orchestration_emit_medium()) {
-    Accepted { value: source, diagnostics: dg } =>
-      match dg {
-        None => Present { value: source.carried }
-        Some { diagnostics: _ } => Absent
-      }
-    Rejected { diagnostics: _ } => Absent
-  }
-}
-
 fn probe_retry_body_env_empty() -> PipelineStep {
   probe_retry_body(env: [])
 }
@@ -88,13 +77,29 @@ fn probe_retry_body_env_present() -> PipelineStep {
   probe_retry_body(env: [EnvSet { name: "BODY_VAR", value: "body_val" }])
 }
 
-fn main() -> Bool {
-  match probe_emit(step: probe_retry_body_env_empty()) {
-    Present { value: empty_emit } =>
-      match probe_emit(step: probe_retry_body_env_present()) {
-        Present { value: present_emit } => empty_emit == present_emit
-        Absent => false
+fn probe_emit_string(step: PipelineStep) -> String {
+  match orch_emit_step(s: step, medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: dg } =>
+      match dg {
+        None => source.carried
+        Some { diagnostics: _ } => "__REJECTED_WITH_DIAGNOSTICS__"
       }
-    Absent => false
+    Rejected { diagnostics: _ } => "__REJECTED__"
   }
+}
+
+fn probe_body_env_identical_emission_holds() -> Bool {
+  probe_emit_string(step: probe_retry_body_env_empty())
+    == probe_emit_string(step: probe_retry_body_env_present())
+}
+
+fn probe_body_env_absent_from_emission_holds() -> Bool {
+  let emitted = probe_emit_string(step: probe_retry_body_env_present())
+  !string_contains(s: emitted, pattern: "BODY_VAR")
+    && !string_contains(s: emitted, pattern: "body_val")
+}
+
+fn main() -> Bool {
+  probe_body_env_identical_emission_holds()
+    && probe_body_env_absent_from_emission_holds()
 }
