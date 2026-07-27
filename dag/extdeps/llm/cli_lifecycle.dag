@@ -18,13 +18,6 @@ data codex_cli_auth_external_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data claude_cli_lifecycle_external_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.claude.com/en/docs/claude-code/cli-reference"
-  }
-}
-
 type ProviderKind
   = ClaudeCliProvider
   | CodexCliProvider

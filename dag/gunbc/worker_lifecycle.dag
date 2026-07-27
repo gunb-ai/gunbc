@@ -1,6 +1,7 @@
 module gunbc.worker_lifecycle
 
-import std.types { String, NonEmptyStr, Int }
+import std.types { String, NonEmptyStr, Timestamp }
+import std.integer { PositiveInt }
 import extdeps.llm.cli_lifecycle {
   ProviderInstance,
   ProviderReadiness,
@@ -38,8 +39,8 @@ fn worker_phase_label(phase: WorkerPhase) -> String {
 
 type ProcessIdentityEvidence
   = ProcessIdentityObserved {
-      pid: Int
-      started_at: NonEmptyStr
+      pid: PositiveInt
+      started_at: Timestamp
       owner: NonEmptyStr
     }
   | ProcessIdentityUnobserved { reason: NonEmptyStr }

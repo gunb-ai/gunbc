@@ -1217,8 +1217,54 @@ data sessions_panel_note: String = "U2 plus workflow lamps v0, corrected for lif
 
 data js_sessions_observe_fn: String = "gunbcObserveSessions"
 data js_attempts_observe_fn: String = "gunbcObserveAttempts"
+data js_sessions_observe_in_flight: String = "gunbcSessionsObservationInFlight"
+data js_attempts_observe_in_flight: String = "gunbcAttemptsObservationInFlight"
+data js_sessions_observe_pending: String = "gunbcSessionsObservationPending"
+data js_attempts_observe_pending: String = "gunbcAttemptsObservationPending"
 data observation_poll_interval_ms: Int = 3000
-data observation_poll_note: String = "The page has no typed terminal-attempt observation yet, so it cannot honestly decide that an attempt is terminal and stop polling. It therefore re-observes both independent sources for the page lifetime at one explicit cadence; page unload cancels the browser timer. This dissolves into terminal-bounded polling when AttemptEvidence.terminal_outcome gains a live producer."
+data observation_poll_note: String = "The page has no typed terminal-attempt observation yet, so it cannot honestly decide that an attempt is terminal and stop polling. It therefore re-observes both independent sources for the page lifetime at one explicit cadence; page unload cancels the browser timer. Each source permits one request in flight and coalesces overlapping timer or post-dispatch observations into one pending rerun, so an older response cannot repaint over a newer one. This dissolves into terminal-bounded polling when AttemptEvidence.terminal_outcome gains a live producer."
+
+fn observation_complete_stmts(
+  observer: String,
+  in_flight: String,
+  pending: String,
+) -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_ident(name: in_flight),
+      op: "=",
+      right: ts_ident(name: "false"))),
+    ts_if(
+      cond: ts_ident(name: pending),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_ident(name: pending),
+          op: "=",
+          right: ts_ident(name: "false"))),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: observer), args: [])),
+      ]),
+      else_stmt: none),
+  ]
+}
+
+fn observation_begin_stmts(in_flight: String, pending: String) -> List<TsStmt> {
+  [
+    ts_if(
+      cond: ts_ident(name: in_flight),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_ident(name: pending),
+          op: "=",
+          right: ts_ident(name: "true"))),
+        ts_return(expr: none),
+      ]),
+      else_stmt: none),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_ident(name: in_flight),
+      op: "=",
+      right: ts_ident(name: "true"))),
+  ]
+}
 
 fn sessions_mark_live_stmts() -> List<TsStmt> {
   [
@@ -1439,7 +1485,7 @@ fn sessions_fetch_effect_statements() -> List<TsStmt> {
                 property: "then"),
               args: [ts_arrow(params: ["r"], body: ts_block(stmts: [ts_return(expr: ts_call(callee: ts_member(object: ts_ident(name: "r"), property: "json"), args: []))]))]),
             property: "then"),
-          args: [ts_arrow(params: ["sj"], body: ts_block(stmts: [
+          args: [ts_arrow(params: ["sj"], body: ts_block(stmts: concat([
             ts_if(
               cond: ts_member(object: ts_ident(name: "sj"), property: "observe_refused"),
               then: ts_block(stmts: concat(
@@ -1471,7 +1517,10 @@ fn sessions_fetch_effect_statements() -> List<TsStmt> {
                   args: [ts_arrow(params: ["sess"], body: ts_block(stmts: sessions_mark_live_stmts()))])),
               ]) },
             ),
-          ]))]),
+          ], observation_complete_stmts(
+            observer: js_sessions_observe_fn,
+            in_flight: js_sessions_observe_in_flight,
+            pending: js_sessions_observe_pending))))]),
         property: "catch"),
       args: [ts_arrow(params: ["e"], body: ts_block(stmts: concat(
         [ts_const(name: "why", value: ts_binop(left: ts_lit_str(value: "session observation refused: "), op: "+", right: ts_binop(left: ts_ident(name: "e"), op: "+", right: ts_lit_str(value: ""))))],
@@ -1480,7 +1529,12 @@ fn sessions_fetch_effect_statements() -> List<TsStmt> {
             lamp: LiveWorkflowLamp,
             state: ClientObservationRefused { reason: "" },
             reason_expr: ts_ident(name: "why"))],
-          observation_refused_banner_stmts(source_class: "sessions-observe-refused")))))])),
+          concat(
+            observation_refused_banner_stmts(source_class: "sessions-observe-refused"),
+            observation_complete_stmts(
+              observer: js_sessions_observe_fn,
+              in_flight: js_sessions_observe_in_flight,
+              pending: js_sessions_observe_pending))))))])),
   ]
 }
 
@@ -1539,7 +1593,7 @@ fn attempts_fetch_effect_statements() -> List<TsStmt> {
                 property: "then"),
               args: [ts_arrow(params: ["r"], body: ts_block(stmts: [ts_return(expr: ts_call(callee: ts_member(object: ts_ident(name: "r"), property: "json"), args: []))]))]),
             property: "then"),
-          args: [ts_arrow(params: ["aj"], body: ts_block(stmts: [
+          args: [ts_arrow(params: ["aj"], body: ts_block(stmts: concat([
             ts_if(
               cond: ts_member(object: ts_ident(name: "aj"), property: "attempts_refused"),
               then: ts_block(stmts: concat(
@@ -1571,7 +1625,10 @@ fn attempts_fetch_effect_statements() -> List<TsStmt> {
                   args: [ts_arrow(params: ["att"], body: ts_block(stmts: attempts_mark_stmts()))])),
               ]) },
             ),
-          ]))]),
+          ], observation_complete_stmts(
+            observer: js_attempts_observe_fn,
+            in_flight: js_attempts_observe_in_flight,
+            pending: js_attempts_observe_pending))))]),
         property: "catch"),
       args: [ts_arrow(params: ["e"], body: ts_block(stmts: concat(
         [ts_const(name: "why", value: ts_binop(left: ts_lit_str(value: "attempt observation refused: "), op: "+", right: ts_binop(left: ts_ident(name: "e"), op: "+", right: ts_lit_str(value: ""))))],
@@ -1580,18 +1637,35 @@ fn attempts_fetch_effect_statements() -> List<TsStmt> {
             lamp: AttemptedWorkflowLamp,
             state: ClientObservationRefused { reason: "" },
             reason_expr: ts_ident(name: "why"))],
-          observation_refused_banner_stmts(source_class: "attempts-observe-refused")))))])),
+          concat(
+            observation_refused_banner_stmts(source_class: "attempts-observe-refused"),
+            observation_complete_stmts(
+              observer: js_attempts_observe_fn,
+              in_flight: js_attempts_observe_in_flight,
+              pending: js_attempts_observe_pending))))))])),
   ]
 }
 
 fn observation_fetch_statements() -> List<TsStmt> {
   [
+    ts_let(name: js_sessions_observe_in_flight, value: ts_ident(name: "false")),
+    ts_let(name: js_attempts_observe_in_flight, value: ts_ident(name: "false")),
+    ts_let(name: js_sessions_observe_pending, value: ts_ident(name: "false")),
+    ts_let(name: js_attempts_observe_pending, value: ts_ident(name: "false")),
     ts_const(
       name: js_sessions_observe_fn,
-      value: ts_arrow(params: [], body: ts_block(stmts: sessions_fetch_effect_statements()))),
+      value: ts_arrow(params: [], body: ts_block(stmts: concat(
+        observation_begin_stmts(
+          in_flight: js_sessions_observe_in_flight,
+          pending: js_sessions_observe_pending),
+        sessions_fetch_effect_statements())))),
     ts_const(
       name: js_attempts_observe_fn,
-      value: ts_arrow(params: [], body: ts_block(stmts: attempts_fetch_effect_statements()))),
+      value: ts_arrow(params: [], body: ts_block(stmts: concat(
+        observation_begin_stmts(
+          in_flight: js_attempts_observe_in_flight,
+          pending: js_attempts_observe_pending),
+        attempts_fetch_effect_statements())))),
     ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_sessions_observe_fn), args: [])),
     ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_attempts_observe_fn), args: [])),
     ts_expr_stmt(expr: ts_call(
