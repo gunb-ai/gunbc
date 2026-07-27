@@ -20,7 +20,7 @@ pub use crate::v1_std_core::{
     build_newline_index, empty_intern_table, field_binding_pattern, int_type, make_arm_node,
     make_expr_node, make_named_expr_node, make_param_node, no_span,
 };
-pub use crate::v1_std_core::{Cardinality, Connective, ExprData, MatchPattern, Node};
+pub use crate::v1_std_core::{Cardinality, Connective, ExprData, MatchPattern, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
