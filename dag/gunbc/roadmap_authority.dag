@@ -438,7 +438,7 @@ fn section_2() -> RoadmapSection {
             ],
             authored_on: "",
             last_verified_on: "",
-          }), path: "docs/plans/dag-scm-design.md"),
+          }), path: "docs/plans/node-subtree-visibility-grants.md"),
           with_plan(rn: ticket_wi(id: "2-scm-node-merge", done: false, t: TicketFields {
             headline: "source-intent integration core — grounded joint results, git as the compatibility surface",
             brief: "Integration operates on modeled transformations and obligations over groups of units; node/key overlap is alignment evidence, never the conflict definition. Outcomes are Applied · Contradictory · Ambiguous · Unknown, and only Applied at the required evidence grade advances exact-parent linear history. Native proposals preserve the authored operation rather than requiring endpoint-three-way inference; Git import recovers transformations from base/endpoints with explicit fidelity, and export emits ordinary squash/one-parent source trees. First slice = cost + discriminating scenario model after DFS of GroupMembership, std.change, computation identity, temporal effect, realization, perturbation, and source authority — no store or Rust mechanism first.",
