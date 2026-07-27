@@ -1,0 +1,102 @@
+module gunbc.fleet_bmc_state
+
+import extdeps.bmc.capability {
+  BmcFirmwareObservation,
+  BmcFirmwareVersion,
+}
+import extdeps.bmc.types {
+  BmcConfigPersistenceObservation,
+  BmcFlashBackedOverlayObserved,
+  BmcRedfishSurfaceObservation,
+  BmcUpdateServiceObservation,
+  RedfishFanControlResourceAbsent,
+  RedfishInitialDutyControlResource,
+  RedfishLegacyChassisThermal,
+  RedfishThermalSubsystemSensorCollection,
+}
+import gunbc.fleet_intent { srv3_baseboard, srv4_baseboard }
+import gunbc.bmc_fan_projection { BmcFanPolicyProjectionCapability }
+import std.bmc { OpenBmc }
+import std.measure { byte_size }
+
+data srv3_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservation {
+  endpoint: srv3_baseboard.bmc,
+  firmware: BmcFirmwareVersion {
+    family: OpenBmc,
+    version: "2.07.00",
+  },
+  observed_at: "2026-07-27",
+}
+
+data srv4_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservation {
+  endpoint: srv4_baseboard.bmc,
+  firmware: BmcFirmwareVersion {
+    family: OpenBmc,
+    version: "3.22.00",
+  },
+  observed_at: "2026-07-27",
+}
+
+data srv3_bmc_redfish_surface_observation: BmcRedfishSurfaceObservation = BmcRedfishSurfaceObservation {
+  firmware: srv3_bmc_firmware_observation,
+  thermal_surface: RedfishThermalSubsystemSensorCollection,
+  chassis_sensor_collection_member_count: 51,
+  fan_control_surface: RedfishFanControlResourceAbsent,
+}
+
+data srv4_bmc_redfish_surface_observation: BmcRedfishSurfaceObservation = BmcRedfishSurfaceObservation {
+  firmware: srv4_bmc_firmware_observation,
+  thermal_surface: RedfishLegacyChassisThermal,
+  chassis_sensor_collection_member_count: 9,
+  fan_control_surface: RedfishInitialDutyControlResource,
+}
+
+data srv3_bmc_update_service_observation: BmcUpdateServiceObservation = BmcUpdateServiceObservation {
+  firmware: srv3_bmc_firmware_observation,
+  http_push_uri: "/redfish/v1/UpdateService/update",
+  multipart_http_push_uri: "/redfish/v1/UpdateService/update",
+  active_bmc_image_id: "c1789ba5",
+  active_bmc_image_updateable: true,
+  firmware_inventory_member_count: 2,
+  bmc_image_member_count: 1,
+  backup_bmc_image_observed: false,
+  observed_at: "2026-07-27",
+}
+
+data srv4_bmc_update_service_observation: BmcUpdateServiceObservation = BmcUpdateServiceObservation {
+  firmware: srv4_bmc_firmware_observation,
+  http_push_uri: "/redfish/v1/UpdateService/update",
+  multipart_http_push_uri: "/redfish/v1/UpdateService/update",
+  active_bmc_image_id: "14c085a0",
+  active_bmc_image_updateable: true,
+  firmware_inventory_member_count: 3,
+  bmc_image_member_count: 1,
+  backup_bmc_image_observed: false,
+  observed_at: "2026-07-27",
+}
+
+data srv4_bmc_fan_projection_capability: BmcFanPolicyProjectionCapability = BmcFanPolicyProjectionCapability {
+  board: srv4_baseboard.catalog.model,
+  firmware: srv4_bmc_firmware_observation.firmware,
+  config_path: "/usr/share/swampd/config-asrr.json",
+  controller_service: "phosphor-pid-control.service",
+  projection_id: "swampd-asrr-temp-soc-stepwise-v1",
+}
+
+data srv4_bmc_config_persistence_observation: BmcConfigPersistenceObservation = BmcFlashBackedOverlayObserved {
+  firmware: srv4_bmc_firmware_observation.firmware,
+  config_path: "/usr/share/swampd/config-asrr.json",
+  lower_filesystem: "squashfs:/dev/mtdblock4",
+  upper_filesystem: "jffs2:/dev/mtdblock5",
+  overlay_mount: "/",
+  writable: true,
+  upper_override_present: false,
+  available_bytes: byte_size(20361216),
+  observed_at: "2026-07-27",
+}
+
+data srv4_bmc_fan_projection_probe_note: String = "Authenticated read-only BMC SSH probe, 2026-07-27: the active 3.22 config was projected in memory through the intended TEMP_SOC semantic patch. The projection was semantically idempotent; changing the 75C output from 75 to 74 was discriminating; applying the projection healed the perturbation exactly. No file was written and phosphor-pid-control was not restarted. This proves the jq transformation can express the desired state, not that the typed persistent actuator or rollback receipt exists."
+
+data fleet_bmc_surface_observation_note: String = "Authenticated read-only Redfish observations, 2026-07-27. srv3 OpenBMC 2.07.00 advertises ThermalSubsystem and its 51-member Chassis/Sensors collection includes temperature and fan readings; the legacy Chassis/Thermal URI is absent. srv4 OpenBMC 3.22.00 advertises legacy Chassis/Thermal; its Chassis/Sensors request still returns HTTP success but has only 9 power/utilization members and omits temperature/fan readings. A collection-only observer therefore fails open on srv4: transport success is not telemetry completeness. Direct known sensor URIs still resolve, but they do not make an inventory query complete."
+
+data fleet_bmc_update_service_observation_note: String = "Authenticated read-only Redfish observations, 2026-07-27. Both srv3 2.07.00 and srv4 3.22.00 advertise /redfish/v1/UpdateService/update through HttpPushUri and MultipartHttpPushUri, and each active BMC image is Updateable=true. Each FirmwareInventory exposed exactly one BMC image plus non-BMC members; neither exposed a backup BMC image. This is update-surface capability evidence, not an approved image, apply receipt, or recovery proof."

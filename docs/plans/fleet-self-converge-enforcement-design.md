@@ -461,7 +461,7 @@ Phase 2 (timers on srv1+srv2+srv3)                      ├→ Phase 3 (observer
 
 A host is **homogeneous** when ALL hold (T4/T5 per `fleet-acceptance-criteria.md`):
 
-1. **Spine green** — `host_standup_spine` assimilation phases P0–P5 have no `DeclaredGap` refusal for this host (interim ctrl paths dissolved).
+1. **Spine green** — `host_standup_spine` assimilation phases P0–P5 have no typed `PhaseGap` refusal for this host (interim ctrl paths dissolved).
 2. **Timer active** — `ctrl-fleet-converge.timer` enabled; receipt fresh within staleness bound.
 3. **Runner allocation modeled** — changing runner count/caps is an edit to `ci_runner_placement` / `fleet_converge_policy`, not hand systemctl.
 4. **Sessions ephemeral** — agent dispatch runs in `ContainerHermetic` isolation with cgroup cap from `fleet_host_budget`; teardown erases the frame.

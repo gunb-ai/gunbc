@@ -62,6 +62,19 @@ service redfish.Http {
     }
   }
 
+  operation GetManagerWithNetrc {
+    input { bmc_host: NonEmptyStr, manager_id: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Managers/{manager_id}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish manager GET (netrc) failed"
+    }
+  }
+
   operation GetChassisSensors {
     input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
@@ -72,6 +85,32 @@ service redfish.Http {
     exit {
       0 => Unit
       nonzero => String "redfish chassis sensors GET failed"
+    }
+  }
+
+  operation GetChassisThermalWithNetrc {
+    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/{chassis_id}/Thermal"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish chassis legacy thermal GET (netrc) failed"
+    }
+  }
+
+  operation GetChassisThermalSubsystemWithNetrc {
+    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/{chassis_id}/ThermalSubsystem"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish chassis thermal subsystem GET (netrc) failed"
     }
   }
 

@@ -1,0 +1,33 @@
+module gunbc.bmc_intent
+
+import extdeps.bmc.capability {
+  BmcFirmwareIntent,
+  BmcFirmwareTrack,
+  BmcFirmwareTrackRequired,
+}
+import extdeps.bmc.types { BmcFanCurve }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_temp_soc_fan_curve }
+import std.bmc { OpenBmc }
+
+type BmcFanPolicyIntent {
+  curve: BmcFanCurve
+}
+
+type BmcControlPlaneIntent {
+  firmware: BmcFirmwareIntent
+  fan_policy: BmcFanPolicyIntent
+}
+
+data fleet_bmc_valid_state: BmcControlPlaneIntent = BmcControlPlaneIntent {
+  firmware: BmcFirmwareTrackRequired {
+    track: BmcFirmwareTrack {
+      family: OpenBmc,
+      major_version: 3,
+    },
+  },
+  fan_policy: BmcFanPolicyIntent {
+    curve: asrock_altrad8ud_temp_soc_fan_curve,
+  },
+}
+
+data fleet_bmc_valid_state_note: String = "The single fleet-wide BMC desired state for the current homogeneous ALTRAD8UD fleet: OpenBMC major track 3 and the currently accepted TEMP_SOC swampd policy observed on both machines. This is desired policy, not an observation, not 'latest available', and not proof of a workload-qualified thermal envelope. A firmware mismatch is drift; applying it still requires an exact approved release artifact. The curve is semantic intent shared across firmware layouts, never a copied JSON document."

@@ -25,6 +25,7 @@ import product.placement_supply { HostIdentity }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.boards.types { ServerBaseboard }
+import gunbc.bmc_intent { BmcControlPlaneIntent, fleet_bmc_valid_state }
 import std.bmc { BmcEndpoint, Redfish }
 import std.credentials { CredentialFlow, Stored }
 import std.measure { hertz, ByteSize, byte_size, byte_size_count, Bandwidth, HardwareThreadCount, hardware_thread_count_value, Nano, measure_count }
@@ -72,6 +73,7 @@ type ExecutionSurface {
 type ComputeHost {
   identity: HostIdentity
   baseboard: ServerBaseboard?
+  bmc_intent: BmcControlPlaneIntent?
   processors: List<ProcessorKind>
   memory: List<MemoryDevice>
   storage: List<StorageDevice>
@@ -256,6 +258,7 @@ data srv3_memory_population: HostMemoryPopulation = HostMemoryPopulation {
 data srv1_host: ComputeHost = ComputeHost {
   identity: operator_host_srv1,
   baseboard: Present { value: srv1_baseboard },
+  bmc_intent: Present { value: fleet_bmc_valid_state },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
   memory: memory_devices_from_population(pop: srv1_memory_population),
   storage: [srv1_nvme0],
@@ -264,6 +267,7 @@ data srv1_host: ComputeHost = ComputeHost {
 data srv2_host: ComputeHost = ComputeHost {
   identity: operator_host_srv2,
   baseboard: Present { value: srv2_baseboard },
+  bmc_intent: Present { value: fleet_bmc_valid_state },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
   memory: memory_devices_from_population(pop: srv2_memory_population),
   storage: [srv2_nvme0],
@@ -272,6 +276,7 @@ data srv2_host: ComputeHost = ComputeHost {
 data srv3_host: ComputeHost = ComputeHost {
   identity: operator_host_srv3,
   baseboard: Present { value: srv3_baseboard },
+  bmc_intent: Present { value: fleet_bmc_valid_state },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
   memory: memory_devices_from_population(pop: srv3_memory_population),
   storage: [srv3_nvme0],
@@ -303,6 +308,7 @@ data srv4_memory_population_deferral_disposition: Disposition = Scaffold {
 data srv4_host: ComputeHost = ComputeHost {
   identity: operator_host_srv4,
   baseboard: Present { value: srv4_baseboard },
+  bmc_intent: Present { value: fleet_bmc_valid_state },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
   memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
   storage: [srv4_nvme0],
@@ -321,4 +327,3 @@ fn fleet_intent_execution_surface() -> ExecutionSurface {
     network: [],
   }
 }
-

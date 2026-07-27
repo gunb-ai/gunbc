@@ -22,8 +22,14 @@ fn materialize_diagnostic_mock(case: PublishedMockCase) -> Outcome<MaterializedD
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_system })
   } else if case.operation_key == "redfish.Http.GetSystemWithNetrc" {
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_system_with_netrc })
+  } else if case.operation_key == "redfish.Http.GetManagerWithNetrc" {
+    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_manager_with_netrc })
   } else if case.operation_key == "redfish.Http.GetChassisSensors" {
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_chassis_sensors })
+  } else if case.operation_key == "redfish.Http.GetChassisThermalWithNetrc" {
+    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_chassis_thermal_with_netrc })
+  } else if case.operation_key == "redfish.Http.GetChassisThermalSubsystemWithNetrc" {
+    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_chassis_thermal_subsystem_with_netrc })
   } else if case.operation_key == "redfish.Http.GetPower" {
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_power })
   } else if case.operation_key == "redfish.Http.GetThermal" {

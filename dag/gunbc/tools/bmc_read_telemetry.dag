@@ -21,10 +21,20 @@ func bmc_read_telemetry() -> ProcessExit
               let bmc = host_v as NonEmptyStr
               let netrc_file = netrc_v as NonEmptyStr
               let chassis = asrock_altrad8ud_redfish_chassis_id
+              let manager = asrock_altrad8ud_redfish_manager_id
 
               system_resp = redfish.Http.GetSystemWithNetrc(bmc_host: bmc, netrc_file: netrc_file)
               if system_resp.success == false {
                 return exit_failure(reason: system_resp.body)
+              }
+
+              manager_resp = redfish.Http.GetManagerWithNetrc(
+                bmc_host: bmc,
+                manager_id: manager,
+                netrc_file: netrc_file
+              )
+              if manager_resp.success == false {
+                return exit_failure(reason: manager_resp.body)
               }
 
               sensors_resp = redfish.Http.GetChassisSensors(
@@ -32,11 +42,27 @@ func bmc_read_telemetry() -> ProcessExit
                 chassis_id: chassis,
                 netrc_file: netrc_file
               )
-              if sensors_resp.success == false {
-                return exit_failure(reason: sensors_resp.body)
-              }
 
-              return ExitSuccess
+              thermal_subsystem_resp = redfish.Http.GetChassisThermalSubsystemWithNetrc(
+                bmc_host: bmc,
+                chassis_id: chassis,
+                netrc_file: netrc_file
+              )
+
+              legacy_thermal_resp = redfish.Http.GetChassisThermalWithNetrc(
+                bmc_host: bmc,
+                chassis_id: chassis,
+                netrc_file: netrc_file
+              )
+
+              match redfish_thermal_query_verdict(
+                chassis_sensors_success: sensors_resp.success,
+                thermal_subsystem_success: thermal_subsystem_resp.success,
+                legacy_thermal_success: legacy_thermal_resp.success
+              ) {
+                RedfishThermalQueryComplete { surface: _ } => return ExitSuccess
+                RedfishThermalQueryRefused { reason: r } => return exit_failure(reason: r)
+              }
             }
         }
       }

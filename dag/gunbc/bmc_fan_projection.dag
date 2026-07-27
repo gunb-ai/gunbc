@@ -1,0 +1,27 @@
+module gunbc.bmc_fan_projection
+
+import extdeps.bmc.capability { BmcFirmwareVersion }
+import extdeps.bmc.types { BmcFanPolicyObservation }
+import extdeps.boards.types { BaseboardModel }
+import std.types { Bool, NonEmptyStr }
+
+type BmcFanPolicyProjectionCapability {
+  board: BaseboardModel
+  firmware: BmcFirmwareVersion
+  config_path: NonEmptyStr
+  controller_service: NonEmptyStr
+  projection_id: NonEmptyStr
+}
+
+fn bmc_fan_policy_projection_supports_apply(
+  capability: BmcFanPolicyProjectionCapability,
+  board: BaseboardModel,
+  observation: BmcFanPolicyObservation,
+) -> Bool {
+  capability.board == board
+    && capability.firmware == observation.firmware
+    && capability.config_path == observation.board_config_path
+    && capability.controller_service == observation.controller_service
+}
+
+data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, config path, and controller service witnessed together. Thus OpenBMC 3.06 and 3.22 can both satisfy a 3.x intent while only 3.22 has the currently observed swampd-asrr-temp-soc-stepwise-v1 projection."

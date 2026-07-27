@@ -144,6 +144,7 @@ data gunbc_ci_host_memory_deferral_disposition: Disposition = Scaffold {
 data gunbc_ci_host: ComputeHost = ComputeHost {
   identity: gunbc_ci_host_identity,
   baseboard: none,
+  bmc_intent: none,
   processors: [CpuProcessor { cpu: gunbc_ci_cpu }],
   memory: [MemoryDevice { capacity: byte_size(134217728000), memory_kind: Dram, bandwidth: none }],
   storage: [],
@@ -168,4 +169,3 @@ data gunbc_ci_fleet_offer: ComputeOffer = ComputeOffer {
   available_window: AvailabilityWindow { open: "always-open", close: none },
   cost_quote: none,
 }
-

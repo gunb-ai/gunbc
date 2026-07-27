@@ -1,5 +1,17 @@
 module extdeps.bmc.types
 
+import extdeps.bmc.capability { BmcFirmwareObservation, BmcFirmwareVersion }
+import std.measure {
+  ByteSize,
+  Celsius,
+  HardwareThreadCount,
+  Percent,
+  RevolutionsPerMinute,
+  Watt,
+  celsius_count,
+}
+import std.nat { Nat }
+import std.types { Bool, Int, List, NonEmptyStr }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -60,6 +72,138 @@ type RedfishChassisSensorCollection {
   chassis_id: NonEmptyStr
   sensors: List<RedfishSensorReading>
 }
+
+type RedfishThermalTelemetrySurface
+  = RedfishThermalSubsystemSensorCollection
+  | RedfishLegacyChassisThermal
+  | RedfishDualThermalSurface
+
+type RedfishFanControlSurface
+  = RedfishFanControlResourceAbsent
+  | RedfishInitialDutyControlResource
+
+type BmcRedfishSurfaceObservation {
+  firmware: BmcFirmwareObservation
+  thermal_surface: RedfishThermalTelemetrySurface
+  chassis_sensor_collection_member_count: Nat
+  fan_control_surface: RedfishFanControlSurface
+}
+
+type BmcUpdateServiceObservation {
+  firmware: BmcFirmwareObservation
+  http_push_uri: NonEmptyStr
+  multipart_http_push_uri: NonEmptyStr
+  active_bmc_image_id: NonEmptyStr
+  active_bmc_image_updateable: Bool
+  firmware_inventory_member_count: Nat
+  bmc_image_member_count: Nat
+  backup_bmc_image_observed: Bool
+  observed_at: NonEmptyStr
+}
+
+type RedfishThermalQueryVerdict
+  = RedfishThermalQueryComplete { surface: RedfishThermalTelemetrySurface }
+  | RedfishThermalQueryRefused { reason: NonEmptyStr }
+
+fn redfish_thermal_query_verdict(
+  chassis_sensors_success: Bool,
+  thermal_subsystem_success: Bool,
+  legacy_thermal_success: Bool
+) -> RedfishThermalQueryVerdict {
+  if legacy_thermal_success && thermal_subsystem_success && chassis_sensors_success {
+    RedfishThermalQueryComplete { surface: RedfishDualThermalSurface }
+  } else if legacy_thermal_success {
+    RedfishThermalQueryComplete { surface: RedfishLegacyChassisThermal }
+  } else if thermal_subsystem_success && chassis_sensors_success {
+    RedfishThermalQueryComplete { surface: RedfishThermalSubsystemSensorCollection }
+  } else {
+    RedfishThermalQueryRefused {
+      reason: "no complete Redfish thermal surface: Sensors alone is not evidence of temperature/fan coverage",
+    }
+  }
+}
+
+type BmcFanCurveStep {
+  at_or_above: Celsius
+  duty: Percent
+}
+
+type BmcFanCurve {
+  control_sensor: NonEmptyStr
+  steps: List<BmcFanCurveStep>
+  minimum_duty: Percent
+  sensor_unavailable_duty: Percent
+  positive_hysteresis_degrees_celsius: Nat
+  negative_hysteresis_degrees_celsius: Nat
+}
+
+type BmcFanDutyDecision
+  = BmcFanDutyFromCurve { reading: Celsius, duty: Percent }
+  | BmcFanDutyFromSensorFailsafe { duty: Percent }
+
+data bmc_fan_duty_decision_semantics_note: String = "The curve branch is the stateless base projection of the declared step points, clamped by minimum_duty below the first point. The live controller also applies the declared positive/negative hysteresis using prior state; a runtime observation must retain that state when exact transition timing matters. The coproduct keeps a base-curve request distinct from the numerically identical sensor-unavailable fail-safe request."
+
+fn bmc_fan_curve_duty_at(curve: BmcFanCurve, reading: Celsius) -> Percent {
+  fold(
+    curve.steps,
+    init: curve.minimum_duty,
+    f: (selected, step) =>
+      if celsius_count(reading) >= celsius_count(step.at_or_above) {
+        step.duty
+      } else {
+        selected
+      }
+  )
+}
+
+fn bmc_fan_duty_decision(curve: BmcFanCurve, reading: Celsius?) -> BmcFanDutyDecision {
+  match reading {
+    Absent =>
+      BmcFanDutyFromSensorFailsafe { duty: curve.sensor_unavailable_duty }
+    Present { value: temperature } =>
+      BmcFanDutyFromCurve {
+        reading: temperature,
+        duty: bmc_fan_curve_duty_at(curve: curve, reading: temperature),
+      }
+  }
+}
+
+type BmcFanControllerShape
+  = FanPidIndependentEntries { entry_names: List<NonEmptyStr> }
+  | FanPidAggregatedEntry {
+      entry_name: NonEmptyStr,
+      tach_inputs: List<NonEmptyStr>,
+    }
+
+type BmcFanPolicyObservation {
+  firmware: BmcFirmwareVersion
+  curve: BmcFanCurve
+  selected_config_path: NonEmptyStr
+  board_config_path: NonEmptyStr
+  controller_service: NonEmptyStr
+  controller_binary: NonEmptyStr
+  controller_shape: BmcFanControllerShape
+  observed_at: NonEmptyStr
+}
+
+type BmcConfigPersistenceObservation
+  = BmcFlashBackedOverlayObserved {
+      firmware: BmcFirmwareVersion
+      config_path: NonEmptyStr
+      lower_filesystem: NonEmptyStr
+      upper_filesystem: NonEmptyStr
+      overlay_mount: NonEmptyStr
+      writable: Bool
+      upper_override_present: Bool
+      available_bytes: ByteSize
+      observed_at: NonEmptyStr
+    }
+  | BmcConfigPersistenceUnsupported {
+      firmware: BmcFirmwareVersion
+      config_path: NonEmptyStr
+      reason: NonEmptyStr
+      observed_at: NonEmptyStr
+    }
 
 type BmcTelemetrySnapshot {
   system: RedfishSystemInventory

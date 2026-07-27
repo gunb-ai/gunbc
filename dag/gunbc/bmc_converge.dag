@@ -1,0 +1,305 @@
+module gunbc.bmc_converge
+
+import extdeps.bmc.capability {
+  BmcFirmwareIntent,
+  BmcFirmwareObservation,
+  BmcFirmwareTrackRequired,
+  BmcFirmwareUnpinned,
+  BmcFirmwareVersion,
+  bmc_firmware_observation_matches_intent,
+  bmc_firmware_version_matches_track,
+}
+import extdeps.bmc.types {
+  BmcConfigPersistenceObservation,
+  BmcConfigPersistenceUnsupported,
+  BmcFanCurve,
+  BmcFanPolicyObservation,
+  BmcFlashBackedOverlayObserved,
+  BmcUpdateServiceObservation,
+}
+import extdeps.boards.types { BaseboardModel }
+import extdeps.crypto.hash { Digest }
+import extdeps.uri { Uri }
+import gunbc.bmc_intent {
+  BmcControlPlaneIntent,
+}
+import gunbc.bmc_fan_projection {
+  BmcFanPolicyProjectionCapability,
+  bmc_fan_policy_projection_supports_apply,
+}
+import product.placement_supply { HostIdentity }
+import std.types { Bool, NonEmptyStr }
+import std.upsert_decision {
+  Apply,
+  Conflict,
+  Converged,
+  Drifted,
+  Noop,
+  Refuse,
+  UnknownRefused,
+  UpsertClassification,
+}
+
+type ApprovedBmcFirmwareArtifact {
+  firmware: BmcFirmwareVersion
+  board: BaseboardModel
+  image_uri: Uri
+  digest: Digest
+}
+
+type BmcFirmwareUpdatePlan {
+  host: HostIdentity
+  observed: BmcFirmwareObservation
+  artifact: ApprovedBmcFirmwareArtifact
+  update_service: BmcUpdateServiceObservation
+}
+
+type BmcFanPolicyApplyPlan {
+  host: HostIdentity
+  observed: BmcFanPolicyObservation
+  desired_curve: BmcFanCurve
+  config_path: NonEmptyStr
+  controller_service: NonEmptyStr
+  projection: BmcFanPolicyProjectionCapability
+}
+
+data bmc_converge_shared_workflow_note: String = "BMC and Ubuntu convergence share std.upsert_decision for observe/classify/plan and std.realization_reconcile for apply/read-back. This module supplies only BMC policy comparison and a BMC-specific apply plan; it does not fork the reconciliation workflow or reuse HostOs shell effects against the BmcController control plane."
+
+fn bmc_firmware_classification(
+  host: HostIdentity,
+  board: BaseboardModel,
+  intent: BmcFirmwareIntent,
+  observation: BmcFirmwareObservation?,
+  artifact: ApprovedBmcFirmwareArtifact?,
+  update_service: BmcUpdateServiceObservation?,
+) -> UpsertClassification<BmcFirmwareUpdatePlan> {
+  match observation {
+    Absent =>
+      UpsertClassification {
+        verdict: UnknownRefused,
+        decision: Refuse {
+          reason: "bmc firmware observation absent; refuse both noop and update",
+        },
+      }
+    Present { value: observed } =>
+      if bmc_firmware_observation_matches_intent(
+        intent: intent,
+        observation: observed,
+      ) {
+        UpsertClassification {
+          verdict: Converged,
+          decision: Noop,
+        }
+      } else {
+        match artifact {
+          Absent =>
+            UpsertClassification {
+              verdict: Drifted,
+              decision: Refuse {
+                reason: "bmc firmware drift observed, but no exact approved board-compatible image artifact is available",
+              },
+            }
+          Present { value: approved } =>
+            if approved.board == board
+              && bmc_firmware_version_matches_intent(
+                firmware: approved.firmware,
+                intent: intent,
+              ) {
+              match update_service {
+                Absent =>
+                  UpsertClassification {
+                    verdict: Drifted,
+                    decision: Refuse {
+                      reason: "bmc firmware drift and approved artifact are known, but the current UpdateService surface has not been observed",
+                    },
+                  }
+                Present { value: update_surface } =>
+                  if update_surface.firmware.endpoint == observed.endpoint
+                    && update_surface.firmware.firmware == observed.firmware
+                    && update_surface.active_bmc_image_updateable {
+                    UpsertClassification {
+                      verdict: Drifted,
+                      decision: Apply {
+                        plan: BmcFirmwareUpdatePlan {
+                          host: host,
+                          observed: observed,
+                          artifact: approved,
+                          update_service: update_surface,
+                        },
+                      },
+                    }
+                  } else {
+                    UpsertClassification {
+                      verdict: Conflict,
+                      decision: Refuse {
+                        reason: "observed UpdateService does not identify an updateable active image for the exact target controller and firmware",
+                      },
+                    }
+                  }
+              }
+            } else {
+              UpsertClassification {
+                verdict: Conflict,
+                decision: Refuse {
+                  reason: "approved bmc firmware artifact does not match the target board and declared firmware track",
+                },
+              }
+            }
+        }
+      }
+  }
+}
+
+fn bmc_firmware_version_matches_intent(
+  firmware: BmcFirmwareVersion,
+  intent: BmcFirmwareIntent,
+) -> Bool {
+  match intent {
+    BmcFirmwareUnpinned => false
+    BmcFirmwareTrackRequired { track: required } =>
+      bmc_firmware_version_matches_track(
+        firmware: firmware,
+        track: required,
+      )
+  }
+}
+
+fn bmc_fan_policy_firmware_supported(
+  desired_firmware: BmcFirmwareIntent,
+  observed_firmware: BmcFirmwareVersion,
+) -> Bool {
+  match desired_firmware {
+    BmcFirmwareUnpinned => false
+    BmcFirmwareTrackRequired { track: required } =>
+      bmc_firmware_version_matches_track(
+        firmware: observed_firmware,
+        track: required,
+      )
+  }
+}
+
+fn bmc_config_persistence_supports_apply(
+  observation: BmcConfigPersistenceObservation,
+  expected_firmware: BmcFirmwareVersion,
+  config_path: NonEmptyStr,
+) -> Bool {
+  match observation {
+    BmcFlashBackedOverlayObserved {
+      firmware: firmware,
+      config_path: observed_path,
+      lower_filesystem: _,
+      upper_filesystem: _,
+      overlay_mount: _,
+      writable: writable,
+      upper_override_present: _,
+      available_bytes: _,
+      observed_at: _,
+    } =>
+      firmware == expected_firmware
+        && writable
+        && observed_path == config_path
+    BmcConfigPersistenceUnsupported {
+      firmware: _,
+      config_path: _,
+      reason: _,
+      observed_at: _,
+    } => false
+  }
+}
+
+fn bmc_fan_policy_classification(
+  host: HostIdentity,
+  board: BaseboardModel,
+  intent: BmcControlPlaneIntent,
+  observation: BmcFanPolicyObservation?,
+  persistence: BmcConfigPersistenceObservation?,
+  projection: BmcFanPolicyProjectionCapability?,
+) -> UpsertClassification<BmcFanPolicyApplyPlan> {
+  let desired = intent.fan_policy.curve
+  match observation {
+    Absent =>
+      UpsertClassification {
+        verdict: UnknownRefused,
+        decision: Refuse {
+          reason: "bmc fan-policy observation absent; Redfish InitialDuty is not curve evidence",
+        },
+      }
+    Present { value: observed } =>
+      if !bmc_fan_policy_firmware_supported(
+        desired_firmware: intent.firmware,
+        observed_firmware: observed.firmware,
+      ) {
+        UpsertClassification {
+          verdict: Conflict,
+          decision: Refuse {
+            reason: "bmc firmware must converge and be re-observed before selecting a version-specific fan-policy realizer",
+          },
+        }
+      } else if observed.curve == desired {
+        UpsertClassification {
+          verdict: Converged,
+          decision: Noop,
+        }
+      } else {
+        match projection {
+          Absent =>
+            UpsertClassification {
+              verdict: Drifted,
+              decision: Refuse {
+                reason: "bmc fan curve drifted, but no exact board-and-firmware semantic projection capability is available",
+              },
+            }
+          Present { value: projector } =>
+            if !bmc_fan_policy_projection_supports_apply(
+              capability: projector,
+              board: board,
+              observation: observed,
+            ) {
+              UpsertClassification {
+                verdict: Conflict,
+                decision: Refuse {
+                  reason: "bmc fan projection capability does not match the observed board, exact firmware, config path, and controller service",
+                },
+              }
+            } else {
+              match persistence {
+                Absent =>
+                  UpsertClassification {
+                    verdict: Drifted,
+                    decision: Refuse {
+                      reason: "bmc fan curve drifted, but persistent config storage has not been observed",
+                    },
+                  }
+                Present { value: storage } =>
+                  if bmc_config_persistence_supports_apply(
+                    observation: storage,
+                    expected_firmware: observed.firmware,
+                    config_path: observed.board_config_path,
+                  ) {
+                    UpsertClassification {
+                      verdict: Drifted,
+                      decision: Apply {
+                        plan: BmcFanPolicyApplyPlan {
+                          host: host,
+                          observed: observed,
+                          desired_curve: desired,
+                          config_path: observed.board_config_path,
+                          controller_service: observed.controller_service,
+                          projection: projector,
+                        },
+                      },
+                    }
+                  } else {
+                    UpsertClassification {
+                      verdict: Drifted,
+                      decision: Refuse {
+                        reason: "bmc fan curve drifted, but the observed config store is not a writable persistent realization for the exact observed firmware",
+                      },
+                    }
+                  }
+              }
+            }
+        }
+      }
+  }
+}

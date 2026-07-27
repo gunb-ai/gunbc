@@ -37,7 +37,7 @@ fn fsmg_secret_materialization() -> List<MarkdownBlock> {
 fn fsmg_reach_secrets() -> List<MarkdownBlock> {
   [
     h2(text: "A2 — Reach-secrets bootstrap (ADC / workload identity)"),
-    p(text: "The GCP access token is pasted by the operator every ~1h because the workflow has NO modeled way to authenticate to Secret Manager itself. This is the credential that unlocks A1, so it is the deeper enabler. It is already a DeclaredGap in host_standup (P0:reach-secrets-network; note: full WIF SecretAccessGrant modeling is follow-up) and in fleet_ssh_access (secretAccessor bound out-of-band 2026-07-21; full WIF SecretAccessGrant modeling is follow-up)."),
+    p(text: "The GCP access token is pasted by the operator every ~1h because the workflow has NO modeled way to authenticate to Secret Manager itself. This is the credential that unlocks A1, so it is the deeper enabler. It is already a typed PhaseGap in host_standup (P0:reach-secrets-network; note: full WIF SecretAccessGrant modeling is follow-up) and in fleet_ssh_access (secretAccessor bound out-of-band 2026-07-21; full WIF SecretAccessGrant modeling is follow-up)."),
     h3(text: "Acceptance"),
     ol(items: [
       li(text: "A modeled SecretAccessGrant / ADC identity the workflow assumes on the host it runs from (the dashboard/orchestrator), so reaching Secret Manager needs no operator-pasted token."),
