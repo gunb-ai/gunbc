@@ -26,9 +26,13 @@ import v1.std.core {
   Connective, Conj, Disj, NoConnective, Arrow, CardOptional
 }
 
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, GlobalBareLookupState, empty_symbol_index }
+import v1.compiler.infer_env {
+  TypeEnv, TypeBinding, authored_name, GlobalBareLookupState,
+  empty_symbol_index, empty_lexical_candidate_index
+}
 
 import std.induction { InductiveField, SubValueUnknown }
+import std.algebra { Empty }
 
 import v1.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like, is_declared_container_alias_spelling }
 
@@ -254,6 +258,8 @@ fn empty_emit_scope() -> InferScope {
     type_env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() },
     func_env: ResolvedFuncEnv { name: "", local: empty_map(), parents: [] },
     locals: empty_map(),
+    lexical_candidates: empty_lexical_candidate_index(),
+    containment_ancestors: Empty,
     body_locals: empty_map(),
     match_bound_names: empty_map(),
     module_name: "",
@@ -268,6 +274,8 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
     type_env: typed_module.type_env,
     func_env: typed_module.func_env,
     locals: empty_map(),
+    lexical_candidates: empty_lexical_candidate_index(),
+    containment_ancestors: Empty,
     body_locals: empty_map(),
     match_bound_names: empty_map(),
     module_name: authored_name_at(source_indices: typed_module.type_env.source_indices, node: typed_module.module),

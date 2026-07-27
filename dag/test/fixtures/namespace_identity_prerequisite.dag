@@ -1,0 +1,65 @@
+module test.namespace_identity_prerequisite
+
+type Pair {
+  left: Int
+  right: Int
+}
+
+type Outer {
+  pair: Pair
+}
+
+type Choice = Left(Int) | Right(Int)
+
+fn direct_binder(input: Int) -> Int {
+  match input {
+    direct_bind => direct_bind
+  }
+}
+
+fn explicit_alias(input: Pair) -> Int {
+  match input {
+    Pair { left: explicit_bind } => explicit_bind
+  }
+}
+
+fn shorthand_binder(input: Pair) -> Int {
+  match input {
+    Pair { left } => left
+  }
+}
+
+fn positional_binder(input: Choice) -> Int {
+  match input {
+    Left(positional_bind) => positional_bind
+    Right(other_bind) => other_bind
+  }
+}
+
+fn nested_binder(input: Outer) -> Int {
+  match input {
+    Outer { pair: Pair { left: nested_bind } } => nested_bind
+  }
+}
+
+fn nested_same_name(input: Pair) -> Int {
+  let same = 1
+  match input {
+    Pair { left: same } => same
+  }
+}
+
+fn sibling_arms(input: Choice) -> Int {
+  match input {
+    Left(branch_value) => branch_value
+    Right(branch_value) => branch_value
+  }
+}
+
+fn parameter_once(only_parameter: Int) -> Int {
+  only_parameter
+}
+
+fn lambda_once(items: List<Int>) -> Int {
+  fold(items, init: 0, f: (acc, lambda_parameter) => acc + lambda_parameter)
+}
