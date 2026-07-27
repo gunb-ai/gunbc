@@ -38,6 +38,7 @@ import v2.extdeps.languages.bash {
   bash_redir_stdout_and_stderr_null_source_text,
   bash_redir_stderr_null_source_text,
   bash_redir_stdout_to_stderr_source_text,
+  bash_redir_stdout_null_source_text,
   bash_redir_to_file_source_text
 }
 import v2.extdeps.languages.bash_orch_tier2 {
@@ -87,6 +88,7 @@ import v2.std.orchestration {
   CaptureSpec,
   DiscardAll,
   DiscardErr,
+  DiscardOut,
   StdoutAndStderr,
   ToFile,
   IgnoreFail,
@@ -218,6 +220,7 @@ fn orch_emit_redir_suffix(r: RedirectSpec) -> Outcome<String> {
   match r {
     DiscardAll => outcome_accepted(bash_redir_stdout_and_stderr_null_source_text)
     DiscardErr => outcome_accepted(bash_redir_stderr_null_source_text)
+    DiscardOut => outcome_accepted(bash_redir_stdout_null_source_text)
     StdoutAndStderr => outcome_accepted(bash_redir_stdout_to_stderr_source_text)
     ToFile { path: p } =>
       if !orch_shell_unquoted_path_ok(path: p) {

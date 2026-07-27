@@ -58,7 +58,7 @@ import gunbc.ci_deploy_access {
   deploy_access_job_principal_refused_emit_poison,
   deploy_access_preflight_pass_message,
 }
-import gunbc.ci_deploy_access_emit { deploy_access_emit_bootstrap_preflight_block }
+import gunbc.ci_deploy_access_emit { deploy_access_emit_bootstrap_preflight_steps }
 import gunbc.ci_deploy_sudoers { deploy_sudoers_install_shell }
 
 data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
@@ -253,16 +253,14 @@ fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
   ], "")
 }
 
-fn deploy_apply_preamble_shell(access: DeployAccess) -> String {
-  join([
-    deploy_access_emit_bootstrap_preflight_block(access: access),
-    deploy_sudoers_install_shell(access: access),
-    concat("echo \"", deploy_access_preflight_pass_message(access: access), "\""),
-  ], "\n")
-}
-
 fn deploy_apply_preamble_steps(access: DeployAccess) -> List<PipelineStep> {
-  [deploy_raw(command: deploy_apply_preamble_shell(access: access))]
+  concat(
+    deploy_access_emit_bootstrap_preflight_steps(access: access),
+    [
+      deploy_raw(command: deploy_sudoers_install_shell(access: access)),
+      deploy_raw(command: concat("echo \"", concat(deploy_access_preflight_pass_message(access: access), "\"")))
+    ]
+  )
 }
 
 data apply_tree_split_sync_note: String = "GunbcSourceTree apply is a SPLIT sync (review 40332, DESIGN 5 — the retract-side rmdir wall alone gave false assurance): the shared repo at /opt/gunbc/gunbc accumulates target-LOCAL git state the runner checkout never has — .git/worktrees/<name> registrations for every live dispatch worktree, the session branch refs those worktrees are on, and the objects their commits wrote into the shared store — so a single rsync --delete of ./ would destroy live agent sessions on every redeploy. The working tree syncs with --delete (stale sources must not linger) but excludes /.git; .git syncs ADDITIVELY (no --delete), which keeps origin/main fresh from the runner checkout (the belt's git worktree add resolves origin/main from these remote-tracking refs — srv1 does no fetch) while never deleting worktree metadata, session refs, or their objects. Accumulation of pruned-worktree residue is the safe direction and is reaped by git itself, never by deploy. Flags are -rlpt, not -a: the sync principal is the service user (emit_deploy_principal_note), so -a's owner/group replication would chgrp toward the runner's group and fail EPERM — ownership is the destination principal's by construction, never replicated from the source."
