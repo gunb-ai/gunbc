@@ -305,6 +305,34 @@ Same house, different organs — related by shared authority, not by overlap:
   renderer of the shared schema — cross-repo UX consistency by shared authority, not
   imitation.
 
+## Interim WitnessTimingRow scaffold (PR #7290 — HAND-RUST receipt)
+
+{#interim-witness-timing-row-scaffold}
+
+**Problem:** placement workstream #5's per-witness cost receipt is modeled as
+`std.observation.ObservationEvent` (N+1 join projection). The seed still materializes a
+`WitnessTimingRow` view in `cli_run.rs` for the existing TSV / histogram consumers.
+
+**Interim fix (seed-retained):** `WitnessTimingRow` + `compute_witness_timing_rows` +
+`entry_resolve_nanos_by_entry` — a MATERIALIZED VIEW of `project_witness_cost_receipt`,
+not a lockstep authority. Duplicate entry-resolve receipts REFUSE (same cardinality rule
+as the `.dag` projection).
+
+| receipt row | authority |
+| --- | --- |
+| Scaffold disposition | `gunbc.witness_row_cost.witness_timing_row_seed_view_disposition` |
+| Dissolve-on trigger | `witness_timing_row_seed_view_dissolve_trigger` (mirrored in `cli_run.rs` comment) |
+| Explicit deferral | `witness_timing_row_hand_rust_deferral` — lane=`placement-workstream-#5-per-row-cost`; ROADMAP `5-dissolve-patches` |
+| Deleted-scaffold path | `witness_timing_row_hand_rust_scaffold_deletion` — those three Rust decls delete when dissolve fires |
+| Discriminating test | `cli_run::witness_timing_attribution_tests::witness_timing_rows_refuse_duplicate_entry_resolve` |
+| Floor witness | `dag/test/claim/witness_row_cost_projection_witness_test.dag` (`hand_rust_scaffold_receipts_are_checkable_holds`) |
+| Plan anchor | this section |
+
+**Not a census shrink:** seed-shrink baseline is unchanged in direction — counted interim
+debt until ObservationEvent production lands in the seed. **Deleted-scaffold path:**
+`WitnessTimingRow` / `compute_witness_timing_rows` / `entry_resolve_nanos_by_entry` delete
+when the dissolve trigger fires (`rg WitnessTimingRow src/v1/stage0 == 0`).
+
 ## 7. Non-goals
 
 No external logging framework; no dashboard rebuild; no new telemetry sources in P0–P1 (render
