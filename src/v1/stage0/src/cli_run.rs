@@ -1359,9 +1359,14 @@ pub fn hand_import_gate_passes(base_ref: &str) -> bool {
         .args(["diff", "--name-only", base_ref, "HEAD", "--", "dag"])
         .output();
     let Ok(output) = output else {
+        eprintln!("hand_import_gate: git diff spawn failed");
         return false;
     };
     if !output.status.success() {
+        eprintln!(
+            "hand_import_gate: git diff failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
         return false;
     }
     let changed = String::from_utf8_lossy(&output.stdout);
@@ -1377,6 +1382,7 @@ pub fn hand_import_gate_passes(base_ref: &str) -> bool {
             continue;
         }
         if hand_import_file_has_additions(path, base_ref) {
+            eprintln!("hand_import_gate: import additions in {}", path);
             return false;
         }
     }
