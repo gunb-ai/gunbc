@@ -12,6 +12,7 @@ import std.trait_derive_shape {
 import v2.std.compilers.target_model {
   TargetCollectionReprVec,
   TargetDeriveSupplementalGenericBoundContract,
+  TargetDeriveSupplementalGenericBoundRequirement,
   TargetGenericApply,
   TargetRepresentation,
   char_kernel_type_node,
@@ -84,12 +85,34 @@ fn sgb_vec_representation() -> TargetRepresentation {
   }
 }
 
-fn sgb_requirements_for(derive_trait: ReprGroundingDeriveTrait) -> List<ReprGroundingDeriveTrait> {
+fn sgb_requirement(
+  type_param: Symbol,
+  derive_trait: ReprGroundingDeriveTrait
+) -> TargetDeriveSupplementalGenericBoundRequirement {
+  TargetDeriveSupplementalGenericBoundRequirement {
+    type_param: type_param,
+    derive_trait: derive_trait
+  }
+}
+
+fn sgb_requirements_for(
+  type_param: Symbol,
+  derive_trait: ReprGroundingDeriveTrait
+) -> List<TargetDeriveSupplementalGenericBoundRequirement> {
   match derive_trait {
-    ReprDeriveDebug => Cons { head: ReprDeriveClone, tail: Empty }
+    ReprDeriveDebug => Cons {
+      head: sgb_requirement(type_param: type_param, derive_trait: ReprDeriveClone),
+      tail: Empty
+    }
     ReprDerivePartialEq => Empty
-    ReprDeriveSerialize => Cons { head: ReprDeriveClone, tail: Empty }
-    ReprDeriveDeserialize => Cons { head: ReprDeriveClone, tail: Empty }
+    ReprDeriveSerialize => Cons {
+      head: sgb_requirement(type_param: type_param, derive_trait: ReprDeriveClone),
+      tail: Empty
+    }
+    ReprDeriveDeserialize => Cons {
+      head: sgb_requirement(type_param: type_param, derive_trait: ReprDeriveClone),
+      tail: Empty
+    }
     ReprDeriveClone => Empty
     _ => Empty
   }
@@ -100,7 +123,7 @@ fn sgb_contract_row(derive_trait: ReprGroundingDeriveTrait) -> TargetDeriveSuppl
     source_carrier: sgb_nested_source_carrier_node(),
     emitted_representation: sgb_vec_representation(),
     derive_trait: derive_trait,
-    requirements: sgb_requirements_for(derive_trait: derive_trait)
+    requirements: sgb_requirements_for(type_param: ^sgb_type_param_t, derive_trait: derive_trait)
   }
 }
 
@@ -163,14 +186,25 @@ fn sgb_unrelated_contract_catalog() -> List<TargetDeriveSupplementalGenericBound
   }
 }
 
-fn sgb_requirements_are_clone(reqs: List<ReprGroundingDeriveTrait>) -> Bool {
+fn sgb_requirements_are_clone(
+  reqs: List<TargetDeriveSupplementalGenericBoundRequirement>,
+  type_param: Symbol
+) -> Bool {
   match reqs {
-    Cons { head: ReprDeriveClone, tail: Empty } => true
+    Cons {
+      head: TargetDeriveSupplementalGenericBoundRequirement {
+        type_param: p,
+        derive_trait: ReprDeriveClone
+      },
+      tail: Empty
+    } => p == type_param
     _ => false
   }
 }
 
-fn sgb_requirements_are_empty(reqs: List<ReprGroundingDeriveTrait>) -> Bool {
+fn sgb_requirements_are_empty(
+  reqs: List<TargetDeriveSupplementalGenericBoundRequirement>
+) -> Bool {
   match reqs {
     Empty => true
     _ => false
@@ -185,7 +219,10 @@ test fn nested_generic_debug_requires_clone_only() -> Bool {
     derive_trait: ReprDeriveDebug
   ) {
     Accepted { value: row, diagnostics: _ } =>
-      row.derive_trait == ReprDeriveDebug && sgb_requirements_are_clone(reqs: row.requirements)
+      row.derive_trait == ReprDeriveDebug && sgb_requirements_are_clone(
+        reqs: row.requirements,
+        type_param: ^sgb_type_param_t
+      )
     Rejected { diagnostics: _ } => false
   }
 }
@@ -211,7 +248,10 @@ test fn nested_generic_serialize_requires_clone_only() -> Bool {
     derive_trait: ReprDeriveSerialize
   ) {
     Accepted { value: row, diagnostics: _ } =>
-      row.derive_trait == ReprDeriveSerialize && sgb_requirements_are_clone(reqs: row.requirements)
+      row.derive_trait == ReprDeriveSerialize && sgb_requirements_are_clone(
+        reqs: row.requirements,
+        type_param: ^sgb_type_param_t
+      )
     Rejected { diagnostics: _ } => false
   }
 }
@@ -224,7 +264,10 @@ test fn nested_generic_deserialize_requires_clone_only() -> Bool {
     derive_trait: ReprDeriveDeserialize
   ) {
     Accepted { value: row, diagnostics: _ } =>
-      row.derive_trait == ReprDeriveDeserialize && sgb_requirements_are_clone(reqs: row.requirements)
+      row.derive_trait == ReprDeriveDeserialize && sgb_requirements_are_clone(
+        reqs: row.requirements,
+        type_param: ^sgb_type_param_t
+      )
     Rejected { diagnostics: _ } => false
   }
 }

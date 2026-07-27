@@ -9095,6 +9095,19 @@ type TargetRepresentation {
   apply: TargetGenericApply
 }
 
+data target_generic_apply_field_surface: Symbol = ^target_generic_apply_field_surface
+data target_generic_apply_field_open: Symbol = ^target_generic_apply_field_open
+data target_generic_apply_field_separator: Symbol = ^target_generic_apply_field_separator
+data target_generic_apply_field_field_label_separator: Symbol = ^target_generic_apply_field_field_label_separator
+data target_generic_apply_field_field_label_separator_present: Symbol = ^target_generic_apply_field_field_label_separator_present
+data target_generic_apply_field_field_label_separator_absent: Symbol = ^target_generic_apply_field_field_label_separator_absent
+data target_generic_apply_field_close: Symbol = ^target_generic_apply_field_close
+data target_representation_field_kind: Symbol = ^target_representation_field_kind
+data target_representation_kind_btree_set: Symbol = ^target_representation_kind_btree_set
+data target_representation_kind_hash_set: Symbol = ^target_representation_kind_hash_set
+data target_representation_kind_vec: Symbol = ^target_representation_kind_vec
+data target_representation_field_apply: Symbol = ^target_representation_field_apply
+
 fn target_generic_apply_key_node(apply: TargetGenericApply) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -9189,11 +9202,6 @@ fn target_representation_key_node(repr: TargetRepresentation) -> Node {
   }
 }
 
-fn target_representation_equal(left: TargetRepresentation, right: TargetRepresentation) -> Bool {
-  content_hash(n: target_representation_key_node(repr: left))
-    == content_hash(n: target_representation_key_node(repr: right))
-}
-
 type RequiredTraitWitness
   = TargetCollectionWitnessOrd { type_param: Symbol }
   | TargetCollectionWitnessHash { type_param: Symbol }
@@ -9225,7 +9233,7 @@ type TargetDeriveSupplementalGenericBoundContract {
 }
 
 type TargetDeriveSupplementalGenericBoundRequirement {
-  type_param: Symbol
+  generic_parameter: Node
   derive_trait: ReprGroundingDeriveTrait
 }
 
@@ -9264,10 +9272,8 @@ fn target_derive_supplemental_generic_bound_contract_lookup_step(
   derive_trait: ReprGroundingDeriveTrait
 ) -> TargetDeriveSupplementalGenericBoundContractLookup {
   if content_hash(n: row.source_carrier) == content_hash(n: source_carrier)
-    && target_representation_equal(
-      left: row.emitted_representation,
-      right: emitted_representation
-    )
+    && content_hash(n: target_representation_key_node(repr: row.emitted_representation))
+      == content_hash(n: target_representation_key_node(repr: emitted_representation))
     && row.derive_trait == derive_trait
   {
     match acc {
