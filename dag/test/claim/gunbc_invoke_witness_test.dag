@@ -15,8 +15,10 @@ import gunbc.ci_spec {
   gunbc_ci_deploy_invoke,
   scheduler_invoke,
   ci_floor_build_verify_script,
-  ci_floor_required_artifact_names,
   artifact_shell_path
+}
+import gunbc.ci_release_bins {
+  ci_floor_required_artifact_names
 }
 import v2.std.collection { Absent, Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -109,6 +111,6 @@ test fn gunbc_invoke_verify_artifacts_shell_nonempty_holds() -> Bool {
   string_contains(s: script, pattern: "--verify-build-artifacts")
     && string_contains(s: script, pattern: "\"$ROOT/target/release/gunbc\"")
     && ci_floor_build_verify_script() == claim_executor_verify_artifacts_shell(
-      artifact_paths: map(ci_floor_required_artifact_names, name => artifact_shell_path(name: name))
+      artifact_paths: map(ci_floor_required_artifact_names(), name => artifact_shell_path(name: name))
     )
 }

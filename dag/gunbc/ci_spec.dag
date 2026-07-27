@@ -1,5 +1,8 @@
 module gunbc.ci_spec
 
+import gunbc.ci_release_bins {
+  ci_floor_required_artifact_names
+}
 import gunbc.ci_gate {
   Gate,
   EmitHostGate, CheapClaimPoolGate,
@@ -30,10 +33,12 @@ import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce {
-  ci_floor_stamp_merge_admission_script,
   ci_repo_root_shell,
 }
-import v2.workflow.ci_merge_admission_emit { ci_floor_disposition_marker_init_script }
+import v2.workflow.ci_merge_admission_emit {
+  ci_floor_disposition_marker_init_script,
+  ci_floor_stamp_merge_admission_script,
+}
 import extdeps.git {
   git_remote_ref_parts,
   git_fetch_no_tags_shell,
@@ -50,9 +55,7 @@ import v2.std.orchestration {
   Pipeline,
   PipelineStep,
   Retry,
-  Run,
-  StdoutAndStderr,
-  TeeTo
+  Run
 }
 import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { EmitDirective, SeverityWarning }
@@ -205,7 +208,7 @@ fn ci_release_build_line() -> String {
       ci_release_features
     ),
     fold(
-      ci_floor_required_artifact_names,
+      ci_floor_required_artifact_names(),
       init: "",
       f: (acc, name) => concat(acc, concat(" --bin ", name))
     )
@@ -222,8 +225,8 @@ fn ci_retry_body_run(command: String) -> Run {
   Run {
     command: command,
     env: [],
-    redirect: Present { value: StdoutAndStderr },
-    capture: Present { value: TeeTo { log: "BUILD_LOG" } }
+    redirect: Absent,
+    capture: Absent
   }
 }
 
@@ -256,65 +259,72 @@ fn ci_cargo_eagain_retry_intent(command: String) -> PipelineStep {
   }
 }
 
-data ci_floor_required_artifact_names: List<String> = [
-  "claim_executor",
-  "gunbc",
-  "compile_clean_floor_skip_witness",
-  "regen_floor_skip_witness",
-  "floor_skip_discovery_witness",
-  "discover_source_root_ingest",
-  "claim_batch",
-  "regen_stage0",
-  "interp_recorded_fixture_witness",
-  "v1_src_dag_parse",
-  "auth_declared_but_unwired_witness",
-  "bootstrap_witness",
-  "dag_collect_fingerprint_witness",
-  "diagnostics_witness",
-  "effects_rest_transport_witness",
-  "infer_semantics_witness",
-  "parse_witness",
-  "resolution_divergence_census"
-]
-
-data ci_floor_required_artifact_names_note: String = "This list is the single cross-job handoff manifest (operator job-split ruling 2026-07-11): ci_release_build_line derives its --bin flags from it (build/manifest skew is unwritable), the build job verifies these bins post-build, packs exactly these into the release-bins artifact, and the downstream ci floor job unpacks and re-verifies the same list before running (pre-Phase-D the emit_determinism job did too; removed 2026-07-14). Membership = the floor-invoked bins (claim_executor, gunbc, floor_skip_discovery_witness) plus the FULL bin_name universe of tools.host_prelude transports (witness_bin / ensure_bin_built_and_verified) that corpus witnesses can address — pre-split those fell back to in-job cargo builds against the build step's warm target/ (cheap); post-split the floor job has no build cache, so a bin missing here would silently re-absorb the ~33min monolith cold compile the job split exists to bound. The intentionally-absent negative control (no_such_witness_bin_zzz) is excluded. The build-if-absent stale-binary class (#6352) is out of scope: a same-run artifact is fresh by construction."
+data ci_floor_required_artifact_names_note: String = "DERIVED pack membership — authority is gunbc.ci_release_bins (ci_floor_invoked_bins ∪ witness_declared_release_bins). The hand List that lived here was deleted 2026-07-26: fan-out (build --bin flags / pack / verify) still folds ci_floor_required_artifact_names(), but MEMBERSHIP is no longer a free-floating hand list in this module. See gunbc.ci_release_bins.ci_release_bins_authority_note for the construction wall (WitnessBinNotEnrolled) and the dissolve-on for witness_declared_release_bins. Operator job-split ruling 2026-07-11 still applies to the handoff shape. The intentionally-absent negative control (no_such_witness_bin_zzz) is excluded. The build-if-absent stale-binary class (#6352) is out of scope: a same-run artifact is fresh by construction."
 
 fn artifact_shell_path(name: String) -> String {
   concat(concat("\"$ROOT/target/release/", name), "\"")
 }
 
 fn ci_floor_build_verify_script() -> String {
-  let paths = map(ci_floor_required_artifact_names, name => artifact_shell_path(name: name))
+  let paths = map(ci_floor_required_artifact_names(), name => artifact_shell_path(name: name))
   claim_executor_verify_artifacts_shell(artifact_paths: paths)
 }
 
 data ci_release_bins_archive_name: String = "release-bins.tgz"
 
+data ci_release_bins_pack_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "ci_release_bins_pack_script",
+    field: WholeDeclaration
+  }
+}
+
+data ci_release_bins_pack_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_release_bins_pack_script — concat-built foreign-executor (GitHub Actions run:) release-bins tar pack runner; membership of archived bin names is derived from gunbc.ci_release_bins, but the pack transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the pack runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold"
+
 fn ci_release_bins_pack_script() -> String {
   let names = fold(
-    ci_floor_required_artifact_names,
+    ci_floor_required_artifact_names(),
     init: "",
     f: (acc, name) => concat(acc, concat(" ", concat("\"", concat(name, "\""))))
   )
   concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    concat("# ", concat(ci_release_bins_pack_shell_emit_dissolution_trigger, "\n")),
     concat(
-      concat(concat("tar -czf \"$ROOT/", ci_release_bins_archive_name), "\" -C \"$ROOT/target/release\""),
-      concat(names, "\n")
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
+      concat(
+        concat(concat("tar -czf \"$ROOT/", ci_release_bins_archive_name), "\" -C \"$ROOT/target/release\""),
+        concat(names, "\n")
+      )
     )
   )
 }
 
+data ci_release_bins_unpack_verify_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "ci_release_bins_unpack_verify_script",
+    field: WholeDeclaration
+  }
+}
+
+data ci_release_bins_unpack_verify_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold"
+
 fn ci_release_bins_unpack_verify_script() -> String {
   concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    concat("# ", concat(ci_release_bins_unpack_verify_shell_emit_dissolution_trigger, "\n")),
     concat(
-      "mkdir -p \"$ROOT/target/release\"\n",
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
       concat(
-        concat(concat("tar -xzf \"$ROOT/", ci_release_bins_archive_name), "\" -C \"$ROOT/target/release\"\n"),
+        "mkdir -p \"$ROOT/target/release\"\n",
         concat(
-          concat(concat("rm -f \"$ROOT/", ci_release_bins_archive_name), "\"\n"),
-          ci_floor_build_verify_script()
+          concat(concat("tar -xzf \"$ROOT/", ci_release_bins_archive_name), "\" -C \"$ROOT/target/release\"\n"),
+          concat(
+            concat(concat("rm -f \"$ROOT/", ci_release_bins_archive_name), "\"\n"),
+            ci_floor_build_verify_script()
+          )
         )
       )
     )
