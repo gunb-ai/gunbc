@@ -282,11 +282,13 @@ a whole-corpus search.
 
 ## 5. Generic-match ownership boundary
 
-The ownership lane consumes a binding result; it does not resolve names.
+The ownership lane consumes an accepted binding result; it does not resolve names.
 
-After #7328 lands, the match-ownership implementation may use
-`MatchBoundBinding.declaration_span` only as the exact declaration edge already
-accepted by namespace resolution. It must:
+The exact-declaration-identity prerequisite lands declaration `Node`s and
+`ContainmentPath<Node>` transport only. It does not create an accepted binding edge,
+and `SourceSpan` remains diagnostic evidence rather than binder identity. After the
+fresh canonical resolver successor produces `OccurrenceBound`, the match-ownership
+implementation may consume that result's exact candidate containment path. It must:
 
 - consume only uniquely bound pattern uses;
 - treat absent, ambiguous, or conflicting ownership proof rows as typed refusal;
@@ -296,9 +298,11 @@ accepted by namespace resolution. It must:
 - derive target `Borrow | Move | Refuse` through the ruled ownership proof plus
   target representation evidence.
 
-This preserves the sequencing without creating a cycle: #7328 lands the exact
-identity fact; generic-match ownership fixes the emitter's invented clone; P1 then
-executes the full namespace candidate fold and makes shadowing refusals observable.
+This preserves the sequencing without creating a cycle: the fresh identity
+prerequisite lands exact declaration/reference paths; the fresh resolver successor
+executes the canonical candidate fold and attaches the accepted edge or typed
+refusal; only then may generic-match ownership consume the accepted declaration and
+fix the emitter's invented clone.
 
 ---
 
@@ -501,14 +505,19 @@ typechecker accepted declaration identity
 2. **Pattern-node and containment identity prerequisite** gives every binder an
    exact declaration node and threads declaration/reference containment through
    inference without a name-keyed overwrite or parallel identity carrier.
-3. **#7328 exact identity bridge** is rebased/reworked to its narrow boundary:
-   honest span flow, `.dag` witnesses, no silent shadowing, no handwritten Rust; it
-   consumes the ruled pattern-node home rather than inventing one.
-4. **Generic-match ownership prerequisite** consumes the exact uniquely bound edge
-   and removes emitter-invented clone behavior.
-5. **P-derive authority/consumer prerequisites** land independently.
-6. **#7321 P1** rebases current main and implements the single full-chain
-   occurrence-binding consumer, including the shadowing ambiguity matrix.
+3. **#7328 is superseded.** A fresh current-main identity prerequisite implements
+   only the ruled declaration-node/path fact, `.dag` witnesses, and
+   population-preserving lexical index; it carries no span identity, resolver,
+   ownership, emitter, or runtime behavior.
+4. **Fresh canonical resolver successor** implements the single full-chain
+   occurrence-binding consumer, including the shadowing ambiguity matrix, and
+   attaches `OccurrenceBound` or a typed refusal. #7321 remains audit evidence and
+   is not rebased or rescued.
+5. **Generic-match ownership prerequisite** consumes the exact declaration from
+   `OccurrenceBound` and removes emitter-invented clone behavior.
+6. **P-derive model authority** lands independently; its emitter consumer waits for
+   both the corrected static contract and exact source declarations accepted by the
+   canonical binding edge.
 7. **Executing dual-authority census** classifies every naming decision entry point
    and turns the table above into checked cleanup rows with named consumers.
 8. **Bound-edge consumer migration** rewires, in order, generic/type projection,
