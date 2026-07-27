@@ -10,3 +10,4 @@ type Gate
   | RegenVerifyGate
   | SelfHostReadsRealBytesGate
   | SelfHostStalenessGate
+  | HandImportGate

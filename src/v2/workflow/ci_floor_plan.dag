@@ -24,6 +24,7 @@ import gunbc.commit_workflow { commit_gate_roster, project_falsifier_witness_ent
 import gunbc.ci_gate {
   Gate, EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
+  HandImportGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
@@ -97,6 +98,7 @@ data gunbc_ci_cheap_floor_gate_membership: List<Gate> = [
   CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate,
   GeneratedArtifactDriftGate,
+  HandImportGate,
 ]
 
 data gunbc_ci_cheap_floor_gate_membership_note: String = "Declared cheap-floor gate membership (operator ruling 2026-07-22, fail-fast lane): the negligible-memory wet-declared gates (gate_profile_negligible_wet_declared) that check extdeps authority and generated-artifact drift — seconds each, no whole-tree compile. (The layering-imports direction gate was a member until the direction rule's deletion, operator ruling 2026-07-24.) They run in batch 0 BEFORE DagCompileCleanGate so a drift/authority violation reds in seconds instead of after the ~4min compile-clean anchor. Membership is an explicit list, not inferred from profile fields, so enrollment changes are counted roster edits, never silent drift. Cheap gates are also floor_resource_anchor nodes: excluding them from discovery-flip corpus→gate serialization avoids a scheduler deadlock (cheap→compile data order requires cheap first; corpus→cheap resource order requires corpus first; compile→corpus data order closes the cycle). Dissolve-on: when per-gate cost attribution lands, derive from measurement."
