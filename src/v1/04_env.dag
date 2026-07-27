@@ -5,6 +5,8 @@ import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_
 import std.types { SourceSpan, is_kernel_type }
 
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
+import std.algebra { FreeMonoid, Empty, Cons }
+import std.occurrence_binding { BindingCandidate }
 
 
 type TypeEnv {
@@ -61,6 +63,86 @@ type SymbolIndex {
   entries: Map<String, Node>
   global_bare: Map<String, GlobalBareLookupState>
   services: Map<String, ServiceCensusEntry>
+}
+
+type LexicalCandidateIndex {
+  by_short_name: Map<String, FreeMonoid<BindingCandidate<Node>>>
+}
+
+data lexical_candidate_index_invariant: String = "Declaration identity is the authored Node occurrence at its full ContainmentPath<Node>. The short-name map is only a population index: insertion appends every active same-name candidate and never selects, overwrites, or deduplicates by SourceSpan or structural Node equality. Inference reaches each lexical declaration once per scope construction; repeated traversal starts from the parent scope instead of merging duplicate discoveries."
+
+fn empty_lexical_candidate_index() -> LexicalCandidateIndex {
+  LexicalCandidateIndex { by_short_name: empty_map() }
+}
+
+fn lexical_candidate_population_snoc(
+  candidates: FreeMonoid<BindingCandidate<Node>>,
+  candidate: BindingCandidate<Node>
+) -> FreeMonoid<BindingCandidate<Node>> {
+  match candidates {
+    Empty => Cons { head: candidate, tail: Empty }
+    Cons { head: head, tail: tail } =>
+      Cons {
+        head: head,
+        tail: lexical_candidate_population_snoc(
+          candidates: tail,
+          candidate: candidate
+        )
+      }
+  }
+}
+
+fn lexical_candidate_index_insert(
+  index: LexicalCandidateIndex,
+  short_name: String,
+  candidate: BindingCandidate<Node>
+) -> LexicalCandidateIndex {
+  let existing = match map_get(index.by_short_name, short_name) {
+    Present { value: candidates } => candidates
+    Absent => Empty
+  }
+  LexicalCandidateIndex {
+    by_short_name: map_insert(
+      index.by_short_name,
+      short_name,
+      lexical_candidate_population_snoc(
+        candidates: existing,
+        candidate: candidate
+      )
+    )
+  }
+}
+
+fn lexical_candidate_index_lookup(
+  index: LexicalCandidateIndex,
+  short_name: String
+) -> FreeMonoid<BindingCandidate<Node>> {
+  match map_get(index.by_short_name, short_name) {
+    Present { value: candidates } => candidates
+    Absent => Empty
+  }
+}
+
+fn lexical_candidate_population_count(
+  candidates: FreeMonoid<BindingCandidate<Node>>
+) -> Int {
+  match candidates {
+    Empty => 0
+    Cons { head: _, tail: tail } =>
+      1 + lexical_candidate_population_count(candidates: tail)
+  }
+}
+
+fn lexical_candidate_index_count(
+  index: LexicalCandidateIndex,
+  short_name: String
+) -> Int {
+  lexical_candidate_population_count(
+    candidates: lexical_candidate_index_lookup(
+      index: index,
+      short_name: short_name
+    )
+  )
 }
 
 type Scope {
@@ -680,7 +762,7 @@ fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv,
           body: n.body, transport: n.transport, properties: n.properties,
           type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
           has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
-          expr_data: n.expr_data
+          expr_data: n.expr_data, binding_identity: n.binding_identity
         }
       }
     Absent => node_with_children(n: n, children: qualified_children)
@@ -695,7 +777,7 @@ fn node_with_children(n: Node, children: List<Node>) -> Node {
     body: n.body, transport: n.transport, properties: n.properties,
     type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
     has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
-    expr_data: n.expr_data
+    expr_data: n.expr_data, binding_identity: n.binding_identity
   }
 }
 
@@ -707,7 +789,7 @@ fn node_with_inferred(n: Node, inferred: InferredNode?) -> Node {
     body: n.body, transport: n.transport, properties: n.properties,
     type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
     has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
-    expr_data: n.expr_data
+    expr_data: n.expr_data, binding_identity: n.binding_identity
   }
 }
 

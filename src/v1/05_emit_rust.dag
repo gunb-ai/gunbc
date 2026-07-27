@@ -5616,7 +5616,7 @@ fn has_string_lit_with_bind(arms: List<Node>) -> Bool {
     _ => false
   })
   let has_bind = arms |> any(arm => match arm_pattern(n: arm) {
-    Bind { name: _ } => true
+    Bind { declaration: _ } => true
     _ => false
   })
   has_lit && has_bind
@@ -5624,7 +5624,7 @@ fn has_string_lit_with_bind(arms: List<Node>) -> Bool {
 
 fn emit_pattern(pattern: MatchPattern, path_prefix: List<String>, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match pattern {
-    Bind { name: n } => emit_ident(name: n, target: Rust)
+    Bind { declaration: declaration } => emit_ident(name: declaration.name, target: Rust)
     LitPattern { value: v } => rust_literal_for_pattern(value: v)
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
       emit_variant_pattern(name: n, parent_enum: parent_enum, field_bindings: fbs, path_prefix: path_prefix, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
@@ -5804,7 +5804,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
           let bind_name = pattern_string_binding_name(path: field_path)
           concat("ref ", bind_name)
         } else {
-            let is_shorthand = match fb_pat { Bind { name: n } => n == fb_name  _ => false }
+            let is_shorthand = match fb_pat { Bind { declaration: declaration } => declaration.name == fb_name  _ => false }
             if is_shorthand { emit_ident(name: fb_name, target: Rust) }
             else {
               let field_path = if fb_name == "0" {
@@ -5968,7 +5968,7 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
 
 fn emit_pattern_rc_aware(pattern: MatchPattern, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match pattern {
-    Bind { name: n } => emit_ident(name: n, target: Rust)
+    Bind { declaration: declaration } => emit_ident(name: declaration.name, target: Rust)
     LitPattern { value: v } => rust_literal_for_pattern(value: v)
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
       emit_variant_pattern_rc_aware(name: n, parent_enum: parent_enum, field_bindings: fbs, path_prefix: path_prefix, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
@@ -6069,7 +6069,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
           if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
             concat("ref ", emit_ident(name: fb_name, target: Rust))
           } else {
-            let is_shorthand = match fb_pat { Bind { name: n } => n == fb_name  _ => false }
+            let is_shorthand = match fb_pat { Bind { declaration: declaration } => declaration.name == fb_name  _ => false }
             if is_shorthand { emit_ident(name: fb_name, target: Rust) }
             else {
               let field_path = if fb_name == "0" {
@@ -6092,7 +6092,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
 
 fn match_pattern_is_irrefutable(pattern: MatchPattern) -> Bool {
   match pattern {
-    Bind { name: _ } => true
+    Bind { declaration: _ } => true
     Wildcard => true
     _ => false
   }
@@ -7756,7 +7756,7 @@ fn freemonoid_cons_binding(cons_arm: Node, field: String, source_indices: Map<St
       match fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: source_indices) == field) |> first {
         Present { value: fb } =>
           match field_binding_pattern(n: fb) {
-            Bind { name: nm } => nm
+            Bind { declaration: declaration } => declaration.name
             _ => "_"
           }
         Absent => "_"
@@ -7783,14 +7783,14 @@ fn parent_enum_is_freemonoid(p: String?) -> Bool {
 fn freemonoid_catchall_arm(arms: List<Node>) -> Node? {
   arms |> filter(arm => match arm_pattern(n: arm) {
     Wildcard => true
-    Bind { name: _ } => true
+    Bind { declaration: _ } => true
     _ => false
   }) |> first
 }
 
 fn freemonoid_catchall_bind_name(arm: Node) -> String {
   match arm_pattern(n: arm) {
-    Bind { name: nm } => nm
+    Bind { declaration: declaration } => declaration.name
     _ => ""
   }
 }
