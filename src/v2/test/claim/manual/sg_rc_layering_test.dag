@@ -11,6 +11,14 @@ data sg_rc_expected_box_node: String = "Box<Node>"
 data sg_rc_expected_rc_probe_heap: String = "Rc<ProbeHeap>"
 data sg_rc_expected_rc_outcome_node: String = "Rc<Outcome<Node>>"
 
+fn sg_rc_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^sg_rc_fail_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
 fn sg_rc_ctor_binding_spelling(binding: Symbol, expected: String) -> Bool {
   let spellings = rust_sg2_binding_spellings()
   match spellings.lookup(binding) {

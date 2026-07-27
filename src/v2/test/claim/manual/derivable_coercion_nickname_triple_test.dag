@@ -97,41 +97,41 @@ fn find_witness_dispatch_accepts(source: Node, target: Node) -> Bool {
   }
 }
 
-test data witness_task_id_surfaces_distinct: Bool = (task_id_api_inhabitant_node() != task_id_db_inhabitant_node()) && (task_id_api_inhabitant_node() != task_id_wire_inhabitant_node()) && (task_id_db_inhabitant_node() != task_id_wire_inhabitant_node())
+data witness_task_id_surfaces_distinct: Bool = (task_id_api_inhabitant_node() != task_id_db_inhabitant_node()) && (task_id_api_inhabitant_node() != task_id_wire_inhabitant_node()) && (task_id_db_inhabitant_node() != task_id_wire_inhabitant_node())
 
-test data witness_task_id_shared_core_matches: Bool = exact_structural_equality_zip_fold(source_facts: task_id_semantic_core_node(), candidate: task_id_semantic_core_node())
+data witness_task_id_shared_core_matches: Bool = exact_structural_equality_zip_fold(source_facts: task_id_semantic_core_node(), candidate: task_id_semantic_core_node())
 
-test data witness_matrix_exact_api_to_db_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
+data witness_matrix_exact_api_to_db_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
 
-test data witness_matrix_exact_api_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
+data witness_matrix_exact_api_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
 
-test data witness_matrix_exact_db_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
+data witness_matrix_exact_db_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
 
-test data witness_matrix_exact_api_to_account_id_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
+data witness_matrix_exact_api_to_account_id_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
 
-test data witness_matrix_widening_api_to_db_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: ^preservation_rule_refinement_widening)
+data witness_matrix_widening_api_to_db_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: ^preservation_rule_refinement_widening)
 
-test data witness_matrix_widening_api_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_refinement_widening)
+data witness_matrix_widening_api_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_refinement_widening)
 
-test data witness_matrix_widening_db_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_refinement_widening)
+data witness_matrix_widening_db_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_refinement_widening)
 
-test data witness_matrix_widening_api_to_account_id_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: ^preservation_rule_refinement_widening)
+data witness_matrix_widening_api_to_account_id_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: ^preservation_rule_refinement_widening)
 
-test data witness_matrix_constraint_api_to_db_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: ^preservation_rule_constraint_satisfaction)
+data witness_matrix_constraint_api_to_db_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: ^preservation_rule_constraint_satisfaction)
 
-test data witness_matrix_constraint_api_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_constraint_satisfaction)
+data witness_matrix_constraint_api_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_constraint_satisfaction)
 
-test data witness_matrix_constraint_db_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_constraint_satisfaction)
+data witness_matrix_constraint_db_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_constraint_satisfaction)
 
-test data witness_matrix_constraint_api_to_account_id_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: ^preservation_rule_constraint_satisfaction)
+data witness_matrix_constraint_api_to_account_id_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: ^preservation_rule_constraint_satisfaction)
 
-test data witness_dispatch_api_to_db_accepts: Bool = find_witness_dispatch_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node())
+data witness_dispatch_api_to_db_accepts: Bool = find_witness_dispatch_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node())
 
-test data witness_dispatch_api_to_wire_accepts: Bool = find_witness_dispatch_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node())
+data witness_dispatch_api_to_wire_accepts: Bool = find_witness_dispatch_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node())
 
-test data witness_dispatch_db_to_wire_accepts: Bool = find_witness_dispatch_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node())
+data witness_dispatch_db_to_wire_accepts: Bool = find_witness_dispatch_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node())
 
-test data witness_dispatch_api_to_account_id_accepts: Bool = find_witness_dispatch_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node())
+data witness_dispatch_api_to_account_id_accepts: Bool = find_witness_dispatch_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node())
 
 fn find_witness_dispatch_faithful_for_siblings() -> Bool {
   witness_dispatch_api_to_db_accepts
@@ -140,9 +140,9 @@ fn find_witness_dispatch_faithful_for_siblings() -> Bool {
     && !witness_dispatch_api_to_account_id_accepts
 }
 
-test data witness_crux_substrate_gap: Bool = !find_witness_dispatch_faithful_for_siblings()
+data witness_crux_substrate_gap: Bool = !find_witness_dispatch_faithful_for_siblings()
 
-test data witness_matrix_exact_api_to_api_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_api_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
+data witness_matrix_exact_api_to_api_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_api_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
 
 fn derivable_coercion_pass_node() -> Node {
   task_id_api_inhabitant_node()
