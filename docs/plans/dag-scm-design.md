@@ -15,23 +15,27 @@ grounding: DESIGN open thread “SCM economics — the GitLab 10-K corpus.” Vi
 [node/subtree visibility grants](node-subtree-visibility-grants.md). Storage/surface authority:
 [module identity vs storage](module-identity-storage-binding-design.md).
 
-## 1. Product objective — minimize judgment without buying silent errors
+## 1. Product objective — minimize judgment without pricing safety
 
 The product is not “Git with smaller conflict markers.” It is:
 
-> **Minimize the total human/LLM judgment needed to accept concurrent source changes, subject to
-> never automatically asserting a result the available model and evidence do not ground.**
+> **For the declared admission contract and abstraction, return the most informative conclusion
+> whose soundness is established; claim uniqueness only when query-local candidate and evidence
+> completeness are certified.**
 
 Humans and LLMs are both expensive, lossy judgment providers. They should receive only the
 irreducible normative choices. Everything else—alignment, replay, independence, invariant
 checking, affected-set calculation, receipt reuse, and projection—should be mechanical.
 
-The displaced cost has four terms, all denominated in time:
+The objective is **lexicographic**, not a scalar score in which a sufficiently cheap unsafe answer
+can win:
 
-1. integration compute;
-2. CI work invalidated or repeated because main advanced;
-3. human/LLM attention and tokens spent reconstructing context and resolving conflicts; and
-4. recovery from a clean-looking but wrong automatic integration, paid later at interest.
+1. hard constraints: authorization, semantic obligations, evidence soundness, confidentiality,
+   and an exact-parent transition;
+2. maximize safe information and work preserved: established claims, reusable receipts, and
+   independent proposal groups whose disposition is known;
+3. minimize human/LLM judgment, invalidated CI, compute, latency, storage, and egress; and
+4. preserve Pareto-incomparable choices instead of inventing weights.
 
 The motivating workload is an explicit **stress profile**, not a universal constant: 50 agents per
 developer, 10 proposals touching the same modeled region, and a 30-minute CI path. Every proposal
@@ -41,21 +45,27 @@ inputs so the benefit is measured rather than asserted.
 
 A lower textual-conflict count is not itself success. An aggressive integrator can improve that
 number by silently choosing wrong results. The product metric is **judgment displaced at a fixed
-safety contract**, with false automatic integrations priced most heavily.
+safety contract**. Safety is a prerequisite, not a finite cost. Even when a batch cannot commit,
+the system returns every independently grounded assessment; a top-level unknown must not erase
+safe partial deductions.
 
-## 2. Separate the five concerns
+## 2. Separate the layers
 
 Git's native interface necessarily exposes commits, trees, paths, blobs, and textual merge
 drivers. Those are useful storage and compatibility concepts. They are not the program.
 
-This lane keeps five layers separate:
+This lane keeps the following layers separate:
 
 | concern | authority | never allowed to decide |
 |---|---|---|
-| program model | the actual `Node` + `Edge` graph, grounded facts, claims, effects, and bounds | file layout, line position, or formatter output |
-| proposed change | a transformation over modeled facts plus its explicit obligations and provenance | an inferred story about a user's unexpressed preference |
-| integration | the joint-result calculation and its evidence/refusal | queue arrival order, path overlap, or a tie-break heuristic |
-| history | grounded transition and validation receipts over accepted states | a second copy of the program |
+| recorded fact | a typed observation or authored artifact plus provenance | the claim it happens to resemble |
+| claim + evidence relation | a proposition about a named subject, scope, target, and bound, linked to applicable supporting or challenging facts | “some truthy facts exist” |
+| program model | the actual `Node` + `Edge` graph, claims, effects, and bounds | file layout, line position, or formatter output |
+| proposed change | an authenticated authored transformation plus its explicit contract, dependencies, authority, and provenance | an inferred story about a user's unexpressed preference |
+| semantic deduction | the closed zero/one/many or unclosed joint-result calculation | authorization, mutation, queue order, or path overlap |
+| admission policy | required claim assessments and actor authority under the accepted parent policy | semantic satisfiability or realization cost |
+| transition realization | exact-parent compare-and-advance, effects, and read-back | whether the semantic candidate space was closed |
+| history + projection | grounded receipts over accepted states and downstream media such as Git | a second copy of the program or a retroactive semantic verdict |
 | medium / transport | `.dag`, Rust, markdown, files, Git trees, CLI/REST, remote storage | semantic correctness beyond the medium's declared decode fidelity |
 
 Text and files have two downstream jobs, already named by the storage-binding design:
@@ -65,25 +75,30 @@ Text and files have two downstream jobs, already named by the storage-binding de
 - **projection:** render the accepted graph through the declared medium.
 
 A path move, import deletion, formatting pass, or source reorder may therefore be a semantic no-op
-even though its Git tree changes. Conversely, two disjoint textual hunks may jointly violate one
-modeled invariant.
+**under a declared language model and equivalence witness** even though its Git tree changes.
+Conversely, two disjoint textual hunks may jointly violate one modeled invariant.
 
 ## 3. Grain comes from groups of units; SCM does not choose one
 
-The recent group-of-units lane is the starting authority. Its current concrete carrier is
-`gunbc.roster_registry.GroupMembership`, which distinguishes membership known:
+The recent group-of-units lane is a starting constraint, not yet a group algebra.
+`gunbc.roster_registry.GroupMembership` is a **membership-provenance taxonomy** on a
+`RosterRegistration`; it distinguishes membership known:
 
 - **by containment**;
 - **by derivation**;
 - by a declared, counted **frontier** with a reason and dissolution trigger; or
 - by an ungrounded nickname, which is the violation.
 
-This is the useful content behind the working shorthand `Group<U>`; this plan must not mint a
-competing generic group type merely because the shorthand is convenient.
+It does not itself carry a group, its members, closure semantics, or a polymorphic membership
+relation. This is the useful content behind the working shorthand `Group<U>`; this plan must not
+pretend the shorthand has landed or mint a competing generic group type merely because it is
+convenient.
 
-A module is one important example: a containment-derived group of program units. An affected
-closure is a derived group. A temporarily hand-curated migration set is a frontier group. Files
-are storage realizations of such groups, not group authorities.
+Module membership is containment-derived; `GroupMembership.ByContainment` classifies the
+provenance of that membership. The namespace/containment authority must still supply the actual
+member relation and distinguish immediate children from descendant closure. An affected closure
+is derivation-backed membership. A temporarily hand-curated migration set is frontier membership.
+Files are storage realizations of such groups, not group authorities.
 
 The integration algorithm is therefore **unit- and group-polymorphic**:
 
@@ -104,11 +119,18 @@ Unknown alignment stays unknown.
 
 A native proposal should eventually carry, by reuse of existing substrate concepts:
 
+- a stable proposal **occurrence identity**, distinct from transformation/content identity;
 - the authoritative target it proposes to advance;
 - the exact accepted parent state it was authored against;
 - the modeled transformation—what facts or relations it proposes to change;
-- explicit preconditions and postconditions the author relies on;
+- `reads` / `relies`: facts whose stability the proposal assumes;
+- `modifies` / frame: the facts and scopes it is authorized to change;
+- `ensures` / guarantees: facts established after application;
 - claims, effects, resource bounds, and observable behavior relevant to admission;
+- atomicity groups and whether proven-independent groups may commit separately;
+- explicit dependencies and authored supersedes/cancels edges;
+- authority to submit against the target/scope and, separately, to change policy, equivalence,
+  publication, or approve world-writing/destructive effects;
 - a derivable affected group and dependency closure;
 - provenance, including the authoring surface if one captured it; and
 - capture/decode fidelity.
@@ -117,10 +139,74 @@ These are **roles**, not a proposed `Intent` record. `EffectAttemptIntent`, `Sta
 intent in the orchestration lane, `ChangeSet`, temporal snapshots, and other neighboring concepts
 must be DFS'd before any new carrier is named.
 
+Here, **source intent** means only an authenticated authored transformation plus its explicit
+contract and dependencies—not a reconstructed mental preference. “Obligation-preserving source
+integration” or “contract-preserving reconciliation” is the narrower formal substrate even if the
+product lane keeps the source-intent name.
+
 An endpoint diff remains valuable, but it answers only “what observations differ?” A native
 proposal answers “what transformation was requested, against which accepted state, and under
 which obligations?” Capturing the operation before flattening it to two snapshots removes much of
-the detective work a later three-way merge must redo.
+the detective work a later three-way merge must redo. A frame condition is what makes “no extra
+change” checkable: every result delta must be required by an admitted proposal or be an expressly
+permitted canonicalization, never an unrelated solver repair.
+
+### P−1 shared prerequisite — claim-indexed evidence
+
+The dashboard/Codex incident and source integration require the same missing relation. A recorded
+fact is not evidence in isolation. It becomes evidence only for a named claim under an explicit
+inference rule, with a maximum conclusion:
+
+```text
+recorded fact
+  -> evidence link {
+       claim(subject, target, proposition, scope, bound),
+       supports | challenges,
+       inference rule,
+       authority + provenance,
+       freshness,
+       fidelity,
+       probe independence,
+       maximum conclusion
+     }
+  -> claim assessment { supporting evidence, challenging evidence }
+  -> admission/readiness policy over required assessments
+  -> SCM outcome or dashboard lamp as a projection
+```
+
+For example, `codex login status` may support `CredentialRecorded` for one `CODEX_HOME`; it cannot
+support `ProviderReady`. A successful live request can support a provider/request-capability claim
+for its provider, scope, and freshness bound. A worker PID supports lifecycle facts, not provider
+readiness. In SCM, a parse edge, typecheck, behavioral receipt, Git rename score, and native
+authored operation are likewise facts with different claim relations and maximum conclusions.
+
+The information-state floor for one claim preserves two independent bits—support and challenge:
+support only, challenge only, both/conflicted, or neither/insufficient. This is the
+[Belnap–Dunn](https://doi.org/10.1007/978-94-010-1161-7_2) shape for incomplete and inconsistent
+information, not permission to reuse that logic's final type names before DFS. Conflicting
+evidence is not semantic contradiction, and absence of evidence is not refutation.
+
+[SACM](https://www.omg.org/spec/SACM/) is the external precedent for artifacts becoming evidence
+through a claimed relation to a subject claim. [W3C PROV](https://www.w3.org/TR/prov-dm/) supplies
+entity/activity/agent provenance; provenance helps assess an evidence link but does not establish
+the target claim by itself.
+
+The repo has partial precedents, not this shared carrier:
+
+- `std.realization_reconcile.Grounding = Grounds | DoesNotGround` collapses challenge and
+  insufficient evidence;
+- `gunbc.readback_independence` already supplies one inference-validity rule: a positive result
+  from a probe that may establish the subject is insufficient, while a negative result may remain
+  informative;
+- `std.upsert_decision.ObservationVerdict` preserves several world-state distinctions but is
+  desired-versus-observed specific; and
+- `std.observation` already owns process-progress events, so this concept must not overload
+  `Observation`.
+
+The shared evidence carrier lands in a **separate model-first PR** with three discriminating
+consumers: Codex provider readiness, `gunbc.os_install_deduction`, and source integration. It is
+P−1 for SCM P0. This plan names roles, not final carrier names, so the first DFS can converge on
+existing authorities rather than extract three local versions later.
 
 ### Native history
 
@@ -163,6 +249,12 @@ authorized receipt names its accepted predecessor; one proposal depends on anoth
 explicit parent/dependency edge. A declared domain-time contract may decide whether evidence is
 fresh enough to use, but never turns chronology into proposal priority.
 
+The accepted parent's model, claim set, inference rules, equivalence, and admission policy are
+frozen for one evaluation. A proposal cannot license itself by deleting the invariant that rejects
+it, broadening equivalence until alternatives collapse, or weakening its own evidence requirement.
+A policy/model transition is evaluated under the accepted parent policy, separately authorized,
+committed first, and affects only subsequent admissions.
+
 ### Deduction contract — one fold, not an interaction catalog
 
 Native integration is one general reconciliation operation over modeled facts, not a growing
@@ -170,23 +262,35 @@ dispatch table for “rename versus call,” “move versus edit,” or every fu
 features. Conceptually:
 
 ```text
-obligations =
-  fold(selected proposal set, empty, compose grounded obligations)
+assessments =
+  fold(applicable claim-indexed evidence, empty, compose checkable assessments)
+
+proposal contract =
+  fold(selected proposal occurrences, empty, compose contracts + dependency/atomicity graph)
 
 candidates =
-  derive(accepted target state, current observations, obligations, admission contract)
+  bounded_closure(
+    accepted target state,
+    admitted authored transformations,
+    witnessed context transports,
+    declared canonicalizations,
+    finite recovery alternatives
+  )
 
-result classes =
-  quotient(admissible candidates, declared semantic equivalence)
+semantic result =
+  classify(quotient(candidates satisfying proposal contract, declared equivalence),
+           closure certificates)
 
-outcome =
-  classify(result classes)
+admission =
+  decide(parent policy, authority, required claim assessments, semantic result)
 ```
 
 The proposal fold accumulates transformations and obligations; it does **not** apply a list in
-arrival order. Its compatible region must compose associatively and commutatively. Failure to
-compose is evidence for `Contradictory`, `Ambiguous`, or `Unknown`, never a reason to add a
-first-arrival branch.
+arrival order. “One fold” means one public reconciliation operation and a stable proof-composition
+kernel, preferably with a small trusted checker. A domain may contribute ordinary facts, claims,
+proof rules/procedures, and checkable certificates through shared interfaces. It does not add a
+feature-pair arm to an SCM switch. A solver or LLM may propose a candidate or certificate; an
+unverified proposal has no authority.
 
 Safety, explicit obligations, grounding, and the required evidence grade are admission conditions,
 not weighted preferences. A cheaper result cannot buy permission to violate one. Among candidates
@@ -199,11 +303,48 @@ dominated realizations and preserves incomparable alternatives rather than inven
 weights.
 
 New models participate by contributing their ordinary facts, relations, claims, effects,
-equivalence, bounds, and costs to this fold. They do not add cases to a central SCM switch. The
-worked examples below are discriminating inputs for the same operation, not its implementation
-branches. If adding a language concept requires editing the integrator rather than supplying facts
-through a shared authority, the missing work is a model/algebra seam to ground—not a twentieth-year
-special case to preserve.
+equivalence, bounds, costs, inference procedures, and certificates to this kernel. The worked
+examples below are discriminating inputs for the same operation, not implementation branches. If
+adding a language concept requires a new pairwise integrator case rather than a shared semantic
+interface, the missing work is a model/algebra seam to ground—not a twentieth-year special case to
+preserve.
+
+### Candidate closedness is a named substrate gap
+
+`v2.std.find_witness.CandidateSet` accepts a caller-supplied finite list and a structural
+closedness witness. `UniqueOnly` counts passing members of that list; it neither generates source
+integration results nor proves the list exhaustive. Today `solve_constraints` constructs a
+singleton candidate set containing the constraint root and derives “closedness” from that root
+being well formed. That is a useful scaffold, not authority that every relevant integration result
+was considered.
+
+Uniqueness therefore requires separate, checkable certificates for:
+
+1. **capture completeness** — every authored operation available through the declared input surface
+   was recovered, while unavailable operation history stays unavailable;
+2. **affected-scope closure** — every dependency relevant under the named relation and bound is
+   included;
+3. **rule closure** — every applicable inference/integration rule in the declared fragment was
+   considered;
+4. **candidate-generation closure** — every legal composition/transport in the bounded fragment was
+   enumerated;
+5. **admissibility** — every survivor satisfies its required claims and proposal contracts;
+6. **equivalence-quotient validity** — the declared equivalence is justified and congruent enough
+   for this admission context;
+7. **multiplicity** — zero, one, or many equivalence classes remain; and
+8. **commit validity** — the exact parent/model/policy/evidence inputs validated are still current.
+
+P1 is deliberately a bounded, decidable fragment. Its candidate space is the finite closure of the
+accepted state, admitted authored transformations, witnessed transports/rebases, declared
+canonicalizations, and finitely enumerated recovery alternatives—not arbitrary synthesized
+programs. Exhausting a candidate, proof-search, or equivalence bound yields an unclosed result,
+never contradiction and never “the one candidate found so far.”
+
+This objective follows abstract interpretation's vocabulary of
+[sound approximation](https://cs.nyu.edu/~pcousot/COUSOTpapers/POPL77.shtml) and query-relative
+[completeness](https://doi.org/10.1145/333979.333989): compute the most precise sound conclusion
+available under a declared abstraction, and claim completeness only for the query and fragment
+whose certificates establish it.
 
 ### Fail-closed deduction — ignorance never becomes an answer (DESIGN §5)
 
@@ -224,11 +365,10 @@ The change set is closed in one useful sense: every accepted result change must 
 admitted proposal or declared canonicalization. The world of relevant meaning is not automatically
 closed merely because the program typechecks. A closed coproduct closes its declared axis; a
 derived affected/dependency closure closes only the relation and bound its evidence names; a
-lossless surface closes only its declared construct set. `Applied` therefore requires a
-closedness/completeness witness for the **specific admission contract**, not a claim that all user
-intent or all program behavior has been modeled. If a potentially relevant axis, dependency,
-effect, capture fragment, or proof bound is missing, the result is `Unknown` at that evidence
-grade.
+lossless surface closes only its declared construct set. A unique semantic result therefore
+requires the specific certificates above, not a claim that all user intent or all program behavior
+has been modeled. If a potentially relevant axis, dependency, effect, capture fragment, or proof
+bound is missing, the semantic result space is unclosed at that evidence profile.
 
 This is also how the model can evolve without making old confidence implicit. An admission receipt
 names the model/contract inputs and closedness evidence it relied on. Adding a relevant model fact
@@ -248,78 +388,113 @@ Two live repo precedents carry the same fail-closed rule:
 These are precedents for the evidence discipline, not claims that source integration is an
 OS-install or membership-diff algorithm.
 
-## 5. The integration result — four honest outcomes
+## 5. Evidence, semantics, policy, transition, and projection stay separate
 
-Illustrative result shape (roles only):
+The prior four-arm sketch mixed deduction, policy, mutation, and execution state. These are
+illustrative **roles**, not final carrier names:
 
 ```text
-IntegrationOutcome<Result, Evidence, Question>
-  = Applied {
-      result,
-      grounding_evidence,
-      scope_and_closedness_evidence,
-      no_extra_change_evidence,
-      reusable_validation_receipts
-    }
-  | Contradictory {
-      minimal_incompatible_proposals,
-      counterexample
-    }
-  | Ambiguous {
-      materially_distinct_valid_results,
-      smallest_required_question
-    }
-  | Unknown {
-      missing_model_or_evidence
-    }
+ClaimAssessment
+  = SupportOnly | ChallengeOnly | BothConflicted | NeitherInsufficient
+
+SemanticResultSpace<Result>
+  = ClosedZero { witnessed_core, counterexample }
+  | ClosedOne { result, closure_certificates, obligation_receipts }
+  | ClosedMany { equivalence_classes, localized_blocking_question }
+  | Unclosed { missing_certificate_or_exhausted_bound, partial_assessments }
+
+AdmissionDecision
+  = Admitted
+  | Unauthorized
+  | ApprovalRequired
+  | PolicyRefused
+
+TransitionRealization<Receipt>
+  = Committed { receipt, independent_read_back }
+  | RetryStaleParent
+  | EffectFailed
+
+ProjectionStatus
+  = Projected
+  | ProjectionPending
+  | ProjectionFailed
 ```
 
-- **Applied** means the relevant candidate/evidence scope is closed for the admission contract and
-  exactly one result equivalence class satisfies every admitted proposal and required obligation,
-  adds no ungrounded change except declared canonicalization, and has a realization selected only
-  under the declared cost order.
-- **Contradictory** means a closed admission problem proves that no result can satisfy the joint
-  obligations. Return a minimal incompatible core and a witness, not a broad conflict region.
-- **Ambiguous** means more than one materially distinct result is valid and the model contains no
-  authority for choosing among them. Return the alternatives and the smallest normative choice.
-- **Unknown** means candidate closedness, model, alignment, fidelity, observation, or bound is
-  insufficient to establish another outcome. Finding one plausible candidate without proving the
-  relevant scope closed is still `Unknown`; it is neither “probably safe” nor “everything
-  conflicts.”
+The distinctions are load-bearing:
 
-The admission policy states the evidence grade it requires. A structurally universal result must
-not be presented as behaviorally safe; a behaviorally bounded result must name its bound. If the
-policy requires a proof the system cannot produce, `Unknown` blocks automatic admission.
+- `ClosedZero` is semantic unsatisfiability. This is the narrow meaning of **Contradictory**.
+  Conflicting observations are `BothConflicted` evidence, not semantic contradiction.
+- `ClosedOne` is a **UniqueGroundedResult**, not yet `Applied`. It may still be unauthorized,
+  require approval, fail an effect, or lose the exact-parent race.
+- `ClosedMany` is **Ambiguous** only after candidate closure is certified. It returns material
+  alternatives and a localized blocking normative question.
+- `Unclosed` is **Unknown**. Finding one plausible candidate without the required certificates is
+  still unknown; exhausting a bound is unknown, not contradiction.
+- **Applied is reserved for a successfully committed and independently read-back transition.**
+  A unique result plus `Unauthorized` is never Applied. Losing the compare-and-advance race is
+  `RetryStaleParent`, not Unknown. A committed native state whose Git export fails remains committed
+  with `ProjectionFailed`/`ProjectionPending`; projection failure is not semantic rollback.
 
-Humans or LLMs may answer an `Ambiguous` question by submitting another explicit proposal or
-claim. They may help model an `Unknown`. Their answer does not retroactively turn a guess into
-evidence.
+The UI may project these layers into four broad buckets for a simple experience, but receipts and
+APIs preserve the underlying states. Every group keeps its partial assessments even if the batch
+cannot partially commit: for example group A may be unique and authorized, B closed-contradictory,
+C unclosed for missing live evidence, and D ambiguous. Partial commit additionally requires a
+declared atomicity split and proven independence.
 
-The stop reason must remain precise. `Ambiguous` asks for the smallest **normative choice** because
-several grounded answers remain. `Unknown` names the missing fact, model, observation, fidelity, or
-bound because the system cannot yet establish the answer space. Asking “which do you want?” for an
-`Unknown` would hide a modeling deficit; asking for more evidence when two valid intents remain
-would hide a real user decision.
+The admission policy states the required evidence profile and authority. A structurally universal
+result must not be presented as behaviorally safe; a behaviorally bounded result names its bound.
+Humans or LLMs may answer an ambiguity by submitting another authenticated proposal/claim and may
+help supply an unknown model or observation. Their response does not retroactively turn a guess
+into evidence.
 
-### Laws for the compatible region
+A diagnostic promises only what it can actually compute. This plan chooses **subset-minimal within
+a declared diagnostic bound** for an incompatible core; “minimal” never silently means globally
+minimum-cardinality. “Localized blocking question” is the default phrase. A future diagnostic
+optimizer may choose a lowest-cost discriminating observation/question only under an explicit
+cost policy.
 
-For proposals admitted as jointly compatible, integration should be:
+### Laws for the certified-compatible region
 
-- **idempotent:** submitting the same proposal twice has the same result as once;
-- **commutative:** arrival order does not change the result;
-- **associative:** compatible batches compose without batch-boundary semantics;
-- **grounded:** every result change traces to an admitted proposal or declared canonicalization;
-- **minimal/universal:** every admitted change appears exactly once and no other semantic change
-  appears;
-- **closedness-qualified:** uniqueness is claimed only over the candidate/evidence scope proven
-  complete for the declared admission contract;
+Parallel proposals are context-indexed patches, not context-free functions. A proposal authored
+against `S` may apply only to `S` or through a witnessed transport into the other proposal's
+context. Compatibility means a grounded commuting square—or joinability/confluence modulo the
+declared equivalence—not literal equality of unchanged `P ∘ Q` and `Q ∘ P`. This is the
+[patch-theory](https://darcs.net/Theory/MergersDocumentation) distinction between patch, context,
+commutation/transport, and merge.
+
+The laws are:
+
+- **duplicate-delivery idempotence:** the same proposal occurrence ID contributes once; an
+  arbitrary transformation such as increment/append need not be idempotent;
+- **context validity:** a proposal applies only to its authored parent or through a witnessed
+  transport;
+- **commuting-square law:** certified-compatible parallel proposals transport to one
+  declared-equivalent result;
+- **batch-partition invariance:** changing batch boundaries does not change the result in the
+  certified-compatible region;
+- **grounded delta:** every result delta traces to an admitted proposal or expressly permitted
+  canonicalization;
+- **contract and frame preservation:** every admitted proposal's relies/ensures/guarantees,
+  modifies authorization, dependencies, and atomicity contract hold;
+- **n-way obligation preservation:** pairwise compatibility is insufficient; the whole selected
+  set must satisfy cardinality, resource, security, and other joint invariants;
+- **closedness-qualified uniqueness:** uniqueness is claimed only over the certified candidate and
+  evidence scope;
 - **exact-parent checked:** replay states what changed since authoring and never applies against an
   assumed parent;
-- **metadata-inert:** erasing or permuting incidental timestamps, arrival metadata, queue order,
-  or transport-envelope identifiers cannot change the semantic outcome;
-- **order-honest:** order dependence yields `Ambiguous`, `Contradictory`, or `Unknown` unless an
-  explicit policy makes that order part of intent; and
-- **fail-closed:** missing alignment, fidelity, or proof never widens into an automatic result.
+- **parent-policy immutability:** a proposal cannot change the policy, equivalence, inference
+  rules, or claims used to admit that same proposal;
+- **grant non-widening:** integration never widens a grant or policy merely because a result is
+  structurally or behaviorally valid;
+- **metadata-inert:** erasing or permuting timestamps, arrival metadata, queue order, or transport
+  envelope IDs cannot change the semantic result; and
+- **order honesty:** absence of a unique transported result remains closed-zero, closed-many, or
+  unclosed; first arrival never supplies the missing authority.
+
+[CRDTs](https://inria.hal.science/inria-00609399) are a useful convergence comparison, while
+[invariant confluence](https://arxiv.org/abs/1402.2237) names when application invariants permit
+coordination-free composition. Neither licenses a universal merge law outside the declared
+operations and invariants.
 
 ## 6. Worked examples
 
