@@ -2364,7 +2364,7 @@ fn match_pattern_binders_capture_declaration_spans_in_parse_tree() {
         MatchPattern::{Bind, VariantPattern},
     };
 
-    let source = "module pattern_spans\n\ntype Boxed { value: Int }\ntype Nest { value: Boxed }\n\nfn direct(x: Int) -> Int {\n  match x {\n    direct_bind => direct_bind\n  }\n}\n\nfn alias(x: Boxed) -> Int {\n  match x {\n    Boxed { value: alias_bind } => alias_bind\n  }\n}\n\nfn shorthand(x: Boxed) -> Int {\n  match x {\n    Boxed { value } => value\n  }\n}\n\nfn nested(x: Nest) -> Int {\n  match x {\n    Nest { value: Boxed { value: nested_bind } } => nested_bind\n  }\n}\n";
+    let source = "module pattern_spans\n\ntype Boxed { value: Int }\ntype Nest { value: Boxed }\n\nfn direct(x: Int) -> Int {\n  match x {\n    direct_bind => direct_bind\n  }\n}\n\nfn aliased(x: Boxed) -> Int {\n  match x {\n    Boxed { value: alias_bind } => alias_bind\n  }\n}\n\nfn shorthand(x: Boxed) -> Int {\n  match x {\n    Boxed { value } => value\n  }\n}\n\nfn nested(x: Nest) -> Int {\n  match x {\n    Nest { value: Boxed { value: nested_bind } } => nested_bind\n  }\n}\n";
     let parsed = parse_source_named("pattern_spans.dag", source);
     if let Some(error) = parsed.error.clone() {
         panic!(
@@ -2399,7 +2399,7 @@ fn match_pattern_binders_capture_declaration_spans_in_parse_tree() {
         other => panic!("direct arm should be a bind pattern, got {:?}", other),
     }
 
-    let alias_arm = match_arm_nodes(body("alias"))
+    let alias_arm = match_arm_nodes(body("aliased"))
         .first()
         .cloned()
         .expect("alias arm");
