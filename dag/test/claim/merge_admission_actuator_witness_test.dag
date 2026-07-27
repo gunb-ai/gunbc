@@ -59,7 +59,7 @@ test fn enforcement_admits_fresh_verdict() -> Bool {
   }
 }
 
-test fn enforcement_admits_documentation_only_skipped_fresh_receipt() -> Bool {
+test fn enforcement_denies_skipped_fresh_receipt() -> Bool {
   let receipt = MergeAdmissionReceipt {
     pr_number: Present { value: 5933 },
     head_sha: scenario_pr_x_receipt.head_sha,
@@ -72,18 +72,31 @@ test fn enforcement_admits_documentation_only_skipped_fresh_receipt() -> Bool {
     merge_target_tree_hash: scenario_base_b0,
     current_roster_hash: scenario_roster_r0,
   ) {
-    MergeAdmitted => true
+    MergeDeniedNotSuccess => true
+    MergeAdmitted => false
     MergeDeniedStaleBase => false
     MergeDeniedStaleRoster => false
-    MergeDeniedNotSuccess => false
   }
 }
 
-test fn documentation_only_skipped_admit_policy_is_on_carrier() -> Bool {
-  string_contains(
-    s: merge_admission_documentation_only_skipped_admit_policy,
-    pattern: "GatingEnforced"
-  )
+test fn enforcement_denies_failure_fresh_receipt() -> Bool {
+  let receipt = MergeAdmissionReceipt {
+    pr_number: Present { value: 5933 },
+    head_sha: scenario_pr_x_receipt.head_sha,
+    base_tree_hash: scenario_base_b0,
+    gate_roster_hash: scenario_roster_r0,
+    conclusion: Failure,
+  }
+  match classify_merge_admission_verdict(
+    receipt: receipt,
+    merge_target_tree_hash: scenario_base_b0,
+    current_roster_hash: scenario_roster_r0,
+  ) {
+    MergeDeniedNotSuccess => true
+    MergeAdmitted => false
+    MergeDeniedStaleBase => false
+    MergeDeniedStaleRoster => false
+  }
 }
 
 test fn enforcement_red_on_revert_stale_base() -> Bool {
