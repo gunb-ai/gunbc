@@ -147,26 +147,29 @@ match input {
 
 Changing this to declaration-time rejection would be a stricter language amendment,
 not an implementation detail. It requires an explicit operator amendment to §13 and
-is not smuggled into #7328 or P1.
+is not smuggled into the identity prerequisite or canonical resolver successor.
 
 ---
 
-## 3. Exact identity flow — PR #7328 boundary
+## 3. Exact identity flow — fresh prerequisite boundary
 
-PR #7328's valid responsibility is to stop discarding exact pattern-binder identity:
+#7328 is superseded because it made `SourceSpan` part of the semantic binding
+carrier. Its fresh current-main successor establishes only the exact declaration and
+reference identity facts:
 
 ```text
-authored binder token SourceSpan
-  → MatchPattern.Bind declaration identity
-  → exact inferred binding edge
-  → uniquely bound ExprVar projection
+authored pattern binder
+  → dedicated declaration Node
+  → declaration ContainmentPath<Node>
+
+authored reference
+  → reference ContainmentPath<Node>
+  → canonical resolver boundary
 ```
 
-The span is the current v1 occurrence key needed to connect the authored declaration
-to the inferred use. It is not the namespace identity by itself and is never joined
-by raw name. The semantic declaration identity remains the declaration node at its
-full containment path; `declaration_span` is the v1 bridge that lets downstream
-ownership address that node without another name lookup.
+`SourceSpan` remains diagnostic evidence carried by the authored `Node`. It is never
+the identity of a binder, binding candidate, ownership target, or deduplication key,
+and it is never joined by raw name.
 
 The exact current representation boundary is now known:
 
@@ -181,40 +184,47 @@ The exact current representation boundary is now known:
 
 Accordingly, the upstream identity prerequisite has two facts: materialize exact
 pattern-binder declaration nodes, and preserve/thread existing declaration and
-reference node containment through inference into the canonical occurrence-binding
-fold. A `SourceSpan + origin` record is not a substitute: it would create another
-identity universe and restate syntax already carried by the declaration node.
+reference node containment through inference to the canonical occurrence-binding
+boundary. A `SourceSpan + origin` record is not a substitute: it would create
+another identity universe and restate syntax already carried by the declaration
+node.
 
-#7328 must:
+The fresh identity prerequisite must:
 
-- preserve the authored binder span through parser/core/inference;
-- materialize or consume pattern declaration nodes only after their model/API home
-  is explicitly ruled; until then, stop at the honest span bridge;
-- prove equal-text binders in sibling arms remain distinct;
-- prove nested patterns preserve each declaration's own span;
-- prove a uniquely bound use carries its accepted declaration span;
+- materialize declaration `Node`s for every direct, alias, shorthand, positional,
+  tuple, and nested pattern binder;
+- preserve existing let, function-parameter, and lambda-parameter declaration
+  `Node`s unchanged;
+- thread full declaration and reference containment paths through inference;
+- retain same-name active declarations as a population rather than overwriting;
+- prove equal-text binders in sibling arms remain isolated;
+- prove distinct authored occurrences never deduplicate merely because their nodes
+  are structurally alike;
+- prove restoring map overwrite or span identity makes the witness red;
 - use authored `.dag` witnesses and normal regeneration only.
 
-#7328 must not:
+The fresh identity prerequisite must not:
 
 - remove an outer candidate when a nearer `let` or lambda parameter appears;
 - decide 0/1/many namespace cardinality in a second helper;
 - make `match_bound_names` a binding authority;
+- use `SourceSpan` for binding, ownership, lookup, or deduplication;
 - add a shadowing-specific diagnostic or resolver;
 - hand-edit or add handwritten stage0 Rust witnesses;
-- implement generic-match ownership or change #7321.
+- implement resolution, generic-match ownership, emitter, or runtime behavior.
 
 A shadowing witness that expects ambiguity belongs to the executing namespace
-consumer, not to the identity-carrier prerequisite. #7328 may retain a structural
-fixture containing equal names only if it observes declaration identity without
-claiming a winner for the ambiguous reference.
+consumer, not to the identity-carrier prerequisite. The fresh prerequisite may
+retain a structural fixture containing equal names only if it observes declaration
+identity without claiming a winner for the ambiguous reference.
 
 ---
 
-## 4. P1 / #7321 consuming edge
+## 4. Fresh canonical resolver consuming edge
 
-The fresh-main P1 endpoint remains the first production v1 consumer of
-`std.occurrence_binding`. Its candidate producer must be amended as follows:
+#7321 remains audit evidence and is not rebased or rescued. Its fresh current-main
+successor is the first production v1 consumer of `std.occurrence_binding`. Its
+candidate producer must:
 
 - For each ordinary type, value, and callee occurrence, construct the exact
   `BindingOccurrence<Node>` containment path.
@@ -239,8 +249,10 @@ Builtins remain declarations at the structurally recognized root. Grounded built
 operations that are not declarations remain their already-ruled separate authority;
 they may neither enter the declaration population nor fabricate a declaration.
 
-The current #7321 freeze remains in force. This plan does not bypass its P-derive or
-match-ownership emitter prerequisites.
+The current #7321 branch remains no-edit audit evidence. The fresh resolver successor
+starts only after the exact-identity prerequisite lands; match ownership is a
+downstream consumer of that successor, not its prerequisite. P-derive proceeds on
+its separately ruled model and source-binding dependencies.
 
 ### Source-read checkpoint — #7321 current head is not the terminal consumer
 
@@ -378,11 +390,11 @@ projection of these `.dag` sources and is not a separate row or repair surface.
 
 | Surface | Current independent decision | Terminal disposition / dissolve-on |
 | --- | --- | --- |
-| `src/v1/04_env.dag` — `TypeEnv.bindings`, `str_bindings`, `ancestry_str_bindings`, and `parents` | Ordered map/parent lookup can select a type declaration before the containment population is known | Retain only representation/index data needed to enumerate exact declaration paths. Delete their declaration-choice role when P1 type occurrences consume the one full-chain fold. |
+| `src/v1/04_env.dag` — `TypeEnv.bindings`, `str_bindings`, `ancestry_str_bindings`, and `parents` | Ordered map/parent lookup can select a type declaration before the containment population is known | Retain only representation/index data needed to enumerate exact declaration paths. Delete their declaration-choice role when the fresh resolver successor's type occurrences consume the one full-chain fold. |
 | `src/v1/04_env.dag` — `SymbolIndex.global_bare`, `GlobalBareLookupState`, LCP/nearest helpers, strict-policy branch | A bare-name pool plus policy chooses or refuses independently of lexical candidates | Delete `global_bare` as a resolution mechanism when all ordinary v1 type/value/callee occurrences enumerate from containment. No nearest or global-unique compatibility arm remains. |
-| `src/v1/04_env.dag` — `Scope`, `ScopeBinding`, `scope_lookup`, `scope_push` | A second lexical abstraction exists without an executing consumer | Do not expand it into another resolver. Delete it if the consumer census confirms it remains hollow; otherwise convert its sole use to candidate enumeration and give it the same P1 dissolve-on. |
+| `src/v1/04_env.dag` — `Scope`, `ScopeBinding`, `scope_lookup`, `scope_push` | A second lexical abstraction exists without an executing consumer | Do not expand it into another resolver. Delete it if the consumer census confirms it remains hollow; otherwise convert its sole use to candidate enumeration and give it the fresh resolver successor's dissolve-on. |
 | `src/v1/04_sigs.dag` and `04_lookup.dag` — `ResolvedFuncEnv`, `FuncSigLookup`, global-bare callable fallback | Function/value lookup has its own local/parent/global 0/1/many and fallback behavior | Function signatures become post-`OccurrenceBound` projections from the accepted declaration path. Delete the independent lookup result and fallback after all call/value consumers cross that seam. |
-| `src/v1/04_infer.dag` — `InferScope.locals`, `body_locals`, `match_bound_names`, `call_locals_shadow_note` | Separate name maps and an explicit locals-before-functions-before-global priority can select a value | Preserve scope facts only to enumerate exact on-chain declarations. Delete raw-name winner selection when value/callee P1 witnesses execute the full-chain fold. |
+| `src/v1/04_infer.dag` — `InferScope.locals`, `body_locals`, `match_bound_names`, `call_locals_shadow_note` | Separate name maps and an explicit locals-before-functions-before-global priority can select a value | Preserve scope facts only to enumerate exact on-chain declarations. Delete raw-name winner selection when the fresh resolver successor's value/callee witnesses execute the full-chain fold. |
 | `src/v1/04_infer.dag` — `spine_root_is_shadowed`, `body_shadow_aware_func_sig`, `lookup_variant_parent_enum`, `infer_var_binding_kind`, and every `shadow*` helper | A raw-name presence check suppresses a qualified projection, converts a function to unresolved, or recovers declaration kind/owner after lookup | Delete the decision helpers. Bind a qualified spine's first segment once; derive parameter/local/function/variant/namespace kind from the accepted declaration path. “Shadowed” may remain only in diagnostic prose for `OccurrenceAmbiguous`. |
 | `src/v1/04_method.dag` — `builtin_function_registry` and builtin preemption in call lookup | One bare-name registry mixes declaration-like builtins, grounded operations, host/compiler hooks, and legacy policy instrumentation; a match can bypass declaration binding | Root declaration-like builtins in containment and include them in the ordinary candidate fold. Give genuine non-declaration operations a separate typed operation authority that cannot fabricate, suppress, or displace a declaration. Delete policy instrumentation entries with the policy gate. |
 | `src/v1/04_infer.dag` — variant-local/census helpers and `VariantCollision` selection | Constructor ownership and collision handling can be inferred through a variant-name side population | Enumerate constructor declaration paths in the applicable syntactic category. Keep collision text only as a diagnostic projection of an ambiguous typed result. |
